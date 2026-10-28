@@ -93,7 +93,7 @@ test.describe("Cursor mode (V6)", () => {
 });
 
 test.describe("Cursor's to-do list in the plan panel (V6)", () => {
-  test("shows the whole list Cursor confirmed, then no plan on a later turn without one", async ({ page, consoleErrors: _consoleErrors }) => {
+  test("shows the whole list Cursor confirmed, and keeps it on a later turn without an update", async ({ page, consoleErrors: _consoleErrors }) => {
     await newSession(page);
     const panel = page.getByTestId("plan-panel");
 
@@ -101,7 +101,7 @@ test.describe("Cursor's to-do list in the plan panel (V6)", () => {
     await send(page, "[plan] make a plan");
     await expect(notice(page)).toHaveAttribute("data-kind", "started");
     await expect(panel.locator("[data-plan-state]")).toHaveAttribute("data-plan-state", "rows");
-    await expect(panel.getByTestId("plan-turn")).toHaveText("Turn 1");
+    await expect(panel.getByTestId("plan-turn")).toHaveText("Last changed in turn 1");
     await expect(panel.getByTestId("plan-row-title")).toHaveText(["Read the request", "Answer it", "Check the answer", "Say what changed"]);
     expect(await panel.getByTestId("plan-row").evaluateAll((lis) => lis.map((li) => li.getAttribute("data-stage")))).toEqual([
       "done",
@@ -113,9 +113,10 @@ test.describe("Cursor's to-do list in the plan panel (V6)", () => {
 
     await send(page, "no plan this time");
     await expect(notice(page)).toHaveAttribute("data-kind", "continued");
-    await expect(panel.getByTestId("plan-turn")).toHaveText("Turn 2");
-    await expect(panel.locator("[data-plan-state]")).toHaveAttribute("data-plan-state", "none");
-    await expect(panel.getByTestId("plan-row")).toHaveCount(0);
+    // The agent's list is still the one it confirmed, labelled with the turn that did.
+    await expect(panel.getByTestId("plan-turn")).toHaveText("Last changed in turn 1");
+    await expect(panel.locator("[data-plan-state]")).toHaveAttribute("data-plan-state", "rows");
+    await expect(panel.getByTestId("plan-row-title")).toHaveText(["Read the request", "Answer it", "Check the answer", "Say what changed"]);
     await expect(panel).not.toContainText("reports no plan");
   });
 });

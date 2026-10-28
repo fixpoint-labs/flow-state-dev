@@ -2260,12 +2260,20 @@ describe("claudeCodeAgent — recordWork", () => {
     ]);
     expect(fileRows[0].state).toMatchObject({ lastKind: "created", outcome: "applied" });
 
+    // The plan is the conversation's, keyed by the session the SDK confirmed,
+    // so the next turn of it updates these rows; files stay the run's.
     const planRows = await resources["observed-plan"].list();
-    expect(planRows.map((r) => r.path)).toEqual([`observed-plan/${runId}/5`]);
+    expect(planRows.map((r) => r.path)).toEqual([`observed-plan/conversation/sess_new/5`]);
     expect(planRows[0].state).toMatchObject({
       title: "Create the file",
       status: "in_progress",
       lastOutcome: "applied",
+      requestId: runtime.ctx.request.identity.id,
+    });
+    // And the run points at it, so a reader that knows only the run finds it.
+    const markers = await resources["observed-plan-list"].list();
+    expect(markers.find((r) => r.path === `observed-plan-list/${runId}`)?.state).toMatchObject({
+      conversation: "conversation/sess_new",
     });
   });
 
@@ -2301,7 +2309,7 @@ describe("claudeCodeAgent — recordWork", () => {
       expect(fileRows[0].state).toMatchObject({ lastKind: "created", outcome: "applied" });
 
       const planRows = await resources["observed-plan"].list();
-      expect(planRows.map((r) => r.path)).toEqual([`observed-plan/${runId}/5`]);
+      expect(planRows.map((r) => r.path)).toEqual([`observed-plan/conversation/sess_new/5`]);
 
       // The gap row matters most: it is the record OF a loss, so if it shares
       // the doomed namespace there is nothing left to notice the failure by.

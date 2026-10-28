@@ -290,6 +290,9 @@ export {
   sequencer,
   type DispatchHandle,
   type DispatchWaitResult,
+  waitOnRequest,
+  type RequestWaitOutcome,
+  type WaitOnRequestInput,
   type DispatcherConfig,
   type DispatcherSession,
   type InternalDispatcherConfig,
@@ -610,8 +613,11 @@ export {
   observedPlanItemStateSchema,
   observedPlanListCollection,
   observedPlanListStateSchema,
+  harnessConversationNamespace,
+  planConversationPrefix,
   planKeySegment,
   planRowsPrefix,
+  readPlanTarget,
   replacePlanList,
 } from "./types/harness-plan";
 export type {
@@ -620,6 +626,7 @@ export type {
   PlanListCollection,
   PlanListItem,
   PlanListMarkerCollection,
+  PlanMarkerRead,
   ReplacePlanListResult,
 } from "./types/harness-plan";
 

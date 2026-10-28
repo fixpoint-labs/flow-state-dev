@@ -61,7 +61,9 @@ const SLOW_MS = 3_000;
 const GRACE_MS = 3_000;
 
 const word = () => `${["amber", "cobalt", "fjord", "quill", "tundra", "velvet"][randomBytes(1)[0]! % 6]}-${randomBytes(3).toString("hex")}`;
-const report = (value: unknown) => process.stdout.write(`__GOAL__${JSON.stringify(value)}\n`);
+// Inline, not goals/lib's writeGoalReport: the runner copies this file into older checkouts (GOAL_COMMIT).
+/** Print the `__GOAL__` line. Resolves once it is flushed: `process.exit` drops a write still queued on a pipe. */
+const report = (value: unknown) => new Promise<void>((resolve) => process.stdout.write(`__GOAL__${JSON.stringify(value)}\n`, () => resolve()));
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 type Item = { type?: string; role?: string; component?: string; data?: any; agentName?: string; content?: unknown; text?: string; requestId?: string };
@@ -71,13 +73,13 @@ const missing = ["defineCoordinatorFlow", "workerTaskEntry", "createWorkerInstal
   (name) => typeof wf[name] !== "function",
 );
 if (missing.length > 0) {
-  report({ setup: `this commit's @flow-state-dev/workforce exports no ${missing.join(", ")}, so no coordinator can be built` });
+  await report({ setup: `this commit's @flow-state-dev/workforce exports no ${missing.join(", ")}, so no coordinator can be built` });
   process.exit(0);
 }
 
 const tree = await readWorkforce(join(HERE, "fixtures", "workforce"));
 if (tree.errors.length > 0) {
-  report({ setup: `the goal-local tree did not load: ${JSON.stringify(tree.errors).slice(0, 600)}` });
+  await report({ setup: `the goal-local tree did not load: ${JSON.stringify(tree.errors).slice(0, 600)}` });
   process.exit(0);
 }
 
@@ -318,8 +320,8 @@ try {
   await quiet();
   const everyone = { post: r1, quiet: allQuiet, graced: await all.read() };
 
-  report({ ladder, floored, roundRobin, everyone, judgmentTurns, graceMs: GRACE_MS, slowMs: SLOW_MS });
+  await report({ ladder, floored, roundRobin, everyone, judgmentTurns, graceMs: GRACE_MS, slowMs: SLOW_MS });
 } catch (error) {
-  report({ setup: `leg e's host failed: ${error instanceof Error ? (error.stack ?? error.message).slice(0, 1500) : String(error)}` });
+  await report({ setup: `leg e's host failed: ${error instanceof Error ? (error.stack ?? error.message).slice(0, 1500) : String(error)}` });
 }
 process.exit(0);

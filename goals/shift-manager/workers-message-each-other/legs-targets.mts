@@ -107,12 +107,12 @@ async function deliver(world: World, targets: Targets, leg: string, calls: Array
 const callsTo = (calls: readonly Call[], to: unknown) => calls.filter((c) => JSON.stringify(c.args.to) === JSON.stringify(to));
 
 /** One row on a conversation's board, by id, as the board's read returns it. */
-async function rowOf(who: Connected, conversation: SessionSummary, id: string): Promise<TaskRow | undefined> {
+export async function rowOf(who: Connected, conversation: SessionSummary, id: string): Promise<TaskRow | undefined> {
   return (await boardOf(who, conversation.flowKind, conversation.id)).find((row) => row.id === id);
 }
 
 /** File a task on a conversation's board through the board's own action. */
-async function file(who: Connected, conversation: SessionSummary, init: Record<string, unknown>): Promise<string> {
+export async function file(who: Connected, conversation: SessionSummary, init: Record<string, unknown>): Promise<string> {
   const filed = await act(who, conversation.flowKind, conversation.id, "createTask_tasks", init, 60_000);
   const id = (filed.output?.taskId ?? filed.output?.id) as string | undefined;
   if (filed.status !== "completed" || filed.output?.ok === false || id === undefined) {
@@ -122,7 +122,7 @@ async function file(who: Connected, conversation: SessionSummary, init: Record<s
 }
 
 /** Wait until a task's run names its session, and return it. */
-async function sessionOfTask(who: Connected, conversation: SessionSummary, id: string, timeoutMs = 180_000): Promise<string | undefined> {
+export async function sessionOfTask(who: Connected, conversation: SessionSummary, id: string, timeoutMs = 180_000): Promise<string | undefined> {
   return until(async () => {
     const session = (await rowOf(who, conversation, id))?.run?.sessionId;
     return typeof session === "string" ? session : undefined;
@@ -133,8 +133,8 @@ async function sessionOfTask(who: Connected, conversation: SessionSummary, id: s
 const settledOf = (row: TaskRow | undefined) => show({ status: row?.status, attempts: row?.attempts, output: row?.output, error: row?.error, session: row?.run?.sessionId });
 
 /** A request's start and end, in ms, whichever names the route uses. */
-const startOf = (r: Record<string, any>) => Number(r.startedAtMs ?? r.startedAt ?? r.createdAtMs ?? r.createdAt ?? Number.NaN);
-const endOf = (r: Record<string, any>) => Number(r.completedAtMs ?? r.completedAt ?? r.updatedAtMs ?? r.updatedAt ?? Number.NaN);
+export const startOf = (r: Record<string, any>) => Number(r.startedAtMs ?? r.startedAt ?? r.createdAtMs ?? r.createdAt ?? Number.NaN);
+export const endOf = (r: Record<string, any>) => Number(r.completedAtMs ?? r.completedAt ?? r.updatedAtMs ?? r.updatedAt ?? Number.NaN);
 
 /** Leg 6: to a task. Lands in the session its run named, after its turn, and changes nothing about it. */
 export async function leg6(world: World, targets: Targets): Promise<LegResult> {
@@ -168,14 +168,18 @@ export async function leg6(world: World, targets: Targets): Promise<LegResult> {
     await quiet(alice, 240_000);
     const requests = await alice.routes.requests(taskSession);
     const heard = requests.find((q) => q.id === received?.requestId);
-    const taskTurns = requests.filter((q) => q.id !== received?.requestId && startOf(q) < startOf(heard ?? { startedAtMs: Number.POSITIVE_INFINITY }));
+    // A deferred turn's record is written when it is queued, so its
+    // `startedAtMs` is that time. It ran when its first item was written.
+    const heardItems = (await alice.routes.items(taskSession, "")).filter((i) => i.requestId === heard?.id);
+    const heardRan = heardItems.length > 0 ? Math.min(...heardItems.map((i) => Number((i as { ts?: unknown }).ts))) : startOf(heard ?? {});
+    const taskTurns = requests.filter((q) => q.id !== received?.requestId && startOf(q) < heardRan);
     const lastTaskEnd = Math.max(...taskTurns.map(endOf));
     if (received === undefined || heard === undefined) {
       r.failures.push(`6:lands-in-task-session — task ${taskId}'s session shows no line from the courier`);
-    } else if (taskTurns.length > 0 && !(startOf(heard) >= lastTaskEnd)) {
-      r.failures.push(`6:lands-in-task-session — the message's turn started at ${startOf(heard)}, before the task's turn ended at ${lastTaskEnd}`);
+    } else if (taskTurns.length > 0 && !(heardRan >= lastTaskEnd)) {
+      r.failures.push(`6:lands-in-task-session — the message's turn ran at ${heardRan}, before the task's turn ended at ${lastTaskEnd}`);
     }
-    r.notes.push(`the task was ${runningWhenSent} when the courier sent; the message's turn ${heard?.id} started ${startOf(heard ?? {})}, the task's turns ended ${lastTaskEnd}`);
+    r.notes.push(`the task was ${runningWhenSent} when the courier sent; the message's turn ${heard?.id} was queued ${startOf(heard ?? {})} and ran ${heardRan}, the task's turns ended ${lastTaskEnd}`);
   }
   await quiet(alice, 240_000);
 

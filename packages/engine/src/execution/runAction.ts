@@ -1015,11 +1015,13 @@ export async function runActionInternal<
 /**
  * A request that ended may be one a `dispatcher({ wait: true })` waits on
  * (FIX-2082): resume the request parked on it, in the session that dispatched
- * it. Best-effort, read off the settled record: a resume this misses is caught
- * by the deadline sweep, which looks at what each waited-on request came to.
+ * it. A run that resumed the request (a person answered or stopped it) also
+ * resumes what its own session queued behind it (FIX-2239). Best-effort, read
+ * off the settled record: a resume this misses is caught by the deadline
+ * sweep, which looks at what each waited-on request came to.
  */
 async function resumeWaitingParent(
-  options: Pick<RunActionInternalOptions, "stores" | "runtimeConfig">,
+  options: Pick<RunActionInternalOptions, "stores" | "runtimeConfig" | "resumeContext">,
   requestId: string,
   logger: RuntimeLogger
 ): Promise<void> {
@@ -1027,7 +1029,7 @@ async function resumeWaitingParent(
   if (deps === undefined) return;
   try {
     const record = await options.stores.request.get(requestId);
-    if (record !== undefined) await resumeRequestWaiters(deps, record);
+    if (record !== undefined) await resumeRequestWaiters(deps, record, { ownSession: options.resumeContext !== undefined });
   } catch (err) {
     logRuntimeEvent(logger, "warn", "[flow-state] the request waiting on this one was not resumed: the deadline sweep looks again", {
       requestId, error: String(err)
@@ -1041,7 +1043,7 @@ async function resumeWaitingParent(
  * record left unstamped stays registered for the stale-request sweep.
  */
 async function finalizeAfterLastAttempt(
-  options: Pick<RunActionInternalOptions, "stores" | "runtimeConfig">,
+  options: Pick<RunActionInternalOptions, "stores" | "runtimeConfig" | "resumeContext">,
   requestId: string,
   incarnation: string | undefined
 ): Promise<void> {

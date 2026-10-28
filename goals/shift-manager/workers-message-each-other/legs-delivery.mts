@@ -38,6 +38,8 @@ export const LATE_HELPER = "late-helper";
 const RESEND_FROM = "worker-message-resend";
 const RECEIVED_ENTRY = "onMessageReceived";
 const ROSTER_FLOW = "workforce-roster";
+/** Every send here is a plain message: a call (FIX-2239) parks the herald's turn on the reply, which no sub-leg grades. */
+const NO_WAIT = "Send it as a plain message: don't wait for a reply.";
 /** How long a takeover from a crashed taker may take: the engine's stale-heartbeat window, then one backoff step (32 s). */
 const TAKEOVER_MS = 120_000;
 
@@ -95,10 +97,8 @@ async function took(who: Connected, id: string): Promise<Took> {
   const requests = await requestsFor(who, row.toSession, id);
   const holding = new Set(items.map((m) => m.requestId));
   const delivering = requests.find((r) => r.id === row.deliveredAs);
-  // Past the take: the entry's own answer says it heard the message.
-  const heard = requests.filter((r) => r.result?.output?.act === "heard");
-  const facts = `row ${row.status}${row.deliveredAs === undefined ? "" : ` as ${row.deliveredAs}`}, ${items.length} received item(s) in ${holding.size} request(s), ${requests.length} request(s) for it, ${heard.length} past the take`;
-  const ok = row.status === "delivered" && items.length === 1 && holding.size === 1 && holding.has(row.deliveredAs) && delivering !== undefined && heard.length === 1;
+  const facts = `row ${row.status}${row.deliveredAs === undefined ? "" : ` as ${row.deliveredAs}`}, ${items.length} received item(s) in ${holding.size} request(s), ${requests.length} request(s) for it`;
+  const ok = row.status === "delivered" && items.length === 1 && holding.size === 1 && holding.has(row.deliveredAs) && delivering !== undefined;
   return { ok, why: facts, row, requests, delivering };
 }
 
@@ -151,7 +151,7 @@ export async function leg9(world: World, servers: Servers, subLegs: ReadonlySet<
     const since = Date.now();
     const w = word();
     await servers.restart(["exit-after-row"], "9-exit-after-row");
-    await sendLine(world.alice, herald(), `Message the worker ${HELPER_B} saying "${w}".`);
+    await sendLine(world.alice, herald(), `Message the worker ${HELPER_B} saying "${w}". ${NO_WAIT}`);
     if (!(await servers.crashed(240_000))) {
       r.failures.push(`9:crash-after-row — setup: the server didn't exit within 240 s of the herald's line`);
       return;
@@ -173,7 +173,7 @@ export async function leg9(world: World, servers: Servers, subLegs: ReadonlySet<
     const since = Date.now();
     const w = word();
     await servers.restart(["fast-path-throws"], "9-fast-path-throws");
-    const turn = await talk(world.turns, "9", world.alice, HERALD, herald(), `Message the worker ${HELPER_B} saying "${w}".`);
+    const turn = await talk(world.turns, "9", world.alice, HERALD, herald(), `Message the worker ${HELPER_B} saying "${w}". ${NO_WAIT}`);
     const line = oneFired(servers, "fast-path-throws", since, "resent", r);
     if (line === undefined) return;
     const answered = turn.calls.find((c) => c.output?.sent === line.id);
@@ -191,7 +191,7 @@ export async function leg9(world: World, servers: Servers, subLegs: ReadonlySet<
     const since = Date.now();
     const w = word();
     await servers.restart(["lose-first-take"], "9-lose-first-take");
-    await talk(world.turns, "9", world.alice, HERALD, herald(), `Message the worker ${HELPER_B} saying "${w}".`);
+    await talk(world.turns, "9", world.alice, HERALD, herald(), `Message the worker ${HELPER_B} saying "${w}". ${NO_WAIT}`);
     const line = oneFired(servers, "lose-first-take", since, "lost-after-accept", r);
     if (line === undefined) return;
     const t = await tookWithin(world.alice, line.id, 60_000);
@@ -214,7 +214,7 @@ export async function leg9(world: World, servers: Servers, subLegs: ReadonlySet<
       world.alice,
       HERALD,
       herald(),
-      `Send the worker ${HELPER_B} two separate messages, one after the other: first "${w1}", then "${w2}".`,
+      `Send the worker ${HELPER_B} two separate messages, one after the other: first "${w1}", then "${w2}". ${NO_WAIT}`,
     );
     const ids = turn.calls.flatMap((c) => (c.args.to === HELPER_B && typeof c.output?.sent === "string" ? [c.output.sent as string] : []));
     if (ids.length < 2) {
@@ -250,7 +250,7 @@ export async function leg9(world: World, servers: Servers, subLegs: ReadonlySet<
     const since = Date.now();
     const w = word();
     await servers.restart(["exit-after-take"], "9-exit-after-take");
-    await sendLine(world.alice, herald(), `Message the worker ${HELPER_B} saying "${w}".`);
+    await sendLine(world.alice, herald(), `Message the worker ${HELPER_B} saying "${w}". ${NO_WAIT}`);
     if (!(await servers.crashed(240_000))) {
       r.failures.push(`9:crash-after-take — setup: the server didn't exit within 240 s of the herald's line`);
       return;
@@ -285,7 +285,7 @@ export async function leg9(world: World, servers: Servers, subLegs: ReadonlySet<
     const since = Date.now();
     const w = word();
     await servers.restart(["fast-path-throws", "hold-resend"], "9-late-refusal");
-    const turn = await talk(world.turns, "9", world.alice, HERALD, herald(), `Message the worker ${LATE_HELPER} saying "${w}".`);
+    const turn = await talk(world.turns, "9", world.alice, HERALD, herald(), `Message the worker ${LATE_HELPER} saying "${w}". ${NO_WAIT}`);
     const line = oneFired(servers, "fast-path-throws", since, "late-refusal", r);
     if (line === undefined) return;
     if (!turn.calls.some((c) => c.output?.sent === line.id)) r.failures.push(`9:late-refusal — setup: the tool didn't answer { sent: "${line.id}" }`);

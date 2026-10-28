@@ -482,6 +482,26 @@ To add a fixed value, spread the allowlist and set it beside it, as the example
 does with `CI`. Spreading `process.env` there hands the run every secret the
 server holds.
 
+If you'd rather not write the list yourself, the package exports one.
+`CLAUDE_CODE_PASS` names what a run needs to work: `PATH`, `HOME`, `USER`,
+`SHELL` and `TMPDIR`, the two credential variables (`ANTHROPIC_API_KEY` and
+`CLAUDE_CODE_OAUTH_TOKEN`), and the proxy and CA settings a proxied network
+needs, in upper and lower case.
+
+Include lowercase proxy names too; curl reads only `http_proxy`.
+
+```ts
+import { CLAUDE_CODE_PASS } from "@flow-state-dev/claude-code/sdk";
+
+const env = harnessEnv({ pass: CLAUDE_CODE_PASS });
+```
+
+Give that same `env` to
+[`probeClaudeAccount`](#checking-for-a-credential-before-you-start),
+[`listClaudeModels`](#choosing-the-model) and
+[`readClaudeUsage`](#reading-usage-left), so they see the account the run sees. If your runs need
+more, pass your own list.
+
 **`sandbox`** is the Agent SDK's sandbox settings, forwarded as given. Take a
 value or write a resolver. The resolver form is the one that matters: the
 settings that confine a run name the directory it works in, and that directory
@@ -561,20 +581,28 @@ const agent = claudeCodeAgent({
 });
 ```
 
-It is off by default. Turned on, the agent declares three **resource
+It is off by default. Turned on, the agent declares four **resource
 collections** — a resource collection is a keyed set of small state records the
 framework stores and serves for you — and writes into them as the run goes:
 
 | Collection | One entry per |
 |---|---|
 | `observed-file-ops` | path the run's file-writing and file-editing tools touched: how it was touched, when, and whether the attempt applied |
-| `observed-plan` | item on the run's own to-do list: its wording, its current status, and the status before that |
+| `observed-plan` | item on the conversation's to-do list: its wording, its current status, the status before that, and the request that last changed it |
+| `observed-plan-list` | conversation whose plan could not be written in full, with the reason; and, per run, a pointer to the conversation the run's plan is in |
 | `observed-gaps` | thing the recorder understood and could not record, with the reason and which record it stands in for |
 
-Entries are keyed as `<requestId>/<invocation>`. One session can host several
-runs over its life, and a single request can itself run the agent more than once
-— a generator holding it as a tool can call it repeatedly — so both halves are
-needed to keep one run's answer from becoming somebody else's.
+File and gap entries are keyed as `<requestId>/<invocation>`. One session can
+host several runs over its life, and a single request can itself run the agent
+more than once (a generator holding it as a tool can call it repeatedly), so
+both halves are needed to keep one run's answer from becoming somebody else's.
+
+Plan entries are keyed by conversation instead, as
+`conversation/<session id>/<task id>`, where the session id is the Claude Code
+session the run worked in. A later turn's `TaskUpdate` lands on the row its
+earlier `TaskCreate` wrote, so the item keeps its title. Each run writes its
+pointer in `observed-plan-list`, under `<requestId>/<invocation>`, once Claude
+Code names the session.
 
 ### Reading it back
 
@@ -608,12 +636,20 @@ separate count is worth having: it says how many of a path's touches actually
 landed. Read `0` and `null` differently. `0` means the run touched the path and
 nothing applied. `null` means the row was written before the field existed.
 
-The plan record reads the same way, from `observed-plan`. Its shape is the one
-every harness shares, described in [the run's plan](./coding-agents.md#the-runs-plan);
-importing `observedPlanCollection` from this package or from `@flow-state-dev/core`
-gives the same object. A to-do item's status is the harness's own word for it, and
-stays empty until the harness reports one. Plan entries reach an open page as they
-change, rather than when the request ends.
+The plan record is read from `observed-plan`. Its shape is the one every harness
+shares, and [reading a request's plan](./coding-agents.md#reading-a-requests-plan)
+shows how to get from a request id to its conversation's entries. Importing
+`observedPlanCollection` from this package or from `@flow-state-dev/core` gives
+the same object. A to-do item's status is the harness's own word for it, and
+stays empty until the harness reports one. Plan entries reach an open page as
+they change, rather than when the request ends.
+
+Claude Code reports its plan item by item, so the conversation's list marker
+carries no count and is written only when a plan entry fails to write. It then
+reads `incomplete`, and stays that way for the rest of the conversation. A
+conversation whose earlier turns were recorded per run starts its plan from its
+next write, so a `TaskUpdate` to an item one of those turns created shows as a
+row with no title.
 
 The plan record fills only when the agent keeps a to-do list with Claude Code's to-do tools,
 `TaskCreate` and `TaskUpdate`. Every run is offered them: on newer models Claude Code switches

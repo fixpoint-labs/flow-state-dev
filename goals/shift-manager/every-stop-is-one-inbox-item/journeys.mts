@@ -2,8 +2,8 @@
  * The journeys (FIX-2134's plan, row 2), each through the teams table's *after* that the legs
  * don't already walk:
  *
- * - **j1**, someone who files work: the filer's steer answers its own task's midway question, and
- *   nothing else.
+ * - **j1**, someone who files work: the filer hears its task's midway question as a message,
+ *   answers its own with a steer, and nothing else.
  * - **j2**, someone who writes a flow that asks: on a host of its own, a call's deadline on an
  *   approval reads as a no, on an input fails the try, the host's person-stop setting lets a
  *   held question go ahead from its brief, and a user's stop cancels the task.
@@ -17,36 +17,98 @@ import { aliceIn, proofsOf, rowHolds, serveLab, show, sleep, TERMINAL, type Row,
 
 type Contextual = (alice: Context["alice"], files: { proof: string; store: string }) => Context;
 
+/** The component a received worker message is drawn by (`RECEIVED_MESSAGE_COMPONENT`). */
+const RECEIVED = "workforce:received";
+
+/** Every received-message item in her conversation from `from`, with the request it landed in. */
+async function receivedFrom(c: Context, from: string): Promise<Array<{ text: string; requestId?: string; action?: string }>> {
+  const requests = await c.alice.client.sessions.requests(c.alice.conversation, { includeItems: true });
+  return requests.flatMap((request: Row) =>
+    ((request.items ?? []) as Row[])
+      .filter((item) => item.type === "component" && item.component === RECEIVED && item.data?.from === from)
+      .map((item) => ({ text: String(item.data?.text ?? ""), requestId: request.id as string, action: request.actionName as string | undefined })),
+  );
+}
+
+/** The midway questions a row has ever had, answered or not: a question's id outlives its answer. */
+const everAsked = (row: Row | undefined): Row[] => ((row?.holds ?? []) as Row[]).filter((h) => h.source?.kind === "row" && h.midway === true);
+
 /**
- * j1: `desk.front`'s model files work and answers for it. `j1:filer-answers-own` its steer
- * naming the question its asker's task asked midway answers it, and the task goes on on the
- * same attempt; `j1:routed-answers-nothing` its steer naming the question a task was filed
- * held on, the user's to answer, is refused and answers nothing.
+ * j1: `desk.front`'s model files work and answers for it.
+ *
+ * - `j1:filer-hears`: the asker's midway question reaches desk.front's conversation as exactly one
+ *   received message from desk.asker naming the task's id and the question's id, and an
+ *   `onMessageReceived` request runs there.
+ * - `j1:filer-answers-own`: that turn's `updateTask` steer carries the question's id, from the
+ *   filer, and the task ends `completed` on attempt 1, with no line from Alice after the filing.
+ * - `j1:one-item`: while it waits, the Inbox lists the task once.
+ * - `j1b:coder-heard`: a coding task desk.front's model files for eng.coder asks through its marker,
+ *   and that question reaches the conversation as one received message from eng.coder.
+ * - `j1:routed-answers-nothing`: its steer naming the question a task was filed held on, the
+ *   user's to answer, is refused and answers nothing.
  */
 export async function journeyFiles(c: Context): Promise<void> {
   const before = new Set((await c.alice.rows()).map((r) => r.id));
   const goal = `Write a one-line greeting for the ${c.words.topic} gala.`;
-  const filedTurn = await c.alice.say(`File one task for ${CAST.asker} with the goal "${goal}". File nothing else, and don't wait on it.`);
+  const answer = "Formal, for the board members.";
+  const filedTurn = await c.alice.say(
+    `File one task for ${CAST.asker} with the goal "${goal}", and no questions: it asks its own while it works. ` +
+      `If it later asks you anything about ${c.words.askerAbout}, the answer is: "${answer}". File nothing else, and don't wait on it.`,
+  );
   const mine = (await c.alice.rows()).filter((r) => !before.has(r.id) && r.assignee === CAST.asker);
-  if (filedTurn.status !== "completed" || mine.length !== 1) {
-    c.fail("j1:filer-files", `desk.front's turn ${filedTurn.status} filed ${mine.length} task(s) for ${CAST.asker}`);
+  // A question at filing is the user's: the task must ask its own, midway.
+  if (filedTurn.status !== "completed" || mine.length !== 1 || ((mine[0]!.holds ?? []) as Row[]).some((h) => h.midway !== true)) {
+    c.fail("j1:filer-files", `desk.front's turn ${filedTurn.status} filed ${mine.length} task(s) for ${CAST.asker}, holds ${show(mine[0]?.holds)}`);
     return;
   }
   const id = mine[0]!.id as string;
-  const asked = await c.alice.until(() => c.alice.row(id), (r) => waiting("midway", r) || TERMINAL.has(r?.status), 240_000);
-  const question = rowHolds(asked)[0];
+  // Waiting, or already answered by the filer: either way its question is on the row.
+  const asked = await c.alice.until(() => c.alice.row(id), (r) => everAsked(r).length > 0 || TERMINAL.has(r?.status), 240_000);
+  const question = everAsked(asked)[0];
   if (question === undefined) {
     c.fail("j1:filer-answers-own", `the asker's task never asked midway: ${asked?.status}, holds ${show(asked?.holds)}`);
     return;
   }
-  const answer = "Formal, for the board members.";
-  const told = await c.alice.say(`Your task ${id} for ${CAST.asker} asked you a question. The answer is: "${answer}"`);
+  if (waiting("midway", asked)) {
+    const listed = (await c.alice.inbox()).filter((item) => item.task?.taskId === id);
+    if (listed.length !== 1) c.fail("j1:one-item", `the Inbox lists the waiting task ${listed.length} time(s)`);
+  }
   const after = await c.alice.until(() => c.alice.row(id), (r) => TERMINAL.has(r?.status), 240_000);
+  const heard = (await receivedFrom(c, CAST.asker)).filter((m) => m.text.includes(id));
+  if (heard.length !== 1 || !heard[0]!.text.includes(question.id as string) || heard[0]!.action !== "onMessageReceived") {
+    c.fail("j1:filer-hears", `desk.front's conversation holds ${heard.length} message(s) from ${CAST.asker} about ${id}: ${show(heard)}`);
+  }
   const steers = ((after?.steers ?? []) as Row[]).filter((s) => s.answers === question.id);
-  if (told.status !== "completed" || steers.length === 0) {
-    c.fail("j1:filer-calls", `desk.front's turn ${told.status} left the question unanswered: steers ${show(after?.steers)}`);
+  if (steers.length === 0) {
+    c.fail("j1:filer-calls", `desk.front never answered the question it was told: the task ended ${after?.status}, steers ${show(after?.steers)}`);
   } else if (steers[0]!.from !== "filer" || after?.status !== "completed" || after.attempts !== 1) {
     c.fail("j1:filer-answers-own", `the filer's answer reads ${show(steers[0])}; the task ended ${after?.status} on attempt ${after?.attempts}`);
+  }
+
+  // The coder's question, from its run's marker, reaches the conversation that filed it.
+  const coderBefore = new Set((await c.alice.rows()).map((r) => r.id));
+  const coderTurn = await c.alice.say(
+    `File one task for ${CAST.coder} with this goal, word for word: "${c.coding.goal}" Give it the input {"project": {"visibility": "shared", "id": "storefront"}}. File nothing else, and don't wait on it.`,
+  );
+  const coding = (await c.alice.rows()).find((r) => !coderBefore.has(r.id) && r.assignee === CAST.coder);
+  if (coderTurn.status !== "completed" || coding === undefined) {
+    c.fail("j1:filer-files", `desk.front's turn ${coderTurn.status} filed no task for ${CAST.coder}`);
+    return;
+  }
+  const coderAsked = await c.alice.until(() => c.alice.row(coding.id), (r) => waiting("midway", r) || TERMINAL.has(r?.status), 480_000);
+  const coderQuestion = rowHolds(coderAsked)[0];
+  if (coderQuestion === undefined) {
+    c.fail("j1b:coder-heard", `the coder's task never asked: ${coderAsked?.status}, holds ${show(coderAsked?.holds)}`);
+  } else {
+    const told = await c.alice.until(() => receivedFrom(c, CAST.coder), (m) => m.some((x) => x.text.includes(coding.id)), 30_000);
+    const about = told.filter((m) => m.text.includes(coding.id));
+    if (about.length !== 1 || !about[0]!.text.includes(coderQuestion.id as string)) {
+      c.fail("j1b:coder-heard", `desk.front's conversation holds ${about.length} message(s) from ${CAST.coder} about ${coding.id}: ${show(about)}`);
+    }
+    // Tidy: the user answers it, so the leg leaves nothing waiting.
+    const item = await c.alice.itemOf(coding.id);
+    if (item !== undefined) await c.alice.answer(item, { text: c.coding.answer });
+    await c.alice.until(() => c.alice.row(coding.id), (r) => TERMINAL.has(r?.status), 480_000);
   }
 
   // A question the user is asked at filing is the user's: the filer's steer naming it answers nothing.

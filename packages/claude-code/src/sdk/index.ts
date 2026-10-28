@@ -1,7 +1,7 @@
 /**
  * Public surface of `@flow-state-dev/claude-code/sdk`: the in-process Agent SDK
  * handler block, its opt-in capability, the resolver seam, the start-time account
- * probe and model list, the session-continuity provider, the pure translation layer, the work recorder and the two
+ * probe and model list, the environment pass-list a run needs, the session-continuity provider, the pure translation layer, the work recorder and the two
  * collections it writes, the types of the tools `mcpTools` relays, handle/event types, and typed errors.
  */
 export {
@@ -29,6 +29,7 @@ export {
   type ClaudeAccountProbe,
   type ProbeClaudeAccountOptions,
 } from "./account-probe";
+export { CLAUDE_CODE_PASS } from "./env-pass";
 export {
   listClaudeModels,
   type ClaudeModelInfo,

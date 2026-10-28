@@ -55,19 +55,17 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  conductorFlow,
-  CONDUCTOR_FLOW_KIND,
-} from "../../../labs/conductor/src/flow.ts";
-import {
   type PhaseSpec,
 } from "@flow-state-dev/harness-manager";
 import {
   GIT_TIMEOUT_MS,
 } from "@flow-state-dev/harness-manager/checkout";
 import {
+  HARNESS_GOAL_FLOW_KIND,
+  harnessGoalFlow,
   positiveIntFromEnv,
   requireSourceRepo,
-} from "../../../labs/conductor/src/config-env.ts";
+} from "../host.mts";
 import { loadFixture, runGoal, silentLogger } from "../../lib/index.mts";
 
 interface Fixture {
@@ -158,7 +156,7 @@ await runGoal(async (failures) => {
 
   let sourceRepo: string;
   try {
-    sourceRepo = requireSourceRepo("GOAL_CONDUCTOR_REPO");
+    sourceRepo = requireSourceRepo();
   } catch (err) {
     return {
       failures: [err instanceof Error ? err.message : String(err)],
@@ -239,7 +237,7 @@ await runGoal(async (failures) => {
       },
     };
 
-    const built = conductorFlow({
+    const built = harnessGoalFlow({
       epic: fixture.epic,
       workspace: { root: workspaceRoot, sourceRepo, baseRef },
       maxAttempts: MAX_ATTEMPTS,
@@ -257,13 +255,13 @@ await runGoal(async (failures) => {
 
     function neverResolvesAModel(): never {
       throw new Error(
-        "conductor declares no generator actions — the coding run goes through the " +
+        "this host declares no generator actions — the coding run goes through the " +
           "Claude Code Agent SDK, which resolves its own model.",
       );
     }
 
     state = createFlowState({
-      flows: { [CONDUCTOR_FLOW_KIND]: built.flow },
+      flows: { [HARNESS_GOAL_FLOW_KIND]: built.flow },
       modelResolver: Object.assign(neverResolvesAModel, {
         resolveId: neverResolvesAModel,
       }) as never,
@@ -291,7 +289,7 @@ await runGoal(async (failures) => {
       })) as { output?: unknown; error?: unknown };
       if (result.error != null) {
         throw new Error(
-          `conductor "${action}" failed: ${JSON.stringify(result.error)}`,
+          `harness-goal "${action}" failed: ${JSON.stringify(result.error)}`,
         );
       }
       return result.output as T;

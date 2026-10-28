@@ -171,8 +171,16 @@ The record always holds the whole list as Cursor last confirmed it. An update Cu
 change only part of the list, so the block writes nothing until Cursor answers with the list as
 it now stands. An update Cursor rejects changes nothing. You still see every update as a tool
 call in the stream. The block writes through core's `replacePlanList`, the same helper every
-harness whose plan arrives as a whole list uses, so the run's list marker
+harness whose plan arrives as a whole list uses, so the plan's list marker
 (`observed-plan-list`) says whether that list was saved in full.
+
+The plan belongs to the Cursor agent, which is the conversation every turn of a session
+continues. Rows and their marker are keyed under `conversation/<agent id>`, so a later run of
+the same agent updates the list an earlier run recorded, and a run that doesn't touch its list
+leaves the plan as it was. A different agent has its own plan. Each run also writes a pointer
+under its own namespace (`<requestId>/<run>`) when the agent is created or resumed, which is how
+a reader that knows only the request finds the plan
+([reading a request's plan](./coding-agents.md#reading-a-requests-plan)).
 
 Cursor doesn't tell the SDK which item is which, so a row is an item's place in the list. If
 Cursor changes an item's status, its row keeps the old one as `previousStatus`. If Cursor
@@ -180,9 +188,9 @@ rewords the item at a place, the row takes the new wording and `previousStatus` 
 the list gets shorter, the rows past its end are removed. If Cursor reorders its list, rows after
 that point describe different items, so don't follow one item across a reorder.
 
-A run that never updates its list records nothing: no rows and no marker, which a plan panel
-shows as "no plan recorded for this turn". A list Cursor empties is different: the marker says
-the list is complete with nothing in it. If a write fails partway, the marker says the list is
+An agent that has never updated its list has no plan: no rows and no list marker, only the
+runs' pointers. A list Cursor empties is different: the marker says the list is complete with
+nothing in it. If a write fails partway, the marker says the list is
 incomplete, with the error, so a reader never shows a half-written list as the plan. Cursor's
 plan-mode document, the one `mode: "plan"` produces, is not recorded.
 

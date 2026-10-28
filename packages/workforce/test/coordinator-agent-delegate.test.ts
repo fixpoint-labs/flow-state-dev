@@ -157,9 +157,9 @@ describe("the agent flow as a delegate (S9)", () => {
     expect(heard).toContain("alice, through desk: what's our refund policy?");
   });
 
-  it("holds a routed task on its question, for the user to answer: nothing lands in the conversation meanwhile (FIX-2131)", async () => {
+  it("holds a routed task on its question, and tells the conversation that filed it the question, once (FIX-2131, FIX-2241)", async () => {
     // A routed turn is a task turn (FIX-2083): it may ask a question, which holds its task. Its filer is
-    // the conversation, which doesn't answer it (ER-4); until FIX-2070 nothing tells the conversation.
+    // the conversation, which hears the question as a message from otto; no notice lands, since nothing ended.
     const answer = mockGenerator({
       name: "agent-answer",
       script: [
@@ -170,7 +170,10 @@ describe("the agent flow as a delegate (S9)", () => {
     const conversation = await postToOtto(answer, "what's our refund policy?");
     const [row] = await conversation.until(conversation.postRows, (found) => (found[0]?.holds ?? []).length > 0);
     expect(row).toMatchObject({ status: "in_progress", holds: [expect.objectContaining({ ask: expect.objectContaining({ kind: "question", prompt: "Which policy?" }) })] });
-    expect(await conversation.lines()).toEqual([]);
+    const question = row!.holds![0]!.id;
+    expect(await conversation.until(conversation.lines, (found) => found.length > 0)).toEqual([
+      { agentName: "otto", text: expect.stringMatching(new RegExp(`^From otto: Your task .* asks: "Which policy\\?"\n.*question: "${question}"`)) }
+    ]);
   });
 
   it("reports a failed turn back at once when its answer could go back out (BR-24b)", async () => {

@@ -13,7 +13,8 @@
 - **s**: a long turn is stopped; the page says it stopped, and the next turn names the token under the same id.
 - **r**: after a reload, the page is back in the same session without a click, the session shows the same id, and its next turn names the token.
 - **w**: the file turn 1 was asked to write exists in the session's worktree, on branch `kitchen-sink/claude-code-session/<session>`, and the main checkout's `git status` is unchanged.
-- **p**: turn 1 asks Claude Code to plan with its task list, so the panel shows the rows it recorded for turn 1. "No plan recorded for this turn." fails, and so does "Claude Code reports no plan."
+- **p**: turn 1 asks Claude Code to plan with its task list, so the panel shows the rows it recorded. "No plan recorded in this conversation." fails, and so does "Claude Code reports no plan."
+- **p2** (FIX-2259): in a second session, turn 1 plans four steps with names picked per run and completes the first; turn 2 completes the second and nothing else. `p2:kept`: after turn 2 the panel holds all four rows, in order, with turn 1's names, the first two done, labelled "Last changed in turn 2". `p2:quiet-turn`: a turn 3 that leaves the plan alone leaves the rows and the label as they were. `p2:matches`: the rows equal Claude Code's own `TaskList`, read back in a turn 4.
 
 **Anti-game:** the token count is read off the page, and the id off the page's own display of session state; never off the scripted SDK, and never off a prompt Kitchen Sink built from earlier turns (it builds none: each prompt is the person's alone). Turns 2 onward never name the token, so it can only come back from the conversation.
 
@@ -27,6 +28,7 @@
 
 - `GOAL_CONTROL=no-resume`: the session hands Claude Code no conversation to continue. **c**, **s** and **r** FAIL: the token is lost and the id moves.
 - `GOAL_CONTROL=no-record`: the block declares no plan record. **p** FAILS: the panel says "Claude Code reports no plan."
+- `GOAL_CONTROL=plan-per-turn`: the panel shows only the rows the latest turn wrote, as a plan kept per turn would (the page is opened with `?goalControl=plan-per-turn`). **p2** FAILS: turn 2 shows one row.
 - `GOAL_CONTROL=main-checkout`: the run is handed the repository itself. **w** FAILS: the file lands in the main checkout and `git status` changes. Clean up the stray file by hand afterwards.
 
 **Host:** this check can't run where Claude Code mode is unavailable (root, no `bwrap` and `socat` on Linux, no sign-in). It then fails at **host** with the picker's reason, and grades nothing else.

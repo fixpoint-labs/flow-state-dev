@@ -35,7 +35,7 @@ import {
   workerTaskEntry,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
-import { actingAs, silentLogger, untilIdle } from "../../lib/index.mts";
+import { actingAs, silentLogger, untilIdle, writeGoalReport } from "../../lib/index.mts";
 
 const env = (name: string): string => {
   const value = process.env[name];
@@ -194,9 +194,9 @@ try {
   }
   // Nothing this process started is left half done when it exits.
   await untilIdle(runtime.stores);
-  console.log(`__GOAL__${JSON.stringify({ now: new Date().toISOString(), results })}`);
+  await writeGoalReport({ now: new Date().toISOString(), results });
 } catch (error) {
-  console.log(`__GOAL__${JSON.stringify({ setup: error instanceof Error ? error.stack ?? error.message : String(error), results })}`);
+  await writeGoalReport({ setup: error instanceof Error ? error.stack ?? error.message : String(error), results });
 } finally {
   await state.dispose();
 }

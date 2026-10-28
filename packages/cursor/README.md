@@ -106,8 +106,12 @@ verbatim. Three keys are refused when the block is built:
 
 `recordPlan: true` records Cursor's to-do list in the run's plan record, `observed-plan`, the
 shape every harness shares and `@flow-state-dev/core` defines. The record holds the whole list
-Cursor last confirmed, one row per place in the list, with Cursor's own status words. Off by
-default; off, the block declares no session state. Guide:
+Cursor last confirmed, one row per place in the list, with Cursor's own status words. The plan
+is the agent's: rows and their marker are keyed under `conversation/<Cursor agent id>`, so a
+later run of the same agent that doesn't touch its list leaves the plan as it was, and a
+different agent has its own. Each run writes a pointer to that plan when the agent is created
+or resumed; core's `readPlanTarget` follows it from a request id. Off by default; off, the block
+declares no session state. Guide:
 [Recording the run's plan](https://flow-state.dev/docs/tools/cursor#recording-the-runs-plan).
 
 `env` is the environment Cursor's runtime sees. Set it and the block runs the runtime in a
@@ -131,6 +135,38 @@ package manager. Without `env`, under pnpm, your app must depend on the platform
 the way a run with that `env` would, without starting one. It returns `{ supported: true }` or
 `{ supported: false, reason }` with Cursor's own message. It takes about a second, so call it once,
 from a startup or health check.
+
+## Sign-in check
+
+`cursorSignIn(env)` tells you whether Cursor is signed in, without starting a run. Pass the same
+environment you give the block's `env`.
+
+```ts
+import { cursorSignIn } from "@flow-state-dev/cursor";
+
+const signIn = await cursorSignIn(runEnv);
+if (signIn.status === "none") console.warn(`Cursor is not signed in: ${signIn.reason}`);
+```
+
+It returns a `CursorSignIn`:
+
+- `{ status: "key" }` when `env` has a non-empty `CURSOR_API_KEY`. This answer needs nothing from
+  the SDK, so it holds even where `@cursor/sdk` (an optional peer) is not installed.
+- `{ status: "login" }` when there is no key and the SDK finds an unexpired stored login. A stored
+  login is the API key that `Cursor.auth.login()` saves to `~/.cursor/sdk/auth.json` after a
+  browser sign-in.
+- `{ status: "none", reason }` otherwise. `reason` is a message for people, not a value
+  to match on, for example `"no CURSOR_API_KEY in the run's environment and no stored login"`.
+
+The stored login is looked up under the `HOME` of the process that calls `cursorSignIn`.
+`env.HOME` is not used. A run with `env` set reads its stored login under `env.HOME` instead, so
+when the two differ, a `login` answer says nothing about that run. Keep them the same.
+`login` also means only that the file is there and unexpired; it does not check that Cursor still
+accepts the key.
+
+Without a key, the SDK must be installed. If it can't be loaded, the call rejects with the
+import's own error, such as Node's `ERR_MODULE_NOT_FOUND`. A missing, unreadable or malformed
+`auth.json` is not an error: the SDK reports it as no stored login, so the result is `none`.
 
 ## The handle
 

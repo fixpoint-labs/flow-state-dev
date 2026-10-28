@@ -218,7 +218,7 @@ export interface FlowStateSettings {}
  * maps, and every claim and dispatch gate built onto them could then be
  * stepped around. So the boundary is a *shape* rather than an absence — this
  * view names `config` and nothing else, and the type-test in
- * `types/tests/block-context-boundary.type-test.ts` keeps the rest closed.
+ * `test/block-context-boundary.type-test.ts` keeps the rest closed.
  *
  * Named once and referred to by `BlockContext`, the block builders and that
  * type-test, so widening the boundary later is one edit in one place.

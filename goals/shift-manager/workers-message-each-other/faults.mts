@@ -42,7 +42,7 @@ export const FAULTS: Record<FaultName, { does: string; patches: ModulePatch[] }>
     patches: [
       {
         module: SEND,
-        from: String.raw`outcome = await dispatchMessage\(ctx, row, from\);`,
+        from: String.raw`outcome = await dispatchMessage\(ctx, row, from(?:, row\.call === true)?\);`,
         to: `if (row.from === "herald") { ${log("fast-path-throws", "{ id: row.id, request: ctx.request.identity.id }")} throw new Error("goal fault: the send's own dispatch threw"); } $&`,
       },
     ],

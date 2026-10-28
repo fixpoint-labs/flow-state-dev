@@ -123,7 +123,8 @@ function taskerFlow(installation: WorkerInstallation, runs: TaskRun[], holds: Re
       if (until !== null && attempt < Number(until[1])) throw new Error(`${worker.id} failed attempt ${attempt}`);
       const ask = /\[ask:([^\]]+)\]/.exec(message);
       if (ask !== null && held !== undefined && held.askedInTurn === undefined && tasks !== undefined) {
-        const asked = await askMidway(ctx as never, tasks, [{ prompt: ask[1]! }]);
+        // `[ask:a|b]` asks two questions at once.
+        const asked = await askMidway(ctx as never, tasks, ask[1]!.split("|").map((prompt) => ({ prompt })));
         if (!asked.ok) throw new Error(`the question could not hold the task: ${asked.reason}`);
         return "asked";
       }
@@ -189,6 +190,8 @@ export type BoardHostOptions = {
   durable?: boolean;
   /** The host's debt age (`RequestWakes.maxDebtAgeMs`): how long a debt may stay owed before a pass ends it. */
   maxDebtAgeMs?: number;
+  /** The host's wait deadline bounds (`RequestWaits.deadlines`). */
+  waitDeadlines?: { defaultMs?: number; minMs?: number; maxMs?: number };
   /** The gates a `[hold:<name>]` task waits on, by name, until the test releases them. */
   holds?: ReadonlyMap<string, Promise<void>>;
   /**
@@ -313,6 +316,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     stores: { default: { primary: stores } },
     ...(options.durable === true ? { durable: true } : {}),
     ...(options.maxDebtAgeMs === undefined ? {} : { maxDebtAgeMs: options.maxDebtAgeMs }),
+    ...(options.waitDeadlines === undefined ? {} : { waitDeadlines: options.waitDeadlines }),
     ...(options.errorCapture === undefined ? {} : { errorCapture: options.errorCapture }),
     ...(options.adapters === undefined ? {} : { adapters: options.adapters }),
     modelResolver: withJudgmentModel(

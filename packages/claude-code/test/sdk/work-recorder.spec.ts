@@ -540,6 +540,67 @@ describe("createWorkRecorder — plan items", () => {
     outcome: "applied",
   });
 
+  it("keeps a plan across two turns of one conversation: a later update keeps the title", async () => {
+    // The bug this pins: each turn keyed its rows by its own run, so turn 2's
+    // TaskUpdate wrote one untitled row and the panel showed that as the plan.
+    const plan = fakeCollection();
+    const planList = fakeCollection();
+    const files = fakeCollection();
+    const turn = (runId: string, requestId: string) =>
+      createWorkRecorder({ runId, requestId, files, plan, planList, flushIntervalMs: 60_000 });
+
+    const first = turn("req_1/agent#0", "req_1");
+    first.bindConversation("sess_1");
+    first.observe(created("1", "List the files"));
+    first.observe(created("2", "Count the lines"));
+    await first.stop();
+
+    const second = turn("req_2/agent#0", "req_2");
+    second.bindConversation("sess_1");
+    second.observe(moved("1", "completed"));
+    await second.stop();
+
+    expect(plan.rows.get("conversation/sess_1/1")).toMatchObject({
+      title: "List the files",
+      status: "completed",
+      requestId: "req_2",
+    });
+    expect(plan.rows.get("conversation/sess_1/2")).toMatchObject({ title: "Count the lines", requestId: "req_1" });
+    expect([...plan.rows.keys()].every((key) => key.startsWith("conversation/sess_1/"))).toBe(true);
+    // Each run points at the conversation, so a reader that knows only the run finds the plan.
+    expect(planList.rows.get("req_1/agent#0")).toEqual({ conversation: "conversation/sess_1" });
+    expect(planList.rows.get("req_2/agent#0")).toEqual({ conversation: "conversation/sess_1" });
+    // Files stay the run's.
+    expect(files.rows.size).toBe(0);
+  });
+
+  it("starts a new conversation's plan empty, never merging two conversations", async () => {
+    const plan = fakeCollection();
+    const recorder = createWorkRecorder({ runId: RUN, files: fakeCollection(), plan });
+    recorder.bindConversation("sess_old");
+    recorder.observe(created("1", "Old step"));
+    await recorder.flush();
+    recorder.bindConversation("sess_new");
+    recorder.observe(created("1", "New step"));
+    await recorder.stop();
+    expect(plan.rows.get("conversation/sess_old/1")).toMatchObject({ title: "Old step" });
+    expect(plan.rows.get("conversation/sess_new/1")).toMatchObject({ title: "New step" });
+  });
+
+  it("marks the conversation's plan incomplete when a row fails, not the run's", async () => {
+    const plan = fakeCollection();
+    const planList = fakeCollection();
+    plan.upsert = async () => {
+      throw new Error("store unavailable");
+    };
+    const recorder = createWorkRecorder({ runId: RUN, files: fakeCollection(), plan, planList, gaps: fakeCollection() });
+    recorder.bindConversation("sess_1");
+    recorder.observe(created("1", "Step"));
+    await recorder.stop();
+    expect(planList.rows.get("conversation/sess_1")).toMatchObject({ status: "incomplete" });
+    expect(planList.rows.get(RUN)).toEqual({ conversation: "conversation/sess_1" });
+  });
+
   it("records the item's wording under the harness's own id", async () => {
     const { plan, recorder } = harness();
     recorder.observe(created("5", "Create the file"));

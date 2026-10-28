@@ -196,21 +196,34 @@ supervisor({
   // `null` for no bound, `0` to never retry.
   maxTotalRetries?: number | null;
 
+  // Task-count ceilings for the board: every task over its lifetime
+  // (default 500), and tasks waiting in `pending` when a new one is added
+  // (default 100). `null` for no bound. A plan that would cross either
+  // ceiling is refused whole, nothing is added, and the run fails.
+  maxTotalTasks?: number | null;
+  maxEnqueuedTasks?: number | null;
+
   // Worker pool size. Default 3.
   maxConcurrency?: number;
 
   // Override the planning step. Default: `utility.decomposer()`.
   planner?: BlockDefinition;
 
+  // How each task's `context` is filled when the planner didn't supply one.
+  // "goal" (default) copies the goal in, false leaves it empty. A
+  // BlockDefinition runs once per plan, after the planner. Receives
+  // `{ goal, tasks }` and returns `{ tasks }` with each task's `context` set.
+  taskContext?: "goal" | false | BlockDefinition;
+
+  // Rewrite the input goal into a self-contained one before planning, so
+  // "do that for all of them" names what "that" is. false (default) uses the
+  // input goal as-is. true runs a built-in generator that reads the session's
+  // recent message history. A BlockDefinition replaces it: receives the
+  // supervisor input `{ goal }` and returns `{ goal }`.
+  synthesizeGoal?: boolean | BlockDefinition;
+
   // Override the reviewer. Pass `false` to disable per-task review.
   reviewer?: BlockDefinition | false;
-
-  // Optional outer replanner — when present, supervisor adds a replan loop
-  // around the board, re-entering when failed-review tasks accumulate.
-  replanner?: BlockDefinition;
-
-  // Outer replan-loop iteration cap. Default 3.
-  maxIterations?: number;
 
   // Final synthesizer. Receives `{ goal, results }`.
   synthesizer?: BlockDefinition;
