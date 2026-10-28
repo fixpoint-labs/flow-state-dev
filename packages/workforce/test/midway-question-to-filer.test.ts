@@ -103,4 +103,11 @@ describe("the text a question is told in", () => {
     expect(text.length).toBeLessThanOrEqual(MAX_MESSAGE_CHARS);
     expect(text).toContain('question: "hold_1"');
   });
+
+  it("shortens a long task goal too, so a long goal never pushes the question out of the message", () => {
+    const text = midwayQuestionText(row({ goal: "g".repeat(8000) }), hold("Which region?"));
+    expect(text.length).toBeLessThanOrEqual(MAX_MESSAGE_CHARS);
+    expect(text).toContain('asks: "Which region?"');
+    expect(text).toContain('question: "hold_1"');
+  });
 });

@@ -39,7 +39,7 @@
  * The sender, the sessions and the budget come from the sending turn's own
  * session and request state, never from the tool's input.
  */
-import type { BlockContext, DispatchOutcome } from "@flow-state-dev/core/types";
+import type { BlockContext, DispatchOutcome, ResourceRef } from "@flow-state-dev/core/types";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import { filingProjectAddressOf, sessionIdOfFiling } from "../conversation-board/filing-session";
 import { deriveWorkerSessionId, criteriaState, type WorkerSessionCriteria } from "../workers/derive-session-id";
@@ -225,7 +225,9 @@ async function payPlace(ctx: BlockContext, installation: WorkerInstallation, giv
 /**
  * The server's own message's place (FIX-2241): one past the sending turn's, in
  * its chain or a new one, written into neither the chain's row nor the
- * request's count, so it costs no budget and no spent one refuses it.
+ * request's count, so it costs no budget and no spent one refuses it. Every
+ * exempt send in one request shares that hop, intentionally: none is a reply
+ * to another, and the hop limit still bounds what each one draws.
  */
 function exemptPlace(ctx: BlockContext, given: string | undefined): Place {
   return { ok: true, id: given ?? newMessageId(), chain: turnChainOf(ctx) ?? newChainId(), hop: turnHopOf(ctx) + 1 };
@@ -238,8 +240,9 @@ function exemptPlace(ctx: BlockContext, given: string | undefined): Place {
  * @param from The sending block's name, for the dispatch's provenance.
  * @param options.id A server-chosen id, so a send repeated after a crash is
  *   one message: when its row is already written, the repeat owes nothing,
- *   pays nothing, leaves the row as it is and answers as the row reads (a
- *   refusal stays one). Never a model's input.
+ *   pays nothing and answers as the row reads (a refusal stays one). From a
+ *   flow with no pass, a repeat finding the row never taken dispatches it
+ *   again, since nothing else would. Never a model's input.
  * @param options.call The sender waits on the reply until `deadlineAt`
  *   (FIX-2239): the row is marked a call, and the dispatch says the sender
  *   waits on it. Set by the call's own code, never by a model.
@@ -266,11 +269,18 @@ export async function sendMessage(
 
   // ---- the recipient, and where it lands -----------------------------------
   const log = messageLogOf(ctx);
-  const written = options.id === undefined ? undefined : (await log.getOptional(options.id))?.state;
-  if (written !== undefined) {
+  const writtenRef = options.id === undefined ? undefined : await log.getOptional(options.id);
+  const written = writtenRef?.state;
+  if (writtenRef !== undefined && written !== undefined) {
     // The repeat answers what the first send did: an ended row stays a refusal.
     if (written.status === "refused" || written.status === "undeliverable") {
       return refuse(`not_delivered: the message to "${written.to}" was ${written.status} (${written.reason ?? "no reason was given"}).`);
+    }
+    // A flow with no pass sends on its own dispatch only, so a repeat finding
+    // the row never taken (the first send ended between the write and the
+    // dispatch) sends it again; the take keeps it once.
+    if (written.status === "unconfirmed" && written.takenBy === undefined && !carriesPass(installation, flowKind)) {
+      return dispatchOnce(ctx, writtenRef, written, from, false);
     }
     return { ok: true, id: written.id };
   }
@@ -336,10 +346,27 @@ export async function sendMessage(
     at: Date.now()
   };
   const ref = await log.getOrCreate(id, row);
+  return dispatchOnce(ctx, ref, row, from, resends);
+}
 
+/**
+ * Dispatch `row` once and answer the send: a final refusal ends the row and
+ * is the answer; anything else is recorded on the row for the pass to send
+ * again, and the send is ok.
+ *
+ * @param resends The sending flow carries a pass, which owes `row`'s id.
+ */
+async function dispatchOnce(
+  ctx: BlockContext,
+  ref: ResourceRef<WorkerMessageRow>,
+  row: WorkerMessageRow,
+  from: string,
+  resends: boolean
+): Promise<SendOutcome> {
+  const { id } = row;
   let outcome: DispatchOutcome | undefined;
   try {
-    outcome = await dispatchMessage(ctx, row, from, options.call !== undefined);
+    outcome = await dispatchMessage(ctx, row, from, row.call === true);
   } catch (error) {
     // It may have started: the pass sends it again, and the take keeps it once.
     await ref.patchState({ reason: error instanceof Error ? error.message : String(error) });
@@ -348,7 +375,7 @@ export async function sendMessage(
     const reason = `${outcome.refused}: ${outcome.detail}`;
     if (isFinalRefusal(outcome.refused) && (await endMessage(ref, "refused", reason, { told: true }))) {
       if (resends) await dropOwed(ctx, [id]);
-      return refuse(`not_delivered: the message to "${recipient.id}" was refused (${reason}).`);
+      return { ok: false, error: `not_delivered: the message to "${row.to}" was refused (${reason}).` };
     }
     await ref.patchState({ reason });
   }

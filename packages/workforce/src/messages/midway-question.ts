@@ -40,18 +40,26 @@ function isRouted(row: Task): boolean {
   return row.target !== undefined || row.targetSessionId !== undefined;
 }
 
+/** The most of a task's title (or goal) a question's text names it by, so the question always fits. */
+const TASK_LABEL_CHARS = 200;
+
+/** `text` cut to `max` characters, the last one an ellipsis when it was cut. */
+function clip(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, Math.max(0, max - 1))}…` : text;
+}
+
 /**
  * The text the filer's model reads for one question: the task, the question,
  * and how to answer it, or, for a routed task, that the user answers it.
  */
 export function midwayQuestionText(row: Task, hold: RowHold): string {
-  const title = row.title ?? row.goal;
+  const title = clip(row.title ?? row.goal, TASK_LABEL_CHARS);
   const how = isRouted(row)
     ? "The user answers it from their Inbox; it isn't yours to answer."
     : `Answer it with updateTask({ id: "${row.id}", question: "${hold.id}", message }), or leave it to the user, who sees it in their Inbox.`;
   const head = `Your task "${title}" (${row.id}) asks: "`;
   const space = MAX_MESSAGE_CHARS - head.length - how.length - 2;
-  const prompt = hold.ask.prompt.length > space ? `${hold.ask.prompt.slice(0, Math.max(0, space - 1))}…` : hold.ask.prompt;
+  const prompt = clip(hold.ask.prompt, space);
   return `${head}${prompt}"\n${how}`;
 }
 
