@@ -107,6 +107,7 @@ host for reads alone, and if that becomes common the capability can build one it
   the source gave, so the model can say why.
 - **The lab shares one host between `harness-thread` and the agent flow**, and gives the preset
   to `desk.main` and `desk.researcher`. Changes still go to `desk.coder`.
+- **The workstream path checks membership, as the project path does.** `fromWorkstream` refused a non-owner but returned the project without checking that the owner was still a member. It now runs the same check `fromProject` runs, and a package test takes a workstream owner off the project's members and sees both a read and a coding run refused `not-a-member`.
 - **The refusal legs have package tests too.** `runProjectOf` refuses `not-a-member` for a session whose stored project lost the user from its members; the goal's SQLite edit stands in for the members write the package doesn't have.
 - **Changesets:** `@flow-state-dev/workspace` and `@flow-state-dev/workforce`, minor. The lab is
   private.
@@ -155,5 +156,6 @@ Findings: **folded** the names (*project files* meant the kept files; `show` bro
 - **Goal validation** — added a refusal leg for someone taken off the members, the `no-gate`
   control, and disk signals for no clone or place per question.
 - **Review round 1** — one lock rule (lock-free first clone, try-acquire fetch, stale locks count as free); the read view is an optional method on the host contract, refused at build; D2 rests on the refs split, with a test that proves it. Because Jake's review found the lock bullets contradicted each other.
+- **Codex review** — the workstream path of the shared gate gets the membership check the project path has, because Codex found a person taken off a project could still read through a workstream.
 
 **Open: none.**

@@ -117,7 +117,7 @@ only formats.
 
 - **Coding runs.** `projectWorkspace()`, `harnessManager` and the place layout are unchanged.
   The read adds a door into the host, and touches no place.
-- **The lookup and its refusals.** `runProjectOf` and its six reasons are reused as they are.
+- **The lookup and its refusals**, with one fix. `runProjectOf` and its six reasons are reused. Its workstream path checks the workstream's owner but not that the owner is still a member of the project, while its project path does check membership. The shared gate gets that check, so a person taken off a project loses reads *and* coding runs through a workstream. Coding runs gain the fix too.
 - **Core and engine.** Nothing here goes below `workspace` and `workforce`.
 - **`readProjectFiles`**, the member's list of a project's kept files for a screen.
 
@@ -140,7 +140,7 @@ only formats.
 
 | The debt | |
 |---|---|
-| **Removes** | The lab's routing of code questions to `desk.coder`, and "can't see the project's code" in two of its worker files |
+| **Removes** | The lab's routing of code questions to `desk.coder`, and "can't see the project's code" in two of its worker files · the gap where a workstream's run skips the project's membership check |
 | **Adds** | A second door to a project's kept files for a model, beside `readProjectFiles` for a screen, over one filtered list. Permanent by design: one is a member naming a project, the other a session reading its own. A second find-files tool set beside core's trio, with the same parameters. Permanent by design: resources in scope and a project's repository are different gates |
 | **Leaves** | A repository project's kept files aren't readable by these tools ([decided, not asked](DECISIONS.md#decided-not-asked)) |
 
