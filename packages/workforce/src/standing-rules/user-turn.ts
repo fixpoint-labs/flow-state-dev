@@ -13,7 +13,6 @@
  */
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { isTerminalStatus } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { messageTurnStateSchema, newChainId, sessionUserLinesOf, startTurnAtHop, USER_LINES_STATE } from "../messages/hop";
 import { FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
@@ -39,7 +38,10 @@ export async function markUserTurn(ctx: BlockContext): Promise<void> {
   const taskId = state[TASK_ID_STATE_KEY];
   let mark: Record<string, unknown> = { [USER_TURN_STATE]: true };
   if (typeof taskId === "string") {
-    if (!(await taskSessionEnded(ctx, taskId, state[FILING_SESSION_STATE_KEY]))) return;
+    // The same read that sends the line to the task as a steer while it is open.
+    // Loaded here, not at the top: its module graph reaches back to this one.
+    const { sessionTaskChainEnded } = await import("../conversation-board/steer");
+    if (!(await sessionTaskChainEnded(ctx))) return;
     mark = {};
   } else if (typeof state[FILING_SESSION_STATE_KEY] === "string") {
     return;
@@ -47,16 +49,6 @@ export async function markUserTurn(ctx: BlockContext): Promise<void> {
   await startTurnAtHop(ctx, 0, newChainId(), mark, (current) => ({
     [USER_LINES_STATE]: sessionUserLinesOf(current) + 1
   }));
-}
-
-/** Whether a task session's task, and every follow-up run in its session, has ended, on the board that filed it. */
-async function taskSessionEnded(ctx: BlockContext, taskId: string, partition: unknown): Promise<boolean> {
-  if (typeof partition !== "string") return false;
-  // Loaded here, not at the top: the ledger's module graph reaches back to this one.
-  const { conversationLedgerAt } = await import("../conversation-board/ledger");
-  const rows = (await conversationLedgerAt(ctx, partition))?.list() ?? [];
-  const inSession = rows.filter((task) => task.id === taskId || task.followUpOf === taskId);
-  return inSession.length > 0 && inSession.every((task) => isTerminalStatus(task.status));
 }
 
 /** Whether this request is a turn a user's own message started. */

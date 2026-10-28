@@ -57,6 +57,16 @@ async function sessionOpenTask(ctx: BlockContext): Promise<{ ledger: TaskCollect
   return { ledger, row: latest(here.length > 0 ? here : open) };
 }
 
+/**
+ * Whether every task in this task session's chain has finished (FIX-2238):
+ * a line here no longer steers. `false` outside a task session and with no
+ * board to read, where nothing says the task ended.
+ */
+export async function sessionTaskChainEnded(ctx: BlockContext): Promise<boolean> {
+  if (sessionTaskOf(ctx) === undefined || (await sessionLedger(ctx)) === undefined) return false;
+  return (await sessionOpenTask(ctx)) === undefined;
+}
+
 export { startOwedSteerTurn };
 
 /** What a line steering the session's task answers: the task it steered. */
