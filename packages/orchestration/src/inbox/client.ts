@@ -39,7 +39,7 @@ const ANSWER_POLL_MS = 150;
  * question already answered, the task finished), which rejects here with its
  * words.
  */
-async function answerRowHold(client: Client, source: RowQuestionSource, questionId: string, update: { message?: string; done?: boolean }): Promise<void> {
+async function answerRowQuestion(client: Client, source: RowQuestionSource, questionId: string, update: { message?: string; done?: boolean }): Promise<void> {
   const { flowId, sessionId, action } = source;
   if (flowId === null || sessionId === null || action === null) throw new Error(`Inbox question "${questionId}" names no board to answer through`);
   const flow = client.flow(flowId);
@@ -81,7 +81,7 @@ export function createInboxClient(client: Client): InboxClient {
   const answerOne: InboxClient["answerOne"] = async (hold, answer) => {
     if (hold.unanswerable !== null) throw new Error(hold.unanswerable);
     if (hold.source.kind === "row") {
-      await answerRowHold(client, hold.source, hold.id, updateOf(hold.ask.kind, answer));
+      await answerRowQuestion(client, hold.source, hold.id, updateOf(hold.ask.kind, answer));
       return;
     }
     const { flowId, requestId, suspensionId } = hold.source;

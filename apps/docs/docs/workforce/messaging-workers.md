@@ -192,7 +192,7 @@ Each question is one message from the task's worker to the filer. It lands in th
 
 ```text
 From researcher: Your task "Write the adoption script" (task_7d2e41) asks: "Which CSV export should the script read?"
-Answer it with updateTask({ id: "task_7d2e41", answers: "hold_5a2c", message }), or leave it to the user, who sees it in their Inbox.
+Answer it with updateTask({ id: "task_7d2e41", answers: "question_5a2c", message }), or leave it to the user, who sees it in their Inbox.
 ```
 
 The task is named by its title, or by its goal when it has no title. A very long question is cut short with an ellipsis so the whole text fits in one message.

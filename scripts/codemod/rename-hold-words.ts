@@ -7,18 +7,26 @@
  * claim, and a board's session is its owner. The head names are the contract in
  * `specs/epics/FIX-2071/renames.md` → "Decided by FIX-2183".
  *
- * Two passes:
+ * Four passes:
  *
- * 1. **Type-aware property renames.** `holds`, `waitingOn`, `releasedBy`,
- *    `question` and `holdId` collide with live names (`useReadFence`'s `holds`
+ * 1. **Type-aware renames.** `holds`, `waitingOn`, `releasedBy`, `question`
+ *    and `holdId` collide with live names (`useReadFence`'s `holds`
  *    predicate, a steer's shown `question`, English prose), so each is renamed
  *    through the language service from its declaration, which follows every
  *    reference the checker resolves to it and nothing else.
  * 2. **Exact identifiers.** The rest are unique, so a word-bounded replace over
  *    source, tests, goals, labs, apps and the published docs is the same rename.
+ * 3. **Shapes** the checker can't reach: loosely typed fixtures, `.mts` goals,
+ *    docs, and `updateTask`'s `question` input.
+ * 4. **Decline reasons**: `"held"` becomes `"open-question"` only where it is the
+ *    reason a write was declined, never the status.
  *
- * Usage: `pnpm tsx scripts/codemod/rename-hold-words.ts`. Re-run on a fresh
- * `main` to regenerate a conflicting PR (FIX-2071 ER-2). Hand edits that follow
+ * Every path below is a pre-FIX-2183 file name: the codemod runs once, on a
+ * tree from before that change. It fails on a tree that already has
+ * `questions.ts` in place of `holds.ts`.
+ *
+ * Usage: `pnpm tsx scripts/codemod/rename-hold-words.ts`. Re-run on the branch's pre-rename base
+ * (a `main` from before it merged) to regenerate the first commit (FIX-2071 ER-2). Hand edits that follow
  * it (string outcomes, prose, a goal's directory) are their own commits.
  */
 

@@ -1,12 +1,12 @@
 /**
- * The one hold write, and the one predicate every reader asks of it, *open
- * holds* (FIX-2133 D2, the epic FIX-2058's ER-8).
+ * The one question write, and the one predicate every reader asks of it, *open
+ * questions* (FIX-2133 D2, the epic FIX-2058's ER-8).
  *
  * Both backings call {@link questionWrite} for every change to `Task.questions`, decided
  * on the committed row inside their write: a filing or a midway ask opens row
- * holds, an answer or a deadline releases one, the claim gate's stop arm opens
- * a task run's mirror and its resume closes it. Cancel closes every hold with
- * the row: an ended row has no open hold ({@link openQuestions}), and its mirror
+ * questions, an answer or a deadline releases one, the claim gate's stop arm opens
+ * a task run's mirror and its resume closes it. Cancel closes every question with
+ * the row: an ended row has no open question ({@link openQuestions}), and its mirror
  * stays only as the address of the `cancelled` resume it owes
  * ({@link keptOnEnding}).
  *
@@ -24,7 +24,7 @@ import type { TaskWriteDeclineReason } from "./types";
 /** What the board's steer says when it closes a question at a deadline a host set. */
 export const NO_ANSWER_CAME = "No answer came before this question's deadline. Go on from your brief without it.";
 
-/** Whether `hold` is a row hold (a question or a confirm). */
+/** Whether `hold` is a row question (a question or a confirm). */
 export function isRowQuestion(hold: TaskQuestion): hold is RowQuestion {
   return hold.source.kind === "row";
 }
@@ -34,15 +34,15 @@ export function isSuspensionQuestion(hold: TaskQuestion): hold is SuspensionQues
   return hold.source.kind === "suspension";
 }
 
-/** The steer that answers row hold `questionId` on `row`, if one does. */
+/** The steer that answers row question `questionId` on `row`, if one does. */
 export function answerOf(row: Pick<Task, "steers">, questionId: string): TaskSteer | undefined {
   return (row.steers ?? []).find((steer) => steer.answers === questionId);
 }
 
 /**
- * **Open holds**, the one predicate (ER-8): what holds `row` now, oldest
- * first. None on an ended row: a cancel closes every hold. A row hold is open
- * while no steer carries its id; a suspension hold, while it is on the row.
+ * **Open questions**, the one predicate (ER-8): what `row` waits on now, oldest
+ * first. None on an ended row: a cancel closes every question. A row question is open
+ * while no steer carries its id; a suspension question, while it is on the row.
  */
 export function openQuestions(row: Pick<Task, "status" | "questions" | "steers">): TaskQuestion[] {
   if (row.questions === undefined || row.questions.length === 0 || isTerminalStatus(row.status)) return [];
@@ -59,7 +59,7 @@ export function askedOnTicket(row: Pick<Task, "askedInTurn" | "attempts"> | unde
   return row !== undefined && row.askedInTurn !== undefined && row.askedInTurn === ticket.turn && row.attempts === ticket.attempt;
 }
 
-/** Whether anything holds `row` now. */
+/** Whether `row` waits on anything now. */
 export function hasOpenQuestion(row: Pick<Task, "status" | "questions" | "steers">): boolean {
   return openQuestions(row).length > 0;
 }
@@ -70,15 +70,15 @@ export function openRowQuestions(row: Pick<Task, "status" | "questions" | "steer
 }
 
 /**
- * The row's suspension hold: the mirror of its run's stop, open while the row
+ * The row's suspension question: the mirror of its run's stop, open while the row
  * runs, and kept on an ended row until the resume it owes is paid. A row's
- * open holds come from one source at a time, so it has at most one.
+ * open questions come from one source at a time, so it has at most one.
  */
 export function suspensionQuestionOf(row: Pick<Task, "questions">): SuspensionQuestion | undefined {
   return row.questions?.find(isSuspensionQuestion);
 }
 
-/** How many steer places `row` has taken or reserved: its steers, and one per open row hold (its answer's). */
+/** How many steer places `row` has taken or reserved: its steers, and one per open row question (its answer's). */
 export function steerPlacesTaken(row: Pick<Task, "status" | "questions" | "steers">): number {
   return (row.steers?.length ?? 0) + openRowQuestions(row).length;
 }
@@ -92,7 +92,7 @@ export function steerPlacesTaken(row: Pick<Task, "status" | "questions" | "steer
  */
 export function assertAskable(asks: readonly QuestionInit[]): void {
   const problem = askProblem(asks);
-  if (problem !== undefined) throw new Error(`[tasks] ask: ${problem}, so the task can't be held on them. Nothing was written.`);
+  if (problem !== undefined) throw new Error(`[tasks] ask: ${problem}, so the task can't wait on them. Nothing was written.`);
 }
 
 /**
@@ -112,10 +112,10 @@ export function askProblem(asks: readonly QuestionInit[]): string | undefined {
   return undefined;
 }
 
-/** The row holds `asks` open, each with a fresh id, from `at`, due `dueMs` later when a deadline is set. */
+/** The row questions `asks` open, each with a fresh id, from `at`, due `dueMs` later when a deadline is set. */
 export function newRowQuestions(asks: readonly QuestionInit[], at: number, options: { readonly dueMs?: number; readonly midway?: boolean } = {}): RowQuestion[] {
   return asks.map((ask) => ({
-    id: generateId("hold"),
+    id: generateId("question"),
     actor: "user" as const,
     openedAt: at,
     ...(options.dueMs !== undefined ? { due: at + options.dueMs } : {}),
@@ -131,9 +131,9 @@ export function newRowQuestions(asks: readonly QuestionInit[], at: number, optio
   }));
 }
 
-/** An answer to one row hold: the user's words, or the filer's for a midway question. */
+/** An answer to one row question: the user's words, or the filer's for a midway question. */
 export interface QuestionAnswer {
-  /** The row hold it answers. */
+  /** The row question it answers. */
   readonly questionId: string;
   readonly message: string;
   readonly from: "user" | "filer";
@@ -151,22 +151,22 @@ export interface QuestionAnswer {
 export type QuestionChange =
   /** A midway ask: the turn holding the claim opens questions. The caller fences it on the claim. */
   | { readonly op: "ask"; readonly questions: readonly RowQuestion[] }
-  /** An answer, kept as the user's steer carrying the hold's id; `steerId` is minted once, outside the write. */
+  /** An answer, kept as the user's steer carrying the question's id; `steerId` is minted once, outside the write. */
   | { readonly op: "answer"; readonly answer: QuestionAnswer; readonly steerId: string; readonly at: number }
-  /** A touch of the board at `at`: every open row hold past its due time closes "no answer came". */
+  /** A touch of the board at `at`: every open row question past its due time closes "no answer came". */
   | { readonly op: "deadline"; readonly at: number }
   /** The claim gate's stop arm mirrors its run's stop. */
   | { readonly op: "mirror"; readonly hold: SuspensionQuestion }
   /** The write that admits the run's resume closes the mirror. */
   | { readonly op: "resume" };
 
-/** What a hold write decided: the patch, nothing to write, or why it is refused. */
+/** What a question write decided: the patch, nothing to write, or why it is refused. */
 export type QuestionWriteResult = { readonly patch: Partial<Task> } | "unchanged" | { readonly decline: TaskWriteDeclineReason };
 
 /**
- * The patch that follows a write closing row holds on `next`: none left open
+ * The patch that follows a write closing row questions on `next`: none left open
  * on a running row owes one more turn on its same attempt (D3). A pending row
- * needs nothing: with no open hold it is claimable, its first attempt a start.
+ * needs nothing: with no open question it is claimable, its first attempt a start.
  */
 function released(before: Task, next: Pick<Task, "status" | "questions" | "steers">): Partial<Task> {
   const wasHeld = openRowQuestions(before).length > 0;
@@ -175,19 +175,19 @@ function released(before: Task, next: Pick<Task, "status" | "questions" | "steer
 }
 
 /**
- * The one hold write (ER-8), decided on the committed row `task`.
+ * The one question write (ER-8), decided on the committed row `task`.
  *
- * - `ask`: refused `held` while a suspension holds the row (one wait per
+ * - `ask`: refused `open-question` while a suspension questions the row (one wait per
  *   turn, one source at a time), and `steer-limit` when its answers would
  *   take the row past {@link MAX_STEERS} places.
  * - `answer`: the same words from the same sender again are `unchanged`, even
  *   on a row that has since finished (a retry after a lost response). Other
  *   words, or another sender, are refused `answered`; a finished row,
- *   `terminal`; a hold that isn't a row hold on it, `no-such-question`. The last
- *   open row hold's answer releases the row.
- * - `deadline`: every open row hold past its `due` closes with the board's
+ *   `terminal`; an id that isn't a row question on it, `no-such-question`. The last
+ *   open row question's answer releases the row.
+ * - `deadline`: every open row question past its `due` closes with the board's
  *   "no answer came" steer; one with no `due` never does.
- * - `mirror`: refused `held` while a row hold is open. `unchanged` for the
+ * - `mirror`: refused `open-question` while a row question is open. `unchanged` for the
  *   same stop already mirrored.
  * - `resume`: drops the mirror.
  */
@@ -249,14 +249,14 @@ export function questionWrite(task: Task, change: QuestionChange): QuestionWrite
   }
 }
 
-/** `holds` with the mirror taken out; `undefined` when nothing is left. */
+/** `questions` with the mirror taken out; `undefined` when nothing is left. */
 function withoutMirror(holds: Task["questions"]): Task["questions"] {
   const rest = (holds ?? []).filter((hold) => !isSuspensionQuestion(hold));
   return rest.length === 0 ? undefined : rest;
 }
 
 /**
- * What an ending keeps of a row's holds (cancel closes every hold, ER-8): an
+ * What an ending keeps of a row's questions (cancel closes every question, ER-8): an
  * ended row whose run was parked on a stop for a person owes that run its
  * `cancelled` resume (`resumeOwed`), paid to the stop its mirror names, so the
  * mirror stays until the debt is paid. `prev` is the row before the write,
@@ -270,7 +270,7 @@ export function keptOnEnding(prev: Task, next: Task): Partial<Task> | undefined 
 
 /**
  * The mirror a row no longer needs: on a row that isn't running and owes no
- * resume, the stop it mirrored has ended or been paid. Row holds stay, the
+ * resume, the stop it mirrored has ended or been paid. Row questions stay, the
  * record of what was asked; a closed one is closed by its answer or the row's end.
  */
 export function droppedMirror(row: Task): Partial<Task> | undefined {
@@ -278,12 +278,12 @@ export function droppedMirror(row: Task): Partial<Task> | undefined {
   return { questions: withoutMirror(row.questions) };
 }
 
-/** The row holds a touch at `at` closes "no answer came": open, with a due time passed. */
+/** The row questions a touch at `at` closes "no answer came": open, with a due time passed. */
 export function questionsDue(row: Pick<Task, "status" | "questions" | "steers">, at: number): RowQuestion[] {
   return openRowQuestions(row).filter((hold) => hold.due !== undefined && hold.due <= at);
 }
 
-/** The earliest due time of `row`'s open row holds, or `undefined` when none has one. */
+/** The earliest due time of `row`'s open row questions, or `undefined` when none has one. */
 export function nextQuestionDue(row: Pick<Task, "status" | "questions" | "steers">): number | undefined {
   let next: number | undefined;
   for (const hold of openRowQuestions(row)) if (hold.due !== undefined) next = next === undefined ? hold.due : Math.min(next, hold.due);
@@ -292,8 +292,8 @@ export function nextQuestionDue(row: Pick<Task, "status" | "questions" | "steers
 
 /**
  * Whether `row` owes a turn on its same attempt that the claim takes (D3): a
- * running row with no lease and no open hold, marked `turnOwed` by its last
- * row hold's release, or by the turn a steer no request took is owed
+ * running row with no lease and no open question, marked `turnOwed` by its last
+ * row question's release, or by the turn a steer no request took is owed
  * (FIX-2086, beside its `keptOpenBy: "steer"`). The mark, not `keptOpenBy`:
  * `"steer"` is also what a later request parked after the task answered
  * leaves, with that request still to resume.

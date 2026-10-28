@@ -525,7 +525,7 @@ async function checkAnswered(record: Admitted, row: Task, rechecked = false): Pr
 /** What else holds the task open: work it filed, or nothing. */
 async function holdingWork(record: Admitted, row: Task): Promise<"filed" | undefined> {
   const { ref, ctx, rules } = record;
-  if (await (rules.filedWorkKeepsOpen ?? defaultFiledWorkHolds)(ctx, row, ref)) return "filed";
+  if (await (rules.filedWorkKeepsOpen ?? defaultFiledWorkKeepsOpen)(ctx, row, ref)) return "filed";
   return undefined;
 }
 
@@ -601,7 +601,7 @@ async function oweSteerTurn(record: Admitted, row: Task): Promise<boolean> {
   return false;
 }
 
-const defaultFiledWorkHolds: NonNullable<TaskEndRules["filedWorkKeepsOpen"]> = async (_ctx, task, ledger) =>
+const defaultFiledWorkKeepsOpen: NonNullable<TaskEndRules["filedWorkKeepsOpen"]> = async (_ctx, task, ledger) =>
   filedWorkKeepsOpen(ledger, task.id);
 
 /** What {@link taskRequestAdmission} is built from. */

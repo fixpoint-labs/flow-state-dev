@@ -116,7 +116,7 @@ export function assertFilingSettings(init: TaskInit, support: TaskSettingsSuppor
     throw new TaskFilingRefusedError({
       rule: "questions_not_kept",
       taskId,
-      detail: `${asked}, so the task can't be held on them. Ask fewer or shorter questions, or file it without.`,
+      detail: `${asked}, so the task can't wait on them. Ask fewer or shorter questions, or file it without.`,
     });
   }
   if (init.followUpOf !== undefined && init.session !== undefined) {
