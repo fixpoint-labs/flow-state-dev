@@ -65,14 +65,15 @@ const HARNESSES: Record<string, (feeds: HarnessFeeds) => HarnessBlock> = {
     codexAgent({ cwd: feeds.cwd, resume: feeds.resume, onSession: feeds.onSession, name: "codex" }) as unknown as HarnessBlock,
 };
 
-/** The one phase: the task as the main session wrote it, done when the harness says it finished. */
+/** The one phase: the task as the main session wrote it, a question or a change, done when the harness says it finished. */
 const phase: PhaseSpec = {
   phase: "code",
   buildPrompt: ({ task, answers }) =>
     [
       task.title === undefined ? task.goal : `${task.title}\n\n${task.goal}`,
       ...answers.map((answered) => `You asked: ${answered.question}\nThe answer: ${answered.answer}`),
-      "Work in this directory only. Commit what you change with git, then say in one line what you did.",
+      "Work in this directory only. If the task asks a question, read what you need, answer it in full, and change nothing. " +
+        "If it asks for a change, commit what you change with git, then say in one line what you did.",
     ].join("\n\n"),
   isDone: ({ stopReport }) => stopReport === "finished",
 };
