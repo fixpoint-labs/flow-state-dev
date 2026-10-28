@@ -85,12 +85,17 @@ const dropSendFor = (worker: string): ModulePatch => ({
   to: `if (typeof self !== "string" || self === ${JSON.stringify(worker)}) return [];`,
 });
 
-/** Each control: what it changes, and the steps it must redden, and only those. */
-const CONTROLS: Record<string, { patches?: ModulePatch[]; model?: string; steps: string[] }> = {
+/**
+ * Each control: what it changes, the steps it must redden, and any step it may
+ * redden besides, with the reason in a comment. Any other red step is a leak.
+ */
+const CONTROLS: Record<string, { patches?: ModulePatch[]; model?: string; steps: string[]; mayAlso?: string[] }> = {
   // No model answers: lead's conversation holds only your own lines.
   "no-model": { model: "openai/no-such-model-goal-control", steps: ["1", "2", "3", "5"] },
   // lead can't message: no card, no line in researcher's conversation, no row, and so no reply.
-  "no-lead-send": { patches: [dropSendFor(fixture.lead)], steps: ["2", "3"] },
+  // Step 5 may go red too: with no way to message, lead files its research ask as a task instead,
+  // and after the pick it has filed none again (seen in 2 of 2 runs). That is the model, not a leak.
+  "no-lead-send": { patches: [dropSendFor(fixture.lead)], steps: ["2", "3"], mayAlso: ["5"] },
   // researcher hears lead but can't answer it.
   "no-reply-tool": { patches: [dropSendFor(fixture.researcher)], steps: ["3"] },
   // The pick answers as kept but is never stored, so the task filed again still has no project.
@@ -340,6 +345,7 @@ await runGoal(async (failures, tell_) => {
     await open(page, researcher);
     const heard = await conversation(page)
       .getByRole("region", { name: `From ${lead}` })
+      .first()
       .waitFor({ timeout: 30_000 })
       .then(() => true, () => false);
     if (!heard) fail("2", `researcher's conversation shows no line "From ${lead}"`);
@@ -380,15 +386,18 @@ await runGoal(async (failures, tell_) => {
     const before = diskOf(checkout);
     await tell(page, lead, fixture.fix);
     const tasks = conversation(page).locator("[data-entry=task]");
-    const asking = await readUntil(page, (es) => es.some((e) => e.kind === "task" && e.status === "needs a project"), fixture.answerWithinMs);
+    // Only the cards lead files from here on are this step's.
+    const earlier = (await entriesOf(page)).filter((e) => e.kind === "task").length;
+    const cardsNow = (es: Drawn[]) => es.filter((e) => e.kind === "task").slice(earlier);
+    const asking = await readUntil(page, (es) => cardsNow(es).some((e) => e.status === "needs a project"), fixture.answerWithinMs);
     if (!asking.ok) {
-      fail("5", `no task card for ${coder} asking for a project within ${fixture.answerWithinMs / 1000}s (${asking.entries.filter((e) => e.kind === "task").map((e) => e.status).join(", ") || "no task card"})`);
+      fail("5", `no task card for ${coder} asking for a project within ${fixture.answerWithinMs / 1000}s (${cardsNow(asking.entries).map((e) => e.status).join(", ") || "no task card"})`);
     } else {
-      const prompt = tasks.first().getByRole("group", { name: "Pick a project" });
+      const prompt = tasks.nth(earlier).getByRole("group", { name: "Pick a project" });
       if ((await prompt.count()) === 0) fail("5", "the refused task's card shows no project picker");
       await sleep(fixture.unpickedMs);
       const waited = await entriesOf(page);
-      const running = waited.filter((e) => e.kind === "task" && e.status?.startsWith("running"));
+      const running = cardsNow(waited).filter((e) => e.status?.startsWith("running"));
       if (running.length > 0) fail("5", `with no pick, a run started: ${running.map((e) => e.status).join(", ")}`);
       const still = diskOf(checkout);
       if (JSON.stringify(still) !== JSON.stringify(before)) fail("5", "with no pick, something changed in the checkout");
@@ -402,13 +411,13 @@ await runGoal(async (failures, tell_) => {
       const ended = await readUntil(
         page,
         (es) => {
-          const filed = es.filter((e) => e.kind === "task");
+          const filed = cardsNow(es);
           const last = filed[filed.length - 1];
           return filed.length >= 2 && last!.status !== undefined && /^(done in|failed|refused)/.test(last!.status);
         },
         fixture.runWithinMs,
       );
-      const filed = tell_.over("5 · task cards in lead's conversation", ended.entries.filter((e) => e.kind === "task"));
+      const filed = tell_.over("5 · task cards lead filed in this step", cardsNow(ended.entries));
       if (userAt(ended.entries, PICKED_LINE) < 0) fail("5", "your pick was not said to lead as your line");
       const rerun = filed.length >= 2 ? filed[filed.length - 1]! : undefined;
       if (rerun === undefined) fail("5", "lead never filed the task again after the pick");
@@ -472,7 +481,7 @@ await runGoal(async (failures, tell_) => {
       if (!steps.has(step)) failures.push(`[control] GOAL_CONTROL=${CONTROL} left step ${step} green, so that step cannot fail`);
     }
     for (const step of steps) {
-      if (!control.steps.includes(step) && step !== "control") failures.push(`[control] GOAL_CONTROL=${CONTROL} also reddened step ${step}`);
+      if (!control.steps.includes(step) && !(control.mayAlso ?? []).includes(step) && step !== "control") failures.push(`[control] GOAL_CONTROL=${CONTROL} also reddened step ${step}`);
     }
   }
   return { failures, evidence: evidence.join("; ") };

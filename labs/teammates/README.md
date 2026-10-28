@@ -84,9 +84,11 @@ Not wired yet:
   then the screen draws no divider.
 - **A worker's project, read from its conversation.** The package keeps it on the conversation as
   `workProjectId`, but doesn't show that state to a client, so the screen reads the last
-  `setWorkProject` answer instead. A pick made anywhere else isn't seen.
+  `setWorkProject` answer instead. A pick made anywhere else isn't seen (FIX-2280).
 - **Which harness coder runs on.** The roster doesn't carry a worker's settings, so the screen names
-  the harness from the run's own steps once it starts.
+  the harness from the run's own steps once it starts (FIX-2281).
+- **A task whose input has an `issue` field** is refused by the coding run as half a feature payload
+  (FIX-2282). lead's `WORKER.md` tells it to leave `input` empty, which only lowers the odds.
 
 ## What this app adds
 
@@ -96,7 +98,7 @@ and on a flow over 200 lines; `--wired` also fails on any fixture.
 <!-- inventory:start -->
 | Kind | Files | Lines |
 |---|---:|---:|
-| Configuration | 16 | 508 |
+| Configuration | 16 | 512 |
 | React UI | 18 | 1535 |
 | Small flows | 1 | 148 |
 | Checks (not app code) | 4 | 713 |

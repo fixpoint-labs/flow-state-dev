@@ -14,12 +14,18 @@
 **Run:** `pnpm tsx goals/teammates-lab/a-worker-talks-to-another-while-you-talk/run.mts` (needs `AI_GATEWAY_API_KEY`, and Claude Code signed in or `ANTHROPIC_API_KEY`)
 **Controls:** each on the same command, failing the steps named and no other:
 - `GOAL_CONTROL=no-model`: the workers answer on a model that doesn't exist. Steps 1, 2, 3 and 5 FAIL.
-- `GOAL_CONTROL=no-lead-send`: lead's `sendMessage` is dropped from its tools (a scratch patch to `message-tool.ts`). Steps 2 and 3 FAIL.
+- `GOAL_CONTROL=no-lead-send`: lead's `sendMessage` is dropped from its tools (a scratch patch to `message-tool.ts`). Steps 2 and 3 FAIL. Step 5 may fail too: with no way to message, lead files its research ask as a task for coder, and after the pick it filed nothing again (2 of 2 runs).
 - `GOAL_CONTROL=no-reply-tool`: researcher's `sendMessage` is dropped. Step 3 FAILS.
 - `GOAL_CONTROL=pick-not-kept`: the pick answers as kept but `setWorkProject` stores nothing (a scratch patch to `work-project.ts`), so the task filed again still has no project and the README never changes. Step 5 FAILS.
 
-Steps 2 and 3 have no isolating red state for lead's side: without lead's message there is nothing to reply to, so `no-lead-send` reddens both.
+Steps 2 and 3 have no isolating red state for lead's side: without lead's message there is nothing to reply to, so `no-lead-send` reddens both. Under `no-model` the screen doesn't show your own lines either until a reload: a turn that fails shows nothing live.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-10-28 | 42fdeb2+ | openai/gpt-5.4-mini, Claude Code | PASS | Steps 1, 2, 3, 5 pass; step 4 not run (FIX-1613). Typo "servce"; date 11 February |
+| 2026-10-28 | 42fdeb2+ | openai/gpt-5.4-mini, Claude Code | PASS | Again after scoping step 5 to its own cards. Typo "mesage"; date 26 February; one worktree, README.md only |
+| 2026-10-28 | 42fdeb2+ | openai/gpt-5.4-mini | FAIL (expected) | `no-reply-tool`: only [3] "no reply From researcher within 240s" |
+| 2026-10-28 | 42fdeb2+ | openai/gpt-5.4-mini | FAIL (expected) | `pick-not-kept`: only [5] "the task filed again ended refused · no project", "0 worktree(s) carry a commit" |
+| 2026-10-28 | 42fdeb2+ | openai/gpt-5.4-mini | FAIL (expected) | `no-lead-send`: [2] no card, no Talk group, no log row, no line in researcher's conversation; [3] no reply; [5] lead never filed again after the pick (the run then also flagged 5 as a leak; 5 is now `mayAlso`) |
+| 2026-10-28 | 42fdeb2+ | openai/no-such-model-goal-control | FAIL (expected) | `no-model`: [1] no answer (and CAN'T TELL on 1, nothing drawn), [2], [3], [5] all red |
