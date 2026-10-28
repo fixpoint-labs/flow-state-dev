@@ -1,9 +1,23 @@
-/** Host flow for the harness-manager goal checks. The conductor lab used to supply it. */
+/**
+ * Host flow for the harness-manager goal checks. The conductor lab used to supply it.
+ *
+ * Only what `answered-run-continues-its-session` calls: `seed`, `status`, and the
+ * board's `updateTask` action, which answers the question a run's task is held on.
+ * Not a conductor replacement: no tenant gate, no `wake`, no session door, and
+ * `seed` does not interrogate a row it finds at its id. A third goal that needs
+ * any of those should say so here rather than copy this host as if it had them.
+ */
 import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 import { z } from "zod";
-import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
-import { taskBoard } from "@flow-state-dev/orchestration/task-board";
+import {
+  defineTaskCollection,
+  getOrCreateTaskCollection,
+  openRowHolds,
+  resolveResourceCollection,
+} from "@flow-state-dev/orchestration/tasks";
+import { taskBoard, taskToolActions, taskToolSuffix } from "@flow-state-dev/orchestration/task-board";
+import { taskSettledEntry } from "@flow-state-dev/orchestration";
 import {
   assertBaseRefExists,
   assertCheckoutRootUsable,
@@ -12,12 +26,6 @@ import {
   harnessDrainBudgetMs,
   harnessManager,
   harnessTaskInputSchema,
-  answerQuestion,
-  INBOX,
-  inboxCollection,
-  listQuestions,
-  parseQuestionTopic,
-  readQuestion,
   readRunRow,
   resolveOwnership,
   runRecordCollection,
@@ -29,6 +37,7 @@ import {
 } from "@flow-state-dev/harness-manager";
 import {
   assertSafeSegment,
+  canonicalSegment,
   harnessTaskId,
   joinIdentity,
 } from "@flow-state-dev/harness-manager/checkout";
@@ -36,6 +45,7 @@ import { isAbsolute } from "node:path";
 
 const ASSIGNEE = "harness" as const;
 
+/** The flow kind; `createFlowState` registers the host under it. */
 export const HARNESS_GOAL_FLOW_KIND = "harness-goal" as const;
 
 export interface HarnessGoalFlowOptions {
@@ -45,18 +55,21 @@ export interface HarnessGoalFlowOptions {
   maxAttempts?: number;
   runTimeoutMs?: number;
   phase: PhaseSpec;
+  /** `claudeCodeAgent`'s options, minus the feeds the manager's slot supplies and the two this host fixes. */
   agent?: Omit<
     Parameters<typeof claudeCodeAgent>[0],
-    "detached" | "recordWork" | "cwd" | "resume" | "onSession"
+    "detached" | "recordWork" | "cwd" | "resume" | "onSession" | "onUsage"
   >;
 }
 
+/** A positive whole number from the environment, or `fallback` when unset. */
 export function positiveIntFromEnv(name: string, fallback: number): number {
   const raw = process.env[name];
   if (raw === undefined || raw === "") return fallback;
   return assertPositiveInt(name, Number(raw));
 }
 
+/** The repository checkouts are cut from: `GOAL_HARNESS_REPO`, then the retired `GOAL_CONDUCTOR_REPO`. */
 export function requireSourceRepo(): string {
   const repo = process.env.GOAL_HARNESS_REPO || process.env.GOAL_CONDUCTOR_REPO;
   if (repo === undefined || repo === "") {
@@ -70,6 +83,18 @@ export function requireSourceRepo(): string {
   return repo;
 }
 
+/** A row whose id is the one its own `{ issue, phase }` derives; any other has no run of its own to report. */
+function rowOwnsItsIdentity(task: { id: string; input?: unknown }): boolean {
+  const found = harnessTaskInputSchema.safeParse(task.input);
+  if (!found.success) return false;
+  try {
+    return harnessTaskId(found.data.issue, found.data.phase) === task.id;
+  } catch {
+    return false;
+  }
+}
+
+/** Build the host one goal check drives: the flow, the `updateTask` action's name, and the drain budget. */
 export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
   const {
     epic,
@@ -116,12 +141,12 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
     phase,
     workspace,
     runTimeoutMs,
-    harness: ({ cwd, resume, onSession }) =>
+    // The feeds are spread, so a feed the manager adds (onUsage was the last)
+    // reaches the harness without an edit here.
+    harness: (feeds) =>
       claudeCodeAgent({
         ...(agent ?? {}),
-        cwd,
-        resume,
-        onSession,
+        ...feeds,
         detached: true,
         recordWork: true,
       }),
@@ -130,16 +155,28 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
   const board = taskBoard({
     name: boardId,
     boardId,
+    mode: "delegation",
     collection: tasks,
     concurrency: 1,
     workers: {
       [ASSIGNEE]: dispatcher({
         name: `${boardId}-hand-off`,
         action: ASSIGNEE,
-        session: "per-task",
+        // A task whose run already has a session goes on in it, so the turn an
+        // answer owes runs where the asking turn did. A first run gets its own child.
+        session: {
+          by: async (task, ctx) => {
+            const collection = resolveResourceCollection(ctx, collectionId);
+            const row =
+              collection === undefined
+                ? undefined
+                : (await getOrCreateTaskCollection({ ctx, backing: "resource", collectionId, collection })).get(task.taskId);
+            const existing = row?.run?.sessionId;
+            return existing !== undefined ? { id: existing } : { key: `task|${boardId}|${task.taskId}` };
+          },
+        },
       }),
     },
-    onReview: "exit",
   });
 
   const seedTask = handler({
@@ -176,19 +213,19 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
           attempts: z.number(),
           feedback: z.string().nullable(),
           run: runRecordStateSchema.nullable(),
+          /** The open questions the task is held on; `question` is what `updateTask` takes. */
           questions: z.array(
             z.object({
               question: z.string(),
               text: z.string(),
-              attempt: z.number(),
-              askedAt: z.number().nullable(),
+              askedAt: z.number(),
             }),
           ),
         }),
       ),
     }),
     uses: [board.capability],
-    resources: { [RUNS]: runRecordCollection, [INBOX]: inboxCollection },
+    resources: { [RUNS]: runRecordCollection },
     execute: async (input, ctx) => {
       const tasksOnBoard = await ctx.cap[boardId].listTasks();
       const rows = [];
@@ -196,23 +233,17 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
         const payload = harnessTaskInputSchema.safeParse(task.input);
         const issue = payload.success ? payload.data.issue : null;
         const phaseName = payload.success ? payload.data.phase : null;
-        if (input.issue !== undefined && issue !== input.issue) continue;
+        // Canonical on both sides: seeding `FIX-1` and `fix-1` resolve one row.
+        if (
+          input.issue !== undefined &&
+          (issue === null || canonicalSegment(issue) !== canonicalSegment(input.issue))
+        ) {
+          continue;
+        }
         const record =
-          issue !== null && phaseName !== null
+          issue !== null && phaseName !== null && rowOwnsItsIdentity(task)
             ? await readRunRow(ctx, runTopic(collectionId, issue, phaseName))
             : undefined;
-        const questions = [];
-        if (issue !== null && phaseName !== null) {
-          for (const row of await listQuestions(ctx as never, issue, phaseName)) {
-            if (row.state.status !== "open") continue;
-            questions.push({
-              question: row.topic,
-              text: row.state.question,
-              attempt: row.attempt,
-              askedAt: row.state.askedAt,
-            });
-          }
-        }
         rows.push({
           taskId: task.id,
           issue,
@@ -221,54 +252,23 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
           attempts: task.attempts,
           feedback: task.feedback ?? null,
           run: record ?? null,
-          questions,
+          questions: openRowHolds(task).map((hold) => ({
+            question: hold.id,
+            text: hold.ask.prompt,
+            askedAt: hold.openedAt,
+          })),
         });
       }
       return { rows };
     },
   });
 
-  const answerInputSchema = z.object({
-    question: z.string(),
-    answer: z.string(),
-  });
-  const answerOutputSchema = z.object({
-    result: z.enum(["answered", "declined"]),
-    reason: z.string().nullable(),
-    question: z.string(),
-    drained: z.boolean(),
-  });
-
-  const answerQuestionStep = handler({
-    name: "harness-goal-answer",
-    inputSchema: answerInputSchema,
-    outputSchema: answerOutputSchema,
-    uses: [board.capability],
-    resources: { [INBOX]: inboxCollection },
-    execute: async (input, ctx) => {
-      const coordinates = parseQuestionTopic(input.question);
-      if (coordinates === undefined) {
-        return { result: "declined" as const, reason: "malformed-question", question: input.question, drained: false };
-      }
-      const row = await readQuestion(ctx as never, input.question);
-      if (row === undefined || row.status !== "open") {
-        return { result: "declined" as const, reason: "question-not-open", question: input.question, drained: false };
-      }
-      const taskId = harnessTaskId(coordinates.issue, coordinates.phase);
-      const task = await ctx.cap[boardId].getTask(taskId);
-      if (task?.status !== "parked") {
-        return { result: "declined" as const, reason: "task-not-parked", question: input.question, drained: false };
-      }
-      const write = await answerQuestion(ctx as never, input.question, input.answer);
-      if (write.outcome === "refused") {
-        return { result: "declined" as const, reason: "answer-lost-race", question: input.question, drained: false };
-      }
-      await ctx.cap[boardId].unpark(taskId);
-      return { result: "answered" as const, reason: null, question: input.question, drained: true };
-    },
-  });
-
-  const door = manager.messageDoor({ drain: "resume" });
+  // The board's `updateTask` action, followed by a drain when it succeeds: an
+  // answer owes the held task one more turn, and the drain that handed it out
+  // has already exited around the held row.
+  const updateTaskAction = `updateTask_${taskToolSuffix(collectionId)}`;
+  const updateTaskEntry = taskToolActions(board)[updateTaskAction]!;
+  const updateTaskBlock = updateTaskEntry.block as unknown as { inputSchema: z.ZodTypeAny };
 
   const defineHost = defineFlow({
     kind: HARNESS_GOAL_FLOW_KIND,
@@ -276,7 +276,16 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
     task: { actions: { [ASSIGNEE]: { block: manager } } },
     internal: {
       actions: {
-        resume: { block: board.drain },
+        // A board that hands rows out sends each ending here; `status` reads the
+        // settled row from the board, so the notice carries nothing it needs.
+        onTaskSettled: taskSettledEntry({
+          block: handler({
+            name: "harness-goal-task-settled",
+            inputSchema: z.unknown(),
+            outputSchema: z.object({}),
+            execute: () => ({}),
+          }),
+        }),
       },
     },
     actions: {
@@ -291,16 +300,12 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
           .tap(board.drain),
       },
       status: { block: readStatus },
-      answer: {
-        block: sequencer({
-          name: "harness-goal-answer-question",
-          inputSchema: answerInputSchema,
-          outputSchema: answerOutputSchema,
-        })
-          .step(answerQuestionStep)
-          .tapIf((outcome: z.infer<typeof answerOutputSchema>) => outcome.drained, board.drain),
+      [updateTaskAction]: {
+        ...updateTaskEntry,
+        block: sequencer({ name: "harness-goal-update-task", inputSchema: updateTaskBlock.inputSchema })
+          .step(updateTaskEntry.block as never)
+          .tapIf((outcome: { ok?: unknown }) => outcome?.ok === true, board.drain),
       },
-      message: door,
     },
   });
 
@@ -314,5 +319,5 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
     }).ownership.waitMs,
   });
 
-  return { flow, collectionId, drainBudgetMs };
+  return { flow, collectionId, updateTaskAction, drainBudgetMs };
 }
