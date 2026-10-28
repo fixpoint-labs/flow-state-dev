@@ -243,7 +243,7 @@ Your message msg_3f1c0a9e2b7d4c6a8e10 to chief-of-staff wasn't delivered: <reaso
 
 Its next turn reads the line in its history. No turn is started for it.
 
-**Resends need a host that keeps wakes.** The resend runs on the sending session's [wake](../advanced/durable-execution.md#wakes), so it needs a durable host. On a host without wakes, an owed message is sent again only when that session's board runs for something else. A worker flow without the session kit's entries, `board.entries(turn)`, sends a message once and never again.
+**Resends need a host that keeps wakes.** The resend runs on the sending session's [wake](../advanced/durable-execution.md#wakes), so it needs a durable host. On a host without wakes, an owed message is sent again only when that session's board runs for something else. A worker flow that offers `sendMessage` needs the session kit's entries, `board.entries(turn)`, which carry those resends. `hireWorkforce` refuses one without them, naming the flow. A flow that sends from its own code without the kit sends a message once and never again.
 
 ## The budget
 

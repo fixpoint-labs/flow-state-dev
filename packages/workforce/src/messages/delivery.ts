@@ -29,12 +29,13 @@
  *   told by the tool's answer instead.
  */
 import { withOutcome } from "@flow-state-dev/core/helpers";
+import { getBaseCapability, type CapabilityRef } from "@flow-state-dev/core";
 import { dispatchThroughSeam, type BlockContext, type DispatchOutcome, type DispatchRefusal, type ResourceRef } from "@flow-state-dev/core/types";
 import { decideTake, hasEnded, nextResendAt, NOTICE_DUE_MS } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { DISPATCH_ENTRY } from "../conversation-board/board-entries";
 import type { WorkerInstallation } from "../workers/installation";
-import { MESSAGE_RECEIVED_ENTRY, WORKER_MESSAGES_OWED_STATE } from "./keys";
+import { MESSAGE_RECEIVED_ENTRY, SEND_MESSAGE_TOOL, SENDS_MESSAGES_MARK, WORKER_MESSAGES_OWED_STATE } from "./keys";
 import { messageLogOf, type WorkerMessageRow } from "./message-log";
 
 /** The host's debt age when it keeps no wakes to say one: a day. */
@@ -66,8 +67,56 @@ function owedOf(state: unknown): OwedMessage[] {
 
 /** Whether `flowKind`'s flow carries the board's pass, which sends an owed message again. */
 export function carriesPass(installation: WorkerInstallation, flowKind: string): boolean {
-  const flow = installation.workerFlows()[flowKind]?.flow as { internal?: { actions?: Record<string, unknown> } } | undefined;
-  return flow?.internal?.actions?.[DISPATCH_ENTRY] !== undefined;
+  return flowCarriesPass(installation.workerFlows()[flowKind]?.flow);
+}
+
+/** Whether `flow` carries the board's pass: its internal `dispatch`. */
+function flowCarriesPass(flow: unknown): boolean {
+  return (flow as { internal?: { actions?: Record<string, unknown> } } | undefined)?.internal?.actions?.[DISPATCH_ENTRY] !== undefined;
+}
+
+type WalkedBlock = { childBlocks?: readonly unknown[]; staticTools?: readonly unknown[]; config?: { __resolvedCapabilities?: readonly CapabilityRef[] } };
+
+/**
+ * Whether a block reachable from `flow`'s entries uses the capability that
+ * offers `sendMessage`: through composition or a generator's static tools,
+ * read off each block's static `uses`. A capability a dynamic `uses` resolver
+ * returns is known only at request time, and isn't seen.
+ */
+function offersSendMessage(flow: unknown): boolean {
+  const sections = flow as { actions?: Record<string, unknown>; internal?: { actions?: Record<string, unknown> }; task?: { actions?: Record<string, unknown> } };
+  const queue = [sections.actions, sections.internal?.actions, sections.task?.actions].flatMap((entries) =>
+    Object.values(entries ?? {}).map((entry) => (entry as { block?: unknown } | undefined)?.block)
+  );
+  const seen = new Set<unknown>();
+  while (queue.length > 0) {
+    const block = queue.pop() as WalkedBlock | undefined;
+    if (block == null || seen.has(block)) continue;
+    seen.add(block);
+    for (const ref of block.config?.__resolvedCapabilities ?? []) {
+      if ((getBaseCapability(ref) as unknown as Record<symbol, unknown>)[SENDS_MESSAGES_MARK] === true) return true;
+    }
+    queue.push(...(block.childBlocks ?? []), ...(block.staticTools ?? []));
+  }
+  return false;
+}
+
+/**
+ * Why `name`'s flow can't keep the messages its model sends, or `undefined`
+ * when it can: it offers `sendMessage` and carries no pass, so a message
+ * whose own dispatch fails is never sent again (FIX-2271). A flow that sends
+ * from server code without the tool (a coder's midway question) needs none.
+ * The hire's check, beside `messageReceivedProblem`.
+ *
+ * @param name The worker flow's name, for the sentence.
+ * @param flow The worker flow's definition.
+ */
+export function sendWithoutPassProblem(name: string, flow: unknown): string | undefined {
+  if (flowCarriesPass(flow) || !offersSendMessage(flow)) return undefined;
+  return (
+    `worker flow "${name}" offers "${SEND_MESSAGE_TOOL}" but has no "${DISPATCH_ENTRY}" pass, so a message whose own dispatch ` +
+    "fails would never be sent again. Spread the session kit's `board.entries(turn)` into `internal.actions`, and declare the `manager` role."
+  );
 }
 
 /**
