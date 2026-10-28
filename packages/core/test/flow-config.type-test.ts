@@ -8,8 +8,6 @@
  * - **Reading** is typed from the BLOCK's own `flowConfigSchema`, with no
  *   annotation and no flow named — so the block stays portable and its type
  *   has an actual check behind it.
- *
- * `pnpm typecheck` compiles this file with the package's other `test/` files.
  */
 import { z } from "zod";
 import { defineFlow } from "../src/flow/defineFlow";

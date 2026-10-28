@@ -1,8 +1,6 @@
 /**
  * Type-level tests pinning the public `BlockContext` boundary (FIX-999).
  *
- * `pnpm typecheck` compiles this file with the package's other `test/` files.
- *
  * What they pin down, and why it is worth a file:
  *
  * 1. **`stores` is absent, and `flow` admits exactly one member.** The whole

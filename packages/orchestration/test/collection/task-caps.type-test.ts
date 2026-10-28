@@ -2,8 +2,6 @@
  * Type-level tests for the task collection factory's options: the creation caps
  * (FIX-931) and the backing discriminant (FIX-960).
  *
- * `pnpm typecheck` compiles this file with the package's other `test/` files.
- *
  * What they pin down:
  *
  * - The caps are accepted exactly where they are ENFORCED.

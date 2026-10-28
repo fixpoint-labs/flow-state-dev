@@ -7,8 +7,6 @@
  * state ref (each has `.input`), not request state. If any of them is added to
  * `TaskPartitionContext`, a `@ts-expect-error` below reports "unused" and
  * typecheck fails. The runtime half is `test/collection/partitioned-ledger.test.ts`.
- *
- * `pnpm typecheck` compiles this file with the package's other `test/` files.
  */
 import type { TaskPartitionContext, TaskPartitionFn } from "../../src/tasks/collection/partition";
 
