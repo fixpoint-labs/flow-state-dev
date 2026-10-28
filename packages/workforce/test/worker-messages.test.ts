@@ -337,6 +337,34 @@ describe("a message sent from a task's turn", () => {
       await h.dispose();
     }
   });
+
+  // An answer reopens the exchange in a finished task's session, so a user's
+  // line there is one a user typed: it starts a fresh budget, as anywhere else.
+  it("starts a fresh budget at a user's line in a finished task's session", async () => {
+    const agentAnswer = mockGenerator({
+      script: [
+        ...callOnce("Ask helper-a for its favourite colour", "sendMessage", { to: "helper-a", text: "What is your favourite colour?" }, "Asked."),
+        fallback
+      ]
+    });
+    const h = boot({ standard: teamWorkers(), agentAnswer });
+    try {
+      const chief = await h.conversation("alice", "chief");
+      await h.act("alice", chief, "createTask_tasks", { goal: "Ask helper-a for its favourite colour", assignee: "otto" });
+      await h.settled();
+      expect((await h.rows("alice"))[0]!.status).toBe("completed");
+      const taskSession = (await logRows(h, "alice")).find((row) => row.from === "otto")!.fromSession;
+      const before = (await h.session(taskSession)).state;
+
+      await h.post("alice", taskSession, "respond", { message: "Thanks, anything else?" }, "agent");
+      await h.settled();
+      const after = (await h.session(taskSession)).state;
+      expect(after.workforceUserLines, "the user's line counted").toBe(((before.workforceUserLines as number | undefined) ?? 0) + 1);
+      expect(after.workforceMessageChain, "a chain of its own").not.toBe(before.workforceMessageChain);
+    } finally {
+      await h.dispose();
+    }
+  });
 });
 
 /**
@@ -742,6 +770,41 @@ describe("the hop count through a delegation", () => {
       const mark = held!.metadata?.[FILED_HOP] as { hop: number; chain: string | null };
       expect(mark.hop).toBe(0);
       expect(fromTask.chain, "the chain the filing recorded").toBe(mark.chain);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  // A task held by `updateTask` before it starts is held from its filing too
+  // (FIX-2238): released, it starts afresh, as one filed held does.
+  it("starts a task held before its first start afresh when it is released", async () => {
+    const h = boot({
+      standard: teamWorkers({ unassignedWaits: true }),
+      agentAnswer: mockGenerator({ script: relayThroughTask({}, { unassigned: true }) })
+    });
+    try {
+      const alice = h.client("alice");
+      const otto = await alice.ensureWorkerSession({ worker: "otto" });
+      await h.post("alice", otto.id, "respond", { message: "Please ask helper-a" }, "agent");
+      await h.settled();
+      const [filed] = await h.rows("alice");
+      expect(filed!.metadata?.[FILED_HOP]).toMatchObject({ hop: 1 });
+
+      const helperA = await alice.ensureWorkerSession({ worker: "helper-a" });
+      const held = await h.act("alice", helperA.id, "updateTask_tasks", { id: filed!.id, status: "held" }, "agent");
+      expect(held.error, messageOf(held.error)).toBeUndefined();
+      expect((await h.rows("alice"))[0]!.status).toBe("held");
+      const assigned = await h.act("alice", helperA.id, "updateTask_tasks", { id: filed!.id, assignee: "helper-b" }, "agent");
+      expect(assigned.error, messageOf(assigned.error)).toBeUndefined();
+      const released = await h.act("alice", helperA.id, "updateTask_tasks", { id: filed!.id, status: "pending" }, "agent");
+      expect(released.error, messageOf(released.error)).toBeUndefined();
+      await h.settled();
+
+      expect((await h.rows("alice")).map((row) => row.status)).toEqual(["completed"]);
+      const rows = await logRows(h, "alice");
+      expect(rows.map((row) => `${row.from}>${row.to}@${row.hop}`).sort()).toEqual(["helper-b>otto@1", "otto>helper-a@1"]);
+      const first = rows.find((row) => row.from === "otto")!;
+      expect(rows.find((row) => row.from === "helper-b")!.chain, "a fresh chain, not the filing's").not.toBe(first.chain);
     } finally {
       await h.dispose();
     }
