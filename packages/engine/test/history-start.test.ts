@@ -149,6 +149,19 @@ describe("history({ afterRequestId })", () => {
     expect(messages.map(textOf)).toEqual(["turn 4", "turn 5"]);
   });
 
+  it("starts after the named turn when that turn has not settled", async () => {
+    const stores = createInMemoryStores();
+    await seedTurns(stores, "sess_open_mark", 5);
+    await stores.request.set("req_2", turn("sess_open_mark", 2, { status: "suspended", completedAtMs: undefined }), "any");
+
+    const ctx = await contextFor(stores, "sess_open_mark", 8);
+
+    // A summary moved its mark past the waiting turn: turn 1 is in it, and
+    // must not be read again.
+    const messages = await ctx.session.items.history({ afterRequestId: "req_2" });
+    expect(messages.map(textOf)).toEqual(["turn 3", "turn 4", "turn 5"]);
+  });
+
   it("leaves the history whole when the named turn is older than the window", async () => {
     const stores = createInMemoryStores();
     await seedTurns(stores, "sess_old", 5);
