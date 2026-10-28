@@ -10,7 +10,7 @@ const approve = handler({
   inputSchema: z.object({ message: z.string() }),
   outputSchema: z.object({ reply: z.string() }),
   execute: async (input, ctx) => {
-    await ctx.suspend!({ reason: "human_approval", message: `Send "${input.message}"?` });
+    await ctx.suspend!({ reason: "user_approval", message: `Send "${input.message}"?` });
     return { reply: `sent: ${input.message}` };
   },
 });

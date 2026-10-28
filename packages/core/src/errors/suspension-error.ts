@@ -43,8 +43,8 @@ export interface SuspendOptions {
   render?: { component: string; props?: Record<string, unknown> };
   /**
    * Which resolution actions this suspension permits. Omit to take the default
-   * for the `reason`: `human_input` → `["submit"]`; everything else (including
-   * `human_approval`) → `["approve", "reject"]`. Add `"skip"` to make the step
+   * for the `reason`: `user_input` → `["submit"]`; everything else (including
+   * `user_approval`) → `["approve", "reject"]`. Add `"skip"` to make the step
    * optional — a skipped resume returns the `SUSPENSION_SKIPPED` sentinel from
    * `ctx.suspend()` instead of aborting. The resume route enforces this set.
    */
@@ -67,7 +67,7 @@ export function resolveAllowedActions(
   allow: ResumeAction[] | undefined
 ): ResumeAction[] {
   if (allow !== undefined) return allow;
-  return reason === "human_input" ? ["submit"] : ["approve", "reject"];
+  return reason === "user_input" ? ["submit"] : ["approve", "reject"];
 }
 
 /**

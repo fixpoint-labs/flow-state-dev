@@ -172,7 +172,7 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
     outputSchema: z.object({ approved: z.boolean() }),
     execute: async (input, ctx) => {
       try {
-        await ctx.suspend!({ reason: "human_approval", message: `Approve: ${input.what}` });
+        await ctx.suspend!({ reason: "user_approval", message: `Approve: ${input.what}` });
         return { approved: true };
       } catch (error) {
         if (error instanceof SuspensionRejectedError) return { approved: false };

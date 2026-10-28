@@ -1,7 +1,7 @@
 /**
  * Built-in default card for a flat-form suspension (FIX-849).
  *
- * Chosen by `ItemRenderer` for a `human_input` suspension whose `resumeSchema` is
+ * Chosen by `ItemRenderer` for a `user_input` suspension whose `resumeSchema` is
  * a flat object of scalars and enums. Renders one control per property (text /
  * number / checkbox / select), validates via `useSuspensionForm`, and submits the
  * collected object. A single flat object can mix a free-text field, a selection,

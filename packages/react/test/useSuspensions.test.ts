@@ -33,7 +33,7 @@ function suspension(overrides: Partial<SuspensionItem> = {}): SuspensionItem {
     provenance,
     ts: 0,
     suspensionId: "sus_1",
-    reason: "human_approval",
+    reason: "user_approval",
     message: "Approve this draft?",
     ...overrides
   } as SuspensionItem;
@@ -110,14 +110,14 @@ describe("deriveSuspensions", () => {
 
   it("filters by reasons", () => {
     const items = [
-      suspension({ id: "a", suspensionId: "sus_a", reason: "human_approval" }),
-      suspension({ id: "b", suspensionId: "sus_b", reason: "human_input" })
+      suspension({ id: "a", suspensionId: "sus_a", reason: "user_approval" }),
+      suspension({ id: "b", suspensionId: "sus_b", reason: "user_input" })
     ];
 
-    const result = deriveSuspensions(items, { reasons: ["human_input"] });
+    const result = deriveSuspensions(items, { reasons: ["user_input"] });
 
     expect(result.suspensions).toHaveLength(1);
-    expect(result.suspensions[0].item.reason).toBe("human_input");
+    expect(result.suspensions[0].item.reason).toBe("user_input");
   });
 
   it("preserves stream order", () => {
@@ -144,7 +144,7 @@ describe("deriveSuspensions", () => {
 
   it("surfaces the suspension's allow set, defaulting to binary for older items (FIX-849)", () => {
     const withAllow = deriveSuspensions([
-      suspension({ reason: "human_input", allow: ["submit", "skip"] })
+      suspension({ reason: "user_input", allow: ["submit", "skip"] })
     ]);
     expect(withAllow.suspensions[0].allow).toEqual(["submit", "skip"]);
 
