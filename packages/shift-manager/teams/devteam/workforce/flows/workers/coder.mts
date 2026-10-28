@@ -9,12 +9,13 @@
  * settles.
  *
  * **The task decides the run, never the board it came from.** A task naming
- * an `issue` and a `phase` is feature work: the implement manager runs it, and
- * it needs a commit. A task naming neither is a user's ask: the answer
- * manager runs it, and it needs an answer (D2). A task naming only one of the
- * two goes to the implement manager, which refuses it inside the run, after
- * the claim, so the task ends `errored` with one notice and never runs as an
- * answer task. Both managers read each run's board from its claim, so one
+ * an `issue` and a `phase` under `HARNESS_FEATURE_KEY` is feature work: the
+ * implement manager runs it, and it needs a commit. A task naming no feature
+ * work is a user's ask: the answer manager runs it, and it needs an answer
+ * (D2), whatever else its `input` holds, a plain `issue` field included. A
+ * task whose key names only one of the two goes to the implement manager,
+ * which refuses it inside the run, after the claim, so the task ends
+ * `errored` with one notice and never runs as an answer task. Both managers read each run's board from its claim, so one
  * coder works any number of sessions' boards at once, each run in a checkout
  * of its own.
  *
@@ -57,7 +58,9 @@ import type { BlockDefinition } from "@flow-state-dev/core/types";
 import {
   harnessManager,
   harnessSessionDoor,
+  harnessFeatureOf,
   harnessTalkTurn,
+  namesHarnessFeature,
   taskIssueSegment,
   type HarnessFeeds,
   type HarnessJudge,
@@ -122,7 +125,7 @@ export interface CoderWorkerFlowOptions {
   answerWorkspace: WorkspaceHost;
   /** The implement phase: how a feature task's prompt is built, and what counts as done. */
   phase: PhaseSpec;
-  /** The answer phase: the same for a task that names no issue and no phase. */
+  /** The answer phase: the same for a task that names no feature work. */
   answerPhase: PhaseSpec;
   /** The judge both managers run on a task. Absent, a task settles on its phase's check alone. */
   judge?: HarnessJudge;
@@ -132,11 +135,6 @@ export interface CoderWorkerFlowOptions {
   runTimeoutMs: number;
   /** The file-declared documents, as `resourcesFromDocs` built them. */
   resources: DeclaredResources;
-}
-
-/** True when a task names feature work's `issue` or `phase`. */
-function namesFeatureWork(input: unknown): boolean {
-  return typeof input === "object" && input !== null && ("issue" in input || "phase" in input);
 }
 
 /**
@@ -154,7 +152,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     ...(options.reviewChanges === true ? { reviewChanges: true } : {}),
   };
 
-  // Feature work: a task that names an issue and a phase.
+  // Feature work: a task that names an issue and a phase under the feature key.
   const implement = harnessManager({
     ledgers: conversationLedgers,
     ...checks,
@@ -167,7 +165,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     ...("provision" in options.workspace ? { uses: [projectWorkspaceCapability] } : {}),
   } as never) as TaskWorker;
 
-  // A user's ask: a task naming neither.
+  // A user's ask: a task naming no feature work.
   const answer = harnessManager({
     name: ANSWER_MANAGER,
     ledgers: conversationLedgers,
@@ -191,16 +189,14 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     name: "coder-by-task",
     inputSchema: taskWorkerInputSchema.passthrough(),
     routes: [implement, answer] as never,
-    execute: (task: { input?: unknown }) => (namesFeatureWork(task.input) ? implement : answer),
+    execute: (task: { input?: unknown }) => (namesHarnessFeature(task.input) ? implement : answer),
   } as never) as BlockDefinition<any, any>;
 
   /** How a task's run is keyed: its task id, in its payload's phase or the answer phase. */
   const runOf = (row: Task) => {
-    const input = row.input as { issue?: unknown; phase?: unknown } | undefined;
-    if (typeof input?.issue === "string" && typeof input.phase === "string") {
-      return { issue: taskIssueSegment(row.id), phase: input.phase };
-    }
-    return namesFeatureWork(input) ? undefined : { issue: taskIssueSegment(row.id), phase: options.answerPhase.phase };
+    const feature = harnessFeatureOf(row.input);
+    if (feature !== undefined) return { issue: taskIssueSegment(row.id), phase: feature.phase };
+    return namesHarnessFeature(row.input) ? undefined : { issue: taskIssueSegment(row.id), phase: options.answerPhase.phase };
   };
 
   // The board this session's run is on: the one of the session its task was

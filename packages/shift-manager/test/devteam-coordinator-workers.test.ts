@@ -50,7 +50,7 @@ function emTurn(): GeneratorModel {
       const said = JSON.stringify(call.messages ?? []);
       const [, issue, goal] = /(report-[a-f0-9]{6}): ([^"\\]+)/.exec(said) ?? [];
       return {
-        toolCalls: [{ toolCallId: "em-1", toolName: "createTask", args: { goal, assignee: "eng.coder", input: { issue, phase: PHASE } } }],
+        toolCalls: [{ toolCallId: "em-1", toolName: "createTask", args: { goal, assignee: "eng.coder", input: { harnessFeature: { issue, phase: PHASE } } } }],
         finishReason: "tool-calls",
       };
     },
@@ -164,7 +164,7 @@ describe("DevTeam's triage coordinator", () => {
     expect(record.data).toMatchObject({ by: "everyone", delegates: [{ worker: "eng.em", outcome: "delivered" }] });
     // The board of the EM session the routed task reached holds the coder's task only the EM files, and
     // its answer lands here under its name.
-    const filed = Object.values(await lab.stored("user", "tasks/")).filter((row: any) => row.input?.issue === issue);
+    const filed = Object.values(await lab.stored("user", "tasks/")).filter((row: any) => row.input?.harnessFeature?.issue === issue);
     expect(filed).toEqual([expect.objectContaining({ goal: "the cart badge is off by one", assignee: "eng.coder" })]);
     const answers = items.filter((item) => item.type === "message" && item.agentName === "eng.em").map(textOf);
     expect(answers).toEqual(["Filed."]);

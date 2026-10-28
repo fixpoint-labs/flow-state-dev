@@ -11,7 +11,7 @@
  */
 import { afterAll, describe, expect, it } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { runTopic } from "../src";
+import { HARNESS_FEATURE_KEY, runTopic } from "../src";
 import { runBoardSegment, taskIssueSegment } from "../src/workspace";
 import { CONVERSATIONS, FIXED_BOARD, PHASE, claimHost, cleanUpHosts, messageOf } from "./claim-host";
 
@@ -69,7 +69,7 @@ describe("a manager reading its board from the claim", () => {
       partition: "conv-a",
       id: "task_minted",
       goal: "the feature",
-      input: { issue: "FIX-1", phase: PHASE },
+      input: { [HARNESS_FEATURE_KEY]: { issue: "FIX-1", phase: PHASE } },
     });
     const { result } = await lab.runAttempt(CONVERSATIONS, "task_minted", "conv-a");
     expect(result.error, messageOf(result.error)).toBeUndefined();
@@ -79,6 +79,20 @@ describe("a manager reading its board from the claim", () => {
     expect((await lab.record(runTopic(segment, "task_minted", PHASE)))?.outcome).toBe("succeeded");
     // Not under the issue: two tasks naming it would share that key.
     expect(await lab.record(runTopic(segment, "FIX-1", PHASE))).toBeNull();
+  }, 60_000);
+
+  // A model filing from a conversation writes its own field names. `issue` here
+  // means "the problem", not a feature: feature work is named only under
+  // `HARNESS_FEATURE_KEY`, so this row runs as the manager's phase like any ask.
+  it("runs a row whose own fields happen to include `issue` as an ask, not as half a feature", async () => {
+    const lab = claimHost({ mode: "claim" });
+    const input = { file: "README.md", location: "line 1", issue: "Typo in first line", requestedChange: "Fix the typo" };
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "task_typo", goal: "fix the README typo", input });
+    const { result } = await lab.runAttempt(CONVERSATIONS, "task_typo", "conv-a");
+    expect(result.error, messageOf(result.error)).toBeUndefined();
+    expect(lab.seen).toHaveLength(1);
+    expect((await lab.row(CONVERSATIONS, "task_typo", "conv-a")).status).toBe("completed");
+    expect((await lab.record(runTopic(runBoardSegment(CONVERSATIONS, "conv-a"), "task_typo", PHASE)))?.outcome).toBe("succeeded");
   }, 60_000);
 
   // The coordinator mints a routed task's id as `routed:<request>:<round>:<delegate>`.
@@ -100,7 +114,7 @@ describe("a manager reading its board from the claim", () => {
   it("keeps two feature rows naming one issue in one conversation apart: checkout, branch and run record", async () => {
     const lab = claimHost({ mode: "claim" });
     for (const id of ["task_first", "task_second"]) {
-      await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id, goal: "the feature", input: { issue: "FIX-1", phase: PHASE } });
+      await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id, goal: "the feature", input: { [HARNESS_FEATURE_KEY]: { issue: "FIX-1", phase: PHASE } } });
       const { result } = await lab.runAttempt(CONVERSATIONS, id, "conv-a");
       expect(result.error, messageOf(result.error)).toBeUndefined();
     }
@@ -114,7 +128,7 @@ describe("a manager reading its board from the claim", () => {
 
   it("still refuses a feature row in another phase than the manager's", async () => {
     const lab = claimHost({ mode: "claim" });
-    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "task_review", goal: "the review", input: { issue: "FIX-1", phase: "review" } });
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "task_review", goal: "the review", input: { [HARNESS_FEATURE_KEY]: { issue: "FIX-1", phase: "review" } } });
     const { result } = await lab.runAttempt(CONVERSATIONS, "task_review", "conv-a");
     expect(lab.seen).toHaveLength(0);
     const row = await lab.row(CONVERSATIONS, "task_review", "conv-a");

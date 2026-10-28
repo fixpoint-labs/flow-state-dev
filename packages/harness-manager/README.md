@@ -154,8 +154,12 @@ runs that board's rows.
 The manager calls `ledgers` on every checked write, not once per run, so keep it cheap. For a
 user's line into such a run, declare [`harnessSessionDoor`](#talking-to-a-run) on the flow.
 
-On such a board, a task that names no `issue` or `phase` runs as the manager's phase, with its
-task id in their place, and a task naming only one of the two is refused. A task naming both is
+On such a board, feature work is named under one key, `HARNESS_FEATURE_KEY` (`"harnessFeature"`):
+`input: { harnessFeature: { issue, phase } }`. The rest of `input` is the filer's own, so a plain
+`issue` or `phase` there means nothing to the manager. A task that names no feature work runs as
+the manager's phase, with its task id in place of the issue, and one whose key names only one of
+the two is refused. `namesHarnessFeature(input)` and `harnessFeatureOf(input)` read the key as
+the manager does, for a flow that routes tasks between managers. A task naming both is
 feature work in that phase, and its run is keyed by its task id, not by the issue: the board
 mints its own task ids, so its id needn't be the one `{ issue, phase }` derives, and two tasks
 naming one issue still get a tree each. A fixed board runs feature rows only, and refuses a

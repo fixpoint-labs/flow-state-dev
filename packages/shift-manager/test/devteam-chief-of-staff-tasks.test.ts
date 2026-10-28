@@ -451,11 +451,23 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
 
   it("refuses a task naming only one of issue and phase after the claim, without running it as an answer", async () => {
     const stub = readsMarker();
-    const { lab } = await openCoderLab(scriptedCoder([fileForCoder("ship it", { project: STOREFRONT, issue: "greeting" })]), stub);
+    const { lab } = await openCoderLab(scriptedCoder([fileForCoder("ship it", { project: STOREFRONT, harnessFeature: { issue: "greeting" } })]), stub);
     const { id, task, taskId } = await fileAndSettle(lab);
     expect(task).toMatchObject({ status: "errored", attempts: 1 });
     expect(stub.runs).toHaveLength(0);
     expect((await coderLines(lab, id, taskId)).map((m) => m.text).join("\n")).toContain("Feature work names both");
+  });
+
+  it("runs a task whose own fields include a plain `issue` as an answer, never as half a feature", async () => {
+    // What a model filing from a conversation wrote: `issue` there means "the problem".
+    // Only `harnessFeature` names feature work, so this goes to the answer manager and runs.
+    const stub = readsMarker();
+    const input = { project: STOREFRONT, file: "README.md", location: "line 1", issue: "Typo in first line", requestedChange: "Fix the typo" };
+    const { lab } = await openCoderLab(scriptedCoder([fileForCoder("fix the README typo", input)]), stub);
+    const { task } = await fileAndSettle(lab);
+    expect(task).toMatchObject({ status: "completed", attempts: 1 });
+    expect(stub.runs).toHaveLength(1);
+    expect(stub.runs[0]!.prompt).not.toMatch(/phase implement/);
   });
 
   it("fails a run that stopped at its limit, and one that ended with no answer", async () => {
@@ -560,12 +572,12 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
   });
 
   it("holds a conversation's feature task to feature work's rules: it runs, and never closes as an answer", async () => {
-    // A task naming an issue and a phase is feature work wherever it was filed: the implement
+    // A task naming an issue and a phase under `harnessFeature` is feature work wherever it was filed: the implement
     // manager runs it under the id its board minted, and it is done only on a commit. This run
     // answers and commits nothing, so the task fails rather than closing as an answer task.
     const stub = readsMarker();
     const { lab } = await openCoderLab(
-      scriptedCoder([fileForCoder("ship the greeting", { project: STOREFRONT, issue: "greeting", phase: "implement" })]),
+      scriptedCoder([fileForCoder("ship the greeting", { project: STOREFRONT, harnessFeature: { issue: "greeting", phase: "implement" } })]),
       stub,
     );
     const { task } = await fileAndSettle(lab);
@@ -586,7 +598,7 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
       },
     });
     const { lab } = await openCoderLab(
-      scriptedCoder([fileForCoder("ship the greeting", { project: STOREFRONT, issue: "greeting", phase: "implement" })]),
+      scriptedCoder([fileForCoder("ship the greeting", { project: STOREFRONT, harnessFeature: { issue: "greeting", phase: "implement" } })]),
       stub,
     );
     const { task } = await fileAndSettle(lab);

@@ -71,7 +71,8 @@ The profile's seed opens two workstreams in
 Storefront, `feature` and `release`, as the lab's second user, each led by the
 EM. A line said in a workstream, or a project coordinator's hand-off to it,
 reaches the EM in that workstream's session, and the EM files the coder's tasks
-on that session's board, each naming its issue and its phase. The hand-off from
+on that session's board, each naming its issue and its phase under
+`harnessFeature`. The hand-off from
 the board to the coder underneath is unchanged.
 
 These are the lab's rather than the framework's, each because the framework has

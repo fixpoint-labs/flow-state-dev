@@ -624,6 +624,31 @@ export const harnessTaskInputSchema = z.object({
 });
 
 /**
+ * The key a task's `input` names feature work under on a board read from the
+ * claim: `{ [HARNESS_FEATURE_KEY]: { issue, phase } }`.
+ *
+ * **Namespaced, because the rest of `input` is the filer's.** A model filing
+ * from a conversation picks its own field names, and `issue` ("the problem")
+ * is one it picks. Read from the plain fields, such a task was refused as half
+ * a feature payload (FIX-2282). Nothing but this key makes a task feature
+ * work there; a fixed board's rows are feature rows by the board, and carry
+ * the payload as {@link harnessTaskInputSchema} at the top of `input`.
+ */
+export const HARNESS_FEATURE_KEY = "harnessFeature";
+
+/** True when a task's `input` names feature work, well formed or not. */
+export function namesHarnessFeature(input: unknown): boolean {
+  return typeof input === "object" && input !== null && HARNESS_FEATURE_KEY in input;
+}
+
+/** The feature work a task's `input` names under {@link HARNESS_FEATURE_KEY}, or `undefined` for none or a malformed one. */
+export function harnessFeatureOf(input: unknown): { issue: string; phase: string } | undefined {
+  if (!namesHarnessFeature(input)) return undefined;
+  const parsed = harnessTaskInputSchema.safeParse((input as Record<string, unknown>)[HARNESS_FEATURE_KEY]);
+  return parsed.success ? parsed.data : undefined;
+}
+
+/**
  * The board a task was claimed on, as the trusted entry adapter hands it to
  * the manager: the gate's verified ticket's ledger id and partition, and its
  * incarnation when the adapter passes it.
@@ -904,40 +929,41 @@ export function describeTenant(tenantId: string | undefined): string {
 
 /**
  * Read the typed payload off the worker input: the `{ issue, phase }` a
- * feature row carries, or `undefined` for a row that names neither (a task a
- * conversation filed), whose task id then stands in for the issue.
+ * feature row carries, or `undefined` for a row that names no feature work (a
+ * task a conversation filed), whose task id then stands in for the issue.
  *
- * A row naming one of the two and not the other, or either as something other
- * than a string, is refused: feature work names both, and such a row is never
- * run as a task that names neither. A refusal, not a failed attempt, because
- * a retry reads the same row.
+ * On a board read from the claim, feature work is named only under
+ * {@link HARNESS_FEATURE_KEY}; the rest of `input` is the filer's own, so a
+ * plain `issue` or `phase` there says nothing. A row whose key holds anything
+ * but both as strings is refused: such a row is never run as a task that
+ * names no feature. A refusal, not a failed attempt, because a retry reads the
+ * same row.
  *
- * A fixed board's rows are feature rows only, as they always were: one
- * without a usable payload is a failed attempt there, never a task naming
- * neither.
+ * A fixed board's rows are feature rows only, as they always were, with the
+ * payload at the top of `input`: one without a usable payload is a failed
+ * attempt there, never a task naming none.
  */
 function taskPayload(
   input: { input?: unknown; taskId: string },
   fixedBoard: boolean,
 ): { issue: string; phase: string } | undefined {
-  const parsed = harnessTaskInputSchema.safeParse(input.input);
-  if (parsed.success) return parsed.data;
   if (fixedBoard) {
+    const parsed = harnessTaskInputSchema.safeParse(input.input);
+    if (parsed.success) return parsed.data;
     throw new HarnessAttemptFailed(
       `[harness-manager] task ${input.taskId} carries no usable issue/phase payload: ` +
         `${parsed.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`,
     );
   }
-  const named = input.input;
-  if (typeof named === "object" && named !== null && ("issue" in named || "phase" in named)) {
-    throw new HarnessRunRefused(
-      `[harness-manager] task ${input.taskId} names only part of a feature payload: ` +
-        `${parsed.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}. ` +
-        `Feature work names both an issue and a phase.`,
-      { taskId: input.taskId, ending: "errored" },
-    );
-  }
-  return undefined;
+  if (!namesHarnessFeature(input.input)) return undefined;
+  const parsed = harnessTaskInputSchema.safeParse((input.input as Record<string, unknown>)[HARNESS_FEATURE_KEY]);
+  if (parsed.success) return parsed.data;
+  throw new HarnessRunRefused(
+    `[harness-manager] task ${input.taskId} names only part of a feature payload: ` +
+      `${parsed.error.issues.map((i) => `${HARNESS_FEATURE_KEY}.${i.path.join(".")} ${i.message}`).join("; ")}. ` +
+      `Feature work names both an issue and a phase.`,
+    { taskId: input.taskId, ending: "errored" },
+  );
 }
 
 /**
@@ -1909,7 +1935,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         decided: null,
       });
 
-      // A row naming no issue and phase (a task a conversation filed) runs as
+      // A row naming no feature work (a task a conversation filed) runs as
       // this manager's phase, with its task id standing in for the issue
       // (encoded by `taskIssueSegment` when the grammar refuses it). So
       // does a feature row on a board read from the claim: such a board mints
