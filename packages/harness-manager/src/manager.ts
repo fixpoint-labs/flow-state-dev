@@ -641,11 +641,17 @@ export function namesHarnessFeature(input: unknown): boolean {
   return typeof input === "object" && input !== null && HARNESS_FEATURE_KEY in input;
 }
 
+/** The parse of the key's value, or `undefined` when `input` doesn't name it: one parse for both readers below. */
+function parseHarnessFeature(input: unknown) {
+  return namesHarnessFeature(input)
+    ? harnessTaskInputSchema.safeParse((input as Record<string, unknown>)[HARNESS_FEATURE_KEY])
+    : undefined;
+}
+
 /** The feature work a task's `input` names under {@link HARNESS_FEATURE_KEY}, or `undefined` for none or a malformed one. */
 export function harnessFeatureOf(input: unknown): { issue: string; phase: string } | undefined {
-  if (!namesHarnessFeature(input)) return undefined;
-  const parsed = harnessTaskInputSchema.safeParse((input as Record<string, unknown>)[HARNESS_FEATURE_KEY]);
-  return parsed.success ? parsed.data : undefined;
+  const parsed = parseHarnessFeature(input);
+  return parsed?.success === true ? parsed.data : undefined;
 }
 
 /**
@@ -955,8 +961,8 @@ function taskPayload(
         `${parsed.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`,
     );
   }
-  if (!namesHarnessFeature(input.input)) return undefined;
-  const parsed = harnessTaskInputSchema.safeParse((input.input as Record<string, unknown>)[HARNESS_FEATURE_KEY]);
+  const parsed = parseHarnessFeature(input.input);
+  if (parsed === undefined) return undefined;
   if (parsed.success) return parsed.data;
   throw new HarnessRunRefused(
     `[harness-manager] task ${input.taskId} names only part of a feature payload: ` +
