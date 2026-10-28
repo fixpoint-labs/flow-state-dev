@@ -4,11 +4,8 @@ import { createLabAdapter } from "./adapter";
 import { App } from "./App";
 import "./styles.css";
 
-// The page follows the system's light or dark setting; `.dark` is what the design-system theme keys on.
-const dark = window.matchMedia("(prefers-color-scheme: dark)");
-const applyScheme = () => document.documentElement.classList.toggle("dark", dark.matches);
-applyScheme();
-dark.addEventListener("change", applyScheme);
+// The lab's theme is dark only; `.dark` also turns on the dark variants of what it draws (highlighted code).
+document.documentElement.classList.add("dark");
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
