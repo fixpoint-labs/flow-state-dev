@@ -543,6 +543,12 @@ export interface OpenLabOptions {
   /** Wall-clock budget for one harness run. Default 60s. */
   runTimeoutMs?: number;
   /**
+   * Stop a running coding run for a user's steer and continue its session
+   * with the line (the `coder` worker flow's `stopsOnAbort`). Only for a
+   * harness whose abort waits for its process to exit. Default off.
+   */
+  stopsOnAbort?: boolean;
+  /**
    * The models the lab's flows resolve. For a check that scripts the model: it
    * reaches every path a request takes, the HTTP door's resume included.
    * Absent, the environment's.
@@ -1054,6 +1060,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       ...(options.dropTask === true ? { dropTask: true } : {}),
     }),
     runTimeoutMs: options.runTimeoutMs ?? 60_000,
+    ...(options.stopsOnAbort === true ? { stopsOnAbort: true } : {}),
     resources,
   });
 
