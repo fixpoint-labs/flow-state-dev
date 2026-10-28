@@ -36,7 +36,7 @@ import { scriptedReceived } from "./scripted-received";
 export const scriptedCodexPauses = { stepMs: 400, slowMs: 20_000 };
 
 /** What the API answers a ChatGPT sign-in that asks for a model it can't use (the reported 400's words). */
-export const SCRIPTED_REFUSAL = "The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account.";
+const SCRIPTED_REFUSAL = "The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account.";
 
 /** The command every scripted turn runs, as Codex reports it. */
 export const SCRIPTED_COMMAND = "ls";

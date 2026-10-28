@@ -87,7 +87,7 @@ export const CODEX_MODELS: readonly HarnessModel[] = [
  * 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT
  * account." Add a model here only on the same evidence.
  */
-export const CHATGPT_REFUSED: ReadonlySet<string> = new Set(["gpt-6.1-sol"]);
+const CHATGPT_REFUSED: ReadonlySet<string> = new Set(["gpt-6.1-sol"]);
 
 /**
  * The model a Codex mode session runs when it names none: the list's first
