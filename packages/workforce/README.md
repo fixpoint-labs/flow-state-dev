@@ -2066,7 +2066,8 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   message keeps its routed task open until that work ends, and answers from the turn that hears it
   end. A routed task the coordinator's own turn filed that fails lands once as the delegate's
   line, naming the task and its error, and wakes that turn, which can file it again; one a
-  routing policy filed only ends that delegate's part, with no line. A routed task's cancel says
+  routing policy filed lands once as the delegate's line, `<delegate> couldn't answer: <the
+  error>`, and wakes no turn. A routed task's cancel says
   nothing, however it was filed. A routed task is listed, read and cancelled like any task; its
   `session`, `resultTo` and `target` are set at filing and refused on `updateTask` (`filing_setting_fixed`). A routed task
   to a workstream's record runs in that workstream's session, one at a time there too: one from
