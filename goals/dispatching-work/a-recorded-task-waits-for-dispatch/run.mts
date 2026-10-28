@@ -17,6 +17,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, keysServing, runGoal } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
 import { buildShiftManagerPages, startShiftManager } from "../../lib/shift-manager.mts";
@@ -24,7 +25,7 @@ import { loadScriptedClients } from "../../coordinators/files-tasks-down-the-own
 import { requests, sessions, taskRows, type StoredTask } from "../../coordinators/files-tasks-down-the-owners-chain/store.mts";
 import { ALICE, ORG } from "./lab/people.mts";
 
-const HERE = new URL(".", import.meta.url).pathname;
+const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SCRATCH = goalTmpDir("a-recorded-task-waits-for-dispatch");
 const MODEL = "openai/gpt-5.4-mini";
 const say = (s: string) => console.error(`[recorded-waits ${new Date().toISOString().slice(11, 19)}] ${s}`);

@@ -8,6 +8,7 @@
  * banner prints.
  * The grading lives in `legs.mts`.
  */
+import { onClosed } from "../../lib/server.mts";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -163,7 +164,7 @@ export async function startShiftManager(
   child.stderr!.on("data", (d) => (log += String(d)));
   let gone = false;
   const exited = new Promise<void>((resolve) =>
-    child.on("exit", () => {
+    onClosed(child, () => {
       gone = true;
       resolve();
     }),

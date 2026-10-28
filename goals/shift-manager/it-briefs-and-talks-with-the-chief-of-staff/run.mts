@@ -46,6 +46,7 @@
  * Control:  GOAL_CONTROL=optimistic-reply … (same command)
  * Before:   GOAL_PAGES=<pages built from another commit> … serves those pages instead of building.
  */
+import { onClosed } from "../../lib/server.mts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdirSync, mkdtempSync } from "node:fs";
@@ -148,7 +149,7 @@ async function startLab(name: LabName, pages: string): Promise<Running> {
   child.stderr!.on("data", (d) => (log += String(d)));
   let gone = false;
   const exited = new Promise<void>((resolve) =>
-    child.on("exit", () => {
+    onClosed(child, () => {
       gone = true;
       resolve();
     }),

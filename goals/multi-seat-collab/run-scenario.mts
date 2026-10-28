@@ -24,6 +24,7 @@
  * measures the machine (FIX-1511).
  */
 
+import { onClosed } from "../lib/server.mts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -106,7 +107,7 @@ export async function serveLab(options: {
   child.stdout?.on("data", (chunk) => (log += String(chunk)));
   child.stderr?.on("data", (chunk) => (log += String(chunk)));
   const exitedPromise = new Promise<void>((resolve) =>
-    child.on("exit", (code, signal) => {
+    onClosed(child, (code, signal) => {
       exited = `code ${code}, signal ${signal}`;
       resolve();
     }),

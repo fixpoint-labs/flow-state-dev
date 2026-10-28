@@ -16,6 +16,7 @@
  *           (`main` before FIX-2083 must FAIL c:after and the sweep; `main`
  *           before its one fit check must FAIL d:lead-refused and d:one-check)
  */
+import { onClosed } from "../../lib/server.mts";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -109,7 +110,7 @@ async function runHost(root: string, env: Record<string, string>, kill = false):
     }
   });
   child.stderr.on("data", (d) => (err += String(d)));
-  const code = await new Promise<number | null>((resolve) => child.on("exit", resolve));
+  const code = await new Promise<number | null>((resolve) => onClosed(child, resolve));
   reported ??= out.split("\n").find((l) => l.startsWith("__GOAL__"));
   if (reported === undefined) return { setup: `the host printed no result (exit ${code}): ${(err || out).slice(-1500)}` };
   return JSON.parse(reported.slice("__GOAL__".length));

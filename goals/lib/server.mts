@@ -57,3 +57,35 @@ export function stopProcessGroup(child: ChildProcess | undefined, signal: NodeJS
     // already gone
   }
 }
+
+/** How long {@link onClosed} waits for the pipes to drain once the child itself has exited. */
+const CLOSE_GRACE_MS = 2_000;
+
+/**
+ * Call `done` once `child` has exited and its output has been read to the end.
+ *
+ * That is `close`, not `exit`: at `exit` the last chunks of stdout can still be
+ * unread. But `close` also waits for every process holding the pipe, and a
+ * grandchild that inherited it (the process `tsx` or `pnpm` starts, esbuild's
+ * service, a server's own children) can outlive the child. So `done` also fires
+ * {@link CLOSE_GRACE_MS} after `exit`, and then the child's pipes are released,
+ * so a leaked grandchild delays a stop by that much at most and never hangs it.
+ */
+export function onClosed(child: ChildProcess, done: (code: number | null, signal: NodeJS.Signals | null) => void): void {
+  let timer: NodeJS.Timeout | undefined;
+  let called = false;
+  const finish = (code: number | null, signal: NodeJS.Signals | null) => {
+    if (called) return;
+    called = true;
+    clearTimeout(timer);
+    done(code, signal);
+  };
+  child.once("close", finish);
+  child.once("exit", (code, signal) => {
+    if (called) return;
+    timer = setTimeout(() => {
+      for (const stream of [child.stdout, child.stderr]) stream?.destroy();
+      finish(code, signal);
+    }, CLOSE_GRACE_MS);
+  });
+}
