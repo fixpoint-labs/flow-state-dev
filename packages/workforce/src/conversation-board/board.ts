@@ -51,8 +51,8 @@
  * - **The settings** (FIX-2080). A task runs in a session of its own, or, filed
  *   `session: "ongoing"`, in the delegate's session for this conversation; its
  *   result goes to its filer, or, filed `resultTo: "conversation"`, to the
- *   conversation, with one attempt. A task's session takes neither: the add
- *   refuses them there, naming the setting.
+ *   conversation, with one attempt. A task's session takes neither:
+ *   `createTask` refuses them there, naming the setting.
  * - **A workstream's record** (FIX-2083). A delegate record with a target is a
  *   workstream its worker leads. A task for it names that target (`target`, a
  *   filing setting), and the filing resolves the workstream's session then,
@@ -1254,7 +1254,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     };
     return {
       ...ref,
-      createTask: createTask,
+      createTask,
       complete: ending(ref.complete.bind(ref)) as TaskCollectionRef["complete"],
       fail: ending(ref.fail.bind(ref)) as TaskCollectionRef["fail"],
       cancel: ending(ref.cancel.bind(ref)) as TaskCollectionRef["cancel"],
@@ -1507,7 +1507,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       };
     return {
       ...board,
-      createTask: createTask,
+      createTask,
       async createTasks(inits) {
         // A refused batch files nothing (FIX-2080). Before the first add: the
         // batch's ids (unique, and none already on either ledger), each row's
