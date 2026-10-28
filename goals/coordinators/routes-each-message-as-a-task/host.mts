@@ -187,6 +187,10 @@ const helper = core.defineFlow({
   actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
   // A delegate is a worker whose flow takes tasks (FIX-2083). Before it, a post had an entry of its own.
   task: { actions: { [wf.WORKER_TASK_ENTRY ?? "work"]: work, ...(POST_ERA ? { onDelegatedPost: wf.delegatedPostEntry(door) } : {}) } },
+  // Every worker flow hears a worker's message from FIX-2238 on; hire refuses one that can't.
+  ...(typeof wf.messageReceivedEntry === "function"
+    ? { internal: { actions: { onMessageReceived: wf.messageReceivedEntry({ installation, flowKind: "helper" }) } } }
+    : {}),
 } as never);
 const agent = wf.defineAgentWorkerFlow({ installation });
 
