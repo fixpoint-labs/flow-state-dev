@@ -240,6 +240,23 @@ describe("request spend ledger", () => {
     ]);
   });
 
+  it("hands on what an onStarted observer spent before it threw", async () => {
+    // A request whose startup observer fails never reaches its main path, but
+    // the model call the observer made was still spent.
+    process.env.FSDEV_TRACE_OBSERVABILITY = "false";
+    const endings: RequestEnding[] = [];
+    const boom = handler({ name: "boom", inputSchema: z.any(), execute: async () => { throw new Error("startup failed"); } });
+    const flow = defineFlow({
+      kind: "spend-startup",
+      session: { [SESSION_REQUEST_END_HOOK]: () => (ending) => void endings.push(ending) },
+      request: { onStarted: sequencer({ name: "start" }).step(generator({ name: "warm", model: "openai/gpt-6-luna", prompt: () => "p", user: () => "u" })).step(boom) },
+      actions: { run: { inputSchema: z.object({}), block: handler({ name: "noop", inputSchema: z.any(), execute: async () => ({}) }) } }
+    })({ id: "spend-startup" });
+
+    await expect(runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", stores: createInMemoryStores(), runtimeConfig: { modelResolver: resolverReporting(usage4x4) } })).rejects.toThrow("startup failed");
+    expect(endings.map((ending) => [ending.status, ending.spend.byModel["openai/gpt-6-luna"]?.total])).toEqual([["failed", 8]]);
+  });
+
   it("keeps counting a resumed request's token budget from what it spent before it suspended", async () => {
     // The ledger is built per run, and a resume does not call the model again
     // for the steps before the gate: without the carried count, a request

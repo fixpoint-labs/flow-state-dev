@@ -2288,26 +2288,37 @@ async function runActionAttempt<
   // difference is that the abort controller is registered by now, so this guard
   // has to release that too. Rethrows, so the caller still sees the failure.
   try {
+    // The session config's request-end hook (FIX-2145), added to this
+    // request's registry as a block's `onRequestEnded` would add it. Before
+    // the startup observers, so what they spend is handed on too, and a
+    // failed startup ends through it below. Its writes record what the
+    // request spent, so an explicit abort doesn't stop them; every other
+    // hook's writes still stop on one.
+    const sessionEndHook = options.flow.session?.[SESSION_REQUEST_END_HOOK]?.(ctx);
+    if (sessionEndHook !== undefined) {
+      const outliveAbort = (ctx as { [WRITES_OUTLIVE_ABORT]?: WritesOutliveAbort })[WRITES_OUTLIVE_ABORT];
+      onRequestEnded(ctx, outliveAbort === undefined ? sessionEndHook : (ending) => outliveAbort(async () => sessionEndHook(ending)));
+    }
+
     await emitActionLifecycleSeam(internalSeams, "started", metadata);
 
     await runObserver(options.flow.request?.onStarted, {
       requestId,
       actionName: options.actionName
     }, ctx, { hook: "request.onStarted", internalSeams, logger });
-
-    // The session config's request-end hook (FIX-2145), added to this
-    // request's registry as a block's `onRequestEnded` would add it. Last
-    // before the main try, so every path that installs it ends through it.
-    // Its writes record what the request spent, so an explicit abort
-    // doesn't stop them; every other hook's writes still stop on one.
-    const sessionEndHook = options.flow.session?.[SESSION_REQUEST_END_HOOK]?.(ctx);
-    if (sessionEndHook !== undefined) {
-      const outliveAbort = (ctx as { [WRITES_OUTLIVE_ABORT]?: WritesOutliveAbort })[WRITES_OUTLIVE_ABORT];
-      onRequestEnded(ctx, outliveAbort === undefined ? sessionEndHook : (ending) => outliveAbort(async () => sessionEndHook(ending)));
-    }
   } catch (startupError) {
     stopHeartbeatTimer();
     deregisterAbortController(requestId, registered);
+    // The request ends here, never reaching the paths below: hand on what the
+    // startup observers spent. A hook's failure is logged, never in place of
+    // the startup error.
+    const endFailure = await requestEndRegistryOf(ctx)?.run(
+      { status: "failed", error: { message: startupError instanceof Error ? startupError.message : String(startupError) } },
+      { requestId, logger }
+    );
+    if (endFailure !== undefined) {
+      logRuntimeEvent(logger, "warn", "[flow-state] a request-end hook failed", { requestId, status: "failed", error: endFailure.message });
+    }
     throw startupError;
   }
 
