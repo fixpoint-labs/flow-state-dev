@@ -27,9 +27,11 @@ import { harnessEnv } from "@flow-state-dev/core";
 import {
   TESTED_SDK_VERSION,
   cursorAgent,
+  cursorSignIn,
   readInstalledCursorSdkVersion,
   type CursorAgentOptions,
   type CursorModelSelection,
+  type CursorSignIn,
   type InstalledSdkVersion,
   type ResolveCursorClient,
 } from "@flow-state-dev/cursor";
@@ -188,9 +190,6 @@ export async function cursorModelChoices(): Promise<ModelChoices> {
   return { models: CURSOR_MODELS, defaultId: CURSOR_DEFAULT_MODEL, reason: null, fallbackId: CURSOR_DEFAULT_MODEL };
 }
 
-/** How this host signs Cursor in: a key in the run's environment, a stored login, or neither. */
-export type CursorSignIn = { readonly status: "key" | "login" } | { readonly status: "none"; readonly reason: string };
-
 /** What the mode's check asks of the host. Each a seam for tests. */
 export interface CursorHostChecks {
   /** Which `@cursor/sdk` is installed beside the Cursor package. */
@@ -215,20 +214,6 @@ function childStarts(env: Record<string, string>): string | null {
   return null;
 }
 
-/** A key in the run's environment, else the SDK's own answer about its stored login. */
-async function signIn(env: Record<string, string>): Promise<CursorSignIn> {
-  if ((env.CURSOR_API_KEY ?? "") !== "") return { status: "key" };
-  // Loaded only here, so a host without the SDK never loads it, and the check
-  // reads the stored login under the same `HOME` the run is handed.
-  const { Cursor } = (await import("@cursor/sdk")) as unknown as {
-    Cursor: { auth: { status(): Promise<{ status: string }> } };
-  };
-  const status = await Cursor.auth.status();
-  return status.status === "logged-in"
-    ? { status: "login" }
-    : { status: "none", reason: "no CURSOR_API_KEY in the run's environment and no stored login" };
-}
-
 /** The host's own answers. */
 export const HOST_CHECKS: CursorHostChecks = {
   sdk: readInstalledCursorSdkVersion,
@@ -236,7 +221,7 @@ export const HOST_CHECKS: CursorHostChecks = {
     mkdirSync(worktreeRoot(repository), { recursive: true });
   },
   childStarts,
-  signIn,
+  signIn: cursorSignIn,
 };
 
 /**
