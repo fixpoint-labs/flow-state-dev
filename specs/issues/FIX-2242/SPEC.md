@@ -45,7 +45,7 @@ The walk reads sessions and the log through public actions; each control breaks 
 | **Signal** | Every `<leg>:<assertion>` in [the signal table](#the-signal) passes |
 | **Input** | DevTeam served by Shift Manager's command over a SQLite store file (`DEVTEAM_STORE`), killed and restarted on the same file; codenames and the brief's fact picked at run time |
 | **Anti-game** | Assert on sessions' stored items, the message log and `getTask`, read as Alice; nothing seeded; sent messages counted from each turn's own tool outputs; a fault that never fired is a setup failure, not a grade |
-| **Control that must fail** | Today's `main` before FIX-2238 (`e2c190e`): legs a, b, c and e, and the sweep · `no-debt` (FIX-2240's) **`c:lands-once`** · `send-again` (FIX-2239's) **`a:one-place`** · `task-to-conversation` (FIX-2160's) **`b:in-task-session`** · `no-question-message` (FIX-2241's) **`e:filer-hears`** · `no-hop-cap` (FIX-2238's) **`d:seventh-refused`** · `call-holds-session`, new: a parked call keeps its session's place **`e:heard-while-calling`** · the sweep's `--control` its plants |
+| **Control that must fail** | Today's `main` before FIX-2238 (`e2c190e`): legs a, b, c and e, and the sweep · `no-debt` (FIX-2240's) **`c:lands-once`** · `send-again` (FIX-2239's) **`e:kept-once`** · `task-to-conversation` (FIX-2160's) **`b:in-task-session`** · `no-question-message` (FIX-2241's) **`e:filer-hears`** · `no-hop-cap` (FIX-2238's) **`d:seventh-refused`** · `call-holds-session`, new: a parked call keeps its session's place **`e:heard-while-calling`** · the sweep's `--control` its plants |
 
 ### The signal
 
@@ -57,7 +57,8 @@ The walk reads sessions and the log through public actions; each control breaks 
 | `a:no-relay` | Researcher's turn sends no message back, and Helper A's conversation gains no received item from it |
 | `e:filer-hears` | Helper A files Helper B a task whose brief needs a fact only Helper A holds; Helper B asks it midway; the question arrives at Helper A's `onMessageReceived` in the session that filed the task |
 | `e:heard-while-calling` | It arrives while Helper A's second call, into Researcher's conversation holding a stop for Alice, is parked: the received item is stored before the call resolves |
-| `e:steer-releases` | Helper A's steer releases the hold; the task finishes on attempt 1; the call then resolves once, answered after Alice's answer, or kept and returned when Helper A waits again by call id |
+| `e:steer-releases` | Helper A's steer releases the hold, and the task finishes on attempt 1 |
+| `e:kept-once` | The second call's deadline passes before Alice answers Researcher's stop, so it returns `running`; after her answer, Helper A waits again by call id and gets Researcher's reply. The log holds one row and one budget place for that call |
 | `b:in-task-session` | A message to Helper B's task while its turn runs lands in that task's session after the turn ends; one sent after the task finished is answered there from the task's history |
 | `b:task-unchanged` | The row's status, output, attempts and session are the same before and after both |
 | `d:per-request` | Started on its own line from Alice, the ring's fourth send from one request is refused |
@@ -84,7 +85,9 @@ sequenceDiagram
   HA->>R: second call, parked (Researcher waits on Alice)
   HB-->>HA: midway question while the call waits (e)
   HA->>HB: steer releases the hold
-  Al->>R: answers the stop · the call resolves once
+  R-->>HA: deadline passes · running
+  Al->>R: answers the stop
+  HA->>R: waits again by call id · the reply, once
   Note over Al,R: the ring runs on its own line meanwhile (d)
 ```
 
@@ -104,7 +107,7 @@ Before, each arrow lived in its own child's check on a calm host; the closure ru
 + ];
 ```
 
-**Docs:** no documentation impact. The closure ships checks; a page that doesn't hold when followed
+**Docs:** no documentation impact: no page is written or changed. Row 4 follows the pages FIX-2238 and FIX-2239 published, and the sweep reads them; a page that doesn't hold when followed
 is a finding against its child.
 
 **Stays as it is:** all product code; every child's check as it is on `main`, except that
