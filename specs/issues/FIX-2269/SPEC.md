@@ -52,7 +52,9 @@ start and the park, a restart on the same store, and a sweep:
   was taken once.
 
 **Control that must fail:** drop the "owe the park" call. Both tests must then leave the request
-`interrupted`. A second control continues a request that owes nothing and must see it left alone.
+`interrupted`. Two more controls must see the request left alone: one that owes nothing, and one
+that owed, parked, was resumed and then died (the park cleared it). The engine test also faults
+right after the owe and before the work starts, which must replay and send once.
 FIX-2242's scene ac (`a:answer-in-request`) is rerun by the closure once this merges.
 
 ## What changes
@@ -90,8 +92,10 @@ every request that dies without owing a park.
 | `RequestWaits` (FIX-2082) | **Extended** with one verb |
 
 **Adds:** one verb, one obligation kept per request, one sweep branch. **Removes:** nothing.
-**Debt:** a caller that owes a park says its request is safe to replay up to the park; a new
-caller that owes one without keeping its effects under `runOnce` would replay them. The verb's
+**Debt:** close to none new. A wait already runs only in a durable action (`runOnce` and
+`suspend`, or `wait_unavailable`), and the resume after a park already replays the in-flight
+block from its start, so that block is already bound to replay safely up to the park. The verb
+adds no promise; it acts on that one without waiting for someone to press Continue. The verb's
 doc says so. **Net:** small, and it closes the gap for every wait instead of one.
 
 ## Sign off
