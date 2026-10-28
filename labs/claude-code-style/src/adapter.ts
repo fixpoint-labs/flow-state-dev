@@ -30,6 +30,7 @@ import {
   WORKER_ID_STATE_KEY,
 } from "@flow-state-dev/workforce/browser";
 import { modeById, MODES, type ModeId } from "./modes";
+import { projectIdOf, refuseExisting } from "./lib/new-project";
 
 /** Stops a watch. */
 export type Unsubscribe = () => void;
@@ -392,8 +393,8 @@ function createWiredLab(fsd: Client): LabAdapter {
       }));
     },
     createProject: async (name, repository) => {
-      const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-      const created = await run("projects", await projects(), "createProject", { id, title: name, visibility: "private", repository });
+      const created = await run("projects", await projects(), "createProject", { id: projectIdOf(name), title: name, visibility: "private", repository });
+      refuseExisting(created, name);
       return { id: projectRef({ visibility: created.visibility, id: created.project.id }), name: created.project.title };
     },
     openSession: async (mode, projectId) => {
