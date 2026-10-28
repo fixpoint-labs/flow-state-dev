@@ -383,6 +383,45 @@ describe("historySummary on the engine", () => {
     expect(folded.pending).not.toContain("req_001");
   });
 
+  it("keeps a request that settled after this turn loaded its window pending when the fold moves past it", async () => {
+    const stores = createInMemoryStores();
+    const calls: ModelCall[] = [];
+    const template = { flowKind: "summary-chat", flowId: "summary-chat", orgId: DEFAULT_ORG_ID, actionName: "run", source: "http", userId: "u", sessionId: "s", status: "in_progress", version: 1, state: {}, items: [] };
+    const later = Date.now() + 60_000;
+    for (let n = 1; n <= 5; n++) {
+      const id = `req_run_${n}`;
+      await stores.request.set(id, { ...template, id, startedAtMs: later + n, createdAt: later + n, updatedAt: later + n } as never, "any");
+    }
+    const earlier = utility.historySummary({ summarize: foldingSummarize() });
+    // The oldest running request finishes after this turn loaded its window and
+    // before its fold reads the turns: neither read sees it as it is.
+    const settles = handler({
+      name: "settles",
+      execute: async () => {
+        const record = (await stores.request.get("req_run_1"))!;
+        await stores.request.set("req_run_1", { ...record, status: "completed", completedAtMs: Date.now(), updatedAt: Date.now() }, "any");
+      }
+    });
+    const answer = generator({ name: "answer", model: "mock", prompt: "You answer.", history: true, uses: [earlier.capability] });
+    const flow = defineFlow({
+      kind: "summary-chat",
+      session: { historyWindow: { turns: 4 } },
+      actions: {
+        run: {
+          inputSchema: z.string(),
+          block: sequencer({ name: "chat", inputSchema: z.string() }).tap(settles).tap(earlier.fold).step(answer),
+          userMessage: (input: string) => input
+        }
+      }
+    })();
+
+    await talk(stores, flow, calls, 1);
+
+    const state = (await stores.resourceState.get("session", "s", "historySummary"))?.state as { throughRequestId: string; pending: string[] };
+    expect(state.throughRequestId).toBe("req_run_5");
+    expect(state.pending).toContain("req_run_1");
+  });
+
   it("keeps this turn pending when it is itself a pending turn the fold cannot read yet", async () => {
     const stores = createInMemoryStores();
     const calls: ModelCall[] = [];
