@@ -1,6 +1,6 @@
 /**
  * The goal's desk, as Shift Manager's command loads it: the `asker` worker
- * and the `chief-of-staff` worker on a real model, both delegates of the
+ * and the `shift-coordinator` worker on a real model, both delegates of the
  * `front` coordinator. See `open-desk.mts`.
  */
 import { fileURLToPath } from "node:url";

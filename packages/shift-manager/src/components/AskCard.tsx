@@ -1,7 +1,7 @@
 /**
  * One pending ask, drawn with the registry's own approval and question cards,
- * answered through the one resume path (S3). Inbox's detail and Chief of
- * Staff's summary both draw an ask with this, so they can't answer it two
+ * answered through the one resume path (S3). Inbox's detail and Shift
+ * Coordinator's summary both draw an ask with this, so they can't answer it two
  * ways (BR-25).
  *
  * The card resolves through a `SuspensionResolverProvider` bound to the ask:

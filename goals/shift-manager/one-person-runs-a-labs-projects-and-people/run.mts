@@ -5,9 +5,9 @@
  * A thin orchestrator over one commit. It builds Shift Manager once, then:
  *
  *   part 1   legs a and b on one store (a's restart, b's two), leg c on its own
- *            (three boots: `extra-flow`, then as shipped twice), every CoS turn
+ *            (three boots: `extra-flow`, then as shipped twice), every Shift Coordinator turn
  *            on a real model in Chromium, graded once (D2)
- *   controls `deny-fire` (a click), `no-cos` and `no-tool` (scratch patches,
+ *   controls `deny-fire` (a click), `no-shift-coordinator` and `no-tool` (scratch patches,
  *            printed in full), and today's `main` (its own checkout and build),
  *            each on fresh stores; each must fail its leg at its own step
  *   part 2   J4: the next Lab set up from the published docs alone
@@ -18,7 +18,7 @@
  * findings leaves) to the run's scratch directory.
  *
  * Run:   PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/one-person-runs-a-labs-projects-and-people/run.mts
- * Some:  GOAL_ONLY=legs,deny-fire,no-cos,no-tool,today,j4,p3,p4 (comma-separated; default all)
+ * Some:  GOAL_ONLY=legs,deny-fire,no-shift-coordinator,no-tool,today,j4,p3,p4 (comma-separated; default all)
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -26,24 +26,24 @@ import { join, relative } from "node:path";
 import { LAB_USERS } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, keysServing, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
-import { buildShiftManagerPages, devteamCosModel } from "../../lib/shift-manager.mts";
-import { extraFlow, noCos, noTool, scratchLab, type Patch } from "./controls/patches.mts";
+import { buildShiftManagerPages, devteamShiftCoordinatorModel } from "../../lib/shift-manager.mts";
+import { extraFlow, noShiftCoordinator, noTool, scratchLab, type Patch } from "./controls/patches.mts";
 import { j4, type J4Result } from "./j4.mts";
 import { legA, readBack } from "./legs/a.mts";
-import { hireWithoutCos, legB } from "./legs/b.mts";
+import { hireWithoutShiftCoordinator, legB } from "./legs/b.mts";
 import { legC } from "./legs/c.mts";
 import { manifest, runManifest, type RunResult } from "./manifest.mts";
 import { seams, type SeamRow } from "./seams.mts";
-import { askCos, hex, readProjects, RunRecord, World } from "./steps.mts";
+import { askShiftCoordinator, hex, readProjects, RunRecord, World } from "./steps.mts";
 
-const ALL = ["legs", "deny-fire", "no-cos", "no-tool", "today", "j4", "p3", "p4"] as const;
+const ALL = ["legs", "deny-fire", "no-shift-coordinator", "no-tool", "today", "j4", "p3", "p4"] as const;
 const ONLY = (process.env.GOAL_ONLY ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 for (const o of ONLY) if (!(ALL as readonly string[]).includes(o)) throw new Error(`unknown GOAL_ONLY part "${o}"; known: ${ALL.join(", ")}`);
 const wants = (part: (typeof ALL)[number]) => ONLY.length === 0 || ONLY.includes(part);
 
 /** The commit before FIX-1650's first child merged (FIX-1718's #2647): today's `main`, as a control. */
 const TODAYS_MAIN = "1afe16ffeed2ed6c6ac1c4391ceaedbc2b9fb4e1";
-const MODEL = devteamCosModel();
+const MODEL = devteamShiftCoordinatorModel();
 const MODEL_KEYS = keysServing(MODEL);
 const CONFIG = join(REPO_ROOT, "packages", "shift-manager", "teams", "devteam", "fsdev.config.mts");
 const git = (...args: string[]) => execFileSync("git", ["-C", REPO_ROOT, ...args], { encoding: "utf8" }).trim();
@@ -145,7 +145,7 @@ function todaysMainCheckout(): { root: string; tsx: string } {
 
 await runGoal(async (failures) => {
   if (!MODEL_KEYS.some((k) => (process.env[k] ?? "") !== "")) {
-    return { failures: [`blocked (QR-4): no key here serves the chief of staff's model, ${MODEL}; none of ${MODEL_KEYS.join(", ")} is set`], evidence: "" };
+    return { failures: [`blocked (QR-4): no key here serves the Shift Coordinator's model, ${MODEL}; none of ${MODEL_KEYS.join(", ")} is set`], evidence: "" };
   }
   const head = git("rev-parse", "HEAD");
   const base = git("merge-base", "HEAD", "origin/main");
@@ -213,15 +213,15 @@ await runGoal(async (failures) => {
         lab.remove();
       }
     }
-    if (wants("no-cos")) {
-      const lab = scratchLab(hex(2), [noCos]);
-      const record = new RunRecord("no-cos", SHOTS);
-      const store = join(STORES, "no-cos.sqlite");
-      const run: LegsRun = { label: "no-cos", records: [record], patches: [lab.diff], stores: [{ file: store, steps: "b1" }] };
+    if (wants("no-shift-coordinator")) {
+      const lab = scratchLab(hex(2), [noShiftCoordinator]);
+      const record = new RunRecord("no-shift-coordinator", SHOTS);
+      const store = join(STORES, "no-shift-coordinator.sqlite");
+      const run: LegsRun = { label: "no-shift-coordinator", records: [record], patches: [lab.diff], stores: [{ file: store, steps: "b1" }] };
       const world = new World(browser, people, { config: lab.config, pages, scratch: SCRATCH, store }, record);
       try {
-        await world.boot("no-cos boot");
-        await hireWithoutCos(world);
+        await world.boot("no-shift-coordinator boot");
+        await hireWithoutShiftCoordinator(world);
       } catch (error) {
         record.fail("setup", `the control failed at setup: ${(error as Error).message.slice(0, 1500)}`);
       } finally {
@@ -229,7 +229,7 @@ await runGoal(async (failures) => {
         lab.remove();
       }
       runs.push(run);
-      grade("no-cos", run, "b1", /seat appears/, ["setup"]);
+      grade("no-shift-coordinator", run, "b1", /seat appears/, ["setup"]);
     }
     if (wants("today")) {
       const record = new RunRecord("todays-main", SHOTS);
@@ -247,9 +247,9 @@ await runGoal(async (failures) => {
             ["b1", "Please hire one more coder for the team."],
             ["c1", "Please hire a seat on a kind of your choice."],
           ] as const) {
-            const turn = await askCos(world, step, words);
-            if (turn === undefined) record.fail(step, "no CoS seat: the Chief of Staff view draws no chief of staff to ask");
-            else record.saw(step, `a chief of staff answered on today's main: ${turn.status}`);
+            const turn = await askShiftCoordinator(world, step, words);
+            if (turn === undefined) record.fail(step, "no Shift Coordinator seat: the Shift Coordinator view draws no Shift Coordinator to ask");
+            else record.saw(step, `a Shift Coordinator answered on today's main: ${turn.status}`);
           }
         } finally {
           await world.stop();
@@ -259,7 +259,7 @@ await runGoal(async (failures) => {
       }
       runs.push(run);
       const red = reds(run);
-      const allThree = ["a1", "b1", "c1"].every((s) => red.some((r) => r.id === s && r.notes.some((n) => /no CoS seat/.test(n))));
+      const allThree = ["a1", "b1", "c1"].every((s) => red.some((r) => r.id === s && r.notes.some((n) => /no Shift Coordinator seat/.test(n))));
       controlVerdicts.push({ control: "today's main", ok: allThree, line: red.map((r) => `${r.id}: ${r.notes.join(" / ").slice(0, 200)}`).join("; ") });
       if (!allThree) failures.push(`control today's main: ${controlVerdicts.at(-1)!.line}`);
     }
@@ -343,7 +343,7 @@ function writeReport(r: {
       for (const [id, e] of rec.steps) out.push(`| ${id} | ${e.verdict} | ${e.notes.join("<br>").replaceAll("|", "\\|").slice(0, 3000)} |`);
       out.push("");
       for (const t of rec.turns) {
-        out.push(`- CoS turn ${t.step}: "${t.words}" · session \`${t.sessionId}\` · request \`${t.requestId}\` · ${t.status}${t.providerRetry === undefined ? "" : ` · re-run once after a provider error: ${t.providerRetry}`}`);
+        out.push(`- Shift Coordinator turn ${t.step}: "${t.words}" · session \`${t.sessionId}\` · request \`${t.requestId}\` · ${t.status}${t.providerRetry === undefined ? "" : ` · re-run once after a provider error: ${t.providerRetry}`}`);
         for (const tool of t.tools) out.push(`  - \`${tool.name}\` (item \`${tool.itemId}\`) ${tool.ok ? "ok" : "NOT ok"}: ${tool.args.slice(0, 300)} → ${tool.output.slice(0, 300)}`);
         out.push(`  - said${t.onScreen ? " (drawn on screen by id)" : ""}: "${t.reply.replaceAll("\n", " ").slice(0, 400)}"`);
       }

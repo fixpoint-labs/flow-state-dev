@@ -1,6 +1,6 @@
 /**
  * The shift coordinator's memory (`teams/devteam/memory.mts`), on the real
- * Lab: the chief of staff's judgment turn carries the standard memory pack
+ * Lab: the Shift Coordinator's judgment turn carries the standard memory pack
  * (working memory, the rolling digest, `memory/recall`), the `agent` flow
  * carries none of it, and the turn is told whether anything is recorded.
  *
@@ -25,7 +25,7 @@ import { selectHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
 import { CAPTURE_OFF, CAPTURE_ON } from "../teams/devteam/memory.mts";
 
-const COS = "chief-of-staff";
+const SHIFT_COORDINATOR = "shift-coordinator";
 const FACT = "the release train leaves on thursdays";
 
 let opened: Lab | undefined;
@@ -82,7 +82,7 @@ async function open(memoryCapture?: boolean): Promise<Lab> {
     stores: inMemoryStores(),
     harness: harness.slot,
     runTimeoutMs: harness.runTimeoutMs,
-    workspace: { root: mkdtempSync(join(tmpdir(), "devteam-cos-memory-")), remotes: { allow: ["file"] } },
+    workspace: { root: mkdtempSync(join(tmpdir(), "devteam-shift-coordinator-memory-")), remotes: { allow: ["file"] } },
     coderWorkerId: "eng.coder",
     inventory: true,
     ...(memoryCapture === undefined ? {} : { memoryCapture }),
@@ -91,9 +91,9 @@ async function open(memoryCapture?: boolean): Promise<Lab> {
 }
 
 async function conversation(lab: Lab): Promise<string> {
-  const sessionId = `s-cos-${globalThis.crypto.randomUUID()}`;
+  const sessionId = `s-shift-coordinator-${globalThis.crypto.randomUUID()}`;
   const created = await lab.door("POST", `coordinator/sessions`, {
-    body: { userId: LAB_USER_ID, sessionId, state: { workerId: COS } },
+    body: { userId: LAB_USER_ID, sessionId, state: { workerId: SHIFT_COORDINATOR } },
   });
   expect(created.status).toBe(201);
   return sessionId;
@@ -149,7 +149,7 @@ describe("the shift coordinator's memory", () => {
     expect(agent.isolateUserState).toBe(false);
   });
 
-  it("offers the chief of staff recall, and says capture is off by default", async () => {
+  it("offers the Shift Coordinator recall, and says capture is off by default", async () => {
     const lab = await open();
     await say(lab, await conversation(lab), "what do you remember about our releases?");
     // The tool's name as the provider sees it: `/` is not allowed there.

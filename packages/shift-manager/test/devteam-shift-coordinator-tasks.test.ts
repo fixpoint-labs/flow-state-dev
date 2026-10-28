@@ -1,17 +1,17 @@
 /**
- * The DevTeam's chief of staff files tasks (FIX-1794 S11), on the real Lab:
+ * The DevTeam's Shift Coordinator files tasks (FIX-1794 S11), on the real Lab:
  * its turn carries Orchestration's task tools once each, and a task it files
  * for one of its delegates runs in a task session of the user's and is
  * heard back in the conversation once.
  *
- * The model is scripted by block: the chief of staff's judgment
+ * The model is scripted by block: the Shift Coordinator's judgment
  * (`coordinator-judgment`) makes the tool calls a test names, then answers;
  * an `agent` worker's turn (`agent-answer`) answers with a fixed line.
  *
  * And a task it files for the coder (FIX-1866) runs as a supervised coding
  * run in the project's repository, its answer heard back the same way.
  *
- * The chief of staff keeps its memory to its own flow (`isolateUserState`),
+ * The Shift Coordinator keeps its memory to its own flow (`isolateUserState`),
  * and the task session runs on `agent`, which doesn't: the conversation's
  * board has to sit where both read it, or every task it files fails at the
  * task session's gate.
@@ -40,7 +40,7 @@ import { commitAll, createBareRemote } from "../teams/devteam/scratch-repo.mts";
 const resolvedControlTools = (list: unknown): GeneratorTool[] =>
   (typeof list === "function" ? list({}) : (list ?? [])) as GeneratorTool[];
 
-const COS = "chief-of-staff";
+const SHIFT_COORDINATOR = "shift-coordinator";
 const DELEGATE_ANSWER = "The licenses are all MIT.";
 
 let opened: Lab | undefined;
@@ -96,18 +96,18 @@ async function open(model: ModelResolver): Promise<Lab> {
     stores: inMemoryStores(),
     harness: harness.slot,
     runTimeoutMs: harness.runTimeoutMs,
-    workspace: { root: mkdtempSync(join(tmpdir(), "devteam-cos-tasks-")), remotes: { allow: ["file"] } },
+    workspace: { root: mkdtempSync(join(tmpdir(), "devteam-shift-coordinator-tasks-")), remotes: { allow: ["file"] } },
     coderWorkerId: "eng.coder",
     inventory: true,
   });
   return opened;
 }
 
-/** A conversation with the chief of staff, opened as an app does: a session on its flow, naming it. */
+/** A conversation with the Shift Coordinator, opened as an app does: a session on its flow, naming it. */
 async function conversation(lab: Lab): Promise<string> {
-  const sessionId = `s-cos-${globalThis.crypto.randomUUID()}`;
+  const sessionId = `s-shift-coordinator-${globalThis.crypto.randomUUID()}`;
   const created = await lab.door("POST", `coordinator/sessions`, {
-    body: { userId: LAB_USER_ID, sessionId, state: { workerId: COS } },
+    body: { userId: LAB_USER_ID, sessionId, state: { workerId: SHIFT_COORDINATOR } },
   });
   expect(created.status).toBe(201);
   return sessionId;
@@ -174,7 +174,7 @@ const hireTaskTaker: ToolCall[] = [
   { toolName: "addDelegate", args: { worker: "licenses" } },
 ];
 
-describe("the chief of staff files tasks (FIX-1794 S11)", () => {
+describe("the Shift Coordinator files tasks (FIX-1794 S11)", () => {
   it("carries each of the task tools exactly once on its turn", async () => {
     const seen: string[][] = [];
     // A delegate that takes a task first: a conversation with none files nothing (FIX-1802 D1),
@@ -229,7 +229,7 @@ describe("the chief of staff files tasks (FIX-1794 S11)", () => {
 });
 
 /**
- * The coder takes a conversation's task (FIX-1866): the chief of staff files
+ * The coder takes a conversation's task (FIX-1866): the Shift Coordinator files
  * it with `addTask`, the coder works it as a supervised coding run in a
  * checkout of the project's repository, and the conversation hears one line
  * under `eng.coder`. The harness is a stub that answers with what it finds in
@@ -253,7 +253,7 @@ function scriptedCoder(calls: Array<ToolCall | typeof END_TURN>, verdicts: Verdi
     modelId: "test/jev",
     supportedQuestionTypes: ["choice", "score", "boolean"],
     async doEvaluate(call: { questions: Record<string, unknown>; state?: unknown }) {
-      // Best fit's route: no pick, so the chief of staff's judgment takes the message, as without the hook.
+      // Best fit's route: no pick, so the Shift Coordinator's judgment takes the message, as without the hook.
       if (!("verdict" in call.questions)) throw new Error("no route in this test");
       judged.push(call);
       const next = verdicts[verdict] ?? { choice: "done", confidence: 0.95 };
@@ -277,7 +277,7 @@ function scriptedCoder(calls: Array<ToolCall | typeof END_TURN>, verdicts: Verdi
   }) as unknown as ModelResolver;
 }
 
-/** File one task for the coder, from the chief of staff's first turn. */
+/** File one task for the coder, from the Shift Coordinator's first turn. */
 const fileForCoder = (goal: string, input?: Record<string, unknown>): ToolCall => ({
   toolName: "createTask",
   args: { goal, assignee: CODER, ...(input === undefined ? {} : { input }) },
@@ -314,7 +314,7 @@ const readsMarker = (extra: HarnessStubOptions = {}) =>
     ...extra,
   });
 
-/** File `call` from a new chief-of-staff conversation, and wait for the task to settle. */
+/** File `call` from a new shift-coordinator conversation, and wait for the task to settle. */
 async function fileAndSettle(lab: Lab, message = "the coder should take a look at our repo") {
   const id = await conversation(lab);
   const filed = await act(lab, id, "respond", { message });

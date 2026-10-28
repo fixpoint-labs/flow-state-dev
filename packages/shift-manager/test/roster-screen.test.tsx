@@ -60,10 +60,10 @@ const ask = (workerId: string, suspensionId: string, message: string): Ask =>
 /**
  * Two teams and one org worker: eng.coder running (and one held on a question
  * for you), eng.reviewer held on one, ops.asker with a pending ask and a queued
- * row, ops.idle nothing, chief-of-staff nothing.
+ * row, ops.idle nothing, shift-coordinator nothing.
  */
 function lab(options: { asks?: "failed"; boards?: "ops failed"; inventory?: "failed" } = {}): LabSnapshot {
-  const workers = [worker("eng.coder", "coder"), worker("eng.reviewer"), worker("ops.asker", "asker"), worker("ops.idle"), worker("chief-of-staff", "cos")];
+  const workers = [worker("eng.coder", "coder"), worker("eng.reviewer"), worker("ops.asker", "asker"), worker("ops.idle"), worker("shift-coordinator", "shift-coordinator")];
   const ok = (rows: BoardRow[]): Section<ConversationBoards> => ({ ok: true, value: { refs: [rows[0]!.boardRef], rows } });
   const read: Omit<LoadedSnapshot, "inbox"> = {
     readAt: Date.UTC(2026, 9, 1, 9, 30),
@@ -112,20 +112,20 @@ describe("Roster (V3)", () => {
       ["eng.coder", "on shift"],
       ["eng.reviewer", "on shift"],
       ["ops.asker", "on shift"],
-      // The chief of staff first in its group: the coordinator the user's work goes through (FIX-1791 BR-33).
-      ["chief-of-staff", "off shift"],
+      // The Shift Coordinator first in its group: the coordinator the user's work goes through (FIX-1791 BR-33).
+      ["shift-coordinator", "off shift"],
       ["ops.idle", "off shift"],
     ]);
     expect(within(page).getByTestId("roster-summary").textContent).toMatch(/^3 on shift · 2 off shift · 3 waiting on you/);
   });
 
-  it("names the chief-of-staff worker Shift Coordinator, keeping its id, and a worker with no display name by its id", async () => {
+  it("names the shift-coordinator worker Shift Coordinator, keeping its id, and a worker with no display name by its id", async () => {
     await open("/roster");
     const page = await screen.findByTestId("roster");
     const row = (id: string) => within(page).getAllByTestId("roster-worker").find((w) => w.getAttribute("data-worker-id") === id)!;
-    expect(row("chief-of-staff").querySelector(".font-medium")!.textContent).toBe("Shift Coordinator");
+    expect(row("shift-coordinator").querySelector(".font-medium")!.textContent).toBe("Shift Coordinator");
     expect(row("eng.coder").querySelector(".font-medium")!.textContent).toBe("eng.coder");
-    // The id is wire data; nothing a user reads on the screen says chief of staff.
+    // The id is wire data; nothing a user reads on the screen says Shift Coordinator.
     expect(document.body.textContent).not.toMatch(/chief[ -]of[ -]staff/i);
   });
 
@@ -210,7 +210,7 @@ describe("Roster (V3)", () => {
     expect(within(page).getByTestId("roster-title").textContent).toMatch(/ops$/);
     expect(within(page).getByTestId("roster-summary").textContent).toMatch(/^1 on shift · 1 off shift · 1 waiting on you/);
     act(() => fireEvent.click(within(page).getAllByTestId("roster-team-option").find((o) => o.getAttribute("data-team") === GENERAL_TEAM)!));
-    expect(attrs(within(screen.getByTestId("roster")).getAllByTestId("roster-worker"), "data-worker-id")).toEqual(["chief-of-staff"]);
+    expect(attrs(within(screen.getByTestId("roster")).getAllByTestId("roster-worker"), "data-worker-id")).toEqual(["shift-coordinator"]);
   });
 
   it("BR-13: a team the inventory doesn't have reads as All", async () => {
@@ -322,16 +322,16 @@ describe("Tasks (BR-14)", () => {
     expect(cell("E-1", "task-row-time")).toMatch(/^6m 4\ds$/);
   });
 
-  it("names a task the chief-of-staff worker holds as the Shift Coordinator's, in its row and its worker group", async () => {
+  it("names a task the shift-coordinator worker holds as the Shift Coordinator's, in its row and its worker group", async () => {
     const snapshot = lab();
     const eng = snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot.boards["s_eng"] : undefined;
-    if (eng?.ok === true) eng.value.rows = [...eng.value.rows, row("s_eng", "E-4", "in_progress", "chief-of-staff")];
+    if (eng?.ok === true) eng.value.rows = [...eng.value.rows, row("s_eng", "E-4", "in_progress", "shift-coordinator")];
     await open("/tasks", snapshot);
     const table = await screen.findByTestId("tasks-table");
     const e4 = within(table).getAllByTestId("task-row").find((r) => r.getAttribute("data-task-id") === "E-4")!;
     expect(within(e4).getByTestId("task-row-worker").textContent).toBe("Shift Coordinator");
     act(() => fireEvent.click(screen.getAllByRole("tab").find((t) => t.getAttribute("data-grouping") === "worker")!));
-    const group = screen.getAllByTestId("tasks-group").find((g) => g.getAttribute("data-group") === "chief-of-staff")!;
+    const group = screen.getAllByTestId("tasks-group").find((g) => g.getAttribute("data-group") === "shift-coordinator")!;
     expect(group.textContent).toMatch(/^Shift Coordinator/);
     expect(screen.getByTestId("tasks-table").textContent).not.toMatch(/chief[ -]of[ -]staff/i);
   });
@@ -414,7 +414,7 @@ describe("the sidebar (V4)", () => {
     await waitFor(() => expect(screen.getByTestId("teams").querySelector('[data-worker-id="amber-1f2e"]')).not.toBeNull());
     const teams = screen.getAllByTestId("team");
     expect(attrs(teams, "data-team")).toEqual([GENERAL_TEAM, "eng", "ops"]);
-    expect(attrs(within(teams[0]!).getAllByTestId("worker"), "data-worker-id")).toEqual(["chief-of-staff", "amber-1f2e"]);
+    expect(attrs(within(teams[0]!).getAllByTestId("worker"), "data-worker-id")).toEqual(["shift-coordinator", "amber-1f2e"]);
     // A standard worker the inventory already has is drawn once.
     expect(attrs(within(teams[1]!).getAllByTestId("worker"), "data-worker-id")).toEqual(["eng.coder", "eng.reviewer", "eng.mine"]);
     expect(teams.map((t) => within(t).getByTestId("team-on-shift").textContent)).toEqual(["0/2", "2/3", "1/2"]);

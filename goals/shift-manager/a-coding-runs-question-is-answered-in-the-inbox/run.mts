@@ -1,7 +1,7 @@
 /**
  * Goal check — shift-manager › a coding run's question is answered in the Inbox.
  *
- * A coder task filed from a conversation with the chief of staff, worked by
+ * A coder task filed from a conversation with the Shift Coordinator, worked by
  * the DevTeam's coder (the harness manager) on a durable SQLite host with
  * trace observability off. Its run asks; the task holds on the question; the
  * Inbox (Shift Manager's own snapshot) lists it; the answer, sent as the
@@ -72,7 +72,7 @@ interface Fixture {
 const fixture = loadFixture<Fixture>(import.meta.url);
 
 const CODER = "eng.coder";
-const COS = "chief-of-staff";
+const SHIFT_COORDINATOR = "shift-coordinator";
 const STOREFRONT = { visibility: "shared", id: "storefront" } as const;
 const ALL_LEGS = ["a", "b", "b2", "r1", "r2", "r3", "sweep"] as const;
 const LEGS = new Set((process.env.GOAL_LEGS ?? ALL_LEGS.join(",")).split(",").map((leg) => leg.trim()).filter(Boolean));
@@ -195,7 +195,7 @@ function recorded(
   };
 }
 
-/** A model for the chief of staff: its first turn files one coder task with `goal`; every other step answers "Noted." */
+/** A model for the Shift Coordinator: its first turn files one coder task with `goal`; every other step answers "Noted." */
 function filesOneTask(goal: string): ModelResolver {
   let filed = false;
   const judgment: GeneratorModel = {
@@ -279,9 +279,9 @@ async function open(label: string, goal: string, slot: (feeds: any) => HarnessBl
     return last;
   };
 
-  // A conversation with the chief of staff, opened as Shift Manager opens one, and the coder's task filed from it.
-  const conversation = `s-goal-cos-${RUN_STAMP}-${label}`;
-  const created = await lab.door("POST", "coordinator/sessions", { body: { userId: LAB_USER_ID, sessionId: conversation, state: { workerId: COS } } });
+  // A conversation with the Shift Coordinator, opened as Shift Manager opens one, and the coder's task filed from it.
+  const conversation = `s-goal-shift-coordinator-${RUN_STAMP}-${label}`;
+  const created = await lab.door("POST", "coordinator/sessions", { body: { userId: LAB_USER_ID, sessionId: conversation, state: { workerId: SHIFT_COORDINATOR } } });
   if (created.status !== 201) throw new Error(`setup: opening the conversation answered ${created.status}`);
   const filed = await act("respond", { message: "Please have the coder look into this." });
   if (filed.error !== undefined) throw new Error(`setup: the conversation's turn failed: ${show(filed.error)}`);

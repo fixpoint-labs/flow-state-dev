@@ -1,6 +1,6 @@
 # Shift Manager
 
-Shift Manager is the browser app you run a Workforce team through. A team is served as a Lab: a set of Workforce workers from one `fsdev.config.mts`. You point Shift Manager at a Lab's config, and it shows what that Lab holds. It opens on Shift Coordinator: a summary of what's waiting on you and what's running, and a conversation with the Lab's Shift Coordinator, the worker named `chief-of-staff`. From there it shows the teams and their workers, the projects and their workstreams, the boards, and the asks waiting on you.
+Shift Manager is the browser app you run a Workforce team through. A team is served as a Lab: a set of Workforce workers from one `fsdev.config.mts`. You point Shift Manager at a Lab's config, and it shows what that Lab holds. It opens on Shift Coordinator: a summary of what's waiting on you and what's running, and a conversation with the Lab's Shift Coordinator, the worker named `shift-coordinator`. From there it shows the teams and their workers, the projects and their workstreams, the boards, and the asks waiting on you.
 
 A task shows one worker's run as it happens, and lets you stop it. The panel on the right follows along, with the team and its tasks at a workstream and the task's details at a task.
 
@@ -177,9 +177,9 @@ client:
 
 It's listed once a session whose flow serves it exists. A document without that line stays out of Jump to.
 
-**A Shift Coordinator, if you want one.** On the Shift Coordinator screen, Shift Manager talks to the worker named `chief-of-staff`. Declare it as an org worker, under `org/workers/` beside `teams/`, on the built-in `agent` worker flow, with instructions that say what it should do for the user running the Lab:
+**A Shift Coordinator, if you want one.** On the Shift Coordinator screen, Shift Manager talks to the worker named `shift-coordinator`. Declare it as an org worker, under `org/workers/` beside `teams/`, on the built-in `agent` worker flow, with instructions that say what it should do for the user running the Lab:
 
-```md title="workforce/org/workers/chief-of-staff/WORKER.md"
+```md title="workforce/org/workers/shift-coordinator/WORKER.md"
 ---
 description: The user's one point of contact.
 flow: agent
@@ -188,7 +188,7 @@ model: openai/gpt-6-luna
 You are the Shift Coordinator for this Lab. Answer questions about who is working on what.
 ```
 
-A `chief-of-staff` worker declared as a team's worker, at `teams/<team>/workers/chief-of-staff/`, works too: Shift Manager talks to that worker. Wherever Shift Manager names a worker, such as Roster, Inbox and Jump to, it shows this one as Shift Coordinator; its id stays `chief-of-staff`.
+A `shift-coordinator` worker declared as a team's worker, at `teams/<team>/workers/shift-coordinator/`, works too: Shift Manager talks to that worker. Wherever Shift Manager names a worker, such as Roster, Inbox and Jump to, it shows this one as Shift Coordinator; its id stays `shift-coordinator`.
 
 Shift Coordinator shows your newest conversation with that worker. If you have none, the first line you send starts one. Your host doesn't need to open one, whichever flow the Shift Coordinator runs on.
 
@@ -196,7 +196,7 @@ What it can do is up to its instructions and the tools you give it. Shift Manage
 
 To have it hand work to other workers, run it on Workforce's `coordinator` flow instead, with the workers it starts from as `delegates:`. The Lab registers that flow beside `agent` (`defineCoordinatorFlow`, see the Workforce README's Coordinators section). The DevTeam's Shift Coordinator does this:
 
-```md title="workforce/org/workers/chief-of-staff/WORKER.md"
+```md title="workforce/org/workers/shift-coordinator/WORKER.md"
 ---
 description: The user's one point of contact. Hires and fires workers, starts projects, and answers questions about the team, its workers and its delegates.
 flow: coordinator
@@ -213,7 +213,7 @@ A Shift Coordinator on the `coordinator` flow gets a DELEGATES list in the Shift
 
 Below DELEGATES, TASKS lists the active tasks your conversation filed for its delegates, each with its goal, status and delegate. The conversation goes on for the whole shift, so tasks that have ended fold away: the done ones into a count such as `12 done`, the errored ones into their own `1 errored` group, and each opens to its tasks when clicked. A workstream's Board lists all of its tasks, ended or not, since they are the parts of one piece of work. It is the conversation's own `listTasks`, so it shows that conversation's tasks and no other's. It is read again after each line you send, and every few seconds while a task is open. When a task ends, the conversation says so under the delegate's name, and the whole Lab is read again.
 
-A Lab with no Shift Coordinator needs nothing in its config. Every screen works, and Shift Coordinator shows the summary of asks and runs. Where the conversation would be, it says "This Lab declares no shift coordinator" and how to declare a `chief-of-staff` worker. That message needs an open inventory (above). With no inventory, the conversation area shows an error about the inventory instead.
+A Lab with no Shift Coordinator needs nothing in its config. Every screen works, and Shift Coordinator shows the summary of asks and runs. Where the conversation would be, it says "This Lab declares no shift coordinator" and how to declare a `shift-coordinator` worker. That message needs an open inventory (above). With no inventory, the conversation area shows an error about the inventory instead.
 
 `test/fixtures/ask-lab/lab.mts` is a small Lab that does the above in one file: it writes its inventory from a flow of its own that carries `inventoryWriterActions`, as its `workerWriter`.
 
@@ -257,15 +257,15 @@ On a window narrower than 1180px, the right panel starts collapsed, and opening 
 
 ## Shift Coordinator
 
-Shift Manager opens here, at `/` or `/cos`.
+Shift Manager opens here, at `/` or `/shift-coordinator`.
 
 The top of the screen is Shift Manager's own summary of the shift: how many asks wait on you, each one with the same Approve and Reject you'd get in Inbox, and how many runs are going across how many workstreams. The numbers are the ones Inbox and Tasks show.
 
-Below it is your conversation with the Lab's Shift Coordinator (the `chief-of-staff` worker): your newest session on its flow that names it. A first line opens that session, naming the worker, before the line goes through the flow's door, like any other line you send to a worker. The message box names who you're sending to, Shift Coordinator. The reply is what the worker wrote in that session, with the time it was written. While the worker works on a line you sent from this tab, a blue square says so under the conversation and on the sidebar's Shift Coordinator entry. Once you send a line, the conversation follows: each new turn scrolls into view, until you scroll up to read earlier ones. Come back later and the same conversation is there.
+Below it is your conversation with the Lab's Shift Coordinator (the `shift-coordinator` worker): your newest session on its flow that names it. A first line opens that session, naming the worker, before the line goes through the flow's door, like any other line you send to a worker. The message box names who you're sending to, Shift Coordinator. The reply is what the worker wrote in that session, with the time it was written. While the worker works on a line you sent from this tab, a blue square says so under the conversation and on the sidebar's Shift Coordinator entry. Once you send a line, the conversation follows: each new turn scrolls into view, until you scroll up to read earlier ones. Come back later and the same conversation is there.
 
 The panel on the right lists each workstream with its running tasks and the asks its project's members have raised.
 
-A Lab with no `chief-of-staff` worker still opens here. You get the summary, and in place of the conversation a line saying how to add one. Declaring the worker is covered under [What a Lab's config provides](#what-a-labs-config-provides).
+A Lab with no `shift-coordinator` worker still opens here. You get the summary, and in place of the conversation a line saying how to add one. Declaring the worker is covered under [What a Lab's config provides](#what-a-labs-config-provides).
 
 ## A project
 
@@ -299,7 +299,7 @@ The devtool's pages ship prebuilt in the published `@flow-state-dev/devtool` pac
 
 ### What a coding run is handed
 
-When you approve a feature in Inbox, the team's own coordinator, not the `chief-of-staff` worker behind Shift Coordinator, files it as a task and a coder worker picks it up as a coding run. In the `devteam` profile, the run's prompt holds, in this order:
+When you approve a feature in Inbox, the team's own coordinator, not the `shift-coordinator` worker behind Shift Coordinator, files it as a task and a coder worker picks it up as a coding run. In the `devteam` profile, the run's prompt holds, in this order:
 
 - **The task.** The feature you approved, word for word.
 - **The worker's own files.** Its instructions, the document it names (the team's standing brief), and its skills.
@@ -377,7 +377,7 @@ PLAYWRIGHT_BROWSERS_PATH=<your Chromium pool> pnpm tsx goals/shift-manager/<chec
 | `it-shows-and-stops-a-task-run` | Opens tasks on a Lab whose runs hold until stopped, watches each run live, interrupts it, and compares the screen with the run's stored session and request. |
 | `it-takes-its-look-from-the-design-system` | Builds Shift Manager twice, as written and with its theme import removed, and reads the colours and fonts painted on the shell and on each registry card in a task's Session. With the import, every one is a Shift Manager value. Without it, none is. |
 | `it-shows-who-is-on-shift` | Serves a Lab of two teams whose workers are put into each status on purpose, opens Roster for all teams and for each one, and compares every worker's status, slots, tasks and waits with the Lab's store. |
-| `it-briefs-and-talks-with-the-chief-of-staff` | Sends a line to a Lab's chief-of-staff worker, which runs a real model, and answers an ask from the summary. Compares the summary, the conversation and the reply with what the store holds. Needs a model key, such as `AI_GATEWAY_API_KEY`, in the environment. |
+| `it-briefs-and-talks-with-the-shift-coordinator` | Sends a line to a Lab's shift-coordinator worker, which runs a real model, and answers an ask from the summary. Compares the summary, the conversation and the reply with what the store holds. Needs a model key, such as `AI_GATEWAY_API_KEY`, in the environment. |
 | `it-draws-v2s-look` | Compares what is painted with v2, the reference design the [design-system](../design-system) package is drawn from. Its Labs run on scripted models, so it needs no model key. See below. |
 
 `it-draws-v2s-look` walks every screen in both shifts, at a wide and a narrow window. On every screen it checks that v2's two fonts actually loaded, that no corner is rounded, and that the highlight marks only what waits on you. On the sidebar, Shift Coordinator and the parts every screen shares, it also checks each element's typeface and size, surface and border, and the column widths. On the sidebar and Shift Coordinator, the counts, the workstream squares and the suggested lines must match what the Lab holds. A failure names the element, the screen, the shift and width, and in most cases the line of v2 it departs from.

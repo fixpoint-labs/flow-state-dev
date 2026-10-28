@@ -1,32 +1,32 @@
-# shift-manager › it briefs and talks with the chief of staff
+# shift-manager › it briefs and talks with the Shift Coordinator
 
 **Issue:** FIX-1722
 
-**Outcome:** A person opening any Lab in Shift Manager lands on Chief of Staff. They see a summary of what waits on them and what is running that agrees with the store, can answer those asks there, and can talk to the Lab's chief-of-staff seat, with every line and reply being what that seat's session holds. A Lab with no chief of staff still lands there, on the summary and a line saying how to add one.
+**Outcome:** A person opening any Lab in Shift Manager lands on Shift Coordinator. They see a summary of what waits on them and what is running that agrees with the store, can answer those asks there, and can talk to the Lab's shift-coordinator seat, with every line and reply being what that seat's session holds. A Lab with no Shift Coordinator still lands there, on the summary and a line saying how to add one.
 
 **Input:** two Labs, each served by Shift Manager's command.
 
-- The fixture desk (`lab/`): one team, `desk`, with a seat that asks a person (the turn goal's `asker` kind) and a seat named `chief-of-staff` on the built-in `agent` kind with a real model, both delegates of `front`, a worker on Workforce's `coordinator` flow (`routing: everyone`). Nothing files a task, so no conversation board holds a row. The check raises two approvals through the asker's own action route before the page opens, so the Lab reopens them when they are answered.
-- The same desk with no chief of staff (`lab-no-cos/`): the `asker` seat, `front`'s one delegate, for **no CoS**. DevTeam declares a chief of staff since FIX-1719, so it can no longer stand in for a Lab without one.
+- The fixture desk (`lab/`): one team, `desk`, with a seat that asks a person (the turn goal's `asker` kind) and a seat named `shift-coordinator` on the built-in `agent` kind with a real model, both delegates of `front`, a worker on Workforce's `coordinator` flow (`routing: everyone`). Nothing files a task, so no conversation board holds a row. The check raises two approvals through the asker's own action route before the page opens, so the Lab reopens them when they are answered.
+- The same desk with no Shift Coordinator (`lab-no-shift-coordinator/`): the `asker` seat, `front`'s one delegate, for **no Shift Coordinator**. DevTeam declares a Shift Coordinator since FIX-1719, so it can no longer stand in for a Lab without one.
 
 The seat names are read from the tree at run time. Tokens are fresh per run.
 
 **Signal:** each failure is tagged `[<lab>] <leg>`.
 
-- **landing**: `/` and an unknown path draw the Chief of Staff view, its sidebar entry first and current.
+- **landing**: `/` and an unknown path draw the Shift Coordinator view, its sidebar entry first and current.
 - **summary**: the needs-you count equals the store's pending asks, every one is listed, the running line (`data-runs`) equals the running rows on the person's conversation boards (the `tasks` collection, read through the first of their sessions whose flow declares it).
-  - *Retired under BR-24 (FIX-1792):* the rail's per-stream running and needs-you counts for `desk.front`. `front` is now a coordinator worker, not a mailbox, so the desk has no workstream and the rail draws no `cos-stream` row to count. FIX-1792 P4 then removed the rail itself (Shift Manager's STREAMS panel went with its mailbox workstream level), so the summary no longer counts its rows either: a count of a list that can't be drawn grades nothing. What the half proved is still graded: the asks the stream's members hold are the summary's needs-you count and list (above) and **inline**; the running rows are the summary's running line.
+  - *Retired under BR-24 (FIX-1792):* the rail's per-stream running and needs-you counts for `desk.front`. `front` is now a coordinator worker, not a mailbox, so the desk has no workstream and the rail draws no `shift-coordinator-stream` row to count. FIX-1792 P4 then removed the rail itself (Shift Manager's STREAMS panel went with its mailbox workstream level), so the summary no longer counts its rows either: a count of a list that can't be drawn grades nothing. What the half proved is still graded: the asks the stream's members hold are the summary's needs-you count and list (above) and **inline**; the running rows are the summary's running line.
 - **inline**: Approve on one summary item leaves one fewer pending suspension in the store, and both the summary and Inbox drop it.
-- **talk**: a fresh token typed to the chief of staff is a user item in one of that seat's direct sessions the moment *delivered* is drawn, and the reply on screen is that session's next assistant item, by id. No reply is drawn that the session doesn't hold.
+- **talk**: a fresh token typed to the Shift Coordinator is a user item in one of that seat's direct sessions the moment *delivered* is drawn, and the reply on screen is that session's next assistant item, by id. No reply is drawn that the session doesn't hold.
 - **again**: a reload draws the same line and reply.
-- **no CoS**: the Lab with no chief of staff lands on the view with its summary and the named state in place of the composer.
+- **no Shift Coordinator**: the Lab with no Shift Coordinator lands on the view with its summary and the named state in place of the composer.
 - **reach**: the pages throw nothing.
 
-**Anti-game:** the check never reads Shift Manager's state. Its oracles are each Lab's store, read through the Lab's routes with the check's own requests: the asks' suspension items, the conversation boards' rows, the person's session listing and the chief of staff's session items. The model's words aren't graded, only that the screen shows the item the session stored. *Delivered* is graded at the instant it is drawn.
+**Anti-game:** the check never reads Shift Manager's state. Its oracles are each Lab's store, read through the Lab's routes with the check's own requests: the asks' suspension items, the conversation boards' rows, the person's session listing and the Shift Coordinator's session items. The model's words aren't graded, only that the screen shows the item the session stored. *Delivered* is graded at the instant it is drawn.
 
 **Model:** real — `openai/gpt-5.4-mini` on the built-in `agent` kind, resolved from the environment. With none of `AI_GATEWAY_API_KEY`, `OPENAI_API_KEY` or `OPENROUTER_API_KEY` set, the check fails and says so, rather than passing.
 
-**Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-briefs-and-talks-with-the-chief-of-staff/run.mts`
+**Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-briefs-and-talks-with-the-shift-coordinator/run.mts`
 
 **Controls:** each rebuilds Shift Manager with source modules swapped for one module under `controls/`. The build fails if a swap never fired.
 

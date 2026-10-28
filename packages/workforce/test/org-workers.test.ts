@@ -58,21 +58,21 @@ const packageMd = (description: string): string => `---\ndescription: ${descript
 
 describe("the roster reader walks org/workers/ (BR-1, BR-3, BR-6)", () => {
   it("lists an org worker by its bare folder name, beside a team worker of the same name", async () => {
-    await write("org/workers/chief-of-staff/WORKER.md", workerMd("the chief of staff"));
-    await write("teams/eng/workers/chief-of-staff/WORKER.md", workerMd("eng's own"));
+    await write("org/workers/shift-coordinator/WORKER.md", workerMd("the Shift Coordinator"));
+    await write("teams/eng/workers/shift-coordinator/WORKER.md", workerMd("eng's own"));
 
     const { workers, errors } = await readWorkforceDirectory(root);
 
     expect(errors).toEqual([]);
     // Org workers first, then each team's — and two workers, not one: the dotless
     // id cannot equal a team-qualified one.
-    expect(workers.map((w) => w.id)).toEqual(["chief-of-staff", "eng.chief-of-staff"]);
-    expect(workers[0]!.declared["description"]).toBe("the chief of staff");
+    expect(workers.map((w) => w.id)).toEqual(["shift-coordinator", "eng.shift-coordinator"]);
+    expect(workers[0]!.declared["description"]).toBe("the Shift Coordinator");
     expect(workers[1]!.declared["description"]).toBe("eng's own");
   });
 
   it("reports a broken org slot under its path, and keeps every other worker", async () => {
-    await write("org/workers/chief-of-staff/WORKER.md", workerMd("the chief of staff"));
+    await write("org/workers/shift-coordinator/WORKER.md", workerMd("the Shift Coordinator"));
     await write("teams/eng/workers/lead/WORKER.md", workerMd("the lead"));
     // No WORKER.md: the slot is a worker that should exist and does not.
     await write("org/workers/build/resources/runbook.md", "---\ndescription: x\n---\nbody");
@@ -88,7 +88,7 @@ describe("the roster reader walks org/workers/ (BR-1, BR-3, BR-6)", () => {
 
       const { workers, errors } = await readWorkforceDirectory(root);
 
-      expect(workers.map((w) => w.id)).toEqual(["chief-of-staff", "eng.lead"]);
+      expect(workers.map((w) => w.id)).toEqual(["shift-coordinator", "eng.lead"]);
       expect(errors.map((e) => `${e.kind} @ ${e.path}`).sort()).toEqual([
         "worker-load-failed @ org/workers/Bad_Name",
         "worker-load-failed @ org/workers/build",
@@ -103,18 +103,18 @@ describe("the roster reader walks org/workers/ (BR-1, BR-3, BR-6)", () => {
   });
 
   it("refuses a WORKER.md key the framework imposes, by name, as for a team worker (BR-4)", async () => {
-    await write("org/workers/chief-of-staff/WORKER.md", workerMd("cos", "persona: boss\n"));
+    await write("org/workers/shift-coordinator/WORKER.md", workerMd("shift-coordinator", "persona: boss\n"));
     await write("teams/eng/workers/lead/WORKER.md", workerMd("the lead", "persona: boss\n"));
 
     const { workers, errors } = await readWorkforceDirectory(root);
 
     expect(workers).toEqual([]);
     expect(errors.map((e) => `${e.kind} @ ${e.path}`)).toEqual([
-      "refused-declaration @ org/workers/chief-of-staff",
+      "refused-declaration @ org/workers/shift-coordinator",
       "refused-declaration @ teams/eng/workers/lead",
     ]);
     // The same sentence either way, naming the folder.
-    expect(errors[0]!.error.message.replace("chief-of-staff", "X")).toBe(
+    expect(errors[0]!.error.message.replace("shift-coordinator", "X")).toBe(
       errors[1]!.error.message.replace("lead", "X"),
     );
   });
@@ -122,8 +122,8 @@ describe("the roster reader walks org/workers/ (BR-1, BR-3, BR-6)", () => {
   it("reports a symlinked org/ or org/workers/ rather than passing over its workers", async () => {
     const outside = await fs.mkdtemp(path.join(os.tmpdir(), "org-workers-outside-"));
     try {
-      await fs.mkdir(path.join(outside, "cos"), { recursive: true });
-      await fs.writeFile(path.join(outside, "cos", "WORKER.md"), workerMd("from outside"));
+      await fs.mkdir(path.join(outside, "shift-coordinator"), { recursive: true });
+      await fs.writeFile(path.join(outside, "shift-coordinator", "WORKER.md"), workerMd("from outside"));
       await fs.mkdir(path.join(root, "org"), { recursive: true });
       await fs.symlink(outside, path.join(root, "org", "workers"), "dir");
 
@@ -150,17 +150,17 @@ describe("the roster reader walks org/workers/ (BR-1, BR-3, BR-6)", () => {
 
 describe("an org worker reads the org level, then its own folder (BR-5)", () => {
   beforeEach(async () => {
-    await write("org/workers/chief-of-staff/WORKER.md", workerMd("cos", "packages: [house]\n"));
+    await write("org/workers/shift-coordinator/WORKER.md", workerMd("shift-coordinator", "packages: [house]\n"));
     await write("teams/eng/TEAM.md", "---\ndescription: Engineering\n---\n\nShip carefully.\n");
     await write("teams/eng/workers/lead/WORKER.md", workerMd("the lead"));
 
     await write("org/skills/house-style/SKILL.md", skillMd("everyone's"));
     await write("teams/eng/skills/review/SKILL.md", skillMd("eng's"));
-    await write("org/workers/chief-of-staff/skills/hiring/SKILL.md", skillMd("cos's own"));
+    await write("org/workers/shift-coordinator/skills/hiring/SKILL.md", skillMd("shiftCoordinator's own"));
 
     await write("org/packages/house/PACKAGE.md", packageMd("the org library"));
     await write("teams/eng/packages/deploy/PACKAGE.md", packageMd("eng's library"));
-    await write("org/workers/chief-of-staff/packages/roster/PACKAGE.md", packageMd("cos's own"));
+    await write("org/workers/shift-coordinator/packages/roster/PACKAGE.md", packageMd("shiftCoordinator's own"));
   });
 
   it("gets org and own skills, org and own packages, and nothing of a team's", async () => {
@@ -169,14 +169,14 @@ describe("an org worker reads the org level, then its own folder (BR-5)", () => 
     expect(skillErrors).toEqual([]);
     expect(packageErrors).toEqual([]);
 
-    const cos = workers.find((w) => w.id === "chief-of-staff")!;
-    expect((cos.skills ?? []).map((s) => s.name).sort()).toEqual(["hiring", "house-style"]);
-    expect((cos.packages ?? []).map((p) => p.path)).toEqual([
+    const shiftCoordinator = workers.find((w) => w.id === "shift-coordinator")!;
+    expect((shiftCoordinator.skills ?? []).map((s) => s.name).sort()).toEqual(["hiring", "house-style"]);
+    expect((shiftCoordinator.packages ?? []).map((p) => p.path)).toEqual([
       "org/packages/house",
-      "org/workers/chief-of-staff/packages/roster",
+      "org/workers/shift-coordinator/packages/roster",
     ]);
     // No team, so no team instructions — the key is absent, not empty.
-    expect(Object.hasOwn(cos, "teamInstructions")).toBe(false);
+    expect(Object.hasOwn(shiftCoordinator, "teamInstructions")).toBe(false);
 
     // Control: the team worker in the same tree still gets its team's levels and
     // none of the org worker's own folder.
@@ -199,21 +199,21 @@ describe("an org worker reads the org level, then its own folder (BR-5)", () => 
     });
 
     const minted = mintWorkers(workers, {
-      packageBlocks: { "org/workers/chief-of-staff/packages/roster": { "add-worker": tool } },
+      packageBlocks: { "org/workers/shift-coordinator/packages/roster": { "add-worker": tool } },
     });
 
-    expect(minted.map((s) => s.id)).toEqual(["chief-of-staff", "eng.lead"]);
+    expect(minted.map((s) => s.id)).toEqual(["shift-coordinator", "eng.lead"]);
     const held = (minted[0]!.config as Record<string, Array<{ path: string }>>)[WORKER_PACKAGES_KEY];
     expect((held ?? []).map((entry) => entry.path)).toEqual([
-      "org/workers/chief-of-staff/packages/roster",
+      "org/workers/shift-coordinator/packages/roster",
       "org/packages/house",
     ]);
   });
 
   it("refuses to start an org worker whose own package was refused but whose blocks were generated", async () => {
-    await fs.rm(path.join(root, "org/workers/chief-of-staff/packages/roster/PACKAGE.md"));
+    await fs.rm(path.join(root, "org/workers/shift-coordinator/packages/roster/PACKAGE.md"));
     const { workers, packageErrors } = await readWorkforce(root);
-    expect(packageErrors.map((e) => e.path)).toEqual(["org/workers/chief-of-staff/packages/roster"]);
+    expect(packageErrors.map((e) => e.path)).toEqual(["org/workers/shift-coordinator/packages/roster"]);
 
     const tool = handler({
       name: "add-worker",
@@ -223,23 +223,23 @@ describe("an org worker reads the org level, then its own folder (BR-5)", () => 
     });
     expect(() =>
       mintWorkers(workers, {
-        packageBlocks: { "org/workers/chief-of-staff/packages/roster": { "add-worker": tool } },
+        packageBlocks: { "org/workers/shift-coordinator/packages/roster": { "add-worker": tool } },
       }),
-    ).toThrow(/worker "chief-of-staff"[\s\S]*org\/workers\/chief-of-staff\/packages\/roster/);
+    ).toThrow(/worker "shift-coordinator"[\s\S]*org\/workers\/shift-coordinator\/packages\/roster/);
   });
 });
 
 describe("parseDeclaredWorkerId — the one rule for a declared worker's id (BR-5, S2)", () => {
   it("reads a dotless id as an org worker and a dotted one as a team worker", () => {
-    expect(parseDeclaredWorkerId("chief-of-staff")).toEqual({ name: "chief-of-staff" });
-    expect(parseDeclaredWorkerId("eng.chief-of-staff")).toEqual({
+    expect(parseDeclaredWorkerId("shift-coordinator")).toEqual({ name: "shift-coordinator" });
+    expect(parseDeclaredWorkerId("eng.shift-coordinator")).toEqual({
       team: "eng",
-      name: "chief-of-staff",
+      name: "shift-coordinator",
     });
   });
 
   it("names no worker for an id with a second dot: a worker folder name is one segment, so the loader never mints one", () => {
-    for (const id of ["a.b.c", "eng.lead.x", "eng.chief-of-staff.extra"]) {
+    for (const id of ["a.b.c", "eng.lead.x", "eng.shift-coordinator.extra"]) {
       expect(parseDeclaredWorkerId(id), id).toBeUndefined();
       expect(placeOfWorker(id), id).toBeUndefined();
     }
@@ -257,26 +257,26 @@ describe("parseDeclaredWorkerId — the one rule for a declared worker's id (BR-
       expect(placeOfWorker(id), id).toBeUndefined();
     }
     // Control: a legal dotless id is still an org worker.
-    expect(placeOfWorker("chief-of-staff")).toEqual({ team: undefined, worker: "chief-of-staff" });
+    expect(placeOfWorker("shift-coordinator")).toEqual({ team: undefined, worker: "shift-coordinator" });
   });
 
   it("places an org worker at org/workers/<name>/, and a team worker where it always was", () => {
-    expect(placeOfWorker("chief-of-staff")).toEqual({ team: undefined, worker: "chief-of-staff" });
+    expect(placeOfWorker("shift-coordinator")).toEqual({ team: undefined, worker: "shift-coordinator" });
     expect(placeOfWorker("eng.lead")).toEqual({ team: "eng", worker: "lead" });
     expect(placeOfWorker("")).toBeUndefined();
   });
 
   it("lets an org worker reach the org level and its own folder's references, and no one else's", () => {
-    const cos = placeOfWorker("chief-of-staff")!;
+    const shiftCoordinator = placeOfWorker("shift-coordinator")!;
     const lead = placeOfWorker("eng.lead")!;
     const at = (ref: string) => placeOfReference(ref)!;
 
-    expect(referenceReachableByWorker(cos, at("handbook"))).toBe(true);
-    expect(referenceReachableByWorker(cos, at("workers/chief-of-staff/runbook"))).toBe(true);
+    expect(referenceReachableByWorker(shiftCoordinator, at("handbook"))).toBe(true);
+    expect(referenceReachableByWorker(shiftCoordinator, at("workers/shift-coordinator/runbook"))).toBe(true);
     // Another org worker's folder, any team's, any team worker's: no.
-    expect(referenceReachableByWorker(cos, at("workers/build/runbook"))).toBe(false);
-    expect(referenceReachableByWorker(cos, at("teams/eng/handbook"))).toBe(false);
-    expect(referenceReachableByWorker(cos, at("teams/eng/workers/chief-of-staff/notes"))).toBe(false);
+    expect(referenceReachableByWorker(shiftCoordinator, at("workers/build/runbook"))).toBe(false);
+    expect(referenceReachableByWorker(shiftCoordinator, at("teams/eng/handbook"))).toBe(false);
+    expect(referenceReachableByWorker(shiftCoordinator, at("teams/eng/workers/shift-coordinator/notes"))).toBe(false);
     // And a team worker still reaches no org worker's folder, even one of its name.
     expect(referenceReachableByWorker(lead, at("workers/lead/runbook"))).toBe(false);
   });
@@ -287,16 +287,16 @@ describe("resolveHeldPackages reads an org worker's id through the parser", () =
     ({ name, level, path: where, description: name, ...owner }) as PackageManifest;
   const house = pkg("house", "org", "org/packages/house");
   const deploy = pkg("deploy", "team", "teams/eng/packages/deploy", { team: "eng" });
-  const own = pkg("roster", "worker", "org/workers/cos/packages/roster", { worker: "cos" });
+  const own = pkg("roster", "worker", "org/workers/shift-coordinator/packages/roster", { worker: "shift-coordinator" });
 
   it("holds its own folder's packages and the org library it names", () => {
-    const { held, problems } = resolveHeldPackages("cos", ["house"], [house, own], {});
+    const { held, problems } = resolveHeldPackages("shift-coordinator", ["house"], [house, own], {});
     expect(problems).toEqual([]);
     expect(held.map((h) => h.manifest.path)).toEqual([own.path, house.path]);
   });
 
   it("refuses a team library in its reach: an org worker has no team", () => {
-    const { held, problems } = resolveHeldPackages("cos", undefined, [house, deploy], {});
+    const { held, problems } = resolveHeldPackages("shift-coordinator", undefined, [house, deploy], {});
     expect(held).toEqual([]);
     expect(problems.join("\n")).toContain(deploy.path);
   });
@@ -305,7 +305,7 @@ describe("resolveHeldPackages reads an org worker's id through the parser", () =
     // A hand-built or widened record can drop the optional `team`. An org
     // worker has no team, so no team-level package is ever its own.
     const ownerless = pkg("deploy", "team", "teams/eng/packages/deploy");
-    const { held, problems } = resolveHeldPackages("cos", ["deploy"], [house, ownerless], {});
+    const { held, problems } = resolveHeldPackages("shift-coordinator", ["deploy"], [house, ownerless], {});
     expect(held).toEqual([]);
     expect(problems.join("\n")).toContain(ownerless.path);
   });
@@ -327,7 +327,7 @@ describe("resolveHeldPackages reads an org worker's id through the parser", () =
   });
 
   it("looks only in the org library for a name it cannot find", () => {
-    const { problems } = resolveHeldPackages("cos", ["missing"], [house], {});
+    const { problems } = resolveHeldPackages("shift-coordinator", ["missing"], [house], {});
     expect(problems).toEqual([expect.stringContaining('Looked in "org/packages/missing".')]);
     expect(problems[0]).not.toContain("teams/");
   });

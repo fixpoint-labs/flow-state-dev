@@ -9,7 +9,7 @@
  * line leaves the draft, since the conversation now holds it, and the composer
  * says the worker is on it until the send resolves. It shows *delivered* only
  * when it does (BR-4), noting Inbox when the worker stopped on a user's ask
- * (a chief of staff's fire, say), or that it waits when it stopped on anything else. A refusal keeps the draft and shows the worker's reason
+ * (a Shift Coordinator's fire, say), or that it waits when it stopped on anything else. A refusal keeps the draft and shows the worker's reason
  * (BR-5). A line that never got there keeps the draft and offers Retry. A line
  * that may have arrived keeps the draft and offers no Retry, so it isn't sent
  * twice. A line that failed after it left the draft is put back, unless the
@@ -18,7 +18,7 @@
  * Every composer draws through {@link ComposerShell}, v2's composer: one line,
  * sent with ⏎ (Enter). Most composers are a
  * 14px input over a mono footer that holds the send state and ⏎ (v2:305-309,
- * 430-433, 639-644); Chief of Staff's is the larger one, a 16px input in a
+ * 430-433, 639-644); Shift Coordinator's is the larger one, a 16px input in a
  * 1.5px ink box with ⏎ beside it and the send state under it (v2:175-178).
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
@@ -102,7 +102,7 @@ export function TurnSendStatus({ state, testId, onRetry }: { state: TurnSendStat
 
 /**
  * The one composer markup every composer draws through: v2's one-line input
- * over a mono footer (or Chief of Staff's larger box), with the send state in
+ * over a mono footer (or Shift Coordinator's larger box), with the send state in
  * the footer and ⏎ at its end. It only draws: the draft, what Send does and
  * the state shown are the caller's. `lead` sits before the status in the
  * footer; `extra` sits beside
@@ -139,8 +139,8 @@ export function ComposerShell({
   statusState: string;
   lead?: ReactNode;
   extra?: ReactNode;
-  /** `cos`: Chief of Staff's larger composer (v2:175-178). */
-  scale?: "default" | "cos";
+  /** `shift-coordinator`: Shift Coordinator's larger composer (v2:175-178). */
+  scale?: "default" | "shift-coordinator";
 }) {
   const input = (
     <input
@@ -151,7 +151,7 @@ export function ComposerShell({
       placeholder={placeholder}
       aria-label={label}
       className={`block w-full min-w-0 bg-transparent outline-none placeholder:text-muted-foreground disabled:opacity-60 ${
-        scale === "cos" ? "p-4 text-base" : "px-3 py-[11px] text-sm"
+        scale === "shift-coordinator" ? "p-4 text-base" : "px-3 py-[11px] text-sm"
       }`}
       data-testid={`${testId}-input`}
       data-look="composer-input"
@@ -170,7 +170,7 @@ export function ComposerShell({
       data-testid={`${testId}-send`}
       data-look="composer-send"
       className={`shrink-0 bg-primary font-mono font-medium text-primary-foreground hover:bg-info disabled:opacity-50 ${
-        scale === "cos" ? "m-2 px-3 py-2 text-xs" : "px-[9px] py-1"
+        scale === "shift-coordinator" ? "m-2 px-3 py-2 text-xs" : "px-[9px] py-1"
       }`}
     >
       ⏎
@@ -178,8 +178,8 @@ export function ComposerShell({
   );
 
   return (
-    <form onSubmit={onSubmit} className={scale === "cos" ? "flex flex-col gap-2.5" : "px-[22px] pt-2.5 pb-4"} data-testid={testId}>
-      {scale === "cos" ? (
+    <form onSubmit={onSubmit} className={scale === "shift-coordinator" ? "flex flex-col gap-2.5" : "px-[22px] pt-2.5 pb-4"} data-testid={testId}>
+      {scale === "shift-coordinator" ? (
         <>
           <div className="flex items-center border-[1.5px] border-foreground bg-card" data-look="composer">
             {input}
@@ -242,8 +242,8 @@ export function TurnComposer({
   onDelivered?: (message: string) => void;
   /** Controls drawn beside Send. */
   extra?: ReactNode;
-  /** `cos`: Chief of Staff's larger composer (v2:175-178). */
-  scale?: "default" | "cos";
+  /** `shift-coordinator`: Shift Coordinator's larger composer (v2:175-178). */
+  scale?: "default" | "shift-coordinator";
   /**
    * A line handed in from elsewhere (the palette): sent as if typed, as soon as
    * the composer isn't blocked. `onAutoSend` fires when it is taken.

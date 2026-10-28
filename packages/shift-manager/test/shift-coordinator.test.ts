@@ -1,12 +1,12 @@
 /**
- * The Chief of Staff view's pure parts: where Shift Manager lands (V1, BR-1),
- * which worker is the chief of staff (V2, D2, BR-10 to BR-12), the shift
+ * The Shift Coordinator view's pure parts: where Shift Manager lands (V1, BR-1),
+ * which worker is the Shift Coordinator (V2, D2, BR-10 to BR-12), the shift
  * summary's numbers (V3; D1, BR-4), and which session
  * is the user's conversation with it (V4, BR-14).
  */
 import { describe, expect, it } from "vitest";
 import type { SessionSummary } from "@flow-state-dev/client";
-import { chiefOfStaffOf, shiftSummary, type LoadedSnapshot } from "../src/lib/derive";
+import { shiftCoordinatorOf, shiftSummary, type LoadedSnapshot } from "../src/lib/derive";
 import { conversationAt } from "../src/lib/conversation";
 import { parseRoute, pathFor, type Route } from "../src/lib/routes";
 import { GENERAL_TEAM, inboxSection, toWorker, type Ask, type BoardRow, type Worker } from "../src/lib/reads";
@@ -15,12 +15,12 @@ const ORG = "org_1";
 const worker = (id: string, door: string | null = "run"): Worker => ({ ...toWorker({ id, kind: "agent", door })! });
 
 describe("landing (V1, BR-1)", () => {
-  it("opens Chief of Staff at /, at /cos and at any path Shift Manager doesn't know", () => {
+  it("opens Shift Coordinator at /, at /shift-coordinator and at any path Shift Manager doesn't know", () => {
     // `/w/…` is no level Shift Manager knows, so it lands here too.
-    for (const path of ["/", "/cos", "/nowhere", "/cos/extra", "/w", "/w/ops.desk/stream"]) {
-      expect(parseRoute(path), path).toEqual({ level: "cos" });
+    for (const path of ["/", "/shift-coordinator", "/nowhere", "/shift-coordinator/extra", "/w", "/w/ops.desk/stream"]) {
+      expect(parseRoute(path), path).toEqual({ level: "shift-coordinator" });
     }
-    expect(pathFor({ level: "cos" })).toBe("/cos");
+    expect(pathFor({ level: "shift-coordinator" })).toBe("/shift-coordinator");
   });
 
   it("keeps Inbox at /inbox, and every other route round-trips as before", () => {
@@ -32,7 +32,7 @@ describe("landing (V1, BR-1)", () => {
       { level: "task", boardRef: "s_1.tasks", taskId: "t-1", tab: "diff" },
       { level: "project", projectId: "web", tab: "brief" },
       { level: "resource", sessionId: "s_1", ref: "runbook" },
-      { level: "cos" },
+      { level: "shift-coordinator" },
     ];
     for (const route of routes) {
       const path = pathFor(route);
@@ -42,37 +42,37 @@ describe("landing (V1, BR-1)", () => {
   });
 });
 
-describe("which worker is the chief of staff (V2, D2)", () => {
+describe("which worker is the Shift Coordinator (V2, D2)", () => {
   it("finds an org worker and a team's worker by its name", () => {
-    expect(chiefOfStaffOf([worker("chief-of-staff"), worker("ops.asker")])).toEqual({ kind: "one", worker: worker("chief-of-staff") });
-    expect(chiefOfStaffOf([worker("desk.chief-of-staff"), worker("desk.asker")])).toEqual({ kind: "one", worker: worker("desk.chief-of-staff") });
+    expect(shiftCoordinatorOf([worker("shift-coordinator"), worker("ops.asker")])).toEqual({ kind: "one", worker: worker("shift-coordinator") });
+    expect(shiftCoordinatorOf([worker("desk.shift-coordinator"), worker("desk.asker")])).toEqual({ kind: "one", worker: worker("desk.shift-coordinator") });
   });
 
   it("is several, and no guess, when two workers carry the name", () => {
-    expect(chiefOfStaffOf([worker("chief-of-staff"), worker("desk.chief-of-staff")])).toEqual({
+    expect(shiftCoordinatorOf([worker("shift-coordinator"), worker("desk.shift-coordinator")])).toEqual({
       kind: "several",
-      workers: [worker("chief-of-staff"), worker("desk.chief-of-staff")],
+      workers: [worker("shift-coordinator"), worker("desk.shift-coordinator")],
     });
-    expect(chiefOfStaffOf([worker("desk.chief-of-staff"), worker("ops.chief-of-staff")]).kind).toBe("several");
+    expect(shiftCoordinatorOf([worker("desk.shift-coordinator"), worker("ops.shift-coordinator")]).kind).toBe("several");
   });
 
   it("is none when no worker carries exactly the name", () => {
-    expect(chiefOfStaffOf([])).toEqual({ kind: "none" });
-    expect(chiefOfStaffOf([worker("desk.chief-of-staffs"), worker("chief"), worker("desk.chief"), worker("chief-of-staff.asker")])).toEqual({
+    expect(shiftCoordinatorOf([])).toEqual({ kind: "none" });
+    expect(shiftCoordinatorOf([worker("desk.shift-coordinators"), worker("chief"), worker("desk.chief"), worker("shift-coordinator.asker")])).toEqual({
       kind: "none",
     });
   });
 
   it("reads an org worker's row, which has no team, without error", () => {
-    expect(toWorker({ id: "chief-of-staff", kind: "agent", door: "run" })).toEqual({
-      id: "chief-of-staff",
+    expect(toWorker({ id: "shift-coordinator", kind: "agent", door: "run" })).toEqual({
+      id: "shift-coordinator",
       kind: "agent",
       door: "run",
       rules: false,
       team: GENERAL_TEAM,
       teamName: "General",
-      name: "chief-of-staff",
-      displayName: "chief-of-staff",
+      name: "shift-coordinator",
+      displayName: "shift-coordinator",
     });
   });
 });
@@ -210,7 +210,7 @@ describe("what needs the user, in the shift summary (FIX-2131)", () => {
 
 describe("the user's conversation with a worker (V4, BR-14, FIX-1989)", () => {
   const session = (id: string, createdAt: number, parentSessionId?: string): SessionSummary =>
-    ({ id, flowKind: "agent", flowId: "agent", state: { workerId: "desk.chief-of-staff" }, userId: "u", createdAt, updatedAt: createdAt, ...(parentSessionId === undefined ? {} : { parentSessionId }) }) as SessionSummary;
+    ({ id, flowKind: "agent", flowId: "agent", state: { workerId: "desk.shift-coordinator" }, userId: "u", createdAt, updatedAt: createdAt, ...(parentSessionId === undefined ? {} : { parentSessionId }) }) as SessionSummary;
 
   it("is the session at the worker's derived address once the listing holds it, never a newer one at another id", () => {
     // A message opens the derived conversation, so the view must be on it, whatever else the user opened.

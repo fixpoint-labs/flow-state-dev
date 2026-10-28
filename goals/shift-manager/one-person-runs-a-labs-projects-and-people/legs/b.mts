@@ -1,5 +1,5 @@
 /**
- * Leg b: the person changes who works in the Lab through the chief of staff.
+ * Leg b: the person changes who works in the Lab through the Shift Coordinator.
  * A hire lands at once; a fire waits for the person's Approve in Inbox, holds
  * across a restart while it waits, and lands only on Approve; a team seat
  * asked to hire doesn't.
@@ -13,10 +13,10 @@
  */
 import {
   answerInInbox,
-  askCos,
+  askShiftCoordinator,
   asksOf,
   callsTo,
-  cosFlowOf,
+  shiftCoordinatorFlowOf,
   hex,
   inboxAsks,
   quote,
@@ -34,7 +34,7 @@ import type { StoredItem } from "../../../lib/shift-manager.mts";
 /**
  * The ask for a coder, naming what the claim isn't about: the flow and the
  * brief a coder runs with, read from the team's own coder in the tree, so a
- * chief of staff that asks which brief instead of hiring isn't graded on it.
+ * Shift Coordinator that asks which brief instead of hiring isn't graded on it.
  */
 async function hireCoder(world: World, seat: string): Promise<string> {
   const coder = (await treeWorkers(world)).find((w) => w.id.endsWith(".coder"));
@@ -57,19 +57,19 @@ async function where(world: World, worker: string) {
 }
 
 /**
- * b1 only, as the `no-cos` control runs it: the hire asked of whoever the
- * person can ask. With no chief of staff, that is the EM, in a workstream it
+ * b1 only, as the `no-shift-coordinator` control runs it: the hire asked of whoever the
+ * person can ask. With no Shift Coordinator, that is the EM, in a workstream it
  * leads (as b4 asks it). Fails at "seat appears" when no seat appears.
  */
-export async function hireWithoutCos(world: World): Promise<void> {
+export async function hireWithoutShiftCoordinator(world: World): Promise<void> {
   const r = world.record;
   const seat = `coder-${hex()}`;
-  await world.open("/cos");
-  if (!(await visible(world.page, "cos-none", 15_000))) {
-    r.fail("setup", "the Chief of Staff view does not draw its no-CoS state, so the control's patch did not take");
+  await world.open("/shift-coordinator");
+  if (!(await visible(world.page, "shift-coordinator-none", 15_000))) {
+    r.fail("setup", "the Shift Coordinator view does not draw its no-Shift Coordinator state, so the control's patch did not take");
     return;
   }
-  r.saw("setup", "the Chief of Staff view draws its no-CoS state");
+  r.saw("setup", "the Shift Coordinator view draws its no-Shift Coordinator state");
   const posted = await postInWorkstream(world, await hireCoder(world, seat));
   if (posted.stored !== 1) {
     r.fail("setup", `the ask to the EM was not kept: ${posted.said}; the workstream's session holds ${posted.stored} copies, so a missing worker would prove nothing`);
@@ -77,7 +77,7 @@ export async function hireWithoutCos(world: World): Promise<void> {
   }
   await sleep(20_000);
   const seen = await where(world, seat);
-  if (seen.rosterRow === undefined && !seen.onRoster) r.fail("b1", `seat appears: asked of the EM seat with no chief of staff, no worker "${seat}" is on the person's roster or listed in Roster`);
+  if (seen.rosterRow === undefined && !seen.onRoster) r.fail("b1", `seat appears: asked of the EM seat with no Shift Coordinator, no worker "${seat}" is on the person's roster or listed in Roster`);
   else r.saw("b1", `"${seat}" appeared: roster row ${JSON.stringify(seen.rosterRow)}, Roster lists it ${seen.onRoster}`);
 }
 
@@ -139,27 +139,27 @@ export async function legB(world: World, restart: (label: string) => Promise<voi
   const seat = `coder-${hex()}`;
 
   // ---- b1 · hire -----------------------------------------------------------------
-  const hire = await askCos(world, "b1", await hireCoder(world, seat));
+  const hire = await askShiftCoordinator(world, "b1", await hireCoder(world, seat));
   if (hire === undefined) {
-    r.fail("b1", "no CoS seat: the Chief of Staff view draws no chief of staff to ask");
+    r.fail("b1", "no Shift Coordinator seat: the Shift Coordinator view draws no Shift Coordinator to ask");
     return;
   }
-  const cosSession = hire.sessionId;
+  const shiftCoordinatorSession = hire.sessionId;
   const hires = callsTo(hire, "hire");
-  if (hires.length !== 1 || !hires[0]!.ok) r.fail("b1", `CoS's session holds ${hires.length} hire call(s), ${hires.filter((h) => h.ok).length} ok: ${quote(hire)}`);
-  const raised = cosSession === null || hire.requestId === null ? [] : (await asksOf(world.routes.owner, cosSession, hire.requestId)).filter((a) => a.reason === "human_approval");
+  if (hires.length !== 1 || !hires[0]!.ok) r.fail("b1", `Shift Coordinator's session holds ${hires.length} hire call(s), ${hires.filter((h) => h.ok).length} ok: ${quote(hire)}`);
+  const raised = shiftCoordinatorSession === null || hire.requestId === null ? [] : (await asksOf(world.routes.owner, shiftCoordinatorSession, hire.requestId)).filter((a) => a.reason === "human_approval");
   if (raised.length > 0) r.fail("b1", `the hire raised ${raised.length} human_approval ask(s)`);
   if (hire.status !== "completed") r.fail("b1", `the hire turn ended ${hire.status}`);
   const hired = await where(world, seat);
   if (hired.rosterRow === undefined) r.fail("b1", `seat appears: the person's roster has no row for "${seat}"`);
   if (!hired.onRoster) r.fail("b1", `seat appears: Roster doesn't list "${seat}" as the person's own`);
   if (hired.inInventory) r.fail("b1", `"${seat}" is in the organization's seat inventory: a worker the person hires is theirs, not the organization's`);
-  r.saw("b1", `CoS: ${quote(hire)}; roster row ${JSON.stringify(hired.rosterRow)}, Roster lists it ${hired.onRoster}, in the org's inventory ${hired.inInventory}`);
-  if (hired.rosterRow === undefined || cosSession === null) return;
+  r.saw("b1", `Shift Coordinator: ${quote(hire)}; roster row ${JSON.stringify(hired.rosterRow)}, Roster lists it ${hired.onRoster}, in the org's inventory ${hired.inInventory}`);
+  if (hired.rosterRow === undefined || shiftCoordinatorSession === null) return;
 
   // ---- b2 · fire asks ------------------------------------------------------------
-  const fire = await askCos(world, "b2", `Please fire the seat "${seat}".`);
-  if (fire?.composerSaid !== undefined) r.fail("b2", `the CoS composer told the person "${fire.composerSaid}" for a line its session holds`);
+  const fire = await askShiftCoordinator(world, "b2", `Please fire the seat "${seat}".`);
+  if (fire?.composerSaid !== undefined) r.fail("b2", `the Shift Coordinator composer told the person "${fire.composerSaid}" for a line its session holds`);
   let ask: StoredItem | undefined;
   if (fire === undefined || fire.requestId === null || fire.sessionId === null) {
     r.fail("b2", `the fire was not asked: ${quote(fire)}`);
@@ -193,7 +193,7 @@ export async function legB(world: World, restart: (label: string) => Promise<voi
   if (ask?.suspensionId !== undefined && fire?.requestId != null) {
     const answered = await answerInInbox(world, ask.suspensionId, deny ? "Reject" : "Approve");
     if (!answered.clicked) r.fail("b3", `Inbox draws no card for ${ask.suspensionId} to answer`);
-    const settled = await world.routes.owner.settle(await cosFlowOf(world), fire.requestId, 180_000, true);
+    const settled = await world.routes.owner.settle(await shiftCoordinatorFlowOf(world), fire.requestId, 180_000, true);
     r.saw("b3", `${deny ? "Reject" : "Approve"} clicked in Inbox; the fire's turn ended ${settled}`);
     const gone = await where(world, seat);
     const checkGone = (label: string, g: typeof gone) => {

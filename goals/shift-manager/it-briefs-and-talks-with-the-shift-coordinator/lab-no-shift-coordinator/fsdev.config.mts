@@ -1,8 +1,8 @@
 /**
- * The goal's Lab with no chief of staff: the desk's `asker` worker, the `front`
+ * The goal's Lab with no Shift Coordinator: the desk's `asker` worker, the `front`
  * coordinator's one delegate, opened the same way as the desk
  * (`../lab/open-desk.mts`). What the
- * **no CoS** leg serves.
+ * **no Shift Coordinator** leg serves.
  */
 import { fileURLToPath } from "node:url";
 import { openDesk } from "../lab/open-desk.mts";

@@ -54,7 +54,7 @@
  * flow, never re-read per screen.
  *
  * The one answer path, {@link LabReader.resume}, is here too, so Inbox and
- * Chief of Staff resolve an ask the same way: through the flow the ask's
+ * Shift Coordinator resolve an ask the same way: through the flow the ask's
  * session records as its owner (`flowId`), never the board's.
  */
 import { ClientHttpError, readEveryCollectionPage, type ResourceManifest, type SessionSummary } from "@flow-state-dev/client";
@@ -381,7 +381,7 @@ function time(value: unknown): number | null {
 
 /**
  * The id of the group an org worker sits in: a worker whose address has no
- * team, such as a chief of staff or a researcher. A user reads it as
+ * team, such as a Shift Coordinator or a researcher. A user reads it as
  * {@link GENERAL_TEAM_NAME}. The underscore keeps it outside Workforce's team
  * ids (lowercase letters, digits and hyphens), so a team folder named
  * `general` stays its own team.

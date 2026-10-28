@@ -12,11 +12,11 @@
  * answered.
  *
  * Nothing here files a task: the asker takes no posts and no tasks, and the
- * check posts nothing to `desk.front`. A post to it would reach the chief of
- * staff, whose `agent` flow takes routed tasks.
+ * check posts nothing to `desk.front`. A post to it would reach the Shift
+ * Coordinator, whose `agent` flow takes routed tasks.
  *
  * Two configs open it: `lab/fsdev.config.mts` over the desk with its
- * `chief-of-staff` worker, and `lab-no-cos/fsdev.config.mts` over a desk that
+ * `shift-coordinator` worker, and `lab-no-shift-coordinator/fsdev.config.mts` over a desk that
  * declares none.
  *
  * The model is resolved by the framework's resolver from the environment

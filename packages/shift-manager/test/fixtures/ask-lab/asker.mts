@@ -17,9 +17,9 @@
  * engine writes as a user item before the block runs. It says it heard, as an
  * assistant item of its own ({@link heardLine}), refuses a line that asks to
  * be refused, takes its time over a line that asks it to, or stops on a stock approval for a line that asks for one, the
- * way a chief of staff's gated change does, so a test can see each. Built
+ * way a Shift Coordinator's gated change does, so a test can see each. Built
  * with `projects`, a line `start project <id>` also creates that project
- * through the project writes' own `createProject`, the way a chief of staff's
+ * through the project writes' own `createProject`, the way a Shift Coordinator's
  * tool does, so the turn writes the organization's `projects` collection.
  *
  * Built with `inventory`, the worker flow also declares the organization's inventory

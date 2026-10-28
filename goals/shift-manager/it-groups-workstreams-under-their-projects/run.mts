@@ -5,7 +5,7 @@
  * and each one's own to write.
  *
  * Real path, out of CI. The screens, entries, race and restart legs need no
- * model; the cos leg runs the chief of staff on a real one. See goal.md for
+ * model; the shiftCoordinator leg runs the Shift Coordinator on a real one. See goal.md for
  * the contract.
  *
  * Built like `it-opens-a-lab`: Shift Manager is built with Vite into a scratch
@@ -38,8 +38,8 @@
  *            every field lands.
  *   restart  the Lab stopped and started on the same store: every project row,
  *            shared and private, and every entry is as it was.
- *   cos      HTTP, as the member, on a real model. Asked for two projects, the
- *            chief of staff creates them, each owned by the person who asked:
+ *   shiftCoordinator      HTTP, as the member, on a real model. Asked for two projects, the
+ *            Shift Coordinator creates them, each owned by the person who asked:
  *            the first a shared row with them and whoever they named as
  *            members; the second, "just for me", either their private project
  *            or a shared row only they are on. Runs last, after the restart:
@@ -51,7 +51,7 @@
  * and releases each burst from a barrier, so the bursts really race.
  *
  * Legs: `GOAL_LEG=model-free` runs screens, the outsider, race and restart,
- * `GOAL_LEG=cos` runs cos; unset runs them all, entries included: a
+ * `GOAL_LEG=shiftCoordinator` runs shiftCoordinator; unset runs them all, entries included: a
  * workstream opens when its owner asks their project coordinator, whose turn
  * runs on its own model.
  *
@@ -69,12 +69,12 @@
  *   in-memory the profile's store kept in memory (Node swap of store-sqlite's
  *             index.ts). Must fail at "a restart keeps the projects and their
  *             entries".
- *   no-tool   the chief of staff without its project tools, as before it had
- *             them (Node swap of the lab's host.mts). Must fail at "cos".
+ *   no-tool   the Shift Coordinator without its project tools, as before it had
+ *             them (Node swap of the lab's host.mts). Must fail at "shift-coordinator".
  *   drop-solo a create of a project the asker holds alone answers as if it
  *             wrote it and writes nothing (Node swap of project-writes.ts).
- *             Must fail at "cos" on the second project. Runs with
- *             `GOAL_LEG=cos` only: the screens leg's private project is such
+ *             Must fail at "shift-coordinator" on the second project. Runs with
+ *             `GOAL_LEG=shiftCoordinator` only: the screens leg's private project is such
  *             a create.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-groups-workstreams-under-their-projects/run.mts
@@ -89,7 +89,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Browser, Page } from "playwright";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, intentFreeEnv, keysServing, loadFixture, runGoal } from "../../lib/index.mts";
-import { SHIFT_MANAGER_COMMAND, devteamCosModel, personPage, servedAddresses } from "../../lib/shift-manager.mts";
+import { SHIFT_MANAGER_COMMAND, devteamShiftCoordinatorModel, personPage, servedAddresses } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { LAB_CROWD, LAB_USERS, PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
 
@@ -104,18 +104,18 @@ if (CONTROL !== "" && !(CONTROLS as readonly string[]).includes(CONTROL)) {
   process.exit(2);
 }
 const LEG = process.env.GOAL_LEG ?? "";
-if (!["", "model-free", "cos"].includes(LEG)) {
-  console.error(`unknown GOAL_LEG "${LEG}"; known: model-free, cos`);
+if (!["", "model-free", "shift-coordinator"].includes(LEG)) {
+  console.error(`unknown GOAL_LEG "${LEG}"; known: model-free, shiftCoordinator`);
   process.exit(2);
 }
-const MODEL_FREE = LEG !== "cos";
-const COS_LEG = LEG !== "model-free";
-if (CONTROL === "no-tool" && !COS_LEG) {
-  console.error(`control ${CONTROL} grades the cos leg, which GOAL_LEG=model-free leaves out`);
+const MODEL_FREE = LEG !== "shift-coordinator";
+const SHIFT_COORDINATOR_LEG = LEG !== "model-free";
+if (CONTROL === "no-tool" && !SHIFT_COORDINATOR_LEG) {
+  console.error(`control ${CONTROL} grades the shiftCoordinator leg, which GOAL_LEG=model-free leaves out`);
   process.exit(2);
 }
-if (CONTROL === "drop-solo" && LEG !== "cos") {
-  console.error("control drop-solo runs with GOAL_LEG=cos only: it also drops the private project the screens leg creates");
+if (CONTROL === "drop-solo" && LEG !== "shift-coordinator") {
+  console.error("control drop-solo runs with GOAL_LEG=shiftCoordinator only: it also drops the private project the screens leg creates");
   process.exit(2);
 }
 
@@ -125,7 +125,7 @@ const fixture = loadFixture<{
   privateProject: { title: string; brief: string };
   opened: { owner: string; member: string };
   race: { id: string; title: string; opens: number; copies: number; changes: Changes[] };
-  cos: { ask: string; titles: [string, string] };
+  shiftCoordinator: { ask: string; titles: [string, string] };
 }>(import.meta.url);
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -139,10 +139,10 @@ const TREE = join(REPO_ROOT, "packages", "shift-manager", "teams", "devteam", "w
 const LAB_HOST = join(REPO_ROOT, "packages", "shift-manager", "teams", "devteam", "host.mts");
 /** The most a checked store write is held before it lands. */
 const WRITE_LATENCY_MS = 30;
-/** The seat Shift Manager finds the chief of staff by. */
-const COS = "chief-of-staff";
-/** How long one turn of the chief of staff may take: a real model answers it. */
-const COS_TURN_MS = 180_000;
+/** The seat Shift Manager finds the Shift Coordinator by. */
+const SHIFT_COORDINATOR = "shift-coordinator";
+/** How long one turn of the Shift Coordinator may take: a real model answers it. */
+const SHIFT_COORDINATOR_TURN_MS = 180_000;
 /** The flow a person reads their roster, their projects and their entries through. */
 const ROSTER_FLOW = "workforce-roster";
 
@@ -966,39 +966,39 @@ async function race(setup: Setup, apis: { owner: LabApi; member: LabApi; crowd: 
 }
 
 /**
- * The chief of staff creates projects for the person who asks it. The person
+ * The Shift Coordinator creates projects for the person who asks it. The person
  * is the member, so a row the profile wrote at boot (the owner's) can't pass
  * for one written for them. Titles carry this run's stamp, so no file in the
  * repository names the rows graded here.
  */
-async function cos(apis: { owner: LabApi; member: LabApi }, fail: (leg: string, why: string) => void, evidence: string[]) {
-  const leg = "cos";
+async function shiftCoordinator(apis: { owner: LabApi; member: LabApi }, fail: (leg: string, why: string) => void, evidence: string[]) {
+  const leg = "shift-coordinator";
   const { owner, member: person } = apis;
   const named = owner.user.userId;
-  const titles = fixture.cos.titles.map((t) => `${t} ${RUN_STAMP}`);
+  const titles = fixture.shiftCoordinator.titles.map((t) => `${t} ${RUN_STAMP}`);
   const before = new Set((await readStore(owner)).rows.map((r) => r.id));
 
-  // A conversation is a session on the flow the chief of staff's file names, naming it.
-  const flow = await flowOf(COS);
-  const opened = await person.call("POST", `/${encodeURIComponent(flow)}/sessions`, { userId: person.user.userId, state: { workerId: COS } });
+  // A conversation is a session on the flow the Shift Coordinator's file names, naming it.
+  const flow = await flowOf(SHIFT_COORDINATOR);
+  const opened = await person.call("POST", `/${encodeURIComponent(flow)}/sessions`, { userId: person.user.userId, state: { workerId: SHIFT_COORDINATOR } });
   if (opened.status !== 201) {
-    fail(leg, `the chief of staff's address did not answer: ${opened.status} ${JSON.stringify(opened.body)}`);
+    fail(leg, `the Shift Coordinator's address did not answer: ${opened.status} ${JSON.stringify(opened.body)}`);
     return;
   }
   const session = String(opened.body.session.id);
   const beforePrivate = new Set((await privateRows(person, session))?.map((r) => r.id) ?? []);
-  const ask = fixture.cos.ask.replace("{first}", titles[0]!).replace("{second}", titles[1]!).replace("{named}", named);
+  const ask = fixture.shiftCoordinator.ask.replace("{first}", titles[0]!).replace("{second}", titles[1]!).replace("{named}", named);
   const posted = await person.call("POST", `/${encodeURIComponent(flow)}/${encodeURIComponent(session)}/actions/respond`, {
     userId: person.user.userId,
     input: { message: ask },
   });
   if (posted.status >= 400) {
-    fail(leg, `the chief of staff's door refused the line: ${posted.status} ${JSON.stringify(posted.body)}`);
+    fail(leg, `the Shift Coordinator's door refused the line: ${posted.status} ${JSON.stringify(posted.body)}`);
     return;
   }
   const requestId = String(posted.body.request.id);
   let status = "timed-out";
-  for (const until = Date.now() + COS_TURN_MS; Date.now() < until; await sleep(500)) {
+  for (const until = Date.now() + SHIFT_COORDINATOR_TURN_MS; Date.now() < until; await sleep(500)) {
     const polled = String((await person.call("GET", `/${encodeURIComponent(flow)}/requests/${encodeURIComponent(requestId)}/status`)).body?.status);
     if (!["pending", "queued", "in_progress", "running"].includes(polled)) {
       status = polled;
@@ -1010,12 +1010,12 @@ async function cos(apis: { owner: LabApi; member: LabApi }, fail: (leg: string, 
     const replies = ((body.items ?? []) as Array<{ role?: string; content?: unknown }>).filter((i) => i.role === "assistant");
     return JSON.stringify(replies.at(-1)?.content ?? "").slice(0, 400);
   };
-  if (status !== "completed") fail(leg, `the chief of staff's turn ended ${status}`);
+  if (status !== "completed") fail(leg, `the Shift Coordinator's turn ended ${status}`);
 
   const created = (await readStore(owner)).rows.filter((r) => !before.has(r.id));
   const createdPrivate = (await privateRows(person, session))?.filter((r) => !beforePrivate.has(r.id));
   if (createdPrivate === undefined) {
-    fail(leg, `the person's conversation with the chief of staff publishes no user-scope projects/* collection, so no private project of theirs can be read`);
+    fail(leg, `the person's conversation with the Shift Coordinator publishes no user-scope projects/* collection, so no private project of theirs can be read`);
     return;
   }
   const shown = `shared [${created.map((r) => r.title).join(", ")}], private [${createdPrivate.map((r) => r.title).join(", ")}]`;
@@ -1027,7 +1027,7 @@ async function cos(apis: { owner: LabApi; member: LabApi }, fail: (leg: string, 
   };
   // The first: a shared row with the person and whoever they named.
   const first = titled(created, titles[0]!);
-  if (first === undefined) fail(leg, `no new row is titled "${titles[0]}": ${shown}; the chief of staff said ${await said()}`);
+  if (first === undefined) fail(leg, `no new row is titled "${titles[0]}": ${shown}; the Shift Coordinator said ${await said()}`);
   else gradeShared(first, [person.user.userId, named]);
   // The second, "just for me": the person's private project, or a shared row only they are on.
   const secondPrivate = titled(createdPrivate, titles[1]!);
@@ -1038,11 +1038,11 @@ async function cos(apis: { owner: LabApi; member: LabApi }, fail: (leg: string, 
   } else if (secondShared !== undefined) {
     gradeShared(secondShared, [person.user.userId]);
   } else {
-    fail(leg, `the second project, "${titles[1]}", is neither the person's private project nor a new shared row only they are on: ${shown}; the chief of staff said ${await said()}`);
+    fail(leg, `the second project, "${titles[1]}", is neither the person's private project nor a new shared row only they are on: ${shown}; the Shift Coordinator said ${await said()}`);
   }
   if (created.length + createdPrivate.length > 2) fail(leg, `asked for two projects, the store holds ${created.length + createdPrivate.length} new ones: ${shown}`);
   evidence.push(
-    `cos: asked by ${person.user.userId}, the chief of staff created ${[
+    `shiftCoordinator: asked by ${person.user.userId}, the Shift Coordinator created ${[
       ...created.map((r) => `shared ${r.id} {owner ${r.ownerUserId}, members [${r.members.join(",")}]}`),
       ...createdPrivate.map((r) => `private ${r.id} {owner ${r.ownerUserId}, members [${r.members.join(",")}]}`),
     ].join(" and ")}`,
@@ -1130,11 +1130,11 @@ async function restarted(before: Kept[], owner: LabApi, fail: (leg: string, why:
 }
 
 await runGoal(async (failures) => {
-  const cosModel = devteamCosModel();
-  const modelKeys = keysServing(cosModel);
-  if (COS_LEG && !modelKeys.some((key) => (process.env[key] ?? "") !== "")) {
+  const shiftCoordinatorModel = devteamShiftCoordinatorModel();
+  const modelKeys = keysServing(shiftCoordinatorModel);
+  if (SHIFT_COORDINATOR_LEG && !modelKeys.some((key) => (process.env[key] ?? "") !== "")) {
     return {
-      failures: [`blocked: the cos leg runs the chief of staff on ${cosModel}, and no key here serves it; none of ${modelKeys.join(", ")} is set. GOAL_LEG=model-free runs the other legs without one`],
+      failures: [`blocked: the shiftCoordinator leg runs the Shift Coordinator on ${shiftCoordinatorModel}, and no key here serves it; none of ${modelKeys.join(", ")} is set. GOAL_LEG=model-free runs the other legs without one`],
       evidence: "",
     };
   }
@@ -1176,7 +1176,7 @@ await runGoal(async (failures) => {
       try {
         await screens(browser, served.origin, setup, apis.owner, fail, evidence);
         // A workstream opens by asking the project coordinator, whose turn runs on its own model.
-        if (COS_LEG) await entries(browser, served.origin, setup, apis, fail, evidence);
+        if (SHIFT_COORDINATOR_LEG) await entries(browser, served.origin, setup, apis, fail, evidence);
       } finally {
         await browser.close();
       }
@@ -1192,8 +1192,8 @@ await runGoal(async (failures) => {
       await restarted(before, labApi(served.origin, LAB_USERS.owner), fail, evidence);
     }
     // Last, on the Lab as it now runs: its rows are the member's.
-    if (COS_LEG) {
-      await cos({ owner: labApi(served.origin, LAB_USERS.owner), member: labApi(served.origin, LAB_USERS.member) }, fail, evidence);
+    if (SHIFT_COORDINATOR_LEG) {
+      await shiftCoordinator({ owner: labApi(served.origin, LAB_USERS.owner), member: labApi(served.origin, LAB_USERS.member) }, fail, evidence);
     }
     finished = true;
   } finally {
@@ -1215,7 +1215,7 @@ await runGoal(async (failures) => {
       ...(MODEL_FREE
         ? [`the screens walked in Chromium as the owner and the member, the outsider and a race of ${2 + LAB_CROWD.length} owners driven over HTTP, then the Lab restarted on its store`]
         : []),
-      ...(COS_LEG ? ["the chief of staff asked over HTTP as the member, on its own model"] : []),
+      ...(SHIFT_COORDINATOR_LEG ? ["the Shift Coordinator asked over HTTP as the member, on its own model"] : []),
     ].join("; ")}; all graded against the tree and the store. ${evidence.join("; ")}.${swapNote}`,
   };
 });

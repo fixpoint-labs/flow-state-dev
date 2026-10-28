@@ -425,12 +425,12 @@ await runGoal(async (failures) => {
     const root = mkdtempSync(join(tmpdir(), "devforce-tree-no-em-"));
     cpSync(LAB_TREE, root, { recursive: true });
     rmSync(join(root, "teams/eng/workers/em"), { recursive: true });
-    // The chief of staff delegates to the EM, and an installation refuses a
+    // The Shift Coordinator delegates to the EM, and an installation refuses a
     // delegate that isn't a standard worker, so the tree drops it there too.
-    const chiefOfStaff = join(root, "org/workers/chief-of-staff/WORKER.md");
+    const shiftCoordinator = join(root, "org/workers/shift-coordinator/WORKER.md");
     writeFileSync(
-      chiefOfStaff,
-      readFileSync(chiefOfStaff, "utf8").replace(`${fixture.coordinatorSeat}, `, ""),
+      shiftCoordinator,
+      readFileSync(shiftCoordinator, "utf8").replace(`${fixture.coordinatorSeat}, `, ""),
     );
     // The teams' coordinator workers whose one delegate is the EM have nobody
     // to hand to without it, so the tree drops them as well.

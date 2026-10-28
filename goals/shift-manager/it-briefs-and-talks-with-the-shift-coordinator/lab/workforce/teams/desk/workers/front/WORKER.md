@@ -1,7 +1,7 @@
 ---
 description: Where the desk takes requests.
 flow: coordinator
-delegates: [desk.asker, desk.chief-of-staff]
+delegates: [desk.asker, desk.shift-coordinator]
 routing: everyone
 ---
 

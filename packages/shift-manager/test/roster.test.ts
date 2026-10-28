@@ -12,7 +12,7 @@ const ORG = "acme";
 
 describe("BR-13a, BR-13b: which group a worker sits in", () => {
   it("an org worker (no dot) sits in General, never in a team of its own", () => {
-    expect(toWorker({ id: "chief-of-staff", kind: "cos" })).toMatchObject({ team: GENERAL_TEAM, name: "chief-of-staff" });
+    expect(toWorker({ id: "shift-coordinator", kind: "shift-coordinator" })).toMatchObject({ team: GENERAL_TEAM, name: "shift-coordinator" });
     expect(toWorker({ id: "ops", kind: "ops" })).toMatchObject({ team: GENERAL_TEAM, name: "ops" });
   });
 
@@ -35,9 +35,9 @@ describe("BR-13a, BR-13b: which group a worker sits in", () => {
   });
 
   it("a declared team named `general` stays its own team, apart from the org workers' General group", () => {
-    const groups = teamsOf([toWorker({ id: "chief-of-staff", kind: "agent" })!, toWorker({ id: "general.desk", kind: "agent" })!]);
+    const groups = teamsOf([toWorker({ id: "shift-coordinator", kind: "agent" })!, toWorker({ id: "general.desk", kind: "agent" })!]);
     expect(groups.map(({ team, name, workers }) => [team, name, workers.map((w) => w.id)])).toEqual([
-      [GENERAL_TEAM, "General", ["chief-of-staff"]],
+      [GENERAL_TEAM, "General", ["shift-coordinator"]],
       ["general", "general", ["general.desk"]],
     ]);
   });
@@ -138,7 +138,7 @@ describe("BR-12, BR-14, BR-15: counts reduce from the one result", () => {
   const coder = worker("eng.coder");
   const reviewer = worker("eng.reviewer");
   const asker = worker("ops.asker");
-  const chief = worker("chief-of-staff");
+  const chief = worker("shift-coordinator");
   const snapshot = snapshotOf(
     [coder, reviewer, asker, chief],
     [row("a", "in_progress", "coder"), waiting("b", "coder"), waiting("c", "reviewer"), row("d", "pending", "asker")],
@@ -156,7 +156,7 @@ describe("BR-12, BR-14, BR-15: counts reduce from the one result", () => {
 
   it("lists teams with General first, each with exactly its workers", () => {
     expect(teamsOf([coder, chief, asker, reviewer]).map(({ team, name, workers }) => [team, name, workers.map((s) => s.id)])).toEqual([
-      [GENERAL_TEAM, "General", ["chief-of-staff"]],
+      [GENERAL_TEAM, "General", ["shift-coordinator"]],
       ["eng", "eng", ["eng.coder", "eng.reviewer"]],
       ["ops", "ops", ["ops.asker"]],
     ]);
@@ -175,7 +175,7 @@ describe("BR-13: the Roster route", () => {
   });
 
   it("a team the inventory doesn't have reads as All", () => {
-    const workers = [worker("eng.coder"), worker("chief-of-staff")];
+    const workers = [worker("eng.coder"), worker("shift-coordinator")];
     expect(pickedTeam(workers, "nope")).toBeNull();
     expect(pickedTeam(workers, "eng")).toBe("eng");
     expect(pickedTeam(workers, GENERAL_TEAM)).toBe(GENERAL_TEAM);

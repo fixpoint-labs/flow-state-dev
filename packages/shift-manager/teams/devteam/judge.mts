@@ -30,7 +30,7 @@ export const JUDGE_MODEL = "typesafe-ai/jev";
 
 /**
  * The confidence a *not done* or *ask* must reach to count: the floor the
- * chief of staff's best fit reads (`minConfidence: 0.7` in its `WORKER.md`).
+ * Shift Coordinator's best fit reads (`minConfidence: 0.7` in its `WORKER.md`).
  */
 export const JUDGE_FLOOR = 0.7;
 

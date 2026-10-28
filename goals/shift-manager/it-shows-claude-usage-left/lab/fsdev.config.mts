@@ -11,7 +11,7 @@
  *   at it. A run's `rate_limit_event`s and account come from the setup file.
  * - **The reader's environment** comes from the setup file too: an empty home,
  *   or one with an API key, for the legs that read the real probe.
- * - **The chief of staff's model is scripted**: a message carrying
+ * - **The Shift Coordinator's model is scripted**: a message carrying
  *   `[[usage:<tag>]]` files one task for the coder on Sandbox (a project with
  *   no repository), its goal carrying the tag. Its judgment is not under test.
  *   No judge, so a run is never retried.
@@ -44,14 +44,14 @@ const coderWorkerId = ((em?.declared.delegates as string[] | undefined) ?? []).f
 if (coderWorkerId === undefined) throw new Error("the DevTeam tree names no coder");
 
 /**
- * The chief of staff's turn: a tagged message files one task for the coder,
+ * The Shift Coordinator's turn: a tagged message files one task for the coder,
  * once per tag; anything else is answered. Once, because the task's ending
  * wakes the chief again with the same conversation in front of it.
  */
-function scriptedChief(): ModelResolver {
+function scriptedShiftCoordinator(): ModelResolver {
   const filed = new Set<string>();
   const model: GeneratorModel = {
-    modelId: "goal/scripted-chief",
+    modelId: "goal/scripted-shift-coordinator",
     async generate() {
       throw new Error("the owned tool loop calls generateStep");
     },
@@ -63,7 +63,7 @@ function scriptedChief(): ModelResolver {
       if (tag === undefined || filed.has(tag)) return { text: "Noted.", finishReason: "stop" };
       filed.add(tag);
       const args = { goal: `Answer in one line. [[usage:${tag}]]`, assignee: coderWorkerId, input: { project: SANDBOX } };
-      return { toolCalls: [{ toolCallId: `chief-${tag}`, toolName: "createTask", args }], finishReason: "tool-calls" };
+      return { toolCalls: [{ toolCallId: `shift-coordinator-${tag}`, toolName: "createTask", args }], finishReason: "tool-calls" };
     },
   };
   return Object.assign(
@@ -87,7 +87,7 @@ const lab = await openLab({
   inventory: true,
   devtool: true,
   withoutJudge: true,
-  modelResolver: scriptedChief(),
+  modelResolver: scriptedShiftCoordinator(),
   projects: [{ id: SANDBOX.id, title: "Sandbox", members: [LAB_USERS.member.userId, ...LAB_CROWD.map((u) => u.userId)] }],
   usage: {
     "claude-code": () => {

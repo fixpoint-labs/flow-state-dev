@@ -259,7 +259,7 @@ export async function j4(scratch: string, pages: string, browser: Browser, repor
     const project = (await readStore(api, userId)).projects[0]?.id;
     const task = `/tasks/${encodeURIComponent(row.ref)}/${encodeURIComponent(row.id)}`;
     const addresses: Array<{ path: string; surface: string | string[]; owner: string }> = [
-      { path: "/cos", surface: "cos", owner: "Chief of Staff (FIX-1719's seat; FIX-1722's view)" },
+      { path: "/shift-coordinator", surface: "shift-coordinator", owner: "Shift Coordinator (FIX-1719's seat; FIX-1722's view)" },
       { path: "/roster", surface: "roster", owner: "TEAMS, workers, shift status (Workforce; FIX-1723)" },
       { path: `/roster?team=${tree.teams[0]}`, surface: "roster", owner: "a team's workers (Workforce; FIX-1723)" },
       // A project's four tabs: its Stream is the person's project coordinator; its Board, Workstreams and Brief draw the store's or say there is none.
@@ -402,14 +402,14 @@ export function part4(base: string, report: Report): void {
   }
   report.note(`P4 ER-15: Shift Manager's writes are [${writes.join("; ")}]: the seat's door (send.ts), a conversation's session opened on the seat's flow naming its worker (conversation.ts; ${opens.length} createSession), an action whose answer a view reads (action.ts; ${actionSends} sendAction), the person's project coordinator (Project.tsx, through ensureWorkerSession), the person's reading sessions (reads.ts; ${creates.length} createSession on the reader kind), Interrupt's abort (run.ts) and the one resume (reads.ts); Inbox's reply is graded by FIX-1690's check in part 3`);
 
-  // One ask rendering: Inbox's detail and Chief of Staff's card draw through AskCard.
-  for (const surface of ["Inbox.tsx", "ChiefOfStaff.tsx"]) {
+  // One ask rendering: Inbox's detail and Shift Coordinator's card draw through AskCard.
+  for (const surface of ["Inbox.tsx", "ShiftCoordinator.tsx"]) {
     const text = readFileSync(join(src, "surfaces", surface), "utf8");
     if (!/import \{ AskCard \} from "\.\.\/components\/AskCard"/.test(text) || !/<AskCard\b/.test(text)) report.fail("P4:ask", `${surface} does not draw its asks through AskCard`);
   }
   const askRenderers = own.filter((f) => /<Approval\b|<Question\b|SuspensionCard/.test(readFileSync(f, "utf8"))).map((f) => relative(src, f));
   if (askRenderers.some((f) => !f.endsWith("AskCard.tsx"))) report.fail("P4:ask", `an ask is drawn outside AskCard: ${askRenderers.join(", ")}`);
-  report.note(`P4 one ask rendering: Inbox and Chief of Staff import AskCard; registry ask cards are drawn only in [${askRenderers.join(", ")}]; a1 compared the two cards' text on screen`);
+  report.note(`P4 one ask rendering: Inbox and Shift Coordinator import AskCard; registry ask cards are drawn only in [${askRenderers.join(", ")}]; a1 compared the two cards' text on screen`);
 
   // Layer fence (ER-7, ER-8): the set's changes to core, engine, client and react.
   const layerDiff = git("diff", `${base}..HEAD`, "--", "packages/core/src", "packages/engine/src", "packages/client/src", "packages/react/src");

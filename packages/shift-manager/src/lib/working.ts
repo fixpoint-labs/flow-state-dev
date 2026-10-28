@@ -1,5 +1,5 @@
 /**
- * Whether the chief of staff is working on a line the user sent it: true
+ * Whether the Shift Coordinator is working on a line the user sent it: true
  * from the moment a line goes out until every line sent has settled.
  *
  * Three places show it, v2's way (v2:52-56, 127, 167-169): the sidebar
@@ -21,7 +21,7 @@ const notify = () => {
  * Say a line has gone out. Call the returned function once its send settles,
  * however it settles; calling it again does nothing.
  */
-export function startChiefOfStaffWork(): () => void {
+export function startShiftCoordinatorWork(): () => void {
   inFlight += 1;
   if (inFlight === 1) notify();
   let done = false;
@@ -40,9 +40,9 @@ const subscribe = (listener: () => void) => {
 const current = () => inFlight > 0;
 
 /** Whether a line from this page is in flight, read once (outside React). */
-export const isChiefOfStaffWorking: () => boolean = current;
+export const isShiftCoordinatorWorking: () => boolean = current;
 
-/** Whether the chief of staff is working on a line from this page. */
-export function useChiefOfStaffWorking(): boolean {
+/** Whether the Shift Coordinator is working on a line from this page. */
+export function useShiftCoordinatorWorking(): boolean {
   return useSyncExternalStore(subscribe, current, current);
 }

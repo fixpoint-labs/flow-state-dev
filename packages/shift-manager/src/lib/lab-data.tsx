@@ -3,7 +3,7 @@
  *
  * S3's contract: a refresh on boot, on an organization switch, after a
  * successful answer to an ask and again once the run it resumed stops, after
- * each line the chief of staff takes (its turn may have created a project or
+ * each line the Shift Coordinator takes (its turn may have created a project or
  * hired a worker), and on Retry. Never on a route or tab change, so moving
  * around the app costs no reads. Inbox, the Stream's asks, the sidebar counts
  * and the Tasks list all come from the same snapshot.

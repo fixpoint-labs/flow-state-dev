@@ -1,5 +1,5 @@
 /**
- * The chief of staff's rename-only tools are the Workforce blocks themselves,
+ * The Shift Coordinator's rename-only tools are the Workforce blocks themselves,
  * shown to the model under the names its `tools:` line spells. The model must
  * read the same name and description it always has; what changed is that no
  * wrapper sits between the tool and the write.
@@ -12,7 +12,7 @@ import {
   defineWorkstreamBlocks,
   WORKSTREAM_OPENED_ENTRY,
 } from "@flow-state-dev/workforce";
-import { chiefOfStaffProjectTools, chiefOfStaffRosterTools } from "../teams/devteam/host.mts";
+import { shiftCoordinatorProjectTools, shiftCoordinatorRosterTools } from "../teams/devteam/host.mts";
 
 /** The project tools over an installation with no workers, and one lead flow. */
 function projectTools() {
@@ -20,10 +20,10 @@ function projectTools() {
   const blocks = defineProjectBlocks();
   const lead = { kind: "agent", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
   const workstreams = defineWorkstreamBlocks({ installation, leadFlows: [lead] });
-  return { blocks, workstreams, tools: chiefOfStaffProjectTools(blocks, workstreams) };
+  return { blocks, workstreams, tools: shiftCoordinatorProjectTools(blocks, workstreams) };
 }
 
-describe("chief of staff tools presented with .as()", () => {
+describe("Shift Coordinator tools presented with .as()", () => {
   it("the project tools are createProject, setRepository, setBrief, openWorkstream and listProjects: none lists workstreams on a project row", () => {
     // A project's workstreams are the entries `openWorkstream` writes; there is
     // no tool that writes a list of ids onto a project row.
@@ -32,7 +32,7 @@ describe("chief of staff tools presented with .as()", () => {
 
   it("hire is the Workforce hire block under the tool's own name", () => {
     const installation = createWorkerInstallation({ standardWorkers: [], workerFlows: () => ({}) });
-    const tool = chiefOfStaffRosterTools(installation).hire;
+    const tool = shiftCoordinatorRosterTools(installation).hire;
     const block = createWorkerHireBlocks(installation).hire;
     expect(tool.name).toBe("hire");
     expect(tool.description).toMatch(/^Hire a worker of the user's own: `id` is a short lowercase slug/);
@@ -44,7 +44,7 @@ describe("chief of staff tools presented with .as()", () => {
   it("the tools that wait for an approval keep their sequencer", () => {
     const installation = createWorkerInstallation({ standardWorkers: [], workerFlows: () => ({}) });
     const project = projectTools().tools;
-    expect(chiefOfStaffRosterTools(installation).fire.kind).toBe("sequencer");
+    expect(shiftCoordinatorRosterTools(installation).fire.kind).toBe("sequencer");
     expect(project.createProject.kind).toBe("sequencer");
     expect(project.setRepository.kind).toBe("sequencer");
   });

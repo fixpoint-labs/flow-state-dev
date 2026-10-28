@@ -1,32 +1,32 @@
 /**
- * Goal check: a person opening a Lab in Shift Manager lands on Chief of Staff,
+ * Goal check: a person opening a Lab in Shift Manager lands on Shift Coordinator,
  * sees a summary of what waits on them and what is running that agrees with
- * the store, answers an ask there, and talks to the Lab's chief-of-staff seat,
+ * the store, answers an ask there, and talks to the Lab's shift-coordinator seat,
  * with every line and reply being what that seat's session holds. See goal.md
  * for the contract.
  *
  * Real path, real model. Shift Manager is built with Vite and served by its
  * own command over two Labs: this goal's desk (`lab/fsdev.config.mts`),
- * whose `desk.chief-of-staff` seat runs the built-in `agent` kind on
- * `openai/gpt-5.4-mini`, and the same desk with no chief of staff
- * (`lab-no-cos/`).
+ * whose `desk.shift-coordinator` seat runs the built-in `agent` kind on
+ * `openai/gpt-5.4-mini`, and the same desk with no Shift Coordinator
+ * (`lab-no-shift-coordinator/`).
  * Chromium drives the page. What happened is read from the store, through each
  * Lab's routes with this script's own requests. Never from Shift Manager's state.
  *
  * Legs (each failure is tagged `[<lab>] <leg>`):
  *
- *   landing  `/` and an unknown path draw Chief of Staff, its entry current
+ *   landing  `/` and an unknown path draw Shift Coordinator, its entry current
  *   summary  the needs-you count equals the store's pending asks, every one is
  *            listed, the running line equals the running rows on the person's
  *            conversation boards. The rail of workstreams and its per-stream
  *            counts are retired with the mailbox (goal.md, BR-24).
  *   inline   Approve on one summary ask leaves one fewer pending suspension in
  *            the store, and both the summary and Inbox drop it
- *   talk     a fresh token typed to the chief of staff is a user item in its
+ *   talk     a fresh token typed to the Shift Coordinator is a user item in its
  *            seat's session the moment *delivered* is drawn, and the reply on
  *            screen is that session's next assistant item, by id
  *   again    a reload shows the same conversation
- *   no CoS   the Lab with no chief of staff lands on the view with its summary and the named state in
+ *   no Shift Coordinator   the Lab with no Shift Coordinator lands on the view with its summary and the named state in
  *            place of the composer
  *   reach    the pages throw nothing
  *
@@ -42,7 +42,7 @@
  *                     `controls/static-brief.ts`: the summary's asks are
  *                     written in at the first read. Must fail at "inline".
  *
- * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-briefs-and-talks-with-the-chief-of-staff/run.mts
+ * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-briefs-and-talks-with-the-shift-coordinator/run.mts
  * Control:  GOAL_CONTROL=optimistic-reply … (same command)
  * Before:   GOAL_PAGES=<pages built from another commit> … serves those pages instead of building.
  */
@@ -80,15 +80,15 @@ if (CONTROL !== "" && !Object.hasOwn(SWAPS, CONTROL)) {
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SHIFT_MANAGER = join(REPO_ROOT, "packages", "shift-manager");
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
-const SCRATCH = goalTmpDir("shift-manager-cos");
+const SCRATCH = goalTmpDir("shift-manager-shift-coordinator");
 const LABS = {
   desk: { config: join(HERE, "lab", "fsdev.config.mts"), tree: join(HERE, "lab", "workforce") },
-  "no-cos": { config: join(HERE, "lab-no-cos", "fsdev.config.mts"), tree: join(HERE, "lab-no-cos", "workforce") },
+  "no-shift-coordinator": { config: join(HERE, "lab-no-shift-coordinator", "fsdev.config.mts"), tree: join(HERE, "lab-no-shift-coordinator", "workforce") },
 } as const;
 type LabName = keyof typeof LABS;
 /** The seat Shift Manager talks to (D2's rule, read off the fixture tree below, never assumed). */
-const COS_NAME = "chief-of-staff";
-/** How long a line to the chief of staff may take to settle: a real model answers it. */
+const SHIFT_COORDINATOR_NAME = "shift-coordinator";
+/** How long a line to the Shift Coordinator may take to settle: a real model answers it. */
 const SEND_MS = 120_000;
 /** The keys any of which lets the fixture's model resolve. */
 const MODEL_KEYS = ["AI_GATEWAY_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"];
@@ -248,12 +248,12 @@ async function visible(page: Page, testId: string, timeout = 10_000): Promise<bo
 }
 
 const needsYouOnScreen = async (page: Page): Promise<number> => {
-  const text = await page.getByTestId("cos-summary-asks").textContent();
+  const text = await page.getByTestId("shift-coordinator-summary-asks").textContent();
   if (text?.startsWith("Nothing needs you")) return 0;
-  return Number(await page.getByTestId("cos-needs-you").textContent());
+  return Number(await page.getByTestId("shift-coordinator-needs-you").textContent());
 };
 const asksOnScreen = (page: Page): Promise<string[]> =>
-  page.getByTestId("cos-ask").evaluateAll((els) => els.map((e) => e.getAttribute("data-suspension-id") ?? ""));
+  page.getByTestId("shift-coordinator-ask").evaluateAll((els) => els.map((e) => e.getAttribute("data-suspension-id") ?? ""));
 
 /** Wait for `read` to return `want`, or the last value read. */
 async function settle<T>(read: () => Promise<T>, want: (value: T) => boolean, ms = 10_000): Promise<T> {
@@ -269,18 +269,18 @@ const same = (a: readonly string[], b: readonly string[]) => a.length === b.leng
 await runGoal(async (failures) => {
   if (!MODEL_KEYS.some((key) => (process.env[key] ?? "") !== "")) {
     return {
-      failures: [`[desk] precondition: the chief of staff runs a real model, and none of ${MODEL_KEYS.join(", ")} is set, so nothing here was checked`],
+      failures: [`[desk] precondition: the Shift Coordinator runs a real model, and none of ${MODEL_KEYS.join(", ")} is set, so nothing here was checked`],
       evidence: "",
     };
   }
   const desk = await readDeclaredRoster(LABS.desk.tree);
-  const cosSeat = desk.workers.find((w) => w.id.split(".").at(-1) === COS_NAME);
+  const shiftCoordinatorSeat = desk.workers.find((w) => w.id.split(".").at(-1) === SHIFT_COORDINATOR_NAME);
   const asker = desk.workers.find((w) => w.declared.flow === "asker");
-  if (cosSeat === undefined || asker === undefined) throw new Error("the desk tree declares no chief of staff or asker");
+  if (shiftCoordinatorSeat === undefined || asker === undefined) throw new Error("the desk tree declares no Shift Coordinator or asker");
 
   const pages = process.env.GOAL_PAGES ?? (await buildShiftManager(CONTROL));
   const evidence: string[] = [];
-  const served = { desk: await startLab("desk", pages), "no-cos": await startLab("no-cos", pages) };
+  const served = { desk: await startLab("desk", pages), "no-shift-coordinator": await startLab("no-shift-coordinator", pages) };
   const browser = await launchChromium();
   try {
     const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
@@ -324,29 +324,29 @@ await runGoal(async (failures) => {
 
       // landing
       await open(page, served.desk.origin, "/");
-      if ((await page.getByTestId("centre").getAttribute("data-level")) !== "cos") fail("landing", "/ does not draw Chief of Staff");
-      if ((await page.getByTestId("nav-cos").getAttribute("aria-current")) !== "page") fail("landing", "the Chief of Staff entry is not current at /");
+      if ((await page.getByTestId("centre").getAttribute("data-level")) !== "shift-coordinator") fail("landing", "/ does not draw Shift Coordinator");
+      if ((await page.getByTestId("nav-shift-coordinator").getAttribute("aria-current")) !== "page") fail("landing", "the Shift Coordinator entry is not current at /");
       const firstEntry = await page.locator("[data-testid=sidebar] [data-testid^=nav-]").first().getAttribute("data-testid");
-      if (firstEntry !== "nav-cos") fail("landing", `the sidebar's first entry is ${firstEntry}, not Chief of Staff`);
+      if (firstEntry !== "nav-shift-coordinator") fail("landing", `the sidebar's first entry is ${firstEntry}, not Shift Coordinator`);
       await open(page, served.desk.origin, `/nowhere-${randomBytes(2).toString("hex")}`);
-      if (!(await visible(page, "cos", 5_000))) fail("landing", "an unknown path does not draw Chief of Staff");
+      if (!(await visible(page, "shift-coordinator", 5_000))) fail("landing", "an unknown path does not draw Shift Coordinator");
 
       // summary
-      await open(page, served.desk.origin, "/cos");
-      await page.getByTestId("cos-summary").waitFor();
+      await open(page, served.desk.origin, "/shift-coordinator");
+      await page.getByTestId("shift-coordinator-summary").waitFor();
       const shownCount = await needsYouOnScreen(page);
       if (shownCount !== pending.length) fail("summary", `the summary says ${shownCount} need you, the store holds ${pending.length} pending`);
       const shownAsks = await asksOnScreen(page);
       if (!same(shownAsks, pending)) fail("summary", `the summary lists [${shownAsks.join(", ")}], the store holds [${pending.join(", ")}]`);
       const listed = (await api.sessions(userId)).filter((s) => s.parentSessionId == null).map((s) => s.id);
       const storeRunning = (await api.conversationRows(listed)).filter((r) => r.status === "in_progress").length;
-      const shownRunning = await page.getByTestId("cos-summary-running").getAttribute("data-runs");
+      const shownRunning = await page.getByTestId("shift-coordinator-summary-running").getAttribute("data-runs");
       if (Number(shownRunning) !== storeRunning) fail("summary", `the summary says ${shownRunning} runs going, the person's conversation boards hold ${storeRunning} running`);
       evidence.push(`summary ${shownCount} need you / ${pending.length} pending, ${shownRunning} running / ${storeRunning} in the store`);
 
       // inline
       const answered = shownAsks[0] ?? pending[0]!;
-      await page.locator(`[data-testid=cos-ask][data-suspension-id="${answered}"]`).getByRole("button", { name: "Approve" }).click();
+      await page.locator(`[data-testid=shift-coordinator-ask][data-suspension-id="${answered}"]`).getByRole("button", { name: "Approve" }).click();
       const left = await settle(() => api.pendingAsks(askSessions), (p) => p.length === 1);
       if (left.length !== 1 || left.includes(answered)) fail("inline", `after Approve the store holds [${left.join(", ")}], wanted one fewer, without ${answered}`);
       const after = await settle(() => needsYouOnScreen(page), (n) => n === left.length);
@@ -359,25 +359,25 @@ await runGoal(async (failures) => {
       evidence.push(`Approve from the summary: store ${pending.length} → ${left.length}, summary ${shownCount} → ${after}, Inbox ${inbox.length}`);
 
       // talk
-      await page.getByTestId("nav-cos").click();
-      const input = page.getByTestId("cos-composer-input");
+      await page.getByTestId("nav-shift-coordinator").click();
+      const input = page.getByTestId("shift-coordinator-composer-input");
       await input.waitFor();
-      const token = `cos-${randomBytes(4).toString("hex")}`;
+      const token = `shift-coordinator-${randomBytes(4).toString("hex")}`;
       await input.fill(`Please repeat this code back to me exactly: ${token}`);
       /** The person's direct sessions with the seat (the ones naming it as their worker), and the one holding the token's user item. */
       const findLine = async () => {
-        for (const session of (await api.sessions(userId)).filter((s) => workerOf(s) === cosSeat.id && s.parentSessionId == null)) {
+        for (const session of (await api.sessions(userId)).filter((s) => workerOf(s) === shiftCoordinatorSeat.id && s.parentSessionId == null)) {
           const messages = await api.items(session.id, "message");
           const at = messages.findIndex((m) => m.role === "user" && textOf(m).includes(token));
           if (at >= 0) return { sessionId: session.id, messages, at };
         }
         return undefined;
       };
-      await page.getByTestId("cos-composer-send").click();
+      await page.getByTestId("shift-coordinator-composer-send").click();
       let state = "";
       let heldAtDelivered: Awaited<ReturnType<typeof findLine>>;
       for (const until = Date.now() + SEND_MS; Date.now() < until; await sleep(50)) {
-        state = (await page.getByTestId("cos-composer-status").getAttribute("data-state")) ?? "";
+        state = (await page.getByTestId("shift-coordinator-composer-status").getAttribute("data-state")) ?? "";
         if (state === "delivered") {
           heldAtDelivered = await findLine();
           break;
@@ -385,15 +385,15 @@ await runGoal(async (failures) => {
         if (["refused", "not-sent", "unconfirmed"].includes(state)) break;
       }
       if (state !== "delivered") {
-        const error = await page.getByTestId("cos-composer-error").textContent({ timeout: 100 }).catch(() => null);
+        const error = await page.getByTestId("shift-coordinator-composer-error").textContent({ timeout: 100 }).catch(() => null);
         fail("talk", `the composer never read delivered: ${state || "sending"}${error === null ? "" : `, "${error}"`}`);
       } else if (heldAtDelivered === undefined) {
-        fail("talk", `delivered was drawn while no session of ${cosSeat.id} held a user item with the token`);
+        fail("talk", `delivered was drawn while no session of ${shiftCoordinatorSeat.id} held a user item with the token`);
       } else {
         const reply = heldAtDelivered.messages.slice(heldAtDelivered.at + 1).find((m) => m.role === "assistant");
         if (reply === undefined) fail("talk", `${heldAtDelivered.sessionId} holds no assistant item after the line`);
         const drawnIds = async () =>
-          (await page.getByTestId("cos-item").evaluateAll((els) => els.map((e) => `${e.getAttribute("data-role")}:${e.getAttribute("data-item-id")}`))) as string[];
+          (await page.getByTestId("shift-coordinator-item").evaluateAll((els) => els.map((e) => `${e.getAttribute("data-role")}:${e.getAttribute("data-item-id")}`))) as string[];
         const drawn = await settle(drawnIds, (ids) => reply !== undefined && ids.includes(`assistant:${reply.id}`));
         if (reply !== undefined && !drawn.includes(`assistant:${reply.id}`)) fail("talk", `the screen draws no reply with the stored reply's id ${reply.id}`);
         const stored = new Set(heldAtDelivered.messages.map((m) => m.id));
@@ -402,7 +402,7 @@ await runGoal(async (failures) => {
         evidence.push(`line delivered into ${heldAtDelivered.sessionId} (held when drawn), reply ${reply?.id ?? "none"} drawn by id`);
 
         // again
-        await open(page, served.desk.origin, "/cos");
+        await open(page, served.desk.origin, "/shift-coordinator");
         const again = await settle(drawnIds, (ids) => reply !== undefined && ids.includes(`assistant:${reply.id}`) && ids.includes(`user:${heldAtDelivered!.messages[heldAtDelivered!.at]!.id}`));
         if (reply === undefined || !again.includes(`assistant:${reply.id}`) || !again.includes(`user:${heldAtDelivered.messages[heldAtDelivered.at]!.id}`)) {
           fail("again", `after a reload the conversation draws [${again.join(", ")}], not the stored line and reply`);
@@ -410,14 +410,14 @@ await runGoal(async (failures) => {
       }
     });
 
-    // ---- A Lab with no chief of staff --------------------------------------------
-    await leg("no-cos", async (fail) => {
-      await open(page, served["no-cos"].origin, "/");
-      if ((await page.getByTestId("centre").getAttribute("data-level")) !== "cos") fail("no CoS", "/ does not draw Chief of Staff");
-      if (!(await visible(page, "cos-summary"))) fail("no CoS", "the summary is not drawn");
-      if (!(await visible(page, "cos-none"))) fail("no CoS", "no named state says the Lab declares no chief of staff");
-      if ((await page.getByTestId("cos-composer").count()) !== 0) fail("no CoS", "a composer is drawn with no chief of staff to talk to");
-      evidence.push(`no chief of staff: lands on Chief of Staff, summary and "${(await page.getByTestId("cos-none").textContent().catch(() => ""))?.slice(0, 40)}…"`);
+    // ---- A Lab with no Shift Coordinator --------------------------------------------
+    await leg("no-shift-coordinator", async (fail) => {
+      await open(page, served["no-shift-coordinator"].origin, "/");
+      if ((await page.getByTestId("centre").getAttribute("data-level")) !== "shift-coordinator") fail("no Shift Coordinator", "/ does not draw Shift Coordinator");
+      if (!(await visible(page, "shift-coordinator-summary"))) fail("no Shift Coordinator", "the summary is not drawn");
+      if (!(await visible(page, "shift-coordinator-none"))) fail("no Shift Coordinator", "no named state says the Lab declares no Shift Coordinator");
+      if ((await page.getByTestId("shift-coordinator-composer").count()) !== 0) fail("no Shift Coordinator", "a composer is drawn with no Shift Coordinator to talk to");
+      evidence.push(`no Shift Coordinator: lands on Shift Coordinator, summary and "${(await page.getByTestId("shift-coordinator-none").textContent().catch(() => ""))?.slice(0, 40)}…"`);
     });
 
     if (pageErrors.length > 0) failures.push(`[page] reach: the page threw: ${pageErrors.join(" | ")}`);
@@ -428,6 +428,6 @@ await runGoal(async (failures) => {
   }
   return {
     failures: CONTROL === "" ? failures : failures.map((f) => `[control ${CONTROL}] ${f}`),
-    evidence: `Shift Manager built with Vite and served by its command over the desk (${cosSeat.id} on the agent kind, a real model) and the desk with no chief of staff; driven in Chromium and graded against the store through each Lab's routes. ${evidence.join("; ")}`,
+    evidence: `Shift Manager built with Vite and served by its command over the desk (${shiftCoordinatorSeat.id} on the agent kind, a real model) and the desk with no Shift Coordinator; driven in Chromium and graded against the store through each Lab's routes. ${evidence.join("; ")}`,
   };
 });

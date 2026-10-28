@@ -13,8 +13,8 @@ const flow = (id: string, flowName = id) => ({ id, kind: flowName }) as never;
 
 describe("mergeWorkerFlows", () => {
   it("adds each worker under its id beside the app's flows", () => {
-    const merged = mergeWorkerFlows({ coordinator: flow("coordinator") }, [flow("eng.em", "em"), flow("chief-of-staff", "agent")]);
-    expect(Object.keys(merged).sort()).toEqual(["chief-of-staff", "coordinator", "eng.em"]);
+    const merged = mergeWorkerFlows({ coordinator: flow("coordinator") }, [flow("eng.em", "em"), flow("shift-coordinator", "agent")]);
+    expect(Object.keys(merged).sort()).toEqual(["shift-coordinator", "coordinator", "eng.em"]);
   });
 
   it("refuses a worker whose id is already a flow's, naming both, and leaves the input alone", () => {

@@ -164,7 +164,7 @@ Each policy checks a delegate when the message arrives. One that can't take it, 
 
 Best fit asks its evaluation model one question: who should take this message? The choices are the delegates and, when the coordinator has a `description:`, the coordinator itself. Picking the coordinator means the message is the coordinator's own job, so its own turn takes it, as under `judgment`. That is how a coordinator that routes plain requests straight to a delegate still answers "who works here?" or hires someone itself. Write its description to say what it does itself:
 
-```md title="workforce/org/workers/chief-of-staff/WORKER.md"
+```md title="workforce/org/workers/shift-coordinator/WORKER.md"
 ---
 description: The user's one point of contact. Hires and fires workers, starts projects, and answers questions about the team.
 flow: coordinator

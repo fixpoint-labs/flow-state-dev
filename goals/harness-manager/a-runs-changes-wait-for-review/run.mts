@@ -64,7 +64,7 @@ interface Fixture {
 const fixture = loadFixture<Fixture>(import.meta.url);
 
 const CODER = "eng.coder";
-const COS = "chief-of-staff";
+const SHIFT_COORDINATOR = "shift-coordinator";
 const STOREFRONT = { visibility: "shared", id: "storefront" } as const;
 const ALL_LEGS = ["a", "b", "c", "cprime", "d", "e", "f", "g", "h", "i"] as const;
 const LEGS = new Set((process.env.GOAL_LEGS ?? ALL_LEGS.join(",")).split(",").map((leg) => leg.trim()).filter(Boolean));
@@ -165,7 +165,7 @@ function recorded(slot: (feeds: any) => HarnessBlock, seen: Seen, unconfirmed: S
 type Verdict = { choice: "done" | "not-done" | "ask"; confidence: number };
 
 /**
- * The chief of staff's model: its first turn files one coder task with `goal`;
+ * The Shift Coordinator's model: its first turn files one coder task with `goal`;
  * every other step answers "Noted." Jev, the judge, answers `verdict`.
  */
 function models(goal: string, verdict: Verdict): ModelResolver {
@@ -196,7 +196,7 @@ function models(goal: string, verdict: Verdict): ModelResolver {
     modelId: "goal/jev",
     supportedQuestionTypes: ["choice", "score", "boolean"],
     async doEvaluate(call: { questions: Record<string, unknown> }) {
-      // Best fit's route: no pick, so the chief of staff's judgment takes the message.
+      // Best fit's route: no pick, so the Shift Coordinator's judgment takes the message.
       if (!("verdict" in call.questions)) throw new Error("no route in this check");
       return {
         answers: { verdict: { type: "choice", choice: verdict.choice }, why: { type: "choice", choice: "off-target" } },
@@ -284,7 +284,7 @@ async function open(setup: Setup, reopen?: { conversation: string; taskId: strin
 
   let taskId = reopen?.taskId;
   if (taskId === undefined) {
-    const created = await lab.door("POST", "coordinator/sessions", { body: { userId: LAB_USER_ID, sessionId: conversation, state: { workerId: COS } } });
+    const created = await lab.door("POST", "coordinator/sessions", { body: { userId: LAB_USER_ID, sessionId: conversation, state: { workerId: SHIFT_COORDINATOR } } });
     if (created.status !== 201) throw new Error(`setup: opening the conversation answered ${created.status}`);
     const filed = await act("respond", { message: "Please have the coder do this." });
     if (filed.error !== undefined) throw new Error(`setup: the conversation's turn failed: ${show(filed.error)}`);

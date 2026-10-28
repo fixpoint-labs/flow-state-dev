@@ -127,8 +127,8 @@ export const SLICE_C_ROWS: Row[] = [
   {
     id: "project lane, no tasks",
     audit: "P5",
-    shipped: { file: "packages/shift-manager/src/components/TasksPanel.tsx", has: '<p className="px-1 text-xs text-muted-foreground" data-testid="cos-tasks-empty">', ref: OWN_BOARDS },
-    select: "[data-testid=project-lane] > [data-testid=cos-tasks-empty]",
+    shipped: { file: "packages/shift-manager/src/components/TasksPanel.tsx", has: '<p className="px-1 text-xs text-muted-foreground" data-testid="shift-coordinator-tasks-empty">', ref: OWN_BOARDS },
+    select: "[data-testid=project-lane] > [data-testid=shift-coordinator-tasks-empty]",
     on: ["project"],
     min: 0,
     want: { family: "sans", size: 12 },
@@ -137,7 +137,7 @@ export const SLICE_C_ROWS: Row[] = [
     id: "project lane running square",
     audit: "P5",
     shipped: { file: "packages/shift-manager/src/components/TasksPanel.tsx", has: '<StateSquare state={STATE_OF_COLUMN[columnFor(task.status)]} className="mt-1.5" />', ref: OWN_BOARDS },
-    select: "[data-testid=project-lane] [data-testid=cos-task] > [data-state-square=run]",
+    select: "[data-testid=project-lane] [data-testid=shift-coordinator-task] > [data-state-square=run]",
     on: ["project"],
     min: ({ store }) => (store.running > 0 ? 1 : 0),
     want: { square: "run" },
@@ -154,7 +154,7 @@ export const SLICE_C_EXCEPTIONS: Exception[] = [
   { id: "reading", select: "[data-testid=transcript] > p", why: "the feed's loading line; v2 draws no loading state" },
   {
     id: "project lane task",
-    select: "[data-testid=project-lane] [data-testid=cos-task], [data-testid=project-lane] [data-testid=cos-task] > [data-testid=cos-task-open], [data-testid=project-lane] [data-testid=cos-task] > [data-testid=cos-task-open] *",
+    select: "[data-testid=project-lane] [data-testid=shift-coordinator-task], [data-testid=project-lane] [data-testid=shift-coordinator-task] > [data-testid=shift-coordinator-task-open], [data-testid=project-lane] [data-testid=shift-coordinator-task] > [data-testid=shift-coordinator-task-open] *",
     why: "a lane's task, drawn as the shipped task list (b2f2d4c2): v2 has no lane, and its task cards wait on FIX-1651's step (P6), like the board card",
   },
 ];

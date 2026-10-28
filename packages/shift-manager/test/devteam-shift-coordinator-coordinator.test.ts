@@ -1,5 +1,5 @@
 /**
- * The DevTeam's chief of staff as a coordinator (FIX-1791 S10), on the real
+ * The DevTeam's Shift Coordinator as a coordinator (FIX-1791 S10), on the real
  * Lab: its file names `flow: coordinator`, `routing: best-fit` with a floor,
  * and standard workers as default delegates; best fit's one evaluation sends
  * a plain ask straight to the EM, and anything else to its judgment, the
@@ -8,14 +8,14 @@
  * delegate's name.
  *
  * The models are scripted by block: best fit's evaluation answers the route
- * a test names (by default the chief of staff itself); the chief of staff's
+ * a test names (by default the Shift Coordinator itself); the Shift Coordinator's
  * judgment (`coordinator-judgment`) makes the tool calls a test names, then
  * stops; the EM's turn (`devforce-em-turn`) makes the tool calls a test names
  * for it, then answers "Filed."; an `agent` worker's turn (`agent-answer`)
  * answers with a fixed line.
  *
  * Checks (`specs/issues/FIX-1791/BUSINESS-RULES.md`, as amended by
- * `specs/issues/FIX-1833/`): BR-33 (the chief of staff runs on the
+ * `specs/issues/FIX-1833/`): BR-33 (the Shift Coordinator runs on the
  * coordinator flow, routing by best fit), FIX-1833 BR-6, BR-7, BR-17, BR-19
  * and BR-20 (a plain ask to the EM with no turn; its own job, a doubtful pick
  * or a failed call to its turn, recorded with why), BR-34's
@@ -46,7 +46,7 @@ import { EM_TURN } from "../teams/devteam/workforce/flows/workers/em.mts";
 const EM_DESCRIPTION =
   "Files each feature as a task for the coder, and keeps the workstream it leads current; never does the work itself.";
 
-const COS = "chief-of-staff";
+const SHIFT_COORDINATOR = "shift-coordinator";
 
 let opened: Lab | undefined;
 afterEach(async () => {
@@ -59,7 +59,7 @@ type ToolCall = { toolName: string; args: Record<string, unknown> };
 /** What best fit's one evaluation answers: a choice and the confidence it reports, or a failed call. */
 type Route = { choice: string; confidence?: number } | { fail: string };
 
-/** Every best-fit evaluation the chief of staff made: the choices it was offered. */
+/** Every best-fit evaluation the Shift Coordinator made: the choices it was offered. */
 let routeCalls: Array<Record<string, string>> = [];
 
 /** Best fit's evaluation model, answering `route` and recording the choices each call offered. */
@@ -105,9 +105,9 @@ function stepping(id: string, calls: ToolCall[], closing: string): GeneratorMode
  * The judgment's tool calls, one per step, then a closing line; the EM's turn
  * makes `em`'s calls, then answers "Filed."; an agent worker's turn answers
  * with a fixed line; best fit's evaluation answers `route`, by default the
- * chief of staff itself, sure of it, so its own turn takes the post.
+ * Shift Coordinator itself, sure of it, so its own turn takes the post.
  */
-function scripted(calls: ToolCall[], route: Route = { choice: COS, confidence: 0.95 }, em: ToolCall[] = []): ModelResolver {
+function scripted(calls: ToolCall[], route: Route = { choice: SHIFT_COORDINATOR, confidence: 0.95 }, em: ToolCall[] = []): ModelResolver {
   const judgment = stepping("test/judgment", calls, "Handed on.");
   const emTurn = stepping("test/em", em, "Filed.");
   const helper: GeneratorModel = {
@@ -143,18 +143,18 @@ async function open(stores: ReturnType<typeof inMemoryStores> = inMemoryStores()
     stores,
     harness: harness.slot,
     runTimeoutMs: harness.runTimeoutMs,
-    workspace: { root: mkdtempSync(join(tmpdir(), "devteam-cos-coordinator-")), remotes: { allow: ["file"] } },
+    workspace: { root: mkdtempSync(join(tmpdir(), "devteam-shift-coordinator-coordinator-")), remotes: { allow: ["file"] } },
     coderWorkerId: "eng.coder",
     inventory: true,
   });
   return opened;
 }
 
-/** A conversation with the chief of staff, opened as an app does: a session on its flow, naming it. */
+/** A conversation with the Shift Coordinator, opened as an app does: a session on its flow, naming it. */
 async function conversation(lab: Lab): Promise<string> {
-  const sessionId = `s-cos-${globalThis.crypto.randomUUID()}`;
+  const sessionId = `s-shift-coordinator-${globalThis.crypto.randomUUID()}`;
   const created = await lab.door("POST", `coordinator/sessions`, {
-    body: { userId: LAB_USER_ID, sessionId, state: { workerId: COS } },
+    body: { userId: LAB_USER_ID, sessionId, state: { workerId: SHIFT_COORDINATOR } },
   });
   expect(created.status).toBe(201);
   return sessionId;
@@ -186,9 +186,9 @@ async function settledItems(lab: Lab, sessionId: string) {
   return requests.sort((a, b) => a.createdAt - b.createdAt).flatMap((r) => ((r as unknown as { items?: any[] }).items ?? []));
 }
 
-describe("the chief of staff as a coordinator (S10)", () => {
+describe("the Shift Coordinator as a coordinator (S10)", () => {
   for (const [why, route, reason] of [
-    ["its own job, at any confidence", { choice: COS, confidence: 0.4 }, "coordinator"],
+    ["its own job, at any confidence", { choice: SHIFT_COORDINATOR, confidence: 0.4 }, "coordinator"],
     ["a vague ask Jev isn't sure of", { choice: "eng.em", confidence: 0.36 }, "below-floor"],
     ["an evaluation the gateway can't serve", { fail: "the gateway refused the call" }, "failed"],
   ] as const) {
@@ -214,13 +214,13 @@ describe("the chief of staff as a coordinator (S10)", () => {
     const listed = await act(lab, id, "listDelegates", {});
     expect(listed.error).toBeUndefined();
     // What each one does (its WORKER.md description) and takes: both flows take a conversation's
-    // tasks (FIX-1866, FIX-2083). What the chief of staff picks a routed task and a filing by.
+    // tasks (FIX-1866, FIX-2083). What the Shift Coordinator picks a routed task and a filing by.
     expect(listed.output.delegates).toEqual([
       { worker: "eng.em", description: EM_DESCRIPTION, takes: "tasks" },
       { worker: "eng.coder", description: "Does the work a filed row names, in a checkout of its own.", takes: "tasks" },
     ]);
     // The agent flow refuses it: a session names the flow its worker runs on.
-    const onAgent = await lab.door("POST", `agent/sessions`, { body: { userId: LAB_USER_ID, state: { workerId: COS } } });
+    const onAgent = await lab.door("POST", `agent/sessions`, { body: { userId: LAB_USER_ID, state: { workerId: SHIFT_COORDINATOR } } });
     expect(onAgent.status).toBe(400);
   });
 
@@ -283,12 +283,12 @@ describe("the chief of staff as a coordinator (S10)", () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
       items = await settledItems(lab, id);
     }
-    // One evaluation, over the EM, the coder (a delegate that takes tasks) and the chief of staff itself, by its description.
+    // One evaluation, over the EM, the coder (a delegate that takes tasks) and the Shift Coordinator itself, by its description.
     expect(routeCalls).toEqual([
       {
         "eng.em": EM_DESCRIPTION,
         "eng.coder": "Does the work a filed row names, in a checkout of its own.",
-        [COS]: "The user's one point of contact. Hires and fires workers, starts projects, and answers questions about the team, its workers and its delegates.",
+        [SHIFT_COORDINATOR]: "The user's one point of contact. Hires and fires workers, starts projects, and answers questions about the team, its workers and its delegates.",
       },
     ]);
     expect((model as any).judgmentSteps()).toBe(0);
