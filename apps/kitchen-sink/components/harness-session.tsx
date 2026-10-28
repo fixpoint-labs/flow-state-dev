@@ -193,10 +193,12 @@ function SessionBody({
         const turns = requests
           .filter((request) => request.actionName === "turn")
           .sort((a, b) => (a.startedAtMs ?? 0) - (b.startedAtMs ?? 0));
-        if (checkedOpen.current !== sessionId || turns.length < 2) return;
+        const oldest = turns[0];
+        if (checkedOpen.current !== sessionId || oldest === undefined || turns.length < 2) return;
         const listed = turns.slice(1).map((request) => request.id);
+        // A line sent while the list was read is kept, after the ones it lists.
         waiting.current = [...listed, ...waiting.current.filter((id) => !listed.includes(id))];
-        followRequest(turns[0]!.id);
+        followRequest(oldest.id);
       },
       // Unread, the page stays on the request it follows.
       () => undefined,
