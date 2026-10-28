@@ -164,6 +164,8 @@ async function awaitReply(
     const outcome = await waitOnRequest(ctx, {
       requestId: target,
       // A nonce of this wait's own: a later wait on the same request parks on a gate of its own.
+      // The fresh UUID is safe on replay: `planKey` keeps the first plan under runOnce, so a
+      // replay parks on the stored gate and deadline, not this one.
       gateId: `call:${id}#${globalThis.crypto.randomUUID()}`,
       planKey: `fsd.call.wait:${key}:${round}`,
       deadlineAt,
@@ -179,6 +181,8 @@ async function awaitReply(
     const next = await read(round + 1);
     if ("ended" in next && next.ended !== undefined) return { status: "failed", callId: id, error: next.ended };
     const after = "target" in next ? next.target : undefined;
+    // Nobody new to follow: the row still names the request that just ended (or no one), so
+    // waiting again would park on a request that already ended. Answer with how it ended.
     if (after === undefined || after === target) {
       return outcome.status === "failed" ? { status: "failed", callId: id, error: outcome.error } : running();
     }

@@ -46,6 +46,8 @@ const TARGET = `${MESSAGES}/message-target.ts`;
 const CALL = `${MESSAGES}/call.ts`;
 const QUEUE = `${MESSAGES}/queue.ts`;
 const TOOL = `${MESSAGES}/message-tool.ts`;
+/** The one wait check a call and `getTask` share. */
+const WAIT_CHECK = "packages/orchestration/src/tasks/helpers/wait-on-task.ts";
 const NOT_YOURSELF = String.raw`if \(to === sender && !answering\) return "not_yourself: you can't message yourself\.";`;
 
 export const CONTROLS: Record<ControlName, Control> = {
@@ -245,7 +247,7 @@ export const CONTROLS: Record<ControlName, Control> = {
     name: "no-default-deadline",
     legs: ["10b"],
     assertion: "10:default-deadline",
-    patches: [{ module: CALL, from: String.raw`const deadlineMs = deadline \?\? defaultMs;`, to: "const deadlineMs = deadline ?? maxMs;" }],
+    patches: [{ module: WAIT_CHECK, from: String.raw`const deadlineMs = options\.deadlineMs \?\? defaultMs;`, to: "const deadlineMs = options.deadlineMs ?? maxMs;" }],
     does: "a call with no deadline waits the host's maximum, not its default",
   },
   "send-again": {
@@ -283,7 +285,7 @@ export const CONTROLS: Record<ControlName, Control> = {
     name: "no-step-guard",
     legs: ["10c"],
     assertion: "10c:one-wait-per-step",
-    patches: [{ module: CALL, from: String.raw`if \(holder !== call\.logicalId\) \{`, to: "if (false) {" }],
+    patches: [{ module: WAIT_CHECK, from: String.raw`if \(holder !== options\.key\) \{`, to: "if (false) {" }],
     does: "a model step may hold two waits",
   },
 };

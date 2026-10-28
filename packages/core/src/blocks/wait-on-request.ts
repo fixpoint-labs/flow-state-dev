@@ -15,7 +15,11 @@ import { parkOnWait } from "../types/wait-gate";
 export type WaitOnRequestInput = {
   /** The request to wait on. Its ending resumes this one. */
   readonly requestId: string;
-  /** The gate's id, unique within the session and the same on every replay. */
+  /**
+   * The gate's id on the first plan, unique within the session. Only that first
+   * value counts: it is kept under `planKey`, so a replay parks on the stored id
+   * even when the caller passes a fresh one.
+   */
   readonly gateId: string;
   /**
    * The `runOnce` key the wait's plan (its gate and deadline) is kept under,
