@@ -1,5 +1,5 @@
 import { WRITES_OUTLIVE_ABORT, attachRequestEndRegistry, createRequestEndRegistry, type WritesOutliveAbort } from "../execution/request-end-hooks";
-import { createRequestSpendLedger } from "../execution/request-spend-ledger";
+import { createRequestSpendLedger, loggedSpendOf } from "../execution/request-spend-ledger";
 import { isOrgAttributed, UnattributedOrgError } from "./org-attribution";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type {
@@ -180,6 +180,13 @@ const SUSPEND_NEEDS_DURABILITY =
   "This host has none: it sets `durable: false`, runs on in-memory stores, or is a router given no " +
   "durability provider. Remove `durable: false`, or set `durable: true` to hold stops in memory " +
   "(tests only: they are lost when the process ends). Nothing was held.";
+
+/** A block's model usage as its lean trace records it: the counts, without provider metadata. */
+function leanModelUsageOf(usage: BlockTraceItem["modelUsage"]): BlockTraceItem["modelUsage"] {
+  if (usage === undefined) return undefined;
+  const { providerMetadata: _providerMetadata, ...counts } = usage;
+  return counts;
+}
 
 /**
  * Whether the run's task was cancelled with one of its stops (FIX-2129):
@@ -3041,7 +3048,13 @@ export async function createExecutionContext<
   // harness run, counted once. The request-end registry hands each ending
   // what the ledger counted since the last one. A resumed request starts from
   // what it spent before it suspended, so its token budget counts both runs.
-  const requestSpendLedger = createRequestSpendLedger(requestRecord.spentByModel);
+  // A run whose process died settled nothing: what its log's block traces
+  // spent since the last settlement is counted, and handed on at this run's
+  // first ending.
+  const requestSpendLedger = createRequestSpendLedger(
+    requestRecord.spentByModel,
+    loggedSpendOf(requestRecord.items ?? [], requestRecord.spentThroughItemIndex ?? -1)
+  );
   const requestEndRegistry = createRequestEndRegistry(() => requestSpendLedger.takeSinceLastEnding());
   // How this request resumed (FIX-2129), read when a block asks: the
   // resolution is filled in at the checkpoint read, after this context is built.
@@ -3390,6 +3403,9 @@ export async function createExecutionContext<
             ...baseBlockTraceFromIdentity(identity, { status: "completed", ts: completedAt }),
             lean: true,
             output: payload.data.output,
+            // What the block's model calls spent, so a continuation after the
+            // process died still counts them (FIX-2145).
+            modelUsage: leanModelUsageOf(payload.data.modelUsage),
             completedAt,
             duration: payload.data.duration,
             rescued: payload.data.rescued,

@@ -27,6 +27,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
+import { detectInterruptedRequests } from "../src/execution/request-recovery";
 
 const previousObservability = process.env.FSDEV_TRACE_OBSERVABILITY;
 afterEach(() => {
@@ -350,4 +351,71 @@ describe("request spend ledger", () => {
     expect(calls).toBe(2);
     expect(outcome.error?.message).toBe("Token budget exceeded: consumed 11 > 10");
   });
+
+  it.each(["false", "true"])(
+    "keeps counting a request's token budget across a continuation after its process died (observability %s)",
+    async (observability) => {
+      // A run whose process died settles nothing: what its finished steps
+      // spent is only in the log their traces left. The continuation replays
+      // them without calling the model, so without that count a request that
+      // spent 8 + 3 under a budget of 10 would read 3 and pass, and a worker's
+      // usage would never see the 8.
+      process.env.FSDEV_TRACE_OBSERVABILITY = observability;
+      const endings: RequestEnding[] = [];
+      const usages = [usage4x4, { promptTokens: 2, completionTokens: 1, totalTokens: 3 }];
+      let calls = 0;
+      const modelResolver = Object.assign(
+        () => ({
+          modelId: "openai/gpt-6-luna",
+          async generate() {
+            return { text: "ok", usage: usages[Math.min(calls++, usages.length - 1)] };
+          }
+        }),
+        { resolveId: (id: string) => id }
+      );
+      let crashed = true;
+      let stalledOnce = false;
+      // On the first run this step never returns, standing in for a process that died mid-step.
+      const stall = handler({
+        name: "stall",
+        inputSchema: z.any(),
+        execute: async (value) => {
+          if (!crashed) return value;
+          stalledOnce = true;
+          return new Promise<never>(() => {});
+        }
+      });
+      const ask = (name: string) => generator({ name, model: "openai/gpt-6-luna", prompt: () => "p", user: () => "u" });
+      const flow = defineFlow({
+        kind: "spend-crash-budget",
+        session: { [SESSION_REQUEST_END_HOOK]: () => (ending) => void endings.push(ending) },
+        actions: {
+          run: {
+            inputSchema: z.object({}),
+            block: sequencer({ name: "seq", durable: true }).step(ask("first")).step(stall).step(ask("second")),
+            tokenBudget: { maxTotalTokens: 10, onExceeded: "error" }
+          }
+        }
+      })({ id: "spend-crash-budget" });
+      const stores = createInMemoryStores();
+      const provider = createCheckpointDurabilityProvider({ checkpoints: stores.checkpoints, suspensions: stores.suspensions, leases: stores.leases });
+      const runtimeConfig = { durabilityProvider: provider, modelResolver };
+
+      void runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-crash", stores, runtimeConfig });
+      while (!stalledOnce) await new Promise((resolve) => setTimeout(resolve, 5));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect((await detectInterruptedRequests({ stores, staleThresholdMs: -1 })).map((swept) => swept.entry.requestId)).toEqual(["r-crash"]);
+      crashed = false;
+      const registry = createFlowRegistry();
+      registry.register(flow as never);
+      const { finished } = await continueRequest({ requestId: "r-crash", stores, flowRegistry: registry, runtimeConfig });
+
+      const outcome = await finished;
+      // The first answer was replayed, not asked again.
+      expect(calls).toBe(2);
+      expect(outcome.error?.message).toBe("Token budget exceeded: consumed 11 > 10");
+      // The dead run never ended, so the continuation's one ending hands on both runs.
+      expect(endings.map((ending) => [ending.status, ending.spend.byModel["openai/gpt-6-luna"]?.total])).toEqual([["failed", 11]]);
+    }
+  );
 });

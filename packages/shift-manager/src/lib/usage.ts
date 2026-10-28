@@ -185,7 +185,9 @@ export function toWorkerUsage(output: unknown): WorkerUsage[] {
  * Each worker's usage over the last `days` UTC days, read when the view opens,
  * on each Lab read (`readAt`), and when the period changes. `rows` is `null`
  * when this Lab answers no per-worker query. A read that fails keeps the last
- * rows and reports `failure` beside them.
+ * rows for the same period and reports `failure` beside them; rows read for
+ * another period are never returned, so one period's totals never stand
+ * under another's tab.
  */
 export function useWorkerUsage(
   readAt: number,
@@ -196,8 +198,7 @@ export function useWorkerUsage(
   reread: () => void;
 } {
   const { client } = useLab();
-  const [rows, setRows] = useState<WorkerUsage[] | null | undefined>(undefined);
-  const [failure, setFailure] = useState<Failure | undefined>(undefined);
+  const [read, setRead] = useState<{ days: number; rows?: WorkerUsage[] | null; failure?: Failure } | undefined>(undefined);
   const [reads, setReads] = useState(0);
   useEffect(() => {
     let closed = false;
@@ -206,20 +207,19 @@ export function useWorkerUsage(
         if (flow === null) return null;
         return toWorkerUsage(await runUsageQuery(client, flow, WORKER_USAGE_ACTION, { days }));
       })
-      .then((read) => {
-        if (closed) return;
-        setRows(read);
-        setFailure(undefined);
+      .then((rows) => {
+        if (!closed) setRead({ days, rows });
       })
       .catch((error: unknown) => {
-        if (!closed) setFailure(describeFailure(error));
+        if (!closed) setRead((last) => ({ days, rows: last?.days === days ? last.rows : undefined, failure: describeFailure(error) }));
       });
     return () => {
       closed = true;
     };
   }, [client, readAt, reads, days]);
   const reread = useCallback(() => setReads((n) => n + 1), []);
-  return { rows, failure, reread };
+  const current = read?.days === days ? read : undefined;
+  return { rows: current?.rows, failure: current?.failure, reread };
 }
 
 /** A token count for a user: `840 tokens`, `12.5 K tokens`, `1.2 M tokens`. */

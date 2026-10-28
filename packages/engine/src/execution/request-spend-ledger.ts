@@ -17,6 +17,8 @@
  * it. A request-end hook is handed {@link RequestSpendLedger.takeSinceLastEnding}.
  */
 import { cacheTokensOf } from "@flow-state-dev/core";
+import type { BlockTraceItem } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type { GeneratorModelResultPayload, HarnessRunSpend, ModelUsageEntry, RequestSpend } from "@flow-state-dev/core/types";
 
 /** One request's ledger. */
@@ -38,10 +40,15 @@ export interface RequestSpendLedger {
  * Build one request's ledger. `carried` is what the request spent before a
  * suspension it resumes from: counted in {@link RequestSpendLedger.total}, and
  * already handed on, so {@link RequestSpendLedger.takeSinceLastEnding} never
- * hands it on again.
+ * hands it on again. `recovered` is what a run that never ended (its process
+ * died) left in the log: counted, and handed on at this run's first ending.
  */
-export function createRequestSpendLedger(carried: Readonly<Record<string, ModelUsageEntry>> = {}): RequestSpendLedger {
+export function createRequestSpendLedger(
+  carried: Readonly<Record<string, ModelUsageEntry>> = {},
+  recovered: Readonly<Record<string, ModelUsageEntry>> = {}
+): RequestSpendLedger {
   const byModel: Record<string, ModelUsageEntry> = Object.assign(Object.create(null), copyOf(carried));
+  for (const [model, entry] of Object.entries(recovered)) addEntry((byModel[model] ??= emptyEntry()), entry);
   const harnessRuns: HarnessRunSpend[] = [];
   let takenByModel: Record<string, ModelUsageEntry> = copyOf(carried);
   let takenRuns = 0;
@@ -49,13 +56,7 @@ export function createRequestSpendLedger(carried: Readonly<Record<string, ModelU
   return {
     addModelResult(report) {
       if (report.countsIn === "trace" || report.usage === undefined) return;
-      const entry = (byModel[report.model] ??= emptyEntry());
-      const added = entryOf(report);
-      entry.prompt += added.prompt;
-      entry.completion += added.completion;
-      entry.total += added.total;
-      entry.cacheReadTokens += added.cacheReadTokens;
-      entry.cacheCreationTokens += added.cacheCreationTokens;
+      addEntry((byModel[report.model] ??= emptyEntry()), entryOf(report));
     },
     reportHarnessRun(run) {
       harnessRuns.push({ ...run });
@@ -82,6 +83,38 @@ export function createRequestSpendLedger(carried: Readonly<Record<string, ModelU
       return { byModel: since, harnessRuns: runs };
     }
   };
+}
+
+/**
+ * What the request's log says its model calls spent after item
+ * `afterItemIndex`: each block trace's `modelUsage`, by model. A request whose
+ * process died mid-run settled no spend, and its continuation replays the
+ * blocks the log says finished without calling their models again, so this is
+ * what those calls cost.
+ */
+export function loggedSpendOf(items: readonly RuntimeItem[], afterItemIndex: number): Record<string, ModelUsageEntry> {
+  const byModel: Record<string, ModelUsageEntry> = {};
+  for (const item of items) {
+    if (item.type !== "block_trace" || item.itemIndex <= afterItemIndex) continue;
+    const usage = (item as BlockTraceItem).modelUsage;
+    if (usage === undefined) continue;
+    addEntry((byModel[usage.model] ??= emptyEntry()), {
+      prompt: Number(usage.promptTokens ?? 0),
+      completion: Number(usage.completionTokens ?? 0),
+      total: Number(usage.totalTokens ?? 0),
+      cacheReadTokens: Number(usage.cacheReadTokens ?? 0),
+      cacheCreationTokens: Number(usage.cacheCreationTokens ?? 0)
+    });
+  }
+  return byModel;
+}
+
+function addEntry(entry: ModelUsageEntry, added: ModelUsageEntry): void {
+  entry.prompt += added.prompt;
+  entry.completion += added.completion;
+  entry.total += added.total;
+  entry.cacheReadTokens += added.cacheReadTokens;
+  entry.cacheCreationTokens += added.cacheCreationTokens;
 }
 
 function emptyEntry(): ModelUsageEntry {

@@ -100,6 +100,11 @@ const RUNTIME_PROVENANCE: ItemProvenance = {
   phase: "main"
 };
 
+/** The highest item index in `items`, or -1 when there are none. */
+function lastItemIndexOf(items: readonly RuntimeItem[]): number {
+  return items.reduce((last, item) => Math.max(last, item.itemIndex), -1);
+}
+
 /**
  * Renders an `AbortSignal.reason` into a log-safe string. Reasons are
  * usually a `DOMException`/`Error`, but may be any thrown value, so this
@@ -2454,9 +2459,11 @@ async function runActionAttempt<
 
         // What it spent so far goes with it, so a resume's token budget
         // counts this run too (FIX-2145).
+        const suspendedItems = itemsToPersist();
         await settleRequestRecord(options.stores, requestId, { status: "suspended" }, {
-          items: itemsToPersist(),
-          spentByModel: ctx.request.tokenUsage.byModel
+          items: suspendedItems,
+          spentByModel: ctx.request.tokenUsage.byModel,
+          spentThroughItemIndex: lastItemIndexOf(suspendedItems)
         });
         ctx.requestRuntime.status = "suspended";
         await response.emitRequestStatus("suspended");
@@ -3076,11 +3083,13 @@ async function runActionAttempt<
 
         // A continuation resumes from here: what was spent so far goes with
         // it, as on a suspension (FIX-2145).
+        const interruptedItems = itemsToPersist();
         terminalRecordIncarnation = await settleRequestRecord(options.stores, requestId, { status: "interrupted" }, {
           interruptedAt: Date.now(),
-          items: itemsToPersist(),
+          items: interruptedItems,
           heartbeatsUntilFinalized: false,
-          spentByModel: ctx.request.tokenUsage.byModel
+          spentByModel: ctx.request.tokenUsage.byModel,
+          spentThroughItemIndex: lastItemIndexOf(interruptedItems)
         });
 
         ctx.requestRuntime.status = "interrupted" as typeof ctx.requestRuntime.status;

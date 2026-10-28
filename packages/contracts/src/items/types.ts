@@ -302,7 +302,9 @@ export type BlockTraceItem = OutputItemBase & {
   rescued?: true;
   /**
    * `true` on the lean completion record the runtime writes when trace
-   * observability is off: identity, output and `rescued` only. Absent on full
+   * observability is off: identity, output, `rescued`, and a generator's or
+   * evaluator's `modelUsage` without its provider metadata, so a continuation
+   * after the process died still counts what the block spent. Absent on full
    * traces and on records written before lean records existed.
    */
   lean?: true;
