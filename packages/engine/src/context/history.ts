@@ -8,6 +8,8 @@
  */
 
 import type {
+  HistoryTurn,
+  HistoryTurnQuery,
   ItemQuery,
   JournalEntry,
   JournalEntryInput,
@@ -343,7 +345,7 @@ export async function loadLLMHistory(
   const allowedRoles = query?.roles ? new Set(query.roles) : undefined;
 
   const selectedTurns = await selectRequestsByLimit(
-    priorRequests,
+    afterRequest(priorRequests, query?.afterRequestId),
     query?.limit,
     tokenCounter,
     resolveModelId,
@@ -368,6 +370,17 @@ export async function loadLLMHistory(
   // structurally unreachable in normal operation, but keep the trim for
   // edge data states (e.g., a request whose items begin mid-tool-pair).
   return trimOrphanedToolMessages(messages);
+}
+
+/**
+ * The turns after `requestId`, for `history({ afterRequestId })`. A turn the
+ * window does not hold is older than every turn it does, so naming one (or
+ * none) leaves the turns whole.
+ */
+function afterRequest(priorRequests: RequestRecord[], requestId: string | undefined): RequestRecord[] {
+  if (requestId === undefined) return priorRequests;
+  const index = priorRequests.findIndex((r) => r.id === requestId);
+  return index === -1 ? priorRequests : priorRequests.slice(index + 1);
 }
 
 /**
@@ -467,6 +480,8 @@ export function createSessionItemViews(
     tokenCounter: TokenCounter;
     resolveModelId: () => string;
     readLiveItems?: () => RuntimeItem[];
+    /** Backs `turns()`; it reads beyond the loaded window, so the context supplies it. */
+    readTurns?: (query?: HistoryTurnQuery) => Promise<HistoryTurn[]>;
   }
 ): SessionItemViews {
   // Compute once — priorItems is immutable for the request lifetime.
@@ -533,6 +548,7 @@ export function createSessionItemViews(
         options.readLiveItems
       ),
     selectForContext: (query) => select(query),
+    turns: (query) => options.readTurns?.(query) ?? Promise.resolve([]),
   };
 }
 

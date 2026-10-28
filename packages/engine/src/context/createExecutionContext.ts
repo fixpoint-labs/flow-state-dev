@@ -6,6 +6,8 @@ import type {
   JournalEntry,
   JournalEntryInput,
   JsonObject,
+  HistoryTurn,
+  HistoryTurnQuery,
   LLMMessage,
   OrgScopeHandle,
   RequestScopeHandle,
@@ -145,6 +147,8 @@ import {
   outputItemToSessionItem,
   createSessionItemViews,
   buildJournalEntry,
+  expandRequestToMessages,
+  LLM_AUDIENCE_TYPES,
 } from "./history";
 import { shouldPersistScopeChange, wrapStateOpsWithEmit } from "./scope-emit";
 import {
@@ -758,9 +762,16 @@ export async function createExecutionContext<
     throw new RequestOwnerMismatchError(requestId);
   }
 
+  // The same filter as the session's reads; see `sessionRequestScope`.
+  const turnScope = sessionRequestScope(
+    sessionId,
+    loadedSession ?? { userId, orgId: options.orgId, flowKind: flow.kind, flowId: flow.id },
+    options.tenantId
+  );
+
   // Parallelize the remaining independent store lookups — user, org, and the
   // history window don't depend on each other for the initial load.
-  const [loadedUser, loadedOrg, priorRequests] = await Promise.all([
+  const [loadedUser, loadedOrg, listedPriorRequests] = await Promise.all([
     userKey !== undefined ? stores.user.get(userKey) : undefined,
     optionsOrgKey !== undefined ? stores.org.get(optionsOrgKey) : undefined,
     // The N most-recently-started past turns (`PAST_TURN_STATUSES`). The
@@ -771,14 +782,12 @@ export async function createExecutionContext<
     // robust to out-of-order metadata writes. `items` reconstruct cross-turn
     // history.
     stores.request.list({
-      // The same filter as the session's reads; see `sessionRequestScope`.
-      ...sessionRequestScope(
-        sessionId,
-        loadedSession ?? { userId, orgId: options.orgId, flowKind: flow.kind, flowId: flow.id },
-        options.tenantId
-      ),
+      ...turnScope,
       status: PAST_TURN_STATUSES,
-      limit: historyWindowTurns,
+      // One row past the window, read only to learn whether an earlier turn
+      // fell out of it (FIX-1613's `historyStart`); it is dropped below,
+      // before anything reads the window.
+      limit: historyWindowTurns + 1,
       orderBy: "startedAtMs",
       withItems: true
     })
@@ -791,6 +800,15 @@ export async function createExecutionContext<
   // off has no result to show), then sort ascending for stable history
   // ordering. Reused by all()/client() (via priorItems) and history() (via
   // loadLLMHistory).
+  // The window itself: the N most recently started, oldest dropped when the
+  // read found one more. `historyStart` names the first turn the window holds
+  // when that extra row says an earlier turn is out of view.
+  const byStart = [...listedPriorRequests].sort((a, b) => a.startedAtMs - b.startedAtMs);
+  const priorRequests = byStart.length > historyWindowTurns ? byStart.slice(byStart.length - historyWindowTurns) : byStart;
+  const historyStart =
+    byStart.length > historyWindowTurns && priorRequests[0] !== undefined
+      ? { requestId: priorRequests[0].id }
+      : undefined;
   const retried = retriedIds(priorRequests, options.metadata);
   // A gate read that fails costs this turn a view that may show a parked
   // turn, never the turn itself: nothing is treated as parked, and it is logged.
@@ -809,6 +827,59 @@ export async function createExecutionContext<
     .filter((r) => r.status !== "interrupted" || (!retried.has(r.id) && !parked.has(r.id)))
     .map((r) => (r.status === "interrupted" && r.items !== undefined ? { ...r, items: r.items.filter((i) => i.status !== "in_progress") } : r))
     .sort((a, b) => a.startedAtMs - b.startedAtMs);
+
+  // `items.turns()` (FIX-1613): the window's turns and every turn of this
+  // session still open, each marked settled or not, or named turns read by id
+  // wherever they are. A history summary reads it to fold settled turns
+  // before they leave the window and to come back for one that left open.
+  const turnMessages = (record: RequestRecord): LLMMessage[] =>
+    expandRequestToMessages(
+      record.status === "interrupted"
+        ? (record.items ?? []).filter((i) => i.status !== "in_progress")
+        : record.items ?? [],
+      LLM_AUDIENCE_TYPES,
+      undefined
+    );
+  const historyTurn = (record: RequestRecord, settled: boolean): HistoryTurn => ({
+    requestId: record.id,
+    startedAtMs: record.startedAtMs,
+    settled,
+    messages: settled ? turnMessages(record) : []
+  });
+  const isParked = async (record: RequestRecord): Promise<boolean> => {
+    if (record.status !== "interrupted") return false;
+    try {
+      return (await parkedInterruptedIds(options.effectiveRuntimeConfig?.durabilityProvider, [record])).has(record.id);
+    } catch {
+      // The same reading the window load takes when a gate read fails.
+      return false;
+    }
+  };
+  const readTurns = async (query?: HistoryTurnQuery): Promise<HistoryTurn[]> => {
+    if (query?.requestIds !== undefined) {
+      const turns: HistoryTurn[] = [];
+      for (const id of new Set(query.requestIds)) {
+        if (id === requestId) continue;
+        const record = priorRequests.find((r) => r.id === id) ?? (await stores.request.get(id));
+        // Read by id, so held to the session's scope: an id from anywhere
+        // never reads another session's turn.
+        if (record === undefined || !requestInSessionScope(record, turnScope)) continue;
+        const open = record.status === "in_progress" || record.status === "suspended" || (await isParked(record));
+        turns.push(historyTurn(record, !open));
+      }
+      return turns.sort((a, b) => a.startedAtMs - b.startedAtMs);
+    }
+    const windowTurns = priorRequests
+      .filter((r) => r.id !== requestId && !(r.status === "interrupted" && retried.has(r.id)))
+      .map((r) => historyTurn(r, !parked.has(r.id)));
+    const listed = new Set(windowTurns.map((t) => t.requestId));
+    const openTurns = (
+      await stores.request.list({ ...turnScope, status: ["in_progress", "suspended"], orderBy: "startedAtMs" })
+    )
+      .filter((r) => r.id !== requestId && !listed.has(r.id))
+      .map((r) => historyTurn(r, false));
+    return [...windowTurns, ...openTurns].sort((a, b) => a.startedAtMs - b.startedAtMs);
+  };
 
   // Build prior items from the settled prior request records. This replaces the
   // deprecated SessionRecord.items field — items are canonical on request records.
@@ -1586,6 +1657,20 @@ export async function createExecutionContext<
 
   if (requestRecord === undefined) {
     throw new Error(`Request "${requestId}" could not be initialized`);
+  }
+
+  // Where the turns this request reads begin (FIX-1613), on the record a
+  // screen lists. Written onto the held record too: every full-record writer
+  // builds from it, and a stale copy would write the mark back out.
+  if (historyStart !== undefined && requestRecord.historyStart?.requestId !== historyStart.requestId) {
+    await stores.request.setFieldsIfStatus(
+      requestId,
+      { historyStart },
+      ["in_progress", "suspended"],
+      Date.now(),
+      resolveRequestIncarnation(requestRecord as RequestRecord)
+    );
+    requestRecord = { ...requestRecord, historyStart };
   }
 
   const wave1Start = Date.now();
@@ -2853,7 +2938,13 @@ export async function createExecutionContext<
           ...(s.tags !== undefined ? { tags: s.tags } : {})
         };
       },
+      // The window this request loaded (FIX-1613), read-only.
+      window: {
+        turns: historyWindowTurns,
+        ...(historyStart !== undefined ? { startRequestId: historyStart.requestId } : {})
+      },
       items: createSessionItemViews(priorItems, settledPriorRequests, {
+        readTurns,
         tokenCounter,
         readLiveItems,
         resolveModelId: () => {
