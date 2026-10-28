@@ -107,7 +107,7 @@ Every goal repeats the same scaffolding around the part that is actually its own
 | `env`        | `intentFreeEnv` / `stripIntentOverrides` — the **prefix** strip of `FSDEV_INTENT_*` + `FSDEV_DEFAULT_MODEL` |
 | `paths`      | `KITCHEN_SINK` / `HELLO_CHAT` (repo-anchored, not `../../../`), `goalTmpDir`, `goalSessionId` |
 | `capture`    | `runFsdev` (input goes by `--input-file`, so quotes, apostrophes and newlines in fixtures are fine; `pnpm --filter @flow-state-dev/goals check:run-fsdev-input` guards it), `readCapture` (latest snapshot per id), `messageText` |
-| `driver`     | `runHarness` — run a sibling `harness.mts` inside an app; `writeGoalReport` — a host that can import `goals/lib` prints its `__GOAL__` line with it and awaits it before `process.exit`, which drops a write still queued on a pipe |
+| `driver`     | `runHarness` — run a sibling `harness.mts` inside an app; `writeGoalReport` — a host that can import `goals/lib` prints its `__GOAL__` line with it and awaits it before `process.exit`, which drops a write still queued on a pipe. A host its runner copies into an older checkout (`GOAL_COMMIT`) keeps an inline flushed write instead, since that checkout's `goals/lib` may not have it |
 | `durable`    | `durableStores`, `registryFor`, `approvePending`, `approvalContext`, `silentLogger` |
 | `model`      | `DEFAULT_MODEL`, `gatewayModel`, `goalModel`, `goalAttempts` |
 | `specs`      | `runSpecs` — delegate to an app's mock-free vitest specs |
