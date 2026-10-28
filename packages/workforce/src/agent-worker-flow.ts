@@ -355,6 +355,20 @@ export interface AgentWorkerFlowOptions {
    */
   afterAnswer?: BlockDefinition<any, any>;
   /**
+   * A block run on every turn just before the worker answers, the mirror of
+   * {@link afterAnswer}. It runs as a `.tap`: it sees the turn's input and
+   * cannot change it, and its output is dropped. Unlike `afterAnswer`, a
+   * failure in it fails the turn, so a block that must not (a history
+   * summary's fold, say) rescues its own.
+   *
+   * A history summary's fold goes here (`beforeAnswer: earlier.fold`, with
+   * `earlier.capability` in {@link uses}), so the answer reads a summary that
+   * already holds the turns about to leave the window.
+   *
+   * Omitted, the flow's sequence is exactly what it is today.
+   */
+  beforeAnswer?: BlockDefinition<any, any>;
+  /**
    * Answer again, in the same request, with the tasks that finished while the
    * worker answered (FIX-2159). After the worker answers, this block runs; when
    * it returns `{ message }`, the worker answers again about that message, and
@@ -1240,10 +1254,13 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
     }
   });
 
-  const answered = sequencer({ name: "agent-run", inputSchema, flowConfigSchema: settings })
+  const prepared = sequencer({ name: "agent-run", inputSchema, flowConfigSchema: settings })
     .tapIf((_input, ctx) => turnConfig(ctx).skills.enableLlmClassifier !== true, matcherWithoutClassifier)
     .tapIf((_input, ctx) => turnConfig(ctx).skills.enableLlmClassifier === true, matcherWithClassifier)
-    .tap(appendWorkerDefaults)
+    .tap(appendWorkerDefaults);
+  // Appended only when the app passed one, like afterAnswer below, so a call
+  // without it builds the sequence it built before the option existed.
+  const answered = (options.beforeAnswer ? prepared.tap(options.beforeAnswer) : prepared)
     // Two arms rather than two `.stepIf`s: the answer is the sequencer's OUTPUT,
     // and a second conditional step would have to be typed against the first
     // one's result. A branch says what this is — one answer, built two ways —

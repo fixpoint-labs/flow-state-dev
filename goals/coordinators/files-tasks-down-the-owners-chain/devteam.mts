@@ -1,14 +1,14 @@
 /**
  * Leg e on Shift Manager's DevTeam install, served by Shift Manager's own
- * command over a fresh store, with its chief of staff on the real model its
+ * command over a fresh store, with its Shift Coordinator on the real model its
  * `WORKER.md` names. It only acts and waits; `run.mts` grades from the store.
  *
  * Every change goes through the app: the roster flow's `hire`, the
- * conversation's `addDelegate`, and Alice's one line to the chief of staff.
+ * conversation's `addDelegate`, and Alice's one line to the Shift Coordinator.
  * The worker whose task fails is an ordinary hire whose `model:` names a model
  * the gateway doesn't serve, so each attempt fails on the provider's answer,
- * not on anything this goal scripts. The second hire names the chief of
- * staff's own model, so a task filed again for it can complete. Nothing is
+ * not on anything this goal scripts. The second hire names the Shift
+ * Coordinator's own model, so a task filed again for it can complete. Nothing is
  * seeded or written to a store.
  *
  * The clients are loaded from the checkout under test, so a run on another
@@ -20,8 +20,8 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { requests } from "./store.mts";
 
-/** The chief of staff's worker id. */
-export const COS = "chief-of-staff";
+/** The Shift Coordinator's worker id. */
+export const SHIFT_COORDINATOR = "shift-coordinator";
 
 /** One person the run acts as. */
 export interface Person {
@@ -123,7 +123,7 @@ export interface LegE {
 
 /**
  * Leg e: Alice hires two workers on `agent`, one naming a model nobody serves,
- * adds both to a new conversation with her chief of staff, and asks it to file
+ * adds both to a new conversation with her Shift Coordinator, and asks it to file
  * a task for the first and, if it fails, to file it again for the second.
  */
 export async function legE(o: {
@@ -148,7 +148,7 @@ export async function legE(o: {
     await act(alice, rosterKind, roster, "hire", { id: broken, flow: "agent", description: "Drafts release notes.", settings: { model: badModel } }),
     await act(alice, rosterKind, roster, "hire", { id: helper, flow: "agent", description: "Drafts release notes.", settings: { model: o.helperModel } }),
   ];
-  const conv = (await alice.flow("coordinator").createSession({ state: { workerId: COS } })).id;
+  const conv = (await alice.flow("coordinator").createSession({ state: { workerId: SHIFT_COORDINATOR } })).id;
   const added = [
     await act(alice, "coordinator", conv, "addDelegate", { worker: broken }),
     await act(alice, "coordinator", conv, "addDelegate", { worker: helper }),

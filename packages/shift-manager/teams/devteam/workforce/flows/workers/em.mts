@@ -380,7 +380,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
       ...kit.actions,
     },
     // A coordinator's routed task (FIX-2083): the project coordinator's, for
-    // the workstream this worker leads, or the chief of staff's. A routed task
+    // the workstream this worker leads, or the Shift Coordinator's. A routed task
     // is a task on the coordinator's board, taken on `work` like any.
     task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "em-task", turn }) } },
     internal: {

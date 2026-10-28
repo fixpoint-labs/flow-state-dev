@@ -148,25 +148,39 @@ export function pullRequestKey(ref: Pick<PullRequestRef, "host" | "owner" | "nam
     .join("/");
 }
 
-/** Every string inside `value`, depth-first, parsing a JSON string once. */
-function stringsIn(value: unknown, depth = 0, out: string[] = []): string[] {
-  if (depth > 8) return out;
-  if (typeof value === "string") {
-    out.push(value);
-    const trimmed = value.trim();
-    if (depth === 0 && (trimmed.startsWith("{") || trimmed.startsWith("["))) {
-      try {
-        stringsIn(JSON.parse(trimmed), depth + 1, out);
-      } catch {
-        // Not JSON: the string itself is already in.
+/**
+ * Every value inside `value`, outermost first (breadth-first, at most 8 levels
+ * deep). A string that holds a JSON object or array is parsed, at any level,
+ * so a result wrapped in a text block reads like the result itself; the string
+ * is visited too.
+ */
+function* valuesIn(value: unknown): Generator<unknown> {
+  let level: unknown[] = [value];
+  for (let depth = 0; depth <= 8 && level.length > 0; depth++) {
+    const next: unknown[] = [];
+    for (const entry of level) {
+      yield entry;
+      if (typeof entry === "string") {
+        const trimmed = entry.trim();
+        if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) continue;
+        try {
+          next.push(JSON.parse(trimmed));
+        } catch {
+          // Not JSON: the string itself is already visited.
+        }
+      } else if (Array.isArray(entry)) {
+        next.push(...entry);
+      } else if (entry !== null && typeof entry === "object") {
+        next.push(...Object.values(entry));
       }
     }
-  } else if (Array.isArray(value)) {
-    for (const entry of value) stringsIn(entry, depth + 1, out);
-  } else if (value !== null && typeof value === "object") {
-    for (const entry of Object.values(value)) stringsIn(entry, depth + 1, out);
+    level = next;
   }
-  return out;
+}
+
+/** Every string inside `value`, outermost first. */
+function stringsIn(value: unknown): string[] {
+  return [...valuesIn(value)].filter((entry): entry is string => typeof entry === "string");
 }
 
 /** The arguments as an object, when they are one or a JSON string of one. */
@@ -196,6 +210,18 @@ function bareToolName(name: string): string {
 
 /** `gh pr create` (or its alias `gh pr new`), anywhere in a command line. */
 const GH_PR_CREATE = /(?:^|[\s;&|("'`])gh\s+pr\s+(?:create|new)\b/;
+
+/**
+ * A `gh` command that prints pull-request links other than the one a create
+ * opens: any other `gh pr` verb, `gh search`, `gh api`.
+ */
+const GH_READS_LINKS = /(?:^|[\s;&|("'`])gh\s+(?:pr\s+(?!(?:create|new)\b)[a-z]|search\b|api\b)/;
+
+/**
+ * A create's `--title`/`--body` text, which the command does not run: a body
+ * that says "test with gh pr view 12" is not a second command.
+ */
+const GH_CREATE_TEXT = /(?:^|\s)(?:--title|-t|--body|-b)(?:\s+|=)(?:'[^']*'|"(?:[^"\\]|\\.)*"|[^\s'"]+)/g;
 
 /**
  * A pull request's web link. `/pull/new/<branch>` (the link `git push`
@@ -255,14 +281,42 @@ function linksIn(texts: readonly string[]): PullRequestLink[] {
 }
 
 /**
+ * The pull request a create-pull-request tool's result describes: the
+ * outermost object whose `html_url` (else `url`) is a pull request's web link.
+ * `null` when no object names one.
+ */
+function createdPullRequestIn(output: unknown): PullRequestLink | null {
+  for (const value of valuesIn(output)) {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) continue;
+    for (const key of ["html_url", "url"]) {
+      const link = stringField(value as Record<string, unknown>, key);
+      const ref = link === null ? null : pullRequestRefFromUrl(link);
+      if (ref !== null) return ref;
+    }
+  }
+  return null;
+}
+
+/**
  * GitHub's rule, for github.com and GitHub Enterprise hosts.
  *
  * A call is a create call when its command runs `gh pr create` (or `gh pr
  * new`), or when the tool is a create-pull-request tool (GitHub's MCP
- * `create_pull_request`, under any harness's prefix). The pull request is the
- * link the call's OUTPUT names; the command is read from the arguments, never
- * the link, so a link the agent only typed is not a pull request it opened. A
- * `gh pr view`, `gh pr list` or search names links and is not a create call.
+ * `create_pull_request`, under any harness's prefix). The pull requests are
+ * read from the call's OUTPUT, never from the arguments, so a link the agent
+ * only typed is not a pull request it opened. A `gh pr view`, `gh pr list` or
+ * search names links and is not a create call.
+ *
+ * - **`create_pull_request`** opens one pull request: the result's own
+ *   `html_url` (else `url`). Its result also holds the new pull request's
+ *   body, and a link the body names is not opened. A result with no such
+ *   field (plain text, an error) gives its first link.
+ * - **`gh pr create`** prints only the link it opened, so a command whose
+ *   only link-printing `gh` verb is a create records every link in its output
+ *   (a loop of creates opens several). A command that also runs `gh pr view`,
+ *   `gh api` or another verb that prints links records none: the output can't
+ *   be split by command, and a wrong row is never corrected. The turn-end
+ *   check of the session's branch finds a pull request missed this way.
  *
  * A create that fails because the branch already has a pull request still
  * names it ("already exists: <link>"), and it counts: the session's branch has
@@ -276,19 +330,23 @@ export const githubPullRequestRule: PullRequestRule = {
     const tool = bareToolName(call.name);
     let title: string | null = null;
     let branch: string | null = null;
+    let created: PullRequestLink | null = null;
     if (tool === "create_pull_request") {
       title = stringField(args, "title");
       branch = stringField(args, "head");
+      created = createdPullRequestIn(call.output);
     } else {
       // The parsed fields first, so a quoted title reads unescaped; the raw
       // arguments last, for a harness that passes a bare command string.
       const texts = typeof call.arguments === "string" ? [...stringsIn(args), call.arguments] : stringsIn(call.arguments);
       const command = texts.find((text) => GH_PR_CREATE.test(text));
-      if (command === undefined) return [];
+      if (command === undefined || GH_READS_LINKS.test(command.replace(GH_CREATE_TEXT, " "))) return [];
       title = flagValue(command, ["--title", "-t"]);
       branch = flagValue(command, ["--head", "-H"]);
+      return linksIn(stringsIn(call.output)).map((ref) => ({ ...ref, title, branch, state: "open" }));
     }
-    return linksIn(stringsIn(call.output)).map((ref) => ({ ...ref, title, branch, state: "open" }));
+    created ??= linksIn(stringsIn(call.output))[0] ?? null;
+    return created === null ? [] : [{ ...created, title, branch, state: "open" }];
   },
 };
 

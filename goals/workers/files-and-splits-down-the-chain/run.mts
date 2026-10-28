@@ -12,8 +12,8 @@
  *
  * - legs a to d (`scripted.mts`): scripted models, one Lab; leg d's app cap
  *   on a second Lab whose app sets it to 3;
- * - leg e (`real.mts`): `real.lead` on the real model DevTeam's chief of
- *   staff names, a fresh Lab per attempt.
+ * - leg e (`real.mts`): `real.lead` on the real model DevTeam's Shift
+ *   Coordinator names, a fresh Lab per attempt.
  *
  * Every grade reads the store file the run wrote (the coordinators goal's `store.mts`), except what an
  * action answered, which is what the person saw. Leg c's tool lists are what
@@ -32,7 +32,7 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, keysServing, runGoal } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
-import { buildShiftManagerPages, devteamCosModel, startShiftManager } from "../../lib/shift-manager.mts";
+import { buildShiftManagerPages, devteamShiftCoordinatorModel, startShiftManager } from "../../lib/shift-manager.mts";
 import { ORG, PEOPLE } from "./lab/people.mts";
 import { legE, type LegE } from "./real.mts";
 import { capLeg, loadShipped, scriptedLegs } from "./scripted.mts";
@@ -487,7 +487,7 @@ await runGoal(async () => {
   }
 
   if (legs.has("e")) {
-    const model = devteamCosModel(checkout.root);
+    const model = devteamShiftCoordinatorModel(checkout.root);
     const modelKeys = keysServing(model);
     if (!modelKeys.some((k) => (process.env[k] ?? "") !== "")) {
       results.e = { failures: [`blocked: no key here serves ${model}; none of ${modelKeys.join(", ")} is set`], notes: [] };

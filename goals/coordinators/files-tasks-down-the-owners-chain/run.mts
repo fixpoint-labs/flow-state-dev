@@ -10,7 +10,7 @@
  *   people signed in over HTTP with their own verified bearers, scripted
  *   models.
  * - Leg e (`devteam.mts`): Shift Manager's DevTeam install, served by its own
- *   command over a fresh store, its chief of staff on the real model its
+ *   command over a fresh store, its Shift Coordinator on the real model its
  *   `WORKER.md` names.
  *
  * Every grade reads the store file the run wrote (`store.mts`), except what an
@@ -30,8 +30,8 @@ import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, keysServing, runGoal } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
-import { buildShiftManagerPages, devteamCosModel, startShiftManager } from "../../lib/shift-manager.mts";
-import { COS, legE, loadShipped, type LegE, type Person } from "./devteam.mts";
+import { buildShiftManagerPages, devteamShiftCoordinatorModel, startShiftManager } from "../../lib/shift-manager.mts";
+import { SHIFT_COORDINATOR, legE, loadShipped, type LegE, type Person } from "./devteam.mts";
 import { loadScriptedClients, scriptedLegs } from "./scripted.mts";
 import { allTaskRows, items, requests, sessions, taskRows, textOf, toolOutput, type StoredItem, type StoredTask } from "./store.mts";
 
@@ -385,7 +385,7 @@ function gradeE(E: LegE, store: string, alice: string, org: string): LegResult {
   const task = rows.find((x) => filedIds.includes(x.id) && x.assignee === E.broken);
   const T = task?.id ?? "(none)";
   if (task === undefined || !task.partition.startsWith(`${E.conv}~`)) {
-    r.failures.push(`e:filed — wanted the chief of staff's first turn to file a task for ${E.broken} with createTask; the turn ${E.turn.status}, its createTask calls answered ${show(firstFiled)}; tools it called: ${show(tools.filter((i) => i.requestId === E.turn.requestId).map((i) => i.toolCall?.name))}`);
+    r.failures.push(`e:filed — wanted the Shift Coordinator's first turn to file a task for ${E.broken} with createTask; the turn ${E.turn.status}, its createTask calls answered ${show(firstFiled)}; tools it called: ${show(tools.filter((i) => i.requestId === E.turn.requestId).map((i) => i.toolCall?.name))}`);
     return r;
   }
   const maxAttempts = (task as StoredTask & { maxAttempts?: number }).maxAttempts ?? 2;
@@ -488,10 +488,10 @@ await runGoal(async () => {
   }
 
   if (legs.has("e")) {
-    const cosModel = devteamCosModel(checkout.root);
-    const modelKeys = keysServing(cosModel);
+    const shiftCoordinatorModel = devteamShiftCoordinatorModel(checkout.root);
+    const modelKeys = keysServing(shiftCoordinatorModel);
     if (!modelKeys.some((k) => (process.env[k] ?? "") !== "")) {
-      results.e = { failures: [`blocked: no key here serves the chief of staff's model, ${cosModel}; none of ${modelKeys.join(", ")} is set`], notes: [] };
+      results.e = { failures: [`blocked: no key here serves the Shift Coordinator's model, ${shiftCoordinatorModel}; none of ${modelKeys.join(", ")} is set`], notes: [] };
     } else {
       const profile = join(checkout.root, "packages", "shift-manager", "teams", "devteam");
       const host = (await import(pathToFileURL(join(profile, "host.mts")).href)) as { LAB_USERS?: Record<string, { userId: string; bearer: string }>; LAB_ORG_ID?: string };
@@ -511,8 +511,8 @@ await runGoal(async () => {
         const served = await serve(`devteam-${label}`, join(profile, "fsdev.config.mts"), { DEVTEAM_STORE: store });
         let graded: LegResult;
         try {
-          say(`leg e attempt ${attempt} of ${attempts}: DevTeam at ${served.origin}, the chief of staff on ${cosModel}`);
-          const observed = await legE({ origin: served.origin, store, shipped, alice, ask: asks.e, helperModel: cosModel, say });
+          say(`leg e attempt ${attempt} of ${attempts}: DevTeam at ${served.origin}, the Shift Coordinator on ${shiftCoordinatorModel}`);
+          const observed = await legE({ origin: served.origin, store, shipped, alice, ask: asks.e, helperModel: shiftCoordinatorModel, say });
           say(`leg e attempt ${attempt}: hired ${show(observed.hired.map((h) => h.output ?? h.error ?? h.status))}; added ${show(observed.added.map((h) => h.status))}; the turn ${observed.turn.status}`);
           graded = gradeE(observed, store, alice.userId, host.LAB_ORG_ID);
         } catch (error) {
@@ -527,7 +527,7 @@ await runGoal(async () => {
         if (graded.failures.length === 0) break;
         if (control !== undefined && !graded.failures.some((f) => f.startsWith("e:filed"))) break;
       }
-      evidence.push(`DevTeam's chief of staff (${COS}) on ${cosModel}`);
+      evidence.push(`DevTeam's Shift Coordinator (${SHIFT_COORDINATOR}) on ${shiftCoordinatorModel}`);
     }
   }
 

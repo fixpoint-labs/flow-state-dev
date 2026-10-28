@@ -11,7 +11,7 @@
 - Leg a's top worker is Alice's own hire, `lead-<random>`, on `agent`, listing `crew.planner`. Bob hires a worker of the same id, listing only `crew.one`.
 - Every turn but `real.lead`'s is scripted by marks in what it reads, and every filing it makes is a call of its turn's own task tools, `createTask` for a filing with an owner, and with `held` for an unassigned one: `[file:<worker>]` files the ask (less that mark) for that worker, `[split:<a>,<b>]` files one piece for each, `[fan:<n>]` files `n` unassigned pieces, `[try-file]` files the ask with no assignee, `[tools]` makes the turn say which tools it was handed. A task's notice is noted and files nothing.
 - Leg d's app cap runs on a second Lab whose app calls `hireWorkforce(installation, { taskChainLimit: 3 })` (`GOAL_CHAIN_LIMIT=3`).
-- Leg e: `real.lead` on DevTeam's chief of staff's own `model:`, asked in one of the wordings in `fixtures/asks.json`, picked at run time.
+- Leg e: `real.lead` on DevTeam's Shift Coordinator's own `model:`, asked in one of the wordings in `fixtures/asks.json`, picked at run time.
 - Held out, picked at run time: every goal word, the hired worker's id, leg e's wording. Another wording a person might use for a two-part job must pass too.
 
 **Signal:** each failure is tagged `<leg>:<assertion>`. Every count is read from the store after a 5 s grace.
@@ -26,7 +26,7 @@
 
 **Attempts:** leg e runs on a real model, so it runs until it first passes, up to three attempts (`GOAL_ATTEMPTS`), each on a fresh store and a fresh Lab; every attempt is printed and the verdict names the one it passed on. Under a control there is one attempt. Legs a to d are scripted and run once.
 
-**Model:** real for leg e: DevTeam's chief of staff's own `model:` (`anthropic/claude-haiku-5-5` at this goal's first commit), gated on a key that serves it (`keysServing`). Legs a to d are scripted and need none.
+**Model:** real for leg e: DevTeam's Shift Coordinator's own `model:` (`anthropic/claude-haiku-5-5` at this goal's first commit), gated on a key that serves it (`keysServing`). Legs a to d are scripted and need none.
 
 **Model-free run:** `GOAL_LEGS=a,b,c,d`
 

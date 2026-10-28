@@ -35,7 +35,7 @@ import { openRows, projectsOf, workerLabel, workerStates, shiftCounts, teamsOf, 
 import { projectReaderOf, useProjectRead, type WorkstreamEntry } from "../lib/projects";
 import type { Project } from "../lib/reads";
 import { initialsOf } from "../lib/shell";
-import { useChiefOfStaffWorking } from "../lib/working";
+import { useShiftCoordinatorWorking } from "../lib/working";
 import { Meta, PartialMark, SectionFailure, ShiftMark } from "../components/ui";
 import { ShiftManagerMark } from "../components/ShiftManagerMark";
 import type { Gaps } from "../gaps";
@@ -113,14 +113,14 @@ function NavIcon({ name }: { name: keyof typeof ICON_PATHS }) {
  * square, the name at 600, inverted to ink when it is the current screen, and
  * a blue dot while the shift coordinator works on a line sent from this page.
  */
-function ChiefOfStaffEntry({ active }: { active: boolean }) {
-  const working = useChiefOfStaffWorking();
+function ShiftCoordinatorEntry({ active }: { active: boolean }) {
+  const working = useShiftCoordinatorWorking();
   return (
     <button
       type="button"
-      onClick={() => navigate({ level: "cos" })}
+      onClick={() => navigate({ level: "shift-coordinator" })}
       aria-current={active ? "page" : undefined}
-      data-testid="nav-cos"
+      data-testid="nav-shift-coordinator"
       className={`mb-[5px] flex w-full items-center gap-[9px] border p-[7px] text-left text-[13.5px] font-semibold ${
         active ? "border-primary bg-primary text-primary-foreground" : "border-foreground/30 bg-card text-foreground hover:border-foreground"
       }`}
@@ -233,7 +233,7 @@ function SidebarRail({
     <div className="flex h-full w-12 flex-col items-center gap-1 py-3" data-testid="sidebar-rail">
       <SidebarToggle collapsed onToggle={onToggle} />
       <div className="mt-2 flex flex-col items-center gap-1">
-        <RailItem label="Shift Coordinator" active={route.level === "cos"} onClick={() => navigate({ level: "cos" })} testId="rail-cos">
+        <RailItem label="Shift Coordinator" active={route.level === "shift-coordinator"} onClick={() => navigate({ level: "shift-coordinator" })} testId="rail-shift-coordinator">
           <span className="flex size-[18px] items-center justify-center border border-primary bg-primary font-mono text-[7.5px] font-semibold text-primary-foreground" aria-hidden>
             SC
           </span>
@@ -453,7 +453,7 @@ export function Sidebar({
           )}
           <div className="flex-1 overflow-y-auto p-3">
             <div className="space-y-0.5">
-              <ChiefOfStaffEntry active={route.level === "cos"} />
+              <ShiftCoordinatorEntry active={route.level === "shift-coordinator"} />
               <NavItem
                 label="Inbox"
                 icon={<NavIcon name="inbox" />}

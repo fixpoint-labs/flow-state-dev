@@ -5,7 +5,7 @@
  * Pinned (FIX-1662 PLAN, "Pinned names"): the task route and the project
  * route. The rest are Shift Manager's own.
  *
- *     /cos                           Chief of Staff: where `/` and any unknown path land
+ *     /shift-coordinator             Shift Coordinator: where `/` and any unknown path land
  *     /inbox[/<item>]                one Inbox item: a suspension id, or a held question's row (`inbox.ts`)
  *     /tasks[?by=state|worker|stream]
  *     /tasks/<boardRef>/<taskId>/<session|diff|checks|brief>
@@ -33,7 +33,7 @@ export type TaskGrouping = (typeof TASK_GROUPINGS)[number];
 
 /** Where the user is. */
 export type Route =
-  | { level: "cos" }
+  | { level: "shift-coordinator" }
   | { level: "inbox"; item: string | null }
   | { level: "tasks"; by: TaskGrouping }
   | { level: "task"; boardRef: string; taskId: string; tab: TaskTab }
@@ -61,7 +61,7 @@ function oneOf<T extends string>(values: readonly T[], value: string | undefined
   return values.includes(value as T) ? (value as T) : fallback;
 }
 
-/** Read a route from a path and query string. `/`, `/cos` and anything unknown are Chief of Staff (BR-1). */
+/** Read a route from a path and query string. `/`, `/shift-coordinator` and anything unknown are Shift Coordinator (BR-1). */
 export function parseRoute(pathname: string, search = ""): Route {
   const parts = pathname.split("/").filter(Boolean).map(decodeURIComponent);
   const [head, a, b, c] = parts;
@@ -76,7 +76,7 @@ export function parseRoute(pathname: string, search = ""): Route {
   }
   if (head === "p" && a !== undefined) return { level: "project", projectId: a, tab: oneOf(PROJECT_TABS, b, "stream"), ...entryOf(search) };
   if (head === "r" && a !== undefined && b !== undefined) return { level: "resource", sessionId: a, ref: b };
-  // `/rules` was this page's address; links to it keep opening it (an unknown path would open Chief of Staff).
+  // `/rules` was this page's address; links to it keep opening it (an unknown path would open Shift Coordinator).
   if (head === "roster" && a !== undefined && (b === "settings" || b === "rules")) return { level: "worker-settings", worker: a };
   if (head === "roster") return { level: "roster", team: new URLSearchParams(search).get("team") || null };
   if (head === "messages") return { level: "messages" };
@@ -85,7 +85,7 @@ export function parseRoute(pathname: string, search = ""): Route {
   if (head === "s" && a !== undefined) return { level: "session", sessionId: a };
   if (head === "inbox") return { level: "inbox", item: a ?? null };
   if (head === "settings") return { level: "settings" };
-  return { level: "cos" };
+  return { level: "shift-coordinator" };
 }
 
 /** The workstream a project route's query names, when it names both its owner and its id. */
@@ -100,8 +100,8 @@ function entryOf(search: string): { entry?: { owner: string; id: string } } {
 export function pathFor(route: Route): string {
   const e = encodeURIComponent;
   switch (route.level) {
-    case "cos":
-      return "/cos";
+    case "shift-coordinator":
+      return "/shift-coordinator";
     case "inbox":
       return route.item === null ? "/inbox" : `/inbox/${e(route.item)}`;
     case "tasks":
