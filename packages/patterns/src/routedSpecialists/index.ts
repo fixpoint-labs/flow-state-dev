@@ -416,7 +416,7 @@ export function routedSpecialists<
         let currentClaim: TaskClaimTicket | undefined;
         if (!input.done && input.specialist) {
           const collection = await getCollection(ctx, collectionId);
-          const task = await collection.addTask({
+          const task = await collection.createTask({
             goal: input.reasoning || `iteration ${nextIteration}`,
             assignee: input.specialist,
             metadata: {
@@ -430,7 +430,7 @@ export function routedSpecialists<
             eligibility: (t) => t.id === task.id,
           });
           currentTaskId = task.id;
-          // Mint from the CLAIM, not from `task` — `addTask` returns the
+          // Mint from the CLAIM, not from `task` — `createTask` returns the
           // pre-claim task, whose `attempts` is still 0 (FIX-951/FIX-981). Left
           // undefined if the claim somehow lost, which skips the ownership guard
           // rather than declining every write with a ticket nobody holds.

@@ -268,7 +268,8 @@ export interface WorkerInstallation extends WorkerGrants {
    * `stateSchema`, {@link createCheck}, and as
    * `serverOwned` the delegate and board fields only the server writes
    * ({@link SESSION_BOARD_SERVER_OWNED}, which carries `workProjectId` too). A flow without those fields still refuses a
-   * create that seeds one, by name, rather than dropping it.
+   * create that seeds one, by name, rather than dropping it. `workProjectId` is exposed to the
+   * session read too, so a screen shows the project a conversation works in.
    */
   session<TShape extends z.ZodRawShape = Record<never, never>>(
     extraShape?: TShape
@@ -276,6 +277,7 @@ export interface WorkerInstallation extends WorkerGrants {
     stateSchema: z.ZodObject<WorkerSessionStateShape & TShape>;
     createCheck: SessionCreateCheck;
     serverOwned: readonly string[];
+    client: { expose: readonly string[] };
   };
   /**
    * The worker this turn runs as, loaded now: the session's worker read from
@@ -419,7 +421,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       flow = {
         flow: entry.build(installation) as never,
         standardOnly: entry.standardOnly,
-        ...(entry.roles === undefined ? {} : { roles: entry.roles })
+        ...(entry.roles === undefined ? {} : { roles: entry.roles }),
+        showSettings: entry.showSettings
       };
       built.set(entry, flow);
     }
@@ -437,6 +440,11 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
   const workerFlows = (): Record<string, ResolvedWorkerFlow> =>
     (resolvedFlows ??= resolveWorkerFlows(workerFlowsOption()));
 
+  // The settings a user sees on a worker's roster row: the ones its flow's
+  // registration names, read when a row is, since the flows are read lazily.
+  const shownSettings = (flow: string): readonly string[] =>
+    Object.hasOwn(workerFlows(), flow) ? workerFlows()[flow]!.showSettings : [];
+
   const skillCatalog = new Map<string, InitialSkill>();
   if (options.skills !== undefined) {
     for (const skill of options.skills) skillCatalog.set(skill.name, skill);
@@ -449,8 +457,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
   }
 
   const resources = {
-    [WORKERS_RESOURCE]: defineWorkerCollection(),
-    [STANDARD_WORKERS_RESOURCE]: defineStandardWorkerCollection(() => standard, AGENT_FLOW),
+    [WORKERS_RESOURCE]: defineWorkerCollection(shownSettings),
+    [STANDARD_WORKERS_RESOURCE]: defineStandardWorkerCollection(() => standard, AGENT_FLOW, shownSettings),
     ...WORKSTREAM_RESOURCES
   } as const;
 
@@ -903,7 +911,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       return {
         stateSchema: z.object({ ...sessionStateShape, ...workerMessageStateShape, ...(extraShape ?? {}) }) as never,
         createCheck,
-        serverOwned: SESSION_BOARD_SERVER_OWNED
+        serverOwned: SESSION_BOARD_SERVER_OWNED,
+        client: { expose: [WORK_PROJECT_STATE_KEY] }
       };
     },
     resolveWorker,

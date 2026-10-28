@@ -292,7 +292,7 @@ for the full contract reference and a walk-through of authoring a custom
 adapter.
 
 A flow's concurrency policy is enforced once at the host dispatch seam — the
-in-process dispatcher gates the run there (and, over a shared lease backend,
+in-process runner gates the run there (and, over a shared lease backend,
 the host takes an external run's place before enqueueing; see below), so every
 transport inherits the
 same behavior and adapters only map the outcome to their native response.
@@ -314,7 +314,7 @@ with `ConcurrencyDeferLimitError`, a `ConcurrencyRejectedError`. A defer
 yields to newer `hold` runs for 30 seconds, then waits only
 for the runs it found. `hold` and `defer` are enforced across a queue whose
 adapter supplies a shared `leaseBackend` (see below). Over any other external
-dispatcher, a run under either policy runs as `allow`.
+runner, a run under either policy runs as `allow`.
 See the [concurrency policies
 reference](https://flow-state.dev/docs/advanced/concurrency-policies).
 
@@ -861,14 +861,14 @@ See [Flow Isolation](https://flow-state.dev/docs/advanced/flow-isolation) and th
 **Execution backend (worker adapters):**
 - `WorkerAdapter` / `WorkerHandle` / `WorkerMode` — Contract for the `worker` option on `createFlowState`. An adapter (e.g. `bullmqWorker` from `@flow-state-dev/bullmq`) provides the dispatch side and/or the processing side; `createFlowState` hands both the same resolved `{ registry, stores, runtimeConfig }` so the worker can never run against different stores than the router. `mode` picks the deployment shape: `"colocated"` (default), `"dispatch-only"` (web container), `"worker-only"` (worker container — call `ready()` to start consuming). `dispose()` drains the worker before closing stores
 
-**Dispatcher (pluggable execution backend):**
-- `FlowDispatcher` — Interface controlling where flow actions execute. Default: in-process. Implementations route execution to external workers (e.g., BullMQ)
+**Runner (pluggable execution backend):**
+- `FlowRunner` — Interface controlling where flow actions execute. Default: in-process. Implementations route execution to external workers (e.g., BullMQ)
 - `DispatchEnvelope` — Serializable subset of `InboundRequestEnvelope` carried over the queue
 - `FlowDispatchHandle` — Handle returned by `dispatch()`: `requestId`, `finished` promise, `abort()` hook
-- `createInProcessDispatcher` — Default dispatcher that calls `runAction` in the current process
+- `createInProcessRunner` — Default runner that calls `runAction` in the current process
 - `StreamBridge` / `StreamPublisher` / `StreamSubscriber` — Bridges live SSE events between a remote worker and the web process. The worker writes events to the bridge; the web process reads them and forwards to SSE
 - `StreamEvent` — Single event published through the bridge, matching the SSE event shape
-- Pass `dispatcher` to `createFlowState` or `createFlowApiRouter` to route all action dispatches through a projected queue. Most deployments should prefer the `worker` option — the adapter wires the dispatcher and the worker together; `dispatcher` is the low-level escape hatch (mutually exclusive with `worker`)
+- Pass `runner` to `createFlowState` or `createFlowApiRouter` to route all action dispatches through a projected queue. Most deployments should prefer the `worker` option — the adapter wires the runner and the worker together; `runner` is the low-level escape hatch (mutually exclusive with `worker`)
 
 **Errors:**
 - `FlowError` and canonical subclasses
@@ -1159,7 +1159,7 @@ Each tick takes a single-holder sentinel lease (co-located hosts serialize), enf
 
 **Stopping a suspended request.** The abort route and `ctx.session.stopRequest` also stop a `suspended` request when the host has durable execution: the stop resolves its pending gate `stopped` through the gate's single pending state. A wait gate continues the request with a stop outcome, so the parked call (`parkOnWait` returns `{ answered: false, stopped: true }`) can end the task it waits on and end its turn; any other gate continues the request with the stop recorded, so it ends `aborted` through its own lifecycle (its `onFinished` hook runs) without running past the gate. A gate a person already resolved (approved, say) whose request has not run again yet, so it waits on the sweep's re-drive, is stopped the same way: the gate is recorded `stopped`, the request ends `aborted`, and the approved step never runs. The person's answer, and any form data they sent, is replaced by the stop and not kept. A stop that finds the gate already resolved, with the request running again or about to, answers `409` on the route and `"already-resolved"` from `stopRequest`. A run a task board started (the `task` source) that is parked on a user's stop ends at that stop instead: it continues through the board's claim gate, which cancels the task, and ends `aborted` at the stop itself, with nothing after it run. Checkpoints of `in_progress` or `suspended` requests are never age-pruned — they are the resume points an active or paused run needs.
 
-**Answering a user's stop.** `POST /api/flows/:flowKind/requests/:requestId/answer` with `{ suspensionId, action, data? }` answers a suspension that waits for a user (`ctx.waitForUser`, or a `human_approval` / `human_input` stop), whatever started its run, a task board included, which the resume route refuses. It runs the resume path's ownership checks on the stop's request (flow instance, user, tenant, organization) before it reads the stop, and answers a stop that isn't the caller's, or isn't a user's, as one that doesn't exist (`404`). The answer is checked against the stop's own `allow` and `resumeSchema`; who answered is the signed-in caller, never a body field. It resolves the stop through its single pending state, so of an answer, a cancel, a deadline and a stop, the first wins and the rest are told `already-resolved` (`409`). The client call is a request handle's `answer`.
+**Answering a user's stop.** `POST /api/flows/:flowKind/requests/:requestId/answer` with `{ suspensionId, action, data? }` answers a suspension that waits for a user (`ctx.waitForUser`, or a `user_approval` / `user_input` stop), whatever started its run, a task board included, which the resume route refuses. It runs the resume path's ownership checks on the stop's request (flow instance, user, tenant, organization) before it reads the stop, and answers a stop that isn't the caller's, or isn't a user's, as one that doesn't exist (`404`). The answer is checked against the stop's own `allow` and `resumeSchema`; who answered is the signed-in caller, never a body field. It resolves the stop through its single pending state, so of an answer, a cancel, a deadline and a stop, the first wins and the rest are told `already-resolved` (`409`). The client call is a request handle's `answer`.
 
 **A user's stop's deadline.** A `waitForUser` call's `deadline`, else `createFlowState({ userDeadlineMs })` (unset by default, one second to 365 days), else none: a stop with no deadline waits until it is answered, stopped or cancelled, and the sweeper never ends it. A raw `ctx.suspend` keeps its own `timeoutMs`. At a deadline the sweeper continues the request: an approval reads as a no, and a review or an input throws `SuspensionTimeoutError` into the block.
 
@@ -1192,7 +1192,7 @@ createFlowApiRouter({
   // Heartbeat-age threshold the sweeper uses to mark a request `interrupted`.
   // Should be ≥ 2× the executor's registry heartbeat. Default 60_000 ms.
   staleSweepThresholdMs: 60_000,
-  // How long a request queued with a projected dispatcher may wait, unclaimed,
+  // How long a request queued with a projected runner may wait, unclaimed,
   // before a sweep treats it as lost. Default 600_000 ms (10 minutes).
   queuedGraceMs: 600_000,
   // Sources from your own inbound transports that `retry` / `continue` /

@@ -176,7 +176,7 @@ Each entry's [concurrency policy](/docs/advanced/concurrency-policies#across-pro
 
 ### Low-level primitives
 
-`bullmqWorker` composes from public factories — `createBullmqRuntime`, `createFlowWorker`, `createWorkerDispatcher`, `createRedisStreamBridge`. Reach for them directly only when building a custom topology (your own dispatcher, a non-FlowState host). For everything else, the `worker` option is the supported path; hand-wiring these pieces means you own the store-sharing invariant yourself.
+`bullmqWorker` composes from public factories — `createBullmqRuntime`, `createFlowWorker`, `createWorkerRunner`, `createRedisStreamBridge`. Reach for them directly only when building a custom topology (your own dispatcher, a non-FlowState host). For everything else, the `worker` option is the supported path; hand-wiring these pieces means you own the store-sharing invariant yourself.
 
 ---
 

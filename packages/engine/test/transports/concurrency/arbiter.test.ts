@@ -13,7 +13,7 @@ import {
 } from "../../../src/transports/concurrency/arbiter";
 import { admitAndRun } from "./admit-and-run";
 import { ConcurrencyRejectedError } from "../../../src/transports/errors";
-import type { DispatchEnvelope } from "../../../src/transports/dispatcher";
+import type { DispatchEnvelope } from "../../../src/transports/runner";
 
 function envelope(overrides: Partial<DispatchEnvelope> = {}): DispatchEnvelope {
   return {

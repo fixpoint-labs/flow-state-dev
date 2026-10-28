@@ -41,7 +41,7 @@ function parkingFlow(
     inputSchema: z.any(),
     outputSchema: z.any(),
     execute: async (_i, ctx) => {
-      const answer = await ctx.suspend!({ reason: "human_approval", message: "Approve?" });
+      const answer = await ctx.suspend!({ reason: "user_approval", message: "Approve?" });
       seen.push("after-approval");
       return answer;
     }
@@ -686,7 +686,7 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
       ...gate,
       requestId: "req_approval",
       suspensionId: "susp_approval",
-      reason: "human_approval",
+      reason: "user_approval",
       data: undefined,
       createdAt: gate.createdAt + 2_000,
       status: "submitted",
@@ -926,7 +926,7 @@ describe("the sweep re-drives a gate a person resolved whose turn never continue
       inputSchema: z.any(),
       outputSchema: z.any(),
       execute: async (_i, ctx) => {
-        const answer = await ctx.suspend!({ reason: "human_approval", message: "Approve?", ...(allow ? { allow } : {}) });
+        const answer = await ctx.suspend!({ reason: "user_approval", message: "Approve?", ...(allow ? { allow } : {}) });
         answers.push(answer);
         seen.push("after-gate");
         return { answer: answer === SUSPENSION_SKIPPED ? "skipped" : answer };
@@ -1516,7 +1516,7 @@ describe("an approval past its deadline: the turn carries on as if it is no long
       flowKind: "parking",
       actionName: "approve",
       userId: USER,
-      reason: "human_input",
+      reason: "user_input",
       message: "Fill this in",
       allow: ["submit"],
       status: "pending",

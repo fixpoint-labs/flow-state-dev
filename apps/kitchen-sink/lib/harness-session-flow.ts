@@ -29,10 +29,27 @@
  * neutral `harnessFailureKind` and never a harness's message. The page derives
  * its notice from that record (`lib/harness-turn.ts`).
  *
+ * The harness records each pull request its run opens, in core's record. When
+ * a turn ends, however it ended, the flow also asks GitHub which pull requests
+ * the session's branches have (`@flow-state-dev/workspace`'s
+ * `recordBranchPullRequests`), and adds what the turn's tool calls did not
+ * show: one opened by a raw API call, say.
+ *
  * Nothing here names a harness. A harness that needs more than these feeds has
  * found a gap in its own package. Kitchen Sink writes no item of its own.
  */
-import { defineFlow, handler, harnessFailureKind, harnessSteering, sequencer, type HarnessSteering } from "@flow-state-dev/core";
+import { existsSync } from "node:fs";
+import {
+  OBSERVED_PULL_REQUESTS,
+  defineFlow,
+  handler,
+  harnessFailureKind,
+  harnessSteering,
+  observedPullRequestsCollection,
+  sequencer,
+  type HarnessSteering,
+} from "@flow-state-dev/core";
+import { recordBranchPullRequests } from "@flow-state-dev/workspace";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type {
   HarnessCallbackContext,
@@ -46,7 +63,7 @@ import { z } from "zod";
 
 import { goalControl } from "./goal-control";
 import { readHarnessWorkspace } from "./harness-workspace";
-import { locateSessionWorktree, provisionSessionWorktree, type SessionPlace } from "./harness-worktree";
+import { locateSessionWorktree, provisionSessionWorktree, sessionBranch, type SessionPlace } from "./harness-worktree";
 import { harnessSessionStateSchema, type HarnessSessionState, type TurnRecord } from "./harness-turn";
 
 /** A harness block: takes the prompt, returns the run's handle. Core's neutral shape. */
@@ -228,8 +245,10 @@ export function harnessFeeds(kind: string, defaultModel?: string, steering: Harn
 /**
  * Build a harness mode's session flow.
  *
- * `turn` takes the prompt. A turn sent while another runs waits for it
- * (`concurrency: "queue"`), then continues the same conversation. `steer`
+ * `turn` takes the prompt. A turn sent while another runs waits for it, for
+ * as long as that one takes (`concurrency: "defer"`, which has no time limit,
+ * where a `queue` wait gives up after 30 s), then continues
+ * the same conversation. `steer`
  * takes a line for the turn running now: `{ taken: true }` when the harness
  * took it into that turn, else `{ taken: false }` and nothing was sent. `live`
  * says whether the running turn offered to take one at all.
@@ -300,6 +319,33 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       }
     },
   });
+  // When a turn ends, however it ended: the pull requests on the session's
+  // branches, added where the record lacks them. The current branch of the
+  // worktree and the one Kitchen Sink made, since an agent may have moved. Its
+  // own timeout, not the turn's abort signal, so a stopped turn is checked too.
+  // A missing or signed-out `gh` is a note, never a failed turn.
+  const branchPullRequests = handler({
+    name: "branch-pull-requests",
+    resources: { [OBSERVED_PULL_REQUESTS]: observedPullRequestsCollection },
+    execute: async (_input: unknown, ctx): Promise<void> => {
+      // Leaves the turn-end check out, so goal leg **b** can be seen to fail.
+      if (goalControl() === "no-backstop") return;
+      // A turn has a record under its request; a `steer` request has none.
+      const harnessCtx = ctx as unknown as HarnessCallbackContext;
+      const turnRecord = (harnessCtx.session.state as HarnessSessionState).turns?.[requestOf(harnessCtx)];
+      if (turnRecord === undefined) return;
+      const workspace = readHarnessWorkspace();
+      if (!workspace.ok) return;
+      const place = placeOf(options.kind, harnessCtx);
+      const cwd = locateSessionWorktree(workspace.repository, place);
+      if (!existsSync(cwd)) return;
+      // Only what was opened since the turn began: a branch the agent switched to may hold older pull requests.
+      const result = await recordBranchPullRequests(ctx, { cwd, branches: [sessionBranch(place)], openedSince: turnRecord.at ?? undefined });
+      if (result.status === "unavailable") {
+        ctx.emit.status(`Pull requests on the session's branch were not checked: ${result.reason}`, { transient: false });
+      }
+    },
+  });
   const turn = sequencer({
     name: "turn",
     description: "One turn of a harness session: the prompt, run by the harness in the session's worktree.",
@@ -316,10 +362,11 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       turn: {
         block: turn,
         userMessage: (input: { prompt: string }) => input.prompt,
-        concurrency: "queue",
+        concurrency: "defer",
       },
       steer,
     },
+    request: { onFinished: branchPullRequests },
     session: {
       stateSchema: harnessSessionStateSchema,
       // The page reads the model, the binding and the turns. The model is the

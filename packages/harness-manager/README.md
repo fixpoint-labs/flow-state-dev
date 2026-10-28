@@ -78,7 +78,7 @@ The run record shows where that stands. `place` names the machine the run is on 
 
 A failed save of either kind, kept files or repository work, doesn't fail the run, and the next save point tries again. The exception is an attempt that would complete: completing is its last save point, so it fails instead and the retry saves the work.
 
-If the saved work doesn't match the run's record, the harness doesn't run. The task is held on a question for the run's owner, naming what disagreed, and `place.state` is `lost`. Nothing saved is changed or deleted. Once the owner answers, the next run, on the same attempt, starts from its base, with the saved files in `held/` beside the checkout when they can be read.
+If the saved work doesn't match the run's record, the harness doesn't run. The task waits on a question for the run's owner, naming what disagreed, and `place.state` is `lost`. Nothing saved is changed or deleted. Once the owner answers, the next run, on the same attempt, starts from its base, with the saved files in `held/` beside the checkout when they can be read.
 
 Without a held-work store, nothing is saved and the record gets no `place` or `held`. A run whose record says its work was saved, with no live checkout on this machine, asks its owner the same way rather than starting over.
 
@@ -91,7 +91,7 @@ To run an org-scoped board's rows as supervised coding runs, hand the manager th
 ```ts
 import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { harnessManager, runOwnerDispatcher } from "@flow-state-dev/harness-manager";
+import { harnessManager, runOwnerClaimOrder } from "@flow-state-dev/harness-manager";
 
 const work = defineTaskCollection({ id: "eng.feature.work", scope: "org" });
 
@@ -102,7 +102,7 @@ const manager = harnessManager({
 });
 
 // On the board that drains the rows:
-taskBoard({ collection: work, dispatcher: runOwnerDispatcher(), /* ... */ });
+taskBoard({ collection: work, claimOrder: runOwnerClaimOrder(), /* ... */ });
 ```
 
 The manager builds each run's checkout folder and git branch from the board's id, used as is. An
@@ -113,14 +113,14 @@ never share a checkout.
 The board is kept per organization, so everyone in the organization sees its rows. A row's
 coding run belongs to the user who started it: a drain by anyone else in the organization is
 refused, naming whose run it is. Their own retry picks up the same checkout, branch and agent
-session. With `runOwnerDispatcher()` on the draining board, the refusal happens before the row
+session. With `runOwnerClaimOrder()` on the draining board, the refusal happens before the row
 is claimed and costs it no attempt. Without it the manager still refuses to run someone else's
 row, but only after the claim, so the row is charged an attempt.
 
-**Wire `runOwnerDispatcher()` on every board kept per organization that drains rows into a
+**Wire `runOwnerClaimOrder()` on every board kept per organization that drains rows into a
 manager.** The manager's own refusal keeps the run from being split between two people, but only
-the dispatcher keeps a teammate's drain from spending the row's retries. The dispatcher claims in
-the board's own readiness and order, so it takes the place of any other dispatcher on that board.
+the claim order keeps a teammate's drain from spending the row's retries. The claim order claims in
+the board's own readiness and order, so it takes the place of any other claim order on that board.
 
 ## Running a conversation's tasks
 
@@ -179,6 +179,11 @@ On a board read from the claim:
   and `floor` run from 0 to 1; a confidence outside that is not a verdict. A judge
   that fails never fails the task: it settles on the phase's check, with `judged: false`. Size
   your shutdown with `harnessDrainBudgetMs({ ..., judge: true })`.
+- **`goalJudge({ name, model?, floor? })` is a ready-made judge.** An evaluation model (default
+  `typesafe-ai/jev`, floor 0.7) is asked whether the answer and commits do what the goal asks,
+  and why not. *Not done* carries the why it picked as the reason, and *ask* becomes a question
+  that names the goal and quotes the start of the answer. Pass it as `judge: goalJudge({ name:
+  "my-coder-judge" })`; the model resolves through your flow's model resolver.
 
 See [Harness manager](https://flow-state.dev/docs/orchestration/harness-manager) for the whole
 picture.
@@ -248,12 +253,12 @@ A capability claiming one of the manager's own accessors (`runs`, `harness-usage
 
 ## Continuing a run
 
-A run that needs a decision writes its question to the file its prompt names (`run.askMarkerPath`) and stops. Its task is then held on the question: it stays on its attempt, its lease is dropped, and nothing settles it or starts another run while the question is open. Its work is saved first, and the checkout is free. The Inbox lists the held task as a question, and the board's own `getTask` shows it among the task's open holds.
+A run that needs a decision writes its question to the file its prompt names (`run.askMarkerPath`) and stops. Its task then waits on the question: it stays on its attempt, its lease is dropped, and nothing settles it or starts another run while the question is open. Its work is saved first, and the checkout is free. The Inbox lists the held task as a question, and the board's own `getTask` shows it among the task's open `questions`.
 
 The answer goes through the board's `updateTask` action, naming the question, as the Inbox sends it:
 
 ```ts
-await updateTask_tasks({ id: task.id, question: hold.id, message: "Use the v2 endpoint" });
+await updateTask_tasks({ id: task.id, answers: hold.id, message: "Use the v2 endpoint" });
 ```
 
 A line the user types in the run's session answers the task's oldest open question the same way (see [Talking to a run](#talking-to-a-run)). Once its last question is answered, the task takes one more turn **on the same attempt**: no retry is spent. That turn's run **continues the same coding session**. Its prompt is the phase's `buildPrompt` again, with `run.answers` holding the task's answered questions, oldest first, each with its answer. A run may ask again, and the next answer works the same way. Each run writes its question to a path of its own (`.fsdev/ask/<attempt>-<run>.md`), so a run never reads a question an earlier one already asked.
@@ -266,8 +271,8 @@ The recorded session is the one the harness *confirmed* it was in. If the agent 
 
 ### Upgrading from the question inbox
 
-- The manager keeps no questions of its own. Removed: `askQuestion`, `answerQuestion`, `listQuestions`, `readQuestion`, `withdrawQuestion`, `inboxCollection`, `INBOX`, `questionTopic`, `questionFingerprint`, `parseQuestionTopic`, `HarnessRunParked` and the `QuestionAnnouncement` type.
-- `harnessManager({ announce })` is refused at construction. Read held tasks from the board (its rows' open holds, `openRowHolds`) and answer with its `updateTask` action.
+- The manager keeps no questions of its own. Removed: `askQuestion`, `answerQuestion`, `listQuestions`, `readQuestion`, `withdrawQuestion`, `inboxCollection`, `INBOX`, `questionTopic`, `questionFingerprint`, `parseQuestionTopic`, `HarnessRunParked` and the `QuestionAnnouncement` type. <!-- retired-name-refusal: migration note -->
+- `harnessManager({ announce })` is refused at construction. Read held tasks from the board (its rows' open questions, `openRowQuestions`) and answer with its `updateTask` action.
 - `run.answers` reads the task's answered questions from its row.
 - `run.askMarkerPath` is `.fsdev/ask/<attempt>-<run>.md`. A phase that names a path of its own must use the one it is handed.
 - `askMarkerPath(path, attempt, run)` and `readAskMarker(path, attempt, run)` take the run.
@@ -278,7 +283,7 @@ The recorded session is the one the harness *confirmed* it was in. If the agent 
 
 A run's changes are the commits it made over the base its branch was cut from. A run that would complete (the judge said done, there is no judge, or the judge's verdict was under its `floor`) and has commits on its branch waits for a review. So does a run whose commit count git couldn't read; its review says the commits couldn't be read. A run with no commits completes unreviewed. A failed run fails its attempt unreviewed. A judge's confident verdicts skip the review: *not done* fails the attempt, and *ask* holds the task on a question.
 
-While it waits, the task stays `in_progress` on the same attempt and keeps its claim, and the checkout is free. The row lists the wait among its open holds, with `source.kind: "suspension"` and `ask.kind: "review"`, titled "Review the run's changes". Its prompt gives the commit count and up to 20 commit subjects, then the judge's verdict, confidence and reason ("No judge read this run." without one), and the line "The judge's verdict is information, not approval." The hold's data is `{ branch, commits, subjects, judge }`. The Inbox lists it as a review.
+While it waits, the task stays `in_progress` on the same attempt and keeps its claim, and the checkout is free. The row lists the wait among its open `questions`, with `source.kind: "suspension"` and `ask.kind: "review"`, titled "Review the run's changes". Its prompt gives the commit count and up to 20 commit subjects, then the judge's verdict, confidence and reason ("No judge read this run." without one), and the line "The judge's verdict is information, not approval." The hold's data is `{ branch, commits, subjects, judge }`. The Inbox lists it as a review.
 
 The answer is a `HarnessReviewAnswer`, checked against `harnessReviewAnswerSchema`: `{ verdict: "accepted" }`, or `{ verdict: "revise", words }` with non-blank `words`. With the Inbox client:
 
@@ -298,6 +303,16 @@ That posts to the engine's answer route, `POST /api/flows/:flow/requests/:reques
 - **Cancel** (the board's `updateTask` cancel): the review closes, no run starts, and the branch's commits and kept files stay.
 
 Reviews need a host with durable execution. A host can restart while a review waits; the answer continues the run.
+
+## The pull requests a run opened
+
+The manager declares the session's pull-request record, `observed-pull-requests` from
+`@flow-state-dev/core`, beside its own collections. The coding harness records each pull request
+its run opens as the call settles. Before the verdict, and when a run fails, the manager also asks
+GitHub which pull requests the run's branch has (`recordBranchPullRequests` from
+`@flow-state-dev/workspace`, through the host's signed-in `gh`) and writes any the run's calls
+didn't show. A check that can't reach GitHub is a status note; it never changes the verdict. Each
+row names the request that opened it, so a reader narrows a shared session to one run.
 
 ## Talking to a run
 
@@ -343,7 +358,7 @@ defineFlow({
 
 The session's task is found in the chain of the task that ran there (the task and its follow-ups, which run in the session one at a time), the way Workforce's door finds it: the open one running here, else the latest open one, a follow-up waiting to start, else the latest that ran here. Sent `{ message }`, the door writes the line into the session as the user's message, then:
 
-- **open task** → a steer. The line is kept on the task as a message from the user (`Task.steers`, the same write as `updateTask({ message })`). The run takes it at its next step: the same request runs another step that resumes the coding session the last one confirmed, with the steer in its prompt, on the same attempt. A steer that lands after the run's last step gets one more turn before the task settles, through `STEER_TURN_ENTRY`. While the task is held on a question, the line answers its oldest open question instead, and the turn the answer owes resumes the coding session ([Continuing a run](#continuing-a-run)). Answers `{ steered: <taskId> }`.
+- **open task** → a steer. The line is kept on the task as a message from the user (`Task.steers`, the same write as `updateTask({ message })`). The run takes it at its next step: the same request runs another step that resumes the coding session the last one confirmed, with the steer in its prompt, on the same attempt. A steer that lands after the run's last step gets one more turn before the task settles, through `STEER_TURN_ENTRY`. While the task waits on a question, the line answers its oldest open question instead, and the turn the answer owes resumes the coding session ([Continuing a run](#continuing-a-run)). Answers `{ steered: <taskId> }`.
 - **every task in the chain finished** → talk. One harness run resumes the task's confirmed coding session with the line, outside any attempt, and its answer is the reply. It holds the checkout while it runs, as a run does, so a follow-up claimed meanwhile waits for it; `talkTimeoutMs` (default 10 minutes) bounds it. The task, its output and its attempts don't change. Answers `{ reply, taskId }`.
 
 A refusal fails the request, with the reason in words as the error's message and `SessionDoorRefused` as its cause, so only a delivered line ever completes:
@@ -467,7 +482,7 @@ The record is `harnessUsageCollection` (`HARNESS_USAGE`, `harness-usage/**`, use
 
 ## The export surface, in two halves
 
-**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `harnessTalkTurn` with `harnessTalkInputSchema` and `harnessTalkOutputSchema`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer` for [answering a review](#reviewing-a-runs-changes), `upgradeKeptTurns`, `STEER_POLL_MS`, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
+**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `harnessTalkTurn` with `harnessTalkInputSchema` and `harnessTalkOutputSchema`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer` for [answering a review](#reviewing-a-runs-changes), `upgradeKeptTurns`, `STEER_POLL_MS`, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerClaimOrder` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
 
 **`@flow-state-dev/harness-manager/checkout`** is how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. `run` and the git timeouts it re-exports come from `@flow-state-dev/workspace`. It is outside the versioned contract, so a host should not import from it. Everything in it is specific to git worktrees. Adopt `harnessManager({ harness })` and let it own the checkout.
 

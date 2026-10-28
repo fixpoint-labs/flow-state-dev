@@ -120,7 +120,7 @@ the suspension's `resumeSchema` (an invalid payload is a 400 with path-keyed
 suspension's `allow` set is a 409.
 
 To answer a stop that waits for a user from an inbox (a `ctx.waitForUser`, or a
-`human_approval` / `human_input` stop), use `answer`. The server checks the
+`user_approval` / `user_input` stop), use `answer`. The server checks the
 caller owns the stop's request before it reads the stop, and records the
 signed-in caller as who answered, so there is no `resumedBy`:
 

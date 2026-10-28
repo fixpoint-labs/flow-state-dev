@@ -120,13 +120,13 @@ export type SuspensionShape = "approval" | "question" | "selection" | "form";
  * Pick the default card shape for a suspension from its `reason`, `allow`, and
  * `resumeSchema`. Shared by the built-in `ItemRenderer` dispatch and the polished
  * UI dispatcher so the two surfaces never diverge:
- *  - `human_approval` → approval.
- *  - `human_input` whose permitted actions don't include `submit` → approval.
+ *  - `user_approval` → approval.
+ *  - `user_input` whose permitted actions don't include `submit` → approval.
  *    This covers a legacy record persisted before `allow` existed (the resume
  *    route treats a missing `allow` as binary approve/reject) and an explicitly
- *    binary `human_input` gate — rendering a submit-only card for either would
+ *    binary `user_input` gate — rendering a submit-only card for either would
  *    show a button the server 409s.
- *  - otherwise `human_input` → form (flat object) / selection (enum) / question
+ *  - otherwise `user_input` → form (flat object) / selection (enum) / question
  *    (everything else, including a schema richer than the bounded set).
  * Pure — no hooks.
  */
@@ -135,7 +135,7 @@ export function suspensionShape(item: {
   resumeSchema?: Record<string, unknown>;
   allow?: ResumeAction[];
 }): SuspensionShape {
-  if (item.reason !== "human_input") return "approval";
+  if (item.reason !== "user_input") return "approval";
   // No submit path → render the binary approval card so the gate stays resolvable.
   if (item.allow === undefined || !item.allow.includes("submit")) return "approval";
   const analysis = analyzeResumeSchema(item.resumeSchema);

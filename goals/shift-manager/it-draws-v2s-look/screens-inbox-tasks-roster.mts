@@ -45,26 +45,26 @@ export type StoreScreens = {
 // ---- the store ---------------------------------------------------------------------
 
 /** Suspension reasons that are a person being asked something. */
-const PERSON_REASONS = new Set(["human_approval", "human_input"]);
+const PERSON_REASONS = new Set(["user_approval", "user_input"]);
 const DONE = new Set(["completed", "cancelled"]);
 const RUNNING = "in_progress";
 /** A row waiting on the person: running, held on a question no steer answers yet (FIX-2131; it was `parked`). */
 const onQuestion = (row: Record<string, any>) => {
-  if (row.status !== RUNNING || !Array.isArray(row.holds)) return false;
+  if (row.status !== RUNNING || !Array.isArray(row.questions)) return false;
   const answered = new Set(((row.steers ?? []) as Array<{ answers?: string }>).flatMap((s) => (typeof s.answers === "string" ? [s.answers] : [])));
-  return (row.holds as Array<{ id: string; source?: { kind?: string } }>).some((h) => h.source?.kind === "row" && !answered.has(h.id));
+  return (row.questions as Array<{ id: string; source?: { kind?: string } }>).some((h) => h.source?.kind === "row" && !answered.has(h.id));
 };
 /** Queued is every open row that isn't running: v2's QUEUED (v2:916). A row waiting on the person is running, held on its question. */
 const isQueued = (status: string) => !DONE.has(status) && status !== RUNNING && status !== "errored";
 
 /**
  * The shape the registry's cards decide an approval by: anything but a
- * `human_input` that takes a submission. Must match the approval branch of
+ * `user_input` that takes a submission. Must match the approval branch of
  * `suspensionShape` in `@flow-state-dev/react`; it is written out here because
  * that package's only entry loads React, which goals don't depend on.
  */
 function workerFlowOf(item: Record<string, any>): "approval" | "question" {
-  return item.reason !== "human_input" || !Array.isArray(item.allow) || !item.allow.includes("submit") ? "approval" : "question";
+  return item.reason !== "user_input" || !Array.isArray(item.allow) || !item.allow.includes("submit") ? "approval" : "question";
 }
 
 /**

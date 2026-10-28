@@ -59,7 +59,7 @@ export type InterruptedRequestInfo = {
  * instance's in-flight requests — including one that shares an open peer's
  * kind.
  *
- * A request queued with an external dispatcher and not yet claimed by a worker
+ * A request queued with an external runner and not yet claimed by a worker
  * is skipped while it is within `queuedGraceMs` (FIX-999): it has no heartbeat
  * because nothing is running it yet, so its age is queue wait rather than
  * death. Marking it `interrupted` invites reconciliation to retry a job the

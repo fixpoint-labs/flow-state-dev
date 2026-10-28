@@ -268,7 +268,7 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
     uses: [board.capability],
     execute: async (input, ctx) => {
       const topic = routingTopicFor(input.message);
-      await ctx.cap["background-work"].addTask({
+      await ctx.cap["background-work"].createTask({
         goal: input.message,
         // Display only. The full `topic` below is the routing identity.
         title: labelFor(topic),

@@ -19,13 +19,15 @@
  * package versions:
  *
  * - {@link harnessManager} and its options, including the `harness` slot.
+ * - `goalJudge`, a ready-made `judge`: an evaluation model reads a run's
+ *   answer and commits against its task's goal.
  * - `harnessSessionDoor`, the door a coding flow declares for a line typed
  *   in a run's session: a steer while its task is open, talk once it has
  *   finished. `harnessTalkTurn` is its talk half, which a coder also runs for
  *   a message about a finished task.
  * - `upgradeKeptTurns`, the upgrade's one-off step that writes a line the
  *   coding door kept before FIX-2086 onto its task as a steer.
- * - `runOwnerDispatcher`, for a board kept per organization: a run belongs to
+ * - `runOwnerClaimOrder`, for a board kept per organization: a run belongs to
  *   the member who started it, and another member's drain leaves it alone.
  * - `PhaseSpec` and the run-context types a phase's hooks are handed: the
  *   shared base, plus the prompt side and the completion side.
@@ -45,6 +47,16 @@
  * it. They are git-worktree-specific; adopt `harnessManager({ harness })` and
  * let it own the checkout.
  */
+
+// ── A ready-made judge ──────────────────────────────────────────────────────
+export {
+  goalJudge,
+  GOAL_JUDGE_MODEL,
+  GOAL_JUDGE_FLOOR,
+  GOAL_JUDGE_QUESTION,
+  GOAL_JUDGE_WHY_QUESTION,
+  type GoalJudgeOptions,
+} from "./goal-judge";
 
 // ── The manager ─────────────────────────────────────────────────────────────
 export {
@@ -102,7 +114,7 @@ export { upgradeKeptTurns, type KeptTurnUpgradeOptions, type KeptTurnUpgradeStor
 
 // ── Whose run a row is, on a board kept per organization ────────────────────
 export {
-  runOwnerDispatcher,
+  runOwnerClaimOrder,
   HARNESS_RUN_OWNER_KEY,
   runOwnerOf,
   type RunOwner,

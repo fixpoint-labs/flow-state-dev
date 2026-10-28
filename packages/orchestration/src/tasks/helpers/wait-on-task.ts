@@ -24,7 +24,7 @@
  *    second request waiting on the same task is refused.
  * 3. **Park** on the one wait gate (`parkOnWait`), whose deadline the engine
  *    keeps as a wake. Nothing holds a request open while it waits, and a
- *    request working a task keeps its claim (FIX-2077's `waitingOn`).
+ *    request working a task keeps its claim (FIX-2077's `keptOpenBy`).
  * 4. **Resume once**, with the ending the claim gate wrote (the filing
  *    session's pass resumes it, `payOwedResumes`), or at the deadline with the
  *    task still running. The deadline cancels nothing: the slot lapses, in one

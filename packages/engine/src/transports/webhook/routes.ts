@@ -230,7 +230,7 @@ export async function handleWebhook(
     return jsonResponse(503, { error: "flow_unregistered", message: errorMessage(err) });
   }
 
-  // Wait for durable request recording (when the dispatcher surfaces it) before
+  // Wait for durable request recording (when the runner surfaces it) before
   // acking, so a crash after the 202 doesn't silently drop the delivery. The
   // action itself still runs asynchronously; we never await `finished`. A
   // rejection means the request was not durably recorded (the action did not

@@ -340,7 +340,7 @@ await runGoal(async (failures) => {
       let during: {
         ended?: "finished" | "parked";
         status?: string;
-        waitingOn?: unknown;
+        keptOpenBy?: unknown;
         lease?: unknown;
         running?: number;
         at?: number;
@@ -382,7 +382,7 @@ await runGoal(async (failures) => {
             busy = inSession.map((r) => `${r.actionName}:${r.id}`);
             continue;
           }
-          during = { ended, status: now?.status, waitingOn: (now as { waitingOn?: unknown } | undefined)?.waitingOn, lease: now?.leaseUntil, running: 0, at: Date.now() };
+          during = { ended, status: now?.status, keptOpenBy: (now as { keptOpenBy?: unknown } | undefined)?.keptOpenBy, lease: now?.leaseUntil, running: 0, at: Date.now() };
           break;
         }
         if (top !== undefined && ["completed", "errored", "cancelled"].includes(top.status)) break;
@@ -407,7 +407,7 @@ await runGoal(async (failures) => {
         );
       } else if (
         during.status !== "in_progress" ||
-        during.waitingOn !== (during.ended === "parked" ? "wait" : "filed") ||
+        during.keptOpenBy !== (during.ended === "parked" ? "wait" : "filed") ||
         during.lease != null ||
         during.running !== 0
       ) {

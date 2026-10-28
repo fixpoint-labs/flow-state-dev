@@ -30,7 +30,7 @@ threads, each a task in a session of its own, and the right pane is the status b
   main session to retry it.
 - **A thread's view** replaces the board, with a back arrow. You can talk in it: your line steers
   the thread's task and answers its open question. You can pin it there.
-- **A code change** goes to `desk.coder`, which runs through Claude Code (its `harness` setting).
+- **A code change** goes to `desk.thread-coder`, which runs through Claude Code (its `harness` setting).
   Its card and row are tagged, and a run that made changes waits for your review, with the
   judge's verdict shown as information. A run nobody reviews by the deadline lands in *Resolved*
   marked *Not reviewed*, so it never reads as approved.
@@ -42,59 +42,88 @@ linked PRs or harness picker. The design and the decisions behind it are in the 
 
 ## Run it
 
-Until wiring, the screen runs on fixtures that play the scripted session on a timer:
+The lab runs against a real model, through the AI Gateway (`AI_GATEWAY_API_KEY`), on a SQLite
+store. One command builds the pages and serves them with the lab's workers:
 
 ```bash
 pnpm --filter @flow-state-dev/claude-code-style dev
 ```
 
-Ask the main session for anything. It writes an outline, starts two research tasks, takes the quick
-one's result while its turn runs, and ends with the long one still running. Then ask it to stop the
-other task.
-
-In the Projects view, any ask starts three threads: one asks which region matters and waits for
-your answer in its view, and one becomes ready for review. Ask for a code change, or a CHANGELOG
-line, and one thread runs through Claude Code instead. The older *Billing triage* session shows a
-pinned thread and a failed one.
-
-After wiring, the lab runs against a real model and a durable store:
+That builds the pages and serves them on `fsdev dev`, from the repository root:
 
 ```bash
-fsdev dev --app @flow-state-dev/claude-code-style
+pnpm --filter @flow-state-dev/claude-code-style build
+fsdev dev --config labs/claude-code-style/fsdev.config.mts --app @flow-state-dev/claude-code-style
 ```
 
-## Fixtures
+Open the address it prints as `App:`. The pages call the lab's API, so a plain Vite server shows
+only 404s.
 
-Everything the screen reads and writes goes through one adapter, `src/adapter.ts`. Its verbs stand
-for package calls, and until wiring they run on `src/fixtures.ts`, marked `fixture:`. At wiring the
-fixtures are deleted and each verb calls the package.
+`desk.coder` and `desk.thread-coder` run through Claude Code, so the host also needs
+`ANTHROPIC_API_KEY`. The host is durable: a thread's question and review wait on you across a
+restart, and a coding run's review needs durable execution. Its settings
+are read from the environment, all optional:
 
-| Fixture stands in for | Package piece |
+| Setting | Default | What it is |
+|---|---|---|
+| `CLAUDE_CODE_STYLE_MODEL` | `openai/gpt-5.4` | The model every worker answers with |
+| `CLAUDE_CODE_STYLE_DATA` | `.fsdev/claude-code-style` | The SQLite file, and each coding run's worktree under `runs/` |
+| `CLAUDE_CODE_STYLE_REPOSITORIES` | the repository the lab starts in | The repositories coding runs work in a worktree of, as paths separated by `:` |
+| `CLAUDE_CODE_STYLE_USER` | `u_lab` | The person the pages are served for |
+| `CLAUDE_CODE_STYLE_ANSWER_AGAIN` | on | `off` leaves `answerAgain` off the main worker: the goal check's control |
+
+*New session* lists your projects and has a *New project* form: a name and the repository its
+coding runs work on. The host allows `file://` repositories only, and the repository must ignore
+`.fsdev/` (a run refuses one that doesn't). A run works in a git worktree of the repository under
+the data folder, on a branch of its own that you'll find in the repository, so your checked-out
+branch and files don't change. A repository not in `CLAUDE_CODE_STYLE_REPOSITORIES` gets a clone
+under the data folder instead. Before a run settles, a judge (harness-manager's `goalJudge`) reads
+its answer and commits against the task's goal: it can send the run back, ask you a question, or
+let it through, and threads mode shows its verdict on the coding thread's card.
+
+Both modes are wired. The screen tests run on a test double, `test/fake-lab.ts`, which the app
+never imports.
+
+## How the screen reaches the package
+
+Everything the screen reads and writes goes through one adapter, `src/adapter.ts`, and each verb is
+a package call:
+
+| The screen | Package piece |
 |---|---|
-| The sessions list and *New session* | FIX-2158, a user's sessions of one worker |
-| The project picker and a session's project | FIX-2161, an ordinary session opened on a project |
-| A result card inside a running turn | FIX-2159, `answerAgain: true` on the main worker (set at wiring) |
-| Sending, interrupting, the thread and the tasks pane | `respond`, aborting a request, session items, `listTasks` |
-| Threads and the board's columns | the lead's `createTask` calls, task statuses and what a task waits on |
-| Talking in a thread and answering its question | `updateTask_tasks` with your line as a steer, naming the open question (FIX-2131) |
-| *Resolve* and *Request changes* | answering the thread's review wait (FIX-2129) |
-| A harness thread's review | FIX-2163, a harness run that made changes waits for a person's review |
-| Step progress on a row (*2/7*) | FIX-2164, or the run session's plan rows if they can be read |
-| Pins | the lab's `pins` flow, built at wiring |
+| The sessions list | `listWorkerSessions("desk.main")` from `@flow-state-dev/workforce/browser` |
+| *New session* and a session's project | a session of `desk.main`'s flow, then `setWorkProject` |
+| The project picker and *New project* | `listProjects` and `createProject`, from `defineProjectBlocks` (`workforce/flows/projects.mts`) |
+| Sending and the thread | the `respond` action, and the session's message and tool items |
+| A result card inside a running turn | `answerAgain: true` on the main worker's flow: the settled task's notice, taken into the turn |
+| Interrupting | aborting the session's running turn; its tasks keep running |
+| The tasks pane and a task's work | `listTasks_tasks`, and the items of the task's run session |
+| Threads mode's sessions | the same, with `desk.lead`, a `coordinator`, as the main worker |
+| A thread card, and *Sent to a thread* | the lead's `createTask` call in the session's items |
+| The board's columns | each `listTasks_tasks` row's status and its open holds, read with `inboxItems` from `@flow-state-dev/orchestration/inbox` |
+| A coding thread's tag | the `harness` action of the coding flow, asked in the thread's run session |
+| *Not reviewed* | a finished coding thread's output, `review: "deadline"`, through `getTask_tasks` |
+| Answering in a thread | the Inbox client's `answerHold` on its open question; with none, `updateTask_tasks` with your line as a steer |
+| *Resolve* and *Request changes* | the Inbox client's `answerHold` on its review: `{ verdict: "accepted" }` or `{ verdict: "revise", words }` |
+| *Pin* and *Unpin* | the lab's `pins` flow (`workforce/flows/pins.mts`), your own user state |
 
-The `harness-thread` worker flow and the `pins` flow are written at wiring, with the host.
+`desk.coder` and `desk.thread-coder` are on the lab's one coding flow,
+`workforce/flows/harness-thread.mts`: a `harnessManager` per harness, picked by the worker's
+`harness:` line, working in the session's project through `projectWorkspace()`. A worker with
+`review: true`, as threads mode's `desk.thread-coder` is, runs on the manager built with
+`reviewChanges: true`: a run that committed waits for your review before its task completes.
+Session mode's `desk.coder` has no review line, since that mode has no review to answer.
 
 ## What this app adds
 
 Every file in the lab, by kind. `node scripts/inventory.mjs` fails on a file that is none of these,
-and on a flow over 200 lines; `--wired` also fails while a fixture is left.
+and on a flow over 200 lines; `--wired` also fails while a fixture is left in `src/`.
 
 <!-- inventory:start -->
 | Kind | Files | Lines |
 |---|---:|---:|
-| Configuration | 16 | 301 |
-| React UI | 20 | 1325 |
-| Small flows | 0 | 0 |
-| Fixtures (deleted at wiring) | 1 | 471 |
-| Checks (not app code) | 6 | 681 |
+| Configuration | 18 | 480 |
+| React UI | 27 | 2665 |
+| Small flows | 3 | 273 |
+| Checks (not app code) | 8 | 1256 |
 <!-- inventory:end -->

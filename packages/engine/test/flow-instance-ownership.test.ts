@@ -587,7 +587,7 @@ describe("record-backed routes read the stored owner", () => {
               inputSchema: z.object({}),
               outputSchema: z.unknown(),
               execute: async (_input, ctx) =>
-                ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+                ctx.suspend!({ reason: "user_approval", message: "Approve?" })
             })
           )
         }

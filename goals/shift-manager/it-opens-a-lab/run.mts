@@ -119,7 +119,7 @@ function emptyInbox(store: Store): string {
   return `Nothing needs you. ${n(running, "session is", "sessions are")} still running.`;
 }
 /** Suspension reasons that are a person being asked something. */
-const PERSON_REASONS = new Set(["human_approval", "human_input"]);
+const PERSON_REASONS = new Set(["user_approval", "user_input"]);
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const sorted = (values: Iterable<string>) => [...values].sort();
@@ -374,9 +374,9 @@ async function act(api: LabApi, flowId: string, sessionId: string, action: strin
 
 /** A stored row's open questions, by hold id: a row hold on a running row that no steer answers. */
 function openQuestions(row: Record<string, any>): string[] {
-  if (row.status !== "in_progress" || !Array.isArray(row.holds)) return [];
+  if (row.status !== "in_progress" || !Array.isArray(row.questions)) return [];
   const answered = new Set(((row.steers ?? []) as Array<{ answers?: string }>).flatMap((s) => (typeof s.answers === "string" ? [s.answers] : [])));
-  return (row.holds as Array<{ id: string; source?: { kind?: string } }>).filter((h) => h.source?.kind === "row" && !answered.has(h.id)).map((h) => h.id);
+  return (row.questions as Array<{ id: string; source?: { kind?: string } }>).filter((h) => h.source?.kind === "row" && !answered.has(h.id)).map((h) => h.id);
 }
 
 /** Wait until a conversation's board holds a row, or give up. */

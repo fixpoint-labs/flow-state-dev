@@ -51,7 +51,7 @@ function buildCrashFlow(kind: string) {
     name: "gate",
     inputSchema: z.any(),
     outputSchema: z.unknown(),
-    execute: async (_i, ctx) => ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+    execute: async (_i, ctx) => ctx.suspend!({ reason: "user_approval", message: "Approve?" })
   });
   return defineFlow({
     kind,

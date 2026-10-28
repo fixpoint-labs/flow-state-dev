@@ -27,14 +27,17 @@
  * event that arrived.
  *
  * Two opt-in options change what the block touches, and both are off by
- * default so the block stays exactly what a task board dispatches: `recordPlan`
- * writes Cursor's confirmed to-do list into core's plan record, and `env` runs
- * Cursor's runtime in a child process with only that environment
- * (`./child-runtime`).
+ * default: `recordPlan` writes Cursor's confirmed to-do list into core's plan
+ * record, and `env` runs Cursor's runtime in a child process with only that
+ * environment (`./child-runtime`). One record is on by default:
+ * `recordPullRequests` writes each pull request the run opens into core's
+ * pull-request record. It is a session resource, not session state, so a task
+ * board still dispatches the block.
  */
 import {
   OBSERVED_PLAN,
   OBSERVED_PLAN_LIST,
+  OBSERVED_PULL_REQUESTS,
   formatRunDuration,
   handler,
   harnessConversationNamespace,
@@ -42,6 +45,8 @@ import {
   harnessRunNamespace,
   observedPlanCollection,
   observedPlanListCollection,
+  observedPullRequestsCollection,
+  recordPullRequests as startPullRequestRecorder,
   replacePlanList,
   type PlanListCollection,
 } from "@flow-state-dev/core";
@@ -206,10 +211,18 @@ export interface CursorAgentOptions {
    * that cannot be stored in full marks the conversation's marker incomplete
    * and the run carries on.
    *
-   * Off, the block declares no session state and writes nothing, which is what
-   * lets a task board dispatch it with no further option.
+   * Off, the block writes no plan.
    */
   recordPlan?: boolean;
+  /**
+   * Record each pull request the run opens in core's pull-request record
+   * (`observed-pull-requests`). Default `true`: the block declares the
+   * collection and starts the request's recorder (core's
+   * `recordPullRequests`), which reads Cursor's shell calls as they settle. A
+   * `gh pr create` whose result names a pull request is a row; a `gh pr view`
+   * is not. `false` declares nothing and records nothing.
+   */
+  recordPullRequests?: boolean;
   /**
    * The environment Cursor's runtime sees, and all of it. Default: unset,
    * which runs the runtime in this process, where every command Cursor runs
@@ -283,6 +296,11 @@ interface InternalTestSeams {
 const planRecordResources: Record<string, DeclaredResourceEntry> = {
   [OBSERVED_PLAN]: observedPlanCollection,
   [OBSERVED_PLAN_LIST]: observedPlanListCollection,
+};
+
+/** The pull-request record's collection, declared when `recordPullRequests` is on. */
+const pullRequestResources: Record<string, DeclaredResourceEntry> = {
+  [OBSERVED_PULL_REQUESTS]: observedPullRequestsCollection,
 };
 
 /** Writes one confirmed list into this invocation's plan record. */
@@ -396,6 +414,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
     agent: agentOptions,
     send: sendOptions,
     recordPlan = false,
+    recordPullRequests = true,
     env,
     uses,
     name = "cursor-agent",
@@ -429,8 +448,15 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
     // silent if the contract's input ever grew.
     inputSchema: harnessRunInputSchema,
     outputSchema: cursorAgentHandleSchema,
-    // Off, nothing: the block declares no session state, which task boards rely on.
-    ...(recordPlan ? { resources: planRecordResources } : {}),
+    // Session resources, never session state, which task boards refuse.
+    ...(recordPlan || recordPullRequests
+      ? {
+          resources: {
+            ...(recordPlan ? planRecordResources : {}),
+            ...(recordPullRequests ? pullRequestResources : {}),
+          },
+        }
+      : {}),
     ...(uses !== undefined ? { uses } : {}),
     execute: async (input, ctx: AgentCallbackContext): Promise<CursorAgentHandle> => {
       const prompt = input.prompt?.trim();
@@ -440,6 +466,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
       // A deadline that has already fired must not start a runtime it will
       // immediately have to kill.
       if (ctx.signal?.aborted) throw new CursorAgentAbortedError(null);
+      if (recordPullRequests) startPullRequestRecorder(ctx);
 
       const emitState = createEmitState();
       let writePlan: PlanWriter | null = null;

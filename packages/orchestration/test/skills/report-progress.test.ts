@@ -126,7 +126,7 @@ describe("reportProgress off a task turn, and once the task has finished", () =>
   it("the collection refuses a report on a finished task, and keeps its output", async () => {
     for (const make of [boardCollection]) {
       const collection = make("progress-finished");
-      await collection.addTask({ id: "t", goal: "g" });
+      await collection.createTask({ id: "t", goal: "g" });
       const claimed = (await collection.claim("w"))!;
       const claim = ticketForClaim(collection.collectionId, claimed);
       await collection.complete("t", "the result", { claim });
@@ -138,7 +138,7 @@ describe("reportProgress off a task turn, and once the task has finished", () =>
 
   it("a failed attempt keeps the checkpoint for the next one", async () => {
     const collection = boardCollection("progress-retry");
-    await collection.addTask({ id: "t", goal: "g", maxAttempts: 2 });
+    await collection.createTask({ id: "t", goal: "g", maxAttempts: 2 });
     const first = (await collection.claim("w"))!;
     const claim = ticketForClaim(collection.collectionId, first);
     await collection.reportProgress!("t", { output: "partial" }, { claim });
@@ -150,7 +150,7 @@ describe("reportProgress off a task turn, and once the task has finished", () =>
     // The owner's rule, literally: the latest checkpoint is the output, and the
     // final answer counts only when no checkpoint was ever made.
     const collection = boardCollection("progress-retry-literal");
-    await collection.addTask({ id: "t", goal: "g", maxAttempts: 2 });
+    await collection.createTask({ id: "t", goal: "g", maxAttempts: 2 });
     const first = ticketForClaim(collection.collectionId, (await collection.claim("w"))!);
     await collection.reportProgress!("t", { output: "partial" }, { claim: first });
     await collection.fail("t", "boom", { claim: first });

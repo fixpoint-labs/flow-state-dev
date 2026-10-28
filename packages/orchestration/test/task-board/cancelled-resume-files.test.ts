@@ -37,7 +37,7 @@ async function harness() {
   const store = createFakeResourceCollection();
   const ledger = () => createResourceBackedTaskCollection({ collectionId: LEDGER, collection: store, now: () => Date.now() });
   const parent = await ledger();
-  await parent.addTask({ id: "t1", goal: "do it", assignee: "coder", input: {} });
+  await parent.createTask({ id: "t1", goal: "do it", assignee: "coder", input: {} });
   const claimed = (await parent.claim("drain", { leaseDurationMs: 60_000 }))!;
 
   const tools = createTaskToolsCapability(async () => ledger());

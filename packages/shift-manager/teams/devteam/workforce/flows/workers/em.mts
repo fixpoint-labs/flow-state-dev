@@ -223,7 +223,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     }
     const filed = tasks.list().find((row) => featureIssueOf(row) === input.issue);
     if (filed !== undefined) return { taskId: filed.id, existed: true };
-    const added = await tasks.addTask({
+    const added = await tasks.createTask({
       goal: input.goal,
       input: { issue: input.issue, phase: PHASE, ...(input.project === undefined ? {} : { project: input.project }) },
       assignee: options.coderWorker,
@@ -266,7 +266,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
   });
 
   /**
-   * The stock `human_approval` suspension, naming the feature.
+   * The stock `user_approval` suspension, naming the feature.
    *
    * Approve makes `ctx.suspend` return; reject makes it throw
    * `SuspensionRejectedError`. Either way the gate returns a decision the
@@ -279,7 +279,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     execute: async (input: z.infer<typeof askInputSchema>, ctx: BlockContext) => {
       try {
         await ctx.suspend!({
-          reason: "human_approval",
+          reason: "user_approval",
           message: `File ${input.issue}: ${input.goal} and start the coder on it?`,
           allow: ["approve", "reject"],
         });

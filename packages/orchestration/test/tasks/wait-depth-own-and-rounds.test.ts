@@ -80,7 +80,7 @@ const KEY = "req_1:root/step[0]/tool[getTask][0%3Ac1]";
 describe("a wait made inside an inline plan step of a task's request", () => {
   it("counts the chain above the task, so the sixth wait is refused", async () => {
     const ref = await board();
-    const next = (await ref.addTask({ goal: "the sixth hop", assignee: "researcher" })).id;
+    const next = (await ref.createTask({ goal: "the sixth hop", assignee: "researcher" })).id;
     // Five waits above the task t1 this request works: a waits on t1, b on a's task, and so on up.
     const parked = [gate("a", "t1", "t0"), gate("b", "t0", "tm1"), gate("c", "tm1", "tm2"), gate("d", "tm2", "tm3"), gate("e", "tm3")];
     const waits = createRequestWaits({
@@ -113,7 +113,7 @@ describe("a wait made inside an inline plan step of a task's request", () => {
 describe("a wait that waits again at its deadline", () => {
   it("counts the chain again before each new park, once per park, and is refused when it grew past five", async () => {
     const ref = await board();
-    const id = (await ref.addTask({ goal: "the handed-over row", assignee: "researcher" })).id;
+    const id = (await ref.createTask({ goal: "the handed-over row", assignee: "researcher" })).id;
     const answers = [1, 6];
     const counted: number[] = [];
     const depth = async () => {
@@ -136,7 +136,7 @@ describe("a wait that waits again at its deadline", () => {
 
   it("a drain waiting again on a row it handed over never refuses on depth: the wait already exists", async () => {
     const ref = await board();
-    const id = (await ref.addTask({ goal: "the handed-over row", assignee: "researcher" })).id;
+    const id = (await ref.createTask({ goal: "the handed-over row", assignee: "researcher" })).id;
     const counted: number[] = [];
     // Past five from the second park on, as if a lower wait slipped in between parks.
     const depth = async () => {
