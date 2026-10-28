@@ -304,6 +304,16 @@ That posts to the engine's answer route, `POST /api/flows/:flow/requests/:reques
 
 Reviews need a host with durable execution. A host can restart while a review waits; the answer continues the run.
 
+## The pull requests a run opened
+
+The manager declares the session's pull-request record, `observed-pull-requests` from
+`@flow-state-dev/core`, beside its own collections. The coding harness records each pull request
+its run opens as the call settles. Before the verdict, and when a run fails, the manager also asks
+GitHub which pull requests the run's branch has (`recordBranchPullRequests` from
+`@flow-state-dev/workspace`, through the host's signed-in `gh`) and writes any the run's calls
+didn't show. A check that can't reach GitHub is a status note; it never changes the verdict. Each
+row names the request that opened it, so a reader narrows a shared session to one run.
+
 ## Talking to a run
 
 A user talks to a coding run by typing in the run's own session. `harnessSessionDoor` builds the public action a coding flow declares for that line. One door serves every manager on the flow, and the board the calling session's run is on is resolved per request, from server state:
