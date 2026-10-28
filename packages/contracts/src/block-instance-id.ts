@@ -9,6 +9,9 @@
  *
  * Format: `${requestId}:${path}:${attempt}`
  *   - `path` is a slash-delimited structural locator (e.g. `root/step[0]/iter[2]`).
+ *     The action's block and everything it runs sit under `root`; a request or
+ *     action lifecycle observer has a top-level path of its own beside it,
+ *     `observer[<owner>.<hook>]` (e.g. `observer[request.onStarted]`).
  *   - `attempt` is a 0-indexed retry counter scoped to `(requestId, path)`.
  *
  * Structural segments the framework generates (`step[N]`, `iter[N]`, …) use a

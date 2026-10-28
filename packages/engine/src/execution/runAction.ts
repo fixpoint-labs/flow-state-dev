@@ -762,6 +762,22 @@ function findResumedAtPath(priorItems: readonly RuntimeItem[]): string | undefin
   return best?.path;
 }
 
+/** The lifecycle hook an observer runs for: its own block path, `observer[<hook>]`. */
+type ObserverHook =
+  | "request.onStarted"
+  | "request.onCompleted"
+  | "request.onErrored"
+  | "request.onFinished"
+  | "action.onCompleted"
+  | "action.onErrored";
+
+/** How an observer runs: the hook it runs for, and the request's seams and logger. */
+type ObserverRunOptions = {
+  hook: ObserverHook;
+  internalSeams: InternalExecutionSeams;
+  logger?: RuntimeLogger;
+};
+
 /**
  * Executes observer blocks and propagates observer failures to the caller.
  */
@@ -769,12 +785,7 @@ async function runObserver(
   observer: BlockDefinition<any, any> | undefined,
   input: unknown,
   ctx: ExecutionContext,
-  options: {
-    /** Which hook this is (`request.onStarted`, `action.onCompleted`, …): the observer's own block path. */
-    hook: string;
-    internalSeams: InternalExecutionSeams;
-    logger?: RuntimeLogger;
-  }
+  options: ObserverRunOptions
 ): Promise<void> {
   if (observer === undefined) {
     return;
@@ -787,8 +798,7 @@ async function runObserver(
     internalSeams: options.internalSeams,
     metadata: {
       scope: "request",
-      // Its own path, never the action block's `root`: a trace on the root's
-      // instance id reads as a re-run of it, and drops what the root emitted.
+      // Beside the action block's `root`, never on it (see blockPathObserver).
       blockPath: blockPathObserver(options.hook)
     },
     // Without this, executeBlock falls back to DEFAULT_RUNTIME_LOGGER, whose
@@ -811,11 +821,7 @@ async function runObserverSafely(
   observer: BlockDefinition<any, any> | undefined,
   input: unknown,
   ctx: ExecutionContext,
-  options: {
-    hook: string;
-    internalSeams: InternalExecutionSeams;
-    logger?: RuntimeLogger;
-  }
+  options: ObserverRunOptions
 ): Promise<void> {
   if (observer === undefined) {
     return;
