@@ -202,8 +202,8 @@ describe("an org worker reads the org level, then its own folder (BR-5)", () => 
       packageBlocks: { "org/workers/shift-coordinator/packages/roster": { "add-worker": tool } },
     });
 
-    expect(minted.map((s) => s.id)).toEqual(["shift-coordinator", "eng.lead"]);
-    const held = (minted[0]!.config as Record<string, Array<{ path: string }>>)[WORKER_PACKAGES_KEY];
+    expect(minted.map((s) => s.id)).toEqual(["eng.lead", "shift-coordinator"]);
+    const held = (minted[1]!.config as Record<string, Array<{ path: string }>>)[WORKER_PACKAGES_KEY];
     expect((held ?? []).map((entry) => entry.path)).toEqual([
       "org/workers/shift-coordinator/packages/roster",
       "org/packages/house",
