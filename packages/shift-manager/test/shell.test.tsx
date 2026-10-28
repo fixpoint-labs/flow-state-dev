@@ -17,11 +17,11 @@ import { serveLab, type ServedLab } from "./helpers/serve-lab";
 import { deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
 
 /** The user's conversation with the Shift Coordinator: the session at its derived address, the one the view shows. */
-const COS_CONVERSATION = await deriveWorkerSessionId({
+const SHIFT_COORDINATOR_CONVERSATION = await deriveWorkerSessionId({
   userId: ASK_LAB_USER_ID,
   orgId: DEFAULT_ORG_ID,
   flow: ASKER_FLOW,
-  criteria: { worker: "ops.chief-of-staff" },
+  criteria: { worker: "ops.shift-coordinator" },
 });
 
 /**
@@ -424,11 +424,11 @@ describe("Jump to a declared document (BR-10)", () => {
   });
 });
 
-describe("Chief of Staff (FIX-1722)", () => {
+describe("Shift Coordinator (FIX-1722)", () => {
   const setURL = (url: string) => (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(url);
 
   /** A Lab with `asks` asks pending, opened at `path`. */
-  async function openCos(path: string, options: Parameters<typeof openAskLab>[0] = {}, asks = 0) {
+  async function openShiftCoordinator(path: string, options: Parameters<typeof openAskLab>[0] = {}, asks = 0) {
     const lab = await serveLab((await openAskLab(options)).flowState);
     served.push(lab);
     const client = connect({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
@@ -437,7 +437,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     }
     setURL(`${lab.baseUrl}${path}`);
     render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
-    await screen.findByTestId("cos");
+    await screen.findByTestId("shift-coordinator");
     return { lab, client };
   }
 
@@ -454,28 +454,28 @@ describe("Chief of Staff (FIX-1722)", () => {
   }
 
   it("is where Shift Manager lands, at / and at a path it doesn't know, first in the sidebar and current (BR-1, BR-2)", async () => {
-    await openCos("/");
+    await openShiftCoordinator("/");
     const nav = within(screen.getByTestId("sidebar"));
     const entries = nav.getAllByRole("button").map((b) => b.getAttribute("data-testid")).filter((id) => id?.startsWith("nav-"));
-    expect(entries.slice(0, 3)).toEqual(["nav-cos", "nav-inbox", "nav-tasks"]);
-    expect(screen.getByTestId("nav-cos").getAttribute("aria-current")).toBe("page");
+    expect(entries.slice(0, 3)).toEqual(["nav-shift-coordinator", "nav-inbox", "nav-tasks"]);
+    expect(screen.getByTestId("nav-shift-coordinator").getAttribute("aria-current")).toBe("page");
     expect(screen.getByTestId("nav-inbox").getAttribute("aria-current")).toBeNull();
-    expect(screen.queryByTestId("nav-cos-count")).toBeNull();
-    expect(screen.getByTestId("centre").getAttribute("data-level")).toBe("cos");
-    // Shift Manager names the view Shift Coordinator; the worker keeps its id (FIX-1747).
+    expect(screen.queryByTestId("nav-shift-coordinator-count")).toBeNull();
+    expect(screen.getByTestId("centre").getAttribute("data-level")).toBe("shift-coordinator");
+    // Shift Manager names the view Shift Coordinator (FIX-1747).
     // The entry's label and the screen's title carry the name; v2's square beside each carries initials.
-    expect(screen.getByTestId("nav-cos").querySelector("[data-look=nav-label]")!.textContent).toBe("Shift Coordinator");
-    expect(within(screen.getByTestId("cos-header")).getByText("Shift Coordinator")).toBeTruthy();
-    expect(screen.getByTestId("sidebar").textContent).not.toMatch(/chief of staff/i);
-    expect(screen.getByTestId("cos").textContent).not.toMatch(/chief of staff/i);
+    expect(screen.getByTestId("nav-shift-coordinator").querySelector("[data-look=nav-label]")!.textContent).toBe("Shift Coordinator");
+    expect(within(screen.getByTestId("shift-coordinator-header")).getByText("Shift Coordinator")).toBeTruthy();
+    expect(screen.getByTestId("sidebar").textContent).not.toMatch(/chief of staff/i); // retired-name-refusal: the old name is never shown
+    expect(screen.getByTestId("shift-coordinator").textContent).not.toMatch(/chief of staff/i); // retired-name-refusal: the old name is never shown
     cleanup();
     setURL(`${served[0]!.baseUrl}/no/such/place`);
     render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
-    await screen.findByTestId("cos");
+    await screen.findByTestId("shift-coordinator");
   });
 
   it("Jump to finds it and opens it (BR-2)", async () => {
-    await openCos("/");
+    await openShiftCoordinator("/");
     act(() => fireEvent.click(screen.getByTestId("nav-tasks")));
     act(() => void fireEvent.keyDown(document.body, { key: "k", metaKey: true }));
     act(() => fireEvent.change(screen.getByTestId("jump-input"), { target: { value: "coordinator" } }));
@@ -483,57 +483,57 @@ describe("Chief of Staff (FIX-1722)", () => {
     expect(rest).toEqual([]);
     expect(result!.textContent).toMatch(/^Shift Coordinator/);
     act(() => fireEvent.click(result!));
-    await screen.findByTestId("cos");
-    expect(window.location.pathname).toBe("/cos");
+    await screen.findByTestId("shift-coordinator");
+    expect(window.location.pathname).toBe("/shift-coordinator");
   });
 
   it("summarises what Inbox lists, and an ask answered there leaves the summary and Inbox together (BR-4 to BR-6)", async () => {
-    const { client } = await openCos("/cos", {}, 2);
-    await waitFor(() => expect(screen.getByTestId("cos-needs-you").textContent).toBe("2"));
+    const { client } = await openShiftCoordinator("/shift-coordinator", {}, 2);
+    await waitFor(() => expect(screen.getByTestId("shift-coordinator-needs-you").textContent).toBe("2"));
     expect(screen.getByTestId("nav-inbox-count").textContent).toBe("2");
-    expect(screen.getAllByTestId("cos-ask")).toHaveLength(2);
-    expect(screen.getByTestId("cos-summary").textContent).toMatch(/FROM SHIFT MANAGER/);
-    expect(screen.getByTestId("cos-summary-running").textContent).toBe("0 runs going across 0 workstreams.");
+    expect(screen.getAllByTestId("shift-coordinator-ask")).toHaveLength(2);
+    expect(screen.getByTestId("shift-coordinator-summary").textContent).toMatch(/FROM SHIFT MANAGER/);
+    expect(screen.getByTestId("shift-coordinator-summary-running").textContent).toBe("0 runs going across 0 workstreams.");
 
-    const first = screen.getAllByTestId("cos-ask")[0]!;
+    const first = screen.getAllByTestId("shift-coordinator-ask")[0]!;
     act(() => fireEvent.click(within(first).getByRole("button", { name: "Approve" })));
-    await waitFor(() => expect(screen.getAllByTestId("cos-ask")).toHaveLength(1), { timeout: 5_000 });
-    expect(screen.getByTestId("cos-needs-you").textContent).toBe("1");
+    await waitFor(() => expect(screen.getAllByTestId("shift-coordinator-ask")).toHaveLength(1), { timeout: 5_000 });
+    expect(screen.getByTestId("shift-coordinator-needs-you").textContent).toBe("1");
     expect(await pendingInStore(client, 2)).toBe(1);
     act(() => fireEvent.click(screen.getByTestId("nav-inbox")));
     expect(await screen.findAllByTestId("inbox-item")).toHaveLength(1);
   });
 
   it("says nothing needs the user when nothing does, with the running counts still there (BR-7)", async () => {
-    await openCos("/cos");
-    expect((await screen.findByTestId("cos-summary-asks")).textContent).toBe("Nothing needs you.");
-    expect(screen.getByTestId("cos-summary-running")).toBeTruthy();
+    await openShiftCoordinator("/shift-coordinator");
+    expect((await screen.findByTestId("shift-coordinator-summary-asks")).textContent).toBe("Nothing needs you.");
+    expect(screen.getByTestId("shift-coordinator-summary-running")).toBeTruthy();
   });
 
   it("draws no on-call list in the rail, even with a worker waiting on the user", async () => {
-    await openCos("/cos", {}, 1);
-    await waitFor(() => expect(screen.getByTestId("cos-needs-you").textContent).toBe("1"));
-    expect(screen.queryAllByTestId("cos-on-call")).toHaveLength(0);
-    expect(screen.getByTestId("cos-panel").textContent).not.toMatch(/on call/i);
+    await openShiftCoordinator("/shift-coordinator", {}, 1);
+    await waitFor(() => expect(screen.getByTestId("shift-coordinator-needs-you").textContent).toBe("1"));
+    expect(screen.queryAllByTestId("shift-coordinator-on-call")).toHaveLength(0);
+    expect(screen.getByTestId("shift-coordinator-panel").textContent).not.toMatch(/on call/i);
   });
 
   it("names the missing worker in place of the conversation, with the summary still drawn (BR-11)", async () => {
-    await openCos("/");
-    const none = (await screen.findByTestId("cos-none")).textContent ?? "";
-    expect(none).toContain(GAPS.chiefOfStaff.none.title);
+    await openShiftCoordinator("/");
+    const none = (await screen.findByTestId("shift-coordinator-none")).textContent ?? "";
+    expect(none).toContain(GAPS.shiftCoordinator.none.title);
     // Org workers have shipped: the copy names where to declare the worker today, and promises nothing.
-    expect(none).toContain("org/workers/chief-of-staff/");
+    expect(none).toContain("org/workers/shift-coordinator/");
     expect(none).not.toMatch(/once .* ship|FIX-\d+/);
-    expect(screen.getByTestId("cos-summary")).toBeTruthy();
-    expect(screen.queryByTestId("cos-composer")).toBeNull();
+    expect(screen.getByTestId("shift-coordinator-summary")).toBeTruthy();
+    expect(screen.queryByTestId("shift-coordinator-composer")).toBeNull();
   });
 
   it("opens the conversation with the first line, shows delivered once the session holds it, and draws the worker's stored reply (BR-14 to BR-17)", async () => {
-    const { client } = await openCos("/", { chiefOfStaff: true });
-    const conversation = await screen.findByTestId("cos-conversation");
-    expect(conversation.getAttribute("data-worker-id")).toBe("ops.chief-of-staff");
-    expect(conversation.textContent).not.toMatch(/chief of staff/i);
-    expect(await screen.findByTestId("cos-conversation-empty")).toBeTruthy();
+    const { client } = await openShiftCoordinator("/", { shiftCoordinator: true });
+    const conversation = await screen.findByTestId("shift-coordinator-conversation");
+    expect(conversation.getAttribute("data-worker-id")).toBe("ops.shift-coordinator");
+    expect(conversation.textContent).not.toMatch(/chief of staff/i); // retired-name-refusal: the old name is never shown
+    expect(await screen.findByTestId("shift-coordinator-conversation-empty")).toBeTruthy();
 
     // Hold the door's request open: nothing may read delivered, or draw a reply, while it is.
     let release!: () => void;
@@ -543,104 +543,104 @@ describe("Chief of Staff (FIX-1722)", () => {
       if (String(i instanceof Request ? i.url : i).includes("/status")) await held;
       return real(i, init);
     });
-    const input = screen.getByTestId("cos-composer-input") as HTMLTextAreaElement;
+    const input = screen.getByTestId("shift-coordinator-composer-input") as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "what is running" } });
-    fireEvent.click(screen.getByTestId("cos-composer-send"));
-    await screen.findByTestId("cos-working");
-    expect(screen.getByTestId("cos-composer-status").getAttribute("data-state")).toBe("sending");
-    expect((screen.getByTestId("cos-composer-send") as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.queryAllByTestId("cos-item")).toEqual([]);
+    fireEvent.click(screen.getByTestId("shift-coordinator-composer-send"));
+    await screen.findByTestId("shift-coordinator-working");
+    expect(screen.getByTestId("shift-coordinator-composer-status").getAttribute("data-state")).toBe("sending");
+    expect((screen.getByTestId("shift-coordinator-composer-send") as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryAllByTestId("shift-coordinator-item")).toEqual([]);
     release();
-    await waitFor(() => expect(screen.getByTestId("cos-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
+    await waitFor(() => expect(screen.getByTestId("shift-coordinator-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
     vi.restoreAllMocks();
 
     // The session the door opened is the worker's, and holds the line and the reply drawn.
-    const sessionId = screen.getByTestId("cos-conversation").getAttribute("data-session-id")!;
+    const sessionId = screen.getByTestId("shift-coordinator-conversation").getAttribute("data-session-id")!;
     const opened = await client.sessions.get(sessionId);
     expect(opened.flowId).toBe(ASKER_FLOW);
-    expect(opened.state?.workerId).toBe("ops.chief-of-staff");
+    expect(opened.state?.workerId).toBe("ops.shift-coordinator");
     const state = await client.sessions.state(sessionId, { includeItems: true, itemTypes: ["message"] });
     const stored = (state.items ?? []) as Array<{ id: string; role?: string; content?: unknown }>;
     const reply = stored.find((item) => item.role === "assistant");
     expect(JSON.stringify(stored.find((item) => item.role === "user"))).toContain("what is running");
     expect(JSON.stringify(reply)).toContain(heardLine("what is running"));
-    await waitFor(() => expect(screen.getAllByTestId("cos-item").some((el) => el.getAttribute("data-item-id") === reply!.id)).toBe(true));
+    await waitFor(() => expect(screen.getAllByTestId("shift-coordinator-item").some((el) => el.getAttribute("data-item-id") === reply!.id)).toBe(true));
 
     // Back later: the same conversation.
     cleanup();
-    setURL(`${served[0]!.baseUrl}/cos`);
+    setURL(`${served[0]!.baseUrl}/shift-coordinator`);
     render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
-    await waitFor(() => expect(screen.getByTestId("cos-conversation").getAttribute("data-session-id")).toBe(sessionId));
-    await waitFor(() => expect(screen.getAllByTestId("cos-item").map((el) => el.getAttribute("data-item-id"))).toContain(reply!.id));
+    await waitFor(() => expect(screen.getByTestId("shift-coordinator-conversation").getAttribute("data-session-id")).toBe(sessionId));
+    await waitFor(() => expect(screen.getAllByTestId("shift-coordinator-item").map((el) => el.getAttribute("data-item-id"))).toContain(reply!.id));
   });
 
   // FIX-1773: the user follows the conversation, not the composer. A line the session holds
   // is the conversation's, so it leaves the draft and is drawn while the reply is still coming.
   it("names the coordinator on Send, clears a held line into the conversation at once, and shows it working until the reply", async () => {
-    await openCos("/", { chiefOfStaff: true });
-    const input = (await screen.findByTestId("cos-composer-input")) as HTMLInputElement;
-    // The worker's id stays chief-of-staff; what the user sees is its name.
+    await openShiftCoordinator("/", { shiftCoordinator: true });
+    const input = (await screen.findByTestId("shift-coordinator-composer-input")) as HTMLInputElement;
+    // The worker's id stays shift-coordinator; what the user sees is its name.
     expect(input.getAttribute("aria-label")).toBe("Message Shift Coordinator");
     expect(input.placeholder).toBe("Message Shift Coordinator…");
     const release = holdSlowLines();
     try {
       fireEvent.change(input, { target: { value: ASKER_SLOW_LINE } });
-      fireEvent.click(screen.getByTestId("cos-composer-send"));
+      fireEvent.click(screen.getByTestId("shift-coordinator-composer-send"));
       // The reply is held: the line still leaves the draft and is drawn, read back from the session.
       await waitFor(() => expect(input.value).toBe(""), { timeout: 5_000 });
-      await waitFor(() => expect(screen.getAllByTestId("cos-item").map((el) => el.getAttribute("data-role"))).toEqual(["user"]), { timeout: 5_000 });
-      expect(screen.getByTestId("cos-composer-status").getAttribute("data-state")).toBe("held");
-      expect(screen.getByTestId("cos-working").textContent).toBe("Shift Coordinator is working on it…");
-      expect((screen.getByTestId("cos-composer-send") as HTMLButtonElement).disabled).toBe(true);
+      await waitFor(() => expect(screen.getAllByTestId("shift-coordinator-item").map((el) => el.getAttribute("data-role"))).toEqual(["user"]), { timeout: 5_000 });
+      expect(screen.getByTestId("shift-coordinator-composer-status").getAttribute("data-state")).toBe("held");
+      expect(screen.getByTestId("shift-coordinator-working").textContent).toBe("Shift Coordinator is working on it…");
+      expect((screen.getByTestId("shift-coordinator-composer-send") as HTMLButtonElement).disabled).toBe(true);
     } finally {
       release();
     }
-    await waitFor(() => expect(screen.getByTestId("cos-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
-    await waitFor(() => expect(screen.getAllByTestId("cos-item").map((el) => el.getAttribute("data-role"))).toEqual(["user", "assistant"]));
-    expect(screen.queryByTestId("cos-working")).toBeNull();
+    await waitFor(() => expect(screen.getByTestId("shift-coordinator-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
+    await waitFor(() => expect(screen.getAllByTestId("shift-coordinator-item").map((el) => el.getAttribute("data-role"))).toEqual(["user", "assistant"]));
+    expect(screen.queryByTestId("shift-coordinator-working")).toBeNull();
   });
 
   // A finished turn raised no ask, but it may have changed the organization: a project it
   // created is listed without a reload.
-  it("lists a project the chief of staff's turn created, without a reload", async () => {
-    await openCos("/", { chiefOfStaff: true, workersStartProjects: true });
+  it("lists a project the Shift Coordinator's turn created, without a reload", async () => {
+    await openShiftCoordinator("/", { shiftCoordinator: true, workersStartProjects: true });
     // The composer is drawn from the read snapshot, whose PROJECTS hold no project yet.
-    const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
+    const input = (await screen.findByTestId("shift-coordinator-composer-input")) as HTMLTextAreaElement;
     expect(screen.queryByTestId("projects-failure")).toBeNull();
     expect(screen.queryAllByTestId("project-group")).toEqual([]);
     fireEvent.change(input, { target: { value: startProjectLine("launch") } });
-    fireEvent.click(screen.getByTestId("cos-composer-send"));
-    await waitFor(() => expect(screen.getByTestId("cos-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
+    fireEvent.click(screen.getByTestId("shift-coordinator-composer-send"));
+    await waitFor(() => expect(screen.getByTestId("shift-coordinator-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
     expect((await screen.findByTestId("nav-project-launch", undefined, { timeout: 5_000 })).textContent).toContain("Project launch");
   });
 
   it("keeps the draft and shows the worker's reason when its door refuses (BR-15)", async () => {
-    await openCos("/", { chiefOfStaff: true });
-    const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
+    await openShiftCoordinator("/", { shiftCoordinator: true });
+    const input = (await screen.findByTestId("shift-coordinator-composer-input")) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: ASKER_REFUSED_LINE } });
-    fireEvent.click(screen.getByTestId("cos-composer-send"));
-    expect((await screen.findByTestId("cos-composer-error", {}, { timeout: 5_000 })).textContent).toBe("This worker won't take that line.");
+    fireEvent.click(screen.getByTestId("shift-coordinator-composer-send"));
+    expect((await screen.findByTestId("shift-coordinator-composer-error", {}, { timeout: 5_000 })).textContent).toBe("This worker won't take that line.");
     expect(input.value).toBe(ASKER_REFUSED_LINE);
   });
 
   // A gated change (fire, retire) stops the worker's turn on the user's approval. The line
   // is delivered and the ask waits in Inbox: Retry would send it, and raise the ask, twice.
   it("reads a line whose turn stopped on an approval as delivered, pointing at Inbox, with no Retry", async () => {
-    const { client } = await openCos("/", { chiefOfStaff: true });
-    expect((await screen.findByTestId("cos-summary-asks")).textContent).toBe("Nothing needs you.");
-    const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
+    const { client } = await openShiftCoordinator("/", { shiftCoordinator: true });
+    expect((await screen.findByTestId("shift-coordinator-summary-asks")).textContent).toBe("Nothing needs you.");
+    const input = (await screen.findByTestId("shift-coordinator-composer-input")) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: ASKER_GATED_LINE } });
-    fireEvent.click(screen.getByTestId("cos-composer-send"));
-    const status = screen.getByTestId("cos-composer-status");
+    fireEvent.click(screen.getByTestId("shift-coordinator-composer-send"));
+    const status = screen.getByTestId("shift-coordinator-composer-status");
     await waitFor(() => expect(status.getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
     expect(status.textContent).toMatch(/Delivered\..*Inbox/);
-    expect(screen.queryByTestId("cos-composer-retry")).toBeNull();
-    expect(screen.queryByTestId("cos-composer-error")).toBeNull();
+    expect(screen.queryByTestId("shift-coordinator-composer-retry")).toBeNull();
+    expect(screen.queryByTestId("shift-coordinator-composer-error")).toBeNull();
     expect(input.value).toBe("");
     // The Lab is read again, so the ask the composer points at is listed: here, and in Inbox.
-    await waitFor(() => expect(screen.getByTestId("cos-summary-asks").textContent).not.toBe("Nothing needs you."), { timeout: 5_000 });
+    await waitFor(() => expect(screen.getByTestId("shift-coordinator-summary-asks").textContent).not.toBe("Nothing needs you."), { timeout: 5_000 });
     // The session holds the line once, with the one ask it raised.
-    const sessionId = screen.getByTestId("cos-conversation").getAttribute("data-session-id")!;
+    const sessionId = screen.getByTestId("shift-coordinator-conversation").getAttribute("data-session-id")!;
     const state = await client.sessions.state(sessionId, { includeItems: true, itemTypes: ["message", "suspension"] });
     const items = (state.items ?? []) as Array<{ type: string; role?: string }>;
     expect(items.filter((item) => item.type === "message" && item.role === "user")).toHaveLength(1);
@@ -650,8 +650,8 @@ describe("Chief of Staff (FIX-1722)", () => {
   // Which stop it was only picks the words: a stop the send couldn't classify still reads the
   // Lab again, so a real ask is never kept out of Inbox.
   it("lists the ask a gated line raised even when the send couldn't read what it stopped on", async () => {
-    await openCos("/", { chiefOfStaff: true });
-    expect((await screen.findByTestId("cos-summary-asks")).textContent).toBe("Nothing needs you.");
+    await openShiftCoordinator("/", { shiftCoordinator: true });
+    expect((await screen.findByTestId("shift-coordinator-summary-asks")).textContent).toBe("Nothing needs you.");
     const real = globalThis.fetch;
     let failing = 0;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
@@ -664,22 +664,22 @@ describe("Chief of Staff (FIX-1722)", () => {
       }
       return real(i, init);
     });
-    const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
+    const input = (await screen.findByTestId("shift-coordinator-composer-input")) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: ASKER_GATED_LINE } });
     failing = 1;
-    fireEvent.click(screen.getByTestId("cos-composer-send"));
-    const status = screen.getByTestId("cos-composer-status");
+    fireEvent.click(screen.getByTestId("shift-coordinator-composer-send"));
+    const status = screen.getByTestId("shift-coordinator-composer-status");
     await waitFor(() => expect(status.getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
     expect(status.textContent).toMatch(/Delivered\..*waiting/);
-    expect(screen.queryByTestId("cos-composer-retry")).toBeNull();
-    await waitFor(() => expect(screen.getByTestId("cos-summary-asks").textContent).not.toBe("Nothing needs you."), { timeout: 5_000 });
+    expect(screen.queryByTestId("shift-coordinator-composer-retry")).toBeNull();
+    await waitFor(() => expect(screen.getByTestId("shift-coordinator-summary-asks").textContent).not.toBe("Nothing needs you."), { timeout: 5_000 });
   });
 
   // The send read nothing pending (resumed meanwhile, say) and the turn then stopped on a new
   // ask: the words say plain delivered, but a turn seen suspended still reads the Lab again.
   it("lists the ask a gated line raised even when the send read nothing pending", async () => {
-    await openCos("/", { chiefOfStaff: true });
-    expect((await screen.findByTestId("cos-summary-asks")).textContent).toBe("Nothing needs you.");
+    await openShiftCoordinator("/", { shiftCoordinator: true });
+    expect((await screen.findByTestId("shift-coordinator-summary-asks")).textContent).toBe("Nothing needs you.");
     const real = globalThis.fetch;
     let emptying = 0;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
@@ -694,39 +694,39 @@ describe("Chief of Staff (FIX-1722)", () => {
       }
       return real(i, init);
     });
-    const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
+    const input = (await screen.findByTestId("shift-coordinator-composer-input")) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: ASKER_GATED_LINE } });
     emptying = 1;
-    fireEvent.click(screen.getByTestId("cos-composer-send"));
-    const status = screen.getByTestId("cos-composer-status");
+    fireEvent.click(screen.getByTestId("shift-coordinator-composer-send"));
+    const status = screen.getByTestId("shift-coordinator-composer-status");
     await waitFor(() => expect(status.getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
     expect(status.textContent).toBe("Delivered.");
-    await waitFor(() => expect(screen.getByTestId("cos-summary-asks").textContent).not.toBe("Nothing needs you."), { timeout: 5_000 });
+    await waitFor(() => expect(screen.getByTestId("shift-coordinator-summary-asks").textContent).not.toBe("Nothing needs you."), { timeout: 5_000 });
   });
 
   it("keeps a refused first line's conversation, so the next line goes into the same session (BR-15)", async () => {
-    const { client } = await openCos("/", { chiefOfStaff: true });
-    const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
+    const { client } = await openShiftCoordinator("/", { shiftCoordinator: true });
+    const input = (await screen.findByTestId("shift-coordinator-composer-input")) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: ASKER_REFUSED_LINE } });
-    fireEvent.click(screen.getByTestId("cos-composer-send"));
-    await screen.findByTestId("cos-composer-error", {}, { timeout: 5_000 });
+    fireEvent.click(screen.getByTestId("shift-coordinator-composer-send"));
+    await screen.findByTestId("shift-coordinator-composer-error", {}, { timeout: 5_000 });
     // The door took the line before it refused it: the session exists and holds it.
-    await waitFor(() => expect(screen.getByTestId("cos-conversation").getAttribute("data-session-id")).not.toBe(""));
-    const first = screen.getByTestId("cos-conversation").getAttribute("data-session-id")!;
-    await waitFor(() => expect(screen.getAllByTestId("cos-item").some((el) => el.getAttribute("data-role") === "user")).toBe(true));
+    await waitFor(() => expect(screen.getByTestId("shift-coordinator-conversation").getAttribute("data-session-id")).not.toBe(""));
+    const first = screen.getByTestId("shift-coordinator-conversation").getAttribute("data-session-id")!;
+    await waitFor(() => expect(screen.getAllByTestId("shift-coordinator-item").some((el) => el.getAttribute("data-role") === "user")).toBe(true));
     fireEvent.change(input, { target: { value: "second line" } });
-    fireEvent.click(screen.getByTestId("cos-composer-send"));
-    await waitFor(() => expect(screen.getByTestId("cos-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
-    expect(screen.getByTestId("cos-conversation").getAttribute("data-session-id")).toBe(first);
-    const direct = (await client.sessions.list({ userId: ASK_LAB_USER_ID })).filter((s) => (s as { state?: { workerId?: string } }).state?.workerId === "ops.chief-of-staff" && s.parentSessionId == null);
+    fireEvent.click(screen.getByTestId("shift-coordinator-composer-send"));
+    await waitFor(() => expect(screen.getByTestId("shift-coordinator-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
+    expect(screen.getByTestId("shift-coordinator-conversation").getAttribute("data-session-id")).toBe(first);
+    const direct = (await client.sessions.list({ userId: ASK_LAB_USER_ID })).filter((s) => (s as { state?: { workerId?: string } }).state?.workerId === "ops.shift-coordinator" && s.parentSessionId == null);
     expect(direct.map((s) => s.id)).toEqual([first]);
   });
 
   it("takes no line until the conversation has been read, and Retry keeps it shut until a read succeeds", async () => {
-    const lab = await serveLab((await openAskLab({ chiefOfStaff: true })).flowState);
+    const lab = await serveLab((await openAskLab({ shiftCoordinator: true })).flowState);
     served.push(lab);
     const client = connect({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
-    await workerAction(client, "ops.chief-of-staff", "respond", { message: "earlier" }, COS_CONVERSATION);
+    await workerAction(client, "ops.shift-coordinator", "respond", { message: "earlier" }, SHIFT_COORDINATOR_CONVERSATION);
     let release!: () => void;
     const held = new Promise<void>((r) => (release = r));
     let failing = false;
@@ -734,39 +734,39 @@ describe("Chief of Staff (FIX-1722)", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
       const url = String(i instanceof Request ? i.url : i);
       // The conversation's read, not the snapshot's ask read of the same session.
-      if (url.includes(`/sessions/${COS_CONVERSATION}/state`) && !url.includes("item_types=suspension")) {
+      if (url.includes(`/sessions/${SHIFT_COORDINATOR_CONVERSATION}/state`) && !url.includes("item_types=suspension")) {
         await held;
         if (failing) return new Response(JSON.stringify({ error: "store offline" }), { status: 503 });
       }
       return real(i, init);
     });
-    setURL(`${lab.baseUrl}/cos`);
+    setURL(`${lab.baseUrl}/shift-coordinator`);
     render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
-    const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
+    const input = (await screen.findByTestId("shift-coordinator-composer-input")) as HTMLTextAreaElement;
     // The address is worked out before the read starts; the composer stays shut throughout.
     expect(input.disabled).toBe(true);
-    await waitFor(() => expect(screen.getByTestId("cos-conversation").getAttribute("data-session-id")).toBe(COS_CONVERSATION));
+    await waitFor(() => expect(screen.getByTestId("shift-coordinator-conversation").getAttribute("data-session-id")).toBe(SHIFT_COORDINATOR_CONVERSATION));
     expect(input.disabled).toBe(true);
     failing = true;
     release();
-    await screen.findByTestId("cos-conversation-failure");
+    await screen.findByTestId("shift-coordinator-conversation-failure");
     expect(input.disabled).toBe(true);
-    act(() => fireEvent.click(within(screen.getByTestId("cos-conversation-failure")).getByRole("button", { name: "Retry" })));
+    act(() => fireEvent.click(within(screen.getByTestId("shift-coordinator-conversation-failure")).getByRole("button", { name: "Retry" })));
     expect(input.disabled).toBe(true);
     failing = false;
     await waitFor(() => expect(input.disabled).toBe(false));
-    expect(screen.queryByTestId("cos-conversation-failure")).toBeNull();
+    expect(screen.queryByTestId("shift-coordinator-conversation-failure")).toBeNull();
   });
 
   it("draws an answered ask in the conversation as answered, not as waiting on the user", async () => {
-    const lab = await serveLab((await openAskLab({ chiefOfStaff: true })).flowState);
+    const lab = await serveLab((await openAskLab({ shiftCoordinator: true })).flowState);
     served.push(lab);
     const client = connect({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
     setURL(lab.baseUrl);
-    await workerAction(client, "ops.chief-of-staff", "ask", { what: "ship it" }, COS_CONVERSATION);
+    await workerAction(client, "ops.shift-coordinator", "ask", { what: "ship it" }, SHIFT_COORDINATOR_CONVERSATION);
     let suspension: { requestId: string; suspensionId: string } | undefined;
     await waitFor(async () => {
-      const state = await client.sessions.state(COS_CONVERSATION, { includeItems: true, itemTypes: ["suspension"] });
+      const state = await client.sessions.state(SHIFT_COORDINATOR_CONVERSATION, { includeItems: true, itemTypes: ["suspension"] });
       suspension = (state.items ?? [])[0] as typeof suspension;
       expect(suspension).toBeDefined();
     });
@@ -776,30 +776,30 @@ describe("Chief of Staff (FIX-1722)", () => {
       resumedBy: ASK_LAB_USER_ID,
     });
     await waitFor(async () => {
-      const state = await client.sessions.state(COS_CONVERSATION, { includeItems: true, itemTypes: ["suspension_resume"] });
+      const state = await client.sessions.state(SHIFT_COORDINATOR_CONVERSATION, { includeItems: true, itemTypes: ["suspension_resume"] });
       expect(state.items ?? []).toHaveLength(1);
     });
-    setURL(`${lab.baseUrl}/cos`);
+    setURL(`${lab.baseUrl}/shift-coordinator`);
     render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
-    const conversation = await screen.findByTestId("cos-conversation");
-    await waitFor(() => expect(within(conversation).getAllByTestId("cos-item").some((el) => el.getAttribute("data-item-type") === "suspension")).toBe(true));
+    const conversation = await screen.findByTestId("shift-coordinator-conversation");
+    await waitFor(() => expect(within(conversation).getAllByTestId("shift-coordinator-item").some((el) => el.getAttribute("data-item-type") === "suspension")).toBe(true));
     expect(conversation.textContent).not.toMatch(/Waiting on you/);
   });
 
   it("redraws the conversation once its ask is answered on the page, without a line sent (FIX-1901)", async () => {
-    const lab = await serveLab((await openAskLab({ chiefOfStaff: true })).flowState);
+    const lab = await serveLab((await openAskLab({ shiftCoordinator: true })).flowState);
     served.push(lab);
     const client = connect({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
     setURL(lab.baseUrl);
-    await workerAction(client, "ops.chief-of-staff", "ask", { what: "ship it" }, COS_CONVERSATION);
-    setURL(`${lab.baseUrl}/cos`);
+    await workerAction(client, "ops.shift-coordinator", "ask", { what: "ship it" }, SHIFT_COORDINATOR_CONVERSATION);
+    setURL(`${lab.baseUrl}/shift-coordinator`);
     render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
-    const conversation = await screen.findByTestId("cos-conversation");
+    const conversation = await screen.findByTestId("shift-coordinator-conversation");
     await waitFor(() => expect(conversation.textContent).toMatch(/Waiting on you/));
-    const ask = (await screen.findAllByTestId("cos-ask"))[0]!;
+    const ask = (await screen.findAllByTestId("shift-coordinator-ask"))[0]!;
     act(() => fireEvent.click(within(ask).getByRole("button", { name: "Approve" })));
-    await waitFor(() => expect(screen.getByTestId("cos-conversation").textContent).not.toMatch(/Waiting on you/), { timeout: 5_000 });
-    expect(within(screen.getByTestId("cos-conversation")).getAllByTestId("cos-item").some((el) => el.getAttribute("data-item-type") === "suspension")).toBe(true);
+    await waitFor(() => expect(screen.getByTestId("shift-coordinator-conversation").textContent).not.toMatch(/Waiting on you/), { timeout: 5_000 });
+    expect(within(screen.getByTestId("shift-coordinator-conversation")).getAllByTestId("shift-coordinator-item").some((el) => el.getAttribute("data-item-type") === "suspension")).toBe(true);
   });
 
   it("says what the Lab answered, with Retry, for asks or a conversation's board that didn't load (BR-8)", async () => {
@@ -815,9 +815,9 @@ describe("Chief of Staff (FIX-1722)", () => {
       }
       return real(i, init);
     });
-    setURL(`${lab.baseUrl}/cos`);
+    setURL(`${lab.baseUrl}/shift-coordinator`);
     render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
-    const asks = await screen.findByTestId("cos-summary-asks-failure");
+    const asks = await screen.findByTestId("shift-coordinator-summary-asks-failure");
     expect(asks.textContent).toMatch(/store offline/);
     expect(within(asks).getByRole("button", { name: "Retry" })).toBeTruthy();
     // The user's conversation boards are read once, through one of their
@@ -831,10 +831,10 @@ describe("Chief of Staff (FIX-1722)", () => {
   });
 
   it("disables the composer for a worker that takes no message (BR-13)", async () => {
-    await openCos("/", { chiefOfStaff: true, doors: false });
-    const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
+    await openShiftCoordinator("/", { shiftCoordinator: true, doors: false });
+    const input = (await screen.findByTestId("shift-coordinator-composer-input")) as HTMLTextAreaElement;
     expect(input.disabled).toBe(true);
-    expect(screen.getByTestId("cos-composer-blocked").textContent).toBe(`Shift Coordinator ${GAPS.turn.noDoor}`);
+    expect(screen.getByTestId("shift-coordinator-composer-blocked").textContent).toBe(`Shift Coordinator ${GAPS.turn.noDoor}`);
   });
 });
 

@@ -1,7 +1,7 @@
 /**
  * A Lab on in-memory stores holds an ask from a worker hired after it opened.
  *
- * The tree here gives no worker a tool that asks first: the chief of staff can
+ * The tree here gives no worker a tool that asks first: the Shift Coordinator can
  * hire but not fire, and the project writes are off. A worker hired with
  * `fire` in its settings still asks before it fires, so the Lab must hold that
  * ask on its in-memory stores, not fail it for want of durable execution.
@@ -23,14 +23,14 @@ afterEach(async () => {
   opened = undefined;
 });
 
-/** The Lab's own tree, with the chief of staff's `fire` taken away. */
+/** The Lab's own tree, with the Shift Coordinator's `fire` taken away. */
 function treeWithoutFire(): string {
   const root = join(mkdtempSync(join(tmpdir(), "sm-hired-ask-tree-")), "workforce");
   cpSync(LAB_TREE, root, { recursive: true });
-  const file = join(root, "org/workers/chief-of-staff/WORKER.md");
+  const file = join(root, "org/workers/shift-coordinator/WORKER.md");
   const before = readFileSync(file, "utf8");
   const after = before.replace(/^tools: \[hire, fire, /m, "tools: [hire, ");
-  if (after === before) throw new Error("the chief of staff's tools line changed; update this test's tree");
+  if (after === before) throw new Error("the Shift Coordinator's tools line changed; update this test's tree");
   writeFileSync(file, after);
   return root;
 }
@@ -94,7 +94,7 @@ describe("a worker hired after the Lab opened", () => {
 
     const hired = await run(
       lab,
-      "chief-of-staff",
+      "shift-coordinator",
       { toolName: "hire", args: { id: "helper", flow: FLOW, settings: { tools: ["fire"] } } },
       "hire a helper that can fire",
     );

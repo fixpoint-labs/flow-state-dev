@@ -9,7 +9,7 @@
  * is fresh). Chromium drives the page as the Lab's owner:
  *
  *   key  Settings: the person sets their Linear key in the `linear` row.
- *   a    the chief of staff is asked, in its composer, to have the coder read
+ *   a    the Shift Coordinator is asked, in its composer, to have the coder read
  *        a held-out Linear issue named by its identifier only, on FSD.
  *   b    while a's run works, the same composer asks for one file, stamped
  *        with this run's stamp, committed on Shift Manager.
@@ -29,8 +29,8 @@
  * runs the same legs against it; both legs must FAIL.
  *
  * Needs: LINEAR_API_KEY (the held-out issue, and the key the person pastes),
- * a Claude Code credential (sign-in or ANTHROPIC_API_KEY), the chief of
- * staff's and the EM's model keys, git, Chromium.
+ * a Claude Code credential (sign-in or ANTHROPIC_API_KEY), the Shift
+ * Coordinator's and the EM's model keys, git, Chromium.
  *
  * Run: PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/a-fresh-open-works-fsd-and-shift-manager/run.mts
  */
@@ -215,7 +215,7 @@ await runGoal(async (failures) => {
     let conversation: { id: string } | undefined;
     /** Every row the conversation filed: on its own board, or on the boards of the EM sessions under it. */
     const filed = async (): Promise<Array<Record<string, any>>> => {
-      conversation ??= (await http.sessions()).filter((s) => workerOf(s) === "chief-of-staff" && s.parentSessionId == null).sort((x, y) => y.createdAt - x.createdAt)[0];
+      conversation ??= (await http.sessions()).filter((s) => workerOf(s) === "shift-coordinator" && s.parentSessionId == null).sort((x, y) => y.createdAt - x.createdAt)[0];
       if (conversation === undefined) return [];
       const rows = ((await http.act("coordinator", conversation.id, "listTasks_tasks", {})).output?.tasks ?? []) as Array<Record<string, any>>;
       for (const em of (await http.sessions()).filter((s) => s.flowId === "em" && s.parentSessionId === conversation!.id)) {
@@ -239,17 +239,17 @@ await runGoal(async (failures) => {
       }
     })();
 
-    // ---- a, then b while a works: two asks in the chief of staff's composer ---
+    // ---- a, then b while a works: two asks in the Shift Coordinator's composer ---
     await page.goto(served.origin);
     for (const [leg, ask] of [
       ["a", askA],
       ["b", askB],
     ] as const) {
       try {
-        const input = page.getByTestId("cos-composer-input");
+        const input = page.getByTestId("shift-coordinator-composer-input");
         await input.fill(ask);
-        await page.getByTestId("cos-composer-send").click();
-        await page.waitForFunction(() => document.querySelector("[data-testid=cos-composer-status]")?.getAttribute("data-state") === "delivered", undefined, { timeout: 180_000 });
+        await page.getByTestId("shift-coordinator-composer-send").click();
+        await page.waitForFunction(() => document.querySelector("[data-testid=shift-coordinator-composer-status]")?.getAttribute("data-state") === "delivered", undefined, { timeout: 180_000 });
       } catch (error) {
         note(`${leg}:asked`, `the composer never read delivered: ${String(error).split("\n")[0]}`);
       }

@@ -42,6 +42,7 @@ import { delimiter } from "node:path";
 import { harnessEnv } from "@flow-state-dev/core";
 import {
   assertTestedSdkVersion,
+  CODEX_PASS,
   CodexAgentAbortedError,
   codexAgent,
   createDefaultResolveCodexClient,
@@ -98,35 +99,6 @@ export async function codexModelChoices(
   const preselected = found.models.find((model) => model.isDefault) ?? found.models[0]!;
   return { models: found.models.map(({ id, label }) => ({ id, label })), defaultId: preselected.id, reason: null, fallbackId: null };
 }
-
-/**
- * The only variables of the server's environment Codex's process is handed
- * (what its commands start with, not what they could read: see the header).
- * `PATH` (its shell finds commands through it), `HOME` and `CODEX_HOME` (Codex
- * keeps its sign-in and its threads there, so a thread is found again only
- * under the same home), `USER`, `SHELL` and `TMPDIR` (its shell),
- * `CODEX_API_KEY`, and the proxy and CA settings a proxied network needs. Add
- * a name here, never a spread of `process.env`.
- */
-export const CODEX_PASS = [
-  "PATH",
-  "HOME",
-  "CODEX_HOME",
-  "USER",
-  "SHELL",
-  "TMPDIR",
-  "CODEX_API_KEY",
-  "HTTPS_PROXY",
-  "https_proxy",
-  "HTTP_PROXY",
-  "http_proxy",
-  "ALL_PROXY",
-  "all_proxy",
-  "NO_PROXY",
-  "no_proxy",
-  "CODEX_CA_CERTIFICATE",
-  "SSL_CERT_FILE",
-] as const;
 
 /** The environment Codex's process gets, and the one its sign-in and sandbox are checked over. */
 export function codexEnv(env: Record<string, string | undefined> = process.env): Record<string, string> {

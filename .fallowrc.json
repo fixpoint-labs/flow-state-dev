@@ -42,6 +42,7 @@
     "labs/knowledge-hub/fsdev.config.ts",
     "labs/knowledge-hub/test/**/*.spec.ts",
     "labs/knowledge-hub/scripts/**/*.mts",
+    "labs/teammates/fsdev.config.mts",
 
     // Loaded by `fsdev dev --config`, which no import reaches.
     "labs/claude-code-style/fsdev.config.mts",

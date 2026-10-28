@@ -32,7 +32,7 @@ import {
   quiet,
   sentIds,
   word,
-  COS,
+  SHIFT_COORDINATOR,
   RESEARCHER,
   type LegResult,
   type Person,
@@ -123,7 +123,7 @@ async function leg5(origin: string, alice: Person, sent: Map<string, { sessionId
     if (listed.some((m) => !m.from || !m.to)) r.failures.push(`5:both-sides — a listed message names no sender or no recipient`);
     r.notes.push(`the view lists ${listed.length} message(s); the legs' tool calls sent ${sent.size}`);
     // Each side opens the session that holds it: the first message Researcher sent the coordinator.
-    const first = [...sent.entries()].find(([, call]) => call.args.to === COS);
+    const first = [...sent.entries()].find(([, call]) => call.args.to === SHIFT_COORDINATOR);
     if (first !== undefined && ids.has(first[0])) {
       const row = page.locator(`[data-testid=message][data-message-id="${first[0]}"]`);
       const toSession = await row.getByTestId("message-to").getAttribute("data-session-id");

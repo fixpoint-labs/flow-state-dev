@@ -30,7 +30,7 @@ vi.mock("../src/lib/lab-data", () => {
 vi.mock("../src/lib/workforce", () => {
   const workforce = {
     roster: async () => [
-      { id: "chief-of-staff", flow: "coordinator", standard: true, description: null },
+      { id: "shift-coordinator", flow: "coordinator", standard: true, description: null },
       { id: "eng.em", flow: "em", standard: true, description: null, name: "Engineering Manager" },
       { id: "licenses", flow: "agent", standard: false, description: "Audits licenses.", name: null },
       { id: "eng.reviewer", flow: "agent", standard: true, description: null, name: "Reviewer" },
@@ -57,7 +57,7 @@ vi.mock("../src/lib/delegates", () => ({
   },
 }));
 
-const cos = toWorker({ id: "chief-of-staff", kind: "coordinator", door: "run" })!;
+const shiftCoordinator = toWorker({ id: "shift-coordinator", kind: "coordinator", door: "run" })!;
 
 beforeEach(() => {
   listed = [{ worker: "eng.em" }];
@@ -74,51 +74,51 @@ async function settle() {
 
 describe("the delegates panel (BR-33)", () => {
   it("says the delegates belong to a conversation before there is one, and reads nothing", async () => {
-    render(<DelegatesPanel worker={cos} sessionId={null} />);
+    render(<DelegatesPanel worker={shiftCoordinator} sessionId={null} />);
     await settle();
-    expect(screen.getByTestId("cos-delegates-none")).toBeTruthy();
+    expect(screen.getByTestId("shift-coordinator-delegates-none")).toBeTruthy();
     expect(calls).toEqual([]);
   });
 
   it("lists the conversation's delegates, and offers the user's roster minus the coordinator and those listed", async () => {
-    render(<DelegatesPanel worker={cos} sessionId="s1" />);
+    render(<DelegatesPanel worker={shiftCoordinator} sessionId="s1" />);
     await settle();
     expect(calls).toEqual(["list coordinator s1"]);
-    expect(screen.getAllByTestId("cos-delegate").map((li) => li.getAttribute("data-worker"))).toEqual(["eng.em"]);
-    const options = [...(screen.getByTestId("cos-delegate-pick") as HTMLSelectElement).options].map((o) => o.value);
+    expect(screen.getAllByTestId("shift-coordinator-delegate").map((li) => li.getAttribute("data-worker"))).toEqual(["eng.em"]);
+    const options = [...(screen.getByTestId("shift-coordinator-delegate-pick") as HTMLSelectElement).options].map((o) => o.value);
     expect(options).toEqual(["", "licenses", "eng.reviewer", "ops.reviewer"]);
   });
 
   it("names delegates and choices by display name, with the id only where two share a name", async () => {
-    render(<DelegatesPanel worker={cos} sessionId="s1" />);
+    render(<DelegatesPanel worker={shiftCoordinator} sessionId="s1" />);
     await settle();
-    expect(screen.getAllByTestId("cos-delegate").map((li) => li.textContent)).toEqual(["Engineering Managerremove"]);
-    const labels = [...(screen.getByTestId("cos-delegate-pick") as HTMLSelectElement).options].map((o) => o.textContent);
+    expect(screen.getAllByTestId("shift-coordinator-delegate").map((li) => li.textContent)).toEqual(["Engineering Managerremove"]);
+    const labels = [...(screen.getByTestId("shift-coordinator-delegate-pick") as HTMLSelectElement).options].map((o) => o.textContent);
     expect(labels).toEqual(["Add from your roster…", "licenses", "Reviewer (eng.reviewer)", "Reviewer (ops.reviewer)"]);
   });
 
   it("adds one from the roster and removes one, each through the coordinator's action on this conversation", async () => {
-    render(<DelegatesPanel worker={cos} sessionId="s1" />);
+    render(<DelegatesPanel worker={shiftCoordinator} sessionId="s1" />);
     await settle();
-    fireEvent.change(screen.getByTestId("cos-delegate-pick"), { target: { value: "licenses" } });
-    fireEvent.click(screen.getByTestId("cos-delegate-add"));
+    fireEvent.change(screen.getByTestId("shift-coordinator-delegate-pick"), { target: { value: "licenses" } });
+    fireEvent.click(screen.getByTestId("shift-coordinator-delegate-add"));
     await settle();
-    expect(screen.getAllByTestId("cos-delegate").map((li) => li.getAttribute("data-worker"))).toEqual(["eng.em", "licenses"]);
-    fireEvent.click(screen.getAllByTestId("cos-delegate-remove")[0]!);
+    expect(screen.getAllByTestId("shift-coordinator-delegate").map((li) => li.getAttribute("data-worker"))).toEqual(["eng.em", "licenses"]);
+    fireEvent.click(screen.getAllByTestId("shift-coordinator-delegate-remove")[0]!);
     await settle();
-    expect(screen.getAllByTestId("cos-delegate").map((li) => li.getAttribute("data-worker"))).toEqual(["licenses"]);
+    expect(screen.getAllByTestId("shift-coordinator-delegate").map((li) => li.getAttribute("data-worker"))).toEqual(["licenses"]);
     expect(calls).toEqual(["list coordinator s1", "add coordinator s1 licenses", "remove coordinator s1 eng.em"]);
   });
 
   it("shows a refused add's reason and keeps the list as it was", async () => {
     refuseAdd = 'No worker "licenses" on your roster.';
-    render(<DelegatesPanel worker={cos} sessionId="s1" />);
+    render(<DelegatesPanel worker={shiftCoordinator} sessionId="s1" />);
     await settle();
-    fireEvent.change(screen.getByTestId("cos-delegate-pick"), { target: { value: "licenses" } });
-    fireEvent.click(screen.getByTestId("cos-delegate-add"));
+    fireEvent.change(screen.getByTestId("shift-coordinator-delegate-pick"), { target: { value: "licenses" } });
+    fireEvent.click(screen.getByTestId("shift-coordinator-delegate-add"));
     await settle();
-    expect(screen.getByTestId("cos-delegate-refused").textContent).toContain('No worker "licenses" on your roster.');
-    expect(screen.getAllByTestId("cos-delegate").map((li) => li.getAttribute("data-worker"))).toEqual(["eng.em"]);
+    expect(screen.getByTestId("shift-coordinator-delegate-refused").textContent).toContain('No worker "licenses" on your roster.');
+    expect(screen.getAllByTestId("shift-coordinator-delegate").map((li) => li.getAttribute("data-worker"))).toEqual(["eng.em"]);
   });
 });
 
@@ -146,13 +146,13 @@ describe("a routing record (BR-29)", () => {
 });
 
 describe("a line from another worker, under that worker's name (BR-20, FIX-1989)", () => {
-  const known = new Set(["desk.chief-of-staff", "eng.em", "helper"]);
+  const known = new Set(["desk.shift-coordinator", "eng.em", "helper"]);
   const helper = toWorker({ id: "helper", kind: "agent", door: "run" })!;
 
   it("names a delegate's answer on a coordinator, and nobody for the coordinator's own turn", () => {
-    expect(senderOf(cos, { agentName: "eng.em" }, known)).toBe("eng.em");
-    expect(senderOf(cos, { agentName: "coordinator-judgment" }, known)).toBeUndefined();
-    expect(senderOf(cos, {}, known)).toBeUndefined();
+    expect(senderOf(shiftCoordinator, { agentName: "eng.em" }, known)).toBe("eng.em");
+    expect(senderOf(shiftCoordinator, { agentName: "coordinator-judgment" }, known)).toBeUndefined();
+    expect(senderOf(shiftCoordinator, {}, known)).toBeUndefined();
   });
 
   it("names a message's sender on any worker's conversation, never the worker itself or a generator", () => {

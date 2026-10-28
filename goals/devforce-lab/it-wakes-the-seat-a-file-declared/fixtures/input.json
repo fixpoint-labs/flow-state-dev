@@ -36,7 +36,7 @@
     }
   },
   "orgWorkers": {
-    "chief-of-staff": {
+    "shift-coordinator": {
       "kind": "coordinator"
     },
     "project-coordinator": {

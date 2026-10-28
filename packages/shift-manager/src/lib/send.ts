@@ -13,7 +13,7 @@
  * request's user item. The HTTP answer alone never says so: it only says the
  * request started. A `suspended` request stopped short of finishing, with the
  * line in: the send resolves with `suspended` set, and `stopped` saying on
- * what. `ask` is a user's ask Inbox lists, such as a chief of staff's
+ * what. `ask` is a user's ask Inbox lists, such as a Shift Coordinator's
  * approval to fire a worker; `wait` is any other suspension, which Inbox
  * doesn't list. `suspended`, not `stopped`, is what tells a caller to read
  * the Lab again: `stopped` only picks the words, so a stop it reads wrong,

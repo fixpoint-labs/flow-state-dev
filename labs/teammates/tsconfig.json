@@ -10,6 +10,6 @@
     "types": ["node", "vite/client"],
     "paths": { "@/*": ["./src/*"] }
   },
-  "include": ["src/**/*", "test/**/*", "cli/**/*.ts", "vite.config.ts", "vitest.config.ts"],
+  "include": ["src/**/*", "test/**/*", "cli/**/*.ts", "host.mts", "fsdev.config.mts", "vite.config.ts", "vitest.config.ts"],
   "exclude": ["node_modules", "dist-client"]
 }

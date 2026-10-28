@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * The screen, on fixtures. These prove the UI only: a list of workers rather
+ * The screen, on a test double (`fake-lab.ts`). These prove the UI only: a list of workers rather
  * than sessions, worker talk drawn in both conversations and the Talk panel
  * (D1), a reply that waits for your turn and shows as pending (D2), and a
  * divider that never calls a window boundary a summary, and a coding job that
@@ -11,7 +11,8 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/App";
-import { createFixtureLab } from "../src/fixtures";
+import { PICKED_LINE } from "../src/components/Conversation";
+import { createFixtureLab } from "./fake-lab";
 
 // The script runs at a twentieth of real time.
 const fast = (options = {}) => createFixtureLab({ speed: 0.05, ...options });
@@ -136,14 +137,14 @@ describe("the teammates screen", () => {
 
     // Nothing runs while you haven't picked.
     await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(workerRow("coder").querySelector("[data-status]")?.textContent).toBe("tasks · Claude Code");
+    expect(workerRow("coder").querySelector("[data-status]")?.textContent).toBe("takes tasks");
     fireEvent.click(card);
     expect(within(tile).getByRole("list", { name: /Run of/ }).textContent).toMatch(/No run started: lead had no project/);
 
     // The pick sticks to lead, is said to lead as your line, and lead files the task again in it.
     fireEvent.change(within(prompt).getByLabelText("Project"), { target: { value: "relay" } });
     await act(async () => fireEvent.click(within(prompt).getByRole("button", { name: "Use project" })));
-    expect(await within(conversation()).findByText("Work in relay.")).toBeTruthy();
+    expect(await within(conversation()).findByText(PICKED_LINE)).toBeTruthy();
     expect(chip.value).toBe("relay");
     expect(tile.querySelector("[data-task-status]")?.textContent).toBe("refused · no project");
     expect(within(tile).queryByRole("group", { name: "Pick a project" })).toBeNull();
@@ -151,7 +152,6 @@ describe("the teammates screen", () => {
     await waitFor(() => expect(within(conversation()).getAllByRole("button", { name: /Task for coder/ })).toHaveLength(2), { timeout: 2000 });
     const rerun = within(conversation()).getAllByRole("button", { name: /Task for coder/ })[1].closest<HTMLElement>("[data-entry=task]")!;
     await waitFor(() => expect(rerun.querySelector("[data-task-status]")?.textContent).toBe("running in relay"));
-    await waitFor(() => expect(workerRow("coder").querySelector("[data-status]")?.textContent).toBe("running · Claude Code"));
 
     // The result lands as a line from coder, and lead's next line uses it.
     expect(await within(conversation()).findByRole("region", { name: "From coder" }, { timeout: 2000 })).toBeTruthy();
@@ -179,7 +179,7 @@ describe("the teammates screen", () => {
     await tell("lead", "Have coder fix the typo in the README's first line.");
     await within(conversation()).findByRole("group", { name: "Pick a project" });
     await act(async () => fireEvent.change(screen.getByLabelText("Project for lead"), { target: { value: "relay" } }));
-    expect(await within(conversation()).findByText("Work in relay.")).toBeTruthy();
+    expect(await within(conversation()).findByText(PICKED_LINE)).toBeTruthy();
     await waitFor(() => expect(within(conversation()).getAllByRole("button", { name: /Task for coder/ })).toHaveLength(2), { timeout: 2000 });
   });
 

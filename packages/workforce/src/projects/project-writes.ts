@@ -9,7 +9,7 @@
  * (`project-address.ts`).
  *
  * Each is a block an app installs on the flow that creates projects — its own
- * boot code, or the chief of staff's tool — and {@link defineProjectBlocks}
+ * boot code, or the Shift Coordinator's tool — and {@link defineProjectBlocks}
  * also hands them back, with the project files read (`project-files.ts`), as
  * an `actions` map to spread into a flow.
  *
