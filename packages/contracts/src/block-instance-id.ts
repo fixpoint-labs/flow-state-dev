@@ -117,6 +117,18 @@ export function blockPathRescue(index: number): string {
 }
 
 /**
+ * The path of a request or action lifecycle observer (`request.onStarted`,
+ * `action.onCompleted`, …): a top-level path of its own, beside `root`. An
+ * observer is a block the runtime runs around the action's block, never a run
+ * of it, so it must not share the root's instance id: a second trace there
+ * reads as the root re-running, and the root's own items are dropped from the
+ * canonical log.
+ */
+export function blockPathObserver(hook: string): string {
+  return `observer[${escapeSegmentValue(hook)}]`;
+}
+
+/**
  * Formats a generator-tool segment. Each tool call gets its own path step
  * so durable execution can correlate individual tool invocations. `callId`
  * is typically the model-provided tool call ID, which is stable across
