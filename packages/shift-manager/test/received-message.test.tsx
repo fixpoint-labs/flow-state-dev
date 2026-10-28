@@ -22,6 +22,12 @@ describe("a received message", () => {
     expect(screen.getByTestId("received-message-call").textContent).toBe("call · the reply goes back");
   });
 
+  it("marks a call that answers a message of this worker's with both notes", () => {
+    render(<ReceivedMessage item={received({ call: true, inReplyTo: "msg_0" })} />);
+    expect(screen.getByTestId("received-message-answers")).toBeTruthy();
+    expect(screen.getByTestId("received-message-call")).toBeTruthy();
+  });
+
   it("draws a plain message without the mark", () => {
     render(<ReceivedMessage item={received({ call: false })} />);
     expect(screen.getByTestId("received-message").dataset.call).toBe("false");
@@ -30,6 +36,7 @@ describe("a received message", () => {
 
   it("reads an item stored before calls existed as a plain message", () => {
     render(<ReceivedMessage item={received({})} />);
+    expect(screen.getByTestId("received-message").dataset.call).toBe("false");
     expect(screen.queryByTestId("received-message-call")).toBeNull();
   });
 });
