@@ -499,6 +499,8 @@ describe("a Lab's own limits", () => {
       await fan.dispose();
     }
     expect(() => bootBoardHost({ hire: { messages: { budget: 0 } } })).toThrow(/messages.budget must be a whole number/);
+    // A host still passing the old key would otherwise get the default budget without noticing.
+    expect(() => bootBoardHost({ hire: { messages: { hopLimit: 2 } as never } })).toThrow(/messages.hopLimit was renamed messages.budget/); // retired-name-refusal: the renamed key is refused by name
   });
 });
 

@@ -25,9 +25,12 @@ const limits = new WeakMap<object, Required<MessageLimits>>();
 /**
  * Set the message limits for `installation`. `hireWorkforce`'s `messages` calls it.
  *
- * @throws When a limit isn't a whole number of at least one.
+ * @throws When a limit isn't a whole number of at least one, or when the retired key is given.
  */
 export function setMessageLimits(installation: object, given: MessageLimits): void {
+  if ("hopLimit" in given) { // retired-name-refusal: the renamed key is refused by name
+    throw new Error("hireWorkforce: messages.hopLimit was renamed messages.budget; set messages.budget instead."); // retired-name-refusal: the renamed key is refused by name
+  }
   for (const [key, value] of Object.entries(given)) {
     if (value !== undefined && (!Number.isInteger(value) || value < 1)) {
       throw new Error(`hireWorkforce: messages.${key} must be a whole number of at least 1; got ${String(value)}.`);
