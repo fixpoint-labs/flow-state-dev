@@ -85,6 +85,54 @@ export type ItemQuery = {
    * conversation without the request that is running now.
    */
   includeInFlight?: boolean;
+  /**
+   * `history()` only: start after this turn (a request id), leaving it and
+   * every earlier turn out. A turn the window no longer holds is older than
+   * every turn it does, so naming one leaves the history whole. Applied before
+   * `limit`. A history summary narrows with it: the summary stands for the
+   * turns up to its mark.
+   */
+  afterRequestId?: string;
+};
+
+/**
+ * One past turn of a session, as `items.turns()` lists it: the request that is
+ * the turn, when it started, whether it has settled, and the messages the model
+ * would read for it.
+ */
+export type HistoryTurn = {
+  requestId: string;
+  startedAtMs: number;
+  /**
+   * Whether the turn has finished for good. A turn still running, suspended on
+   * a gate, or interrupted and parked to run again has not, and carries no
+   * messages: what it says is not final until it settles.
+   */
+  settled: boolean;
+  messages: LLMMessage[];
+};
+
+/** Which turns `items.turns()` lists. */
+export type HistoryTurnQuery = {
+  /**
+   * These turns, by request id, whether or not the window still holds them.
+   * Only this session's turns are read; an id that names none is left out.
+   */
+  requestIds?: readonly string[];
+};
+
+/**
+ * The history window this request loaded (`session.historyWindow`), read-only.
+ */
+export type SessionHistoryWindow = {
+  /** How many past turns the window holds. */
+  readonly turns: number;
+  /**
+   * The first turn the window holds, when earlier turns have fallen out of it.
+   * Absent while every earlier turn is still in the window. The request record
+   * carries the same mark as `historyStart`.
+   */
+  readonly startRequestId?: string;
 };
 
 export type SessionItemViews = {
@@ -108,6 +156,14 @@ export type SessionItemViews = {
    * default (e.g., a long-running sub-agent pulling its own prior outputs).
    */
   selectForContext: (query?: ItemQuery) => SessionItem[];
+  /**
+   * The session's past turns, oldest first. With no query: the turns the
+   * window holds, plus any turn of this session that has not settled yet
+   * (running, suspended, or parked), so a caller can tell which turns are
+   * still open. With `requestIds`: those turns, read from the store when the
+   * window no longer holds them.
+   */
+  turns: (query?: HistoryTurnQuery) => Promise<HistoryTurn[]>;
 };
 
 export type Message = {
@@ -220,6 +276,11 @@ export type SessionScopeHandle<
   state: Readonly<TState>;
   metadata: Readonly<SessionMetadata>;
   items: SessionItemViews;
+  /**
+   * The history window this request loaded. Absent on a context that loads no
+   * history (a test double, for one).
+   */
+  readonly window?: SessionHistoryWindow;
   appendJournal(entry: JournalEntryInput): Promise<void>;
   getJournal(options?: { limit?: number; offset?: number }): Promise<JournalEntry[]>;
   setMetadata(input: SessionMetadataInput): Promise<void>;

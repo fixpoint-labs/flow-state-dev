@@ -13,8 +13,11 @@ export type {
   LooseBlockContext,
 } from "./types/block";
 export type {
+  HistoryTurn,
+  HistoryTurnQuery,
   OrgScopeHandle,
   RequestScopeHandle,
+  SessionHistoryWindow,
   SessionScopeHandle,
   StopRequestOutcome,
   UserScopeHandle,
