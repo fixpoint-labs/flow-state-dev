@@ -123,7 +123,8 @@ function taskerFlow(installation: WorkerInstallation, runs: TaskRun[], holds: Re
       if (until !== null && attempt < Number(until[1])) throw new Error(`${worker.id} failed attempt ${attempt}`);
       const ask = /\[ask:([^\]]+)\]/.exec(message);
       if (ask !== null && held !== undefined && held.askedInTurn === undefined && tasks !== undefined) {
-        const asked = await askMidway(ctx as never, tasks, [{ prompt: ask[1]! }]);
+        // `[ask:a|b]` asks two questions at once.
+        const asked = await askMidway(ctx as never, tasks, ask[1]!.split("|").map((prompt) => ({ prompt })));
         if (!asked.ok) throw new Error(`the question could not hold the task: ${asked.reason}`);
         return "asked";
       }

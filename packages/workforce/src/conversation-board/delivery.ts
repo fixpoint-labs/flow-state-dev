@@ -20,6 +20,8 @@
  * - **A notice nobody can take** (the filer's session is gone) is said where
  *   its writer runs, and a final failure's report goes to the Error Reporter
  *   from there (epic decision (f)).
+ * - **A midway question** (FIX-2241) is no ending and no notice: it reaches
+ *   the filer as a message from the task's worker (`../messages/midway-question`).
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { DeclaredDelivery, Task, TaskNotice } from "@flow-state-dev/orchestration/tasks";
@@ -51,6 +53,10 @@ export function conversationDelivery(ledgerId: string): DeclaredDelivery {
       return undefined;
     },
     legacyFiler: (_row, partition) => (partition === undefined ? undefined : sessionIdOfFiling(partition)),
+    // A task's question, told to its filer as a message (FIX-2241). Imported
+    // when called: the messages modules import the board, so a static import
+    // here would close a cycle the board's own module load runs into.
+    onMidwayQuestion: async (ctx, row, holds) => (await import("../messages/midway-question")).sendQuestionToFiler(ctx, row, holds),
     onUndeliverable: async (ctx: BlockContext, row: Task, notice: TaskNotice, detail: string) => {
       // The task's ending stands; the conversation that filed it can't be told.
       ctx.emit.message(`The conversation that filed task "${row.title ?? row.goal}" couldn't be told it ${notice.ending}: ${detail}`);

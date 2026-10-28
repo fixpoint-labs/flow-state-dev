@@ -171,6 +171,66 @@ function filingSessionFor(state: Record<string, unknown>, worker: string): Messa
   return { sessionId: sessionIdOfFiling(filing), flow };
 }
 
+/** A send's place: its id, its chain and its hop, or why the budget refused it. */
+type Place = { readonly ok: true; readonly id: string; readonly chain: string; readonly hop: number } | { readonly ok: false; readonly error: string };
+
+/**
+ * The place a send pays for. One per message a user types: a send's place is
+ * its place in its chain's row, and never less than one past its own turn's. A
+ * request with no chain behind it (no user's turn, no session's) starts one
+ * here, for all its sends. The per-request count is taken first and given back
+ * if the chain has no place left, so a refused send spends nothing.
+ */
+async function payPlace(ctx: BlockContext, installation: WorkerInstallation, given: string | undefined): Promise<Place> {
+  const limits = messageLimitsOf(installation);
+  const chains = messageChainsOf(ctx);
+  const floor = turnHopOf(ctx) + 1;
+  const budgetRefusal = (hop: number): Place => ({
+    ok: false,
+    error:
+      `budget: this would be message ${hop} since the user's last line, and the budget is ${limits.hopLimit}. ` +
+      "Nothing was sent. Stop passing messages on, and say that you stopped; the next line from the user lets the workers go on."
+  });
+  /** The place a send takes in a chain that already holds `sent`. */
+  const placeAfter = (sent: number) => Math.max(floor, sent + 1);
+  const known = turnChainOf(ctx);
+  const atomicRequest = (mutator: (s: Readonly<Record<string, unknown>>) => Record<string, unknown>) => ctx.request.atomicState(mutator as never);
+  const reserved = await withOutcome(atomicRequest, (current: Readonly<Record<string, unknown>>) => {
+    const sent = typeof current[TURN_SENT_STATE] === "number" ? (current[TURN_SENT_STATE] as number) : 0;
+    if (sent >= limits.perTurn) return { state: {}, result: undefined };
+    const turnChain = typeof current[TURN_CHAIN_STATE] === "string" ? (current[TURN_CHAIN_STATE] as string) : (known ?? newChainId());
+    return { state: { [TURN_SENT_STATE]: sent + 1, [TURN_CHAIN_STATE]: turnChain }, result: turnChain };
+  });
+  if (typeof reserved !== "string") {
+    return { ok: false, error: `per_request_limit: one request sends at most ${limits.perTurn} messages, and this one has. Nothing was sent.` };
+  }
+  const chain = reserved;
+  const id = given ?? newMessageId();
+  const chainRow = await chains.getOrCreate(chain, { sent: [] });
+  await chainRow.updateState((row) =>
+    placeAfter(row.sent.length) > limits.hopLimit ? row : { ...row, sent: [...row.sent, id] }
+  );
+  const place = chainRow.state.sent.indexOf(id);
+  if (place < 0) {
+    await atomicRequest((current) => {
+      const sent = typeof current[TURN_SENT_STATE] === "number" ? (current[TURN_SENT_STATE] as number) : 1;
+      return { [TURN_SENT_STATE]: Math.max(0, sent - 1) };
+    });
+    return budgetRefusal(placeAfter(chainRow.state.sent.length));
+  }
+  const hop = placeAfter(place);
+  return { ok: true, id, chain, hop };
+}
+
+/**
+ * The server's own message's place (FIX-2241): one past the sending turn's, in
+ * its chain or a new one, written into neither the chain's row nor the
+ * request's count, so it costs no budget and no spent one refuses it.
+ */
+function exemptPlace(ctx: BlockContext, given: string | undefined): Place {
+  return { ok: true, id: given ?? newMessageId(), chain: turnChainOf(ctx) ?? newChainId(), hop: turnHopOf(ctx) + 1 };
+}
+
 /**
  * Send one message from the running session's worker.
  *
@@ -183,6 +243,9 @@ function filingSessionFor(state: Record<string, unknown>, worker: string): Messa
  * @param options.call The sender waits on the reply until `deadlineAt`
  *   (FIX-2239): the row is marked a call, and the dispatch says the sender
  *   waits on it. Set by the call's own code, never by a model.
+ * @param options.exempt The server's own message (a task's midway question,
+ *   FIX-2241): it costs no budget and no spent one refuses it. Never a
+ *   model's input.
  */
 export async function sendMessage(
   ctx: BlockContext,
@@ -190,7 +253,7 @@ export async function sendMessage(
   flowKind: string,
   input: SendMessageInput,
   from: string,
-  options: { readonly id?: string; readonly call?: { readonly deadlineAt: number } } = {}
+  options: { readonly id?: string; readonly call?: { readonly deadlineAt: number }; readonly exempt?: true } = {}
 ): Promise<SendOutcome> {
   const refuse = (error: string): SendOutcome => ({ ok: false, error });
   const state = (ctx.session.state ?? {}) as Record<string, unknown>;
@@ -245,47 +308,10 @@ export async function sendMessage(
   }
 
   // ---- the budget ----------------------------------------------------------
-  // One per message a user types: a send's place is its place in its chain's
-  // row, and never less than one past its own turn's. A request with no chain
-  // behind it (no user's turn, no session's) starts one here, for all its
-  // sends. The per-request count is taken first and given back if the chain
-  // has no place left, so a refused send spends nothing.
-  const limits = messageLimitsOf(installation);
-  const chains = messageChainsOf(ctx);
-  const floor = turnHopOf(ctx) + 1;
-  const budgetRefusal = (hop: number): SendOutcome =>
-    refuse(
-      `budget: this would be message ${hop} since the user's last line, and the budget is ${limits.hopLimit}. ` +
-        "Nothing was sent. Stop passing messages on, and say that you stopped; the next line from the user lets the workers go on."
-    );
-  /** The place a send takes in a chain that already holds `sent`. */
-  const placeAfter = (sent: number) => Math.max(floor, sent + 1);
-  const known = turnChainOf(ctx);
-  const atomicRequest = (mutator: (s: Readonly<Record<string, unknown>>) => Record<string, unknown>) => ctx.request.atomicState(mutator as never);
-  const reserved = await withOutcome(atomicRequest, (current: Readonly<Record<string, unknown>>) => {
-    const sent = typeof current[TURN_SENT_STATE] === "number" ? (current[TURN_SENT_STATE] as number) : 0;
-    if (sent >= limits.perTurn) return { state: {}, result: undefined };
-    const turnChain = typeof current[TURN_CHAIN_STATE] === "string" ? (current[TURN_CHAIN_STATE] as string) : (known ?? newChainId());
-    return { state: { [TURN_SENT_STATE]: sent + 1, [TURN_CHAIN_STATE]: turnChain }, result: turnChain };
-  });
-  if (typeof reserved !== "string") {
-    return refuse(`per_request_limit: one request sends at most ${limits.perTurn} messages, and this one has. Nothing was sent.`);
-  }
-  const chain = reserved;
-  const id = options.id ?? newMessageId();
-  const chainRow = await chains.getOrCreate(chain, { sent: [] });
-  await chainRow.updateState((row) =>
-    placeAfter(row.sent.length) > limits.hopLimit ? row : { ...row, sent: [...row.sent, id] }
-  );
-  const place = chainRow.state.sent.indexOf(id);
-  if (place < 0) {
-    await atomicRequest((current) => {
-      const sent = typeof current[TURN_SENT_STATE] === "number" ? (current[TURN_SENT_STATE] as number) : 1;
-      return { [TURN_SENT_STATE]: Math.max(0, sent - 1) };
-    });
-    return budgetRefusal(placeAfter(chainRow.state.sent.length));
-  }
-  const hop = placeAfter(place);
+  // The server's own message costs none (FIX-2241); every other send pays its place.
+  const paid = options.exempt === true ? exemptPlace(ctx, options.id) : await payPlace(ctx, installation, options.id);
+  if (!paid.ok) return paid;
+  const { id, chain, hop } = paid;
 
   // ---- owed, the row, then one dispatch ------------------------------------
   const resends = carriesPass(installation, flowKind);
