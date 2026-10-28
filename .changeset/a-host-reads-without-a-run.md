@@ -1,0 +1,5 @@
+---
+"@flow-state-dev/workspace": minor
+---
+
+A workspace host can read a run source's files without a run (FIX-2285). `WorkspaceHost.readSource(answer, request)` is an optional method that lists paths by a glob, reads a range of one file's lines, or searches with grep. `localWorkspaceHost` implements it. It reads a repository from its shared clone at the remote's default branch, never a run's branch. It reads a checkout listed in `localRepositories` at the base a new run there would be cut from, and kept files from their collection. It makes no place. A read fetches the clone at most once a minute and never waits on the clone's lock. Results are capped by `SOURCE_READ_LIMITS` (500 paths; 2,000 lines or 256 KB; 200 matches with 200-character snippets) and say when they were cut. A path that is not a plain repository path is refused as `invalid-path`. `tryAcquireLock` is new: it tries the host's lock once and does not wait. The host now keeps `<root>/.clones/<key>.fetched.json` beside each clone.
