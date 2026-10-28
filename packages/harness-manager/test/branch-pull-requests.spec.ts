@@ -117,7 +117,7 @@ function host(outcome: "completed" | "throws") {
     uses: [board.capability],
     execute: async (_input, ctx) => {
       const tasks = (ctx as { cap: Record<string, any> }).cap["branch-prs-board"];
-      await tasks.addTask({ id: TASK_ID, goal: "the feature", input: { issue: ISSUE, phase: PHASE }, assignee: "coder", maxAttempts: 1 });
+      await tasks.createTask({ id: TASK_ID, goal: "the feature", input: { issue: ISSUE, phase: PHASE }, assignee: "coder", maxAttempts: 1 });
       return { id: TASK_ID };
     },
   });
