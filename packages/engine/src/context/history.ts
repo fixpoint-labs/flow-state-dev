@@ -338,7 +338,7 @@ export async function loadLLMHistory(
   resolveModelId: () => string,
   query?: ItemQuery,
   readLiveItems?: () => RuntimeItem[],
-  readTurn?: (requestId: string) => Promise<HistoryTurn | undefined>
+  readStartedAtMs?: (requestId: string) => Promise<number | undefined>
 ): Promise<LLMMessage[]> {
   const allowedTypes = query?.itemTypes
     ? new Set(query.itemTypes)
@@ -346,7 +346,7 @@ export async function loadLLMHistory(
   const allowedRoles = query?.roles ? new Set(query.roles) : undefined;
 
   const selectedTurns = await selectRequestsByLimit(
-    await afterRequest(priorRequests, query?.afterRequestId, readTurn),
+    await afterRequest(priorRequests, query?.afterRequestId, readStartedAtMs),
     query?.limit,
     tokenCounter,
     resolveModelId,
@@ -395,10 +395,10 @@ export function compareTurnsOldestFirst(aStartedAtMs: number, aId: string, bStar
 async function afterRequest(
   priorRequests: RequestRecord[],
   requestId: string | undefined,
-  readTurn?: (requestId: string) => Promise<HistoryTurn | undefined>
+  readStartedAtMs?: (requestId: string) => Promise<number | undefined>
 ): Promise<RequestRecord[]> {
   if (requestId === undefined) return priorRequests;
-  const markStartedAtMs = priorRequests.find((r) => r.id === requestId)?.startedAtMs ?? (await readTurn?.(requestId))?.startedAtMs;
+  const markStartedAtMs = priorRequests.find((r) => r.id === requestId)?.startedAtMs ?? (await readStartedAtMs?.(requestId));
   if (markStartedAtMs === undefined) return priorRequests;
   return priorRequests.filter((r) => compareTurnsOldestFirst(r.startedAtMs, r.id, markStartedAtMs, requestId) > 0);
 }
@@ -502,8 +502,11 @@ export function createSessionItemViews(
     readLiveItems?: () => RuntimeItem[];
     /** Backs `turns()`; it reads beyond the loaded window, so the context supplies it. */
     readTurns?: (query?: HistoryTurnQuery) => Promise<HistoryTurn[]>;
-    /** One turn by id, settled or not and in the window or not, for `afterRequestId`. */
-    readTurn?: (requestId: string) => Promise<HistoryTurn | undefined>;
+    /**
+     * When a turn of this session started, by id, for `afterRequestId`: settled
+     * or not, in the window or not, the running request included.
+     */
+    readStartedAtMs?: (requestId: string) => Promise<number | undefined>;
   }
 ): SessionItemViews {
   // Compute once — priorItems is immutable for the request lifetime.
@@ -568,7 +571,7 @@ export function createSessionItemViews(
         options.resolveModelId,
         query,
         options.readLiveItems,
-        options.readTurn
+        options.readStartedAtMs
       ),
     selectForContext: (query) => select(query),
     turns: (query) => options.readTurns?.(query) ?? Promise.resolve([]),

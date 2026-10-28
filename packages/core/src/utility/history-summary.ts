@@ -212,7 +212,11 @@ export function historySummary(options: HistorySummaryOptions) {
         (await leftUnfolded(state.nextSettledRequestId)) ||
         (state.attempts === 0 && window.startRequestId !== undefined);
 
-      const due = after.length > window.turns - quarter;
+      // This request is listed open where it started, so a fold that moves
+      // past it keeps it pending; it is not a past turn, so it does not count
+      // toward the window's fill.
+      const self = ctx.request.identity.id;
+      const due = after.filter((t) => t.requestId !== self).length > window.turns - quarter;
       // A quarter of settled turns per fold; the waiting turns among them move
       // to pending without taking a place, or enough of them could hold every
       // settled turn back until it left the window.
@@ -224,7 +228,7 @@ export function historySummary(options: HistorySummaryOptions) {
       if (batch.length === 0 && settledPending.length === 0) return null;
 
       const folded = [...settledPending, ...batch.filter((t) => t.settled)];
-      const pending = [...stillPending, ...batch.filter((t) => !t.settled).map((t) => t.requestId)];
+      const pending = [...new Set([...stillPending, ...batch.filter((t) => !t.settled).map((t) => t.requestId)])];
       const last = batch.at(-1);
       const gap = state.gap || lost;
       return {

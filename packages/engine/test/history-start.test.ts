@@ -176,6 +176,20 @@ describe("history({ afterRequestId })", () => {
     expect(messages.map(textOf)).toEqual(["turn 3", "turn 4", "turn 5"]);
   });
 
+  it("starts after the named turn when that turn is the one resuming now", async () => {
+    const stores = createInMemoryStores();
+    await seedTurns(stores, "sess_resumed_mark", 5);
+    // A turn that waited since just after turn 2 resumes as this request; a
+    // summary had moved its mark onto it.
+    await stores.request.set("req_cur", { ...turn("sess_resumed_mark", 2), id: "req_cur", status: "in_progress", completedAtMs: undefined, items: [] }, "any");
+
+    const ctx = await contextFor(stores, "sess_resumed_mark", 8);
+
+    // Turns 1 and 2 are in the summary, and must not be read again.
+    const messages = await ctx.session.items.history({ afterRequestId: "req_cur" });
+    expect(messages.map(textOf)).toEqual(["turn 3", "turn 4", "turn 5"]);
+  });
+
   it("leaves the history whole when the named turn is older than the window", async () => {
     const stores = createInMemoryStores();
     await seedTurns(stores, "sess_old", 5);
@@ -211,7 +225,7 @@ describe("history({ afterRequestId })", () => {
 });
 
 describe("items.turns()", () => {
-  it("lists the window's turns oldest first, each with its id, start and messages", async () => {
+  it("lists the window's turns oldest first, each with its id, start and messages, then this request as open", async () => {
     const stores = createInMemoryStores();
     await seedTurns(stores, "sess_turns", 4);
 
@@ -221,7 +235,10 @@ describe("items.turns()", () => {
     expect(turns.map((t) => [t.requestId, t.startedAtMs, t.settled, t.messages.map(textOf)])).toEqual([
       ["req_2", 1002, true, ["turn 2"]],
       ["req_3", 1003, true, ["turn 3"]],
-      ["req_4", 1004, true, ["turn 4"]]
+      ["req_4", 1004, true, ["turn 4"]],
+      // Where it stands among the open turns, so a fold never moves past it
+      // unseen.
+      ["req_cur", expect.any(Number), false, []]
     ]);
   });
 
@@ -236,7 +253,8 @@ describe("items.turns()", () => {
     expect(turns.map((t) => [t.requestId, t.settled, t.messages.length])).toEqual([
       ["req_1", true, 1],
       ["req_2", false, 0],
-      ["req_3", true, 1]
+      ["req_3", true, 1],
+      ["req_cur", false, 0]
     ]);
   });
 
@@ -251,8 +269,8 @@ describe("items.turns()", () => {
 
     // A summary's mark is a position in this list: a turn that settles must
     // not move to the other side of a sibling the mark already passed.
-    expect(whileOpen.map((t) => t.requestId)).toEqual(["req_1", "req_2"]);
-    expect(onceSettled.map((t) => t.requestId)).toEqual(["req_1", "req_2"]);
+    expect(whileOpen.map((t) => t.requestId)).toEqual(["req_1", "req_2", "req_cur"]);
+    expect(onceSettled.map((t) => t.requestId)).toEqual(["req_1", "req_2", "req_cur"]);
   });
 
   it("reads a turn that left the window by id", async () => {

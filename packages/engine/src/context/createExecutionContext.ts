@@ -884,7 +884,9 @@ export async function createExecutionContext<
     const openTurns = (
       await stores.request.list({ ...turnScope, status: ["in_progress", "suspended"], orderBy: "startedAtMs" })
     )
-      .filter((r) => r.id !== requestId && !listed.has(r.id))
+      // The running request too: a fold must see where it stands among the
+      // conversation's other open turns, or it could move its mark past it.
+      .filter((r) => !listed.has(r.id))
       .map((r) => historyTurn(r, false));
     return [...windowTurns, ...openTurns].sort((a, b) => compareTurnsOldestFirst(a.startedAtMs, a.requestId, b.startedAtMs, b.requestId));
   };
@@ -2953,7 +2955,12 @@ export async function createExecutionContext<
       },
       items: createSessionItemViews(priorItems, settledPriorRequests, {
         readTurns,
-        readTurn: async (id) => (await readTurns({ requestIds: [id] }))[0],
+        // A summary's mark can name the request running now (a waiting turn
+        // that resumed), which `turns()` leaves out: read its start directly.
+        readStartedAtMs: async (id) => {
+          const record = await stores.request.get(id);
+          return record !== undefined && requestInSessionScope(record, turnScope) ? record.startedAtMs : undefined;
+        },
         tokenCounter,
         readLiveItems,
         resolveModelId: () => {
