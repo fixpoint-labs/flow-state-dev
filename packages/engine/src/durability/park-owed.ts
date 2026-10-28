@@ -24,7 +24,7 @@ const PARK_OWED_PREFIX = "parkOwed:";
 export const PARK_OWED_GIVE_UP_MS = 600_000;
 
 /** The wake entry the park `requestId` owes is kept under. */
-export function parkOwedEntry(requestId: string): string {
+function parkOwedEntry(requestId: string): string {
   return `${PARK_OWED_PREFIX}${requestId}`;
 }
 
