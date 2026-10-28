@@ -19,7 +19,7 @@ import { defineFlow, router, sequencer } from "@flow-state-dev/core";
 import type { BlockDefinition, HarnessBlock } from "@flow-state-dev/core/types";
 import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 import { codexAgent } from "@flow-state-dev/codex";
-import { harnessManager, harnessSessionDoor, harnessTalkTurn, type HarnessFeeds, type PhaseSpec } from "@flow-state-dev/harness-manager";
+import { harnessManager, harnessSessionDoor, harnessTalkTurn, taskIssueSegment, type HarnessFeeds, type PhaseSpec } from "@flow-state-dev/harness-manager";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
@@ -84,10 +84,11 @@ export interface HarnessThreadFlowOptions {
 /** Build the flow `hireWorkforce` registers one copy of, which every coding worker runs on. */
 export function defineHarnessThreadFlow({ installation, root }: HarnessThreadFlowOptions) {
   const workspace = localWorkspaceHost({ root, remotes: { allow: ["file"] }, source: projectWorkspace() });
-  // The board a run's session reads its task on: the conversation's that filed it.
+  // The board a run's session reads its task on: the conversation's that filed it. The run is
+  // keyed the way the manager wrote it, so a routed id still finds its run.
   const board = async (ctx: Parameters<typeof filingConversationBoard>[0]) => {
     const filed = await filingConversationBoard(ctx);
-    return filed === undefined ? undefined : { tasks: filed.tasks, runOf: (row: Task) => ({ issue: row.id, phase: phase.phase }) };
+    return filed === undefined ? undefined : { tasks: filed.tasks, runOf: (row: Task) => ({ issue: taskIssueSegment(row.id), phase: phase.phase }) };
   };
   // Per harness: the manager that runs a task, and the door a line typed in its run's session takes.
   const built = Object.fromEntries(
