@@ -677,6 +677,17 @@ await workforce.setWorkProject("main", { visibility: "shared", id: "apollo" }, {
 
 Without `sessionId`, it sets the user's default conversation with that worker, creating the conversation if there isn't one. With `sessionId`, it sets that session, which must be the user's own and run that worker. It resolves to `{ project: { visibility, id } }`. A new session takes two calls, as above: create it, then set its project. A create that puts `workProjectId` in `state` is refused with a 400 naming the field.
 
+To show the project on screen, read the session. Its state carries `workProjectId` as `<visibility>/<id>`, whoever set it and however long ago, and `parseProjectRef` from `@flow-state-dev/workforce/browser` splits it:
+
+```ts
+import { parseProjectRef, WORK_PROJECT_STATE_KEY } from "@flow-state-dev/workforce/browser";
+
+const { state } = await fsd.sessions.get(session.id);
+const project = parseProjectRef(String(state[WORK_PROJECT_STATE_KEY] ?? "")); // { visibility: "shared", id: "apollo" }
+```
+
+The field is read only. `setWorkProject` is the only way to change it.
+
 Calling it again with another project replaces the first. Tasks already filed keep the project they were filed in, including one still waiting on the board for a delegate and one handed to a delegate's ongoing session, along with whatever that delegate files while working it. A run that has already started stays where it is. There's no way to clear the project: once set, the conversation always has one.
 
 The worker flows the package ships take the call as they are: `agent`, `coordinator` and the [Error Reporter](./error-reporter.md)'s flow. A worker flow of your own declares the action under its name:
@@ -701,6 +712,64 @@ A refused call rejects with an `Error` whose message starts `Refused:`, and noth
 | The session runs a different worker than the one named | `this session runs "<its worker>", not "<worker>"` |
 
 Membership is checked again on every run, so a user removed from the project can't run work there through a conversation set to it earlier. A project coordinator's conversation gets its project from `ensureWorkerSession({ worker, projectId })`, as in [Talking to a project](#talking-to-a-project).
+
+### Reading a project's files from a conversation
+
+A worker can read the project its conversation works in without starting a coding run. It lists the files, reads one, and searches them in its own turn. So a question about the code gets answered from the code, and a change it hands to a coder can name the files to touch.
+
+The app installs `projectSourceCapability` on the worker flow, with the same workspace host its coding runs use:
+
+```ts
+import { localWorkspaceHost } from "@flow-state-dev/workspace";
+import { defineAgentWorkerFlow, projectSourceCapability, projectWorkspace } from "@flow-state-dev/workforce";
+
+const workspace = localWorkspaceHost({
+  root: "/var/fsd/runs",
+  remotes: { allow: ["github.com"] },
+  source: projectWorkspace(),
+});
+
+defineAgentWorkerFlow({
+  installation,
+  model: "openai/gpt-6-luna",
+  uses: [projectSourceCapability({ workspace })],
+});
+// Pass the same `workspace` to the coding workers' harness manager.
+```
+
+Building the capability over a host that can't read files without a run throws, naming the problem. `localWorkspaceHost` can.
+
+Each worker opts in from its own `WORKER.md`. A worker whose file doesn't name the preset gets none of the tools:
+
+```yaml
+---
+description: Does the work you ask for.
+capabilities:
+  projectSource: [read]
+---
+```
+
+The `read` preset gives the worker three tools:
+
+| Tool | Takes | Returns |
+|---|---|---|
+| `globProjectSource` | `pattern`, a glob such as `src/**`; `limit` | The matching paths, at most 500 |
+| `readProjectSource` | `path`; `startLine` and `endLine` for part of a file | The lines asked for, at most 2,000 lines or 256 KB, and the file's line count |
+| `grepProjectSource` | `pattern`; `prefix` to search one folder; `maxResults` | Each matching line's path, line number and text (its first 200 characters), at most 200 matches |
+
+A result that hit a limit has `cut: { left, by }`: how many paths, lines or matches were left out, and which limit cut it. A path is relative to the project's root, with `/` between names, no leading `/` and no `.` or `..` part. Anything else comes back refused with `invalid-path`. A path is matched exactly, never as a pattern. `readProjectSource` answers a binary file with `status: "binary"` instead of its bytes, and `grepProjectSource` skips binary files.
+
+`grepProjectSource` reads its pattern as a regular expression, or as plain text when it isn't a valid one. The result names which in `dialect`: `extended-regex` (git's flavor) on a repository, `javascript-regex` on a project with no repository, or `literal` for plain text.
+
+What the tools read depends on the project:
+
+- **A project with a repository:** the remote's default branch, at one commit, named in each result's `at.commit`. The host keeps one clone of each remote, the same one its coding runs start from, and fetches it when the last fetch is more than a minute old. `at.fetchedAt` says when that was. A branch a coding run is working on isn't visible here until it reaches the default branch, so to find out what a run has done so far, ask the run.
+- **A project [mapped to a checkout](#working-in-a-checkout-you-already-have):** the commit a new run there would start from. Uncommitted changes in the checkout aren't read.
+- **A project with no repository:** the [project's own files](#the-projects-own-files). A project with a repository keeps files too, but these tools read the repository only.
+
+The worker finds its project the way a coding run does, with `projectWorkspace`, and is refused for the same reasons, listed under [Coding work in a project](#coding-work-in-a-project). A user taken off a project's members loses reads along with coding runs. A refusal is the tool's result, `{ kind: "refused", reason, message }`, so the worker can tell the user why, and nothing is read. A delegate working a task reads the project the task was filed in.
+
+None of the tools writes. Changing a project's files is a coding run's job.
 
 ### Tools a project's coding work gets
 

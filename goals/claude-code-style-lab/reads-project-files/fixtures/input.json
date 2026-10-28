@@ -1,0 +1,13 @@
+{
+  "project": "Billing desk",
+  "path": "src/billing/ledger/codes.ts",
+  "line": "export const LEDGER_CODE = \"{value}\";",
+  "decoys": {
+    "README.md": "# Billing desk\n\nInvoices, ledgers and the codes that tie them together.\n",
+    "src/index.ts": "export * from \"./billing\";\n",
+    "src/billing/index.ts": "export * from \"./ledger/codes\";\nexport const CURRENCY = \"EUR\";\n",
+    "src/billing/invoice.ts": "export interface Invoice {\n  id: string;\n  total: number;\n}\n"
+  },
+  "question": "What value does this project set for its ledger code?",
+  "follow": "Which file sets it?"
+}

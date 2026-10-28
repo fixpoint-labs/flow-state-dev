@@ -21,7 +21,7 @@ import { LabProvider, useLab } from "./lib/lab-data";
 import type { Failure } from "./lib/reads";
 import { ResourceView } from "./surfaces/Resource";
 import { useRoute, type Route } from "./lib/routes";
-import { ChiefOfStaffPanel, ChiefOfStaffView } from "./surfaces/ChiefOfStaff";
+import { ShiftCoordinatorPanel, ShiftCoordinatorView } from "./surfaces/ShiftCoordinator";
 import { Inbox } from "./surfaces/Inbox";
 import { JumpTo, MESSAGE_PREFIX } from "./surfaces/JumpTo";
 import { ProjectView } from "./surfaces/Project";
@@ -163,8 +163,8 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
 
 function Centre({ snapshot, route, gaps, look, devtoolUrl }: { snapshot: LoadedSnapshot; route: Route; gaps: Gaps; look: ThemeLook | undefined; devtoolUrl: string | undefined }) {
   switch (route.level) {
-    case "cos":
-      return <ChiefOfStaffView snapshot={snapshot} gaps={gaps} />;
+    case "shift-coordinator":
+      return <ShiftCoordinatorView snapshot={snapshot} gaps={gaps} />;
     case "roster":
       return <RosterView snapshot={snapshot} team={route.team} gaps={gaps} look={look} />;
     case "inbox":
@@ -195,10 +195,10 @@ function Centre({ snapshot, route, gaps, look, devtoolUrl }: { snapshot: LoadedS
 const reducedMotion = () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /** What the collapsed right panel's strip names, per level that has a panel. */
-const PANEL_NAMES: Partial<Record<Route["level"], string>> = { cos: "DELEGATES", task: "TASK DETAIL" };
+const PANEL_NAMES: Partial<Record<Route["level"], string>> = { "shift-coordinator": "DELEGATES", task: "TASK DETAIL" };
 
 /**
- * The right panel's slot, per level: Chief of Staff's rail, the task's slot,
+ * The right panel's slot, per level: Shift Coordinator's rail, the task's slot,
  * or nothing. v2's rail: 340px on the inspector
  * surface (v2:26, 1219).
  *
@@ -225,8 +225,8 @@ function Panel({
   onToggle: () => void;
 }) {
   let content = null;
-  if (route.level === "cos") {
-    content = <ChiefOfStaffPanel snapshot={snapshot} />;
+  if (route.level === "shift-coordinator") {
+    content = <ShiftCoordinatorPanel snapshot={snapshot} />;
   } else if (route.level === "task") {
     content = <TaskInspector snapshot={snapshot} gaps={gaps} />;
   }

@@ -79,16 +79,13 @@ names the package call it makes.
 |---|---|
 | The worker list, sending, the conversation, busy status | the workforce client's `roster()` and `ensureWorkerSession`, the flow's `respond`, session items, `listSessionRequests` |
 | Workers messaging each other, the Talk panel | `sendMessage`, the received-message item (`workforce:received`), and the message log |
-| A worker's project, and picking it | `setWorkProject`, read back from that action's own answer |
+| A worker's project, and picking it | `setWorkProject`, read back as the conversation's `workProjectId` on the session read |
 | Task cards, the refusal for want of a project | the conversation board's rows, and `projectWorkspace()`'s `no-project` refusal |
 | coder's runs | the task row's `run` link, read as the run session's items |
 | The divider and its *summarized* label | the last request's `historyStart`, and the session's `historySummary` resource |
 
 Not wired yet:
 
-- **A worker's project, read from its conversation.** The package keeps it on the conversation as
-  `workProjectId`, but doesn't show that state to a client, so the screen reads the last
-  `setWorkProject` answer instead. A pick made anywhere else isn't seen (FIX-2280).
 - **Which harness coder runs on.** The roster doesn't carry a worker's settings, so the screen names
   the harness from the run's own steps once it starts (FIX-2281).
 - **A task whose input has an `issue` field** is refused by the coding run as half a feature payload

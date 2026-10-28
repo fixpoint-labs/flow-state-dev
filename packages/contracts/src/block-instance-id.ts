@@ -9,6 +9,9 @@
  *
  * Format: `${requestId}:${path}:${attempt}`
  *   - `path` is a slash-delimited structural locator (e.g. `root/step[0]/iter[2]`).
+ *     The action's block and everything it runs sit under `root`; a request or
+ *     action lifecycle observer has a top-level path of its own beside it,
+ *     `observer[<owner>.<hook>]` (e.g. `observer[request.onStarted]`).
  *   - `attempt` is a 0-indexed retry counter scoped to `(requestId, path)`.
  *
  * Structural segments the framework generates (`step[N]`, `iter[N]`, …) use a
@@ -114,6 +117,18 @@ export function blockPathBranch(branchName: string): string {
  */
 export function blockPathRescue(index: number): string {
   return `rescue[${index}]`;
+}
+
+/**
+ * The path of a request or action lifecycle observer (`request.onStarted`,
+ * `action.onCompleted`, …): a top-level path of its own, beside `root`. An
+ * observer is a block the runtime runs around the action's block, never a run
+ * of it, so it must not share the root's instance id: a second trace there
+ * reads as the root re-running, and the root's own items are dropped from the
+ * canonical log.
+ */
+export function blockPathObserver(hook: string): string {
+  return `observer[${escapeSegmentValue(hook)}]`;
 }
 
 /**

@@ -289,7 +289,7 @@ describe("opening a workstream by asking the project coordinator (V8b: BR-38 to 
     expect(await holds(alice, checkout.sessionId!, "CINDER-0612")).toBe(false);
   });
 
-  it("lets a worker the chief of staff hired for her lead, and refuses the coder (BR-38, BR-42)", async () => {
+  it("lets a worker the Shift Coordinator hired for her lead, and refuses the coder (BR-38, BR-42)", async () => {
     const { setup, as } = await open();
     const alice = await as(ALICE);
     await runAction(alice.client, PROJECT_READER_FLOW, alice.reader, "hire", {
@@ -567,7 +567,7 @@ describe("a project view (V8: BR-12, BR-18)", () => {
   });
 
   it("lists a workstream opened while its Workstreams tab is open, with no reload or navigation", async () => {
-    // A workstream is opened elsewhere, by the chief of staff or a project coordinator in another
+    // A workstream is opened elsewhere, by the Shift Coordinator or a project coordinator in another
     // window, while the user sits on the list. It must show there as it opens, or they read
     // "No workstreams" for work they just asked for.
     const { screen } = dom!;

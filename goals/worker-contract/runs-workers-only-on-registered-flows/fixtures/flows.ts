@@ -9,7 +9,8 @@
  */
 import { z } from "zod";
 import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
-import { sharedResource, workerConfigSchema, writeShared, type WorkerInstallation } from "@flow-state-dev/workforce";
+import { sharedResource, workerConfigSchema, workerMessagesResources, writeShared, type WorkerInstallation } from "@flow-state-dev/workforce";
+import { hearsMessages } from "../../../lib/worker-door.mts";
 
 const message = z.object({ message: z.string() });
 
@@ -32,11 +33,12 @@ function hearing(name: string) {
 
 /** The flows an app registers, and the three that each break one rule, built on `workers`. */
 export function defineFlows(workers: WorkerInstallation) {
-  const bound = { session: workers.session(), resources: { ...workers.resources } };
+  const bound = { session: workers.session(), resources: { ...workers.resources, ...workerMessagesResources } };
 
   /** An app's own worker flow. */
   const triageFlow = defineFlow({
     kind: "triage",
+    internal: { actions: hearsMessages(workers, "triage") },
     cardinality: "collection",
     configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
     ...bound,
@@ -46,10 +48,11 @@ export function defineFlows(workers: WorkerInstallation) {
   /** A coordinator: its delegates live in its session state. */
   const coordinatorFlow = defineFlow({
     kind: "coordinator",
+    internal: { actions: hearsMessages(workers, "coordinator") },
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     session: workers.session({ delegates: z.array(z.string()).default([]) }),
-    resources: { ...workers.resources },
+    resources: { ...workers.resources, ...workerMessagesResources },
     actions: {
       respond: {
         inputSchema: message,
@@ -75,10 +78,11 @@ export function defineFlows(workers: WorkerInstallation) {
    */
   const sharerFlow = defineFlow({
     kind: "sharer",
+    internal: { actions: hearsMessages(workers, "sharer") },
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     session: workers.session(),
-    resources: { ...workers.resources },
+    resources: { ...workers.resources, ...workerMessagesResources },
     actions: {
       respond: hearing("sharer"),
       share: {
@@ -101,6 +105,7 @@ export function defineFlows(workers: WorkerInstallation) {
   /** A flow whose author built it to keep org data of its own: every member reads it. */
   const orgKeeperFlow = defineFlow({
     kind: "org-keeper",
+    internal: { actions: hearsMessages(workers, "org-keeper") },
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     ...bound,
@@ -129,6 +134,7 @@ export function defineFlows(workers: WorkerInstallation) {
   /** Breaks one rule: no action takes a person's message. */
   const doorlessFlow = defineFlow({
     kind: "doorless",
+    internal: { actions: hearsMessages(workers, "doorless") },
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     ...bound,
@@ -143,6 +149,7 @@ export function defineFlows(workers: WorkerInstallation) {
   /** Breaks one rule: declares the configuration by hand, with `workerId` as a number. */
   const numberedFlow = defineFlow({
     kind: "numbered",
+    internal: { actions: hearsMessages(workers, "numbered") },
     cardinality: "collection",
     configSchema: z.object({
       instructions: z.string().optional(),
@@ -159,11 +166,13 @@ export function defineFlows(workers: WorkerInstallation) {
   /** Breaks one rule: declares `writtenBy` optional, so an entry can name nobody. */
   const looseAttributionFlow = defineFlow({
     kind: "loose-attribution",
+    internal: { actions: hearsMessages(workers, "loose-attribution") },
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     session: workers.session(),
     resources: {
       ...workers.resources,
+      ...workerMessagesResources,
       notes: defineResourceCollection({
         pattern: "loose-notes/*",
         scope: "org",

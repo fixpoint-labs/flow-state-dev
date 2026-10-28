@@ -108,7 +108,7 @@ Each record is plain data:
 
 | Field | Description |
 |-------|-------------|
-| `id` | The worker's whole identity, `"<teamId>.<workerName>"` — e.g. `"engineering.lead"`. An org worker's id is its folder name alone, with no dot: `org/workers/chief-of-staff/` is `"chief-of-staff"`, a different worker from `"engineering.chief-of-staff"`. `parseDeclaredWorkerId` reads either shape back. |
+| `id` | The worker's whole identity, `"<teamId>.<workerName>"` — e.g. `"engineering.lead"`. An org worker's id is its folder name alone, with no dot: `org/workers/shift-coordinator/` is `"shift-coordinator"`, a different worker from `"engineering.shift-coordinator"`. `parseDeclaredWorkerId` reads either shape back. |
 | `declared` | The frontmatter exactly as written. Keys are not checked against a list, beyond a required `description` and six refused ones: `persona:`, `workerSkills:`, `workerTools:`, `workerPackages:`, `workerId:` and `teamInstructions:`. |
 | `body` | The Markdown below the frontmatter, verbatim. Empty when the worker has no instructions. |
 
@@ -419,7 +419,9 @@ that worker on every turn with `installation.resolveWorker(ctx, flowKind)`. `hir
 worker flow that doesn't declare it. The same session state (`installation.sessionStateShape`)
 carries `workProjectId` (`WORK_PROJECT_STATE_KEY`), the project a user set their own conversation
 to work in, as `<visibility>/<id>`. Only the `setWorkProject` action writes it, and a create that
-seeds it is refused with a 400 naming the field (see [Projects](#projects)).
+seeds it is refused with a 400 naming the field (see [Projects](#projects)). A user's session read,
+the session listing and the state read show it, read only, so a screen can name the project. It is
+not `projectId`: that readonly field is the project coordinator's link to its project, set at create.
 
 A worker takes a user's message through its flow's **door**: the one public action the flow
 declares with `userMessage` and a `{ message }` input. `openInventory` writes it on the worker's
@@ -1625,7 +1627,8 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   the repository of the project the run works for, with the project's files beside the checkout, or
   the project's files alone when it has no repository. A run in a workstream's session, or a task
   session filed from one, works for that workstream, and is refused `not-the-owner` when the run's
-  owner isn't the workstream's. A task session filed from a project's conversation, or from a
+  owner isn't the workstream's, and `not-a-member` when the owner was taken off the
+  project's members. A task session filed from a project's conversation, or from a
   conversation set to a project with `setWorkProject`, works in that project, and one filed from a
   conversation with no project works in the project its task names as `input.project`, for that
   project's members only (`not-a-member`). A task filed from a workstream, a project's conversation
@@ -1669,6 +1672,25 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   and Error Reporter flows declare it, and a worker flow of your own adds
   `[SET_WORK_PROJECT_ACTION]: setWorkProjectAction` to its `actions`. A project coordinator's
   conversation takes its project from `ensureWorkerSession({ worker, projectId })` instead.
+
+- **`projectSourceCapability({ workspace })`** lets a worker read the project its session works in,
+  with no coding run. Its one preset, `read`, is off until a worker's own file names it
+  (`capabilities: { projectSource: [read] }`), and gives that worker three tools:
+  `globProjectSource { pattern?, limit? }` lists paths, `readProjectSource { path, startLine?, endLine? }`
+  reads one file's lines, and `grepProjectSource { pattern, prefix?, maxResults? }` searches.
+  `workspace` is the host the app's coding runs use, built on `projectWorkspace()`. Each tool asks that
+  host's source for the session's project, so a read is refused for the same reasons a coding run
+  is, and the refusal is the tool's result, `{ kind: "refused", reason, message }`. The host's read
+  view (`readSource`, from `@flow-state-dev/workspace`) answers: a repository at the remote's default
+  branch, at one commit each result names, or the project's files when it has no repository. Results
+  are capped (500 paths; 2,000 lines or 256 KB; 200 matches) and say when they were cut. No tool
+  writes. A host with no read view is refused when the capability is built.
+
+  ```ts
+  const workspace = localWorkspaceHost({ root, remotes: { allow: ["github.com"] }, source: projectWorkspace() });
+  defineAgentWorkerFlow({ installation, model, uses: [projectSourceCapability({ workspace })] });
+  // and the same `workspace` on the coding workers' harnessManager
+  ```
 
 - **`projectMcpTools(servers, { operator })`** is a resolver for a coding harness's per-run
   tools, in `claudeCodeAgent`'s `mcpTools` shape. It finds the run's project and owner the way
@@ -2267,7 +2289,7 @@ block's `uses`. The tool's description lists the workers the send would take, by
 description, leaving out the sender and any worker that hears only in its tasks' sessions.
 
 ```json
-{ "to": "chief-of-staff", "text": "What's the codename for the spring launch?" }
+{ "to": "shift-coordinator", "text": "What's the codename for the spring launch?" }
 ```
 
 Send to talk; call when the worker needs to use the answer now; file a task for work that should be tracked.
@@ -2569,6 +2591,7 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 | `parseWorkstreamEntry(path, state)` | One entry read off its storage key and checked against `workstreamEntrySchema`, with its `project`, `owner` and `id`; `undefined` for a key that isn't an entry. Also from `./browser`, for a browser reading entries through the resource routes. |
 | `projectCoordinatorTools` | `{ readProject }`, the project coordinator's tool, which marks each workstream `yours` when the user it talks to owns it: put it in `defineCoordinatorFlow({ agent: { catalog } })` and name it in the coordinator's `tools:`. Add `setBrief` and `setRepository` from `defineProjectBlocks()` for it to manage its own project. |
 | `linkedProjectOf(state)` | The `{ visibility, id }` a session's state links it to by its `projectId`, or `undefined`. |
+| `projectSourceCapability({ workspace })` / `PROJECT_SOURCE_CAPABILITY` | The `projectSource` capability: a `read` preset a worker names in its file, with `globProjectSource`, `readProjectSource` and `grepProjectSource`, which read the session's project through the host's run source and read view. The tools' output schemas are exported as `globProjectSourceOutputSchema`, `readProjectSourceOutputSchema` and `grepProjectSourceOutputSchema`. See [Projects](#projects). |
 | `projectWorkspace({ checkouts? })` / `projectWorkspaceCapability` / `ProjectCheckout` | A run source for a coding run on a project: from the workstream its session leads or was filed from, the project its conversation belongs to or was set to, or the project its task names. `checkouts` (`ProjectCheckout[]`: `{ remote, checkout, projects, baseRef? }`) sends the listed shared projects' runs, in their own organization, to a checkout on this machine. The capability holds the collections it reads. See [Projects](#projects). |
 | `createWorkerLookup({ installation })` | Which standard worker a task's name means. Returns `{ find, flowKind, state, filingCheck }`. `find(name)` answers `{ found: true, flowId }`, or `{ found: false, reason, message }` with `reason` `not-found` or `takes-no-tasks` (a worker whose flow declares no `work` task entry). `flowKind` and `state` are a `per-task` dispatcher's targets: the flow of the worker the task's `assignee` names, and a starting state naming that worker. |
 | `WORKER_TASK_ENTRY` | `"work"`, the task entry a worker flow takes tasks through. |
