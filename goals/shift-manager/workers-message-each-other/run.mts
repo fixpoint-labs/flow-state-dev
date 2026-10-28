@@ -5,7 +5,8 @@
  * Controls: GOAL_CONTROL=<name> (controls.mts names each)
  *           (each runs the legs it needs, unless GOAL_LEGS says otherwise)
  * Before:   GOAL_COMMIT=<sha> serves that commit, from its own tree and install
- * Legs:     GOAL_LEGS=1,1b,2,3b,3,4,6,7,8,10,10b,10c,5 (default: all, in that order)
+ * Legs:     GOAL_LEGS=1,1b,2,3b,3,4,6,7,8,9,10,10b,10c,5 (default: all, in that order)
+ *           GOAL_LEG9=<sub-leg,...> runs only those of leg 9 (legs-delivery.mts names them)
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
@@ -40,9 +41,11 @@ import {
 } from "./legs.mts";
 import { leg10, leg10b, leg10c, WAIT_DEFAULT_MS } from "./legs-calls.mts";
 import { leg6, leg7, leg8, setupTargets, type Targets } from "./legs-targets.mts";
+import { leg9, SUB_LEGS, type Servers, type SubLeg } from "./legs-delivery.mts";
+import { faultPatches, type FaultName } from "./faults.mts";
 
 const SCRATCH = goalTmpDir("workers-message");
-const ORDER = ["1", "1b", "2", "3b", "3", "4", "6", "7", "8", "10", "10b", "10c", "5"] as const;
+const ORDER = ["1", "1b", "2", "3b", "3", "4", "6", "7", "8", "9", "10", "10b", "10c", "5"] as const;
 const say = (s: string) => console.error(`[messages ${new Date().toISOString().slice(11, 19)}] ${s}`);
 
 const controlName = process.env.GOAL_CONTROL ?? "";
@@ -58,6 +61,13 @@ const legs = new Set(
     .filter(Boolean),
 );
 for (const l of legs) if (!(ORDER as readonly string[]).includes(l)) throw new Error(`unknown leg "${l}" in GOAL_LEGS`);
+const subLegs = new Set(
+  (process.env.GOAL_LEG9 ?? (control?.subLegs ?? SUB_LEGS).join(","))
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+) as Set<SubLeg>;
+for (const s of subLegs) if (!(SUB_LEGS as readonly string[]).includes(s)) throw new Error(`unknown sub-leg "${s}" in GOAL_LEG9`);
 
 /** The tree a run serves: this checkout, or another commit's own tree and install. */
 function checkoutFor(commit: string | undefined): { root: string; commit: string; describe: string } {
@@ -186,7 +196,14 @@ await runGoal(async () => {
   const storeDir = join(SCRATCH, "stores", RUN_STAMP);
   mkdirSync(storeDir, { recursive: true });
   const store = join(storeDir, "devteam.sqlite");
-  const serve = (label: string) =>
+  // Leg 9's faults go on before the control's patches, which may anchor on the same lines.
+  const faultLog = join(storeDir, "faults.ndjson");
+  const release = join(storeDir, "release-held-resends");
+  const withFaults = (faults: readonly FaultName[]) =>
+    faults.length === 0
+      ? env
+      : { ...modulePatchEnv([...faultPatches(faults), ...(control?.patches ?? [])], checkout.root, mark), GOAL_FAULT_LOG: faultLog, GOAL_FAULT_RELEASE: release };
+  const serve = (label: string, faults: readonly FaultName[] = []) =>
     startShiftManager({
       scratch: SCRATCH,
       label: `devteam-${label}`,
@@ -194,7 +211,7 @@ await runGoal(async () => {
       pages,
       // The coder's scripted run paces its steps, so leg 8 can message a task while it runs.
       // A call with no deadline waits the host default, short here so leg 10 can time it.
-      env: { DEVTEAM_STORE: store, DEVFORCE_LAB_STEP_MS: "6000", DEVTEAM_WAIT_DEFAULT_MS: String(WAIT_DEFAULT_MS), ...env },
+      env: { DEVTEAM_STORE: store, DEVFORCE_LAB_STEP_MS: "6000", DEVTEAM_WAIT_DEFAULT_MS: String(WAIT_DEFAULT_MS), ...withFaults(faults) },
       root: join(checkout.root, "packages", "shift-manager"),
       tsx: join(checkout.root, "node_modules", ".bin", "tsx"),
       timeoutMs: 180_000,
@@ -271,6 +288,34 @@ await runGoal(async () => {
         await runLeg("8", () => leg8(world, targets));
       }
     }
+    // Leg 9 (FIX-2240) restarts the server per sub-leg, each with its fault; the world's clients follow it.
+    const servers: Servers = {
+      faultLog,
+      release,
+      restart: async (faults, label) => {
+        await served.stop();
+        served = await serve(label, faults);
+        world.alice = connect(shipped, served.origin, alicePerson);
+        world.bob = connect(shipped, served.origin, bobPerson);
+        say(`${label}: serving at ${served.origin}${faults.length === 0 ? "" : ` with ${faults.join(", ")}`}`);
+      },
+      crashed: async (timeoutMs) => {
+        let timer: NodeJS.Timeout | undefined;
+        const late = new Promise<boolean>((resolve) => (timer = setTimeout(() => resolve(false), timeoutMs)));
+        try {
+          return await Promise.race([served.exited.then(() => true), late]);
+        } finally {
+          clearTimeout(timer);
+        }
+      },
+    };
+    await runLeg("9", async () => {
+      try {
+        return await leg9(world, servers, subLegs);
+      } finally {
+        await servers.restart([], "9-done");
+      }
+    });
     await runLeg("10", () => leg10(world));
     await runLeg("10b", () => leg10b(world));
     await runLeg("10c", () => leg10c(world));
@@ -309,11 +354,15 @@ await runGoal(async () => {
     failures.push(...r.failures);
   }
   if (control !== undefined) {
-    const named = failures.some((f) => f.startsWith(`${control.assertion} `));
+    // A leg 9 control must fail every sub-leg it names, on what the sub-leg grades: a setup failure
+    // or a throw means the scenario never ran, so it counts for nothing.
+    const required = control.subLegs?.map((s) => `9:${s}`) ?? [control.assertion];
+    const graded = failures.filter((f) => !/^\S+ — (setup|threw):/.test(f));
+    const missed = required.filter((a) => !graded.some((f) => f.startsWith(`${a} `)));
     failures.unshift(
-      named
-        ? `control ${control.name}: failed on ${control.assertion}, as it must`
-        : `control ${control.name}: did NOT fail on ${control.assertion}, so the check can't see what the control removes`,
+      missed.length === 0
+        ? `control ${control.name}: failed on ${required.join(" and ")}, as it must`
+        : `control ${control.name}: did NOT fail on ${missed.join(" and ")}, so the check can't see what the control removes`,
     );
   }
   return { failures, evidence: `legs ${[...legs].join(", ")} PASS on ${checkout.describe}; worker turns on the models their files name (openai/gpt-5.4-mini, the Shift Coordinator on anthropic/claude-haiku-5-5)` };
