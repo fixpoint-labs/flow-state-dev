@@ -50,6 +50,7 @@ import { currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { TASK_ID_STATE_KEY } from "../../../packages/workforce/src/workers/keys.ts";
 import { messageLogOf } from "../../../packages/workforce/src/messages/message-log.ts";
+import type { WorkerMessageRow } from "../../../packages/workforce/src/messages/log-row.ts";
 import { MESSAGE_RECEIVED_ENTRY } from "../../../packages/workforce/src/messages/keys.ts";
 import {
   createWorkerInstallation,
@@ -356,8 +357,8 @@ function buildHost(filename: string, settings: { userDeadlineMs?: number } = {})
     }
   });
   const doerWork = sequencer({ name: "holds-doer-turn", inputSchema: doorInput }).step(work).step(ask);
-  // A peer's message to this session, as a send delivers one: a row in the
-  // user's message log, and its delivery dispatched here (leg a pins what it does).
+  // A peer's message to this session, as a send delivers one: an unconfirmed
+  // row in the user's message log, and its delivery dispatched here.
   const sendMessage = markDispatcher(
     handler({
       name: "holds-send-message",
@@ -378,7 +379,7 @@ function buildHost(filename: string, settings: { userDeadlineMs?: number } = {})
           toSession: sessionId,
           toFlow: "doer",
           hop: 1,
-          status: "delivered",
+          status: "unconfirmed",
           at: Date.now()
         } as never);
         await dispatchThroughSeam(ctx, {
@@ -532,6 +533,11 @@ async function untilWaiting(run: Run, id: string, leg: string): Promise<boolean>
   run.failures.push(`${leg}:waiting — the task never waited on a user; it is ${show(await run.h.byId(id))}`);
   return false;
 }
+/** A message's row in the user's message log, as the server stored it. */
+async function messageRowOf(run: Run, id: string): Promise<WorkerMessageRow | undefined> {
+  const stored = await run.h.runtime.stores.resourceState.getByPrefix("user", `${USER}:~org:${ORG}`, `workforce/messages/${id}`);
+  return Object.values(stored).map((value) => value.state as WorkerMessageRow).find((row) => row.id === id);
+}
 /** The item a task's stop is listed as, and whether it has left the list. */
 async function itemGone(run: Run, id: string): Promise<boolean> {
   return (await pendingIn((await runOf(run, id)).sessionId)).length === 0;
@@ -569,14 +575,14 @@ async function legA(run: Run): Promise<void> {
   }
   const { sessionId } = await runOf(run, id);
   const pending = run.tell.over("a · the stop in the Inbox's pending read", await pendingIn(sessionId));
-  // A message to the session meanwhile (rule 10, epic D2): pinned as it is today, so FIX-2070's change is seen.
-  await run.h.http.act("doer", sessionId!, "sendMessage", {});
+  // A message to the session meanwhile (epic FIX-2070 D3): it queues behind the user's stop, and the task keeps waiting.
+  const messageId = (await run.h.http.act("doer", sessionId!, "sendMessage", {})) as string;
   await run.h.idle();
-  const heard = readProofs().filter((p) => p.kind === "message" && p.sessionId === sessionId);
+  const heardWhileWaiting = readProofs().filter((p) => p.kind === "message" && p.sessionId === sessionId);
+  const queued = await messageRowOf(run, messageId);
   const still = await run.h.byId(id);
-  // (Its reply comes back to this same session, so a second turn is the reply's.)
-  if (heard.length === 0 || heard.some((p) => p.claimed !== false) || stopHoldOf(still) === undefined || proofsOf(id, "work").length !== 1) {
-    run.failures.push(`a:message-while-waiting — wanted a message to the waiting session to run beside the parked request, outside the task, which keeps waiting; turns ${show(heard.map((p) => p.claimed))}, task ${still?.status}/${show(still?.holds)}`);
+  if (heardWhileWaiting.length !== 0 || queued?.status !== "unconfirmed" || queued.queuedBehind !== "user" || stopHoldOf(still) === undefined || proofsOf(id, "work").length !== 1) {
+    run.failures.push(`a:message-while-waiting — wanted a message to the waiting session to queue behind the user's stop (no turn yet, its row unconfirmed and queued behind "user") while the task keeps waiting; turns ${heardWhileWaiting.length}, row ${show(queued && { status: queued.status, queuedBehind: queued.queuedBehind })}, task ${still?.status}/${show(still?.holds)}`);
   }
   // Another tenant and another org, with the stop's user id: told the stop doesn't exist.
   const tenant = await answer(run, id, { action: "submit", data: "us-east" }, { tenant: "t_other" });
@@ -593,11 +599,20 @@ async function legA(run: Run): Promise<void> {
   if (done?.status !== "completed" || done.attempts !== 1 || proofsOf(id, "work").length !== 1 || asked.length !== 1 || show((asked[0]?.result as any)?.answer) !== show("eu-west")) {
     run.failures.push(`a:once — wanted it completed on try 1 with the answer, its work run once; it is ${done?.status} on try ${done?.attempts}, work ${proofsOf(id, "work").length}, asked ${show(asked.map((p) => p.result))}`);
   }
+  // The stopped request ended, so the queued message lands: one turn, after the task completed, outside it.
+  await run.h.until(async () => (await messageRowOf(run, messageId))?.status === "delivered", 15_000);
+  await run.h.idle();
+  const landed = await messageRowOf(run, messageId);
+  // (Its reply comes back to this same session, so a second turn is the reply's.)
+  const heard = readProofs().filter((p) => p.kind === "message" && p.sessionId === sessionId);
+  if (landed?.status !== "delivered" || landed.queuedBehind !== undefined || heard.length === 0 || heard.some((p) => p.claimed !== false) || heard.some((p) => p.at < (done?.completedAt ?? Infinity))) {
+    run.failures.push(`a:message-after-stop — wanted the queued message to land once the stopped request ended: its row delivered, no longer queued, its turn after the task completed and outside it; row ${show(landed && { status: landed.status, queuedBehind: landed.queuedBehind })}, turns ${show(heard.map((p) => ({ claimed: p.claimed, at: p.at })))}, task completed at ${done?.completedAt}`);
+  }
   const again = await answer(run, id, { action: "submit", data: "us-east" });
   if (!(await itemGone(run, id)) || again.status !== 409) {
     run.failures.push(`a:item-closed — wanted the item off the pending list and a second answer told it's resolved; listed ${(await pendingIn(sessionId)).length}, second answer ${again.status}`);
   }
-  run.notes.push(`a: waited past ${3 * LEASE_MS} ms on try 1, listed (${pending.length}), refused across tenant and org (${tenant.status}/${org.status}), answered once, the piece's notice ran during the stop; a message meanwhile ran at once outside the task (today's rule 10 behaviour, pinned)`);
+  run.notes.push(`a: waited past ${3 * LEASE_MS} ms on try 1, listed (${pending.length}), refused across tenant and org (${tenant.status}/${org.status}), answered once, the piece's notice ran during the stop; a message meanwhile queued behind the stop and landed after the task completed, outside it`);
 }
 
 /** b. Deadlines: input unhandled fails try 1, caught completes, approval is a no that runs no step again. */

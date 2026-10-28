@@ -171,7 +171,8 @@ function buildHost(filename: string) {
   };
 
   // A peer's message arriving mid-task, addressed to this task session: one
-  // delivered row in the user's message log, and its delivery dispatched.
+  // row in the user's message log, unconfirmed as a send writes it, and its
+  // delivery dispatched.
   const queueMessage = markDispatcher(
     handler({
       name: "settles-queue-message",
@@ -192,7 +193,7 @@ function buildHost(filename: string) {
           toSession: sessionId,
           toFlow: "doer",
           hop: 1,
-          status: "delivered",
+          status: "unconfirmed",
           at: Date.now()
         } as never);
         await dispatchThroughSeam(ctx, {
