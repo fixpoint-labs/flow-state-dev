@@ -43,12 +43,21 @@ linked PRs or harness picker. The design and the decisions behind it are in the 
 ## Run it
 
 The lab runs against a real model, through the AI Gateway (`AI_GATEWAY_API_KEY`), on a SQLite
-store. Build the pages once, then serve them with the lab's workers:
+store. One command builds the pages and serves them with the lab's workers:
+
+```bash
+pnpm --filter @flow-state-dev/claude-code-style dev
+```
+
+That builds the pages and serves them on `fsdev dev`, from the repository root:
 
 ```bash
 pnpm --filter @flow-state-dev/claude-code-style build
 fsdev dev --config labs/claude-code-style/fsdev.config.mts --app @flow-state-dev/claude-code-style
 ```
+
+Open the address it prints as `App:`. The pages call the lab's API, so a plain Vite server shows
+only 404s.
 
 `desk.coder` runs through Claude Code, so the host also needs `ANTHROPIC_API_KEY`. Its settings
 are read from the environment, all optional:
@@ -95,7 +104,7 @@ and on a flow over 200 lines; `--wired` also fails while a fixture is left in `s
 <!-- inventory:start -->
 | Kind | Files | Lines |
 |---|---:|---:|
-| Configuration | 17 | 381 |
+| Configuration | 17 | 390 |
 | React UI | 20 | 1688 |
 | Small flows | 2 | 201 |
 | Checks (not app code) | 7 | 1158 |

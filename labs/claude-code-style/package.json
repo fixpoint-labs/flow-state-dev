@@ -9,7 +9,7 @@
     ".": "./cli/index.ts"
   },
   "scripts": {
-    "dev": "vite",
+    "dev": "vite build && cd ../.. && tsx packages/cli/bin/fsdev.ts dev --config labs/claude-code-style/fsdev.config.mts --app @flow-state-dev/claude-code-style",
     "build": "vite build",
     "typecheck": "node ../../scripts/typecheck.mjs",
     "test": "vitest run --root .",
