@@ -185,7 +185,7 @@ Build the action with `harnessSessionDoor`, declare it on the coding flow, and g
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
-import { harnessManager, harnessSessionDoor } from "@flow-state-dev/harness-manager";
+import { harnessManager, harnessSessionDoor, taskIssueSegment } from "@flow-state-dev/harness-manager";
 import {
   conversationLedgers,
   filingConversationBoard,
@@ -196,7 +196,7 @@ import {
 } from "@flow-state-dev/workforce";
 
 const manager = harnessManager({ ledgers: conversationLedgers, harness /* , phase, workspace, … */ });
-const runOf = (row) => ({ issue: row.id, phase: "answer" });
+const runOf = (row) => ({ issue: taskIssueSegment(row.id), phase: "answer" });
 
 defineFlow({
   kind: "coder",
@@ -218,7 +218,7 @@ defineFlow({
 });
 ```
 
-- `runOf` names the issue and phase a row's run is keyed by, the values the manager keys its run record by, or `undefined` for a row no manager behind this door runs.
+- `runOf` names the issue and phase a row's run is keyed by, the values the manager keys its run record by, or `undefined` for a row no manager behind this door runs. A task that names no issue is keyed by `taskIssueSegment(row.id)`: its id when the id fits a checkout path and a branch name, and a short hash of it otherwise.
 - `onSteered` starts the turn a message is owed when the task was running nothing because it was waiting on work it filed.
 - The internal `STEER_TURN_ENTRY` entry runs the turn a late message is owed: the task again, on the same attempt.
 

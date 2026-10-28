@@ -129,6 +129,16 @@ export interface TaskSettledOptions {
   readonly onRouted?: BlockDefinition<any, any>;
 }
 
+/**
+ * A completed task's answer, as a line the user reads: its output when that
+ * is text (an agent worker's answer), or its `answer` (a coder's run, whose
+ * output also carries its branch and commits). `undefined` when blank or absent.
+ */
+export function answerTextOf(output: unknown): string | undefined {
+  const text = typeof output === "string" ? output : (output as { answer?: unknown } | null | undefined)?.answer;
+  return typeof text === "string" && text.trim() !== "" ? text : undefined;
+}
+
 /** What a conversation-result task's ending hands {@link TaskSettledOptions.onRouted}. */
 export const routedEndingSchema = z.object({
   taskId: z.string(),
@@ -292,8 +302,8 @@ const runPass = handler({
 
 /** A conversation-result task's answer as it lands: the delegate's reply itself, or the ending in words. */
 function resultLine(notice: TaskNotice, row: { goal: string; title?: string; assignee?: string }): string {
-  if (notice.ending === "completed" && typeof notice.output === "string" && notice.output.trim() !== "") return notice.output;
-  return noticeText(notice, row);
+  const answer = notice.ending === "completed" ? answerTextOf(notice.output) : undefined;
+  return answer ?? noticeText(notice, row);
 }
 
 /**

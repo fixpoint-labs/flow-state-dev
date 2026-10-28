@@ -276,7 +276,7 @@ A user talks to a coding run by typing in the run's own session. `harnessSession
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
-import { harnessManager, harnessSessionDoor } from "@flow-state-dev/harness-manager";
+import { harnessManager, harnessSessionDoor, taskIssueSegment } from "@flow-state-dev/harness-manager";
 import {
   conversationLedgers,
   filingConversationBoard,
@@ -288,7 +288,7 @@ import {
 
 // `harness` is the slot both the manager and the door are given.
 const manager = harnessManager({ ledgers: conversationLedgers, harness /* , phase, workspace, … */ });
-const runOf = (row) => ({ issue: row.id, phase: "answer" });
+const runOf = (row) => ({ issue: taskIssueSegment(row.id), phase: "answer" });
 
 defineFlow({
   kind: "coder",
@@ -327,7 +327,7 @@ A refusal fails the request, with the reason in words as the error's message and
 
 The last three read as they do on Workforce's door (`LINE_STEER_REFUSALS`).
 
-The door reads nothing from the request but `message`. `board` must resolve from the session's own fields, never from the request. `runOf` names the `issue` and `phase` a row's run is keyed by, as the manager keyed its run record, or `undefined` for a row no manager behind the door runs.
+The door reads nothing from the request but `message`. `board` must resolve from the session's own fields, never from the request. `runOf` names the `issue` and `phase` a row's run is keyed by, as the manager keyed its run record, or `undefined` for a row no manager behind the door runs. A task that names no issue is keyed by `taskIssueSegment(row.id)`: its id when the id fits a checkout path and a branch name, and a short hash of it otherwise.
 
 ### Answering a worker's message
 

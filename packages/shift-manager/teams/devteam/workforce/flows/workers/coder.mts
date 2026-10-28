@@ -58,6 +58,7 @@ import {
   harnessManager,
   harnessSessionDoor,
   harnessTalkTurn,
+  taskIssueSegment,
   type HarnessFeeds,
   type HarnessJudge,
   type PhaseSpec,
@@ -192,9 +193,9 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
   const runOf = (row: Task) => {
     const input = row.input as { issue?: unknown; phase?: unknown } | undefined;
     if (typeof input?.issue === "string" && typeof input.phase === "string") {
-      return { issue: row.id, phase: input.phase };
+      return { issue: taskIssueSegment(row.id), phase: input.phase };
     }
-    return namesFeatureWork(input) ? undefined : { issue: row.id, phase: options.answerPhase.phase };
+    return namesFeatureWork(input) ? undefined : { issue: taskIssueSegment(row.id), phase: options.answerPhase.phase };
   };
 
   // The board this session's run is on: the one of the session its task was

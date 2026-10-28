@@ -139,6 +139,7 @@ import {
   placeFor,
   releaseCheckout,
   runBoardSegment,
+  taskIssueSegment,
   type RunLocation,
   type RunPrincipal,
   type OwnershipBounds,
@@ -1830,14 +1831,15 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       });
 
       // A row naming no issue and phase (a task a conversation filed) runs as
-      // this manager's phase, with its task id standing in for the issue. So
+      // this manager's phase, with its task id standing in for the issue
+      // (encoded by `taskIssueSegment` when the grammar refuses it). So
       // does a feature row on a board read from the claim: such a board mints
       // its own task ids, unique in their partition, so there the task id
       // keeps two rows with one payload out of one tree, as the derived id
       // does on a fixed board.
       const payload = taskPayload(input, claim === null);
       const phaseName = payload?.phase ?? phase.phase;
-      const issue = payload === undefined || claim !== null ? input.taskId : payload.issue;
+      const issue = payload === undefined || claim !== null ? taskIssueSegment(input.taskId) : payload.issue;
       if (payload !== undefined) {
         assertFeatureRowIdentity(input.taskId, payload.issue, phaseName, phase.phase, claim === null);
       }
