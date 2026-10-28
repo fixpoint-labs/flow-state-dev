@@ -249,7 +249,7 @@ function toBoardTask(row: Record<string, any>): BoardTask {
 }
 
 /** A conversation's items as the entries the screen draws. */
-function toEntries(items: readonly Item[], workers: ReadonlySet<string>): ConversationEntry[] {
+export function toEntries(items: readonly Item[], workers: ReadonlySet<string>): ConversationEntry[] {
   const rows = boardRows(items);
   const entries: ConversationEntry[] = [];
   for (const item of items) {
@@ -260,7 +260,9 @@ function toEntries(items: readonly Item[], workers: ReadonlySet<string>): Conver
       const taskId = /\((task_[^)\s]+)\)/.exec(textOf(item))?.[1] ?? "";
       const row = rows.get(taskId);
       const task = row === undefined ? undefined : toBoardTask(row);
-      entries.push({ kind: "result", id: item.id, taskId, from: item.agentName, text: task?.result ?? textOf(item), ...(task?.status === "done" ? {} : { failed: true }) });
+      // A line with no task id is a completed task's answer, said as is (`resultTo: "conversation"`).
+      const failed = taskId !== "" && task?.status !== "done";
+      entries.push({ kind: "result", id: item.id, taskId, from: item.agentName, text: task?.result ?? textOf(item), ...(failed ? { failed: true } : {}) });
     } else if (item.type === "message" && item.role === "assistant") {
       const text = textOf(item);
       if (text.trim() !== "") entries.push({ kind: "assistant", id: item.id, text });
