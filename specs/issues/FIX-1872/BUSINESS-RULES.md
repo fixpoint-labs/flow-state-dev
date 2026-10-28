@@ -23,7 +23,7 @@ are cited as ER-n.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-8 | A post row completes | Its reply lands once as a line under the delegate's name, releases best fit's hold when that delegate held it, and is kept in its round when the round is open. It wakes no coordinator turn of its own; a round it closes sends answers on as today | CI · rerun |
-| BR-9 | A post row fails, its run is cancelled, or the reply is empty | No line. The row counts as ended for its round, which closes if nothing else is out. It wakes no turn of its own, and never the generic "task failed" line | CI · the goal, leg d |
+| BR-9 | A post row fails, its run is cancelled, or the reply is empty | No line. The row counts as ended for its round, which closes if nothing else is out. It wakes no turn of its own, and never the generic "task failed" line. *Amended after merge (FIX-2266):* a failure lands one line under the delegate's name, `<delegate> couldn't answer: <the error>`, once; still no turn and never the generic line. A cancel or an empty reply stays silent | CI · the goal, leg d |
 | BR-10 | A post row's ending is sent more than once: board touches, a lost first send, a restart | It is acted on once, while the row still owes it. One line | CI · the goal, leg b and its control |
 | BR-11 | A second settle reaches a post row: a stale attempt, or a turn still running after a cancel | Refused by the claim ticket. Nothing lands | CI · the goal, leg b |
 | BR-23 | A delegate's turn on a post row runs longer than the row's lease | The claim gate on the post entry renews the lease from claim to the settle, as for any task. The board doesn't hand the row out again, and one line lands | CI |
@@ -56,7 +56,7 @@ are cited as ER-n.
 ## Failure taxonomy
 
 Nothing here is fatal to a conversation. A delegate that fails, is cancelled or is late costs its
-own line and nothing else (BR-9, BR-12). A post that can't be filed is recorded `failed` and the
+own line and nothing else (BR-9, BR-12); a failure says so in that line (BR-9 as amended). A post that can't be filed is recorded `failed` and the
 others go on (BR-3). Refusals at load (BR-18) stop the app from starting with a stale worker file.
 Nothing retries a post: a failed post row has one attempt, as a delivery has today.
 

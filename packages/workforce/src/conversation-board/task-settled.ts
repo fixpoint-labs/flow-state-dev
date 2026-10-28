@@ -24,8 +24,9 @@
  *   FIX-2122) is in no round: it is heard as any task's the conversation
  *   filed, by the one decision above. A routed failure whose brief names
  *   the judgment turn's filing call ({@link filedByTurn}) is said after the
- *   routing's handling too, under the same decision (FIX-2115): the routing
- *   itself only ends that delegate's part.
+ *   routing's handling too, under the same decision (FIX-2115). A policy's
+ *   routed failure is said after it as one line, naming the delegate and the
+ *   error, and wakes no turn (FIX-1872 BR-9 as amended, FIX-2266).
  *
  * An ending frees its session (FIX-2080), so each notice also runs the board's
  * pass when a row is startable: the pass, not this entry, starts it.
@@ -297,6 +298,14 @@ function resultLine(notice: TaskNotice, row: { goal: string; title?: string; ass
 }
 
 /**
+ * A routed task's failure as it lands under a policy's routing: who couldn't
+ * answer, and why, never the task's id or goal (that is the user's own message).
+ */
+function routedFailureLine(notice: TaskNotice, row: { assignee?: string }): string {
+  return `${row.assignee ?? "The delegate"} couldn't answer: ${notice.error ?? "no error was recorded"}`;
+}
+
+/**
  * Build the `onTaskSettled` internal entry: orchestration's entry, with the
  * conversation's handling. It defers on the reply line, so the writer's send
  * and the pass's resend wait the same way; two copies of one notice are acted
@@ -311,9 +320,10 @@ export function taskSettledEntry(options: TaskSettledOptions) {
    * wakes that turn under the conversation's policy, as any task the turn
    * filed does, so it can file the work again (FIX-2115). A cancel of one is
    * not: whoever cancelled it knows, as FIX-2083's cancel rule has it. A
-   * policy's round says nothing after its routing: its failure only ends that
-   * delegate's part. Anything else, and any ending with no routing layer,
-   * lands as a line now.
+   * policy's failure is said after its routing, as one line under the
+   * delegate's name with its error, and wakes no turn; its cancel says
+   * nothing (FIX-1872 BR-9 as amended, FIX-2266). Anything else, and any
+   * ending with no routing layer, lands as a line now.
    */
   const settleConversationResult = async (ctx: BlockContext, ref: TaskCollectionRef, row: Task, notice: TaskNotice): Promise<Settled> => {
     const key = noticeKey(notice);
@@ -341,6 +351,10 @@ export function taskSettledEntry(options: TaskSettledOptions) {
       if (notice.ending === "errored" && filedByTurn(brief)) {
         const act = decideNotice(notice, options.policy(ctx)).act === "wake-turn" ? "wake-turn" : "line";
         return { act, routed, notice: notice as Settled["notice"], text: noticeText(notice, row), ...(row.assignee !== undefined ? { worker: row.assignee } : {}) };
+      }
+      // A policy's failure is said after its routing, once, under the delegate's name (FIX-1872 BR-9 as amended).
+      if (notice.ending === "errored" && brief !== undefined) {
+        return { act: "line", routed, notice: notice as Settled["notice"], text: routedFailureLine(notice, row), ...(row.assignee !== undefined ? { worker: row.assignee } : {}) };
       }
       // `none` still carries `notice`: the routing runs, and nothing is said after it.
       return { act: "none", routed, notice: notice as Settled["notice"] };

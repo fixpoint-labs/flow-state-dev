@@ -234,13 +234,17 @@ function grade(o: any, restart: { kill: any; restart: any }): { failures: string
   // ---- b: a failed delegate ---------------------------------------------------
   const fails = o.b.fails;
   const failedRow = rows(fails.sessionId).find((r) => r.postId === fails.post.requestId && r.round === 0 && r.delegate.worker === third);
-  const failedLines = linesBy(o.read.fails.lines, third, w.fails).length;
-  if (failedRow?.rowStatus !== "errored" || failedLines !== 0) {
-    fail("b:failed", `${third} fails the message; wanted its task errored and no line by it; task ${show(failedRow?.rowStatus)}, lines ${failedLines}`);
+  // Each failed task says, once, that it couldn't answer and why (FIX-1872 BR-9 as amended), never an
+  // answer carrying the word. Round 1 hands it the other's answer, which carries its fail mark, so it fails twice.
+  const failedLines = o.read.fails.lines.filter((l) => l.agentName === third).map((l) => l.text);
+  const failedTasks = rows(fails.sessionId).filter((r) => r.postId === fails.post.requestId && r.delegate.worker === third && r.rowStatus === "errored").length;
+  const failedSays = `${third} couldn't answer: ${third} fails on this message`;
+  if (failedRow?.rowStatus !== "errored" || failedLines.length !== failedTasks || failedLines.some((text) => text !== failedSays)) {
+    fail("b:failed", `${third} fails the message; wanted its task errored and one line by it per failed task (${failedTasks}), "${failedSays}"; task ${show(failedRow?.rowStatus)}, lines ${show(failedLines)}`);
   }
   if (fails.closedAt === null || fails.deadlineAt === null || fails.closedAt >= fails.deadlineAt) {
     fail("b:failed", `wanted round 0 closed as soon as both delegates had ended, before its deadline; closed at ${show(fails.closedAt)}, deadline ${show(fails.deadlineAt)}`);
-  } else notes.push(`a failed delegate: no line, and round 0 closed ${fails.deadlineAt - fails.closedAt} ms before its deadline`);
+  } else notes.push(`a failed delegate: one line saying it couldn't answer, and round 0 closed ${fails.deadlineAt - fails.closedAt} ms before its deadline`);
 
   // ---- b: a late delegate -------------------------------------------------------
   const late = o.b.late;

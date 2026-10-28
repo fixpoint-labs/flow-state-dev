@@ -1596,9 +1596,10 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * closes if that was the last task out; in a round already closed, it
    * lands and goes no further. A task filed with no brief (not on a turn
    * routing a message) only lands its answer. Like every wake,
-   * it also closes each round past its deadline. It wakes no turn of its own:
-   * a failure of a task the judgment turn filed is said, and wakes that turn,
-   * by `onTaskSettled` after this has run (FIX-2115, `task-settled.ts`).
+   * it also closes each round past its deadline. It says no failure and wakes
+   * no turn of its own: `onTaskSettled` says a failure after this has run, and
+   * wakes the judgment turn for a task that turn filed (FIX-2115, FIX-2266,
+   * `task-settled.ts`).
    */
   const routedEnded = handler({
     name: "coordinator-routed-ended",
