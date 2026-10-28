@@ -8,6 +8,8 @@
  */
 
 import type {
+  HistoryTurn,
+  HistoryTurnQuery,
   ItemQuery,
   JournalEntry,
   JournalEntryInput,
@@ -335,7 +337,8 @@ export async function loadLLMHistory(
   tokenCounter: TokenCounter,
   resolveModelId: () => string,
   query?: ItemQuery,
-  readLiveItems?: () => RuntimeItem[]
+  readLiveItems?: () => RuntimeItem[],
+  readStartedAtMs?: (requestId: string) => Promise<number | undefined>
 ): Promise<LLMMessage[]> {
   const allowedTypes = query?.itemTypes
     ? new Set(query.itemTypes)
@@ -343,7 +346,7 @@ export async function loadLLMHistory(
   const allowedRoles = query?.roles ? new Set(query.roles) : undefined;
 
   const selectedTurns = await selectRequestsByLimit(
-    priorRequests,
+    await afterRequest(priorRequests, query?.afterRequestId, readStartedAtMs),
     query?.limit,
     tokenCounter,
     resolveModelId,
@@ -368,6 +371,36 @@ export async function loadLLMHistory(
   // structurally unreachable in normal operation, but keep the trim for
   // edge data states (e.g., a request whose items begin mid-tool-pair).
   return trimOrphanedToolMessages(messages);
+}
+
+/**
+ * Oldest first by start time, ties by id: the reverse of the store's
+ * newest-first listing (`list-order.ts`), so a turn keeps its place among
+ * same-millisecond siblings whether it comes from the window or the open-turn
+ * read, settled or not. A history summary's mark is a position in this order.
+ */
+export function compareTurnsOldestFirst(aStartedAtMs: number, aId: string, bStartedAtMs: number, bId: string): number {
+  if (aStartedAtMs !== bStartedAtMs) return aStartedAtMs - bStartedAtMs;
+  return aId < bId ? -1 : aId > bId ? 1 : 0;
+}
+
+/**
+ * The turns after `requestId`, for `history({ afterRequestId })`, by start
+ * time then id (`compareTurnsOldestFirst`). The named turn is read by id, so
+ * it need not be in the window: one older than the window leaves the turns
+ * whole, and one newer than it (a summary another request moved past every
+ * turn this request loaded) leaves none. A turn that cannot be read leaves
+ * the turns whole.
+ */
+async function afterRequest(
+  priorRequests: RequestRecord[],
+  requestId: string | undefined,
+  readStartedAtMs?: (requestId: string) => Promise<number | undefined>
+): Promise<RequestRecord[]> {
+  if (requestId === undefined) return priorRequests;
+  const markStartedAtMs = priorRequests.find((r) => r.id === requestId)?.startedAtMs ?? (await readStartedAtMs?.(requestId));
+  if (markStartedAtMs === undefined) return priorRequests;
+  return priorRequests.filter((r) => compareTurnsOldestFirst(r.startedAtMs, r.id, markStartedAtMs, requestId) > 0);
 }
 
 /**
@@ -467,6 +500,13 @@ export function createSessionItemViews(
     tokenCounter: TokenCounter;
     resolveModelId: () => string;
     readLiveItems?: () => RuntimeItem[];
+    /** Backs `turns()`; it reads beyond the loaded window, so the context supplies it. */
+    readTurns?: (query?: HistoryTurnQuery) => Promise<HistoryTurn[]>;
+    /**
+     * When a turn of this session started, by id, for `afterRequestId`: settled
+     * or not, in the window or not, the running request included.
+     */
+    readStartedAtMs?: (requestId: string) => Promise<number | undefined>;
   }
 ): SessionItemViews {
   // Compute once — priorItems is immutable for the request lifetime.
@@ -530,9 +570,11 @@ export function createSessionItemViews(
         options.tokenCounter,
         options.resolveModelId,
         query,
-        options.readLiveItems
+        options.readLiveItems,
+        options.readStartedAtMs
       ),
     selectForContext: (query) => select(query),
+    turns: (query) => options.readTurns?.(query) ?? Promise.resolve([]),
   };
 }
 
