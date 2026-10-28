@@ -1,7 +1,9 @@
 /**
- * The session feed's snapshot read: a history that moves while it is paged
- * (a keyed item emitted again, later in display order) must not lose an item
- * the stream would never send again.
+ * The session feed: a history that moves while it is paged (a keyed item
+ * emitted again, later in display order) must not lose an item the stream
+ * would never send again; an answer being written shows as it grows, from its
+ * request's stream, since the session stream sends finished items only; and a
+ * snapshot read that fails is read again.
  */
 import { describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
@@ -26,6 +28,10 @@ function clientOver(history: OutputItem[], onPage: (offset: number) => void): Cl
   } as unknown as Client;
 }
 
+const until = async (check: () => boolean) => {
+  for (let i = 0; i < 100 && !check(); i++) await new Promise((r) => setTimeout(r, 50));
+};
+
 describe("the session feed", () => {
   it("reads again when a keyed item moves while the history is paged, and loses no item", async () => {
     const history = Array.from({ length: 502 }, (_, n) => item(n));
@@ -47,4 +53,47 @@ describe("the session feed", () => {
     expect(moved).toBe(true);
     expect(new Set(seen.map((i) => i.id)).size).toBe(502);
   });
+
+  it("shows an answer while it is written, from the send's streamed response", async () => {
+    const client = clientOver([], () => {});
+    let seen: OutputItem[] = [];
+    const feed = sessionFeeds(client)("s2");
+    const stop = feed.watch((items) => (seen = items));
+    await until(() => seen !== undefined);
+    const encoder = new TextEncoder();
+    let push!: (event: string, data: Record<string, unknown>) => void;
+    let seq = 0;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        push = (event, data) => controller.enqueue(encoder.encode(`id: ${++seq}\nevent: ${event}\ndata: ${JSON.stringify({ type: event, sequence_number: seq, ...data })}\n\n`));
+      },
+    });
+    feed.followResponse(new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }));
+    const message = { id: "msg_1", requestId: "req_2", type: "message", role: "assistant", ts: 5, itemIndex: 0, status: "in_progress", content: [{ type: "output_text", text: "" }] };
+    push("item.added", { item: message });
+    push("content.delta", { itemId: "msg_1", contentIndex: 0, delta: "```ts\nconst a" });
+    const textOf = () => (seen.find((i) => i.id === "msg_1") as unknown as { content: { text: string }[] } | undefined)?.content[0]?.text ?? "";
+    await until(() => textOf().includes("const a"));
+    expect(textOf()).toBe("```ts\nconst a");
+    push("content.delta", { itemId: "msg_1", contentIndex: 0, delta: " = 1;" });
+    await until(() => textOf().endsWith("= 1;"));
+    expect((seen.find((i) => i.id === "msg_1") as unknown as { status: string }).status).toBe("in_progress");
+    stop();
+  });
+
+  it("reads the snapshot again when a read fails", async () => {
+    let reads = 0;
+    const client = clientOver([item(1)], () => {
+      reads += 1;
+      if (reads === 1) throw new Error("network down");
+    });
+    const seen = await new Promise<OutputItem[]>((resolve) => {
+      const stop = sessionFeeds(client)("s3").watch((items) => {
+        stop();
+        resolve(items);
+      });
+    });
+    expect(reads).toBe(2);
+    expect(seen.map((i) => i.id)).toEqual(["item_1"]);
+  }, 10_000);
 });
