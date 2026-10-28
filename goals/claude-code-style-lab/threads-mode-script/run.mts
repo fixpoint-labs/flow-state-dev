@@ -324,7 +324,9 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
     if (review === undefined) {
       failures.push(`6: the coding thread never waited on your review (${reviewEnd === undefined ? "still open" : `${reviewEnd.status}: ${reviewEnd.statusNote ?? ""}`})`);
     } else {
-      if ((await columnOf(coding.id)) !== "review") failures.push("6: the coding thread's row isn't under Ready for review");
+      // The page reads the board every 2s, so it shows the wait a moment after the board holds it.
+      const shown = await until(async () => ((await columnOf(coding.id)) === "review" ? true : undefined), 30_000, 2_000);
+      if (shown === undefined) failures.push("6: the coding thread's row isn't under Ready for review");
       const card = (await snapshot(page)).cards.find((c) => c.taskId === coding.id);
       if (!/judge/i.test(card?.text ?? "")) failures.push(`6: the card doesn't show the judge's verdict: ${JSON.stringify(card?.text ?? "")}`);
       await cardFor(coding.id).getByRole("button", { name: "Resolve" }).click();
