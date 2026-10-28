@@ -59,3 +59,7 @@ task settles), through the AI Gateway. Claude Code needs `ANTHROPIC_API_KEY`.
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-10-28 | d86b248 | openai/gpt-5.4 | PASS | Attempt 1 of 3. 135 page polls through the first turn; 2 task rows; the card, the indicator and the text after it all on the first `respond`'s request; the long task read `cancelled` through `listTasks` after the ask; Claude Code committed `Update README first line…` on the run's `conductor/…--work` branch in the clone; the work view showed 6 harness entries; repository and lab checkout untouched |
+| 2026-10-28 | d86b248 tree, pre-commit | openai/gpt-5.4 | FAIL (control `answer-again-off`) | Signal 4 only: a task settled while the first turn ran and no card showed inside it; 5 and 6 passed |
+| 2026-10-28 | d86b248 tree, pre-commit | openai/gpt-5.4 | FAIL (control `no-project`) | Signal 0 (header reads *no project*) and signal 6 (no run cloned anything); the composer stayed closed and asked once; lab checkout untouched |
+| 2026-10-28 | d86b248 tree, pre-commit | — | FAIL (control `planted-glue`) | `inventory: other: src/glue.ts is not config, UI, a small flow, a check or a fixture` |
