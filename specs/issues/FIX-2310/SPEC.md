@@ -66,7 +66,8 @@ must then leave lead with no answer, and the lab leg must see "waiting on resear
 - **The received prompt** for a reply-requested message says the asker is waiting on an answer
   and that the turn's reply goes back to them, as a call's prompt does today.
 - **The turn end** (`onMessageReceived`'s reply step, which already reads the turn's final text
-  for a call) checks a reply-requested message it landed. Answered already: nothing. Otherwise it
+  for a call) checks a reply-requested message it landed. A call is left out: its answer is its
+  tool's result, as today, and is never also sent as a message. Answered already: nothing. Otherwise it
   calls the same `sendMessage({ inReplyTo })` the model would, with the framework as the caller:
   the final text, or a "no answer" reply when the text is empty or the turn threw (the entry
   rescues the turn's error for this) ([D2](DECISIONS.md#d2)). The framework's send is the

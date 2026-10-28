@@ -23,7 +23,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | Making every new message reply-requested by default. Or folding it into `wait` |
-| **Because** | An FYI ("heads-up, I pushed the branch") owes nothing; defaulting to a reply would wake the sender with "thanks" for every FYI and spend the hop budget on it. `wait` is about the asker (it blocks this turn); `replyRequested` is about the receiver (it owes an answer). A call already owes one: its reply is its turn's final text, so `wait: true` reads as reply requested and needs no second flag |
+| **Because** | An FYI ("heads-up, I pushed the branch") owes nothing; defaulting to a reply would wake the sender with "thanks" for every FYI and spend the hop budget on it. `wait` is about the asker (it blocks this turn); `replyRequested` is about the receiver (it owes an answer). A call already owes one: its reply is its turn's final text, so `wait: true` reads as reply requested and needs no second flag. A call keeps its one outcome, the tool's result: D2's turn-end send skips it, so it is never answered twice |
 | **Locks in** | The tool text's one line on when to use what: **ask and go on, `replyRequested: true`, the answer wakes you later; need it in this turn, `wait: true` (one wait per step); need work tracked and owed, `createTask`.** "Only one wait per step" moves under `wait` as that rule, not a reason to ask fewer workers. The name `replyRequested` is provisional: it joins the pending rename batch with `suspendForUser` and `holdTaskForUser` |
 
 An unanswered reply-requested message is an obligation **on the message**: its row records it,
