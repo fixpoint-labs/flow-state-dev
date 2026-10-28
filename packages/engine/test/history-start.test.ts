@@ -186,6 +186,19 @@ describe("history({ afterRequestId })", () => {
     expect(messages.map(textOf)).toEqual(["turn 3", "turn 4", "turn 5"]);
   });
 
+  it("reads nothing when the named turn is newer than every turn the window holds", async () => {
+    const stores = createInMemoryStores();
+    await seedTurns(stores, "sess_newer", 4);
+
+    // This request loaded turns 1-4; another request then summarized through
+    // turn 8, which this request never loaded.
+    const ctx = await contextFor(stores, "sess_newer", 8);
+    for (let n = 5; n <= 8; n++) await stores.request.set(`req_${n}`, turn("sess_newer", n), "any");
+
+    const messages = await ctx.session.items.history({ afterRequestId: "req_8" });
+    expect(messages.map(textOf)).toEqual([]);
+  });
+
   it("applies a limit after the narrowing", async () => {
     const stores = createInMemoryStores();
     await seedTurns(stores, "sess_lim", 5);

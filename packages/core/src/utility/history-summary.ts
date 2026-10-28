@@ -179,10 +179,16 @@ export function historySummary(options: HistorySummaryOptions) {
           ? all.slice(nextAt)
           : all.filter((t) => state.throughStartedAtMs === null || t.startedAtMs > state.throughStartedAtMs);
 
-      // Turns lost: the oldest unfolded turn the last fold saw left unfolded,
+      // Turns lost: the oldest unfolded turn the last fold saw left the window
+      // unfolded (gone, or older than the window's first turn; one newer than
+      // the window was folded by a turn that started after this one loaded),
       // or the summary started after turns had already left the window.
+      const nextGone =
+        state.nextRequestId !== null && nextAt === -1
+          ? (await ctx.session.items.turns({ requestIds: [state.nextRequestId] }))[0]
+          : null;
       const lost =
-        (state.nextRequestId !== null && !all.some((t) => t.requestId === state.nextRequestId)) ||
+        (nextGone !== null && (nextGone === undefined || (all[0] !== undefined && nextGone.startedAtMs <= all[0].startedAtMs))) ||
         (state.attempts === 0 && window.startRequestId !== undefined);
 
       const due = after.length > window.turns - quarter;

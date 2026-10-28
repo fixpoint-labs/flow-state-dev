@@ -211,6 +211,54 @@ describe("historySummary on the engine", () => {
     expect(state).toMatchObject({ gap: false, complete: true });
   });
 
+  it("says no turn was lost when another turn moved the summary past every turn this one loaded", async () => {
+    const stores = createInMemoryStores();
+    const calls: ModelCall[] = [];
+    const earlier = utility.historySummary({ summarize: foldingSummarize() });
+    // After this turn loaded its window, other turns of the conversation ran
+    // and folded past all of it, leaving turn 1 (now settled) pending.
+    const overtaken = handler({
+      name: "overtaken",
+      execute: async (_input, ctx) => {
+        const newest = (await stores.request.get("req_002"))!;
+        for (const [n, id] of [[1, "req_later_1"], [2, "req_later_2"]] as const) {
+          await stores.request.set(id, { ...newest, id, startedAtMs: Date.now() + 1000 + n }, "any");
+        }
+        await (ctx.resources as any).historySummary.updateState((state: any) => ({
+          ...state,
+          summary: "u2 u3",
+          throughRequestId: "req_later_1",
+          throughStartedAtMs: Date.now() + 1001,
+          nextRequestId: "req_later_2",
+          pending: ["req_001"],
+          complete: false,
+          folds: 1,
+          attempts: 1
+        }));
+      }
+    });
+    const answer = generator({ name: "answer", model: "mock", prompt: "You answer.", history: true, uses: [earlier.capability] });
+    const flow = defineFlow({
+      kind: "summary-chat",
+      session: { historyWindow: { turns: 4 } },
+      actions: {
+        run: {
+          inputSchema: z.string(),
+          block: sequencer({ name: "chat", inputSchema: z.string() }).tap(overtaken).tap(earlier.fold).step(answer),
+          userMessage: (input: string) => input
+        }
+      }
+    })();
+    await talk(stores, chatFlow({ window: 4, summarize: foldingSummarize() }), calls, 2);
+
+    await talk(stores, flow, calls, 1, 3);
+
+    // The pending turn is folded in, and the turns after the mark are not
+    // lost: they are newer than this turn's window, not older.
+    const row = await stores.resourceState.get("session", "s", "historySummary");
+    expect(row?.state).toMatchObject({ summary: "u2 u3 u1", gap: false, complete: true, pending: [] });
+  });
+
   it("keeps a turn that had not settled by id and folds it once it does, never twice", async () => {
     const stores = createInMemoryStores();
     const calls: ModelCall[] = [];

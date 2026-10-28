@@ -76,17 +76,6 @@ import { readDispatchStamp } from "../execution/dispatch-metadata";
 import { ownRowOf, waitedByOf } from "../durability/wait-chain";
 
 /** The waiter a dispatched request was born with, as an optional field. */
-/**
- * Oldest first by start time, ties by id: the reverse of the store's
- * newest-first listing (`list-order.ts`), so a turn keeps its place among
- * same-millisecond siblings whether it comes from the window or the open-turn
- * read, settled or not. A history summary's mark is a position in this order.
- */
-function compareTurnsOldestFirst(aStartedAtMs: number, aId: string, bStartedAtMs: number, bId: string): number {
-  if (aStartedAtMs !== bStartedAtMs) return aStartedAtMs - bStartedAtMs;
-  return aId < bId ? -1 : aId > bId ? 1 : 0;
-}
-
 function waitedByStamp(source: string | undefined, metadata: unknown) {
   const waitedBy = waitedByOf(source, metadata);
   return waitedBy === undefined ? {} : { waitedBy };
@@ -155,6 +144,7 @@ import { requestInSessionScope, sessionRequestScope } from "./session-request-sc
 import { recordRequestStop } from "../execution/record-request-stop";
 import { ownerKeyMaySeed } from "../resources/owner-private";
 import {
+  compareTurnsOldestFirst,
   outputItemToSessionItem,
   createSessionItemViews,
   buildJournalEntry,
@@ -2957,7 +2947,7 @@ export async function createExecutionContext<
       },
       items: createSessionItemViews(priorItems, settledPriorRequests, {
         readTurns,
-        turnOrder: async () => (await readTurns()).map((t) => t.requestId),
+        readTurn: async (id) => (await readTurns({ requestIds: [id] }))[0],
         tokenCounter,
         readLiveItems,
         resolveModelId: () => {
