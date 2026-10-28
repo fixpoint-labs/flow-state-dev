@@ -38,33 +38,33 @@ export {
 // What holds a task on its row (FIX-2133): one list of holds, and the one
 // predicate every reader asks of it, open holds.
 export {
-  MAX_HOLD_PROMPT,
-  taskHoldSchema,
-  rowHoldSchema,
-  suspensionHoldSchema,
+  MAX_QUESTION_PROMPT,
+  taskQuestionSchema,
+  rowQuestionSchema,
+  suspensionQuestionSchema,
   type ConfirmOnNo,
-  type HoldAsk,
-  type HoldReleaser,
-  type RowHold,
-  type SuspensionHold,
-  type TaskHold,
-} from "./schema/hold";
+  type QuestionInit,
+  type QuestionCloser,
+  type RowQuestion,
+  type SuspensionQuestion,
+  type TaskQuestion,
+} from "./schema/question";
 export {
   NO_ANSWER_CAME,
   answerOf,
   askProblem,
-  hasOpenHold,
-  holdsDue,
-  isRowHold,
-  isSuspensionHold,
-  nextHoldDue,
-  openHolds,
-  openRowHolds,
+  hasOpenQuestion,
+  questionsDue,
+  isRowQuestion,
+  isSuspensionQuestion,
+  nextQuestionDue,
+  openQuestions,
+  openRowQuestions,
   owesTurn,
   steerPlacesTaken,
-  suspensionHoldOf,
-  type HoldAnswer,
-} from "./collection/holds";
+  suspensionQuestionOf,
+  type QuestionAnswer,
+} from "./collection/questions";
 
 // Filing settings and dependencies (FIX-2080): what a board refuses at filing,
 // and the edit a filing takes until it starts.
@@ -151,7 +151,7 @@ export type {
   TaskWriteDeclineReason,
   TaskWaitSlot,
   TaskProgress,
-  TaskWaitingOn,
+  TaskKeptOpenBy,
   TaskCancelSource,
   CancelOptions,
 } from "./collection/types";
@@ -258,7 +258,7 @@ export {
 } from "./notice/delivery";
 
 // Filed work still holding a task (FIX-2077, rule 6).
-export { filedWorkHolds, holdsItsFiler } from "./helpers/filed-work";
+export { filedWorkKeepsOpen, keepsFilerOpen } from "./helpers/filed-work";
 // The rows that run in one session: its tasks and their follow-ups (FIX-2160).
 export { rowsInSession } from "./helpers/session-rows";
 // A task waiting on a user (FIX-2129): its cancel, and the resume that cancel owes its run.

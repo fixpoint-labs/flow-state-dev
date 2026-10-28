@@ -11,7 +11,7 @@
 import type { Task } from "../schema/task";
 import type { TaskInit, TaskResultSetting, TaskSessionSetting } from "../schema/task-init";
 import { isTerminalStatus } from "../schema/task-status";
-import { askProblem } from "./holds";
+import { askProblem } from "./questions";
 
 /** Why a filing (or an edit of one) was refused. The code leads the error's message. */
 export type TaskFilingRule =
@@ -116,7 +116,7 @@ export function assertFilingSettings(init: TaskInit, support: TaskSettingsSuppor
     throw new TaskFilingRefusedError({
       rule: "questions_not_kept",
       taskId,
-      detail: `${asked}, so the task can't be held on them. Ask fewer or shorter questions, or file it without.`,
+      detail: `${asked}, so the task can't wait on them. Ask fewer or shorter questions, or file it without.`,
     });
   }
   if (init.followUpOf !== undefined && init.session !== undefined) {

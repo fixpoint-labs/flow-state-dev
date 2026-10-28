@@ -475,7 +475,7 @@ async function legA(run: Run): Promise<void> {
 async function waitsOnOpenPieces(run: Run, taskId: string): Promise<boolean> {
   const row = await run.h.byId(taskId);
   const open = (await run.h.rows()).filter((r) => r.filedByTask === taskId && r.status !== "completed");
-  return row?.status === "in_progress" && row.waitingOn === "filed" && row.leaseUntil === undefined && open.length > 0;
+  return row?.status === "in_progress" && row.keptOpenBy === "filed" && row.leaseUntil === undefined && open.length > 0;
 }
 
 /** b, first half: the pieces end after the task's own request ended. */
@@ -601,10 +601,10 @@ async function legD(run: Run): Promise<void> {
   const ids = await Promise.all(STOPS.map(([reason]) => file(run, word(`[stop:${reason}] wait for it`))));
   await run.h.idle();
   const claimedAt = Math.max(...(await Promise.all(ids.map(async (id) => (await run.h.byId(id))?.startedAt ?? Date.now()))));
-  for (const [i, [reason, waitingOn]] of STOPS.entries()) {
+  for (const [i, [reason, keptOpenBy]] of STOPS.entries()) {
     const row = await run.h.byId(ids[i]!);
-    if (row?.status !== "in_progress" || row.waitingOn !== waitingOn || row.leaseUntil !== undefined) {
-      run.failures.push(`d:keeps-its-claim — wanted the ${reason} stop running, waiting on "${waitingOn}", with no lease; read ${show(row && { status: row.status, waitingOn: row.waitingOn, leaseUntil: row.leaseUntil })}`);
+    if (row?.status !== "in_progress" || row.keptOpenBy !== keptOpenBy || row.leaseUntil !== undefined) {
+      run.failures.push(`d:keeps-its-claim — wanted the ${reason} stop running, waiting on "${keptOpenBy}", with no lease; read ${show(row && { status: row.status, keptOpenBy: row.keptOpenBy, leaseUntil: row.leaseUntil })}`);
     }
   }
   // Past the lease the claim committed to, then a pass of the board that filed them.

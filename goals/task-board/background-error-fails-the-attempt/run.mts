@@ -749,8 +749,8 @@ async function legI(run: Run): Promise<void> {
   await run.h.idle();
   for (const id of ids) {
     const row = await run.h.byId(id);
-    if (row?.status !== "in_progress" || row.waitingOn !== "wait") {
-      run.failures.push(`i:stopped — wanted it stopped and waiting; it is ${row?.status}, waiting on ${show(row?.waitingOn)}`);
+    if (row?.status !== "in_progress" || row.keptOpenBy !== "wait") {
+      run.failures.push(`i:stopped — wanted it stopped and waiting; it is ${row?.status}, waiting on ${show(row?.keptOpenBy)}`);
     }
   }
   for (const id of ids) await resumeStop(run, id);

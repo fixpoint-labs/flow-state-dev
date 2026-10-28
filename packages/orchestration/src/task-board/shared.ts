@@ -9,7 +9,7 @@
  */
 import {
   fifoDispatcher,
-  hasOpenHold,
+  hasOpenQuestion,
   isClaimable,
   leaseLapsed,
   priorityDispatcher,
@@ -188,7 +188,7 @@ function countWaitable(
  * a row; the user's answer does.
  */
 export function waitsOnUser(row: Task): boolean {
-  return row.status === "in_progress" && hasOpenHold(row);
+  return row.status === "in_progress" && hasOpenQuestion(row);
 }
 
 /**

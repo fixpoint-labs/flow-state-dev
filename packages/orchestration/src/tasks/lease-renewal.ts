@@ -242,7 +242,7 @@ export function startLeaseRenewal(options: LeaseRenewalOptions): LeaseRenewalDri
       // A decline is the only stop condition — a throw below is the unknown
       // case, not the dead case. But there are two kinds of decline and they
       // mean different things to the worker.
-      if (outcome.reason === "disallowed" || outcome.reason === "held") {
+      if (outcome.reason === "disallowed" || outcome.reason === "open-question") {
         // The row no longer takes a lease, but nobody displaced the worker:
         // it moved to a status the lease does not govern (`disallowed`), or
         // it waits on a person with an open hold (`held`: the turn asked a

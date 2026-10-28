@@ -55,9 +55,9 @@ async function waitOnPerson(collection: TaskCollectionRef, id: string, how: "que
     return;
   }
   expect(
-    await collection.setWaitingOn!(id, "wait", {
+    await collection.setKeptOpenBy!(id, "wait", {
       claim,
-      hold: {
+      question: {
         id: `s-${id}`,
         actor: "user",
         openedAt: BOARD_NOW,
@@ -356,12 +356,12 @@ describe("boardQuiescence - work handed to a child session", () => {
       { id: "asks", drive: "question" },
       { id: "reviewed", drive: "review" },
     ]);
-    const before = collection.list().map((row) => ({ id: row.id, status: row.status, holds: row.holds }));
+    const before = collection.list().map((row) => ({ id: row.id, status: row.status, questions: row.questions }));
     const options = { onIdle: "complete-or-blocked" as OnIdle };
 
     expect(boardQuiescence(collection, options)).toBe("blocked");
     expect(whenBoardClaimable(collection, options)([])).toBe(true);
-    expect(collection.list().map((row) => ({ id: row.id, status: row.status, holds: row.holds }))).toEqual(before);
+    expect(collection.list().map((row) => ({ id: row.id, status: row.status, questions: row.questions }))).toEqual(before);
   });
 
   it.each(onIdles)(

@@ -29,7 +29,7 @@ import {
   WORKSTREAM_OPENED_ENTRY,
   workstreamOpenedEntry
 } from "../src/index";
-import { heldTask } from "../src/conversation-board/held-task";
+import { claimedTask } from "../src/conversation-board/held-task";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import type { WorkerManifest } from "../src/manifest";
 import { runProjectOf } from "../src/projects/run-project";
@@ -65,7 +65,7 @@ function takerFlow(installation: WorkerInstallation, runs: Run[]) {
     execute: async (input, rawCtx) => {
       const ctx = rawCtx as unknown as BlockContext;
       const worker = (await installation.resolveWorker(rawCtx, "taker")).id;
-      const held = (await heldTask(ctx))?.row;
+      const held = (await claimedTask(ctx))?.row;
       // The answer turn after a step runs holding the same task: record only the first.
       if (input.message.startsWith("The steps you filed for yourself have ended")) return "answered";
       runs.push({

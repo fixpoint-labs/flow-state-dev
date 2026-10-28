@@ -166,9 +166,9 @@ describe("a task held on a question (FIX-2131)", () => {
       // Nothing ended: the filer is told the question (FIX-2241), and no notice.
       const held = (await host.row("alice", filing, filed.taskId!))!;
       expect(held.status).toBe("in_progress");
-      const question = held.holds!.find((hold) => hold.source.kind === "row")!;
-      expect(await linesAbout(host, conv, goal)).toEqual([expect.stringContaining(`question: "${question.id}"`)]);
-      const answered = await host.act("alice", conv, "updateTask_tasks", { id: filed.taskId, question: question.id, message: "eu" });
+      const question = held.questions!.find((hold) => hold.source.kind === "row")!;
+      expect(await linesAbout(host, conv, goal)).toEqual([expect.stringContaining(`answers: "${question.id}"`)]);
+      const answered = await host.act("alice", conv, "updateTask_tasks", { id: filed.taskId, answers: question.id, message: "eu" });
       expect(answered.output).toMatchObject({ ok: true });
       await host.settled();
       await touch(host, "alice", conv);

@@ -78,7 +78,7 @@ The run record shows where that stands. `place` names the machine the run is on 
 
 A failed save of either kind, kept files or repository work, doesn't fail the run, and the next save point tries again. The exception is an attempt that would complete: completing is its last save point, so it fails instead and the retry saves the work.
 
-If the saved work doesn't match the run's record, the harness doesn't run. The task is held on a question for the run's owner, naming what disagreed, and `place.state` is `lost`. Nothing saved is changed or deleted. Once the owner answers, the next run, on the same attempt, starts from its base, with the saved files in `held/` beside the checkout when they can be read.
+If the saved work doesn't match the run's record, the harness doesn't run. The task waits on a question for the run's owner, naming what disagreed, and `place.state` is `lost`. Nothing saved is changed or deleted. Once the owner answers, the next run, on the same attempt, starts from its base, with the saved files in `held/` beside the checkout when they can be read.
 
 Without a held-work store, nothing is saved and the record gets no `place` or `held`. A run whose record says its work was saved, with no live checkout on this machine, asks its owner the same way rather than starting over.
 
@@ -248,12 +248,12 @@ A capability claiming one of the manager's own accessors (`runs`, `harness-usage
 
 ## Continuing a run
 
-A run that needs a decision writes its question to the file its prompt names (`run.askMarkerPath`) and stops. Its task is then held on the question: it stays on its attempt, its lease is dropped, and nothing settles it or starts another run while the question is open. Its work is saved first, and the checkout is free. The Inbox lists the held task as a question, and the board's own `getTask` shows it among the task's open holds.
+A run that needs a decision writes its question to the file its prompt names (`run.askMarkerPath`) and stops. Its task then waits on the question: it stays on its attempt, its lease is dropped, and nothing settles it or starts another run while the question is open. Its work is saved first, and the checkout is free. The Inbox lists the held task as a question, and the board's own `getTask` shows it among the task's open `questions`.
 
 The answer goes through the board's `updateTask` action, naming the question, as the Inbox sends it:
 
 ```ts
-await updateTask_tasks({ id: task.id, question: hold.id, message: "Use the v2 endpoint" });
+await updateTask_tasks({ id: task.id, answers: hold.id, message: "Use the v2 endpoint" });
 ```
 
 A line the user types in the run's session answers the task's oldest open question the same way (see [Talking to a run](#talking-to-a-run)). Once its last question is answered, the task takes one more turn **on the same attempt**: no retry is spent. That turn's run **continues the same coding session**. Its prompt is the phase's `buildPrompt` again, with `run.answers` holding the task's answered questions, oldest first, each with its answer. A run may ask again, and the next answer works the same way. Each run writes its question to a path of its own (`.fsdev/ask/<attempt>-<run>.md`), so a run never reads a question an earlier one already asked.
@@ -267,7 +267,7 @@ The recorded session is the one the harness *confirmed* it was in. If the agent 
 ### Upgrading from the question inbox
 
 - The manager keeps no questions of its own. Removed: `askQuestion`, `answerQuestion`, `listQuestions`, `readQuestion`, `withdrawQuestion`, `inboxCollection`, `INBOX`, `questionTopic`, `questionFingerprint`, `parseQuestionTopic`, `HarnessRunParked` and the `QuestionAnnouncement` type.
-- `harnessManager({ announce })` is refused at construction. Read held tasks from the board (its rows' open holds, `openRowHolds`) and answer with its `updateTask` action.
+- `harnessManager({ announce })` is refused at construction. Read held tasks from the board (its rows' open questions, `openRowQuestions`) and answer with its `updateTask` action.
 - `run.answers` reads the task's answered questions from its row.
 - `run.askMarkerPath` is `.fsdev/ask/<attempt>-<run>.md`. A phase that names a path of its own must use the one it is handed.
 - `askMarkerPath(path, attempt, run)` and `readAskMarker(path, attempt, run)` take the run.
@@ -278,7 +278,7 @@ The recorded session is the one the harness *confirmed* it was in. If the agent 
 
 A run's changes are the commits it made over the base its branch was cut from. A run that would complete (the judge said done, there is no judge, or the judge's verdict was under its `floor`) and has commits on its branch waits for a review. So does a run whose commit count git couldn't read; its review says the commits couldn't be read. A run with no commits completes unreviewed. A failed run fails its attempt unreviewed. A judge's confident verdicts skip the review: *not done* fails the attempt, and *ask* holds the task on a question.
 
-While it waits, the task stays `in_progress` on the same attempt and keeps its claim, and the checkout is free. The row lists the wait among its open holds, with `source.kind: "suspension"` and `ask.kind: "review"`, titled "Review the run's changes". Its prompt gives the commit count and up to 20 commit subjects, then the judge's verdict, confidence and reason ("No judge read this run." without one), and the line "The judge's verdict is information, not approval." The hold's data is `{ branch, commits, subjects, judge }`. The Inbox lists it as a review.
+While it waits, the task stays `in_progress` on the same attempt and keeps its claim, and the checkout is free. The row lists the wait among its open `questions`, with `source.kind: "suspension"` and `ask.kind: "review"`, titled "Review the run's changes". Its prompt gives the commit count and up to 20 commit subjects, then the judge's verdict, confidence and reason ("No judge read this run." without one), and the line "The judge's verdict is information, not approval." The hold's data is `{ branch, commits, subjects, judge }`. The Inbox lists it as a review.
 
 The answer is a `HarnessReviewAnswer`, checked against `harnessReviewAnswerSchema`: `{ verdict: "accepted" }`, or `{ verdict: "revise", words }` with non-blank `words`. With the Inbox client:
 
@@ -343,7 +343,7 @@ defineFlow({
 
 The session's task is found in the chain of the task that ran there (the task and its follow-ups, which run in the session one at a time), the way Workforce's door finds it: the open one running here, else the latest open one, a follow-up waiting to start, else the latest that ran here. Sent `{ message }`, the door writes the line into the session as the user's message, then:
 
-- **open task** → a steer. The line is kept on the task as a message from the user (`Task.steers`, the same write as `updateTask({ message })`). The run takes it at its next step: the same request runs another step that resumes the coding session the last one confirmed, with the steer in its prompt, on the same attempt. A steer that lands after the run's last step gets one more turn before the task settles, through `STEER_TURN_ENTRY`. While the task is held on a question, the line answers its oldest open question instead, and the turn the answer owes resumes the coding session ([Continuing a run](#continuing-a-run)). Answers `{ steered: <taskId> }`.
+- **open task** → a steer. The line is kept on the task as a message from the user (`Task.steers`, the same write as `updateTask({ message })`). The run takes it at its next step: the same request runs another step that resumes the coding session the last one confirmed, with the steer in its prompt, on the same attempt. A steer that lands after the run's last step gets one more turn before the task settles, through `STEER_TURN_ENTRY`. While the task waits on a question, the line answers its oldest open question instead, and the turn the answer owes resumes the coding session ([Continuing a run](#continuing-a-run)). Answers `{ steered: <taskId> }`.
 - **every task in the chain finished** → talk. One harness run resumes the task's confirmed coding session with the line, outside any attempt, and its answer is the reply. It holds the checkout while it runs, as a run does, so a follow-up claimed meanwhile waits for it; `talkTimeoutMs` (default 10 minutes) bounds it. The task, its output and its attempts don't change. Answers `{ reply, taskId }`.
 
 A refusal fails the request, with the reason in words as the error's message and `SessionDoorRefused` as its cause, so only a delivered line ever completes:

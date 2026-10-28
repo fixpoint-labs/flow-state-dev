@@ -47,7 +47,7 @@ const reportProgress = createReportProgress({
 });
 
 /** What the message's turn saw, from inside its own run. */
-type Seen = { at: number; claimed: boolean; statuses: string[]; waitingOn: Array<string | undefined>; reported: { ok: boolean; error?: string } };
+type Seen = { at: number; claimed: boolean; statuses: string[]; keptOpenBy: Array<string | undefined>; reported: { ok: boolean; error?: string } };
 
 type Behaviour = {
   throwInMessage: boolean;
@@ -128,7 +128,7 @@ function doerFlow(installation: WorkerInstallation, seen: Seen[], behaviour: Beh
             at,
             claimed: currentWorkerClaim(ctx) !== undefined,
             statuses: rows.map((row) => row.status),
-            waitingOn: rows.map((row) => row.waitingOn ?? undefined),
+            keptOpenBy: rows.map((row) => row.keptOpenBy ?? undefined),
             reported
           });
           if (behaviour.throwInMessage) throw new Error("the message's turn broke");
@@ -228,7 +228,7 @@ describe("a message to a task's session while the task runs", () => {
       // free, so the message runs now, while the task waits on the piece.
       for (let i = 0; i < 300 && seen.length === 0; i += 1) await new Promise((r) => setTimeout(r, 10));
       expect(seen).toHaveLength(1);
-      expect(seen[0]).toMatchObject({ claimed: false, statuses: ["in_progress"], waitingOn: ["filed"], reported: NOT_A_TASK_TURN });
+      expect(seen[0]).toMatchObject({ claimed: false, statuses: ["in_progress"], keptOpenBy: ["filed"], reported: NOT_A_TASK_TURN });
 
       endPiece();
       await h.settled();

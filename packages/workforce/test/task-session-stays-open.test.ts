@@ -329,7 +329,7 @@ function questioner(marker: string, questions: string[], answers: string[], fini
 
 /** The row's one open question, by id. */
 const openQuestion = (row: Task) => {
-  const open = (row.holds ?? []).filter((hold) => hold.source.kind === "row" && !(row.steers ?? []).some((steer) => steer.answers === hold.id));
+  const open = (row.questions ?? []).filter((hold) => hold.source.kind === "row" && !(row.steers ?? []).some((steer) => steer.answers === hold.id));
   expect(open).toHaveLength(1);
   return open[0]!;
 };
@@ -422,7 +422,7 @@ describe("V1 R1, V3 · the answer owes one more turn, in the same session, on th
       const asked = openQuestion(first);
       expect(asked.ask.prompt).toBe("Which region?");
 
-      const answered = await h.act("alice", conv, "updateTask_tasks", { id: filed.taskId, question: asked.id, message: "eu-west" });
+      const answered = await h.act("alice", conv, "updateTask_tasks", { id: filed.taskId, answers: asked.id, message: "eu-west" });
       expect(answered.output).toMatchObject({ ok: true });
       await h.settled();
       // It asked again: a second question, the same session, the same attempt.
@@ -435,7 +435,7 @@ describe("V1 R1, V3 · the answer owes one more turn, in the same session, on th
       expect(next[0]).toMatchObject({ role: "user", text: expect.stringContaining("SHIP-it") });
       expect(next.some((m) => m.role === "user" && m.text.includes('From the user, answering "Which region?": eu-west')), JSON.stringify(next)).toBe(true);
 
-      await h.act("alice", conv, "updateTask_tasks", { id: filed.taskId, question: openQuestion(second).id, message: "the ops account" });
+      await h.act("alice", conv, "updateTask_tasks", { id: filed.taskId, answers: openQuestion(second).id, message: "the ops account" });
       await h.settled();
       const done = (await h.row("alice", filing, filed.taskId!))!;
       expect(done).toMatchObject({ status: "completed", attempts: 1, output: "Shipped KESTREL to the answered place." });

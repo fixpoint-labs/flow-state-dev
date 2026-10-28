@@ -25,7 +25,7 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
-  openRowHolds,
+  openRowQuestions,
   resolveResourceCollection,
   type Task,
 } from "@flow-state-dev/orchestration/tasks";
@@ -326,7 +326,7 @@ function lab(options: {
       const row = (await rt.stores.resourceState.get("org", ORG_ID, `${BOARD_ID}/${TASK_ID}`))?.state as
         | Task
         | undefined;
-      if (row !== undefined && row.status === "in_progress" && row.leaseUntil == null && openRowHolds(row).length > 0) return row;
+      if (row !== undefined && row.status === "in_progress" && row.leaseUntil == null && openRowQuestions(row).length > 0) return row;
       if (Date.now() > deadline) throw new Error(`timed out waiting for a held task; row is ${JSON.stringify(row)}`);
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
