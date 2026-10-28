@@ -41,7 +41,10 @@ export type HarnessLinesView<TOutcome extends string = HarnessLineOutcome> = {
 /** How many running requests are read to find the session's turns. */
 const RUNNING_READ_LIMIT = 20;
 
-/** How many times a running turn is followed again after its stream drops, before the view stays off it. */
+/**
+ * How many times a running turn is followed again after its stream drops, before the view stays off it.
+ * Past that, the waiting turns are not followed either while it runs: a reload shows them.
+ */
 const MAX_REATTACH = 3;
 
 /**

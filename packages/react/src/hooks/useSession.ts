@@ -1115,7 +1115,9 @@ export function useSession(
       }
 
       setIsStreaming(true);
-      setIsFinishing(false);
+      // Resumed after its last event, the stream skips a status that already
+      // said the request no longer blocks: keep what the view had.
+      if (startingAfter === undefined) setIsFinishing(false);
       setIsStuck(false);
       latestRequestIdAfterDropRef.current = null;
       rejectedItemIdsRef.current.clear();

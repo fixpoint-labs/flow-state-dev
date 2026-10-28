@@ -16,6 +16,9 @@
  *   - follow a request again from the start after its stream dropped, and
  *     the "picks up after the last event" case fails: the server replays
  *     events the view already applied.
+ *   - reset the finishing state on every attach, and the "still finishing"
+ *     case fails: the resumed stream skips the status that set it, so the
+ *     view blocks actions the request no longer blocks.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
@@ -128,6 +131,26 @@ describe("useSession.followRequest (FIX-2265)", () => {
     // Another request still streams from its start.
     act(() => result.current.followRequest("req_line"));
     expect(resumesAfter(connections.at(-1)!)).toBeUndefined();
+  });
+
+  it("followed again while finishing, still lets actions through", async () => {
+    const { result } = renderHook(() => useSession("sess1", { flowKind: "demo" }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => result.current.followRequest("req_turn"));
+    const first = connections.at(-1)!;
+    act(() => first.callbacks.onEvent?.({ stream: "request", requestId: "req_turn", sequence_number: 4, ts: 1000, type: "item.added" }));
+    act(() =>
+      first.callbacks.onItemAdded?.({ type: "item.added", item: { id: "st1", type: "status", requestId: "req_turn", blocked: false, ts: 1000 } })
+    );
+    expect(result.current.canSendAction).toBe(true);
+    act(() => first.callbacks.onError?.(new Error("dropped")));
+
+    act(() => result.current.followRequest("req_turn"));
+    expect(result.current.isStreaming).toBe(true);
+    expect(result.current.canSendAction).toBe(true);
   });
 
   it("makes the followed request the one a stop reaches", async () => {
