@@ -157,4 +157,4 @@ wrong: a CI rule that fails a later PR reusing one of nineteen names.
 
 Improvement · closure (QA) · `goals/` and one CI rule · large, repeats per finding · epic
 [FIX-2070](../../epics/FIX-2070/SPEC.md), closure · required · runs after every other child merges
-(FIX-2238, FIX-2160, FIX-2240 done; FIX-2239, FIX-2241 in review) · Linear [FIX-2242](https://linear.app/fixpoint-labs/issue/FIX-2242)
+(FIX-2238, FIX-2160, FIX-2240 done; FIX-2239, FIX-2241, FIX-2260 to merge) · Linear [FIX-2242](https://linear.app/fixpoint-labs/issue/FIX-2242)

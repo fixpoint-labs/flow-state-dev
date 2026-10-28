@@ -65,7 +65,7 @@ refusal that exists, on the commit it lands on.
 #4021 merged; the D2 rule in CI. **FIX-2240's leg 9 is not on `main`:** #4008 merged with its
 model-free tests and without the goal leg its spec names (`9:crash-after-row` and the rest, with
 `no-debt` and the other four controls). FIX-2240's approved spec still owes it, so it is filed as
-a child of FIX-2070 ("FIX-2240's goal leg 9 on the real model") and lands before the run, blocking this issue, since leg c reuses its faults and `no-debt`.
+a child of FIX-2070, [FIX-2260](https://linear.app/fixpoint-labs/issue/FIX-2260), and lands before the run, blocking this issue, since leg c reuses its faults and `no-debt`.
 
 ## Decided, not asked
 
