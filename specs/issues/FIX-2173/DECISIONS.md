@@ -87,7 +87,10 @@ built around the choice is the better teacher.
 - **The engine answers `undefined`; the tools refuse.** A missing or foreign session reads `undefined` from `sessions.history`, as from `read`. Both tools turn that into `no_session`, and `self` is the tools' own refusal.
 - **The cross-session read is bounded at the store.** It lists from the newest turn back and stops at what the `limit` can use, the way the window lists `historyWindowTurns`; it never loads a whole long session to trim it (BP-033).
 - **`asOf` is the newest settled turn read**: its request id and when it settled. A turn still
-  running there is named in the result (`running: true`), not read.
+  running there is named in the result (`running: true`), not read. `HistoryTurn` has a start time
+  and no settle time, so `history` returns both beside the turns: `asOf: { requestId, atMs }` from
+  the newest settled turn's request record, and `running`, true when a turn of that session is
+  running, suspended or parked. The tool copies them; it never derives them from the turns.
 - **The model is a factory option, not a model-facing parameter.** The issue's `model?` stays on
   `consultSessionHistoryTool({ model })` and the capability's options, default `intent/utility`.
   A model that picks its own model is a cost hole. Adding a model-facing choice later is additive.

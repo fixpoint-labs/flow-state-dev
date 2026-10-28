@@ -106,7 +106,8 @@ way `sendMessage`'s `to` does: a worker's id, `{ task: id }` or `{ session: id }
   // in any block: another of the principal's sessions
   const view = await ctx.requestHost.sessions.read(sessionId);
 + const history = await ctx.requestHost.sessions.history(sessionId, { limit: { turns: 20 } });
-+ // { turns: HistoryTurn[], startRequestId? } | undefined: settled turns only, oldest first
++ // { turns: HistoryTurn[], startRequestId?, asOf?: { requestId, atMs }, running } | undefined
++ // settled turns only, oldest first; asOf is the newest one's settle time, running says a turn is open
 ```
 
 **Docs:** update `apps/docs/docs/workforce/messaging-workers.md` with a *Consulting a
