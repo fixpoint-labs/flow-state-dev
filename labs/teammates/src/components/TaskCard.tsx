@@ -32,7 +32,7 @@ export function TaskCard({
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
-  const steps = useWatch(adapter.watchRun, open ? task.id : undefined) ?? [];
+  const steps = useWatch(adapter.watchRun, open ? task.runSessionId : undefined) ?? [];
   const to = nameOf(task.to);
   const status =
     task.status === "needs-project"

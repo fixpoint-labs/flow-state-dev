@@ -135,6 +135,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
   const fileTask = (w: FixtureWorker, title: string): Step[1] => () => {
     const project = workProjects.get(w.row.id);
     const task: FixtureTask = { id: nextId("t"), to: CODER, title, status: project ? "running" : "needs-project", project, sessionId: w.sessionId };
+    if (project) task.runSessionId = `run:${task.id}`;
     tasks = [...tasks, task];
     push(w, { kind: "task", id: nextId("k"), taskId: task.id });
     if (!project) return;
@@ -344,8 +345,8 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       return watch(() => onChange(tasks.filter((t) => t.sessionId === sessionId).map(({ sessionId: _, ...card }) => card)));
     },
 
-    watchRun(taskId, onChange) {
-      return watch(() => onChange(runs.get(taskId) ?? []));
+    watchRun(runSessionId, onChange) {
+      return watch(() => onChange(runs.get(runSessionId.replace(/^run:/, "")) ?? []));
     },
   };
 }
