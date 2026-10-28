@@ -59,3 +59,6 @@ runs, so no `ANTHROPIC_API_KEY` is needed.
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-10-28 | 1059ee0c | openai/gpt-5.4 | PASS | 3 of 3 runs; leg 1 took 2-3 read calls, 0 tasks, 1 clone, 0 places; legs 2-3 each refused on a read call |
+| 2026-10-28 | 1059ee0c | openai/gpt-5.4 | FAIL (control `no-read`) | leg 1 *value named* (the model said it had no tool to read files) and *one clone* (0 clones); legs 2-3 made no read call |
+| 2026-10-28 | 1059ee0c | openai/gpt-5.4 | FAIL (control `no-gate`) | leg 3 *no value* (the value was named) and *read refused* (the grep returned matches) |

@@ -9,6 +9,10 @@
  *   turn runs is taken into that turn (epic D2). The lab writes no block for it.
  * - `desk.researcher` and `desk.thread` are on `agent` too; `desk.lead` is on
  *   the built-in `coordinator` flow.
+ * - The `agent` flow carries `projectSourceCapability` over the same host the
+ *   coding runs use, so a worker whose file names its `read` preset
+ *   (`desk.main`, `desk.researcher`) reads the session's project itself, from
+ *   the host's clone at the default branch, with no coding run.
  * - `desk.coder` and `desk.thread-coder` are on the lab's one coding flow,
  *   `harness-thread`; only `desk.thread-coder` waits for your review.
  * - `projects` lists and creates the projects a session works in, and `pins`
@@ -37,7 +41,7 @@ import { delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createFlowState } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { createWorkerInstallation, defineAgentWorkerFlow, defineCoordinatorFlow, hireWorkforce, projectWorkspace } from "@flow-state-dev/workforce";
+import { createWorkerInstallation, defineAgentWorkerFlow, defineCoordinatorFlow, hireWorkforce, projectSourceCapability, projectWorkspace } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { localWorkspaceHost } from "@flow-state-dev/workspace";
 import { defineHarnessThreadFlow, HARNESS_THREAD_FLOW } from "./workforce/flows/harness-thread.mts";
@@ -84,7 +88,7 @@ if (tree.errors.length > 0) throw new Error(`workforce/ did not load: ${tree.err
 let flows = {};
 const installation = createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => flows });
 flows = {
-  agent: defineAgentWorkerFlow({ installation, model, ...answerAgain }),
+  agent: defineAgentWorkerFlow({ installation, model, ...answerAgain, uses: [projectSourceCapability({ workspace })] }),
   coordinator: defineCoordinatorFlow({ installation, routeModel: model, agent: { model } }),
   [HARNESS_THREAD_FLOW]: { flow: defineHarnessThreadFlow({ installation, workspace }), roles: ["contributor"] },
 };

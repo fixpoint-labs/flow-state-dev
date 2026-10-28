@@ -261,10 +261,11 @@ export async function readKeptFiles(projectId: string, files: RunFiles, request:
   }
   if (request.kind === "read") {
     const path = checkSourcePath(request.path);
-    const row = (await rows()).find((candidate) => candidate.path === path);
+    const listed = await rows();
+    const row = listed.find((candidate) => candidate.path === path);
     const text = row === undefined ? null : await row.read();
     if (text === null) {
-      const isDirectory = (await rows()).some((candidate) => candidate.path.startsWith(`${path}/`));
+      const isDirectory = listed.some((candidate) => candidate.path.startsWith(`${path}/`));
       return { kind: "read", at, path, status: isDirectory ? "directory" : "missing" };
     }
     if (looksBinary(text)) return { kind: "read", at, path, status: "binary", bytes: Buffer.byteLength(text) };
