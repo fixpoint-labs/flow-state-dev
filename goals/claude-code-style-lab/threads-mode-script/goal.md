@@ -6,8 +6,8 @@
 main session, a coordinator, for three pieces of work. They see it start three threads, each a
 task in a session of its own, running side by side; answer the one that asks them a question,
 inside that thread; see it become ready for review; and resolve it. Then they ask for a code
-change and see it run through Claude Code in a clone of the project's repository, wait for their
-review, and resolve. All of it on the workforce package, a real model and a durable store, with
+change and see it run through Claude Code in a worktree of the project's repository, judged
+against its goal, wait for their review, and resolve. All of it on the workforce package, a real model and a durable store, with
 nothing in the lab but configuration, React UI and small flows.
 
 **Input:** `fixtures/input.json`: a project name, the ask (three vendors, one thread each), your
@@ -16,7 +16,8 @@ It is **held-out**: no worker file, prompt or flow names any of it. The thread w
 instructions say to ask which region matters, so step 3 doesn't hang on the model's choice.
 
 **Signal:** one browser on `fsdev dev --config labs/claude-code-style/fsdev.config.mts --app
-@flow-state-dev/claude-code-style`, with a fresh data folder and a fresh `file://` repository.
+@flow-state-dev/claude-code-style`, with a fresh data folder and a fresh `file://` repository, which the lab is told it may cut
+worktrees from (`CLAUDE_CODE_STYLE_REPOSITORIES`).
 
 - **setup** the Projects view's *New session* asks for a project (the *New project* form makes
   one), and the header shows `in project: <name>`.
@@ -33,9 +34,10 @@ instructions say to ask which region matters, so step 3 doesn't hang on the mode
 - **6** you ask for a code change: a task to `desk.thread-coder` is filed; its card and row are
   tagged *Claude Code*; it waits on your review (answering a question first, in its thread, if
   the run asks), under *Ready for review*, with the judge's line on its card; *Resolve* completes
-  it with output `review: "accepted"` and moves it under *Resolved*. A branch of the run's clone
-  under the lab's data folder holds the CHANGELOG line; the project's repository and the lab's
-  checkout are untouched.
+  it with output `review: "accepted"` and moves it under *Resolved*. The run worked in a worktree
+  of the project's repository under the lab's data folder, whose branch, also in the repository,
+  holds the CHANGELOG line; the repository's checked-out branch and files and the lab's checkout
+  are untouched.
 
 **Anti-game:** every signal reads the rendered page (`data-entry`, `data-task-id`,
 `data-column`, the header) or the board's own records (`listTasks_tasks`, `getTask_tasks`, the
@@ -59,6 +61,8 @@ failed.
 - `no-review`: the thread worker's `WORKER.md` without its review line. Must FAIL signal 4.
 - `no-project`: a lead session made with no project. Must FAIL signal 6: the composer stays
   closed and asks, and no run clones anything.
+- `no-mapping`: the lab started with no repository to cut worktrees from. Must FAIL signal 6: the
+  run works in a clone.
 - `planted-glue`: a planted `src/glue.ts`. The inventory must FAIL.
 
 ## Verdict log
@@ -71,3 +75,7 @@ failed.
 | 2026-10-28 | 32b5f0b | openai/gpt-5.4 | FAIL (control `no-review`) | Signal 4: the answered thread completed without waiting on your review |
 | 2026-10-28 | 32b5f0b | openai/gpt-5.4 | FAIL (control `no-project`) | Signal 6: the composer stayed closed and asked once; the coding task errored and no run cloned anything |
 | 2026-10-28 | 32b5f0b | — | FAIL (control `planted-glue`) | `inventory: other: src/glue.ts is not config, UI, a small flow, a check or a fixture` |
+| 2026-10-28 | 619ac83 | openai/gpt-5.4 | FAIL | Signal 6: the lead filed the code change to `desk.thread`, not the coder. The lead's instructions named only `desk.thread` as the assignee; they now name the coder for code (29bd1b9) |
+| 2026-10-28 | 29bd1b9 | openai/gpt-5.4 | FAIL | Signal 6: the review column was read before the page's next 2s read; the worktree and its branch were right. The check now waits for the page (10ed30d) |
+| 2026-10-28 | 10ed30d | openai/gpt-5.4 | PASS | Attempt 1 of 3. Worktrees and the judge: the coding thread ran in a worktree of the project's repository under the data folder, its branch in the repository holding the CHANGELOG line, its card showed the judge's verdict, and *Resolve* completed it `review: "accepted"` |
+| 2026-10-28 | 10ed30d | openai/gpt-5.4 | FAIL (control `no-mapping`) | Signal 6: `the run didn't work in a worktree of the project's repository (1 clone(s) under the data folder)` |
