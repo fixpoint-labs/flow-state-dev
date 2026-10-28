@@ -158,6 +158,16 @@ const wordsOf = (text: string) => new Set(text.toLowerCase().match(/[a-z]{4,}/g)
 /** One attempt: a fresh lab, a fresh project, the five steps and the harness leg. */
 async function attempt(n: number, failures: string[], notes: string[], tell: Tell): Promise<"retry" | "graded"> {
   const scratch = goalTmpDir(`claude-code-style-${n}`);
+  // A retry is for a model that gave nothing to grade, never a way past a signal that already failed.
+  const before = failures.length;
+  const retry = (why: string): "retry" | "graded" => {
+    if (failures.length > before) {
+      failures.push(`${why}, so the later signals went ungraded`);
+      return "graded";
+    }
+    notes.push(`${why}; retrying`);
+    return "retry";
+  };
   const data = join(scratch, "data");
   const repo = makeRepository(join(scratch, "repo"));
   const repoHead = git(repo, "rev-parse", "HEAD");
@@ -252,8 +262,7 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
     // ── Signal 3: two task rows show, both filed by this session.
     const shownRows = timeline.at(-1)!.tasks;
     if (shownRows.length < 2 || filed.length < 2) {
-      notes.push(`3: the model filed ${filed.length} task(s); retrying`);
-      return "retry";
+      return retry(`3: the model filed ${filed.length} task(s)`);
     }
     tell.over("task rows shown", shownRows);
     const unknown = shownRows.filter((row) => !filed.some((task) => (task.title ?? task.goal) === row.title));
@@ -266,8 +275,7 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
     const settledInTurn = requests.filter((r) => r.actionName === "onTaskSettled" && (r.startedAtMs ?? Infinity) < turnEnd);
     if (during === undefined) {
       if (settledInTurn.length === 0) {
-        notes.push("4: no task settled before the turn ended (the model ended its turn early); retrying");
-        return "retry";
+        return retry("4: no task settled before the turn ended (the model ended its turn early)");
       }
       failures.push(`4: a task settled while your first turn ran, but no result card showed inside it with the indicator on`);
     } else {
@@ -284,8 +292,7 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
     const open = filed.filter((task) => task.status !== "completed" && task.status !== "cancelled" && task.status !== "errored");
     if (open.length === 0) {
       const turn = Math.round(((first.completedAtMs ?? 0) - (first.startedAtMs ?? 0)) / 1000);
-      notes.push(`5: both tasks had finished before the ask to stop (the turn took ${turn}s); retrying`);
-      return "retry";
+      return retry(`5: both tasks had finished before the ask to stop (the turn took ${turn}s)`);
     }
     await box.fill(fixture.stop);
     await box.press("Enter");

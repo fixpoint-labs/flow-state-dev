@@ -24,7 +24,14 @@ export function Thread({
   onOpenThread: (taskId: string) => void;
 }) {
   const view = useWatch((emit: Parameters<LabAdapter["watchThread"]>[1]) => adapter.watchThread(session.id, emit), [adapter, session.id]);
-  const tasks = useWatch((emit: (rows: TaskRow[]) => void) => adapter.watchTasks(session.id, emit), [adapter, session.id]) ?? [];
+  const mode = modeOfWorker(session.worker);
+  // Only threads mode draws a card from a task row; session mode's rows are the tasks pane's own read.
+  const board = mode?.pane === "board";
+  const tasks =
+    useWatch(
+      (emit: (rows: TaskRow[]) => void) => (board ? adapter.watchTasks(session.id, emit) : () => undefined),
+      [adapter, session.id, board],
+    ) ?? [];
   const running = view?.running ?? false;
   const now = useNow(running);
   const end = useRef<HTMLDivElement>(null);
@@ -33,7 +40,6 @@ export function Thread({
     end.current?.scrollIntoView?.({ block: "end" });
   }, [count, running]);
 
-  const mode = modeOfWorker(session.worker);
   return (
     <main aria-label="Main thread" className="flex h-full min-h-0 min-w-0 flex-col">
       <header className="flex items-center justify-between gap-4 border-b border-border px-6 py-3">

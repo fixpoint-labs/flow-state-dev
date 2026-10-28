@@ -66,7 +66,7 @@ const HARNESSES: Record<string, (feeds: HarnessFeeds) => HarnessBlock> = {
 
 /** The one phase: the task as the main session wrote it, done when the harness says it finished. */
 const phase: PhaseSpec = {
-  phase: "work",
+  phase: "code",
   buildPrompt: ({ task, answers }) =>
     [
       task.title === undefined ? task.goal : `${task.title}\n\n${task.goal}`,
