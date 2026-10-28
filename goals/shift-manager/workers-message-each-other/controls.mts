@@ -20,6 +20,11 @@ export const CONTROL_NAMES = [
   "task-to-conversation",
   "no-kind-check",
   "coder-resumes-open",
+  "no-debt",
+  "accept-clears",
+  "window-dedupe",
+  "take-is-final",
+  "no-recheck",
 ] as const;
 export type ControlName = (typeof CONTROL_NAMES)[number];
 
@@ -30,12 +35,15 @@ export interface Control {
   assertion: string;
   patches: ModulePatch[];
   does: string;
+  /** Leg 9's sub-legs it runs (default: all), when it runs leg 9. */
+  subLegs?: string[];
 }
 
 const MESSAGES = "packages/workforce/src/messages";
 const ENTRY = `${MESSAGES}/message-received-entry.ts`;
 const SEND = `${MESSAGES}/send-message.ts`;
 const TARGET = `${MESSAGES}/message-target.ts`;
+const DELIVERY = `${MESSAGES}/delivery.ts`;
 /** The anchor every recipient-refusal patch adds after: the first check `recipientRefusal` makes. */
 const NOT_YOURSELF = String.raw`if \(to === sender && !answering\) return "not_yourself: you can't message yourself\.";`;
 
@@ -217,5 +225,67 @@ export const CONTROLS: Record<ControlName, Control> = {
       },
     ],
     does: "a message to the coder's open task is sent, to reach the coding session the work is in",
+  },
+  "no-debt": {
+    name: "no-debt",
+    legs: ["9"],
+    subLegs: ["crash-after-row", "resent"],
+    assertion: "9:crash-after-row",
+    patches: [{ module: SEND, from: String.raw`const resends = carriesPass\(installation, flowKind\);`, to: "const resends = false;" }],
+    does: "the send owes no wake and keeps no owed id, so nothing sends a message again",
+  },
+  "accept-clears": {
+    name: "accept-clears",
+    legs: ["9"],
+    subLegs: ["lost-after-accept"],
+    assertion: "9:lost-after-accept",
+    patches: [
+      {
+        module: SEND,
+        from: String.raw`return \{ ok: true, id \};`,
+        to: 'if (outcome?.ok === true) { await ref.patchState({ status: "delivered" }); if (resends) await dropOwed(ctx, [id]); } return { ok: true, id };',
+      },
+    ],
+    does: "an accepted dispatch marks the row delivered and drops the debt",
+  },
+  "window-dedupe": {
+    name: "window-dedupe",
+    legs: ["9"],
+    subLegs: ["seen-once"],
+    assertion: "9:seen-once",
+    patches: [
+      // The session window FIX-2240 replaced is gone from the code; what it
+      // stood for at a distance past its size is a take that doesn't read the row.
+      { module: DELIVERY, from: String.raw`row\.status !== "unconfirmed"\) return undefined;`, to: "false) return undefined;" },
+      { module: DELIVERY, from: String.raw`const rule = await decideTake\(ctx, row\.takenBy\);`, to: 'const rule = { take: "own" };' },
+      {
+        module: DELIVERY,
+        from: String.raw`if \(current\.status !== "unconfirmed" \|\| current\.takenBy !== seen\) return \{ state: current, result: undefined \};`,
+        to: "",
+      },
+    ],
+    does: "the take doesn't read the row's status or taker, as a dedupe window that has moved past the id wouldn't, so a late copy lands again",
+  },
+  "take-is-final": {
+    name: "take-is-final",
+    legs: ["9"],
+    subLegs: ["crash-after-take"],
+    assertion: "9:crash-after-take",
+    patches: [
+      {
+        module: DELIVERY,
+        from: String.raw`const rule = await decideTake\(ctx, row\.takenBy\);`,
+        to: 'const rule = row.takenBy === undefined || row.takenBy === ctx.request.identity.id ? { take: "own" } : { take: "busy" };',
+      },
+    ],
+    does: "a copy never takes over from a taker that ended",
+  },
+  "no-recheck": {
+    name: "no-recheck",
+    legs: ["9"],
+    subLegs: ["late-refusal"],
+    assertion: "9:late-refusal",
+    patches: [{ module: DELIVERY, from: String.raw`const refusal = await recheck\(ctx, ref\.state\);`, to: "const refusal = undefined;" }],
+    does: "a resend skips the recipient check",
   },
 };
