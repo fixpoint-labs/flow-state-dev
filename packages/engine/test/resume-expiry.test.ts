@@ -67,7 +67,7 @@ async function seedSuspended(
     flowKind: "resume-exp",
     actionName: "go",
     userId: "u1",
-    reason: "human_approval",
+    reason: "user_approval",
     message: "Approve?",
     status: "pending",
     blockInstanceId: "b1",

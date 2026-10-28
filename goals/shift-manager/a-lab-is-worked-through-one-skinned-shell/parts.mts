@@ -85,7 +85,7 @@ import "./app/globals.css";
 
 const ask = { id: "s1", type: "suspension", status: "completed", requestId: "r1", itemIndex: 0, ts: 0,
   provenance: { blockName: "gen", blockInstanceId: "b1", phase: "main" },
-  suspensionId: "s1", suspensionStatus: "pending", reason: "human_approval", message: "Ship it?" } as never;
+  suspensionId: "s1", suspensionStatus: "pending", reason: "user_approval", message: "Ship it?" } as never;
 const failed = { id: "t1", type: "tool_output", status: "failed", requestId: "r1", itemIndex: 1, ts: 0, blockName: "deploy",
   provenance: { blockName: "gen", blockInstanceId: "b1", phase: "main" }, output: "exit 1",
   toolCall: { callId: "c1", name: "deploy", arguments: "{}", generatorBlock: "gen" } } as never;

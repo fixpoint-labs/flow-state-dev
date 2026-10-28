@@ -99,6 +99,8 @@ export type HostOptions = {
   standardOnly?: boolean;
   /** The skills a user's own worker may name; omitted, the standard workers'. */
   skills?: InitialSkill[];
+  /** The settings of `fixture-worker` a user may see on the roster. */
+  showSettings?: string[];
 };
 
 export type Host = ReturnType<typeof bootHost>;
@@ -141,7 +143,7 @@ function workerFlow(flow: string, installation: WorkerInstallation) {
   });
   return defineFlow({
     kind: flow,
-    configSchema: workerConfigSchema().extend({ tone: z.string().default("plain") }),
+    configSchema: workerConfigSchema().extend({ tone: z.string().default("plain"), apiToken: z.string().optional() }),
     session: installation.session(),
     resources: { ...installation.resources, handbook, ledger, teamNotes },
     actions: {
@@ -189,7 +191,14 @@ export function bootHost(stores: StoreRegistry, options: HostOptions = {}) {
   const fixture = workerFlow(FIXTURE, installation);
   const other = workerFlow(OTHER, installation);
   flows = {
-    [FIXTURE]: options.standardOnly === true ? { flow: fixture, standardOnly: true } : fixture,
+    [FIXTURE]:
+      options.standardOnly === true || options.showSettings !== undefined
+        ? {
+            flow: fixture,
+            standardOnly: options.standardOnly === true,
+            ...(options.showSettings === undefined ? {} : { showSettings: options.showSettings })
+          }
+        : fixture,
     [OTHER]: other
   };
 

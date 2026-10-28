@@ -647,7 +647,7 @@ function grade(read: Sweep, where: Where, tag: string, failures: Failures, lab: 
 // ---- the store, read by this check ----------------------------------------------
 
 /** Suspension reasons that are a person being asked something. */
-const PERSON_REASONS = new Set(["human_approval", "human_input"]);
+const PERSON_REASONS = new Set(["user_approval", "user_input"]);
 
 async function readStore(api: LabApi, userId: string, boards: readonly string[] = []): Promise<Store> {
   const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`);

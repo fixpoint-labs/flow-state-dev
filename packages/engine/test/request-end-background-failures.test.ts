@@ -385,7 +385,7 @@ describe("request-end seam · background failures", () => {
                 name: "ask",
                 inputSchema: z.any(),
                 outputSchema: z.unknown(),
-                execute: (_input, ctx) => ctx.suspend!({ reason: "human_input", message: "Which one?" })
+                execute: (_input, ctx) => ctx.suspend!({ reason: "user_input", message: "Which one?" })
               })
             )
         }
@@ -409,7 +409,7 @@ describe("request-end seam · background failures", () => {
       runtimeConfig: { durabilityProvider: provider }
     });
 
-    expect(endings).toEqual([{ status: "suspended", suspension: expect.objectContaining({ reason: "human_input", suspensionId: expect.any(String) }) }]);
+    expect(endings).toEqual([{ status: "suspended", suspension: expect.objectContaining({ reason: "user_input", suspensionId: expect.any(String) }) }]);
   });
 
   it("hands on nothing for a request whose background work succeeded", async () => {

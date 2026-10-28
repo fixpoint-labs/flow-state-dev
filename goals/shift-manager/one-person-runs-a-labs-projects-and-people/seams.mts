@@ -232,12 +232,12 @@ export function seams(base: string): SeamRow[] {
     const has = (page: string, re: RegExp) => existsSync(join(REPO_ROOT, page)) && re.test(readFileSync(join(REPO_ROOT, page), "utf8"));
     const owned: Array<[string, string, RegExp]> = [
       // Since FIX-1793 a project no longer groups workstreams by list: the section defines both terms.
-      // FIX-1960 renamed the Shift Coordinator the Shift Coordinator in the docs.
+      // FIX-1960 gave the docs the name Shift Coordinator.
       ["the shared section, projects and workstreams (FIX-1718)", "apps/docs/docs/workforce/overview.md", /^## Projects and the Shift Coordinator\n[\s\S]*?\*\*project\*\*[\s\S]*?\*\*workstream\*\* is one area of a project\b/im],
       ["the shared section, org seat and mailbox (FIX-1719)", "apps/docs/docs/workforce/overview.md", /^## Projects and the Shift Coordinator\n[\s\S]*?Shift Coordinator[\s\S]*?(approve)/im],
       ["Asking Shift Coordinator for a project (FIX-1718)", "apps/docs/docs/workforce/projects.md", /^# Projects$[\s\S]*Shift Coordinator/m],
       ["Shift Manager's PROJECTS (FIX-1718)", "packages/shift-manager/README.md", /^## What you see$[\s\S]*?PROJECTS/m],
-      ["The Shift Coordinator page (FIX-1719)", "apps/docs/docs/workforce/shift-coordinator.md", /^# The Shift Coordinator$[\s\S]*?^## Adding one$[\s\S]*?^## What asks first$[\s\S]*?"reason": "human_approval"/m],
+      ["The Shift Coordinator page (FIX-1719)", "apps/docs/docs/workforce/shift-coordinator.md", /^# The Shift Coordinator$[\s\S]*?^## Adding one$[\s\S]*?^## What asks first$[\s\S]*?"reason": "user_approval"/m],
       // Each person talks to a project through their own project coordinator; the project rooms are gone (FIX-1793).
       ["Talking to a project (FIX-1793)", "apps/docs/docs/workforce/projects.md", /^## Talking to a project$[\s\S]*?\*\*project coordinator\*\*[\s\S]*?^### How its delegates follow your workstreams$/m],
       // FIX-1621's repair of a seat whose kind is gone was retired by FIX-1788: a worker is a row its owner fires or edits.

@@ -58,7 +58,7 @@ export function createParkedGateConformanceTests(options: CreateParkedGateConfor
           name: suspensionId,
           inputSchema: z.any(),
           outputSchema: z.any(),
-          execute: async (_i, ctx) => ctx.suspend!({ reason: "human_approval", suspensionId })
+          execute: async (_i, ctx) => ctx.suspend!({ reason: "user_approval", suspensionId })
         });
       const flow = defineFlow({
         kind: "parked-gate-conformance",

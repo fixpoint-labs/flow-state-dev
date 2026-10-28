@@ -81,9 +81,9 @@ export async function legC(world: World, opts: { worker: string; flow: string; p
     if (fire === undefined || fire.requestId === null || fire.sessionId === null) {
       r.fail("c3", `the fire was not asked: ${quote(fire)}`);
     } else {
-      const asks = (await asksOf(owner(), fire.sessionId, fire.requestId)).filter((a) => a.reason === "human_approval");
+      const asks = (await asksOf(owner(), fire.sessionId, fire.requestId)).filter((a) => a.reason === "user_approval");
       const named = (asks[0]?.data as { worker?: string } | undefined)?.worker;
-      if (fire.status !== "suspended" || asks.length !== 1) r.fail("c3", `the fire turn ended ${fire.status} with ${asks.length} human_approval ask(s): ${quote(fire)}`);
+      if (fire.status !== "suspended" || asks.length !== 1) r.fail("c3", `the fire turn ended ${fire.status} with ${asks.length} user_approval ask(s): ${quote(fire)}`);
       else if (named !== worker || !/fire/i.test(asks[0]!.message ?? "")) r.fail("c3", `the ask says "${asks[0]!.message}" naming ${JSON.stringify(asks[0]!.data)}, not a fire of "${worker}"`);
       else {
         const answered = await answerInInbox(world, asks[0]!.suspensionId!, "Approve");

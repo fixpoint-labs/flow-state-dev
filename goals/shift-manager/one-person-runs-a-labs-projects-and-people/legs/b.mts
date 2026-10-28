@@ -147,8 +147,8 @@ export async function legB(world: World, restart: (label: string) => Promise<voi
   const shiftCoordinatorSession = hire.sessionId;
   const hires = callsTo(hire, "hire");
   if (hires.length !== 1 || !hires[0]!.ok) r.fail("b1", `Shift Coordinator's session holds ${hires.length} hire call(s), ${hires.filter((h) => h.ok).length} ok: ${quote(hire)}`);
-  const raised = shiftCoordinatorSession === null || hire.requestId === null ? [] : (await asksOf(world.routes.owner, shiftCoordinatorSession, hire.requestId)).filter((a) => a.reason === "human_approval");
-  if (raised.length > 0) r.fail("b1", `the hire raised ${raised.length} human_approval ask(s)`);
+  const raised = shiftCoordinatorSession === null || hire.requestId === null ? [] : (await asksOf(world.routes.owner, shiftCoordinatorSession, hire.requestId)).filter((a) => a.reason === "user_approval");
+  if (raised.length > 0) r.fail("b1", `the hire raised ${raised.length} user_approval ask(s)`);
   if (hire.status !== "completed") r.fail("b1", `the hire turn ended ${hire.status}`);
   const hired = await where(world, seat);
   if (hired.rosterRow === undefined) r.fail("b1", `seat appears: the person's roster has no row for "${seat}"`);
@@ -164,10 +164,10 @@ export async function legB(world: World, restart: (label: string) => Promise<voi
   if (fire === undefined || fire.requestId === null || fire.sessionId === null) {
     r.fail("b2", `the fire was not asked: ${quote(fire)}`);
   } else {
-    const asks = (await asksOf(world.routes.owner, fire.sessionId, fire.requestId)).filter((a) => a.reason === "human_approval");
+    const asks = (await asksOf(world.routes.owner, fire.sessionId, fire.requestId)).filter((a) => a.reason === "user_approval");
     ask = asks[0];
     const named = (ask?.data as { worker?: string } | undefined)?.worker;
-    if (fire.status !== "suspended" || asks.length !== 1) r.fail("b2", `the fire turn ended ${fire.status} with ${asks.length} human_approval ask(s): ${quote(fire)}`);
+    if (fire.status !== "suspended" || asks.length !== 1) r.fail("b2", `the fire turn ended ${fire.status} with ${asks.length} user_approval ask(s): ${quote(fire)}`);
     else if (named !== seat || !/fire/i.test(ask!.message ?? "")) r.fail("b2", `the ask says "${ask!.message}" naming ${JSON.stringify(ask!.data)}, not a fire of "${seat}"`);
     const inbox = await inboxAsks(world);
     if (ask?.suspensionId === undefined || !inbox.includes(ask.suspensionId)) r.fail("b2", `Inbox doesn't list the ask ${ask?.suspensionId} (lists [${inbox.join(", ")}])`);

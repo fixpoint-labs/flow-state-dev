@@ -9,7 +9,7 @@ const SUSPENSION_ID = "susp-selection";
 
 const item = suspensionItem({
   suspensionId: SUSPENSION_ID,
-  reason: "human_input",
+  reason: "user_input",
   message: "Which environment should we deploy to?",
   resumeSchema: { type: "string", enum: ["staging", "production", "canary"] },
   allow: ["submit"],
@@ -46,7 +46,7 @@ export const MultiChoice: Story = {
     wrap(
       suspensionItem({
         suspensionId: "susp-selection-multi",
-        reason: "human_input",
+        reason: "user_input",
         message: "Which checks should block the merge?",
         resumeSchema: { type: "array", items: { type: "string", enum: ["lint", "test", "typecheck", "e2e"] } },
         allow: ["submit", "skip"],

@@ -154,7 +154,7 @@ describe("history across a turn the host died in", () => {
     actionName: "run",
     sessionId: SESSION,
     userId: "alice",
-    reason: "human_approval" as const,
+    reason: "user_approval" as const,
     message: "Approve?",
     status,
     blockInstanceId: "gen_1",

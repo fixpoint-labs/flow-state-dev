@@ -24,7 +24,7 @@
  * for a project and a worker in the Shift Coordinator view: PROJECTS must list
  * the project; the person's roster must hold the worker it hired, and Roster
  * list it as theirs; and a fire of that worker must suspend on one
- * `human_approval` in the store naming it. The copy is deleted after the run;
+ * `user_approval` in the store naming it. The copy is deleted after the run;
  * `packages/shift-manager` is left untouched.
  */
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -289,13 +289,13 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
             const fire = await askShiftCoordinator(world, "J4", `Please fire the worker "${worker}".`);
             if (fire === undefined || fire.sessionId === null || fire.requestId === null) failures.push(`J4: the fire was not asked: ${quote(fire)}`);
             else {
-              const asks = (await asksOf(world.routes.owner, fire.sessionId, fire.requestId)).filter((a) => a.reason === "human_approval");
+              const asks = (await asksOf(world.routes.owner, fire.sessionId, fire.requestId)).filter((a) => a.reason === "user_approval");
               const named = (asks[0]?.data as { worker?: string } | undefined)?.worker;
-              if (fire.status !== "suspended" || asks.length !== 1) failures.push(`J4: asked to fire "${worker}", the turn ended ${fire.status} with ${asks.length} human_approval ask(s), not suspended on one: ${quote(fire)}`);
+              if (fire.status !== "suspended" || asks.length !== 1) failures.push(`J4: asked to fire "${worker}", the turn ended ${fire.status} with ${asks.length} user_approval ask(s), not suspended on one: ${quote(fire)}`);
               else if (named !== worker || !/fire/i.test(asks[0]!.message ?? "")) failures.push(`J4: the fire's ask says "${asks[0]!.message}" naming ${JSON.stringify(asks[0]!.data)}, not a fire of "${worker}"`);
               // Nothing is removed before the person answers: a fire that writes first and asks after still raises the same ask.
               else if (!(await readWorkers(world.routes.owner)).some((w) => w.id === worker)) failures.push(`J4: asked to fire "${worker}", the turn suspended on its ask, but the person's roster no longer holds it: the fire ran before anyone approved`);
-              else notes.push(`J4: asked to fire "${worker}", the turn suspended on one human_approval "${asks[0]!.message}" ${JSON.stringify(asks[0]!.data)}; left unanswered, and the worker is still on the roster`);
+              else notes.push(`J4: asked to fire "${worker}", the turn suspended on one user_approval "${asks[0]!.message}" ${JSON.stringify(asks[0]!.data)}; left unanswered, and the worker is still on the roster`);
             }
           }
         }

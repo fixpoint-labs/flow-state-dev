@@ -499,6 +499,32 @@ import { workerFlowProblems } from "@flow-state-dev/workforce";
 expect(workerFlowProblems("triage", triageFlow, ["contributor"])).toEqual([]);
 ```
 
+#### Settings a user can see
+
+A worker's settings stay on the server: its flow reads them, and a browser doesn't. When a
+screen needs one, such as which coding harness a worker runs on, name it where you register the
+flow:
+
+```ts
+const installation = createWorkerInstallation({
+  standardWorkers: workers,
+  workerFlows: { coder: { flow: coderFlow, showSettings: ["harness"] } },
+});
+```
+
+Each worker on that flow then carries its own value on its roster row, from its `WORKER.md` or
+from the user's copy of it:
+
+```ts
+const roster = await workforce.roster();
+roster.find((row) => row.id === "coder")?.settings; // { harness: "claude-code" }
+```
+
+Only the names you list show, so a setting you add later stays private until you list it too. A
+worker that doesn't set a listed key has nothing for it on its row. `hireWorkforce` refuses a name
+the flow doesn't declare in its `configSchema`. It also refuses the keys every worker carries or
+the hire reads itself, such as `instructions` and `description`.
+
 #### Where a worker's data lives
 
 Session, request and user state belong to one user. Org scope is shared with every user in the

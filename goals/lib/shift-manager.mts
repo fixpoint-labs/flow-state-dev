@@ -276,7 +276,7 @@ export async function pickShift(page: Page, shift: "day" | "evening" | "night"):
 }
 
 /** Suspension reasons that are a person being asked something. */
-const PERSON_REASONS = new Set(["human_approval", "human_input"]);
+const PERSON_REASONS = new Set(["user_approval", "user_input"]);
 
 /** The worker a listed session runs, as its state names it (`workerId`), or `null` when it names none. */
 export function workerOf(session: Readonly<Record<string, any>>): string | null {
