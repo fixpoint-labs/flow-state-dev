@@ -15,6 +15,9 @@
  *     nothing follows the running turn again, so neither turn is seen.
  *   - follow a running turn again with no limit, and the "keeps dropping"
  *     case fails: the view reattaches on every drop.
+ *   - act on a running-turns read after the view moved to another session,
+ *     and the "session changed" case fails: the old session's turn is
+ *     followed into the new session's view.
  *   - let a line steer while a sent turn still waits, and both "a later line
  *     runs after" cases fail: the line is taken into the running turn ahead
  *     of the one waiting.
@@ -46,8 +49,8 @@ let running: Array<{ id: string; actionName: string; startedAtMs: number }> = []
 const followRequest = vi.fn();
 const sendAction = vi.fn(async () => ({}));
 
-function view(isStreaming: boolean, isLoading = false): SessionView {
-  return { flowKind: "harness", sessionId: "s1", userId: "u", isStreaming, isLoading, followRequest, sendAction } as unknown as SessionView;
+function view(isStreaming: boolean, isLoading = false, sessionId = "s1"): SessionView {
+  return { flowKind: "harness", sessionId, userId: "u", isStreaming, isLoading, followRequest, sendAction } as unknown as SessionView;
 }
 
 function mount(isStreaming = true) {
@@ -135,6 +138,25 @@ describe("useHarnessLines", () => {
     }
     expect(followRequest).toHaveBeenCalledTimes(3);
     expect(followRequest).not.toHaveBeenCalledWith("line-1");
+  });
+
+  it("ignores a running-turns read that lands after the view moved to another session", async () => {
+    const { result, rerender } = mount();
+    await result.current.send("later");
+    let answer: (turns: typeof running) => void = () => undefined;
+    sessionsMock.requests.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+    rerender({ session: view(false) });
+    await waitFor(() => expect(sessionsMock.requests).toHaveBeenCalledTimes(2));
+
+    rerender({ session: view(false, false, "s2") });
+    await act(async () => {
+      answer([
+        { id: "turn-1", actionName: "turn", startedAtMs: 1 },
+        { id: "line-1", actionName: "turn", startedAtMs: 2 }
+      ]);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    expect(followRequest).not.toHaveBeenCalledWith("turn-1");
   });
 
   it("while a sent turn still waits, a later line runs after it rather than steering past it", async () => {

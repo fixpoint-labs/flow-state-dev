@@ -69,6 +69,8 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
 
   const streaming = useRef(isStreaming);
   streaming.current = isStreaming;
+  const viewedSession = useRef(sessionId);
+  viewedSession.current = sessionId;
   // Turns sent while one ran, oldest first. Each waits on the server for the one before it.
   const waiting = useRef<string[]>([]);
   const checkingRunning = useRef(false);
@@ -101,7 +103,8 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
     runningTurns(sessionId).then(
       (turns) => {
         checkingRunning.current = false;
-        if (streaming.current) return;
+        // Read for a session the view has since left: its turns are not this view's to follow.
+        if (streaming.current || viewedSession.current !== sessionId) return;
         const running = turns[0];
         // The turn followed still runs, and only its stream ended: follow it
         // again, so its end moves the view on to the waiting turn.
