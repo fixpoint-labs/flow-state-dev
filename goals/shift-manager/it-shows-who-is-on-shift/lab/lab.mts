@@ -45,6 +45,7 @@ import {
   inventoryWriterActions,
   openInventory,
   workerConfigSchema,
+  workerMessagesResources,
   workerTaskEntry,
   type InventoryActionRequest,
 } from "@flow-state-dev/workforce";
@@ -53,7 +54,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { actingAs } from "../../../lib/client-actions.mts";
-import { workerDoor } from "../../../lib/worker-door.mts";
+import { hearsMessages, workerDoor } from "../../../lib/worker-door.mts";
 import { installWorkers } from "../../../lib/workers.mts";
 
 /** The tree this Lab reads. */
@@ -215,7 +216,8 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
         cardinality: "collection",
         configSchema: workerConfigSchema(),
         session: installation.session(),
-        resources: { ...installation.resources },
+        resources: { ...installation.resources, ...workerMessagesResources },
+        internal: { actions: hearsMessages(installation, SEAT_KIND) },
         actions: { ...workerDoor, ask: { block: sequencer({ name: "shift-lab-ask", inputSchema: z.object({ what: z.string() }) }).step(gate), durable: true } },
         task: { actions: { work: workerTaskEntry({ name: "shift-lab-task", turn: taskTurn }) } },
       } as never) },
