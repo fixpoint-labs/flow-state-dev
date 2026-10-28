@@ -228,7 +228,7 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
     message: `Before anything else, call waitForUser with kind "approval" and prompt "May I publish the ${fyi} report?", and wait for my answer.`,
   });
   const stop = await until(async () => {
-    const stops = (await alice.routes.items(researcher.id, "suspension")).filter((i) => i.requestId === stopTurn.requestId && i.reason === "human_approval");
+    const stops = (await alice.routes.items(researcher.id, "suspension")).filter((i) => i.requestId === stopTurn.requestId && i.reason === "user_approval");
     return stops.at(-1);
   }, 30_000, 1_000);
   if (stop === undefined) {
