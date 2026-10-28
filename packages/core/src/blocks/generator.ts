@@ -59,6 +59,7 @@ import type {
   InferCapabilitySessionState,
   MergeTargetSchemas,
   Prettify,
+  PresetDef,
   UsesEntry,
 } from "../capability/types";
 
@@ -110,6 +111,8 @@ const DEFAULT_REPAIR_ATTEMPTS = 1;
 
 interface DynamicCapSurface {
   contextEntries: Array<unknown>;
+  /** History query entries (FIX-1613) — see `PresetDef.history`. */
+  historyEntries: Array<NonNullable<PresetDef["history"]>>;
   tools: GeneratorTool[];
   /** Fence-exempt controls (FIX-1393) — see `PresetDef.controlTools`. */
   controlTools: GeneratorTool[];
@@ -152,6 +155,7 @@ async function resolveDynamicCapSurface(
   }
 
   const contextEntries: Array<unknown> = [];
+  const historyEntries: Array<NonNullable<PresetDef["history"]>> = [];
   const tools: GeneratorTool[] = [];
   const controlTools: GeneratorTool[] = [];
 
@@ -163,6 +167,7 @@ async function resolveDynamicCapSurface(
     for (const nested of flattened) {
       const nestedSurface = await resolveDynamicCapSurface(nested, ctx, collect);
       contextEntries.push(...nestedSurface.contextEntries);
+      historyEntries.push(...nestedSurface.historyEntries);
       tools.push(...nestedSurface.tools);
       controlTools.push(...nestedSurface.controlTools);
     }
@@ -172,6 +177,9 @@ async function resolveDynamicCapSurface(
     if (preset.context) {
       const entries = Array.isArray(preset.context) ? preset.context : [preset.context];
       contextEntries.push(...entries);
+    }
+    if (preset.history !== undefined) {
+      historyEntries.push(preset.history);
     }
     if (collect.tools && preset.tools) {
       if (Array.isArray(preset.tools)) {
@@ -191,7 +199,55 @@ async function resolveDynamicCapSurface(
     }
   }
 
-  return { contextEntries, tools, controlTools };
+  return { contextEntries, historyEntries, tools, controlTools };
+}
+
+/**
+ * The query the generator's capabilities add to its history reads (FIX-1613):
+ * every `history` entry, static then dynamic, resolved against this run's
+ * context and merged in order, later keys winning. `undefined` when none
+ * contributes.
+ */
+async function resolveCapabilityHistoryQuery(
+  staticEntries: ReadonlyArray<NonNullable<PresetDef["history"]>>,
+  dynamicUses: ReadonlyArray<(ctx: BlockContext) => readonly CapabilityRef[]>,
+  blockItemVisibility: ItemVisibility | undefined,
+  ctx: BlockContext,
+): Promise<ItemQuery | undefined> {
+  const entries = [...staticEntries];
+  for (const resolver of dynamicUses) {
+    for (const cap of resolver(ctx)) {
+      if (!capabilityMatchesAgent(cap, blockItemVisibility)) continue;
+      const surface = await resolveDynamicCapSurface(cap, ctx, { tools: false, controlTools: false });
+      entries.push(...surface.historyEntries);
+    }
+  }
+  if (entries.length === 0) return undefined;
+  let query: ItemQuery = {};
+  for (const entry of entries) {
+    query = { ...query, ...(typeof entry === "function" ? await entry(ctx) : entry) };
+  }
+  return query;
+}
+
+/**
+ * `ctx` with `session.items.history` reading under `query`, the read's own keys
+ * on top. Built by prototype so every other property, getters included, still
+ * reads through to the run's context.
+ */
+function withHistoryQuery(ctx: BlockContext, query: ItemQuery): BlockContext {
+  const session = ctx.session as BlockContext["session"] | undefined;
+  if (session?.items === undefined) return ctx;
+  const baseItems = session.items;
+  const items = Object.create(baseItems) as typeof baseItems;
+  Object.defineProperty(items, "history", {
+    value: (own?: ItemQuery) => baseItems.history({ ...query, ...own }),
+  });
+  const narrowedSession = Object.create(session) as typeof session;
+  Object.defineProperty(narrowedSession, "items", { value: items });
+  const narrowed = Object.create(ctx) as BlockContext;
+  Object.defineProperty(narrowed, "session", { value: narrowedSession });
+  return narrowed;
 }
 
 type MaybePromise<TValue> = TValue | Promise<TValue>;
@@ -2754,6 +2810,7 @@ export function generator<
   const staticContextEntries = mergedSurface?.contextEntries ?? [];
   const staticToolEntries = mergedSurface?.toolEntries ?? [];
   const staticControlToolEntries = mergedSurface?.controlToolEntries ?? [];
+  const staticHistoryEntries = mergedSurface?.historyEntries ?? [];
   const hasStaticContext = staticContextEntries.length > 0;
   const hasStaticTools = staticToolEntries.length > 0;
   const hasStaticControlTools = staticControlToolEntries.length > 0;
@@ -2991,7 +3048,15 @@ export function generator<
       }
 
       const historySlot = normalizeHistorySlot(normalizedConfig.history);
-      const historyValues = await resolveSlotValues(historySlot, input, ctx);
+      // A capability's `history` key narrows every read the slot makes (FIX-1613).
+      const capabilityHistoryQuery = historySlot === undefined
+        ? undefined
+        : await resolveCapabilityHistoryQuery(staticHistoryEntries, dynamicUses, blockItemVisibility, ctx);
+      const historyValues = await resolveSlotValues(
+        historySlot,
+        input,
+        capabilityHistoryQuery === undefined ? ctx : withHistoryQuery(ctx, capabilityHistoryQuery),
+      );
 
       const userBrand = getPromptFileBrand(normalizedConfig.user);
       const {
