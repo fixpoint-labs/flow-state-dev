@@ -1,5 +1,5 @@
 {
-  "port": 3049,
+  "port": 3053,
   "codexPlan": "none",
   "modes": [
     { "id": "flow-state", "tag": "fs", "label": "Flow State", "href": "/flow-state", "plan": null },
