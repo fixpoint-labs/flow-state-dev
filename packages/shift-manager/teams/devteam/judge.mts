@@ -2,7 +2,7 @@
  * DevTeam's judge: Jev reads a coding run that passed its phase's own check
  * against the task's goal, before the task closes (harness-manager's `judge`
  * slot). It is harness-manager's `goalJudge`, under DevTeam's block name, on
- * the model and floor the chief of staff's best fit runs on.
+ * the model and floor the Shift Coordinator's best fit runs on.
  *
  * The model is a string the flow's model resolver resolves through its
  * evaluation hook, `typesafe-ai/jev` through the AI Gateway, exactly as best
