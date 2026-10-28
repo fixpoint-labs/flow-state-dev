@@ -13,6 +13,7 @@
  */
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
+import { isTerminalStatus } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { messageTurnStateSchema, newChainId, sessionUserLinesOf, startTurnAtHop, USER_LINES_STATE } from "../messages/hop";
 import { FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
@@ -28,13 +29,34 @@ export const userTurnStateSchema = z.object({ [USER_TURN_STATE]: z.boolean().opt
  * conversation's delegate session: that message is task input. A user's
  * turn also starts the worker-message hop count again, at 0 in a new chain
  * (FIX-1989 D2), and counts one more user's line on the session (FIX-2106).
+ *
+ * Once the task and every follow-up in its session have ended, a user's line
+ * there is still no user's turn (no rule tools), but it is one a user typed:
+ * it starts a fresh budget all the same (FIX-2238).
  */
 export async function markUserTurn(ctx: BlockContext): Promise<void> {
   const state = (ctx.session.state ?? {}) as Record<string, unknown>;
-  if (typeof state[TASK_ID_STATE_KEY] === "string" || typeof state[FILING_SESSION_STATE_KEY] === "string") return;
-  await startTurnAtHop(ctx, 0, newChainId(), { [USER_TURN_STATE]: true }, (current) => ({
+  const taskId = state[TASK_ID_STATE_KEY];
+  let mark: Record<string, unknown> = { [USER_TURN_STATE]: true };
+  if (typeof taskId === "string") {
+    if (!(await taskSessionEnded(ctx, taskId, state[FILING_SESSION_STATE_KEY]))) return;
+    mark = {};
+  } else if (typeof state[FILING_SESSION_STATE_KEY] === "string") {
+    return;
+  }
+  await startTurnAtHop(ctx, 0, newChainId(), mark, (current) => ({
     [USER_LINES_STATE]: sessionUserLinesOf(current) + 1
   }));
+}
+
+/** Whether a task session's task, and every follow-up run in its session, has ended, on the board that filed it. */
+async function taskSessionEnded(ctx: BlockContext, taskId: string, partition: unknown): Promise<boolean> {
+  if (typeof partition !== "string") return false;
+  // Loaded here, not at the top: the ledger's module graph reaches back to this one.
+  const { conversationLedgerAt } = await import("../conversation-board/ledger");
+  const rows = (await conversationLedgerAt(ctx, partition))?.list() ?? [];
+  const inSession = rows.filter((task) => task.id === taskId || task.followUpOf === taskId);
+  return inSession.length > 0 && inSession.every((task) => isTerminalStatus(task.status));
 }
 
 /** Whether this request is a turn a user's own message started. */
