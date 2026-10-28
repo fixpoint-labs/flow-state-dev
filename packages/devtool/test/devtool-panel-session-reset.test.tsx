@@ -230,7 +230,7 @@ vi.mock("../src/react/components/workspace/task-collections-view", async () => {
       lastRowRequests = rowActions.requests;
       lastTaskItems = items;
       return (
-        <button data-mount={mount} onClick={() => rowAnswers.push(rowActions.run("cancelTask_work", { taskId: "t1" }))}>
+        <button data-mount={mount} onClick={() => rowAnswers.push(rowActions.run("dismiss_work", { taskId: "t1" }))}>
           row-stub
         </button>
       );

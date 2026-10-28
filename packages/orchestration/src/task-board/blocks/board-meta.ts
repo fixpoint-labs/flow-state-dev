@@ -67,7 +67,7 @@ import { z } from "zod";
 import type { Task, TaskCollectionRef } from "../../tasks";
 import { anyRetryDeniedByBudget, sumGrantedRetries } from "../../tasks/collection/internal";
 import { isDispatched, waitsOnUser, type RunsElsewhere } from "../shared";
-import { hasOpenHold, leaseLapsed } from "../../tasks";
+import { hasOpenQuestion, leaseLapsed } from "../../tasks";
 
 /** Component-item type emitted by both board-meta blocks. */
 export const TASK_BOARD_META_COMPONENT_TYPE = "task-board-meta";
@@ -290,7 +290,7 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
             ? "blocked-by-failures"
             : hasRowGoingNowhere(all, remaining, now)
               ? "blocked-by-failures"
-              : remaining.some(hasOpenHold)
+              : remaining.some(hasOpenQuestion)
                 ? "waiting-on-a-user"
                 : allRemainingDispatched
                   ? "dispatched"

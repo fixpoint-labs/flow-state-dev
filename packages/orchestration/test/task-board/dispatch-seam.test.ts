@@ -256,7 +256,7 @@ describe("the dispatched payload is the same value whichever way it is delivered
     return {
       // In-process: the runtime hands the child this very object graph.
       inProcess: dispatchedEnvelope.payload as TaskWorkerInput,
-      // External dispatcher: the envelope is serialized on its way to a worker.
+      // External runner: the envelope is serialized on its way to a worker.
       external: (JSON.parse(JSON.stringify(dispatchedEnvelope)) as TaskDispatchInput)
         .payload as TaskWorkerInput,
     };

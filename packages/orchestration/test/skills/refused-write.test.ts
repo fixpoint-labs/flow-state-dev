@@ -35,10 +35,10 @@ async function refusingBoard(): Promise<TaskCollectionRef> {
   });
   return {
     ...inner,
-    addTask: async (init) => {
+    createTask: async (init) => {
       if (init.assignee === "me") throw new TaskWriteRefusedError("not_here", "file it elsewhere");
       if (init.assignee === "boom") throw new Error("storage down");
-      return inner.addTask(init);
+      return inner.createTask(init);
     },
     patchSettings: async (id, patch) => {
       if (patch.assignee === "me") throw new TaskWriteRefusedError("crossing", "cancel and file again", id);

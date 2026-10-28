@@ -13,7 +13,7 @@ import { z } from "zod";
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
-  openRowHolds,
+  openRowQuestions,
   resolveResourceCollection,
 } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard, taskToolActions, taskToolSuffix } from "@flow-state-dev/orchestration/task-board";
@@ -188,7 +188,7 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
       const taskId = harnessTaskId(input.issue, input.phase);
       const existing = await ctx.cap[boardId].getTask(taskId);
       if (existing !== undefined) return { taskId: existing.id };
-      const task = await ctx.cap[boardId].addTask({
+      const task = await ctx.cap[boardId].createTask({
         id: taskId,
         goal: `Drive ${input.issue} through its ${input.phase} phase.`,
         assignee: ASSIGNEE,
@@ -252,7 +252,7 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
           attempts: task.attempts,
           feedback: task.feedback ?? null,
           run: record ?? null,
-          questions: openRowHolds(task).map((hold) => ({
+          questions: openRowQuestions(task).map((hold) => ({
             question: hold.id,
             text: hold.ask.prompt,
             askedAt: hold.openedAt,

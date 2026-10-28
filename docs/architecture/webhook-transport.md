@@ -165,7 +165,7 @@ The order in `routes.ts` (`handleWebhook`) is load-bearing:
     action's session exists before dispatch.
 12. **Dispatch** fire-and-forget. `responseEmitter: null` — there's no outbound
     stream. Await `handle.accepted` (durable request recording) when the
-    dispatcher surfaces it, so a crash after the 202 doesn't silently drop the
+    runner surfaces it, so a crash after the 202 doesn't silently drop the
     delivery; the action itself is never awaited.
 13. **202 immediately** with `{ status, provider, eventType, requestId }`.
 

@@ -200,7 +200,7 @@ describe("devteam: an approved task's run", () => {
 
     let last: BoardRow | undefined;
     const settled = await eventually<BoardRow>(async () => {
-      last = (await reader.readBoard(running.holderSessionId)).find((r) => r.id === running.id);
+      last = (await reader.readBoard(running.ownerSessionId)).find((r) => r.id === running.id);
       return last !== undefined && last.status !== "pending" && last.status !== "in_progress" ? last : undefined;
     }, "the approved row to settle", 45_000).catch((error: Error) => {
       throw new Error(`${error.message}; last read ${last?.status ?? "no row"}: ${last?.error ?? ""}`);

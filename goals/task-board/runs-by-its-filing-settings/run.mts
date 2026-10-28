@@ -160,7 +160,7 @@ function buildHost(filename: string) {
       const ref = await deskBoard.board.resolver(ctx as never);
       if (ref === undefined) return { ok: false, error: "no_delegation_board" };
       try {
-        if (script.op === "file") return { ok: true, ids: (await ref.addTasks(script.tasks)).map((t) => t.id) };
+        if (script.op === "file") return { ok: true, ids: (await ref.createTasks(script.tasks)).map((t) => t.id) };
         if (script.op === "settings") return { ok: true, outcome: await ref.patchSettings(script.id, script.patch) };
         return await waitOnTask(ctx as never, ref, script.taskId, { key: `goal.wait:${script.taskId}` });
       } catch (error) {
@@ -193,7 +193,7 @@ function buildHost(filename: string) {
         const goal =
           match[1] === undefined ? `${match[2]}#${attempt} [slow:${PIECE_MS}]` : `refused piece${match[1]} ${RUN_STAMP}`;
         try {
-          await ref!.addTask({
+          await ref!.createTask({
             goal,
             assignee: "eng.helper",
             ...(match[1] === "-ongoing" ? { session: "ongoing" as const } : {}),

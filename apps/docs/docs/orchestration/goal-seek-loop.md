@@ -75,7 +75,7 @@ const board = taskBoard({
 const loop = goalSeekLoop({
   name: "research",
   board,
-  seed: planResearch, // writes tasks via ctx.cap.research.addTasks(...)
+  seed: planResearch, // writes tasks via ctx.cap.research.createTasks(...)
   // Keep draining until nothing failed; otherwise re-drain to retry.
   judge: async ({ collection }) => {
     const failed = collection.list().filter((t) => t.status === "errored");

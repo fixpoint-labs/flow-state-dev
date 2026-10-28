@@ -15,7 +15,7 @@
 import { onRequestEnded } from "@flow-state-dev/core/types";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { Task, TaskClaimTicket } from "../tasks";
-import { askedOnTicket } from "../tasks/collection/holds";
+import { askedOnTicket } from "../tasks/collection/questions";
 
 /** The two model tools that wait on a person from a task turn. */
 export type PersonWaitTool = "askQuestion" | "waitForUser";

@@ -4,7 +4,7 @@
  *
  * Handles HOW resume works within a run: checkpoint save/load, suspension
  * records, lease management, and skip-and-inject resume. Orthogonal to
- * FlowDispatcher (FIX-711), which handles WHERE the flow runs and crash
+ * FlowRunner (FIX-711), which handles WHERE the flow runs and crash
  * detection/re-invocation.
  */
 

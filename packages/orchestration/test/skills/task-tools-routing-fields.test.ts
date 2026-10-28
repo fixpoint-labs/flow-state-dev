@@ -2,7 +2,7 @@
  * The task tools' routing fields (FIX-2083): `createTask` files `target` as a
  * filing setting, beside `session` and `resultTo`; `updateTask` refuses all
  * three by name, since none changes after filing; and no tool takes the
- * post form: `dispatchTask` is gone, and `createTask` has no `post` field.
+ * post form: no tool dispatches a post, and `createTask` has no `post` field.
  */
 import { describe, expect, it } from "vitest";
 import { runForTest } from "@flow-state-dev/testing";
@@ -33,9 +33,9 @@ async function toolsFor() {
   const filed: TaskInit[] = [];
   const board: TaskCollectionRef = {
     ...collection,
-    addTask: async (init) => {
+    createTask: async (init) => {
       filed.push(init);
-      return collection.addTask(init);
+      return collection.createTask(init);
     }
   };
   const tools = taskToolsForTurn(async () => board, () => roster, { dispatches: true })(ctx);
@@ -72,9 +72,9 @@ describe("the task tools' routing fields", () => {
     expect(collection.get(filed.taskId!)?.session).toBeUndefined();
   });
 
-  it("offers no post form: no dispatchTask, and no post field on createTask", async () => {
+  it("offers no post form: no dispatchTask, and no post field on createTask", async () => { // retired-name-refusal: refusal test
     const { tools } = await toolsFor();
-    expect(tools.map((tool) => (tool as { name?: string }).name)).not.toContain("dispatchTask");
+    expect(tools.map((tool) => (tool as { name?: string }).name)).not.toContain("dispatchTask"); // retired-name-refusal: refusal test
     const create = tools.find((tool) => (tool as { name?: string }).name === "createTask") as GeneratorTool;
     const shape = (create as unknown as { inputSchema: { shape: Record<string, unknown> } }).inputSchema.shape;
     expect(Object.keys(shape)).not.toContain("post");

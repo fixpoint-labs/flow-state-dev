@@ -73,7 +73,8 @@ import { createDispatchOperation } from "../context/dispatch-operation";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import { pinRejectsCaller } from "../context/instance-pin";
 import { createInstanceCallerResolver, type InstanceCallerResolver } from "./instance-caller";
-import type { FlowDispatcher } from "../transports/dispatcher";
+import type { FlowRunner } from "../transports/runner";
+import { refuseRetiredDispatcherOption } from "../transports/runner";
 import type { ConcurrencyArbiter } from "../transports/concurrency/arbiter";
 import { createWaitResumeOperation } from "../context/wait-resume-operation";
 import { installWaitSweeperFact } from "../durability/wait-deadlines";
@@ -180,8 +181,8 @@ export type CreateFlowRouteHandlersOptions = {
   debugAllowedOrigins?: string[];
   debugAllowAnonymousLocal?: boolean;
   debugCountLimit?: number;
-  /** Pluggable flow dispatcher. Default: in-process via runAction. */
-  dispatcher?: FlowDispatcher;
+  /** Pluggable flow runner. Default: in-process via runAction. */
+  runner?: FlowRunner;
   /**
    * Concurrency arbiter for this router's host. Defaults to a fresh one.
    *
@@ -234,6 +235,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   handle: (request: Request, context: FlowRouteContext) => Promise<Response>;
   host: InboundTransportHost;
 } {
+  refuseRetiredDispatcherOption(options, "createFlowRouteHandlers");
   const stores = resolveStores(options.stores);
   const debugConfig: ResolvedDebugConfig = resolveDebugConfig({
     debugEndpointsEnabled: options.debugEndpointsEnabled,
@@ -262,7 +264,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     stores,
     resolvePrincipal: hostResolver,
     runtimeConfig,
-    dispatcher: options.dispatcher,
+    runner: options.runner,
     arbiter: options.arbiter
   });
 

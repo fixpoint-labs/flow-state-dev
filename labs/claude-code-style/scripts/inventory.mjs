@@ -29,7 +29,7 @@ const FLOW_LIMIT = 200;
 const RULES = [
   ["check", /^(test\/.+|scripts\/inventory\.mjs)$/],
   ["fixture", /^src\/fixtures(\.ts|\/.+)$/],
-  ["flow", /^src\/flows\/[^/]+\.ts$/],
+  ["flow", /^workforce\/flows\/[^/]+\.mts$/],
   ["config", /^(package\.json|tsconfig\.json|vite\.config\.ts|vitest\.config\.ts|components\.json|index\.html|\.gitignore|README\.md|cli\/index\.ts|fsdev\.config\.mts|host\.mts)$/],
   ["config", /^workforce\/(.+\/)?(WORKER|SKILL|TEAM)\.md$/],
   ["config", /^workforce\/(.+\/)?resources\/.+$/],
