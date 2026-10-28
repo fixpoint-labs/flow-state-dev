@@ -44,7 +44,7 @@ describe.each([
 ] as const)("steer (%s)", (_name, makeBacking) => {
   it("keeps the words on a task that hasn't started, and changes nothing else", async () => {
     const { tasks, events } = await makeBacking();
-    await tasks.addTask({ id: "t", goal: "count the rows" });
+    await tasks.createTask({ id: "t", goal: "count the rows" });
     const before = tasks.get("t") as Task;
 
     const outcome = await tasks.steer!("t", { message: "Use the North America numbers", from: "filer" });
@@ -65,7 +65,7 @@ describe.each([
 
   it("names its sender: a user from a screen or the task's session, by id", async () => {
     const { tasks } = await makeBacking();
-    await tasks.addTask({ id: "t", goal: "t" });
+    await tasks.createTask({ id: "t", goal: "t" });
     await tasks.steer!("t", { message: "shorter", from: "user", by: "u_alice" });
     expect((tasks.get("t") as Task).steers).toEqual([expect.objectContaining({ from: "user", by: "u_alice" })]);
   });
@@ -74,7 +74,7 @@ describe.each([
     "refuses a %s task, and writes nothing: its output never changes",
     async (ending) => {
       const { tasks, events } = await makeBacking();
-      await tasks.addTask({ id: "t", goal: "t" });
+      await tasks.createTask({ id: "t", goal: "t" });
       const claimed = (await tasks.claim("w"))!;
       const claim = { claim: ticketForClaim("tasks", claimed) };
       if (ending === "completed") await tasks.complete("t", "the answer", claim);
@@ -93,7 +93,7 @@ describe.each([
 
   it(`refuses the steer past ${MAX_STEERS}, naming the limit`, async () => {
     const { tasks } = await makeBacking();
-    await tasks.addTask({ id: "t", goal: "t" });
+    await tasks.createTask({ id: "t", goal: "t" });
     for (let i = 0; i < MAX_STEERS; i += 1) {
       expect(await tasks.steer!("t", { message: `steer ${i}`, from: "filer" })).toEqual({ outcome: "recorded" });
     }
@@ -107,7 +107,7 @@ describe.each([
 
   it("a steer sent again under its key adds nothing", async () => {
     const { tasks } = await makeBacking();
-    await tasks.addTask({ id: "t", goal: "t" });
+    await tasks.createTask({ id: "t", goal: "t" });
     expect(await tasks.steer!("t", { message: "once", from: "user", key: "turn-1" })).toEqual({ outcome: "recorded" });
     expect(await tasks.steer!("t", { message: "once", from: "user", key: "turn-1" })).toEqual({ outcome: "unchanged" });
     expect((tasks.get("t") as Task).steers).toHaveLength(1);
@@ -115,7 +115,7 @@ describe.each([
 
   it("uses no attempt and keeps the claim and lease of a running task", async () => {
     const { tasks } = await makeBacking();
-    await tasks.addTask({ id: "t", goal: "t" });
+    await tasks.createTask({ id: "t", goal: "t" });
     const claimed = (await tasks.claim("w", { leaseDurationMs: 10_000 }))!;
 
     await tasks.steer!("t", { message: "the next step", from: "filer" });
@@ -128,30 +128,30 @@ describe.each([
 
   it("a task waiting on its filed work now waits on the steer: a turn is owed for it", async () => {
     const { tasks } = await makeBacking();
-    await tasks.addTask({ id: "t", goal: "t" });
+    await tasks.createTask({ id: "t", goal: "t" });
     const claimed = (await tasks.claim("w", { leaseDurationMs: 10_000 }))!;
-    await tasks.setWaitingOn!("t", "filed", { claim: ticketForClaim("tasks", claimed) });
+    await tasks.setKeptOpenBy!("t", "filed", { claim: ticketForClaim("tasks", claimed) });
 
     await tasks.steer!("t", { message: "and the totals", from: "filer" });
 
-    expect(tasks.get("t")).toMatchObject({ status: "in_progress", waitingOn: "steer", attempts: 1 });
+    expect(tasks.get("t")).toMatchObject({ status: "in_progress", keptOpenBy: "steer", attempts: 1 });
     expect((tasks.get("t") as Task).leaseUntil).toBeUndefined();
   });
 
   it("a task waiting on a person keeps waiting: the resume takes the steer", async () => {
     const { tasks } = await makeBacking();
-    await tasks.addTask({ id: "t", goal: "t" });
+    await tasks.createTask({ id: "t", goal: "t" });
     const claimed = (await tasks.claim("w", { leaseDurationMs: 10_000 }))!;
-    await tasks.setWaitingOn!("t", "wait", { claim: ticketForClaim("tasks", claimed) });
+    await tasks.setKeptOpenBy!("t", "wait", { claim: ticketForClaim("tasks", claimed) });
 
     await tasks.steer!("t", { message: "use the draft", from: "filer" });
 
-    expect(tasks.get("t")).toMatchObject({ waitingOn: "wait" });
+    expect(tasks.get("t")).toMatchObject({ keptOpenBy: "wait" });
   });
 
   it("the claim marks every steer taken by the attempt it starts, so a retry's brief carries them all", async () => {
     const { tasks } = await makeBacking();
-    await tasks.addTask({ id: "t", goal: "t", maxAttempts: 2 });
+    await tasks.createTask({ id: "t", goal: "t", maxAttempts: 2 });
     await tasks.steer!("t", { message: "first", from: "filer" });
     const first = (await tasks.claim("w"))!;
     expect(first.steers!.map((steer) => steer.takenBy)).toEqual([1]);
@@ -170,7 +170,7 @@ describe.each([
 
   it("takeSteers marks what arrived since the claim, once, for the attempt that holds it", async () => {
     const { tasks } = await makeBacking();
-    await tasks.addTask({ id: "t", goal: "t" });
+    await tasks.createTask({ id: "t", goal: "t" });
     const claimed = (await tasks.claim("w"))!;
     const claim = ticketForClaim("tasks", claimed);
     await tasks.steer!("t", { message: "late", from: "filer" });
@@ -192,7 +192,7 @@ describe.each([
     "a fenced complete from an attempt that lost the row declines as lost-claim, not for the steer: %s",
     async (_how, reclaim) => {
       const { tasks, setNow } = await makeBacking();
-      await tasks.addTask({ id: "t", goal: "t" });
+      await tasks.createTask({ id: "t", goal: "t" });
       const stale = ticketForClaim("tasks", (await tasks.claim("w", { leaseDurationMs: 10_000 }))!);
       setNow(1000 + 10_000);
       if (reclaim) expect((await tasks.claim("w2", { leaseDurationMs: 10_000 }))?.attempts).toBe(2);
@@ -208,7 +208,7 @@ describe.each([
 
   it("takeSteers is fenced to the claim: a displaced attempt takes nothing", async () => {
     const { tasks } = await makeBacking();
-    await tasks.addTask({ id: "t", goal: "t" });
+    await tasks.createTask({ id: "t", goal: "t" });
     const claimed = (await tasks.claim("w"))!;
     const stale = ticketForClaim("tasks", claimed);
     await tasks.cancel("t");

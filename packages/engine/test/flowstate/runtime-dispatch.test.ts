@@ -150,7 +150,7 @@ async function until(
 function stubWorker(mode: WorkerAdapter["mode"]): WorkerAdapter {
   return {
     mode,
-    createDispatcher: () => ({ dispatch: async () => ({ requestId: "req_queued" }) }),
+    createRunner: () => ({ dispatch: async () => ({ requestId: "req_queued" }) }),
     startWorker: () => ({ close: async () => undefined })
     // Deliberately partial: shutdown reads only the parts stubbed here.
   } as unknown as WorkerAdapter;
@@ -166,7 +166,7 @@ function stubWorker(mode: WorkerAdapter["mode"]): WorkerAdapter {
 function stubWorkerWithNoConsumer(mode: WorkerAdapter["mode"]): WorkerAdapter {
   return {
     mode,
-    createDispatcher: () => ({
+    createRunner: () => ({
       dispatch: async () => ({
         requestId: "req_never_consumed",
         finished: new Promise<never>(() => {})
@@ -299,7 +299,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
       // and the worker in this same process picks the job up and runs it. A stub
       // that only returns a handle would leave the child forever unconsumed and
       // could never show a child dispatching, which is the point here.
-      createDispatcher: (runtime: FlowStateRuntime) => ({
+      createRunner: (runtime: FlowStateRuntime) => ({
         dispatch: async (envelope: {
           requestId: string;
           flowKind: string;
@@ -1270,7 +1270,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     const dispatched: string[] = [];
     const worker = {
       mode: "dispatch-only",
-      createDispatcher: () => ({
+      createRunner: () => ({
         dispatch: async (envelope: { requestId: string }) => {
           dispatched.push(envelope.requestId);
           return { requestId: envelope.requestId };

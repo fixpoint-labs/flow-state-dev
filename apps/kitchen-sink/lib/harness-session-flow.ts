@@ -245,8 +245,10 @@ export function harnessFeeds(kind: string, defaultModel?: string, steering: Harn
 /**
  * Build a harness mode's session flow.
  *
- * `turn` takes the prompt. A turn sent while another runs waits for it
- * (`concurrency: "queue"`), then continues the same conversation. `steer`
+ * `turn` takes the prompt. A turn sent while another runs waits for it, for
+ * as long as that one takes (`concurrency: "defer"`, which has no time limit,
+ * where a `queue` wait gives up after 30 s), then continues
+ * the same conversation. `steer`
  * takes a line for the turn running now: `{ taken: true }` when the harness
  * took it into that turn, else `{ taken: false }` and nothing was sent. `live`
  * says whether the running turn offered to take one at all.
@@ -360,7 +362,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       turn: {
         block: turn,
         userMessage: (input: { prompt: string }) => input.prompt,
-        concurrency: "queue",
+        concurrency: "defer",
       },
       steer,
     },

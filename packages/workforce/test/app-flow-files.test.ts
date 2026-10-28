@@ -143,7 +143,7 @@ describe("a worker on an app's own flow files for its delegates (S1, the goal's 
     }
   });
 
-  it("gives a worker on it with no task-taking delegate no tools, and its addTask answers no_delegation_board", async () => {
+  it("gives a worker on it with no task-taking delegate no tools, and its createTask answers no_delegation_board", async () => {
     const h = host();
     try {
       const talk = await emSession(h, "alice", "lone.em");

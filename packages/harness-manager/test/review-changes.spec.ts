@@ -20,13 +20,13 @@ import {
   cancelAndResume,
   defineTaskCollection,
   getOrCreateTaskCollection,
-  openRowHolds,
+  openRowQuestions,
   resolveResourceCollection,
-  type SuspensionHold,
+  type SuspensionQuestion,
   type Task,
 } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { harnessManager, harnessTaskInputSchema, runOwnerDispatcher, type HarnessFeeds, type HarnessJudgeVerdict } from "../src";
+import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessFeeds, type HarnessJudgeVerdict } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 import { CONVERSATIONS, claimHost, cleanUpHosts } from "./claim-host";
@@ -124,7 +124,7 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
     mode: "delegation",
     collection: ledger,
     concurrency: 1,
-    dispatcher: runOwnerDispatcher(),
+    claimOrder: runOwnerClaimOrder(),
     workers: { coder: dispatcher({ name: "review-board-dispatch", action: "work", session: "per-task" }) },
   });
   const seed = handler({
@@ -135,7 +135,7 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
     execute: async (_input, ctx) => {
       const tasks = (ctx as { cap: Record<string, any> }).cap["review-board"];
       if ((await tasks.getTask(TASK_ID)) === undefined) {
-        await tasks.addTask({ id: TASK_ID, goal: "the feature", input: { issue: ISSUE, phase: PHASE }, assignee: "coder", maxAttempts: 2 });
+        await tasks.createTask({ id: TASK_ID, goal: "the feature", input: { issue: ISSUE, phase: PHASE }, assignee: "coder", maxAttempts: 2 });
       }
       return { id: TASK_ID };
     },
@@ -195,9 +195,9 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
   };
-  /** The row's open review, as a screen reads it off `holds`. */
-  const review = (task: Task): SuspensionHold | undefined =>
-    task.holds?.find((hold): hold is SuspensionHold => hold.source.kind === "suspension" && hold.ask.kind === "review");
+  /** The row's open review, as a screen reads it off `questions`. */
+  const review = (task: Task): SuspensionQuestion | undefined =>
+    task.questions?.find((hold): hold is SuspensionQuestion => hold.source.kind === "suspension" && hold.ask.kind === "review");
   const waiting = (task: Task) => task.status === "in_progress" && review(task) !== undefined;
   /** Answer the open review through the engine's answer route, as a screen does. */
   const answer = async (data: unknown): Promise<Response> => {
@@ -337,7 +337,7 @@ describe("a coding run that made changes waits for a person's review", () => {
       await h.retry();
       const done = await h.until((t) => t.status === "completed", "the retry to complete");
       expect(done.attempts).toBe(2);
-      expect(done.holds ?? []).toEqual([]);
+      expect(done.questions ?? []).toEqual([]);
     } finally {
       await h.dispose();
     }
@@ -363,7 +363,7 @@ describe("a coding run that made changes waits for a person's review", () => {
       await h.start();
       await h.until(h.waiting, "the review");
       await h.act("cancel");
-      const done = await h.until((t) => t.status === "cancelled" && (t.holds ?? []).length === 0, "the cancel to close the review");
+      const done = await h.until((t) => t.status === "cancelled" && (t.questions ?? []).length === 0, "the cancel to close the review");
       await new Promise((resolve) => setTimeout(resolve, 500));
       expect(done.status).toBe("cancelled");
       expect(h.seen).toHaveLength(1);
@@ -412,7 +412,7 @@ describe("a judged run on a board read from the claim, with review on", () => {
     await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "add a changelog line", input: {} });
     await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
     const row = await lab.row(CONVERSATIONS, "t1", "conv-a");
-    const hold = row.holds?.find((h) => h.source.kind === "suspension");
+    const hold = row.questions?.find((h) => h.source.kind === "suspension");
     expect(row.status).toBe("in_progress");
     expect(hold?.ask).toMatchObject({ kind: "review" });
     expect(hold?.ask.prompt).toContain("The judge: done (0.86): the line is in");
@@ -430,7 +430,7 @@ describe("a judged run on a board read from the claim, with review on", () => {
     await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
     const row = await lab.row(CONVERSATIONS, "t1", "conv-a");
     expect(row.status).toBe("in_progress");
-    expect(openRowHolds(row).map((h) => h.ask.prompt)).toEqual(["which repository did you mean?"]);
-    expect(row.holds?.some((h) => h.source.kind === "suspension")).toBe(false);
+    expect(openRowQuestions(row).map((h) => h.ask.prompt)).toEqual(["which repository did you mean?"]);
+    expect(row.questions?.some((h) => h.source.kind === "suspension")).toBe(false);
   }, 60_000);
 });

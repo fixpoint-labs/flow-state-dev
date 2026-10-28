@@ -513,17 +513,27 @@ const agent = cursorAgent({ cwd, resume, onSession, onSteerable: steering.onStee
 defineFlow({
   kind: "coder",
   actions: {
-    turn: { block: turn, concurrency: "queue" },
+    turn: { block: turn, concurrency: "defer" },
     steer: steering.action(),
   },
 });
 ```
 
+Declare the turn `defer`, so a turn sent while one runs waits for it however
+long it takes. A `queue` turn gives up after 30 seconds, and a line sent during
+a longer turn would never run. With the default in-memory concurrency backend,
+waiting turns start in the order they were sent. With a lease backend shared
+across processes, two turns that wait at the same time can start in either
+order.
+
 `steer` answers `{ taken, live }`. On the page, `sendHarnessLine` from
 `@flow-state-dev/client` sends a line typed while a turn runs to `steer` first,
 and sends it as the next turn when the running turn didn't take it, so a line is
 never dropped. `harnessLines` keeps a page's lines in the order they were typed, so a later line never steers past one queued behind the turn. `steerRunningTurn` sends `steer` on its own, so a session hook
-keeps following the running turn's stream. Offers live in the server process:
+keeps following the running turn's stream. In React, `useHarnessLines(session)`
+from `@flow-state-dev/react` puts these together: it sends a line's next turn
+through the client too, and follows it once the running turn ends, so the page
+stays on the running turn until then. Offers live in the server process:
 a line that reaches another process finds none and runs as the next turn.
 
 Work on a task board steers through the board instead: the harness manager

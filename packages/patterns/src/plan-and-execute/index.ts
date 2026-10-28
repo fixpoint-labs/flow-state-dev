@@ -716,7 +716,7 @@ export function planAndExecute<
     ...pickTaskCapOverrides(config),
     workers: adaptedWorker,
     concurrency: maxConcurrency,
-    dispatcher: "topological",
+    claimOrder: "topological",
     onError: "skip",
     // FIX-610: plan-shaped patterns benefit most from seeing prior
     // tool traffic from anywhere in the run, not just declared deps.

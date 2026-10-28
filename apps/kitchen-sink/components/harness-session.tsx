@@ -7,8 +7,9 @@
  * bound conversation's plan and the pull requests the session opened.
  *
  * A line typed while a turn runs goes to that turn when its harness takes it,
- * else it runs after the turn (`lib/harness-line.ts`); lines go in the order
- * they were typed.
+ * else it runs after the turn; lines go in the order they were typed
+ * (`useHarnessLines` from `@flow-state-dev/react`, with the goal controls in
+ * `lib/harness-line.ts`).
  *
  * Every item shown is the harness's own, through the app's ordinary
  * renderers. The notice and the bound conversation are read from session
@@ -18,11 +19,13 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
-import { createClient, harnessLines, steerRunningTurn, type SessionRequestSummary } from "@flow-state-dev/client";
+import { SquareIcon } from "lucide-react";
+import { createClient, type SessionRequestSummary } from "@flow-state-dev/client";
 import {
   FlowProvider,
   useResourceCollectionList,
   useResourceManifest,
+  useHarnessLines,
   useSession,
   type SessionView,
 } from "@flow-state-dev/react";
@@ -44,6 +47,7 @@ import {
 } from "@/components/flow-state/conversation";
 import {
   PromptInput,
+  PromptInputButton,
   PromptInputSubmit,
   PromptInputTextarea,
   type PromptInputMessage,
@@ -83,24 +87,25 @@ export interface HarnessSessionViewProps {
   readonly onTitled?: () => void;
 }
 
+/** How the page sends one line: the framework's rule, with Kitchen Sink's goal controls on it. */
+const sendLineOnce = (prompt: string, running: boolean, sender: LineSender) => sendLine(prompt, running, sender);
+
 /** One harness session's conversation and plan. */
 export function HarnessSessionView({ label, flowKind, sessionId, models, onTitled }: HarnessSessionViewProps) {
   return (
     <FlowProvider flowKind={flowKind} userId={KITCHEN_SINK_USER_ID} baseUrl="" renderers={chatAssistantRenderers}>
-      <SessionBody label={label} flowKind={flowKind} sessionId={sessionId} models={models} onTitled={onTitled} />
+      <SessionBody label={label} sessionId={sessionId} models={models} onTitled={onTitled} />
     </FlowProvider>
   );
 }
 
 function SessionBody({
   label,
-  flowKind,
   sessionId,
   models,
   onTitled,
 }: {
   label: string;
-  flowKind: string;
   sessionId: string;
   models: ModelChoices;
   onTitled?: () => void;
@@ -129,8 +134,7 @@ function SessionBody({
   const state = (session.snapshot?.clientData.session ?? {}) as Partial<HarnessSessionState>;
   const bound = state.binding?.confirmed ?? null;
   const { items, isStreaming, latestRequest } = session;
-  // `steer` is sent beside the running turn, not through the session hook,
-  // which would leave the running turn's stream to follow the new request.
+  // Requests are listed beside the session hook, which reads only its latest.
   const client = useMemo(() => createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: "" }), []);
   // The session's newest request can be a `steer` sent beside the turn, so the
   // turn's status is read off the turn's own request.
@@ -157,25 +161,16 @@ function SessionBody({
   );
   const turnsByRequest = useMemo(() => turnNumbers(items), [items]);
   const notice = turn === null ? null : turnNotice(state.turns?.[turn.requestId] ?? null, turn.status, bound);
-  const streaming = useRef(session.isStreaming);
-  streaming.current = session.isStreaming;
-  // Lines reach the run in the order they were typed: each waits for the one
-  // before it, and none steers past a line queued behind the running turn.
-  const lines = useMemo(() => harnessLines((prompt, running, sender: LineSender) => sendLine(prompt, running, sender)), []);
-  useEffect(() => lines.turnChanged(), [lines, turnId, isStreaming]);
+  // Lines reach the run in the order they were typed, and the page stays on
+  // the running turn while a line's turn waits behind it.
+  const lines = useHarnessLines(session, { sendOne: sendLineOnce });
   const [lastLine, setLastLine] = useState<LineOutcome | null>(null);
   const handleSubmit = useCallback(
     async (msg: PromptInputMessage) => {
       const prompt = msg.text.trim();
       if (prompt.length === 0) return;
-      const sender: LineSender = {
-        steer: (text) => steerRunningTurn(client, { flowKind, sessionId, prompt: text }),
-        turn: async (text) => {
-          await session.sendAction("turn", { prompt: text }, { userMessage: text });
-        },
-      };
       try {
-        const outcome = await lines.send(prompt, streaming.current, sender);
+        const outcome = await lines.send(prompt);
         setLastLine(outcome);
         if (messageRef.current.trim() === prompt) setMessage("");
         // The steer request records a taken line in session state, and this
@@ -185,7 +180,7 @@ function SessionBody({
         // Keep the persisted draft so a failed send can be retried.
       }
     },
-    [client, flowKind, lines, refresh, session, sessionId, setMessage],
+    [lines, refresh, setMessage],
   );
   const steered = turn === null ? [] : (state.turns?.[turn.requestId]?.steered ?? []);
 
@@ -235,12 +230,13 @@ function SessionBody({
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
               />
-              <PromptInputSubmit
-                className="mr-2 sm:mr-4"
-                status={session.isStreaming ? "streaming" : "ready"}
-                disabled={!session.isStreaming && message.trim().length === 0}
-                onStop={session.abortRequest}
-              />
+              {/* While a turn runs, Stop and Send are two buttons: one that did both would stop the turn when a line was meant. */}
+              {session.isStreaming && (
+                <PromptInputButton aria-label="Stop" data-testid="turn-stop" onClick={() => void session.abortRequest()}>
+                  <SquareIcon className="size-4" />
+                </PromptInputButton>
+              )}
+              <PromptInputSubmit className="mr-2 sm:mr-4" status="ready" disabled={message.trim().length === 0} />
             </PromptInput>
           </div>
         </div>
@@ -275,7 +271,7 @@ function SessionModel({ model, models, label }: { model: string | undefined; mod
   );
 }
 
-/** The lines the latest turn took while it ran, and where the last line sent went. */
+/** While a turn runs, what a line sent now does; the lines the latest turn took; and where the last line sent went. */
 function LineNotes({
   steered,
   last,
@@ -287,15 +283,21 @@ function LineNotes({
   running: boolean;
   label: string;
 }) {
-  if (steered.length === 0 && !(running && last === "after-this-turn")) return null;
+  const after = running && last === "after-this-turn";
+  if (steered.length === 0 && !running) return null;
   return (
     <div className="mx-auto max-w-3xl px-3 pt-2 text-sm text-muted-foreground sm:px-4" data-testid="line-notes">
+      {running && !after && (
+        <p data-testid="line-hint">
+          {label} is working. A line you send now joins this turn if {label} can take it, or runs after this turn. Stop ends the turn.
+        </p>
+      )}
       {steered.map((line, i) => (
         <p key={i} className="break-words" data-testid="line-taken">
           You, taken into the running turn: {line}
         </p>
       ))}
-      {running && last === "after-this-turn" && (
+      {after && (
         <p data-testid="line-after">{label} couldn&apos;t take your line into this turn. It runs after this turn.</p>
       )}
     </div>

@@ -65,7 +65,7 @@ describe.each(BACKINGS)("updateTask across a claim (%s)", (_name, make) => {
     ["a hold", { status: "held" }, "a hold or a release"],
   ] as const)("refuses %s once the task has started under it, and writes nothing", async (_what, edit, named) => {
     const ref = await make();
-    await ref.addTask({ id: "a", goal: "g", assignee: "researcher" });
+    await ref.createTask({ id: "a", goal: "g", assignee: "researcher" });
     const before = ref.get("a")!;
     expect(before.status).toBe("pending");
     const { ctx } = buildDelegationCtx({ self: false });

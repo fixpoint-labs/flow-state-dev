@@ -123,7 +123,7 @@ Run against an `fsdev.config.*` to exercise a flow's background work from the te
 
 A process whose worker adapter runs `mode: "worker-only"` consumes the queue and dispatches nothing. Background work started there runs inside the worker process itself, the same way it runs with no queue configured. Nothing is enqueued.
 
-**That work is not durable.** If the process stops, the run stops with it and nothing re-runs it: the request record stops where it stopped, and a task board row the work had claimed is left unfinished. For the queue to own the work, start it from a process that has a dispatcher, which means `colocated` or `dispatch-only`.
+**That work is not durable.** If the process stops, the run stops with it and nothing re-runs it: the request record stops where it stopped, and a task board row the work had claimed is left unfinished. For the queue to own the work, start it from a process that has a runner, which means `colocated` or `dispatch-only`.
 
 Shutdown treats it as in-process work, so the process waits for it the way it waits above.
 

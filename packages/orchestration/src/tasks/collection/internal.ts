@@ -23,8 +23,8 @@ import { deliveredByWait, droppedHeldNotices, recordEnding as recordNoticeOwed, 
 import { assertDepsEditable, TaskFilingRefusedError } from "./filing";
 import { hasStarted, lockedFields, type TaskEditField } from "./field-rules";
 import { steersForAttempt, untakenSteers } from "../steers";
-import type { SuspensionHold } from "../schema/hold";
-import { answerOf, askedOnTicket, droppedMirror, hasOpenHold, holdWrite, isRowHold, keptOnEnding, newRowHolds, openRowHolds, owesTurn } from "./holds";
+import type { SuspensionQuestion } from "../schema/question";
+import { answerOf, askedOnTicket, droppedMirror, hasOpenQuestion, questionWrite, isRowQuestion, keptOnEnding, newRowQuestions, openRowQuestions, owesTurn } from "./questions";
 import type { TaskChangeKind } from "./change-event";
 import type {
   ClaimOptions,
@@ -95,7 +95,7 @@ export function buildInitialTask<TInput, TOutput>(
   // from starting until it is answered (FIX-2133), due when the host sets a deadline.
   const holds =
     init.questions !== undefined && init.questions.length > 0
-      ? newRowHolds(init.questions, now, filing.holdDueMs !== undefined ? { dueMs: filing.holdDueMs } : {})
+      ? newRowQuestions(init.questions, now, filing.questionDueMs !== undefined ? { dueMs: filing.questionDueMs } : {})
       : undefined;
   const filedUnder = filing.filedUnder;
   return {
@@ -137,7 +137,7 @@ export function buildInitialTask<TInput, TOutput>(
           },
         }
       : {}),
-    ...(holds !== undefined ? { holds } : {}),
+    ...(holds !== undefined ? { questions: holds } : {}),
     // Server-written by the backing (FIX-2078), never from `init`.
     ...(filer !== undefined ? { filer: { sessionId: filer.sessionId, ...(filer.requestId !== undefined ? { requestId: filer.requestId } : {}) } } : {}),
     createdAt: now,
@@ -154,7 +154,7 @@ export function buildInitialTask<TInput, TOutput>(
  */
 export interface FilingStamp {
   readonly filedUnder?: { readonly tenantId?: string; readonly orgId?: string };
-  readonly holdDueMs?: number;
+  readonly questionDueMs?: number;
 }
 
 /**
@@ -681,7 +681,7 @@ function attemptOwnsTask(task: Task, attempt: number): boolean {
  * dispatch's gate, an advisory write-back): two turns can share an attempt,
  * so an attempt-only check passes a stale turn.
  */
-export function ticketHoldsRow(ticket: TaskClaimTicket, collectionId: string, task: Task | undefined): task is Task {
+export function ticketClaimsRow(ticket: TaskClaimTicket, collectionId: string, task: Task | undefined): task is Task {
   return (
     task !== undefined &&
     ticketNamesTask(ticket, collectionId, task) &&
@@ -803,20 +803,20 @@ export function transitionDeclineReason(
     changeKind !== undefined &&
     SETTLEMENT_CHANGE_KINDS.has(changeKind) &&
     !isTerminalStatus(task.status) &&
-    hasOpenHold(task)
+    hasOpenQuestion(task)
   ) {
-    return "held";
+    return "open-question";
   }
   if (options === undefined) return undefined;
   assertNoRemovedGuards(options);
   const claim = options.claim;
   if (options.ifAllowed === true && isTerminalStatus(task.status)) return "terminal";
   // FIX-2133: a confirm's No cancels only while its confirm is open, on the committed row.
-  const whileHoldOpen = (options as { whileHoldOpen?: string }).whileHoldOpen;
-  if (whileHoldOpen !== undefined) {
-    const hold = task.holds?.find((h) => h.id === whileHoldOpen);
-    if (hold === undefined || !isRowHold(hold)) return "no-such-hold";
-    if (answerOf(task, whileHoldOpen) !== undefined) return "answered";
+  const whileQuestionOpen = (options as { whileQuestionOpen?: string }).whileQuestionOpen;
+  if (whileQuestionOpen !== undefined) {
+    const hold = task.questions?.find((h) => h.id === whileQuestionOpen);
+    if (hold === undefined || !isRowQuestion(hold)) return "no-such-question";
+    if (answerOf(task, whileQuestionOpen) !== undefined) return "answered";
   }
   if (claim !== undefined && !ticketNamesTask(claim, collectionId, task)) return "not-my-task";
   // FIX-2133, at the settle (FIX-2132): a turn that asked midway settles nothing on its own
@@ -830,7 +830,7 @@ export function transitionDeclineReason(
     askedOnTicket(task, claim) &&
     (task.turn ?? 0) === claim.turn
   ) {
-    return "held";
+    return "open-question";
   }
   if (options.ifAllowed === true && !isTransitionAllowed(task.status, targetStatus)) {
     return "disallowed";
@@ -857,8 +857,8 @@ export function transitionDeclineReason(
   if (claim !== undefined && !adopting && leaseLapsed(task, now)) return "lost-claim";
   // FIX-2133: a renewal (any open hold), or a mirror of a run's stop (an open
   // row hold: one source at a time), refused on the committed row.
-  if (options.refuseWhenHeld === "any" && hasOpenHold(task)) return "held";
-  if (options.refuseWhenHeld === "row" && openRowHolds(task).length > 0) return "held";
+  if (options.refuseWithOpenQuestion === "any" && hasOpenQuestion(task)) return "open-question";
+  if (options.refuseWithOpenQuestion === "row" && openRowQuestions(task).length > 0) return "open-question";
   // Last: a write from an attempt that lost the row is refused as that, never
   // as owing a steer the row's next attempt holds (FIX-2086).
   if (options.refuseUntakenSteers === true && targetStatus === "completed" && untakenSteers(task).length > 0) {
@@ -869,11 +869,11 @@ export function transitionDeclineReason(
 
 /**
  * True when every dep on `task` is `completed`. Used by both the
- * default collection eligibility predicate and the dispatcher
+ * default collection eligibility predicate and the claim order
  * eligibility variants.
  *
  * `lookup` reads the freshest task by id — pass `(id) =>
- * collection.get(id)` for the dispatcher case so dep status reflects
+ * collection.get(id)` for the claim order case so dep status reflects
  * the latest committed state, not a scan-time snapshot.
  */
 function depsSatisfied(
@@ -950,7 +950,7 @@ export function committedLeaseSpan(task: Task): number | undefined {
  *
  * Kept as the narrower "never been started" question. Since FIX-1005 the
  * substrate's admission test is {@link isClaimable}, which is this **plus**
- * a row whose worker died — dispatchers that used to spell out `isReady`
+ * a row whose worker died — claim orders that used to spell out `isReady`
  * dropped the conjunct rather than widening it, because widening three copies
  * separately is the drift the shared predicate exists to prevent.
  */
@@ -958,7 +958,7 @@ export function isReady(
   task: Task,
   lookup: (id: string) => Task | undefined
 ): boolean {
-  if (task.status !== "pending" || hasOpenHold(task)) return false;
+  if (task.status !== "pending" || hasOpenQuestion(task)) return false;
   return depsSatisfied(task, lookup);
 }
 
@@ -984,7 +984,7 @@ export function isReady(
  * would make an ordinary task unrecoverable after its first attempt — the
  * feature off by default unless every caller opted into retries.
  *
- * A held row (FIX-2080) is never admitted, whichever board or dispatcher
+ * A held row (FIX-2080) is never admitted, whichever board or claim order
  * drains the collection: `held` is not `pending`, so it starts only once
  * something releases it. Nor is a row with an open hold (FIX-2133): a
  * question, a confirm, or a task run's stop for a person. A running row that
@@ -1001,7 +1001,7 @@ export function isClaimable(
 ): boolean {
   // FIX-2133: a row with an open hold is never admitted, before its start or
   // midway; a running row that owes a turn on its same attempt is (D3).
-  if (hasOpenHold(task)) return false;
+  if (hasOpenQuestion(task)) return false;
   if (task.status !== "pending" && !leaseLapsed(task, now) && !owesTurn(task)) return false;
   return depsSatisfied(task, lookup);
 }
@@ -1045,7 +1045,7 @@ export function defaultOrder(a: Task, b: Task): number {
 }
 
 /**
- * Default lease duration applied when the dispatcher does not pass one through.
+ * Default lease duration applied when the claim order does not pass one through.
  *
  * **Two minutes (FIX-1005).** Duplicate side effects are the expensive failure
  * and slow recovery is the cheap one. At `RENEWAL_DIVISOR = 3` this puts
@@ -1180,7 +1180,7 @@ export function requireClaimTicket(
 }
 
 /**
- * The patch `setWaitingOn` writes (FIX-2077): set, with the request's answer
+ * The patch `setKeptOpenBy` writes (FIX-2077): set, with the request's answer
  * kept by {@link completionPatch}'s output rule and no lease unless one is
  * given; or cleared, with the lease the admission starts.
  *
@@ -1197,15 +1197,15 @@ export function requireClaimTicket(
  */
 export function waitingOnPatch(
   task: Task,
-  waitingOn: Task["waitingOn"],
-  options: { leaseUntil?: number; answer?: { output: unknown }; hold?: SuspensionHold; resume?: boolean; owesTurn?: boolean }
+  keptOpenBy: Task["keptOpenBy"],
+  options: { leaseUntil?: number; answer?: { output: unknown }; question?: SuspensionQuestion; resume?: boolean; owesTurn?: boolean }
 ): Partial<Task> {
-  if (waitingOn == null) {
+  if (keptOpenBy == null) {
     assertValidLeaseDeadline(options.leaseUntil ?? Number.NaN);
-    const resumed = options.resume === true ? holdWrite(task, { op: "resume" }) : "unchanged";
+    const resumed = options.resume === true ? questionWrite(task, { op: "resume" }) : "unchanged";
     const takesTurn = task.turnOwed === true;
     return {
-      waitingOn: undefined,
+      keptOpenBy: undefined,
       leaseUntil: options.leaseUntil,
       ...(typeof resumed === "object" && "patch" in resumed ? resumed.patch : {}),
       ...(takesTurn ? { turn: (task.turn ?? 0) + 1, turnOwed: undefined } : {}),
@@ -1222,9 +1222,9 @@ export function waitingOnPatch(
     }
   }
   // A stop for a person, mirrored in the same write (FIX-2133); any other wait mirrors nothing.
-  const mirrored = options.hold === undefined ? "unchanged" : holdWrite(task, { op: "mirror", hold: options.hold });
+  const mirrored = options.question === undefined ? "unchanged" : questionWrite(task, { op: "mirror", hold: options.question });
   return {
-    waitingOn,
+    keptOpenBy: keptOpenBy,
     leaseUntil: options.leaseUntil,
     ...kept,
     ...(typeof mirrored === "object" && "patch" in mirrored ? mirrored.patch : {}),
@@ -1369,7 +1369,7 @@ export function applyClaimToTask<TInput, TOutput>(
     // A claim starts a turn that waits on nothing yet (FIX-2077): a row
     // taken back from a lapsed lease must not carry a wait onto the new
     // attempt, and an owed turn's mark is its claim's to clear.
-    waitingOn: undefined,
+    keptOpenBy: undefined,
     // The attempt's brief carries every steer (FIX-2086 D1), so the claim
     // marks them all taken by it; one that arrives later is untaken until a
     // request of this attempt reads it. A turn's claim takes its answers so.
@@ -1522,7 +1522,7 @@ function recordResumeOwed<TInput, TOutput>(
   // (a cancel, a cascade) owes that run its `cancelled` resume, paid to the
   // stop the row's mirror names, which stays until it is (FIX-2133). The
   // mirror stays while a later request runs for the task (a notice), with
-  // `waitingOn` cleared, and so does what its ending owes.
+  // `keptOpenBy` cleared, and so does what its ending owes.
   const kept = keptOnEnding(prev as Task, next as Task);
   const owed = kept === undefined ? next : ({ ...next, ...kept } as Task<TInput, TOutput>);
   // A lapsed slot has nobody parked on it (FIX-2082): its ending is held for
@@ -1547,7 +1547,7 @@ export function applyTransition<TInput, TOutput>(
   const next = { ...task, ...patch, updatedAt: now };
   // A row waits on something only while it runs (FIX-2077): every write that
   // moves it off `in_progress` clears the field.
-  if (next.waitingOn != null && next.status !== "in_progress") next.waitingOn = undefined;
+  if (next.keptOpenBy != null && next.status !== "in_progress") next.keptOpenBy = undefined;
   // So is a turn owed on the same attempt (FIX-2133): only a running row owes one.
   if (next.turnOwed === true && next.status !== "in_progress") next.turnOwed = undefined;
   const recorded = recordEnding(task, next, recording);
