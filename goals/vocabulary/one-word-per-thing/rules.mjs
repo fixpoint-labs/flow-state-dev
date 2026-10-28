@@ -142,17 +142,17 @@ export const KEEP = [
   {
     path: /^packages\/orchestration\/(src\/inbox\/|test\/inbox(-truth-control)?\.test\.ts$)/,
     rules: ["ask-prose", "ask-symbol", "ask-symbol-in-docs", "ask-mark"],
-    why: "the Inbox read (FIX-2133): a hold's `ask`, what it asks the user, as FIX-2058's TaskHold names it"
+    why: "the Inbox read (FIX-2133): a hold's `ask`, what it asks the user, as FIX-2058's TaskQuestion names it"
   },
   {
     path: /^packages\/orchestration\/(src\/tasks\/(schema\/hold|collection\/holds)\.ts|test\/(collection\/(holds|waiting-on-user)|skills\/questions-tools)\.test\.ts)$/,
     rules: ["ask-prose", "ask-symbol", "ask-symbol-in-docs", "ask-mark"],
-    why: "a task's holds (FIX-2133): a hold's `ask`, a question to the user, and the collection's `ask` that opens one midway, as FIX-2058's TaskHold names them"
+    why: "a task's holds (FIX-2133): a hold's `ask`, a question to the user, and the collection's `ask` that opens one midway, as FIX-2058's TaskQuestion names them"
   },
   {
     path: /^(packages\/orchestration\/(src|test)\/|packages\/integration-tests\/src\/scenarios\/|packages\/workforce\/src\/conversation-board\/board\.ts$|apps\/docs\/docs\/orchestration\/task-board\.md$)/,
     // The hold's names only: a question to the user, opened at filing or midway. Any other ask word on these lines' files stays open.
-    line: /\b(askMidway|MidwayAsk|AskDeclineReason|HoldAsk|askProblem|assertAskable|askOf|askOptions)\b|\b(hold|ledger|board|collection|ref)\??\.ask\b|TaskCollectionRef(\["ask"\]|\.ask\b)|^\s*ask: (\{|z\.)|\{ ask: \{|\.ask\.(kind|prompt)\b/,
+    line: /\b(askMidway|MidwayAsk|AskDeclineReason|QuestionInit|askProblem|assertAskable|askOf|askOptions)\b|\b(hold|ledger|board|collection|ref)\??\.ask\b|TaskCollectionRef(\["ask"\]|\.ask\b)|^\s*ask: (\{|z\.)|\{ ask: \{|\.ask\.(kind|prompt)\b/,
     rules: ["ask-symbol", "ask-symbol-in-docs", "ask-mark"],
     why: "a task's holds (FIX-2133): a hold's `ask` and the midway ask that opens one, a question to the user"
   },
@@ -168,7 +168,7 @@ export const KEEP = [
     // The DevTool's wire mirror of a hold's `ask` only, and the reason slot reading its prompt.
     line: /^\s*ask: \{ kind: string|\bask: \{ kind: "(question|review)"|\)\?\.ask\.prompt;$/,
     rules: ["ask-mark"],
-    why: "FIX-2131: the DevTool's mirror of a task's holds (FIX-2133's TaskHold), whose `ask` is what the user was asked"
+    why: "FIX-2131: the DevTool's mirror of a task's holds (FIX-2133's TaskQuestion), whose `ask` is what the user was asked"
   },
   {
     path: /^packages\/harness-manager\//,

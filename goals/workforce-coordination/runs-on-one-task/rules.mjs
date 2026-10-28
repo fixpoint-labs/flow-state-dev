@@ -197,7 +197,7 @@ export const PERSON_STOPS_REMOVED = [
   { name: "DISPATCHED_RUN_UNANSWERABLE", owner: "FIX-2129" },
   { name: "isExpiredApproval", owner: "FIX-2129" },
   // FIX-2133: a task run's stop for a person is a suspension hold in `holds`, not `waitingFor`
-  // beside `waitingOn: "user"`; and a row hold is answered from the Inbox, so none is unanswerable.
+  // beside `keptOpenBy: "user"`; and a row hold is answered from the Inbox, so none is unanswerable.
   { name: "waitingFor", owner: "FIX-2133" },
   { name: "MAX_WAITING_FOR_PROMPT", owner: "FIX-2133" },
   { name: "keepWaitingFor", owner: "FIX-2133" },

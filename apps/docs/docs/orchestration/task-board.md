@@ -607,7 +607,7 @@ Every rule is checked inside the write, so a task that starts between your read 
 | `question_is_the_users` | The filer's tool answering a question the user answers from their Inbox |
 | `question_takes_message` | A question answered without `message`, or with `done` |
 | `confirm_takes_done` | A confirm answered without `done` |
-| `done_without_question` | `done` sent without the `question` it answers |
+| `done_without_answers` | `done` sent without the `question` it answers |
 | `answer_takes_no_edits` | An answer sent with a field or a status |
 | `questions_not_supported` | An answer on a board whose task list keeps no questions |
 
@@ -656,8 +656,8 @@ The worker that filed the task can hear a midway question too. Declare `onMidway
 The user answers from their [Inbox](#building-an-inbox). A screen of your own answers with the board's `updateTask` action, naming the question:
 
 ```ts
-updateTask_tasks({ id, question: holdId, message: "The March export, exports/2026-03.csv" })
-updateTask_tasks({ id, question: confirmId, done: true })   // or done: false, with an optional message
+updateTask_tasks({ id, answers: questionId, message: "The March export, exports/2026-03.csv" })
+updateTask_tasks({ id, answers: confirmId, done: true })   // or done: false, with an optional message
 ```
 
 The answer is kept on the task as one of its messages, from the user, so it counts toward the 20 a task takes. Sending the same answer again is a success that writes nothing, even once the task has finished. Different words for an answered question are refused. Only the user the task was filed for, in the same tenant and organization, can answer; anyone else is answered `task_not_found`. The filer's own `updateTask` tool answers only a question the worker asked midway, on a task that runs in a session of its own. Questions asked at filing are the user's.
@@ -810,9 +810,9 @@ The dispatch run settles its task once, when all of the task's work is over. Ret
 - the run's request has ended, along with any background work it started (`.sideChain()`) and any your flow's `onFinished` hook started;
 - every task it filed has ended, and the run's session has heard each of those endings.
 
-Until then the task stays `in_progress`, and its row's `waitingOn` says what it's waiting for:
+Until then the task stays `in_progress`, and its row's `keptOpenBy` says what it's waiting for:
 
-| `waitingOn` | The task is waiting on | Lease |
+| `keptOpenBy` | The task is waiting on | Lease |
 | --- | --- | --- |
 | `"filed"` | tasks it filed that haven't ended, or whose ending the run's session hasn't heard yet | none |
 | `"wait"` | a stop: `ctx.waitForUser()`, `ctx.suspend()`, or an external event | none |
@@ -897,9 +897,9 @@ const onPieceEnded = sequencer({ name: "on-piece-ended", inputSchema: taskSettle
   .tap(noteTaskAnswer);
 ```
 
-`find` is called with the request's block context and returns the task's ledger (`ref`) and its row, or `undefined` to admit nothing. Read both from server-set state, such as session state your flow wrote, never from the request's input, and return a row only when its run is the current session. Put the admission first in the sequencer. It takes the task only while the row has a `waitingOn`; otherwise the request runs as usual and settles nothing. An admitted request works under the task's claim, so its task tools write as the worker, `reportProgress` included. A later request's answer becomes the task's output only when both hold: the admission has `answerCounts: true`, and the sequencer taps `noteTaskAnswer` after the step that produced the answer. `noteTaskAnswer` records the output of the step before it. Set `answerCounts: false` on an entry whose answer must never become the task's output.
+`find` is called with the request's block context and returns the task's ledger (`ref`) and its row, or `undefined` to admit nothing. Read both from server-set state, such as session state your flow wrote, never from the request's input, and return a row only when its run is the current session. Put the admission first in the sequencer. It takes the task only while the row has a `keptOpenBy`; otherwise the request runs as usual and settles nothing. An admitted request works under the task's claim, so its task tools write as the worker, `reportProgress` included. A later request's answer becomes the task's output only when both hold: the admission has `answerCounts: true`, and the sequencer taps `noteTaskAnswer` after the step that produced the answer. `noteTaskAnswer` records the output of the step before it. Set `answerCounts: false` on an entry whose answer must never become the task's output.
 
-By default, the tasks a task filed hold it. To change that, pass `endRules: { filedWorkHolds }` to `taskRequestAdmission`, and to [`taskLedgers`](#a-task-entry-served-by-many-boards) when your task entry takes its tasks through one. `filedWorkHolds` is an async predicate over the context, the task row and its ledger.
+By default, the tasks a task filed hold it. To change that, pass `endRules: { filedWorkKeepsOpen }` to `taskRequestAdmission`, and to [`taskLedgers`](#a-task-entry-served-by-many-boards) when your task entry takes its tasks through one. `filedWorkKeepsOpen` is an async predicate over the context, the task row and its ledger.
 
 ### Which session a task runs in
 

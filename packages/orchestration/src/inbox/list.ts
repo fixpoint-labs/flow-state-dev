@@ -2,17 +2,17 @@
  * The Inbox list: the only place an Inbox item is built (the task-surface
  * sweep fails one built anywhere else).
  */
-import { holdOfSuspension, isOpenRow, openUserHolds, taskItemId } from "./holds";
-import type { InboxHold, InboxItem, InboxRow, InboxSuspension, InboxTask } from "./types";
+import { questionOfSuspension, isOpenRow, openUserQuestions, taskItemId } from "./holds";
+import type { InboxQuestion, InboxItem, InboxRow, InboxSuspension, InboxTask } from "./types";
 
 /** An item over `holds`, oldest first, answerable when any hold is. */
-function itemOf<TDetail>(id: string, task: InboxTask | null, holds: readonly InboxHold<TDetail>[]): InboxItem<TDetail> {
-  const sorted = [...holds].sort((a, b) => a.openedAt - b.openedAt);
+function itemOf<TDetail>(id: string, task: InboxTask | null, questions: readonly InboxQuestion<TDetail>[]): InboxItem<TDetail> {
+  const sorted = [...questions].sort((a, b) => a.openedAt - b.openedAt);
   const answerable = sorted.some((hold) => hold.answerable);
   return {
     id,
     task,
-    holds: sorted,
+    questions: sorted,
     since: sorted[0]!.openedAt,
     answerable,
     unanswerable: answerable ? null : (sorted.find((hold) => hold.unanswerable !== null)?.unanswerable ?? null),
@@ -36,12 +36,12 @@ export function inboxItems<TDetail = unknown>(input: {
   readonly flowOf: (sessionId: string) => string | null | undefined;
 }): InboxItem<TDetail>[] {
   const found = new Map(input.suspensions.map((s) => [s.suspensionId, s]));
-  const byRow = new Map<InboxRow, InboxHold<TDetail>[]>();
+  const byRow = new Map<InboxRow, InboxQuestion<TDetail>[]>();
   const claimed = new Set<string>();
   const runOwner = new Map<string, InboxRow>();
   for (const row of input.rows) {
     if (isOpenRow(row) && row.run != null) runOwner.set(row.run.requestId, row);
-    const holds = openUserHolds<TDetail>(row, input.flowOf, (id) => found.get(id));
+    const holds = openUserQuestions<TDetail>(row, input.flowOf, (id) => found.get(id));
     for (const hold of holds) claimed.add(hold.id);
     if (holds.length > 0) byRow.set(row, holds);
   }
@@ -50,10 +50,10 @@ export function inboxItems<TDetail = unknown>(input: {
     if (claimed.has(s.suspensionId)) continue;
     const owner = runOwner.get(s.requestId);
     if (owner === undefined) {
-      lone.push(itemOf(s.suspensionId, null, [holdOfSuspension(s)]));
+      lone.push(itemOf(s.suspensionId, null, [questionOfSuspension(s)]));
       continue;
     }
-    byRow.set(owner, [...(byRow.get(owner) ?? []), holdOfSuspension(s)]);
+    byRow.set(owner, [...(byRow.get(owner) ?? []), questionOfSuspension(s)]);
   }
   const items = [...byRow].map(([row, holds]) =>
     itemOf(taskItemId(row.board, row.id), { board: row.board, taskId: row.id, title: row.title ?? row.goal ?? row.id, assignee: row.assignee ?? null }, holds),

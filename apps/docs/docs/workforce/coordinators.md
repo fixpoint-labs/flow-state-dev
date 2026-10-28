@@ -499,7 +499,7 @@ Answer it from the Inbox, or by typing the answer in the task's session: a line 
 ```ts
 await help.send(
   "updateTask_tasks",
-  { id: taskId, question: questionId, message: "Use eu-west." },
+  { id: taskId, answers: questionId, message: "Use eu-west." },
   { sessionId: session.id },
 )
 ```

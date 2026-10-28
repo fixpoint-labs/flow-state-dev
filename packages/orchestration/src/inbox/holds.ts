@@ -3,9 +3,9 @@
  * Inbox can answer each. Inside the read; not published.
  */
 import { isTerminalStatus, type TaskStatus } from "../tasks/schema/task-status";
-import { openHolds } from "../tasks/collection/holds";
+import { openQuestions } from "../tasks/collection/holds";
 import type { Task } from "../tasks/schema/task";
-import type { InboxHold, InboxRow, InboxSuspension } from "./types";
+import type { InboxQuestion, InboxRow, InboxSuspension } from "./types";
 
 /** Why a hold in a session that names no owning flow can't be answered. */
 export const NO_FLOW_UNANSWERABLE =
@@ -26,19 +26,19 @@ export function isOpenRow(row: InboxRow): boolean {
 }
 
 /** Why a hold with this source can't be answered, or `null` when it can. */
-function unanswerableSource(source: InboxHold<unknown>["source"]): string | null {
+function unanswerableSource(source: InboxQuestion<unknown>["source"]): string | null {
   if (source.kind === "suspension") return source.flowId === null ? NO_FLOW_UNANSWERABLE : null;
   return source.flowId === null || source.sessionId === null || source.action === null ? NO_BOARD_UNANSWERABLE : null;
 }
 
 /** A hold, its answerable flag set from its source. */
-function withAnswerable<TDetail>(hold: Omit<InboxHold<TDetail>, "answerable" | "unanswerable">): InboxHold<TDetail> {
+function withAnswerable<TDetail>(hold: Omit<InboxQuestion<TDetail>, "answerable" | "unanswerable">): InboxQuestion<TDetail> {
   const why = unanswerableSource(hold.source);
   return { ...hold, answerable: why === null, unanswerable: why };
 }
 
 /** A suspension hold for a stop the reader found, where its own session is. */
-export function holdOfSuspension<TDetail>(s: InboxSuspension<TDetail>): InboxHold<TDetail> {
+export function questionOfSuspension<TDetail>(s: InboxSuspension<TDetail>): InboxQuestion<TDetail> {
   return withAnswerable<TDetail>({
     id: s.suspensionId,
     source: { kind: "suspension", flowId: s.flowId, sessionId: s.sessionId, requestId: s.requestId, suspensionId: s.suspensionId },
@@ -50,17 +50,17 @@ export function holdOfSuspension<TDetail>(s: InboxSuspension<TDetail>): InboxHol
 
 /**
  * A row's open holds for the user (`actor: "user"`), by the one predicate the
- * board reads (`openHolds`): its questions and confirms, answered through the
+ * board reads (`openQuestions`): its questions and confirms, answered through the
  * board, and its run's stop for a person, answered through the engine in the
  * session its run link names.
  */
-export function openUserHolds<TDetail>(
+export function openUserQuestions<TDetail>(
   row: InboxRow,
   flowOf: (sessionId: string) => string | null | undefined,
   foundFor: (suspensionId: string) => InboxSuspension<TDetail> | undefined = () => undefined,
-): InboxHold<TDetail>[] {
-  const open = openHolds({ status: row.status, holds: row.holds ?? undefined, steers: row.steers ?? undefined } as Pick<Task, "status" | "holds" | "steers">);
-  const holds: InboxHold<TDetail>[] = [];
+): InboxQuestion<TDetail>[] {
+  const open = openQuestions({ status: row.status, questions: row.questions ?? undefined, steers: row.steers ?? undefined } as Pick<Task, "status" | "questions" | "steers">);
+  const holds: InboxQuestion<TDetail>[] = [];
   for (const hold of open) {
     if (hold.actor !== "user") continue;
     const title = hold.ask.title !== undefined ? { title: hold.ask.title } : {};

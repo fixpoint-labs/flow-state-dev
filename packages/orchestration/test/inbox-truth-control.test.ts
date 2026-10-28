@@ -11,8 +11,8 @@ vi.mock("../src/inbox/holds", async (importOriginal) => {
   return {
     ...real,
     // The broken helper: any row's holds are open, whatever its status.
-    openUserHolds: (row: Parameters<typeof real.openUserHolds>[0], ...rest: unknown[]) =>
-      (real.openUserHolds as (...args: unknown[]) => unknown)({ ...row, status: "in_progress" }, ...rest),
+    openUserQuestions: (row: Parameters<typeof real.openUserQuestions>[0], ...rest: unknown[]) =>
+      (real.openUserQuestions as (...args: unknown[]) => unknown)({ ...row, status: "in_progress" }, ...rest),
   };
 });
 
@@ -27,7 +27,7 @@ describe("control broken-list-helper", () => {
       id: "t1",
       status: "cancelled",
       run: { sessionId: "run_t1", requestId: "req_t1" },
-      holds: [
+      questions: [
         {
           id: "sp1",
           actor: "user" as const,

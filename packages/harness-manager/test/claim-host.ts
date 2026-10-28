@@ -27,7 +27,7 @@ import {
   defineTaskCollection,
   taskLedgerResources,
   getOrCreateTaskCollection,
-  openRowHolds,
+  openRowQuestions,
   resolveResourceCollection,
   type Task,
   type TaskCollectionRef,
@@ -288,9 +288,9 @@ export function claimHost(options: HostOptions) {
       // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
       const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
       const row = ref.get(input.id);
-      const hold = row === undefined ? undefined : openRowHolds(row)[0];
+      const hold = row === undefined ? undefined : openRowQuestions(row)[0];
       if (hold === undefined) return { outcome: "declined", reason: "no-open-question" };
-      return ref.answer!(input.id, { hold: hold.id, message: input.answer, from: "user", by: ALICE });
+      return ref.answer!(input.id, { questionId: hold.id, message: input.answer, from: "user", by: ALICE });
     },
   });
   const cancel = handler({

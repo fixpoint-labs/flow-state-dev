@@ -17,19 +17,19 @@
  * - **completed** — the check. Done: the row completes with the latest
  *   checkpoint its worker reported, else the last answer a request that
  *   counts gave (the entry's, or a woken turn's). Not done: the row records
- *   what holds it (`waitingOn: "filed"`),
+ *   what holds it (`keptOpenBy: "filed"`),
  *   keeps that answer as its output, and drops its lease, so no reclaim takes
  *   it back. The next request admitted for it checks again.
  * - **a steer no request of its attempt took** (FIX-2086 D2): one more turn
  *   before it settles. The check owes the task session's steer entry a wake,
- *   records `waitingOn: "steer"` with no lease (the answer kept as for any
+ *   records `keptOpenBy: "steer"` with no lease (the answer kept as for any
  *   wait), and starts that entry at once; the entry admits a same-attempt
  *   request whose message is the steer, and its end checks again. Each turn
  *   takes at least one steer, so the steer cap bounds the turns.
- * - **suspended** — the row records the stop (`waitingOn: "wait"`) and drops
+ * - **suspended** — the row records the stop (`keptOpenBy: "wait"`) and drops
  *   its lease (D1), in one write; a stop for a person, by the one predicate
  *   `isUserSuspension`, is mirrored in that write as the row's suspension hold
- *   (`Task.holds`, FIX-2133 D2), what it asks with it. The resume is admitted
+ *   (`Task.questions`, FIX-2133 D2), what it asks with it. The resume is admitted
  *   like any request, and its admission closes the mirror. A row a question
  *   holds takes no mirror (one wait per turn): the stop is cancelled instead,
  *   and the run resumes `cancelled`.
@@ -39,7 +39,7 @@
  *   (a gate's rescue has usually done it already, and then this writes
  *   nothing).
  *
- * **Admission** re-mints the claim from the row, clears `waitingOn`, and gives
+ * **Admission** re-mints the claim from the row, clears `keptOpenBy`, and gives
  * the row a lease again, renewed until the request ends. Admitting a turn the
  * row owes (its last question answered, or a steer no request took) is that
  * turn's claim: the write advances the turn generation, and the ticket is
@@ -56,18 +56,18 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
   DEFAULT_LEASE_DURATION_MS,
-  MAX_HOLD_PROMPT,
-  filedWorkHolds,
+  MAX_QUESTION_PROMPT,
+  filedWorkKeepsOpen,
   readCommittedTask,
   ticketForClaim,
   untakenSteers,
-  type SuspensionHold,
+  type SuspensionQuestion,
   type Task,
   type TaskClaimTicket,
   type TaskCollectionRef,
-  type TaskWaitingOn,
+  type TaskKeptOpenBy,
 } from "../tasks";
-import { ticketHoldsRow } from "../tasks/collection/internal";
+import { ticketClaimsRow } from "../tasks/collection/internal";
 import { askedOnTicket } from "../tasks/collection/holds";
 import { advisoryComplete, advisoryFail } from "../tasks/collection/advisory-write-back";
 import { settleAtRequestEnd } from "./blocks/record-result";
@@ -80,9 +80,9 @@ export interface TaskEndRules {
   /**
    * Whether work the task filed still holds it. Default: a row on the task's
    * own ledger it filed (`filedByTask`) that is open or still owes its ending
-   * (`filedWorkHolds`).
+   * (`filedWorkKeepsOpen`).
    */
-  filedWorkHolds?: (ctx: BlockContext, task: Task, ledger: TaskCollectionRef) => Promise<boolean>;
+  filedWorkKeepsOpen?: (ctx: BlockContext, task: Task, ledger: TaskCollectionRef) => Promise<boolean>;
   /**
    * The internal entry, on the task session's own flow, that runs one more
    * turn for a steer no request of the attempt took (FIX-2086 D2). The check
@@ -109,7 +109,7 @@ interface Admitted {
   /** Whether this request's answer is the task's result: the entry's and a woken turn's are, a check's isn't. */
   readonly answerCounts: boolean;
   /** What the row waited on when this request was admitted. */
-  readonly prior: TaskWaitingOn | undefined;
+  readonly prior: TaskKeptOpenBy | undefined;
   readonly rules: TaskEndRules;
   /** The answer this request gave, once it gave one that counts. */
   answer?: { output: unknown };
@@ -154,10 +154,10 @@ export function admittedTaskOf(ctx: BlockContext): { readonly ref: TaskCollectio
 /**
  * Whether the row is still on the claim `ticket` names: same row, running,
  * same attempt and same turn (FIX-2133 D3), by the one predicate the write
- * fence shares (`ticketHoldsRow`).
+ * fence shares (`ticketClaimsRow`).
  */
 function claimHolds(ref: TaskCollectionRef, ticket: TaskClaimTicket, row: Task | undefined): row is Task {
-  return ticketHoldsRow(ticket, ref.collectionId, row);
+  return ticketClaimsRow(ticket, ref.collectionId, row);
 }
 
 /**
@@ -170,7 +170,7 @@ function askedThisTurn(record: Admitted, row: Task | undefined): boolean {
 }
 
 /** A task's request ended with a result that settles it, or that the next request picks up. */
-function answeredBefore(prior: TaskWaitingOn | undefined): boolean {
+function answeredBefore(prior: TaskKeptOpenBy | undefined): boolean {
   return prior === "filed" || prior === "steer";
 }
 
@@ -201,17 +201,17 @@ export async function admitClaimedTask(
   const { ref } = options;
   let ticket = options.ticket;
   let row = options.row;
-  const prior = row.waitingOn ?? undefined;
+  const prior = row.keptOpenBy ?? undefined;
   // The task's own request resuming a turn that asked (FIX-2133): the turn is
   // over, and the row, owed turn included, is the next turn's. Admitted for
   // nothing to write: it takes no lease and no turn.
   const askedTurn = options.own && row.askedInTurn === ticket.turn;
-  if (!askedTurn && (prior !== undefined || row.turnOwed === true) && ref.setWaitingOn !== undefined) {
+  if (!askedTurn && (prior !== undefined || row.turnOwed === true) && ref.setKeptOpenBy !== undefined) {
     const span = row.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS;
     // The run's own resume closes the mirror of its stop (FIX-2133). A later
     // request (a notice, a steer's turn) keeps it: the task's own run is
     // still parked on it, and a cancel meanwhile owes that run its resume.
-    const outcome = await ref.setWaitingOn(row.id, null, {
+    const outcome = await ref.setKeptOpenBy(row.id, null, {
       claim: ticket,
       leaseUntil: ref.now() + span,
       ...(options.own ? { resume: true } : {}),
@@ -344,7 +344,7 @@ async function checkTask(record: Admitted, ending: RequestEnding): Promise<Error
     // Defence in depth (FIX-2133): a turn that asked never reaches here (the
     // first branch), and the collection still refuses a mirror on a row a
     // question holds, one source at a time. Cancelled if it does.
-    if (mirror !== undefined && outcome?.outcome === "declined" && outcome.reason === "held") {
+    if (mirror !== undefined && outcome?.outcome === "declined" && outcome.reason === "open-question") {
       cancelRefusedStop(record.ctx, row.id, mirror.source);
     }
     return undefined;
@@ -378,7 +378,7 @@ function tookSteers(task: Task, requestId: string): boolean {
 }
 
 /** A task whose own request stopped (for a person, or any other wait) and has not ended. */
-function waitsOnItsOwnRequest(prior: TaskWaitingOn | undefined): boolean {
+function waitsOnItsOwnRequest(prior: TaskKeptOpenBy | undefined): boolean {
   return prior === "wait";
 }
 
@@ -388,7 +388,7 @@ function waitsOnItsOwnRequest(prior: TaskWaitingOn | undefined): boolean {
  * predicate, `isUserSuspension`). A request other than the task's own that
  * stops after the task answered leaves it waiting on what it waited on.
  */
-function stopOf(record: Admitted, ending: RequestEnding): { on: TaskWaitingOn; forPerson: boolean } {
+function stopOf(record: Admitted, ending: RequestEnding): { on: TaskKeptOpenBy; forPerson: boolean } {
   if (!record.own && answeredBefore(record.prior)) return { on: record.prior!, forPerson: false };
   const suspension = ending.suspension;
   return { on: "wait", forPerson: suspension !== undefined && isUserSuspension(suspension) };
@@ -402,7 +402,7 @@ function stopOf(record: Admitted, ending: RequestEnding): { on: TaskWaitingOn; f
  * row's run link names. `undefined` when the ending names no suspension id (a
  * host before it).
  */
-function mirrorOf(ctx: BlockContext, ending: RequestEnding): SuspensionHold | undefined {
+function mirrorOf(ctx: BlockContext, ending: RequestEnding): SuspensionQuestion | undefined {
   const suspension = ending.suspension;
   if (suspension?.suspensionId === undefined) return undefined;
   const kind = waitForUserKindOf(suspension);
@@ -416,7 +416,7 @@ function mirrorOf(ctx: BlockContext, ending: RequestEnding): SuspensionHold | un
     source: { kind: "suspension", requestId: requestKey(ctx), suspensionId: suspension.suspensionId },
     ask: {
       kind,
-      prompt: prompt.length > MAX_HOLD_PROMPT ? `${prompt.slice(0, MAX_HOLD_PROMPT - 1)}…` : prompt,
+      prompt: prompt.length > MAX_QUESTION_PROMPT ? `${prompt.slice(0, MAX_QUESTION_PROMPT - 1)}…` : prompt,
       ...(suspension.title !== undefined ? { title: suspension.title } : {}),
     },
   };
@@ -479,7 +479,7 @@ async function checkAnswered(record: Admitted, row: Task, rechecked = false): Pr
   }
   const holding = await holdingWork(record, row);
   if (holding !== undefined) {
-    if (ref.setWaitingOn !== undefined) {
+    if (ref.setKeptOpenBy !== undefined) {
       await waitOn(record, row, holding, record.answer);
       return undefined;
     }
@@ -487,7 +487,7 @@ async function checkAnswered(record: Admitted, row: Task, rechecked = false): Pr
     // which lapses with nothing renewing it, rather than settle it early.
     console.warn(
       `[task-board] task "${row.id}" is still held by ${holding} work, and its ledger "${ref.collectionId}" ` +
-        "has no setWaitingOn; it stays running on its lease."
+        "has no setKeptOpenBy; it stays running on its lease."
     );
     return undefined;
   }
@@ -497,7 +497,7 @@ async function checkAnswered(record: Admitted, row: Task, rechecked = false): Pr
   // A steer that lands after the read above, while held work was checked,
   // would be settled over: the complete itself declines on an untaken steer,
   // where a turn can be owed for it, and the check runs once more.
-  const fenceSteers = !noProgress && !rechecked && record.rules.steerTurn !== undefined && ref.setWaitingOn !== undefined;
+  const fenceSteers = !noProgress && !rechecked && record.rules.steerTurn !== undefined && ref.setKeptOpenBy !== undefined;
   let lateSteer = false;
   const settled = await settleAtRequestEnd({
     ctx: record.ctx,
@@ -525,7 +525,7 @@ async function checkAnswered(record: Admitted, row: Task, rechecked = false): Pr
 /** What else holds the task open: work it filed, or nothing. */
 async function holdingWork(record: Admitted, row: Task): Promise<"filed" | undefined> {
   const { ref, ctx, rules } = record;
-  if (await (rules.filedWorkHolds ?? defaultFiledWorkHolds)(ctx, row, ref)) return "filed";
+  if (await (rules.filedWorkKeepsOpen ?? defaultFiledWorkHolds)(ctx, row, ref)) return "filed";
   return undefined;
 }
 
@@ -534,21 +534,21 @@ async function holdingWork(record: Admitted, row: Task): Promise<"filed" | undef
  * output while it waits; with `hold`, mirror its run's stop for a person on
  * the row in the same write (FIX-2133). A later request that leaves the task
  * waiting on what it waited on passes none, and the mirror stays. A ref
- * without `setWaitingOn` keeps its lease instead.
+ * without `setKeptOpenBy` keeps its lease instead.
  */
 async function waitOn(
   record: Admitted,
   row: Task,
-  on: TaskWaitingOn,
+  on: TaskKeptOpenBy,
   answer: { output: unknown } | undefined,
-  hold?: SuspensionHold,
+  hold?: SuspensionQuestion,
   owesTurn?: boolean
-): Promise<Awaited<ReturnType<NonNullable<TaskCollectionRef["setWaitingOn"]>>> | undefined> {
-  if (record.ref.setWaitingOn === undefined) return undefined;
-  return record.ref.setWaitingOn(row.id, on, {
+): Promise<Awaited<ReturnType<NonNullable<TaskCollectionRef["setKeptOpenBy"]>>> | undefined> {
+  if (record.ref.setKeptOpenBy === undefined) return undefined;
+  return record.ref.setKeptOpenBy(row.id, on, {
     claim: record.ticket,
     ...(answer !== undefined ? { answer } : {}),
-    ...(hold !== undefined ? { hold } : {}),
+    ...(hold !== undefined ? { question: hold } : {}),
     ...(owesTurn === true ? { owesTurn: true } : {}),
   });
 }
@@ -563,7 +563,7 @@ async function waitOn(
 async function oweSteerTurn(record: Admitted, row: Task): Promise<boolean> {
   const entry = record.rules.steerTurn?.entry;
   const { ctx, ref } = record;
-  if (entry === undefined || ref.setWaitingOn === undefined) return false;
+  if (entry === undefined || ref.setKeptOpenBy === undefined) return false;
   const wakes = ctx.requestHost?.wakes;
   try {
     await wakes?.owe({ entry, dueAt: ref.now() + STEER_TURN_DUE_MS });
@@ -601,8 +601,8 @@ async function oweSteerTurn(record: Admitted, row: Task): Promise<boolean> {
   return false;
 }
 
-const defaultFiledWorkHolds: NonNullable<TaskEndRules["filedWorkHolds"]> = async (_ctx, task, ledger) =>
-  filedWorkHolds(ledger, task.id);
+const defaultFiledWorkHolds: NonNullable<TaskEndRules["filedWorkKeepsOpen"]> = async (_ctx, task, ledger) =>
+  filedWorkKeepsOpen(ledger, task.id);
 
 /** What {@link taskRequestAdmission} is built from. */
 export interface TaskRequestAdmissionOptions {
@@ -627,7 +627,7 @@ export interface TaskRequestAdmissionOptions {
  * holds the task's claim (its tools write as the worker, `reportProgress`
  * included), renews its lease, and checks the task at its end.
  *
- * A task that is not waiting (no `waitingOn`, and no turn owed for its
+ * A task that is not waiting (no `keptOpenBy`, and no turn owed for its
  * answered questions, FIX-2133) is left to the request working it, and this
  * request is admitted for nothing. Nor is one whose owed turn another claim
  * took first: whichever claims first wins (D3).
@@ -648,7 +648,7 @@ export function taskRequestAdmission(options: TaskRequestAdmissionOptions) {
         const found = await options.find(ctx as never);
         if (found === undefined) return;
         const { ref, row } = found;
-        if (row.status !== "in_progress" || (row.waitingOn == null && row.turnOwed !== true)) return;
+        if (row.status !== "in_progress" || (row.keptOpenBy == null && row.turnOwed !== true)) return;
         let admittedAs: Awaited<ReturnType<typeof admitClaimedTask>>;
         try {
           admittedAs = await admitClaimedTask(ctx as never, {
@@ -702,7 +702,7 @@ type AskDeclineReason = Extract<Awaited<ReturnType<NonNullable<TaskCollectionRef
 
 /** What {@link askMidway} answers: the questions' ids once asked, or why not. */
 export type MidwayAsk =
-  | { readonly ok: true; readonly holds: readonly string[] }
+  | { readonly ok: true; readonly questions: readonly string[] }
   | { readonly ok: false; readonly reason: "no-claim" | "not-supported" | AskDeclineReason };
 
 /**
@@ -748,7 +748,7 @@ export async function askMidway(
   }));
   const write = async (): Promise<MidwayAsk> => {
     const outcome = await ask(claim.taskId, asks, { claim });
-    return outcome.outcome === "declined" ? { ok: false, reason: outcome.reason } : { ok: true, holds: outcome.holds ?? [] };
+    return outcome.outcome === "declined" ? { ok: false, reason: outcome.reason } : { ok: true, questions: outcome.questions ?? [] };
   };
   const key = `task-board:ask-midway:${claim.collectionId}:${claim.taskId}:${claim.attempt}:${claim.turn}:${JSON.stringify(asks)}`;
   const asked = ctx.runOnce !== undefined ? await ctx.runOnce(key, write) : await write();

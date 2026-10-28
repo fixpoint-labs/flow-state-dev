@@ -112,7 +112,7 @@ A run that needs a decision writes its question to a path the prompt names, and 
 The user answers from the Inbox, or by typing a line in the run's session (see [Talking to a run](#talking-to-a-run)). Either goes through the board's `updateTask` action, naming the question:
 
 ```ts
-await updateTask_tasks({ id: task.id, question: hold.id, message: "Use the v2 endpoint" });
+await updateTask_tasks({ id: task.id, answers: hold.id, message: "Use the v2 endpoint" });
 ```
 
 Once the task's last question is answered, the task takes one more turn on **the same attempt**, and that turn's run picks up **the same coding session**. Everything the run had worked out is still there. The phase's prompt builder runs again, and `run.answers` hands it the task's answered questions, oldest first, each with its answer. The run can ask again; each run writes its question to a path of its own, so it never re-reads one an earlier run asked.

@@ -285,7 +285,7 @@ describe("askQuestion off a task turn (FIX-2131)", () => {
     const out = (await runForTest(ask.tool, { question: "Which?", taskId: "t" } as never, person as never)) as any;
     expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^not_a_task_turn/) });
     expect(b.get("t")!.status).toBe("in_progress");
-    expect(b.get("t")!.holds ?? []).toEqual([]);
+    expect(b.get("t")!.questions ?? []).toEqual([]);
   });
 
   it("is not offered outside a task session at all", async () => {

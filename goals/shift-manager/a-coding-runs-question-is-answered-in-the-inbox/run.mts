@@ -306,7 +306,7 @@ async function open(label: string, goal: string, slot: (feeds: any) => HarnessBl
     if (item === undefined) return "no item";
     try {
       await createInboxClient(client).answer(item, { text });
-      closed.push(item.holds[0]!.id);
+      closed.push(item.questions[0]!.id);
       return "ok";
     } catch (error) {
       return (error as Error).message;
@@ -320,7 +320,7 @@ async function open(label: string, goal: string, slot: (feeds: any) => HarnessBl
     for (const sessionId of sessions) {
       suspensions.push(...suspensionTruthOf(sessionId, await client.sessions.requests(sessionId, { status: "suspended", includeItems: true })));
     }
-    const truth = { rows: rowTruthOf(rows.map((row) => ({ board, id: row.id, status: row.status, holds: row.holds ?? [], steers: [] }))), suspensions, closed };
+    const truth = { rows: rowTruthOf(rows.map((row) => ({ board, id: row.id, status: row.status, questions: row.questions ?? [], steers: [] }))), suspensions, closed };
     const result = reconcileInbox(await inbox(), truth);
     return result.green ? undefined : show({ ...result, green: undefined });
   };
@@ -343,7 +343,7 @@ async function open(label: string, goal: string, slot: (feeds: any) => HarnessBl
 }
 
 const isHeld = (task: Record<string, any> | undefined) =>
-  task?.status === "in_progress" && (task.holds ?? []).some((hold: any) => hold.source?.kind === "row");
+  task?.status === "in_progress" && (task.questions ?? []).some((hold: any) => hold.source?.kind === "row");
 const isSettled = (task: Record<string, any> | undefined) => ["completed", "errored", "cancelled", "pending"].includes(task?.status);
 const lockFree = (cwd: string | undefined) => cwd !== undefined && !existsSync(`${cwd}.lock`);
 
@@ -414,9 +414,9 @@ await runGoal(async (failures, tell) => {
         const held = await host.until(host.task, (t) => isHeld(t) || isSettled(t), real.runTimeoutMs + 60_000);
         // ---- a
         const item = await host.itemOf();
-        const asked = tell.over("a · the item's holds", [...(item?.holds ?? [])]);
+        const asked = tell.over("a · the item's holds", [...(item?.questions ?? [])]);
         const marker = seen.cwds[0] === undefined ? undefined : readdirSync(join(seen.cwds[0], ".fsdev", "ask")).map((f) => readFileSync(join(seen.cwds[0]!, ".fsdev", "ask", f), "utf8").trim())[0];
-        if (!isHeld(held)) fail("a:held", `the task is ${held?.status} with ${show(held?.holds?.length ?? 0)} hold(s), not held on the run's question`);
+        if (!isHeld(held)) fail("a:held", `the task is ${held?.status} with ${show(held?.questions?.length ?? 0)} hold(s), not held on the run's question`);
         if ((await host.inbox()).filter((i) => i.task?.taskId === host.taskId).length !== 1) fail("a:one-item", "the Inbox doesn't list exactly one item for the task");
         if (asked.length !== 1 || asked[0]!.ask.kind !== "question" || marker === undefined || !marker.startsWith(asked[0]!.ask.prompt.replace(/…$/, ""))) {
           fail("a:the-runs-question", `the item's holds are ${show(asked.map((h) => [h.ask.kind, h.ask.prompt]))}; the run asked ${show(marker)}`);
@@ -464,8 +464,8 @@ await runGoal(async (failures, tell) => {
       for (const [i, question] of [fixture.stub.first, fixture.stub.second].entries()) {
         const held = await host.until(host.task, (t) => isHeld(t) || isSettled(t), 30_000);
         const item = await host.itemOf();
-        if (!isHeld(held) || item?.holds.length !== 1 || item.holds[0]!.ask.prompt !== question) {
-          fail("b2:held", `question ${i + 1}: the task is ${held?.status}, its item ${show(item?.holds.map((h) => h.ask.prompt))}`);
+        if (!isHeld(held) || item?.questions.length !== 1 || item.questions[0]!.ask.prompt !== question) {
+          fail("b2:held", `question ${i + 1}: the task is ${held?.status}, its item ${show(item?.questions.map((h) => h.ask.prompt))}`);
           break;
         }
         const sent = await host.answerInInbox(fixture.stub.answers[i]!);

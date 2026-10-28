@@ -1,6 +1,6 @@
 /**
  * What holds a task on its row (FIX-2133 D2, the epic FIX-2058's ER-8): one
- * list of holds, `Task.holds`, whatever the row's status.
+ * list of holds, `Task.questions`, whatever the row's status.
  *
  * Two sources, discriminated on `source.kind`:
  *
@@ -17,13 +17,13 @@
  *
  * Server-written only, through the collection's one hold write
  * (`../collection/holds`); no caller patch reaches it. `actor` and
- * `releasedBy` are stored from the first write, so a later kind needs no
+ * `closedBy` are stored from the first write, so a later kind needs no
  * migration.
  */
 import { z } from "zod";
 
 /** The most characters of a hold's prompt a row keeps: a list of tasks stays small (BP-042). */
-export const MAX_HOLD_PROMPT = 1_000;
+export const MAX_QUESTION_PROMPT = 1_000;
 
 /** Who a hold waits on: the Inbox lists `"user"` holds. */
 const holdActorSchema = z.enum(["user", "system"]);
@@ -45,7 +45,7 @@ const holdBase = {
 };
 
 /** A task run's parked stop for a person, mirrored on its row. */
-export const suspensionHoldSchema = z.object({
+export const suspensionQuestionSchema = z.object({
   ...holdBase,
   /**
    * The stop's address: the run's request and its suspension. The flow its
@@ -61,9 +61,9 @@ export const suspensionHoldSchema = z.object({
 });
 
 /** A question or a confirm kept on the row itself. */
-export const rowHoldSchema = z.object({
+export const rowQuestionSchema = z.object({
   ...holdBase,
-  source: z.object({ kind: z.literal("row"), releasedBy: z.array(releaserSchema) }),
+  source: z.object({ kind: z.literal("row"), closedBy: z.array(releaserSchema) }),
   ask: z.object({
     kind: z.enum(["question", "confirm"]),
     prompt: z.string(),
@@ -86,15 +86,15 @@ export const rowHoldSchema = z.object({
 });
 
 /** One hold on a task row. */
-export const taskHoldSchema = z.union([suspensionHoldSchema, rowHoldSchema]);
+export const taskQuestionSchema = z.union([suspensionQuestionSchema, rowQuestionSchema]);
 
-export type SuspensionHold = z.infer<typeof suspensionHoldSchema>;
-export type RowHold = z.infer<typeof rowHoldSchema>;
-export type TaskHold = z.infer<typeof taskHoldSchema>;
-export type HoldReleaser = z.infer<typeof releaserSchema>;
+export type SuspensionQuestion = z.infer<typeof suspensionQuestionSchema>;
+export type RowQuestion = z.infer<typeof rowQuestionSchema>;
+export type TaskQuestion = z.infer<typeof taskQuestionSchema>;
+export type QuestionCloser = z.infer<typeof releaserSchema>;
 
 /** What a confirm's No does: cancel the task (the default), or let the work go on. */
 export type ConfirmOnNo = "cancel" | "continue";
 
 /** What a filer or a worker asks: a question's words, or a `confirm` with what its No does. */
-export type HoldAsk = { readonly kind: "question" | "confirm"; readonly prompt: string; readonly title?: string; readonly onNo?: ConfirmOnNo };
+export type QuestionInit = { readonly kind: "question" | "confirm"; readonly prompt: string; readonly title?: string; readonly onNo?: ConfirmOnNo };

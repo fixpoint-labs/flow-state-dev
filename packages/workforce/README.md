@@ -2159,7 +2159,7 @@ Any worker's turn, a task's included, can wait on a task it filed with
 A task's worker can split it into pieces for its own delegates; a piece for any other worker is
 refused with `unknown_assignee`. An unassigned piece goes to
 its delegate when it has exactly one. Each piece carries `filedByTask`, the task it was split from.
-The task stays running while a piece is open, with no lease (`waitingOn: "filed"`). Each piece's
+The task stays running while a piece is open, with no lease (`keptOpenBy: "filed"`). Each piece's
 ending wakes a turn in the task session, which decides what it means: a failed piece fails nothing
 by itself. Once no piece holds it, the task completes with its output like any task's: the latest
 `reportProgress` checkpoint, else the answer of the last turn a piece's ending woke. A turn that
@@ -2222,7 +2222,7 @@ and the like), never a task's input, output or metadata.
 Rows an earlier version wrote can owe a notice, an Error Reporter report, or the
 settle of a [split task](https://flow-state.dev/docs/workforce/delegating-work#splitting-a-task)
 whose pieces have all ended but which hasn't completed, with no wake to pay it. A split an earlier
-version stored reads as `in_progress`, `waitingOn: "filed"`, and its pieces hold it. So does a
+version stored reads as `in_progress`, `keptOpenBy: "filed"`, and its pieces hold it. So does a
 task an earlier version held open for a message queued to its session: its work had answered, and
 it settles with that answer once checked. Call `backfillBoardWakes(stores, { userCell })` once at host
 start, with the runtime's `stores` and `userCell: (userId, orgId) => resolveUserStorageKey(userId,
@@ -2307,7 +2307,7 @@ Send to talk; call when the worker needs to use the answer now; file a task for 
   gets one message per question, from the task's worker, in the conversation that filed the task;
   it wakes that worker's `onMessageReceived` turn like any message. The text is
   `Your task "<title, else goal>" (<task id>) asks: "<question>"`, then
-  `Answer it with updateTask({ id: "<task id>", question: "<question id>", message }), or leave it to the user, who sees it in their Inbox.`
+  `Answer it with updateTask({ id: "<task id>", answers: "<question id>", message }), or leave it to the user, who sees it in their Inbox.`
   For a task filed with `target` or `targetSessionId` the second line is
   `The user answers it from their Inbox; it isn't yours to answer.` (the filer's answer is refused with
   `question_is_the_users`). A long question is cut with an ellipsis to fit one message. The id is

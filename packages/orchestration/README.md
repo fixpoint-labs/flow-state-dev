@@ -742,9 +742,9 @@ that a `dispatcher()` block throws.
 The child settles its own row once, when the task's work is over: its request has ended,
 along with the background work that request started and any the flow's `onFinished`
 started; and every task it filed has ended and its ending has reached the child's
-session. Until then the row stays `in_progress`, and `waitingOn` says why:
+session. Until then the row stays `in_progress`, and `keptOpenBy` says why:
 
-| `waitingOn` | Waiting on | Lease |
+| `keptOpenBy` | Waiting on | Lease |
 | --- | --- | --- |
 | `"filed"` | tasks it filed that are open, or whose ending is still owed to the child's session | none |
 | `"wait"` | a suspension, a stop for a person included | none |
@@ -753,7 +753,7 @@ A row with no lease is never reclaimed, so a waiting task isn't run twice. A res
 continues the same attempt. A stop for a person (a `ctx.waitForUser()`, or a `ctx.suspend()`
 for `human_approval` or `human_input`) is also mirrored on the row as a hold.
 
-**A task waiting on a user.** `getTask` and `listTasks` show `waitingOn` on a running
+**A task waiting on a user.** `getTask` and `listTasks` show `keptOpenBy` on a running
 task, and its `holds`. A stop for a person is one with `source.kind: "suspension"`: its
 `ask` (`kind` is `approval`, `review` or `input`, with the `prompt` and `title`), its `due`
 (epoch ms, absent when it has none), and the `requestId` and `suspensionId` a screen
@@ -781,7 +781,7 @@ answerCounts, endRules? })` first in its sequencer, where `find(ctx)` returns
 `Promise<{ ref: TaskCollectionRef; row: Task } | undefined>` (the waiting row whose run is
 this session, read from server-set state). A later request's answer becomes the output
 only with `answerCounts: true` and a `noteTaskAnswer` tap after the step that produced it, and `afterTaskCheck(ctx, fn)` runs `fn` after that check,
-such as sending the filer the notice that the task ended. `endRules: { filedWorkHolds? }`
+such as sending the filer the notice that the task ended. `endRules: { filedWorkKeepsOpen? }`
 (type `TaskEndRules`, also on `taskLedgers`) replaces what holds a task: by default its
 filed tasks. Anything else that runs in the child's session, such as a message to it, is
 not admitted for the task: it doesn't hold the task and isn't part of it (while the task's
@@ -1139,7 +1139,7 @@ Where a message lands:
   before each model call, takes the steers no earlier read took (`takeSteers(id, { claim,
   takenIn })`, fenced to the claim) and renders them. `renderSteers`, `runningTaskOf` and
   `takeRunningSteers` are its parts, for a worker of your own.
-- **While the task waits on work it filed** (`waitingOn: "filed"`): the steer sets `waitingOn:
+- **While the task waits on work it filed** (`keptOpenBy: "filed"`): the steer sets `keptOpenBy:
   "steer"`, and the host starts the turn it is owed.
 - **After the request's last model call**: an untaken message gives the task one more turn on
   the same attempt before it settles, run by the entry you name in
@@ -1300,7 +1300,7 @@ await createInboxClient(client).answer(items[0], { approved: true });
 - **One item per suspension** that no open task's run holds, such as a user's ask in a session of their own.
 - **Each hold** says what it asks, where its answer goes, and whether the Inbox can answer it. An item is `answerable` when one of its holds is.
 - **One item per task, however many questions it holds.** A task's questions and confirms, asked at filing or midway, list oldest first as its holds, beside a stop in its run.
-- **The answer is typed by what the hold asks:** an approval takes `{ approved, data? }`, an input or a review `{ value }` (or `{ skipped: true }`), a question `{ text }`, a confirm `{ done, note? }` (a No cancels the task unless the confirm was filed with `onNo: "continue"`). `answer(item, value, holdId?)` answers the item's first hold, or the one named; `answerHold(hold, value)` answers one hold directly. A task run's stop goes to the engine's answer route, which records who answered. A question or a confirm goes to its board's `updateTask` action, as the signed-in user, in the session that board lives in, and the call rejects with the board's refusal. A hold on a board the reader can't reach says so in `unanswerable`.
+- **The answer is typed by what the hold asks:** an approval takes `{ approved, data? }`, an input or a review `{ value }` (or `{ skipped: true }`), a question `{ text }`, a confirm `{ done, note? }` (a No cancels the task unless the confirm was filed with `onNo: "continue"`). `answer(item, value, questionId?)` answers the item's first hold, or the one named; `answerOne(hold, value)` answers one hold directly. A task run's stop goes to the engine's answer route, which records who answered. A question or a confirm goes to its board's `updateTask` action, as the signed-in user, in the session that board lives in, and the call rejects with the board's refusal. A hold on a board the reader can't reach says so in `unanswerable`.
 
 ## Documentation
 

@@ -11,7 +11,7 @@ import { askMidway } from "../../src/task-board";
 import { openWorkerClaimScope, stampCurrentClaim } from "../../src/task-board/flow-policy-wiring";
 import type { TaskClaimTicket } from "../../src/tasks/claim-ticket";
 import type { TaskCollectionRef } from "../../src/tasks";
-import { newRowHolds } from "../../src/tasks/collection/holds";
+import { newRowQuestions } from "../../src/tasks/collection/holds";
 import { createDelivery } from "../../src/tasks/notice/delivery";
 import type { Task } from "../../src/tasks/schema/task";
 
@@ -26,7 +26,7 @@ function heldRow(questionTurn: number, filer: string | null = "conv_a"): Task {
     attempts: 1,
     turn: 2,
     askedInTurn: questionTurn,
-    holds: newRowHolds([{ kind: "question", prompt: "which region?" }], 0, { midway: true }),
+    questions: newRowQuestions([{ kind: "question", prompt: "which region?" }], 0, { midway: true }),
     ...(filer !== null ? { filer: { sessionId: filer } } : {}),
   } as unknown as Task;
 }
@@ -57,7 +57,7 @@ function questionAsWorker(ledger: TaskCollectionRef) {
 
 describe("askMidway tells the filer only the asking turn's questions", () => {
   it("tells after the question is recorded", async () => {
-    const { ledger, told } = fakeLedger({ outcome: "recorded", holds: ["hold_1"] } as never, heldRow(2));
+    const { ledger, told } = fakeLedger({ outcome: "recorded", questions: ["hold_1"] } as never, heldRow(2));
     expect((await questionAsWorker(ledger)).ok).toBe(true);
     expect(told).toHaveLength(1);
   });
@@ -81,11 +81,11 @@ describe("askMidway keeps the question when the telling's row read fails", () =>
 
   it("answers the recorded question and logs the failed read", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const { ledger, told } = fakeLedger({ outcome: "recorded", holds: ["hold_1"] } as never, heldRow(2));
+    const { ledger, told } = fakeLedger({ outcome: "recorded", questions: ["hold_1"] } as never, heldRow(2));
     (ledger as { getCommitted: unknown }).getCommitted = async () => {
       throw new Error("store unavailable");
     };
-    expect(await questionAsWorker(ledger)).toEqual({ ok: true, holds: ["hold_1"] });
+    expect(await questionAsWorker(ledger)).toEqual({ ok: true, questions: ["hold_1"] });
     expect(told).toHaveLength(0);
     expect(warn).toHaveBeenCalledWith(expect.stringMatching(/couldn't be read.*store unavailable/));
   });

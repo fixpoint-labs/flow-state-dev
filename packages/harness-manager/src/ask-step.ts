@@ -21,7 +21,7 @@
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { currentLeaseRenewal } from "@flow-state-dev/orchestration";
 import { askMidway } from "@flow-state-dev/orchestration/task-board";
-import { MAX_HOLD_PROMPT, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
+import { MAX_QUESTION_PROMPT, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
 
 /** What the ask step did: the task is held on the question, or this turn no longer holds its row. */
 export type AskStepOutcome = "held" | "superseded";
@@ -29,7 +29,7 @@ export type AskStepOutcome = "held" | "superseded";
 /**
  * Hold the task on `question`, from the turn that holds its claim.
  *
- * A question past the length a row keeps ({@link MAX_HOLD_PROMPT}) is cut, with
+ * A question past the length a row keeps ({@link MAX_QUESTION_PROMPT}) is cut, with
  * an ellipsis, so the person still sees it rather than the run failing; the
  * run's full text stays in its marker file in the checkout.
  *
@@ -42,7 +42,7 @@ export type AskStepOutcome = "held" | "superseded";
  *   row has no room left for an answer (`steer-limit`).
  */
 export async function askStep(ctx: BlockContext, board: TaskCollectionRef, question: string): Promise<AskStepOutcome> {
-  const prompt = question.length > MAX_HOLD_PROMPT ? `${question.slice(0, MAX_HOLD_PROMPT - 1)}…` : question;
+  const prompt = question.length > MAX_QUESTION_PROMPT ? `${question.slice(0, MAX_QUESTION_PROMPT - 1)}…` : question;
   const asked = await askMidway(ctx, board, [{ prompt }]);
   if (asked.ok) {
     // The turn is over and its lease is gone, so nothing renews it again. The

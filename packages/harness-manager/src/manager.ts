@@ -57,7 +57,7 @@ import {
   answerOf,
   getOrCreateTaskCollection,
   hasFrozenLedgerAssignee,
-  isRowHold,
+  isRowQuestion,
   MAX_STEERS,
   readCommittedTask,
   resolveResourceCollection,
@@ -1250,7 +1250,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   if ("announce" in (options as object)) {
     throw new Error(
       "[harness-manager] `announce` was removed: a run's question now holds its task on the board, " +
-        "where the Inbox lists it. Read held tasks from the board (`openRowHolds`) instead of being told.",
+        "where the Inbox lists it. Read held tasks from the board (`openRowQuestions`) instead of being told.",
     );
   }
 
@@ -3074,10 +3074,10 @@ function heldTicket(
 }
 
 /** Whether `steer` answers one of `row`'s questions for a person: a steer a deadline wrote is a message, not an answer. */
-function isAnswer(row: Pick<Task, "holds">, steer: Pick<TaskSteer, "answers" | "from">): boolean {
+function isAnswer(row: Pick<Task, "questions">, steer: Pick<TaskSteer, "answers" | "from">): boolean {
   if (steer.answers === undefined || steer.from === "board") return false;
-  const hold = row.holds?.find((h) => h.id === steer.answers);
-  return hold !== undefined && isRowHold(hold);
+  const hold = row.questions?.find((h) => h.id === steer.answers);
+  return hold !== undefined && isRowQuestion(hold);
 }
 
 /**
@@ -3088,8 +3088,8 @@ function isAnswer(row: Pick<Task, "holds">, steer: Pick<TaskSteer, "answers" | "
 function answeredQuestions(row: Task | undefined): AnsweredQuestion[] {
   if (row === undefined) return [];
   const answered: AnsweredQuestion[] = [];
-  for (const hold of row.holds ?? []) {
-    if (!isRowHold(hold)) continue;
+  for (const hold of row.questions ?? []) {
+    if (!isRowQuestion(hold)) continue;
     const steer = answerOf(row, hold.id);
     if (steer === undefined || !isAnswer(row, steer)) continue;
     answered.push({ question: hold.ask.prompt, answer: steer.message });

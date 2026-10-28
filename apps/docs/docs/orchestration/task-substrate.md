@@ -40,7 +40,7 @@ A `Task` is one unit of work. It carries what to do, where it is in its lifecycl
 | `leaseUntil` | `number?` | When the current claim expires. The worker holding the task pushes this out while it works. |
 | `leaseDurationMs` | `number?` | How long the current claim was granted, as the claim wrote it. Read it with `committedLeaseSpan(task)` rather than subtracting the stamps yourself — every other write to the task moves `updatedAt`. |
 | `abandonments` | `number?` | How many times this task was handed back out after its worker stopped renewing the lease. |
-| `holds` | `TaskHold[]?` | What the task is waiting on a person for: its questions and confirms, and a stop its run waits on. See [holding a task on questions](#holding-a-task-on-questions). |
+| `holds` | `TaskQuestion[]?` | What the task is waiting on a person for: its questions and confirms, and a stop its run waits on. See [holding a task on questions](#holding-a-task-on-questions). |
 | `turn` | `number?` | Counts the turns the task has run. Every claim advances it, so two turns of one attempt hold different claims. |
 | `labels` | `string[]?` | Free-form tags, filterable via `hasLabel` / `hasAllLabels`. |
 | `metadata` | `Record<string, unknown>?` | Arbitrary structured data. |
@@ -105,7 +105,7 @@ A held task keeps a board from finishing: nothing will start it, so a [task boar
 
 ### Holding a task on questions
 
-A task can also wait on a person's answers. Its `holds` list what it waits on, each with an `id`, the `ask` (`kind` and `prompt`), when it was opened (`openedAt`), and a `due` time when a deadline applies. `openHolds(task)` returns the ones still open. A task with an open hold starts no turn: no claim takes it, and nothing renews or reclaims its lease.
+A task can also wait on a person's answers. Its `holds` list what it waits on, each with an `id`, the `ask` (`kind` and `prompt`), when it was opened (`openedAt`), and a `due` time when a deadline applies. `openQuestions(task)` returns the ones still open. A task with an open hold starts no turn: no claim takes it, and nothing renews or reclaims its lease.
 
 There are two kinds, told apart by `source.kind`:
 
@@ -114,7 +114,7 @@ There are two kinds, told apart by `source.kind`:
 
 `answer(id, { hold, message, from })` answers one question. The answer is kept on the task as a message carrying the hold's id, so it joins the next turn's brief. The last answer lets the work go on in the same write: a task that hadn't started can be claimed, and one asked midway owes one more turn on its same attempt, which the next claim takes without charging `maxAttempts`. Sending the same words again reports `unchanged`, even after the task has finished. Different words for a question already answered are declined `answered`.
 
-A question has no deadline unless the host sets [`userDeadlineMs`](/docs/configuration/runtime#createflowstate-fields). Past one, `payHoldDeadlines()` (which a board runs on every touch) closes the question with "No answer came before this question's deadline. Go on from your brief without it.", which lets the work go on as an answer would.
+A question has no deadline unless the host sets [`userDeadlineMs`](/docs/configuration/runtime#createflowstate-fields). Past one, `payQuestionDeadlines()` (which a board runs on every touch) closes the question with "No answer came before this question's deadline. Go on from your brief without it.", which lets the work go on as an answer would.
 
 A task with open holds settles only by a cancel, which closes every hold; an answer closes its own hold and the work goes on. A turn waits once: it can't ask questions while its run waits on a stop, and its run can't stop for a person while its own questions are open.
 
@@ -252,7 +252,7 @@ await tasks.steer("release-note", { message: "Mention the new flag too.", from: 
 // { outcome: "declined", reason: "steer-limit", status: "in_progress" }
 ```
 
-Messages are appended in order on the task's `steers`. Each one records the attempt that took it (`takenBy`). A claim takes every message on the task into the new attempt, and its worker input carries them as `steers`. A request already working the task takes later ones with `takeSteers(id, { claim, takenIn })`, which needs the claim's ticket, so only the attempt holding the task takes its messages. `takenIn` is a name you give the read, such as `step:<request id>`: reading again under the same name returns the same messages, so a step that runs again after a crash sees what it took the first time, and nothing is taken twice. A steer changes no status, uses no attempt and records no ending. A steer to a task waiting on work it filed sets its `waitingOn` to `"steer"`, so the turn that takes it can start.
+Messages are appended in order on the task's `steers`. Each one records the attempt that took it (`takenBy`). A claim takes every message on the task into the new attempt, and its worker input carries them as `steers`. A request already working the task takes later ones with `takeSteers(id, { claim, takenIn })`, which needs the claim's ticket, so only the attempt holding the task takes its messages. `takenIn` is a name you give the read, such as `step:<request id>`: reading again under the same name returns the same messages, so a step that runs again after a crash sees what it took the first time, and nothing is taken twice. A steer changes no status, uses no attempt and records no ending. A steer to a task waiting on work it filed sets its `keptOpenBy` to `"steer"`, so the turn that takes it can start.
 
 `complete` with `refuseUntakenSteers: true` declines, reason `untaken-steers`, while the task holds a message its attempt hasn't taken. It is decided inside the write, so a message that lands after your own read of the row still holds the task open. Pass it only where something then gives the message a turn, as a task board's end check does.
 
@@ -304,7 +304,7 @@ type TaskWriteOutcome =
 - `started` — a `hold` or a `patchSettings` on a task that has already started. What a task was filed with is fixed once it runs.
 - `held` — the task has an open [hold](#holding-a-task-on-questions). A settlement, a lease renewal and a second wait are refused until it closes. Only a cancel settles a held task.
 - `answered` — an `answer` with other words, or from another sender, for a question already answered.
-- `no-such-hold` — an `answer` naming no question or confirm on the task.
+- `no-such-question` — an `answer` naming no question or confirm on the task.
 
 When more than one condition applies, `reason` reports the first that holds in that order: `immutable-assignee`, then `terminal`, then `not-my-task`, then `disallowed`, then `lost-claim`. The order is part of the contract, so read it in that direction: a cross-task write reports `not-my-task` rather than `disallowed`, but a write naming a task that has already finished reports `terminal` even when the claim names the wrong task too.
 

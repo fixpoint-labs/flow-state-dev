@@ -140,7 +140,7 @@ import {
   type TaskSettingsPatch,
   type FilingStamp,
 } from "./internal";
-import { assertAskable, hasOpenHold, holdWrite, holdsDue, newRowHolds, type HoldChange } from "./holds";
+import { assertAskable, hasOpenQuestion, questionWrite, questionsDue, newRowQuestions, type QuestionChange } from "./holds";
 import { stampWrite } from "../write-provenance";
 import { generateId } from "../generate-id";
 import { steerWrite, takeSteersPatch, untakenSteers } from "../steers";
@@ -800,13 +800,13 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
   function writeHolds(
     id: string,
     kind: TaskChangeKind,
-    change: HoldChange,
+    change: QuestionChange,
     decline?: (task: Task<TInput, TOutput>) => TaskWriteDeclineReason | undefined
   ): Promise<TaskWriteOutcome> {
     return patchRef(id, kind, (task) => {
       const fenced = decline?.(task);
       if (fenced !== undefined) throw new WriteDeclined(fenced, task.status);
-      const decided = holdWrite(task as Task, change);
+      const decided = questionWrite(task as Task, change);
       if (decided === "unchanged") return undefined;
       if ("decline" in decided) throw new WriteDeclined(decided.decline, task.status);
       return decided.patch as Partial<Task<TInput, TOutput>>;
@@ -1098,7 +1098,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         "in_progress",
         null,
         () => ({ leaseUntil }),
-        { ...renewOptions, ifAllowed: true, refuseWhenHeld: "any" }
+        { ...renewOptions, ifAllowed: true, refuseWithOpenQuestion: "any" }
       );
     },
 
@@ -1109,10 +1109,10 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       return transitionRef(id, "in_progress", "run_linked", () => runLinkPatch(run), linkRunGuards(linkOptions));
     },
 
-    async setWaitingOn(id, waitingOn, waitOptions) {
+    async setKeptOpenBy(id, keptOpenBy, waitOptions) {
       requireClaimTicket(
         waitOptions?.claim,
-        "setWaitingOn",
+        "setKeptOpenBy",
         "of the attempt that waits. Only the request holding a task's claim records what it waits on."
       );
       // Same-status, fenced like a run link: a finished, recreated or reclaimed
@@ -1121,9 +1121,9 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         id,
         "in_progress",
         null,
-        (task) => waitingOnPatch(task as Task, waitingOn, waitOptions) as Partial<Task<TInput, TOutput>>,
+        (task) => waitingOnPatch(task as Task, keptOpenBy, waitOptions) as Partial<Task<TInput, TOutput>>,
         // A mirror of a run's stop is refused on a row a question holds (FIX-2133).
-        { ...linkRunGuards({ claim: waitOptions.claim }), ...(waitOptions.hold !== undefined ? { refuseWhenHeld: "row" as const } : {}) }
+        { ...linkRunGuards({ claim: waitOptions.claim }), ...(waitOptions.question !== undefined ? { refuseWithOpenQuestion: "row" as const } : {}) }
       );
     },
 
@@ -1132,28 +1132,28 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       assertAskable(asks);
       const guards = linkRunGuards({ claim: askOptions.claim });
       // Minted once, outside the write, so a retried write opens the same holds.
-      const holds = newRowHolds(asks, now(), { ...(options.filing?.holdDueMs !== undefined ? { dueMs: options.filing.holdDueMs } : {}), midway: true });
+      const holds = newRowQuestions(asks, now(), { ...(options.filing?.questionDueMs !== undefined ? { dueMs: options.filing.questionDueMs } : {}), midway: true });
       const outcome = await confirmedDecline(id, () =>
-        writeHolds(id, "asked", { op: "ask", holds }, (task) =>
+        writeHolds(id, "asked", { op: "ask", questions: holds }, (task) =>
           transitionDeclineReason(task as Task, "in_progress", guards, options.collectionId, now())
         )
       );
-      return outcome.outcome === "recorded" ? { ...outcome, holds: holds.map((hold) => hold.id) } : outcome;
+      return outcome.outcome === "recorded" ? { ...outcome, questions: holds.map((hold) => hold.id) } : outcome;
     },
 
     async answer(id, answer) {
       // Minted once, outside the write, so a retried write keeps one steer.
-      const change: HoldChange = { op: "answer", answer, steerId: generateId("steer"), at: now() };
+      const change: QuestionChange = { op: "answer", answer, steerId: generateId("steer"), at: now() };
       return confirmedDecline(id, () => writeHolds(id, "answered", change));
     },
 
-    async payHoldDeadlines() {
+    async payQuestionDeadlines() {
       // Rows another process filed are read too, so their deadlines are paid.
       await adoptUnknownRows(mirror, options.collection);
       const at = now();
       const paid: string[] = [];
       for (const row of listAll() as Task[]) {
-        if (holdsDue(row, at).length === 0) continue;
+        if (questionsDue(row, at).length === 0) continue;
         const outcome = await writeHolds(row.id, "answered", { op: "deadline", at });
         if (outcome.outcome === "recorded") paid.push(row.id);
       }
@@ -1326,7 +1326,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           task.leaseUntil === undefined ||
           task.leaseUntil >= at ||
           // A held row is never taken back (FIX-2133).
-          hasOpenHold(task as Task)
+          hasOpenQuestion(task as Task)
         ) {
           continue;
         }
@@ -1337,7 +1337,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
             t.status !== "in_progress" ||
             t.leaseUntil === undefined ||
             t.leaseUntil >= at ||
-            hasOpenHold(t as Task)
+            hasOpenQuestion(t as Task)
           ) {
             return { state: current, result: undefined };
           }

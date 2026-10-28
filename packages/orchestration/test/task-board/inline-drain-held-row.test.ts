@@ -7,7 +7,7 @@ import { z } from "zod";
 import {
   createResourceBackedTaskCollection,
   createStateBackedTaskCollection,
-  openHolds,
+  openQuestions,
   type TaskCollectionRef,
   type TaskWorker,
 } from "../../src/tasks";
@@ -59,10 +59,10 @@ describe.each([
     expect(attempts).toEqual([1]);
     const held = await collection.get("t");
     expect(held).toMatchObject({ status: "in_progress", attempts: 1 });
-    const [hold] = openHolds(held!);
+    const [hold] = openQuestions(held!);
     expect(hold).toBeDefined();
 
-    expect(await collection.answer!("t", { hold: hold!.id, message: "signup_date", from: "user", by: "u1" })).toEqual({
+    expect(await collection.answer!("t", { questionId: hold!.id, message: "signup_date", from: "user", by: "u1" })).toEqual({
       outcome: "recorded",
     });
     await withTimeout(testBlock(board.drain, { input: undefined }), PROMPT_MS, "the drain after the answer");

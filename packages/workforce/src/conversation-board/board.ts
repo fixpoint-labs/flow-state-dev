@@ -103,7 +103,7 @@ import {
   hasStarted,
   isClaimable,
   isTerminalStatus,
-  nextHoldDue,
+  nextQuestionDue,
   NOTICE_DUE_MS,
   noticeDueAt,
   filerResolver,
@@ -759,7 +759,7 @@ function hasPastDue(rows: readonly Task[], now: number): boolean {
     if (row.cascadeOwed != null && row.cascadeOwed.due <= now) return true;
     if ((row.resumeOwed === true || row.cancelOwed === true) && row.updatedAt + NOTICE_DUE_MS <= now) return true;
     // A held question past a deadline the host set (FIX-2133): the pass closes it.
-    const held = nextHoldDue(row);
+    const held = nextQuestionDue(row);
     if (held !== undefined && held <= now) return true;
     // A report owed by a row stored before FIX-2078: due at once (BP-030).
     return owedReports(row).length > 0;
@@ -1274,7 +1274,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
             async steer(id: string, steer: Parameters<NonNullable<TaskCollectionRef["steer"]>>[1]) {
               const outcome = await ref.steer!(id, steer);
               const after = ref.get(id);
-              if (outcome.outcome === "recorded" && after?.waitingOn === "steer" && after.assignee !== undefined) {
+              if (outcome.outcome === "recorded" && after?.keptOpenBy === "steer" && after.assignee !== undefined) {
                 await startOwedSteerTurn(ctx, after, (await reach(ctx)).available.get(after.assignee));
               }
               return outcome;
@@ -1294,11 +1294,11 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
               return outcome;
             }
           }),
-      ...(ref.payHoldDeadlines === undefined
+      ...(ref.payQuestionDeadlines === undefined
         ? {}
         : {
-            async payHoldDeadlines() {
-              const paid = await ref.payHoldDeadlines!();
+            async payQuestionDeadlines() {
+              const paid = await ref.payQuestionDeadlines!();
               // Only the rows whose questions just closed go on.
               for (const id of paid) await goOnAfterAnswer(id);
               return paid;

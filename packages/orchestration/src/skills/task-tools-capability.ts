@@ -75,14 +75,14 @@ import {
   withoutNoticeMarkers,
   cancelledDependents,
   MAX_STEERS,
-  MAX_HOLD_PROMPT,
-  isRowHold,
-  openHolds,
+  MAX_QUESTION_PROMPT,
+  isRowQuestion,
+  openQuestions,
   steerPlacesTaken,
-  taskHoldSchema,
-  type HoldAnswer,
-  type HoldAsk,
-  type RowHold,
+  taskQuestionSchema,
+  type QuestionAnswer,
+  type QuestionInit,
+  type RowQuestion,
 } from "../tasks";
 // The board's per-worker claim seam. A deep import for the same reason
 // `shouldRetryOnFail` is one: this surface consumes the seam, it does not widen
@@ -106,7 +106,7 @@ import {
 import { cancelAndResume } from "../tasks/helpers/user-stop";
 
 /** A filing's question as the board keeps it: a plain string is a question. */
-function askOf(question: string | { kind: "question" | "confirm"; prompt: string; onNo?: "cancel" | "continue" }): HoldAsk {
+function askOf(question: string | { kind: "question" | "confirm"; prompt: string; onNo?: "cancel" | "continue" }): QuestionInit {
   if (typeof question === "string") return { kind: "question", prompt: question };
   return { kind: question.kind, prompt: question.prompt, ...(question.onNo !== undefined ? { onNo: question.onNo } : {}) };
 }
@@ -332,7 +332,7 @@ const STATUS_CLAUSE = "Its status will not change again.";
  * refused (not-my-task)" learns nothing it can act on; a model told which task
  * is its own retries against the right id.
  *
- * `heldTaskId` is present exactly when a ticket was presented, which is exactly
+ * `claimedTaskId` is present exactly when a ticket was presented, which is exactly
  * when `not-my-task` can be reported — so the branch never renders an empty
  * name.
  *
@@ -344,7 +344,7 @@ const declinedWriteToolError = (
   taskId: string,
   declined: Extract<TaskWriteOutcome, { outcome: "declined" }>,
   clause: string,
-  heldTaskId?: string,
+  claimedTaskId?: string,
 ) => {
   if (declined.reason === "terminal") {
     return terminalWriteToolError({
@@ -364,12 +364,12 @@ const declinedWriteToolError = (
         `Nothing was written.`,
     };
   }
-  if (declined.reason === "not-my-task" && heldTaskId !== undefined) {
+  if (declined.reason === "not-my-task" && claimedTaskId !== undefined) {
     return {
       ok: false as const,
       taskId,
       error:
-        `task_write_declined: you hold task "${heldTaskId}", not "${taskId}". ` +
+        `task_write_declined: you hold task "${claimedTaskId}", not "${taskId}". ` +
         `Nothing was written.`,
     };
   }
@@ -509,7 +509,7 @@ interface HeldRow {
  *
  * So a person's message into a task session, another request, holds no row.
  */
-async function heldRowOf(
+async function claimedRowOf(
   resolve: (ctx: BlockContext) => Promise<TaskCollectionRef | undefined>,
   ctx: BlockContext,
 ): Promise<HeldRow | undefined> {
@@ -540,7 +540,7 @@ export const STATUS_NOTE_LIMIT = 280;
  * The worker's one task tool (FIX-2081 D3): `reportProgress({ statusNote?,
  * output? })`, for a task turn, and the rule for when a turn is offered it.
  *
- * - **Which row.** The one the turn holds ({@link heldRowOf}), never an id
+ * - **Which row.** The one the turn holds ({@link claimedRowOf}), never an id
  *   from input, so it takes none: an inline plan step's own row, or a
  *   dispatched row, never the parent.
  * - **What it writes.** `statusNote`, a one-line note for task views, and
@@ -579,7 +579,7 @@ export function createReportProgress(options: ReportProgressOptions) {
           error: "progress_takes_a_note_or_output: send statusNote, output, or both. Nothing was written.",
         };
       }
-      const held = await heldRowOf(options.resolve, ctx);
+      const held = await claimedRowOf(options.resolve, ctx);
       if (held === undefined) {
         return {
           ok: false as const,
@@ -626,7 +626,7 @@ export function createReportProgress(options: ReportProgressOptions) {
     tool,
     /** Whether the running turn is offered the tool: a task turn holding a running row. */
     offered: async (ctx: BlockContext): Promise<boolean> => {
-      const held = await heldRowOf(options.resolve, ctx);
+      const held = await claimedRowOf(options.resolve, ctx);
       return held !== undefined && held.row?.status === "in_progress";
     },
   };
@@ -634,15 +634,15 @@ export function createReportProgress(options: ReportProgressOptions) {
 
 /**
  * The longest question `askQuestion` takes, in characters: what a row keeps
- * of a question (`MAX_HOLD_PROMPT`), so the person reads the whole of it.
+ * of a question (`MAX_QUESTION_PROMPT`), so the person reads the whole of it.
  */
-const QUESTION_LIMIT = MAX_HOLD_PROMPT;
+const QUESTION_LIMIT = MAX_QUESTION_PROMPT;
 
 /**
  * The worker's question (FIX-2131, on FIX-2133's hold): `askQuestion({ question })`,
  * for a task turn, and the rule for when a turn is offered it.
  *
- * - **Which row.** The one the turn holds ({@link heldRowOf}), never a task
+ * - **Which row.** The one the turn holds ({@link claimedRowOf}), never a task
  *   id from input.
  * - **The question.** The board's one write that opens it (`askMidway`): it is kept
  *   on the row as a hold, the row's lease is dropped, and the turn ends
@@ -672,7 +672,7 @@ export function createAskQuestion(options: TaskTurnToolOptions) {
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
     execute: async (input, ctx) => {
-      const held = await heldRowOf(options.resolve, ctx);
+      const held = await claimedRowOf(options.resolve, ctx);
       if (held === undefined) {
         return {
           ok: false as const,
@@ -689,7 +689,7 @@ export function createAskQuestion(options: TaskTurnToolOptions) {
         };
       }
       const asked = await askMidway(ctx, ledger, [{ prompt: input.question }]);
-      if (asked.ok) return { ok: true as const, taskId: claim.taskId, questionId: asked.holds[0] ?? "" };
+      if (asked.ok) return { ok: true as const, taskId: claim.taskId, questionId: asked.questions[0] ?? "" };
       if (asked.reason === "steer-limit") {
         return {
           ok: false as const,
@@ -713,7 +713,7 @@ export function createAskQuestion(options: TaskTurnToolOptions) {
     tool,
     /** Whether the running turn is offered the tool: a task turn holding a running row. */
     offered: async (ctx: BlockContext): Promise<boolean> => {
-      const held = await heldRowOf(options.resolve, ctx);
+      const held = await claimedRowOf(options.resolve, ctx);
       return held !== undefined && held.row?.status === "in_progress";
     },
   };
@@ -765,7 +765,7 @@ export function createWaitForUserTool(options: TaskTurnToolOptions) {
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
     execute: async (input, ctx) => {
-      const held = await heldRowOf(options.resolve, ctx);
+      const held = await claimedRowOf(options.resolve, ctx);
       if (held !== undefined) {
         if (input.kind === "input") {
           return {
@@ -1256,7 +1256,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           .min(1)
           .optional()
           .describe("Words for the task while it is open, sent alone: they join its brief. Uses no try, never cancels."),
-        question: z
+        answers: z
           .string()
           .min(1)
           .optional()
@@ -1291,10 +1291,10 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       const fields = UPDATE_FIELDS.filter((field) => input[field] !== undefined);
       const message = input.message;
       // An answer (FIX-2133) is its own write, decided apart from every edit.
-      const question = input.question;
+      const question = input.answers;
       const done = (input as { done?: unknown }).done;
       if (question !== undefined || done !== undefined) {
-        return answerQuestion(ctx, { id: input.id, question, message, done, fields, status: input.status });
+        return answerQuestion(ctx, { id: input.id, answers: question, message, done, fields, status: input.status });
       }
       if (input.status === "cancelled" && (fields.length > 0 || message !== undefined)) {
         const sent = [...fields, ...(message !== undefined ? ["message"] : [])];
@@ -1459,11 +1459,11 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
    */
   async function answerQuestion(
     ctx: BlockContext,
-    input: { id: string; question: string | undefined; message: string | undefined; done: unknown; fields: readonly string[]; status: string | undefined }
+    input: { id: string; answers: string | undefined; message: string | undefined; done: unknown; fields: readonly string[]; status: string | undefined }
   ) {
     const refuse = (error: string) => ({ ok: false as const, taskId: input.id, error: `${error} Nothing was written.` });
-    if (input.question === undefined) {
-      return refuse("done_without_question: done answers a confirm, and names it with question. Send both.");
+    if (input.answers === undefined) {
+      return refuse("done_without_answers: done answers a confirm, and names it with question. Send both.");
     }
     if (input.fields.length > 0 || input.status !== undefined) {
       const sent = [...input.fields, ...(input.status !== undefined ? ["status"] : [])];
@@ -1474,13 +1474,13 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     await collection.refresh?.(input.id);
     const row = collection.get(input.id);
     if (row === undefined || !callerReaches(ctx, row)) return taskNotFoundError(input.id);
-    const hold = row.holds?.find((h) => h.id === input.question);
-    if (hold === undefined || !isRowHold(hold)) {
-      return refuse(`no_such_question: task "${input.id}" holds no question "${input.question}". Read its open questions with getTask.`);
+    const hold = row.questions?.find((h) => h.id === input.answers);
+    if (hold === undefined || !isRowQuestion(hold)) {
+      return refuse(`no_such_question: task "${input.id}" holds no question "${input.answers}". Read its open questions with getTask.`);
     }
     if (!claimless && (hold.midway !== true || row.target !== undefined || row.targetSessionId !== undefined)) {
       return refuse(
-        `question_is_the_users: "${input.question}" is the user's to answer` +
+        `question_is_the_users: "${input.answers}" is the user's to answer` +
           (hold.midway === true ? ", since the task runs in a workstream" : ", since it was asked when the task was filed") +
           ". They answer it from their Inbox. Send what you know as a message instead.",
       );
@@ -1488,7 +1488,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     let text: string;
     if (hold.ask.kind === "confirm") {
       if (typeof input.done !== "boolean") {
-        return refuse(`confirm_takes_done: "${input.question}" asks for a yes or a no. Answer it with done: true or false, and a note in message if you like.`);
+        return refuse(`confirm_takes_done: "${input.answers}" asks for a yes or a no. Answer it with done: true or false, and a note in message if you like.`);
       }
       text = `${input.done ? "Yes, go ahead." : "No."}${input.message !== undefined ? ` ${input.message}` : ""}`;
       // A No on a confirm that cancels (the default, owner 2026-10-25): the
@@ -1496,16 +1496,16 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       // its reason. Before any answer is kept, so the release never starts it.
       if (input.done === false && hold.ask.onNo !== "continue") return cancelOnNo(ctx, collection, row, hold, input.message);
     } else {
-      if (input.done !== undefined) return refuse(`question_takes_message: "${input.question}" is a question. Answer it with message.`);
-      if (input.message === undefined) return refuse(`question_takes_message: an answer to "${input.question}" needs its words in message.`);
+      if (input.done !== undefined) return refuse(`question_takes_message: "${input.answers}" is a question. Answer it with message.`);
+      if (input.message === undefined) return refuse(`question_takes_message: an answer to "${input.answers}" needs its words in message.`);
       text = input.message;
     }
     if (collection.answer === undefined) return refuse(`questions_not_supported: task "${input.id}"'s board keeps no questions.`);
     const userId = (ctx as { user?: { identity?: { userId?: string } } }).user?.identity?.userId;
-    const answer: HoldAnswer =
+    const answer: QuestionAnswer =
       via === "tool"
-        ? { hold: hold.id, message: text, from: "filer" }
-        : { hold: hold.id, message: text, from: "user", ...(userId !== undefined ? { by: userId } : {}) };
+        ? { questionId: hold.id, message: text, from: "filer" }
+        : { questionId: hold.id, message: text, from: "user", ...(userId !== undefined ? { by: userId } : {}) };
     let outcome: TaskWriteOutcome | undefined;
     try {
       outcome = await collection.answer(input.id, answer);
@@ -1514,9 +1514,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       throw err;
     }
     if (outcome != null && outcome.outcome === "declined") {
-      if (outcome.reason === "answered") return refuse(`question_answered: "${input.question}" on task "${input.id}" was already answered.`);
+      if (outcome.reason === "answered") return refuse(`question_answered: "${input.answers}" on task "${input.id}" was already answered.`);
       if (outcome.reason === "terminal") return lockedError(collection.get(input.id) ?? { ...row, status: outcome.status }, ["message"]);
-      if (outcome.reason === "no-such-hold") return refuse(`no_such_question: task "${input.id}" holds no question "${input.question}".`);
+      if (outcome.reason === "no-such-question") return refuse(`no_such_question: task "${input.id}" holds no question "${input.answers}".`);
       return declinedWriteToolError(input.id, outcome, "The answer was not kept.");
     }
     return { ok: true as const };
@@ -1528,7 +1528,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
    * with the No and its note as the reason. Retried after it landed, the same
    * No is a success; a task that finished another way is refused as finished.
    */
-  async function cancelOnNo(ctx: BlockContext, collection: TaskCollectionRef, row: Task, hold: RowHold, note: string | undefined) {
+  async function cancelOnNo(ctx: BlockContext, collection: TaskCollectionRef, row: Task, hold: RowQuestion, note: string | undefined) {
     const reason = `No to "${hold.ask.prompt}"${note !== undefined && note.trim().length > 0 ? `: ${note}` : ""}`;
     if (isTerminalStatus(row.status)) {
       return row.status === "cancelled" && row.error === reason ? { ok: true as const } : lockedError(row, ["message"]);
@@ -1536,7 +1536,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     let outcome: TaskWriteOutcome | undefined;
     try {
       // Fenced on the confirm still open, in the cancel's own write: a No after a yes, or racing one, can't cancel.
-      outcome = await cancelAndResume(ctx as never, collection, row.id, reason, { via, whileHoldOpen: hold.id });
+      outcome = await cancelAndResume(ctx as never, collection, row.id, reason, { via, whileQuestionOpen: hold.id });
     } catch (err) {
       if (err instanceof TaskWriteRefusedError) return refusedError(err);
       throw err;
@@ -1563,20 +1563,20 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
 
   /**
    * What a running task waits on while no worker holds it (FIX-2077's
-   * `waitingOn`), and what holds it for a person (FIX-2133): its open holds,
+   * `keptOpenBy`), and what holds it for a person (FIX-2133): its open holds,
    * a question or a confirm on the row, or a task run's stop, each with what
    * it asks and when it falls due. One shape for every stop.
    */
   const waitingShape = {
-    waitingOn: z.enum(["wait", "filed", "steer"]).optional(),
+    keptOpenBy: z.enum(["wait", "filed", "steer"]).optional(),
     /** What holds the task now, oldest first; absent when nothing does. Answer a question with `updateTask({ id, question, message })`. */
-    holds: z.array(taskHoldSchema).optional(),
+    questions: z.array(taskQuestionSchema).optional(),
   };
   const waitingOf = (t: Task) => {
-    const open = openHolds(t);
+    const open = openQuestions(t);
     return {
-      ...(t.waitingOn != null && t.status === "in_progress" ? { waitingOn: t.waitingOn } : {}),
-      ...(open.length > 0 ? { holds: open } : {}),
+      ...(t.keptOpenBy != null && t.status === "in_progress" ? { keptOpenBy: t.keptOpenBy } : {}),
+      ...(open.length > 0 ? { questions: open } : {}),
     };
   };
 

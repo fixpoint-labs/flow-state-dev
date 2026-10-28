@@ -38,7 +38,7 @@ async function linesAbout(h: SplitHost, sessionId: string, goal: string) {
 /** Whether the row filed with `goal` is running and waiting on the work it filed. */
 async function waitingOnItsPieces(h: SplitHost, goal: string) {
   const row = (await h.rowsNamed("alice", goal))[0];
-  return row?.status === "in_progress" && row.waitingOn === "filed";
+  return row?.status === "in_progress" && row.keptOpenBy === "filed";
 }
 
 /** The turns a task session ran on its pieces' notices. */
@@ -64,7 +64,7 @@ describe("a task session splits its task (BR-14, BR-16, V5, FIX-2077)", () => {
 
       const top = await one(h, "Plan the launch");
       expect(top).toMatchObject({ status: "completed", assignee: "s1", attempts: 1 });
-      expect(top.waitingOn).toBeUndefined();
+      expect(top.keptOpenBy).toBeUndefined();
       const pieces = [await one(h, "Book the venue [slow:300]"), await one(h, "Print the flyers [slow:300]")];
       expect(pieces.map((row) => row.status)).toEqual(["completed", "completed"]);
       // The pieces are on the task session's own board, not the top's.

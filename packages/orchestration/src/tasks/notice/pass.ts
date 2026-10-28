@@ -37,7 +37,7 @@ import type { Task } from "../schema/task";
 import { isTerminalStatus } from "../schema/task-status";
 import type { TaskCollectionRef } from "../collection/types";
 import { payOwedResumes, releaseEndedWaits } from "../helpers/wait-on-task";
-import { nextHoldDue } from "../collection/holds";
+import { nextQuestionDue } from "../collection/holds";
 import { requestStates } from "../helpers/request-states";
 import { isDefinedTaskCollection } from "../collection/define-task-collection";
 import { resolveResourceCollection } from "../collection/resolve-resource-collection";
@@ -119,7 +119,7 @@ export async function payBoardDebts(
   }
   // 2b: held questions past their deadline (FIX-2133): the work goes on without an answer.
   try {
-    await ref.payHoldDeadlines?.();
+    await ref.payQuestionDeadlines?.();
   } catch (error) {
     log("a pass's question deadlines failed and stay owed", { error: (error as Error).message });
   }
@@ -203,7 +203,7 @@ export async function payBoardDebts(
     }
     if (row.cascadeOwed != null) owe(Math.max(row.cascadeOwed.due, now + NOTICE_DUE_MS));
     // A held question's deadline, when the host set one (FIX-2133).
-    const held = nextHoldDue(row);
+    const held = nextQuestionDue(row);
     if (held !== undefined) owe(Math.max(held, now + NOTICE_DUE_MS));
     // A claimed row's lease: if its worker died, the lease lapses, and the
     // pass at its end reclaims the row.

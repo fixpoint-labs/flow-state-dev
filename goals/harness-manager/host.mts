@@ -13,7 +13,7 @@ import { z } from "zod";
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
-  openRowHolds,
+  openRowQuestions,
   resolveResourceCollection,
 } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard, taskToolActions, taskToolSuffix } from "@flow-state-dev/orchestration/task-board";
@@ -252,7 +252,7 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
           attempts: task.attempts,
           feedback: task.feedback ?? null,
           run: record ?? null,
-          questions: openRowHolds(task).map((hold) => ({
+          questions: openRowQuestions(task).map((hold) => ({
             question: hold.id,
             text: hold.ask.prompt,
             askedAt: hold.openedAt,
