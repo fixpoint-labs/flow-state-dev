@@ -21,7 +21,7 @@
  * A message whose park would pass `MAX_WAIT_DEPTH` isn't admitted: its request
  * ends without landing it, and the sending session's pass sends it again.
  */
-import { MAX_WAIT_DEPTH, parkOnWait } from "@flow-state-dev/core";
+import { canHoldWait, MAX_WAIT_DEPTH, parkOnWait } from "@flow-state-dev/core";
 import type { BlockContext, WaitGateBinding } from "@flow-state-dev/core/types";
 import { findTaskPartitions, hasOpenHold, rowsInSession } from "@flow-state-dev/orchestration/tasks";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt } from "../conversation-board/ledger";
@@ -55,8 +55,9 @@ async function userHoldOf(ctx: BlockContext): Promise<WaitGateBinding | null> {
  */
 export async function queueBehindUser(ctx: BlockContext, row: Pick<WorkerMessageRow, "id">): Promise<"admitted" | "not_admitted"> {
   const waits = ctx.requestHost?.waits;
-  // A host that can't hold a wait can't queue a message: it lands as before.
-  if (waits === undefined || ctx.runOnce === undefined || ctx.suspend === undefined) return "admitted";
+  // A host that can't hold a wait can't queue a message: it lands as before. That includes a host
+  // with no sweeper, since a question's park looks again only when its deadline resumes it.
+  if (waits === undefined || !canHoldWait(ctx) || ctx.runOnce === undefined || ctx.suspend === undefined) return "admitted";
   const once = ctx.runOnce.bind(ctx);
   const ref = await messageLogOf(ctx).getOptional(row.id);
   for (let round = 0; ; round += 1) {

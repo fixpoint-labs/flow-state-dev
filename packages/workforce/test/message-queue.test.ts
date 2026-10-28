@@ -39,7 +39,7 @@ const taskRow = (answered: boolean) => ({
   steers: answered ? [{ id: "s1", answers: "h1", text: "main" }] : []
 });
 
-function harness(options: { userStop?: string; depth?: number } = {}) {
+function harness(options: { userStop?: string; depth?: number; sweeper?: boolean } = {}) {
   const memo = new Map<string, unknown>();
   const parked: Array<Record<string, any>> = [];
   const row: Record<string, unknown> = { id: "msg_1" };
@@ -58,6 +58,8 @@ function harness(options: { userStop?: string; depth?: number } = {}) {
     session: { identity: { id: "s_task" }, state: { taskId: "t1" } },
     request: { identity: { id: "r_msg" } },
     requestHost: {
+      resumeWait: async () => ({ ok: true }),
+      hasWaitSweeper: options.sweeper ?? true,
       waits: {
         deadlines: { defaultMs: 300_000, minMs: 1_000, maxMs: 86_400_000 },
         depth: async () => options.depth ?? 2,
@@ -109,6 +111,15 @@ describe("a message to a task held on a question", () => {
     const { ctx, parked } = harness();
     expect(await queueBehindUser(ctx as never, { id: "msg_1" })).toBe("admitted");
     expect(parked).toEqual([]);
+  });
+
+  // A question's park looks again only when its deadline resumes it. On a host with no sweeper
+  // nothing would, and the message would sit parked after the question was answered.
+  it("lands as before, parking nothing, on a host with no sweeper to resume a wait at its deadline", async () => {
+    const { ctx, parked, row } = harness({ sweeper: false });
+    expect(await queueBehindUser(ctx as never, { id: "msg_1" })).toBe("admitted");
+    expect(parked).toEqual([]);
+    expect(row.queuedBehind).toBeUndefined();
   });
 
   it("waits on the stopped request when the session is stopped for the user, and is not admitted past five waits deep", async () => {
