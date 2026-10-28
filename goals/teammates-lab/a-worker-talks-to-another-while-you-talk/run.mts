@@ -281,8 +281,15 @@ const short = (id: string) => id.replace(/^teammates\./, "");
 
 /** Say `text` to lead and wait until lead has answered it and finished the turn; false when it didn't in time. */
 async function turnWith(page: Page, lead: string, text: string): Promise<boolean> {
+  const said = (es: Drawn[]) => es.filter((e) => e.kind === "user" && e.text.includes(text)).length;
+  const before = said(await entriesOf(page));
   await tell(page, lead, text);
-  const answered = await readUntil(page, (es) => es.slice(lastUserAt(es, text) + 1).some((e) => e.kind === "assistant" && e.text.trim() !== ""), fixture.answerWithinMs);
+  // The line is drawn once its turn starts; only an answer after this copy of it counts.
+  const answered = await readUntil(
+    page,
+    (es) => said(es) > before && es.slice(lastUserAt(es, text) + 1).some((e) => e.kind === "assistant" && e.text.trim() !== ""),
+    fixture.answerWithinMs,
+  );
   if (!answered.ok) return false;
   // Memory records the turn after the answer, in the same request: the next line waits for it.
   const busy = conversation(page).getByRole("status").filter({ hasText: "is answering" });
@@ -316,6 +323,12 @@ async function stepFour(
       fail("4", `lead didn't finish answering line ${i + 1} of step 4 within ${fixture.answerWithinMs / 1000}s: "${line}"`);
       return;
     }
+  }
+
+  // A standing rule is in lead's view on every turn, so a codename kept as one never left it.
+  const afterRemember = await entriesOf(page);
+  if (afterRemember.slice(userAt(afterRemember, remember) + 1).some((e) => /Rule added/.test(e.text) && e.text.includes(code.animal))) {
+    fail("4", "lead kept the codename as a standing rule, so it never left lead's view and the step tests nothing");
   }
 
   // Asked back, from what lead kept: a fresh message to researcher would answer the date without it.

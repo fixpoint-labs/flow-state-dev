@@ -123,7 +123,8 @@ export async function openTeammates(options: TeammatesOptions) {
       // Named, or a small model summarizes the newer turns alone and drops the summary so far.
       objectives: [
         "The input's `summary` is the summary so far and `turns` are newer turns: write one summary of both, never of the turns alone.",
-        "Keep every name, date, code and number the user or another worker stated, word for word.",
+        "Your summary replaces the summary so far: everything it says must still be in yours, then add what the newer turns add.",
+        "Keep every name, date, code and number the user or another worker stated, word for word. Small talk can shrink; those never go.",
       ],
     }),
   });
