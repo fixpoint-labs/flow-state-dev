@@ -62,7 +62,7 @@ describe("the sidebar", () => {
     const tasks = screen.getByTestId("rail-tasks");
     expect(tasks.getAttribute("title")).toBe("Tasks");
     expect(tasks.getAttribute("aria-label")).toBe("Tasks");
-    for (const id of ["rail-cos", "rail-inbox", "rail-roster"]) expect(screen.getByTestId(id).getAttribute("title")).toBeTruthy();
+    for (const id of ["rail-shift-coordinator", "rail-inbox", "rail-roster"]) expect(screen.getByTestId(id).getAttribute("title")).toBeTruthy();
 
     act(() => fireEvent.click(tasks));
     expect(window.location.pathname).toBe("/tasks");
@@ -78,8 +78,8 @@ describe("the sidebar", () => {
 
 describe("the right panel", () => {
   it("collapses to a strip with a handle that opens it again, on its own and without touching the sidebar", async () => {
-    await openApp("/cos");
-    expect(screen.getByTestId("cos-panel")).toBeTruthy();
+    await openApp("/shift-coordinator");
+    expect(screen.getByTestId("shift-coordinator-panel")).toBeTruthy();
     expect(screen.queryByTestId("right-panel-rail")).toBeNull();
 
     act(() => fireEvent.click(screen.getByTestId("right-panel-toggle")));
@@ -87,9 +87,9 @@ describe("the right panel", () => {
     expect(screen.getByTestId("right-panel").inert).toBe(true);
     act(() => void screen.getByTestId("right-panel-slot").dispatchEvent(widthTransitionEnd()));
     expect(screen.queryByTestId("right-panel")).toBeNull();
-    expect(screen.queryByTestId("cos-panel")).toBeNull();
+    expect(screen.queryByTestId("shift-coordinator-panel")).toBeNull();
     const rail = screen.getByTestId("right-panel-rail");
-    expect(rail.getAttribute("data-panel")).toBe("cos");
+    expect(rail.getAttribute("data-panel")).toBe("shift-coordinator");
     const handle = screen.getByTestId("right-panel-toggle");
     expect(handle.getAttribute("aria-label")).toBe("Expand panel");
     expect(screen.getByTestId("sidebar").getAttribute("data-collapsed")).toBe("false");
@@ -98,7 +98,7 @@ describe("the right panel", () => {
     act(() => fireEvent.click(screen.getByTestId("sidebar-toggle")));
     expect(screen.getByTestId("right-panel-rail")).toBeTruthy();
     act(() => fireEvent.click(handle));
-    expect(screen.getByTestId("cos-panel")).toBeTruthy();
+    expect(screen.getByTestId("shift-coordinator-panel")).toBeTruthy();
     expect(screen.getByTestId("right-panel").getAttribute("data-overlay")).toBe("false");
     expect(screen.getByTestId("sidebar").getAttribute("data-collapsed")).toBe("true");
   });
@@ -106,12 +106,12 @@ describe("the right panel", () => {
 
 describe("the shortcuts", () => {
   it("[ toggles the sidebar and ] the right panel, and neither does anything while the user types", async () => {
-    await openApp("/cos");
+    await openApp("/shift-coordinator");
     const sidebar = screen.getByTestId("sidebar");
 
     press("[");
     expect(sidebar.getAttribute("data-collapsed")).toBe("true");
-    expect(screen.getByTestId("cos-panel")).toBeTruthy();
+    expect(screen.getByTestId("shift-coordinator-panel")).toBeTruthy();
     press("]");
     expect(screen.getByTestId("right-panel-rail")).toBeTruthy();
     expect(sidebar.getAttribute("data-collapsed")).toBe("true");
@@ -134,7 +134,7 @@ describe("the shortcuts", () => {
     press("[");
     press("]");
     expect(sidebar.getAttribute("data-collapsed")).toBe("false");
-    expect(screen.getByTestId("cos-panel")).toBeTruthy();
+    expect(screen.getByTestId("shift-coordinator-panel")).toBeTruthy();
 
     // A held key repeats; only the first press toggles.
     act(() => void fireEvent.keyDown(document.body, { key: "[", repeat: true }));
@@ -147,14 +147,14 @@ describe("a screen with no right panel", () => {
     await openApp("/inbox");
     expect(screen.queryByTestId("right-panel-slot")).toBeNull();
     press("]");
-    act(() => fireEvent.click(screen.getByTestId("nav-cos")));
-    expect(screen.getByTestId("cos-panel")).toBeTruthy();
+    act(() => fireEvent.click(screen.getByTestId("nav-shift-coordinator")));
+    expect(screen.getByTestId("shift-coordinator-panel")).toBeTruthy();
   });
 });
 
 describe("what the user picked", () => {
   it("survives a reload and a change of screen, and is theirs: another user in the same browser opens with both panels expanded", async () => {
-    const app = await openApp("/cos");
+    const app = await openApp("/shift-coordinator");
     act(() => fireEvent.click(screen.getByTestId("sidebar-toggle")));
     act(() => fireEvent.click(screen.getByTestId("right-panel-toggle")));
 
@@ -175,20 +175,20 @@ describe("what the user picked", () => {
 describe("a narrow window", () => {
   it("starts the right panel collapsed, opens it over the centre without keeping that, and a wide window gets the user's pick back", async () => {
     happy().setViewport({ width: 1100, height: 900 });
-    await openApp("/cos");
+    await openApp("/shift-coordinator");
     // Nothing kept says collapsed, and still it starts that way.
-    expect(screen.queryByTestId("cos-panel")).toBeNull();
+    expect(screen.queryByTestId("shift-coordinator-panel")).toBeNull();
     expect(screen.getByTestId("right-panel-rail")).toBeTruthy();
 
     press("]");
-    expect(screen.getByTestId("cos-panel")).toBeTruthy();
+    expect(screen.getByTestId("shift-coordinator-panel")).toBeTruthy();
     expect(screen.getByTestId("right-panel").getAttribute("data-overlay")).toBe("true");
     // Opened over the centre, the slot the centre sees stays the strip's width.
     expect(screen.getByTestId("right-panel-slot").className).toContain("w-[43px]");
     expect(window.localStorage.length).toBe(0);
 
     press("]");
-    expect(screen.queryByTestId("cos-panel")).toBeNull();
+    expect(screen.queryByTestId("shift-coordinator-panel")).toBeNull();
     press("]");
     // Widened while open over the centre: the panel is the user's pick, expanded and pushing again.
     act(() => happy().setViewport({ width: 1600, height: 900 }));
@@ -196,6 +196,6 @@ describe("a narrow window", () => {
     expect(screen.getByTestId("right-panel-slot").className).toContain("w-[340px]");
     // Narrowed again: collapsed, whatever it was before.
     act(() => happy().setViewport({ width: 1100, height: 900 }));
-    expect(screen.queryByTestId("cos-panel")).toBeNull();
+    expect(screen.queryByTestId("shift-coordinator-panel")).toBeNull();
   });
 });

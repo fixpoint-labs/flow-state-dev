@@ -266,7 +266,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
   });
 
   /**
-   * The stock `human_approval` suspension, naming the feature.
+   * The stock `user_approval` suspension, naming the feature.
    *
    * Approve makes `ctx.suspend` return; reject makes it throw
    * `SuspensionRejectedError`. Either way the gate returns a decision the
@@ -279,7 +279,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     execute: async (input: z.infer<typeof askInputSchema>, ctx: BlockContext) => {
       try {
         await ctx.suspend!({
-          reason: "human_approval",
+          reason: "user_approval",
           message: `File ${input.issue}: ${input.goal} and start the coder on it?`,
           allow: ["approve", "reject"],
         });
@@ -380,7 +380,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
       ...factory.actions,
     },
     // A coordinator's routed task (FIX-2083): the project coordinator's, for
-    // the workstream this worker leads, or the chief of staff's. A routed task
+    // the workstream this worker leads, or the Shift Coordinator's. A routed task
     // is a task on the coordinator's board, taken on `work` like any.
     task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "em-task", turn }) } },
     internal: {

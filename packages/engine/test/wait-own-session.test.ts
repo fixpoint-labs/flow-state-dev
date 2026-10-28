@@ -84,7 +84,7 @@ describe("a session's open stop for a person", () => {
     });
 
   it("is the request parked on a person, and never a wait, another session's stop, or the asking request's own", async () => {
-    const person: Gate = { requestId: "r_stopped", sessionId: "s1", suspensionId: "ask", reason: "human_input" };
+    const person: Gate = { requestId: "r_stopped", sessionId: "s1", suspensionId: "ask", reason: "user_input" };
     expect(await waits([queued, person]).userStop!()).toEqual({ requestId: "r_stopped" });
     // A wait parked in the session is no person's stop: a queued message never holds another.
     expect(await waits([queued]).userStop!()).toBeUndefined();

@@ -22,8 +22,8 @@ import { useSuspensionResolution } from "./suspension-resolution";
  * author-supplied component (for schemas richer than the bounded defaults)
  * before any shape dispatch.
  *
- * `human_approval` keeps the existing `Approval` card (which derives its own
- * resolved state). For `human_input`, this derives resolved state once from the
+ * `user_approval` keeps the existing `Approval` card (which derives its own
+ * resolved state). For `user_input`, this derives resolved state once from the
  * session stream and passes it to the chosen non-binary card.
  */
 export function SuspensionCard({ item }: { item: SuspensionItem }) {

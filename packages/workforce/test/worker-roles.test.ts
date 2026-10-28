@@ -211,8 +211,8 @@ describe("every hire path reads the roles a flow is registered with", () => {
   // registrations of it with different roles must not share one.
   it("judges one flow under two registrations by each one's roles", () => {
     const flow = flowOn(undefined, "clerk", { task: { actions: { work: workEntry() } } });
-    expect(refusalOf(() => checkWorkerFlows({ clerk: { flow, standardOnly: false, roles: ["contributor"] } }))).toBe("");
-    expect(refusalOf(() => checkWorkerFlows({ clerk: { flow, standardOnly: false, roles: [] } }))).toContain('"contributor"');
+    expect(refusalOf(() => checkWorkerFlows({ clerk: { flow, standardOnly: false, roles: ["contributor"], showSettings: [] } }))).toBe("");
+    expect(refusalOf(() => checkWorkerFlows({ clerk: { flow, standardOnly: false, roles: [], showSettings: [] } }))).toContain('"contributor"');
   });
 });
 

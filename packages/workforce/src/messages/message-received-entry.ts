@@ -24,7 +24,10 @@
  * output is the reply, `{ reply }`, the final text of the turn, which comes
  * back to the sender as its tool's result. Every request that lands a message
  * outputs it, and only a call's sender reads it; one that acted on nothing
- * (a copy) outputs no reply. Between the take and the items, a message to a
+ * (a copy) outputs no reply. An entry with no turn lands a message and outputs
+ * `{ turnless: true }`, no reply: nothing will answer, so a call to it fails
+ * `no_reply` (FIX-2300), and is refused before the send where the sender can
+ * read the recipient's flow. Between the take and the items, a message to a
  * session stopped for the user, or to a task held on one, queues until
  * nothing holds it (`./queue`).
  */
@@ -129,8 +132,8 @@ function replyTextOf(output: unknown): string {
   return typeof reply === "string" ? reply : "";
 }
 
-/** What an `onMessageReceived` request outputs: the reply, when it landed a message. */
-const messageReceivedOutputSchema = z.object({ reply: z.string().optional() });
+/** What an `onMessageReceived` request outputs: the reply, when it landed a message and ran a turn on it; `turnless` when it landed one with no turn to run. */
+const messageReceivedOutputSchema = z.object({ reply: z.string().optional(), turnless: z.literal(true).optional() });
 
 /**
  * Build the `onMessageReceived` entry for a flow: spread it under
@@ -213,7 +216,9 @@ export function messageReceivedEntry(options: {
       // input's shape, which a turn's own output could match.
       const state = ctx.request.state as Record<string, unknown> | undefined;
       if (state?.[RECEIVED_LANDED_STATE] !== true) return {};
-      const reply = options.turn === undefined ? "" : replyTextOf(input);
+      // Landed, and nothing ran on it: no reply, not an empty one.
+      if (options.turn === undefined) return { turnless: true as const };
+      const reply = replyTextOf(input);
       const call = state[RECEIVED_CALL_STATE];
       if (typeof call === "string") await (await messageLogOf(ctx as never).getOptional(call))?.patchState({ repliedAt: Date.now() });
       return { reply: reply.slice(0, MAX_MESSAGE_CHARS) };
@@ -235,6 +240,7 @@ export function messageReceivedEntry(options: {
   const entry = { inputSchema: messageReceivedInputSchema, block, concurrency: AFTER_REPLY_CONCURRENCY };
   const mark: ReceivedMark = {
     ...(options.hears === undefined ? {} : { hears: options.hears }),
+    runsTurn: options.turn !== undefined,
     tellMidwayQuestion: (ctx, row, holds) => sendQuestionToFiler(ctx, { installation: options.installation, flowKind: options.flowKind }, row, holds)
   };
   (entry as Record<symbol, unknown>)[RECEIVED_MARK] = mark;

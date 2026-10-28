@@ -13,7 +13,7 @@
       { "objectives": [{ "text": "Agenda sent", "met": true }, { "text": "Notes filed", "met": false }] }
     ]
   },
-  "cos": {
+  "shiftCoordinator": {
     "ask": "I need two new projects, please. Call the first one \"{first}\" and add {named} to it as a member. Call the second one \"{second}\", just for me.",
     "titles": ["Launch review", "Pricing research"]
   }

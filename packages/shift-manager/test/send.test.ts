@@ -105,14 +105,14 @@ describe("sendTurn", () => {
     await expect(sendTurn(client, TARGET, "hello", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: false, stopped: null });
   });
 
-  // A turn that stops on a user's approval (a chief of staff's fire or retire) holds the
+  // A turn that stops on a user's approval (a Shift Coordinator's fire or retire) holds the
   // line already: it is delivered, and resending it would raise the ask twice.
   it("is delivered, stopped on an ask, when the door's request suspended on a user's approval and the session holds its user item", async () => {
     const { client } = stubClients({
       status: "suspended",
       items: [
         { requestId: "req_door", role: "user", type: "message" },
-        { requestId: "req_door", type: "suspension", reason: "human_approval", suspensionId: "susp_fire" },
+        { requestId: "req_door", type: "suspension", reason: "user_approval", suspensionId: "susp_fire" },
       ],
     });
     await expect(sendTurn(client, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: true, stopped: "ask" });
@@ -124,7 +124,7 @@ describe("sendTurn", () => {
       status: "suspended",
       items: [
         { requestId: "req_door", role: "user", type: "message" },
-        { requestId: "req_other", type: "suspension", reason: "human_approval", suspensionId: "susp_other" },
+        { requestId: "req_other", type: "suspension", reason: "user_approval", suspensionId: "susp_other" },
         { requestId: "req_door", type: "suspension", reason: "external_event", suspensionId: "susp_deploy" },
       ],
     });
@@ -137,7 +137,7 @@ describe("sendTurn", () => {
       status: "suspended",
       items: [
         { requestId: "req_door", role: "user", type: "message" },
-        { requestId: "req_door", type: "suspension", reason: "human_approval", suspensionId: "susp_fire" },
+        { requestId: "req_door", type: "suspension", reason: "user_approval", suspensionId: "susp_fire" },
         { requestId: "req_door", type: "suspension_resume", suspensionId: "susp_fire" },
         { requestId: "req_door", type: "suspension", reason: "external_event", suspensionId: "susp_deploy" },
       ],
@@ -148,12 +148,12 @@ describe("sendTurn", () => {
   // Every state a suspended poll can be followed by, and what the composer is told for each.
   describe("what a suspended turn is still stopped on, once the session is read", () => {
     const line = { requestId: "req_door", role: "user", type: "message" };
-    const ask = (id: string, reason = "human_approval") => ({ requestId: "req_door", type: "suspension", reason, suspensionId: id });
+    const ask = (id: string, reason = "user_approval") => ({ requestId: "req_door", type: "suspension", reason, suspensionId: id });
     const resume = (id: string) => ({ requestId: "req_door", type: "suspension_resume", suspensionId: id });
     const cases: Array<[string, Item[], "ask" | "wait" | null]> = [
       ["answered between the poll and the read, nothing pending: plain delivered", [line, ask("s1"), resume("s1")], null],
       ["a wait answered, then a user's ask pending: in Inbox", [line, ask("s1", "external_event"), resume("s1"), ask("s2")], "ask"],
-      ["a user's input pending: in Inbox", [line, ask("s1", "human_input")], "ask"],
+      ["a user's input pending: in Inbox", [line, ask("s1", "user_input")], "ask"],
       ["another request's ask pending, this one's answered: not this line's", [line, ask("s1"), resume("s1"), { ...ask("s9"), requestId: "req_other" }], null],
     ];
     for (const [what, items, stopped] of cases) {
@@ -173,7 +173,7 @@ describe("sendTurn", () => {
     // Inbox pages every suspension item; so does this, or an older pending ask is missed.
     it("a pending ask older than a page of later suspension events: still in Inbox", async () => {
       const others = Array.from({ length: 250 }, (_, i) => [
-        { requestId: `req_${i}`, type: "suspension", reason: "human_approval", suspensionId: `o${i}` },
+        { requestId: `req_${i}`, type: "suspension", reason: "user_approval", suspensionId: `o${i}` },
         { requestId: `req_${i}`, type: "suspension_resume", suspensionId: `o${i}` },
       ]).flat();
       const { client } = stubClients({ status: "suspended", items: [line, ask("s1"), ...others] });
@@ -190,7 +190,7 @@ describe("sendTurn", () => {
     // The read is the request's own: one call, however long the session's history.
     it("classifies from the request's own items in one read, not by paging the session's history", async () => {
       const others = Array.from({ length: 2_000 }, (_, i) => [
-        { requestId: `req_${i}`, type: "suspension", reason: "human_approval", suspensionId: `o${i}` },
+        { requestId: `req_${i}`, type: "suspension", reason: "user_approval", suspensionId: `o${i}` },
         { requestId: `req_${i}`, type: "suspension_resume", suspensionId: `o${i}` },
       ]).flat();
       const { client, reads } = stubClients({ status: "suspended", items: [line, ...others, ask("s1")] });

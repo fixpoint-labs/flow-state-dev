@@ -1,7 +1,7 @@
 /**
  * Where the `fsd` profile's coding runs work (BR-13 to BR-16): a run on FSD or
- * Shift Manager, filed from a board or from a conversation with the chief of
- * staff, gets a fresh worktree of the checkout the profile sits in, on a
+ * Shift Manager, filed from a board or from a conversation with the Shift
+ * Coordinator, gets a fresh worktree of the checkout the profile sits in, on a
  * branch cut from local `main`; a run the mapping misses is refused by name,
  * and nothing is cloned.
  *
@@ -11,8 +11,8 @@
  * that workspace except for the runs' root and the checkout, which is a temp
  * repository with `main` and a feature branch checked out: CI's checkout has
  * no local `main`, and a check must not add worktrees to the checkout it runs
- * in. The coder is scripted (it commits `SCRIPTED-RUN.md`), and the chief of
- * staff's model is scripted to make one tool call, so nothing here spends a
+ * in. The coder is scripted (it commits `SCRIPTED-RUN.md`), and the Shift
+ * Coordinator's model is scripted to make one tool call, so nothing here spends a
  * model.
  *
  * Every grade reads the checkout itself (`git worktree list`, `git branch`,
@@ -77,7 +77,7 @@ function userCheckout() {
   return { repo, main, head: git(repo, "rev-parse", "HEAD") };
 }
 
-/** A model that has the chief of staff make `call` once, then stop. */
+/** A model that has the Shift Coordinator make `call` once, then stop. */
 function scripted(call: { toolName: string; args: Record<string, unknown> }): ModelResolver {
   let made = false;
   const model: GeneratorModel = {
@@ -225,14 +225,14 @@ describe("a coding run on the fsd profile's projects", () => {
     );
   });
 
-  it("BR-13: from a conversation, the chief of staff's task for the coder works in a worktree of the checkout, cut from main", async () => {
+  it("BR-13: from a conversation, the Shift Coordinator's task for the coder works in a worktree of the checkout, cut from main", async () => {
     const user = userCheckout();
     const stub = harnessStub({ duringRun: commitScriptedWork, finalMessage: "Noted." });
     const call = { toolName: "createTask", args: { goal: "note the row", assignee: CODER, input: { project: { visibility: "shared", id: "shift-manager" } } } };
     const { lab } = await openMapped(user.repo, stub, scripted(call));
     const runtime = await lab.state.getRuntime();
-    const sessionId = `s-cos-${globalThis.crypto.randomUUID()}`;
-    const created = await lab.door("POST", "coordinator/sessions", { body: { userId: LAB_USER_ID, sessionId, state: { workerId: "chief-of-staff" } } });
+    const sessionId = `s-shift-coordinator-${globalThis.crypto.randomUUID()}`;
+    const created = await lab.door("POST", "coordinator/sessions", { body: { userId: LAB_USER_ID, sessionId, state: { workerId: "shift-coordinator" } } });
     expect(created.status).toBe(201);
     const act = async (actionName: string, input: unknown) =>
       (await runAction({

@@ -462,6 +462,9 @@ describe("the inspector (BR-18 to BR-23)", () => {
     const files = await within(inspector).findAllByTestId("inspector-file", {}, { timeout: 10_000 });
     expect(files.map((f) => [f.getAttribute("data-path"), f.getAttribute("data-kind")])).toEqual([["notes/audit.md", "created"]]);
     expect(within(inspector).getAllByTestId("inspector-plan-step").map((s) => s.getAttribute("data-status"))).toEqual(["completed", "in_progress"]);
+    expect(within(inspector).getAllByTestId("inspector-pull-request").map((p) => p.getAttribute("data-url"))).toEqual([
+      "https://github.com/acme/audit/pull/7",
+    ]);
     // The link opens this run's session in the devtool: no paste step (FIX-1691).
     expect(within(inspector).getByTestId("inspector-trace-link").getAttribute("href")).toBe(
       `http://127.0.0.1:4000/?session=${encodeURIComponent(row.run!.sessionId)}`,
@@ -491,6 +494,7 @@ describe("the inspector (BR-18 to BR-23)", () => {
     const inspector = await screen.findByTestId("task-inspector");
     expect((await within(inspector).findByTestId("inspector-plan-none", {}, { timeout: 10_000 })).textContent).toBe(GAPS.task.recordsNoPlan);
     expect(within(inspector).getByTestId("inspector-files-none").textContent).toBe(GAPS.task.recordsNoFiles);
+    expect(within(inspector).getByTestId("inspector-pull-requests-none").textContent).toBe(GAPS.task.recordsNoPullRequests);
     // It names what to install, and no flag the command doesn't have.
     const off = within(inspector).getByTestId("inspector-trace-off").textContent;
     expect(off).toMatch(/@flow-state-dev\/devtool/);

@@ -30,9 +30,9 @@ Add a `WORKER.md` for the worker, and build the `coordinator` flow with the hire
 
 There's no switch for it: a Shift Coordinator is a worker your files declare, like any other.
 
-The file goes under `org/workers/`, beside `teams/`. Its folder name is its id, so `org/workers/chief-of-staff/` is the worker `chief-of-staff`. It runs on the `coordinator` flow, routes by judgment, and names the delegates each conversation starts with and the tools it holds:
+The file goes under `org/workers/`, beside `teams/`. Its folder name is its id, so `org/workers/shift-coordinator/` is the worker `shift-coordinator`. It runs on the `coordinator` flow, routes by judgment, and names the delegates each conversation starts with and the tools it holds:
 
-```md title="workforce/org/workers/chief-of-staff/WORKER.md"
+```md title="workforce/org/workers/shift-coordinator/WORKER.md"
 ---
 description: Your one point of contact, and the one worker that changes your roster.
 flow: coordinator
@@ -88,7 +88,7 @@ import { coderFlow } from "./flows/coder";
 import { emFlow } from "./flows/em";
 import { roster } from "./roster";
 
-/** A fire waits for the user: a `human_approval` naming the worker. On Deny, nothing changes. */
+/** A fire waits for the user: a `user_approval` naming the worker. On Deny, nothing changes. */
 const askFire = handler({
   name: "ask-fire",
   inputSchema: z.object({ id: z.string() }).passthrough(),
@@ -97,7 +97,7 @@ const askFire = handler({
     if (ctx.suspend === undefined) {
       throw new Error(`firing "${input.id}" waits for a user's approval, and this app can't ask for one. Nothing was changed.`);
     }
-    await ctx.suspend({ reason: "human_approval", message: `Fire worker "${input.id}"?`, data: { worker: input.id }, allow: ["approve", "reject"] });
+    await ctx.suspend({ reason: "user_approval", message: `Fire worker "${input.id}"?`, data: { worker: input.id }, allow: ["approve", "reject"] });
   },
 });
 
@@ -204,7 +204,7 @@ Ask the Shift Coordinator for a project and it creates one, owned by you, shared
 
 It needs the project tools in its `tools:` line and in `agentTurn.catalog`: `createProject` and `openWorkstream`, plus `setRepository` if it should also name the [repository](./projects.md#a-projects-code-and-files) a project's code lives in. `openWorkstream` comes from [`defineWorkstreamBlocks`](./projects.md#workstreams), the others from `defineProjectBlocks`. [Giving the writes to a worker](./projects.md#giving-the-writes-to-a-worker) shows the catalog entries. Add the names to the file:
 
-```md title="workforce/org/workers/chief-of-staff/WORKER.md"
+```md title="workforce/org/workers/shift-coordinator/WORKER.md"
 ---
 flow: coordinator
 tools: [hire, fire, createProject, openWorkstream, setRepository]
@@ -292,11 +292,11 @@ The roster tools work on the user's own workers. Another user's workers are thei
 
 ## What asks first
 
-A fire wrapped as above pauses the request with a `human_approval` suspension before anything changes:
+A fire wrapped as above pauses the request with a `user_approval` suspension before anything changes:
 
 ```json
 {
-  "reason": "human_approval",
+  "reason": "user_approval",
   "message": "Fire worker \"scribe\"?",
   "data": { "worker": "scribe" },
   "allow": ["approve", "reject"]

@@ -31,7 +31,7 @@ vi.mock("../src/lib/conversation-tasks", () => ({
   },
 }));
 
-const cos = toWorker({ id: "chief-of-staff", kind: "coordinator", door: "run" })!;
+const shiftCoordinator = toWorker({ id: "shift-coordinator", kind: "coordinator", door: "run" })!;
 
 beforeEach(() => {
   rows = [];
@@ -48,7 +48,7 @@ async function settle() {
 }
 
 const shown = () =>
-  screen.queryAllByTestId("cos-task").map((li) => ({
+  screen.queryAllByTestId("shift-coordinator-task").map((li) => ({
     id: li.getAttribute("data-task-id"),
     status: li.getAttribute("data-status"),
     text: li.textContent,
@@ -56,9 +56,9 @@ const shown = () =>
 
 describe("the tasks panel (S11)", () => {
   it("says tasks belong to a conversation before there is one, and reads nothing", async () => {
-    render(<TasksPanel worker={cos} sessionId={null} readAt={1} />);
+    render(<TasksPanel worker={shiftCoordinator} sessionId={null} readAt={1} />);
     await settle();
-    expect(screen.getByTestId("cos-tasks-none")).toBeTruthy();
+    expect(screen.getByTestId("shift-coordinator-tasks-none")).toBeTruthy();
     expect(calls).toEqual([]);
   });
 
@@ -67,7 +67,7 @@ describe("the tasks panel (S11)", () => {
       { id: "t1", goal: "Audit the licenses", status: "completed", assignee: "licenses", attempts: 1 },
       { id: "t2", goal: "Write the release notes", status: "pending", attempts: 0 },
     ];
-    render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
+    render(<TasksPanel worker={shiftCoordinator} sessionId="s1" readAt={1} />);
     await settle();
     expect(calls).toEqual(["list coordinator s1"]);
     expect(shown()).toEqual([
@@ -79,20 +79,20 @@ describe("the tasks panel (S11)", () => {
   });
 
   it("says so when the conversation has filed nothing", async () => {
-    render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
+    render(<TasksPanel worker={shiftCoordinator} sessionId="s1" readAt={1} />);
     await settle();
-    expect(screen.getByTestId("cos-tasks-empty")).toBeTruthy();
+    expect(screen.getByTestId("shift-coordinator-tasks-empty")).toBeTruthy();
   });
 
   it("reads again when the Lab is read again, and only then", async () => {
     rows = [{ id: "t1", goal: "Audit the licenses", status: "in_progress", assignee: "licenses", attempts: 1 }];
-    const view = render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
+    const view = render(<TasksPanel worker={shiftCoordinator} sessionId="s1" readAt={1} />);
     await settle();
-    view.rerender(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
+    view.rerender(<TasksPanel worker={shiftCoordinator} sessionId="s1" readAt={1} />);
     await settle();
     expect(calls).toEqual(["list coordinator s1"]);
     rows = [{ id: "t1", goal: "Audit the licenses", status: "completed", assignee: "licenses", attempts: 1 }];
-    view.rerender(<TasksPanel worker={cos} sessionId="s1" readAt={2} />);
+    view.rerender(<TasksPanel worker={shiftCoordinator} sessionId="s1" readAt={2} />);
     await settle();
     expect(calls).toEqual(["list coordinator s1", "list coordinator s1"]);
     expect(shown()).toEqual([{ id: "t1", status: "completed", text: expect.stringContaining("Audit the licenses") }]);
@@ -100,26 +100,26 @@ describe("the tasks panel (S11)", () => {
 
   it("never shows one conversation's tasks under another, but keeps its own list while reading it again", async () => {
     rows = [{ id: "t1", goal: "Audit the licenses", status: "in_progress", assignee: "licenses", attempts: 1 }];
-    const view = render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
+    const view = render(<TasksPanel worker={shiftCoordinator} sessionId="s1" readAt={1} />);
     await settle();
     // Same conversation, read again: its list stays up until the new answer lands.
-    view.rerender(<TasksPanel worker={cos} sessionId="s1" readAt={2} />);
+    view.rerender(<TasksPanel worker={shiftCoordinator} sessionId="s1" readAt={2} />);
     expect(shown().map((task) => task.id)).toEqual(["t1"]);
     await settle();
     // Another conversation: the first one's tasks are gone before its read answers.
     rows = [{ id: "t2", goal: "Write the release notes", status: "pending", attempts: 0 }];
-    view.rerender(<TasksPanel worker={cos} sessionId="s2" readAt={2} />);
+    view.rerender(<TasksPanel worker={shiftCoordinator} sessionId="s2" readAt={2} />);
     expect(shown()).toEqual([]);
-    expect(screen.getByTestId("cos-tasks-reading")).toBeTruthy();
+    expect(screen.getByTestId("shift-coordinator-tasks-reading")).toBeTruthy();
     await settle();
     expect(shown().map((task) => task.id)).toEqual(["t2"]);
   });
 
   it("shows why the read failed", async () => {
     refusal = "This conversation keeps no task board.";
-    render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
+    render(<TasksPanel worker={shiftCoordinator} sessionId="s1" readAt={1} />);
     await settle();
-    expect(screen.getByTestId("cos-tasks-failure").textContent).toContain("This conversation keeps no task board.");
+    expect(screen.getByTestId("shift-coordinator-tasks-failure").textContent).toContain("This conversation keeps no task board.");
   });
 
   describe("at the Shift Coordinator, whose conversation never ends (activeOnly)", () => {
@@ -131,11 +131,11 @@ describe("the tasks panel (S11)", () => {
       { id: "t5", goal: "Draft the launch post", status: "pending", attempts: 0 },
       { id: "t6", goal: "Check the docs links", status: "completed", assignee: "docs", attempts: 1 },
     ];
-    const group = (name: string) => screen.getAllByTestId("cos-task-group").find((el) => el.getAttribute("data-group") === name);
+    const group = (name: string) => screen.getAllByTestId("shift-coordinator-task-group").find((el) => el.getAttribute("data-group") === name);
 
     it("lists only the active tasks, and folds done and errored into counts that open", async () => {
       rows = mixed;
-      render(<TasksPanel worker={cos} sessionId="s1" readAt={1} activeOnly />);
+      render(<TasksPanel worker={shiftCoordinator} sessionId="s1" readAt={1} activeOnly />);
       await settle();
       expect(shown().map((task) => task.id)).toEqual(["t2", "t5"]);
       expect(group("done")!.textContent).toContain("3 done");
@@ -148,19 +148,19 @@ describe("the tasks panel (S11)", () => {
 
     it("says no task is active when every task has ended, and draws no empty group", async () => {
       rows = [{ id: "t1", goal: "Audit the licenses", status: "completed", assignee: "licenses", attempts: 1 }];
-      render(<TasksPanel worker={cos} sessionId="s1" readAt={1} activeOnly />);
+      render(<TasksPanel worker={shiftCoordinator} sessionId="s1" readAt={1} activeOnly />);
       await settle();
-      expect(screen.getByTestId("cos-tasks-none-active")).toBeTruthy();
+      expect(screen.getByTestId("shift-coordinator-tasks-none-active")).toBeTruthy();
       expect(shown()).toEqual([]);
-      expect(screen.getAllByTestId("cos-task-group").map((el) => el.getAttribute("data-group"))).toEqual(["done"]);
+      expect(screen.getAllByTestId("shift-coordinator-task-group").map((el) => el.getAttribute("data-group"))).toEqual(["done"]);
     });
 
     it("leaves a workstream's board whole: there every task is a subtask of the one piece of work", async () => {
       rows = mixed;
-      render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
+      render(<TasksPanel worker={shiftCoordinator} sessionId="s1" readAt={1} />);
       await settle();
       expect(shown().map((task) => task.id)).toEqual(["t1", "t2", "t3", "t4", "t5", "t6"]);
-      expect(screen.queryAllByTestId("cos-task-group")).toEqual([]);
+      expect(screen.queryAllByTestId("shift-coordinator-task-group")).toEqual([]);
     });
   });
 
@@ -171,7 +171,7 @@ describe("the tasks panel (S11)", () => {
 
     it("is read again while a task is open, and reloads the Lab when one ends, so the coordinator's turn on it shows", async () => {
       rows = [{ id: "t1", goal: "Audit the licenses", status: "in_progress", assignee: "licenses", attempts: 1 }];
-      render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
+      render(<TasksPanel worker={shiftCoordinator} sessionId="s1" readAt={1} />);
       await tick(0);
       expect(calls).toHaveLength(1);
       await tick(TASKS_POLL_MS);
@@ -185,7 +185,7 @@ describe("the tasks panel (S11)", () => {
 
     it("reads nothing more while no task is open and none just ended", async () => {
       rows = [{ id: "t1", goal: "Audit the licenses", status: "completed", assignee: "licenses", attempts: 1 }];
-      render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
+      render(<TasksPanel worker={shiftCoordinator} sessionId="s1" readAt={1} />);
       await tick(0);
       await tick(TASKS_POLL_MS * 20);
       expect(calls).toEqual(["list coordinator s1"]);
@@ -198,9 +198,9 @@ describe("opening a task from the panel", () => {
   it("each task opens its own session on the conversation's board", async () => {
     rows = [{ id: "t1", goal: "Audit the licenses", status: "in_progress", assignee: "licenses", attempts: 1 }];
     window.history.pushState(null, "", "/");
-    render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
+    render(<TasksPanel worker={shiftCoordinator} sessionId="s1" readAt={1} />);
     await settle();
-    await act(async () => screen.getByTestId("cos-task-open").click());
+    await act(async () => screen.getByTestId("shift-coordinator-task-open").click());
     // The route is the same one the Tasks list and Jump to go to.
     expect(window.location.pathname).toBe("/tasks/s1.tasks/t1/session");
   });
@@ -208,10 +208,10 @@ describe("opening a task from the panel", () => {
   it("opens a failed task from its errored group, so a failure is one click from its session", async () => {
     rows = [{ id: "t3", goal: "Rotate the keys", status: "errored", assignee: "keys", attempts: 2 }];
     window.history.pushState(null, "", "/");
-    render(<TasksPanel worker={cos} sessionId="s1" readAt={1} activeOnly />);
+    render(<TasksPanel worker={shiftCoordinator} sessionId="s1" readAt={1} activeOnly />);
     await settle();
-    act(() => screen.getByTestId("cos-task-group").querySelector("button")!.click());
-    await act(async () => screen.getByTestId("cos-task-open").click());
+    act(() => screen.getByTestId("shift-coordinator-task-group").querySelector("button")!.click());
+    await act(async () => screen.getByTestId("shift-coordinator-task-open").click());
     expect(window.location.pathname).toBe("/tasks/s1.tasks/t3/session");
   });
 });
@@ -222,7 +222,7 @@ describe("a task's label in the panel", () => {
       { id: "t1", goal: "Take a quick look at the flow state code in the repository and report back", title: "Look at flow state", status: "in_progress", attempts: 1 },
       { id: "t2", goal: "Write the release notes", status: "pending", attempts: 0 },
     ];
-    render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
+    render(<TasksPanel worker={shiftCoordinator} sessionId="s1" readAt={1} />);
     await settle();
     const text = shown().map((t) => t.text);
     expect(text[0]).toContain("Look at flow state");

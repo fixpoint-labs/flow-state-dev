@@ -8,9 +8,9 @@
  * `createProject` is a router: a create whose members are the session's user
  * alone, shared or private, goes to a block that returns the row it would have
  * written, `created: true`, and stores nothing; every other create goes to the
- * real block. The cos leg's first project names a second member, so it is
+ * real block. The shiftCoordinator leg's first project names a second member, so it is
  * written; its second, "just for me", is not. The profile's default projects
- * name the crowd, so boot is unchanged. The goal must fail at "cos" on the
+ * name the crowd, so boot is unchanged. The goal must fail at "shift-coordinator" on the
  * second project.
  */
 import { handler, router } from "@flow-state-dev/core";

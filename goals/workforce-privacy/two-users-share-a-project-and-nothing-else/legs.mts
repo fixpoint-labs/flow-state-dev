@@ -39,7 +39,7 @@ const WORKERS = "workforce/workers/*";
 const STANDARD_WORKERS = "workforce/standard-workers/*";
 const PROJECTS = "projects";
 const COORDINATOR = "coordinator";
-const CHIEF = "chief-of-staff";
+const SHIFT_COORDINATOR = "shift-coordinator";
 const PROJECT_COORDINATOR = "project-coordinator";
 /** Orchestration's task tools (b6), by the names a turn calls them: the filer's four (FIX-2081). */
 export const TASK_TOOLS = ["createTask", "getTask", "listTasks", "updateTask"] as const;
@@ -223,7 +223,7 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
     else {
       facts.standard = from.id;
       const name = `${word()}-${hex()}`;
-      r.saw("a2", `held-out: forks \`${from.id}\` (flow \`${from.flow}\`) as \`${name}\`. Surface: the roster flow's \`fork\` action, since no screen draws a fork and the chief of staff has no fork tool (an unpromised screen: an observation, D2)`);
+      r.saw("a2", `held-out: forks \`${from.id}\` (flow \`${from.flow}\`) as \`${name}\`. Surface: the roster flow's \`fork\` action, since no screen draws a fork and the Shift Coordinator has no fork tool (an unpromised screen: an observation, D2)`);
       const rosterSession = await sessionOn(alice, ROSTER);
       const before = JSON.stringify((await rowsOf(alice, rosterSession, STANDARD_WORKERS)).rows.find((x) => named(x.topic, from.id)) ?? null);
       const bobBefore = await ownIds(bob);
@@ -260,28 +260,28 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
 
   // ---- a3 · coordinator ----
   if (runs("a3")) {
-    o.say("a3: Alice gets a best-fit coordinator through the chief of staff, and adds two delegates");
+    o.say("a3: Alice gets a best-fit coordinator through the Shift Coordinator, and adds two delegates");
     r.via("a3", "turn");
     const name = `${word()}-desk-${hex()}`;
-    const cos = await alice.workforce.ensureWorkerSession({ worker: CHIEF });
+    const shiftCoordinator = await alice.workforce.ensureWorkerSession({ worker: SHIFT_COORDINATOR });
     const own0 = await ownIds(alice);
     const turn = await talk(
       r,
       "a3",
       alice,
-      { id: cos.id, flowKind: cos.flowKind },
+      { id: shiftCoordinator.id, flowKind: shiftCoordinator.flowKind },
       "run",
       `Please hire a coordinator for me with the id "${name}": a worker on the coordinator flow that routes each post by best fit (routing: best-fit), using the model openai/gpt-5.4-mini. Description: "My own front desk; hands each ask to whichever of my workers fits it best." Just hire it; I'll add its delegates myself.`,
     );
     const hires = turn.tools.filter((t) => /(^|[./_])hire$/.test(t.name));
-    r.saw("a3", `the chief of staff's turn: ${turn.status}; tools ${turn.tools.map((t) => `${t.name}#${t.itemId}`).join(", ") || "none"}`);
+    r.saw("a3", `the Shift Coordinator's turn: ${turn.status}; tools ${turn.tools.map((t) => `${t.name}#${t.itemId}`).join(", ") || "none"}`);
     const own1 = await ownIds(alice);
     const added = own1.filter((x) => !own0.includes(x));
     const listed = (await alice.workforce.roster()).find((e) => e.id === name);
     const rosterSession = await sessionOn(alice, ROSTER);
     // The row as stored: the client's projection of a worker row leaves its settings out.
     const row = (await rowsOf(alice, rosterSession, WORKERS)).rows.some((x) => named(x.topic, name)) ? (workerRow(o.store, A.userId, name) as { flow?: string; settings?: Record<string, unknown> } | undefined) : undefined;
-    if (hires.length === 0) r.fail("a3", `the chief of staff's turn called no \`hire\` (reply: "${turn.reply.slice(0, 300)}")`);
+    if (hires.length === 0) r.fail("a3", `the Shift Coordinator's turn called no \`hire\` (reply: "${turn.reply.slice(0, 300)}")`);
     if (listed === undefined || row === undefined) r.fail("a3", `no worker \`${name}\` on Alice's roster after the turn (new: ${show(added)})`);
     else if (listed.flow !== COORDINATOR) r.fail("a3", `\`${name}\` is on flow \`${listed.flow}\`, not \`${COORDINATOR}\``);
     else if (row.settings?.routing !== "best-fit") r.fail("a3", `\`${name}\`'s row routes by ${show(row.settings?.routing)}, not best-fit (settings ${show(row.settings)})`);
@@ -295,7 +295,7 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
       r.via("a3", "action");
       const second = standard.find((e) => e.id !== facts.standard && e.flow !== COORDINATOR && e.flow === "coder") ?? forkableStandard(standard).find((e) => e.id !== facts.standard);
       const want = [facts.fork, second?.id].filter((x): x is string => x !== undefined);
-      r.saw("a3", `delegates added through the app's \`addDelegate\` on her conversation \`${conv.id}\`: ${want.join(", ")} (the delegates panel is drawn only for the chief of staff, FIX-1791 S10; for her own coordinator no screen exists, an observation, D2)`);
+      r.saw("a3", `delegates added through the app's \`addDelegate\` on her conversation \`${conv.id}\`: ${want.join(", ")} (the delegates panel is drawn only for the Shift Coordinator, FIX-1791 S10; for her own coordinator no screen exists, an observation, D2)`);
       for (const w of want) {
         const added = await act(alice, COORDINATOR, conv.id, "addDelegate", { worker: w });
         if (added.status !== "completed") r.fail("a3", `addDelegate ${w} ended ${added.status}: ${added.error ?? show(added.output)}`);
@@ -385,16 +385,16 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
   const P: ProjectAt = { visibility: "shared", id: `${word()}-${hex()}` };
   const Q: ProjectAt = { visibility: "private", id: `${word()}-${hex()}` };
   if (runs("b1")) {
-    o.say("b1: Alice asks the chief of staff for a shared and a private project");
+    o.say("b1: Alice asks the Shift Coordinator for a shared and a private project");
     r.via("b1", "turn");
     const titleP = `${word()} ${word()} ${hex()}`;
     const titleQ = `${word()} ${word()} ${hex()}`;
-    const cos = await alice.workforce.ensureWorkerSession({ worker: CHIEF });
+    const shiftCoordinator = await alice.workforce.ensureWorkerSession({ worker: SHIFT_COORDINATOR });
     const turn = await talk(
       r,
       "b1",
       alice,
-      { id: cos.id, flowKind: cos.flowKind },
+      { id: shiftCoordinator.id, flowKind: shiftCoordinator.flowKind },
       "run",
       `Please start two projects for me. First, a shared project with the id "${P.id}" titled "${titleP}", with ${B.userId} as a member. Second, a private project with the id "${Q.id}" titled "${titleQ}", just for me.`,
     );
@@ -543,23 +543,23 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
 
   // ---- b4 · two boards ----
   if (runs("b4")) {
-    o.say("b4: two of Alice's conversations with the chief of staff each add a task");
+    o.say("b4: two of Alice's conversations with the Shift Coordinator each add a task");
     r.via("b4", "action");
-    r.saw("b4", "surface: the app's `createTask_tasks` action as Alice on each conversation; no screen adds a task, and the chief of staff's view draws one conversation (an observation, D2)");
+    r.saw("b4", "surface: the app's `createTask_tasks` action as Alice on each conversation; no screen adds a task, and the Shift Coordinator's view draws one conversation (an observation, D2)");
     const delegate = "eng.coder";
     const before = sessionIds(o.store);
     const convs: Array<{ id: string; task?: string; word: string }> = [];
     for (let i = 0; i < 2; i += 1) {
-      const created = await alice.flow(COORDINATOR).createSession({ state: { workerId: CHIEF } }).catch((e) => ({ error: messageOf(e) }) as any);
+      const created = await alice.flow(COORDINATOR).createSession({ state: { workerId: SHIFT_COORDINATOR } }).catch((e) => ({ error: messageOf(e) }) as any);
       if (created.error !== undefined) {
-        r.fail("b4", `Alice's second conversation with the chief of staff couldn't be opened: ${created.error}`);
+        r.fail("b4", `Alice's second conversation with the Shift Coordinator couldn't be opened: ${created.error}`);
         continue;
       }
       convs.push({ id: created.id, word: `${word()}-${hex()}` });
     }
     const listed = await act(alice, COORDINATOR, convs[0]?.id ?? "", "listDelegates", {});
     const takes = ((listed.output as any)?.delegates ?? []).filter((d: any) => d.takes === "tasks" || d.takes === "both").map((d: any) => d.worker);
-    if (!takes.includes(delegate)) r.fail("b4", `the chief of staff's conversation has no task-taking delegate \`${delegate}\`: ${show((listed.output as any)?.delegates)}`);
+    if (!takes.includes(delegate)) r.fail("b4", `the Shift Coordinator's conversation has no task-taking delegate \`${delegate}\`: ${show((listed.output as any)?.delegates)}`);
     const t0 = Date.now();
     await Promise.all(
       convs.map(async (c) => {
@@ -853,7 +853,7 @@ export async function legC(o: LegOptions): Promise<LegFacts> {
       else r.saw("c3", `Bob's create naming \`${fork}\`: refused, ${named.status}`);
       const viaTalk = await refusal(() => bob.workforce.ensureWorkerSession({ worker: fork }));
       if (viaTalk.status === undefined) r.fail("c3", "Bob's talk action opened a session on Alice's fork");
-      const seeded = await refusal(() => bob.flow(COORDINATOR).createSession({ state: { workerId: CHIEF, delegates: [{ worker: fork }] } }));
+      const seeded = await refusal(() => bob.flow(COORDINATOR).createSession({ state: { workerId: SHIFT_COORDINATOR, delegates: [{ worker: fork }] } }));
       if (seeded.status === undefined) r.fail("c3", "Bob created a coordinator session seeding Alice's fork among its delegates");
       else r.saw("c3", `Bob's create seeding delegates: refused, ${seeded.status} (${String(seeded.error).slice(0, 160)})`);
       const bound = sessionRows(o.store).filter((s) => s.userId === B.userId && (s.state.workerId === fork || JSON.stringify(s.state.delegates ?? []).includes(fork)));
@@ -866,26 +866,26 @@ export async function legC(o: LegOptions): Promise<LegFacts> {
     if (facts.fork === undefined) r.notRun("c4", "needs the setup's fork");
     else {
       const missing = `${word()}-${hex()}`;
-      const cos = await bob.workforce.ensureWorkerSession({ worker: CHIEF });
+      const shiftCoordinator = await bob.workforce.ensureWorkerSession({ worker: SHIFT_COORDINATOR });
       r.via("c4", "screen");
       const panel = await delegatesPanel(o.browser, o.install.origin, B, false, r, "c4-bob-delegates");
       if (panel.value === undefined) r.fail("c4", `screen: Bob's delegates panel failed: ${panel.errors.join(" | ")}`);
       else if (panel.value.offered.includes(fork)) r.fail("c4", `screen: Bob's delegates panel offers Alice's fork \`${fork}\``);
       else r.saw("c4", `screen: Bob's delegates panel offers ${show(panel.value.offered)}, not \`${fork}\`; it lists ${show(panel.value.delegates)}`);
       r.via("c4", "action");
-      const hers = await act(bob, COORDINATOR, cos.id, "addDelegate", { worker: fork });
-      const nobodys = await act(bob, COORDINATOR, cos.id, "addDelegate", { worker: missing });
+      const hers = await act(bob, COORDINATOR, shiftCoordinator.id, "addDelegate", { worker: fork });
+      const nobodys = await act(bob, COORDINATOR, shiftCoordinator.id, "addDelegate", { worker: missing });
       const norm = (s: string | undefined, id: string) => String(s ?? "").replaceAll(id, "<id>");
       if (hers.status === "completed") r.fail("c4", `app: Bob's addDelegate naming Alice's fork was accepted: ${show(hers.output)}`);
       else if (norm(hers.error, fork) !== norm(nobodys.error, missing)) r.fail("c4", `app: refused, but not like a missing worker: "${hers.error}" vs "${nobodys.error}"`);
       else r.saw("c4", `app: refused like a missing worker: "${String(hers.error).slice(0, 160)}"`);
       r.via("c4", "turn");
-      const turn = await talk(r, "c4", bob, { id: cos.id, flowKind: cos.flowKind }, "respond", `Please add the worker "${fork}" as a delegate in this conversation with addDelegate. Don't hire anyone.`);
+      const turn = await talk(r, "c4", bob, { id: shiftCoordinator.id, flowKind: shiftCoordinator.flowKind }, "respond", `Please add the worker "${fork}" as a delegate in this conversation with addDelegate. Don't hire anyone.`);
       const adds = turn.tools.filter((t) => /addDelegate$/.test(t.name));
       if (adds.length === 0) r.notRun("c4", `tool: the turn called no addDelegate, so the tool path didn't run (reply: "${turn.reply.slice(0, 200)}")`);
       else if (adds.some((t) => !/No worker|not on your roster|refus/i.test(t.output) || /"ok":true/.test(t.output))) r.fail("c4", `tool: an addDelegate naming Alice's fork wasn't refused: ${show(adds)}`);
       else r.saw("c4", `tool: addDelegate refused: ${adds.map((t) => `${t.output}#${t.itemId}`).join("; ").slice(0, 300)}`);
-      const list = conversationRecord(o.store, B.userId, cos.id).delegates?.map((d) => d.worker) ?? [];
+      const list = conversationRecord(o.store, B.userId, shiftCoordinator.id).delegates?.map((d) => d.worker) ?? [];
       if (list.includes(fork)) r.fail("c4", `store: Alice's fork is on Bob's conversation's delegates ${show(list)}`);
     }
   }

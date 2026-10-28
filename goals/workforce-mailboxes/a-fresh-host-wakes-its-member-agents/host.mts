@@ -28,7 +28,10 @@ import {
   defineAgentWorkerFlow,
   defineCoordinatorFlow,
   hireWorkforce,
+  MESSAGE_RECEIVED_ENTRY,
+  messageReceivedEntry,
   workerConfigSchema,
+  workerMessagesResources,
   type WorkerInstallation,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
@@ -79,8 +82,9 @@ const defineNote = (installation: WorkerInstallation) =>
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources },
-    actions: { ...workerDoor, take: { block: handler({ name: "note-take", execute: () => ({}) }) } }
+    resources: { ...installation.resources, ...workerMessagesResources },
+    actions: { ...workerDoor, take: { block: handler({ name: "note-take", execute: () => ({}) }) } },
+    internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "note" }) } }
   } as never);
 
 /** The goal check's seams. An app passes none. */

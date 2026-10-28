@@ -81,6 +81,7 @@ export function ThreadsBoard({
                           type="button"
                           onClick={() => onOpen(task.id)}
                           data-task-status={task.status}
+                          data-task-id={task.id}
                           className="flex w-full items-start gap-2 px-2 py-1.5 text-left hover:bg-accent"
                         >
                           <ThreadIcon task={task} />

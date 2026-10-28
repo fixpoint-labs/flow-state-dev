@@ -96,7 +96,7 @@ describe("router branch resume across a cold restart (SQLite)", () => {
       inputSchema: z.any(),
       outputSchema: z.unknown(),
       execute: async (_input, ctx) =>
-        ctx.suspend!({ reason: "human_approval", message: "continue branch A?" })
+        ctx.suspend!({ reason: "user_approval", message: "continue branch A?" })
     });
     const after = handler({
       name: "after",

@@ -1,7 +1,7 @@
 /**
  * Leg c: a release cut the flow one of the person's workers ran on. The
  * worker's turn is refused, naming the flow, while its row stays for the
- * person to clear; the chief of staff fires it on the person's Approve, and
+ * person to clear; the Shift Coordinator fires it on the person's Approve, and
  * it is gone after a restart.
  *
  * Steps c1 to c4 (PLAN.md → Checks), over one store and three boots: boot 1
@@ -12,11 +12,11 @@
  * Shift Manager draws no conversation with a person's own worker, so the
  * worker's turn is sent as the person over the Lab's routes, the way an app
  * opens a session with a worker: on the flow its roster row names, naming it.
- * A refused turn changes nothing; every change still goes through the chief
- * of staff or Inbox.
+ * A refused turn changes nothing; every change still goes through the Shift
+ * Coordinator or Inbox.
  */
 import { EXTRA_FLOW_DOOR } from "../controls/patches.mts";
-import { answerInInbox, askCos, asksOf, callsTo, cosFlowOf, quote, readWorkers, rosterOwn, type World } from "../steps.mts";
+import { answerInInbox, askShiftCoordinator, asksOf, callsTo, shiftCoordinatorFlowOf, quote, readWorkers, rosterOwn, type World } from "../steps.mts";
 
 export async function legC(world: World, opts: { worker: string; flow: string; patchedConfig: string; shippedConfig: string }): Promise<void> {
   const r = world.record;
@@ -30,13 +30,13 @@ export async function legC(world: World, opts: { worker: string; flow: string; p
   await world.boot("c-boot-1", opts.patchedConfig);
   let talk: string | undefined;
   try {
-    const hire = await askCos(world, "c1", `Please hire a worker with the id "${worker}" on the "${flow}" flow. It needs no settings.`);
+    const hire = await askShiftCoordinator(world, "c1", `Please hire a worker with the id "${worker}" on the "${flow}" flow. It needs no settings.`);
     if (hire === undefined) {
-      r.fail("c1", "no CoS seat: the Chief of Staff view draws no chief of staff to ask");
+      r.fail("c1", "no Shift Coordinator seat: the Shift Coordinator view draws no Shift Coordinator to ask");
       return;
     }
     const hires = callsTo(hire, "hire");
-    if (hires.length !== 1 || !hires[0]!.ok) r.fail("c1", `CoS's session holds ${hires.length} hire call(s), ${hires.filter((h) => h.ok).length} ok: ${quote(hire)}`);
+    if (hires.length !== 1 || !hires[0]!.ok) r.fail("c1", `Shift Coordinator's session holds ${hires.length} hire call(s), ${hires.filter((h) => h.ok).length} ok: ${quote(hire)}`);
     const row = await rowOf();
     const drawn = (await rosterOwn(world)).find((x) => x.id === worker);
     if (row === undefined) r.fail("c1", `the person's roster has no row for "${worker}": ${quote(hire)}`);
@@ -55,7 +55,7 @@ export async function legC(world: World, opts: { worker: string; flow: string; p
     if (ran.status !== "completed" || ran.output?.worker !== worker || ran.output?.flow !== flow) {
       r.fail("c1", `the turn with "${worker}" on boot 1 ended ${ran.status}: ${JSON.stringify(ran.output ?? ran.error)}`);
     }
-    if (r.verdict("c1") !== "FAIL") r.saw("c1", `CoS: ${quote(hire)}; roster row ${JSON.stringify(row)}; Roster lists "${drawn?.text}"; session ${talk} on "${row.flow}" ran a turn as ${JSON.stringify(ran.output)}`);
+    if (r.verdict("c1") !== "FAIL") r.saw("c1", `Shift Coordinator: ${quote(hire)}; roster row ${JSON.stringify(row)}; Roster lists "${drawn?.text}"; session ${talk} on "${row.flow}" ran a turn as ${JSON.stringify(ran.output)}`);
   } finally {
     await world.stop();
   }
@@ -76,19 +76,19 @@ export async function legC(world: World, opts: { worker: string; flow: string; p
     if (r.verdict("c2") !== "FAIL") r.saw("c2", `the turn in ${talk} was refused: ${refused.status} ${error}; the row is unchanged (${JSON.stringify(after)}) and Roster still lists "${drawn?.text}"`);
 
     // ---- c3 · fire, on Approve ------------------------------------------------------
-    const fire = await askCos(world, "c3", `Please fire the worker "${worker}".`);
-    if (fire?.composerSaid !== undefined) r.fail("c3", `the CoS composer told the person "${fire.composerSaid}" for a line its session holds`);
+    const fire = await askShiftCoordinator(world, "c3", `Please fire the worker "${worker}".`);
+    if (fire?.composerSaid !== undefined) r.fail("c3", `the Shift Coordinator composer told the person "${fire.composerSaid}" for a line its session holds`);
     if (fire === undefined || fire.requestId === null || fire.sessionId === null) {
       r.fail("c3", `the fire was not asked: ${quote(fire)}`);
     } else {
-      const asks = (await asksOf(owner(), fire.sessionId, fire.requestId)).filter((a) => a.reason === "human_approval");
+      const asks = (await asksOf(owner(), fire.sessionId, fire.requestId)).filter((a) => a.reason === "user_approval");
       const named = (asks[0]?.data as { worker?: string } | undefined)?.worker;
-      if (fire.status !== "suspended" || asks.length !== 1) r.fail("c3", `the fire turn ended ${fire.status} with ${asks.length} human_approval ask(s): ${quote(fire)}`);
+      if (fire.status !== "suspended" || asks.length !== 1) r.fail("c3", `the fire turn ended ${fire.status} with ${asks.length} user_approval ask(s): ${quote(fire)}`);
       else if (named !== worker || !/fire/i.test(asks[0]!.message ?? "")) r.fail("c3", `the ask says "${asks[0]!.message}" naming ${JSON.stringify(asks[0]!.data)}, not a fire of "${worker}"`);
       else {
         const answered = await answerInInbox(world, asks[0]!.suspensionId!, "Approve");
         if (!answered.clicked) r.fail("c3", `Inbox draws no card for ${asks[0]!.suspensionId}`);
-        const settled = await owner().settle(await cosFlowOf(world), fire.requestId, 180_000, true);
+        const settled = await owner().settle(await shiftCoordinatorFlowOf(world), fire.requestId, 180_000, true);
         r.saw("c3", `Inbox card "${answered.card.slice(0, 160)}"; Approve; the turn ended ${settled}`);
       }
     }

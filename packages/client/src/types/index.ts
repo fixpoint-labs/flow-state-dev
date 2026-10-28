@@ -258,6 +258,15 @@ export type SessionRequestSummary = {
   source?: string;
   status: RequestStatus;
   startedAtMs?: number;
+  /**
+   * Where the turns this request read begin: the first past turn its history
+   * window held, when earlier turns had fallen out of it. Draw a divider
+   * before that request; the turns above it are out of the model's view (or,
+   * on a flow with a history summary, in the summary). Absent when every
+   * earlier turn was in the window, and on servers that predate the field.
+   * Guard with `== null` (BP-030).
+   */
+  historyStart?: { requestId: string };
   completedAtMs?: number;
   failedAtMs?: number;
   metadata?: Record<string, unknown>;

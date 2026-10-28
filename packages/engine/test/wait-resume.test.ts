@@ -499,7 +499,7 @@ describe("wait gate: park, and resume from the waiting turn's own conversation",
       inputSchema: z.object({}).passthrough(),
       outputSchema: z.any(),
       execute: async (_input, ctx) =>
-        ctx.suspend!({ reason: "human_approval", suspensionId: GATE_ID })
+        ctx.suspend!({ reason: "user_approval", suspensionId: GATE_ID })
     });
     const touchBlock = handler({
       name: "touch",

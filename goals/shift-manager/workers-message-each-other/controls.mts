@@ -119,7 +119,7 @@ export const CONTROLS: Record<ControlName, Control> = {
         from: NOT_YOURSELF,
         to:
           'if (to === sender && !answering) return "not_yourself: you can\'t message yourself."; ' +
-          'if (recipient?.flow === "coordinator" && to !== "chief-of-staff") return `no_turn: "${to}" hands every line to its delegates and runs no turn of its own.`;',
+          'if (recipient?.flow === "coordinator" && to !== "shift-coordinator") return `no_turn: "${to}" hands every line to its delegates and runs no turn of its own.`;',
       },
     ],
     does: "a coordinator that hands every line on (any but the best-fit Shift Coordinator here) is refused `no_turn`, as before",
