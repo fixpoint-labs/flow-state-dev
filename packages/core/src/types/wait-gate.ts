@@ -16,6 +16,11 @@
  *   the work as it stands.
  * - **with a stop**, when a person stops the parked request.
  *
+ * A wait that starts its work itself (a call's send, a dispatcher's dispatch)
+ * owes its park first, through `RequestWaits.owingPark`: a request that dies
+ * after starting the work and before this gate is written is continued by the
+ * engine's durability sweep, and its replay parks here on the work it started.
+ *
  * **The gate's data is the wait binding**, its deadline and the waiting
  * request's own work, and nothing else. The gate fences on the work's identity
  * and its single ending, not on a per-attempt claim ticket, and it is pending

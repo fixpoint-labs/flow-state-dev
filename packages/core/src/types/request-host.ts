@@ -259,6 +259,21 @@ export interface RequestWaits {
    * that request until it ends.
    */
   userStop?(): Promise<{ readonly requestId: string } | undefined>;
+  /**
+   * Run `work`, which starts what the running request will then park on, and
+   * parks on it (FIX-2269): a dispatch and its wait, a call's send and its
+   * wait. If the process dies after `work` starts and before the park is
+   * written, the engine continues the request, as the continue route does,
+   * and its replay parks on what it already started.
+   *
+   * Asks nothing new of the caller: a wait runs only in a durable action, and
+   * the resume after a park already replays the in-flight block from its
+   * start, so the block must already replay safely up to the park (keep its
+   * effects under `runOnce`). The obligation is the running request's own,
+   * kept by the engine, and cleared when the request parks, when `work`
+   * returns or throws anything but the park, and when the request ends.
+   */
+  owingPark?<T>(work: () => Promise<T>): Promise<T>;
 }
 
 /**

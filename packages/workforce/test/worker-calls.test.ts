@@ -17,6 +17,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { GeneratorModel, GeneratorModelCallOptions } from "@flow-state-dev/core/types";
+import { inMemoryStores, type StoreAdapter, type StoreRegistry } from "@flow-state-dev/engine";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { boardWorkers, bootBoardHost, ORG, type BoardHost, type BoardHostOptions } from "./conversation-board-harness";
@@ -408,5 +409,81 @@ describe("a call's depth", () => {
       threw: String(error)
     }));
     expect(JSON.stringify(allowed)).not.toContain("wait_too_deep");
+  });
+});
+
+/**
+ * `stores` as one host sees them, until `dies(method, args)` holds for a call:
+ * that call lands, and from then on every call on every store never settles,
+ * as a process killed right after that write would leave it. Another host on
+ * `stores` itself sees exactly what landed.
+ */
+function killableStores(stores: StoreAdapter, dies: (method: string, args: unknown[]) => boolean) {
+  let dead = false;
+  const never = new Promise<never>(() => {});
+  const wrap = <T extends object>(store: T): T =>
+    new Proxy(store, {
+      get(target, prop) {
+        const value = Reflect.get(target, prop, target);
+        if (typeof value !== "function") return value;
+        return (...args: unknown[]) => {
+          if (dead) return never;
+          const result = value.apply(target, args);
+          if (!dies(String(prop), args)) return result;
+          dead = true;
+          return Promise.resolve(result).then(() => never);
+        };
+      }
+    });
+  let registry: Promise<StoreRegistry> | undefined;
+  const resolve = () =>
+    (registry ??= stores.resolve().then(
+      (inner) =>
+        Object.fromEntries(
+          Object.entries(inner).map(([name, store]) => [name, store === undefined ? store : wrap(store as object)])
+        ) as StoreRegistry
+    ));
+  return { stores: { ...stores, resolve } as StoreAdapter, dead: () => dead };
+}
+
+describe("a call whose process dies after its row, before it parks", { timeout: 60_000 }, () => {
+  // The bug (FIX-2269): the caller's request was left `interrupted` behind no
+  // gate, so nothing continued it and the call never answered its user, though
+  // the recipient could still have answered it.
+  it("is continued by the next host: the same call is answered in the same request, and its row is written once", async () => {
+    const { model } = ottoModel({ "Ask the lead": () => [{ args: { to: "lead", text: "What is the codename?", wait: true } }] });
+    const shared = inMemoryStores();
+    // The process dies the moment the call's row lands, before its dispatch.
+    const killed = killableStores(shared, (method, args) => {
+      if (!method.startsWith("set")) return false;
+      const written = JSON.stringify(args);
+      return written.includes("workforce/messages/") && written.includes('"call":true');
+    });
+    const staleSweep = { intervalMs: 100, thresholdMs: 500 };
+    const common = { durable: true, agentModel: model, standard: boardWorkers(), staleSweep } satisfies BoardHostOptions;
+    const first = bootBoardHost({ ...common, judgment: leadAnswers(), stores: killed.stores as never });
+    await first.state.getRouter();
+    const otto = (await first.create("alice", "agent", { state: { workerId: "otto" } })).body.session!.id as string;
+    const asked = await first.post("alice", otto, "respond", { message: "Ask the lead for the codename" }, "agent");
+    expect(await until(() => killed.dead())).toBe(true);
+    // The dead host is never disposed: its every store call hangs, as a dead process's would.
+
+    const next = bootBoardHost({ ...common, judgment: leadAnswers(), stores: shared as never });
+    open = next;
+    await next.state.getRouter();
+    expect(await until(async () => (await (await shared.resolve()).request.get(asked))?.status === "completed", 30_000)).toBe(true);
+    await next.settled(20_000);
+
+    // The request that asked is the one that answered: continued, not run again.
+    const turns = await ottoTurns(next, otto);
+    expect(turns.map((t) => t.id)).toEqual([asked]);
+    const outputs = await toolOutputs(next, otto);
+    expect(outputs).toEqual([{ status: "answered", callId: expect.stringMatching(/^msg_/), reply: "The codename is Bluebird." }]);
+    expect(JSON.stringify(turns[0]!.result?.output)).toContain("Bluebird");
+    // One row, the call the first host wrote, delivered once and replied to.
+    const rows = await logRows(next);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: outputs[0]!.callId, call: true, status: "delivered", repliedAt: expect.any(Number) });
+    expect(await landedIn(next, rows[0]!.toSession)).toHaveLength(1);
   });
 });

@@ -86,6 +86,7 @@ import { stopSuspendedRequest } from "../durability/stop-suspended";
 import { noteSuspensionDeadline } from "../durability/suspension-deadlines";
 import { requestEndRegistryOf } from "./request-end-hooks";
 import { WAIT_DEADLINE_ENTRY, isUserSuspension, isWaitGate, continuesAtExpiry, waitGateDataOf } from "@flow-state-dev/core/types";
+import { clearParkOwed, parkOwedKey } from "../durability/park-owed";
 
 type RunActionInternalOptions<
   TFlow extends FlowInstance = FlowInstance,
@@ -2371,6 +2372,10 @@ async function runActionAttempt<
             }
           }
           await provider.suspend(record);
+          // The gate is what continues the request now: a park the wait owed
+          // before it started its work is paid (FIX-2269).
+          const owedKey = isWaitGate(record) ? parkOwedKey({ id: requestId, sessionId: options.sessionId, tenantId: options.tenantId }) : undefined;
+          if (owedKey !== undefined && options.stores.wakes !== undefined) await clearParkOwed(options.stores.wakes, owedKey);
           // A sweeper on this provider brings its tick forward to the deadline.
           if (record.expiresAt !== undefined) noteSuspensionDeadline(provider, record.expiresAt);
         }

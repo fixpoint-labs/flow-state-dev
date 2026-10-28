@@ -48,8 +48,9 @@
  */
 import { isUserSuspension, isWaitGate, continuesAtExpiry, RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
 import type { ResumeAction, ResumeContext, SuspensionRecord } from "@flow-state-dev/core/types";
-import type { RequestRecord, StoreRegistry } from "../stores/types";
+import type { RequestRecord, StoreRegistry, WakeStore } from "../stores/types";
 import type { DurabilityProvider } from "./types";
+import { owesPark } from "./park-owed";
 import { resolveRequestIncarnation } from "../stores/scope-keys";
 import { TASK_SOURCE } from "../execution/transport-sources";
 import { resumeWaitGate } from "./resume-wait-gate";
@@ -57,7 +58,8 @@ import { continueUnderLease, latestGateIdOf, resumeUnderLease, type ResumeDeps }
 
 /** What a stop of a parked turn needs from the host. */
 export type SuspendedStopDeps = ResumeDeps & {
-  stores: Pick<StoreRegistry, "request">;
+  /** `wakes`, where kept: a stop of a request that owes its park lets the owe go (FIX-2269). */
+  stores: Pick<StoreRegistry, "request" | "wakes">;
 };
 
 /**
@@ -304,18 +306,21 @@ function personResolutionOf(gate: Pick<SuspensionRecord, "reason" | "status">): 
 /**
  * Whether an `interrupted` request will run again: the last gate on its log is
  * still pending (a resume drives it), or resolved and owed a re-drive, which
- * the durability sweep gives it (step 2b). An interrupted request with no such
- * gate died while it ran, and nothing drives it again: its work is over.
+ * the durability sweep gives it (step 2b); or, with no gate on its log, it owes
+ * a park (FIX-2269), and the sweep continues it (`park-owed.ts`, read from
+ * `wakes` when given). An interrupted request with none of these died while it
+ * ran, and nothing drives it again: its work is over.
  *
  * A wait's `ended` (`wait-chain.ts`) reads it alone, so it does not see an
  * unlogged pending gate; {@link parkedInterruptedIds} builds the parked rule on it. `record.items` must hold the request's log.
  */
 export async function drivenAgain(
   provider: Pick<DurabilityProvider, "loadSuspension">,
-  record: Pick<RequestRecord, "id" | "items">
+  record: Pick<RequestRecord, "id" | "items" | "sessionId" | "tenantId">,
+  wakes?: WakeStore
 ): Promise<boolean> {
   const gateId = latestGateIdOf(record);
-  if (gateId === undefined) return false;
+  if (gateId === undefined) return owesPark(wakes, record);
   const gate = await provider.loadSuspension(record.id, gateId);
   if (gate === null) return false;
   return gate.status === "pending" || owesRedrive(gate);
@@ -324,9 +329,9 @@ export async function drivenAgain(
 /**
  * The ids of the `interrupted` records in `records` that are parked, not dead:
  * {@link drivenAgain} (the last logged gate is pending, or resolved and owed a
- * re-drive), or the store holds a pending gate of the request that its log
- * does not name yet (a crash between `provider.suspend` and the log append, or
- * a re-suspension). The one rule of a parked interrupted request: a stop
+ * re-drive, or no gate and a park owed), or the store holds a pending gate of
+ * the request that its log does not name yet (a crash between
+ * `provider.suspend` and the log append, or a re-suspension). The one rule of a parked interrupted request: a stop
  * (`execution/record-request-stop.ts`), history and session retention
  * (`execution/past-turns.ts`) read it.
  *
@@ -337,7 +342,8 @@ export async function drivenAgain(
  */
 export async function parkedInterruptedIds(
   provider: Pick<DurabilityProvider, "listSuspended" | "loadSuspension"> | undefined,
-  records: readonly Pick<RequestRecord, "id" | "status" | "items" | "userId" | "sessionId">[]
+  records: readonly Pick<RequestRecord, "id" | "status" | "items" | "userId" | "sessionId" | "tenantId">[],
+  wakes?: WakeStore
 ): Promise<Set<string>> {
   const parked = new Set<string>();
   const interrupted = records.filter((r) => r.status === "interrupted");
@@ -350,7 +356,7 @@ export async function parkedInterruptedIds(
     for (const gate of pending) if (ids.has(gate.requestId)) parked.add(gate.requestId);
   }
   for (const record of interrupted) {
-    if (!parked.has(record.id) && (await drivenAgain(provider, record))) parked.add(record.id);
+    if (!parked.has(record.id) && (await drivenAgain(provider, record, wakes))) parked.add(record.id);
   }
   return parked;
 }

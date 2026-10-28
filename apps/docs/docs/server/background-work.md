@@ -219,7 +219,9 @@ With `wait: true` the block's output is how the dispatched request ended:
 `{ status: "completed", output, requestId }`, `{ status: "failed", error, requestId }`, or
 `{ status: "running", requestId }` at the deadline, five minutes by default. Nothing is stopped
 at the deadline; the work runs on. The request parks without holding anything open and
-survives a server restart. Waits nest up to five deep, counting task waits too, and a wait that
+survives a server restart. If the process dies after the dispatch and before the
+request parks, the sweeper continues the request and it parks on the request it
+already dispatched. Waits nest up to five deep, counting task waits too, and a wait that
 would go deeper is refused before anything is dispatched.
 
 A worker waits on a task the same way: it files it, then calls `getTask({ id, wait: true })`.
@@ -391,7 +393,12 @@ Marking it is where the framework stops. Nothing continues or re-runs the work
 on your behalf, deliberately: restarting a request nobody asked to restart is
 how the same job runs twice. So the row keeps reading `active` — an
 `interrupted` run is unfinished and still continuable — until a client resumes
-or retries it, or a later run supersedes it. The sweep waits
+or retries it, or a later run supersedes it. The one exception is a request
+interrupted inside a wait that had started its work but not yet parked, such as
+a dispatcher with `wait: true`: the durability sweeper continues it, and the
+replay parks on the work already started instead of starting it again (see
+[a wait that died before it
+parked](../advanced/durable-execution.md#retention-and-cleanup)). The sweep waits
 until a record's heartbeat has been quiet longer than the staleness threshold,
 so a job that has simply gone quiet for a second is never mistaken for an
 abandoned one.

@@ -35,7 +35,10 @@
  *      The pass it runs clears it, or moves it to its next due time. A
  *      `waitDeadline` wake (FIX-2082 D1) is the sweep's own: it resumes every
  *      wait in that session past its deadline, cancelling nothing, and moves
- *      the wake to the next one (`resumeDueWaits`).
+ *      the wake to the next one (`resumeDueWaits`). A `parkOwed:` wake
+ *      (FIX-2269) is the sweep's own as well: a request that died after its
+ *      wait started the work and before its gate was written is continued
+ *      (`continueOwedPark`).
  *   3. Prune resolved (terminal) suspensions older than the retention window.
  *   4. Prune expired leases (finally wiring `LeaseStore.pruneExpired`).
  *   5. Prune orphaned checkpoints for terminal/interrupted requests whose
@@ -78,7 +81,8 @@ import { outcomeOfRequest } from "./wait-chain";
 import { onWakeOwed } from "./request-wakes";
 import { onSuspensionDeadline } from "./suspension-deadlines";
 import { owesRedrive, PARKED, redriveResolvedGate, stopSuspendedRequest } from "./stop-suspended";
-import { expireUnderLease, latestGateIdOf } from "./resume-under-lease";
+import { continueUnderLease, expireUnderLease, latestGateIdOf } from "./resume-under-lease";
+import { PARK_OWED_GIVE_UP_MS, parkOwedRequestOf } from "./park-owed";
 import type { ResumeDeps } from "./resume-under-lease";
 
 /**
@@ -612,6 +616,12 @@ async function fireDueWakes(args: ResolvedTickArgs, now: number): Promise<void> 
         await resumeDueWaits(args, wake, now);
         continue;
       }
+      // A park a wait owed before it started its work (FIX-2269): the sweep's own too.
+      const owing = parkOwedRequestOf(wake.entry);
+      if (owing !== undefined) {
+        await continueOwedPark(args, wake, owing, now);
+        continue;
+      }
       if (fireWake === undefined) continue;
       if (!(await wakes.move(wake, wake.version, now + WAKE_RETRY_MS))) continue;
       await fireWake(wake);
@@ -624,6 +634,63 @@ async function fireDueWakes(args: ResolvedTickArgs, now: number): Promise<void> 
     }
   }
 }
+
+/**
+ * Step 2c's owed-park branch (FIX-2269): a request owed a park, and the time
+ * until it would count as dead has passed. Still `interrupted` (its process
+ * died after its wait started the work and before the gate was written), it
+ * is continued under its lease as the continue route continues one, and its
+ * replay parks on the work it already started. Still running (`in_progress`),
+ * the wake moves on. Parked or ended, nothing is owed and
+ * the wake is cleared. Owed past {@link PARK_OWED_GIVE_UP_MS} from the first
+ * owe, the request is left `interrupted` and the wake let go, so a request
+ * that dies at the same place on every replay can't spin the sweep.
+ *
+ * The wake moves one {@link WAKE_RETRY_MS} out before the continuation, so a
+ * continuation that dies before it parks is continued again.
+ */
+async function continueOwedPark(args: ResolvedTickArgs, wake: WakeRecord, requestId: string, now: number): Promise<void> {
+  const { provider, stores, logger, continueRequest } = args;
+  const wakes = stores.wakes;
+  // Left due for a sweeper that can continue a request.
+  if (continueRequest === undefined || wakes === undefined) return;
+  const record = await stores.request.get(requestId);
+  if (record === undefined || !OWING_STATUSES.includes(record.status)) {
+    await wakes.clear(wake, wake.version);
+    return;
+  }
+  if (record.status !== "interrupted") {
+    await wakes.move(wake, wake.version, now + WAKE_RETRY_MS);
+    return;
+  }
+  if (now - wake.createdAt > PARK_OWED_GIVE_UP_MS) {
+    logRuntimeEvent(logger, "warn", "[flow-state] durability sweeper: a request still owes its park past the give-up age; left interrupted", {
+      requestId,
+      sessionId: wake.sessionId,
+      owedSince: wake.createdAt
+    });
+    await wakes.clear(wake, wake.version);
+    return;
+  }
+  if (!(await wakes.move(wake, wake.version, now + WAKE_RETRY_MS))) return;
+  const result = await continueUnderLease<"not-interrupted">({ provider, continueRequest }, {
+    requestId,
+    holder: "park-owed",
+    admit: async () => {
+      const current = await stores.request.get(requestId);
+      return current?.status === "interrupted" ? { resumeContext: undefined } : { refusal: "not-interrupted" };
+    }
+  });
+  if (result.ok) {
+    logRuntimeEvent(logger, "info", "[flow-state] durability sweeper: continued a request that died before it parked", {
+      requestId,
+      sessionId: wake.sessionId
+    });
+  }
+}
+
+/** Statuses of a request that may still owe its park: running, or dead. */
+const OWING_STATUSES: RequestStatus[] = ["in_progress", "interrupted"];
 
 /**
  * Step 2c's wait branch (FIX-2082 D1): a session's `waitDeadline` wake is due.

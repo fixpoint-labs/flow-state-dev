@@ -12,7 +12,10 @@
  *   `MAX_WAIT_DEPTH` (`wait_too_deep`); and one wait per model step
  *   (`wait_already_pending`), claimed last.
  * - **The send** is the send's, with a server-chosen id kept by `runOnce`, so
- *   the replay after the park writes nothing again. The row says it is a call
+ *   the replay after the park writes nothing again. The park is owed before
+ *   it (`RequestWaits.owingPark`, FIX-2269): a process that dies after the
+ *   row and before the park leaves the request for the engine to continue,
+ *   and its replay sends under the same id and parks. The row says it is a call
  *   and when its sender stops waiting, and its dispatch says the sender waits.
  * - **The wait** parks on the one wait gate (`waitOnRequest`), bound to the
  *   request that acts on the message: first the one its own dispatch became,
@@ -88,11 +91,17 @@ export async function callWorker(
   const deadlineAt = await once(`fsd.call.deadline:${checked.key}`, async () => Date.now() + checked.deadlineMs);
   const id = await once(`fsd.call.id:${checked.key}`, async () => newMessageId());
   const { deadline: _deadline, ...message } = input;
-  const sent = await once(`fsd.call.send:${checked.key}`, () =>
-    sendMessage(ctx, installation, flowKind, message, from, { id, call: { deadlineAt } })
-  );
-  if (!sent.ok) return { ok: false, error: sent.error };
-  return awaitReply(ctx, id, checked.key, deadlineAt, sent.requestId);
+  const sendThenWait = async (): Promise<CallOutcome> => {
+    const sent = await once(`fsd.call.send:${checked.key}`, () =>
+      sendMessage(ctx, installation, flowKind, message, from, { id, call: { deadlineAt } })
+    );
+    if (!sent.ok) return { ok: false, error: sent.error };
+    return awaitReply(ctx, id, checked.key, deadlineAt, sent.requestId);
+  };
+  // The park is owed before the row (FIX-2269): a process that dies between
+  // the row and the park leaves the request for the engine to continue.
+  const waits = ctx.requestHost?.waits;
+  return waits?.owingPark !== undefined ? waits.owingPark(sendThenWait) : sendThenWait();
 }
 
 /**

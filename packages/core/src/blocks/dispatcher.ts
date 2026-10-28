@@ -473,7 +473,9 @@ export function dispatcher(
  * Every check comes before anything is sent: a host that can hold the wait,
  * and a chain no deeper than {@link MAX_WAIT_DEPTH}. The dispatch and the
  * wait's plan (its gate and deadline) are each kept by `runOnce`, so the replay
- * after the park sends nothing again and parks on the same gate.
+ * after the park sends nothing again and parks on the same gate. The park is
+ * owed before the dispatch (`RequestWaits.owingPark`), so a process that dies
+ * between the two leaves a request the engine continues.
  */
 async function sendAndWait(name: string, ctx: BlockContext, send: () => Promise<DispatchHandle>): Promise<DispatchWaitResult> {
   const waits = ctx.requestHost?.waits;
@@ -492,24 +494,29 @@ async function sendAndWait(name: string, ctx: BlockContext, send: () => Promise<
         "nothing was dispatched. Run it inside a request."
     );
   }
-  const handle = await once(`fsd.dispatch.send:${key}`, async () => {
-    const depth = await waits.depth({});
-    if (depth > MAX_WAIT_DEPTH) {
-      throw new Error(
-        `[dispatcher] "${name}": wait_too_deep: this wait would be ${depth} deep, and waits nest at most ` +
-          `${MAX_WAIT_DEPTH} deep. Nothing was dispatched.`
-      );
-    }
-    return send();
-  });
-  const requestId = handle.requestId;
-  const outcome = await waitOnRequest(ctx, {
-    requestId,
-    gateId: `dispatch:${requestId}`,
-    planKey: `fsd.dispatch.wait:${key}`,
-    message: `Waiting on the request "${name}" dispatched`
-  });
-  return { ...outcome, requestId };
+  const sendThenWait = async (): Promise<DispatchWaitResult> => {
+    const handle = await once(`fsd.dispatch.send:${key}`, async () => {
+      const depth = await waits.depth({});
+      if (depth > MAX_WAIT_DEPTH) {
+        throw new Error(
+          `[dispatcher] "${name}": wait_too_deep: this wait would be ${depth} deep, and waits nest at most ` +
+            `${MAX_WAIT_DEPTH} deep. Nothing was dispatched.`
+        );
+      }
+      return send();
+    });
+    const requestId = handle.requestId;
+    const outcome = await waitOnRequest(ctx, {
+      requestId,
+      gateId: `dispatch:${requestId}`,
+      planKey: `fsd.dispatch.wait:${key}`,
+      message: `Waiting on the request "${name}" dispatched`
+    });
+    return { ...outcome, requestId };
+  };
+  // The park is owed before the dispatch (FIX-2269): a process that dies
+  // between the two leaves the request for the engine to continue.
+  return waits.owingPark !== undefined ? waits.owingPark(sendThenWait) : sendThenWait();
 }
 
 function handleOf(outcome: { sessionId: string; requestId: string; adopted: boolean }): DispatchHandle {

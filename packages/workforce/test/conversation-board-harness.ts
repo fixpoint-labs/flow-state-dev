@@ -218,6 +218,8 @@ export type BoardHostOptions = {
   errorCapture?: (event: any) => void;
   /** Inbound transport adapters for the router, such as the scheduled-dispatch one. */
   adapters?: unknown[];
+  /** The host's stale sweep: how often it runs and when a request with no heartbeat counts as dead. */
+  staleSweep?: { intervalMs: number; thresholdMs: number };
 };
 
 /**
@@ -319,6 +321,9 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     ...(options.waitDeadlines === undefined ? {} : { waitDeadlines: options.waitDeadlines }),
     ...(options.errorCapture === undefined ? {} : { errorCapture: options.errorCapture }),
     ...(options.adapters === undefined ? {} : { adapters: options.adapters }),
+    ...(options.staleSweep === undefined
+      ? {}
+      : { staleSweepIntervalMs: options.staleSweep.intervalMs, staleSweepThresholdMs: options.staleSweep.thresholdMs }),
     modelResolver: withJudgmentModel(
       options.observeTools === undefined && options.afterModelCall === undefined
         ? models

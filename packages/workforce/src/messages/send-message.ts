@@ -242,7 +242,8 @@ function exemptPlace(ctx: BlockContext, given: string | undefined): Place {
  *   one message: when its row is already written, the repeat owes nothing,
  *   pays nothing and answers as the row reads (a refusal stays one). From a
  *   flow with no pass, a repeat finding the row never taken dispatches it
- *   again, since nothing else would. Never a model's input.
+ *   again, since nothing else would; a call's repeat does too, so its caller
+ *   has the request to wait on. Never a model's input.
  * @param options.call The sender waits on the reply until `deadlineAt`
  *   (FIX-2239): the row is marked a call, and the dispatch says the sender
  *   waits on it. Set by the call's own code, never by a model.
@@ -278,9 +279,12 @@ export async function sendMessage(
     }
     // A flow with no pass sends on its own dispatch only, so a repeat finding
     // the row never taken (the first send ended between the write and the
-    // dispatch) sends it again; the take keeps it once.
-    if (written.status === "unconfirmed" && written.takenBy === undefined && !carriesPass(installation, flowKind)) {
-      return dispatchOnce(ctx, writtenRef, written, from, false);
+    // dispatch) sends it again; the take keeps it once. A call's repeat sends
+    // it again too, pass or not (FIX-2269): its caller waits on the request
+    // that dispatch starts, and a resend from the pass leaves it none to follow.
+    const resends = carriesPass(installation, flowKind);
+    if (written.status === "unconfirmed" && written.takenBy === undefined && (written.call === true || !resends)) {
+      return dispatchOnce(ctx, writtenRef, written, from, resends);
     }
     return { ok: true, id: written.id };
   }

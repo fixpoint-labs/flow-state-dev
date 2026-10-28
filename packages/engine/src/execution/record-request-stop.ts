@@ -12,6 +12,7 @@ import { resolveRequestIncarnation } from "../stores/scope-keys";
 import type { RequestRecord, RequestStatus, RequestStore } from "../stores/types";
 import { abortRequest } from "./abort-registry";
 import { parkedInterruptedIds, stopSuspendedRequest, type SuspendedStopDeps } from "../durability/stop-suspended";
+import { clearParkOwed, parkOwedKey } from "../durability/park-owed";
 
 /**
  * What recording a stop came to.
@@ -88,6 +89,10 @@ export async function recordRequestStop(
       return { kind: "gone" };
     }
     if (current.status === "interrupted" && !(await parkedInterruptedIds(parked.provider, [current])).has(current.id)) {
+      // Dead behind no gate. A park it owes would have the sweep continue it
+      // (FIX-2269); the stop lets that go, so it stays stopped.
+      const owedKey = parkOwedKey(current);
+      if (owedKey !== undefined && parked.stores.wakes !== undefined) await clearParkOwed(parked.stores.wakes, owedKey);
       return { kind: "finished", status: "interrupted" };
     }
     const stopped = await stopSuspendedRequest(parked, current);

@@ -52,7 +52,7 @@ import {
   type WaitOutcome,
   type WaitRow
 } from "@flow-state-dev/core/types";
-import type { ActiveRequestEntry, RequestRecord, StoreRegistry } from "../stores/types";
+import type { ActiveRequestEntry, RequestRecord, StoreRegistry, WakeStore } from "../stores/types";
 import { isFresh } from "../context/liveness-read";
 import type { DurabilityProvider } from "./types";
 import { resumeWaitGate, type WaitResumeDeps } from "./resume-wait-gate";
@@ -234,7 +234,7 @@ export function createRequestWaits(inputs: {
   /** The running request's session: `ended` answers only for requests in it. */
   readonly sessionId: string;
   /** A request's record, with its item log, from the request store. */
-  readonly readRequest: (requestId: string) => Promise<Pick<RequestRecord, "id" | "status" | "sessionId" | "items"> | undefined>;
+  readonly readRequest: (requestId: string) => Promise<Pick<RequestRecord, "id" | "status" | "sessionId" | "tenantId" | "items"> | undefined>;
   /**
    * How `running` tells a request whose process died from one still running
    * (FIX-2166): its registry entry's heartbeat, read against the host's stale
@@ -258,6 +258,10 @@ export function createRequestWaits(inputs: {
     readonly staleThresholdMs: number;
     readonly now: () => number;
   };
+  /** `owingPark` (FIX-2269), built on the host's wakes (`park-owed.ts`). */
+  readonly owingPark?: RequestWaits["owingPark"];
+  /** The host's wakes, where `ended` reads a park an interrupted request owes (FIX-2269). */
+  readonly wakes?: WakeStore;
 }): RequestWaits {
   // An `in_progress` record whose heartbeat stopped past the stale threshold
   // is a request whose process died before the sweep marked it interrupted
@@ -279,6 +283,7 @@ export function createRequestWaits(inputs: {
   };
   return {
     deadlines: inputs.deadlines,
+    ...(inputs.owingPark !== undefined ? { owingPark: inputs.owingPark } : {}),
     depth: ({ binding, own }) =>
       waitChainDepth(inputs.provider, inputs.userId, { requestId: inputs.requestId, own: own ?? inputs.own }, binding, inputs.waitedBy),
     ended: async (requestIds) => {
@@ -287,7 +292,7 @@ export function createRequestWaits(inputs: {
         if (record === undefined) return true;
         // A request of another session is never answered as ended: not this session's to release.
         if (record.sessionId !== inputs.sessionId) return false;
-        return WORK_OVER.has(record.status) || (record.status === "interrupted" && !(await drivenAgain(inputs.provider, record)));
+        return WORK_OVER.has(record.status) || (record.status === "interrupted" && !(await drivenAgain(inputs.provider, record, inputs.wakes)));
       };
       const answers: Record<string, boolean> = {};
       for (const requestId of new Set(requestIds)) {

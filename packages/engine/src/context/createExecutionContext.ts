@@ -796,7 +796,7 @@ export async function createExecutionContext<
   // turn, never the turn itself: nothing is treated as parked, and it is logged.
   let parked = new Set<string>();
   try {
-    parked = await parkedInterruptedIds(options.effectiveRuntimeConfig?.durabilityProvider, priorRequests);
+    parked = await parkedInterruptedIds(options.effectiveRuntimeConfig?.durabilityProvider, priorRequests, stores.wakes);
   } catch (error) {
     logRuntimeEvent(options.logger ?? DEFAULT_RUNTIME_LOGGER, "warn", "[flow-state] history could not read the gates of interrupted turns", {
       requestId,
