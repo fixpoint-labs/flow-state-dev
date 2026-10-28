@@ -603,7 +603,9 @@ refuses, the last naming the action to rename. A resource with a `writtenBy` fie
 `hireWorkforce` also requires every worker flow to carry an internal `onMessageReceived` entry built
 by `messageReceivedEntry`, so any worker can be [messaged](#worker-messages); a flow without one, or
 with a hand-built entry under that name, is refused, naming the flow. `defineSessionBoard`'s `entries(turn)`
-includes it.
+includes it. A flow whose model is offered `sendMessage` (the kit's `messages` in a block's static
+`uses`) must also carry the kit's `dispatch` pass, which sends a message again until it lands; one
+without it is refused, naming the flow. Spread `entries(turn)` and declare the `manager` role.
 
 Each declared role's entries must be there, in their section, carrying their factory's mark, and
 take the input their caller sends:
@@ -2356,7 +2358,9 @@ Send to talk; call when the worker needs to use the answer now; file a task for 
   line in the sending session, `Your message msg_… to <worker> wasn't delivered: <reason>.`, which
   its next turn reads; no turn is started for it. Resends run on the session's wake, so they need a
   host that keeps wakes; without one, an owed message is sent again only when that session's board
-  pass runs for something else. A worker flow without the session kit's `entries(turn)` sends once.
+  pass runs for something else. A worker flow that offers `sendMessage` without the session kit's
+  `entries(turn)` is refused at hire; a flow that sends from its own code with no kit (`sendMessage(ctx, …)`)
+  sends once.
 
 A message is not a task: it files no row, owes no result, and doesn't count toward `taskChainLimit`.
 
