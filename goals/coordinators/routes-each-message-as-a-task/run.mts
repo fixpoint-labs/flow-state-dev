@@ -236,10 +236,10 @@ function grade(o: any, restart: { kill: any; restart: any }): { failures: string
   const failedRow = rows(fails.sessionId).find((r) => r.postId === fails.post.requestId && r.round === 0 && r.delegate.worker === third);
   // Each failed task says, once, that it couldn't answer and why (FIX-1872 BR-9 as amended), never an
   // answer carrying the word. Round 1 hands it the other's answer, which carries its fail mark, so it fails twice.
-  const failedLines = o.read.fails.lines.filter((l) => l.agentName === third).map((l) => l.text);
+  const failedLines = (o.read.fails.lines as Line[]).filter((l) => l.agentName === third).map((l) => l.text);
   const failedTasks = rows(fails.sessionId).filter((r) => r.postId === fails.post.requestId && r.delegate.worker === third && r.rowStatus === "errored").length;
   const failedSays = `${third} couldn't answer: ${third} fails on this message`;
-  if (failedRow?.rowStatus !== "errored" || failedLines.length !== failedTasks || failedLines.some((text) => text !== failedSays)) {
+  if (failedRow?.rowStatus !== "errored" || failedLines.length !== failedTasks || failedLines.some((text: string) => text !== failedSays)) {
     fail("b:failed", `${third} fails the message; wanted its task errored and one line by it per failed task (${failedTasks}), "${failedSays}"; task ${show(failedRow?.rowStatus)}, lines ${show(failedLines)}`);
   }
   if (fails.closedAt === null || fails.deadlineAt === null || fails.closedAt >= fails.deadlineAt) {
