@@ -4,7 +4,7 @@
  * Drives the supervisor pattern through three concurrent worker tasks
  * with per-task review approvals and a final synthesis. The recent
  * regression manifested as an infinite loop in the task-board claim
- * system; this scenario completes deterministically when the dispatcher
+ * system; this scenario completes deterministically when the claim order
  * + claim-system contract holds and either throws (sequencer loop guard)
  * or hits the vitest timeout when broken.
  *
@@ -65,7 +65,7 @@ describe("supervisor + task-board regression", () => {
     });
 
     // Primary regression signal: the run completed cleanly. An infinite
-    // loop in the dispatcher would either trip `DEFAULT_MAX_LOOP_GUARD`
+    // loop in the claim order would either trip `DEFAULT_MAX_LOOP_GUARD`
     // (throws → result.error populated) or hit the vitest timeout.
     expect(result.error).toBeUndefined();
     expect(result.status).toBe("completed");

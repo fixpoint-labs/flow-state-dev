@@ -249,7 +249,7 @@ async function seedBoard(ids: string[]) {
   const stores = createInMemoryStores();
   const sessionId = `claim-safety-${Math.random().toString(36).slice(2)}`;
   const seeded = await run(stores, sessionId, "seed", async (tasks) => {
-    await tasks.addTasks(ids.map((id) => ({ id, goal: id, input: { goal: id } })));
+    await tasks.createTasks(ids.map((id) => ({ id, goal: id, input: { goal: id } })));
     return "seeded";
   });
   expect(seeded.error).toBeUndefined();

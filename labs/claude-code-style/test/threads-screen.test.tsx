@@ -8,7 +8,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/App";
-import { createFixtureLab } from "../src/fixtures";
+import { createFakeLab } from "./fake-lab";
 
 afterEach(cleanup);
 
@@ -28,7 +28,7 @@ async function ask(text: string) {
 
 // Open the Projects view and start a session there, on a project.
 async function startThreadsSession(speed: number) {
-  render(<App adapter={createFixtureLab({ speed })} />);
+  render(<App adapter={createFakeLab({ speed })} />);
   fireEvent.click(within(screen.getByRole("tablist", { name: "View" })).getByRole("tab", { name: "Projects" }));
   fireEvent.click(screen.getByRole("button", { name: "+ New session" }));
   const picker = await screen.findByRole("region", { name: "Choose a project" });
@@ -103,7 +103,7 @@ describe("the threads-mode screen", () => {
   });
 
   it("keeps a pinned thread under Pinned whatever its status, and unpins it", async () => {
-    render(<App adapter={createFixtureLab({ speed: 0.01 })} />);
+    render(<App adapter={createFakeLab({ speed: 0.01 })} />);
     fireEvent.click(within(screen.getByRole("tablist", { name: "View" })).getByRole("tab", { name: "Projects" }));
     fireEvent.click(within(screen.getByRole("navigation", { name: "Sessions" })).getByRole("button", { name: /Billing triage/ }));
     await waitFor(() => expect(rowsIn("Pinned").join()).toMatch(/Weekly uptime digest/));

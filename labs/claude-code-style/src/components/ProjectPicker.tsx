@@ -1,11 +1,35 @@
+import { useState } from "react";
 import type { ProjectRow } from "../adapter";
 
 /**
  * *New session*'s question (spec D3): which project the session works in.
  * It asks before the composer opens and has no default, so a coding run never
- * lands in a repository nobody chose.
+ * lands in a repository nobody chose. *New project* adds one: a name and the
+ * repository its coding runs clone.
  */
-export function ProjectPicker({ projects, onPick }: { projects: ProjectRow[]; onPick: (project: ProjectRow) => void }) {
+export function ProjectPicker({
+  projects,
+  onPick,
+  onCreate,
+}: {
+  projects: ProjectRow[];
+  onPick: (project: ProjectRow) => void;
+  onCreate: (name: string, repository: string) => Promise<void>;
+}) {
+  const [name, setName] = useState("");
+  const [repository, setRepository] = useState("");
+  const [error, setError] = useState<string | undefined>();
+  const create = (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(undefined);
+    onCreate(name.trim(), repository.trim()).then(
+      () => {
+        setName("");
+        setRepository("");
+      },
+      (failed: unknown) => setError(failed instanceof Error ? failed.message : String(failed)),
+    );
+  };
   return (
     <main aria-label="Main thread" className="flex h-full min-h-0 min-w-0 flex-col items-center justify-center px-6">
       <section aria-label="Choose a project" className="w-full max-w-sm">
@@ -24,6 +48,35 @@ export function ProjectPicker({ projects, onPick }: { projects: ProjectRow[]; on
             </li>
           ))}
         </ul>
+        <form aria-label="New project" onSubmit={create} className="mt-6 flex flex-col gap-2">
+          <h2 className="text-xs font-semibold">New project</h2>
+          <input
+            aria-label="Project name"
+            placeholder="Name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            className="border border-border bg-background px-3 py-2 text-sm"
+          />
+          <input
+            aria-label="Repository"
+            placeholder="file:///path/to/repo"
+            value={repository}
+            onChange={(event) => setRepository(event.target.value)}
+            className="border border-border bg-background px-3 py-2 font-mono text-sm"
+          />
+          <button
+            type="submit"
+            disabled={name.trim() === "" || repository.trim() === ""}
+            className="border border-border bg-background px-3 py-2 text-left text-sm font-semibold hover:bg-accent disabled:opacity-50"
+          >
+            Create project
+          </button>
+          {error === undefined ? null : (
+            <p role="alert" className="text-xs text-destructive">
+              {error}
+            </p>
+          )}
+        </form>
       </section>
     </main>
   );

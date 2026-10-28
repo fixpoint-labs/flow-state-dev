@@ -272,7 +272,7 @@ describe("updater-purity check — the negative space that keeps it usable", () 
           if (Object.keys(next).length > 10) throw new Error("cap")
         }
         const helpers = { assertTransitionAllowed: (a: any) => a }
-        async function addTask(casWrite: any, task: any) {
+        async function createTask(casWrite: any, task: any) {
           await casWrite((tasks: any) => {
             const next = { ...tasks, [task.id]: task }
             assertWithinCaps(next)
@@ -280,7 +280,7 @@ describe("updater-purity check — the negative space that keeps it usable", () 
             return next
           })
         }
-        return { addTask }
+        return { createTask }
       }
     `);
 
@@ -294,14 +294,14 @@ describe("updater-purity check — the negative space that keeps it usable", () 
         function assertWithinCaps(next: any): void {
           if (Object.keys(next).length > 10) throw new Error("cap")
         }
-        async function addTask(casWrite: any, task: any) {
+        async function createTask(casWrite: any, task: any) {
           await casWrite((tasks: any) => {
             const next = { ...tasks, [task.id]: task }
             assertWithinCaps(next)
             return next
           })
         }
-        return { addTask }
+        return { createTask }
       }
     `);
 

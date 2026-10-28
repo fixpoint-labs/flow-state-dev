@@ -28,9 +28,9 @@ describe("tasks filed in the same millisecond", () => {
       collectionId: "claim-order",
       state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
     });
-    const a = await collection.addTask({ goal: "a" });
-    const b = await collection.addTask({ goal: "b" });
-    const c = await collection.addTask({ goal: "c" });
+    const a = await collection.createTask({ goal: "a" });
+    const b = await collection.createTask({ goal: "b" });
+    const c = await collection.createTask({ goal: "c" });
     expect(counterOf(b.id)).toBe(boundary - 1);
     expect(counterOf(c.id)).toBe(boundary);
 

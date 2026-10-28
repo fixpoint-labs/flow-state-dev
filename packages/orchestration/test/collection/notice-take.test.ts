@@ -33,7 +33,7 @@ const NOTICE = { attempt: 1, ending: "completed" } as const;
 
 /** A row that completed and owes its filer the notice, written as the ledger's recorder would. */
 async function endedOwing(tasks: TaskCollectionRef): Promise<void> {
-  await tasks.addTask({ id: "t", goal: "g", assignee: "ops" });
+  await tasks.createTask({ id: "t", goal: "g", assignee: "ops" });
   const claimed = await tasks.claim("w", { leaseDurationMs: 10_000 });
   await tasks.complete(claimed!.id, "done");
   await tasks.patchMetadata("t", { [KEY]: { attempt: 1, ending: "completed", due: 1000 } });
@@ -89,7 +89,7 @@ describe.each(BACKINGS)("taking a notice (%s)", (_name, makeBacking) => {
 
   it("files no notice record a filing's metadata names: a planted take can't keep a wait from dropping the notice", async () => {
     const tasks = await makeBacking();
-    await tasks.addTask({
+    await tasks.createTask({
       id: "t",
       goal: "g",
       assignee: "ops",

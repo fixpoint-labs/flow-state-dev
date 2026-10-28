@@ -31,6 +31,7 @@
  * path of its own.
  */
 import {
+  SuspensionTimeoutError,
   defineCapability,
   handler,
   sequencer,
@@ -57,7 +58,7 @@ import {
   answerOf,
   getOrCreateTaskCollection,
   hasFrozenLedgerAssignee,
-  isRowHold,
+  isRowQuestion,
   MAX_STEERS,
   readCommittedTask,
   resolveResourceCollection,
@@ -455,6 +456,25 @@ export interface ManagerOptions {
    */
   judge?: HarnessJudge;
   /**
+   * Hold a run that ends with commits on its branch for a person's review
+   * before its task completes (FIX-2163). Off by default: every run settles
+   * on its verdict, as without it.
+   *
+   * On, a run the phase's check passed (and the {@link judge}, when one read
+   * it, found done or was under its floor) that has commits over its base
+   * waits through `ctx.waitForUser({ kind: "review" })`, its prompt naming the
+   * commits and the judge's verdict as information. The answer is
+   * `{ verdict: "accepted" }`, which completes the task with no further
+   * harness run, or `{ verdict: "revise", words }`, whose words become the
+   * user's steer: the run goes on in the same coding session on the same
+   * attempt, and comes back for review. At the host's deadline for a user's
+   * stop the task completes with `review: "deadline"` on its output, never
+   * read as accepted. A run with no commits, or one that failed, is not
+   * reviewed. Needs durable execution: a host without it is refused when the
+   * request starts, before any harness run.
+   */
+  reviewChanges?: boolean;
+  /**
    * The tenant this conductor serves — the same value that partitions the
    * board's collection identity. Every request must resolve to it.
    */
@@ -650,8 +670,23 @@ const managerOutputSchema = z.object({
   commits: z.number().int().nonnegative(),
   /** Whether the host's judge read the run before it settled. */
   judged: z.boolean(),
+  /**
+   * How a person's review of the run's changes ended (`reviewChanges`):
+   * `"accepted"` is the only value meaning a person accepted them;
+   * `"deadline"` means nobody reviewed them before the host's deadline. `null`
+   * when no review was asked. Defaulted so a decision kept before it parses (BP-030).
+   */
+  review: z.enum(["accepted", "deadline"]).nullable().default(null),
 });
 type ManagerOutput = z.infer<typeof managerOutputSchema>;
+
+/** A person's answer to the review of a run's changes: accept them, or ask for changes in words. */
+export const harnessReviewAnswerSchema = z.discriminatedUnion("verdict", [
+  z.object({ verdict: z.literal("accepted") }),
+  // A word, not just space: a revision with none is refused when it is given.
+  z.object({ verdict: z.literal("revise"), words: z.string().regex(/\S/) }),
+]);
+export type HarnessReviewAnswer = z.infer<typeof harnessReviewAnswerSchema>;
 
 /**
  * What `decide` hands the steps after it: what a judge reads, or `null` when
@@ -713,7 +748,23 @@ const managerStateSchema = z.object({
    * check (to complete, or not, on the judge's verdict).
    */
   decided: z
-    .object({ settle: z.enum(["asked", "complete"]), output: managerOutputSchema })
+    .object({
+      settle: z.enum(["asked", "complete"]),
+      output: managerOutputSchema,
+      /**
+       * The commits read once by `decide`, for the review step's prompt and
+       * its one test of "made changes": skipped only on a verified zero.
+       */
+      changes: z
+        .object({ count: z.number().int().nonnegative(), subjects: z.array(z.string()), verified: z.boolean() })
+        .nullable()
+        .default(null),
+      /**
+       * How this decision's review ended (FIX-2163): `accepted` or `deadline`
+       * settle on it; `revise` and `cancelled` must not complete the run.
+       */
+      reviewed: z.enum(["accepted", "deadline", "revise", "cancelled"]).nullable().default(null),
+    })
     .nullable()
     .default(null),
   /**
@@ -944,6 +995,33 @@ function runRefused(ctx: { sequencer?: { state?: unknown } | undefined }, messag
     taskId: state?.taskId ?? "",
     ending: state?.claim != null ? "errored" : "cancelled",
   });
+}
+
+/**
+ * What a person reviewing a run's changes reads (FIX-2163): the commits, or
+ * that they couldn't be read, and the judge's verdict as information.
+ */
+function reviewPrompt(
+  changes: RunCommits | null,
+  branch: string | null,
+  read: HarnessJudgeVerdict | null,
+): string {
+  const lines: string[] = [];
+  if (changes === null || !changes.verified) {
+    lines.push("The run's commits couldn't be read, so its changes wait for your review rather than settling unseen.");
+  } else {
+    lines.push(`${changes.count} commit${changes.count === 1 ? "" : "s"} on ${branch ?? "the run's branch"}:`);
+    lines.push(...changes.subjects.map((subject) => `- ${subject}`));
+    if (changes.count > changes.subjects.length) lines.push(`- and ${changes.count - changes.subjects.length} more`);
+  }
+  lines.push("");
+  lines.push(
+    read === null
+      ? "No judge read this run."
+      : `The judge: ${read.verdict} (${read.confidence.toFixed(2)})${read.verdict === "done" ? "" : ", under its floor"}: ${read.reason}`,
+  );
+  lines.push("The judge's verdict is information, not approval. Accept the changes, or ask for changes in words.");
+  return lines.join("\n");
 }
 
 /** Read the manager's state, or throw rather than derive a wrong directory. */
@@ -1236,6 +1314,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     boardCollection,
     ledgers,
     judge,
+    reviewChanges = false,
     tenant,
     phase: callerPhase,
     workspace,
@@ -1250,8 +1329,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   // that host waiting on a call that never comes.
   if ("announce" in (options as object)) {
     throw new Error(
-      "[harness-manager] `announce` was removed: a run's question now holds its task on the board, " +
-        "where the Inbox lists it. Read held tasks from the board (`openRowHolds`) instead of being told.",
+      "[harness-manager] `announce` was removed: a run's question now keeps its task waiting on the board, " +
+        "where the Inbox lists it. Read held tasks from the board (`openRowQuestions`) instead of being told.",
     );
   }
 
@@ -1440,7 +1519,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     if (collection === undefined) {
       throw new Error(
         `[harness-manager] the board ledger "${boardCollectionId}" is not registered on this ` +
-          `worker, so its rows cannot be read or held on a question.`,
+          `worker, so its rows cannot be read or asked a question on.`,
       );
     }
     return getOrCreateTaskCollection({
@@ -1763,7 +1842,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     await holdOnQuestion(ctx, mismatchQuestion(mismatch.field, state.held?.attempt ?? null));
     console.warn(
       `[harness-manager] run ${identity.topic} (task ${identity.taskId}, attempt ${identity.attempt}): ` +
-        `held work does not match its record (${mismatch.field}); held on a question for the run's owner.`,
+        `held work does not match its record (${mismatch.field}); its task waits on a question for the run's owner.`,
     );
     throw new HeldOnQuestion(mismatch.field);
   };
@@ -1860,12 +1939,25 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         );
       }
 
+      // **A review needs a host that can hold a wait** (FIX-2163), refused
+      // before any coding run: a run whose changes it couldn't hold for review
+      // would otherwise be spent, or completed unreviewed. A host with durable
+      // execution offers `resumeWait`; one without leaves it absent.
+      if (reviewChanges && ctx.requestHost?.resumeWait === undefined) {
+        throw runRefused(
+          ctx,
+          `[harness-manager] this manager reviews a run's changes (\`reviewChanges\`), which waits for ` +
+            `a person, and this host has no durable execution to hold that wait. Turn durable ` +
+            `execution on, or turn \`reviewChanges\` off.`,
+        );
+      }
+
       // **On a board kept per organization, the run is its starter's** (see
       // `./run-owner`). Checked before anything is derived from this request's
       // principal, so a refused drain opens no record and takes no checkout.
       // The first run records its starter; a row another member owns is
       // refused here, which is the backstop for a board whose drain was not
-      // wired with `runOwnerDispatcher` — that dispatcher refuses before the
+      // wired with `runOwnerClaimOrder` — that dispatcher refuses before the
       // claim and so charges nothing, where this refusal comes after it. A
       // board read from the claim gets the same check through its own ref:
       // the manager cannot see that board's scope, and on a board one user
@@ -2287,13 +2379,15 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           branch: state.filesOnly === true ? null : state.branch!,
           commits: commits.count,
           judged: false,
+          review: null,
         };
-        await ctx.sequencer!.patchState({ decided: { settle, output } });
+        await ctx.sequencer!.patchState({ decided: { settle, output, changes: commits, reviewed: null } });
         return judgeInput;
       };
+      // A run of kept files alone has no branch, so nothing on one to review: a verified none.
       const commitsOf = (): Promise<RunCommits> =>
         state.filesOnly === true
-          ? Promise.resolve({ count: 0, subjects: [] })
+          ? Promise.resolve({ count: 0, subjects: [], verified: true })
           : readRunCommits(state.workspacePath!, state.baseRef, state.baseCommit);
 
       // Everything the run reported goes on the row before anything is decided,
@@ -2404,7 +2498,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
               ? {
                   goal: state.goal!,
                   answer: handle.finalMessage === null ? null : handle.finalMessage.slice(0, MAX_ANSWER_CHARS),
-                  commits,
+                  commits: { count: commits.count, subjects: commits.subjects },
                 }
               : null;
           return keep("complete", commits, judgeInput);
@@ -2637,6 +2731,13 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const state = managerState(harnessCtxState(ctx));
       const decision = state.decided!;
       if (decision.settle === "asked") return decision.output;
+      // Cancelled while it waited for review: the run records nothing more.
+      if (decision.reviewed === "cancelled") return decision.output;
+      // Changes asked for and no step took them (the steer check found none to
+      // take): never completed over the request.
+      if (decision.reviewed === "revise") {
+        throw new HarnessAttemptFailed("the review asked for changes, and no step of this run took them");
+      }
       const read = input?.verdict ?? null;
       const identity = identityOf(ctx, state);
       if (read !== null && read.verdict !== "done" && read.confidence >= judge!.floor) {
@@ -2650,7 +2751,105 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         writeRunRow(ctx, identity, { outcome: "succeeded", reason: null }),
         "the row was completed",
       );
-      return { ...decision.output, judged: read !== null };
+      const review = decision.reviewed === "accepted" || decision.reviewed === "deadline" ? decision.reviewed : null;
+      return { ...decision.output, judged: read !== null, review };
+    },
+  });
+
+  /**
+   * **The review of a run's changes** (FIX-2163), between the judge and the
+   * steer check before the settle; a pass-through unless `reviewChanges` is
+   * on. A run that passed its check (and that a judge found done, or read
+   * under its floor, or that no judge read) waits for a person's review when
+   * its branch has commits over its base, or when they couldn't be read: only
+   * a verified zero skips it. The manager's one suspension; questions hold.
+   *
+   * - **accepted**: the settle completes the task, with no harness run.
+   * - **revise**: the words are written as the user's steer, so the steer
+   *   check after this takes them into one more step of the same coding
+   *   session, on the same attempt, which comes back here. A run whose harness
+   *   confirmed no session can't be continued: the try fails, and the steer
+   *   stays on the row for the next try's brief.
+   * - **the host's deadline**: the task completes with `review: "deadline"`.
+   * - **cancelled**: nothing more is recorded, and no run starts.
+   *
+   * The prompt is read from state alone, so a resume, which runs this step's
+   * code again up to the wait, reads nothing new before it.
+   */
+  const reviewStep = handler({
+    name: `${name}-review`,
+    inputSchema: z.object({ verdict: harnessJudgeVerdictSchema.nullable() }).nullable(),
+    outputSchema: z.object({ verdict: harnessJudgeVerdictSchema.nullable() }).nullable(),
+    sequencerStateSchema: managerStateSchema,
+    uses: [managerCapability],
+    execute: async (input: { verdict: HarnessJudgeVerdict | null } | null, ctx: BlockContext) => {
+      const state = managerState(harnessCtxState(ctx));
+      const decision = state.decided;
+      if (!reviewChanges || decision?.settle !== "complete") return input;
+      const read = input?.verdict ?? null;
+      // The judge's not-done fails the try and its ask holds a question, at the settle, as without review.
+      if (read !== null && read.verdict !== "done" && read.confidence >= judge!.floor) return input;
+      const changes = decision.changes;
+      if (changes?.verified === true && changes.count === 0) return input;
+      const reviewed = async (outcome: "accepted" | "deadline" | "revise" | "cancelled") =>
+        ctx.sequencer!.patchState({ decided: { ...decision, reviewed: outcome } });
+
+      let asked: Awaited<ReturnType<BlockContext["waitForUser"]>>;
+      try {
+        asked = await ctx.waitForUser({
+          kind: "review",
+          title: "Review the run's changes",
+          prompt: reviewPrompt(changes, decision.output.branch, read),
+          resumeSchema: harnessReviewAnswerSchema,
+          data: {
+            branch: decision.output.branch,
+            commits: changes?.verified === true ? changes.count : null,
+            subjects: changes?.subjects ?? [],
+            judge: read,
+          },
+        });
+      } catch (error) {
+        if (!(error instanceof SuspensionTimeoutError)) throw error;
+        await reviewed("deadline");
+        return input;
+      }
+      if (asked.cancelled) {
+        await reviewed("cancelled");
+        return input;
+      }
+      const answer = harnessReviewAnswerSchema.parse((asked as { answer: unknown }).answer);
+      if (answer.verdict === "accepted") {
+        await reviewed("accepted");
+        return input;
+      }
+
+      // The words, as the user's steer on the row: keyed by this round, so a
+      // resume that runs this again adds it once.
+      const board = await runBoard(ctx);
+      if (board.steer === undefined) {
+        throw new Error(`[harness-manager] the board "${board.collectionId}" keeps no steers, so a review can't ask for changes.`);
+      }
+      const written = await board.steer(state.taskId!, {
+        message: answer.words,
+        from: "user",
+        key: `review:${ctx.request.identity.id}:${state.steerSteps ?? 0}`,
+      });
+      if (written.outcome === "declined") {
+        if (written.reason === "steer-limit") {
+          throw new HarnessAttemptFailed(
+            `the review asked for changes, and the task has taken the most steers it can (${MAX_STEERS})`,
+          );
+        }
+        throw new HarnessAttemptSuperseded("the review's changes were written");
+      }
+      if ((await readConfirmedSession(ctx, state.topic!, state.attempt!)) === null) {
+        throw new HarnessAttemptFailed(
+          `the review asked for changes, and the run's harness confirmed no coding session to continue; ` +
+            `the next try takes them: ${answer.words}`,
+        );
+      }
+      await reviewed("revise");
+      return input;
     },
   });
 
@@ -2974,6 +3173,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           { abortSignal: () => AbortSignal.timeout(NETWORK_CALL_TIMEOUT_MS) },
         )
   )
+    .step(reviewStep)
     .step(steerBeforeSettle)
     .loopBack(harnessStep.name, steerLoop)
     .step(settle)
@@ -3076,10 +3276,10 @@ function heldTicket(
 }
 
 /** Whether `steer` answers one of `row`'s questions for a person: a steer a deadline wrote is a message, not an answer. */
-function isAnswer(row: Pick<Task, "holds">, steer: Pick<TaskSteer, "answers" | "from">): boolean {
+function isAnswer(row: Pick<Task, "questions">, steer: Pick<TaskSteer, "answers" | "from">): boolean {
   if (steer.answers === undefined || steer.from === "board") return false;
-  const hold = row.holds?.find((h) => h.id === steer.answers);
-  return hold !== undefined && isRowHold(hold);
+  const hold = row.questions?.find((h) => h.id === steer.answers);
+  return hold !== undefined && isRowQuestion(hold);
 }
 
 /**
@@ -3090,8 +3290,8 @@ function isAnswer(row: Pick<Task, "holds">, steer: Pick<TaskSteer, "answers" | "
 function answeredQuestions(row: Task | undefined): AnsweredQuestion[] {
   if (row === undefined) return [];
   const answered: AnsweredQuestion[] = [];
-  for (const hold of row.holds ?? []) {
-    if (!isRowHold(hold)) continue;
+  for (const hold of row.questions ?? []) {
+    if (!isRowQuestion(hold)) continue;
     const steer = answerOf(row, hold.id);
     if (steer === undefined || !isAnswer(row, steer)) continue;
     answered.push({ question: hold.ask.prompt, answer: steer.message });

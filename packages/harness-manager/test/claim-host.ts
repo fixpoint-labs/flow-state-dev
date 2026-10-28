@@ -27,7 +27,7 @@ import {
   defineTaskCollection,
   taskLedgerResources,
   getOrCreateTaskCollection,
-  openRowHolds,
+  openRowQuestions,
   resolveResourceCollection,
   type Task,
   type TaskCollectionRef,
@@ -147,6 +147,8 @@ export interface HostOptions {
   isDone?: (run: { answer?: string | null }) => boolean;
   /** Extra manager options (a judge, say). */
   manager?: Record<string, unknown>;
+  /** Give the host durable execution, so a run can wait for a person (`reviewChanges`). */
+  durable?: boolean;
   /** Run inside the phase's prompt builder, on its context, before the prompt is built. */
   beforePrompt?: (ctx: BlockContext) => Promise<unknown>;
   /** The resolver a `claim` host's manager is given. Default: the conversations ledger, at the claim's partition. */
@@ -241,7 +243,7 @@ export function claimHost(options: HostOptions) {
       // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
       const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
       if (ref.get(input.id) === undefined) {
-        await ref.addTask({
+        await ref.createTask({
           id: input.id,
           goal: input.goal,
           assignee: ASSIGNEE,
@@ -288,9 +290,9 @@ export function claimHost(options: HostOptions) {
       // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
       const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
       const row = ref.get(input.id);
-      const hold = row === undefined ? undefined : openRowHolds(row)[0];
+      const hold = row === undefined ? undefined : openRowQuestions(row)[0];
       if (hold === undefined) return { outcome: "declined", reason: "no-open-question" };
-      return ref.answer!(input.id, { hold: hold.id, message: input.answer, from: "user", by: ALICE });
+      return ref.answer!(input.id, { questionId: hold.id, message: input.answer, from: "user", by: ALICE });
     },
   });
   const cancel = handler({
@@ -357,6 +359,7 @@ export function claimHost(options: HostOptions) {
     stores: { test: { primary: inMemoryStores() } },
     defaultProfile: "test",
     dispatchDrainTimeoutMs: 60_000,
+    ...(options.durable === true ? { durable: true } : {}),
   } as never);
 
   let sessions = 0;

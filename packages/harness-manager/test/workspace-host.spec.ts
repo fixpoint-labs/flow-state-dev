@@ -25,13 +25,13 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
-  openRowHolds,
+  openRowQuestions,
   resolveResourceCollection,
   type Task,
 } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { localWorkspaceHost, type RunSourceAnswer } from "@flow-state-dev/workspace";
-import { harnessManager, harnessTaskInputSchema, runOwnerDispatcher, type HarnessFeeds } from "../src";
+import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessFeeds } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 import { createFakeCollection, type FakeCollection } from "../../workspace/test/fake-collection";
@@ -221,7 +221,7 @@ function lab(options: {
     mode: "delegation",
     collection: ledger,
     concurrency: 1,
-    dispatcher: runOwnerDispatcher(),
+    claimOrder: runOwnerClaimOrder(),
     workers: {
       coder: dispatcher({ name: "host-board-dispatch", action: "work", session: "per-task" }),
     },
@@ -233,7 +233,7 @@ function lab(options: {
     uses: [board.capability],
     execute: async (_input, ctx) => {
       const tasks = (ctx as { cap: Record<string, any> }).cap["host-board"];
-      await tasks.addTask({
+      await tasks.createTask({
         id: TASK_ID,
         goal: "the feature",
         input: { issue: ISSUE, phase: PHASE },
@@ -326,7 +326,7 @@ function lab(options: {
       const row = (await rt.stores.resourceState.get("org", ORG_ID, `${BOARD_ID}/${TASK_ID}`))?.state as
         | Task
         | undefined;
-      if (row !== undefined && row.status === "in_progress" && row.leaseUntil == null && openRowHolds(row).length > 0) return row;
+      if (row !== undefined && row.status === "in_progress" && row.leaseUntil == null && openRowQuestions(row).length > 0) return row;
       if (Date.now() > deadline) throw new Error(`timed out waiting for a held task; row is ${JSON.stringify(row)}`);
       await new Promise((resolve) => setTimeout(resolve, 25));
     }

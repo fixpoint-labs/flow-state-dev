@@ -168,11 +168,11 @@ describe("the agent flow as a delegate (S9)", () => {
       ]
     });
     const conversation = await postToOtto(answer, "what's our refund policy?");
-    const [row] = await conversation.until(conversation.postRows, (found) => (found[0]?.holds ?? []).length > 0);
-    expect(row).toMatchObject({ status: "in_progress", holds: [expect.objectContaining({ ask: expect.objectContaining({ kind: "question", prompt: "Which policy?" }) })] });
-    const question = row!.holds![0]!.id;
+    const [row] = await conversation.until(conversation.postRows, (found) => (found[0]?.questions ?? []).length > 0);
+    expect(row).toMatchObject({ status: "in_progress", questions: [expect.objectContaining({ ask: expect.objectContaining({ kind: "question", prompt: "Which policy?" }) })] });
+    const question = row!.questions![0]!.id;
     expect(await conversation.until(conversation.lines, (found) => found.length > 0)).toEqual([
-      { agentName: "otto", text: expect.stringMatching(new RegExp(`^From otto: Your task .* asks: "Which policy\\?"\n.*question: "${question}"`)) }
+      { agentName: "otto", text: expect.stringMatching(new RegExp(`^From otto: Your task .* asks: "Which policy\\?"\n.*answers: "${question}"`)) }
     ]);
   });
 
@@ -186,7 +186,10 @@ describe("the agent flow as a delegate (S9)", () => {
     ]);
     // The round closed on it rather than waiting out its deadline.
     expect(await conversation.until(conversation.rounds, (open) => open.length === 0)).toEqual([]);
-    expect(await conversation.lines()).toEqual([]);
+    // Alice is told it couldn't answer, once, under its name (FIX-1872 BR-9 as amended).
+    expect(await conversation.until(conversation.lines, (found) => found.length > 0)).toEqual([
+      expect.objectContaining({ agentName: "otto", text: expect.stringMatching(/^otto couldn't answer: /) })
+    ]);
   });
 
   it("closes the round at once when Alice cancels its routed task while it works (BR-24b)", async () => {

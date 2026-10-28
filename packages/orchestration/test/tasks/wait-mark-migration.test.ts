@@ -58,7 +58,7 @@ describe("a row stored with its wait mark under the old name", () => {
     describe(name, () => {
       it("reads as waited on, with the same gate and deadline", async () => {
         const { collection, storeUnderOldName } = await backing();
-        await collection.addTask({ id: "t", goal: "find out" });
+        await collection.createTask({ id: "t", goal: "find out" });
         await collection.markWait!("t", MARK);
         await storeUnderOldName("t");
 
@@ -68,7 +68,7 @@ describe("a row stored with its wait mark under the old name", () => {
 
       it("owes its waiting turn a resume when it ends, as a row written today does", async () => {
         const { collection, storeUnderOldName } = await backing();
-        await collection.addTask({ id: "t", goal: "find out" });
+        await collection.createTask({ id: "t", goal: "find out" });
         await collection.markWait!("t", MARK);
         await storeUnderOldName("t");
         await collection.claim("w");

@@ -59,7 +59,7 @@ describe("a steer while the task waits on the work it filed", () => {
       expect(filed.error, messageOf(filed.error)).toBeUndefined();
       const taskId = (filed.output as { taskId: string }).taskId;
       const row = async () => (await h.row("alice", filing, taskId)) as Task | undefined;
-      await until(async () => (await row())?.waitingOn === "filed", "the task to wait on its research");
+      await until(async () => (await row())?.keptOpenBy === "filed", "the task to wait on its research");
 
       const steered = await h.act("alice", conv, "updateTask_tasks", { id: taskId, message: STEER });
       expect(steered.output).toEqual({ ok: true });
@@ -152,7 +152,7 @@ describe("a steer while the task waits on the work it filed", () => {
       expect(filed.error, messageOf(filed.error)).toBeUndefined();
       const taskId = (filed.output as { taskId: string }).taskId;
       const row = async () => (await h.row("alice", filing, taskId)) as Task | undefined;
-      await until(async () => (await row())?.waitingOn === "filed", "the task to wait on its research");
+      await until(async () => (await row())?.keptOpenBy === "filed", "the task to wait on its research");
       expect((await h.act("alice", conv, "updateTask_tasks", { id: taskId, message: "Also use the word ember." })).output).toEqual({ ok: true });
       await until(async () => steerStep.done, "the steer's turn to file its step");
       await until(async () => sentAt.some((call) => call.asked.includes("[step] Check the draft")), "the step to start");

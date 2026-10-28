@@ -36,7 +36,7 @@ import {
   getOrCreateTaskCollection,
   resolveResourceCollection,
   MIN_LEASE_DURATION_MS,
-  type TaskDispatcher,
+  type ClaimOrder,
   type TaskWorker,
   type TaskWorkerInput
 } from "../../src/tasks";
@@ -132,7 +132,7 @@ const holdTheStep = () => {
 };
 
 /** Claims under the shortest lease, so its lapse is observable on the wall clock: the board has no lease knob. */
-const shortLease: TaskDispatcher = {
+const shortLease: ClaimOrder = {
   async claim(collection, workerId) {
     return collection.claim(workerId, { leaseDurationMs: MIN_LEASE_DURATION_MS });
   }
@@ -210,7 +210,7 @@ function planFlow(filer?: GeneratorModel): FlowInstance {
     workers: inline,
     newSession: dispatcher({ name: "own-session", type: "task", action: "work", session: "per-task" }),
     concurrency: 1,
-    dispatcher: shortLease,
+    claimOrder: shortLease,
     initialTasks: [
       { id: "outline", goal: "Outline", assignee: "writer" },
       { id: "fact-check", goal: "Fact-check", assignee: "writer", deps: ["outline"], session: "new" },

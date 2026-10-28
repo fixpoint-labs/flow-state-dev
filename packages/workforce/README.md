@@ -603,7 +603,9 @@ refuses, the last naming the action to rename. A resource with a `writtenBy` fie
 `hireWorkforce` also requires every worker flow to carry an internal `onMessageReceived` entry built
 by `messageReceivedEntry`, so any worker can be [messaged](#worker-messages); a flow without one, or
 with a hand-built entry under that name, is refused, naming the flow. `defineSessionBoard`'s `entries(turn)`
-includes it.
+includes it. A flow whose model is offered `sendMessage` (the kit's `messages` in a block's static
+`uses`) must also carry the kit's `dispatch` pass, which sends a message again until it lands; one
+without it is refused, naming the flow. Spread `entries(turn)` and declare the `manager` role.
 
 Each declared role's entries must be there, in their section, carrying their factory's mark, and
 take the input their caller sends:
@@ -2066,7 +2068,8 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   message keeps its routed task open until that work ends, and answers from the turn that hears it
   end. A routed task the coordinator's own turn filed that fails lands once as the delegate's
   line, naming the task and its error, and wakes that turn, which can file it again; one a
-  routing policy filed only ends that delegate's part, with no line. A routed task's cancel says
+  routing policy filed lands once as the delegate's line, `<delegate> couldn't answer: <the
+  error>`, and wakes no turn. A routed task's cancel says
   nothing, however it was filed. A routed task is listed, read and cancelled like any task; its
   `session`, `resultTo` and `target` are set at filing and refused on `updateTask` (`filing_setting_fixed`). A routed task
   to a workstream's record runs in that workstream's session, one at a time there too: one from
@@ -2159,7 +2162,7 @@ Any worker's turn, a task's included, can wait on a task it filed with
 A task's worker can split it into pieces for its own delegates; a piece for any other worker is
 refused with `unknown_assignee`. An unassigned piece goes to
 its delegate when it has exactly one. Each piece carries `filedByTask`, the task it was split from.
-The task stays running while a piece is open, with no lease (`waitingOn: "filed"`). Each piece's
+The task stays running while a piece is open, with no lease (`keptOpenBy: "filed"`). Each piece's
 ending wakes a turn in the task session, which decides what it means: a failed piece fails nothing
 by itself. Once no piece holds it, the task completes with its output like any task's: the latest
 `reportProgress` checkpoint, else the answer of the last turn a piece's ending woke. A turn that
@@ -2222,7 +2225,7 @@ and the like), never a task's input, output or metadata.
 Rows an earlier version wrote can owe a notice, an Error Reporter report, or the
 settle of a [split task](https://flow-state.dev/docs/workforce/delegating-work#splitting-a-task)
 whose pieces have all ended but which hasn't completed, with no wake to pay it. A split an earlier
-version stored reads as `in_progress`, `waitingOn: "filed"`, and its pieces hold it. So does a
+version stored reads as `in_progress`, `keptOpenBy: "filed"`, and its pieces hold it. So does a
 task an earlier version held open for a message queued to its session: its work had answered, and
 it settles with that answer once checked. Call `backfillBoardWakes(stores, { userCell })` once at host
 start, with the runtime's `stores` and `userCell: (userId, orgId) => resolveUserStorageKey(userId,
@@ -2307,7 +2310,7 @@ Send to talk; call when the worker needs to use the answer now; file a task for 
   gets one message per question, from the task's worker, in the conversation that filed the task;
   it wakes that worker's `onMessageReceived` turn like any message. The text is
   `Your task "<title, else goal>" (<task id>) asks: "<question>"`, then
-  `Answer it with updateTask({ id: "<task id>", question: "<question id>", message }), or leave it to the user, who sees it in their Inbox.`
+  `Answer it with updateTask({ id: "<task id>", answers: "<question id>", message }), or leave it to the user, who sees it in their Inbox.`
   For a task filed with `target` or `targetSessionId` the second line is
   `The user answers it from their Inbox; it isn't yours to answer.` (the filer's answer is refused with
   `question_is_the_users`). A long question is cut with an ellipsis to fit one message. The id is
@@ -2355,7 +2358,9 @@ Send to talk; call when the worker needs to use the answer now; file a task for 
   line in the sending session, `Your message msg_… to <worker> wasn't delivered: <reason>.`, which
   its next turn reads; no turn is started for it. Resends run on the session's wake, so they need a
   host that keeps wakes; without one, an owed message is sent again only when that session's board
-  pass runs for something else. A worker flow without the session kit's `entries(turn)` sends once.
+  pass runs for something else. A worker flow that offers `sendMessage` without the session kit's
+  `entries(turn)` is refused at hire; a flow that sends from its own code with no kit (`sendMessage(ctx, …)`)
+  sends once.
 
 A message is not a task: it files no row, owes no result, and doesn't count toward `taskChainLimit`.
 

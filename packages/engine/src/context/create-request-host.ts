@@ -695,7 +695,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       // Nothing was dispatched, so the caller still owns the work — returning a
       // refusal rather than throwing is what lets it settle its own row instead
       // of leaving it for the lease to recover.
-      if ("externalDispatcher" in started) {
+      if ("externalRunner" in started) {
         // A delivery into an existing session needs the recipient's concurrency
         // policy applied; past an external queue whose worker adapter supplies
         // no lease backend it is not, so it refuses by name rather than
