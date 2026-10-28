@@ -283,6 +283,32 @@ describe("items.turns()", () => {
     expect(listed.find((t) => t.requestId === "req_2")).toMatchObject({ settled: true, messages: [] });
   });
 
+  it("reads a turn by id as it is now, not as the window loaded it", async () => {
+    const stores = createInMemoryStores();
+    await seedTurns(stores, "sess_fresh", 3);
+    await stores.request.set("req_2", turn("sess_fresh", 2, { status: "interrupted", items: [] }), "any");
+
+    const ctx = await contextFor(stores, "sess_fresh", 5);
+    // It resumes and completes after this request loaded its window.
+    await stores.request.set("req_2", turn("sess_fresh", 2), "any");
+
+    const byId = await ctx.session.items.turns({ requestIds: ["req_2"] });
+    expect(byId.map((t) => [t.requestId, t.settled, t.messages.map(textOf)])).toEqual([["req_2", true, ["turn 2"]]]);
+  });
+
+  it.each(["failed", "aborted"] as const)("reads a turn that %s by id as settled with nothing to read", async (status) => {
+    const stores = createInMemoryStores();
+    await seedTurns(stores, "sess_ended", 3);
+    await stores.request.set("req_1", turn("sess_ended", 1, { status }), "any");
+
+    const ctx = await contextFor(stores, "sess_ended", 5);
+
+    // History never reads a turn that ended this way; a summary folding it by
+    // id must not read its partial output either.
+    const byId = await ctx.session.items.turns({ requestIds: ["req_1"] });
+    expect(byId.map((t) => [t.requestId, t.settled, t.messages.length])).toEqual([["req_1", true, 0]]);
+  });
+
   it("never reads another session's turn by id", async () => {
     const stores = createInMemoryStores();
     await seedTurns(stores, "sess_mine", 2);
