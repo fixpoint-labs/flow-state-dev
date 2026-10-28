@@ -447,7 +447,7 @@ export async function sceneB(world: World): Promise<LegResult> {
     return now !== undefined && TERMINAL.has(String(now.status)) ? now : undefined;
   }, 240_000, 2_000);
   await quiet(alice, 180_000);
-  const settled = (t: TaskRow | undefined) => show({ status: t?.status, attempts: t?.attempts, output: t?.output, session: t?.run?.sessionId });
+  const settled = (t: TaskRow | undefined) => JSON.stringify({ status: t?.status, attempts: t?.attempts, output: t?.output, session: t?.run?.sessionId });
   const settledBefore = settled(finished);
   // Only an answer after this send counts: the task's own output already names the fact.
   const linesBefore = (await linesIn(alice, taskSession)).length;
@@ -473,7 +473,7 @@ export async function sceneB(world: World): Promise<LegResult> {
   await quiet(alice, 180_000);
   const settledAfter = settled(await rowOf(alice, helperA, taskId));
   if (finished?.attempts !== 1 || settledBefore !== settledAfter) {
-    r.failures.push(`b:task-unchanged — the row changed: ${settledBefore} → ${settledAfter}`);
+    r.failures.push(`b:task-unchanged — the row changed: ${settledBefore.slice(0, 500)} → ${settledAfter.slice(0, 500)}`);
   }
   return r;
 }
