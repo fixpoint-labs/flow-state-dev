@@ -9,8 +9,13 @@
  *   turn runs is taken into that turn (epic D2). The lab writes no block for it.
  * - `desk.researcher` and `desk.thread` are on `agent` too; `desk.lead` is on
  *   the built-in `coordinator` flow.
- * - `desk.coder` is on the lab's one coding flow, `harness-thread`.
- * - `projects` lists and creates the projects a session works in.
+ * - `desk.coder` and `desk.thread-coder` are on the lab's one coding flow,
+ *   `harness-thread`; only `desk.thread-coder` waits for your review.
+ * - `projects` lists and creates the projects a session works in, and `pins`
+ *   keeps the threads you pinned.
+ *
+ * The host is durable: a thread's review or question waits on you, and a
+ * coding run's review needs durable execution.
  *
  * Settings, all optional: `CLAUDE_CODE_STYLE_MODEL` (default
  * `openai/gpt-5.4`, through the AI Gateway), `CLAUDE_CODE_STYLE_DATA`
@@ -27,6 +32,7 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createWorkerInstallation, defineAgentWorkerFlow, defineCoordinatorFlow, hireWorkforce } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { defineHarnessThreadFlow, HARNESS_THREAD_FLOW } from "./workforce/flows/harness-thread.mts";
+import { definePinsFlow, PINS_FLOW } from "./workforce/flows/pins.mts";
 import { defineProjectsFlow, PROJECTS_FLOW } from "./workforce/flows/projects.mts";
 
 const model = process.env.CLAUDE_CODE_STYLE_MODEL ?? "openai/gpt-5.4";
@@ -47,9 +53,12 @@ flows = {
 };
 const workers = hireWorkforce(installation) as { id: string }[];
 const projects = defineProjectsFlow()({ id: PROJECTS_FLOW }) as { id: string };
+const pins = definePinsFlow()({ id: PINS_FLOW }) as { id: string };
 
 export default createFlowState({
-  flows: Object.fromEntries([...workers, projects].map((copy) => [copy.id, copy])),
+  flows: Object.fromEntries([...workers, projects, pins].map((copy) => [copy.id, copy])),
   stores: { default: { primary: sqliteStores({ filename: join(data, "lab.db") }) } },
+  // A coding run's review and a thread's question wait on you across a restart.
+  durable: true,
   devtool: { userId },
 } as never);

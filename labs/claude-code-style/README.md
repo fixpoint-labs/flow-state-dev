@@ -30,7 +30,7 @@ threads, each a task in a session of its own, and the right pane is the status b
   main session to retry it.
 - **A thread's view** replaces the board, with a back arrow. You can talk in it: your line steers
   the thread's task and answers its open question. You can pin it there.
-- **A code change** goes to `desk.coder`, which runs through Claude Code (its `harness` setting).
+- **A code change** goes to `desk.thread-coder`, which runs through Claude Code (its `harness` setting).
   Its card and row are tagged, and a run that made changes waits for your review, with the
   judge's verdict shown as information. A run nobody reviews by the deadline lands in *Resolved*
   marked *Not reviewed*, so it never reads as approved.
@@ -59,7 +59,9 @@ fsdev dev --config labs/claude-code-style/fsdev.config.mts --app @flow-state-dev
 Open the address it prints as `App:`. The pages call the lab's API, so a plain Vite server shows
 only 404s.
 
-`desk.coder` runs through Claude Code, so the host also needs `ANTHROPIC_API_KEY`. Its settings
+`desk.coder` and `desk.thread-coder` run through Claude Code, so the host also needs
+`ANTHROPIC_API_KEY`. The host is durable: a thread's question and review wait on you across a
+restart, and a coding run's review needs durable execution. Its settings
 are read from the environment, all optional:
 
 | Setting | Default | What it is |
@@ -74,8 +76,8 @@ coding runs clone. The host allows `file://` repositories only, and the reposito
 `.fsdev/` (a run refuses one that doesn't). A run works in a clone under the data folder, on a
 branch of its own, so neither the repository nor the lab's checkout changes.
 
-Session mode is wired. The Projects view (threads mode) shows disabled until it is wired too; its
-screen runs on the test double in `test/fake-lab.ts`.
+Both modes are wired. The screen tests run on a test double, `test/fake-lab.ts`, which the app
+never imports.
 
 ## How the screen reaches the package
 
@@ -91,10 +93,21 @@ a package call:
 | A result card inside a running turn | `answerAgain: true` on the main worker's flow: the settled task's notice, taken into the turn |
 | Interrupting | aborting the session's running turn; its tasks keep running |
 | The tasks pane and a task's work | `listTasks_tasks`, and the items of the task's run session |
+| Threads mode's sessions | the same, with `desk.lead`, a `coordinator`, as the main worker |
+| A thread card, and *Sent to a thread* | the lead's `createTask` call in the session's items |
+| The board's columns | each `listTasks_tasks` row's status and its open holds, read with `inboxItems` from `@flow-state-dev/orchestration/inbox` |
+| A coding thread's tag | the `harness` action of the coding flow, asked in the thread's run session |
+| *Not reviewed* | a finished coding thread's output, `review: "deadline"`, through `getTask_tasks` |
+| Answering in a thread | the Inbox client's `answerHold` on its open question; with none, `updateTask_tasks` with your line as a steer |
+| *Resolve* and *Request changes* | the Inbox client's `answerHold` on its review: `{ verdict: "accepted" }` or `{ verdict: "revise", words }` |
+| *Pin* and *Unpin* | the lab's `pins` flow (`workforce/flows/pins.mts`), your own user state |
 
-`desk.coder` is on the lab's one coding flow, `workforce/flows/harness-thread.mts`: a
-`harnessManager` per harness, picked by the worker's `harness:` line, working in the session's
-project through `projectWorkspace()`.
+`desk.coder` and `desk.thread-coder` are on the lab's one coding flow,
+`workforce/flows/harness-thread.mts`: a `harnessManager` per harness, picked by the worker's
+`harness:` line, working in the session's project through `projectWorkspace()`. A worker with
+`review: true`, as threads mode's `desk.thread-coder` is, runs on the manager built with
+`reviewChanges: true`: a run that committed waits for your review before its task completes.
+Session mode's `desk.coder` has no review line, since that mode has no review to answer.
 
 ## What this app adds
 
@@ -104,8 +117,8 @@ and on a flow over 200 lines; `--wired` also fails while a fixture is left in `s
 <!-- inventory:start -->
 | Kind | Files | Lines |
 |---|---:|---:|
-| Configuration | 17 | 390 |
-| React UI | 20 | 1688 |
-| Small flows | 2 | 202 |
+| Configuration | 18 | 422 |
+| React UI | 20 | 1838 |
+| Small flows | 3 | 273 |
 | Checks (not app code) | 7 | 1158 |
 <!-- inventory:end -->

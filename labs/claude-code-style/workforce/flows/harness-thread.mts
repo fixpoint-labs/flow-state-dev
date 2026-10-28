@@ -7,7 +7,9 @@
  * It builds one `harnessManager` per harness, since a manager's harness slot
  * is fixed when it is built, and routes each task by the worker its session
  * runs. So a second coding worker on Codex is one more `WORKER.md`, never a
- * second flow.
+ * second flow. A worker's `review: true` line picks the manager built with
+ * `reviewChanges`, so a run that committed waits for your review (threads
+ * mode's coder); one without it completes on the run's own check.
  *
  * **Where a run works** is `projectWorkspace()`: the task inherits its
  * session's project through `filingProjectId`, and a run with no project is
@@ -15,7 +17,7 @@
  * the project's repository under `root` and allows only `file://` remotes,
  * so a run never works in the lab's own checkout.
  */
-import { defineFlow, router, sequencer } from "@flow-state-dev/core";
+import { defineFlow, handler, router, sequencer } from "@flow-state-dev/core";
 import type { BlockDefinition, HarnessBlock } from "@flow-state-dev/core/types";
 import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 import { codexAgent } from "@flow-state-dev/codex";
@@ -90,21 +92,26 @@ export function defineHarnessThreadFlow({ installation, root }: HarnessThreadFlo
     const filed = await filingConversationBoard(ctx);
     return filed === undefined ? undefined : { tasks: filed.tasks, runOf: (row: Task) => ({ issue: taskIssueSegment(row.id), phase: phase.phase }) };
   };
-  // Per harness: the manager that runs a task, and the door a line typed in its run's session takes.
+  /** A manager for one harness; `reviewChanges` makes a run that committed wait for your review before its task completes. */
+  const manager = (name: string, harness: (feeds: HarnessFeeds) => HarnessBlock, reviewChanges: boolean) =>
+    harnessManager({
+      name: `harness-thread-${name}${reviewChanges ? "-reviewed" : ""}`,
+      ledgers: conversationLedgers,
+      tenant: undefined,
+      phase,
+      workspace,
+      runTimeoutMs: RUN_TIMEOUT_MS,
+      harness,
+      reviewChanges,
+      uses: [projectWorkspaceCapability],
+    } as never) as unknown as BlockDefinition<any, any>;
+  // Per harness: the managers that run a task, and the door a line typed in its run's session takes.
   const built = Object.fromEntries(
     Object.entries(HARNESSES).map(([name, harness]) => [
       name,
       {
-        manager: harnessManager({
-          name: `harness-thread-${name}`,
-          ledgers: conversationLedgers,
-          tenant: undefined,
-          phase,
-          workspace,
-          runTimeoutMs: RUN_TIMEOUT_MS,
-          harness,
-          uses: [projectWorkspaceCapability],
-        } as never) as unknown as BlockDefinition<any, any>,
+        manager: manager(name, harness, false),
+        reviewed: manager(name, harness, true),
         door: harnessSessionDoor({ name: `harness-thread-${name}`, harness, board, onSteered: startOwedSteerTurn }),
         talk: harnessTalkTurn({ name: `harness-thread-${name}-message`, harness, board }),
       },
@@ -114,19 +121,20 @@ export function defineHarnessThreadFlow({ installation, root }: HarnessThreadFlo
   /**
    * What the session's worker names in its `harness:` line, read from the worker as this turn
    * resolves it (a standard worker or the user's own copy on the roster); the config schema
-   * refused any other name at hire.
+   * refused any other name at hire. Its `review: true` line picks the manager that waits for your review.
    */
   const harnessOf = async (ctx: Parameters<WorkerInstallation["resolveWorker"]>[0]) => {
     const worker = await installation.resolveWorker(ctx, HARNESS_THREAD_FLOW);
     const found = built[String(worker.config.harness)];
     if (found === undefined) throw new Error(`worker "${worker.id}" names no \`harness:\` in its WORKER.md`);
-    return found;
+    return { ...found, name: String(worker.config.harness), manager: worker.config.review === true ? found.reviewed : found.manager };
   };
-  const byHarness = (name: string, inputSchema: unknown, pick: (b: (typeof built)[string]) => unknown) =>
+  type Built = (typeof built)[string];
+  const byHarness = (name: string, inputSchema: unknown, pick: (b: Built) => unknown) =>
     router({
       name,
       inputSchema,
-      routes: Object.values(built).map(pick),
+      routes: [...new Set(Object.values(built).flatMap((b) => [pick(b), pick({ ...b, manager: b.reviewed })]))],
       // resolveWorker reads the user's roster, so the router declares the installation's resources.
       resources: installation.resources,
       execute: async (_input: unknown, ctx: never) => pick(await harnessOf(ctx)),
@@ -138,12 +146,26 @@ export function defineHarnessThreadFlow({ installation, root }: HarnessThreadFlo
     cardinality: "collection",
     // A worker names its harness in its `WORKER.md`; one this flow builds no manager for is refused at
     // hire. Optional only because the flow's own copy is built with no worker's settings.
-    configSchema: workerConfigSchema().extend({ harness: z.enum(Object.keys(HARNESSES) as [string, ...string[]]).optional() }),
+    configSchema: workerConfigSchema().extend({
+      harness: z.enum(Object.keys(HARNESSES) as [string, ...string[]]).optional(),
+      review: z.boolean().optional(),
+    }),
     session: installation.session(),
     resources: { ...installation.resources, ...workerMessagesResources },
     actions: {
       // A line typed in a run's session: a steer while its task is open, talk once it has finished.
       respond: { ...anyDoor, block: byHarness("harness-thread-door", anyDoor.inputSchema, (b) => b.door.block) },
+      // Which harness the session's worker runs through: the tag a coding thread's card and row show.
+      harness: {
+        inputSchema: z.object({}),
+        block: handler({
+          name: "harness-thread-harness",
+          inputSchema: z.object({}),
+          outputSchema: z.object({ harness: z.string() }),
+          resources: installation.resources,
+          execute: async (_input: unknown, ctx: never) => ({ harness: (await harnessOf(ctx)).name }),
+        } as never),
+      },
     },
     internal: {
       actions: {

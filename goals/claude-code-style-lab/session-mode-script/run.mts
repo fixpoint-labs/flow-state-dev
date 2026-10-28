@@ -16,19 +16,15 @@
  *
  * Run: pnpm tsx goals/claude-code-style-lab/session-mode-script/run.mts
  */
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "@flow-state-dev/client";
 import type { Page } from "playwright";
 import {
   goalAttempts,
   goalTmpDir,
-  intentFreeEnv,
   loadFixture,
-  onClosed,
-  refuseIfAnswering,
-  repoPath,
   REPO_ROOT,
   runGoal,
   RUN_STAMP,
@@ -36,16 +32,12 @@ import {
   type Tell,
 } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
+import { clonesUnder, git, LAB, labCheckout, makeRepository, sleep, startLab } from "../lab.mts";
 
 const fixture = loadFixture<{ project: string; ask: string; stop: string; change: string }>(import.meta.url);
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const LAB = repoPath("labs", "claude-code-style");
 const USER = "u_goal";
 const MAIN = "desk.main";
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
-/** The lab checkout's state outside the goal's own scratch: a run must leave it as it was. */
-const labCheckout = () => git(REPO_ROOT, "status", "--porcelain", "--", "labs/claude-code-style");
 
 /** What a poll of the page saw: the thread's entries, the working indicator, the task rows. */
 type Snapshot = {
@@ -81,77 +73,6 @@ async function snapshot(page: Page): Promise<Snapshot> {
   };
 }
 
-/** The lab, served for USER from a fresh data folder. */
-async function startLab(data: string, env: Record<string, string>): Promise<{ origin: string; child: ChildProcess; log: () => string }> {
-  const port = 45_000 + Math.floor(Math.random() * 10_000);
-  const origin = `http://127.0.0.1:${port}`;
-  await refuseIfAnswering(origin);
-  let log = "";
-  const child = spawn(
-    repoPath("node_modules", ".bin", "tsx"),
-    ["packages/cli/src/bin.ts", "dev", "--config", join(LAB, "fsdev.config.mts"), "--app", "@flow-state-dev/claude-code-style", "--port", String(port), "--no-open"],
-    {
-      cwd: REPO_ROOT,
-      detached: true,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: intentFreeEnv(process.env, {
-        GOAL_CONTROL: "",
-        CLAUDE_CODE_STYLE_DATA: data,
-        CLAUDE_CODE_STYLE_USER: USER,
-        ...(process.env.ANTHROPIC_API_KEY === undefined && process.env.MY_ANTHROPIC_API_KEY !== undefined
-          ? { ANTHROPIC_API_KEY: process.env.MY_ANTHROPIC_API_KEY }
-          : {}),
-        ...env,
-      }),
-    },
-  );
-  // Kept beside the data folder, so a run that loses its server can be read afterwards.
-  const keep = (d: unknown) => {
-    log += String(d);
-    appendFileSync(join(data, "..", "server.log"), String(d));
-  };
-  child.stdout!.on("data", keep);
-  child.stderr!.on("data", keep);
-  let gone = false;
-  onClosed(child, () => (gone = true));
-  for (let waited = 0; waited < 120_000 && !gone; waited += 500) {
-    if (/Data:/.test(log)) {
-      const answered = await fetch(origin).then((r) => r.status, () => 0);
-      if (answered === 200) return { origin, child, log: () => log };
-    }
-    await sleep(500);
-  }
-  stopProcessGroup(child);
-  throw new Error(`setup: the lab never served. Log tail:\n${log.slice(-2000)}`);
-}
-
-/** A bare-bones `file://` project repository that ignores `.fsdev/`, as the lab requires. */
-function makeRepository(dir: string): string {
-  mkdirSync(dir, { recursive: true });
-  git(dir, "init", "-q", "-b", "main");
-  writeFileSync(join(dir, "README.md"), "# Goal notes\n\nA project for the lab's goal check.\n");
-  writeFileSync(join(dir, ".gitignore"), ".fsdev/\n");
-  git(dir, "add", ".");
-  git(dir, "-c", "user.email=goal@example.com", "-c", "user.name=goal", "commit", "-q", "-m", "start");
-  return dir;
-}
-
-/** Every git directory a run's clone left under the lab's data folder. */
-function clonesUnder(root: string): string[] {
-  if (!existsSync(root)) return [];
-  const found: string[] = [];
-  const walk = (dir: string, depth: number) => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const path = join(dir, entry.name);
-      if (entry.name.endsWith(".git") || existsSync(join(path, "HEAD")) && existsSync(join(path, "objects"))) found.push(path);
-      else if (depth < 6) walk(path, depth + 1);
-    }
-  };
-  walk(root, 0);
-  return found;
-}
-
 /** Words of a title worth matching: four letters or more, lower case. */
 const wordsOf = (text: string) => new Set(text.toLowerCase().match(/[a-z]{4,}/g) ?? []);
 
@@ -173,7 +94,7 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
   const repoHead = git(repo, "rev-parse", "HEAD");
   const labBefore = labCheckout();
   const marker = `Goal ${RUN_STAMP}`;
-  const lab = await startLab(data, CONTROL === "answer-again-off" ? { CLAUDE_CODE_STYLE_ANSWER_AGAIN: "off" } : {});
+  const lab = await startLab(data, USER, CONTROL === "answer-again-off" ? { CLAUDE_CODE_STYLE_ANSWER_AGAIN: "off" } : {});
   const fsd = createClient({ userId: USER, baseUrl: lab.origin });
   /** A session's tasks, as its board's `listTasks` answers them: the package's read, not the page's. */
   const rowsOf = async (sessionId: string): Promise<any[]> => {
