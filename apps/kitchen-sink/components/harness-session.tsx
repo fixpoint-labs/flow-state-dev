@@ -7,8 +7,9 @@
  * bound conversation's plan.
  *
  * A line typed while a turn runs goes to that turn when its harness takes it,
- * else it runs after the turn (`lib/harness-line.ts`); lines go in the order
- * they were typed.
+ * else it runs after the turn; lines go in the order they were typed
+ * (`useHarnessLines` from `@flow-state-dev/react`, with the goal controls in
+ * `lib/harness-line.ts`).
  *
  * Every item shown is the harness's own, through the app's ordinary
  * renderers. The notice and the bound conversation are read from session
@@ -19,11 +20,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { SquareIcon } from "lucide-react";
-import { createClient, harnessLines, steerRunningTurn, type SessionRequestSummary } from "@flow-state-dev/client";
+import { createClient, type SessionRequestSummary } from "@flow-state-dev/client";
 import {
   FlowProvider,
   useResourceCollectionList,
   useResourceManifest,
+  useHarnessLines,
   useSession,
   type SessionView,
 } from "@flow-state-dev/react";
@@ -84,24 +86,25 @@ export interface HarnessSessionViewProps {
   readonly onTitled?: () => void;
 }
 
+/** How the page sends one line: the framework's rule, with Kitchen Sink's goal controls on it. */
+const sendLineOnce = (prompt: string, running: boolean, sender: LineSender) => sendLine(prompt, running, sender);
+
 /** One harness session's conversation and plan. */
 export function HarnessSessionView({ label, flowKind, sessionId, models, onTitled }: HarnessSessionViewProps) {
   return (
     <FlowProvider flowKind={flowKind} userId={KITCHEN_SINK_USER_ID} baseUrl="" renderers={chatAssistantRenderers}>
-      <SessionBody label={label} flowKind={flowKind} sessionId={sessionId} models={models} onTitled={onTitled} />
+      <SessionBody label={label} sessionId={sessionId} models={models} onTitled={onTitled} />
     </FlowProvider>
   );
 }
 
 function SessionBody({
   label,
-  flowKind,
   sessionId,
   models,
   onTitled,
 }: {
   label: string;
-  flowKind: string;
   sessionId: string;
   models: ModelChoices;
   onTitled?: () => void;
@@ -130,8 +133,7 @@ function SessionBody({
   const state = (session.snapshot?.clientData.session ?? {}) as Partial<HarnessSessionState>;
   const bound = state.binding?.confirmed ?? null;
   const { items, isStreaming, latestRequest } = session;
-  // `steer` is sent beside the running turn, not through the session hook,
-  // which would leave the running turn's stream to follow the new request.
+  // Requests are listed beside the session hook, which reads only its latest.
   const client = useMemo(() => createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: "" }), []);
   // The session's newest request can be a `steer` sent beside the turn, so the
   // turn's status is read off the turn's own request.
@@ -158,95 +160,16 @@ function SessionBody({
   );
   const turnsByRequest = useMemo(() => turnNumbers(items), [items]);
   const notice = turn === null ? null : turnNotice(state.turns?.[turn.requestId] ?? null, turn.status, bound);
-  const streaming = useRef(session.isStreaming);
-  streaming.current = session.isStreaming;
-  // Lines reach the run in the order they were typed: each waits for the one
-  // before it, and none steers past a line queued behind the running turn.
-  const lines = useMemo(() => harnessLines((prompt, running, sender: LineSender) => sendLine(prompt, running, sender)), []);
-  // Turns sent while one runs, oldest first. Each waits on the server for the
-  // turn before it, with no time limit, and is sent beside the running turn
-  // rather than through the session hook, so the page stays on the running
-  // turn. The page follows the next one once the turn it follows ends.
-  const waiting = useRef<string[]>([]);
-  // While a sent turn still waits, a line steered into the turn followed now would pass it.
-  useEffect(() => {
-    if (waiting.current.length === 0) lines.turnChanged();
-  }, [lines, turnId, isStreaming]);
+  // Lines reach the run in the order they were typed, and the page stays on
+  // the running turn while a line's turn waits behind it.
+  const lines = useHarnessLines(session, { sendOne: sendLineOnce });
   const [lastLine, setLastLine] = useState<LineOutcome | null>(null);
-  const checkingRunning = useRef(false);
-  const { followRequest } = session;
-  const followWaiting = useCallback(() => {
-    if (streaming.current || checkingRunning.current || waiting.current.length === 0) return;
-    // A stream that drops stops streaming too, while its turn still runs: read
-    // which turn runs before moving on from it.
-    checkingRunning.current = true;
-    client.sessions.requests(sessionId, { status: "in_progress", limit: 20 }).then(
-      (requests) => {
-        checkingRunning.current = false;
-        if (streaming.current) return;
-        const running = requests
-          .filter((request) => request.actionName === "turn")
-          .sort((a, b) => (a.startedAtMs ?? 0) - (b.startedAtMs ?? 0))[0];
-        // The turn followed still runs, and only its stream ended: stay on it.
-        if (running !== undefined && !waiting.current.includes(running.id)) return;
-        const next = waiting.current.shift();
-        if (next === undefined) return;
-        // Following until the next render says so, so a second call follows nothing more.
-        streaming.current = true;
-        followRequest(next);
-      },
-      // Unread, the page stays on the request it follows.
-      () => {
-        checkingRunning.current = false;
-      },
-    );
-  }, [client, sessionId, followRequest]);
-  useEffect(() => {
-    if (!isStreaming) followWaiting();
-  }, [isStreaming, followWaiting]);
-  // A page opened while turns wait follows the session's newest request, which
-  // is a waiting one: follow the oldest running turn instead, and the rest after it.
-  const { isLoading } = session;
-  const checkedOpen = useRef<string | null>(null);
-  useEffect(() => {
-    if (isLoading || checkedOpen.current === sessionId) return;
-    checkedOpen.current = sessionId;
-    waiting.current = [];
-    client.sessions.requests(sessionId, { status: "in_progress", limit: 20 }).then(
-      (requests) => {
-        const turns = requests
-          .filter((request) => request.actionName === "turn")
-          .sort((a, b) => (a.startedAtMs ?? 0) - (b.startedAtMs ?? 0));
-        const oldest = turns[0];
-        if (checkedOpen.current !== sessionId || oldest === undefined || turns.length < 2) return;
-        const listed = turns.slice(1).map((request) => request.id);
-        // A line sent while the list was read is kept, after the ones it lists.
-        waiting.current = [...listed, ...waiting.current.filter((id) => !listed.includes(id))];
-        followRequest(oldest.id);
-      },
-      // Unread, the page stays on the request it follows.
-      () => undefined,
-    );
-  }, [client, sessionId, isLoading, followRequest]);
   const handleSubmit = useCallback(
     async (msg: PromptInputMessage) => {
       const prompt = msg.text.trim();
       if (prompt.length === 0) return;
-      const sender: LineSender = {
-        steer: (text) => steerRunningTurn(client, { flowKind, sessionId, prompt: text }),
-        turn: async (text) => {
-          if (!streaming.current) {
-            await session.sendAction("turn", { prompt: text }, { userMessage: text });
-            return;
-          }
-          const sent = await client.flow(flowKind).send("turn", { prompt: text }, { sessionId });
-          waiting.current.push(sent.id);
-          // The running turn may have ended while the line was sent.
-          followWaiting();
-        },
-      };
       try {
-        const outcome = await lines.send(prompt, streaming.current, sender);
+        const outcome = await lines.send(prompt);
         setLastLine(outcome);
         if (messageRef.current.trim() === prompt) setMessage("");
         // The steer request records a taken line in session state, and this
@@ -256,7 +179,7 @@ function SessionBody({
         // Keep the persisted draft so a failed send can be retried.
       }
     },
-    [client, flowKind, followWaiting, lines, refresh, session, sessionId, setMessage],
+    [lines, refresh, setMessage],
   );
   const steered = turn === null ? [] : (state.turns?.[turn.requestId]?.steered ?? []);
 
