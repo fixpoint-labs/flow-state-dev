@@ -10,7 +10,8 @@
  * plan, and Flow State mode in its session sidebar. A flow that declares no
  * record shows nothing.
  */
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
+import { GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft } from "lucide-react";
 import { useResourceCollectionList, useResourceManifest, type SessionView } from "@flow-state-dev/react";
 import { OBSERVED_PULL_REQUESTS, type ObservedPullRequestState } from "@flow-state-dev/core/types";
 
@@ -19,6 +20,15 @@ const PATTERN = `${OBSERVED_PULL_REQUESTS}/**`;
 
 /** The most rows read: the list route's ceiling. */
 const ROW_LIMIT = 200;
+
+/** Each row's mark, by the state the record saw; an unknown or missing state gets the plain icon. */
+const MARK: Record<string, ReactNode> = {
+  open: <GitPullRequest className="size-4 text-emerald-600 dark:text-emerald-400" />,
+  merged: <GitMerge className="size-4 text-purple-600 dark:text-purple-400" />,
+  closed: <GitPullRequestClosed className="size-4 text-red-600 dark:text-red-400" />,
+  draft: <GitPullRequestDraft className="size-4 text-muted-foreground" />,
+};
+const DEFAULT_MARK = <GitPullRequest className="size-4 text-muted-foreground" />;
 
 export interface PullRequestsPanelProps {
   readonly session: SessionView;
@@ -73,21 +83,26 @@ function PullRequestRows({
             return (
               <li
                 key={topic}
-                className="min-w-0 break-words"
+                className="flex items-start gap-2"
                 data-testid="pull-request-row"
                 data-url={row.url ?? undefined}
                 data-repository={row.repository ?? undefined}
                 data-number={row.number ?? undefined}
                 data-source={row.source ?? undefined}
               >
-                <a href={row.url ?? undefined} target="_blank" rel="noreferrer" className="font-mono hover:underline">
-                  {row.repository ?? "?"} #{row.number ?? "?"}
-                </a>{" "}
-                <span>{row.title ?? ""}</span>
-                <span className="ml-2 text-xs text-muted-foreground">
-                  {[row.state, turn === undefined ? null : `opened in turn ${turn}`, row.source === "branch" ? "found on the branch" : null]
-                    .filter((part) => part != null)
-                    .join(" · ")}
+                <span className="mt-0.5 shrink-0" role="img" aria-label={row.state ?? "pull request"} data-testid="pull-request-icon">
+                  {(row.state != null && MARK[row.state]) || DEFAULT_MARK}
+                </span>
+                <span className="min-w-0 break-words">
+                  <a href={row.url ?? undefined} target="_blank" rel="noreferrer" className="font-mono hover:underline">
+                    {row.repository ?? "?"} #{row.number ?? "?"}
+                  </a>{" "}
+                  <span>{row.title ?? ""}</span>
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    {[row.state, turn === undefined ? null : `opened in turn ${turn}`, row.source === "branch" ? "found on the branch" : null]
+                      .filter((part) => part != null)
+                      .join(" · ")}
+                  </span>
                 </span>
               </li>
             );
