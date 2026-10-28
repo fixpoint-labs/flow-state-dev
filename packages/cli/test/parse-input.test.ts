@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { resolve } from "node:path";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { parseInputArg } from "../src/parse-input";
 import { CliError } from "../src/resolve-block";
 import { EXIT_INVALID_ARGS } from "../src/exit-codes";
@@ -22,6 +24,14 @@ describe("parseInputArg", () => {
       inputFile: resolve(fixturesDir, "input-data.json"),
     });
     expect(result).toEqual({ text: "hello from file" });
+  });
+
+  it("trims whitespace and a UTF-8 BOM in --input-file", () => {
+    const dir = mkdtempSync(join(tmpdir(), "fsdev-parse-input-"));
+    const file = join(dir, "input.json");
+    writeFileSync(file, `\uFEFF  {"key": "value"}  \n`, "utf-8");
+
+    expect(parseInputArg({ inputFile: file })).toEqual({ key: "value" });
   });
 
   it("throws when both --input and --input-file are provided", () => {
