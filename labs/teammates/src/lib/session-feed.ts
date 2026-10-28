@@ -48,19 +48,42 @@ function follow(client: Client, sessionId: string, onClosed: () => void): Sessio
     for (const listener of listeners) listener(sorted);
   };
 
-  const start = async () => {
-    let offset = 0;
-    let at: number | undefined;
-    let createdAt: number | undefined;
-    for (;;) {
+  /**
+   * Every page of the snapshot, or `undefined` when the history moved while it
+   * was read. As `useSession` reads it: each later page starts one item early,
+   * on the last item already held, and a page that doesn't start there means a
+   * keyed item was emitted again or a request removed, so a later item may
+   * have been skipped, and one the stream would never send.
+   */
+  const readPages = async () => {
+    const items: OutputItem[] = [];
+    let first: { at?: number; sessionCreatedAt?: number } | undefined;
+    for (let offset = 0; ; ) {
       const page = await client.sessions.state(sessionId, { includeItems: true, offset, limit: PAGE });
-      at ??= page.at;
-      createdAt ??= page.sessionCreatedAt;
-      for (const item of page.items ?? []) keep(item);
-      if (page.pagination?.hasMore !== true) break;
-      offset = page.pagination.nextOffset;
+      let pageItems = page.items ?? [];
+      if (first === undefined) {
+        first = page;
+      } else {
+        const last = items[items.length - 1];
+        const overlap = pageItems[0];
+        if (page.sessionCreatedAt !== first.sessionCreatedAt || last === undefined || overlap === undefined || compareItemOrder(overlap, last) !== 0) {
+          return undefined;
+        }
+        pageItems = pageItems.slice(1);
+      }
+      items.push(...pageItems);
+      if (page.pagination?.hasMore !== true) return { items, at: first.at, createdAt: first.sessionCreatedAt };
+      offset = page.pagination.nextOffset - 1;
     }
-    if (closed) return;
+  };
+
+  const start = async () => {
+    let read: Awaited<ReturnType<typeof readPages>>;
+    do read = await readPages();
+    while (read === undefined && !closed);
+    if (closed || read === undefined) return;
+    const { at, createdAt } = read;
+    for (const item of read.items) keep(item);
     loaded = true;
     publish();
     const handle = client.sessions.stream(sessionId, {
