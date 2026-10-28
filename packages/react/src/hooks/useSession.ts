@@ -1951,18 +1951,23 @@ export function useSession(
     const refused = await serverRefusedStop(flow, requestId);
     if (refused) stoppedRequestsRef.current.delete(requestId);
 
-    // Close the SSE connection. On the server, request.signal fires
-    // and the catch block checks the abortRequested flag to decide
-    // between "aborted" (intentional) or "interrupted" (accidental).
-    streamHandleRef.current?.close();
-    streamHandleRef.current = null;
-    activeRequestIdRef.current = null;
-    latestRequestIdAfterDropRef.current = null;
+    // The view moved to another request while the stop was out (one followed
+    // once the stopped request ended, say): that one keeps its stream.
+    const following = activeRequestIdRef.current;
+    if (following === null || following === requestId) {
+      // Close the SSE connection. On the server, request.signal fires
+      // and the catch block checks the abortRequested flag to decide
+      // between "aborted" (intentional) or "interrupted" (accidental).
+      streamHandleRef.current?.close();
+      streamHandleRef.current = null;
+      activeRequestIdRef.current = null;
+      latestRequestIdAfterDropRef.current = null;
 
-    flushContentDeltas();
-    setIsStreaming(false);
-    setIsFinishing(false);
-    setIsStuck(false);
+      flushContentDeltas();
+      setIsStreaming(false);
+      setIsFinishing(false);
+      setIsStuck(false);
+    }
 
     if (!refused) injectSyntheticAbortItem(requestId);
   }, [flow, flushContentDeltas, injectSyntheticAbortItem]);

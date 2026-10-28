@@ -7,9 +7,12 @@
  * The client is faked (`support/fake-client`); the request streams it opens
  * are captured so the test can see which request each follows and feed it.
  *
- * Red state produced before this was trusted: attach without making the
- * request the active one, and the "stop reaches it" case fails (the stop goes
- * to nothing).
+ * Red states produced before these were trusted:
+ *   - attach without making the request the active one, and the "stop
+ *     reaches it" case fails (the stop goes to nothing).
+ *   - let a stop's cleanup close whatever stream is open when the stop's
+ *     answer lands, and the "stop that lands late" case fails: the request
+ *     followed meanwhile loses its stream.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
@@ -115,5 +118,37 @@ describe("useSession.followRequest (FIX-2265)", () => {
     });
 
     expect(flowMock.abort).toHaveBeenCalledWith("req_line");
+  });
+
+  it("keeps the request followed while a stop was out: the stop closes only the request it stopped", async () => {
+    const { result } = renderHook(() => useSession("sess1", { flowKind: "demo" }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    let answerStop: () => void = () => undefined;
+    flowMock.abort.mockImplementation(() => new Promise<void>((resolve) => (answerStop = resolve)));
+
+    act(() => result.current.followRequest("req_turn"));
+    let stopped: Promise<void> = Promise.resolve();
+    act(() => {
+      stopped = result.current.abortRequest();
+    });
+    // The stopped turn ends before the stop's answer lands, and the page follows the next one.
+    act(() => result.current.followRequest("req_line"));
+    const line = connections.at(-1)!;
+    await act(async () => {
+      answerStop();
+      await stopped;
+    });
+
+    expect(line.url).toContain("/requests/req_line/stream");
+    expect(line.closed).toBe(false);
+    expect(result.current.isStreaming).toBe(true);
+    // A stop now reaches the line.
+    flowMock.abort.mockResolvedValue(undefined);
+    await act(async () => {
+      await result.current.abortRequest();
+    });
+    expect(flowMock.abort).toHaveBeenLastCalledWith("req_line");
   });
 });
