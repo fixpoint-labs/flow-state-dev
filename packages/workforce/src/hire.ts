@@ -71,7 +71,7 @@ import {
 } from "./worker-references";
 import { heldPackageProblems, resolveHeldPackages } from "./worker-packages";
 import { recordWorkerDescription } from "./worker-description";
-import { workerFlowProblems } from "./worker-flow-contract";
+import { CONTRACT_KEYS, undeclaredSettings, workerFlowProblems } from "./worker-flow-contract";
 import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./workers/worker-flow";
 import { builtInRolesOf, type WorkerRole } from "./worker-roles";
 
@@ -116,14 +116,23 @@ const builtInAgentWorkerFlow = defineAgentWorkerFlow() as unknown as AnyFlowType
  * The hire checks each declared role's entries, and refuses a role's piece on
  * a flow that doesn't declare it. Omitted, a flow has no role beyond every
  * worker's; a built-in flow declares its own.
+ *
+ * `showSettings` names the flow's settings a user may see: each worker's
+ * value for them rides on its `roster()` row. Every other setting stays on
+ * the server. Omitted, none shows.
  */
 export type WorkerFlowEntry =
   | AnyFlowType
-  | { flow: AnyFlowType; standardOnly?: boolean; roles?: readonly WorkerRole[] }
+  | { flow: AnyFlowType; standardOnly?: boolean; roles?: readonly WorkerRole[]; showSettings?: readonly string[] }
   | WorkerFlowBuilder;
 
 /** One worker flow as a hire resolves a `flow:` against it. */
-export type ResolvedWorkerFlow = { flow: AnyFlowType; standardOnly: boolean; roles: readonly WorkerRole[] };
+export type ResolvedWorkerFlow = {
+  flow: AnyFlowType;
+  standardOnly: boolean;
+  roles: readonly WorkerRole[];
+  showSettings: readonly string[];
+};
 
 /**
  * The worker flows a hire resolves a `flow:` against: the built-in `agent`
@@ -149,8 +158,13 @@ export function resolveWorkerFlows(
     }
     resolved[name] =
       typeof entry === "function"
-        ? { flow: entry, standardOnly: false, roles: builtInRolesOf(entry) ?? [] }
-        : { flow: entry.flow, standardOnly: entry.standardOnly === true, roles: entry.roles ?? builtInRolesOf(entry.flow) ?? [] };
+        ? { flow: entry, standardOnly: false, roles: builtInRolesOf(entry) ?? [], showSettings: [] }
+        : {
+            flow: entry.flow,
+            standardOnly: entry.standardOnly === true,
+            roles: entry.roles ?? builtInRolesOf(entry.flow) ?? [],
+            showSettings: [...(entry.showSettings ?? [])]
+          };
   }
   return resolved;
 }
@@ -163,17 +177,41 @@ export function resolveWorkerFlows(
  */
 const contractVerdicts = new WeakMap<object, Map<string, readonly string[]>>();
 
-function contractProblemsOf(name: string, { flow, roles }: ResolvedWorkerFlow): readonly string[] {
+function contractProblemsOf(name: string, { flow, roles, showSettings }: ResolvedWorkerFlow): readonly string[] {
   let byRegistration = contractVerdicts.get(flow);
   if (byRegistration === undefined) {
     byRegistration = new Map();
     contractVerdicts.set(flow, byRegistration);
   }
-  const key = JSON.stringify([name, roles]);
+  const key = JSON.stringify([name, roles, showSettings]);
   let problems = byRegistration.get(key);
   if (problems === undefined) {
-    problems = workerFlowProblems(name, flow as never, roles);
+    problems = [...workerFlowProblems(name, flow as never, roles), ...showSettingsProblems(name, flow, showSettings)];
     byRegistration.set(key, problems);
+  }
+  return problems;
+}
+
+/**
+ * Why a flow's `showSettings` can't stand: a name that is part of every
+ * worker's configuration (its instructions, its skills), a key the hire reads
+ * itself, or one the flow doesn't declare. A shown name is a promise that its
+ * value is safe in a browser, so only the flow's own settings may carry it.
+ */
+function showSettingsProblems(name: string, flow: AnyFlowType, showSettings: readonly string[]): string[] {
+  const problems: string[] = [];
+  const own: string[] = [];
+  for (const key of showSettings) {
+    if (CONTRACT_KEYS.includes(key)) {
+      problems.push(`worker flow "${name}" shows "${key}", but "${key}" is part of every worker's configuration, not a setting the flow owns`);
+    } else if ((RESERVED_KEYS as readonly string[]).includes(key) || key === REFUSED_PERSONA_KEY) {
+      problems.push(`worker flow "${name}" shows "${key}", but "${key}" is read by the hire and never reaches a flow as a setting`);
+    } else {
+      own.push(key);
+    }
+  }
+  for (const key of undeclaredSettings(flow as never, own)) {
+    problems.push(`worker flow "${name}" shows "${key}", but "${key}" is not a setting flow "${name}" declares in its configSchema`);
   }
   return problems;
 }

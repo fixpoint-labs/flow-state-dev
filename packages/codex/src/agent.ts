@@ -14,8 +14,21 @@
  * the thread, the id goes to the host's durable state, BEFORE anything that
  * could throw. A cancelled run returns no handle, so the hook is the only
  * carrier that survives exactly the deadline it exists for.
+ *
+ * By default the block also records each pull request the run opens in core's
+ * pull-request record (`recordPullRequests`): it declares the collection and
+ * starts core's recorder, which reads Codex's command and MCP calls as they
+ * settle. It is a session resource, not session state, so a task board still
+ * dispatches the block.
  */
-import { formatRunDuration, handler, harnessRunInputSchema } from "@flow-state-dev/core";
+import {
+  OBSERVED_PULL_REQUESTS,
+  formatRunDuration,
+  handler,
+  harnessRunInputSchema,
+  observedPullRequestsCollection,
+  recordPullRequests as startPullRequestRecorder,
+} from "@flow-state-dev/core";
 import type {
   HarnessCallbackContext,
   HarnessResolver,
@@ -128,6 +141,13 @@ export interface CodexAgentOptions {
   client?: CodexClientOptions;
   /** Host hook resolving the Codex client. Default: lazy SDK import. */
   resolveCodexClient?: ResolveCodexClient;
+  /**
+   * Record each pull request the run opens in core's pull-request record
+   * (`observed-pull-requests`). Default `true`: a `gh pr create` or a
+   * create-pull-request tool whose result names a pull request is a row; a
+   * `gh pr view` is not. `false` declares nothing and records nothing.
+   */
+  recordPullRequests?: boolean;
   /** Capabilities forwarded to the underlying handler. */
   uses?: UsesSlot;
   /** Block name. Default `"codex-agent"`. */
@@ -196,6 +216,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
     thread: threadOptions,
     client: clientOptions,
     resolveCodexClient = createDefaultResolveCodexClient(clientOptions ?? {}),
+    recordPullRequests = true,
     uses,
     name = "codex-agent",
   } = options;
@@ -234,6 +255,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
     // silent if the contract's input ever grew.
     inputSchema: harnessRunInputSchema,
     outputSchema: codexAgentHandleSchema,
+    ...(recordPullRequests ? { resources: { [OBSERVED_PULL_REQUESTS]: observedPullRequestsCollection } } : {}),
     ...(uses !== undefined ? { uses } : {}),
     execute: async (input, ctx: AgentCallbackContext): Promise<CodexAgentHandle> => {
       const prompt = input.prompt?.trim();
@@ -243,6 +265,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
       // A deadline that has already fired must not spawn a process it will
       // immediately have to kill.
       if (ctx.signal?.aborted) throw new CodexAgentAbortedError(null);
+      if (recordPullRequests) startPullRequestRecorder(ctx);
 
       // Both resolved once per invocation, before anything is spawned, so the
       // directory the SDK is handed and the thread it continues cannot be two

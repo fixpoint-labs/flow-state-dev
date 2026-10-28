@@ -1,14 +1,14 @@
 /**
  * Goal check — asked to have the coder look at "our repo", the Shift
- * Coordinator (the chief of staff) reads the projects the person is a member
+ * Coordinator (the Shift Coordinator) reads the projects the person is a member
  * of and names the one a coder's task works in, rather than asking which
  * project; with two candidates it asks, naming them.
  *
  * The DevTeam lab, opened as its profile is served, driven over its HTTP door
  * as the lab's owner: a conversation is opened on the coordinator's flow, the
  * ask is sent as one turn, and the turn's tool outputs, its reply and the
- * tasks the conversation filed are read back. A real model plays the chief of
- * staff. The coder's harness is the lab's stub; what a filed task does after
+ * tasks the conversation filed are read back. A real model plays the Shift
+ * Coordinator. The coder's harness is the lab's stub; what a filed task does after
  * the filing is not graded here.
  *
  * Legs:
@@ -24,7 +24,7 @@
  *
  * Controls:
  *
- *   no-project-list  the chief of staff without `listProjects`. Must FAIL leg
+ *   no-project-list  the Shift Coordinator without `listProjects`. Must FAIL leg
  *                    one on read-the-projects and files-naming-storefront.
  *
  * `GOAL_CONTROL=list` prints them. `GOAL_LEGS=one` runs only that leg.
@@ -63,14 +63,14 @@ interface Fixture {
 const fixture = loadFixture<Fixture>(import.meta.url);
 
 const CODER = "eng.coder";
-const CHIEF = "chief-of-staff";
+const SHIFT_COORDINATOR = "shift-coordinator";
 const COORDINATOR_FLOW = "coordinator";
 const LIST_TASKS = "listTasks_tasks";
 const LIST_PROJECTS = "listProjects";
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 const show = (value: unknown, n = 300): string => (JSON.stringify(value) ?? "undefined").slice(0, n);
 
-/** A real model for every turn, and the gateway's evaluation model for the chief of staff's routing. */
+/** A real model for every turn, and the gateway's evaluation model for the Shift Coordinator's routing. */
 function liveResolver(): ModelResolver {
   // A container's FSDEV_DEFAULT_MODEL / FSDEV_INTENT_* would swap the model under the resolver.
   stripIntentOverrides();
@@ -138,7 +138,7 @@ async function quiet(lab: Lab): Promise<void> {
   }
 }
 
-/** One turn of the ask in a new conversation with the chief of staff, read back. */
+/** One turn of the ask in a new conversation with the Shift Coordinator, read back. */
 interface Asked {
   tools: Array<{ name: string; output: unknown }>;
   reply: string;
@@ -149,7 +149,7 @@ interface Asked {
 
 async function ask(lab: Lab): Promise<Asked> {
   const http = door(lab);
-  const sessionId = await http.open(COORDINATOR_FLOW, { workerId: CHIEF });
+  const sessionId = await http.open(COORDINATOR_FLOW, { workerId: SHIFT_COORDINATOR });
   const turn = await http.act(COORDINATOR_FLOW, sessionId, "respond", { message: fixture.ask });
   const read = turn.requestId === undefined ? { tools: [], reply: "" } : await http.turnOf(sessionId, turn.requestId);
   const listed = ((await http.act(COORDINATOR_FLOW, sessionId, LIST_TASKS, {})).output?.tasks ?? []) as Array<{ id: string }>;

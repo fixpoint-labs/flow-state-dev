@@ -116,7 +116,7 @@ describe("completed background `.sideChain()` trace replays across a cold restar
       inputSchema: z.any(),
       outputSchema: z.unknown(),
       execute: async (_input, ctx) =>
-        ctx.suspend!({ reason: "human_approval", message: "approve?" })
+        ctx.suspend!({ reason: "user_approval", message: "approve?" })
     });
 
     const flow = defineFlow({

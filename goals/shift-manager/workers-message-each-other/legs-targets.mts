@@ -20,7 +20,7 @@ import {
   talk,
   until,
   word,
-  COS,
+  SHIFT_COORDINATOR,
   HIRE_MODEL,
   RESEARCHER,
   type Call,
@@ -91,7 +91,7 @@ export async function setupTargets(world: World): Promise<{ targets?: Targets; f
   const moved = await alice.workforce.ensureWorkerSession({ worker: MOVED });
   await step(alice, "fire", { id: FIRED });
   // Any other flow will do: the session was opened on `agent`.
-  await step(alice, "edit", { id: MOVED, flow: world.conversation[COS]!.flowKind });
+  await step(alice, "edit", { id: MOVED, flow: world.conversation[SHIFT_COORDINATOR]!.flowKind });
   const bobConversation = await bob.workforce.ensureWorkerSession({ worker: world.words.bobWorker });
   return failures.length > 0 ? { failures } : { targets: { courier, bobConversation, fired, moved }, failures };
 }
@@ -140,22 +140,22 @@ export const endOf = (r: Record<string, any>) => Number(r.completedAtMs ?? r.com
 export async function leg6(world: World, targets: Targets): Promise<LegResult> {
   const r: LegResult = { failures: [], notes: [] };
   const { alice, bob } = world;
-  const cos = world.conversation[COS]!;
+  const shiftCoordinator = world.conversation[SHIFT_COORDINATOR]!;
   const fact = word();
-  const added = await act(alice, cos.flowKind, cos.id, "addDelegate", { worker: RESEARCHER }, 60_000);
+  const added = await act(alice, shiftCoordinator.flowKind, shiftCoordinator.id, "addDelegate", { worker: RESEARCHER }, 60_000);
   if (added.status !== "completed") r.notes.push(`addDelegate researcher: ${added.status} ${added.error ?? ""}`);
 
-  const taskId = await file(alice, cos, {
+  const taskId = await file(alice, shiftCoordinator, {
     goal: `Remember this word for later: ${fact}. Then reply "Noted" and you're done.`,
     assignee: RESEARCHER,
   });
-  const taskSession = await sessionOfTask(alice, cos, taskId);
+  const taskSession = await sessionOfTask(alice, shiftCoordinator, taskId);
   if (taskSession === undefined) {
     r.failures.push(`6:setup — Researcher's task ${taskId} named no session within 180 s`);
     return r;
   }
   targets.researcherTask = { id: taskId, sessionId: taskSession };
-  const runningWhenSent = (await rowOf(alice, cos, taskId))?.status;
+  const runningWhenSent = (await rowOf(alice, shiftCoordinator, taskId))?.status;
   const before = new Set((await logOf(alice)).map((m) => m.id));
   const first = await deliver(world, targets, "6", [{ to: { task: taskId }, text: "Courier here: a heads-up, no answer needed." }]);
   const sent = callsTo(first, { task: taskId }).find((c) => typeof c.output?.sent === "string");
@@ -185,7 +185,7 @@ export async function leg6(world: World, targets: Targets): Promise<LegResult> {
 
   // Once finished: the turn runs in the task's session, with its earlier lines.
   const finished = await until(async () => {
-    const now = await rowOf(alice, cos, taskId);
+    const now = await rowOf(alice, shiftCoordinator, taskId);
     return now !== undefined && ["completed", "failed", "cancelled", "errored"].includes(String(now.status)) ? now : undefined;
   }, 240_000, 2_000);
   const settled = settledOf(finished);
@@ -203,16 +203,16 @@ export async function leg6(world: World, targets: Targets): Promise<LegResult> {
     if (answered === undefined) r.failures.push(`6:finished-keeps-history — no answer from task ${taskId}'s session names ${fact}, the word only its earlier lines hold`);
   }
   await quiet(alice, 240_000);
-  const after = settledOf(await rowOf(alice, cos, taskId));
+  const after = settledOf(await rowOf(alice, shiftCoordinator, taskId));
   if (finished === undefined || after !== settled) r.failures.push(`6:task-unchanged — the row went from ${settled} to ${after}`);
 
   // Not started, an unknown id, Bob's task and its own: each refused, no row.
-  const pending = await file(alice, cos, { goal: "Wait; this task is held.", assignee: RESEARCHER, held: true });
+  const pending = await file(alice, shiftCoordinator, { goal: "Wait; this task is held.", assignee: RESEARCHER, held: true });
   const unknown = `task_${word()}`;
-  const bobCos = await bob.workforce.ensureWorkerSession({ worker: COS });
-  await act(bob, bobCos.flowKind, bobCos.id, "addDelegate", { worker: world.words.bobWorker }, 60_000);
-  const bobTask = await file(bob, bobCos, { goal: "Say hello, then you're done.", assignee: world.words.bobWorker });
-  const bobStarted = await sessionOfTask(bob, bobCos, bobTask, 120_000);
+  const bobShiftCoordinator = await bob.workforce.ensureWorkerSession({ worker: SHIFT_COORDINATOR });
+  await act(bob, bobShiftCoordinator.flowKind, bobShiftCoordinator.id, "addDelegate", { worker: world.words.bobWorker }, 60_000);
+  const bobTask = await file(bob, bobShiftCoordinator, { goal: "Say hello, then you're done.", assignee: world.words.bobWorker });
+  const bobStarted = await sessionOfTask(bob, bobShiftCoordinator, bobTask, 120_000);
   const logBefore = (await logOf(alice)).length;
   const refusals = await deliver(world, targets, "6", [
     { to: { task: pending }, text: "hello pending" },
@@ -231,7 +231,7 @@ export async function leg6(world: World, targets: Targets): Promise<LegResult> {
   if ((await logOf(alice)).length !== logBefore) r.failures.push(`6:not-started — the refused sends wrote ${(await logOf(alice)).length - logBefore} row(s)`);
 
   // From the task's own session, to its own task: a follow-up runs there.
-  await file(alice, cos, {
+  await file(alice, shiftCoordinator, {
     goal: `Call sendMessage with to {"task":"${taskId}"} and text "hello myself", exactly, then report what the tool answered.`,
     followUpOf: taskId,
   });
@@ -242,10 +242,10 @@ export async function leg6(world: World, targets: Targets): Promise<LegResult> {
   }
   r.notes.push(`refusals ${show({ pending: pendingOut, unknown: unknownOut, bob: bobOut })}`);
   // A task run in Researcher's ongoing session for this conversation opens its delegate session, which leg 7 addresses.
-  const ongoing = await file(alice, cos, { goal: "Reply OK, and you're done.", assignee: RESEARCHER, session: "ongoing" });
-  targets.delegateSession = await sessionOfTask(alice, cos, ongoing);
+  const ongoing = await file(alice, shiftCoordinator, { goal: "Reply OK, and you're done.", assignee: RESEARCHER, session: "ongoing" });
+  targets.delegateSession = await sessionOfTask(alice, shiftCoordinator, ongoing);
   await quiet(alice, 240_000);
-  const removed = await act(alice, cos.flowKind, cos.id, "removeDelegate", { worker: RESEARCHER }, 60_000);
+  const removed = await act(alice, shiftCoordinator.flowKind, shiftCoordinator.id, "removeDelegate", { worker: RESEARCHER }, 60_000);
   if (removed.status !== "completed") r.notes.push(`removeDelegate researcher: ${removed.status}`);
   return r;
 }
@@ -296,24 +296,24 @@ export async function leg7(world: World, targets: Targets): Promise<LegResult> {
 export async function leg8(world: World, targets: Targets): Promise<LegResult> {
   const r: LegResult = { failures: [], notes: [] };
   const { alice } = world;
-  const cos = world.conversation[COS]!;
+  const shiftCoordinator = world.conversation[SHIFT_COORDINATOR]!;
   // `Shipped` types only the client verbs the older legs drive.
   const workforce = alice.workforce as typeof alice.workforce & {
     setWorkProject(worker: string, project: typeof SANDBOX, options: { sessionId: string }): Promise<unknown>;
   };
-  await workforce.setWorkProject(COS, SANDBOX, { sessionId: cos.id }).catch((e: unknown) => r.notes.push(`setWorkProject: ${String(e)}`));
-  const added = await act(alice, cos.flowKind, cos.id, "addDelegate", { worker: CODER }, 60_000);
+  await workforce.setWorkProject(SHIFT_COORDINATOR, SANDBOX, { sessionId: shiftCoordinator.id }).catch((e: unknown) => r.notes.push(`setWorkProject: ${String(e)}`));
+  const added = await act(alice, shiftCoordinator.flowKind, shiftCoordinator.id, "addDelegate", { worker: CODER }, 60_000);
   if (added.status !== "completed") r.notes.push(`addDelegate ${CODER}: ${added.status} ${added.error ?? ""}`);
 
   // A finished task: the message is answered by one run resuming its coding session.
-  const done = await file(alice, cos, { goal: "Write a short note on what a scripted run does.", assignee: CODER });
-  const doneSession = await sessionOfTask(alice, cos, done);
+  const done = await file(alice, shiftCoordinator, { goal: "Write a short note on what a scripted run does.", assignee: CODER });
+  const doneSession = await sessionOfTask(alice, shiftCoordinator, done);
   const ended = await until(async () => {
-    const now = await rowOf(alice, cos, done);
+    const now = await rowOf(alice, shiftCoordinator, done);
     return now !== undefined && ["completed", "failed", "cancelled", "errored"].includes(String(now.status)) ? now : undefined;
   }, 300_000, 2_000);
   if (doneSession === undefined || ended === undefined) {
-    r.failures.push(`8:finished-answered — the coder's task ${done} didn't run to an end: ${show(await rowOf(alice, cos, done))}`);
+    r.failures.push(`8:finished-answered — the coder's task ${done} didn't run to an end: ${show(await rowOf(alice, shiftCoordinator, done))}`);
   } else {
     const settled = settledOf(ended);
     const linesBefore = (await linesIn(alice, doneSession)).length;
@@ -326,15 +326,15 @@ export async function leg8(world: World, targets: Targets): Promise<LegResult> {
     if (sent === undefined || answer === undefined) {
       r.failures.push(`8:finished-answered — no answer in the coding task's session after the message: sent ${show(asked.map((c) => c.output))}; new lines ${show(lines.map((l) => `${l.agentName ?? l.role}: ${l.text.slice(0, 60)}`))}`);
     }
-    const after = settledOf(await rowOf(alice, cos, done));
+    const after = settledOf(await rowOf(alice, shiftCoordinator, done));
     if (after !== settled) r.failures.push(`8:finished-answered — the coder's row changed: ${settled} to ${after}`);
     if (answer !== undefined) r.notes.push(`the coding session answered: ${answer.text.slice(0, 120)}`);
   }
 
   // A running task: refused before the row.
-  const running = await file(alice, cos, { goal: "Write another short note.", assignee: CODER });
-  const runningSession = await sessionOfTask(alice, cos, running, 120_000);
-  const status = (await rowOf(alice, cos, running))?.status;
+  const running = await file(alice, shiftCoordinator, { goal: "Write another short note.", assignee: CODER });
+  const runningSession = await sessionOfTask(alice, shiftCoordinator, running, 120_000);
+  const status = (await rowOf(alice, shiftCoordinator, running))?.status;
   const logBefore = (await logOf(alice)).length;
   const refused = await deliver(world, targets, "8", [{ to: { task: running }, text: "Are you done yet?" }]);
   const outs = callsTo(refused, { task: running }).map(errorOf);
@@ -344,7 +344,7 @@ export async function leg8(world: World, targets: Targets): Promise<LegResult> {
   if ((await logOf(alice)).length !== logBefore) r.failures.push(`8:running-refused — the send wrote a row`);
   await quiet(alice, 300_000);
   await sleep(1_000);
-  const removed = await act(alice, cos.flowKind, cos.id, "removeDelegate", { worker: CODER }, 60_000);
+  const removed = await act(alice, shiftCoordinator.flowKind, shiftCoordinator.id, "removeDelegate", { worker: CODER }, 60_000);
   if (removed.status !== "completed") r.notes.push(`removeDelegate ${CODER}: ${removed.status}`);
   return r;
 }

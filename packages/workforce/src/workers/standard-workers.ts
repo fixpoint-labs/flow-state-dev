@@ -13,17 +13,20 @@ import { z } from "zod";
 import type { WorkerManifest } from "../manifest";
 import { readDeclaredFlow } from "../declared-flow";
 import { STANDARD_WORKERS_PATTERN } from "./keys";
+import { shownSettingsOf, type ShownSettingsOf } from "./shown-settings";
 
 /**
  * What a standard worker's projected row says: which flow it runs on, what it's
- * for, and the names a user reads it and its team by (its file's `name:` and
- * its team's `TEAM.md` `name:`, each `null` when unset).
+ * for, the names a user reads it and its team by (its file's `name:` and its
+ * team's `TEAM.md` `name:`, each `null` when unset), and the settings its flow
+ * shows.
  */
 export const standardWorkerRowSchema = z.object({
   flow: z.string().min(1),
   description: z.string().nullable(),
   name: z.string().nullable(),
-  teamName: z.string().nullable()
+  teamName: z.string().nullable(),
+  settings: z.record(z.unknown())
 });
 
 /** One standard worker as the projection shows it. */
@@ -45,14 +48,20 @@ export function workerDisplayName(manifest: WorkerManifest): string | null {
   return typeof name === "string" ? name : null;
 }
 
-/** A standard worker's projected row. */
-export function standardWorkerRow(manifest: WorkerManifest, defaultFlow: string): StandardWorkerRow {
+/**
+ * A standard worker's projected row.
+ *
+ * @param shown Which settings each flow shows.
+ */
+export function standardWorkerRow(manifest: WorkerManifest, defaultFlow: string, shown: ShownSettingsOf): StandardWorkerRow {
   const description = manifest.declared.description;
+  const flow = standardWorkerFlow(manifest, defaultFlow) ?? defaultFlow;
   return {
-    flow: standardWorkerFlow(manifest, defaultFlow) ?? defaultFlow,
+    flow,
     description: typeof description === "string" ? description : null,
     name: workerDisplayName(manifest),
-    teamName: manifest.teamName ?? null
+    teamName: manifest.teamName ?? null,
+    settings: shownSettingsOf(shown(flow), manifest.declared)
   };
 }
 
@@ -61,10 +70,12 @@ export function standardWorkerRow(manifest: WorkerManifest, defaultFlow: string)
  *
  * @param standard The installation's standard workers, by id.
  * @param defaultFlow The flow a worker that names none runs on.
+ * @param shown Which settings each flow shows (`showSettings`). Omitted, none.
  */
 export function defineStandardWorkerCollection(
   standard: () => ReadonlyMap<string, WorkerManifest>,
-  defaultFlow: string
+  defaultFlow: string,
+  shown: ShownSettingsOf = () => []
 ) {
   return defineProjectedResourceCollection({
     pattern: STANDARD_WORKERS_PATTERN,
@@ -72,14 +83,14 @@ export function defineStandardWorkerCollection(
     stateSchema: standardWorkerRowSchema,
     read: async ({ key }) => {
       const manifest = standard().get(key);
-      return manifest === undefined ? null : standardWorkerRow(manifest, defaultFlow);
+      return manifest === undefined ? null : standardWorkerRow(manifest, defaultFlow, shown);
     },
     search: async ({ query }) => {
       const prefix = query.prefix ?? "";
       const hits = [...standard().values()]
         .filter((manifest) => manifest.id.startsWith(prefix))
         .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
-        .map((manifest) => ({ key: manifest.id, state: standardWorkerRow(manifest, defaultFlow) }));
+        .map((manifest) => ({ key: manifest.id, state: standardWorkerRow(manifest, defaultFlow, shown) }));
       return { hits };
     },
     client: { state: { read: true } }

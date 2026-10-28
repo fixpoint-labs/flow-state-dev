@@ -15,7 +15,8 @@
  * that run their own `gh` or `git` calls beside a run use it rather than a
  * copy of their own.
  */
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { createInterface } from "node:readline";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -40,6 +41,12 @@ export interface RunOptions {
   maxBuffer?: number;
   /** Written to the process's standard input, which is then closed. */
   input?: string | Uint8Array;
+  /**
+   * Each line of standard output, as it arrives, without its `\n`. Given,
+   * the output is handed over line by line and never buffered, so
+   * `maxBuffer` does not apply and the result's `stdout` is empty.
+   */
+  onLine?: (line: string) => void;
 }
 
 /** Run `file` with `args`, resolving with its output or rejecting on a non-zero exit. */
@@ -48,6 +55,7 @@ export async function run(
   args: string[],
   options: RunOptions,
 ): Promise<{ stdout: string; stderr: string }> {
+  if (options.onLine !== undefined) return await runByLine(file, args, options, options.onLine);
   const pending = execFileAsync(file, args, {
     cwd: options.cwd,
     timeout: options.timeoutMs,
@@ -58,6 +66,62 @@ export async function run(
   if (options.input !== undefined) pending.child.stdin?.end(options.input);
   const result = await pending;
   return { stdout: String(result.stdout), stderr: String(result.stderr) };
+}
+
+/** The most of a by-line run's standard error kept for its failure. */
+const STDERR_KEPT = 64 * 1024;
+
+/**
+ * `run`, with standard output handed to `onLine` as it arrives. A failure
+ * rejects the way `execFile`'s does: `code` is the exit code, `signal` the
+ * signal that ended it, `killed` set when the wall clock did, and `stderr`
+ * what it wrote there.
+ */
+async function runByLine(
+  file: string,
+  args: string[],
+  options: RunOptions,
+  onLine: (line: string) => void,
+): Promise<{ stdout: string; stderr: string }> {
+  const child = spawn(file, args, {
+    cwd: options.cwd,
+    timeout: options.timeoutMs,
+    env: options.env === undefined ? process.env : { ...process.env, ...options.env },
+    stdio: ["pipe", "pipe", "pipe"],
+    ...(options.signal !== undefined ? { signal: options.signal } : {}),
+  });
+  child.stdin.end(options.input);
+  let stderr = "";
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", (chunk: string) => {
+    if (stderr.length < STDERR_KEPT) stderr += chunk.slice(0, STDERR_KEPT - stderr.length);
+  });
+  let failed: unknown;
+  const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
+  lines.on("line", (line) => {
+    if (failed !== undefined) return;
+    try {
+      onLine(line);
+    } catch (error) {
+      failed = error;
+      child.kill();
+    }
+  });
+  const [code, signal] = await new Promise<[number | null, NodeJS.Signals | null]>((resolve, reject) => {
+    child.once("error", reject);
+    // `close`, not `exit`: every line has been handed over by then.
+    child.once("close", (exitCode, exitSignal) => resolve([exitCode, exitSignal]));
+  });
+  if (failed !== undefined) throw failed;
+  if (code !== 0) {
+    throw Object.assign(new Error(`Command failed: ${file} ${args.join(" ")}\n${stderr}`), {
+      code,
+      signal,
+      killed: child.killed || signal !== null,
+      stderr,
+    });
+  }
+  return { stdout: "", stderr };
 }
 
 /**

@@ -50,7 +50,7 @@
  *   entry for.
  * - `no-such-project`: the entry names a project with no row.
  * - `not-the-owner`: the run's owner is not the workstream's owner.
- * - `not-a-member`: on the project and task paths, the run's owner is
+ * - `not-a-member`: the run's owner is
  *   not one of the project's members (for a private project, its owner).
  * - `other-project`: the task names a project other than its conversation's.
  *

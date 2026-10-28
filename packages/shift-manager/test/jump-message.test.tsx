@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnComposer } from "../src/components/TurnComposer";
 import { TurnNotDelivered } from "../src/lib/send";
 import type { LoadedSnapshot } from "../src/lib/derive";
-import { clearHandedLine, handToChiefOfStaff, useHandedLine } from "../src/lib/outbox";
+import { clearHandedLine, handToShiftCoordinator, useHandedLine } from "../src/lib/outbox";
 import { GAPS as gaps } from "../src/gaps";
 import { JumpTo } from "../src/surfaces/JumpTo";
 
@@ -22,7 +22,7 @@ const withWorkers = (workers: unknown[]) =>
     resources: { ok: true, value: [] },
     inventory: { ok: true, value: { workstreams: [], workers } },
   }) as unknown as LoadedSnapshot;
-const snapshot = withWorkers([{ id: "chief-of-staff", kind: "agent", door: "talk" }]);
+const snapshot = withWorkers([{ id: "shift-coordinator", kind: "agent", door: "talk" }]);
 
 afterEach(() => {
   cleanup();
@@ -53,7 +53,7 @@ describe("`> ` in Jump to messages the Shift Coordinator", () => {
     expect(screen.queryAllByTestId("jump-result")).toHaveLength(0);
     enter();
     expect(onClose).toHaveBeenCalled();
-    expect(window.location.pathname).toBe("/cos");
+    expect(window.location.pathname).toBe("/shift-coordinator");
     cleanup();
     const send = vi.fn(async () => undefined);
     render(<Composer send={send} />);
@@ -84,7 +84,7 @@ describe("`> ` in Jump to messages the Shift Coordinator", () => {
 describe("the Coordinator's composer sends a handed line like a typed one", () => {
   it("waits until it isn't blocked, and sends once", async () => {
     const send = vi.fn(async () => undefined);
-    handToChiefOfStaff("later");
+    handToShiftCoordinator("later");
     const view = render(<Composer send={send} blocked="Reading the conversation first…" />);
     expect(send).not.toHaveBeenCalled();
     view.rerender(<Composer send={send} />);
@@ -94,7 +94,7 @@ describe("the Coordinator's composer sends a handed line like a typed one", () =
   });
 
   it("keeps the line in the draft, with the composer's own error, when it is refused", async () => {
-    handToChiefOfStaff("nope");
+    handToShiftCoordinator("nope");
     render(<Composer send={async () => Promise.reject(new TurnNotDelivered("refused", "no thanks"))} />);
     await act(async () => undefined);
     expect((screen.getByTestId("c-input") as HTMLInputElement).value).toBe("nope");

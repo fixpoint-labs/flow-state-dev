@@ -5,7 +5,7 @@ import type { GeneratorModel } from "@flow-state-dev/core/types";
 import { commitScriptedWork } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 import type { StubRun } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
 
-/** A project as the chief of staff's model sees it. */
+/** A project as the Shift Coordinator's model sees it. */
 export interface KnownProject {
   id: string;
   title: string;
@@ -27,9 +27,9 @@ function repositoryHostOf(project: KnownProject): string {
 }
 
 /**
- * The chief of staff's model, with the coordinator bug planted.
+ * The Shift Coordinator's model, with the coordinator bug planted.
  *
- * @param modelId The id the Lab resolved for it: the chief of staff's own `model:`.
+ * @param modelId The id the Lab resolved for it: the Shift Coordinator's own `model:`.
  * @param projects The projects the Lab holds.
  */
 export function plantedCoordinatorModel(modelId: string, projects: readonly KnownProject[]): GeneratorModel {

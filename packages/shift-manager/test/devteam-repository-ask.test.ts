@@ -1,5 +1,5 @@
 /**
- * The DevForce Lab's chief of staff and a project's repository: whichever way
+ * The DevForce Lab's Shift Coordinator and a project's repository: whichever way
  * it writes one, at create or later, it waits for a user in Inbox first.
  * Approve writes it; Deny writes nothing.
  *
@@ -8,7 +8,7 @@
  * project, and never changes another project.
  *
  * The Lab is opened the way DevTeam's config opens it, with its default
- * projects. The chief of staff's model is scripted to make one tool call, so
+ * projects. The Shift Coordinator's model is scripted to make one tool call, so
  * no key is needed; the answer goes through the engine's own resume route,
  * as Inbox sends it.
  */
@@ -22,9 +22,9 @@ import { deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
 import { selectHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
 
-/** The chief of staff, and the flow it runs on, whose one copy every worker on it shares. */
-const COS = "chief-of-staff";
-const COS_FLOW = "coordinator";
+/** The Shift Coordinator, and the flow it runs on, whose one copy every worker on it shares. */
+const SHIFT_COORDINATOR = "shift-coordinator";
+const SHIFT_COORDINATOR_FLOW = "coordinator";
 const FIRST = "https://github.com/acme/storefront.git";
 const ASKED = "git@github.com:acme/storefront-next.git";
 
@@ -49,7 +49,7 @@ function scripted(call: { toolName: string; args: Record<string, unknown> }): Mo
     },
   };
   // Best fit's question goes unanswered (the evaluator, too, has no model here),
-  // so the post reaches the chief of staff's own turn, which makes the call.
+  // so the post reaches the Shift Coordinator's own turn, which makes the call.
   const resolve = (_id: string, blockName?: string): GeneratorModel => {
     if (blockName === "coordinator-route-ask") throw new Error("no route model in this test");
     return model;
@@ -85,7 +85,7 @@ async function open(): Promise<Lab> {
 
 /** Open a session on the coordinator flow as the Lab's owner. */
 async function openSession(lab: Lab, sessionId: string, state: Record<string, unknown>): Promise<string> {
-  const opened = await lab.door("POST", `${COS_FLOW}/sessions`, { body: { userId: LAB_USER_ID, sessionId, state } });
+  const opened = await lab.door("POST", `${SHIFT_COORDINATOR_FLOW}/sessions`, { body: { userId: LAB_USER_ID, sessionId, state } });
   expect(opened.status).toBe(201);
   return sessionId;
 }
@@ -96,21 +96,21 @@ async function projectCoordinator(lab: Lab, id: string): Promise<string> {
   const sessionId = await deriveWorkerSessionId({
     userId: LAB_USER_ID,
     orgId: LAB_ORG_ID,
-    flow: COS_FLOW,
+    flow: SHIFT_COORDINATOR_FLOW,
     criteria: { worker: "project-coordinator", projectId },
   });
   return openSession(lab, sessionId, { workerId: "project-coordinator", projectId: `shared/${id}` });
 }
 
-/** Ask a coordinator, as the Lab's owner, with a model that makes `call`: the chief of staff unless `session` names another's open session. */
+/** Ask a coordinator, as the Lab's owner, with a model that makes `call`: the Shift Coordinator unless `session` names another's open session. */
 async function run(lab: Lab, call: ToolCall, message: string, session?: string) {
   const runtime = await lab.state.getRuntime();
   model = scripted(call);
-  // A conversation with the chief of staff, unless named: a session on its flow, naming it.
-  const sessionId = session ?? (await openSession(lab, `s-cos-${globalThis.crypto.randomUUID()}`, { workerId: COS }));
+  // A conversation with the Shift Coordinator, unless named: a session on its flow, naming it.
+  const sessionId = session ?? (await openSession(lab, `s-shift-coordinator-${globalThis.crypto.randomUUID()}`, { workerId: SHIFT_COORDINATOR }));
   return await runAction({
     orgId: LAB_ORG_ID,
-    flow: runtime.registry.get(COS_FLOW) as FlowInstance,
+    flow: runtime.registry.get(SHIFT_COORDINATOR_FLOW) as FlowInstance,
     actionName: "respond",
     input: { message },
     userId: LAB_USER_ID,
@@ -132,13 +132,13 @@ async function ask(
   expect((await runtime.stores.request.get(started.requestId!))?.status).toBe("suspended");
   const pending = (await runtime.stores.suspensions.list({ status: "pending" })) as SuspensionRecord[];
   expect(pending).toHaveLength(1);
-  expect(pending[0]!.reason).toBe("human_approval");
+  expect(pending[0]!.reason).toBe("user_approval");
   return { requestId: started.requestId!, suspension: pending[0]! };
 }
 
 /** Answer through the resume route, as Inbox does, and wait for the request to finish. */
 async function answer(lab: Lab, asked: { requestId: string; suspension: SuspensionRecord }, action: "approve" | "reject") {
-  const sent = await lab.door("POST", `${COS_FLOW}/requests/${asked.requestId}/resume`, {
+  const sent = await lab.door("POST", `${SHIFT_COORDINATOR_FLOW}/requests/${asked.requestId}/resume`, {
     body: { suspensionId: asked.suspension.suspensionId, action },
   });
   expect(sent.status).toBe(202);
@@ -161,7 +161,7 @@ async function projects(lab: Lab): Promise<Record<string, { repository?: string 
   );
 }
 
-describe("the chief of staff's repository writes wait for a user", () => {
+describe("the Shift Coordinator's repository writes wait for a user", () => {
   it("setRepository: nothing changes while it waits or on Deny; Approve writes it", async () => {
     const lab = await open();
     const call = { toolName: "setRepository", args: { project: { visibility: "shared", id: "storefront" }, repository: ASKED } };
@@ -265,7 +265,7 @@ describe("a project's coordinator manages its own project", () => {
   }, 120_000);
 });
 
-describe("the chief of staff's roster writes", () => {
+describe("the Shift Coordinator's roster writes", () => {
   /** The user's own workers, by id, as their roster holds them. */
   async function roster(lab: Lab): Promise<string[]> {
     const rows = await lab.stored("user", "workforce/workers/");

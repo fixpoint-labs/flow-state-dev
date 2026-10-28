@@ -179,6 +179,11 @@ On a board read from the claim:
   and `floor` run from 0 to 1; a confidence outside that is not a verdict. A judge
   that fails never fails the task: it settles on the phase's check, with `judged: false`. Size
   your shutdown with `harnessDrainBudgetMs({ ..., judge: true })`.
+- **`goalJudge({ name, model?, floor? })` is a ready-made judge.** An evaluation model (default
+  `typesafe-ai/jev`, floor 0.7) is asked whether the answer and commits do what the goal asks,
+  and why not. *Not done* carries the why it picked as the reason, and *ask* becomes a question
+  that names the goal and quotes the start of the answer. Pass it as `judge: goalJudge({ name:
+  "my-coder-judge" })`; the model resolves through your flow's model resolver.
 
 See [Harness manager](https://flow-state.dev/docs/orchestration/harness-manager) for the whole
 picture.
@@ -298,6 +303,16 @@ That posts to the engine's answer route, `POST /api/flows/:flow/requests/:reques
 - **Cancel** (the board's `updateTask` cancel): the review closes, no run starts, and the branch's commits and kept files stay.
 
 Reviews need a host with durable execution. A host can restart while a review waits; the answer continues the run.
+
+## The pull requests a run opened
+
+The manager declares the session's pull-request record, `observed-pull-requests` from
+`@flow-state-dev/core`, beside its own collections. The coding harness records each pull request
+its run opens as the call settles. Before the verdict, and when a run fails, the manager also asks
+GitHub which pull requests the run's branch has (`recordBranchPullRequests` from
+`@flow-state-dev/workspace`, through the host's signed-in `gh`) and writes any the run's calls
+didn't show. A check that can't reach GitHub is a status note; it never changes the verdict. Each
+row names the request that opened it, so a reader narrows a shared session to one run.
 
 ## Talking to a run
 

@@ -97,14 +97,14 @@ export async function askInStream(browser: Browser, origin: string, person: Pers
   });
 }
 
-/** The delegates panel on the chief of staff's view: the delegates drawn and the workers its picker offers. */
+/** The delegates panel on the Shift Coordinator's view: the delegates drawn and the workers its picker offers. */
 export async function delegatesPanel(browser: Browser, origin: string, person: Person, owner: boolean, record: RunRecord, shot: string) {
   return onPage(browser, origin, person, owner, record, shot, async (page) => {
     await openShiftManager(page, origin, "/");
-    await page.getByTestId("cos-delegates").waitFor({ timeout: 30_000 });
-    const delegates = await page.locator("[data-testid=cos-delegate]").evaluateAll((els) => els.map((e) => e.getAttribute("data-worker") ?? ""));
+    await page.getByTestId("shift-coordinator-delegates").waitFor({ timeout: 30_000 });
+    const delegates = await page.locator("[data-testid=shift-coordinator-delegate]").evaluateAll((els) => els.map((e) => e.getAttribute("data-worker") ?? ""));
     const offered = await page
-      .locator("[data-testid=cos-delegate-pick] option")
+      .locator("[data-testid=shift-coordinator-delegate-pick] option")
       .evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value).filter((v) => v !== ""))
       .catch(() => [] as string[]);
     return { delegates, offered };

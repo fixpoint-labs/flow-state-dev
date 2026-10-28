@@ -460,8 +460,8 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
       quote:
         "`org/workers/<name>/` is a worker slot like a team's, so a folder there with no `WORKER.md` is reported.",
     },
-    write: (root) => writeFile(root, "org/workers/cos/WORKER.md", doc("The chief of staff.")),
-    accountedFor: (out) => out.workers.includes("cos") || out.reported.includes("org/workers/cos"),
+    write: (root) => writeFile(root, "org/workers/shift-coordinator/WORKER.md", doc("The Shift Coordinator.")),
+    accountedFor: (out) => out.workers.includes("shift-coordinator") || out.reported.includes("org/workers/shift-coordinator"),
   },
   {
     shape: "teams/<team>/TEAM.md",

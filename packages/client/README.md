@@ -120,7 +120,7 @@ the suspension's `resumeSchema` (an invalid payload is a 400 with path-keyed
 suspension's `allow` set is a 409.
 
 To answer a stop that waits for a user from an inbox (a `ctx.waitForUser`, or a
-`human_approval` / `human_input` stop), use `answer`. The server checks the
+`user_approval` / `user_input` stop), use `answer`. The server checks the
 caller owns the stop's request before it reads the stop, and records the
 signed-in caller as who answered, so there is no `resumedBy`:
 
@@ -252,6 +252,8 @@ const requests = await fsd.sessions.requests("sess_1", {
   includeItems: true,
 });
 ```
+
+A request whose history window had dropped earlier turns carries `historyStart: { requestId }`, the oldest earlier turn its history window still held. Draw a divider above that turn: the turns before it were out of the model's view, or in the summary on a flow with a [history summary](https://flow-state.dev/docs/advanced/generator-context#summarizing-turns-past-the-window). It's absent while every earlier turn was in the window. Guard with `== null`.
 
 ### Listing one flow's sessions
 

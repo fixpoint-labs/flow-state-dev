@@ -1,6 +1,6 @@
 /**
  * The DevTeam team profile: a software team (an EM that files features, a
- * coder that runs them, a reviewer) and its chief of staff, as a server Shift
+ * coder that runs them, a reviewer) and its Shift Coordinator, as a server Shift
  * Manager and `fsdev dev` load.
  *
  *     pnpm --filter @flow-state-dev/shift-manager start
@@ -48,8 +48,8 @@
  *   Claude Code reports it.
  *
  * - **A store that survives a restart.** SQLite, at `DEVTEAM_STORE` or
- *   `packages/shift-manager/.fsdev/devteam.sqlite` by default. Workers the chief of
- *   staff hired are read back and serve again at the next start, a fire it
+ *   `packages/shift-manager/.fsdev/devteam.sqlite` by default. Workers the Shift
+ *   Coordinator hired are read back and serve again at the next start, a fire it
  *   made stays made, and an ask still waiting is still in Inbox. Delete the
  *   file for a fresh start.
  *

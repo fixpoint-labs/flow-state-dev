@@ -23,6 +23,7 @@ import type {
   ResolvableProviderOptions,
 } from "../blocks/generator";
 import type { ItemVisibility } from "../items/types";
+import type { ItemQuery } from "../types/scope";
 
 type MaybePromise<T> = T | Promise<T>;
 
@@ -121,6 +122,17 @@ export type PresetDef<TSessionState = any> = {
   controlTools?:
     | GeneratorTool[]
     | ((ctx: CapabilityPresetCtx<TSessionState>) => GeneratorTool[] | Promise<GeneratorTool[]>);
+
+  /**
+   * A query added to every `ctx.session.items.history()` read of the generator
+   * that installs the capability (FIX-1613), whether through the `history`
+   * option's default or a history function of its own. The read's own keys win
+   * over it; among capabilities, later keys win. Generator only.
+   *
+   * A history summary uses it to read only the turns after its mark
+   * (`{ afterRequestId }`). A function is resolved on every run.
+   */
+  history?: ItemQuery | ((ctx: BlockContext) => MaybePromise<ItemQuery>);
 
   // Generator-only singletons. Block-kind validated at merge time — declaring
   // any of these on a capability used by a handler/sequencer/router throws a

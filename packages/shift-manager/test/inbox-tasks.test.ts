@@ -28,7 +28,7 @@ describe("FROM THE SESSION and the replies (BR-18, I17, I18)", () => {
     const early = tool("Read", { path: "a.ts" }, "12 lines");
     const calls = [tool("Bash", { command: "pnpm test" }, "31 passed"), tool("Edit", { path: "b.ts" }, { ok: true }), tool("Write", { path: "c.ts" }, "")];
     const before = user("before the ask");
-    const ask = item({ type: "suspension", suspensionId: "s1", reason: "human_approval", message: "Ship it?" });
+    const ask = item({ type: "suspension", suspensionId: "s1", reason: "user_approval", message: "Ship it?" });
     const after = tool("Read", { path: "after.ts" }, "not before the ask");
     const reply = user("go ahead");
     // The read hands items back out of order; the derivation must not care.
@@ -46,12 +46,12 @@ describe("FROM THE SESSION and the replies (BR-18, I17, I18)", () => {
 
   it("an ask with nothing before it has no calls, and its session's earlier lines are not replies", () => {
     const earlier = user("filed this");
-    const ask = item({ type: "suspension", suspensionId: "s2", reason: "human_approval" });
+    const ask = item({ type: "suspension", suspensionId: "s2", reason: "user_approval" });
     expect(askSessionOf([ask, earlier], ask)).toEqual({ calls: [], replies: [] });
   });
 
   it("an ask its session's read doesn't hold places nothing, rather than reading every item as before it", () => {
-    const ask = item({ type: "suspension", suspensionId: "s3", reason: "human_approval" });
+    const ask = item({ type: "suspension", suspensionId: "s3", reason: "user_approval" });
     expect(askSessionOf([tool("Read", { path: "x" }, "1"), user("hi")], ask)).toBeNull();
   });
 });
