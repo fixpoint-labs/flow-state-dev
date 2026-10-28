@@ -17,6 +17,9 @@
  *     leaves the running turn's stream for the waiting line's.
  *   - follow the waiting line whenever streaming stops, and the "stream
  *     drops" case fails: the page leaves a turn that still runs.
+ *   - let the lines' ordering guard reset whenever the turn followed
+ *     changes, and the "two lines wait" case fails: a later line steers
+ *     into the first waiting turn ahead of the second.
  *   - one button that stops while a turn runs, as the page had, and the
  *     "Send and Stop" case fails: there is no Send to press, and pressing
  *     the one button stops the turn and keeps the line in the box.
@@ -33,6 +36,8 @@ const abortRequest = vi.fn(async () => undefined);
 const clientSend = vi.fn(async () => ({ id: "line-1" }));
 /** Ends the running turn in the stubbed hook. */
 let endTurn: () => void = () => undefined;
+/** Starts a stream in the stubbed hook, as following a request does. */
+let startStream: () => void = () => undefined;
 /** The session's running requests, as the client lists them. */
 let inProgress: Array<{ id: string; actionName: string; startedAtMs: number }> = [];
 /** Session state the server holds; `refresh` reads it. */
@@ -56,6 +61,7 @@ vi.mock("@flow-state-dev/react", () => ({
     const refresh = useCallback(async () => setSnapshot({ clientData: { session: serverState } }), []);
     const [isStreaming, setIsStreaming] = useState(true);
     endTurn = () => setIsStreaming(false);
+    startStream = () => setIsStreaming(true);
     return {
       snapshot,
       refresh,
@@ -81,7 +87,9 @@ afterEach(() => {
   cleanup();
   steerRunningTurn.mockReset();
   sendAction.mockClear();
-  followRequest.mockClear();
+  followRequest.mockReset();
+  clientSend.mockReset();
+  clientSend.mockImplementation(async () => ({ id: "line-1" }));
   abortRequest.mockClear();
   clientSend.mockClear();
   serverState = {};
@@ -169,5 +177,26 @@ describe("a line sent while the turn runs", () => {
     act(() => endTurn());
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(followRequest).not.toHaveBeenCalled();
+  });
+
+  it("while a sent turn still waits, a later line runs after it rather than steering past it", async () => {
+    steerRunningTurn.mockResolvedValue({ taken: false, live: true });
+    let sent = 0;
+    clientSend.mockImplementation(async () => ({ id: `line-${++sent}` }));
+    followRequest.mockImplementation(() => startStream());
+    mount();
+    sendLine("first");
+    await waitFor(() => expect(clientSend).toHaveBeenCalledTimes(1));
+    sendLine("second");
+    await waitFor(() => expect(clientSend).toHaveBeenCalledTimes(2));
+    // The running turn ends; the page follows the first waiting line, and the second still waits.
+    act(() => endTurn());
+    await waitFor(() => expect(followRequest).toHaveBeenCalledWith("line-1"));
+    steerRunningTurn.mockClear();
+    steerRunningTurn.mockResolvedValue({ taken: true, live: true });
+    sendLine("third");
+    await waitFor(() => expect(clientSend).toHaveBeenCalledTimes(3));
+    expect(clientSend).toHaveBeenLastCalledWith("turn", { prompt: "third" }, { sessionId: "s1" });
+    expect(steerRunningTurn).not.toHaveBeenCalled();
   });
 });

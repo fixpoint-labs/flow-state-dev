@@ -323,7 +323,10 @@ defineFlow({
 
 Declare the turn `defer`, so a turn sent while one runs waits for it however
 long it takes. A `queue` turn gives up after 30 seconds, and a line sent during
-a longer turn would never run.
+a longer turn would never run. With the default in-memory concurrency backend,
+waiting turns start in the order they were sent. With a lease backend shared
+across processes, two turns that wait at the same time can start in either
+order.
 
 `steer` answers `{ taken, live }`. On the page, `sendHarnessLine` from
 `@flow-state-dev/client` sends a line typed while a turn runs to `steer` first,

@@ -163,13 +163,16 @@ function SessionBody({
   // Lines reach the run in the order they were typed: each waits for the one
   // before it, and none steers past a line queued behind the running turn.
   const lines = useMemo(() => harnessLines((prompt, running, sender: LineSender) => sendLine(prompt, running, sender)), []);
-  useEffect(() => lines.turnChanged(), [lines, turnId, isStreaming]);
-  const [lastLine, setLastLine] = useState<LineOutcome | null>(null);
   // Turns sent while one runs, oldest first. Each waits on the server for the
   // turn before it, with no time limit, and is sent beside the running turn
   // rather than through the session hook, so the page stays on the running
   // turn. The page follows the next one once the turn it follows ends.
   const waiting = useRef<string[]>([]);
+  // While a sent turn still waits, a line steered into the turn followed now would pass it.
+  useEffect(() => {
+    if (waiting.current.length === 0) lines.turnChanged();
+  }, [lines, turnId, isStreaming]);
+  const [lastLine, setLastLine] = useState<LineOutcome | null>(null);
   const checkingRunning = useRef(false);
   const { followRequest } = session;
   const followWaiting = useCallback(() => {
