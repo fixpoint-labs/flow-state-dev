@@ -370,7 +370,7 @@ await runGoal(async (failures) => {
       // measuring the prompt fold rather than the session.
       await call(built.updateTaskAction, {
         id: row.taskId,
-        question: row.questions[0]!.question,
+        answers: row.questions[0]!.question,
         message: fixture.answerText,
       });
 

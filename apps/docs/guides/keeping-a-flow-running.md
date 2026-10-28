@@ -219,9 +219,8 @@ your host runs dispatched work:
   [Separated workers](/guides/background-jobs-bullmq#4-separated-workers).
 - **`bullmqWorker` in `worker-only` mode:** a worker runs queued jobs and enqueues nothing, so the
   dispatch runs in that process, without retries.
-- **A custom [`dispatcher`](/docs/configuration/runtime#createflowstate-fields) on
-  `createFlowState`** (the host option, not the `dispatcher()` block) **that runs work in another
-  process:** it can't apply the policy, so the dispatch throws `DispatchRefusedError` with
+- **A custom [`runner`](/docs/configuration/runtime#createflowstate-fields) on
+  `createFlowState` that runs work in another process:** it can't apply the policy, so the dispatch throws `DispatchRefusedError` with
   `refused: "external-dispatcher"` before anything is enqueued.
 
 Webhook deliveries (with or without a `sessionId`) and schedule ticks run normally on every host.
@@ -231,7 +230,7 @@ retries, start the work with a `{ key }`, have it write what it found somewhere 
 read, such as a user- or org-scoped resource or a task board, and read it from the
 conversation. From your app, the client's `fsd.sessions.children` lists the sessions a
 conversation's dispatches started. If the flow has to deliver into an existing session behind a
-custom dispatcher, serve it from a host with no queue worker, and accept that its runs aren't
+custom runner, serve it from a host with no queue worker, and accept that its runs aren't
 retried.
 
 ## Where each setting lives

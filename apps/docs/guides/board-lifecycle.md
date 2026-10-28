@@ -97,7 +97,7 @@ const collection = await getOrCreateTaskCollection({
   collectionId: "queue",
 });
 
-await collection.addTask({ id: "task-0", goal: "…", assignee: "processor", input });
+await collection.createTask({ id: "task-0", goal: "…", assignee: "processor", input });
 collection.list({ status: "completed" }); // synchronous read
 ```
 
@@ -177,7 +177,7 @@ About the collection itself:
   contains the write-back that would otherwise have thrown — but that task's
   result is not protected from a worker that has moved on.
 
-So request A can `addTask` into it, the request ends, and request B — a
+So request A can `createTask` into it, the request ends, and request B — a
 different call, even a different session turn — can still see those tasks (same
 `user`). The **state** genuinely outlives the request.
 
@@ -205,12 +205,12 @@ same tasks. An add through one handle is visible through all of them, right away
 ```ts
 // Block A resolves a handle and adds two tasks.
 const a = await getOrCreateTaskCollection({ ctx, backing: "resource", collectionId: "todos", collection: todoTasks });
-await a.addTask({ id: "t1", goal: "…" });
-await a.addTask({ id: "t2", goal: "…" });
+await a.createTask({ id: "t1", goal: "…" });
+await a.createTask({ id: "t2", goal: "…" });
 
 // Block B, later in the same request, resolves its OWN handle and adds a third.
 const b = await getOrCreateTaskCollection({ ctx, backing: "resource", collectionId: "todos", collection: todoTasks });
-await b.addTask({ id: "t3", goal: "…" });
+await b.createTask({ id: "t3", goal: "…" });
 
 a.list(); // → [t1, t2, t3]  — same request, so a sees b's add
 b.list(); // → [t1, t2, t3]

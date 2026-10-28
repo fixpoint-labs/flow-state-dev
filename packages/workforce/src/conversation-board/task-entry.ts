@@ -41,7 +41,7 @@
  *   stays owed, and this session never hears of that refusal.
  * - **Its pieces** (FIX-2077). A turn that files pieces on the task
  *   session's own board leaves its task running when it ends, with no lease
- *   (`waitingOn: "filed"`); the turn each piece's ending wakes runs for the
+ *   (`keptOpenBy: "filed"`); the turn each piece's ending wakes runs for the
  *   task (`./task-admission`), and the request after which no piece holds it
  *   settles it, through the gate's one check. The
  *   entry holds the session's reply line while it runs, so a piece's notice

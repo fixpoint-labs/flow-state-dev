@@ -167,7 +167,7 @@ async function drive(origin: string, store: string) {
   const parkedRow = row(taskId);
   const question = openQuestionOf(parkedRow);
   await quiet();
-  const answered = parked ? await act("coordinator", conv, "updateTask_tasks", { id: taskId, question: question?.id, message: `Use ${region}.` }) : null;
+  const answered = parked ? await act("coordinator", conv, "updateTask_tasks", { id: taskId, answers: question?.id, message: `Use ${region}.` }) : null;
   const answeredAt = Date.now();
   const ended = parked && (await waitFor(() => ["completed", "errored", "cancelled"].includes(row(taskId)?.status ?? ""), 90_000));
   const endedIn = Date.now() - answeredAt;
@@ -193,10 +193,10 @@ async function drive(origin: string, store: string) {
 
 /** A row's open question: a row hold on a running row that no steer answers yet. */
 function openQuestionOf(t: StoredTask | undefined): { id: string; ask: { kind: string; prompt: string } } | undefined {
-  const row = t as (StoredTask & { holds?: Array<{ id: string; source: { kind: string }; ask: { kind: string; prompt: string } }>; steers?: Array<{ answers?: string }> }) | undefined;
+  const row = t as (StoredTask & { questions?: Array<{ id: string; source: { kind: string }; ask: { kind: string; prompt: string } }>; steers?: Array<{ answers?: string }> }) | undefined;
   if (row?.status !== "in_progress") return undefined;
   const answered = new Set((row.steers ?? []).flatMap((s) => (s.answers === undefined ? [] : [s.answers])));
-  return row.holds?.find((h) => h.source.kind === "row" && !answered.has(h.id));
+  return row.questions?.find((h) => h.source.kind === "row" && !answered.has(h.id));
 }
 
 // ---- grading ----------------------------------------------------------------------------

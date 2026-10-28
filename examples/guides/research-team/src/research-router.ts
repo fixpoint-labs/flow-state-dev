@@ -21,7 +21,7 @@ export const researchRequestSchema = z.object({
  * This answers "when does the board run": the router builds it and hands
  * it back as the block to execute. `routes: []` + `validateRoute: () =>
  * true` lets the router return a board it constructed per call. Seeding
- * through the board's `initialTasks` (rather than a manual `addTask` in
+ * through the board's `initialTasks` (rather than a manual `createTask` in
  * the router) keeps it replay-safe — the board's seed step is idempotent
  * by task id, so a re-run doesn't double-seed.
  */
@@ -53,7 +53,7 @@ export const researchRouter = router({
       name: "competitor-board",
       collection: { collectionId: "competitors" },
       concurrency: 4,
-      dispatcher: "topological",
+      claimOrder: "topological",
       workers: { analyzer: analyst("competitor"), synthesizer },
       initialTasks,
     }).drain;

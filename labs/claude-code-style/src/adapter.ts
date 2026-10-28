@@ -22,7 +22,7 @@
  */
 import { createClient, type Client, type SessionSummary } from "@flow-state-dev/client";
 import { readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
-import { createInboxClient, inboxItems, type InboxAnswer, type InboxHold, type InboxRow, type TaskHold } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, inboxItems, type InboxAnswer, type InboxQuestion, type InboxRow, type TaskQuestion } from "@flow-state-dev/orchestration/inbox";
 import {
   createWorkforceClient,
   parseProjectRef,
@@ -400,7 +400,7 @@ function createWiredLab(fsd: Client): LabAdapter {
   };
 
   /** A listed task row, as much as the screen reads. */
-  type Listed = TaskRow & { runSessionId?: string; run?: { sessionId: string; requestId: string }; holds?: TaskHold[] };
+  type Listed = TaskRow & { runSessionId?: string; run?: { sessionId: string; requestId: string }; questions?: TaskQuestion[] };
 
   /** Each listed task's run session, by task id, as the last list saw it. */
   const runSessionOf = new Map<string, string>();
@@ -418,7 +418,7 @@ function createWiredLab(fsd: Client): LabAdapter {
       ...(task.statusNote == null ? {} : { statusNote: task.statusNote }),
       ...(typeof task.updatedAt === "number" ? { updatedAt: task.updatedAt } : {}),
       ...(task.run?.sessionId === undefined ? {} : { runSessionId: task.run.sessionId, run: task.run }),
-      ...(Array.isArray(task.holds) ? { holds: task.holds } : {}),
+      ...(Array.isArray(task.questions) ? { questions: task.questions } : {}),
     }));
   };
 
@@ -426,7 +426,7 @@ function createWiredLab(fsd: Client): LabAdapter {
   const runFlows = new Map<string, string | null>();
 
   /** Each task's open holds for you, as the Inbox reads them: what its answer takes and where it goes. */
-  const holdsOf = async (sessionId: string, listed: readonly Listed[]): Promise<Map<string, InboxHold[]>> => {
+  const holdsOf = async (sessionId: string, listed: readonly Listed[]): Promise<Map<string, InboxQuestion[]>> => {
     // A question is answered on the board's own session; a run's stop, in the run's session.
     if (!runFlows.has(sessionId)) runFlows.set(sessionId, await flowOfSession(sessionId));
     for (const task of listed) {
@@ -442,11 +442,11 @@ function createWiredLab(fsd: Client): LabAdapter {
       assignee: task.assignee ?? null,
       status: task.status,
       run: task.run ?? null,
-      holds: task.holds ?? [],
+      questions: task.questions ?? [],
       holder: { sessionId, action: UPDATE_TASK_ACTION },
     }));
     const items = inboxItems({ rows, suspensions: [], flowOf: (id) => runFlows.get(id) });
-    return new Map(items.flatMap((item) => (item.task === null ? [] : [[item.task.taskId, [...item.holds]] as const])));
+    return new Map(items.flatMap((item) => (item.task === null ? [] : [[item.task.taskId, [...item.questions]] as const])));
   };
 
   /** The harness each coding worker runs through, asked once of a run session of it. */
@@ -481,7 +481,7 @@ function createWiredLab(fsd: Client): LabAdapter {
     const holds = await holdsOf(sessionId, listed);
     const rows = await Promise.all(
       listed.map(async (task): Promise<TaskRow> => {
-        const { runSessionId: _session, run: _run, holds: _holds, ...row } = task;
+        const { runSessionId: _session, run: _run, questions: _questions, ...row } = task;
         const hold = holds.get(row.id)?.[0];
         const harness = await harnessOf(task);
         const review = harness !== undefined && row.status === "completed" ? await reviewOf(sessionId, task) : undefined;
@@ -499,7 +499,7 @@ function createWiredLab(fsd: Client): LabAdapter {
   };
 
   /** The open hold a thread's task holds you on that asks for `asks` (a question, a review), or undefined. */
-  const holdOn = async (sessionId: string, taskId: string, asks: "question" | "review"): Promise<InboxHold | undefined> => {
+  const holdOn = async (sessionId: string, taskId: string, asks: "question" | "review"): Promise<InboxQuestion | undefined> => {
     const holds = await holdsOf(sessionId, (await tasksOf(sessionId)).filter((task) => task.id === taskId));
     return holds.get(taskId)?.find((hold) => hold.ask.kind === asks);
   };
@@ -508,7 +508,7 @@ function createWiredLab(fsd: Client): LabAdapter {
   const answerReview = async (sessionId: string, taskId: string, answer: InboxAnswer) => {
     const review = await holdOn(sessionId, taskId, "review");
     if (review === undefined) throw new Error(`The thread "${taskId}" isn't waiting on your review.`);
-    await inbox.answerHold(review, answer);
+    await inbox.answerOne(review, answer);
   };
 
   /** Your pins, as the `pins` flow keeps them. */
@@ -595,7 +595,7 @@ function createWiredLab(fsd: Client): LabAdapter {
       // A line answers the question the thread holds you on; with none open, it is a steer on its task.
       const question = await holdOn(sessionId, taskId, "question");
       if (question !== undefined) {
-        await inbox.answerHold(question, { text: line });
+        await inbox.answerOne(question, { text: line });
         return;
       }
       await run(await flowOfSession(sessionId), sessionId, UPDATE_TASK_ACTION, { id: taskId, message: line });

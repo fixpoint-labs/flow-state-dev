@@ -97,7 +97,7 @@ function upgradeFlow(model: GeneratorModel): FlowInstance {
       const board = await boardOf(ctx);
       // Filed once: the replay after the resume reads the filing back.
       const taskId = await ctx.runOnce!("fixture.file:c1", async () =>
-        (await board.addTask({ goal: input.question, assignee: "researcher" })).id
+        (await board.createTask({ goal: input.question, assignee: "researcher" })).id
       );
       const waited = await waitOnTask(ctx, board, taskId, { key: "fixture.wait:c1" });
       return waited.ok

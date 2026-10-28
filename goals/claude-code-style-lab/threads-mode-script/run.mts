@@ -240,7 +240,7 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
     const asking = await until(async () => {
       for (const task of await rowsOf(sessionId)) {
         if (task.assignee !== THREAD) continue;
-        const hold = (task.holds ?? []).find((h: any) => h.ask?.kind === "question");
+        const hold = (task.questions ?? []).find((h: any) => h.ask?.kind === "question");
         if (hold !== undefined && (await columnOf(task.id)) === "waiting") return { task, hold };
       }
       return undefined;
@@ -253,7 +253,7 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
     await threadView().getByRole("button", { name: "Answer", exact: true }).click();
     const answered = await until(async () => {
       const read = await taskOf(sessionId, asked.id);
-      const open = (read?.holds ?? []).some((h: any) => h.id === question.id);
+      const open = (read?.questions ?? []).some((h: any) => h.id === question.id);
       return !open && read.attempts === asked.attempts ? read : undefined;
     }, 2 * 60_000);
     if (answered === undefined) failures.push(`3: the question on "${asked.title}" was never answered on its attempt`);
@@ -273,7 +273,7 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
     const ready = await until(async () => {
       const read = await taskOf(sessionId, asked.id);
       if (read === undefined || !OPEN.has(read.status)) return read?.status === undefined ? undefined : { ended: read };
-      const review = (read.holds ?? []).find((h: any) => h.ask?.kind === "review");
+      const review = (read.questions ?? []).find((h: any) => h.ask?.kind === "review");
       return review !== undefined && (await columnOf(asked.id)) === "review" ? { review } : undefined;
     }, 8 * 60_000);
     if (ready === undefined || "ended" in ready) {
@@ -311,8 +311,8 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
       const read = await taskOf(sessionId, coding.id);
       if (read === undefined) continue;
       if (!OPEN.has(read.status)) reviewEnd = read;
-      review = (read.holds ?? []).find((h: any) => h.ask?.kind === "review");
-      const asks = (read.holds ?? []).find((h: any) => h.ask?.kind === "question");
+      review = (read.questions ?? []).find((h: any) => h.ask?.kind === "review");
+      const asks = (read.questions ?? []).find((h: any) => h.ask?.kind === "question");
       if (asks !== undefined && review === undefined) {
         notes.push(`6: the run asked "${String(asks.ask.prompt).slice(0, 80)}"`);
         await rowFor(coding.id).click();

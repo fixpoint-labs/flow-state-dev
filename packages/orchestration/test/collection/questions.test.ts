@@ -25,12 +25,12 @@ import {
   isReady,
   MAX_STEERS,
   NO_ANSWER_CAME,
-  openHolds,
+  openQuestions,
   steerFromLine,
   ticketForClaim,
   TaskFilingRefusedError,
-  type HoldAsk,
-  type SuspensionHold,
+  type QuestionInit,
+  type SuspensionQuestion,
   type Task,
   type TaskCollectionRef,
 } from "../../src/tasks";
@@ -39,9 +39,9 @@ import { createFakeResourceCollection, createFakeSequencerState } from "../helpe
 
 const CSV = "Which CSV export should the script read?";
 const COLUMN = "Which date column?";
-const ask = (prompt: string): HoldAsk => ({ kind: "question", prompt });
+const ask = (prompt: string): QuestionInit => ({ kind: "question", prompt });
 
-type Make = (options?: { holdDueMs?: number }) => Promise<{ board: TaskCollectionRef; clock: { at: number } }>;
+type Make = (options?: { questionDueMs?: number }) => Promise<{ board: TaskCollectionRef; clock: { at: number } }>;
 
 const sequencerBacking: Make = async (options = {}) => {
   const clock = { at: 1_000 };
@@ -49,7 +49,7 @@ const sequencerBacking: Make = async (options = {}) => {
     collectionId: "tasks",
     state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
     now: () => clock.at,
-    ...(options.holdDueMs !== undefined ? { filing: { holdDueMs: options.holdDueMs } } : {}),
+    ...(options.questionDueMs !== undefined ? { filing: { questionDueMs: options.questionDueMs } } : {}),
   });
   return { board, clock };
 };
@@ -60,13 +60,13 @@ const resourceBacking: Make = async (options = {}) => {
     collectionId: "tasks",
     collection: createFakeResourceCollection(),
     now: () => clock.at,
-    ...(options.holdDueMs !== undefined ? { filing: { holdDueMs: options.holdDueMs } } : {}),
+    ...(options.questionDueMs !== undefined ? { filing: { questionDueMs: options.questionDueMs } } : {}),
   });
   return { board, clock };
 };
 
-const holdIds = (row: Task | undefined) => (row === undefined ? [] : openHolds(row).map((hold) => hold.id));
-const user = (hold: string, message: string, by = "u1") => ({ hold, message, from: "user" as const, by });
+const holdIds = (row: Task | undefined) => (row === undefined ? [] : openQuestions(row).map((hold) => hold.id));
+const user = (hold: string, message: string, by = "u1") => ({ questionId: hold, message, from: "user" as const, by });
 
 describe.each([
   ["sequencer-backed", sequencerBacking],
@@ -75,20 +75,20 @@ describe.each([
   /** Filed on two questions: the before-start legs a, b and c. */
   async function filed() {
     const made = await make();
-    const row = await made.board.addTask({ id: "t1", goal: "Write the adoption script", questions: [ask(CSV), ask(COLUMN)] });
-    const [csv, column] = row.holds!.map((hold) => hold.id);
+    const row = await made.board.createTask({ id: "t1", goal: "Write the adoption script", questions: [ask(CSV), ask(COLUMN)] });
+    const [csv, column] = row.questions!.map((hold) => hold.id);
     return { ...made, csv: csv!, column: column! };
   }
 
   /** Claimed, then asked midway: leg d. */
   async function askedMidway() {
     const made = await make();
-    await made.board.addTask({ id: "t4", goal: "Clean the export" });
+    await made.board.createTask({ id: "t4", goal: "Clean the export" });
     const claimed = (await made.board.claim("w", { leaseDurationMs: 10_000 }))!;
     const ticket = ticketForClaim("tasks", claimed);
     const asked = await made.board.ask!("t4", [ask(COLUMN)], { claim: ticket });
     expect(asked.outcome).toBe("recorded");
-    return { ...made, ticket, hold: asked.holds![0]! };
+    return { ...made, ticket, hold: asked.questions![0]! };
   }
 
   describe("before the start", () => {
@@ -96,9 +96,9 @@ describe.each([
       const { board } = await filed();
       const row = board.get("t1")!;
       expect(row).toMatchObject({ status: "pending", attempts: 0 });
-      expect(openHolds(row).map((hold) => [hold.actor, hold.ask, hold.source, hold.due])).toEqual([
-        ["user", { kind: "question", prompt: CSV }, { kind: "row", releasedBy: [{ by: "answer" }] }, undefined],
-        ["user", { kind: "question", prompt: COLUMN }, { kind: "row", releasedBy: [{ by: "answer" }] }, undefined],
+      expect(openQuestions(row).map((hold) => [hold.actor, hold.ask, hold.source, hold.due])).toEqual([
+        ["user", { kind: "question", prompt: CSV }, { kind: "row", closedBy: [{ by: "answer" }] }, undefined],
+        ["user", { kind: "question", prompt: COLUMN }, { kind: "row", closedBy: [{ by: "answer" }] }, undefined],
       ]);
       const lookup = (id: string) => board.get(id);
       expect(isClaimable(row, lookup, board.now())).toBe(false);
@@ -126,8 +126,8 @@ describe.each([
 
     it("a held start composes with its questions: both must clear", async () => {
       const { board } = await make();
-      const row = await board.addTask({ id: "t2", goal: "g", held: true, questions: [ask(CSV)] });
-      await board.answer!("t2", user(row.holds![0]!.id, "the March one"));
+      const row = await board.createTask({ id: "t2", goal: "g", held: true, questions: [ask(CSV)] });
+      await board.answer!("t2", user(row.questions![0]!.id, "the March one"));
       expect(await board.claim("w")).toBeNull();
       await board.release("t2");
       expect(await board.claim("w")).toMatchObject({ id: "t2", attempts: 1 });
@@ -135,10 +135,10 @@ describe.each([
 
     it("refuses questions it can't keep, filing nothing", async () => {
       const { board } = await make();
-      await expect(board.addTask({ id: "x", goal: "g", questions: [ask("")] })).rejects.toBeInstanceOf(TaskFilingRefusedError);
-      await expect(board.addTask({ id: "y", goal: "g", questions: [ask("?".repeat(1_001))] })).rejects.toMatchObject({ rule: "questions_not_kept" });
+      await expect(board.createTask({ id: "x", goal: "g", questions: [ask("")] })).rejects.toBeInstanceOf(TaskFilingRefusedError);
+      await expect(board.createTask({ id: "y", goal: "g", questions: [ask("?".repeat(1_001))] })).rejects.toMatchObject({ rule: "questions_not_kept" });
       const many = Array.from({ length: MAX_STEERS + 1 }, (_, i) => ask(`question ${i}`));
-      await expect(board.addTask({ id: "z", goal: "g", questions: many })).rejects.toMatchObject({ rule: "questions_not_kept" });
+      await expect(board.createTask({ id: "z", goal: "g", questions: many })).rejects.toMatchObject({ rule: "questions_not_kept" });
       expect(board.list()).toEqual([]);
     });
   });
@@ -146,36 +146,36 @@ describe.each([
   describe("a confirm's No", () => {
     it("is stored on every confirm from its first write: cancel unless its filer said continue, and never on a question", async () => {
       const { board } = await make();
-      const row = await board.addTask({
+      const row = await board.createTask({
         id: "t10",
         goal: "g",
         questions: [{ kind: "confirm", prompt: "Ship it?" }, { kind: "confirm", prompt: "Tag it?", onNo: "continue" }, ask(CSV)],
       });
-      expect(row.holds!.map((hold) => hold.ask)).toEqual([
+      expect(row.questions!.map((hold) => hold.ask)).toEqual([
         { kind: "confirm", prompt: "Ship it?", onNo: "cancel" },
         { kind: "confirm", prompt: "Tag it?", onNo: "continue" },
         { kind: "question", prompt: CSV },
       ]);
-      await expect(board.addTask({ id: "t11", goal: "g", questions: [{ kind: "question", prompt: CSV, onNo: "cancel" }] })).rejects.toThrow(/only a confirm takes onNo/);
+      await expect(board.createTask({ id: "t11", goal: "g", questions: [{ kind: "question", prompt: CSV, onNo: "cancel" }] })).rejects.toThrow(/only a confirm takes onNo/);
     });
 
     it("a cancel for a No lands only while its confirm is open, decided on the committed row: after a yes it is refused as answered", async () => {
       const { board } = await make();
-      const row = await board.addTask({ id: "t12", goal: "g", questions: [{ kind: "confirm", prompt: "Drop it?" }] });
-      const hold = row.holds![0]!.id;
+      const row = await board.createTask({ id: "t12", goal: "g", questions: [{ kind: "confirm", prompt: "Drop it?" }] });
+      const hold = row.questions![0]!.id;
       await board.answer!("t12", user(hold, "Yes, go ahead."));
-      expect(await board.cancel("t12", 'No to "Drop it?"', { whileHoldOpen: hold })).toMatchObject({ outcome: "declined", reason: "answered" });
+      expect(await board.cancel("t12", 'No to "Drop it?"', { whileQuestionOpen: hold })).toMatchObject({ outcome: "declined", reason: "answered" });
       expect(board.get("t12")!.status).toBe("pending");
-      expect(await board.cancel("t12", "x", { whileHoldOpen: "hold_none" })).toMatchObject({ outcome: "declined", reason: "no-such-hold" });
+      expect(await board.cancel("t12", "x", { whileQuestionOpen: "hold_none" })).toMatchObject({ outcome: "declined", reason: "no-such-question" });
     });
 
     it("a yes and a No's cancel at once: exactly one wins", async () => {
       const { board } = await make();
-      const row = await board.addTask({ id: "t13", goal: "g", questions: [{ kind: "confirm", prompt: "Drop it?" }] });
-      const hold = row.holds![0]!.id;
+      const row = await board.createTask({ id: "t13", goal: "g", questions: [{ kind: "confirm", prompt: "Drop it?" }] });
+      const hold = row.questions![0]!.id;
       const [yes, no] = await Promise.all([
         board.answer!("t13", user(hold, "Yes, go ahead.")),
-        board.cancel("t13", 'No to "Drop it?"', { whileHoldOpen: hold }),
+        board.cancel("t13", 'No to "Drop it?"', { whileQuestionOpen: hold }),
       ]);
       expect([yes.outcome, no.outcome].filter((outcome) => outcome === "recorded")).toHaveLength(1);
       const after = board.get("t13")!;
@@ -191,7 +191,7 @@ describe.each([
       expect(await board.answer!("t1", user(csv, "The March export"))).toEqual({ outcome: "unchanged" });
       expect(await board.answer!("t1", user(csv, "The April export"))).toMatchObject({ outcome: "declined", reason: "answered" });
       expect(await board.answer!("t1", user(csv, "The March export", "u2"))).toMatchObject({ outcome: "declined", reason: "answered" });
-      expect(await board.answer!("t1", user("hold_nope", "x"))).toMatchObject({ outcome: "declined", reason: "no-such-hold" });
+      expect(await board.answer!("t1", user("hold_nope", "x"))).toMatchObject({ outcome: "declined", reason: "no-such-question" });
       expect(board.get("t1")!.steers).toHaveLength(1);
     });
 
@@ -219,7 +219,7 @@ describe.each([
       const { board, csv } = await filed();
       await board.cancel("t1", "not needed");
       expect(board.get("t1")).toMatchObject({ status: "cancelled" });
-      expect(openHolds(board.get("t1")!)).toEqual([]);
+      expect(openQuestions(board.get("t1")!)).toEqual([]);
       expect(await board.answer!("t1", user(csv, "x"))).toMatchObject({ outcome: "declined", reason: "terminal" });
     });
 
@@ -237,7 +237,7 @@ describe.each([
 
     it("at one place short of the cap, an ask and a steer at once leave exactly one, and the reservation is filled by the answer", async () => {
       const { board } = await make();
-      await board.addTask({ id: "t7", goal: "g" });
+      await board.createTask({ id: "t7", goal: "g" });
       const claimed = (await board.claim("w", { leaseDurationMs: 10_000 }))!;
       const ticket = ticketForClaim("tasks", claimed);
       for (let i = 0; i < MAX_STEERS - 1; i += 1) await board.steer!("t7", { message: `steer ${i}`, from: "filer" });
@@ -247,9 +247,9 @@ describe.each([
       ]);
       expect([asked.outcome, steered.outcome].filter((outcome) => outcome === "recorded")).toHaveLength(1);
       const row = board.get("t7")!;
-      expect((row.steers?.length ?? 0) + openHolds(row).length).toBe(MAX_STEERS);
+      expect((row.steers?.length ?? 0) + openQuestions(row).length).toBe(MAX_STEERS);
       if (asked.outcome === "recorded") {
-        expect(await board.answer!("t7", user(asked.holds![0]!, "signup_date"))).toEqual({ outcome: "recorded" });
+        expect(await board.answer!("t7", user(asked.questions![0]!, "signup_date"))).toEqual({ outcome: "recorded" });
         expect(board.get("t7")!.steers).toHaveLength(MAX_STEERS);
       }
     });
@@ -262,12 +262,12 @@ describe.each([
       // The turn that asked is marked on the row, by its generation: it may not stop for the user or settle.
       expect(row).toMatchObject({ status: "in_progress", attempts: 1, askedInTurn: ticket.turn });
       expect(row.leaseUntil).toBeUndefined();
-      expect(await board.renewLease("t4", clock.at + 10_000, { claim: ticket })).toMatchObject({ outcome: "declined", reason: "held" });
+      expect(await board.renewLease("t4", clock.at + 10_000, { claim: ticket })).toMatchObject({ outcome: "declined", reason: "open-question" });
       clock.at += 60_000;
       expect(await board.reclaim()).toBe(0);
       expect(await board.claim("w")).toBeNull();
-      expect(await board.complete("t4", "done", { claim: ticket, ifAllowed: true })).toMatchObject({ outcome: "declined", reason: "held" });
-      expect(await board.fail("t4", "boom", { claim: ticket, ifAllowed: true })).toMatchObject({ outcome: "declined", reason: "held" });
+      expect(await board.complete("t4", "done", { claim: ticket, ifAllowed: true })).toMatchObject({ outcome: "declined", reason: "open-question" });
+      expect(await board.fail("t4", "boom", { claim: ticket, ifAllowed: true })).toMatchObject({ outcome: "declined", reason: "open-question" });
       expect(board.get("t4")).toMatchObject({ status: "in_progress", attempts: 1 });
     });
 
@@ -293,8 +293,8 @@ describe.each([
       const { board, ticket, hold } = await askedMidway();
       await board.answer!("t4", user(hold, "signup_date"));
       expect(board.get("t4")).toMatchObject({ status: "in_progress", attempts: 1, turnOwed: true });
-      expect(await board.complete("t4", "done", { claim: ticket, ifAllowed: true })).toMatchObject({ outcome: "declined", reason: "held" });
-      expect(await board.fail("t4", "boom", { claim: ticket, ifAllowed: true })).toMatchObject({ outcome: "declined", reason: "held" });
+      expect(await board.complete("t4", "done", { claim: ticket, ifAllowed: true })).toMatchObject({ outcome: "declined", reason: "open-question" });
+      expect(await board.fail("t4", "boom", { claim: ticket, ifAllowed: true })).toMatchObject({ outcome: "declined", reason: "open-question" });
       // The owed turn is still there for the next claim, on the same attempt.
       expect(board.get("t4")).toMatchObject({ status: "in_progress", attempts: 1, turnOwed: true });
       expect(await board.claim("w", { leaseDurationMs: 10_000 })).toMatchObject({ attempts: 1, turn: 2 });
@@ -302,7 +302,7 @@ describe.each([
 
     it("an ask with no questions is refused, and leaves the turn's lease as it was", async () => {
       const { board } = await make();
-      await board.addTask({ id: "t4", goal: "g" });
+      await board.createTask({ id: "t4", goal: "g" });
       const claimed = (await board.claim("w", { leaseDurationMs: 10_000 }))!;
       await expect(board.ask!("t4", [], { claim: ticketForClaim("tasks", claimed) })).rejects.toThrow(/no question was asked/);
       expect(board.get("t4")!.leaseUntil).toBe(claimed.leaseUntil);
@@ -318,7 +318,7 @@ describe.each([
     it("an admission that takes the owed turn is that turn's claim: the generation moves and the claim's mark clears", async () => {
       const { board, clock, ticket, hold } = await askedMidway();
       await board.answer!("t4", user(hold, "signup_date"));
-      const admitted = await board.setWaitingOn!("t4", null, { claim: ticket, leaseUntil: clock.at + 10_000 });
+      const admitted = await board.setKeptOpenBy!("t4", null, { claim: ticket, leaseUntil: clock.at + 10_000 });
       expect(admitted).toEqual({ outcome: "recorded" });
       expect(board.get("t4")).toMatchObject({ turn: 2, attempts: 1 });
       expect(board.get("t4")!.turnOwed).toBeUndefined();
@@ -328,40 +328,40 @@ describe.each([
 
     it("a question with a stop for a person open on the row is refused: one wait at a time", async () => {
       const { board } = await make();
-      await board.addTask({ id: "t9", goal: "g" });
+      await board.createTask({ id: "t9", goal: "g" });
       const claimed = (await board.claim("w", { leaseDurationMs: 10_000 }))!;
       const ticket = ticketForClaim("tasks", claimed);
-      const stop: SuspensionHold = {
+      const stop: SuspensionQuestion = {
         id: "sp1",
         actor: "user",
         openedAt: 1,
         source: { kind: "suspension", requestId: "r1", suspensionId: "sp1" },
         ask: { kind: "approval", prompt: "Ship it?" },
       };
-      await board.setWaitingOn!("t9", "wait", { claim: ticket, hold: stop });
-      expect(await board.ask!("t9", [ask(COLUMN)], { claim: ticket })).toMatchObject({ outcome: "declined", reason: "held" });
+      await board.setKeptOpenBy!("t9", "wait", { claim: ticket, question: stop });
+      expect(await board.ask!("t9", [ask(COLUMN)], { claim: ticket })).toMatchObject({ outcome: "declined", reason: "open-question" });
     });
   });
 
   describe("a deadline", () => {
     it("closes a question past the due time a host set, no answer came, and the work goes on; none set, it never does", async () => {
-      const due = await make({ holdDueMs: 5_000 });
-      const t5 = await due.board.addTask({ id: "t5", goal: "g", questions: [ask(CSV)] });
-      expect(t5.holds![0]!.due).toBe(1_000 + 5_000);
-      expect(await due.board.payHoldDeadlines!()).toEqual([]);
+      const due = await make({ questionDueMs: 5_000 });
+      const t5 = await due.board.createTask({ id: "t5", goal: "g", questions: [ask(CSV)] });
+      expect(t5.questions![0]!.due).toBe(1_000 + 5_000);
+      expect(await due.board.payQuestionDeadlines!()).toEqual([]);
       due.clock.at += 5_000;
       // The rows it paid, so a board wakes only those.
-      expect(await due.board.payHoldDeadlines!()).toEqual(["t5"]);
-      expect(openHolds(due.board.get("t5")!)).toEqual([]);
-      expect(due.board.get("t5")!.steers).toMatchObject([{ from: "board", message: NO_ANSWER_CAME, answers: t5.holds![0]!.id }]);
+      expect(await due.board.payQuestionDeadlines!()).toEqual(["t5"]);
+      expect(openQuestions(due.board.get("t5")!)).toEqual([]);
+      expect(due.board.get("t5")!.steers).toMatchObject([{ from: "board", message: NO_ANSWER_CAME, answers: t5.questions![0]!.id }]);
       expect(await due.board.claim("w")).toMatchObject({ id: "t5", attempts: 1 });
 
       const none = await make();
-      const t6 = await none.board.addTask({ id: "t6", goal: "g", questions: [ask(CSV)] });
-      expect(t6.holds![0]!.due).toBeUndefined();
+      const t6 = await none.board.createTask({ id: "t6", goal: "g", questions: [ask(CSV)] });
+      expect(t6.questions![0]!.due).toBeUndefined();
       none.clock.at += 30 * 86_400_000;
-      expect(await none.board.payHoldDeadlines!()).toEqual([]);
-      expect(holdIds(none.board.get("t6"))).toEqual([t6.holds![0]!.id]);
+      expect(await none.board.payQuestionDeadlines!()).toEqual([]);
+      expect(holdIds(none.board.get("t6"))).toEqual([t6.questions![0]!.id]);
       expect(await none.board.claim("w")).toBeNull();
     });
   });
@@ -380,9 +380,9 @@ describe.each([
 
     it("never answers a confirm: a typed line is no yes or no, so it steers and the confirm stays open", async () => {
       const { board } = await make();
-      const row = await board.addTask({ id: "t10", goal: "g", questions: [{ kind: "confirm", prompt: "Ship v2?" }] });
+      const row = await board.createTask({ id: "t10", goal: "g", questions: [{ kind: "confirm", prompt: "Ship v2?" }] });
       expect(await steerFromLine(board, "t10", "sounds good", line("req_line2"))).toBeUndefined();
-      expect(holdIds(board.get("t10"))).toEqual([row.holds![0]!.id]);
+      expect(holdIds(board.get("t10"))).toEqual([row.questions![0]!.id]);
       expect(board.get("t10")!.steers).toMatchObject([{ message: "sounds good" }]);
       expect(board.get("t10")!.steers![0]!.answers).toBeUndefined();
     });

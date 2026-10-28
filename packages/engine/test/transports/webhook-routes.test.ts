@@ -25,7 +25,7 @@ import {
   defaultBodyUserIdPrincipalResolver,
   stripeWebhookVerifier,
   createInMemoryLeaseBackend,
-  type FlowDispatcher
+  type FlowRunner
 } from "../../src";
 import { createConcurrencyArbiter } from "../../src/transports/concurrency/arbiter";
 import type { DispatchHandle } from "../../src/transports/types";
@@ -553,13 +553,13 @@ describe("handleWebhook with a real host (signed, end-to-end)", () => {
       resolvePrincipal: defaultBodyUserIdPrincipalResolver,
       runtimeConfig: {},
       // A queue that never runs the job, so the first delivery's place stays held.
-      dispatcher: {
+      runner: {
         dispatch: async (envelope) => {
           enqueued.push(envelope.requestId);
           return { requestId: envelope.requestId, finished: new Promise(() => {}), abort: () => {} };
         },
         close: async () => {}
-      } as FlowDispatcher,
+      } as FlowRunner,
       arbiter: createConcurrencyArbiter({
         backend: {
           take: (input) => inner.take(input),

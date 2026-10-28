@@ -4,7 +4,7 @@ The orchestration substrate for flow-state-dev. One package, three layers that
 build on each other:
 
 - **Task substrate** — the `Task` schema and state machine, the storage-agnostic
-  `TaskCollection`, and the dispatcher catalog.
+  `TaskCollection`, and the claim order catalog.
 - **Task board** — a concurrent drain over a `TaskCollection` with dependency
   gating and per-task worker routing. The orchestration primitive that
   `supervisor`, `parallelTasks`, and `planAndExecute` (in `@flow-state-dev/patterns`)
@@ -28,7 +28,7 @@ import { taskSchema, type Task } from "@flow-state-dev/orchestration";
 A `Task` is the unified work-unit record: `id`, `goal`, `status`, `deps`, `lease`,
 `attempts`, `retryLedger`, optional typed `input`/`output`. Status enum:
 `pending | in_progress | held | completed | errored | cancelled`. A task waiting on a
-person is `in_progress`: what it waits on is in its `holds`.
+person is `in_progress`: what it waits on is in its `questions`.
 
 ```
 pending ─┬─→ in_progress ─┬─→ completed
@@ -256,8 +256,8 @@ maintains no provenance leaves its callers with `undefined`, never a false `fals
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
 
 const collection = await getOrCreateTaskCollection({ ctx, backing: "state", collectionId: "plan" });
-await collection.addTask({ id: "research", goal: "research the topic" });
-await collection.addTask({ goal: "draft the post", deps: ["research"] });
+await collection.createTask({ id: "research", goal: "research the topic" });
+await collection.createTask({ goal: "draft the post", deps: ["research"] });
 ```
 
 ### Leases and recovery
@@ -347,13 +347,13 @@ Anything that reports *which* task runs next needs both; anything asking only
 *whether* there is work to do needs the first. Compare leases against
 `collection.now()`, not `Date.now()`: it is the clock that stamped `leaseUntil`.
 
-### Dispatchers
+### Claim orders
 
-`fifoDispatcher`, `topologicalDispatcher` (the default), and `priorityDispatcher`. None of
+`fifoClaimOrder`, `topologicalClaimOrder` (the default), and `priorityClaimOrder`. None of
 them claims a task whose `deps` aren't all `completed`. That eligibility rule lives
-on `collection.claim`, and a dispatcher's own `eligibility` narrows it, so they
-differ only in ordering. `fifoDispatcher` and
-`topologicalDispatcher` are ordered identically; `priorityDispatcher` takes the
+on `collection.claim`, and a claim order's own `eligibility` narrows it, so they
+differ only in ordering. `fifoClaimOrder` and
+`topologicalClaimOrder` are ordered identically; `priorityClaimOrder` takes the
 highest `priority` first, ties on `createdAt`.
 
 ## Task board
@@ -377,7 +377,7 @@ dispatcher are refused at construction, naming the fix),
 `defaultWorker` (optional fallback for a task whose assignee is unmatched or
 omitted — reached only on a miss, declared workers untouched; may be a task
 dispatcher, see below),
-`concurrency` (default 4), `dispatcher` (default `"topological"`),
+`concurrency` (default 4), `claimOrder` (default `"topological"`),
 `onIdle` (`"complete-or-blocked"` default | `"complete"` | `"wait"`; a running task waiting
 on a person, on a question or stopped for a review or an approval, is in flight but doesn't
 count as active work, so a `"complete-or-blocked"` board whose open tasks only wait on a person stops
@@ -597,7 +597,7 @@ else `allow`). An explicit `concurrency` on the entry wins:
 task: { actions: { implement: { block: implementBlock, concurrency: "allow" } } },
 ```
 
-The in-process dispatcher applies that policy, and so do queue workers that share
+The in-process runner applies that policy, and so do queue workers that share
 a lease backend. On a deployment that hands dispatches to an external queue without
 one, the run starts in another worker and the entry's `concurrency` does not gate it.
 
@@ -742,23 +742,23 @@ that a `dispatcher()` block throws.
 The child settles its own row once, when the task's work is over: its request has ended,
 along with the background work that request started and any the flow's `onFinished`
 started; and every task it filed has ended and its ending has reached the child's
-session. Until then the row stays `in_progress`, and `waitingOn` says why:
+session. Until then the row stays `in_progress`, and `keptOpenBy` says why:
 
-| `waitingOn` | Waiting on | Lease |
+| `keptOpenBy` | Waiting on | Lease |
 | --- | --- | --- |
 | `"filed"` | tasks it filed that are open, or whose ending is still owed to the child's session | none |
 | `"wait"` | a suspension, a stop for a person included | none |
 
 A row with no lease is never reclaimed, so a waiting task isn't run twice. A resume
 continues the same attempt. A stop for a person (a `ctx.waitForUser()`, or a `ctx.suspend()`
-for `human_approval` or `human_input`) is also mirrored on the row as a hold.
+for `human_approval` or `human_input`) is also mirrored on the row as a question.
 
-**A task waiting on a user.** `getTask` and `listTasks` show `waitingOn` on a running
-task, and its `holds`. A stop for a person is one with `source.kind: "suspension"`: its
+**A task waiting on a user.** `getTask` and `listTasks` show `keptOpenBy` on a running
+task, and its `questions`. A stop for a person is one with `source.kind: "suspension"`: its
 `ask` (`kind` is `approval`, `review` or `input`, with the `prompt` and `title`), its `due`
 (epoch ms, absent when it has none), and the `requestId` and `suspensionId` a screen
 answers it by. A screen answers it through the engine's answer route (a request handle's
-`answer` in `@flow-state-dev/client`); `holds` is a read convenience, never where a screen
+`answer` in `@flow-state-dev/client`); `questions` is a read convenience, never where a screen
 lists what waits for a user (that is the Inbox read, below). Three other endings:
 
 - **Cancelled.** `updateTask({ id, status: "cancelled" })` cancels the row under the stop's
@@ -781,7 +781,7 @@ answerCounts, endRules? })` first in its sequencer, where `find(ctx)` returns
 `Promise<{ ref: TaskCollectionRef; row: Task } | undefined>` (the waiting row whose run is
 this session, read from server-set state). A later request's answer becomes the output
 only with `answerCounts: true` and a `noteTaskAnswer` tap after the step that produced it, and `afterTaskCheck(ctx, fn)` runs `fn` after that check,
-such as sending the filer the notice that the task ended. `endRules: { filedWorkHolds? }`
+such as sending the filer the notice that the task ended. `endRules: { filedWorkKeepsOpen? }`
 (type `TaskEndRules`, also on `taskLedgers`) replaces what holds a task: by default its
 filed tasks. Anything else that runs in the child's session, such as a message to it, is
 not admitted for the task: it doesn't hold the task and isn't part of it (while the task's
@@ -917,7 +917,7 @@ the latest completed follow-up of the task's chain, `{ id, output, outputCut? }`
 A `listTasks` row names it by id only (`current: { id }`).
 `output` is the result as the worker recorded it. A result longer than 20,000 characters as JSON
 comes back as that text cut to 20,000 characters, with `outputCut: true`; an `input` or
-`metadata` that long is cut the same way, with `inputCut` or `metadataCut`. `holds` lists what the
+`metadata` that long is cut the same way, with `inputCut` or `metadataCut`. `questions` lists what the
 task waits on. `run` is the same link `listTasks` carries. A task the
 board doesn't hold answers `{ ok: false, error: "task_not_found", taskId }`.
 
@@ -1073,7 +1073,7 @@ A worker that can't go on without an answer asks the user. `createAskQuestion({ 
 the worker's side: `askQuestion({ question })` asks it on the task the current turn is working
 on, and the turn ends without settling it; `offered(ctx)` says whether the turn gets the
 tool, on a task turn for a running task. The answer is a message naming the question,
-`updateTask({ id, question, message })`, from the Inbox, a line the user types in the task's
+`updateTask({ id, answers, message })`, from the Inbox, a line the user types in the task's
 session, or the filer's own tool. The coordinator answers a question only when the task runs in a session of its own. When the task runs in the delegate's ongoing session, you answer it. The first answer
 wins, and it owes the task one more turn on the same attempt, which starts from the brief, the last
 checkpoint and the answer.
@@ -1086,7 +1086,7 @@ host's person-stop deadline (`userDeadlineMs`) and none otherwise, and at a dead
 `waitForUser` in the same step open one wait, and the other is refused with a tool error naming it.
 
 **Moving from the question and review parks.** `createParkOnQuestion` and `parkOnQuestion` are gone: build `createAskQuestion`. <!-- retired-name-refusal: migration note -->
-`answerTask` and its action are gone: answer with `updateTask({ id, question, message })`. <!-- retired-name-refusal: migration note -->
+`answerTask` and its action are gone: answer with `updateTask({ id, answers, message })`. <!-- retired-name-refusal: migration note -->
 `TaskCollectionRef.awaitReview` and `unpark`, `board.unparkAndDrain` and a board's `onReview` are gone: a block asks for a review with `ctx.waitForUser({ kind: "review", prompt })`. <!-- retired-name-refusal: migration note -->
 The `parked` status, `counts.parked`, the `parked-for-review` termination reason and the `parked` notice ending are gone. <!-- retired-name-refusal: migration note -->
 
@@ -1139,7 +1139,7 @@ Where a message lands:
   before each model call, takes the steers no earlier read took (`takeSteers(id, { claim,
   takenIn })`, fenced to the claim) and renders them. `renderSteers`, `runningTaskOf` and
   `takeRunningSteers` are its parts, for a worker of your own.
-- **While the task waits on work it filed** (`waitingOn: "filed"`): the steer sets `waitingOn:
+- **While the task waits on work it filed** (`keptOpenBy: "filed"`): the steer sets `keptOpenBy:
   "steer"`, and the host starts the turn it is owed.
 - **After the request's last model call**: an untaken message gives the task one more turn on
   the same attempt before it settles, run by the entry you name in
@@ -1298,9 +1298,9 @@ await createInboxClient(client).answer(items[0], { approved: true });
 
 - **One item per task row** that waits on the user. A stop in that task's run lists under the row, never a second time on its own.
 - **One item per suspension** that no open task's run holds, such as a user's ask in a session of their own.
-- **Each hold** says what it asks, where its answer goes, and whether the Inbox can answer it. An item is `answerable` when one of its holds is.
-- **One item per task, however many questions it holds.** A task's questions and confirms, asked at filing or midway, list oldest first as its holds, beside a stop in its run.
-- **The answer is typed by what the hold asks:** an approval takes `{ approved, data? }`, an input or a review `{ value }` (or `{ skipped: true }`), a question `{ text }`, a confirm `{ done, note? }` (a No cancels the task unless the confirm was filed with `onNo: "continue"`). `answer(item, value, holdId?)` answers the item's first hold, or the one named; `answerHold(hold, value)` answers one hold directly. A task run's stop goes to the engine's answer route, which records who answered. A question or a confirm goes to its board's `updateTask` action, as the signed-in user, in the session that board lives in, and the call rejects with the board's refusal. A hold on a board the reader can't reach says so in `unanswerable`.
+- **Each question** says what it asks, where its answer goes, and whether the Inbox can answer it. An item is `answerable` when one of its questions is.
+- **One item per task, however many questions it has.** A task's questions and confirms, asked at filing or midway, list oldest first as its `questions`, beside a stop in its run.
+- **The answer is typed by what the question asks:** an approval takes `{ approved, data? }`, an input or a review `{ value }` (or `{ skipped: true }`), a question `{ text }`, a confirm `{ done, note? }` (a No cancels the task unless the confirm was filed with `onNo: "continue"`). `answer(item, value, questionId?)` answers the item's first question, or the one named; `answerOne(question, value)` answers one question directly. A task run's stop goes to the engine's answer route, which records who answered. A question or a confirm goes to its board's `updateTask` action, as the signed-in user, in the session that board lives in, and the call rejects with the board's refusal. A question on a board the reader can't reach says so in `unanswerable`.
 
 ## Documentation
 

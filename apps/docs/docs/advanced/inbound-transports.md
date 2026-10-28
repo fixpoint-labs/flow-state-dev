@@ -229,7 +229,7 @@ effective config, so a config a caller derived for one request reaches the
 background work that request spawns.
 
 That inheritance stops at a serialization boundary. A `RuntimeConfig` holds live
-resolvers and provider instances, so a dispatcher that hands work to another
+resolvers and provider instances, so a runner that hands work to another
 process — a queue adapter, a separate worker tier — cannot carry it. The job
 carries the serializable envelope only, and the worker runs it under its own
 configuration.
@@ -244,7 +244,7 @@ differs somewhere else — a voice provider, a request-scoped logger — is drop
 without one. Treat the warning as coverage for model overrides, not as a
 guarantee that every dropped field is reported.
 
-Writing a custom host or dispatcher, read this as: honour the inherited config
+Writing a custom host or runner, read this as: honour the inherited config
 when you run work in-process, and expect not to receive it when you don't.
 
 ## Per-registry, not per-flow

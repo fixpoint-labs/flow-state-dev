@@ -53,9 +53,9 @@ function hostReturning(handle: Partial<DispatchHandle>) {
       finished: new Promise<never>(() => {}),
       ...handle
     }) as DispatchHandle;
-  return { dispatch, usesExternalDispatcher: false } as Pick<
+  return { dispatch, usesExternalRunner: false } as Pick<
     InboundTransportHost,
-    "dispatch" | "usesExternalDispatcher"
+    "dispatch" | "usesExternalRunner"
   >;
 }
 
@@ -98,8 +98,8 @@ describe("a dispatch waits for the host to accept it", () => {
     });
   });
 
-  it("does not wait on a dispatcher that reports no acceptance", async () => {
-    // The field is optional on the contract. A custom dispatcher that does not
+  it("does not wait on a runner that reports no acceptance", async () => {
+    // The field is optional on the contract. A custom runner that does not
     // distinguish acceptance from completion must not hang the dispatching
     // request — it gets today's behaviour, which the row's lease still covers.
     const dispatch = createDispatchOperation({ host: hostReturning({}) });
@@ -114,7 +114,7 @@ describe("a dispatch waits for the host to accept it", () => {
     // child anywhere while its lease runs down.
     const dispatch = createDispatchOperation({
       host: {
-        usesExternalDispatcher: false,
+        usesExternalRunner: false,
         dispatch: () => {
           throw new Error("concurrency key already held");
         }
@@ -230,7 +230,7 @@ describe("not-started is reserved for a throw that happened before any child exi
       stores,
       resolvePrincipal: defaultBodyUserIdPrincipalResolver,
       runtimeConfig: {},
-      dispatcher: {
+      runner: {
         dispatch: (envelope: { requestId: string }) => {
           enqueuedRequestId = envelope.requestId;
           return Promise.reject(new Error("queue unreachable"));
