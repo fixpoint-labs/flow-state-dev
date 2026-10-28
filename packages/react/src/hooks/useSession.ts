@@ -434,7 +434,9 @@ export type SessionView = {
   /**
    * Follow a request of this session that was sent without the hook: stream
    * its items into `items`, from the start, and make it the request
-   * `abortRequest` stops. The stream followed now is closed.
+   * `abortRequest` stops. The stream followed now is closed. Followed again
+   * after its stream dropped, it picks up after the last event the view had,
+   * so state changes already applied are not applied twice.
    *
    * For a request sent beside the one the page follows, so the page stays on
    * that one until it ends: a turn that waits for the running turn, say, sent
@@ -636,6 +638,8 @@ export function useSession(
    * the "Dismiss" button.
    */
   const latestRequestIdAfterDropRef = useRef<string | null>(null);
+  /** The last event a request stream delivered, for `followRequest` to resume after. */
+  const lastStreamEventRef = useRef<{ requestId: string; sequence: number } | null>(null);
   /**
    * Requests the person stopped whose stop the server has not yet shown in a
    * snapshot. The view keeps its own stop record for each until a snapshot
@@ -1128,8 +1132,9 @@ export function useSession(
       };
 
       const sseCallbacks: RequestSSECallbacks = {
-        onEvent: () => {
+        onEvent: (event) => {
           lastEventAtRef.current = Date.now();
+          lastStreamEventRef.current = { requestId, sequence: event.sequence_number };
         },
         onHeartbeat: () => {
           lastEventAtRef.current = Date.now();
@@ -1975,7 +1980,8 @@ export function useSession(
   const followRequest = useCallback(
     (requestId: string) => {
       activeRequestIdRef.current = requestId;
-      attachToStream(requestId);
+      const last = lastStreamEventRef.current;
+      attachToStream(requestId, last?.requestId === requestId ? String(last.sequence) : undefined);
     },
     [attachToStream]
   );

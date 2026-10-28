@@ -123,7 +123,7 @@ Returns:
   )}
   ```
 - `continueRequest(requestId)` — Continue a crash-interrupted request under its OWN id and stream the re-entry's items back into `session.items`. Unlike `resumeLatestRequest` (which re-dispatches the most recent request via `/retry` under a new id), this targets a specific `requestId` — the caller resolves which interrupted request to continue rather than assuming "latest". POSTs inline with `Accept: text/event-stream`; on a 202 fallback it reconnects via GET rather than re-POSTing.
-- `followRequest(requestId)` — Follow a request of this session that was sent without the hook: stream its items into `session.items` from the start, and make it the request `abortRequest` stops. Closes the stream followed now and sends nothing. For a request sent beside the one the page follows, such as a turn that waits for the running one: send it through the client, and follow it once the running turn ends. `useHarnessLines` does this for a harness session's lines.
+- `followRequest(requestId)` — Follow a request of this session that was sent without the hook: stream its items into `session.items` from the start, and make it the request `abortRequest` stops. Closes the stream followed now and sends nothing. Followed again after its stream dropped, it picks up after the last event the view had, so a state change is not applied twice. For a request sent beside the one the page follows, such as a turn that waits for the running one: send it through the client, and follow it once the running turn ends. `useHarnessLines` does this for a harness session's lines.
 - `getOwnedItems(ownedBy)` — Items owned by a container scope (O(1) indexed lookup)
 - `refresh()` — Manually refetch
 

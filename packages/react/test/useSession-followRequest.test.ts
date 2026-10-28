@@ -13,6 +13,9 @@
  *   - let a stop's cleanup close whatever stream is open when the stop's
  *     answer lands, and the "stop that lands late" case fails: the request
  *     followed meanwhile loses its stream.
+ *   - follow a request again from the start after its stream dropped, and
+ *     the "picks up after the last event" case fails: the server replays
+ *     events the view already applied.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
@@ -104,6 +107,27 @@ describe("useSession.followRequest (FIX-2265)", () => {
 
     expect(first.closed).toBe(true);
     expect(connections.at(-1)!.url).toContain("/requests/req_line/stream");
+  });
+
+  it("followed again after its stream dropped, picks up after the last event the view had", async () => {
+    const { result } = renderHook(() => useSession("sess1", { flowKind: "demo" }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => result.current.followRequest("req_turn"));
+    const first = connections.at(-1)!;
+    const resumesAfter = (stream: (typeof connections)[number]) => (stream.callbacks as { startingAfter?: number }).startingAfter;
+    expect(resumesAfter(first)).toBeUndefined();
+    act(() => first.callbacks.onEvent?.({ stream: "request", requestId: "req_turn", sequence_number: 7, ts: 1000, type: "item.added" }));
+    act(() => first.callbacks.onError?.(new Error("dropped")));
+
+    // Replayed from the start, an increment or push the view already applied would apply twice.
+    act(() => result.current.followRequest("req_turn"));
+    expect(resumesAfter(connections.at(-1)!)).toBe(7);
+    // Another request still streams from its start.
+    act(() => result.current.followRequest("req_line"));
+    expect(resumesAfter(connections.at(-1)!)).toBeUndefined();
   });
 
   it("makes the followed request the one a stop reaches", async () => {
