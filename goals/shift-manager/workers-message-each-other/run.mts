@@ -343,9 +343,11 @@ await runGoal(async () => {
     failures.push(...r.failures);
   }
   if (control !== undefined) {
-    // A leg 9 control must fail every sub-leg it names.
+    // A leg 9 control must fail every sub-leg it names, on what the sub-leg grades: a setup failure
+    // or a throw means the scenario never ran, so it counts for nothing.
     const required = control.subLegs?.map((s) => `9:${s}`) ?? [control.assertion];
-    const missed = required.filter((a) => !failures.some((f) => f.startsWith(`${a} `)));
+    const graded = failures.filter((f) => !/^\S+ — (setup|threw):/.test(f));
+    const missed = required.filter((a) => !graded.some((f) => f.startsWith(`${a} `)));
     failures.unshift(
       missed.length === 0
         ? `control ${control.name}: failed on ${required.join(" and ")}, as it must`
