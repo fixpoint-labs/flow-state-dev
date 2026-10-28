@@ -155,7 +155,7 @@ model-driven run should do and what a replay would not. Two further runs failed 
 model, both on controls that had been tightened in the same round and were themselves wrong; those
 are recorded in the PR, not here.
 
-**The model-free sibling is red, and this issue did not break it.** `it-wakes-the-seat-a-file-declared`
+**The model-free sibling is red, and this issue did not break it.** `it-wakes-the-seat-a-file-declared` <!-- retired-name-refusal: a dated note, the goal's name when it ran -->
 fails one leg: *"an org-less read of eng.em was answered rather than refused."* Verified identical on
 clean `origin/main` (`ae915670f`) with none of this branch's changes applied. The cause is
 [FIX-1442](https://linear.app/fixpoint-labs/issue/FIX-1442) (`b48158a0d`, 2026-09-21), which made an

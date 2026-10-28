@@ -19,6 +19,30 @@ const PUBLISHED = /^(apps\/docs\/(docs|guides)\/.*\.(md|mdx|svg)|packages\/[^/]+
 const CODE_OR_PUBLISHED = new RegExp(`${CODE.source}|${PUBLISHED.source}`);
 const PENDING_NOTES = /^(\.changeset\/.*\.md|goals\/.*\.(md|mts|ts))$/;
 
+/** FIX-2248: the goal folders that named a seat or a mailbox (or a person for the user), exact names only. */
+const SEAT_MAILBOX_GOAL_NAMES = [
+  "mailbox-boards",
+  "multi-seat-collab",
+  "workforce-mailboxes",
+  "workforce-seats",
+  "it-commits-from-the-seats-own-file",
+  "it-keeps-its-rows-on-the-mailboxes-board",
+  "it-wakes-the-seat-a-file-declared",
+  "it-ships-an-artifact-a-person-can-open",
+  "refuses-a-board-drain-onto-a-seat-it-is-outside",
+  "a-person-talks-to-a-seat-a-mailbox-and-back",
+  "agent-replies-in-the-mailbox",
+  "it-routes-a-queue-to-the-seats-their-files-name",
+  "it-hands-a-row-between-two-seats-in-view",
+  "a-post-reaches-both-declared-seats",
+  "a-seat-answers-from-its-own-document",
+  "it-sends-a-turn-into-a-seat-session",
+  "a-team-says-once-what-its-seats-are-told",
+  "a-callers-own-agent-wins-every-seat",
+  "a-non-agent-seat-receives-its-skills",
+  "a-seat-reaches-the-documents-its-file-names",
+];
+
 /** Each retired name or meaning (epic D3): an id, the files it is looked for in, the pattern. */
 export const RETIRED = [
   {
@@ -204,9 +228,8 @@ export const RETIRED = [
   {
     id: "seat-mailbox-goal-names",
     files: new RegExp(`${CODE_OR_PUBLISHED.source}|${PENDING_NOTES.source}`),
-    // FIX-2248: the goal folders that named a seat or a mailbox (or a person for the user), exact names only.
-    pattern: /(?<![\w-])(mailbox-boards|multi-seat-collab|workforce-mailboxes|workforce-seats|it-commits-from-the-seats-own-file|it-keeps-its-rows-on-the-mailboxes-board|it-wakes-the-seat-a-file-declared|it-ships-an-artifact-a-person-can-open|refuses-a-board-drain-onto-a-seat-it-is-outside|a-person-talks-to-a-seat-a-mailbox-and-back|agent-replies-in-the-mailbox|it-routes-a-queue-to-the-seats-their-files-name|it-hands-a-row-between-two-seats-in-view|a-post-reaches-both-declared-seats|a-seat-answers-from-its-own-document|it-sends-a-turn-into-a-seat-session|a-team-says-once-what-its-seats-are-told|a-callers-own-agent-wins-every-seat|a-non-agent-seat-receives-its-skills|a-seat-reaches-the-documents-its-file-names)(?![\w-])/,
-    pathName: /(^|\/)(mailbox-boards|multi-seat-collab|workforce-mailboxes|workforce-seats|it-commits-from-the-seats-own-file|it-keeps-its-rows-on-the-mailboxes-board|it-wakes-the-seat-a-file-declared|it-ships-an-artifact-a-person-can-open|refuses-a-board-drain-onto-a-seat-it-is-outside|a-person-talks-to-a-seat-a-mailbox-and-back|agent-replies-in-the-mailbox|it-routes-a-queue-to-the-seats-their-files-name|it-hands-a-row-between-two-seats-in-view|a-post-reaches-both-declared-seats|a-seat-answers-from-its-own-document|it-sends-a-turn-into-a-seat-session|a-team-says-once-what-its-seats-are-told|a-callers-own-agent-wins-every-seat|a-non-agent-seat-receives-its-skills|a-seat-reaches-the-documents-its-file-names)\//
+    pattern: new RegExp(`(?<![\\w-])(${SEAT_MAILBOX_GOAL_NAMES.join("|")})(?![\\w-])`),
+    pathName: new RegExp(`(^|/)(${SEAT_MAILBOX_GOAL_NAMES.join("|")})/`)
   }
 ];
 
@@ -256,7 +279,7 @@ export const KEEP = [
   },
   {
     path: /^goals\//,
-    line: /^\| \d{4}-\d{2}-\d{2} \||^\*\*The model-free sibling is red, and this issue did not break it\.\*\*/,
+    line: /^\| \d{4}-\d{2}-\d{2} \|/,
     rules: ["seat-mailbox-goal-names"],
     why: "a goal's verdict log: a dated run keeps the goal names it ran under"
   },
