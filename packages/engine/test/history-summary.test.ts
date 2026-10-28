@@ -193,6 +193,24 @@ describe("historySummary on the engine", () => {
     expect(row?.state).toMatchObject({ summary: "the other turn's summary", folds: 1, throughRequestId: null });
   });
 
+  it("loses no turn that shares its start time with the mark once the mark leaves the window", async () => {
+    const stores = createInMemoryStores();
+    const calls: ModelCall[] = [];
+    const flow = chatFlow({ window: 4, summarize: foldingSummarize() });
+    await talk(stores, flow, calls, 2);
+    // Two turns started in the same millisecond.
+    const first = (await stores.request.get("req_001"))!;
+    const second = (await stores.request.get("req_002"))!;
+    await stores.request.set("req_002", { ...second, startedAtMs: first.startedAtMs }, "any");
+
+    await talk(stores, flow, calls, 6, 3);
+
+    const row = await stores.resourceState.get("session", "s", "historySummary");
+    const state = row?.state as { summary: string; gap: boolean; complete: boolean };
+    expect(state.summary.split(" ")).toEqual(expect.arrayContaining(["u1", "u2"]));
+    expect(state).toMatchObject({ gap: false, complete: true });
+  });
+
   it("keeps a turn that had not settled by id and folds it once it does, never twice", async () => {
     const stores = createInMemoryStores();
     const calls: ModelCall[] = [];

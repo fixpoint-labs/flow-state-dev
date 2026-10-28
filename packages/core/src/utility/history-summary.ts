@@ -168,12 +168,16 @@ export function historySummary(options: HistorySummaryOptions) {
       const stillPending = pendingTurns.filter((t) => !t.settled).map((t) => t.requestId);
 
       const all = await ctx.session.items.turns();
-      // After the mark by position while the window holds it (two turns can
-      // share a start millisecond), by start time once it has left.
+      // After the mark by position, since two turns can share a start
+      // millisecond: from the mark while the window holds it, else from the
+      // oldest turn the last fold left unfolded, else by start time.
       const markAt = state.throughRequestId === null ? -1 : all.findIndex((t) => t.requestId === state.throughRequestId);
+      const nextAt = state.nextRequestId === null ? -1 : all.findIndex((t) => t.requestId === state.nextRequestId);
       const after = markAt !== -1
         ? all.slice(markAt + 1)
-        : all.filter((t) => state.throughStartedAtMs === null || t.startedAtMs > state.throughStartedAtMs);
+        : nextAt !== -1
+          ? all.slice(nextAt)
+          : all.filter((t) => state.throughStartedAtMs === null || t.startedAtMs > state.throughStartedAtMs);
 
       // Turns lost: the oldest unfolded turn the last fold saw left unfolded,
       // or the summary started after turns had already left the window.
