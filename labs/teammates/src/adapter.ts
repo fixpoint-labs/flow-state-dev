@@ -156,8 +156,8 @@ export interface LabAdapter {
   setWorkProject(worker: string, project: string): Promise<void>;
   /** The tasks a conversation filed, oldest first. */
   watchTasks(sessionId: string, onChange: (tasks: BoardTask[]) => void): Unsubscribe;
-  /** A task's run, read only: the worker that runs it takes no messages. */
-  watchRun(taskId: string, onChange: (steps: RunStep[]) => void): Unsubscribe;
+  /** A task's run, by the session its row names, read only: the worker that runs it takes no messages. */
+  watchRun(runSessionId: string, onChange: (steps: RunStep[]) => void): Unsubscribe;
 }
 
 /** How often the reads with no stream are read again. */
@@ -316,8 +316,6 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   let workerIds = new Set<string>();
   /** Each shared project's visibility, as listed. */
   const visibility = new Map<string, "shared" | "private">();
-  /** The run session of each task, from the rows `watchTasks` reads; each task card is drawn from those. */
-  const runOf = new Map<string, string>();
   /** Who watches each worker's project, told at once when a pick here is stored. */
   const projectWatchers = new Map<string, Set<(project: string | undefined) => void>>();
 
@@ -445,34 +443,19 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       for (const watcher of projectWatchers.get(worker) ?? []) watcher(project);
     },
     watchTasks(sessionId, onChange) {
-      return watchFeed(sessionId, (items) => {
-        const tasks = [...boardRows(items).values()].map(toBoardTask);
-        for (const task of tasks) if (task.runSessionId !== undefined) runOf.set(task.id, task.runSessionId);
-        return tasks;
-      }, onChange);
+      return watchFeed(sessionId, (items) => [...boardRows(items).values()].map(toBoardTask), onChange);
     },
-    watchRun(taskId, onChange) {
-      let stopFeed: Unsubscribe | undefined;
-      // The run's session is named on the task's row once it starts.
-      const stopWait: Unsubscribe = poll(async () => runOf.get(taskId), (sessionId) => {
-        if (sessionId === undefined || stopFeed !== undefined) return;
-        // Found: the feed follows the run from here, so the wait stops.
-        stopWait();
-        stopFeed = watchFeed(sessionId, (items) => {
-          const steps: RunStep[] = [];
-          const block = items.find((i) => HARNESS_LABEL[i.provenance?.blockName ?? ""] !== undefined)?.provenance?.blockName;
-          if (block !== undefined) steps.push({ id: "harness", text: `on ${HARNESS_LABEL[block]}` });
-          for (const item of items) {
-            if (item.type === "message" && item.role === "assistant" && textOf(item).trim() !== "") steps.push({ id: item.id, text: textOf(item) });
-            else if (item.type === "tool_output" && typeof item.toolCall?.name === "string") steps.push({ id: item.id, text: item.toolCall.name });
-          }
-          return steps;
-        }, onChange);
-      });
-      return () => {
-        stopWait();
-        stopFeed?.();
-      };
+    watchRun(runSessionId, onChange) {
+      return watchFeed(runSessionId, (items) => {
+        const steps: RunStep[] = [];
+        const block = items.find((i) => HARNESS_LABEL[i.provenance?.blockName ?? ""] !== undefined)?.provenance?.blockName;
+        if (block !== undefined) steps.push({ id: "harness", text: `on ${HARNESS_LABEL[block]}` });
+        for (const item of items) {
+          if (item.type === "message" && item.role === "assistant" && textOf(item).trim() !== "") steps.push({ id: item.id, text: textOf(item) });
+          else if (item.type === "tool_output" && typeof item.toolCall?.name === "string") steps.push({ id: item.id, text: item.toolCall.name });
+        }
+        return steps;
+      }, onChange);
     },
   };
 }

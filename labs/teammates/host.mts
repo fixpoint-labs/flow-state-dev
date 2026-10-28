@@ -19,7 +19,7 @@
  */
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { codexAgent } from "@flow-state-dev/codex";
+import { CODEX_PASS, codexAgent } from "@flow-state-dev/codex";
 import { harnessEnv } from "@flow-state-dev/core";
 import type { HarnessBlock } from "@flow-state-dev/core/types";
 import { CLAUDE_CODE_PASS, claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
@@ -83,7 +83,13 @@ const HARNESSES: Record<string, Harness> = {
       permissionMode: "acceptEdits",
     } as never) as unknown as HarnessBlock,
   codex: ({ cwd, resume, onSession }) =>
-    codexAgent({ cwd, resume, onSession, thread: { sandboxMode: "workspace-write" } } as never) as unknown as HarnessBlock,
+    codexAgent({
+      cwd,
+      resume,
+      onSession,
+      client: { env: harnessEnv({ pass: CODEX_PASS }) },
+      thread: { sandboxMode: "workspace-write" },
+    } as never) as unknown as HarnessBlock,
 };
 
 /** The remote a project with a checkout stores as its `repository`. */
