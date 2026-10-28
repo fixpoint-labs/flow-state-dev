@@ -93,7 +93,7 @@ describe("what a view of its own draws", () => {
     drawn([]);
     expect((await screen.findByTestId("rev-conversation-empty")).textContent).toBe("Nothing said to the reviewer yet.");
     expect(screen.getByTestId("rev-composer")).toBeTruthy();
-    expect(screen.queryByTestId("cos")).toBeNull();
+    expect(screen.queryByTestId("shift-coordinator")).toBeNull();
   });
 
   it("says what it is in a session opened before a first line, rather than drawing nothing", async () => {

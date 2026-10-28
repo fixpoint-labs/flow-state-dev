@@ -79,6 +79,13 @@ Leave `client.env` unset and the Codex CLI process inherits your server's entire
 than adding to it (the SDK's rule), so `client: { env: harnessEnv({ pass: [...] }) }`,
 with `harnessEnv` from `@flow-state-dev/core`, passes only the variables you name.
 
+`CODEX_PASS` is the list a run needs to work, if you'd rather not write your
+own: `PATH`, `HOME`, `CODEX_HOME`, `USER`, `SHELL`, `TMPDIR`, `CODEX_API_KEY`,
+and the proxy and CA settings a proxied network needs, in upper and lower case.
+`client: { env: harnessEnv({ pass: CODEX_PASS }) }` builds it; hand the same
+`env` to `probeCodexAccount`, `listCodexModels` and `readCodexUsage` so they
+see the run's account.
+
 ## The handle
 
 The neutral harness handle (`source: "codex/sdk"`, `status`, `sessionId`, `url`,

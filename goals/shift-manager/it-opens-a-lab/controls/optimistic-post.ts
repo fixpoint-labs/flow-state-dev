@@ -4,8 +4,8 @@
  *
  * Built into the control page in place of `src/lib/send.ts`, which every
  * composer that talks to a worker sends through: a workstream entry's
- * conversation with its lead, the task composer, Inbox's reply and Chief of
- * Staff.
+ * conversation with its lead, the task composer, Inbox's reply and Shift
+ * Coordinator.
  *
  * `sendTurn` resolves at once and calls no door, so a composer reads the line
  * delivered while no session holds it. The goal must fail at "the post is in

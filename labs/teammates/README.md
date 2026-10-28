@@ -32,59 +32,71 @@ no session list. The design and the decisions behind it are in the
 
 ## Run it
 
-Until wiring, the screen runs on fixtures that play the script on a timer:
+The lab runs on a real model and a durable SQLite store, served by `fsdev dev`:
 
 ```bash
-pnpm --filter @flow-state-dev/teammates dev
+TEAMMATES_PROJECTS='[{"id":"relay","title":"Relay","checkout":"/abs/path/to/a/git/checkout"}]' \
+  pnpm --filter @flow-state-dev/teammates dev
 ```
 
-Ask lead for something, say *"Ask researcher for our launch date, and help me outline the post."*
-lead answers and messages researcher. Before researcher replies, send lead a second line: the reply
-shows as pending, then lands after lead's answer. lead's conversation already runs past the 50-turn
-history window, so the divider is in view.
+This builds the pages and serves them with the lab's server (`fsdev.config.mts`). It reads:
+
+| Variable | What it sets | Default |
+|---|---|---|
+| `TEAMMATES_MODEL` | the model lead, researcher and writer answer on | `openai/gpt-5.4-mini` |
+| `TEAMMATES_PROJECTS` | a JSON list of projects to create at start, each `{ "id", "title", "checkout"? }` | none |
+| `TEAMMATES_STORE` | the SQLite file | `.fsdev/teammates.sqlite` here |
+| `TEAMMATES_USER` | who the page acts as | `you` |
+| `TEAMMATES_TREE` | the workers' tree | `workforce/` here |
+
+The model needs a credential the gateway takes (`AI_GATEWAY_API_KEY`), and coder's runs need Claude
+Code signed in, or `ANTHROPIC_API_KEY`. A project's `checkout` is a git checkout on this machine;
+each coding run works in a worktree of it, so its `.gitignore` must ignore `**/.fsdev/`, where a run
+keeps its own notes. A run refuses a checkout that doesn't.
+
+Ask lead *"Ask researcher for our launch date, and help me outline the post."* lead answers and
+messages researcher. Before researcher replies, send lead a second line: the reply shows as pending,
+then lands after lead's answer, and lead uses it in its next line.
 
 Then ask lead *"Have coder fix the typo in the README's first line."* The task card asks for a
 project. Pick `relay`: lead files the task again, coder's run shows its steps, and the result lands
 in lead's conversation.
 
-After wiring, the lab runs against a real model and a durable store:
+The goal check drives all of this in a browser:
+[`goals/teammates-lab/a-worker-talks-to-another-while-you-talk`](../../goals/teammates-lab/a-worker-talks-to-another-while-you-talk/goal.md).
 
-```bash
-fsdev dev --app @flow-state-dev/teammates
-```
+## What the screen reads
 
-Wiring adds the host file, which composes `@flow-state-dev/memory` into each worker's flow: the
-capability in `uses` to read it, and `afterAnswer: mem.captureFromItems` to record each turn. It
-also adds the lab's one small flow: coder's worker flow, one `harnessManager` per harness over
-`projectWorkspace()`, routing each task by the worker's `harness` setting.
+Everything the screen reads and writes goes through one adapter, `src/adapter.ts`, and each function
+names the package call it makes.
 
-## Fixtures
-
-Everything the screen reads and writes goes through one adapter, `src/adapter.ts`. Each function
-names the package call it stands for, and until wiring they run on `src/fixtures.ts`, marked
-`fixture:`. At wiring the fixtures are deleted and each function calls the package.
-
-| Fixture stands in for | Package piece |
+| On screen | Package piece |
 |---|---|
-| The divider and its *summarized* label | G1: the history window's opt-in summary and the mark it leaves, tracked under FIX-1613 |
-| The pending line, joined to the conversation by message id | G2: a received message as its own item, carrying its id (an ask of FIX-2070) |
-| Workers messaging each other, the Talk panel | `sendMessage`, `receive` and the message log, as FIX-2070 ships them |
-| The worker list, sending, the conversation, busy status | `roster()`, `ensureWorkerSession`, `respond`, session items, `listSessionRequests` |
-| A worker's project, and picking it | FIX-2161's `setWorkProject` and the `workProjectId` it writes on the worker's default conversation |
-| Task cards, the refusal for want of a project | the conversation board's rows (`listTasks_tasks`), and `projectWorkspace()`'s `no-project` refusal |
-| coder's runs | the task row's `run` link, followed with `followRequest` and `useSession`, on a harness picked by coder's `harness` setting |
+| The worker list, sending, the conversation, busy status | the workforce client's `roster()` and `ensureWorkerSession`, the flow's `respond`, session items, `listSessionRequests` |
+| Workers messaging each other, the Talk panel | `sendMessage`, the received-message item (`workforce:received`), and the message log |
+| A worker's project, and picking it | `setWorkProject`, read back as the conversation's `workProjectId` on the session read |
+| Task cards, the refusal for want of a project | the conversation board's rows, and `projectWorkspace()`'s `no-project` refusal |
+| coder's runs | the task row's `run` link, read as the run session's items |
+
+Not wired yet:
+
+- **The divider and its *summarized* label** wait on the history window's mark (G1, FIX-1613). Until
+  then the screen draws no divider.
+- **Which harness coder runs on.** The roster doesn't carry a worker's settings, so the screen names
+  the harness from the run's own steps once it starts (FIX-2281).
+- **A task whose input has an `issue` field** is refused by the coding run as half a feature payload
+  (FIX-2282). lead's `WORKER.md` tells it to leave `input` empty, which only lowers the odds.
 
 ## What this app adds
 
 Every file in the lab, by kind. `node scripts/inventory.mjs` fails on a file that is none of these,
-and on a flow over 200 lines; `--wired` also fails while a fixture is left.
+and on a flow over 200 lines; `--wired` also fails on any fixture.
 
 <!-- inventory:start -->
 | Kind | Files | Lines |
 |---|---:|---:|
-| Configuration | 14 | 279 |
-| React UI | 16 | 1113 |
-| Small flows | 0 | 0 |
-| Fixtures (deleted at wiring) | 1 | 353 |
-| Checks (not app code) | 3 | 362 |
+| Configuration | 16 | 521 |
+| React UI | 19 | 1691 |
+| Small flows | 1 | 148 |
+| Checks (not app code) | 8 | 921 |
 <!-- inventory:end -->

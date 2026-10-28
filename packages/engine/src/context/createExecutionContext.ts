@@ -7,6 +7,8 @@ import type {
   JournalEntry,
   JournalEntryInput,
   JsonObject,
+  HistoryTurn,
+  HistoryTurnQuery,
   LLMMessage,
   OrgScopeHandle,
   RequestScopeHandle,
@@ -145,9 +147,12 @@ import { requestInSessionScope, sessionRequestScope } from "./session-request-sc
 import { recordRequestStop } from "../execution/record-request-stop";
 import { ownerKeyMaySeed } from "../resources/owner-private";
 import {
+  compareTurnsOldestFirst,
   outputItemToSessionItem,
   createSessionItemViews,
   buildJournalEntry,
+  expandRequestToMessages,
+  LLM_AUDIENCE_TYPES,
 } from "./history";
 import { shouldPersistScopeChange, wrapStateOpsWithEmit } from "./scope-emit";
 import {
@@ -768,9 +773,19 @@ export async function createExecutionContext<
     throw new RequestOwnerMismatchError(requestId);
   }
 
+  // The same filter as the session's reads; see `sessionRequestScope`.
+  const turnScope = sessionRequestScope(
+    sessionId,
+    loadedSession ?? { userId, orgId: options.orgId, flowKind: flow.kind, flowId: flow.id },
+    options.tenantId
+  );
+
   // Parallelize the remaining independent store lookups — user, org, and the
   // history window don't depend on each other for the initial load.
-  const [loadedUser, loadedOrg, priorRequests] = await Promise.all([
+  // When the window was read: a turn that settles after it is in neither the
+  // window nor the open turns `turns()` lists later (FIX-1613).
+  const windowLoadedAtMs = Date.now();
+  const [loadedUser, loadedOrg, listedPriorRequests] = await Promise.all([
     userKey !== undefined ? stores.user.get(userKey) : undefined,
     optionsOrgKey !== undefined ? stores.org.get(optionsOrgKey) : undefined,
     // The N most-recently-started past turns (`PAST_TURN_STATUSES`). The
@@ -781,14 +796,12 @@ export async function createExecutionContext<
     // robust to out-of-order metadata writes. `items` reconstruct cross-turn
     // history.
     stores.request.list({
-      // The same filter as the session's reads; see `sessionRequestScope`.
-      ...sessionRequestScope(
-        sessionId,
-        loadedSession ?? { userId, orgId: options.orgId, flowKind: flow.kind, flowId: flow.id },
-        options.tenantId
-      ),
+      ...turnScope,
       status: PAST_TURN_STATUSES,
-      limit: historyWindowTurns,
+      // One row past the window, read only to learn whether an earlier turn
+      // fell out of it (FIX-1613's `historyStart`); it is dropped below,
+      // before anything reads the window.
+      limit: historyWindowTurns + 1,
       orderBy: "startedAtMs",
       withItems: true
     })
@@ -801,6 +814,16 @@ export async function createExecutionContext<
   // off has no result to show), then sort ascending for stable history
   // ordering. Reused by all()/client() (via priorItems) and history() (via
   // loadLLMHistory).
+  // The window itself: the N most recently started, in the store's newest-first
+  // order (which breaks a start-time tie by id), trimmed before it is reversed
+  // so a tie at the edge keeps the same turn it did without the extra row.
+  // `historyStart` names the first turn the window holds when that extra row
+  // says an earlier turn is out of view.
+  const priorRequests = listedPriorRequests.slice(0, historyWindowTurns).reverse();
+  const historyStart =
+    listedPriorRequests.length > historyWindowTurns && priorRequests[0] !== undefined
+      ? { requestId: priorRequests[0].id }
+      : undefined;
   const retried = retriedIds(priorRequests, options.metadata);
   // A gate read that fails costs this turn a view that may show a parked
   // turn, never the turn itself: nothing is treated as parked, and it is logged.
@@ -818,7 +841,84 @@ export async function createExecutionContext<
     .filter((r) => r.id !== requestId)
     .filter((r) => r.status !== "interrupted" || (!retried.has(r.id) && !parked.has(r.id)))
     .map((r) => (r.status === "interrupted" && r.items !== undefined ? { ...r, items: r.items.filter((i) => i.status !== "in_progress") } : r))
-    .sort((a, b) => a.startedAtMs - b.startedAtMs);
+    .sort((a, b) => compareTurnsOldestFirst(a.startedAtMs, a.id, b.startedAtMs, b.id));
+
+  // `items.turns()` (FIX-1613): the window's turns and every turn of this
+  // session still open, each marked settled or not, or named turns read by id
+  // wherever they are. A history summary reads it to fold settled turns
+  // before they leave the window and to come back for one that left open.
+  const turnMessages = (record: RequestRecord): LLMMessage[] =>
+    expandRequestToMessages(
+      record.status === "interrupted"
+        ? (record.items ?? []).filter((i) => i.status !== "in_progress")
+        : record.items ?? [],
+      LLM_AUDIENCE_TYPES,
+      undefined
+    );
+  const historyTurn = (record: RequestRecord, settled: boolean): HistoryTurn => ({
+    requestId: record.id,
+    startedAtMs: record.startedAtMs,
+    settled,
+    messages: settled ? turnMessages(record) : []
+  });
+  // An interrupted turn a retry re-ran still takes its row in the window, so
+  // it is listed settled with nothing to read, by id too: history reads the
+  // retry, and a summary counting the window's turns counts what it counts.
+  // Any other interrupted turn is open: parked ones run again, and `/continue`
+  // can re-enter the rest under the same id and add their final output.
+  const isRetried = (record: RequestRecord): boolean => record.status === "interrupted" && retried.has(record.id);
+  const emptyTurn = (record: RequestRecord): HistoryTurn => ({ ...historyTurn(record, true), messages: [] });
+  // Past turns updated since the window loaded, newest update first, paged
+  // until the first older one: bounded by what settled during this request.
+  const settledSinceWindowLoad = async (): Promise<RequestRecord[]> => {
+    const page = 50;
+    const settled: RequestRecord[] = [];
+    for (let offset = 0; ; offset += page) {
+      const records = await stores.request.list({ ...turnScope, status: PAST_TURN_STATUSES, orderBy: "updatedAt", limit: page, offset });
+      for (const record of records) {
+        if (record.updatedAt < windowLoadedAtMs) return settled;
+        settled.push(record);
+      }
+      if (records.length < page) return settled;
+    }
+  };
+  const readTurns = async (query?: HistoryTurnQuery): Promise<HistoryTurn[]> => {
+    if (query?.requestIds !== undefined) {
+      const turns: HistoryTurn[] = [];
+      for (const id of new Set(query.requestIds)) {
+        if (id === requestId) continue;
+        // Always from the store: a turn the window loaded open may have
+        // settled since, and its settled read must carry its final items.
+        const record = await stores.request.get(id);
+        // Read by id, so held to the session's scope: an id from anywhere
+        // never reads another session's turn.
+        if (record === undefined || !requestInSessionScope(record, turnScope)) continue;
+        const open = record.status === "in_progress" || record.status === "suspended" || record.status === "interrupted";
+        // A turn that ended outside history (failed, aborted) is over with
+        // nothing to read, as is one a retry re-ran.
+        const ended = !open && !PAST_TURN_STATUSES.includes(record.status);
+        turns.push(isRetried(record) || ended ? emptyTurn(record) : historyTurn(record, !open));
+      }
+      return turns.sort((a, b) => compareTurnsOldestFirst(a.startedAtMs, a.requestId, b.startedAtMs, b.requestId));
+    }
+    const windowTurns = priorRequests
+      .filter((r) => r.id !== requestId)
+      .map((r) => (isRetried(r) ? emptyTurn(r) : historyTurn(r, r.status !== "interrupted")));
+    const listed = new Set(windowTurns.map((t) => t.requestId));
+    const openTurns = [
+      ...(await stores.request.list({ ...turnScope, status: ["in_progress", "suspended"], orderBy: "startedAtMs" })),
+      ...(await settledSinceWindowLoad())
+    ]
+      // The running request too: a fold must see where it stands among the
+      // conversation's other open turns, or it could move its mark past it.
+      // One that settled after the window loaded is listed open as well, so a
+      // fold keeps it pending and reads it by id rather than passing it unseen.
+      .filter((r) => !listed.has(r.id))
+      .map((r) => historyTurn(r, false))
+      // One that settled between the two reads is in both: list it once.
+      .filter((turn, at, turns) => turns.findIndex((t) => t.requestId === turn.requestId) === at);
+    return [...windowTurns, ...openTurns].sort((a, b) => compareTurnsOldestFirst(a.startedAtMs, a.requestId, b.startedAtMs, b.requestId));
+  };
 
   // Build prior items from the settled prior request records. This replaces the
   // deprecated SessionRecord.items field — items are canonical on request records.
@@ -1596,6 +1696,20 @@ export async function createExecutionContext<
 
   if (requestRecord === undefined) {
     throw new Error(`Request "${requestId}" could not be initialized`);
+  }
+
+  // Where the turns this request reads begin (FIX-1613), on the record a
+  // screen lists. Written onto the held record too: every full-record writer
+  // builds from it, and a stale copy would write the mark back out.
+  if (historyStart !== undefined && requestRecord.historyStart?.requestId !== historyStart.requestId) {
+    await stores.request.setFieldsIfStatus(
+      requestId,
+      { historyStart },
+      ["in_progress", "suspended"],
+      Date.now(),
+      resolveRequestIncarnation(requestRecord as RequestRecord)
+    );
+    requestRecord = { ...requestRecord, historyStart };
   }
 
   const wave1Start = Date.now();
@@ -2850,7 +2964,19 @@ export async function createExecutionContext<
           ...(s.tags !== undefined ? { tags: s.tags } : {})
         };
       },
+      // The window this request loaded (FIX-1613), read-only.
+      window: {
+        turns: historyWindowTurns,
+        ...(historyStart !== undefined ? { startRequestId: historyStart.requestId } : {})
+      },
       items: createSessionItemViews(priorItems, settledPriorRequests, {
+        readTurns,
+        // A summary's mark can name the request running now (a waiting turn
+        // that resumed), which `turns()` leaves out: read its start directly.
+        readStartedAtMs: async (id) => {
+          const record = await stores.request.get(id);
+          return record !== undefined && requestInSessionScope(record, turnScope) ? record.startedAtMs : undefined;
+        },
         tokenCounter,
         readLiveItems,
         resolveModelId: () => {

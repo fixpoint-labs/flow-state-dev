@@ -238,6 +238,22 @@ arguments doesn't count either, and neither does the
 A `gh pr create` that fails because the branch already has a pull request,
 and prints that pull request's link, does count.
 
+Which links in the output count depends on the call:
+
+- **`create_pull_request`** opens one pull request. The recorder reads it from
+  the result's `html_url` (or `url`) field. The result also holds the new pull
+  request's body, and a link in that body is not recorded. A result with no
+  such field, such as a plain-text error, gives its first link.
+- **A shell command** records every link it prints when `gh pr create` is its
+  only `gh` command that prints pull-request links. A loop of creates records
+  each one.
+- **A shell command that also runs** `gh pr view`, `gh pr list`, `gh api`,
+  `gh search` or another `gh pr` command records nothing. Its output can't be
+  split by command, so the recorder doesn't guess. Text inside the create's
+  `--title` or `--body` is not a command. Ask the agent to run the create on
+  its own, or run the [branch check](#the-branch-check) after the turn to
+  catch a pull request missed this way.
+
 The title and branch come from the create call when it set them: `--title`/`-t`
 and `--head`/`-H` on the command line, or the `title` and `head` arguments of
 `create_pull_request`. `state` is `open`.

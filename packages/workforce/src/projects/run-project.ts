@@ -18,8 +18,8 @@
  * Every step reads stored, server-written data (BP-031): the session's
  * server-written fields, the held row's filing stamp, the workstream entry, the project row and the row the
  * claim gate verified for this run. The owner is the request's resolved user,
- * checked against the workstream's owner or the project's members, never a
- * field of the task or a hand-over's payload.
+ * checked against the project's members on every path (and, for a workstream,
+ * against its owner first), never a field of the task or a hand-over's payload.
  */
 
 import type { LooseBlockContext } from "@flow-state-dev/core";
@@ -164,7 +164,10 @@ async function fromWorkstream(ctx: LooseBlockContext, link: string): Promise<Run
   if (stored === undefined) {
     return refused("no-such-project", `workstream "${id}" is in project "${project.id}", which doesn't exist.`);
   }
-  return { kind: "found", visibility: project.visibility, project: projectRowSchema.parse(stored.state), owner };
+  const row = projectRowSchema.parse(stored.state);
+  // The same check the project path makes: an owner taken off the project loses its runs.
+  if (!mayWorkOn(project.visibility, row, owner)) return notAMember(owner, project.id);
+  return { kind: "found", visibility: project.visibility, project: row, owner };
 }
 
 /**
@@ -180,14 +183,21 @@ async function fromProject(ctx: LooseBlockContext, address: ProjectAddress): Pro
   }
   const project = projectRowSchema.parse(stored.state);
   const owner = runOwnerOf(ctx);
-  const allowed = address.visibility === "private" ? owner !== undefined && project.ownerUserId === owner : isMember(project, owner);
-  if (!allowed || owner === undefined) {
-    return refused(
-      "not-a-member",
-      `the run's owner${owner ? ` "${owner}"` : ""} is not a member of project "${address.id}", so it may not work on its files.`
-    );
-  }
+  if (owner === undefined || !mayWorkOn(address.visibility, project, owner)) return notAMember(owner, address.id);
   return { kind: "found", visibility: address.visibility, project, owner };
+}
+
+/** Whether `owner` may work on `project`: one of a shared project's members, or a private project's owner. */
+function mayWorkOn(visibility: ProjectVisibility, project: ProjectRow, owner: string): boolean {
+  return visibility === "private" ? project.ownerUserId === owner : isMember(project, owner);
+}
+
+/** The refusal for a run whose owner may not work on the project. */
+function notAMember(owner: string | undefined, projectId: string): RunSourceRefusal {
+  return refused(
+    "not-a-member",
+    `the run's owner${owner ? ` "${owner}"` : ""} is not a member of project "${projectId}", so it may not work on its files.`
+  );
 }
 
 /** A refusal answer. */

@@ -16,7 +16,7 @@ const notify = () => {
 };
 
 /** Hold `message` for the Coordinator's composer to send. */
-export function handToChiefOfStaff(message: string): void {
+export function handToShiftCoordinator(message: string): void {
   pending = message;
   notify();
 }

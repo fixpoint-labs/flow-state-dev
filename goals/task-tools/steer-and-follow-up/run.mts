@@ -23,6 +23,7 @@ import {
   steerTurnEntry,
   workerTaskEntry,
   workerConfigSchema,
+  workerMessagesResources,
   type WorkerInstallation,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
@@ -34,6 +35,7 @@ import {
   describePatches,
   goalTmpDir,
   actingAs,
+  hearsMessages,
   modulePatchEnv,
   runGoal,
   silentLogger,
@@ -285,9 +287,14 @@ function defineCoderFlow(installation: WorkerInstallation, repo: string, checkou
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources },
+    resources: { ...installation.resources, ...workerMessagesResources },
     actions: { respond: message },
-    internal: { actions: { [STEER_TURN_ENTRY]: steerTurnEntry({ name: "steer-goal-coder-steer-turn", block: manager as never }) } },
+    internal: {
+      actions: {
+        [STEER_TURN_ENTRY]: steerTurnEntry({ name: "steer-goal-coder-steer-turn", block: manager as never }),
+        ...hearsMessages(installation, "coder")
+      }
+    },
     task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "steer-goal-coder-work", block: manager as never }) } }
   } as never);
 }

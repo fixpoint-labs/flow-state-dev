@@ -97,7 +97,7 @@ Shift Manager reads a Lab only through the routes its `FlowState` serves. It bui
 - **An organization**, named by `resolvePrincipal` on `createFlowState`. Without one, the Lab runs in the development organization, `DEFAULT_ORG_ID`.
 - **An open [inventory](../workforce/inventory.md)**, which TEAMS, Roster and Inbox read to find the Lab's workers. Without it, TEAMS says there's none and the rest loads.
 - **Who Shift Manager reads as**: `devtool: { userId }` on `createFlowState`, plus `bearerToken` when your resolver checks one. Shift Manager hands these to the page only on a loopback host.
-- **Optionally, a Shift Coordinator**: a worker named `chief-of-staff`, declared under `org/workers/`. On the `coordinator` flow it also gets the DELEGATES panel. See [The Shift Coordinator](../workforce/shift-coordinator.md).
+- **Optionally, a Shift Coordinator**: a worker named `shift-coordinator`, declared under `org/workers/`. On the `coordinator` flow it also gets the DELEGATES panel. See [The Shift Coordinator](../workforce/shift-coordinator.md).
 - **Optionally, a usage query**: a flow with a `harnessUsage` action built by `harnessUsageAction`, which Usage reads. See [Subscription usage](../orchestration/harness-manager.md#subscription-usage). Without one, Usage shows *No usage to show*.
 - **Optionally, a worker usage query**: a flow with a `workerUsage` action built by `workerUsageAction`, which *Usage by worker* reads. See [Worker usage](../workforce/worker-usage.md). Without one, the section isn't shown.
 

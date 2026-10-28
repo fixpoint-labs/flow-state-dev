@@ -374,6 +374,8 @@ export {
 export type {
   JournalEntry,
   JournalEntryInput,
+  HistoryTurn,
+  HistoryTurnQuery,
   ItemQuery,
   LLMMessage,
   Message,
@@ -385,6 +387,7 @@ export type {
   ScopeIdentity,
   ScopeType,
   SessionItem,
+  SessionHistoryWindow,
   SessionItemViews,
   SessionMetadata,
   SessionMetadataInput,
