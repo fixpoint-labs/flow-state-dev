@@ -318,6 +318,8 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   const visibility = new Map<string, "shared" | "private">();
   /** The run session of each task, from the rows `watchTasks` reads; each task card is drawn from those. */
   const runOf = new Map<string, string>();
+  /** Who watches each worker's project, told at once when a pick here is stored. */
+  const projectWatchers = new Map<string, Set<(project: string | undefined) => void>>();
 
   const conversationOf = async (worker: string) => {
     const known = conversations.get(worker);
@@ -425,13 +427,22 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     },
     watchWorkProject(worker, onChange) {
       // The project stored on the conversation, whoever set it: the session read shows it, read only.
-      return poll(async () => {
+      const watchers = projectWatchers.get(worker) ?? new Set();
+      projectWatchers.set(worker, watchers);
+      watchers.add(onChange);
+      const stop = poll(async () => {
         const { sessionId } = await conversationOf(worker);
         return workProjectOf((await client.sessions.get(sessionId)).state);
       }, onChange);
+      return () => {
+        watchers.delete(onChange);
+        stop();
+      };
     },
     async setWorkProject(worker, project) {
       await workforce.setWorkProject(worker, { visibility: visibility.get(project) ?? "shared", id: project });
+      // Stored: say so now rather than on the next read, which confirms it.
+      for (const watcher of projectWatchers.get(worker) ?? []) watcher(project);
     },
     watchTasks(sessionId, onChange) {
       return watchFeed(sessionId, (items) => {
