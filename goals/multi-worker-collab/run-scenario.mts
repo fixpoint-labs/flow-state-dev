@@ -161,7 +161,7 @@ export interface ActResult {
 }
 
 /** A `task-change` component item, flattened to what the checks read. */
-export interface TaskChange {
+interface TaskChange {
   kind: string;
   taskId: string;
   collectionId: string;
@@ -423,7 +423,7 @@ export class Scenario {
 }
 
 /** The `task-change` component items among a request's items. */
-export function taskChangesOf(items: ReadonlyArray<Record<string, any>>): TaskChange[] {
+function taskChangesOf(items: ReadonlyArray<Record<string, any>>): TaskChange[] {
   return items
     .filter((item) => item.type === "component" && item.component === "task-change")
     .map((item) => item.data as TaskChange)
