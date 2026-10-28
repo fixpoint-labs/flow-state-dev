@@ -13,7 +13,7 @@ const SUSPENSION_ID = "susp-form";
 // under its label, not just a bare name.
 const item = suspensionItem({
   suspensionId: SUSPENSION_ID,
-  reason: "human_input",
+  reason: "user_input",
   message: "Before we route this ticket, a couple of quick questions.",
   resumeSchema: {
     type: "object",

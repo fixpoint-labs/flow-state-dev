@@ -466,6 +466,10 @@ export {
 } from "./harness-plan";
 export type { ObservedOutcome, ObservedPlanListStatus, PlanListItem, PlanMarkerRead } from "./harness-plan";
 
+/** The session's pull-request record's key, rows and key builder (FIX-2268). Isomorphic: a page reads them. */
+export { OBSERVED_PULL_REQUESTS, observedPullRequestsCollection, observedPullRequestStateSchema, pullRequestKey } from "./pull-requests";
+export type { ObservedPullRequestState, PullRequestRef, PullRequestSource } from "./pull-requests";
+
 /**
  * The coding-harness contract (LAB-152) — what a harness block is handed and
  * what it hands back, plus the signatures a host feeds it configuration

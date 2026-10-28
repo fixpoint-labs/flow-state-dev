@@ -55,7 +55,7 @@ Each line of stdout is a JSON object with a `type` field:
 A run that ends waiting for a person ends with a `suspended` event instead of `flow_complete`:
 
 ```jsonl
-{"type":"suspended","requestId":"req_...","sessionId":"sess_...","suspensionId":"susp_...","reason":"human_approval","message":"Publish \"Q3 notes\"?","answer":"Answer it in fsdev dev, which reads this store: .fsdev/data/fsdev.db (SQLite)."}
+{"type":"suspended","requestId":"req_...","sessionId":"sess_...","suspensionId":"susp_...","reason":"user_approval","message":"Publish \"Q3 notes\"?","answer":"Answer it in fsdev dev, which reads this store: .fsdev/data/fsdev.db (SQLite)."}
 ```
 
 | Event type | When it fires |

@@ -29,6 +29,7 @@ export const GAPS = {
     harness: "Which harness ran, its tokens and its cost arrive with FIX-1652. Nothing a browser can read carries them yet.",
     recordsNoPlan: "This harness records no plan. Reading a run that records none arrives with FIX-1652.",
     recordsNoFiles: "This harness records no file operations. Reading a run that records none arrives with FIX-1652.",
+    recordsNoPullRequests: "This harness records no pull requests. Reading a run that records none arrives with FIX-1652.",
     briefFields: "This board doesn't publish a task's context or input to a browser, so only its title and goal show here. Showing them is not planned in the first cut.",
   },
   /**

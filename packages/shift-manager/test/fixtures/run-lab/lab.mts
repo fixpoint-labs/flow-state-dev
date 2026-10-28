@@ -38,14 +38,23 @@
  * finishes, so a finished run's session stores two versions of one snapshot
  * and a screen must draw only the latest.
  *
- * The worker on a flow of its own records a plan and one file operation under
- * its own request id, in the collections a recording harness declares. The
+ * The worker on a flow of its own records a plan, one file operation and one
+ * pull request under its own request id (and a pull request an earlier
+ * request opened, which its task does not show), in the collections a recording harness declares. The
  * shared flow declares none, so its runs record none.
  *
  * No model. The "harness" is the scripted run below, the turn each task
  * entry runs.
  */
-import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
+import {
+  DEFAULT_ORG_ID,
+  OBSERVED_PULL_REQUESTS,
+  defineFlow,
+  handler,
+  observedPullRequestsCollection,
+  writePullRequests,
+  type PullRequestCollection,
+} from "@flow-state-dev/core";
 import { harnessConversationNamespace, type BlockContext, type FlowInstance } from "@flow-state-dev/core/types";
 import {
   OBSERVED_FILE_OPS,
@@ -194,7 +203,7 @@ const scriptedRun = handler({
         }),
       ]);
     }
-    if (script.ask !== undefined) await ctx.suspend!({ reason: "human_approval", message: script.ask });
+    if (script.ask !== undefined) await ctx.suspend!({ reason: "user_approval", message: script.ask });
 
     const resources = (ctx as { resources?: Record<string, unknown> }).resources ?? {};
     const plan = resources[OBSERVED_PLAN] as Upsertable | undefined;
@@ -210,6 +219,21 @@ const scriptedRun = handler({
       await plan.upsert(`${conversation}/2`, { title: "Write the audit note", status: "in_progress", previousStatus: "pending", lastOutcome: "applied", lastTouchedAt: now });
       await files.upsert(`${run}/notes/audit.md`, { lastKind: "created", outcome: "applied", lastTouchedAt: now, appliedCount: 1 });
       ctx.emit.message("Wrote notes/audit.md");
+    }
+    // The pull request this run opened, and one an earlier run in the session opened.
+    const pullRequests = resources[OBSERVED_PULL_REQUESTS] as PullRequestCollection | undefined;
+    if (pullRequests !== undefined) {
+      const pr = (number: number) => ({
+        host: "github.com",
+        owner: "acme",
+        name: "audit",
+        number,
+        url: `https://github.com/acme/audit/pull/${number}`,
+        title: `Audit note ${number}`,
+        state: "open",
+      });
+      await writePullRequests(pullRequests, [pr(7)], { source: "tool", requestId: ctx.request.identity.id });
+      await writePullRequests(pullRequests, [pr(6)], { source: "tool", requestId: "an-earlier-request" });
     }
 
     // A keyed snapshot: stored once per version, drawn as its latest only.
@@ -292,6 +316,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
               [OBSERVED_PLAN]: observedPlanCollection,
               [OBSERVED_PLAN_LIST]: observedPlanListCollection,
               [OBSERVED_FILE_OPS]: observedFileOpsCollection,
+              [OBSERVED_PULL_REQUESTS]: observedPullRequestsCollection,
             } : {}),
         ...workerMessagesResources,
       },

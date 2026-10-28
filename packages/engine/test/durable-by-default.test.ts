@@ -35,7 +35,7 @@ function stoppingFlow() {
     name: "approve",
     inputSchema: z.any(),
     outputSchema: z.any(),
-    execute: async (_input, ctx) => ctx.suspend!({ reason: "human_approval", message: "Ship it?" })
+    execute: async (_input, ctx) => ctx.suspend!({ reason: "user_approval", message: "Ship it?" })
   });
   const flow = defineFlow({
     kind: "durable-default",

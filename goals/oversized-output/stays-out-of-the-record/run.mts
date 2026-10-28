@@ -58,7 +58,7 @@ const approve = handler({
   inputSchema: z.any(),
   outputSchema: z.any(),
   execute: async (input, ctx) => {
-    await ctx.suspend!({ reason: "human_approval", message: "Approve?" });
+    await ctx.suspend!({ reason: "user_approval", message: "Approve?" });
     return input;
   }
 });

@@ -287,7 +287,7 @@ describe("a request that settled failed", () => {
     expect(lab.prompts.map((p) => p.kind)).toEqual(["draft"]);
     const asks = await lab.asks();
     expect(asks).toHaveLength(1);
-    expect(asks[0]!.reason).toBe("human_input");
+    expect(asks[0]!.reason).toBe("user_input");
     expect(asks[0]!.title).toBe("Error report: Coordinator fails on a project with no repository");
     expect(asks[0]!.message).toBe("Seen 1 time. File it?\n\n**Questions**\n\n- Which team?");
 

@@ -25,11 +25,11 @@ function ctxThat(answer: { returns: unknown } | { throws: Error }, host?: { user
 }
 
 describe("waitForUser: what it asks for", () => {
-  it("an approval is a human_approval with approve and reject; review and input are human_input with submit", async () => {
+  it("an approval is a user_approval with approve and reject; review and input are user_input with submit", async () => {
     for (const [kind, reason, allow] of [
-      ["approval", "human_approval", ["approve", "reject"]],
-      ["review", "human_input", ["submit"]],
-      ["input", "human_input", ["submit"]],
+      ["approval", "user_approval", ["approve", "reject"]],
+      ["review", "user_input", ["submit"]],
+      ["input", "user_input", ["submit"]],
     ] as const) {
       const { ctx, asked } = ctxThat({ returns: "ok" });
       await waitForUserOn(ctx, { kind, prompt: "Which region?" });
@@ -115,12 +115,12 @@ describe("waitForUser: how it comes back", () => {
 
 describe("isUserSuspension", () => {
   it("is a user's for the two person reasons only: never a wait, an external event or a custom reason", () => {
-    expect(isUserSuspension({ reason: "human_approval" })).toBe(true);
-    expect(isUserSuspension({ reason: "human_input" })).toBe(true);
+    expect(isUserSuspension({ reason: "user_approval" })).toBe(true);
+    expect(isUserSuspension({ reason: "user_input" })).toBe(true);
     for (const reason of ["external_event", "wait", "ask", "my_own_reason"]) expect(isUserSuspension({ reason })).toBe(false);
     // A raw suspension with no kind reads its kind from its reason.
-    expect(waitForUserKindOf({ reason: "human_approval" })).toBe("approval");
-    expect(waitForUserKindOf({ reason: "human_input" })).toBe("input");
+    expect(waitForUserKindOf({ reason: "user_approval" })).toBe("approval");
+    expect(waitForUserKindOf({ reason: "user_input" })).toBe("input");
     expect(waitForUserKindOf({ reason: "external_event", kind: "input" })).toBeUndefined();
   });
 });
