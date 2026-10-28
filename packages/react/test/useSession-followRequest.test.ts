@@ -25,6 +25,9 @@
  *   - resume a request whose stream ended rather than dropped, and the
  *     "after it ended" case fails: the stream starts past its own end and
  *     never settles.
+ *   - keep an earlier stream's cursor when a stream starts from the
+ *     beginning, and the "dropped before its first event" case fails: the
+ *     next follow resumes past the earlier stream's end.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
@@ -191,6 +194,24 @@ describe("useSession.followRequest (FIX-2265)", () => {
     act(() => first.callbacks.onRequestStatus?.({ stream: "request", requestId: "req_turn", sequence_number: 9, ts: 1000, type: "request.completed", status: "completed" }));
 
     // Past its end there is nothing to stream, so the view would never settle.
+    act(() => result.current.followRequest("req_turn"));
+    expect((connections.at(-1)!.callbacks as { startingAfter?: number }).startingAfter).toBeUndefined();
+  });
+
+  it("followed again from the start and dropped before its first event, streams from the start", async () => {
+    const { result } = renderHook(() => useSession("sess1", { flowKind: "demo" }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => result.current.followRequest("req_turn"));
+    const first = connections.at(-1)!;
+    act(() => first.callbacks.onEvent?.({ stream: "request", requestId: "req_turn", sequence_number: 9, ts: 1000, type: "request.completed" }));
+    act(() => first.callbacks.onRequestStatus?.({ stream: "request", requestId: "req_turn", sequence_number: 9, ts: 1000, type: "request.completed", status: "completed" }));
+    act(() => result.current.followRequest("req_turn"));
+    act(() => connections.at(-1)!.callbacks.onError?.(new Error("dropped")));
+
+    // The first stream's end is not where this one dropped.
     act(() => result.current.followRequest("req_turn"));
     expect((connections.at(-1)!.callbacks as { startingAfter?: number }).startingAfter).toBeUndefined();
   });
