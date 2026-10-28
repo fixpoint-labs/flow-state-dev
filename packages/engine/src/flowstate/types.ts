@@ -14,7 +14,7 @@ import type {
   VoiceProvider
 } from "@flow-state-dev/core";
 import type { CreateFlowApiRouterOptions, FlowApiRouter } from "../routes/createFlowApiRouter";
-import type { FlowDispatcher } from "../transports/dispatcher";
+import type { FlowRunner } from "../transports/runner";
 import type { ConcurrencyLeaseBackend } from "../transports/concurrency/lease-backend";
 import type {
   InProcessPrincipal,
@@ -82,9 +82,9 @@ export interface WorkerAdapter {
   readonly mode?: WorkerMode;
   /**
    * Build the dispatch side (enqueue + live-event bridge). Installed as the
-   * router's `FlowDispatcher` unless mode is `"worker-only"`.
+   * router's `FlowRunner` unless mode is `"worker-only"`.
    */
-  createDispatcher(runtime: FlowStateRuntime): FlowDispatcher;
+  createRunner(runtime: FlowStateRuntime): FlowRunner;
   /**
    * Start the processing side against the resolved runtime. Called during
    * runtime init unless mode is `"dispatch-only"`. The returned handle is
@@ -310,13 +310,13 @@ export interface CreateFlowStateOptions<
   userDeadlineMs?: RuntimeConfig["userDeadlineMs"];
   
   /**
-   * Low-level escape hatch: a pre-built FlowDispatcher controlling where
+   * Low-level escape hatch: a pre-built FlowRunner controlling where
    * flow actions execute. Default: in-process (runAction called directly).
    * Most deployments should use `worker` instead — it wires the dispatcher
    * AND the processing side from one adapter. Mutually exclusive with
    * `worker`.
    */
-  dispatcher?: FlowDispatcher;
+  runner?: FlowRunner;
 
   /**
    * Execution-backend adapter (e.g. `bullmqWorker(...)` from

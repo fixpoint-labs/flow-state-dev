@@ -49,7 +49,7 @@ import type {
   TransportBindings,
   TransportRoute
 } from "../transports/types";
-import type { FlowDispatcher } from "../transports/dispatcher";
+import type { FlowRunner } from "../transports/runner";
 import type { ConcurrencyArbiter } from "../transports/concurrency/arbiter";
 
 /**
@@ -259,10 +259,10 @@ export type CreateFlowApiRouterOptions = {
 
   /**
    * Controls where flow actions execute. Default: in-process via runAction.
-   * Set to a FlowDispatcher implementation to route execution to an
-   * external worker (e.g., BullMQ WorkerDispatcher).
+   * Set to a FlowRunner implementation to route execution to an
+   * external worker (e.g., BullMQ WorkerRunner).
    */
-  dispatcher?: FlowDispatcher;
+  runner?: FlowRunner;
   /**
    * Concurrency arbiter for this router's host. Defaults to a fresh one.
    *
@@ -492,7 +492,7 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     ...options,
     runtimeConfig,
     internalSeams: NOOP_INTERNAL_ROUTE_SEAMS,
-    dispatcher: options.dispatcher,
+    runner: options.runner,
     arbiter: options.arbiter
   });
 

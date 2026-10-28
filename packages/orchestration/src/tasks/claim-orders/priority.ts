@@ -1,5 +1,5 @@
 /**
- * `priorityDispatcher` — picks the highest-`priority` `pending` task with
+ * `priorityClaimOrder` — picks the highest-`priority` `pending` task with
  * deps satisfied. Higher numeric priority wins; ties break on
  * ascending `createdAt`.
  *
@@ -13,13 +13,13 @@
  * recovering abandoned work the day that rule widens.
  */
 import type { Task } from "../schema/task";
-import type { TaskDispatcher } from "./types";
+import type { ClaimOrder } from "./types";
 
 function priorityOf(task: Task): number {
   return task.priority ?? 0;
 }
 
-export const priorityDispatcher: TaskDispatcher = {
+export const priorityClaimOrder: ClaimOrder = {
   async claim(collection, workerId) {
     return collection.claim(workerId, {
       order: (a, b) => {

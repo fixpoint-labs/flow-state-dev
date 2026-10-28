@@ -21,7 +21,7 @@ import {
   RequestOwnerMismatchError
 } from "../src";
 import { createInitialRequestRecord } from "../src/context/initial-request-record";
-import type { FlowDispatcher } from "../src/transports/dispatcher";
+import type { FlowRunner } from "../src/transports/runner";
 import type { StoreRegistry } from "../src/stores/types";
 
 const FLOW = "owner-fence";
@@ -36,7 +36,7 @@ const run = {
   block: handler({ name: "owner-fence-run", inputSchema: input, execute: () => ({}) })
 };
 
-function buildHost(stores: StoreRegistry, dispatcher?: FlowDispatcher) {
+function buildHost(stores: StoreRegistry, dispatcher?: FlowRunner) {
   const registry = createFlowRegistry();
   registry.register(
     defineFlow({
@@ -52,7 +52,7 @@ function buildHost(stores: StoreRegistry, dispatcher?: FlowDispatcher) {
     stores,
     resolvePrincipal: defaultBodyUserIdPrincipalResolver,
     runtimeConfig: {},
-    ...(dispatcher === undefined ? {} : { dispatcher })
+    ...(dispatcher === undefined ? {} : { runner: dispatcher })
   });
 }
 
@@ -85,7 +85,7 @@ async function aliceCompletes(stores: StoreRegistry) {
 }
 
 /** A queue whose worker never claims the job. */
-function externalDispatcher(): FlowDispatcher {
+function externalRunner(): FlowRunner {
   return {
     dispatch: vi.fn(async (env) => ({
       requestId: env.requestId,
@@ -115,7 +115,7 @@ describe("a request id another principal holds, dispatched at the host", () => {
   it("is refused on an external queue before the job is enqueued", async () => {
     const stores = createInMemoryStores();
     const before = await aliceCompletes(stores);
-    const dispatcher = externalDispatcher();
+    const dispatcher = externalRunner();
 
     const handle = dispatchAs(buildHost(stores, dispatcher), "bob", "run", "bob's note");
     await expect(handle.accepted).rejects.toBeInstanceOf(RequestOwnerMismatchError);

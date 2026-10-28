@@ -48,7 +48,7 @@ import type {
 import { resolveEntry } from "../../execution/resolve-entry";
 import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, type RuntimeLogger } from "../../execution/logging";
 import { ConcurrencyDeferLimitError, ConcurrencyRejectedError } from "../errors";
-import type { DispatchEnvelope } from "../dispatcher";
+import type { DispatchEnvelope } from "../runner";
 import {
   DEFER_PATIENCE_MS,
   QUEUE_WAIT_TIMEOUT_MS,

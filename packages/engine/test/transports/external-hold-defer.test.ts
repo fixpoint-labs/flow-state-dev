@@ -24,7 +24,7 @@ import {
   defaultBodyUserIdPrincipalResolver,
   type ConcurrencyLeaseBackend,
   type DispatchEnvelope,
-  type FlowDispatcher
+  type FlowRunner
 } from "../../src";
 import type { ExecutionResult } from "../../src/execution/types";
 import { createConcurrencyArbiter } from "../../src/transports/concurrency/arbiter";
@@ -36,7 +36,7 @@ const SESSION = "s_1";
 function recordingQueue() {
   const enqueued: DispatchEnvelope[] = [];
   const ends = new Map<string, () => void>();
-  const dispatcher: FlowDispatcher = {
+  const dispatcher: FlowRunner = {
     async dispatch(envelope) {
       enqueued.push(envelope);
       const finished = new Promise<ExecutionResult>((resolve) => {
@@ -107,7 +107,7 @@ async function buildHost(options: { maxDeferredPerKey?: number } = {}) {
     stores,
     resolvePrincipal: defaultBodyUserIdPrincipalResolver,
     runtimeConfig: {},
-    dispatcher: queue.dispatcher,
+    runner: queue.dispatcher,
     arbiter: createConcurrencyArbiter({
       backend,
       ...(options.maxDeferredPerKey !== undefined ? { maxDeferredPerKey: options.maxDeferredPerKey } : {})

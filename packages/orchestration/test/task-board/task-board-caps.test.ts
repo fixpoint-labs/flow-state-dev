@@ -347,7 +347,7 @@ describe("taskBoard caps — a SUPPLIED collection is the sole authority", () =>
       name: "factory-plain",
       collection: () => supplied,
       workers: noopWorker,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       initialTasks: Array.from({ length: 120 }, (_, i) => ({ id: `t-${i}`, goal: `t-${i}` })),
     });
     expect(board.backing).toBe("factory");

@@ -87,7 +87,7 @@ const board = taskBoard({
   name: "queue-board",
   collection: { collectionId: COLLECTION_ID },
   concurrency: 4,
-  dispatcher: "fifo",
+  claimOrder: "fifo",
   workers: { processor },
   initialTasks: [],
 });

@@ -21,13 +21,13 @@ export type {
 export type {
   DispatchEnvelope,
   FlowDispatchHandle,
-  FlowDispatcher,
+  FlowRunner as FlowRunner,
   LeaseTurn,
   StreamBridge,
   StreamEvent,
   StreamPublisher,
   StreamSubscriber
-} from "./dispatcher";
+} from "./runner";
 
 export {
   createInMemoryLeaseBackend,
@@ -93,11 +93,11 @@ export {
 } from "./host/createInboundTransportHost";
 
 export {
-  createInProcessDispatcher,
-  type InProcessDispatcher,
+  createInProcessRunner as createInProcessRunner,
+  type InProcessRunner as InProcessRunner,
   type InProcessDispatchContext,
-  type InProcessDispatcherDeps
-} from "./host/in-process-dispatcher";
+  type InProcessRunnerDeps as InProcessRunnerDeps
+} from "./host/in-process-runner";
 
 export {
   createHttpTransportAdapter,

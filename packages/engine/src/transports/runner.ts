@@ -1,9 +1,9 @@
 /**
  * Pluggable flow execution dispatcher.
  *
- * Controls WHERE a flow action executes. The default InProcessDispatcher
+ * Controls WHERE a flow action executes. The default InProcessRunner
  * runs actions in the current process via runAction. Alternative
- * implementations (WorkerDispatcher for BullMQ, future TriggerDevDispatcher)
+ * implementations (WorkerRunner for BullMQ, future TriggerDevRunner)
  * route execution to external workers with live event bridging.
  */
 import type { ActionCore } from "@flow-state-dev/core/types";
@@ -89,7 +89,7 @@ export interface DispatchEnvelope {
 export type LeaseTurn = { kind: "now" } | { kind: "when-free"; key: string };
 
 /**
- * Handle returned by FlowDispatcher.dispatch(). Exposes the request id
+ * Handle returned by FlowRunner.dispatch(). Exposes the request id
  * and a promise that resolves when execution finishes, plus an abort hook.
  */
 export interface FlowDispatchHandle {
@@ -111,11 +111,11 @@ export interface FlowDispatchHandle {
 
 /**
  * Controls where flow actions execute. Implementations:
- * - InProcessDispatcher (default) — calls runAction in the current process
- * - WorkerDispatcher (BullMQ) — enqueues to a BullMQ queue, subscribes via bridge
- * - Future: TriggerDevDispatcher, PgBossDispatcher
+ * - InProcessRunner (default) — calls runAction in the current process
+ * - WorkerRunner (BullMQ) — enqueues to a BullMQ queue, subscribes via bridge
+ * - Future: TriggerDevRunner, PgBossRunner
  */
-export interface FlowDispatcher {
+export interface FlowRunner {
   dispatch(
     envelope: DispatchEnvelope,
     bridge?: StreamBridge

@@ -300,7 +300,7 @@ export interface InboundTransportHost {
    * re-deriving it from the dispatcher and reaching a different answer than the
    * host did.
    */
-  readonly usesExternalDispatcher: boolean;
+  readonly usesExternalRunner: boolean;
 
   /**
    * Whether work this host hands to an external queue is arbitrated against

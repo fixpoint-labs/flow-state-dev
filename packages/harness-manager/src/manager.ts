@@ -1957,7 +1957,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // principal, so a refused drain opens no record and takes no checkout.
       // The first run records its starter; a row another member owns is
       // refused here, which is the backstop for a board whose drain was not
-      // wired with `runOwnerDispatcher` — that dispatcher refuses before the
+      // wired with `runOwnerClaimOrder` — that dispatcher refuses before the
       // claim and so charges nothing, where this refusal comes after it. A
       // board read from the claim gets the same check through its own ref:
       // the manager cannot see that board's scope, and on a board one user

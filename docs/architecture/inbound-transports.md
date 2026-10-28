@@ -184,13 +184,13 @@ interface InboundTransportHost {
   dispatch(envelope: InboundRequestEnvelope): DispatchHandle;
   resolvePrincipal(ctx: PrincipalResolutionContext): Promise<ResolvedPrincipal>;
   /** True when `dispatch` hands the run to another process (a queue adapter). */
-  readonly usesExternalDispatcher: boolean;
+  readonly usesExternalRunner: boolean;
   /** True when that external work is arbitrated over a lease backend the worker processes share. */
   readonly arbitratesExternalDispatch?: boolean;
 }
 ```
 
-`host.usesExternalDispatcher` is published so a request-host operation can
+`host.usesExternalRunner` is published so a request-host operation can
 refuse what cannot be fenced across a process boundary: a `dispatcher()`
 delivering into an *existing* session (`{ id }`) is refused with
 `external-dispatcher` on such a host, while a `{ key }` child and every

@@ -22,7 +22,7 @@
 import { handler, logicalBlockIdOf } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import type { Task, TaskCollectionRef, TaskDispatcher } from "../../tasks";
+import type { Task, TaskCollectionRef, ClaimOrder } from "../../tasks";
 import {
   claimResultSchema,
   taskBoardWorkerStateSchema,
@@ -32,7 +32,7 @@ import {
 export interface ClaimTaskOptions {
   name: string;
   collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
-  dispatcher: TaskDispatcher;
+  claimOrder: ClaimOrder;
   /**
    * Worker-id resolver. The pattern stamps `worker-${index}` per worker;
    * remixers can pass any function that produces a stable string per
@@ -44,7 +44,7 @@ export interface ClaimTaskOptions {
 export type ClaimTaskOutput = ClaimResult;
 
 export function createClaimTask(options: ClaimTaskOptions) {
-  const { name, collection: collectionFactory, dispatcher, workerId } = options;
+  const { name, collection: collectionFactory, claimOrder: dispatcher, workerId } = options;
   return handler({
     name,
     // Substrate-internal worker-loop block: a single idle worker can

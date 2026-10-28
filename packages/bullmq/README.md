@@ -118,7 +118,7 @@ Only the separate wait for in-process dispatch runs carries that budget. See
 ```ts
 import { Queue } from "bullmq";
 import {
-  createWorkerDispatcher,
+  createWorkerRunner,
   createFlowWorker,
   createRedisStreamBridge,
 } from "@flow-state-dev/bullmq";
@@ -128,7 +128,7 @@ const bridge = createRedisStreamBridge({ connection: redisUrl });
 
 // Web side: route all flow dispatches through the queue
 const queue = new Queue("fsd-flows", { connection: redisUrl });
-const dispatcher = createWorkerDispatcher({ queue, bridge });
+const dispatcher = createWorkerRunner({ queue, bridge });
 
 // Worker side
 const worker = createFlowWorker({

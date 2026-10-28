@@ -47,7 +47,7 @@ describe("RequestHost.dispatchRunsHere", () => {
       flows: { [flow.id]: flow },
       stores: { default: { primary: inMemoryStores() } },
       // A queue's shape: it takes a serializable envelope, and runs nothing here.
-      dispatcher: { dispatch: async () => ({ accepted: Promise.resolve(), finished: new Promise(() => {}) }) } as never
+      runner: { dispatch: async () => ({ accepted: Promise.resolve(), finished: new Promise(() => {}) }) } as never
     });
     try {
       expect(await readOn(state)).toEqual({ runsHere: false });

@@ -15,7 +15,7 @@ import type {
   WorkerAdapter,
   WorkerMode
 } from "../../src/flowstate/types";
-import type { FlowDispatcher } from "../../src/transports/dispatcher";
+import type { FlowRunner } from "../../src/transports/runner";
 
 const routerCalls: CreateFlowApiRouterOptions[] = [];
 
@@ -53,12 +53,12 @@ const stubModelResolver = (() => undefined) as never;
 /** Records every adapter interaction so tests can assert the lifecycle. */
 function makeFakeAdapter(mode?: WorkerMode) {
   const calls = {
-    dispatcherRuntimes: [] as FlowStateRuntime[],
+    runnerRuntimes: [] as FlowStateRuntime[],
     workerRuntimes: [] as FlowStateRuntime[],
     workerClosed: 0,
     adapterClosed: 0
   };
-  const dispatcher: FlowDispatcher = {
+  const dispatcher: FlowRunner = {
     dispatch: vi.fn(async (envelope) => ({
       requestId: envelope.requestId,
       finished: Promise.resolve({ output: undefined, items: [], durationMs: 0 }),
@@ -68,8 +68,8 @@ function makeFakeAdapter(mode?: WorkerMode) {
   };
   const adapter: WorkerAdapter = {
     mode,
-    createDispatcher(runtime) {
-      calls.dispatcherRuntimes.push(runtime);
+    createRunner(runtime) {
+      calls.runnerRuntimes.push(runtime);
       return dispatcher;
     },
     startWorker(runtime) {
@@ -106,19 +106,19 @@ describe("createFlowState — worker adapter", () => {
     const fs = makeFlowState(adapter);
     await fs.ready();
 
-    expect(calls.dispatcherRuntimes).toHaveLength(1);
+    expect(calls.runnerRuntimes).toHaveLength(1);
     expect(calls.workerRuntimes).toHaveLength(1);
 
     // Store-identity invariant: dispatch side, worker side, and the public
     // runtime all see the same instances.
     const runtime = await fs.getRuntime();
-    expect(calls.dispatcherRuntimes[0]?.stores).toBe(runtime.stores);
+    expect(calls.runnerRuntimes[0]?.stores).toBe(runtime.stores);
     expect(calls.workerRuntimes[0]?.stores).toBe(runtime.stores);
     expect(calls.workerRuntimes[0]?.registry).toBe(runtime.registry);
     expect(calls.workerRuntimes[0]?.runtimeConfig).toBe(runtime.runtimeConfig);
 
     // The adapter's dispatcher reaches the router.
-    expect(routerCalls[0]?.dispatcher).toBe(dispatcher);
+    expect(routerCalls[0]?.runner).toBe(dispatcher);
 
     await fs.dispose();
   });
@@ -128,9 +128,9 @@ describe("createFlowState — worker adapter", () => {
     const fs = makeFlowState(adapter);
     await fs.ready();
 
-    expect(calls.dispatcherRuntimes).toHaveLength(1);
+    expect(calls.runnerRuntimes).toHaveLength(1);
     expect(calls.workerRuntimes).toHaveLength(0);
-    expect(routerCalls[0]?.dispatcher).toBe(dispatcher);
+    expect(routerCalls[0]?.runner).toBe(dispatcher);
 
     await fs.dispose();
   });
@@ -140,9 +140,9 @@ describe("createFlowState — worker adapter", () => {
     const fs = makeFlowState(adapter);
     await fs.ready();
 
-    expect(calls.dispatcherRuntimes).toHaveLength(0);
+    expect(calls.runnerRuntimes).toHaveLength(0);
     expect(calls.workerRuntimes).toHaveLength(1);
-    expect(routerCalls[0]?.dispatcher).toBeUndefined();
+    expect(routerCalls[0]?.runner).toBeUndefined();
 
     await fs.dispose();
   });
@@ -162,7 +162,7 @@ describe("createFlowState — worker adapter", () => {
     await Promise.all([fs.ready(), fs.getRuntime(), fs.getRouter()]);
     await fs.ready();
 
-    expect(calls.dispatcherRuntimes).toHaveLength(1);
+    expect(calls.runnerRuntimes).toHaveLength(1);
     expect(calls.workerRuntimes).toHaveLength(1);
     await fs.dispose();
   });
@@ -202,7 +202,7 @@ describe("createFlowState — worker adapter", () => {
         stores: { default: { primary: inMemoryStores() } },
         modelResolver: stubModelResolver,
         worker: adapter,
-        dispatcher
+        runner: dispatcher
       })
     ).toThrow(FlowStateConfigError);
   });

@@ -1,5 +1,5 @@
 /**
- * Default FlowDispatcher — runs actions in the current process via runAction.
+ * Default FlowRunner — runs actions in the current process via runAction.
  * Extracted from the inline dispatch body in createInboundTransportHost so the
  * host can accept pluggable dispatchers without changing adapter contracts.
  */
@@ -13,11 +13,11 @@ import { UnknownFlowError } from "../../context/instance-pin";
 import type {
   DispatchEnvelope,
   FlowDispatchHandle,
-  FlowDispatcher,
+  FlowRunner,
   StreamBridge
-} from "../dispatcher";
+} from "../runner";
 
-export interface InProcessDispatcherDeps {
+export interface InProcessRunnerDeps {
   registry: FlowRegistry;
   stores: StoreRegistry;
   runtimeConfig: RuntimeConfig;
@@ -39,11 +39,11 @@ export interface InProcessDispatchContext {
 }
 
 /**
- * Extended FlowDispatcher that also exposes `dispatchLocal` for the
+ * Extended FlowRunner that also exposes `dispatchLocal` for the
  * InboundTransportHost, which has access to non-serializable context
  * (signal, responseEmitter) that can't travel through a queue.
  */
-export interface InProcessDispatcher extends FlowDispatcher {
+export interface InProcessRunner extends FlowRunner {
   /**
    * Dispatch with local-only context (signal, emitter). Used by the
    * InboundTransportHost which has access to the full envelope including
@@ -62,14 +62,14 @@ export interface InProcessDispatcher extends FlowDispatcher {
  * cross a serialization boundary — a dispatcher that accepts a live
  * `AbortSignal` and `ResponseEmitter` is necessarily running the work here. An
  * `undefined` dispatcher is in-process too: the host builds its own
- * `createInProcessDispatcher` for that case.
+ * `createInProcessRunner` for that case.
  *
  * Shared rather than re-tested per call site so the host's dispatch branch and
  * anything else keying on locality cannot drift apart and disagree about the
  * same dispatcher (FIX-1077).
  */
-export function isInProcessDispatcher(
-  dispatcher: FlowDispatcher | undefined
+export function isInProcessRunner(
+  dispatcher: FlowRunner | undefined
 ): boolean {
   return dispatcher === undefined || "dispatchLocal" in dispatcher;
 }
@@ -77,12 +77,12 @@ export function isInProcessDispatcher(
 /**
  * Create a dispatcher that runs actions in the current process. The host
  * delegates to `dispatchLocal` (which accepts non-serializable context)
- * while the generic `FlowDispatcher.dispatch` interface is also satisfied
+ * while the generic `FlowRunner.dispatch` interface is also satisfied
  * for callers that only have the serializable envelope.
  */
-export function createInProcessDispatcher(
-  deps: InProcessDispatcherDeps
-): InProcessDispatcher {
+export function createInProcessRunner(
+  deps: InProcessRunnerDeps
+): InProcessRunner {
   const { registry, stores, runtimeConfig } = deps;
 
   const dispatchLocal = (

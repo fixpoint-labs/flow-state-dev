@@ -1,5 +1,5 @@
 /**
- * `TaskDispatcher` interface (FIX-443 §4).
+ * `ClaimOrder` interface (FIX-443 §4).
  *
  * A dispatcher's `claim` selects and commits as one call: it scans the
  * collection for an eligible task, then opens a conditional write that
@@ -25,7 +25,7 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import type { Task } from "../schema/task";
 import type { TaskCollectionRef } from "../collection/types";
 
-export interface TaskDispatcher {
+export interface ClaimOrder {
   /**
    * Atomically pick and claim the next eligible task. Returns `null`
    * when nothing is ready to dispatch right now (loop should exit or

@@ -268,10 +268,10 @@ export { cancelAndResume, owesUserResume } from "./helpers/user-stop";
 export { onTaskChangeFor } from "./collection/predicates";
 
 // Dispatchers
-export type { TaskDispatcher } from "./dispatchers/types";
-export { fifoDispatcher } from "./dispatchers/fifo";
-export { topologicalDispatcher } from "./dispatchers/topological";
-export { priorityDispatcher } from "./dispatchers/priority";
+export type { ClaimOrder as ClaimOrder } from "./claim-orders/types";
+export { fifoClaimOrder as fifoClaimOrder } from "./claim-orders/fifo";
+export { topologicalClaimOrder as topologicalClaimOrder } from "./claim-orders/topological";
+export { priorityClaimOrder as priorityClaimOrder } from "./claim-orders/priority";
 
 // Workers
 export type {

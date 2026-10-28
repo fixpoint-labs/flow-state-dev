@@ -110,7 +110,7 @@ import {
   resendNowPatch,
   type Task,
   type TaskCollectionRef,
-  type TaskDispatcher,
+  type ClaimOrder,
   type TaskInit,
   type TaskWriteOutcome
 } from "@flow-state-dev/orchestration/tasks";
@@ -538,7 +538,7 @@ async function takeTargetSessions(ctx: BlockContext, collection: TaskCollectionR
  * for it. A claimed row's filed hop count is kept until a user's line in the
  * filer's conversation ({@link keepFiledHopInChain}).
  */
-const startableOnly: TaskDispatcher = {
+const startableOnly: ClaimOrder = {
   claim: async (collection, workerId, ctx) => {
     const taken = await takeTargetSessions(ctx, collection);
     noteHeldElsewhere(collection, new Set([...taken].filter(([, id]) => id === undefined).map(([target]) => target)));
@@ -1021,7 +1021,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     collection: conversationLedger,
     workers: {},
     defaultWorker: dispatchToDelegate as never,
-    dispatcher: startableOnly,
+    claimOrder: startableOnly,
     // Exit once nothing this run can start is waiting. An unassigned row
     // waits on the board for `updateTask({ assignee })`, so a run must not wait on it.
     onIdle: "wait",

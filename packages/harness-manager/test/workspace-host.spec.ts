@@ -31,7 +31,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { localWorkspaceHost, type RunSourceAnswer } from "@flow-state-dev/workspace";
-import { harnessManager, harnessTaskInputSchema, runOwnerDispatcher, type HarnessFeeds } from "../src";
+import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessFeeds } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 import { createFakeCollection, type FakeCollection } from "../../workspace/test/fake-collection";
@@ -221,7 +221,7 @@ function lab(options: {
     mode: "delegation",
     collection: ledger,
     concurrency: 1,
-    dispatcher: runOwnerDispatcher(),
+    claimOrder: runOwnerClaimOrder(),
     workers: {
       coder: dispatcher({ name: "host-board-dispatch", action: "work", session: "per-task" }),
     },

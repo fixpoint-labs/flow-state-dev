@@ -15,7 +15,7 @@ import { testBlock } from "@flow-state-dev/testing";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { z } from "zod";
 import {
-  fifoDispatcher,
+  fifoClaimOrder,
   getOrCreateTaskCollection,
   taskSchema,
 } from "../../src/tasks";
@@ -56,7 +56,7 @@ describe("sequencer-state integration", () => {
           collectionId: "plan",
           state: ctx.sequencer!,
         });
-        const task = await fifoDispatcher.claim(collection, "worker-1", ctx);
+        const task = await fifoClaimOrder.claim(collection, "worker-1", ctx);
         if (task !== null) {
           await collection.complete(task.id, `done:${task.goal}`);
         }

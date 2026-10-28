@@ -349,11 +349,11 @@ Anything that reports *which* task runs next needs both; anything asking only
 
 ### Dispatchers
 
-`fifoDispatcher`, `topologicalDispatcher` (the default), and `priorityDispatcher`. None of
+`fifoClaimOrder`, `topologicalClaimOrder` (the default), and `priorityClaimOrder`. None of
 them claims a task whose `deps` aren't all `completed`. That eligibility rule lives
 on `collection.claim`, and a dispatcher's own `eligibility` narrows it, so they
-differ only in ordering. `fifoDispatcher` and
-`topologicalDispatcher` are ordered identically; `priorityDispatcher` takes the
+differ only in ordering. `fifoClaimOrder` and
+`topologicalClaimOrder` are ordered identically; `priorityClaimOrder` takes the
 highest `priority` first, ties on `createdAt`.
 
 ## Task board

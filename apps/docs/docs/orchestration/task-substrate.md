@@ -172,7 +172,7 @@ Here's a handler that seeds two tasks with a dependency between them and dispatc
 import { handler } from "@flow-state-dev/core";
 import {
   getOrCreateTaskCollection,
-  topologicalDispatcher,
+  topologicalClaimOrder,
 } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 
@@ -199,7 +199,7 @@ export const seedResearchPlan = handler({
 
     // "draft" waits on "research", so the topological dispatcher
     // claims "research" and leaves "draft" pending.
-    const claimed = await topologicalDispatcher.claim(collection, "writer-1", ctx);
+    const claimed = await topologicalClaimOrder.claim(collection, "writer-1", ctx);
 
     return { claimedGoal: claimed?.goal ?? null };
   },
@@ -515,11 +515,11 @@ An abandoned task your predicate filters out is not taken back by *this* dispatc
 
 | Dispatcher | Picks | Eligibility |
 |------------|-------|-------------|
-| `fifoDispatcher` | Earliest `createdAt` eligible task | Claimable (pending or abandoned), all `deps` completed. |
-| `topologicalDispatcher` (default) | Earliest `createdAt` eligible task | Claimable (pending or abandoned), all `deps` completed. |
-| `priorityDispatcher` | Highest `priority`, ties break on `createdAt` | Claimable (pending or abandoned), all `deps` completed. Unset priority reads as 0. |
+| `fifoClaimOrder` | Earliest `createdAt` eligible task | Claimable (pending or abandoned), all `deps` completed. |
+| `topologicalClaimOrder` (default) | Earliest `createdAt` eligible task | Claimable (pending or abandoned), all `deps` completed. |
+| `priorityClaimOrder` | Highest `priority`, ties break on `createdAt` | Claimable (pending or abandoned), all `deps` completed. Unset priority reads as 0. |
 
-`fifoDispatcher` and `topologicalDispatcher` behave identically; neither one will claim a task with unmet `deps`. The two names exist so a flat fan-out with no deps can say what it means.
+`fifoClaimOrder` and `topologicalClaimOrder` behave identically; neither one will claim a task with unmet `deps`. The two names exist so a flat fan-out with no deps can say what it means.
 
 ## task-change items
 

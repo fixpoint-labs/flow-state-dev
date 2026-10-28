@@ -322,8 +322,8 @@ nothing: the work runs on. Identity is never a parameter to any of them.
 
 **Locality is decided by the effective dispatcher, not by `worker.mode`.**
 
-`createFlowState` resolves `options.dispatcher ?? #workerDispatcher`, then asks
-`isInProcessDispatcher`, whose test is `dispatcher === undefined || "dispatchLocal" in dispatcher`.
+`createFlowState` resolves `options.dispatcher ?? #workerRunner`, then asks
+`isInProcessRunner`, whose test is `dispatcher === undefined || "dispatchLocal" in dispatcher`.
 `dispatchLocal` is the discriminator because it accepts a live `AbortSignal` and
 `ResponseEmitter` — capabilities that cannot cross a serialization boundary, so
 a dispatcher offering it is necessarily running the work here.
@@ -334,7 +334,7 @@ The two genuinely disagree, which is why the mode is the wrong thing to read:
   its `colocated` default while the dispatcher may be external.
 - A custom dispatcher exposing `dispatchLocal` is local whatever the mode says.
 - `worker-only` constructs **no** dispatcher at all (`createFlowState` skips
-  `createDispatcher` for that mode), so the effective dispatcher is `undefined`
+  `createRunner` for that mode), so the effective dispatcher is `undefined`
   — which is *in-process*.
 
 Everything below follows from that one test.
@@ -359,8 +359,8 @@ There is no "started" milestone to report — the column is acceptance, and
 given both — and the low-level `dispatcher` option is the one that most easily
 gets misread here: it produces no `worker` and no `mode`, so it looks like the
 first row and behaves like the third if the dispatcher it installs is external.
-The effective dispatcher is `options.dispatcher ?? worker.createDispatcher(...)`,
-and `isInProcessDispatcher` decides everything downstream of it.
+The effective dispatcher is `options.dispatcher ?? worker.createRunner(...)`,
+and `isInProcessRunner` decides everything downstream of it.
 
 **Two different waits hide in that last column, and only one of them is
 bounded.** The drain below waits for *in-process dispatched children* and races
@@ -493,7 +493,7 @@ and wrong. `parentTask` and `settleParentTask` are unaffected.
 
 `dispose()` drains **in-process** dispatched children and no others.
 
-The tracking is keyed on the same `isInProcessDispatcher` test: `onDispatched`
+The tracking is keyed on the same `isInProcessRunner` test: `onDispatched`
 registers a child for the drain only when it runs here. An externally dispatched
 child is deliberately untracked — the enqueue is already confirmed, so there is
 no half-written row to strand, and its `finished` resolves only when some worker
@@ -679,7 +679,7 @@ and the row stays as it is.
 
 | Concern | Module |
 |---|---|
-| Locality test | `engine/src/transports/host/in-process-dispatcher.ts` → `isInProcessDispatcher` |
+| Locality test | `engine/src/transports/host/in-process-runner.ts` → `isInProcessRunner` |
 | Dispatch operation install, drain, disposal gate | `engine/src/flowstate/createFlowState.ts` (`dispatchDrainTimeoutMs`) |
 | The dispatch seam: entry, session, envelope, start | `engine/src/context/create-request-host.ts`, `engine/src/context/dispatch-operation.ts` |
 | Child session derivation and adoption | `engine/src/context/dispatch-run.ts` |

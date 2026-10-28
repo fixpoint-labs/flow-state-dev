@@ -129,7 +129,7 @@ export type DispatchOperation = (spec: {
    * was a delivery into an existing session — refused before anything is
    * enqueued, so the caller can name the refusal rather than parse the reason.
    */
-  | { notStarted: true; reason: string; externalDispatcher: true }
+  | { notStarted: true; reason: string; externalRunner: true }
 >;
 
 /**
@@ -158,7 +158,7 @@ export type DispatchOperationInputs = {
    */
   host: Pick<
     InboundTransportHost,
-    "dispatch" | "usesExternalDispatcher" | "arbitratesExternalDispatch"
+    "dispatch" | "usesExternalRunner" | "arbitratesExternalDispatch"
   >;
   /**
    * Called with the dispatched request's `finished` promise the moment the
@@ -208,12 +208,12 @@ export function createDispatchOperation(inputs: DispatchOperationInputs): Dispat
     // decides the refusal code.
     if (
       spec.delivery === "existing" &&
-      inputs.host.usesExternalDispatcher &&
+      inputs.host.usesExternalRunner &&
       inputs.host.arbitratesExternalDispatch !== true
     ) {
       return {
         notStarted: true,
-        externalDispatcher: true,
+        externalRunner: true,
         reason:
           "the effective dispatcher hands work to an external queue, and the worker " +
           "adapter supplies no lease backend to arbitrate it across processes"

@@ -26,7 +26,7 @@ import { z } from "zod";
 import {
   defineTaskCollection,
   extractTaskItemWindows,
-  fifoDispatcher,
+  fifoClaimOrder,
   getOrCreateTaskCollection,
   type TaskWorker,
 } from "../../src/tasks";
@@ -151,7 +151,7 @@ describe("taskBoard - handle structure", () => {
       taskBoard({
         name: "bad",
         collection: { collectionId: "x" },
-        dispatcher: "nonsense" as never,
+        claimOrder: "nonsense" as never,
         workers: makeGoalWorker("noop", () => null),
       })
     ).toThrow(/unknown dispatcher/);
@@ -238,7 +238,7 @@ describe("taskBoard - basic drain", () => {
       name: "drain-1",
       collection: { collectionId: "drain-1" },
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: makeEchoWorker("uniform", trace),
       initialTasks: [
         { id: "a", goal: "alpha", input: { topic: "alpha" } },
@@ -305,7 +305,7 @@ describe("taskBoard - basic drain", () => {
       name: "drain-parallel",
       collection: { collectionId: "drain-parallel" },
       concurrency: 4,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: makeEchoWorker("uniform", trace),
       initialTasks: inits,
     });
@@ -353,7 +353,7 @@ describe("taskBoard - dependency-gated dispatch (topological)", () => {
       name: "topo",
       collection: { collectionId: "topo" },
       concurrency: 2,
-      dispatcher: "topological",
+      claimOrder: "topological",
       workers: orderedWorker,
       initialTasks: [
         { id: "u", goal: "upstream" },
@@ -386,7 +386,7 @@ describe("taskBoard - worker registry routing", () => {
       name: "registry",
       collection: { collectionId: "registry" },
       concurrency: 2,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: registry,
       initialTasks: [
         {
@@ -425,7 +425,7 @@ describe("taskBoard - worker registry routing", () => {
       name: "missing-worker",
       collection: { collectionId: "mw" },
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: { only: makeEchoWorker("only", trace) },
       initialTasks: [
         { id: "x", goal: "lost", assignee: "phantom" },
@@ -462,7 +462,7 @@ describe("taskBoard - default worker (the floor)", () => {
       name: "floor-unknown",
       collection: { collectionId: "floor-unknown" },
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: { only: makeEchoWorker("only", trace) },
       defaultWorker: makeEchoWorker("floor", trace),
       initialTasks: [
@@ -484,7 +484,7 @@ describe("taskBoard - default worker (the floor)", () => {
       name: "floor-absent",
       collection: { collectionId: "floor-absent" },
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: { only: makeEchoWorker("only", trace) },
       defaultWorker: makeEchoWorker("floor", trace),
       initialTasks: [{ id: "a", goal: "no assignee", input: { topic: "a" } }],
@@ -503,7 +503,7 @@ describe("taskBoard - default worker (the floor)", () => {
       name: "floor-declared",
       collection: { collectionId: "floor-declared" },
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: { only: makeEchoWorker("only", trace) },
       defaultWorker: makeEchoWorker("floor", trace),
       initialTasks: [{ id: "d", goal: "declared", assignee: "only", input: { topic: "d" } }],
@@ -526,7 +526,7 @@ describe("taskBoard - default worker (the floor)", () => {
       name: "rosterless",
       collection: { collectionId: "rosterless" },
       concurrency: 2,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: {},
       defaultWorker: makeEchoWorker("floor", trace),
       initialTasks: [
@@ -556,7 +556,7 @@ describe("taskBoard - default worker (the floor)", () => {
         name: `floor-proto-${protoAssignee.replace(/_/g, "")}`,
         collection: { collectionId: `floor-proto-${protoAssignee.replace(/_/g, "")}` },
         concurrency: 1,
-        dispatcher: "fifo",
+        claimOrder: "fifo",
         workers: { only: makeEchoWorker("only", trace) },
         defaultWorker: makeEchoWorker("floor", trace),
         initialTasks: [
@@ -581,7 +581,7 @@ describe("taskBoard - default worker (the floor)", () => {
         name: `no-floor-proto-${protoAssignee.replace(/_/g, "")}`,
         collection: { collectionId: `no-floor-proto-${protoAssignee.replace(/_/g, "")}` },
         concurrency: 1,
-        dispatcher: "fifo",
+        claimOrder: "fifo",
         workers: { only: makeEchoWorker("only", trace) },
         // No defaultWorker — a prototype-named miss must fail like any other.
         initialTasks: [
@@ -612,7 +612,7 @@ describe("taskBoard - default worker (the floor)", () => {
       name: "floor-aliased",
       collection: { collectionId: "floor-aliased" },
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: { generalist },
       defaultWorker: generalist,
       initialTasks: [
@@ -640,7 +640,7 @@ describe("taskBoard - default worker (the floor)", () => {
       name: "aliased-keys",
       collection: { collectionId: "aliased-keys" },
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: { alice: shared, bob: shared },
       initialTasks: [
         { id: "x", goal: "a", assignee: "alice", input: { topic: "x" } },
@@ -662,7 +662,7 @@ describe("taskBoard - default worker (the floor)", () => {
       name: "no-floor-absent",
       collection: { collectionId: "no-floor-absent" },
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: { only: makeEchoWorker("only", trace) },
       // No defaultWorker — the miss must still error, exactly as before.
       initialTasks: [
@@ -711,7 +711,7 @@ describe("taskBoard - CAS contention safety", () => {
       name: "race-board",
       collection: { collectionId: "race" },
       concurrency: 8,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: raceWorker,
       initialTasks: inits,
     });
@@ -758,7 +758,7 @@ describe("taskBoard - mid-drain enqueue", () => {
       name: "fanout",
       collection: { backing: "sequencer", collectionId: "fanout" },
       concurrency: 2,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: fanoutWorker,
       initialTasks: [{ id: "seed", goal: "seed" }],
       idlePollMs: 10,
@@ -792,7 +792,7 @@ describe("taskBoard - failure handling", () => {
       name: "skip-fail",
       collection: { collectionId: "skip" },
       concurrency: 2,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: mixedWorker,
       initialTasks: [
         { id: "good-1", goal: "good-1" },
@@ -825,7 +825,7 @@ describe("taskBoard - failure handling", () => {
       name: "fail-prop",
       collection: { collectionId: "fp" },
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: boomWorker,
       initialTasks: [{ id: "x", goal: "x" }],
       onError: "fail",
@@ -872,7 +872,7 @@ describe("taskBoard - failure handling", () => {
       name: "deps-fail",
       collection: { backing: "sequencer", collectionId: "df" },
       concurrency: 1,
-      dispatcher: "topological",
+      claimOrder: "topological",
       workers: failingWorker,
       initialTasks: [
         { id: "u", goal: "u" },
@@ -903,7 +903,7 @@ describe("taskBoard - onIdle modes", () => {
       name: "complete-mode",
       collection: { collectionId: "cm" },
       concurrency: 2,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: makeEchoWorker("uniform", trace),
       initialTasks: [
         { id: "a", goal: "a", input: { topic: "a" } },
@@ -927,7 +927,7 @@ describe("taskBoard - onIdle modes", () => {
       name: "noisy-idle",
       collection: { collectionId: "noise" },
       concurrency: 3,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: makeEchoWorker("uniform", []),
       initialTasks: [],
       onIdle: "wait",
@@ -974,7 +974,7 @@ describe("taskBoard - onIdle modes", () => {
       name: "deps-fail-default",
       collection: { collectionId: "dfd" },
       concurrency: 1,
-      dispatcher: "topological",
+      claimOrder: "topological",
       workers: failingWorker,
       initialTasks: [
         { id: "u", goal: "u" },
@@ -1000,7 +1000,7 @@ describe("taskBoard - onIdle modes", () => {
       name: "cob-success",
       collection: { collectionId: "cob-success" },
       concurrency: 2,
-      dispatcher: "topological",
+      claimOrder: "topological",
       workers: makeEchoWorker("uniform", trace),
       initialTasks: [
         { id: "a", goal: "a", input: { topic: "a" } },
@@ -1046,7 +1046,7 @@ describe("taskBoard - onIdle modes", () => {
       name: "wait-mode",
       collection: { backing: "sequencer", collectionId: "wm" },
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: waitWorker,
       initialTasks: [{ id: "seed", goal: "seed" }],
       onIdle: "wait",
@@ -1108,7 +1108,7 @@ describe("taskBoard - remix blocks", () => {
     const claim = createClaimTask({
       name: "remix-claim",
       collection: collectionFactory,
-      dispatcher: fifoDispatcher,
+      claimOrder: fifoClaimOrder,
       workerId: () => "remixer",
     });
 
@@ -1290,7 +1290,7 @@ describe("taskBoard - capability", () => {
       name: "smoke",
       collection: { collectionId: "smoke" },
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: makeEchoWorker("uniform", trace),
       initialTasks: [{ id: "a", goal: "alpha", input: { topic: "alpha" } }],
     });
@@ -1328,7 +1328,7 @@ describe("taskBoard - request default + accessor sugar", () => {
       // No `collection` — request default, collectionId = board name.
       name: "preboard",
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: makeEchoWorker("uniform", processed),
     });
 
@@ -1364,7 +1364,7 @@ describe("taskBoard - request default + accessor sugar", () => {
     const board = taskBoard({
       name: "sugar",
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: makeEchoWorker("uniform"),
     });
 
@@ -1414,7 +1414,7 @@ describe("taskBoard - durable (resource-backed) collection", () => {
       name: "todo-board",
       collection: todos,
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: makeEchoWorker("uniform", processed),
     });
 
@@ -1455,7 +1455,7 @@ describe("taskBoard - durable (resource-backed) collection", () => {
       name: "nested-id-board",
       collection: defineTaskCollection({ id: "nested", scope: "session" }),
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: makeEchoWorker("uniform", processed),
       initialTasks: [{ id: "parent/child", goal: "pc", input: { topic: "pc" } }],
     });
@@ -1471,7 +1471,7 @@ describe("taskBoard - durable (resource-backed) collection", () => {
       name: "fresh-board",
       collection: defineTaskCollection({ id: "fresh", scope: "session" }),
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: makeEchoWorker("uniform"),
     });
 
@@ -1523,7 +1523,7 @@ describe("taskBoard - re-entry (request-scoped collection)", () => {
       name: "reentry-basic",
       collection: { backing: "request", collectionId: "reentry-basic" },
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: makeEchoWorker("uniform", trace),
       initialTasks: [
         { id: "a", goal: "alpha", input: { topic: "alpha" } },
@@ -1585,7 +1585,7 @@ describe("taskBoard - re-entry (request-scoped collection)", () => {
         collectionId: "reentry-three-rounds",
       },
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: makeEchoWorker("uniform", processed),
       initialTasks: [
         { id: "r1-x", goal: "r1-x", input: { topic: "r1-x" } },
@@ -1640,7 +1640,7 @@ describe("taskBoard - re-entry (request-scoped collection)", () => {
         collectionId: "reentry-concurrent",
       },
       concurrency: 4,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: makeEchoWorker("uniform", processed),
       initialTasks: Array.from({ length: 8 }, (_, i) => ({
         id: `r1-${i}`,
@@ -1698,7 +1698,7 @@ describe("taskBoard - board-meta emission", () => {
       name: "meta-test",
       collection: { collectionId: "meta-test" },
       concurrency: 2,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: makeEchoWorker("uniform", trace),
       initialTasks: [
         { id: "a", goal: "alpha", input: { topic: "alpha" } },
@@ -1760,7 +1760,7 @@ describe("taskBoard - board-meta emission", () => {
       name: "meta-blocked",
       collection: { collectionId: "meta-blocked" },
       concurrency: 1,
-      dispatcher: "topological",
+      claimOrder: "topological",
       workers: failingWorker,
       initialTasks: [
         { id: "u", goal: "u" },
@@ -1810,7 +1810,7 @@ describe("taskBoard - board-meta emission", () => {
       name: "meta-fail",
       collection: { collectionId: "meta-fail" },
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: failingWorker,
       onError: "skip",
       initialTasks: [
@@ -1964,7 +1964,7 @@ describe("taskBoard - item attribution (FIX-658)", () => {
       name: "fanout",
       collection: { backing: "sequencer", collectionId: "fanout" },
       concurrency: 2,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: worker,
       initialTasks: [{ id: "discoverer", goal: "discoverer" }],
       idlePollMs: 5,
@@ -1999,7 +1999,7 @@ describe("taskBoard - item attribution (FIX-658)", () => {
       name: "seq",
       collection: { collectionId: "seq" },
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: worker,
       initialTasks: [
         { id: "t1", goal: "t1" },

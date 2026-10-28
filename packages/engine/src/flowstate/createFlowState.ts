@@ -36,7 +36,7 @@ import { resolveDurabilityProvider } from "../durability/default-durability";
 import { FlowStateConfigError, FlowStateDisposedError } from "../errors/flow-error";
 import type { CapabilitySlot, StoreAdapter, StoresConfig } from "../stores/store-adapter";
 import { resolveProfileStores } from "./resolve-slots";
-import type { FlowDispatcher } from "../transports/dispatcher";
+import type { FlowRunner } from "../transports/runner";
 import {
   createDispatchOperation,
   type DispatchOperation,
@@ -50,7 +50,7 @@ import {
   type InProcessPrincipal,
   type InProcessPrincipalQuestion
 } from "../transports/host/createInboundTransportHost";
-import { isInProcessDispatcher } from "../transports/host/in-process-dispatcher";
+import { isInProcessRunner } from "../transports/host/in-process-runner";
 import { createWaitResumeOperation, type WaitResumeOperation } from "../context/wait-resume-operation";
 import { createParkedStopDeps } from "../durability/stop-suspended";
 import { installWaitSweeperFact } from "../durability/wait-deadlines";
@@ -247,7 +247,7 @@ class InternalFlowState<TSettings extends object>
    */
   #routerRequested = false;
   /** Dispatcher built by the worker adapter during runtime init. */
-  #workerDispatcher: FlowDispatcher | undefined;
+  #workerRunner: FlowRunner | undefined;
   /** Started worker, closed by dispose() before store adapters. */
   #workerHandle: WorkerHandle | undefined;
   /**
@@ -332,7 +332,7 @@ class InternalFlowState<TSettings extends object>
       );
     }
 
-    if (options.worker !== undefined && options.dispatcher !== undefined) {
+    if (options.worker !== undefined && options.runner !== undefined) {
       throw new FlowStateConfigError(
         "createFlowState: `worker` and `dispatcher` are mutually exclusive. " +
           "The worker adapter provides its own dispatcher; pass one or the other."
@@ -1050,7 +1050,7 @@ class InternalFlowState<TSettings extends object>
     const workerMode = worker?.mode ?? "colocated";
     if (worker !== undefined) {
       if (workerMode !== "worker-only") {
-        this.#workerDispatcher = worker.createDispatcher(runtime);
+        this.#workerRunner = worker.createRunner(runtime);
       }
       if (workerMode !== "dispatch-only") {
         this.#workerHandle = worker.startWorker(runtime);
@@ -1077,7 +1077,7 @@ class InternalFlowState<TSettings extends object>
 
     let operation: DispatchOperation | undefined;
     // Read per request: the worker's dispatcher is wired after this.
-    requestHost.dispatchRunsHere ??= () => isInProcessDispatcher(this.#options.dispatcher ?? this.#workerDispatcher);
+    requestHost.dispatchRunsHere ??= () => isInProcessRunner(this.#options.runner ?? this.#workerRunner);
     requestHost.dispatchOperation = (spec) => {
       if (this.#disposed) {
         return Promise.resolve({
@@ -1173,7 +1173,7 @@ class InternalFlowState<TSettings extends object>
       resolvePrincipal:
         this.#options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver,
       runtimeConfig,
-      dispatcher: this.#options.dispatcher ?? this.#workerDispatcher,
+      runner: this.#options.runner ?? this.#workerRunner,
       // One arbiter across every host in the process — see `#arbiter`.
       arbiter: this.#arbiter
     });
@@ -1186,9 +1186,9 @@ class InternalFlowState<TSettings extends object>
    * dispatcher.
    */
   #buildDispatchOperation(runtimeConfig: RuntimeConfig, stores: StoreRegistry): DispatchOperation {
-    const dispatcher = this.#options.dispatcher ?? this.#workerDispatcher;
+    const dispatcher = this.#options.runner ?? this.#workerRunner;
     const host = this.#hostForRequestHostOperations(runtimeConfig, stores);
-    const runsHere = isInProcessDispatcher(dispatcher);
+    const runsHere = isInProcessRunner(dispatcher);
     return createDispatchOperation({
       host,
       ...(runsHere
@@ -1249,7 +1249,7 @@ class InternalFlowState<TSettings extends object>
       staleSweepIntervalMs: this.#options.staleSweepIntervalMs,
       staleSweepThresholdMs: this.#options.staleSweepThresholdMs,
       queuedGraceMs: this.#options.queuedGraceMs,
-      dispatcher: this.#options.dispatcher ?? this.#workerDispatcher,
+      runner: this.#options.runner ?? this.#workerRunner,
       // The same arbiter the dispatch operation uses, so one flow-level
       // concurrency policy is enforced once across the process — see `#arbiter`.
       arbiter: this.#arbiter

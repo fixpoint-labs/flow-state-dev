@@ -149,7 +149,7 @@ The dispatcher decides which `pending` task gets claimed next. No dispatcher cla
 - `"fifo"`: the same ordering. The name reads better for a flat fan-out with no deps.
 - `"priority"`: highest-`priority` ready task first, ties break on earliest-added. An unset `priority` counts as 0.
 
-Those three strings are the only names `dispatcher` accepts. It also takes any `TaskDispatcher` instance: one of the three that `@flow-state-dev/orchestration` exports, or your own. See [Task substrate → Dispatchers](./task-substrate.md#dispatchers) for what each one picks, and [Flow policy](./flow-policy) for the observation ledger, `priorWork` shaping, and tool-result caching.
+Those three strings are the only names `dispatcher` accepts. It also takes any `ClaimOrder` instance: one of the three that `@flow-state-dev/orchestration` exports, or your own. See [Task substrate → Dispatchers](./task-substrate.md#dispatchers) for what each one picks, and [Flow policy](./flow-policy) for the observation ledger, `priorWork` shaping, and tool-result caching.
 
 The `dispatcher` option only orders claims. The `dispatcher()` block from `@flow-state-dev/core` is a different thing: an [assignee that dispatches](#assignees-that-dispatch) its tasks to another session.
 

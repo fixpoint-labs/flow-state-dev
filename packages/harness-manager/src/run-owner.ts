@@ -13,7 +13,7 @@
  * member on the row the first time it runs it, from the request's resolved
  * identity (BP-031), and two doors enforce it:
  *
- * - {@link runOwnerDispatcher} narrows the board's claim,
+ * - {@link runOwnerClaimOrder} narrows the board's claim,
  *   so another member's drain never claims the row. That is the door that
  *   charges nothing: the claim is what spends an attempt, and it never happens.
  *   The host wires it on the board that drains.
@@ -29,7 +29,7 @@
  * one member another's checkout, record or session, since those are derived
  * from each request's own resolved identity and never from the row.
  */
-import type { TaskDispatcher } from "@flow-state-dev/orchestration/tasks";
+import type { ClaimOrder } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import type { RunPrincipal } from "./workspace";
 
@@ -149,7 +149,7 @@ export function runPrincipal(ctx: RequestIdentityContext): RunPrincipal {
  *
  * Wire it on the board that drains rows a manager runs, when that board is
  * kept per organization (a shared board): `taskBoard({ dispatcher:
- * runOwnerDispatcher() })`. The claim is what spends an attempt, so refusing
+ * runOwnerClaimOrder() })`. The claim is what spends an attempt, so refusing
  * here leaves the row exactly as it was: same status, same attempt count,
  * same lease. Readiness and order stay the collection's: the owner check is
  * an `eligibility` narrow, which the substrate applies on top of its own.
@@ -161,7 +161,7 @@ export function runPrincipal(ctx: RequestIdentityContext): RunPrincipal {
  *
  * @returns A dispatcher to pass as `taskBoard({ dispatcher })`.
  */
-export function runOwnerDispatcher(): TaskDispatcher {
+export function runOwnerClaimOrder(): ClaimOrder {
   return {
     async claim(collection, workerId, ctx) {
       const principal = runPrincipal(ctx);

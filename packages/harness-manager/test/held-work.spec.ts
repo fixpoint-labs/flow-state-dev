@@ -34,7 +34,7 @@ import {
   type RunSourceAnswer,
   type WorkspaceHost,
 } from "@flow-state-dev/workspace";
-import { harnessManager, harnessTaskInputSchema, runOwnerDispatcher, type HarnessFeeds } from "../src";
+import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessFeeds } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 import { heard } from "./heard";
@@ -215,7 +215,7 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
     mode: "delegation",
     collection: ledger,
     concurrency: 1,
-    dispatcher: runOwnerDispatcher(),
+    claimOrder: runOwnerClaimOrder(),
     workers: { coder: dispatcher({ name: "held-board-dispatch", action: "work", session: "per-task" }) },
   });
   const seed = handler({

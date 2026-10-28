@@ -73,7 +73,7 @@ import { createDispatchOperation } from "../context/dispatch-operation";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import { pinRejectsCaller } from "../context/instance-pin";
 import { createInstanceCallerResolver, type InstanceCallerResolver } from "./instance-caller";
-import type { FlowDispatcher } from "../transports/dispatcher";
+import type { FlowRunner } from "../transports/runner";
 import type { ConcurrencyArbiter } from "../transports/concurrency/arbiter";
 import { createWaitResumeOperation } from "../context/wait-resume-operation";
 import { installWaitSweeperFact } from "../durability/wait-deadlines";
@@ -181,7 +181,7 @@ export type CreateFlowRouteHandlersOptions = {
   debugAllowAnonymousLocal?: boolean;
   debugCountLimit?: number;
   /** Pluggable flow dispatcher. Default: in-process via runAction. */
-  dispatcher?: FlowDispatcher;
+  runner?: FlowRunner;
   /**
    * Concurrency arbiter for this router's host. Defaults to a fresh one.
    *
@@ -262,7 +262,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     stores,
     resolvePrincipal: hostResolver,
     runtimeConfig,
-    dispatcher: options.dispatcher,
+    runner: options.runner,
     arbiter: options.arbiter
   });
 

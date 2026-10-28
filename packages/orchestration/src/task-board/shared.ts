@@ -8,41 +8,41 @@
  * through `collection.claim` on the substrate.
  */
 import {
-  fifoDispatcher,
+  fifoClaimOrder,
   hasOpenQuestion,
   isClaimable,
   leaseLapsed,
-  priorityDispatcher,
-  topologicalDispatcher,
+  priorityClaimOrder,
+  topologicalClaimOrder,
   type Task,
   type TaskCollectionRef,
-  type TaskDispatcher,
+  type ClaimOrder,
   type TaskStatus,
 } from "../tasks";
 
 /**
  * Accepted shapes for the Task Board's `dispatcher` config: either a
- * `TaskDispatcher` instance, or a string naming one of the substrate's
+ * `ClaimOrder` instance, or a string naming one of the substrate's
  * standard dispatchers.
  */
-export type TaskBoardDispatcherInput =
-  | TaskDispatcher
+export type TaskBoardClaimOrderInput =
+  | ClaimOrder
   | "fifo"
   | "topological"
   | "priority";
 
-/** Resolve a `TaskBoardDispatcherInput` to a concrete dispatcher. */
-export function resolveDispatcher(
-  input: TaskBoardDispatcherInput
-): TaskDispatcher {
+/** Resolve a `TaskBoardClaimOrderInput` to a concrete dispatcher. */
+export function resolveClaimOrder(
+  input: TaskBoardClaimOrderInput
+): ClaimOrder {
   if (typeof input !== "string") return input;
   switch (input) {
     case "fifo":
-      return fifoDispatcher;
+      return fifoClaimOrder;
     case "topological":
-      return topologicalDispatcher;
+      return topologicalClaimOrder;
     case "priority":
-      return priorityDispatcher;
+      return priorityClaimOrder;
     default: {
       const _exhaustive: never = input;
       throw new Error(

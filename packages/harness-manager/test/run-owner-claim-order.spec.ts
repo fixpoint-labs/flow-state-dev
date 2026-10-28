@@ -1,5 +1,5 @@
 /**
- * `runOwnerDispatcher` against a real task collection.
+ * `runOwnerClaimOrder` against a real task collection.
  *
  * The dispatcher's whole job is the claim's `eligibility`: another member's
  * row is never claimed, so it is never charged an attempt, and this member's
@@ -12,7 +12,7 @@ import {
   createStateBackedTaskCollection,
   type TaskCollectionRef,
 } from "@flow-state-dev/orchestration/tasks";
-import { HARNESS_RUN_OWNER_KEY, runOwnerDispatcher } from "../src";
+import { HARNESS_RUN_OWNER_KEY, runOwnerClaimOrder } from "../src";
 
 /** A minimal in-memory sequencer state: read, and serialized atomic writes. */
 function fakeSequencerState(): unknown {
@@ -62,14 +62,14 @@ async function ownedBy(tasks: TaskCollectionRef, id: string, userId: string) {
   await tasks.patchMetadata(id, { [HARNESS_RUN_OWNER_KEY]: { userId } });
 }
 
-describe("runOwnerDispatcher", () => {
+describe("runOwnerClaimOrder", () => {
   it("skips another member's row, so the drainer's own row behind it is claimed", async () => {
     const tasks = board();
     // Alice's row is older, so it is first in claim order.
     await ownedBy(tasks, "alices", "alice");
     await ownedBy(tasks, "bobs", "bob");
 
-    const claimed = await runOwnerDispatcher().claim(tasks, "w", as("bob"));
+    const claimed = await runOwnerClaimOrder().claim(tasks, "w", as("bob"));
 
     expect(claimed?.id, "Bob's drain did not reach Bob's own row").toBe("bobs");
     // Alice's row is exactly as it was: never claimed, so never charged.
@@ -81,15 +81,15 @@ describe("runOwnerDispatcher", () => {
     const tasks = board();
     await ownedBy(tasks, "alices", "alice");
 
-    await expect(runOwnerDispatcher().claim(tasks, "w", as("bob"))).rejects.toThrow(/"alice"/);
+    await expect(runOwnerClaimOrder().claim(tasks, "w", as("bob"))).rejects.toThrow(/"alice"/);
     expect(tasks.get("alices")?.status).toBe("pending");
     expect(tasks.get("alices")?.attempts ?? 0).toBe(0);
   });
 
   it("claims an unowned row for anyone, and returns null on an empty board", async () => {
     const tasks = board();
-    await expect(runOwnerDispatcher().claim(tasks, "w", as("bob"))).resolves.toBeNull();
+    await expect(runOwnerClaimOrder().claim(tasks, "w", as("bob"))).resolves.toBeNull();
     await tasks.createTask({ id: "fresh", goal: "fresh" });
-    expect((await runOwnerDispatcher().claim(tasks, "w", as("bob")))?.id).toBe("fresh");
+    expect((await runOwnerClaimOrder().claim(tasks, "w", as("bob")))?.id).toBe("fresh");
   });
 });

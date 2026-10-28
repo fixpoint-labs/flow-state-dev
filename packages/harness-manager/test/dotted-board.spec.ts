@@ -33,7 +33,7 @@ import {
   HARNESS_RUN_OWNER_KEY,
   harnessManager,
   harnessTaskInputSchema,
-  runOwnerDispatcher,
+  runOwnerClaimOrder,
   runTopic,
   type HarnessFeeds,
 } from "../src";
@@ -142,7 +142,7 @@ function host(options: { script: Array<"finished" | "failed">; gate: boolean }) 
     mode: "delegation",
     collection: ledger,
     concurrency: 1,
-    ...(options.gate ? { dispatcher: runOwnerDispatcher() } : {}),
+    ...(options.gate ? { claimOrder: runOwnerClaimOrder() } : {}),
     workers: {
       coder: dispatcher({ name: "dotted-board-dispatch", action: "work", session: "per-task" }),
     },
@@ -305,7 +305,7 @@ describe("a run on a shared board belongs to the user who started it", () => {
 
   it("without the dispatcher, the manager still refuses to fork the run, at the cost of the attempt", async () => {
     // The backstop, for a board whose drain was not wired with
-    // `runOwnerDispatcher`: Bob's drain claims the row (the claim spends the
+    // `runOwnerClaimOrder`: Bob's drain claims the row (the claim spends the
     // attempt), and the manager refuses it before deriving anything, so no
     // second checkout, branch or run record exists.
     const lab = host({ script: ["failed", "finished"], gate: false });

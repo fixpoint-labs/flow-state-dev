@@ -1,5 +1,5 @@
 /**
- * `topologicalDispatcher` — picks the earliest-`createdAt` claimable task
+ * `topologicalClaimOrder` — picks the earliest-`createdAt` claimable task
  * whose `deps[]` are all `completed`.
  *
  * The substrate's own admission predicate already enforces dep-completion, so
@@ -11,9 +11,9 @@
  * dispatcher a second copy of it, and the copy is what stops recovering
  * abandoned work the day the substrate's rule widens.
  */
-import type { TaskDispatcher } from "./types";
+import type { ClaimOrder } from "./types";
 
-export const topologicalDispatcher: TaskDispatcher = {
+export const topologicalClaimOrder: ClaimOrder = {
   async claim(collection, workerId) {
     return collection.claim(workerId);
   },

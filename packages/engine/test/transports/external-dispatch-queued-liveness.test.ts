@@ -31,7 +31,7 @@ import {
 import { readLiveness } from "../../src/context/liveness-read";
 import { detectInterruptedRequests } from "../../src/execution/request-recovery";
 import { runAction } from "../../src/execution/runAction";
-import type { FlowDispatcher } from "../../src/transports/dispatcher";
+import type { FlowRunner } from "../../src/transports/runner";
 import type { FlowRegistry } from "../../src/registry/flow-registry";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { StoreRegistry } from "../../src/stores/types";
@@ -73,7 +73,7 @@ function buildRegistry(): FlowRegistry {
  * pending is the backlog. No `dispatchLocal`, which is what marks it external
  * to the host.
  */
-function backloggedExternalDispatcher(): FlowDispatcher {
+function backloggedExternalRunner(): FlowRunner {
   return {
     dispatch: vi.fn(async (env) => ({
       requestId: env.requestId,
@@ -94,7 +94,7 @@ async function enqueueViaHost(
     stores,
     resolvePrincipal: defaultBodyUserIdPrincipalResolver,
     runtimeConfig: {},
-    dispatcher: backloggedExternalDispatcher()
+    runner: backloggedExternalRunner()
   });
 
   const handle = host.dispatch({

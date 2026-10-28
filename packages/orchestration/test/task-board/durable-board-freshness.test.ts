@@ -30,11 +30,11 @@ import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
   defineTaskCollection,
-  fifoDispatcher,
+  fifoClaimOrder,
   getOrCreateTaskCollection,
   type Task,
   type TaskCollectionRef,
-  type TaskDispatcher,
+  type ClaimOrder,
   type TaskWorker,
 } from "../../src/tasks";
 import {
@@ -61,11 +61,11 @@ function delay(ms: number): Promise<void> {
  * loop iteration (it exists for trace attribution, not identity). The board
  * below runs `concurrency: 1`, so the total *is* that one worker's count.
  */
-function countingDispatcher(attempts: { total: number }): TaskDispatcher {
+function countingClaimOrder(attempts: { total: number }): ClaimOrder {
   return {
     async claim(collection, workerId, ctx): Promise<Task | null> {
       attempts.total += 1;
-      return fifoDispatcher.claim(collection, workerId, ctx);
+      return fifoClaimOrder.claim(collection, workerId, ctx);
     },
   };
 }
@@ -127,7 +127,7 @@ function buildScenario() {
       stateSchema: z.object({ topic: z.string() }),
     }),
     concurrency: 1,
-    dispatcher: countingDispatcher(attempts),
+    claimOrder: countingClaimOrder(attempts),
     workers: worker,
     initialTasks: [
       // Its dep is held and never released, so it is `pending` but no claim
@@ -297,7 +297,7 @@ describe("taskBoard - durable collection resolutions inside one request", () => 
         stateSchema: z.object({ topic: z.string() }),
       }),
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: handler({
         name: "two-resolutions-worker",
         inputSchema: taskWorkerInputSchema,

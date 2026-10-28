@@ -71,13 +71,13 @@ import {
   isDefaultBodyUserIdPrincipalResolver
 } from "../auth/defaultBodyUserIdPrincipalResolver";
 import { DEFAULT_ORG_ID, isValidOrgId } from "@flow-state-dev/core";
-import type { FlowDispatcher, DispatchEnvelope, LeaseTurn } from "../dispatcher";
+import type { FlowRunner, DispatchEnvelope, LeaseTurn } from "../runner";
 import { CLI_SOURCE, INTERNAL_SOURCE, TASK_SOURCE } from "../../execution/transport-sources";
 import {
-  createInProcessDispatcher,
-  isInProcessDispatcher,
-  type InProcessDispatcher
-} from "./in-process-dispatcher";
+  createInProcessRunner,
+  isInProcessRunner,
+  type InProcessRunner
+} from "./in-process-runner";
 import type {
   DispatchHandle,
   HostContinueRequestOptions,
@@ -130,10 +130,10 @@ export type CreateInboundTransportHostOptions = {
   runtimeConfig: RuntimeConfig;
   /**
    * Controls where flow actions execute. Default: in-process via runAction.
-   * Set to a FlowDispatcher implementation to route execution to an
-   * external worker (e.g., BullMQ WorkerDispatcher).
+   * Set to a FlowRunner implementation to route execution to an
+   * external worker (e.g., BullMQ WorkerRunner).
    */
-  dispatcher?: FlowDispatcher;
+  runner?: FlowRunner;
   /**
    * Concurrency arbiter to enforce policy through. Defaults to a fresh one.
    *
@@ -435,14 +435,14 @@ export function createInboundTransportHost(
   const { onBackgroundWork, maxResponseBufferSize, maxRecordedValueBytes, defaultSseHeartbeatMs } =
     runtimeConfig;
 
-  const inProcessDispatcher = createInProcessDispatcher({
+  const inProcessRunner = createInProcessRunner({
     registry,
     stores,
     runtimeConfig
   });
-  const effectiveDispatcher: FlowDispatcher | InProcessDispatcher =
-    options.dispatcher ?? inProcessDispatcher;
-  const isExternalDispatcher = !isInProcessDispatcher(effectiveDispatcher);
+  const effectiveRunner: FlowRunner | InProcessRunner =
+    options.runner ?? inProcessRunner;
+  const isExternalRunner = !isInProcessRunner(effectiveRunner);
 
   // One arbiter governs every dispatch, so an action's concurrency policy is
   // enforced once at this shared seam (FIX-837). Work handed to an external
@@ -455,7 +455,7 @@ export function createInboundTransportHost(
   // arbitrated at all — releasing a key at enqueue would free a `reject` lease
   // when the job is queued rather than when the run completes.
   const arbiter = options.arbiter ?? createConcurrencyArbiter();
-  const arbitratesExternalDispatch = isExternalDispatcher && arbiter.arbitratesAcrossProcesses;
+  const arbitratesExternalDispatch = isExternalRunner && arbiter.arbitratesAcrossProcesses;
   /**
    * Per concurrency key, the turn of the latest dispatch to take a place there
    * after its ownership check. A dispatch waits for the one before it on its
@@ -730,7 +730,7 @@ export function createInboundTransportHost(
     // flows never detach is unaffected. This fires only at the exact dispatch
     // that loses the override.
     if (
-      isExternalDispatcher &&
+      isExternalRunner &&
       envelope.runtimeConfig !== undefined &&
       envelope.runtimeConfig.modelResolver !== runtimeConfig.modelResolver
     ) {
@@ -775,7 +775,7 @@ export function createInboundTransportHost(
     // `hold` and `defer` cross the queue too (FIX-1836): the job carries how
     // it reaches its turn (`leaseTurn`), and its worker carries that out.
     const decision =
-      isExternalDispatcher && !arbitratesExternalDispatch
+      isExternalRunner && !arbitratesExternalDispatch
         ? { policy: "allow" as const, key: undefined }
         : arbiter.resolve(flow, envelope.action, dispatchEnvelope);
     const admitsAfterOwnership = decision.policy !== "allow" && decision.key !== undefined;
@@ -906,7 +906,7 @@ export function createInboundTransportHost(
       // instead of an inline SSE response, so creating a live stream here would
       // be an empty pipe that never receives events.
       liveStream =
-        envelope.responseEmitter === undefined && !isExternalDispatcher
+        envelope.responseEmitter === undefined && !isExternalRunner
           ? createLiveRequestStream({
               requestId,
               maxBufferSize: maxResponseBufferSize,
@@ -925,10 +925,10 @@ export function createInboundTransportHost(
         liveStream?.emitter ??
         createResponseEmitter({ requestId, maxRecordedValueBytes });
 
-      // Delegate to the dispatcher. InProcessDispatcher uses dispatchLocal
+      // Delegate to the dispatcher. InProcessRunner uses dispatchLocal
       // (carries non-serializable context); external dispatchers use the
       // generic dispatch interface.
-      if ("dispatchLocal" in effectiveDispatcher) {
+      if ("dispatchLocal" in effectiveRunner) {
         // The in-process milestones, held here rather than read off the handle
         // because `gateStart` owns *when* the run is started and the handle does
         // not exist until it does (FIX-982). The `queue` branch below has its own,
@@ -961,7 +961,7 @@ export function createInboundTransportHost(
           // A run holding its turn on a shared backend is stopped once its
           // place can no longer be kept: another process may take the key.
           const lost = held?.lost;
-          const handle = (effectiveDispatcher as InProcessDispatcher).dispatchLocal(
+          const handle = (effectiveRunner as InProcessRunner).dispatchLocal(
             dispatchEnvelope,
             {
               signal:
@@ -1278,7 +1278,7 @@ export function createInboundTransportHost(
         // writes commit AND the dispatcher accepts the job. The response path
         // awaits the exposed `accepted` view before acking, so the 202 means
         // "discoverable and enqueued" — not merely "record written". Crucially the
-        // enqueue (`effectiveDispatcher.dispatch`) is inside this promise, so an
+        // enqueue (`effectiveRunner.dispatch`) is inside this promise, so an
         // enqueue failure rejects the ack (failing the POST / reverting the
         // resume) rather than landing in the detached `finished` chain after a 202
         // already went out.
@@ -1321,7 +1321,7 @@ export function createInboundTransportHost(
                   : decision.policy === "defer"
                     ? { kind: "when-free", key: decision.key }
                     : undefined;
-            const handle = await effectiveDispatcher.dispatch({
+            const handle = await effectiveRunner.dispatch({
               ...dispatchEnvelope,
               ...(place !== undefined ? { leasePlace: place } : {}),
               ...(leaseTurn !== undefined ? { leaseTurn } : {})
@@ -1420,7 +1420,7 @@ export function createInboundTransportHost(
     leaseId: string | undefined
   ): Promise<ExecutionResult> => {
     const decision =
-      isExternalDispatcher && !arbitratesExternalDispatch
+      isExternalRunner && !arbitratesExternalDispatch
         ? { policy: "allow" as const, key: undefined }
         : continuationDecision(
             arbiter.resolve(flow, record.actionName, {
@@ -1566,7 +1566,7 @@ export function createInboundTransportHost(
       voice: runtimeConfig.voiceProvider
     },
     logger: runtimeConfig.logger,
-    usesExternalDispatcher: isExternalDispatcher,
+    usesExternalRunner: isExternalRunner,
     arbitratesExternalDispatch,
     dispatch,
     continueRequest,

@@ -98,7 +98,7 @@ import {
   type DefinedTaskCollection,
   type TaskCapOptions,
   type TaskCollectionRef,
-  type TaskDispatcher,
+  type ClaimOrder,
   type TaskInit,
   type TaskWorker,
   type TaskWorkerRegistry,
@@ -123,7 +123,7 @@ import {
   type ClaimResult,
 } from "./schemas";
 import { taskSchema, type Task } from "../tasks";
-import { resolveDispatcher, type TaskBoardDispatcherInput } from "./shared";
+import { resolveClaimOrder, type TaskBoardClaimOrderInput } from "./shared";
 import { createSeedCollection } from "./blocks/seed-collection";
 import { owesATouch } from "../tasks/collection/cascade";
 import { createClaimTask } from "./blocks/claim-task";
@@ -180,7 +180,7 @@ export type {
   ClaimResult,
   CheckBoardOutput,
 } from "./schemas";
-export type { TaskBoardDispatcherInput } from "./shared";
+export type { TaskBoardClaimOrderInput as TaskBoardClaimOrderInput } from "./shared";
 export { createSeedCollection } from "./blocks/seed-collection";
 export type { SeedCollectionOptions } from "./blocks/seed-collection";
 export {
@@ -515,11 +515,11 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   maxTotalRetries?: number | null;
 
   /**
-   * Dispatcher for ready-task selection. Either a `TaskDispatcher`
+   * Dispatcher for ready-task selection. Either a `ClaimOrder`
    * instance or a string naming one of the standard dispatchers
    * (`"fifo"`, `"topological"`, `"priority"`). Default: `"topological"`.
    */
-  dispatcher?: TaskBoardDispatcherInput;
+  claimOrder?: TaskBoardClaimOrderInput;
 
   /**
    * Termination behavior when the worker pool is idle.
@@ -730,7 +730,7 @@ export function taskBoard<
     defaultWorker: defaultWorkerConfig,
     newSession: newSessionConfig,
     concurrency = 4,
-    dispatcher: dispatcherInput = "topological",
+    claimOrder: dispatcherInput = "topological",
     onIdle = "complete-or-blocked",
     initialTasks = [],
     onError = "skip",
@@ -792,7 +792,7 @@ export function taskBoard<
   // Every dispatcher the board holds, for the refusals that apply to any.
   const allDispatchers = newSession === undefined ? dispatchers : [...dispatchers, newSession];
 
-  const dispatcher: TaskDispatcher = resolveDispatcher(dispatcherInput);
+  const dispatcher: ClaimOrder = resolveClaimOrder(dispatcherInput);
   const binding = resolveCollectionBinding<TInput, TOutput, TName>(
     name,
     collectionConfig,
@@ -890,7 +890,7 @@ export function taskBoard<
   const claimTask = createClaimTask({
     name: claimStepName,
     collection: collectionFactory,
-    dispatcher,
+    claimOrder: dispatcher,
     workerId: (ctx) => resolveWorkerIdFromCtx(ctx, name),
   });
 

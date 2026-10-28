@@ -26,7 +26,7 @@ import {
   UserBindingMismatchError
 } from "../src";
 import { createInitialRequestRecord } from "../src/context/initial-request-record";
-import type { FlowDispatcher } from "../src/transports/dispatcher";
+import type { FlowRunner } from "../src/transports/runner";
 import type { SessionRecord, StoreRegistry } from "../src/stores/types";
 
 const FLOW = "session-owner";
@@ -47,7 +47,7 @@ let releaseHolder: () => void = () => {};
 let holderStarted: Promise<void> = Promise.resolve();
 let markHolderStarted: () => void = () => {};
 
-function buildHost(stores: StoreRegistry, dispatcher?: FlowDispatcher) {
+function buildHost(stores: StoreRegistry, dispatcher?: FlowRunner) {
   const registry = createFlowRegistry();
   registry.register(
     defineFlow({
@@ -79,7 +79,7 @@ function buildHost(stores: StoreRegistry, dispatcher?: FlowDispatcher) {
     stores,
     resolvePrincipal: defaultBodyUserIdPrincipalResolver,
     runtimeConfig: {},
-    ...(dispatcher === undefined ? {} : { dispatcher })
+    ...(dispatcher === undefined ? {} : { runner: dispatcher })
   });
 }
 
@@ -127,7 +127,7 @@ function aliceSessionRecord(): SessionRecord {
 }
 
 /** A queue whose worker never claims the job. */
-function externalDispatcher(): FlowDispatcher {
+function externalRunner(): FlowRunner {
   return {
     dispatch: vi.fn(async (env) => ({
       requestId: env.requestId,
@@ -142,10 +142,10 @@ describe("a dispatch into a session another user owns, at the host", () => {
   it.each([
     ["an in-process run", "run", undefined],
     ["a run queued behind its session", "runQueued", undefined],
-    ["an external queue", "run", externalDispatcher]
+    ["an external queue", "run", externalRunner]
   ] as const)(
     "leaves the caller's own running request under the reused id untouched, on %s",
-    async (_label, action, makeDispatcher) => {
+    async (_label, action, makeRunner) => {
       const stores = createInMemoryStores();
       await aliceHasSession(stores);
       // Bob's own request, still running in his own session.
@@ -165,7 +165,7 @@ describe("a dispatch into a session another user owns, at the host", () => {
       );
       await stores.request.set("req_bob", bobs, "absent");
 
-      const host = buildHost(stores, makeDispatcher?.());
+      const host = buildHost(stores, makeRunner?.());
       const handle = dispatch(host, "bob", action, ALICE_SESSION, "req_bob");
       await expect(handle.accepted).rejects.toBeInstanceOf(UserBindingMismatchError);
       await handle.finished.catch(() => undefined);

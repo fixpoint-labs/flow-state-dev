@@ -17,10 +17,10 @@ import {
   OrgRequiredError,
   PrincipalResolutionError
 } from "../../src";
-import type { FlowDispatcher } from "../../src/transports/dispatcher";
+import type { FlowRunner } from "../../src/transports/runner";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 
-function buildHost(opts?: { dispatcher?: FlowDispatcher }) {
+function buildHost(opts?: { dispatcher?: FlowRunner }) {
   const registry = createFlowRegistry();
   const stores = createInMemoryStores();
   registry.register(
@@ -43,7 +43,7 @@ function buildHost(opts?: { dispatcher?: FlowDispatcher }) {
     stores,
     resolvePrincipal: defaultBodyUserIdPrincipalResolver,
     runtimeConfig: {},
-    dispatcher: opts?.dispatcher
+    runner: opts?.dispatcher
   });
   return { host, stores, registry };
 }
@@ -435,7 +435,7 @@ describe("createInboundTransportHost", () => {
           abort: () => {}
         };
       });
-      const dispatcher: FlowDispatcher = { dispatch, close: vi.fn(async () => {}) };
+      const dispatcher: FlowRunner = { dispatch, close: vi.fn(async () => {}) };
       const { host, stores } = buildHost({ dispatcher });
 
       const handle = host.dispatch({
@@ -467,7 +467,7 @@ describe("createInboundTransportHost", () => {
       // `accepted` must cover the enqueue, not just the store writes — the
       // response path acks the 202 on it, so the enqueue has to be inside.
       let dispatchCalled = false;
-      const dispatcher: FlowDispatcher = {
+      const dispatcher: FlowRunner = {
         dispatch: vi.fn(async (env: { requestId: string }) => {
           dispatchCalled = true;
           return {
@@ -498,7 +498,7 @@ describe("createInboundTransportHost", () => {
       // covers the enqueue, so it rejects — and the record must not linger
       // in_progress: the dispatch teardown deregisters the activeRequests entry,
       // so without cleanup the stale-request sweeper would have nothing to reap.
-      const dispatcher: FlowDispatcher = {
+      const dispatcher: FlowRunner = {
         dispatch: vi.fn(async () => {
           throw new Error("enqueue failed");
         }),
