@@ -99,20 +99,119 @@ which today says compaction belongs to higher-level patterns, and name the narro
 the `client` README (`historyStart` on a request), and the `workforce` README (the agent flow's
 `historyWindow`). No new page.
 
-## How a turn reads its history
+## The blocks, and how a turn runs them
 
-```mermaid
-flowchart LR
-  L["load the window · plus one more turn"] --> M["record the mark on this turn's request"]
-  L -->|"summary on · oldest unfolded turn in the oldest quarter"| S["fold settled turns · this turn's block"]
-  S -->|"summary and high-water mark"| R["session record"]
-  R --> H["history · summary then the turns past the mark"]
-  L --> H
-  H --> G["generators that read history"]
+**No new block kind and no new block in any package.** The one block involved is the
+author's: whatever they pass as `summarize`, normally core's existing `summarizer(...)`. The
+engine's fold step is engine code that *runs* that block. Workforce adds no block; its answer
+generator reads history the way it does today.
+
+**The contract the engine calls the block with** (core, the option's type):
+
+```ts
+// core/src/types/flow.ts
+historyWindow?: {
+  turns: number;
+  /** Folds turns about to leave the window into one running summary. Off when absent. */
+  summarize?: BlockDefinition<HistorySummaryInput, { summary: string }>;
+};
+
+/** What the engine hands `summarize` on each fold. */
+export type HistorySummaryInput = {
+  /** The running summary so far; null on the first fold. */
+  summary: string | null;
+  /** The turns being folded, oldest first, as the model would have read them. */
+  turns: LLMMessage[];
+};
 ```
 
-The fold runs before the action, as a block of that turn, so its trace and tokens are the turn's.
-The model sees the summary only through the history read every generator already uses.
+`summarizer()` already takes any input and returns `{ summary, keyPoints? }`, so it fits as is.
+An author who wants their own wording writes any block with that input and output:
+
+```ts
+const earlierTurns = generator({
+  name: "earlier-turns",
+  model: "openai/gpt-6-luna",
+  outputSchema: z.object({ summary: z.string() }),
+  prompt: "Fold the new turns into the running summary. Keep names, dates, facts the user gave, and open requests. Under 300 words.",
+  user: ({ summary, turns }) => `Summary so far:\n${summary ?? "(none)"}\n\nNew turns:\n${formatTurns(turns)}`,
+});
+
+defineFlow({ kind: "assistant", session: { historyWindow: { turns: 50, summarize: earlierTurns } }, ... });
+```
+
+**How the workforce agent flow installs it.** `defineAgentWorkerFlow` takes the same object and
+puts it on the flow's `session`, beside what an installation already sets there:
+
+```diff
+ // workforce/src/agent-worker-flow.ts, where the flow is defined
+ const flow = defineFlow({
+   kind: AGENT_FLOW,
+   ...bound,                       // installation: session stateSchema, createCheck, serverOwned
++  ...(options.historyWindow === undefined
++    ? {}
++    : { session: { ...bound.session, historyWindow: options.historyWindow } }),
+   actions: { ... },
+ });
+```
+
+```ts
+// the Grok Bot-style lab's host (FIX-2154), per worker flow
+const lead = defineAgentWorkerFlow({
+  installation,
+  uses: [memory],
+  afterAnswer: memory.captureFromItems,
+  historyWindow: {
+    turns: 50,
+    summarize: summarizer({
+      name: "earlier-turns",
+      granularity: "detailed",
+      objectives: ["names, dates and facts the user gave", "requests still open"],
+    }),
+  },
+});
+```
+
+**One turn, in order:**
+
+```mermaid
+sequenceDiagram
+  participant E as engine
+  participant S as session record
+  participant B as summarize block
+  participant W as workforce turn
+  participant G as answer generator
+  E->>E: load the window plus one row
+  E->>E: record historyStart on this request
+  opt summary on and a fold is due
+    E->>S: re-read the high-water mark
+    E->>B: summary so far and the turns to fold
+    B-->>E: new summary
+    E->>S: write summary and mark with the version check
+  end
+  E->>W: request onStarted then the action
+  W->>G: run with history routedTaskHistory
+  G->>E: ctx.session.items.history
+  E-->>G: summary message then turns past the mark then this turn
+```
+
+The `summarize` block runs as a child of the turn's request, so the devtool shows it as a block
+named `earlier-turns` in that turn's trace and its tokens count to that turn. Its items are
+neither shown in the conversation nor history (`summarizer`'s default). Workforce's
+`resolveTurnWorker` hook and `routedTaskHistory` change nothing: the summary arrives inside the
+history they already read.
+
+**What the answer generator's model receives on turn 61:**
+
+```text
+system  <the worker's prompt>
+user    Summary of the conversation before this point: The user is Dana, launching on
+        12 March. They asked lead to outline a post; researcher was asked for the date…
+user    <turn 13's message>
+assistant <turn 13's answer>
+…
+user    <turn 61's message>
+```
 
 ## What stays as it is
 
