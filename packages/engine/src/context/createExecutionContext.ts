@@ -800,13 +800,14 @@ export async function createExecutionContext<
   // off has no result to show), then sort ascending for stable history
   // ordering. Reused by all()/client() (via priorItems) and history() (via
   // loadLLMHistory).
-  // The window itself: the N most recently started, oldest dropped when the
-  // read found one more. `historyStart` names the first turn the window holds
-  // when that extra row says an earlier turn is out of view.
-  const byStart = [...listedPriorRequests].sort((a, b) => a.startedAtMs - b.startedAtMs);
-  const priorRequests = byStart.length > historyWindowTurns ? byStart.slice(byStart.length - historyWindowTurns) : byStart;
+  // The window itself: the N most recently started, in the store's newest-first
+  // order (which breaks a start-time tie by id), trimmed before it is reversed
+  // so a tie at the edge keeps the same turn it did without the extra row.
+  // `historyStart` names the first turn the window holds when that extra row
+  // says an earlier turn is out of view.
+  const priorRequests = listedPriorRequests.slice(0, historyWindowTurns).reverse();
   const historyStart =
-    byStart.length > historyWindowTurns && priorRequests[0] !== undefined
+    listedPriorRequests.length > historyWindowTurns && priorRequests[0] !== undefined
       ? { requestId: priorRequests[0].id }
       : undefined;
   const retried = retriedIds(priorRequests, options.metadata);

@@ -126,6 +126,20 @@ describe("historyStart: where the turns a request read begin", () => {
     expect(requests.find((r) => r.id === "req_cur")?.historyStart).toEqual({ requestId: "req_3" });
   });
 
+  it("keeps the turn the store ranks newest when two turns tie at the window's edge", async () => {
+    const stores = createInMemoryStores();
+    // Same start millisecond: the store breaks the tie by id, descending, so
+    // req_2 is the most recent turn and the one a one-turn window holds, as
+    // it did before the extra row was read.
+    await stores.request.set("req_1", turn("sess_tie", 1, { startedAtMs: 1001 }), "any");
+    await stores.request.set("req_2", turn("sess_tie", 2, { startedAtMs: 1001 }), "any");
+
+    const ctx = await contextFor(stores, "sess_tie", 1);
+
+    expect((await ctx.session.items.history()).map(textOf)).toEqual(["turn 2"]);
+    expect(ctx.session.window).toEqual({ turns: 1, startRequestId: "req_2" });
+  });
+
   it("records nothing while every earlier turn is still in the window", async () => {
     const stores = createInMemoryStores();
     await seedTurns(stores, "sess_in", 3);
