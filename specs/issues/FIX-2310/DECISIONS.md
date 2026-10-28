@@ -85,9 +85,12 @@ worker that needs both before it goes on files tasks or calls.
   Whoever writes first answers; the other sends nothing.
 - **E3 · Failed or unrouted delivery ends the obligation** with the existing "wasn't delivered"
   line, told once (`toldAt`). Nothing is re-sent for the reply, nothing is told twice.
-- **E4 · A flow whose entry has no turn** lands the message as items only; the obligation stays
-  open until that session answers with the tool, and the asker's pass ends it at the host's debt
-  age with the no-answer line.
+- **E4 · A receiver that runs no turn gets the call's rule** (FIX-2300,
+  [#4130](https://github.com/fixpoint-labs/flow-state-dev/pull/4130)): a reply-requested send to a
+  worker whose entry runs nothing is refused before the send, `no_reply`, read off the same
+  `runsTurn` mark. One that still lands turnless (the mark can't be read before the send) ends the
+  ask at once with the "no answer" reply. One rule for both kinds of ask: nothing waits on a
+  receiver that can't answer. The build lands after #4130, or reuses its mark if it lands first.
 - **E5 · Layer boundary:** all of it is Workforce. `.rescue()` on the entry's turn is core's, as
   is.
 - **E6 · The lab** reads the flag: "waiting on" lists reply-requested messages with no answer, so
@@ -102,4 +105,4 @@ worker that needs both before it goes on files tasks or calls.
 
 ## Notes from review
 
-None yet.
+- FSD Architect (2026-10-28, #4156): name FIX-2300's `runsTurn` and make the turnless rule one rule with the call's. Folded into E4 and the debt table.

@@ -96,6 +96,7 @@ delivery and resend, the "wasn't delivered" line, and every message sent without
 | The sending session's pass and its owed list (FIX-2240) | **Extended**: a reply-requested message stays owed until answered |
 | The "wasn't delivered" line (FIX-2240 D1) | **Reused** as the end of an ask that never landed. The issue cites [#4059](https://github.com/fixpoint-labs/flow-state-dev/pull/4059) for this; that is a routed task's failure line, not a message's |
 | FIX-2173's consult ([#4151](https://github.com/fixpoint-labs/flow-state-dev/pull/4151) D3) | **Complemented**: a consult reads; a reply-requested message asks the worker to act or answer |
+| FIX-2300's `runsTurn` mark and `no_reply` refusal ([#4130](https://github.com/fixpoint-labs/flow-state-dev/pull/4130), open) | **Reused**: a reply-requested send to a worker that runs no turn is refused as a call to it is ([E4](DECISIONS.md#decided-not-asked)) |
 | FIX-1989's "not answering is an answer" | **Superseded** for reply-requested messages only |
 
 **Adds:** one tool input, two row fields, one branch in the reply step and one in the pass.
