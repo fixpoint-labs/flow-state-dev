@@ -50,13 +50,14 @@ function clip(text: string, max: number): string {
 
 /**
  * The text the filer's model reads for one question: the task, the question,
- * and how to answer it, or, for a routed task, that the user answers it.
+ * and how to answer it (a confirm's answer is `done`), or, for a routed task,
+ * that the user answers it.
  */
 export function midwayQuestionText(row: Task, hold: RowHold): string {
   const title = clip(row.title ?? row.goal, TASK_LABEL_CHARS);
   const how = isRouted(row)
     ? "The user answers it from their Inbox; it isn't yours to answer."
-    : `Answer it with updateTask({ id: "${row.id}", question: "${hold.id}", message }), or leave it to the user, who sees it in their Inbox.`;
+    : `Answer it with updateTask({ id: "${row.id}", question: "${hold.id}", ${hold.ask.kind === "confirm" ? "done: true or false, " : ""}message }), or leave it to the user, who sees it in their Inbox.`;
   const head = `Your task "${title}" (${row.id}) asks: "`;
   const space = MAX_MESSAGE_CHARS - head.length - how.length - 2;
   const prompt = clip(hold.ask.prompt, space);

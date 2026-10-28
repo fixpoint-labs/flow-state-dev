@@ -197,7 +197,7 @@ Answer it with updateTask({ id: "task_7d2e41", question: "hold_5a2c", message })
 
 The task is named by its title, or by its goal when it has no title. A very long question is cut short with an ellipsis so the whole text fits in one message.
 
-The filer can answer from the message alone, with `updateTask({ id, question, message })`. It doesn't need `getTask` first. The task then goes on, on the same attempt. Or the filer can leave the question to the user. The user's Inbox lists the task once either way, as the place they answer it. The message adds nothing to the Inbox and holds nothing up.
+The filer can answer from the message alone, with `updateTask({ id, question, message })`. It doesn't need `getTask` first. When the task asks for a yes or a no, the message says to answer with `done: true` or `done: false` as well. The task then goes on, on the same attempt. Or the filer can leave the question to the user. The user's Inbox lists the task once either way, as the place they answer it. The message adds nothing to the Inbox and holds nothing up.
 
 A task filed to a workstream, with `target` or `targetSessionId`, has questions only the user answers. Its message ends `The user answers it from their Inbox; it isn't yours to answer.` instead, and an `updateTask` answer from the filer is refused with `question_is_the_users`.
 

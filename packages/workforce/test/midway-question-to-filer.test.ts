@@ -94,6 +94,13 @@ describe("the text a question is told in", () => {
     expect(routed).not.toContain("updateTask");
   });
 
+  it("tells how to answer a confirm with done: the answer tool refuses a confirm answered with a message alone", () => {
+    const yesNo = { kind: "confirm" as const, prompt: "Ship it?" };
+    const confirm = { id: "hold_1", ask: yesNo } as unknown as RowHold;
+    expect(midwayQuestionText(row(), confirm)).toContain('updateTask({ id: "task_1", question: "hold_1", done: true or false, message })');
+    expect(midwayQuestionText(row(), hold("Which region?"))).not.toContain("done:");
+  });
+
   it("names the task by its title when it has one", () => {
     expect(midwayQuestionText(row({ title: "Region" }), hold("Which region?"))).toMatch(/^Your task "Region" \(task_1\)/);
   });
