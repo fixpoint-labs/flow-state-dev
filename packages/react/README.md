@@ -252,7 +252,7 @@ Derives pending and resolved suspensions from `session.items`. Pairs each `suspe
 
 ```tsx
 const { pending, approve, reject, error } = useSuspensions(session, {
-  reasons: ["human_approval"],  // optional filter
+  reasons: ["user_approval"],  // optional filter
 });
 
 // Render headless approval UI
@@ -294,7 +294,7 @@ Returns `{ kind, value, setValue, setField, fields, options, errors, canSubmit, 
 
 ### `<QuestionRenderer>`, `<SelectionRenderer>`, `<SchemaFormRenderer>`
 
-The default cards for `human_input` suspensions, all thin views over `useSuspensionForm`: `QuestionRenderer` (free-text answer), `SelectionRenderer` (single choice from a `z.enum`, or multi from `z.array(z.enum)`), and `SchemaFormRenderer` (a flat object of scalars and enums, one control per property). `ItemRenderer` auto-picks one for a `human_input` suspension by `render.component` hint → reason → `resumeSchema` shape; `human_approval` suspensions get `ApprovalRenderer`. A registered `renderers.suspension` overrides this, and `renderers.suspension: false` suppresses inline cards.
+The default cards for `user_input` suspensions, all thin views over `useSuspensionForm`: `QuestionRenderer` (free-text answer), `SelectionRenderer` (single choice from a `z.enum`, or multi from `z.array(z.enum)`), and `SchemaFormRenderer` (a flat object of scalars and enums, one control per property). `ItemRenderer` auto-picks one for a `user_input` suspension by `render.component` hint → reason → `resumeSchema` shape; `user_approval` suspensions get `ApprovalRenderer`. A registered `renderers.suspension` overrides this, and `renderers.suspension: false` suppresses inline cards.
 
 ### `useApproval(item, options?)`
 

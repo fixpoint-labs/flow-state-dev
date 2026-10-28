@@ -194,7 +194,7 @@ const scriptedRun = handler({
         }),
       ]);
     }
-    if (script.ask !== undefined) await ctx.suspend!({ reason: "human_approval", message: script.ask });
+    if (script.ask !== undefined) await ctx.suspend!({ reason: "user_approval", message: script.ask });
 
     const resources = (ctx as { resources?: Record<string, unknown> }).resources ?? {};
     const plan = resources[OBSERVED_PLAN] as Upsertable | undefined;

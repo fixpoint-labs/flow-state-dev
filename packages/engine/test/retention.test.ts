@@ -604,7 +604,7 @@ describe("applyRetentionPolicy", () => {
       actionName: "run",
       sessionId: SESSION_ID,
       userId: "user1",
-      reason: "human_approval" as const,
+      reason: "user_approval" as const,
       message: "Approve?",
       status,
       blockInstanceId: "inst",

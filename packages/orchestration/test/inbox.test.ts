@@ -403,13 +403,13 @@ describe("suspensionTruthOf: what a session's suspended requests record", () => 
   it("keeps a user's pending stop, marks a task run's, and drops a resumed one, another reason and another status", () => {
     const requests = [
       request("r1", "task", [
-        { type: "suspension", suspensionId: "a", reason: "human_approval" },
-        { type: "suspension", suspensionId: "b", reason: "human_input" },
+        { type: "suspension", suspensionId: "a", reason: "user_approval" },
+        { type: "suspension", suspensionId: "b", reason: "user_input" },
         { type: "suspension_resume", suspensionId: "b" },
         { type: "suspension", suspensionId: "c", reason: "external_event" },
       ]),
-      request("r2", "http", [{ type: "suspension", suspensionId: "d", reason: "human_input" }]),
-      request("r3", "http", [{ type: "suspension", suspensionId: "e", reason: "human_input" }], "completed"),
+      request("r2", "http", [{ type: "suspension", suspensionId: "d", reason: "user_input" }]),
+      request("r3", "http", [{ type: "suspension", suspensionId: "e", reason: "user_input" }], "completed"),
     ];
     expect(suspensionTruthOf("s", requests)).toEqual([
       { suspensionId: "a", sessionId: "s", requestId: "r1", taskRun: true },

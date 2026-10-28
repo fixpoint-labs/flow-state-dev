@@ -167,7 +167,7 @@ const region = asked.answer;
 - At a deadline an approval reads as a no with `deadline: true`. A review or an input throws `SuspensionTimeoutError`: catch it to go ahead, end or ask again, or leave it and the try fails.
 - When the task the request works is cancelled while it waits, the call returns `{ cancelled: true }`, and any later `waitForUser` in that run returns it at once.
 
-A raw `ctx.suspend({ reason: "human_approval" | "human_input" })` is the same kind of stop, read by its reason, with its own `timeoutMs` as its only deadline: an input that passes it throws `SuspensionTimeoutError`, and a cancel throws `SuspensionRejectedError` with `cancelled: true`. `isUserSuspension(suspension)` and `waitForUserKindOf(suspension)` (from `@flow-state-dev/core/types`) say whether a suspension waits for a user, and for what.
+A raw `ctx.suspend({ reason: "user_approval" | "user_input" })` is the same kind of stop, read by its reason, with its own `timeoutMs` as its only deadline: an input that passes it throws `SuspensionTimeoutError`, and a cancel throws `SuspensionRejectedError` with `cancelled: true`. `isUserSuspension(suspension)` and `waitForUserKindOf(suspension)` (from `@flow-state-dev/core/types`) say whether a suspension waits for a user, and for what.
 
 **Flow:**
 - `defineFlow(definition)` — Create a flow type with actions, `internal` and `task` entries, scopes, resources, and per-scope `client` blocks. See [Dispatches, entries, and `dispatcher()`](#dispatches-entries-and-dispatcher)

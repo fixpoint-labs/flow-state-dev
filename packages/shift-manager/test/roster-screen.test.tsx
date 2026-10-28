@@ -52,7 +52,7 @@ const ask = (workerId: string, suspensionId: string, message: string): Ask =>
     flowId: workerId,
     parentSessionId: null,
     kind: "approval",
-    item: { suspensionId, requestId: `r_${suspensionId}`, reason: "human_approval", message },
+    item: { suspensionId, requestId: `r_${suspensionId}`, reason: "user_approval", message },
     since: 0,
     unanswerable: null,
   }) as unknown as Ask;

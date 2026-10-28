@@ -48,7 +48,7 @@ function buildFlow(): FlowInstance {
     execute: async (input: { asked: string | null }, ctx) => {
       if (input.asked === null) return ctx.sequencer!.state;
       const answer = (await ctx.suspend!({
-        reason: "human_input",
+        reason: "user_input",
         message: input.asked,
         allow: ["submit"],
       })) as string;
@@ -194,7 +194,7 @@ describe("resume replay with trace observability off", () => {
       inputSchema: z.any(),
       outputSchema: z.any(),
       execute: async (input: unknown, ctx) => {
-        const verdict = await ctx.suspend!({ reason: "human_approval", message: "Approve?" });
+        const verdict = await ctx.suspend!({ reason: "user_approval", message: "Approve?" });
         return { draft: input, verdict };
       },
     });
@@ -423,7 +423,7 @@ describe("resume replay with trace observability off", () => {
         outputSchema: z.any(),
         execute: async (_input, ctx) => {
           seen.push(ctx.wasRescued(safe));
-          await ctx.suspend!({ reason: "human_approval", message: "Approve?" });
+          await ctx.suspend!({ reason: "user_approval", message: "Approve?" });
           return { rescued: ctx.wasRescued(safe) };
         },
       });

@@ -231,7 +231,7 @@ describe("a worker that parks on a suspension stops holding its task", () => {
       execute: async () => {
         throw new SuspensionError({
           suspensionId: "needs-a-human",
-          reason: "human_approval",
+          reason: "user_approval",
         });
       },
     }) as TaskWorker;

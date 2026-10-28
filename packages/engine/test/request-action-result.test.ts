@@ -329,7 +329,7 @@ describe("the request record's action result", () => {
       inputSchema: z.unknown(),
       outputSchema: z.unknown(),
       execute: async (_input, ctx) => {
-        const decision = (await ctx.suspend!({ reason: "human_approval", message: "Approve?" })) as {
+        const decision = (await ctx.suspend!({ reason: "user_approval", message: "Approve?" })) as {
           note?: string;
         };
         return { ok: true, note: decision?.note ?? null };

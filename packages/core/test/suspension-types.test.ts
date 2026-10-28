@@ -44,7 +44,7 @@ describe("SuspensionRecord", () => {
       flowKind: "chat",
       actionName: "ask",
       userId: "user_1",
-      reason: "human_approval" as SuspensionReason,
+      reason: "user_approval" as SuspensionReason,
       message: "Please approve this action",
       status: "pending" as SuspensionStatus,
       blockInstanceId: "block_1",
@@ -103,7 +103,7 @@ describe("SuspensionError", () => {
   it("is instanceof Error", () => {
     const err = new SuspensionError({
       suspensionId: "sus_1",
-      reason: "human_approval"
+      reason: "user_approval"
     });
     expect(err).toBeInstanceOf(Error);
   });
@@ -111,7 +111,7 @@ describe("SuspensionError", () => {
   it("carries suspension metadata", () => {
     const err = new SuspensionError({
       suspensionId: "sus_42",
-      reason: "human_input",
+      reason: "user_input",
       message: "Enter the code",
       data: { field: "otp" },
       resumeSchema: { type: "object" },
@@ -121,7 +121,7 @@ describe("SuspensionError", () => {
 
     expect(err.name).toBe("SuspensionError");
     expect(err.suspensionId).toBe("sus_42");
-    expect(err.reason).toBe("human_input");
+    expect(err.reason).toBe("user_input");
     expect(err.message).toBe("Enter the code");
     expect(err.data).toEqual({ field: "otp" });
     expect(err.resumeSchema).toEqual({ type: "object" });

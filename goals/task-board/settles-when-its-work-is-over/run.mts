@@ -559,7 +559,7 @@ async function legC(run: Run): Promise<void> {
 }
 
 const STOPS = [
-  ["human_input", "user"],
+  ["user_input", "user"],
   ["external_event", "wait"]
 ] as const;
 
@@ -577,7 +577,7 @@ async function resumeStop(run: Run, taskId: string, reason: string): Promise<voi
     run.failures.push(`d:resumes — the ${reason} stop had no pending suspension to resume`);
     return;
   }
-  const action = reason === "human_input" ? "submit" : "approve";
+  const action = reason === "user_input" ? "submit" : "approve";
   const provider = run.h.runtime.runtimeConfig.durabilityProvider!;
   const record = await provider.loadSuspension(suspension.requestId, suspension.suspensionId);
   await provider.suspend({ ...record!, status: action === "submit" ? "submitted" : "approved", resolvedAt: Date.now(), resumeData: { reason } } as never);

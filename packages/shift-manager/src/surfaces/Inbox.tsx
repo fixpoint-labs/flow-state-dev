@@ -92,7 +92,7 @@ function askOfItem(item: InboxItem): Ask {
       suspensionId: hold.source.suspensionId,
       requestId: hold.source.requestId,
       suspensionStatus: "pending",
-      reason: approval ? "human_approval" : "human_input",
+      reason: approval ? "user_approval" : "user_input",
       message: hold.ask.prompt,
       ...(hold.ask.title !== undefined ? { title: hold.ask.title } : {}),
       allow: approval ? ["approve", "reject"] : ["submit"],

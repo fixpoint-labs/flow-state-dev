@@ -29,7 +29,7 @@ function makeSuspension(
     flowKind: "chat",
     actionName: "run",
     userId: "user_1",
-    reason: "human_approval",
+    reason: "user_approval",
     message: "approve?",
     status: "pending",
     blockInstanceId: "seq_1",

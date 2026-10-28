@@ -235,7 +235,7 @@ The `suspension` item carries an `allow: ResumeAction[]` field (`"approve" | "re
 A log fragment across one cycle:
 
 ```jsonc
-{ "type": "suspension",        "suspensionId": "susp_abc123", "reason": "human_input", "allow": ["submit", "skip"] }
+{ "type": "suspension",        "suspensionId": "susp_abc123", "reason": "user_input", "allow": ["submit", "skip"] }
 { "type": "suspension_resume", "suspensionId": "susp_abc123", "resolution": "submitted", "resolvedBy": "user_xyz" }
 ```
 

@@ -272,7 +272,7 @@ const {
   error,        // Error | null — most recent failed resolve call
 } = useSuspensions(session, {
   requestId: "req_abc",          // optional: restrict to one request
-  reasons: ["human_approval"],   // optional: restrict by reason
+  reasons: ["user_approval"],   // optional: restrict by reason
 });
 ```
 
@@ -350,13 +350,13 @@ When the schema is richer than a flat object of scalars/enums (nested objects, a
 
 ### `QuestionRenderer`, `SelectionRenderer`, `SchemaFormRenderer`
 
-The default cards for `human_input` suspensions, all thin views over `useSuspensionForm`:
+The default cards for `user_input` suspensions, all thin views over `useSuspensionForm`:
 
 - `QuestionRenderer` — a free-text answer (no flat schema).
 - `SelectionRenderer` — single choice (a `z.enum`) or multi (`z.array(z.enum)`).
 - `SchemaFormRenderer` — a flat object of scalars and enums, one control per property.
 
-`ItemRenderer` auto-picks one for a `suspension` item with `reason: "human_input"` by `render.component` hint → reason → `resumeSchema` shape. A registered `renderers.suspension` overrides this, and `renderers.suspension: false` suppresses inline cards. `human_approval` suspensions still get `ApprovalRenderer`.
+`ItemRenderer` auto-picks one for a `suspension` item with `reason: "user_input"` by `render.component` hint → reason → `resumeSchema` shape. A registered `renderers.suspension` overrides this, and `renderers.suspension: false` suppresses inline cards. `user_approval` suspensions still get `ApprovalRenderer`.
 
 ```tsx
 import { QuestionRenderer, SelectionRenderer, SchemaFormRenderer } from "@flow-state-dev/react";

@@ -265,7 +265,7 @@ export function waitFlow(
     name: "await_approval",
     inputSchema: z.object({}).passthrough(),
     outputSchema: z.any(),
-    execute: async (_input, ctx) => ({ answer: await ctx.suspend!({ reason: "human_approval", message: "Go ahead?" }) })
+    execute: async (_input, ctx) => ({ answer: await ctx.suspend!({ reason: "user_approval", message: "Go ahead?" }) })
   });
   const finishTaskTool = handler({
     name: "finish_task",

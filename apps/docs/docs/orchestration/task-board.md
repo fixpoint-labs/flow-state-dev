@@ -817,7 +817,7 @@ Until then the task stays `in_progress`, and its row's `waitingOn` says what it'
 | `"filed"` | tasks it filed that haven't ended, or whose ending the run's session hasn't heard yet | none |
 | `"wait"` | a stop: `ctx.waitForUser()`, `ctx.suspend()`, or an external event | none |
 
-A stop that waits for a user (`ctx.waitForUser()`, or `ctx.suspend()` with `human_approval` or `human_input`) is also listed in the task's `holds`.
+A stop that waits for a user (`ctx.waitForUser()`, or `ctx.suspend()` with `user_approval` or `user_input`) is also listed in the task's `holds`.
 
 A task with no lease stays with its run. It isn't handed out again however long the wait lasts, including across a server restart.
 

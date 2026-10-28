@@ -119,7 +119,7 @@ function emptyInbox(store: Store): string {
   return `Nothing needs you. ${n(running, "session is", "sessions are")} still running.`;
 }
 /** Suspension reasons that are a person being asked something. */
-const PERSON_REASONS = new Set(["human_approval", "human_input"]);
+const PERSON_REASONS = new Set(["user_approval", "user_input"]);
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const sorted = (values: Iterable<string>) => [...values].sort();
