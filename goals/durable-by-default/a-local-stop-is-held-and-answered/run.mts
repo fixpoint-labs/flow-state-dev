@@ -88,7 +88,7 @@ async function startDev(cwd: string, env: Env, config?: string): Promise<Dev> {
   child.stdout?.on("data", (chunk) => (log += String(chunk)));
   child.stderr?.on("data", (chunk) => (log += String(chunk)));
   let exited = false;
-  const gone = new Promise<void>((resolve) => child.on("exit", () => ((exited = true), resolve())));
+  const gone = new Promise<void>((resolve) => child.on("close", () => ((exited = true), resolve())));
   for (let i = 0; i < 240 && !exited; i += 1) {
     try {
       if ((await fetch(`${origin}/healthz`)).status === 200) {

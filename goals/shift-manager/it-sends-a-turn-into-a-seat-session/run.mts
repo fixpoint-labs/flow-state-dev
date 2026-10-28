@@ -153,7 +153,7 @@ async function startLab(name: LabName, pages: string): Promise<Running> {
   child.stderr!.on("data", (d) => (log += String(d)));
   let gone = false;
   const exited = new Promise<void>((resolve) =>
-    child.on("exit", () => {
+    child.on("close", () => {
       gone = true;
       resolve();
     }),

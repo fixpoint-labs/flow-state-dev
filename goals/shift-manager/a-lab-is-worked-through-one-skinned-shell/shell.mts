@@ -163,7 +163,7 @@ export async function startShiftManager(
   child.stderr!.on("data", (d) => (log += String(d)));
   let gone = false;
   const exited = new Promise<void>((resolve) =>
-    child.on("exit", () => {
+    child.on("close", () => {
       gone = true;
       resolve();
     }),

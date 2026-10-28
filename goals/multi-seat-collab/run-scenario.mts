@@ -106,7 +106,7 @@ export async function serveLab(options: {
   child.stdout?.on("data", (chunk) => (log += String(chunk)));
   child.stderr?.on("data", (chunk) => (log += String(chunk)));
   const exitedPromise = new Promise<void>((resolve) =>
-    child.on("exit", (code, signal) => {
+    child.on("close", (code, signal) => {
       exited = `code ${code}, signal ${signal}`;
       resolve();
     }),

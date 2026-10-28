@@ -49,7 +49,7 @@ import {
   statSync,
 } from "node:fs";
 import { join, dirname, resolve as resolvePath } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 /** Extensions a specifier may already carry; these are left untouched. */
 const SETTLED = /\.(js|mjs|cjs|json|node|css)$/;
@@ -213,7 +213,7 @@ export function publishableDists(dirs, read) {
   return out;
 }
 
-const PACKAGES = new URL("../packages", import.meta.url).pathname.replace(
+const PACKAGES = fileURLToPath(new URL("../packages", import.meta.url)).replace(
   /\/$/,
   "",
 );

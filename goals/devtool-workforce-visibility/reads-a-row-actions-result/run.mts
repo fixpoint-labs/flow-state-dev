@@ -89,7 +89,7 @@ function fail(leg: Leg, line: string): void {
 
 async function waitForHealth(origin: string, child: ChildProcess, log: () => string): Promise<void> {
   let exited = false;
-  child.on("exit", () => (exited = true));
+  child.on("close", () => (exited = true));
   for (let i = 0; i < 240 && !exited; i += 1) {
     try {
       if ((await fetch(`${origin}/healthz`)).status === 200) return;

@@ -163,7 +163,7 @@ async function serve(project: string, dev: boolean): Promise<Served> {
   });
   child.stdout!.on("data", (d) => (log += String(d)));
   child.stderr!.on("data", (d) => (log += String(d)));
-  const exited = new Promise<void>((r) => child.on("exit", () => r()));
+  const exited = new Promise<void>((r) => child.on("close", () => r()));
   const origin = `http://127.0.0.1:${port}`;
   for (const until = Date.now() + 90_000; Date.now() < until; await sleep(250)) {
     if (child.exitCode !== null) throw new Error(`shift-manager exited ${child.exitCode}. Log tail:\n${log.slice(-2000)}`);

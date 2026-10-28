@@ -259,6 +259,7 @@ if (phase === "1") {
   if (transport === "inproc") await new Promise(() => {});
   process.exit(0);
 } else {
-  console.log(`__GOAL__${JSON.stringify(await phaseTwo(fsd, origin, options))}`);
-  process.exit(0);
+  const line = `__GOAL__${JSON.stringify(await phaseTwo(fsd, origin, options))}\n`;
+  // Exit once the line is flushed: `process.exit` drops a write still queued on a pipe.
+  process.stdout.write(line, () => process.exit(0));
 }

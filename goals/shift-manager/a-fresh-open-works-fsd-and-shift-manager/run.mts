@@ -125,7 +125,7 @@ async function startCommand(env: Record<string, string>) {
   child.stdout!.on("data", (d) => (log += String(d)));
   child.stderr!.on("data", (d) => (log += String(d)));
   let code: number | null | undefined;
-  const exited = new Promise<void>((resolve) => child.on("exit", (c) => ((code = c), resolve())));
+  const exited = new Promise<void>((resolve) => child.on("close", (c) => ((code = c), resolve())));
   const stop = async () => {
     stopProcessGroup(child);
     await Promise.race([exited, sleep(10_000)]);

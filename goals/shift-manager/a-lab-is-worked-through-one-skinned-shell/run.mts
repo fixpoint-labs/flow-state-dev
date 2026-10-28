@@ -477,7 +477,7 @@ function runLogged(label: string, cmd: string, args: string[], env: Record<strin
     const child = spawn(cmd, args, { cwd: REPO_ROOT, env: merged as NodeJS.ProcessEnv, stdio: ["ignore", "pipe", "pipe"] });
     child.stdout.on("data", (d) => (out += String(d)));
     child.stderr.on("data", (d) => (out += String(d)));
-    child.on("exit", (code) => {
+    child.on("close", (code) => {
       writeFileSync(log, out);
       resolve({ code: code ?? 1, out, log });
     });

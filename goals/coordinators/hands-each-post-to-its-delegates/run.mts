@@ -97,7 +97,7 @@ async function runLegE(root: string, env: Record<string, string>): Promise<any> 
   let err = "";
   child.stdout.on("data", (d) => (out += String(d)));
   child.stderr.on("data", (d) => (err += String(d)));
-  const code = await new Promise<number | null>((resolve) => child.on("exit", resolve));
+  const code = await new Promise<number | null>((resolve) => child.on("close", resolve));
   const line = out.split("\n").find((l) => l.startsWith("__GOAL__"));
   if (line === undefined) return { setup: `leg e's host printed no result (exit ${code}): ${(err || out).slice(-1500)}` };
   return JSON.parse(line.slice("__GOAL__".length));

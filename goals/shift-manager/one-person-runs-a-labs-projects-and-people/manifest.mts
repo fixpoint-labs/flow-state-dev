@@ -224,7 +224,7 @@ function runOne(entry: Entry, control: string | null, logDir: string, env: Recor
         /* gone */
       }
     }, 45 * 60_000);
-    child.on("exit", (code) => {
+    child.on("close", (code) => {
       clearTimeout(timer);
       writeFileSync(log, out);
       const verdictLine = out.split("\n").filter((l) => /^(PASS|FAIL) —/.test(l) || /^\s+- /.test(l)).join("\n");

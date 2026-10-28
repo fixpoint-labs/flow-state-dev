@@ -8,6 +8,7 @@ import { spawnSync } from "node:child_process";
 import { rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   boolean,
   defineFlow,
@@ -51,7 +52,7 @@ const HAS_OPENROUTER = (() => {
     return false;
   }
 })();
-const REPO = new URL("../../../", import.meta.url).pathname;
+const REPO = fileURLToPath(new URL("../../../", import.meta.url));
 
 /** True when `s` is in the colon lane. A string the parser rejects is not. */
 const isColon = (s: string) => {

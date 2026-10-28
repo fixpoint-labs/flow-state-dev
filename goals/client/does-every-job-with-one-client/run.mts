@@ -85,7 +85,7 @@ function start(args: string[], env: Env): { child: ChildProcess; log: () => stri
   const child = spawn(TSX, args, { cwd: REPO_ROOT, env, stdio: ["ignore", "pipe", "pipe"], detached: true });
   child.stdout?.on("data", (chunk) => (log += String(chunk)));
   child.stderr?.on("data", (chunk) => (log += String(chunk)));
-  const exited = new Promise<number>((resolve) => child.on("exit", (code, signal) => resolve(code ?? (signal === null ? 1 : 128))));
+  const exited = new Promise<number>((resolve) => child.on("close", (code, signal) => resolve(code ?? (signal === null ? 1 : 128))));
   return { child, log: () => log, exited };
 }
 

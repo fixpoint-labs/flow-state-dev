@@ -4,6 +4,7 @@
 // concept collection ref so adapter tests exercise the production
 // ResourceCollectionRef (state store + content store + edge slot), not a mock.
 
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, handler } from "@flow-state-dev/core";
@@ -51,4 +52,4 @@ export async function makeConceptCollection(
 }
 
 /** Absolute path to the checked-in OKF fixture bundle. */
-export const FIXTURE_BUNDLE = new URL("./fixtures/bundle", import.meta.url).pathname;
+export const FIXTURE_BUNDLE = fileURLToPath(new URL("./fixtures/bundle", import.meta.url));
