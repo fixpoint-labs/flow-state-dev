@@ -253,6 +253,8 @@ const requests = await fsd.sessions.requests("sess_1", {
 });
 ```
 
+A request whose history window had dropped earlier turns carries `historyStart: { requestId }`, the oldest earlier turn its history window still held. Draw a divider above that turn: the turns before it were out of the model's view, or in the summary on a flow with a [history summary](https://flow-state.dev/docs/advanced/generator-context#summarizing-turns-past-the-window). It's absent while every earlier turn was in the window. Guard with `== null`.
+
 ### Listing one flow's sessions
 
 Where a flow's sessions are filed depends on how the flow was declared, so `sessionQueryFor` reads the flow list and builds the right filter:

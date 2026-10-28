@@ -670,14 +670,15 @@ Spell it `instructions`.
 
 ### Composing capabilities into the built-in worker flow
 
-`defineAgentWorkerFlow` takes four more app-level options beyond its catalog, skills and model
-choices. All four are optional. `defineAgentWorkerFlow()` with no arguments builds the stock
+`defineAgentWorkerFlow` takes five more app-level options beyond its catalog, skills and model
+choices. All five are optional. `defineAgentWorkerFlow()` with no arguments builds the stock
 worker.
 
 | Option | What it does |
 | --- | --- |
 | `uses` | Capabilities attached to every worker's answer generator. The skills binding stays first and is never displaced. A capability passed as a plain ref brings its own storage with it; one passed as a `(ctx) => refs` resolver brings none, so anything it needs has to be declared statically somewhere. |
 | `afterAnswer` | A block run after the answer as a side-chain. It receives the reply text as a string and cannot change the answer. A failure in it never fails a conversation turn; in a task it fails the attempt, except in a task whose result goes to the conversation (`resultTo: "conversation"`), where it is logged and the task keeps its answer. Absent, nothing runs after the answer. |
+| `beforeAnswer` | A block run on every turn just before the worker answers. It sees the turn's input and cannot change it; its output is dropped. A failure in it fails the turn, so a block that must not fail the turn has to handle its own errors. A [history summary](https://flow-state.dev/docs/advanced/generator-context#summarizing-turns-past-the-window)'s fold goes here (`beforeAnswer: earlier.fold`, with `earlier.capability` in `uses`). Absent, nothing runs before the answer. |
 | `answerAgain` | `true`, or a block run after each answer. When it returns `{ message }`, the worker answers again in the same request with that message as its input. `true` hands the worker the tasks it filed that finished while it answered; see [Answering again with finished tasks](#answering-again-with-finished-tasks). Takes effect only on a flow built with `installation`. Absent, a turn answers once (and again after its plan), and every task result is heard after the turn. |
 | `isolateUserState` | Forwarded to `defineFlow`. Keys the flow's user-scoped storage by its copy, apart from the user's other flows. Every worker on `agent` shares the one copy, so a user's workers on it still share the same user-scoped storage. Default `false`. |
 

@@ -20,7 +20,7 @@ The summarizer is configured with an objective that names its input: `summary` i
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
-| 2026-10-28 | f8afedb + goal | openai/gpt-5.4-mini | FAIL (expected) | `GOAL_CONTROL=no-summary`: `w:answer` "I don't have that information."; `w:mark` and `w:folds` fail too (no resource) |
-| 2026-10-28 | f8afedb + goal | openai/gpt-5.4-mini | FAIL (expected) | `GOAL_CONTROL=no-mark`: only `w:mark` fails, "the last request carries no historyStart"; the answer still held the fact |
-| 2026-10-28 | f8afedb + goal | openai/gpt-5.4-mini | PASS | two default runs of 3 conversations each, 6 of 6 answers held the fact; 4 folds each (1 before the restart), summaries under 1,000 characters; the answer model read only turns after the mark |
-| 2026-10-28 | f8afedb + goal | openai/gpt-5.4-mini | PASS | `GOAL_WINDOW=50 GOAL_TURNS=60 GOAL_RUNS=1`: 2 folds, the second after the restart before turn 41; answer held the fact (run before the summarizer objective was added) |
+| 2026-10-28 | fa17caf | openai/gpt-5.4-mini | FAIL (expected) | `GOAL_CONTROL=no-summary`: `w:answer` "I don't have that information."; `w:mark` and `w:folds` fail too (no resource) |
+| 2026-10-28 | fa17caf | openai/gpt-5.4-mini | FAIL (expected) | `GOAL_CONTROL=no-mark`: only `w:mark` fails, "the last request carries no historyStart"; the answer still held the fact |
+| 2026-10-28 | fa17caf | openai/gpt-5.4-mini | PASS | 3 of 3 answers held the fact (6 of 6 earlier, before the answer's replies were kept in history); 4 folds each (1 before the restart), summaries 1,254–1,777 characters; the answer model read 11 messages, user and assistant, all after the mark |
+| 2026-10-28 | fa17caf | openai/gpt-5.4-mini | PASS | `GOAL_WINDOW=50 GOAL_TURNS=60 GOAL_RUNS=1`: 2 folds, the second after the restart before turn 41; answer held the fact ("teal lynx 731"), rerun after the summarizer objective and `itemVisibility` were added |
