@@ -1,5 +1,5 @@
 /**
- * A message the chief of staff routes to the coder, on the real Lab.
+ * A message the Shift Coordinator routes to the coder, on the real Lab.
  *
  * The coordinator mints a routed task's id as `routed:<request>:<round>:<delegate>`,
  * and the coder runs a task that names no issue under its task id. That id
@@ -22,7 +22,7 @@ import { harnessStub } from "../teams/devteam/harness-stub.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
 import { createBareRemote } from "../teams/devteam/scratch-repo.mts";
 
-const COS = "chief-of-staff";
+const SHIFT_COORDINATOR = "shift-coordinator";
 const CODER = "eng.coder";
 const ASK = "Which file renders the cart badge?";
 const ANSWER = "The badge is in header.tsx.";
@@ -101,9 +101,9 @@ describe("a message a coordinator routes to the coder", () => {
     });
     const lab = opened;
     const runtime = await lab.state.getRuntime();
-    const conversation = `s-cos-${globalThis.crypto.randomUUID()}`;
+    const conversation = `s-shift-coordinator-${globalThis.crypto.randomUUID()}`;
     const created = await lab.door("POST", "coordinator/sessions", {
-      body: { userId: LAB_USER_ID, sessionId: conversation, state: { workerId: COS } },
+      body: { userId: LAB_USER_ID, sessionId: conversation, state: { workerId: SHIFT_COORDINATOR } },
     });
     expect(created.status).toBe(201);
     // The conversation works on a project, so the coder's answer run has a checkout to work in.

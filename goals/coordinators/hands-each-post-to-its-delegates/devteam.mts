@@ -1,11 +1,11 @@
 /**
  * Legs a to d, f and g: the DevTeam install, served by Shift Manager's own
  * command, with Alice (its owner) and Bob (its second member) each acting
- * through the shipped clients with their own verified bearer, and the chief
- * of staff's turns on the real model its file names.
+ * through the shipped clients with their own verified bearer, and the Shift
+ * Coordinator's turns on the real model its file names.
  *
  * Every change goes through the app: an action on a conversation, a person's
- * line to the chief of staff, or the roster flow's `hire`. Nothing is seeded
+ * line to the Shift Coordinator, or the roster flow's `hire`. Nothing is seeded
  * by a fixture or written to a store. Every grade is read back as that
  * person: the conversation's items (its routing records and the turn's tool
  * outputs) and the delegate's own session through the install's routes, and
@@ -121,7 +121,7 @@ async function act(who: Connected, flowKind: string, sessionId: string, action: 
   return { status, requestId, output: found?.result?.output, error: found?.result?.error?.message };
 }
 
-/** One turn with the chief of staff, as the store holds it. */
+/** One turn with the Shift Coordinator, as the store holds it. */
 export interface Turn {
   leg: string;
   words: string;
@@ -130,7 +130,7 @@ export interface Turn {
   status: string;
   tools: Array<{ name: string; args: string; output: any }>;
   reply: string;
-  /** Whether the chief of staff wrote a line of its own on the post. */
+  /** Whether the Shift Coordinator wrote a line of its own on the post. */
   replied: boolean;
   providerRetry?: string;
 }
@@ -155,7 +155,7 @@ function parsed(value: unknown): any {
 /** A provider error: the model never answered, as opposed to a turn that answered wrong. */
 const providerError = (text: string) => /rate.?limit|429|5\d\d |overloaded|timed? ?out|ECONNRESET|fetch failed|provider|gateway|unavailable|stream failed/i.test(text);
 
-/** Say `words` to the chief of staff in `session`, and read the turn back by its request id. A provider error re-runs it once. */
+/** Say `words` to the Shift Coordinator in `session`, and read the turn back by its request id. A provider error re-runs it once. */
 async function talk(turns: Turn[], leg: string, who: Connected, session: SessionSummary, words: string): Promise<Turn> {
   const once = async (): Promise<Turn> => {
     const acted = await act(who, session.flowKind, session.id, "respond", { message: words }, 240_000);
@@ -281,7 +281,7 @@ export interface DevteamOptions {
   shipped: Shipped;
   alice: Person;
   bob: Person;
-  /** The chief of staff's default delegates, read from its file on the commit. */
+  /** The Shift Coordinator's default delegates, read from its file on the commit. */
   defaults: string[];
   legs: ReadonlySet<string>;
   asks: Asks;
@@ -290,8 +290,8 @@ export interface DevteamOptions {
   say: (line: string) => void;
 }
 
-/** The chief of staff's id: its wire id since FIX-1719, pinned by the spec. */
-export const COS = "chief-of-staff";
+/** The Shift Coordinator's id: its wire id since FIX-1719, pinned by the spec. */
+export const SHIFT_COORDINATOR = "shift-coordinator";
 
 /**
  * Whether the EM filed the feature leg a handed it: the board of the EM's
@@ -319,9 +319,9 @@ async function filedOnBoard(
   return { failure: `no row on ${em}'s board in ${emSession} carries the word "${theWord}" within 120 s (${rows.length} row(s): ${show(rows.map((r) => r.goal))})` };
 }
 
-/** The chief of staff's `delegates:` as the commit's file lists them. */
-export function cosDefaults(root: string): string[] {
-  const file = join(root, "packages", "shift-manager", "teams", "devteam", "workforce", "org", "workers", COS, "WORKER.md");
+/** The Shift Coordinator's `delegates:` as the commit's file lists them. */
+export function shiftCoordinatorDefaults(root: string): string[] {
+  const file = join(root, "packages", "shift-manager", "teams", "devteam", "workforce", "org", "workers", SHIFT_COORDINATOR, "WORKER.md");
   const line = /^delegates:\s*\[(.*)\]\s*$/m.exec(readFileSync(file, "utf8"))?.[1];
   return line === undefined ? [] : line.split(",").map((s) => s.trim()).filter(Boolean);
 }
@@ -335,20 +335,20 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
   const em = o.defaults.find((d) => /\.em$/.test(d)) ?? "eng.em";
 
   /**
-   * Ask the chief of staff, in `cos`, for work the EM delegate does, and grade
+   * Ask the Shift Coordinator, in `shift-coordinator`, for work the EM delegate does, and grade
    * the turn as leg `name`: Alice's own workers are still `own0` (`no-hire`),
    * the post's one delivery goes to the EM (`one-delivery`), the EM's session
    * for this conversation holds the post, with the word, within 120 s
    * (`session-120s`, `carries-word`), one `by: evaluated` record delivers to
    * it, from a route evaluation the trace says Jev answered (`evaluated`),
-   * and the chief of staff wrote no line and called no tool on the post
+   * and the Shift Coordinator wrote no line and called no tool on the post
    * (`no-turn`). Returns the post's deliveries to the EM.
    */
-  const askTheEm = async (name: string, cos: SessionSummary, ask: string, theWord: string, own0: string[]): Promise<Delivery[]> => {
+  const askTheEm = async (name: string, shiftCoordinator: SessionSummary, ask: string, theWord: string, own0: string[]): Promise<Delivery[]> => {
     const r = leg(name);
     const sent = Date.now();
     o.say(`leg ${name}: "${ask}"`);
-    const turn = await talk(turns, name, alice, cos, ask);
+    const turn = await talk(turns, name, alice, shiftCoordinator, ask);
     r.notes.push(`the turn ${turn.status}; tools: ${turn.tools.map((t) => `${t.name}(${t.args}) → ${show(t.output)}`).join("; ") || "none"}; reply: ${turn.reply.slice(0, 300)}`);
     const own = await ownWorkers(alice);
     if (!same(own, own0)) r.failures.push(`${name}:no-hire — Alice's own workers went from [${own0.join(", ")}] to [${own.join(", ")}]`);
@@ -356,7 +356,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
     let mine: Delivery[] = [];
     let opened: { at: number; holdsWord: boolean } | undefined;
     for (const until = sent + 120_000; Date.now() < until; await sleep(1_000)) {
-      mine = (await recordOf(o.store, alice, cos.id)).ledger.filter((d) => d.postId === turn.requestId);
+      mine = (await recordOf(o.store, alice, shiftCoordinator.id)).ledger.filter((d) => d.postId === turn.requestId);
       const toEm = mine.find((d) => d.delegate.worker === em && d.status === "delivered" && d.sessionId !== undefined);
       if (toEm !== undefined) {
         const items = await alice.routes.items(toEm.sessionId!, "message").catch(() => [] as StoredItem[]);
@@ -376,29 +376,29 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
     if (opened === undefined) r.failures.push(`${name}:session-120s — no session of ${em}'s for this conversation held the post within 120 s`);
     else if (!opened.holdsWord) r.failures.push(`${name}:carries-word — ${em}'s session opened, but holds no line with the word "${theWord}"`);
     else r.notes.push(`${em}'s session held the post, with the word, ${Math.round(opened.at / 1000)} s after it was sent`);
-    const records = await routingOf(alice, cos.id, turn.requestId);
+    const records = await routingOf(alice, shiftCoordinator.id, turn.requestId);
     const evaluated = records.filter((d) => d.by === "evaluated");
     if (records.length !== 1 || evaluated.length !== 1 || !(evaluated[0]!.delegates as any[]).some((d) => d.worker === em && d.outcome === "delivered")) {
       r.failures.push(`${name}:evaluated — wanted one \`by: evaluated\` record delivering to ${em}; the post has ${records.length === 0 ? "none" : show(records)}`);
     }
     // The model the route evaluation's trace says answered: the routing ran on Jev, or it doesn't count.
-    const { model: answeredBy, ms } = await routeTraceOf(alice, cos.id, turn.requestId);
+    const { model: answeredBy, ms } = await routeTraceOf(alice, shiftCoordinator.id, turn.requestId);
     o.routeModels.push(answeredBy ?? "none");
     if (answeredBy === undefined || !/jev/i.test(answeredBy)) {
       r.failures.push(`${name}:evaluated — the route evaluation's trace names ${answeredBy === undefined ? "no model" : `"${answeredBy}"`}, not Jev`);
     } else r.notes.push(`the route evaluation answered from ${answeredBy}${ms === undefined ? "" : ` in ${ms} ms`}`);
     // Read the way talk() reads the turn: the post's own tool outputs and assistant line.
     if (turn.tools.length > 0 || turn.replied) {
-      r.failures.push(`${name}:no-turn — the chief of staff took a turn on the post: tools [${turn.tools.map((t) => t.name).join(", ")}], ${turn.replied ? `wrote "${turn.reply.slice(0, 200)}"` : "wrote nothing"}`);
+      r.failures.push(`${name}:no-turn — the Shift Coordinator took a turn on the post: tools [${turn.tools.map((t) => t.name).join(", ")}], ${turn.replied ? `wrote "${turn.reply.slice(0, 200)}"` : "wrote nothing"}`);
     }
     return toEm;
   };
 
   // ---- a, b, c: one conversation, opened the way the app opens it --------------
   if (o.legs.has("a") || o.legs.has("b") || o.legs.has("c")) {
-    const cos = await alice.workforce.ensureWorkerSession({ worker: COS });
+    const shiftCoordinator = await alice.workforce.ensureWorkerSession({ worker: SHIFT_COORDINATOR });
     const own0 = await ownWorkers(alice);
-    o.say(`Alice's chief of staff: session ${cos.id} on \`${cos.flowKind}\`; her own workers: ${own0.length === 0 ? "none" : own0.join(", ")}`);
+    o.say(`Alice's Shift Coordinator: session ${shiftCoordinator.id} on \`${shiftCoordinator.flowKind}\`; her own workers: ${own0.length === 0 ? "none" : own0.join(", ")}`);
     const slug = `cart-${hex()}`;
     const theWord = word();
     const askA = o.asks.a.replace("{slug}", slug).replace("{word}", theWord);
@@ -408,9 +408,9 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
       if (!o.legs.has(name) && !(name === "a" && o.legs.has("b"))) continue;
       const r = leg(name);
       // The person asks again once the EM has answered the last ask, not while it still holds the conversation.
-      const waited = await holdCleared(o.store, alice, cos.id);
+      const waited = await holdCleared(o.store, alice, shiftCoordinator.id);
       if (waited !== undefined) r.notes.push(`before the ask: ${waited}`);
-      const toEm = await askTheEm(name, cos, askA, theWord, own0);
+      const toEm = await askTheEm(name, shiftCoordinator, askA, theWord, own0);
       // The real outcome of the hand-off: the EM filed the coder's task on its
       // own session's board, read the way Shift Manager reads it.
       if (name === "a") {
@@ -432,18 +432,18 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
 
     if (o.legs.has("c")) {
       const r = leg("c");
-      const waited = await holdCleared(o.store, alice, cos.id);
+      const waited = await holdCleared(o.store, alice, shiftCoordinator.id);
       if (waited !== undefined) r.notes.push(`before the ask: ${waited}`);
       const own1 = await ownWorkers(alice);
       o.say(`leg c: "${o.asks.c}"`);
-      const first = await talk(turns, "c", alice, cos, o.asks.c);
+      const first = await talk(turns, "c", alice, shiftCoordinator, o.asks.c);
       r.notes.push(`first ask ${first.status}; tools: ${first.tools.map((t) => `${t.name}(${t.args}) → ${show(t.output)}`).join("; ") || "none"}`);
       const own2 = await ownWorkers(alice);
       const hired = own2.filter((id) => !own1.includes(id));
       const hire = hired[0];
       if (hired.length !== 1) r.failures.push(`c:one-hire — wanted one hire on Alice's roster; her own workers went from [${own1.join(", ")}] to [${own2.join(", ")}]`);
       else r.notes.push(`hired \`${hire}\``);
-      const after1 = await recordOf(o.store, alice, cos.id);
+      const after1 = await recordOf(o.store, alice, shiftCoordinator.id);
       if (hire === undefined || !(after1.delegates ?? []).some((d) => d.worker === hire)) {
         r.failures.push(`c:added — the hire is not on this conversation's delegates: ${show(after1.delegates)}`);
       }
@@ -452,7 +452,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
         r.failures.push(`c:delivered — wanted one delivery of the ask, to the hire; the ledger holds ${show(firstDeliveries)}`);
       }
       o.say(`leg c, again: "${o.asks.c}"`);
-      const again = await talk(turns, "c", alice, cos, o.asks.c);
+      const again = await talk(turns, "c", alice, shiftCoordinator, o.asks.c);
       r.notes.push(`second ask ${again.status}; tools: ${again.tools.map((t) => `${t.name}(${t.args}) → ${show(t.output)}`).join("; ") || "none"}`);
       const own3 = await ownWorkers(alice);
       if (!same(own3, own2)) r.failures.push(`c:no-second-hire — asked again, her own workers went from [${own2.join(", ")}] to [${own3.join(", ")}]`);
@@ -464,7 +464,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
       // the first has ended has 60 s to start, then fails.
       const firstTaskId = firstDeliveries[0]?.taskId;
       const sameWorker = async () => {
-        const ledger = (await recordOf(o.store, alice, cos.id)).ledger;
+        const ledger = (await recordOf(o.store, alice, shiftCoordinator.id)).ledger;
         const all = ledger.filter((d) => d.postId === again.requestId);
         const toHire = all.filter((d) => d.delegate.worker === hire);
         const first = ledger.find((d) => d.taskId === firstTaskId);
@@ -486,13 +486,13 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
   // ---- d: change the delegates in the app, then ask who they are --------------
   if (o.legs.has("d")) {
     const r = leg("d");
-    const kind = (await alice.workforce.ensureWorkerSession({ worker: COS })).flowKind;
-    const conv = await alice.flow(kind).createSession({ state: { workerId: COS } });
+    const kind = (await alice.workforce.ensureWorkerSession({ worker: SHIFT_COORDINATOR })).flowKind;
+    const conv = await alice.flow(kind).createSession({ state: { workerId: SHIFT_COORDINATOR } });
     const session = { id: conv.id, flowKind: kind };
     const roster = await alice.workforce.roster();
     const removeId = o.defaults[randomBytes(1)[0]! % Math.max(1, o.defaults.length)] ?? "eng.coder";
     // Held out: any worker on her roster that isn't a default and may be added, tried in a random order.
-    const pool = roster.filter((e) => e.id !== COS && !o.defaults.includes(e.id)).map((e) => e.id).sort(() => randomBytes(1)[0]! - 128);
+    const pool = roster.filter((e) => e.id !== SHIFT_COORDINATOR && !o.defaults.includes(e.id)).map((e) => e.id).sort(() => randomBytes(1)[0]! - 128);
     let added: string | undefined;
     const refusals: string[] = [];
     for (const candidate of pool) {
@@ -515,12 +515,12 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
       const turn = await talk(turns, "d", alice, session, o.asks.d);
       const read = turn.tools.find((t) => t.name === "listDelegates");
       r.notes.push(`the turn ${turn.status}; tools: ${turn.tools.map((t) => t.name).join(", ") || "none"}; reply: ${turn.reply.slice(0, 400)}`);
-      if (read === undefined) r.failures.push(`d:read-called — the chief of staff answered without calling its delegate read`);
+      if (read === undefined) r.failures.push(`d:read-called — the Shift Coordinator answered without calling its delegate read`);
       else {
         const readList = ((read.output?.delegates ?? []) as Array<{ worker: string }>).map((d) => d.worker);
         if (!same(readList, list)) r.failures.push(`d:read-equals-list — the delegate read returned [${readList.join(", ")}]; the session holds [${list.join(", ")}]`);
       }
-      const others = [...new Set([...roster.map((e) => e.id), ...o.defaults])].filter((id) => id !== COS && !list.includes(id));
+      const others = [...new Set([...roster.map((e) => e.id), ...o.defaults])].filter((id) => id !== SHIFT_COORDINATOR && !list.includes(id));
       const missingFromReply = list.filter((id) => !turn.reply.includes(id));
       const extra = others.filter((id) => turn.reply.includes(id));
       if (missingFromReply.length > 0 || extra.length > 0) {
@@ -545,8 +545,8 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
       r.failures.push(`f:setup — ${r.notRun}`);
     } else {
       r.notes.push(`Bob hired \`${bobWorker}\` on \`agent\`; Alice's roster ${(await ownWorkers(alice)).includes(bobWorker) ? "LISTS it" : "doesn't list it"}`);
-      const kind = (await alice.workforce.ensureWorkerSession({ worker: COS })).flowKind;
-      const conv = await alice.flow(kind).createSession({ state: { workerId: COS } });
+      const kind = (await alice.workforce.ensureWorkerSession({ worker: SHIFT_COORDINATOR })).flowKind;
+      const conv = await alice.flow(kind).createSession({ state: { workerId: SHIFT_COORDINATOR } });
       const missing = `nobody-${word()}`;
       const viaApp = await act(alice, kind, conv.id, "addDelegate", { worker: bobWorker });
       const viaAppMissing = await act(alice, kind, conv.id, "addDelegate", { worker: missing });
@@ -571,16 +571,16 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
       const ask = o.asks.f.replace("{worker}", bobWorker);
       let adds: Turn["tools"] = [];
       for (let attempt = 1; attempt <= 2 && adds.length === 0; attempt += 1) {
-        const where = attempt === 1 ? conv : await alice.flow(kind).createSession({ state: { workerId: COS } });
+        const where = attempt === 1 ? conv : await alice.flow(kind).createSession({ state: { workerId: SHIFT_COORDINATOR } });
         o.say(`leg f, attempt ${attempt}: "${ask}"`);
         const turn = await talk(turns, "f", alice, { id: where.id, flowKind: kind }, ask);
         adds = turn.tools.filter((t) => t.name === "addDelegate");
         r.notes.push(`attempt ${attempt}: the turn ${turn.status}; tools: ${turn.tools.map((t) => `${t.name}(${t.args}) → ${show(t.output)}`).join("; ") || "none"}; reply: ${turn.reply.slice(0, 200)}`);
         const afterTool = ((await recordOf(o.store, alice, where.id)).delegates ?? []).map((d) => d.worker);
-        if (afterTool.includes(bobWorker)) r.failures.push(`f:bobs-worker-refused — Bob's worker is a delegate after the chief of staff's turn: [${afterTool.join(", ")}]`);
+        if (afterTool.includes(bobWorker)) r.failures.push(`f:bobs-worker-refused — Bob's worker is a delegate after the Shift Coordinator's turn: [${afterTool.join(", ")}]`);
       }
       const refusedByTool = adds.find((t) => typeof t.output?.refused === "string");
-      if (adds.length === 0) r.failures.push(`f:tool-refused — in two asks the chief of staff never called addDelegate for \`${bobWorker}\`, so the tool's answer wasn't seen`);
+      if (adds.length === 0) r.failures.push(`f:tool-refused — in two asks the Shift Coordinator never called addDelegate for \`${bobWorker}\`, so the tool's answer wasn't seen`);
       else if (refusedByTool === undefined) r.failures.push(`f:tool-refused — the tool took Bob's worker: ${show(adds.map((t) => t.output))}`);
       else if (shape(refusedByTool.output.refused, bobWorker) !== shape(answer(viaAppMissing), missing)) {
         r.failures.push(`f:tool-refused — the tool's refusal differs from a missing worker's: "${refusedByTool.output.refused}" / "${answer(viaAppMissing)}"`);
@@ -590,7 +590,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
       const create = await alice.routes.call("POST", `/${encodeURIComponent(kind)}/sessions`, {
         userId: o.alice.userId,
         sessionId: seededId,
-        state: { workerId: COS, delegates: [{ worker: bobWorker }] },
+        state: { workerId: SHIFT_COORDINATOR, delegates: [{ worker: bobWorker }] },
       });
       const created = `${create.status} ${JSON.stringify(create.body)}`.slice(0, 400);
       const exists = (await alice.routes.call("GET", `/sessions/${encodeURIComponent(seededId)}`)).status === 200;
@@ -601,7 +601,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
     }
   }
 
-  // ---- h: the chief of staff's own jobs, in a new conversation ----------------
+  // ---- h: the Shift Coordinator's own jobs, in a new conversation ----------------
   // A hire worded without "hire", a fire of the worker it hired, "who works
   // here?", and a project: each reaches its own turn, recorded `by: judgment`
   // with why best fit kept it, and none goes to a delegate. A fire and a
@@ -609,8 +609,8 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
   // turn finishes and records.
   if (o.legs.has("h")) {
     const r = leg("h");
-    const kind = (await alice.workforce.ensureWorkerSession({ worker: COS })).flowKind;
-    const conv = await alice.flow(kind).createSession({ state: { workerId: COS } });
+    const kind = (await alice.workforce.ensureWorkerSession({ worker: SHIFT_COORDINATOR })).flowKind;
+    const conv = await alice.flow(kind).createSession({ state: { workerId: SHIFT_COORDINATOR } });
     const session = { id: conv.id, flowKind: kind };
     const pick = <T,>(list: readonly T[]) => list[randomBytes(1)[0]! % list.length]!;
     const job = pick(o.asks.h.jobs);
@@ -688,11 +688,11 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
 
   // ---- g: the plain ask, in a new conversation --------------------------------
   // Alice asks for the feature to be filed and never says to hand it on: the
-  // chief of staff still hands it to the delegate that files features, and
+  // Shift Coordinator still hands it to the delegate that files features, and
   // hires no one. Last, so a hire it makes here can't sway another leg.
   if (o.legs.has("g")) {
-    const kind = (await alice.workforce.ensureWorkerSession({ worker: COS })).flowKind;
-    const conv = await alice.flow(kind).createSession({ state: { workerId: COS } });
+    const kind = (await alice.workforce.ensureWorkerSession({ worker: SHIFT_COORDINATOR })).flowKind;
+    const conv = await alice.flow(kind).createSession({ state: { workerId: SHIFT_COORDINATOR } });
     const theWord = word();
     const ask = o.asks.g.replace("{slug}", `cart-${hex()}`).replace("{word}", theWord);
     await askTheEm("g", { id: conv.id, flowKind: kind }, ask, theWord, await ownWorkers(alice));

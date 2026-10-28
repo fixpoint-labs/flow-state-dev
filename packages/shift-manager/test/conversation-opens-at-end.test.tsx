@@ -62,22 +62,22 @@ function sizeFeeds() {
   });
 }
 
-const cos = toWorker({ id: "chief-of-staff", kind: "coordinator", door: "run" })!;
+const shiftCoordinator = toWorker({ id: "shift-coordinator", kind: "coordinator", door: "run" })!;
 const gaps = {} as never;
 const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
 
 describe("where a conversation opens", () => {
   it("opens on the latest turn when it asks to start at the end", async () => {
     sizeFeeds();
-    render(<Conversation worker={cos} sessions={[]} gaps={gaps} name="Shift Coordinator" testId="cos" startAtEnd />);
+    render(<Conversation worker={shiftCoordinator} sessions={[]} gaps={gaps} name="Shift Coordinator" testId="shift-coordinator" startAtEnd />);
     await settle();
-    expect(screen.getByTestId("cos-feed").scrollTop).toBe(CONTENT - VIEW);
+    expect(screen.getByTestId("shift-coordinator-feed").scrollTop).toBe(CONTENT - VIEW);
   });
 
   it("opens where it starts otherwise, so a lead above the feed is what you land on", async () => {
     sizeFeeds();
-    render(<Conversation worker={cos} sessions={[]} gaps={gaps} name="Shift Coordinator" testId="cos" />);
+    render(<Conversation worker={shiftCoordinator} sessions={[]} gaps={gaps} name="Shift Coordinator" testId="shift-coordinator" />);
     await settle();
-    expect(screen.getByTestId("cos-feed").scrollTop).toBe(0);
+    expect(screen.getByTestId("shift-coordinator-feed").scrollTop).toBe(0);
   });
 });

@@ -51,15 +51,15 @@ export const GAPS = {
       "Which worker holds a task is a best match on the task's assignee: its id, then a unique name. A task whose assignee matches no single worker counts for no one. A declared map arrives with FIX-1672.",
     partial: "Asks did not load, so on shift may be missing workers waiting on you.",
   },
-  /** The Chief of Staff view's named states (BR-11, BR-12). */
-  chiefOfStaff: {
-    /** BR-11: the Lab's inventory holds no chief-of-staff worker. */
+  /** The Shift Coordinator view's named states (BR-11, BR-12). */
+  shiftCoordinator: {
+    /** BR-11: the Lab's inventory holds no shift-coordinator worker. */
     none: {
       title: "This Lab declares no shift coordinator",
-      body: "Shift Manager talks to the worker named chief-of-staff. Declare one on the coordinator flow at org/workers/chief-of-staff/.",
+      body: "Shift Manager talks to the worker named shift-coordinator. Declare one on the coordinator flow at org/workers/shift-coordinator/.",
     },
     /** BR-12: drawn before the workers' ids. */
-    several: "More than one worker is named chief-of-staff, so Shift Manager talks to neither:",
+    several: "More than one worker is named shift-coordinator, so Shift Manager talks to neither:",
   },
   resources: "This Lab serves no documents to the browser, so there is nothing to open here yet.",
   inboxScope:

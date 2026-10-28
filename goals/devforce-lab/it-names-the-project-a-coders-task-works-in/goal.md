@@ -2,7 +2,7 @@
 
 **Issue:** FIX-1869
 
-**Outcome:** In the DevTeam lab, a person tells the Shift Coordinator (chief of staff) "the coder
+**Outcome:** In the DevTeam lab, a person tells the Shift Coordinator (Shift Coordinator) "the coder
 should take a look at our repo" without naming a project. When exactly one of the projects they are
 a member of has a repository, the coordinator files the coder's task for that project on the spot.
 When two or more do, it files nothing and asks which one, naming them. A project in the
@@ -17,7 +17,7 @@ title, and the ask, is read from the fixture, so another second project, another
 project or another wording passes a correct implementation.
 
 **Signal:** two legs on the DevTeam lab opened as its profile opens it, driven over its HTTP door
-as the lab's owner, a real model playing the chief of staff. The person is a member of storefront
+as the lab's owner, a real model playing the Shift Coordinator. The person is a member of storefront
 (a repository), platform and sandbox; the stranger's project, with a repository, is created by
 another user of the organization.
 
@@ -39,7 +39,7 @@ has a repository, so a list that leaked it would make leg one ambiguous.
 
 | Control | Perturbs | Goes red on |
 |---|---|---|
-| `no-project-list` | the chief of staff without `listProjects`, in its catalog and its `tools:` | `one:read-the-projects`, always. Usually also `one:files-naming-storefront` and `two:asks-naming-both`, but the model can guess storefront without the list, so those two are not required |
+| `no-project-list` | the Shift Coordinator without `listProjects`, in its catalog and its `tools:` | `one:read-the-projects`, always. Usually also `one:files-naming-storefront` and `two:asks-naming-both`, but the model can guess storefront without the list, so those two are not required |
 
 **Model:** `openai/gpt-5.4-mini` for every turn, through the AI Gateway. Each leg is one turn,
 graded once: nothing is retried. Reports `blocked` when no key serves it. The coder's harness is the lab's stub, and what a filed task does
@@ -50,7 +50,7 @@ next is not graded (the coder runs with no judge).
 
 ## What this establishes, and what it does not
 
-It establishes that the chief of staff reads the person's projects as data and picks the one a
+It establishes that the Shift Coordinator reads the person's projects as data and picks the one a
 coder's task works in from them, and that the read leaves out projects the person isn't a member
 of. It does **not** establish what happens to the task after the filing; that is
 `goals/devforce-lab/it-answers-a-conversations-task/`.

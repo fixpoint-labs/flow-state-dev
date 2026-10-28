@@ -8,7 +8,7 @@
  * Code through its Agent SDK as the coder. Two things differ, each said here:
  * the runs' checkout is a scratch repository mapped as the profile maps this
  * one (a check must not add worktrees to the checkout it runs in), and the
- * chief of staff's model is scripted to file one task (its judgment is not
+ * Shift Coordinator's model is scripted to file one task (its judgment is not
  * under test; what the run is handed and does is).
  *
  * 1. A held-out Linear issue is picked at run time from Linear's own API: one
@@ -17,7 +17,7 @@
  * 2. `LINEAR_MCP_API_KEY` is unset in this process, so no seed stands in: the
  *    filer (the Lab's user) sets their key through the Lab's key route, as
  *    Settings does, from `LINEAR_API_KEY`.
- * 3. The chief of staff files a task for the coder on FSD naming the issue by
+ * 3. The Shift Coordinator files a task for the coder on FSD naming the issue by
  *    its identifier only. Its prompt carries no title.
  * 4. While the run works, every process whose working directory is the run's
  *    is read from `/proc`: its command line and environment. The Lab's own
@@ -37,7 +37,7 @@
  *
  * Needs: LINEAR_API_KEY, AI_GATEWAY_API_KEY (the coder's judge, Jev), a
  * Claude Code Agent SDK that can run (signed in, or ANTHROPIC_API_KEY), git.
- * Spends Claude Code's model and Jev's; the chief of staff's is scripted.
+ * Spends Claude Code's model and Jev's; the Shift Coordinator's is scripted.
  *
  * Run: pnpm tsx goals/shift-manager/a-projects-coding-run-reads-its-linear/run.mts
  */
@@ -117,14 +117,14 @@ async function heldOutIssue(base: string): Promise<{ identifier: string; title: 
   throw new Error(`none of Linear's ${issues.nodes.length} most recently updated issues is held out from this repository`);
 }
 
-/** A model that has the chief of staff make `call` once, then stop. */
-function scriptedChief(call: { toolName: string; args: Record<string, unknown> }): ModelResolver {
+/** A model that has the Shift Coordinator make `call` once, then stop. */
+function scriptedShiftCoordinator(call: { toolName: string; args: Record<string, unknown> }): ModelResolver {
   // A container's FSDEV_DEFAULT_MODEL / FSDEV_INTENT_* would swap the model under the resolver.
   stripIntentOverrides();
   const base = createModelResolver();
   let made = false;
   const model: GeneratorModel = {
-    modelId: "goal/scripted-chief",
+    modelId: "goal/scripted-shift-coordinator",
     async generate() {
       throw new Error("the owned tool loop calls generateStep");
     },
@@ -199,7 +199,7 @@ await runGoal(async (failures) => {
       inventory: true,
       projects: FSD_PROJECTS,
       mcpServers: FSD_MCP_SERVERS,
-      modelResolver: scriptedChief({ toolName: "createTask", args: { goal, assignee: CODER, input: { project: FSD } } }),
+      modelResolver: scriptedShiftCoordinator({ toolName: "createTask", args: { goal, assignee: CODER, input: { project: FSD } } }),
       logger: silentLogger,
       log: (line) => console.log(line),
     });
@@ -216,11 +216,11 @@ await runGoal(async (failures) => {
       if (off.error !== undefined) throw new Error(`clearing FSD's servers failed: ${off.error}`);
     }
 
-    // File through the chief of staff, as a person's conversation does.
+    // File through the Shift Coordinator, as a person's conversation does.
     const runtime = await lab.state.getRuntime();
-    const sessionId = `s-cos-${globalThis.crypto.randomUUID()}`;
-    const created = await lab.door("POST", "coordinator/sessions", { body: { userId: LAB_USER_ID, sessionId, state: { workerId: "chief-of-staff" } } });
-    if (created.status !== 201) throw new Error(`opening the chief of staff's session answered ${created.status}`);
+    const sessionId = `s-shift-coordinator-${globalThis.crypto.randomUUID()}`;
+    const created = await lab.door("POST", "coordinator/sessions", { body: { userId: LAB_USER_ID, sessionId, state: { workerId: "shift-coordinator" } } });
+    if (created.status !== 201) throw new Error(`opening the Shift Coordinator's session answered ${created.status}`);
     const act = async (actionName: string, input: unknown) =>
       (await runAction({
         orgId: LAB_ORG_ID,
@@ -233,7 +233,7 @@ await runGoal(async (failures) => {
         runtimeConfig: runtime.runtimeConfig,
       } as never)) as { output?: any; error?: unknown };
     const said = await act("respond", { message: `On FSD: ${goal}` });
-    if (said.error !== undefined) throw new Error(`the chief of staff's turn failed: ${JSON.stringify(said.error)}`);
+    if (said.error !== undefined) throw new Error(`the Shift Coordinator's turn failed: ${JSON.stringify(said.error)}`);
 
     // While the run works, read every process working in the runs' places.
     const seen = new Map<number, ReadProcess>();

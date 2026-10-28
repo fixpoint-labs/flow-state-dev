@@ -113,14 +113,14 @@ await runGoal(async () => {
   };
   const claudeRow = (rows: Row[]) => rows.find((row) => row.harness === "claude-code");
 
-  /** Ask the chief of staff, as `person`, for a task tagged `tag`, and wait for the coder's run to end. */
+  /** Ask the Shift Coordinator, as `person`, for a task tagged `tag`, and wait for the coder's run to end. */
   const runTask = async (person: LabUser, tag: string, until: (task: Record<string, any>) => boolean = ended) => {
     const routes = labRoutes(served.origin, person);
-    const sessionId = `s-cos-${tag}-${RUN_STAMP}`;
-    const created = await routes.call("POST", "/coordinator/sessions", { userId: person.userId, sessionId, state: { workerId: "chief-of-staff" } });
-    if (created.status !== 201) throw new Error(`${tag}: opening the chief of staff's session answered ${created.status} ${JSON.stringify(created.body)}`);
+    const sessionId = `s-shift-coordinator-${tag}-${RUN_STAMP}`;
+    const created = await routes.call("POST", "/coordinator/sessions", { userId: person.userId, sessionId, state: { workerId: "shift-coordinator" } });
+    if (created.status !== 201) throw new Error(`${tag}: opening the Shift Coordinator's session answered ${created.status} ${JSON.stringify(created.body)}`);
     const said = await routes.act("coordinator", sessionId, "respond", { message: `Please take this on. [[usage:${tag}]]` });
-    if (said.status !== "completed") throw new Error(`${tag}: the chief of staff's turn ended ${said.status}: ${said.error ?? ""}`);
+    if (said.status !== "completed") throw new Error(`${tag}: the Shift Coordinator's turn ended ${said.status}: ${said.error ?? ""}`);
     for (const deadline = Date.now() + 120_000; Date.now() < deadline; await sleep(300)) {
       const listed = await routes.act("coordinator", sessionId, LIST_TASKS_ACTION, {});
       const task = (listed.output as { tasks?: Array<Record<string, any>> } | undefined)?.tasks?.[0];

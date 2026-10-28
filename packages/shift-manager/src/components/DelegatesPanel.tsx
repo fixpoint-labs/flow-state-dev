@@ -46,21 +46,21 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
 
   if (sessionId === null || worker.kind === null) {
     return (
-      <p className="px-1 text-xs text-muted-foreground" data-testid="cos-delegates-none">
+      <p className="px-1 text-xs text-muted-foreground" data-testid="shift-coordinator-delegates-none">
         Delegates belong to a conversation. Say something to start one.
       </p>
     );
   }
   if (read === undefined) {
     return (
-      <p className="px-1 text-xs text-muted-foreground" data-testid="cos-delegates-reading">
+      <p className="px-1 text-xs text-muted-foreground" data-testid="shift-coordinator-delegates-reading">
         Reading the delegates…
       </p>
     );
   }
   if ("failure" in read) {
     return (
-      <p className="px-1 text-xs text-destructive" data-testid="cos-delegates-failure">
+      <p className="px-1 text-xs text-destructive" data-testid="shift-coordinator-delegates-failure">
         The delegates didn't load: {read.failure}
       </p>
     );
@@ -83,15 +83,15 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
   };
 
   return (
-    <div data-testid="cos-delegates">
+    <div data-testid="shift-coordinator-delegates">
       {read.list.delegates.length === 0 ? (
-        <p className="px-1 text-xs text-muted-foreground" data-testid="cos-delegates-empty">
+        <p className="px-1 text-xs text-muted-foreground" data-testid="shift-coordinator-delegates-empty">
           No delegates in this conversation.
         </p>
       ) : (
         <ul className="space-y-0.5">
           {read.list.delegates.map((delegate) => (
-            <li key={delegate.worker} className="flex items-center justify-between gap-2 px-1 py-1 text-sm" data-testid="cos-delegate" data-worker={delegate.worker}>
+            <li key={delegate.worker} className="flex items-center justify-between gap-2 px-1 py-1 text-sm" data-testid="shift-coordinator-delegate" data-worker={delegate.worker}>
               <span className="min-w-0 truncate" title={delegate.note}>
                 {workerLabel(roster.find((entry) => entry.id === delegate.worker)?.name ?? delegate.worker)}
               </span>
@@ -100,7 +100,7 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
                 className="shrink-0 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
                 disabled={busy}
                 onClick={() => void change(() => removeDelegate(client, flow, sessionId, delegate.worker))}
-                data-testid="cos-delegate-remove"
+                data-testid="shift-coordinator-delegate-remove"
               >
                 remove
               </button>
@@ -121,7 +121,7 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
             value={picked}
             onChange={(event) => setPicked(event.target.value)}
             aria-label="A worker from your roster"
-            data-testid="cos-delegate-pick"
+            data-testid="shift-coordinator-delegate-pick"
           >
             <option value="">Add from your roster…</option>
             {candidates.map((entry) => (
@@ -139,14 +139,14 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
             type="submit"
             className="border px-2 text-xs disabled:opacity-50"
             disabled={busy || picked === ""}
-            data-testid="cos-delegate-add"
+            data-testid="shift-coordinator-delegate-add"
           >
             add
           </button>
         </form>
       ) : null}
       {refusal === null ? null : (
-        <p className="mt-1 px-1 text-xs text-destructive" data-testid="cos-delegate-refused">
+        <p className="mt-1 px-1 text-xs text-destructive" data-testid="shift-coordinator-delegate-refused">
           {refusal}
         </p>
       )}

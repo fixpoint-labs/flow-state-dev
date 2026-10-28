@@ -102,8 +102,8 @@ function readableDocuments(root: string): string[] {
 
 // ---- a3 / b's reach: every surface, by clicking from the first screen ---------
 
-/** The name typed into Jump to: the id, or Shift Coordinator for `chief-of-staff`, bare or after a team dot (apps/docs/docs/workforce/shift-coordinator.md). */
-const shownName = (id: string) => (id.slice(id.indexOf(".") + 1) === "chief-of-staff" ? "Shift Coordinator" : id);
+/** The name typed into Jump to: the id, or Shift Coordinator for `shift-coordinator`, bare or after a team dot (apps/docs/docs/workforce/shift-coordinator.md). */
+const shownName = (id: string) => (id.slice(id.indexOf(".") + 1) === "shift-coordinator" ? "Shift Coordinator" : id);
 
 /**
  * Walk every surface ER-1 names, by clicking from the first screen, and grade
@@ -125,10 +125,10 @@ export async function walkSurfaces(
 
   // The first screen.
   await open(page, origin, "/");
-  if (!(await visible(page, "cos"))) reach("the first screen is not Chief of Staff");
-  if ((await page.getByTestId("nav-cos").getAttribute("aria-current")) !== "page") reach("Chief of Staff's sidebar entry is not current on the first screen");
-  if (!(await visible(page, "cos-summary"))) reach("Chief of Staff draws no shift summary");
-  if (!(await visible(page, "cos-panel"))) reach("Chief of Staff has no right panel");
+  if (!(await visible(page, "shift-coordinator"))) reach("the first screen is not Shift Coordinator");
+  if ((await page.getByTestId("nav-shift-coordinator").getAttribute("aria-current")) !== "page") reach("Shift Coordinator's sidebar entry is not current on the first screen");
+  if (!(await visible(page, "shift-coordinator-summary"))) reach("Shift Coordinator draws no shift summary");
+  if (!(await visible(page, "shift-coordinator-panel"))) reach("Shift Coordinator has no right panel");
 
   // The org switcher: it names an org, and opens.
   const switcher = page.getByTestId("org-switcher");
@@ -575,7 +575,7 @@ export async function legB(ctx: LegCtx): Promise<void> {
     if (!same(orgs as string[], [DEFAULT_ORG_ID])) report.fail("b:org", `[no resolver] the Lab's sessions sit in [${orgs.join(", ")}], wanted the dev org ${DEFAULT_ORG_ID}`);
     if (shown !== DEFAULT_ORG_ID) report.fail("b:org", `[no resolver] the org switcher names "${shown}", wanted ${DEFAULT_ORG_ID}`);
     if ((await second.page.getByTestId("refusal").count()) + (await second.page.getByTestId("unreachable").count()) > 0) report.fail("b:org", "[no resolver] the Lab opens on a refusal, not the app");
-    if (!(await visible(second.page, "cos", 5_000))) report.fail("b:org", "[no resolver] the Lab opens as an empty app, with no Chief of Staff");
+    if (!(await visible(second.page, "shift-coordinator", 5_000))) report.fail("b:org", "[no resolver] the Lab opens as an empty app, with no Shift Coordinator");
     report.note(`b:org [no resolver]: ask-lab with no bearer; sessions in [${orgs.join(", ")}], switcher "${shown}"`);
   } finally {
     await second.page.close();

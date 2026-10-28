@@ -203,7 +203,7 @@ const PROJECT_POLL_MS = 5_000;
  * time the Lab is read again (`readAt`), and every {@link PROJECT_POLL_MS}
  * while its entries are on screen, on a tab that draws them or open under
  * the project in the sidebar: a workstream is opened by
- * someone else's turn (the chief of staff's, or a coordinator's in another
+ * someone else's turn (the Shift Coordinator's, or a coordinator's in another
  * window), so the list shows it without a reload. `reread` reads it now, as
  * after an open. A read again keeps the last one on screen until it lands,
  * and keeps it if it fails.

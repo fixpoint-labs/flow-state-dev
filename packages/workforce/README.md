@@ -108,7 +108,7 @@ Each record is plain data:
 
 | Field | Description |
 |-------|-------------|
-| `id` | The worker's whole identity, `"<teamId>.<workerName>"` — e.g. `"engineering.lead"`. An org worker's id is its folder name alone, with no dot: `org/workers/chief-of-staff/` is `"chief-of-staff"`, a different worker from `"engineering.chief-of-staff"`. `parseDeclaredWorkerId` reads either shape back. |
+| `id` | The worker's whole identity, `"<teamId>.<workerName>"` — e.g. `"engineering.lead"`. An org worker's id is its folder name alone, with no dot: `org/workers/shift-coordinator/` is `"shift-coordinator"`, a different worker from `"engineering.shift-coordinator"`. `parseDeclaredWorkerId` reads either shape back. |
 | `declared` | The frontmatter exactly as written. Keys are not checked against a list, beyond a required `description` and six refused ones: `persona:`, `workerSkills:`, `workerTools:`, `workerPackages:`, `workerId:` and `teamInstructions:`. |
 | `body` | The Markdown below the frontmatter, verbatim. Empty when the worker has no instructions. |
 
@@ -2266,7 +2266,7 @@ block's `uses`. The tool's description lists the workers the send would take, by
 description, leaving out the sender and any worker that hears only in its tasks' sessions.
 
 ```json
-{ "to": "chief-of-staff", "text": "What's the codename for the spring launch?" }
+{ "to": "shift-coordinator", "text": "What's the codename for the spring launch?" }
 ```
 
 Send to talk; call when the worker needs to use the answer now; file a task for work that should be tracked.
