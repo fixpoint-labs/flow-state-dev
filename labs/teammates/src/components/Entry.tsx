@@ -1,12 +1,14 @@
 import { useState } from "react";
 import type { ConversationEntry } from "../adapter";
 import { cn } from "../lib/utils";
+import { AgentMarkdown } from "./flow-state/message-response";
 
 /**
  * One entry of a conversation. Your lines sit on the right; the worker's
  * answers on the left. A message the worker sent another worker is a one-line
  * card that opens to its full text; a message it received, or a task it
- * filed coming back, lands under the sender's name.
+ * filed coming back, lands under the sender's name. A worker's text is
+ * Markdown; your own lines are shown as typed.
  */
 export function Entry({ entry, workerName, nameOf }: { entry: ConversationEntry; workerName: string; nameOf: (id: string) => string }) {
   switch (entry.kind) {
@@ -21,8 +23,8 @@ export function Entry({ entry, workerName, nameOf }: { entry: ConversationEntry;
       );
     case "assistant":
       return (
-        <div className="max-w-[85%] rounded-lg border border-border bg-card px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap" data-entry="assistant">
-          {entry.text}
+        <div className="max-w-[85%] rounded-lg border border-border bg-card px-3 py-2 text-sm leading-relaxed" data-entry="assistant">
+          <AgentMarkdown text={entry.text} />
         </div>
       );
     case "sent":
@@ -38,7 +40,7 @@ export function Entry({ entry, workerName, nameOf }: { entry: ConversationEntry;
             ← {nameOf(entry.from)}
             {entry.inReplyTo ? " · reply" : ""}
           </div>
-          <p className="mt-0.5 text-sm whitespace-pre-wrap">{entry.text}</p>
+          <AgentMarkdown className="mt-0.5 text-sm" text={entry.text} />
         </section>
       );
     case "result":
@@ -47,7 +49,7 @@ export function Entry({ entry, workerName, nameOf }: { entry: ConversationEntry;
           <div className="font-mono text-[10px] tracking-widest text-success uppercase">
             ← {nameOf(entry.from)} · {entry.failed ? "task failed" : "task done"}
           </div>
-          <p className="mt-0.5 text-sm whitespace-pre-wrap">{entry.text}</p>
+          <AgentMarkdown className="mt-0.5 text-sm" text={entry.text} />
         </section>
       );
     case "task":
