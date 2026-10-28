@@ -61,13 +61,22 @@ const PROSE_RULES: ReadonlyArray<readonly [RegExp, string]> = [
 ];
 
 /**
- * Shift Manager's `cos`, in each spelling. `cos-changes-the-roster` is a retired goal's
- * name, kept as history.
+ * Shift Manager's `cos` in a test id or a file name: `cos-panel`, `nav-cos`, `lab-no-cos`,
+ * `sidebar-and-cos`. The only `cos` rules a path takes. `cos-changes-the-roster` is a
+ * retired goal's name, kept as history.
  */
-const COS_RULES: ReadonlyArray<readonly [RegExp, string]> = [
-  // Test ids and file names: `cos-panel`, `nav-cos`, `lab-no-cos`, `sidebar-and-cos`.
+const PATH_COS_RULES: ReadonlyArray<readonly [RegExp, string]> = [
   [/(?<![\w-])cos-(?!changes-the-roster)/g, "shift-coordinator-"],
   [/(?<=\w)-cos\b/g, "-shift-coordinator"],
+];
+
+/**
+ * Shift Manager's `cos`, in each spelling. The rules run in this order, and the order is
+ * the meaning: a hyphenated or quoted `cos` must be renamed before the identifier rule
+ * sees it. Keep `shift-coordinator-cos` in the vocabulary sweep's rules.mjs matching these.
+ */
+const COS_RULES: ReadonlyArray<readonly [RegExp, string]> = [
+  ...PATH_COS_RULES,
   // The route, and a CSS selector's test id (`[data-testid=cos]`).
   [/\/cos\b/g, "/shift-coordinator"],
   [/(?<=data-testid=)cos\b/g, "shift-coordinator"],
@@ -117,7 +126,7 @@ function apply(text: string, rules: ReadonlyArray<readonly [RegExp, string]>): s
 
 function renamePath(path: string): string {
   const renamed = apply(path, ID_RULES);
-  return COS_PATHS.test(path) ? apply(renamed, COS_RULES.slice(0, 2)) : renamed;
+  return COS_PATHS.test(path) ? apply(renamed, PATH_COS_RULES) : renamed;
 }
 
 // Pass 1: paths, by `git mv`.

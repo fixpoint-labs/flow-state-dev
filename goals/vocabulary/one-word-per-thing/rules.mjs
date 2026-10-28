@@ -83,7 +83,8 @@ export const RETIRED = [
     id: "shift-coordinator-cos",
     files: CODE,
     // FIX-2244: Shift Manager's `cos` route, test ids and names (`cos-panel`, `openCos`, `COS_FLOW`).
-    // `Cost`, `COST`, `cosine` and `Math.cos` are other words.
+    // `Cost`, `COST`, `cosine` and `Math.cos` are other words. Kept matching COS_RULES in
+    // scripts/codemod/rename-chief-of-staff.ts.
     pattern: /(?<!Math\.)\bcos(?=[A-Z0-9_]|\b)|[a-z0-9]Cos(?=[A-Z_]|\b)|\bCOS(?=_|\b)|(?<=_)COS\b/,
     pathName: /(^|[/-])cos([-./]|$)/
   },

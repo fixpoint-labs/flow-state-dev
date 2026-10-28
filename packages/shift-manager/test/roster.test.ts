@@ -138,9 +138,9 @@ describe("BR-12, BR-14, BR-15: counts reduce from the one result", () => {
   const coder = worker("eng.coder");
   const reviewer = worker("eng.reviewer");
   const asker = worker("ops.asker");
-  const chief = worker("shift-coordinator");
+  const shiftCoordinator = worker("shift-coordinator");
   const snapshot = snapshotOf(
-    [coder, reviewer, asker, chief],
+    [coder, reviewer, asker, shiftCoordinator],
     [row("a", "in_progress", "coder"), waiting("b", "coder"), waiting("c", "reviewer"), row("d", "pending", "asker")],
     [ask("ops.asker", "q1"), ask("ops.asker", "q2")],
   );
@@ -155,7 +155,7 @@ describe("BR-12, BR-14, BR-15: counts reduce from the one result", () => {
   });
 
   it("lists teams with General first, each with exactly its workers", () => {
-    expect(teamsOf([coder, chief, asker, reviewer]).map(({ team, name, workers }) => [team, name, workers.map((s) => s.id)])).toEqual([
+    expect(teamsOf([coder, shiftCoordinator, asker, reviewer]).map(({ team, name, workers }) => [team, name, workers.map((s) => s.id)])).toEqual([
       [GENERAL_TEAM, "General", ["shift-coordinator"]],
       ["eng", "eng", ["eng.coder", "eng.reviewer"]],
       ["ops", "ops", ["ops.asker"]],
