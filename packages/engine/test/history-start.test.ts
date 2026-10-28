@@ -267,6 +267,20 @@ describe("items.turns()", () => {
     ]);
   });
 
+  it("lists an interrupted turn /continue can re-enter as unsettled, in the window and by id", async () => {
+    const stores = createInMemoryStores();
+    await seedTurns(stores, "sess_cut", 3);
+    await stores.request.set("req_2", turn("sess_cut", 2, { status: "interrupted" }), "any");
+
+    const ctx = await contextFor(stores, "sess_cut", 5);
+
+    // Continuing it adds output under the same id: it has not settled.
+    const listed = await ctx.session.items.turns();
+    expect(listed.find((t) => t.requestId === "req_2")).toMatchObject({ settled: false, messages: [] });
+    const byId = await ctx.session.items.turns({ requestIds: ["req_2"] });
+    expect(byId.map((t) => [t.requestId, t.settled, t.messages.length])).toEqual([["req_2", false, 0]]);
+  });
+
   it("reads an interrupted turn a retry re-ran by id as settled with nothing to read", async () => {
     const stores = createInMemoryStores();
     await seedTurns(stores, "sess_retried", 3);

@@ -115,6 +115,30 @@ describe("capability history preset key", () => {
     expect(queries).toEqual([undefined]);
   });
 
+  it("reads the same through a dynamic uses entry as a static one when two capabilities share a dependency", async () => {
+    const shared = defineCapability({ name: "shared", presets: { default: ["history"], history: { history: { afterRequestId: "c" } } } });
+    const narrows = defineCapability({
+      name: "narrows",
+      uses: [shared],
+      presets: { default: ["history"], history: { history: { afterRequestId: "b" } } }
+    });
+    const alsoShared = defineCapability({ name: "alsoShared", uses: [shared] });
+    const top = defineCapability({ name: "top", uses: [narrows, alsoShared] });
+    const read = async (uses: never) => {
+      const queries: (ItemQuery | undefined)[] = [];
+      await runForTest(generator({ name: "answer", model: "mock", prompt: "p", history: true, uses }), "hi", contextRecording(queries));
+      return queries;
+    };
+
+    const fixed = await read([top] as never);
+    const dynamic = await read([() => [top]] as never);
+
+    // The shared dependency is reached twice, but its query counts once, so
+    // the one that depends on it still wins.
+    expect(fixed).toEqual([{ afterRequestId: "b" }]);
+    expect(dynamic).toEqual(fixed);
+  });
+
   it("is refused on a block that is not a generator", () => {
     expect(() =>
       handler({ name: "h", inputSchema: z.any(), uses: [afterTurnThree], execute: () => "ok" })

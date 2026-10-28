@@ -169,6 +169,26 @@ describe("historySummary on the engine", () => {
     expect(row?.state).toMatchObject({ summary: null, folds: 0, gap: true, complete: false });
   });
 
+  it("says turns were lost when settled turns left unsummarized behind an older waiting turn", async () => {
+    const stores = createInMemoryStores();
+    const calls: ModelCall[] = [];
+    const flow = chatFlow({ window: 4, summarize: foldingSummarize({ failTimes: 3 }) });
+    await talk(stores, flow, calls, 1);
+    // A turn waiting on an approval, older than the rest of the conversation:
+    // it stays listed however long it waits.
+    const first = (await stores.request.get("req_001"))!;
+    await stores.request.set("req_wait", { ...first, id: "req_wait", status: "suspended", startedAtMs: first.startedAtMs - 1, items: [] }, "any");
+
+    await talk(stores, flow, calls, 7, 2);
+
+    // Three folds failed while turns 1 and 2 left the window; the summary
+    // that recovered must not claim them.
+    const row = await stores.resourceState.get("session", "s", "historySummary");
+    const state = row?.state as { summary: string | null; gap: boolean; complete: boolean };
+    expect(state.summary ?? "").not.toContain("u1");
+    expect(state).toMatchObject({ gap: true, complete: false });
+  });
+
   it("discards its fold when another turn of the conversation folded first", async () => {
     const stores = createInMemoryStores();
     const calls: ModelCall[] = [];
@@ -306,6 +326,33 @@ describe("historySummary on the engine", () => {
     const state = row?.state as { summary: string; gap: boolean };
     expect(state.summary.split(" ")).toEqual(expect.arrayContaining(["u1", "u3", "u4"]));
     expect(state.gap).toBe(false);
+  });
+
+  it("holds an interrupted turn /continue can re-enter pending and folds it once it finishes", async () => {
+    const stores = createInMemoryStores();
+    const calls: ModelCall[] = [];
+    const flow = chatFlow({ window: 4, summarize: foldingSummarize() });
+    await talk(stores, flow, calls, 3);
+    // Turn 2 was cut off by its host dying: /continue can still re-enter it
+    // under the same id and add its final output.
+    const cut = (await stores.request.get("req_002"))!;
+    await stores.request.set("req_002", { ...cut, status: "interrupted" }, "any");
+
+    await talk(stores, flow, calls, 5, 4);
+
+    // Folding its partial output would leave the summary short once it
+    // finished, with nothing to say so.
+    const whileCut = (await stores.resourceState.get("session", "s", "historySummary"))?.state as { summary: string; pending: string[]; complete: boolean };
+    expect(whileCut.summary.split(" ")).not.toContain("u2");
+    expect(whileCut).toMatchObject({ pending: ["req_002"], complete: false });
+
+    // It is continued and completes; the next turn folds it, once.
+    await stores.request.set("req_002", cut, "any");
+    await talk(stores, flow, calls, 1, 9);
+
+    const settled = (await stores.resourceState.get("session", "s", "historySummary"))?.state as { summary: string; pending: string[] };
+    expect(settled.summary.split(" ").filter((word) => word === "u2")).toHaveLength(1);
+    expect(settled.pending).toEqual([]);
   });
 
   it("keeps this turn pending when it is itself a pending turn the fold cannot read yet", async () => {

@@ -44,6 +44,12 @@ export const historySummaryStateSchema = z.object({
   throughStartedAtMs: z.number().nullable().default(null),
   /** The oldest turn after the mark at the last fold. Gone unfolded later means turns were lost. */
   nextRequestId: z.string().nullable().default(null),
+  /**
+   * The oldest settled turn after the mark at the last fold. Tracked apart
+   * from `nextRequestId`, which an older waiting turn can hold for as long as
+   * it waits while settled turns behind it leave the window.
+   */
+  nextSettledRequestId: z.string().nullable().default(null),
   /** Turns behind the mark that had not settled, by request id; folded once they do. */
   pending: z.array(z.string()).default([]),
   /** A turn left the window unsummarized. Stays set: the summary has a hole. */
@@ -68,9 +74,11 @@ type FoldPlan = {
   expectedFolds: number;
   /** The oldest turn after the mark now. A failed fold records it, so its leaving unfolded is seen. */
   oldestUnfolded: string | null;
+  /** The oldest settled turn after the mark now, recorded the same way. */
+  oldestUnfoldedSettled: string | null;
   next: Pick<
     HistorySummaryState,
-    "throughRequestId" | "throughStartedAtMs" | "nextRequestId" | "pending" | "gap" | "complete"
+    "throughRequestId" | "throughStartedAtMs" | "nextRequestId" | "nextSettledRequestId" | "pending" | "gap" | "complete"
   >;
 };
 
@@ -183,21 +191,25 @@ export function historySummary(options: HistorySummaryOptions) {
           ? all.slice(nextAt)
           : all.filter((t) => state.throughStartedAtMs === null || t.startedAtMs > state.throughStartedAtMs);
 
-      // Turns lost: the oldest unfolded turn the last fold saw left the window
-      // unfolded (gone, or before the window's first turn by start time then
-      // id, the engine's turn order; one after the window was folded by a turn
-      // that started after this one loaded), or the summary started after
-      // turns had already left the window.
-      const nextGone =
-        state.nextRequestId !== null && nextAt === -1
-          ? (await ctx.session.items.turns({ requestIds: [state.nextRequestId] }))[0]
-          : null;
-      const first = all[0];
+      // Turns lost: an oldest unfolded turn the last fold saw (any, or
+      // settled) left the window unfolded (gone, or before the window's first
+      // turn by start time then id, the engine's turn order; one after the
+      // window was folded by a turn that started after this one loaded), or
+      // the summary started after turns had already left the window. The
+      // window's first turn is its start mark, not `all[0]`: a waiting turn
+      // older than the window stays listed ahead of it.
+      const first = window.startRequestId === undefined ? undefined : all.find((t) => t.requestId === window.startRequestId) ?? all[0];
       const beforeWindow = (t: HistoryTurn) =>
         first !== undefined &&
         (t.startedAtMs < first.startedAtMs || (t.startedAtMs === first.startedAtMs && t.requestId < first.requestId));
+      const leftUnfolded = async (id: string | null): Promise<boolean> => {
+        if (id === null || all.some((t) => t.requestId === id)) return false;
+        const turn = (await ctx.session.items.turns({ requestIds: [id] }))[0];
+        return turn === undefined || beforeWindow(turn);
+      };
       const lost =
-        (nextGone !== null && (nextGone === undefined || beforeWindow(nextGone))) ||
+        (await leftUnfolded(state.nextRequestId)) ||
+        (await leftUnfolded(state.nextSettledRequestId)) ||
         (state.attempts === 0 && window.startRequestId !== undefined);
 
       const due = after.length > window.turns - quarter;
@@ -220,10 +232,15 @@ export function historySummary(options: HistorySummaryOptions) {
         turns: folded.flatMap((t) => t.messages),
         expectedFolds: state.folds,
         oldestUnfolded: after[0]?.requestId ?? state.nextRequestId,
+        oldestUnfoldedSettled: after.find((t) => t.settled)?.requestId ?? state.nextSettledRequestId,
         next: {
           throughRequestId: last?.requestId ?? state.throughRequestId,
           throughStartedAtMs: last?.startedAtMs ?? state.throughStartedAtMs,
           nextRequestId: last === undefined ? state.nextRequestId : (after[batch.length]?.requestId ?? null),
+          nextSettledRequestId:
+            last === undefined
+              ? state.nextSettledRequestId
+              : (after.slice(batch.length).find((t) => t.settled)?.requestId ?? null),
           pending,
           gap,
           complete: !gap && pending.length === 0,
@@ -282,6 +299,7 @@ export function historySummary(options: HistorySummaryOptions) {
               ...state,
               attempts: state.attempts + 1,
               nextRequestId: decided.oldestUnfolded,
+              nextSettledRequestId: decided.oldestUnfoldedSettled,
               gap: decided.next.gap,
               complete: !decided.next.gap && state.pending.length === 0,
             }
