@@ -2,7 +2,7 @@
  * The two limits on worker messages (FIX-1989 D2) an app sets through
  * `hireWorkforce`'s `messages`: how many messages a chain may pass with no
  * user in between (`budget`), and how many one turn may send
- * (`perTurn`). A leaf module, so the session kit reads them without importing
+ * (`perTurn`). A leaf module, so the session factory reads them without importing
  * the installation.
  */
 

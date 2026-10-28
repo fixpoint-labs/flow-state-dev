@@ -1,6 +1,6 @@
 /**
  * The internal entries a session's board runs on, by name: a leaf module, so
- * the board, the ledger and the filing kit share one spelling without
+ * the board, the ledger and the filing factory share one spelling without
  * importing each other.
  */
 

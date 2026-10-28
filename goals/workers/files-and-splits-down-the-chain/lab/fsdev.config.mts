@@ -6,7 +6,7 @@
  *
  * The tree (`../fixtures/workforce/`), on four flows: the built-in `agent`
  * flow and the coordinator, and two goal-local ones. `foreman` is an app's own
- * worker flow carrying the filing kit (`defineSessionBoard`): the task tools
+ * worker flow carrying the filing factory (`defineSessionBoard`): the task tools
  * on its model block, their actions, and the board's entries. `poster` takes
  * no task: its workers answer a person, and none can be a delegate.
  *
@@ -170,11 +170,11 @@ function posterFlow(installation: any) {
 }
 
 /**
- * `foreman`: an app's own worker flow, carrying the filing kit as an app
+ * `foreman`: an app's own worker flow, carrying the filing factory as an app
  * does. Its turn is one model block with the task tools in its `uses`.
  */
 function foremanFlow(installation: any) {
-  // A commit with no filing kit builds the flow without it: its worker then files nothing.
+  // A commit with no filing factory builds the flow without it: its worker then files nothing.
   const board = typeof wf.defineSessionBoard === "function" ? wf.defineSessionBoard({ installation, flowKind: "foreman" }) : undefined;
   const resolveWorker = core.handler({
     name: "foreman-resolve-worker",

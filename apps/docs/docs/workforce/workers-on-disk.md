@@ -415,8 +415,8 @@ A worker flow must:
   readonly `workerId`, checked when the session is created. A flow without it is refused. Load the worker with `installation.resolveWorker` on
   every turn: in the flow's `request.onStarted`, or in the block that reads it.
 - **Receive messages from other workers.** Mount an `onMessageReceived` internal action built by
-  `messageReceivedEntry`, as [Messaging other workers](./messaging-workers.md#without-the-session-kit)
-  shows. A flow built with `defineSessionBoard` gets it from the kit's `entries(turn)`.
+  `messageReceivedEntry`, as [Messaging other workers](./messaging-workers.md#without-the-session-factory)
+  shows. A flow built with `defineSessionBoard` gets it from the factory's `entries(turn)`.
 - **Declare any resource with `writtenBy` through `sharedResource()`.** A resource that has a
   `writtenBy` field is declared with [`sharedResource()`](#sharing-something-from-a-worker), which
   adds the field itself. A resource you define by hand with a `writtenBy` field is refused, even

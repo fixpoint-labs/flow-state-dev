@@ -78,7 +78,7 @@ export function messageReceivedProblem(name: string, flow: unknown): string | un
   const entry = (flow as { internal?: { actions?: Record<string, unknown> } } | undefined)?.internal?.actions?.[MESSAGE_RECEIVED_ENTRY] as { inputSchema?: { safeParse?: (v: unknown) => { success: boolean } } } | undefined;
   const fix =
     `Build it with \`messageReceivedEntry\`: \`internal: { actions: { ${MESSAGE_RECEIVED_ENTRY}: messageReceivedEntry({ installation, flowKind }) } }\`, ` +
-    "or spread the session kit's `board.entries(turn)`.";
+    "or spread the session factory's `board.entries(turn)`.";
   if (entry === undefined) {
     return `worker flow "${name}" has no "${MESSAGE_RECEIVED_ENTRY}", so no worker on it could hear another worker's message. ${fix}`;
   }
@@ -135,7 +135,7 @@ const messageReceivedOutputSchema = z.object({ reply: z.string().optional() });
 /**
  * Build the `onMessageReceived` entry for a flow: spread it under
  * `internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ ... }) } }`.
- * The session kit's `entries(turn)` spreads it already.
+ * The session factory's `entries(turn)` spreads it already.
  *
  * @param options.turn The flow's turn for a message ({@link MessageReceived}
  *   in). Absent, the message lands as its items and nothing runs.

@@ -5,7 +5,7 @@
  * delegate's name, and the worker answers again with it. The queued
  * `onTaskSettled` then finds nothing owed, so the result is heard once.
  *
- * The flow here is an app's own worker flow carrying the filing kit, whose
+ * The flow here is an app's own worker flow carrying the filing factory, whose
  * turn runs no model: it files the test's tasks for `eng.tasker` and holds the
  * answer open until they end, so each ending lands while the turn runs. One
  * leg runs the built-in `agent` flow with `answerAgain: true` on a scripted
@@ -91,7 +91,7 @@ type Controls = {
   turns: Turn[];
 };
 
-/** An app's own worker flow on the filing kit: a door, a turn that files and answers, and the answer-again source under test. */
+/** An app's own worker flow on the filing factory: a door, a turn that files and answers, and the answer-again source under test. */
 function deskFlow(installation: WorkerInstallation, controls: Controls, source: BlockDefinition<any, any> | undefined, marksUserTurn: boolean) {
   const board = defineSessionBoard({ installation, flowKind: "desk" });
   const turn = handler({

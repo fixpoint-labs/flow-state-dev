@@ -603,8 +603,8 @@ refuses, the last naming the action to rename. A resource with a `writtenBy` fie
 `hireWorkforce` also requires every worker flow to carry an internal `onMessageReceived` entry built
 by `messageReceivedEntry`, so any worker can be [messaged](#worker-messages); a flow without one, or
 with a hand-built entry under that name, is refused, naming the flow. `defineSessionBoard`'s `entries(turn)`
-includes it. A flow whose model is offered `sendMessage` (the kit's `messages` in a block's static
-`uses`) must also carry the kit's `dispatch` pass, which sends a message again until it lands; one
+includes it. A flow whose model is offered `sendMessage` (the factory's `messages` in a block's static
+`uses`) must also carry the factory's `dispatch` pass, which sends a message again until it lands; one
 without it is refused, naming the flow. Spread `entries(turn)` and declare the `manager` role.
 
 Each declared role's entries must be there, in their section, carrying their factory's mark, and
@@ -2142,7 +2142,7 @@ result in a task session). A request with no step costs nothing more.
 
 - **Who gets them.** On the built-in `agent` and `coordinator` flows a worker's turn has the task
   tools for its steps whatever its delegates; your own flow gets steps by wrapping its turn in the
-  kit's `planned(turn)`.
+  factory's `planned(turn)`.
 - **Who files them.** Only the worker's own turn files a step (an action naming the worker is
   refused), and the turn that answers files none.
 - **What a call can't do.** A step isn't waited on, held or finished by a call, and `updateTask`
@@ -2244,7 +2244,7 @@ flow-isolated key (`{ id: flowId, isolateUserState: true }`) finds nothing. Type
 
 A worker can send any other worker on its user's roster a short message: a question, an FYI, a
 heads-up. Workers on the built-in `agent` flow and the coordinator flow get the `sendMessage` tool
-on every turn. On a flow built with `defineSessionBoard`, add the kit's `messages` to the model
+on every turn. On a flow built with `defineSessionBoard`, add the factory's `messages` to the model
 block's `uses`. The tool's description lists the workers the send would take, by id and
 description, leaving out the sender and any worker that hears only in its tasks' sessions.
 
@@ -2325,7 +2325,7 @@ Send to talk; call when the worker needs to use the answer now; file a task for 
   nothing behind it. A task a woken worker files, and a delegate's ongoing session, draw on the
   filer's budget. Filing a task spends nothing; a refused send and a task's question to its filer
   spend nothing. A woken turn's
-  `budget` (and the session kit's prompt) says how many more messages the exchange can send. Set
+  `budget` (and the session factory's prompt) says how many more messages the exchange can send. Set
   both with `hireWorkforce(installation, { messages: { budget, perTurn } })`; each must be a
   whole number of at least 1, or `hireWorkforce` throws.
 - **The log.** Every message is a row in the user's `workforce/messages/*` collection
@@ -2358,8 +2358,8 @@ Send to talk; call when the worker needs to use the answer now; file a task for 
   line in the sending session, `Your message msg_… to <worker> wasn't delivered: <reason>.`, which
   its next turn reads; no turn is started for it. Resends run on the session's wake, so they need a
   host that keeps wakes; without one, an owed message is sent again only when that session's board
-  pass runs for something else. A worker flow that offers `sendMessage` without the session kit's
-  `entries(turn)` is refused at hire; a flow that sends from its own code with no kit (`sendMessage(ctx, …)`)
+  pass runs for something else. A worker flow that offers `sendMessage` without the session factory's
+  `entries(turn)` is refused at hire; a flow that sends from its own code with no factory (`sendMessage(ctx, …)`)
   sends once.
 
 A message is not a task: it files no row, owes no result, and doesn't count toward `taskChainLimit`.
@@ -2393,8 +2393,8 @@ needs a host whose `requestHost` carries `sessions` (the engine's does).
 
 Every worker flow must carry an `onMessageReceived` built by `messageReceivedEntry`:
 `hireWorkforce` refuses one that doesn't, naming the flow, and refuses a hand-built entry under
-that name too. The session kit's `entries(turn)` includes it, with the turn wrapped by
-`promptedMessageTurn`. A flow without the kit mounts it itself and adds the log to its resources:
+that name too. The session factory's `entries(turn)` includes it, with the turn wrapped by
+`promptedMessageTurn`. A flow without the factory mounts it itself and adds the log to its resources:
 
 ```ts
 import {
@@ -2484,7 +2484,7 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 | `installation.rosterWorker(ctx, id)` / `installation.standardWorkerProblems()` | The worker an id names on the session user's roster, read by id (`undefined` for another user's, as for a missing one); and every standard worker's configuration problems, for a load-time refusal. |
 | `installation.roster(ctx)` | The session user's whole roster, as it stands when called: their own workers and every standard worker, sorted by id, each a `RosterWorker` (whose `delegates` lists the worker ids its configuration names; empty when none). The block must declare `installation.resources`. |
 | `defineCoordinatorFlow({ installation, routeModel, agent?, roundDeadlineMs? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `respond`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. Its judgment is the agent's turn, built with the `agent` options; `agent.isolateUserState` keys this flow's user-scoped storage by its copy, as it does `agent`'s. `roundDeadlineMs` is how long a round waits for its answers (five minutes by default); a value that isn't a positive whole number of milliseconds throws. |
-| `defineSessionBoard({ installation, flowKind })` | The task-filing kit for a worker flow of your own (see [Delegating work](https://flow-state.dev/docs/workforce/delegating-work)): `tools` for the model block's `uses` (Orchestration's task tools, present only while the session has a delegate that takes tasks), `progress` for the same `uses` (`reportProgress` on a turn working a task), `delegateTools` for the same `uses` (`listDelegates`, plus `addDelegate`, `removeDelegate` and `setFallback` on a worker set to `editsOwnDelegates: true`), `actions` (the task tools as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`), `resources`, `sessionStateShape` for `installation.session(...)`, `serverOwned` for `session.serverOwned`, `messages` for the same `uses` (the `sendMessage` tool; see [Worker messages](#worker-messages)), `entries(turn)` for `internal: { actions }`, which carries `onTaskSettled` (where each ending of a task the session filed arrives, once) and `onMessageReceived` (where a worker message arrives), `planned(turn)` to wrap a turn so the steps its worker files for itself run in its request (use the wrapped turn for `run`, the task entry and `entries`), and `files(ctx)` / `taskDelegates(ctx)` to read whether the session files and who takes its tasks. |
+| `defineSessionBoard({ installation, flowKind })` | The task-filing factory for a worker flow of your own (see [Delegating work](https://flow-state.dev/docs/workforce/delegating-work)): `tools` for the model block's `uses` (Orchestration's task tools, present only while the session has a delegate that takes tasks), `progress` for the same `uses` (`reportProgress` on a turn working a task), `delegateTools` for the same `uses` (`listDelegates`, plus `addDelegate`, `removeDelegate` and `setFallback` on a worker set to `editsOwnDelegates: true`), `actions` (the task tools as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`), `resources`, `sessionStateShape` for `installation.session(...)`, `serverOwned` for `session.serverOwned`, `messages` for the same `uses` (the `sendMessage` tool; see [Worker messages](#worker-messages)), `entries(turn)` for `internal: { actions }`, which carries `onTaskSettled` (where each ending of a task the session filed arrives, once) and `onMessageReceived` (where a worker message arrives), `planned(turn)` to wrap a turn so the steps its worker files for itself run in its request (use the wrapped turn for `run`, the task entry and `entries`), and `files(ctx)` / `taskDelegates(ctx)` to read whether the session files and who takes its tasks. |
 | `coordinatorConfigSchema()`, `coordinatorRouteRecordSchema`, `COORDINATOR_FLOW`, `COORDINATOR_ROUTE` | A coordinator's configuration, its routing record, the flow's kind and the record's component name. |
 | `workerFlow(build, { standardOnly?, roles? })` | A worker flow built on its installation, for a flow in its own file: the installation calls `build(installation)` once. `roles` declares what it does beside taking a message (`contributor`, `manager`), checked at hire. Goes in `workerFlows`, and is what `fsdev gen`'s `workerFlows` holds. |
 | `WORKER_ROLES` / `WorkerRole` | The roles a worker flow may declare: `contributor`, `manager`, `coordinator`. |
@@ -2515,7 +2515,7 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 | `renderWorkforceCode(files, modules, workerBlocks?, packageBlocks?)` | Render a discovery's `files`, `resourceModules`, `workerBlocks` and `packageBlocks` as a module of static imports exporting `workerFlows`, `blocks`, `resourceModules`, `workerBlocks` and `packageBlocks`. Pass all four: the last two default to `[]`, so omitting one renders an empty map and reports nothing. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
 | `hireWorkforce(installation, { taskChainLimit?, messages? })` | The flows to register for an installation: one copy of each worker flow, under its name, and the roster flow (`workforce-roster`) with `hire`, `fork`, `edit` and `fire`. Throws, naming every problem, when a worker flow misses the contract or doesn't declare the installation's session, or when a standard worker would be refused on its first turn; nothing is registered. `taskChainLimit` is the most tasks one top task may have under it, at any depth (100 when omitted); a value that isn't a whole number of at least 1 throws. `messages: { budget?, perTurn? }` limits [worker messages](#worker-messages) (6 and 3 when omitted), under the same rule. |
 | `SEND_MESSAGE_TOOL` / `MESSAGE_RECEIVED_ENTRY` / `RECEIVED_MESSAGE_COMPONENT` / `WORKER_MESSAGES_RESOURCE` / `WORKER_MESSAGES_PATTERN` / `workerMessageRowSchema` / `WorkerMessageRow` / `MAX_MESSAGE_CHARS` / `DEFAULT_MESSAGE_BUDGET` / `DEFAULT_MESSAGES_PER_TURN` / `sendMessageInputSchema` | [Worker messages](#worker-messages): the tool's name (`"sendMessage"`), the entry a message arrives on (`"onMessageReceived"`), the component item type a received message is drawn by (`"workforce:received"`), the log's accessor and pattern and its row schema, the 8,000-character cap, the default limits (6 and 3), and the tool's input schema. Also exported: `MESSAGE_STATUSES`, `MessageAddress`, `workerMessagesCollection` and `workerMessagesResources` (the log as a flow resource), and `sendMessage(ctx, installation, flowKind, { to, text, inReplyTo? }, from, { id? })`, the send the tool runs, answering a `SendOutcome` (`{ ok: true, id }` or `{ ok: false, error }`); its input type is `SendMessageInput`. Pass a server-chosen `id` to make a repeated send one message: when its row already exists, the repeat writes nothing, spends no budget and answers `{ ok: true, id }`. The tool never passes one. `checkTaskTarget` / `checkTargetSession` / `MessageTarget` / `TargetCheck` / `CheckedTarget`: see [Addressing a task or a conversation](#addressing-a-task-or-a-conversation). |
-| `messageReceivedEntry({ installation, flowKind, turn?, hears? })` / `MessageHearing` | The `onMessageReceived` internal entry every worker flow carries (see [Worker messages](#worker-messages)). `turn` runs with a `MessageReceived` after the message lands; left out, nothing runs. `hears: "task-sessions"` (`MessageHearing`) makes the flow's workers hear only in their tasks' sessions, refusing a message by name with `task_sessions_only`. The session kit's `entries(turn)` includes one. |
+| `messageReceivedEntry({ installation, flowKind, turn?, hears? })` / `MessageHearing` | The `onMessageReceived` internal entry every worker flow carries (see [Worker messages](#worker-messages)). `turn` runs with a `MessageReceived` after the message lands; left out, nothing runs. `hears: "task-sessions"` (`MessageHearing`) makes the flow's workers hear only in their tasks' sessions, refusing a message by name with `task_sessions_only`. The session factory's `entries(turn)` includes one. |
 | `messageReceivedSchema` / `MessageReceived` / `messageReceivedInputSchema` | What a turn hears, `{ id, from, text, call, inReplyTo?, budget }` (`call` is `true` for a call, whose reply is the turn's final text; `budget` is how many more messages the exchange can send), and what the entry takes, `{ messageId }`. |
 | `promptedMessageTurn(turn)` / `receivedMessagePrompt(received)` | Wrap a block that takes `{ message }` so it can serve as `messageReceivedEntry`'s `turn`, and the text it hands that block: who wrote, which message, how to answer with `sendMessage` and `inReplyTo`, and the budget left; for a call, that the sender is waiting and the reply is the turn's final text. |
 | `mergeWorkerFlows(flows, workers)` | Add the flows `hireWorkforce` returned to your app's flows record under their ids, for `createFlowState({ flows })`. Throws, naming the id, when one is already in `flows`. |

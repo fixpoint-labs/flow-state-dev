@@ -8,7 +8,7 @@
  *   `NOTICE_DUE_MS`), puts the id on the session's owed list beside the
  *   sending request's id, writes the row, and dispatches once
  *   (`send-message.ts`). A session whose flow carries no pass (a server-sent
- *   message from a flow without the session kit) sends on that one dispatch
+ *   message from a flow without the session factory) sends on that one dispatch
  *   only, and owes nothing.
  * - **The take** is the recipient's: `onMessageReceived` records `takenBy` on
  *   the row in one guarded write while it is `unconfirmed`, by orchestration's
@@ -115,7 +115,7 @@ export function sendWithoutPassProblem(name: string, flow: unknown): string | un
   if (flowCarriesPass(flow) || !offersSendMessage(flow)) return undefined;
   return (
     `worker flow "${name}" offers "${SEND_MESSAGE_TOOL}" but has no "${DISPATCH_ENTRY}" pass, so a message whose own dispatch ` +
-    "fails would never be sent again. Spread the session kit's `board.entries(turn)` into `internal.actions`, and declare the `manager` role."
+    "fails would never be sent again. Spread the session factory's `board.entries(turn)` into `internal.actions`, and declare the `manager` role."
   );
 }
 

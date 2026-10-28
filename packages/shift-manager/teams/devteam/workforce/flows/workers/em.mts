@@ -10,7 +10,7 @@
  * harness — not merely "it happened not to". Search this file for the word
  * harness and the only hits are in this paragraph.
  *
- * What it has instead is its session's own task board, Workforce's filing kit
+ * What it has instead is its session's own task board, Workforce's filing factory
  * (`defineSessionBoard`). An EM worker leads a workstream as an ordinary
  * worker: its `WORKER.md` names the coder and the reviewer as `delegates:`,
  * both of which take tasks, and that list is what gives its sessions the task
@@ -172,7 +172,7 @@ export interface EmWorkerFlowOptions {
 export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
   const { installation } = options;
   const readOwnFacts = defineReadOwnFacts(workerOf(installation, EM_FLOW));
-  const kit = defineSessionBoard({ installation, flowKind: EM_FLOW });
+  const factory = defineSessionBoard({ installation, flowKind: EM_FLOW });
   const toolNames = Object.keys(options.catalog);
   const settingsOf = (ctx: BlockContext): EmSettings => workerConfigOf(ctx) as EmSettings;
 
@@ -188,7 +188,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     inputSchema: z.object({ message: z.string() }),
     itemVisibility: { client: true, history: true },
     history: routedTaskHistory,
-    uses: [kit.tools, kit.messages],
+    uses: [factory.tools, factory.messages],
     prompt: [
       (_input: unknown, ctx: BlockContext) => settingsOf(ctx).teamInstructions,
       (_input: unknown, ctx: BlockContext) => settingsOf(ctx).instructions,
@@ -217,7 +217,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     ctx: BlockContext,
     input: { issue: string; goal: string; maxAttempts: number; project?: ProjectAddress },
   ): Promise<{ taskId: string; existed: boolean }> => {
-    const tasks = await kit.board.resolver(ctx);
+    const tasks = await factory.board.resolver(ctx);
     if (tasks === undefined) {
       throw new Error("this session files no tasks: none of its worker's delegates takes one");
     }
@@ -325,7 +325,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     .tapIf((decision) => decision.approved, fileApproved)
     // The approved branch runs the board's pass, through its entry (one at a
     // time, FIX-2078), so Approve starts the coder's run without a second call.
-    .tapIf((decision) => decision.approved, () => ({}), kit.board.triggerPass)
+    .tapIf((decision) => decision.approved, () => ({}), factory.board.triggerPass)
     .tapIf((decision) => !decision.approved, refuseAsked);
 
   /**
@@ -349,13 +349,13 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
       model: z.string().min(1).optional(),
       tools: z.array(toolNames.length > 0 ? z.enum(toolNames as [string, ...string[]]) : z.never()).optional(),
     }),
-    session: { ...installation.session(kit.sessionStateShape), serverOwned: [...kit.serverOwned] },
-    resources: { ...options.resources, ...installation.resources, ...kit.resources },
+    session: { ...installation.session(factory.sessionStateShape), serverOwned: [...factory.serverOwned] },
+    resources: { ...options.resources, ...installation.resources, ...factory.resources },
     // The worker is loaded first.
     request: { onStarted: resolveEmWorker },
     actions: {
       [FILE_ENTRY]: { block: fileRow, description: "File one feature as a row on this session's board." },
-      [DRAIN_ENTRY]: { block: kit.board.triggerPass, description: "Run this session's board until nothing it can start is waiting." },
+      [DRAIN_ENTRY]: { block: factory.board.triggerPass, description: "Run this session's board until nothing it can start is waiting." },
       // A third action rather than a flag on `file`: `file` is the direct door
       // a check drives, and a flag that made it wait would change what that
       // check proves. Durable, because the answer arrives in a later request
@@ -377,7 +377,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
         description: "A user's line, which the EM answers, filing the coder's tasks it calls for.",
       },
       // The nine task actions and the four delegate actions.
-      ...kit.actions,
+      ...factory.actions,
     },
     // A coordinator's routed task (FIX-2083): the project coordinator's, for
     // the workstream this worker leads, or the chief of staff's. A routed task
@@ -389,7 +389,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
         [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry(),
         // A run of the board, each task's notice (which wakes the turn), and
         // a split task's settle and cancel.
-        ...kit.entries(turn),
+        ...factory.entries(turn),
       },
     },
   } as never);
