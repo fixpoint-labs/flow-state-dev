@@ -139,7 +139,7 @@ Once a worker has claimed the task, the answer is `started`. A retry that return
 - `dependency_ended`: the dependency has already failed or been cancelled, so the task could never start.
 - `dependency_loop`: the dependencies lead back to the task itself.
 
-In an `createTasks` batch, the ids in the same batch count as on the board, so a batch can file a whole chain. A batch row filed already failed or cancelled counts as an ended dependency, and a batch that names one id twice is refused (`duplicate_task_id`). A refusal anywhere in the batch files none of it.
+In a `createTasks` batch, the ids in the same batch count as on the board, so a batch can file a whole chain. A batch row filed already failed or cancelled counts as an ended dependency, and a batch that names one id twice is refused (`duplicate_task_id`). A refusal anywhere in the batch files none of it.
 
 ### When a task ends badly, its dependents end too
 

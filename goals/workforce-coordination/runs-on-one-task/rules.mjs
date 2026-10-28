@@ -82,13 +82,13 @@ const words = (...names) => new RegExp(`\\b(${names.join("|")})\\b`);
 export const REMOVED = [
   // ---- tools and their `_tasks` actions (FIX-2081, FIX-2080, FIX-2083) ----
   // A tool's name means the tool where it is a tool's or an action's name: `named("x")`, a
-  // quoted `"x"` or `"x_<board>"`, or a page's `x` tool. `addTask` is also the collection's
-  // method, which stays, so only those shapes are read for it.
+  // quoted `"x"` or `"x_<board>"`, or a page's `x` tool. `addTask` was also the collection's
+  // method until FIX-2243 renamed it `createTask`, so only those shapes are read for it.
   {
     row: "`addTask",
     kind: "text",
     files: SWEPT_TEXT,
-    // Only where the name is a tool's or an action's: the collection's `addTask` method stays.
+    // Only where the name is a tool's or an action's, never prose about the collection's old method.
     pattern: /named\(\s*["']addTask["']|\b(name|toolName)\s*(:|===)\s*["'`]addTask["'`]|\baddTask_\w+|`addTask`\s+(tool|action)\b|\btool\s+`addTask`/,
     owner: "FIX-2081",
   },

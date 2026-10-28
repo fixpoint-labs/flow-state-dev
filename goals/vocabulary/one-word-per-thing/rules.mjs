@@ -352,10 +352,10 @@ export const KEEP = [
     why: "D2: a notice's asked flag is a process-internal wire value, kept so a notice owed across the upgrade is taken (WR-13)"
   },
   {
-    path: /^packages\/(core|engine)\/(src\/execution\/request-side-chain-pool\.ts|test\/request-side-chain-pool\.test\.ts)$/,
+    path: /^packages\/((core|engine)\/(src\/execution\/request-side-chain-pool\.ts|test\/request-side-chain-pool\.test\.ts)|tools\/test\/bash-moat-purge\.test\.ts)$/,
     line: /\baddTask\b/,
     rules: ["task-tool-names"],
-    why: "FIX-2243: the engine's side-chain pool's addTask adds a promise to a request's pool, not a task to a collection"
+    why: "FIX-2243: the engine's side-chain pool's addTask (or a test's stand-in pool) adds a promise to a request's pool, not a task to a collection"
   },
   {
     path: /^packages\/core\/src\/blocks\/sequencer\.ts$/,

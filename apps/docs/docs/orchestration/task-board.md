@@ -155,7 +155,7 @@ The `dispatcher` option only orders claims. The `dispatcher()` block from `@flow
 
 ## Dependencies
 
-A task's `deps` name the tasks that must complete before it can be claimed. A dependency the board could never satisfy is refused when it is filed: an id that names no task on the board, a dependency that has already failed or been cancelled, or `deps` that loop back to the task. The add throws a `TaskFilingRefusedError` and files nothing; in an `createTasks` batch or `initialTasks`, the ids in the same batch count. See [Task substrate → Dependencies are checked when you file](./task-substrate.md#dependencies-are-checked-when-you-file).
+A task's `deps` name the tasks that must complete before it can be claimed. A dependency the board could never satisfy is refused when it is filed: an id that names no task on the board, a dependency that has already failed or been cancelled, or `deps` that loop back to the task. The add throws a `TaskFilingRefusedError` and files nothing; in a `createTasks` batch or `initialTasks`, the ids in the same batch count. See [Task substrate → Dependencies are checked when you file](./task-substrate.md#dependencies-are-checked-when-you-file).
 
 ### When a dependency fails
 
