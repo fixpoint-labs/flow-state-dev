@@ -13,7 +13,7 @@ import type { MessageItem, OutputItem } from "@flow-state-dev/core/items";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createExecutionContext, createInMemoryStores } from "../src";
+import { createExecutionContext, createFlowApiRouter, createFlowRegistry, createInMemoryStores } from "../src";
 import type { RequestRecord, StoreRegistry } from "../src/stores/types";
 
 const noopHandler = handler({ name: "noop", execute: () => "ok" });
@@ -100,6 +100,30 @@ describe("historyStart: where the turns a request read begin", () => {
     expect(ctx.session.window).toEqual({ turns: 3, startRequestId: "req_3" });
     const record = await stores.request.get("req_cur");
     expect(record?.historyStart).toEqual({ requestId: "req_3" });
+  });
+
+  it("reaches a screen through the session's request list", async () => {
+    const stores = createInMemoryStores();
+    await seedTurns(stores, "sess_list", 5);
+    const flow = makeFlow(3);
+    await createExecutionContext({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      requestId: "req_cur",
+      sessionId: "sess_list",
+      userId: "u1",
+      stores
+    });
+    const registry = createFlowRegistry();
+    registry.register(flow);
+    const router = createFlowApiRouter({ registry, stores });
+
+    const path = ["sessions", "sess_list", "requests"];
+    const response = await router.GET(new Request(`http://localhost/api/flows/${path.join("/")}`), { params: { path } });
+
+    const { requests } = (await response.json()) as { requests: { id: string; historyStart?: unknown }[] };
+    expect(requests.find((r) => r.id === "req_cur")?.historyStart).toEqual({ requestId: "req_3" });
   });
 
   it("records nothing while every earlier turn is still in the window", async () => {
