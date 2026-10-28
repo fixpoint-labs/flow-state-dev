@@ -84,7 +84,8 @@ describe("a task's midway question", () => {
 });
 
 describe("the text a question is told in", () => {
-  const hold = (prompt: string) => ({ id: "hold_1", ask: { prompt } }) as unknown as RowHold;
+  const question = (prompt: string) => ({ kind: "question" as const, prompt });
+  const hold = (prompt: string) => ({ id: "hold_1", ask: question(prompt) }) as unknown as RowHold;
   const row = (fields: Partial<Task> = {}) => ({ id: "task_1", goal: "pick a region", ...fields }) as Task;
 
   it("tells a routed task's filer the user answers it, not how to answer it: the question is the user's alone", () => {
