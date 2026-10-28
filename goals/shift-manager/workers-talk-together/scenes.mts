@@ -282,6 +282,10 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
     const final = after ?? (await rowOf(alice, helperA, taskId));
     question ??= everAsked(final)[0];
     const heard = (await receivedIn(alice, helperA.id)).filter((m) => m.from === HELPER_B && m.text.includes(taskId));
+    // Asked and answered between two polls: the question's id is in its message's id (`q:<task>:<hold>`), and in the steer that answered it.
+    const told = heard.map((m) => /^q:[^:]+:(.+)$/.exec(String(m.id))?.[1]).find((id) => id !== undefined);
+    const answered = ((final?.steers ?? []) as TaskRow[]).find((s) => typeof s.answers === "string")?.answers;
+    question ??= told !== undefined && told === answered ? ({ id: told } as TaskRow) : undefined;
     const heardRequests = await alice.routes.requests(helperA.id);
     const items = await alice.routes.items(helperA.id, "component");
     const heardItem = items.find((i) => i.id === heard[0]?.itemId) as Record<string, unknown> | undefined;
