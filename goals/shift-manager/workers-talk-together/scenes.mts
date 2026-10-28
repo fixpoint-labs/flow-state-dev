@@ -112,7 +112,7 @@ export async function hireRing(world: World): Promise<string[]> {
       flow: "agent",
       description: `${id}: passes messages on.`,
       instructions:
-        `Whenever another worker messages you, pass its text on to ${other} with sendMessage, every time, with no exceptions and no other words. ` +
+        `Whenever another worker messages you, pass its text on to ${other} with sendMessage, every time, with no exceptions: give to "${other}" and text, the text you heard copied word for word, and leave inReplyTo out. ` +
         "Always make that sendMessage call, even when you're told the exchange can send no more messages: the tool decides, and you report what it answered. " +
         `When the user asks you to start the ring, message ${other} as told.`,
       settings: { model: "openai/gpt-5.4-mini" },
@@ -229,10 +229,16 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
     return r;
   }
 
+  // Helper A's file tells it to answer a worker's question by message; a task's question is answered by
+  // updateTask, so Alice gives it a standing rule first, through its own rules tool.
+  const rule = await talkThrough(world, "e", HELPER_A, helperA, `Save this as a standing rule with rules_add, word for word: "When a task I filed asks me a question, I answer it only with updateTask (the task's id, the question's id as question, the answer as message), never with sendMessage."`);
+  const saved = (await alice.routes.items(helperA.id, "tool_output")).some((i) => i.requestId === rule.requestId && /^rules[_/]add$/.test(String(i.toolCall?.name)));
+  if (!saved) r.notes.push(`e: Helper A saved no standing rule (${rule.status}): ${rule.reply.slice(0, 200)}`);
+
   const boardBefore = new Set((await boardOf(alice, helperA.flowKind, helperA.id)).map((t) => t.id));
   const logBefore = new Set((await logOf(alice)).map((m) => m.id));
   const words =
-    `Do these in order, in this one turn. First, start ${HELPER_B} on a task with createTask, with no questions (the task asks its own while it works), whose goal is, word for word: ` +
+    `Do these in order, in this one turn. First, start ${HELPER_B} on a task with createTask, leaving the questions field out entirely (the task asks its own while it works), whose goal is, word for word: ` +
     `"Write a one-line welcome for the ${topic} gala that names its venue. You don't know the venue: before writing, ask the worker who filed this task for it with askQuestion, then write the line." ` +
     `Second, call sendMessage with to "${RESEARCHER}", text "What is seven times six? Answer with the number only.", wait: true and deadline: ${PARKED_CALL_MS}. ` +
     `Then tell me what you got. The ${topic} gala's venue is ${venue}. When ${HELPER_B}'s task asks you for it, answer only by calling updateTask with that task's id, the question's id as question, and the venue as message. Don't message or call anyone about it.`;
@@ -266,12 +272,15 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
     for (const a of ["e:filer-hears", "e:heard-while-calling", "e:steer-releases"]) r.failures.push(`${a} — setup: Helper A filed Helper B no task: calls ${show(calls.map((c) => c.args))}`);
   } else if (run.question) {
     const taskId = String(filed.id);
+    // The task read lists only open holds, so the question is caught while it is open.
+    let question: TaskRow | undefined;
     const after = await until(async () => {
       const now = await rowOf(alice, helperA, taskId);
+      question ??= everAsked(now)[0];
       return now !== undefined && TERMINAL.has(String(now.status)) ? now : undefined;
-    }, 300_000, 2_000);
+    }, 300_000, 1_000);
     const final = after ?? (await rowOf(alice, helperA, taskId));
-    const question = everAsked(final)[0];
+    question ??= everAsked(final)[0];
     const heard = (await receivedIn(alice, helperA.id)).filter((m) => m.from === HELPER_B && m.text.includes(taskId));
     const heardRequests = await alice.routes.requests(helperA.id);
     const items = await alice.routes.items(helperA.id, "component");
@@ -292,9 +301,12 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
         r.failures.push(`e:heard-while-calling — the question was stored at ${at}, not before the parked call resolved (it went on at ${resumed}, deadline ${callRow?.deadlineAt})`);
       }
       // e:steer-releases — the filer's steer answers it, and the task finishes on attempt 1.
-      const steers = ((final?.steers ?? []) as TaskRow[]).filter((s) => s.answers === question.id);
+      const steers = ((final?.steers ?? []) as TaskRow[]).filter((s) => s.answers === question!.id);
       if (steers.length === 0 || steers[0]!.from !== "filer" || final?.status !== "completed" || final.attempts !== 1) {
         r.failures.push(`e:steer-releases — the task ended ${final?.status} on attempt ${final?.attempts}, steers ${show(final?.steers)}`);
+      } else if (!String(steers[0]!.message).toLowerCase().includes(venue.toLowerCase())) {
+        // Only Helper A was told the venue, in the line whose request is parked on the call.
+        r.failures.push(`e:steer-releases — the filer's answer doesn't carry the venue it was told, ${venue}: ${show(steers[0]!.message)}`);
       } else if (!String(final.output?.text ?? show(final.output)).toLowerCase().includes(venue.toLowerCase())) {
         r.notes.push(`e: the task's output doesn't name ${venue}: ${show(final.output)}`);
       }
@@ -351,7 +363,7 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
   await quiet(alice, 240_000);
   if (callId !== undefined) {
     const rowsBefore = new Set((await logOf(alice)).map((m) => m.id));
-    const kept = await talkThrough(world, "e", HELPER_A, helperA, `Your call ${callId} to ${RESEARCHER} asking what seven times six is answered running. Get its reply now: wait again on it with sendMessage, passing only callId "${callId}". Then tell me the reply.`);
+    const kept = await talkThrough(world, "e", HELPER_A, helperA, `Your call ${callId} to ${RESEARCHER} asking what seven times six is answered running. Get its reply now: wait again on it by calling sendMessage with exactly {"callId": "${callId}"}: no wait, to or text field. Then tell me the reply.`);
     const again = kept.calls.find((c) => c.args.callId === callId);
     const after = (await logOf(alice)) as CallRow[];
     const newRows = after.filter((m) => !rowsBefore.has(m.id) && m.from === HELPER_A);
