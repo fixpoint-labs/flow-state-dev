@@ -367,15 +367,6 @@ function routedTaskId(messageRequestId: string, round: number, delegate: Delegat
   return `routed:${routedIdParts(messageRequestId, round, delegate)}`;
 }
 
-/**
- * The id a coordinator before FIX-2083 gave the same message to the same
- * delegate, as a post row (BP-030): a routing replayed across the upgrade
- * finds it, and files no second task for a pick already handed the message.
- */
-function legacyPostRowId(messageRequestId: string, round: number, delegate: DelegateRef): string {
-  return `post:${routedIdParts(messageRequestId, round, delegate)}`;
-}
-
 function routedIdParts(messageRequestId: string, round: number, delegate: DelegateRef): string {
   const parts = [messageRequestId, String(round), delegate.worker, ...(delegate.target === undefined ? [] : [delegate.target])];
   return parts.map(encodeURIComponent).join(":");
@@ -600,9 +591,6 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     };
     const id = routedTaskId(request.messageRequestId, request.round, named);
     const handedBefore = { routed: { ...named, outcome: "skipped" as const, reason: "it was already handed this message in this round" } };
-    // Handed this message before the upgrade, as a post row (BP-030).
-    const legacyId = legacyPostRowId(request.messageRequestId, request.round, named);
-    if ((await conversationLedgerAt(ctx, request.filingSessionId))?.get(legacyId) !== undefined) return { ...handedBefore, taskId: legacyId };
     try {
       const filed = await sessionBoard.fileRouted(ctx as never, {
         // What the judgment turn's model asked beside the message: its goal,

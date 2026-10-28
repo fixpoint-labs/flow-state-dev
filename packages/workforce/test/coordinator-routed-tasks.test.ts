@@ -279,13 +279,12 @@ describe("the judgment turn's filing on a turn routing a message", () => {
       assignee: "eng.em",
       session: "ongoing",
       resultTo: "conversation",
-      metadata: { pieceOf: "task_someone_elses", retryOf: "task_other", note: "kept" }
+      metadata: { pieceOf: "task_someone_elses", note: "kept" }
     });
     expect(outputs).toEqual([{ ok: true, taskId: expect.stringMatching(/^routed:/) }]);
     const [row] = await host.routedRows("alice");
     expect(row.metadata?.note).toBe("kept");
     expect(row.metadata).not.toHaveProperty("pieceOf");
-    expect(row.metadata).not.toHaveProperty("retryOf");
   });
 });
 

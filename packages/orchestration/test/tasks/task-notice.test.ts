@@ -250,7 +250,7 @@ describe("a waited-on row's ending resumes the turn waiting on it, and wakes non
     expect(recordEnding(cancelled, { kind: "cancelled", reason: "not needed" })).toBe(cancelled);
   });
 
-  it("marks a notice stored before FIX-2078 waitedOn, so the receiving entry resumes rather than wakes", () => {
+  it("marks a notice stored before FIX-2078 waited on, so the receiving entry resumes rather than wakes", () => {
     const stored = waitedRow({ metadata: { "noticeOwed:1:completed": { attempt: 1, ending: "completed" } }, output: "yes" });
     expect(owedNotices(stored, "tasks")).toEqual([
       { boardId: "tasks", taskId: "t1", attempt: 1, ending: "completed", output: "yes", waitedOn: true }

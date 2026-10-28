@@ -529,7 +529,7 @@ describe("delivery and answers (V4)", () => {
     expect(lines).toEqual([{ agentName: "eng.coder", text: expect.stringContaining("fix it") }]);
     // An answer, or a report of none, for a delivery made before the change has nowhere to land,
     // and neither has a post's own ending or cancel (FIX-2083).
-    for (const action of ["delegateAnswer", "delegateMissed", "onPostSettled", "postCancelled"]) {
+    for (const action of ["delegateAnswer", "delegateMissed", "onPostSettled", "postCancelled"]) { // retired-name-refusal: refusal test
       const old = await host.act("alice", id, action, { token: "from-before", body: "late" }, "coordinator", "internal").catch((error: unknown) => ({ error }));
       expect(old.error).toBeDefined();
     }

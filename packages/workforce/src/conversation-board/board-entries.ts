@@ -7,9 +7,7 @@
 /**
  * The internal entry a filing dispatches to run its session's board: the
  * board's one pass, one at a time per session. A manager's entry (its role
- * table, `../worker-roles`). **Pinned**: a wake stores it by name; a wake or
- * request an older host stored under `runTaskBoard` is rewritten to it at host
- * start (`upgradeWorkerEntryNames`).
+ * table, `../worker-roles`). **Pinned**: a wake stores it by name.
  */
 export const DISPATCH_ENTRY = "dispatch";
 
@@ -49,13 +47,6 @@ export const SPLIT_MARKER = "splitInto";
  * writes it; a caller's filing or patch never reaches it.
  */
 export const PIECE_OF = "pieceOf";
-
-/**
- * The metadata key a retried piece carried (FIX-1802 D3). Retired by FIX-2077:
- * the turn a piece's failure wakes decides what it means, so nothing writes
- * it. A caller's filing or patch still never reaches it.
- */
-export const RETRY_OF = "retryOf";
 
 /**
  * The metadata key on a task's row naming the session that filed work for it

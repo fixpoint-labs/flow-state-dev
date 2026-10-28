@@ -35,7 +35,7 @@ const options = { userCell: () => CELL, ledgers: [LEDGER] };
 describe("upgradeKeptTurns", () => {
   it("writes each kept turn no attempt took onto its task as an untaken steer from its person, once", async () => {
     const stores = fakeStores({
-      [rowKey("t1")]: { id: "t1", goal: "g", status: "parked", parkedForTurn: true, attempts: 1 },
+      [rowKey("t1")]: { id: "t1", goal: "g", status: "parked", parkedForTurn: true, attempts: 1 }, // retired-name-refusal: the row shape the message door stored
       [runKey("t1", "answer")]: { taskId: "t1", sessionId: "sess_1" },
       "turns/t1/answer/2/aaaa": turn({ message: "Use the v2 API.", keptAt: 5, forAttempt: 2 }),
       "turns/t1/answer/1/bbbb": turn({ message: "Already taken.", deliveredTo: 1 }),

@@ -34,7 +34,7 @@
  *     configSchema: workerConfigSchema().extend({ ... }),
  *     session: { ...installation.session(board.sessionStateShape), serverOwned: board.serverOwned },
  *     resources: { ...installation.resources, ...board.resources },
- *     actions: { run: { ... }, ...board.actions },
+ *     actions: { respond: { ... }, ...board.actions },
  *     internal: { actions: board.entries(answer) }
  *   });
  * });

@@ -4,8 +4,8 @@
  *
  * A row in a persistent store is a user's open work, so a shape that stops
  * being written is still read, never dropped (BP-030). Every retired shape is
- * read here, at the collection's read boundary, beside the `wait` migration
- * (`withMigratedWait`). No other module reads a retired shape of its own.
+ * read here, at the collection's read boundary. No other module reads a
+ * retired shape of its own.
  *
  * The `parked` status is not read at all (FIX-2131): stores were reset when it
  * was retired, so no row parked before it is read (the owner's call for epic
@@ -35,14 +35,14 @@ import { isTerminalStatus, type TaskStatus } from "./task-status";
  * The steer a row reopened before FIX-2086 reads with: the person's line is
  * already the latest in the task's session, so it points there.
  */
-const REOPENED_STEER =
+const REOPENED_STEER = // retired-name-refusal: the reopened shape
   "The user wrote to you about this task after you had finished it; their message is the latest line in this session. Pick the task up again from there.";
 
 /** The wait a row held open for a queued message stored (`keptOpenBy`), which no write makes now. */
 export const QUEUED_WAIT = "queued";
 
 /** The retired shapes, one entry each. */
-export type RetiredShape = "blocked" | "recorded" | "post" | "reopened" | "queued";
+export type RetiredShape = "blocked" | "recorded" | "post" | "reopened" | "queued"; // retired-name-refusal: the reopened shape
 
 /** One entry: whether it is read, who turns it on, and how it reads a row. */
 export interface RetiredShapeEntry {
@@ -121,16 +121,16 @@ export const RETIRED_SHAPES: Readonly<Record<RetiredShape, RetiredShapeEntry>> =
   // the request running it) is told, and the task can't settle before it is.
   // Its output is replaced once more, by that attempt, the last time. Finished
   // again, it only loses the mark: a finished task takes no steer.
-  reopened: {
+  reopened: { // retired-name-refusal: the reopened shape
     on: true,
     owner: "FIX-2086",
     read: (row) => {
-      if (row.reopened !== true) return undefined;
-      const rest = without(row, "reopened");
+      if (row.reopened !== true) return undefined; // retired-name-refusal: the reopened shape
+      const rest = without(row, "reopened"); // retired-name-refusal: the reopened shape
       if (typeof row.status === "string" && isTerminalStatus(row.status as TaskStatus)) return rest;
       const steers = Array.isArray(row.steers) ? row.steers : [];
       const at = typeof row.updatedAt === "number" ? row.updatedAt : 0;
-      return { ...rest, steers: [...steers, { id: "reopened", message: REOPENED_STEER, from: "user", at }] };
+      return { ...rest, steers: [...steers, { id: "reopened", message: REOPENED_STEER, from: "user", at }] }; // retired-name-refusal: the reopened shape
     },
   },
   // A running row a queued message held open: its work had answered, and the
@@ -146,7 +146,7 @@ export const RETIRED_SHAPES: Readonly<Record<RetiredShape, RetiredShapeEntry>> =
   },
 };
 
-const ORDER: readonly RetiredShape[] = ["blocked", "recorded", "post", "reopened", "queued"];
+const ORDER: readonly RetiredShape[] = ["blocked", "recorded", "post", "reopened", "queued"]; // retired-name-refusal: the reopened shape
 
 /**
  * A stored row read in the current shapes: every entry that is on, in order.

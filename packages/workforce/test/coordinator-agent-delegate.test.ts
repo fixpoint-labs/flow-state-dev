@@ -145,7 +145,7 @@ describe("the agent flow as a delegate (S9)", () => {
   it("takes work on its one task entry, and declares no post entry", () => {
     const agent = defineAgentWorkerFlow();
     expect(Object.keys((agent as any).task.actions)).toEqual([WORKER_TASK_ENTRY]);
-    expect(Object.keys((agent as any).internal?.actions ?? {})).not.toContain("onDelegatedPost");
+    expect(Object.keys((agent as any).internal?.actions ?? {})).not.toContain("onDelegatedPost"); // retired-name-refusal: refusal test
   });
 
   it("answers a routed message into the routing conversation, once, under the delegate's name", async () => {

@@ -509,56 +509,6 @@ describe("rounds (V5)", () => {
     expect(late).toMatchObject({ status: "completed" });
   });
 
-  it("files nothing for a pick a coordinator before the upgrade already handed the message, as a post row (BP-030)", async () => {
-    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 60_000 });
-    const id = await host.conversation("alice", "desk");
-    // The coder answers late, so round 0 is still open when the post row is seeded.
-    expect((await host.act("alice", id, "respond", { message: "status? [slow:eng.coder]" })).error).toBeUndefined();
-    let em: any;
-    for (let i = 0; i < 300 && em === undefined; i += 1) {
-      em = (await host.routedRows("alice")).find((row) => row.assignee === "eng.em" && row.status === "completed");
-      if (em === undefined) await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    expect(em).toBeDefined();
-    // Round 1's message to the coder, the EM's answer, as the coordinator before FIX-2083 stored it, already answered.
-    const runtime = await host.state.getRuntime();
-    const scope = `alice:~org:${ORG}`;
-    const entries = await runtime.stores.resourceState.getByPrefix("user", scope, "tasks/");
-    const [key] = Object.entries(entries).find(([, value]) => (value.state as { id?: string }).id === em.id)!;
-    const legacyId = `post:${[em.sealed.messageRequestId, "1", "eng.coder"].map(encodeURIComponent).join(":")}`;
-    const now = Date.now();
-    const legacy = {
-      ...em,
-      id: legacyId,
-      assignee: "eng.coder",
-      status: "completed",
-      output: "an answer from before the upgrade",
-      createdAt: now,
-      updatedAt: now,
-      incarnationId: "legacy-incarnation",
-      // Its ending was heard before the upgrade: its notice is paid.
-      metadata: { "noticeOwed:1:completed": null },
-      sealed: { ...em.sealed, kind: "post", round: 1, delegate: { worker: "eng.coder" } }
-    };
-    for (const field of ["session", "resultTo", "run", "filer"]) delete legacy[field];
-    // The row's key ends in its id, as the store writes it, encoded or not.
-    const legacyKey = key.includes(encodeURIComponent(em.id))
-      ? key.replace(encodeURIComponent(em.id), encodeURIComponent(legacyId))
-      : key.replace(em.id, legacyId);
-    expect(legacyKey).not.toBe(key);
-    expect((await runtime.stores.resourceState.set("user", scope, legacyKey, legacy, "any")).ok).toBe(true);
-    await quiet(host);
-
-    // The coder heard the post only: round 1's pick of it was the post row, and nothing was filed again.
-    expect(host.heard.filter((h) => h.worker === "eng.coder").map((h) => h.message.split(":")[0])).toEqual(["alice, through desk"]);
-    const { records } = await host.items(id);
-    const roundOne = records.find((record: any) => record.round === 1);
-    expect(roundOne.delegates).toEqual(
-      expect.arrayContaining([{ worker: "eng.coder", outcome: "skipped", reason: "it was already handed this message in this round" }])
-    );
-    expect((await host.routedRows("alice")).filter((row) => row.sealed.round === 1 && row.assignee === "eng.coder").map((row) => row.id)).toEqual([legacyId]);
-  });
-
   it("closes a round open across the upgrade whose post row was still running: the row lapses, runs once more, and both answers go on (BP-030)", async () => {
     const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 60_000 });
     const id = await host.conversation("alice", "desk");
@@ -655,8 +605,8 @@ describe("rounds (V5)", () => {
     expect((await host.act("alice", id, "onTaskSettled", notice, "coordinator", "internal")).error).toBeUndefined();
     expect((await host.routedRows("alice")).find((row) => row.id === first.id)).toMatchObject({ status: "completed" });
     // A post's cancel report has no entry left to forge (FIX-2083).
-    await expect(host.act("alice", id, "postCancelled", { taskId: first.id }, "coordinator", "internal")).rejects.toThrow(
-      /does not define action "postCancelled"/
+    await expect(host.act("alice", id, "postCancelled", { taskId: first.id }, "coordinator", "internal")).rejects.toThrow( // retired-name-refusal: refusal test
+      /does not define action "postCancelled"/ // retired-name-refusal: refusal test
     );
     await quiet(host);
     expect(host.heard.map((h) => h.worker)).toEqual(["eng.em", "eng.coder"]);

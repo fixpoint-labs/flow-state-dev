@@ -247,7 +247,7 @@ Its next turn reads the line in its history. No turn is started for it.
 
 ## The budget
 
-Messages between workers can't run on forever. Each line you type starts a **budget**: at most 6 messages (`budget`) for everything that descends from that line, across every worker. The messages, the turns they wake, the answers those turns send and the tasks filed along the way all draw on the same 6, parallel branches included. On top of that, any one request sends at most 3 (`perTurn`).
+Messages between workers can't run on forever. Each line you type starts a **budget**: at most 6 messages (`messages.budget`) for everything that descends from that line, across every worker. The messages, the turns they wake, the answers those turns send and the tasks filed along the way all draw on the same 6, parallel branches included. On top of that, any one request sends at most 3 (`perTurn`).
 
 The send that would go past the budget is refused with `budget`, and the worker is told to stop passing messages on and say so. Your next line starts a fresh budget.
 

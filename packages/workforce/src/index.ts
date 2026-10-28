@@ -87,13 +87,6 @@ export {
   type BoardWakeBackfillStores
 } from "./conversation-board/backfill-wakes";
 export {
-  upgradeWorkerEntryNames,
-  type EntryNameFlow,
-  type EntryNameRequest,
-  type EntryNameUpgradeOptions,
-  type EntryNameUpgradeStores
-} from "./workers/upgrade-entry-names";
-export {
   createWorkerLookup,
   type WorkerLookup,
   type WorkerLookupAnswer,

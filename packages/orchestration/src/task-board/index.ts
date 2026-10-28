@@ -987,9 +987,8 @@ export function taskBoard<
         // The fallback stands in for every assignee the board does not name,
         // so its dispatch carries no assignee: each row goes over under its own.
         floorDispatch = createRowDispatch({
-          // A wire value, kept: a router's recorded decision names it, and a request
-          // resumed across the rename must reselect the same route.
-          name: `${name}-dispatch-fallback`, // retired-name-refusal: durable route name
+          // A router's recorded decision names it, so a resumed request reselects the same route.
+          name: `${name}-dispatch-fallback`,
           boardId,
           address: assignee.dispatch,
           binding: { boardId, gate, requiresInternal: [passEntry] },
@@ -1001,7 +1000,7 @@ export function taskBoard<
       dispatchByAssignee.set(
         assignee.name,
         createRowDispatch({
-          name: `${name}-dispatch-${assignee.name}`, // retired-name-refusal: durable route name
+          name: `${name}-dispatch-${assignee.name}`,
           boardId,
           assignee: assignee.name,
           address: assignee.dispatch,
