@@ -775,6 +775,9 @@ export async function createExecutionContext<
 
   // Parallelize the remaining independent store lookups — user, org, and the
   // history window don't depend on each other for the initial load.
+  // When the window was read: a turn that settles after it is in neither the
+  // window nor the open turns `turns()` lists later (FIX-1613).
+  const windowLoadedAtMs = Date.now();
   const [loadedUser, loadedOrg, listedPriorRequests] = await Promise.all([
     userKey !== undefined ? stores.user.get(userKey) : undefined,
     optionsOrgKey !== undefined ? stores.org.get(optionsOrgKey) : undefined,
@@ -858,6 +861,20 @@ export async function createExecutionContext<
   // can re-enter the rest under the same id and add their final output.
   const isRetried = (record: RequestRecord): boolean => record.status === "interrupted" && retried.has(record.id);
   const emptyTurn = (record: RequestRecord): HistoryTurn => ({ ...historyTurn(record, true), messages: [] });
+  // Past turns updated since the window loaded, newest update first, paged
+  // until the first older one: bounded by what settled during this request.
+  const settledSinceWindowLoad = async (): Promise<RequestRecord[]> => {
+    const page = 50;
+    const settled: RequestRecord[] = [];
+    for (let offset = 0; ; offset += page) {
+      const records = await stores.request.list({ ...turnScope, status: PAST_TURN_STATUSES, orderBy: "updatedAt", limit: page, offset });
+      for (const record of records) {
+        if (record.updatedAt < windowLoadedAtMs) return settled;
+        settled.push(record);
+      }
+      if (records.length < page) return settled;
+    }
+  };
   const readTurns = async (query?: HistoryTurnQuery): Promise<HistoryTurn[]> => {
     if (query?.requestIds !== undefined) {
       const turns: HistoryTurn[] = [];
@@ -881,13 +898,18 @@ export async function createExecutionContext<
       .filter((r) => r.id !== requestId)
       .map((r) => (isRetried(r) ? emptyTurn(r) : historyTurn(r, r.status !== "interrupted")));
     const listed = new Set(windowTurns.map((t) => t.requestId));
-    const openTurns = (
-      await stores.request.list({ ...turnScope, status: ["in_progress", "suspended"], orderBy: "startedAtMs" })
-    )
+    const openTurns = [
+      ...(await stores.request.list({ ...turnScope, status: ["in_progress", "suspended"], orderBy: "startedAtMs" })),
+      ...(await settledSinceWindowLoad())
+    ]
       // The running request too: a fold must see where it stands among the
       // conversation's other open turns, or it could move its mark past it.
+      // One that settled after the window loaded is listed open as well, so a
+      // fold keeps it pending and reads it by id rather than passing it unseen.
       .filter((r) => !listed.has(r.id))
-      .map((r) => historyTurn(r, false));
+      .map((r) => historyTurn(r, false))
+      // One that settled between the two reads is in both: list it once.
+      .filter((turn, at, turns) => turns.findIndex((t) => t.requestId === turn.requestId) === at);
     return [...windowTurns, ...openTurns].sort((a, b) => compareTurnsOldestFirst(a.startedAtMs, a.requestId, b.startedAtMs, b.requestId));
   };
 
