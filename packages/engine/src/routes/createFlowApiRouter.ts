@@ -170,7 +170,7 @@ export type CreateFlowApiRouterOptions = {
   staleSweepThresholdMs?: number;
 
   /**
-   * How long a request handed to an external dispatcher may sit unclaimed in
+   * How long a request handed to an external runner may sit unclaimed in
    * the queue before a sweep treats it as lost (milliseconds).
    *
    * A queued request has no executor heartbeat — nothing is running it yet — so

@@ -292,7 +292,7 @@ for the full contract reference and a walk-through of authoring a custom
 adapter.
 
 A flow's concurrency policy is enforced once at the host dispatch seam — the
-in-process dispatcher gates the run there (and, over a shared lease backend,
+in-process runner gates the run there (and, over a shared lease backend,
 the host takes an external run's place before enqueueing; see below), so every
 transport inherits the
 same behavior and adapters only map the outcome to their native response.
@@ -314,7 +314,7 @@ with `ConcurrencyDeferLimitError`, a `ConcurrencyRejectedError`. A defer
 yields to newer `hold` runs for 30 seconds, then waits only
 for the runs it found. `hold` and `defer` are enforced across a queue whose
 adapter supplies a shared `leaseBackend` (see below). Over any other external
-dispatcher, a run under either policy runs as `allow`.
+runner, a run under either policy runs as `allow`.
 See the [concurrency policies
 reference](https://flow-state.dev/docs/advanced/concurrency-policies).
 
@@ -861,14 +861,14 @@ See [Flow Isolation](https://flow-state.dev/docs/advanced/flow-isolation) and th
 **Execution backend (worker adapters):**
 - `WorkerAdapter` / `WorkerHandle` / `WorkerMode` — Contract for the `worker` option on `createFlowState`. An adapter (e.g. `bullmqWorker` from `@flow-state-dev/bullmq`) provides the dispatch side and/or the processing side; `createFlowState` hands both the same resolved `{ registry, stores, runtimeConfig }` so the worker can never run against different stores than the router. `mode` picks the deployment shape: `"colocated"` (default), `"dispatch-only"` (web container), `"worker-only"` (worker container — call `ready()` to start consuming). `dispose()` drains the worker before closing stores
 
-**Dispatcher (pluggable execution backend):**
+**Runner (pluggable execution backend):**
 - `FlowRunner` — Interface controlling where flow actions execute. Default: in-process. Implementations route execution to external workers (e.g., BullMQ)
 - `DispatchEnvelope` — Serializable subset of `InboundRequestEnvelope` carried over the queue
 - `FlowDispatchHandle` — Handle returned by `dispatch()`: `requestId`, `finished` promise, `abort()` hook
-- `createInProcessRunner` — Default dispatcher that calls `runAction` in the current process
+- `createInProcessRunner` — Default runner that calls `runAction` in the current process
 - `StreamBridge` / `StreamPublisher` / `StreamSubscriber` — Bridges live SSE events between a remote worker and the web process. The worker writes events to the bridge; the web process reads them and forwards to SSE
 - `StreamEvent` — Single event published through the bridge, matching the SSE event shape
-- Pass `dispatcher` to `createFlowState` or `createFlowApiRouter` to route all action dispatches through a projected queue. Most deployments should prefer the `worker` option — the adapter wires the dispatcher and the worker together; `dispatcher` is the low-level escape hatch (mutually exclusive with `worker`)
+- Pass `runner` to `createFlowState` or `createFlowApiRouter` to route all action dispatches through a projected queue. Most deployments should prefer the `worker` option — the adapter wires the runner and the worker together; `runner` is the low-level escape hatch (mutually exclusive with `worker`)
 
 **Errors:**
 - `FlowError` and canonical subclasses
@@ -1192,7 +1192,7 @@ createFlowApiRouter({
   // Heartbeat-age threshold the sweeper uses to mark a request `interrupted`.
   // Should be ≥ 2× the executor's registry heartbeat. Default 60_000 ms.
   staleSweepThresholdMs: 60_000,
-  // How long a request queued with a projected dispatcher may wait, unclaimed,
+  // How long a request queued with a projected runner may wait, unclaimed,
   // before a sweep treats it as lost. Default 600_000 ms (10 minutes).
   queuedGraceMs: 600_000,
   // Sources from your own inbound transports that `retry` / `continue` /

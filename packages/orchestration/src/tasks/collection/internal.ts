@@ -869,11 +869,11 @@ export function transitionDeclineReason(
 
 /**
  * True when every dep on `task` is `completed`. Used by both the
- * default collection eligibility predicate and the dispatcher
+ * default collection eligibility predicate and the claim order
  * eligibility variants.
  *
  * `lookup` reads the freshest task by id — pass `(id) =>
- * collection.get(id)` for the dispatcher case so dep status reflects
+ * collection.get(id)` for the claim order case so dep status reflects
  * the latest committed state, not a scan-time snapshot.
  */
 function depsSatisfied(
@@ -950,7 +950,7 @@ export function committedLeaseSpan(task: Task): number | undefined {
  *
  * Kept as the narrower "never been started" question. Since FIX-1005 the
  * substrate's admission test is {@link isClaimable}, which is this **plus**
- * a row whose worker died — dispatchers that used to spell out `isReady`
+ * a row whose worker died — claim orders that used to spell out `isReady`
  * dropped the conjunct rather than widening it, because widening three copies
  * separately is the drift the shared predicate exists to prevent.
  */
@@ -984,7 +984,7 @@ export function isReady(
  * would make an ordinary task unrecoverable after its first attempt — the
  * feature off by default unless every caller opted into retries.
  *
- * A held row (FIX-2080) is never admitted, whichever board or dispatcher
+ * A held row (FIX-2080) is never admitted, whichever board or claim order
  * drains the collection: `held` is not `pending`, so it starts only once
  * something releases it. Nor is a row with an open hold (FIX-2133): a
  * question, a confirm, or a task run's stop for a person. A running row that
@@ -1045,7 +1045,7 @@ export function defaultOrder(a: Task, b: Task): number {
 }
 
 /**
- * Default lease duration applied when the dispatcher does not pass one through.
+ * Default lease duration applied when the claim order does not pass one through.
  *
  * **Two minutes (FIX-1005).** Duplicate side effects are the expensive failure
  * and slow recovery is the cheap one. At `RENEWAL_DIVISOR = 3` this puts

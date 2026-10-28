@@ -1,5 +1,5 @@
 /**
- * The worker dispatcher's enqueue, without Redis: a place-bearing job goes
+ * The worker runner's enqueue, without Redis: a place-bearing job goes
  * under the id its place names, and an id BullMQ already had is refused
  * loudly rather than dropped.
  */
@@ -38,9 +38,9 @@ describe("createWorkerRunner", () => {
   it("enqueues a place-bearing job under the id its place names", async () => {
     const { bridge } = makeBridge();
     const add = vi.fn(async (_name: string, data: unknown) => ({ data }));
-    const dispatcher = createWorkerRunner({ queue: { add } as unknown as Queue, bridge });
+    const runner = createWorkerRunner({ queue: { add } as unknown as Queue, bridge });
 
-    await dispatcher.dispatch(envelope);
+    await runner.dispatch(envelope);
 
     expect(add).toHaveBeenCalledWith(
       "flow-run",
@@ -52,10 +52,10 @@ describe("createWorkerRunner", () => {
   it("carries how the job reaches its turn, so its worker applies hold and defer", async () => {
     const { bridge } = makeBridge();
     const add = vi.fn(async (_name: string, data: unknown) => ({ data }));
-    const dispatcher = createWorkerRunner({ queue: { add } as unknown as Queue, bridge });
+    const runner = createWorkerRunner({ queue: { add } as unknown as Queue, bridge });
 
-    await dispatcher.dispatch({ ...envelope, leaseTurn: { kind: "now" } });
-    await dispatcher.dispatch({
+    await runner.dispatch({ ...envelope, leaseTurn: { kind: "now" } });
+    await runner.dispatch({
       ...envelope,
       leasePlace: undefined,
       leaseTurn: { kind: "when-free", key: "s_1" },
@@ -72,9 +72,9 @@ describe("createWorkerRunner", () => {
     // new request without a word.
     const { bridge, subscriber } = makeBridge();
     const add = vi.fn(async () => ({ data: { requestId: "req_old" } }));
-    const dispatcher = createWorkerRunner({ queue: { add } as unknown as Queue, bridge });
+    const runner = createWorkerRunner({ queue: { add } as unknown as Queue, bridge });
 
-    await expect(dispatcher.dispatch(envelope)).rejects.toThrow(/req_old/);
+    await expect(runner.dispatch(envelope)).rejects.toThrow(/req_old/);
     expect(subscriber.close).toHaveBeenCalled();
   });
 });

@@ -515,8 +515,8 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   maxTotalRetries?: number | null;
 
   /**
-   * Dispatcher for ready-task selection. Either a `ClaimOrder`
-   * instance or a string naming one of the standard dispatchers
+   * Claim order for ready-task selection. Either a `ClaimOrder`
+   * instance or a string naming one of the standard claim orders
    * (`"fifo"`, `"topological"`, `"priority"`). Default: `"topological"`.
    */
   claimOrder?: TaskBoardClaimOrderInput;
@@ -730,7 +730,7 @@ export function taskBoard<
     defaultWorker: defaultWorkerConfig,
     newSession: newSessionConfig,
     concurrency = 4,
-    claimOrder: dispatcherInput = "topological",
+    claimOrder: claimOrderInput = "topological",
     onIdle = "complete-or-blocked",
     initialTasks = [],
     onError = "skip",
@@ -792,7 +792,7 @@ export function taskBoard<
   // Every dispatcher the board holds, for the refusals that apply to any.
   const allDispatchers = newSession === undefined ? dispatchers : [...dispatchers, newSession];
 
-  const dispatcher: ClaimOrder = resolveClaimOrder(dispatcherInput);
+  const claimOrder: ClaimOrder = resolveClaimOrder(claimOrderInput);
   const binding = resolveCollectionBinding<TInput, TOutput, TName>(
     name,
     collectionConfig,
@@ -890,7 +890,7 @@ export function taskBoard<
   const claimTask = createClaimTask({
     name: claimStepName,
     collection: collectionFactory,
-    claimOrder: dispatcher,
+    claimOrder,
     workerId: (ctx) => resolveWorkerIdFromCtx(ctx, name),
   });
 

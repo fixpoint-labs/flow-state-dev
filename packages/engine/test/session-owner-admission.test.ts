@@ -47,7 +47,7 @@ let releaseHolder: () => void = () => {};
 let holderStarted: Promise<void> = Promise.resolve();
 let markHolderStarted: () => void = () => {};
 
-function buildHost(stores: StoreRegistry, dispatcher?: FlowRunner) {
+function buildHost(stores: StoreRegistry, runner?: FlowRunner) {
   const registry = createFlowRegistry();
   registry.register(
     defineFlow({
@@ -79,7 +79,7 @@ function buildHost(stores: StoreRegistry, dispatcher?: FlowRunner) {
     stores,
     resolvePrincipal: defaultBodyUserIdPrincipalResolver,
     runtimeConfig: {},
-    ...(dispatcher === undefined ? {} : { runner: dispatcher })
+    ...(runner === undefined ? {} : { runner })
   });
 }
 

@@ -138,7 +138,7 @@ would silently resolve the app's default model while the flag claimed otherwise.
 
 **The inheritance cannot cross a serialization boundary, and that is part of the
 rule rather than an exception to it.** A `RuntimeConfig` holds live resolvers and
-providers, so the external-dispatcher branch ignores this field: a queued job
+providers, so the external-runner branch ignores this field: a queued job
 runs under its own worker's configuration, which is the only thing that process
 can honour. Carrying just the selected model *id* across would not fix it — the
 worker has its own gateways and keys, so a forced id may not resolve there at
@@ -146,7 +146,7 @@ all, replacing a silently wrong model with a failure surfacing where the caller
 cannot see it. The host therefore emits a warning at the dispatch that drops an
 override rather than pretending it applied.
 
-A custom host or dispatcher should read this as: honour `envelope.runtimeConfig`
+A custom host or runner should read this as: honour `envelope.runtimeConfig`
 when you run work in-process, and expect not to receive it when you don't.
 
 Which dispatches run in-process, and what else changes with that answer, is

@@ -1,7 +1,7 @@
 /**
  * bullmqWorker — the one-option `createFlowState` integration.
  *
- * Composes the queue runtime, the Redis stream bridge, the worker dispatcher
+ * Composes the queue runtime, the Redis stream bridge, the worker runner
  * (enqueue side), and the flow worker (processing side) into a single
  * `WorkerAdapter` for `createFlowState({ worker: bullmqWorker({...}) })`.
  * The lower-level factories (`createBullmqRuntime`, `createFlowWorker`,

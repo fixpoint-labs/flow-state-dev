@@ -4,7 +4,7 @@ The orchestration substrate for flow-state-dev. One package, three layers that
 build on each other:
 
 - **Task substrate** — the `Task` schema and state machine, the storage-agnostic
-  `TaskCollection`, and the dispatcher catalog.
+  `TaskCollection`, and the claim order catalog.
 - **Task board** — a concurrent drain over a `TaskCollection` with dependency
   gating and per-task worker routing. The orchestration primitive that
   `supervisor`, `parallelTasks`, and `planAndExecute` (in `@flow-state-dev/patterns`)
@@ -347,11 +347,11 @@ Anything that reports *which* task runs next needs both; anything asking only
 *whether* there is work to do needs the first. Compare leases against
 `collection.now()`, not `Date.now()`: it is the clock that stamped `leaseUntil`.
 
-### Dispatchers
+### Claim orders
 
 `fifoClaimOrder`, `topologicalClaimOrder` (the default), and `priorityClaimOrder`. None of
 them claims a task whose `deps` aren't all `completed`. That eligibility rule lives
-on `collection.claim`, and a dispatcher's own `eligibility` narrows it, so they
+on `collection.claim`, and a claim order's own `eligibility` narrows it, so they
 differ only in ordering. `fifoClaimOrder` and
 `topologicalClaimOrder` are ordered identically; `priorityClaimOrder` takes the
 highest `priority` first, ties on `createdAt`.
@@ -377,7 +377,7 @@ dispatcher are refused at construction, naming the fix),
 `defaultWorker` (optional fallback for a task whose assignee is unmatched or
 omitted — reached only on a miss, declared workers untouched; may be a task
 dispatcher, see below),
-`concurrency` (default 4), `dispatcher` (default `"topological"`),
+`concurrency` (default 4), `claimOrder` (default `"topological"`),
 `onIdle` (`"complete-or-blocked"` default | `"complete"` | `"wait"`; a running task waiting
 on a person, on a question or stopped for a review or an approval, is in flight but doesn't
 count as active work, so a `"complete-or-blocked"` board whose open tasks only wait on a person stops
@@ -597,7 +597,7 @@ else `allow`). An explicit `concurrency` on the entry wins:
 task: { actions: { implement: { block: implementBlock, concurrency: "allow" } } },
 ```
 
-The in-process dispatcher applies that policy, and so do queue workers that share
+The in-process runner applies that policy, and so do queue workers that share
 a lease backend. On a deployment that hands dispatches to an external queue without
 one, the run starts in another worker and the entry's `concurrency` does not gate it.
 

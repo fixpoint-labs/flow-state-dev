@@ -61,8 +61,8 @@ Narrative: [Engine setup](/docs/server/setup), [App configuration](/docs/cli/con
 | `durabilityRetention` | retention object | — | Sweeper for expired suspensions, leases, and orphaned checkpoints. Only with durability on. |
 | `userDeadlineMs` | `number` | unset | How long a stop that waits for a user waits when it names no deadline of its own: every `ctx.waitForUser` without a `deadline`, and every [question a task waits on](/docs/orchestration/task-board#a-tasks-questions). Unset, such a stop waits until someone answers it, stops it or cancels its task, however long that takes. Set it if you'd rather unanswered stops end on their own; at the deadline an approval reads as a no, and a review or input throws `SuspensionTimeoutError`. An open question closes on the board's first touch past its deadline, and the work goes on as if it had been answered. One second to 365 days. A raw `ctx.suspend` ignores it and keeps its own `timeoutMs`. |
 | `maxDebtAgeMs` | `number` | `86400000` (24 h) | How long past its due time work a [wake](/docs/advanced/durable-execution#wakes) guards, such as a task board's notice, may stay owed before it is given up on and logged. Only with durability on and a store that keeps wakes. |
-| `worker` | `WorkerAdapter` | — | Execution backend (for example `bullmqWorker(...)`). Mutually exclusive with `dispatcher`. |
-| `dispatcher` | `FlowRunner` | in-process | Low-level "where actions run" hook. Prefer `worker`. |
+| `worker` | `WorkerAdapter` | — | Execution backend (for example `bullmqWorker(...)`). Mutually exclusive with `runner`. |
+| `runner` | `FlowRunner` | in-process | Low-level "where actions run" hook. Prefer `worker`. |
 | `adapters` | inbound adapters | — | Custom transports forwarded to the router. |
 | `resolvePrincipal` | `PrincipalResolver` | body `userId` | Host fallback when a flow has no `authentication.resolvePrincipal`. Per-flow auth always wins. |
 | `chat` | `{ default?: string }` | — | `fsdev chat` target when you omit the flow argument: `"<kind>"` or `"<kind>.<action>"`. Not the flow's `chat` subscription map. |
@@ -124,7 +124,7 @@ Built-in adapters:
 | `"dispatch-only"` | Enqueue only (web process). |
 | `"worker-only"` | Consume only. Call `ready()` so the worker starts; you typically do not serve the router. |
 
-`worker` and `dispatcher` cannot both be set. See [Dispatched work](/docs/server/background-work) and [Background jobs with BullMQ](/guides/background-jobs-bullmq).
+`worker` and `runner` cannot both be set. See [Dispatched work](/docs/server/background-work) and [Background jobs with BullMQ](/guides/background-jobs-bullmq).
 
 ## See also
 

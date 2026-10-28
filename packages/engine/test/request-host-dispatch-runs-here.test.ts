@@ -42,7 +42,7 @@ describe("RequestHost.dispatchRunsHere", () => {
     }
   });
 
-  it("is not on a host whose dispatcher hands the work to another process", async () => {
+  it("is not on a host whose runner hands the work to another process", async () => {
     const state = createFlowState({
       flows: { [flow.id]: flow },
       stores: { default: { primary: inMemoryStores() } },

@@ -56,7 +56,7 @@ function delay(ms: number): Promise<void> {
  * emits nothing on the item stream (an exhausted iteration budget is silent),
  * so the attempt count is the direct measurement of it.
  *
- * Counted in total rather than per worker: the `workerId` the dispatcher
+ * Counted in total rather than per worker: the `workerId` the claim order
  * receives is the claim block's `blockInstanceId`, which is fresh on every
  * loop iteration (it exists for trace attribution, not identity). The board
  * below runs `concurrency: 1`, so the total *is* that one worker's count.

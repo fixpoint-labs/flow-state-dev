@@ -10,7 +10,7 @@
  *
  * A dispatched request is an ordinary request in every respect that matters to
  * the runtime: it needs a request record, an `activeRequests` registration, an
- * abort registration, retention, and — under an external dispatcher —
+ * abort registration, retention, and — under an external runner —
  * enqueue-time materialization so the row is discoverable before any worker
  * picks it up. `host.dispatch` is the one seam that does all of that, and
  * reaching past it to a dispatcher would rebuild a subset of it that drifts.
@@ -215,7 +215,7 @@ export function createDispatchOperation(inputs: DispatchOperationInputs): Dispat
         notStarted: true,
         externalRunner: true,
         reason:
-          "the effective dispatcher hands work to an external queue, and the worker " +
+          "the effective runner hands work to an external queue, and the worker " +
           "adapter supplies no lease backend to arbitrate it across processes"
       };
     }

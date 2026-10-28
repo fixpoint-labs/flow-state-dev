@@ -1,5 +1,5 @@
 /**
- * Regression for FIX-999: a request that is queued with an EXTERNAL dispatcher
+ * Regression for FIX-999: a request that is queued with an EXTERNAL runner
  * and not yet claimed by a worker must not be read as dead.
  *
  * The host registers the request at enqueue time and deliberately does not

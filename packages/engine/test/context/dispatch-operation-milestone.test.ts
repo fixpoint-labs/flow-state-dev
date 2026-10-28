@@ -98,8 +98,8 @@ describe("a dispatch waits for the host to accept it", () => {
     });
   });
 
-  it("does not wait on a dispatcher that reports no acceptance", async () => {
-    // The field is optional on the contract. A custom dispatcher that does not
+  it("does not wait on a runner that reports no acceptance", async () => {
+    // The field is optional on the contract. A custom runner that does not
     // distinguish acceptance from completion must not hang the dispatching
     // request — it gets today's behaviour, which the row's lease still covers.
     const dispatch = createDispatchOperation({ host: hostReturning({}) });

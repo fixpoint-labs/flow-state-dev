@@ -58,7 +58,7 @@ export interface FlowStateVoiceConfig {
  *   deployment). A dedicated worker process consumes the queue.
  * - `"worker-only"` — process only (a dedicated worker container). Build
  *   the same `createFlowState(...)` from shared config and call `ready()`;
- *   no dispatcher is installed and the router is typically never served.
+ *   no runner is installed and the router is typically never served.
  */
 export type WorkerMode = "colocated" | "dispatch-only" | "worker-only";
 
@@ -312,7 +312,7 @@ export interface CreateFlowStateOptions<
   /**
    * Low-level escape hatch: a pre-built FlowRunner controlling where
    * flow actions execute. Default: in-process (runAction called directly).
-   * Most deployments should use `worker` instead — it wires the dispatcher
+   * Most deployments should use `worker` instead — it wires the runner
    * AND the processing side from one adapter. Mutually exclusive with
    * `worker`.
    */
@@ -324,7 +324,7 @@ export interface CreateFlowStateOptions<
    * side per the adapter's `mode`, both against the same resolved runtime.
    * Worker startup happens on first `ready()` / `getRouter()` /
    * `getRuntime()` — call `ready()` eagerly in processes that must consume
-   * the queue from boot. Mutually exclusive with `dispatcher`.
+   * the queue from boot. Mutually exclusive with `runner`.
    */
   worker?: WorkerAdapter;
 

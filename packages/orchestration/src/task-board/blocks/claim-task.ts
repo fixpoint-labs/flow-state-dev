@@ -1,7 +1,7 @@
 /**
  * Atomic claim block.
  *
- * Calls the configured dispatcher's `claim` to flip the next eligible
+ * Calls the configured claim order's `claim` to flip the next eligible
  * task to `in_progress` against the calling worker. Outputs a typed
  * `ClaimResult` describing whether something was claimed and (if so)
  * the claimed task. Side-channels the claim outcome onto the worker's
@@ -44,7 +44,7 @@ export interface ClaimTaskOptions {
 export type ClaimTaskOutput = ClaimResult;
 
 export function createClaimTask(options: ClaimTaskOptions) {
-  const { name, collection: collectionFactory, claimOrder: dispatcher, workerId } = options;
+  const { name, collection: collectionFactory, claimOrder, workerId } = options;
   return handler({
     name,
     // Substrate-internal worker-loop block: a single idle worker can
@@ -58,7 +58,7 @@ export function createClaimTask(options: ClaimTaskOptions) {
     outputSchema: claimResultSchema,
     sequencerStateSchema: taskBoardWorkerStateSchema,
     execute: async (_input, ctx): Promise<ClaimResult> => {
-      const claim = async () => dispatcher.claim(await collectionFactory(ctx), workerId(ctx), ctx);
+      const claim = async () => claimOrder.claim(await collectionFactory(ctx), workerId(ctx), ctx);
       // A request that parked mid-drain replays the drain from its top, and
       // this block's trace is transient, so nothing records the claim it made
       // (FIX-2082): the claim is kept with the request instead, and a replay

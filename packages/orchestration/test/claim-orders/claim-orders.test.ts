@@ -1,7 +1,7 @@
 /**
- * Dispatcher eligibility tests against an in-memory sequencer-backed
- * collection. Each standard dispatcher is exercised against a mixed-
- * status task set + a HITL-status check (every dispatcher must skip
+ * Claim order eligibility tests against an in-memory sequencer-backed
+ * collection. Each standard claim order is exercised against a mixed-
+ * status task set + a HITL-status check (every claim order must skip
  * `parked` per FIX-443 §10.1).
  */
 import { describe, expect, it, beforeEach } from "vitest";
@@ -38,7 +38,7 @@ describe("fifoClaimOrder", () => {
     await c.createTask({ id: "second", goal: "second" });
     await c.createTask({ id: "first", goal: "first" });
     // first was added second — but createdAt is monotonic in our clock,
-    // so "second" has the lower createdAt. The fifo dispatcher picks the
+    // so "second" has the lower createdAt. The fifo claim order picks the
     // earliest createdAt regardless of insertion order.
     const claimed = await fifoClaimOrder.claim(c, "w", fakeCtx);
     expect(claimed?.id).toBe("second");
@@ -84,7 +84,7 @@ describe("topologicalClaimOrder", () => {
     const c = buildCollection();
     await c.createTask({ id: "u", goal: "u" });
     await c.createTask({ id: "d", goal: "d", deps: ["u"] });
-    // Two parallel dispatcher attempts after upstream completes.
+    // Two parallel claim attempts after upstream completes.
     await c.claim("w");
     await c.complete("u", "ok");
     const [r1, r2] = await Promise.all([

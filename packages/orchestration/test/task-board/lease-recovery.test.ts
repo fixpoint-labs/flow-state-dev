@@ -22,7 +22,7 @@
  * Both drive a real `taskBoard` over a caller-supplied collection on the wall
  * clock, so the leases really expire and the driver really schedules. Short
  * leases keep them fast; the board itself has no lease knob, so the second test
- * supplies one through a dispatcher, which is how a caller would.
+ * supplies one through a claim order, which is how a caller would.
  */
 import { describe, expect, it } from "vitest";
 import { handler, SuspensionError } from "@flow-state-dev/core";
@@ -53,7 +53,7 @@ function liveCollection(collectionId: string, clock = { skew: 0 }): TaskCollecti
   });
 }
 
-/** A dispatcher that claims under `leaseDurationMs`; the board has no lease knob. */
+/** A claim order that claims under `leaseDurationMs`; the board has no lease knob. */
 function leasingClaimOrder(leaseDurationMs: number): ClaimOrder {
   return {
     async claim(collection, workerId) {

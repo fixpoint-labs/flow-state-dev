@@ -1,7 +1,7 @@
 /**
  * Shared helpers for the Task Board pattern.
  *
- * Centralizes dispatcher resolution, ready-task filtering, and the
+ * Centralizes claim order resolution, ready-task filtering, and the
  * "any-work-still-in-flight" predicate. These read-only checks are
  * non-atomic — used for selection previews and termination decisions
  * where a stale snapshot is acceptable. CAS-correct operations go
@@ -21,9 +21,9 @@ import {
 } from "../tasks";
 
 /**
- * Accepted shapes for the Task Board's `dispatcher` config: either a
+ * Accepted shapes for the Task Board's `claimOrder` config: either a
  * `ClaimOrder` instance, or a string naming one of the substrate's
- * standard dispatchers.
+ * standard claim orders.
  */
 export type TaskBoardClaimOrderInput =
   | ClaimOrder
@@ -31,7 +31,7 @@ export type TaskBoardClaimOrderInput =
   | "topological"
   | "priority";
 
-/** Resolve a `TaskBoardClaimOrderInput` to a concrete dispatcher. */
+/** Resolve a `TaskBoardClaimOrderInput` to a concrete claim order. */
 export function resolveClaimOrder(
   input: TaskBoardClaimOrderInput
 ): ClaimOrder {
@@ -46,7 +46,7 @@ export function resolveClaimOrder(
     default: {
       const _exhaustive: never = input;
       throw new Error(
-        `[task-board] unknown dispatcher name "${String(_exhaustive)}"`
+        `[task-board] unknown claim order name "${String(_exhaustive)}"`
       );
     }
   }

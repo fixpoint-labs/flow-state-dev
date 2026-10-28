@@ -20,7 +20,7 @@ import {
 import type { FlowRunner } from "../../src/transports/runner";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 
-function buildHost(opts?: { dispatcher?: FlowRunner }) {
+function buildHost(opts?: { runner?: FlowRunner }) {
   const registry = createFlowRegistry();
   const stores = createInMemoryStores();
   registry.register(
@@ -43,7 +43,7 @@ function buildHost(opts?: { dispatcher?: FlowRunner }) {
     stores,
     resolvePrincipal: defaultBodyUserIdPrincipalResolver,
     runtimeConfig: {},
-    runner: opts?.dispatcher
+    runner: opts?.runner
   });
   return { host, stores, registry };
 }
@@ -421,7 +421,7 @@ describe("createInboundTransportHost", () => {
   });
 
   describe("external dispatch — enqueue-time materialization (FIX-828)", () => {
-    it("registers activeRequests + an in_progress record before dispatching to the dispatcher", async () => {
+    it("registers activeRequests + an in_progress record before dispatching to the runner", async () => {
       let storesAtDispatch: { active: boolean; status?: string } | undefined;
       // The fake worker never starts: it reads the stores at the instant it is
       // handed the job, then leaves `finished` pending forever.
@@ -435,8 +435,8 @@ describe("createInboundTransportHost", () => {
           abort: () => {}
         };
       });
-      const dispatcher: FlowRunner = { dispatch, close: vi.fn(async () => {}) };
-      const { host, stores } = buildHost({ dispatcher });
+      const runner: FlowRunner = { dispatch, close: vi.fn(async () => {}) };
+      const { host, stores } = buildHost({ runner });
 
       const handle = host.dispatch({
         source: "http",
@@ -457,17 +457,17 @@ describe("createInboundTransportHost", () => {
       expect(record?.userId).toBe("u_ext");
       expect(await stores.activeRequests.get(handle.requestId)).toBeDefined();
 
-      // And the writes landed before the dispatcher was handed the job: the
+      // And the writes landed before the runner was handed the job: the
       // fake reads both stores at the instant it is invoked.
       await vi.waitFor(() => expect(storesAtDispatch).toBeDefined());
       expect(storesAtDispatch).toEqual({ active: true, status: "in_progress" });
     });
 
-    it("rejects `accepted` only after the dispatcher accepts the job", async () => {
+    it("rejects `accepted` only after the runner accepts the job", async () => {
       // `accepted` must cover the enqueue, not just the store writes — the
       // response path acks the 202 on it, so the enqueue has to be inside.
       let dispatchCalled = false;
-      const dispatcher: FlowRunner = {
+      const runner: FlowRunner = {
         dispatch: vi.fn(async (env: { requestId: string }) => {
           dispatchCalled = true;
           return {
@@ -478,7 +478,7 @@ describe("createInboundTransportHost", () => {
         }),
         close: vi.fn(async () => {})
       };
-      const { host } = buildHost({ dispatcher });
+      const { host } = buildHost({ runner });
 
       const handle = host.dispatch({
         source: "http",
@@ -494,17 +494,17 @@ describe("createInboundTransportHost", () => {
     });
 
     it("terminates the in_progress record when the enqueue fails, leaving no orphan", async () => {
-      // The writes succeed, then the dispatcher call rejects. `accepted`
+      // The writes succeed, then the runner call rejects. `accepted`
       // covers the enqueue, so it rejects — and the record must not linger
       // in_progress: the dispatch teardown deregisters the activeRequests entry,
       // so without cleanup the stale-request sweeper would have nothing to reap.
-      const dispatcher: FlowRunner = {
+      const runner: FlowRunner = {
         dispatch: vi.fn(async () => {
           throw new Error("enqueue failed");
         }),
         close: vi.fn(async () => {})
       };
-      const { host, stores } = buildHost({ dispatcher });
+      const { host, stores } = buildHost({ runner });
 
       const handle = host.dispatch({
         source: "http",

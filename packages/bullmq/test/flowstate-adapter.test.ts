@@ -1,6 +1,6 @@
 /**
  * Unit tests for `bullmqWorker` — the WorkerAdapter composition for
- * `createFlowState({ worker })`. The runtime/bridge/dispatcher factories are
+ * `createFlowState({ worker })`. The runtime/bridge/runner factories are
  * mocked; these tests pin the composition contract: option threading, mode
  * default, queue exposure, and that the worker side maps the resolved
  * FlowStateRuntime onto FlowWorkerDeps verbatim.
@@ -90,9 +90,9 @@ describe("bullmqWorker", () => {
       connection: "redis://localhost:6379",
       retry: { attempts: 2 },
     });
-    const dispatcher = adapter.createRunner(flowStateRuntime);
+    const runner = adapter.createRunner(flowStateRuntime);
 
-    expect(dispatcher).toBe(fakeRunner);
+    expect(runner).toBe(fakeRunner);
     expect(createWorkerRunner).toHaveBeenCalledWith({
       queue: fakeQueue,
       bridge: fakeBridge,

@@ -13,7 +13,7 @@
  * Re-dispatching on a `false` answer alone is how double execution ships.
  *
  * **`true` means "still live", which includes "queued and not yet started."** A
- * request handed to an external dispatcher is live from the moment it is
+ * request handed to an external runner is live from the moment it is
  * accepted, not from the moment a worker picks it up (FIX-999).
  */
 import type { ActiveRequestEntry, ActiveRequestRegistry } from "../stores/types";

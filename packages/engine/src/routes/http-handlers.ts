@@ -180,7 +180,7 @@ export type CreateFlowRouteHandlersOptions = {
   debugAllowedOrigins?: string[];
   debugAllowAnonymousLocal?: boolean;
   debugCountLimit?: number;
-  /** Pluggable flow dispatcher. Default: in-process via runAction. */
+  /** Pluggable flow runner. Default: in-process via runAction. */
   runner?: FlowRunner;
   /**
    * Concurrency arbiter for this router's host. Defaults to a fresh one.

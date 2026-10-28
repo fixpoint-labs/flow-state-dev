@@ -108,13 +108,13 @@ async function settle(): Promise<void> {
   for (let i = 0; i < 20; i += 1) await new Promise((r) => setTimeout(r, 5));
 }
 
-async function boot(kind: string, options: { dispatcher?: FlowRunner } = {}) {
+async function boot(kind: string, options: { runner?: FlowRunner } = {}) {
   const observed: Observed = { runs: [] };
   const { flow, release } = guardedFlow(kind, observed);
   const state = createFlowState({
     flows: { [kind]: flow },
     stores: { default: { primary: inMemoryStores() } },
-    ...(options.dispatcher !== undefined ? { runner: options.dispatcher } : {})
+    ...(options.runner !== undefined ? { runner: options.runner } : {})
   });
   const runtime = await state.getRuntime();
   const router = await state.getRouter();
@@ -267,9 +267,9 @@ describe("a delivery into an existing session", () => {
     }
   });
 
-  it("is refused by name under an external dispatcher, while a derived child is not", async () => {
+  it("is refused by name under an external runner, while a derived child is not", async () => {
     const enqueued: unknown[] = [];
-    // A dispatcher with no `dispatchLocal` is external by the host's own test:
+    // A runner with no `dispatchLocal` is external by the host's own test:
     // it cannot accept a live signal or emitter, so its work runs elsewhere.
     const external: FlowRunner = {
       dispatch: async (envelope) => {
@@ -281,7 +281,7 @@ describe("a delivery into an existing session", () => {
       },
       close: async () => {}
     };
-    const { observed, flow, runtime, state } = await boot("guard-external", { dispatcher: external });
+    const { observed, flow, runtime, state } = await boot("guard-external", { runner: external });
     try {
       await seedSession(runtime, "s_r", "guard-external", "lin_original");
 

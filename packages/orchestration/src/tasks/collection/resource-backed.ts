@@ -978,7 +978,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       };
       // A caller's `eligibility` NARROWS the substrate's candidate set; it does
       // not replace it (FIX-1005). Before this it replaced the default outright,
-      // which made recovery unreachable for any dispatcher asserting
+      // which made recovery unreachable for any claim order asserting
       // `status === "pending"` — including the recipe the docs recommended.
       // Widening the built-in predicate could not reach a caller's, so without
       // this composition the substrate's newest invariant would be the one most

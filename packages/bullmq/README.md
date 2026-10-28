@@ -55,7 +55,7 @@ worker: bullmqWorker({ connection: redisUrl, mode: "dispatch-only" })
 worker: bullmqWorker({ connection: redisUrl, mode: "worker-only" })
 ```
 
-In `colocated` mode, a job may run on any worker on the queue: this process or another replica's. A `worker-only` process installs no dispatcher and typically never serves the router. Call `flowstate.ready()` to start consuming. An action a router in that process does receive runs inline instead of being enqueued.
+In `colocated` mode, a job may run on any worker on the queue: this process or another replica's. A `worker-only` process installs no runner and typically never serves the router. Call `flowstate.ready()` to start consuming. An action a router in that process does receive runs inline instead of being enqueued.
 
 ### Point every process at the same stores
 
@@ -128,7 +128,7 @@ const bridge = createRedisStreamBridge({ connection: redisUrl });
 
 // Web side: route all flow dispatches through the queue
 const queue = new Queue("fsd-flows", { connection: redisUrl });
-const dispatcher = createWorkerRunner({ queue, bridge });
+const runner = createWorkerRunner({ queue, bridge });
 
 // Worker side
 const worker = createFlowWorker({
@@ -278,7 +278,7 @@ The kitchen-sink app includes a working integration at `/api/admin/queues` (requ
 
 | Entry point                        | What it provides                                              |
 | ---------------------------------- | ------------------------------------------------------------- |
-| `@flow-state-dev/bullmq`          | Runtime, dispatcher, stream bridge, Redis lease backend, schedule index, connection utilities |
+| `@flow-state-dev/bullmq`          | Runtime, runner, stream bridge, Redis lease backend, schedule index, connection utilities |
 | `@flow-state-dev/bullmq/worker`   | `createFlowWorker` (worker-only deploys)                      |
 | `@flow-state-dev/bullmq/schedules`| Static schedule registration, schedule dispatch worker        |
 
@@ -288,4 +288,4 @@ The kitchen-sink app includes a working integration at `/api/admin/queues` (requ
 - [Work that outlives the turn](https://flow-state.dev/guides/background-work) — how queued action runs relate to side chains and dispatch runs
 - [Dispatched work](https://flow-state.dev/docs/server/background-work) — reading what a queued job became
 - [Scheduled actions reference](https://flow-state.dev/docs/server/scheduled) — framework scheduling contract
-- [Inbound transports architecture](https://flow-state.dev/docs/advanced/inbound-transports) — dispatcher and transport adapter contracts
+- [Inbound transports architecture](https://flow-state.dev/docs/advanced/inbound-transports) — runner and transport adapter contracts

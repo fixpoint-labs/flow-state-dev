@@ -3,7 +3,7 @@
  * adapter seam. The contract under test: the adapter's dispatch side and
  * worker side both receive the SAME resolved runtime the router uses (the
  * store-identity invariant), mode controls which sides run, the adapter's
- * dispatcher is installed on the router, and dispose() closes the worker
+ * runner is installed on the router, and dispose() closes the worker
  * before store adapters.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -58,7 +58,7 @@ function makeFakeAdapter(mode?: WorkerMode) {
     workerClosed: 0,
     adapterClosed: 0
   };
-  const dispatcher: FlowRunner = {
+  const runner: FlowRunner = {
     dispatch: vi.fn(async (envelope) => ({
       requestId: envelope.requestId,
       finished: Promise.resolve({ output: undefined, items: [], durationMs: 0 }),
@@ -70,7 +70,7 @@ function makeFakeAdapter(mode?: WorkerMode) {
     mode,
     createRunner(runtime) {
       calls.runnerRuntimes.push(runtime);
-      return dispatcher;
+      return runner;
     },
     startWorker(runtime) {
       calls.workerRuntimes.push(runtime);
@@ -84,7 +84,7 @@ function makeFakeAdapter(mode?: WorkerMode) {
       calls.adapterClosed += 1;
     }
   };
-  return { adapter, dispatcher, calls };
+  return { adapter, runner, calls };
 }
 
 function makeFlowState(adapter: WorkerAdapter) {
@@ -101,8 +101,8 @@ afterEach(() => {
 });
 
 describe("createFlowState — worker adapter", () => {
-  it("colocated (default): wires dispatcher and worker against the same runtime the router uses", async () => {
-    const { adapter, dispatcher, calls } = makeFakeAdapter();
+  it("colocated (default): wires runner and worker against the same runtime the router uses", async () => {
+    const { adapter, runner, calls } = makeFakeAdapter();
     const fs = makeFlowState(adapter);
     await fs.ready();
 
@@ -117,25 +117,25 @@ describe("createFlowState — worker adapter", () => {
     expect(calls.workerRuntimes[0]?.registry).toBe(runtime.registry);
     expect(calls.workerRuntimes[0]?.runtimeConfig).toBe(runtime.runtimeConfig);
 
-    // The adapter's dispatcher reaches the router.
-    expect(routerCalls[0]?.runner).toBe(dispatcher);
+    // The adapter's runner reaches the router.
+    expect(routerCalls[0]?.runner).toBe(runner);
 
     await fs.dispose();
   });
 
-  it("dispatch-only: installs the dispatcher, never starts a worker", async () => {
-    const { adapter, dispatcher, calls } = makeFakeAdapter("dispatch-only");
+  it("dispatch-only: installs the runner, never starts a worker", async () => {
+    const { adapter, runner, calls } = makeFakeAdapter("dispatch-only");
     const fs = makeFlowState(adapter);
     await fs.ready();
 
     expect(calls.runnerRuntimes).toHaveLength(1);
     expect(calls.workerRuntimes).toHaveLength(0);
-    expect(routerCalls[0]?.runner).toBe(dispatcher);
+    expect(routerCalls[0]?.runner).toBe(runner);
 
     await fs.dispose();
   });
 
-  it("worker-only: starts the worker, installs no dispatcher", async () => {
+  it("worker-only: starts the worker, installs no runner", async () => {
     const { adapter, calls } = makeFakeAdapter("worker-only");
     const fs = makeFlowState(adapter);
     await fs.ready();
@@ -194,15 +194,15 @@ describe("createFlowState — worker adapter", () => {
     expect(calls.adapterClosed).toBe(1);
   });
 
-  it("rejects worker + dispatcher together at construction", () => {
-    const { adapter, dispatcher } = makeFakeAdapter();
+  it("rejects worker + runner together at construction", () => {
+    const { adapter, runner } = makeFakeAdapter();
     expect(() =>
       createFlowState({
         flows: { noop: noopFlow },
         stores: { default: { primary: inMemoryStores() } },
         modelResolver: stubModelResolver,
         worker: adapter,
-        runner: dispatcher
+        runner
       })
     ).toThrow(FlowStateConfigError);
   });

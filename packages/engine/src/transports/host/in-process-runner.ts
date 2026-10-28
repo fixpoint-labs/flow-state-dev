@@ -1,7 +1,7 @@
 /**
  * Default FlowRunner — runs actions in the current process via runAction.
  * Extracted from the inline dispatch body in createInboundTransportHost so the
- * host can accept pluggable dispatchers without changing adapter contracts.
+ * host can accept pluggable runners without changing adapter contracts.
  */
 import type { FlowRegistry } from "../../registry/flow-registry";
 import type { StoreRegistry } from "../../stores/types";
@@ -56,26 +56,26 @@ export interface InProcessRunner extends FlowRunner {
 }
 
 /**
- * Whether a dispatcher runs work in THIS process.
+ * Whether a runner runs work in THIS process.
  *
  * `dispatchLocal` is the discriminator because it is the capability that cannot
- * cross a serialization boundary — a dispatcher that accepts a live
+ * cross a serialization boundary — a runner that accepts a live
  * `AbortSignal` and `ResponseEmitter` is necessarily running the work here. An
- * `undefined` dispatcher is in-process too: the host builds its own
+ * `undefined` runner is in-process too: the host builds its own
  * `createInProcessRunner` for that case.
  *
  * Shared rather than re-tested per call site so the host's dispatch branch and
  * anything else keying on locality cannot drift apart and disagree about the
- * same dispatcher (FIX-1077).
+ * same runner (FIX-1077).
  */
 export function isInProcessRunner(
-  dispatcher: FlowRunner | undefined
+  runner: FlowRunner | undefined
 ): boolean {
-  return dispatcher === undefined || "dispatchLocal" in dispatcher;
+  return runner === undefined || "dispatchLocal" in runner;
 }
 
 /**
- * Create a dispatcher that runs actions in the current process. The host
+ * Create a runner that runs actions in the current process. The host
  * delegates to `dispatchLocal` (which accepts non-serializable context)
  * while the generic `FlowRunner.dispatch` interface is also satisfied
  * for callers that only have the serializable envelope.

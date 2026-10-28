@@ -144,7 +144,7 @@ export type CreateInboundTransportHostOptions = {
    *
    * An arbiter over a backend shared across processes
    * (`arbitratesAcrossProcesses`) also arbitrates work this host hands to an
-   * external dispatcher (FIX-1634).
+   * external runner (FIX-1634).
    */
   arbiter?: ConcurrencyArbiter;
 };
@@ -446,7 +446,7 @@ export function createInboundTransportHost(
 
   // One arbiter governs every dispatch, so an action's concurrency policy is
   // enforced once at this shared seam (FIX-837). Work handed to an external
-  // dispatcher (BullMQ) runs in another process, so it is arbitrated only when
+  // runner (BullMQ) runs in another process, so it is arbitrated only when
   // the arbiter's keys are shared with that process: the dispatch takes its
   // place here, the place rides the job, and the worker waits its turn and gives
   // it back when the run ends (FIX-1634). A `hold` job's place has its turn at
@@ -718,7 +718,7 @@ export function createInboundTransportHost(
     // No brand and no CLI plumbing needed: the condition IS the divergence. A
     // launching request whose config carries a different resolver from the
     // host's is one a caller derived — `fsdev run --model` is the shipped case —
-    // and an external dispatcher cannot carry it, because a `RuntimeConfig`
+    // and an external runner cannot carry it, because a `RuntimeConfig`
     // holds live resolvers and providers that do not serialize. Serializing just
     // the model id was the alternative and is worse: the worker is a different
     // process with its own gateways and keys, so a forced id may not resolve
@@ -900,7 +900,7 @@ export function createInboundTransportHost(
       //   - a `ResponseEmitter`   → caller is bringing its own; do not create a
       //                             redundant live stream and waste a slot
       //
-      // External dispatchers (BullMQ, etc.) execute in a separate context and
+      // External runners (BullMQ, etc.) execute in a separate context and
       // persist events to the shared store. The client falls back to the GET
       // request-stream endpoint (store-driven live tail) when it receives a 202
       // instead of an inline SSE response, so creating a live stream here would
@@ -925,8 +925,8 @@ export function createInboundTransportHost(
         liveStream?.emitter ??
         createResponseEmitter({ requestId, maxRecordedValueBytes });
 
-      // Delegate to the dispatcher. InProcessRunner uses dispatchLocal
-      // (carries non-serializable context); external dispatchers use the
+      // Delegate to the runner. InProcessRunner uses dispatchLocal
+      // (carries non-serializable context); external runners use the
       // generic dispatch interface.
       if ("dispatchLocal" in effectiveRunner) {
         // The in-process milestones, held here rather than read off the handle
@@ -1018,7 +1018,7 @@ export function createInboundTransportHost(
           // (which registers `activeRequests` and writes the request record) has
           // not run when this handle is returned. Materialize a discoverable
           // `in_progress` record + activeRequests entry now — the same enqueue-time
-          // stub the external dispatcher writes (FIX-828) — so the synchronously
+          // stub the external runner writes (FIX-828) — so the synchronously
           // returned `requestId` resolves instead of 404ing on `.../requests/:id/
           // stream` while queued. `runAction` adopts/overwrites the stub when the
           // run starts (last-write-wins). If the wait budget elapses the run never
@@ -1247,14 +1247,14 @@ export function createInboundTransportHost(
           accepted = inProcessAccepted;
         }
       } else {
-        // External dispatchers (BullMQ, etc.) run in a separate process and only
+        // External runners (BullMQ, etc.) run in a separate process and only
         // register the request once the worker starts `runAction`. A client GET
         // .../stream that arrives first would find no record and 404. Materialize
         // the activeRequests entry and an `in_progress` record here, at enqueue
         // time, so the stream route resolves a live record and tails events
         // immediately (FIX-828). The shared `createInitialRequestRecord` builder
         // constructs this stub the same way the worker would, so the worker
-        // adopts it as-is and skips its own write. Gating the dispatcher call
+        // adopts it as-is and skips its own write. Gating the runner call
         // on these writes means a store failure fails the dispatch rather than
         // enqueueing a job with no discoverable record (no orphan). Resume and the
         // Vercel adapter route through here too, so both inherit the fix.
@@ -1275,7 +1275,7 @@ export function createInboundTransportHost(
         // depend on the liveness of a process that is not running it, and would
         // beat on behalf of work it has no knowledge of.
         // `acceptance` resolves once the request is accepted: the enqueue-time
-        // writes commit AND the dispatcher accepts the job. The response path
+        // writes commit AND the runner accepts the job. The response path
         // awaits the exposed `accepted` view before acking, so the 202 means
         // "discoverable and enqueued" — not merely "record written". Crucially the
         // enqueue (`effectiveRunner.dispatch`) is inside this promise, so an
@@ -1408,7 +1408,7 @@ export function createInboundTransportHost(
    * Wait for this continuation's place inside `finished`, after the handle
    * returns, so a run that continues another request in its own session is
    * not blocked on its own place. The key is the stored record's. An external
-   * dispatcher with no shared backend skips arbitration, as `dispatch` does.
+   * runner with no shared backend skips arbitration, as `dispatch` does.
    * The run stops if a shared backend can no longer keep the place. A wait
    * that ends before the run starts releases the caller's lease (`leaseId`),
    * never one another process took after it lapsed; the answer stays on the

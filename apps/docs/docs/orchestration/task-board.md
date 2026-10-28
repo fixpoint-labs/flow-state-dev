@@ -25,7 +25,7 @@ Start with a wrapper pattern when its shape fits:
 Reach for the board directly when none of those fit:
 
 - You need a long-running board that accepts new tasks from outside the initial seed list (Parallel Tasks decomposes once and stops).
-- You need a custom worker registry, dispatcher, or termination rule that none of the wrappers expose.
+- You need a custom worker registry, claim order, or termination rule that none of the wrappers expose.
 - You're building a new coordination pattern and want a tested concurrent drain underneath it.
 
 The page starts with the board you build and drain in code. Later sections cover the [task tools](#one-task-five-tools) a model uses to work a board, and boards whose [assignees dispatch](#assignees-that-dispatch) their tasks to other sessions.
@@ -63,7 +63,7 @@ const board = taskBoard({
 // `board.drain` plugs into a parent sequencer as a normal step.
 ```
 
-Defaults: a plan board (`mode: "plan"`), request-scoped storage (`collection` is optional), concurrency `4`, `dispatcher: "topological"`, `onIdle: "complete-or-blocked"`, `onError: "skip"`.
+Defaults: a plan board (`mode: "plan"`), request-scoped storage (`collection` is optional), concurrency `4`, `claimOrder: "topological"`, `onIdle: "complete-or-blocked"`, `onError: "skip"`.
 
 ## How a drain runs
 
@@ -141,15 +141,15 @@ The task tools can refuse a bad assignee when the task is filed instead, given a
 
 On a delegation board, a registry assignee runs its tasks somewhere other than the request that claimed them, and so can `defaultWorker`. See [Assignees that dispatch](#assignees-that-dispatch).
 
-## Dispatcher modes
+## Claim orders
 
-The dispatcher decides which `pending` task gets claimed next. No dispatcher claims a task whose `deps` aren't all `completed`; that rule lives on the collection's `claim`. So the built-in modes differ only in how they order the tasks that are already ready:
+The claim order decides which `pending` task gets claimed next. No claim order claims a task whose `deps` aren't all `completed`; that rule lives on the collection's `claim`. So the built-in modes differ only in how they order the tasks that are already ready:
 
 - `"topological"` (default): earliest-added ready task first.
 - `"fifo"`: the same ordering. The name reads better for a flat fan-out with no deps.
 - `"priority"`: highest-`priority` ready task first, ties break on earliest-added. An unset `priority` counts as 0.
 
-Those three strings are the only names `dispatcher` accepts. It also takes any `ClaimOrder` instance: one of the three that `@flow-state-dev/orchestration` exports, or your own. See [Task substrate → Dispatchers](./task-substrate.md#dispatchers) for what each one picks, and [Flow policy](./flow-policy) for the observation ledger, `priorWork` shaping, and tool-result caching.
+Those three strings are the only names `claimOrder` accepts. It also takes any `ClaimOrder` instance: one of the three that `@flow-state-dev/orchestration` exports, or your own. See [Task substrate → Claim orders](./task-substrate.md#claim-orders) for what each one picks, and [Flow policy](./flow-policy) for the observation ledger, `priorWork` shaping, and tool-result caching.
 
 The `dispatcher` option only orders claims. The `dispatcher()` block from `@flow-state-dev/core` is a different thing: an [assignee that dispatches](#assignees-that-dispatch) its tasks to another session.
 
@@ -942,7 +942,7 @@ A run that handles several tasks does so under its entry's `concurrency` policy.
 task: { actions: { implement: { block: implementBlock, concurrency: "allow" } } },
 ```
 
-The in-process dispatcher applies that policy, and so do queue workers that share a lease backend. On a deployment that hands dispatches to an external queue without one, the run starts in another worker and the entry's `concurrency` does not gate it.
+The in-process runner applies that policy, and so do queue workers that share a lease backend. On a deployment that hands dispatches to an external queue without one, the run starts in another worker and the entry's `concurrency` does not gate it.
 
 A task keeps its session for its whole life. If its worker [asks a question](#a-tasks-questions), the answer brings it back to that same session for its next turn, so it carries on with everything it did before. When the task is done, the session stays open, and the task stays as it ended.
 

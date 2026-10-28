@@ -103,7 +103,7 @@ export interface LeaseRenewalOptions {
   /**
    * The task **as `claim()` committed it**. The renewal span is read off this
    * row rather than passed in, which is what makes the driver correct by
-   * construction: a dispatcher that claimed with a five-second lease and a
+   * construction: a claim order that claimed with a five-second lease and a
    * driver that assumed two minutes cannot disagree, because there is nothing
    * to agree about.
    */

@@ -1,5 +1,5 @@
 /**
- * Pluggable flow execution dispatcher.
+ * Pluggable flow execution runner.
  *
  * Controls WHERE a flow action executes. The default InProcessRunner
  * runs actions in the current process via runAction. Alternative
@@ -29,7 +29,7 @@ export interface DispatchEnvelope {
   userId: string;
   sessionId?: string;
   /**
-   * The organization the run belongs to. Required (FIX-1442): a dispatcher
+   * The organization the run belongs to. Required (FIX-1442): a runner
    * hands work to a worker that runs BELOW principal resolution, so the
    * envelope is the only place that worker can learn the organization from.
    * A durable job written before this field existed is refused on the way
@@ -42,8 +42,8 @@ export interface DispatchEnvelope {
   /**
    * Pre-resolved action core for an event dispatch with no static coordinate
    * (the dynamic schedule). NOT serializable — a block cannot cross a queue
-   * boundary — so it is honoured only by the in-process dispatcher; external
-   * dispatchers (BullMQ) drop it, which is consistent with dynamic schedules
+   * boundary — so it is honoured only by the in-process runner; external
+   * runners (BullMQ) drop it, which is consistent with dynamic schedules
    * being non-recoverable. See `InboundRequestEnvelope.resolvedActionCore`.
    */
   resolvedActionCore?: ActionCore;
@@ -100,7 +100,7 @@ export interface FlowDispatchHandle {
    * without waiting for the run (FIX-982). Rejects with the run's own error
    * when it dies before getting that far.
    *
-   * Optional because a dispatcher is free not to distinguish the two, but the
+   * Optional because a runner is free not to distinguish the two, but the
    * in-process one does: `dispatchLocal` returns as soon as `runAction` reaches
    * its first await, which is before the registration write has landed, so the
    * handle alone is not evidence the request exists.

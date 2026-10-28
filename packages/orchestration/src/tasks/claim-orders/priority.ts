@@ -7,9 +7,9 @@
  * comparison — a deliberate choice so unprioritized tasks slot in
  * after explicitly-prioritized ones rather than being skipped.
  *
- * This dispatcher orders; it does not narrow. Its `isReady` eligibility
+ * This claim order orders; it does not narrow. Its `isReady` eligibility
  * conjunct was a restatement of the substrate's own admission rule and came
- * out in FIX-1005 — a dispatcher carrying its own copy is one that stops
+ * out in FIX-1005 — a claim order carrying its own copy is one that stops
  * recovering abandoned work the day that rule widens.
  */
 import type { Task } from "../schema/task";

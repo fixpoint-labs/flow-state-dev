@@ -34,7 +34,7 @@
  * runs unarbitrated.
  *
  * Without a supplied backend the arbiter holds keys in this process only, so a
- * host whose dispatcher hands work to another process skips arbitration there
+ * host whose runner hands work to another process skips arbitration there
  * (`arbitratesAcrossProcesses` is false) and the dispatch operation keeps
  * refusing a delivery into an existing session by name.
  */
@@ -164,7 +164,7 @@ export interface ConcurrencyArbiter {
   ): ConcurrencyAdmission | Promise<ConcurrencyAdmission>;
   /**
    * Whether this arbiter's keys are shared with other processes: true when a
-   * backend was supplied rather than defaulted. A host whose dispatcher runs
+   * backend was supplied rather than defaulted. A host whose runner runs
    * work in another process arbitrates it only when this is true.
    */
   readonly arbitratesAcrossProcesses: boolean;

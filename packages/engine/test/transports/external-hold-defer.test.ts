@@ -8,7 +8,7 @@
  * ownership check before any place is taken apply here exactly as they do to
  * a run in this process.
  *
- * The dispatcher below enqueues and records; a test ends a job by hand, the
+ * The runner below enqueues and records; a test ends a job by hand, the
  * way its worker would report it done. The backend is adapter-shaped (only its
  * four public calls), so the arbiter takes the path the Redis backend takes.
  */
@@ -36,7 +36,7 @@ const SESSION = "s_1";
 function recordingQueue() {
   const enqueued: DispatchEnvelope[] = [];
   const ends = new Map<string, () => void>();
-  const dispatcher: FlowRunner = {
+  const runner: FlowRunner = {
     async dispatch(envelope) {
       enqueued.push(envelope);
       const finished = new Promise<ExecutionResult>((resolve) => {
@@ -47,7 +47,7 @@ function recordingQueue() {
     async close() {}
   };
   return {
-    dispatcher,
+    runner,
     enqueued,
     /** The job for `requestId` ends, as its worker would report. */
     end: (requestId: string) => ends.get(requestId)!()
@@ -107,7 +107,7 @@ async function buildHost(options: { maxDeferredPerKey?: number } = {}) {
     stores,
     resolvePrincipal: defaultBodyUserIdPrincipalResolver,
     runtimeConfig: {},
-    runner: queue.dispatcher,
+    runner: queue.runner,
     arbiter: createConcurrencyArbiter({
       backend,
       ...(options.maxDeferredPerKey !== undefined ? { maxDeferredPerKey: options.maxDeferredPerKey } : {})

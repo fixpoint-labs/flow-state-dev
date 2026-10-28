@@ -36,7 +36,7 @@ const run = {
   block: handler({ name: "owner-fence-run", inputSchema: input, execute: () => ({}) })
 };
 
-function buildHost(stores: StoreRegistry, dispatcher?: FlowRunner) {
+function buildHost(stores: StoreRegistry, runner?: FlowRunner) {
   const registry = createFlowRegistry();
   registry.register(
     defineFlow({
@@ -52,7 +52,7 @@ function buildHost(stores: StoreRegistry, dispatcher?: FlowRunner) {
     stores,
     resolvePrincipal: defaultBodyUserIdPrincipalResolver,
     runtimeConfig: {},
-    ...(dispatcher === undefined ? {} : { runner: dispatcher })
+    ...(runner === undefined ? {} : { runner })
   });
 }
 
@@ -115,12 +115,12 @@ describe("a request id another principal holds, dispatched at the host", () => {
   it("is refused on an external queue before the job is enqueued", async () => {
     const stores = createInMemoryStores();
     const before = await aliceCompletes(stores);
-    const dispatcher = externalRunner();
+    const runner = externalRunner();
 
-    const handle = dispatchAs(buildHost(stores, dispatcher), "bob", "run", "bob's note");
+    const handle = dispatchAs(buildHost(stores, runner), "bob", "run", "bob's note");
     await expect(handle.accepted).rejects.toBeInstanceOf(RequestOwnerMismatchError);
 
-    expect(dispatcher.dispatch).not.toHaveBeenCalled();
+    expect(runner.dispatch).not.toHaveBeenCalled();
     expect(await stores.request.get(REQUEST_ID)).toEqual(before);
   });
 

@@ -18,7 +18,7 @@
  *   charges nothing: the claim is what spends an attempt, and it never happens.
  *   The host wires it on the board that drains.
  * - the manager itself refuses a row another member owns before it derives
- *   anything, for a board whose drain was not wired with the dispatcher. That
+ *   anything, for a board whose drain was not wired with the claim order. That
  *   refusal comes after the claim, so it does cost the attempt; it exists so a
  *   run is never forked.
  *
@@ -144,11 +144,11 @@ export function runPrincipal(ctx: RequestIdentityContext): RunPrincipal {
 }
 
 /**
- * A board dispatcher that never claims a row whose coding run another member
+ * A board claim order that never claims a row whose coding run another member
  * started — the half of the run-owner rule that charges nothing.
  *
  * Wire it on the board that drains rows a manager runs, when that board is
- * kept per organization (a shared board): `taskBoard({ dispatcher:
+ * kept per organization (a shared board): `taskBoard({ claimOrder:
  * runOwnerClaimOrder() })`. The claim is what spends an attempt, so refusing
  * here leaves the row exactly as it was: same status, same attempt count,
  * same lease. Readiness and order stay the collection's: the owner check is
@@ -159,7 +159,7 @@ export function runPrincipal(ctx: RequestIdentityContext): RunPrincipal {
  * every claimable row was someone else's, the drain is refused with an error
  * naming whose run it is, rather than returning as if the board were idle.
  *
- * @returns A dispatcher to pass as `taskBoard({ dispatcher })`.
+ * @returns A claim order to pass as `taskBoard({ claimOrder })`.
  */
 export function runOwnerClaimOrder(): ClaimOrder {
   return {

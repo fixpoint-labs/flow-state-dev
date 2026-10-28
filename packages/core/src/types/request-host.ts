@@ -397,7 +397,7 @@ export interface RequestHost {
 
   /**
    * Whether a request this one dispatches runs in this process (the host's
-   * in-process dispatcher), rather than on another one's worker (a queue).
+   * in-process runner), rather than on another one's worker (a queue).
    * A fact read when the request starts. Absent or `false` when it may run
    * elsewhere, or the host can't say: a caller that keeps process-local
    * bookkeeping about what it dispatched relies on it only when `true`.

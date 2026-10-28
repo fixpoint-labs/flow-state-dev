@@ -246,7 +246,7 @@ class InternalFlowState<TSettings extends object>
    * behalf of.
    */
   #routerRequested = false;
-  /** Dispatcher built by the worker adapter during runtime init. */
+  /** Runner built by the worker adapter during runtime init. */
   #workerRunner: FlowRunner | undefined;
   /** Started worker, closed by dispose() before store adapters. */
   #workerHandle: WorkerHandle | undefined;
@@ -334,8 +334,8 @@ class InternalFlowState<TSettings extends object>
 
     if (options.worker !== undefined && options.runner !== undefined) {
       throw new FlowStateConfigError(
-        "createFlowState: `worker` and `dispatcher` are mutually exclusive. " +
-          "The worker adapter provides its own dispatcher; pass one or the other."
+        "createFlowState: `worker` and `runner` are mutually exclusive. " +
+          "The worker adapter provides its own runner; pass one or the other."
       );
     }
 
@@ -959,7 +959,7 @@ class InternalFlowState<TSettings extends object>
     // The sweeper facts come from `resolveStaleSweep` — the same rule the
     // router applies to the pair it builds its own sweeper from — so the gate
     // and the sweeper cannot describe different cadences. The dispatch
-    // operation is wired at the bottom of this method, once the dispatcher it must go
+    // operation is wired at the bottom of this method, once the runner it must go
     // through is resolved; `parentTask` stays unwired here, and that verb
     // refuses by name rather than pretending otherwise.
     //
@@ -1076,7 +1076,7 @@ class InternalFlowState<TSettings extends object>
     if (requestHost.dispatchOperation !== undefined) return;
 
     let operation: DispatchOperation | undefined;
-    // Read per request: the worker's dispatcher is wired after this.
+    // Read per request: the worker's runner is wired after this.
     requestHost.dispatchRunsHere ??= () => isInProcessRunner(this.#options.runner ?? this.#workerRunner);
     requestHost.dispatchOperation = (spec) => {
       if (this.#disposed) {
@@ -1150,12 +1150,12 @@ class InternalFlowState<TSettings extends object>
    * The host the request-host operations dispatch through, built on first use
    * and shared between the detached start and the dispatch seam.
    *
-   * Built lazily so everything it reads — the worker's dispatcher, the shared
+   * Built lazily so everything it reads — the worker's runner, the shared
    * arbiter — is resolved by the time it runs, rather than captured at a moment
    * when the worker adapter has not been consulted yet.
    *
    * Shared rather than one per operation because a second host in this process
-   * would be a second place the same questions get answered — which dispatcher
+   * would be a second place the same questions get answered — which runner
    * is effective, whether it is external — and two answers to one question is
    * how a seam and a dispatch branch come to disagree. The arbiter is already
    * shared for exactly that reason.
@@ -1183,12 +1183,12 @@ class InternalFlowState<TSettings extends object>
   /**
    * Build the dispatch seam's operation, on first use. A dispatched child that
    * runs here is tracked for the shutdown drain, keyed on the effective
-   * dispatcher.
+   * runner.
    */
   #buildDispatchOperation(runtimeConfig: RuntimeConfig, stores: StoreRegistry): DispatchOperation {
-    const dispatcher = this.#options.runner ?? this.#workerRunner;
+    const runner = this.#options.runner ?? this.#workerRunner;
     const host = this.#hostForRequestHostOperations(runtimeConfig, stores);
-    const runsHere = isInProcessRunner(dispatcher);
+    const runsHere = isInProcessRunner(runner);
     return createDispatchOperation({
       host,
       ...(runsHere

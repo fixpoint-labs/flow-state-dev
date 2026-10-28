@@ -1,7 +1,7 @@
 /**
  * `runOwnerClaimOrder` against a real task collection.
  *
- * The dispatcher's whole job is the claim's `eligibility`: another member's
+ * The claim order's whole job is the claim's `eligibility`: another member's
  * row is never claimed, so it is never charged an attempt, and this member's
  * own row behind it still is. Drop the narrowing and the first test claims
  * Alice's row for Bob.

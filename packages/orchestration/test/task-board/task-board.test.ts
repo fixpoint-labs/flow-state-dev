@@ -146,7 +146,7 @@ describe("taskBoard - handle structure", () => {
     ).toThrow(/maxIterations/);
   });
 
-  it("throws on an unknown dispatcher name", () => {
+  it("throws on an unknown claim order name", () => {
     expect(() =>
       taskBoard({
         name: "bad",
@@ -154,7 +154,7 @@ describe("taskBoard - handle structure", () => {
         claimOrder: "nonsense" as never,
         workers: makeGoalWorker("noop", () => null),
       })
-    ).toThrow(/unknown dispatcher/);
+    ).toThrow(/unknown claim order/);
   });
 });
 

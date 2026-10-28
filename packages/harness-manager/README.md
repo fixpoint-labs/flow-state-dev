@@ -102,7 +102,7 @@ const manager = harnessManager({
 });
 
 // On the board that drains the rows:
-taskBoard({ collection: work, dispatcher: runOwnerClaimOrder(), /* ... */ });
+taskBoard({ collection: work, claimOrder: runOwnerClaimOrder(), /* ... */ });
 ```
 
 The manager builds each run's checkout folder and git branch from the board's id, used as is. An
@@ -119,8 +119,8 @@ row, but only after the claim, so the row is charged an attempt.
 
 **Wire `runOwnerClaimOrder()` on every board kept per organization that drains rows into a
 manager.** The manager's own refusal keeps the run from being split between two people, but only
-the dispatcher keeps a teammate's drain from spending the row's retries. The dispatcher claims in
-the board's own readiness and order, so it takes the place of any other dispatcher on that board.
+the claim order keeps a teammate's drain from spending the row's retries. The claim order claims in
+the board's own readiness and order, so it takes the place of any other claim order on that board.
 
 ## Running a conversation's tasks
 
