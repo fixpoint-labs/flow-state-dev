@@ -119,6 +119,7 @@ import { workerTaskEntry } from "../conversation-board/task-entry";
 import {
   CONVERSATION_BOARD_SERVER_OWNED,
   REPLY_CONCURRENCY,
+  answerTextOf,
   conversationBoardStateShape,
   routedEndingSchema,
   type RoutedEnding
@@ -380,11 +381,6 @@ function routedIdParts(postId: string, round: number, delegate: DelegateRef): st
   return parts.map(encodeURIComponent).join(":");
 }
 
-/** A routed task's answer: its output when that says something. An empty or blank one is no answer, whoever reads it. */
-function answerOf(output: unknown): string | undefined {
-  return typeof output === "string" && output.trim().length > 0 ? output : undefined;
-}
-
 /** A routed task's title in its user's list: the message's first line, cut short. */
 function routedTitle(body: string): string {
   const first = body.trim().split("\n", 1)[0] ?? "";
@@ -493,7 +489,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     for (const { postId, round, begun, opening } of open) {
       const rows = byRound.get(JSON.stringify([postId, round])) ?? [];
       const replied = rows.flatMap((row) => {
-        const brief = row.status === "completed" && answerOf(row.output) !== undefined ? routedBriefOf(row) : undefined;
+        const brief = row.status === "completed" && answerTextOf(row.output) !== undefined ? routedBriefOf(row) : undefined;
         return brief === undefined ? [] : [brief.delegate];
       });
       read.set(JSON.stringify([postId, round]), {
@@ -1607,7 +1603,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     ...blockBase,
     execute: async (ending: RoutedEnding, ctx) => {
       // An empty answer is no answer: nothing lands, and best fit's hold stays.
-      const body = ending.ending === "completed" ? answerOf(ending.output) : undefined;
+      const body = ending.ending === "completed" ? answerTextOf(ending.output) : undefined;
       const post = ending.brief;
       if (post === undefined) {
         // Not routed: its answer lands, and nothing goes on.

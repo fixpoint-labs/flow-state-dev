@@ -132,6 +132,11 @@ export {
  * issue, phase)` is that run's record key.
  */
 export { runBoardSegment } from "./workspace";
+/**
+ * The issue a task's own id stands in for, on a board that mints its ids: a
+ * session door's `runOf` keys a row's run with it, as the manager did.
+ */
+export { taskIssueSegment } from "./workspace";
 
 // ── Subscription usage left, per person and harness ─────────────────────────
 //
