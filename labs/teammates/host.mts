@@ -41,10 +41,10 @@ import { localWorkspaceHost } from "@flow-state-dev/workspace";
 import { CODER_FLOW, coderFlow, type Harness } from "./src/flows/coder.ts";
 
 /** The workers, beside this file. */
-export const TEAMMATES_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
+const TEAMMATES_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
 
 /** The flow the lab's projects are created on. */
-export const PROJECTS_FLOW = "teammates-projects";
+const PROJECTS_FLOW = "teammates-projects";
 
 /** One project the lab starts with. */
 export interface LabProject {
@@ -158,5 +158,5 @@ export async function openTeammates(options: TeammatesOptions) {
 }
 
 /** Where a lab run keeps its store and runs by default: `.fsdev/` beside this file. */
-export const LAB_DATA = fileURLToPath(new URL("./.fsdev", import.meta.url));
+const LAB_DATA = fileURLToPath(new URL("./.fsdev", import.meta.url));
 export const defaultStore = () => join(LAB_DATA, "teammates.sqlite");
