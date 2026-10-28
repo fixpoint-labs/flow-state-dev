@@ -17,7 +17,7 @@
 import { generateId } from "../generate-id";
 import type { Task } from "../schema/task";
 import { isTerminalStatus } from "../schema/task-status";
-import { MAX_QUESTION_PROMPT, type QuestionInit, type RowQuestion, type SuspensionQuestion, type TaskQuestion } from "../schema/hold";
+import { MAX_QUESTION_PROMPT, type QuestionInit, type RowQuestion, type SuspensionQuestion, type TaskQuestion } from "../schema/question";
 import { MAX_STEERS, type TaskSteer } from "../schema/steer";
 import type { TaskWriteDeclineReason } from "./types";
 

@@ -790,7 +790,7 @@ async function legF(run: Run): Promise<void> {
   }
   for (const id of [own, rawTimed, rawNone]) await run.h.act(run.conversation, "updateTask_tasks", { id, status: "cancelled" }).catch(() => undefined);
   await run.h.idle();
-  run.notes.push(`f: waitForUser took the host's ${HOST_DEADLINE_MS} ms; a raw stop kept ${RAW_TIMEOUT_MS} ms and none. A held question's half is goals/task-board/holds-a-task-on-questions, leg f`);
+  run.notes.push(`f: waitForUser took the host's ${HOST_DEADLINE_MS} ms; a raw stop kept ${RAW_TIMEOUT_MS} ms and none. A held question's half is goals/task-board/waits-on-its-questions, leg f`);
 }
 
 /** g. No deadline: still waiting past the sweep's interval and a board touch. */

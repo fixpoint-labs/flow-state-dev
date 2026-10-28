@@ -116,7 +116,7 @@ Concurrent drain over a `TaskCollection` with dependency gating and per-task wor
 
 **Termination modes (`onIdle`)**:
 
-- `"complete-or-blocked"` (default): exit on full drain OR when no `in_progress` task is active and no `pending` task has all deps `completed`. A running task waiting on a person (an open hold: a question, or a stop for a review or an approval) is not active, so a board whose open tasks only wait on a person exits and leaves them waiting. Handles the DAG case where an upstream task errors and downstream pendings can never run.
+- `"complete-or-blocked"` (default): exit on full drain OR when no `in_progress` task is active and no `pending` task has all deps `completed`. A running task waiting on a person (an open question: a question or a confirm, or a stop for a review or an approval) is not active, so a board whose open tasks only wait on a person exits and leaves them waiting. Handles the DAG case where an upstream task errors and downstream pendings can never run.
 - `"complete"`: exit only when no `pending` or `in_progress` tasks remain. Use when a pending task with a non-completed dep is a transient state an external pump will resolve.
 - `"wait"`: never auto-exit; defer to a user-supplied `shouldExit` predicate. For long-running session-scoped boards.
 

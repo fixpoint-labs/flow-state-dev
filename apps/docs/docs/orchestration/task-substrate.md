@@ -40,7 +40,7 @@ A `Task` is one unit of work. It carries what to do, where it is in its lifecycl
 | `leaseUntil` | `number?` | When the current claim expires. The worker holding the task pushes this out while it works. |
 | `leaseDurationMs` | `number?` | How long the current claim was granted, as the claim wrote it. Read it with `committedLeaseSpan(task)` rather than subtracting the stamps yourself — every other write to the task moves `updatedAt`. |
 | `abandonments` | `number?` | How many times this task was handed back out after its worker stopped renewing the lease. |
-| `holds` | `TaskQuestion[]?` | What the task is waiting on a person for: its questions and confirms, and a stop its run waits on. See [holding a task on questions](#holding-a-task-on-questions). |
+| `questions` | `TaskQuestion[]?` | What the task is waiting on a person for: its questions and confirms, and a stop its run waits on. See [waiting on questions](#waiting-on-questions). |
 | `turn` | `number?` | Counts the turns the task has run. Every claim advances it, so two turns of one attempt hold different claims. |
 | `labels` | `string[]?` | Free-form tags, filterable via `hasLabel` / `hasAllLabels`. |
 | `metadata` | `Record<string, unknown>?` | Arbitrary structured data. |
@@ -103,20 +103,20 @@ A *held* task is filed but won't start. No claim takes it, whatever its `deps`, 
 
 A held task keeps a board from finishing: nothing will start it, so a [task board](./task-board.md#termination-onidle-modes)'s drain reports it with the failures, as `"blocked-by-failures"`. Release it, or cancel it, to let the board finish.
 
-### Holding a task on questions
+### Waiting on questions
 
-A task can also wait on a person's answers. Its `holds` list what it waits on, each with an `id`, the `ask` (`kind` and `prompt`), when it was opened (`openedAt`), and a `due` time when a deadline applies. `openQuestions(task)` returns the ones still open. A task with an open hold starts no turn: no claim takes it, and nothing renews or reclaims its lease.
+A task can also wait on a person's answers. Its `questions` list what it waits on, each with an `id`, the `ask` (`kind` and `prompt`), when it was opened (`openedAt`), and a `due` time when a deadline applies. `openQuestions(task)` returns the ones still open. A task with an open question starts no turn: no claim takes it, and nothing renews or reclaims its lease.
 
 There are two kinds, told apart by `source.kind`:
 
 - **A question or a confirm** (`"row"`). File the task with `addTask({ ..., questions: [{ kind: "question", prompt }] })` and it stays `pending` until each is answered. A worker asks midway with `ask(id, asks, { claim })`, from the turn holding the task's claim: the write drops the lease and the turn ends without settling the task, which stays `in_progress`. A `confirm` asks for a yes or a no. Its `ask.onNo` says what a No does: `"cancel"`, the default, or `"continue"`. The collection stores it; the board's `updateTask` acts on it, cancelling the task on a `"cancel"` No.
 - **A stop its run waits on** (`"suspension"`). When a run working the task waits for a person (`ctx.waitForUser`), the task records the stop here with its `requestId` and `suspensionId`, and the run's resume closes it.
 
-`answer(id, { hold, message, from })` answers one question. The answer is kept on the task as a message carrying the hold's id, so it joins the next turn's brief. The last answer lets the work go on in the same write: a task that hadn't started can be claimed, and one asked midway owes one more turn on its same attempt, which the next claim takes without charging `maxAttempts`. Sending the same words again reports `unchanged`, even after the task has finished. Different words for a question already answered are declined `answered`.
+`answer(id, { questionId, message, from })` answers one question. The answer is kept on the task as a message carrying the question's id, so it joins the next turn's brief. The last answer lets the work go on in the same write: a task that hadn't started can be claimed, and one asked midway owes one more turn on its same attempt, which the next claim takes without charging `maxAttempts`. Sending the same words again reports `unchanged`, even after the task has finished. Different words for a question already answered are declined `answered`.
 
 A question has no deadline unless the host sets [`userDeadlineMs`](/docs/configuration/runtime#createflowstate-fields). Past one, `payQuestionDeadlines()` (which a board runs on every touch) closes the question with "No answer came before this question's deadline. Go on from your brief without it.", which lets the work go on as an answer would.
 
-A task with open holds settles only by a cancel, which closes every hold; an answer closes its own hold and the work goes on. A turn waits once: it can't ask questions while its run waits on a stop, and its run can't stop for a person while its own questions are open.
+A task with open questions settles only by a cancel, which closes every question; an answer closes its own question and the work goes on. A turn waits once: it can't ask questions while its run waits on a stop, and its run can't stop for a person while its own questions are open.
 
 ### Changing a filing before it starts
 
@@ -271,7 +271,7 @@ While a task is `in_progress`, your writes are good for as long as you hold the 
 
 One caller is entitled to more than that: a worker that has not started yet. If your claim sat in a queue and its lease ran out before the work began, `renewLease(id, deadline, { claim, adoptLapsedLease: true })` takes the task back instead of being declined — same attempt, same claim, no re-dispatch. The write is what decides it: `{ outcome: "declined", reason: "lost-claim" }` if another claimant has meanwhile taken the task, and `{ outcome: "recorded" }` if nobody has, which means the task is yours again for the deadline you just wrote. Pass `committedLeaseSpan(task)` past `now()` as that deadline, so the task keeps the lease length its claim was granted. Reach for it only from a worker that has run nothing yet. A worker already partway through the job is in the other case, where the lapse means the task may be somebody else's now, and the flag is ignored on any write except a renewal.
 
-The lease answers one question: is a live worker on this right now? A task waiting on a person is stopped on purpose and nobody is running it. It stays `in_progress` with an open [hold](#holding-a-task-on-questions). The task isn't handed out again while it waits, however long that takes. So when a task has to wait on a person for longer than any lease you would want to set, ask a question rather than holding a claim open on a running task.
+The lease answers one question: is a live worker on this right now? A task waiting on a person is stopped on purpose and nobody is running it. It stays `in_progress` with an open [question](#waiting-on-questions). The task isn't handed out again while it waits, however long that takes. So when a task has to wait on a person for longer than any lease you would want to set, ask a question rather than holding a claim open on a running task.
 
 With no options object, neither guard runs. An illegal transition throws. A legal one goes through even when another attempt already recorded a result: `completed → completed` is a legal move, so a second unguarded `complete` overwrites the first output. Pass `{ ifAllowed: true }` if you drive a collection directly. `cancel` is the exception and needs nothing: it runs the terminal check whether you pass options or not.
 
@@ -302,7 +302,7 @@ type TaskWriteOutcome =
 - `disallowed` — the state machine won't take the move from the task's current, non-terminal status, such as `pending → errored`.
 - `lost-claim` — the `claim` names this task but no longer owns it. The task was reclaimed or re-queued while you were working on it, or its lease ran out while it was still `in_progress`.
 - `started` — a `hold` or a `patchSettings` on a task that has already started. What a task was filed with is fixed once it runs.
-- `held` — the task has an open [hold](#holding-a-task-on-questions). A settlement, a lease renewal and a second wait are refused until it closes. Only a cancel settles a held task.
+- `open-question` — the task has an open [question](#waiting-on-questions). A settlement, a lease renewal and a second wait are refused until it closes. Only a cancel settles a task with an open question.
 - `answered` — an `answer` with other words, or from another sender, for a question already answered.
 - `no-such-question` — an `answer` naming no question or confirm on the task.
 

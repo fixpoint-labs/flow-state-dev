@@ -1249,7 +1249,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   // that host waiting on a call that never comes.
   if ("announce" in (options as object)) {
     throw new Error(
-      "[harness-manager] `announce` was removed: a run's question now holds its task on the board, " +
+      "[harness-manager] `announce` was removed: a run's question now keeps its task waiting on the board, " +
         "where the Inbox lists it. Read held tasks from the board (`openRowQuestions`) instead of being told.",
     );
   }
@@ -1439,7 +1439,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     if (collection === undefined) {
       throw new Error(
         `[harness-manager] the board ledger "${boardCollectionId}" is not registered on this ` +
-          `worker, so its rows cannot be read or held on a question.`,
+          `worker, so its rows cannot be read or asked a question on.`,
       );
     }
     return getOrCreateTaskCollection({
@@ -1762,7 +1762,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     await holdOnQuestion(ctx, mismatchQuestion(mismatch.field, state.held?.attempt ?? null));
     console.warn(
       `[harness-manager] run ${identity.topic} (task ${identity.taskId}, attempt ${identity.attempt}): ` +
-        `held work does not match its record (${mismatch.field}); held on a question for the run's owner.`,
+        `held work does not match its record (${mismatch.field}); its task waits on a question for the run's owner.`,
     );
     throw new HeldOnQuestion(mismatch.field);
   };

@@ -11,7 +11,7 @@
 import type { SessionRequestSummary } from "@flow-state-dev/client";
 import { isUserSuspension } from "@flow-state-dev/core/types";
 import { isTerminalStatus, type TaskStatus } from "../tasks/schema/task-status";
-import { taskItemId } from "./holds";
+import { taskItemId } from "./questions";
 import type { InboxItem, InboxRow } from "./types";
 
 export { taskItemId };
@@ -138,18 +138,18 @@ export function reconcileInbox(items: readonly InboxItem<unknown>[], truth: Inbo
   const live = new Set(truth.suspensions.map((s) => s.suspensionId));
   for (const stop of truth.suspensions.filter((s) => s.taskRun)) {
     const holders = truth.rows.filter((r) => r.suspensionHolds.includes(stop.suspensionId));
-    if (holders.length !== 1) drift.push(`stop ${stop.suspensionId}: ${holders.length} open holds`);
+    if (holders.length !== 1) drift.push(`stop ${stop.suspensionId}: ${holders.length} open questions`);
   }
   for (const row of truth.rows) {
-    for (const id of row.suspensionHolds) if (!live.has(id)) drift.push(`hold ${id} on ${row.board}:${row.taskId}: no live stop`);
+    for (const id of row.suspensionHolds) if (!live.has(id)) drift.push(`question ${id} on ${row.board}:${row.taskId}: no live stop`);
   }
-  // A listed task item shows the holds its row holds now: a stale list offers a stop that ended, or a question answered.
+  // A listed task item shows the holds its row has now: a stale list offers a stop that ended, or a question answered.
   const heldBy = new Map(truth.rows.map((r) => [taskItemId(r.board, r.taskId), [...r.suspensionHolds, ...r.rowHolds].sort()]));
   for (const item of items) {
     if (item.task === null) continue;
     const held = heldBy.get(item.id) ?? [];
     const shown = item.questions.map((h) => h.id).sort();
-    if (shown.join(",") !== held.join(",")) drift.push(`item ${item.id} shows ${shown.join(", ") || "none"}, its row holds ${held.join(", ") || "none"}`);
+    if (shown.join(",") !== held.join(",")) drift.push(`item ${item.id} shows ${shown.join(", ") || "none"}, its row has ${held.join(", ") || "none"}`);
   }
 
   const unanswerable = items.flatMap((item) => item.questions.flatMap((hold) => (hold.unanswerable === null ? [] : [{ id: item.id, hold: hold.id, why: hold.unanswerable }])));

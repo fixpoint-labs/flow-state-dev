@@ -48,7 +48,7 @@ export {
   type RowQuestion,
   type SuspensionQuestion,
   type TaskQuestion,
-} from "./schema/hold";
+} from "./schema/question";
 export {
   NO_ANSWER_CAME,
   answerOf,
@@ -64,7 +64,7 @@ export {
   steerPlacesTaken,
   suspensionQuestionOf,
   type QuestionAnswer,
-} from "./collection/holds";
+} from "./collection/questions";
 
 // Filing settings and dependencies (FIX-2080): what a board refuses at filing,
 // and the edit a filing takes until it starts.

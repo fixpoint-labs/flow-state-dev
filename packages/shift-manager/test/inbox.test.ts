@@ -117,7 +117,7 @@ describe("the Inbox against a real Lab", () => {
     // Control mirror-skips-close: the row as it was before the resume, against the stops as they are now. Red.
     const stale = reconcileInbox(left, { ...truthAfter, rows: truth.rows });
     expect(stale.green).toBe(false);
-    expect(stale.drift).toEqual([`hold ${answered.questions[0]!.id} on ${answered.task!.board}:${answered.task!.taskId}: no live stop`]);
+    expect(stale.drift).toEqual([`question ${answered.questions[0]!.id} on ${answered.task!.board}:${answered.task!.taskId}: no live stop`]);
   });
 
   it("a user's own ask, with no task row: listed once, on its own, answerable and green", async () => {

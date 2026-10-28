@@ -66,7 +66,7 @@ const resourceBacking: Make = async (options = {}) => {
 };
 
 const holdIds = (row: Task | undefined) => (row === undefined ? [] : openQuestions(row).map((hold) => hold.id));
-const user = (hold: string, message: string, by = "u1") => ({ hold, message, from: "user" as const, by });
+const user = (hold: string, message: string, by = "u1") => ({ questionId: hold, message, from: "user" as const, by });
 
 describe.each([
   ["sequencer-backed", sequencerBacking],

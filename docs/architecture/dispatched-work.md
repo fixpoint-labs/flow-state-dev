@@ -563,7 +563,7 @@ stirs into an exit check that no longer calls the board drained.
 ### Two exclusions, and why only one is lease-gated
 
 The routing exclusion above is not the only way a row drops out of a count. A
-running row waiting on a person — an open hold on it, a question or a
+running row waiting on a person — an open question on it, a question or a
 suspension mirrored from a `waitForUser` stop (FIX-2131) — is excused from
 `activeWorkerCount`, though `inFlightCount` keeps it. Both live in
 `countWaitable` as separate predicates rather than one widened predicate,
@@ -572,8 +572,8 @@ because they answer different questions:
 | | routing exclusion (`runsElsewhere`) | person-wait exclusion (`waitsOnUser`) |
 |---|---|---|
 | Asks | where does this row's work belong? | is this row waiting on a *human*? |
-| Derived from | the board's declared `mode` (FIX-2076) | the row's open holds |
-| Applies to | `in_progress` rows | `in_progress` rows with an open hold |
+| Derived from | the board's declared `mode` (FIX-2076) | the row's open questions |
+| Applies to | `in_progress` rows | `in_progress` rows with an open question |
 | Applies on | `mode: "delegation"` boards, every row | any board, in the active-worker count only |
 | Liveness conjunct | **yes** — the lease | **no** |
 

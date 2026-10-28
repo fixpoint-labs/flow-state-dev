@@ -23,8 +23,8 @@ import { deliveredByWait, droppedHeldNotices, recordEnding as recordNoticeOwed, 
 import { assertDepsEditable, TaskFilingRefusedError } from "./filing";
 import { hasStarted, lockedFields, type TaskEditField } from "./field-rules";
 import { steersForAttempt, untakenSteers } from "../steers";
-import type { SuspensionQuestion } from "../schema/hold";
-import { answerOf, askedOnTicket, droppedMirror, hasOpenQuestion, questionWrite, isRowQuestion, keptOnEnding, newRowQuestions, openRowQuestions, owesTurn } from "./holds";
+import type { SuspensionQuestion } from "../schema/question";
+import { answerOf, askedOnTicket, droppedMirror, hasOpenQuestion, questionWrite, isRowQuestion, keptOnEnding, newRowQuestions, openRowQuestions, owesTurn } from "./questions";
 import type { TaskChangeKind } from "./change-event";
 import type {
   ClaimOptions,
@@ -1198,7 +1198,7 @@ export function requireClaimTicket(
 export function waitingOnPatch(
   task: Task,
   keptOpenBy: Task["keptOpenBy"],
-  options: { leaseUntil?: number; answer?: { output: unknown }; hold?: SuspensionQuestion; resume?: boolean; owesTurn?: boolean }
+  options: { leaseUntil?: number; answer?: { output: unknown }; question?: SuspensionQuestion; resume?: boolean; owesTurn?: boolean }
 ): Partial<Task> {
   if (keptOpenBy == null) {
     assertValidLeaseDeadline(options.leaseUntil ?? Number.NaN);
@@ -1222,7 +1222,7 @@ export function waitingOnPatch(
     }
   }
   // A stop for a person, mirrored in the same write (FIX-2133); any other wait mirrors nothing.
-  const mirrored = options.hold === undefined ? "unchanged" : questionWrite(task, { op: "mirror", hold: options.hold });
+  const mirrored = options.question === undefined ? "unchanged" : questionWrite(task, { op: "mirror", hold: options.question });
   return {
     keptOpenBy: keptOpenBy,
     leaseUntil: options.leaseUntil,

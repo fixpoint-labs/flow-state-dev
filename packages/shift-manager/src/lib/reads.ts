@@ -570,7 +570,7 @@ export function inboxSection(
   if (!asks.ok) return asks;
   const rows: BoardRow[] = [];
   for (const board of Object.values(boards)) {
-    if (!board.ok) return { ok: false, failure: { ...board.failure, message: `Inbox lists what holds each task from its board, and a board did not load. ${board.failure.message}` } };
+    if (!board.ok) return { ok: false, failure: { ...board.failure, message: `Inbox lists what each task waits on from its board, and a board did not load. ${board.failure.message}` } };
     rows.push(...board.value.rows);
   }
   const flows = new Map(sessions.map((session) => [session.id, session.flowId ?? null]));

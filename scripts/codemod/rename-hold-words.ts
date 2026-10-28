@@ -152,7 +152,9 @@ console.log(`exact pass: ${files.length} files`);
 // Pass 3: the colliding property names where the checker can't reach them
 // (loosely typed fixtures, `.mts` goals, docs examples), by their shape.
 // `holds` only as a property (`.holds` not called, a `holds:` key, `"holds"`),
-// never a `.holds()` method or React's `useReadFence` predicate; `holdId` never the held *request* of the client
+// never a `.holds()` method, React's `useReadFence` predicate or a worker that holds a
+// package (`goals/workforce-packages/`) a board that holds a routed session, or the
+// workforce harness's `[hold:…]` latches; `holdId` never the held *request* of the client
 // goal; `waitingOn` never the two labs' own view models.
 interface ShapeRename {
   readonly pattern: RegExp;
@@ -165,8 +167,10 @@ const SHAPES: readonly ShapeRename[] = [
   { pattern: /\breleasedBy\b/g, find: "releasedBy", to: "closedBy" },
   { pattern: /\bwaitingOn\b/g, find: "waitingOn", to: "keptOpenBy", skip: ["labs/teammates/", "labs/claude-code-style/"] },
   { pattern: /\bholdId\b/g, find: "holdId", to: "questionId", skip: ["goals/client/does-every-job-with-one-client/"] },
-  { pattern: /(?<=\.)holds\b(?!\(|\?\.\()|(?<=(?:^|[{,;])\s*)holds(?=\??: (?!\())|(?<=")holds(?=")/gm, find: "holds", to: "questions", skip: ["packages/react/"] },
+  { pattern: /(?<=\.)holds\b(?!\(|\?\.\()|(?<=(?:^|[{,;])\s*)holds(?=\??: (?!\([^)]*\)\s*=>))|(?<=")holds(?=")/gm, find: "holds", to: "questions", skip: ["packages/react/", "goals/workforce-packages/", "packages/workforce/test/routed-session-hold.test.ts", "packages/workforce/test/conversation-board-harness.ts"] },
   { pattern: /\bno-such-hold\b/g, find: "no-such-hold", to: "no-such-question" },
+  // `QuestionAnswer.questionId` where a loosely typed ref's `answer(id, { hold })` hides it from the checker.
+  { pattern: /(?<=answer!?\([^()]*\{ )hold: /g, find: "answer", to: "questionId: " },
   { pattern: /\bdone_without_question\b/g, find: "done_without_question", to: "done_without_answers" },
 ];
 // `updateTask`'s `question` input: a `question:` inside one object literal

@@ -85,7 +85,7 @@ function buildFlow() {
     execute: async (input, ctx) => {
       const tasks = await (ctx.cap as any)[capability.name].tasks();
       const [hold] = openRowQuestions(tasks.get("a"));
-      return tasks.answer("a", { hold: hold!.id, message: input.message, from: "user", by: USER_ID });
+      return tasks.answer("a", { questionId: hold!.id, message: input.message, from: "user", by: USER_ID });
     },
   });
   const flow = defineFlow({

@@ -4,7 +4,7 @@
  * `index.ts` publishes the ones a caller uses; the rest stay inside the read.
  */
 import type { WaitForUserKind } from "@flow-state-dev/core/types";
-import type { TaskQuestion } from "../tasks/schema/hold";
+import type { TaskQuestion } from "../tasks/schema/question";
 
 /** What a hold asks the user for: a task run's stop (`approval`, `review`, `input`) or a row's own (`question`, `confirm`). */
 export type InboxAskKind = WaitForUserKind | "question" | "confirm";
@@ -97,7 +97,7 @@ export type InboxRow = {
   /** Its steers, as far as the Inbox reads them: which hold each answers. A question is open while none carries its id. */
   readonly steers?: readonly { readonly id: string; readonly answers?: string }[] | null;
   /**
-   * Where its row holds are answered: the session that holds the board, and
+   * Where its row questions are answered: the session that holds the board, and
    * the board's `updateTask` action there. `null` when the reader can't say,
    * which leaves them unanswerable.
    */

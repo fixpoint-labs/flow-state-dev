@@ -23,7 +23,7 @@
 import { requireRequestHost, type BlockContext, type ResumeWaitResult } from "@flow-state-dev/core/types";
 import type { Task } from "../schema/task";
 import { isTerminalStatus } from "../schema/task-status";
-import { openQuestions, isSuspensionQuestion, suspensionQuestionOf } from "../collection/holds";
+import { openQuestions, isSuspensionQuestion, suspensionQuestionOf } from "../collection/questions";
 import type { CancelOptions, TaskCollectionRef, TaskWriteOutcome } from "../collection/types";
 
 /** Whether `row` owes its parked run a `cancelled` resume: it ended while that run waited for a user. */

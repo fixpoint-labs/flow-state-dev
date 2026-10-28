@@ -25,7 +25,7 @@ import {
 } from "../schema/task-status";
 import { withRetiredShapes } from "../schema/retired-shapes";
 import type { FilingStamp, TaskSettingsPatch } from "./internal";
-import { assertAskable, hasOpenQuestion, questionWrite, questionsDue, newRowQuestions, type QuestionChange } from "./holds";
+import { assertAskable, hasOpenQuestion, questionWrite, questionsDue, newRowQuestions, type QuestionChange } from "./questions";
 import { NOTICE_DUE_MS } from "../notice/task-notice";
 import type {
   TaskCollectionRef,

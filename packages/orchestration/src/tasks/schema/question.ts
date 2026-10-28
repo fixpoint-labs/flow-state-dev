@@ -16,7 +16,7 @@
  *   steer at a deadline a host set.
  *
  * Server-written only, through the collection's one hold write
- * (`../collection/holds`); no caller patch reaches it. `actor` and
+ * (`../collection/questions`); no caller patch reaches it. `actor` and
  * `closedBy` are stored from the first write, so a later kind needs no
  * migration.
  */

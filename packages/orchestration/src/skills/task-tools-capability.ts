@@ -11,7 +11,7 @@
  * names the field, the state and the next move. A finished task's output never
  * changes: more work is a follow-up, and the task view reads the latest
  * completed follow-up as `current`. A question a task holds on is answered
- * with `updateTask({ id, question, message })` (FIX-2133).
+ * with `updateTask({ id, answers, message })` (FIX-2133).
  *
  * Nothing on this surface settles a task: a task ends when its worker returns
  * or throws, and the drain or the claim gate records that. The worker's own
@@ -772,7 +772,7 @@ export function createWaitForUserTool(options: TaskTurnToolOptions) {
             ok: false as const,
             error:
               `input_is_a_question: you are running task "${held.claim.taskId}", so a question you ` +
-              `need answered holds the task: ask it with askQuestion. Nothing was asked.`,
+              `need answered keeps the task waiting: ask it with askQuestion. Nothing was asked.`,
           };
         }
         if (takeTurnWait(ctx, held, "waitForUser") === "askQuestion") {
@@ -879,7 +879,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     "assignee names one of your delegates; leave it unset only when you have one delegate. " +
     "The task starts as its start setting says: at once; after deps, task ids on this board " +
     "that must finish first; or, with held: true, once you release it with updateTask " +
-    "({ id, status: \"pending\" }). questions holds it until the user answers each one: plain questions, or " +
+    "({ id, status: \"pending\" }). with questions it waits until the user answers each one: plain questions, or " +
     "{ kind: \"confirm\", prompt } for a yes or a no; the answers join its brief. " +
     "input is a structured payload for the worker. " +
     "maxAttempts is how many tries it gets in all. Every field can change with updateTask until " +
@@ -1260,13 +1260,13 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           .string()
           .min(1)
           .optional()
-          .describe("The id of the open question message answers (getTask lists them under holds). Sent with message only."),
+          .describe("The id of the open question message answers (getTask lists them under questions). Sent with message only."),
         ...(claimless
           ? {
               done: z
                 .boolean()
                 .optional()
-                .describe("A confirm's answer, with question: true gives the go, false says no. message is an optional note."),
+                .describe("A confirm's answer, with answers: true gives the go, false says no. message is an optional note."),
             }
           : {}),
       })
@@ -1463,7 +1463,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
   ) {
     const refuse = (error: string) => ({ ok: false as const, taskId: input.id, error: `${error} Nothing was written.` });
     if (input.answers === undefined) {
-      return refuse("done_without_answers: done answers a confirm, and names it with question. Send both.");
+      return refuse("done_without_answers: done answers a confirm, and names it with answers. Send both.");
     }
     if (input.fields.length > 0 || input.status !== undefined) {
       const sent = [...input.fields, ...(input.status !== undefined ? ["status"] : [])];
@@ -1569,7 +1569,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
    */
   const waitingShape = {
     keptOpenBy: z.enum(["wait", "filed", "steer"]).optional(),
-    /** What holds the task now, oldest first; absent when nothing does. Answer a question with `updateTask({ id, question, message })`. */
+    /** What the task waits on now, oldest first; absent when nothing does. Answer a question with `updateTask({ id, answers, message })`. */
     questions: z.array(taskQuestionSchema).optional(),
   };
   const waitingOf = (t: Task) => {
@@ -1667,7 +1667,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       "context and input), every field you can edit before it starts, how it stands, its " +
       "worker's latest status note, and its output: the result so far while it runs, or its " +
       "result once it completed. checkpoint: true means the output came from a reported " +
-      "checkpoint. Its error when it failed. holds are what it waits on now: a question " +
+      "checkpoint. Its error when it failed. questions are what it waits on now: a question " +
       "(answer it with updateTask, naming it), or a stop for the user. current is the latest follow-up in its chain that completed, with its output: " +
       "the version that stands now; output stays the task's own. steers are the messages sent " +
       "into it, oldest first, each marked taken once its work read it. When this read is how you " +

@@ -158,14 +158,14 @@ const worker = (id: string, declared: Record<string, unknown>, body = ""): Worke
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function host(options: { source?: BlockDefinition<any, any>; marksUserTurn?: boolean; questions?: Map<string, Promise<void>> } = {}) {
+function host(options: { source?: BlockDefinition<any, any>; marksUserTurn?: boolean; holds?: Map<string, Promise<void>> } = {}) {
   const controls: Controls = { file: [], turns: [] };
   const h = bootBoardHost({
     standard: [...boardWorkers(), worker("clerk", { flow: "desk", delegates: ["eng.tasker"] })],
     flows: (installation) => ({
       desk: { flow: deskFlow(installation, controls, options.source, options.marksUserTurn ?? true), roles: ["manager"] }
     }),
-    ...(options.questions === undefined ? {} : { questions: options.questions })
+    ...(options.holds === undefined ? {} : { holds: options.holds })
   });
   /** Until each named row reads ended in the store. */
   const ended = async (...ids: string[]) => {

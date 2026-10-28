@@ -13,8 +13,8 @@ import type { Task, TaskRunLink, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import type { TaskSettingsPatch } from "./internal";
 import type { SteerInput } from "../steers";
-import type { QuestionInit, SuspensionQuestion } from "../schema/hold";
-import type { QuestionAnswer } from "./holds";
+import type { QuestionInit, SuspensionQuestion } from "../schema/question";
+import type { QuestionAnswer } from "./questions";
 import type { NoticeEnding as TaskNoticeEnding } from "../notice/task-notice";
 
 /**

@@ -68,7 +68,7 @@ import {
   type TaskKeptOpenBy,
 } from "../tasks";
 import { ticketClaimsRow } from "../tasks/collection/internal";
-import { askedOnTicket } from "../tasks/collection/holds";
+import { askedOnTicket } from "../tasks/collection/questions";
 import { advisoryComplete, advisoryFail } from "../tasks/collection/advisory-write-back";
 import { settleAtRequestEnd } from "./blocks/record-result";
 import { startLeaseRenewal, type LeaseRenewalDriver } from "../tasks/lease-renewal";

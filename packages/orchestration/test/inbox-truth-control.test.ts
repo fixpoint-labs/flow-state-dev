@@ -6,8 +6,8 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../src/inbox/holds", async (importOriginal) => {
-  const real = await importOriginal<typeof import("../src/inbox/holds")>();
+vi.mock("../src/inbox/questions", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../src/inbox/questions")>();
   return {
     ...real,
     // The broken helper: any row's holds are open, whatever its status.

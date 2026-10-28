@@ -14,7 +14,7 @@
 - `cprime` (a cancelled block files on its task session's board): a latch holds the filing right after a piece's add commits, and a claimer in another process, on the same store, touches that board inside the window. `cprime:never-claimable` no piece of the cancelled task is claimed or runs.
 - `d` (stopped): the abort route on the run. `d:cancelled-on-try-1` the task is cancelled on try 1; `d:run-ends` the request ends `aborted`, nothing ran past the stop, the work ran once; `d:item-closed`.
 - `e` (a crash after the cancel): a host in another process files a task, cancels it, and is killed (SIGKILL) right after the cancel's row write, before the resume. `e:killed-between` the row is cancelled and the block not resumed; after a restart, the dead host's resume lease (60 s) and a board touch, `e:resumed-cancelled` the block resumes cancelled and the item closes.
-- `f` (the host's setting, `userDeadlineMs` set to 7,777,000 ms): `f:host-setting` a `waitForUser` with no deadline persists the host's deadline, on the stop and on the row's hold of it (`due`); `f:raw-keeps-its-own` a raw `ctx.suspend` keeps its own `timeoutMs` (5,555,000 ms), none meaning none. A held question (FIX-2133) reads the same setting: that half is `goals/task-board/holds-a-task-on-questions`, leg f.
+- `f` (the host's setting, `userDeadlineMs` set to 7,777,000 ms): `f:host-setting` a `waitForUser` with no deadline persists the host's deadline, on the stop and on the row's hold of it (`due`); `f:raw-keeps-its-own` a raw `ctx.suspend` keeps its own `timeoutMs` (5,555,000 ms), none meaning none. A held question (FIX-2133) reads the same setting: that half is `goals/task-board/waits-on-its-questions`, leg f.
 - `g` (no deadline, the setting unset): `g:still-suspended` past twice the sweep's interval and a board touch, the request is still suspended, its stop pending with no expiry, the row waiting on the user with no deadline, and its item still listed.
 
 **Anti-game:** no grade reads a store write the code under test made for itself, or the suspension record, to decide an ending: the task is read through the board's `getTask` and `listTasks` actions, the pending list through Shift Manager's own Inbox read (`readPendingSuspensions`, filtered as Inbox filters it), and every answer goes through the request handle's `answer`, the client call a screen makes. The work counter is a proof each worker appends from inside its own run, never an item count. Leg e kills the host process; leg c′'s claimer is a second process on the same SQLite file. The lease is shortened (a scratch patch, printed by the run) so three lease periods are seconds: that fakes time, not behaviour.
@@ -33,7 +33,7 @@
 
 Today's `main` has no `waitForUser`: every leg but d fails at its first wait, and leg d's stop leaves the task `in_progress`, `keptOpenBy: "person"`, with no lease and no payer, for good.
 
-FIX-2133's `reconcileInbox` (#3854) checks this kind's Inbox items; `goals/task-board/holds-a-task-on-questions` runs it with a task run's stop and row holds present (t9).
+FIX-2133's `reconcileInbox` (#3854) checks this kind's Inbox items; `goals/task-board/waits-on-its-questions` runs it with a task run's stop and row holds present (t9).
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

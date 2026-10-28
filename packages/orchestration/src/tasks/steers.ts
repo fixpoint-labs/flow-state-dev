@@ -6,7 +6,7 @@
  * count.
  */
 import type { Task } from "./schema/task";
-import { hasOpenQuestion, openRowQuestions, steerPlacesTaken, type QuestionAnswer } from "./collection/holds";
+import { hasOpenQuestion, openRowQuestions, steerPlacesTaken, type QuestionAnswer } from "./collection/questions";
 import { MAX_STEERS, type TaskSteer } from "./schema/steer";
 
 /** What a sender hands the `steer` verb. */

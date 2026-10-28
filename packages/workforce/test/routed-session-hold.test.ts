@@ -26,13 +26,13 @@ const probeInput = z.object({ partition: z.string(), taskId: z.string(), op: z.e
 const probe = handler({
   name: "routed-session-probe",
   inputSchema: probeInput,
-  outputSchema: z.object({ questions: z.string().nullable() }),
+  outputSchema: z.object({ holds: z.string().nullable() }),
   resources: { ...conversationLedgerResources, ...routedSessionResources },
   execute: async (input, ctx) => {
     const board = (await conversationLedgerAt(ctx, input.partition))!;
     if (input.op === "end") {
       await board.cancel(input.taskId);
-      return { questions: null };
+      return { holds: null };
     }
     if (input.op === "file-and-note") {
       // The `work` entry's note, for a task some host claimed without taking the record.
@@ -67,7 +67,7 @@ describe("a session two conversations route to", () => {
     const act = async (session: string, input: z.infer<typeof probeInput>) => {
       const result = await host.act("alice", session, "probe", input, "probe");
       expect(result.error, messageOf(result.error)).toBeUndefined();
-      return (result.output as { questions: string | null }).questions;
+      return (result.output as { holds: string | null }).holds;
     };
     // An earlier routed task held the session and has ended: the record names
     // it, so both boards read a record either may take over.
@@ -97,7 +97,7 @@ describe("a session two conversations route to", () => {
     const act = async (session: string, input: z.infer<typeof probeInput>) => {
       const result = await host.act("alice", session, "probe", input, "probe");
       expect(result.error, messageOf(result.error)).toBeUndefined();
-      return (result.output as { questions: string | null }).questions;
+      return (result.output as { holds: string | null }).holds;
     };
     // An earlier routed task held the session and has ended.
     expect(await act("conv-0", { partition: "conv-0-board", taskId: "routed-0", op: "file" })).toBe("routed-0");

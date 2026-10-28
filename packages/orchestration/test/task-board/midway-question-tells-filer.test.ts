@@ -11,7 +11,7 @@ import { askMidway } from "../../src/task-board";
 import { openWorkerClaimScope, stampCurrentClaim } from "../../src/task-board/flow-policy-wiring";
 import type { TaskClaimTicket } from "../../src/tasks/claim-ticket";
 import type { TaskCollectionRef } from "../../src/tasks";
-import { newRowQuestions } from "../../src/tasks/collection/holds";
+import { newRowQuestions } from "../../src/tasks/collection/questions";
 import { createDelivery } from "../../src/tasks/notice/delivery";
 import type { Task } from "../../src/tasks/schema/task";
 

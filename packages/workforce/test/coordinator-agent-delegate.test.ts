@@ -172,7 +172,7 @@ describe("the agent flow as a delegate (S9)", () => {
     expect(row).toMatchObject({ status: "in_progress", questions: [expect.objectContaining({ ask: expect.objectContaining({ kind: "question", prompt: "Which policy?" }) })] });
     const question = row!.questions![0]!.id;
     expect(await conversation.until(conversation.lines, (found) => found.length > 0)).toEqual([
-      { agentName: "otto", text: expect.stringMatching(new RegExp(`^From otto: Your task .* asks: "Which policy\\?"\n.*question: "${question}"`)) }
+      { agentName: "otto", text: expect.stringMatching(new RegExp(`^From otto: Your task .* asks: "Which policy\\?"\n.*answers: "${question}"`)) }
     ]);
   });
 

@@ -3,7 +3,7 @@
  * Inbox can answer each. Inside the read; not published.
  */
 import { isTerminalStatus, type TaskStatus } from "../tasks/schema/task-status";
-import { openQuestions } from "../tasks/collection/holds";
+import { openQuestions } from "../tasks/collection/questions";
 import type { Task } from "../tasks/schema/task";
 import type { InboxQuestion, InboxRow, InboxSuspension } from "./types";
 

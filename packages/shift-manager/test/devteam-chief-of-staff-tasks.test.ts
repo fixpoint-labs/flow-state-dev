@@ -549,7 +549,7 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     await quiet(lab);
     // The conversation that filed it hears the question once, from the coder, with what to answer it by (FIX-2241).
     expect((await coderLines(lab, id, taskId)).map((line) => line.text)).toEqual([
-      expect.stringMatching(new RegExp(`asks: "Which branch should I read\\?"\\n.*question: "${question.id}"`)),
+      expect.stringMatching(new RegExp(`asks: "Which branch should I read\\?"\\n.*answers: "${question.id}"`)),
     ]);
 
     expect((await act(lab, id, UPDATE_TASK_ACTION, { id: taskId, answers: question.id, message: reply })).output).toMatchObject({ ok: true });

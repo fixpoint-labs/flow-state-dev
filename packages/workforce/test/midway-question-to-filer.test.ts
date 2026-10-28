@@ -29,7 +29,7 @@ async function logRows(host: BoardHost) {
   return Object.values(entries).map((value) => value.state as Record<string, any>);
 }
 
-/** The task's open questions, as its row holds them. */
+/** The task's open questions, as its row keeps them. */
 const questionsOf = async (host: BoardHost, conv: string, taskId: string) => {
   const row = (await host.row("alice", await host.filingOf("alice", conv), taskId))!;
   return row.questions!.filter((hold) => hold.source.kind === "row");
@@ -108,13 +108,13 @@ describe("the text a question is told in", () => {
   it("shortens a long question so the whole message, with how to answer it, fits one message", () => {
     const text = midwayQuestionText(row(), hold("x".repeat(MAX_MESSAGE_CHARS)));
     expect(text.length).toBeLessThanOrEqual(MAX_MESSAGE_CHARS);
-    expect(text).toContain('question: "hold_1"');
+    expect(text).toContain('answers: "hold_1"');
   });
 
   it("shortens a long task goal too, so a long goal never pushes the question out of the message", () => {
     const text = midwayQuestionText(row({ goal: "g".repeat(8000) }), hold("Which region?"));
     expect(text.length).toBeLessThanOrEqual(MAX_MESSAGE_CHARS);
     expect(text).toContain('asks: "Which region?"');
-    expect(text).toContain('question: "hold_1"');
+    expect(text).toContain('answers: "hold_1"');
   });
 });

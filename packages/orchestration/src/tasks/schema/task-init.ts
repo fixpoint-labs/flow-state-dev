@@ -9,7 +9,7 @@
  * Filters are AND'd; an unset field is unconstrained.
  */
 import type { Task, TaskStatus } from "./task";
-import type { QuestionInit } from "./hold";
+import type { QuestionInit } from "./question";
 
 /** Where a task runs: a session of its own, or the delegate's ongoing one for the conversation (`Task.session`). */
 export type TaskSessionSetting = "new" | "ongoing";

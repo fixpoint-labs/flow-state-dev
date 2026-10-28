@@ -86,7 +86,7 @@ const doorInput = z.object({ message: z.string() });
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function taskerFlow(installation: WorkerInstallation, runs: TaskRun[], questions: ReadonlyMap<string, Promise<void>>) {
+function taskerFlow(installation: WorkerInstallation, runs: TaskRun[], holds: ReadonlyMap<string, Promise<void>>) {
   const turn = handler({
     name: "tasker-turn",
     inputSchema: doorInput,
@@ -193,7 +193,7 @@ export type BoardHostOptions = {
   /** The host's wait deadline bounds (`RequestWaits.deadlines`). */
   waitDeadlines?: { defaultMs?: number; minMs?: number; maxMs?: number };
   /** The gates a `[hold:<name>]` task waits on, by name, until the test releases them. */
-  questions?: ReadonlyMap<string, Promise<void>>;
+  holds?: ReadonlyMap<string, Promise<void>>;
   /**
    * A step model for the judgment turn, in place of `judgment`'s script: one
    * the generator drives step by step, so a turn parked in a tool call resumes
@@ -278,7 +278,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     standardWorkers: options.standard ?? boardWorkers(),
     workerFlows: () => flows as never
   });
-  const tasker = taskerFlow(installation, runs, options.questions ?? new Map());
+  const tasker = taskerFlow(installation, runs, options.holds ?? new Map());
   const helper = helperFlow(installation);
   const agent = defineAgentWorkerFlow({
     installation,

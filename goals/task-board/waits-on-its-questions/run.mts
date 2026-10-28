@@ -35,7 +35,7 @@
  *   release-on-first, answer-off-brief, wake-only, no-turn-fence, default-deadline,
  *   duplicate-item, drop-row-holds, mirror-skips-close. Each must FAIL what goal.md names.
  *
- * Run: pnpm tsx goals/task-board/holds-a-task-on-questions/run.mts
+ * Run: pnpm tsx goals/task-board/waits-on-its-questions/run.mts
  * Legs: GOAL_LEGS=a,b,c,d,dnowake,e,edue,f (default: all; a, b, c run in order)
  */
 import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -84,7 +84,7 @@ import {
 const USER = "u_holds_questions";
 const ORG = "org_holds_questions";
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("holds-a-task-on-questions");
+const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("waits-on-its-questions");
 const PROOFS = join(SCRATCH, "proofs.ndjson");
 /** The lease a claim commits to, shortened so "past the lease" is seconds, not minutes. */
 const LEASE_MS = 3_000;
@@ -190,7 +190,7 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string[] }> = {
   "drop-row-holds": {
     patches: [
       {
-        module: "packages/orchestration/src/inbox/holds.ts",
+        module: "packages/orchestration/src/inbox/questions.ts",
         from: String.raw`    if \(hold\.source\.kind === "row"\) \{\n      const holder`,
         to: '    if (hold.source.kind === "row") {\n      continue;\n      const holder'
       }

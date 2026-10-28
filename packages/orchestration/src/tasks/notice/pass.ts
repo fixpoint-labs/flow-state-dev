@@ -37,7 +37,7 @@ import type { Task } from "../schema/task";
 import { isTerminalStatus } from "../schema/task-status";
 import type { TaskCollectionRef } from "../collection/types";
 import { payOwedResumes, releaseEndedWaits } from "../helpers/wait-on-task";
-import { nextQuestionDue } from "../collection/holds";
+import { nextQuestionDue } from "../collection/questions";
 import { requestStates } from "../helpers/request-states";
 import { isDefinedTaskCollection } from "../collection/define-task-collection";
 import { resolveResourceCollection } from "../collection/resolve-resource-collection";

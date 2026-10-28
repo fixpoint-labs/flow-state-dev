@@ -85,7 +85,7 @@ retire with the rest, with no second spelling read. Accepted cost: a request lef
 local dev database may not replay after the change. Seat and mailbox survive in no package source: in goal names, fixtures and tests, and mailbox once in
 the docs site's config (`apps/docs/docusaurus.config.ts`).
 
-**Words that collide but aren't retired.** The inventory notes four more, each one word for several
+**Words that collide but aren't retired.** The inventory notes five more, each one word for several
 things today (two README examples it cites no longer hold, so they are left out). The model gives each word one meaning, or drops it.
 
 | Word | Today | In the model |
@@ -93,6 +93,7 @@ things today (two README examples it cites no longer hold, so they are left out)
 | Coordinator | The coordinator flow, the Shift Coordinator worker and the project coordinator | A worker that routes a user's messages |
 | Delegates | Workers, for the Shift Coordinator; workstreams (a lead and a target), for a project coordinator | The workers a session may file tasks with. A project coordinator's are its workstreams' leads |
 | Question | Inbox's "Questions" filter means `human_input` suspensions (`shift-manager/src/surfaces/Inbox.tsx:37`), never a task's question | One of `waitForUser`'s kinds, an Inbox item like the others |
+| Hold | A filer's hold before a start (status `held`), a task's open questions (`Task.holds`), what keeps a running task open (`waitingOn`, `filedWorkHolds`) and a request's claim (`heldTask`) | The filer's hold only. A task's open asks are its `questions`, what keeps it open is `keptOpenBy`, and a request's right on its task is its claim (FIX-2183) |
 | Stream | The project Stream tab (a coordinator conversation), the Tasks screen's STREAM grouping (workstreams, `shift-manager/src/surfaces/Tasks.tsx:69`) | Not a model word: say conversation for the tab and workstream for the grouping |
 
 ## Where today's code differs

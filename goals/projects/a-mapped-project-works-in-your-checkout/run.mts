@@ -254,7 +254,7 @@ await runGoal(async (failures) => {
       const row = tasks.get(id) as Task | undefined;
       let answered = 0;
       for (const hold of row === undefined ? [] : openRowQuestions(row)) {
-        await tasks.answer(id, { hold: hold.id, message: "Yes, carry on.", from: "user", by: OWNER });
+        await tasks.answer(id, { questionId: hold.id, message: "Yes, carry on.", from: "user", by: OWNER });
         answered += 1;
       }
       return { answered };

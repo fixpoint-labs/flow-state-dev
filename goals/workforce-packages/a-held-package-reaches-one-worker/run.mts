@@ -57,7 +57,7 @@ const CONTROL = process.env.GOAL_CONTROL ?? "";
 
 interface Seat {
   id: string;
-  questions: boolean;
+  holds: boolean;
   canCall: boolean;
 }
 interface Fixture {
@@ -141,14 +141,14 @@ function fixtureDrift(): string[] {
     const folder = join(TREE, "teams", team!, "workers", name!);
     const declared = frontmatter(readFileSync(join(folder, "WORKER.md"), "utf8"));
     const hasPackage = existsSync(join(folder, "packages"));
-    if (hasPackage !== seat.questions) {
-      failures.push(`${seat.id}: input.json says holds=${seat.questions}, its folder says ${hasPackage}`);
+    if (hasPackage !== seat.holds) {
+      failures.push(`${seat.id}: input.json says holds=${seat.holds}, its folder says ${hasPackage}`);
     }
     // A holder that can call is one with NO tools line; a holder that cannot
     // is one whose line is `tools: []`. Any other line would change what is
     // being tested.
     const toolsLine = /^tools:\s*(.*)$/m.exec(declared)?.[1]?.trim();
-    const expectedLine = seat.questions && !seat.canCall ? "[]" : undefined;
+    const expectedLine = seat.holds && !seat.canCall ? "[]" : undefined;
     if (toolsLine !== expectedLine) {
       failures.push(
         `${seat.id}: its WORKER.md writes tools: ${toolsLine ?? "(no line)"}, wanted ${expectedLine ?? "(no line)"}`,
@@ -211,7 +211,7 @@ await runGoal((failures) => {
         GOAL_CONTROL: CONTROL,
         // The harness's stopping rule only; every verdict is reached below.
         GOAL_EXPECT: JSON.stringify(
-          Object.fromEntries(fixture.seats.map((s) => [s.id, [s.questions, s.questions && s.canCall]])),
+          Object.fromEntries(fixture.seats.map((s) => [s.id, [s.holds, s.holds && s.canCall]])),
         ),
       },
     });
@@ -233,8 +233,8 @@ await runGoal((failures) => {
     }
     for (const seat of fixture.seats) {
       const held = o.held[seat.id] ?? [];
-      if (held.length > 0 !== seat.questions) {
-        failures.push(`leg (a): ${seat.id} reached the hire holding ${JSON.stringify(held)}, input.json says holds=${seat.questions}`);
+      if (held.length > 0 !== seat.holds) {
+        failures.push(`leg (a): ${seat.id} reached the hire holding ${JSON.stringify(held)}, input.json says holds=${seat.holds}`);
       }
       for (const address of held) {
         if (!(o.generatedPackages[address] ?? []).includes("stamp-ticket")) {
@@ -262,11 +262,11 @@ await runGoal((failures) => {
           continue;
         }
         const said = carries(turn.reply, fixture.instructionToken);
-        const shouldCall = seat.questions && seat.canCall;
+        const shouldCall = seat.holds && seat.canCall;
         const quote = JSON.stringify(turn.reply.slice(0, 160));
-        if (said !== seat.questions) {
+        if (said !== seat.holds) {
           problems.push(
-            seat.questions
+            seat.holds
               ? `${seat.id} holds the package and did not follow its instruction (no ${fixture.instructionToken}): ${quote}`
               : `${seat.id} holds nothing and said ${fixture.instructionToken}: ${quote}`,
           );

@@ -2,7 +2,7 @@
  * The Inbox list: the only place an Inbox item is built (the task-surface
  * sweep fails one built anywhere else).
  */
-import { questionOfSuspension, isOpenRow, openUserQuestions, taskItemId } from "./holds";
+import { questionOfSuspension, isOpenRow, openUserQuestions, taskItemId } from "./questions";
 import type { InboxQuestion, InboxItem, InboxRow, InboxSuspension, InboxTask } from "./types";
 
 /** An item over `holds`, oldest first, answerable when any hold is. */

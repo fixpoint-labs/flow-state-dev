@@ -260,7 +260,7 @@ describe("a message to a task", () => {
         fallback
       ]
     });
-    const h = bootBoardHost({ judgment: mockGenerator({ script: [fallback] }), standard: team(), agentAnswer, questions: new Map([["g", held]]) });
+    const h = bootBoardHost({ judgment: mockGenerator({ script: [fallback] }), standard: team(), agentAnswer, holds: new Map([["g", held]]) });
     try {
       await fileTask(h, "alice", "lead", "[hold:g] The long job", "eng.tasker");
       // Running: claimed, and its run linked to the session it works in.

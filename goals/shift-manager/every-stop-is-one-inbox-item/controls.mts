@@ -43,7 +43,7 @@ export const CONTROLS: Record<string, Control> = {
     patches: [
       { module: "packages/orchestration/src/tasks/helpers/user-stop.ts", from: String.raw`openQuestions\(row\)\.find\(isSuspensionQuestion\)`, to: "undefined" },
       { module: "packages/orchestration/src/tasks/helpers/user-stop.ts", from: String.raw`if \(stop === undefined \|\| resumeWait === undefined\) return false;`, to: "return false;" },
-      { module: "packages/orchestration/src/tasks/collection/holds.ts", from: String.raw`row\.questions\.length === 0 \|\| isTerminalStatus\(row\.status\)\) return \[\];`, to: "row.questions.length === 0) return [];" },
+      { module: "packages/orchestration/src/tasks/collection/questions.ts", from: String.raw`row\.questions\.length === 0 \|\| isTerminalStatus\(row\.status\)\) return \[\];`, to: "row.questions.length === 0) return [];" },
     ],
   }),
   // New: a steer starts its turn whatever holds the row.

@@ -25,8 +25,8 @@
 import { dispatchThroughSeam, onRequestEnded, REQUEST_END_SEAM } from "@flow-state-dev/core/types";
 import type { BlockContext, DispatchOutcome, SessionTarget } from "@flow-state-dev/core/types";
 import type { Task } from "../schema/task";
-import type { RowQuestion } from "../schema/hold";
-import { openRowQuestions } from "../collection/holds";
+import type { RowQuestion } from "../schema/question";
+import { openRowQuestions } from "../collection/questions";
 import { clearNotice, NOTICE_DUE_MS, owedNotices, UNDELIVERABLE_PREFIX, type TaskNotice } from "./task-notice";
 
 /** The internal entry a notice arrives on in the filer's session, unless a board names another. Pinned. */

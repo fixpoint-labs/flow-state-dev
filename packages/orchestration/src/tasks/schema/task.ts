@@ -10,7 +10,7 @@ import { z } from "zod";
 import { persistedTaskStatusSchema, type TaskStatus } from "./task-status";
 import { taskSteerSchema } from "./steer";
 import { QUEUED_WAIT } from "./retired-shapes";
-import { taskQuestionSchema } from "./hold";
+import { taskQuestionSchema } from "./question";
 
 /** The base Task schema. */
 
@@ -491,7 +491,7 @@ export const taskSchema = z.object({
    * `actor: "user"` holds. Before its start a held row is `pending`; midway,
    * `in_progress` with no lease. A cancel closes every hold.
    *
-   * Server-written by the collection's one hold write (`collection/holds`),
+   * Server-written by the collection's one question write (`collection/questions`),
    * never by a caller. **Absent** on a row nothing has held.
    */
   questions: z.array(taskQuestionSchema).optional(),

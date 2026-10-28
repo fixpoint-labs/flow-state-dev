@@ -53,7 +53,7 @@ export async function askStep(ctx: BlockContext, board: TaskCollectionRef, quest
   }
   if (asked.reason === "lost-claim" || asked.reason === "not-my-task" || asked.reason === "terminal") return "superseded";
   throw new Error(
-    `[harness-manager] the run's question could not hold its task (${asked.reason}). ` +
+    `[harness-manager] the run's question could not be asked on its task (${asked.reason}). ` +
       (asked.reason === "no-claim"
         ? "The manager must run as a board's worker, behind its claim gate or drain, so its request holds the task's claim."
         : asked.reason === "not-supported"
@@ -73,7 +73,7 @@ export class HeldOnQuestion extends Error {
   constructor(readonly field: string) {
     super(
       `[harness-manager] the run's held work does not match its record (${field}); ` +
-        `its task is held on a question for the run's owner, before the harness ran.`,
+        `its task waits on a question for the run's owner, before the harness ran.`,
     );
     this.name = "HeldOnQuestion";
   }

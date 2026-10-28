@@ -16,7 +16,7 @@ function resumeOf(kind: InboxAskKind, answer: InboxAnswer): { action: ResumeActi
   if (kind === "approval" && typeof a.approved === "boolean") return { action: a.approved ? "approve" : "reject", ...(a.data !== undefined ? { data: a.data } : {}) };
   if ((kind === "input" || kind === "review") && a.skipped === true) return { action: "skip" };
   if ((kind === "input" || kind === "review") && "value" in a) return { action: "submit", data: a.value };
-  throw new Error(`An answer to ${kind === "approval" ? "an approval" : `a ${kind}`} hold doesn't take ${JSON.stringify(answer)}`);
+  throw new Error(`An answer to ${kind === "approval" ? "an approval" : `a ${kind}`} question doesn't take ${JSON.stringify(answer)}`);
 }
 
 /** The board's `updateTask` input for a row hold's answer: a question's words, or a confirm's go with its note. */
@@ -26,7 +26,7 @@ function updateOf(kind: InboxAskKind, answer: InboxAnswer): { message?: string; 
   if (kind === "confirm" && typeof a.done === "boolean") {
     return { done: a.done, ...(typeof a.note === "string" && a.note.trim().length > 0 ? { message: a.note } : {}) };
   }
-  throw new Error(`An answer to a ${kind} hold doesn't take ${JSON.stringify(answer)}`);
+  throw new Error(`An answer to a ${kind} question doesn't take ${JSON.stringify(answer)}`);
 }
 
 /** How long the board's answer is waited on, and how often the request's wait looks at it. */
@@ -41,11 +41,11 @@ const ANSWER_POLL_MS = 150;
  */
 async function answerRowHold(client: Client, source: RowQuestionSource, questionId: string, update: { message?: string; done?: boolean }): Promise<void> {
   const { flowId, sessionId, action } = source;
-  if (flowId === null || sessionId === null || action === null) throw new Error(`Inbox hold "${questionId}" names no board to answer through`);
+  if (flowId === null || sessionId === null || action === null) throw new Error(`Inbox question "${questionId}" names no board to answer through`);
   const flow = client.flow(flowId);
   let requestId: string;
   try {
-    requestId = (await flow.send(action, { id: source.taskId, question: questionId, ...update }, { sessionId })).id;
+    requestId = (await flow.send(action, { id: source.taskId, answers: questionId, ...update }, { sessionId })).id;
   } catch (error) {
     if (error instanceof ClientHttpError && error.status >= 400 && error.status < 500) throw new Error(error.message);
     throw error;
@@ -85,7 +85,7 @@ export function createInboxClient(client: Client): InboxClient {
       return;
     }
     const { flowId, requestId, suspensionId } = hold.source;
-    if (flowId === null) throw new Error(`Inbox hold "${hold.id}" names no flow`);
+    if (flowId === null) throw new Error(`Inbox question "${hold.id}" names no flow`);
     const resume = resumeOf(hold.ask.kind, answer);
     await client.flow(flowId).request(requestId).answer({ suspensionId, ...resume });
   };

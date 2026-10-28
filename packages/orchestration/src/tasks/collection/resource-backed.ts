@@ -140,7 +140,7 @@ import {
   type TaskSettingsPatch,
   type FilingStamp,
 } from "./internal";
-import { assertAskable, hasOpenQuestion, questionWrite, questionsDue, newRowQuestions, type QuestionChange } from "./holds";
+import { assertAskable, hasOpenQuestion, questionWrite, questionsDue, newRowQuestions, type QuestionChange } from "./questions";
 import { stampWrite } from "../write-provenance";
 import { generateId } from "../generate-id";
 import { steerWrite, takeSteersPatch, untakenSteers } from "../steers";
