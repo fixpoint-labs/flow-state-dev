@@ -144,7 +144,7 @@ The React layer (`useSession().resumeSuspension`, `useSuspensions`) wires this u
 
 ### `answer(body)`
 
-An [Inbox](/docs/orchestration/task-board#building-an-inbox) answers a stop that waits for a user (a `ctx.waitForUser`, or a `human_approval` / `human_input` suspension) with `answer`. Unlike `resume`, it works on any run, including one a task board started, because it takes only where the stop is and the answer:
+An [Inbox](/docs/orchestration/task-board#building-an-inbox) answers a stop that waits for a user (a `ctx.waitForUser`, or a `user_approval` / `user_input` suspension) with `answer`. Unlike `resume`, it works on any run, including one a task board started, because it takes only where the stop is and the answer:
 
 ```ts
 await fsd.flow(flowId).request(item.requestId).answer({

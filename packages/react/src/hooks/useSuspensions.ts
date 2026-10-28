@@ -31,7 +31,7 @@ import type { SessionView } from "./useSession";
 export interface UseSuspensionsOptions {
   /** Restrict to a single request's suspensions. Default: all in session.items. */
   requestId?: string;
-  /** Restrict to specific reasons (e.g. ["human_approval"]). Default: all reasons. */
+  /** Restrict to specific reasons (e.g. ["user_approval"]). Default: all reasons. */
   reasons?: SuspensionReason[];
 }
 
@@ -213,7 +213,7 @@ export function useSuspensions(
 
   const { requestId, reasons } = options;
   // Key the reasons array by value, not reference: an inline literal
-  // (`useSuspensions(session, { reasons: ["human_approval"] })`) is a new array
+  // (`useSuspensions(session, { reasons: ["user_approval"] })`) is a new array
   // every render, which would force deriveSuspensions to recompute each time.
   const reasonsKey = reasons === undefined ? undefined : reasons.join(" ");
   const { suspensions, pending } = useMemo(

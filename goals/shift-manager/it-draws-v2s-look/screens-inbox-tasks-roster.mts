@@ -45,7 +45,7 @@ export type StoreScreens = {
 // ---- the store ---------------------------------------------------------------------
 
 /** Suspension reasons that are a person being asked something. */
-const PERSON_REASONS = new Set(["human_approval", "human_input"]);
+const PERSON_REASONS = new Set(["user_approval", "user_input"]);
 const DONE = new Set(["completed", "cancelled"]);
 const RUNNING = "in_progress";
 /** A row waiting on the person: running, held on a question no steer answers yet (FIX-2131; it was `parked`). */
@@ -59,12 +59,12 @@ const isQueued = (status: string) => !DONE.has(status) && status !== RUNNING && 
 
 /**
  * The shape the registry's cards decide an approval by: anything but a
- * `human_input` that takes a submission. Must match the approval branch of
+ * `user_input` that takes a submission. Must match the approval branch of
  * `suspensionShape` in `@flow-state-dev/react`; it is written out here because
  * that package's only entry loads React, which goals don't depend on.
  */
 function workerFlowOf(item: Record<string, any>): "approval" | "question" {
-  return item.reason !== "human_input" || !Array.isArray(item.allow) || !item.allow.includes("submit") ? "approval" : "question";
+  return item.reason !== "user_input" || !Array.isArray(item.allow) || !item.allow.includes("submit") ? "approval" : "question";
 }
 
 /**

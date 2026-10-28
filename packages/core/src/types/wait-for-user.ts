@@ -89,7 +89,7 @@ export interface WaitForUserContext {
 function suspendOptionsOf(options: WaitForUserOptions, deadline: number | undefined): SuspendOptions {
   const approval = options.kind === "approval";
   return {
-    reason: approval ? "human_approval" : "human_input",
+    reason: approval ? "user_approval" : "user_input",
     kind: options.kind,
     message: options.prompt,
     ...(options.title !== undefined ? { title: options.title } : {}),

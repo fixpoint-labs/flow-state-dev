@@ -84,13 +84,13 @@ describe("multi-gate sequencer resume across a cold restart", () => {
       name: "gateA",
       inputSchema: z.any(),
       outputSchema: z.unknown(),
-      execute: async (_input, ctx) => ctx.suspend!({ reason: "human_approval", message: "Gate A?" })
+      execute: async (_input, ctx) => ctx.suspend!({ reason: "user_approval", message: "Gate A?" })
     });
     const gateB = handler({
       name: "gateB",
       inputSchema: z.any(),
       outputSchema: z.unknown(),
-      execute: async (_input, ctx) => ctx.suspend!({ reason: "human_approval", message: "Gate B?" })
+      execute: async (_input, ctx) => ctx.suspend!({ reason: "user_approval", message: "Gate B?" })
     });
     const done = handler({
       name: "done",

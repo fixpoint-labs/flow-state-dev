@@ -56,7 +56,7 @@ function buildFlow(kind: string, counter: { runs: number }): FlowInstance {
     inputSchema: z.any(),
     outputSchema: z.unknown(),
     execute: async (_i: unknown, ctx: { suspend?: (payload: unknown) => unknown }) =>
-      ctx.suspend!({ reason: "human_approval", message: "Approve?" }),
+      ctx.suspend!({ reason: "user_approval", message: "Approve?" }),
   });
   return defineFlow({
     kind,
