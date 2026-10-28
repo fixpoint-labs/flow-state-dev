@@ -96,6 +96,11 @@ None.
   request id. A call is safe in the same window (its message id is kept first and the recipient
   takes it once), so only the call owes a park. The dispatcher keeps today's behaviour (left
   `interrupted` for a hand continue) until it has a dispatch identity kept before the send.
+- **A repeated send pays its budget once (review, Codex P2).** The send's per-request count now
+  names the ids it holds (`workforceMessagesPaid`), and the chain row appends an id only once, so a
+  call continued after dying between paying and its row isn't charged (or refused) a second time.
+- **The owe is read before the logged gate (review, Codex P2).** A later wait's owe outlives an
+  earlier wait's gate, answered or pruned, so history, retention and `waits.ended` read it first.
 - **A stop and a continuation are fenced by the request's lease (review, Codex P2).** The stop lets
   the owe go under the lease, and the sweep's admission reads the owe again under it; a stop that
   finds the lease held answers `already-resolved` (it runs again).

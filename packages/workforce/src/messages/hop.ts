@@ -54,6 +54,8 @@ export const TURN_CHAIN_STATE = "workforceTurnChain";
 /** The request-state field a turn's hop count is copied to, and the per-turn send count beside it. */
 export const TURN_HOP_STATE = "workforceTurnHop";
 export const TURN_SENT_STATE = "workforceMessagesSent";
+/** The request-state field naming the ids the per-turn count already holds, so a send repeated after a crash pays once (FIX-2269). */
+export const TURN_PAID_STATE = "workforceMessagesPaid";
 
 /** The session state a flow that takes messages declares. */
 export const messageHopStateShape = {
@@ -73,6 +75,7 @@ export const messageTurnStateSchema = z.object({
   [TURN_HOP_STATE]: z.number().int().nonnegative().optional(),
   [TURN_CHAIN_STATE]: z.string().nullable().optional(),
   [TURN_SENT_STATE]: z.number().int().nonnegative().optional(),
+  [TURN_PAID_STATE]: z.array(z.string()).optional(),
   [RECEIVED_CALL_STATE]: z.string().optional(),
   [RECEIVED_LANDED_STATE]: z.boolean().optional()
 });

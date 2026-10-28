@@ -446,33 +446,48 @@ function killableStores(stores: StoreAdapter, dies: (method: string, args: unkno
   return { stores: { ...stores, resolve } as StoreAdapter, dead: () => dead };
 }
 
-describe("a call whose process dies after its row, before it parks", { timeout: 60_000 }, () => {
+/** The calling request's write as it pays the call's budget, before its row. */
+const paysBudget = (method: string, args: unknown[]) =>
+  (method.startsWith("set") || method.startsWith("patch")) && JSON.stringify(args).includes('"workforceMessagesPaid":["msg_');
+
+/** The call's row landing, before its dispatch. */
+const writesCallRow = (method: string, args: unknown[]) => {
+  if (!method.startsWith("set")) return false;
+  const written = JSON.stringify(args);
+  return written.includes("workforce/messages/") && written.includes('"call":true');
+};
+
+/**
+ * Otto calls the lead on a host whose process dies at `dies`; a second host
+ * on the same stores takes over. The request that asked, and the next host.
+ */
+async function callThenDie(dies: (method: string, args: unknown[]) => boolean, options: BoardHostOptions = {}) {
+  const { model } = ottoModel({ "Ask the lead": () => [{ args: { to: "lead", text: "What is the codename?", wait: true } }] });
+  const shared = inMemoryStores();
+  const killed = killableStores(shared, dies);
+  const staleSweep = { intervalMs: 100, thresholdMs: 500 };
+  const common = { durable: true, agentModel: model, standard: boardWorkers(), staleSweep, ...options } satisfies BoardHostOptions;
+  const first = bootBoardHost({ ...common, judgment: leadAnswers(), stores: killed.stores as never });
+  await first.state.getRouter();
+  const otto = (await first.create("alice", "agent", { state: { workerId: "otto" } })).body.session!.id as string;
+  const asked = await first.post("alice", otto, "respond", { message: "Ask the lead for the codename" }, "agent");
+  expect(await until(() => killed.dead())).toBe(true);
+  // The dead host is never disposed: its every store call hangs, as a dead process's would.
+
+  const next = bootBoardHost({ ...common, judgment: leadAnswers(), stores: shared as never });
+  open = next;
+  await next.state.getRouter();
+  expect(await until(async () => (await (await shared.resolve()).request.get(asked))?.status === "completed", 30_000)).toBe(true);
+  await next.settled(20_000);
+  return { next, otto, asked };
+}
+
+describe("a call whose process dies before it parks", { timeout: 60_000 }, () => {
   // The bug (FIX-2269): the caller's request was left `interrupted` behind no
   // gate, so nothing continued it and the call never answered its user, though
   // the recipient could still have answered it.
-  it("is continued by the next host: the same call is answered in the same request, and its row is written once", async () => {
-    const { model } = ottoModel({ "Ask the lead": () => [{ args: { to: "lead", text: "What is the codename?", wait: true } }] });
-    const shared = inMemoryStores();
-    // The process dies the moment the call's row lands, before its dispatch.
-    const killed = killableStores(shared, (method, args) => {
-      if (!method.startsWith("set")) return false;
-      const written = JSON.stringify(args);
-      return written.includes("workforce/messages/") && written.includes('"call":true');
-    });
-    const staleSweep = { intervalMs: 100, thresholdMs: 500 };
-    const common = { durable: true, agentModel: model, standard: boardWorkers(), staleSweep } satisfies BoardHostOptions;
-    const first = bootBoardHost({ ...common, judgment: leadAnswers(), stores: killed.stores as never });
-    await first.state.getRouter();
-    const otto = (await first.create("alice", "agent", { state: { workerId: "otto" } })).body.session!.id as string;
-    const asked = await first.post("alice", otto, "respond", { message: "Ask the lead for the codename" }, "agent");
-    expect(await until(() => killed.dead())).toBe(true);
-    // The dead host is never disposed: its every store call hangs, as a dead process's would.
-
-    const next = bootBoardHost({ ...common, judgment: leadAnswers(), stores: shared as never });
-    open = next;
-    await next.state.getRouter();
-    expect(await until(async () => (await (await shared.resolve()).request.get(asked))?.status === "completed", 30_000)).toBe(true);
-    await next.settled(20_000);
+  it("is continued by the next host after its row: the same call is answered in the same request, and its row is written once", async () => {
+    const { next, otto, asked } = await callThenDie(writesCallRow);
 
     // The request that asked is the one that answered: continued, not run again.
     const turns = await ottoTurns(next, otto);
@@ -485,5 +500,13 @@ describe("a call whose process dies after its row, before it parks", { timeout: 
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ id: outputs[0]!.callId, call: true, status: "delivered", repliedAt: expect.any(Number) });
     expect(await landedIn(next, rows[0]!.toSession)).toHaveLength(1);
+  });
+
+  it("pays its budget once when it died after paying and before its row: one message a turn still sends it", async () => {
+    const { next, otto } = await callThenDie(paysBudget, { hire: { messages: { perTurn: 1 } } });
+
+    const outputs = await toolOutputs(next, otto);
+    expect(outputs).toEqual([{ status: "answered", callId: expect.stringMatching(/^msg_/), reply: "The codename is Bluebird." }]);
+    expect(await logRows(next)).toHaveLength(1);
   });
 });
