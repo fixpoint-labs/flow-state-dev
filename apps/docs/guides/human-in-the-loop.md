@@ -17,7 +17,7 @@ If what you're gating is a task on a board rather than one step of a flow, the s
 - **The work can go on from the answer later.** A question: the worker's model calls `askQuestion`, or its code calls `askMidway`. The task waits on the question, the turn ends, and the answer starts the task's next turn.
 - **You need a form.** `ctx.suspend()` with your own schema, as this guide builds.
 
-The first two show in the user's [Inbox](/docs/orchestration/task-board#building-an-inbox), and so does a `ctx.suspend()` whose reason is `human_approval` or `human_input`; one with a reason of your own doesn't. See [A task waiting on a user](/docs/orchestration/task-board#a-task-waiting-on-a-user) and [A task held on questions](/docs/orchestration/task-board#a-task-held-on-questions).
+The first two show in the user's [Inbox](/docs/orchestration/task-board#building-an-inbox), and so does a `ctx.suspend()` whose reason is `human_approval` or `human_input`; one with a reason of your own doesn't. See [A task waiting on a user](/docs/orchestration/task-board#a-task-waiting-on-a-user) and [A task's questions](/docs/orchestration/task-board#a-tasks-questions).
 
 ## How a pause works
 

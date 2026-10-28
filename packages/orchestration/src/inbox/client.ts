@@ -8,7 +8,7 @@
  */
 import { ClientHttpError, type Client } from "@flow-state-dev/client";
 import type { RequestStatus, ResumeAction } from "@flow-state-dev/core/types";
-import type { InboxAnswer, InboxAskKind, InboxHold, InboxItem, RowHoldSource } from "./types";
+import type { InboxAnswer, InboxAskKind, InboxQuestion, InboxItem, RowQuestionSource } from "./types";
 
 /** The engine's resume action and data for a suspension hold's answer. */
 function resumeOf(kind: InboxAskKind, answer: InboxAnswer): { action: ResumeAction; data?: unknown } {
@@ -16,7 +16,7 @@ function resumeOf(kind: InboxAskKind, answer: InboxAnswer): { action: ResumeActi
   if (kind === "approval" && typeof a.approved === "boolean") return { action: a.approved ? "approve" : "reject", ...(a.data !== undefined ? { data: a.data } : {}) };
   if ((kind === "input" || kind === "review") && a.skipped === true) return { action: "skip" };
   if ((kind === "input" || kind === "review") && "value" in a) return { action: "submit", data: a.value };
-  throw new Error(`An answer to ${kind === "approval" ? "an approval" : `a ${kind}`} hold doesn't take ${JSON.stringify(answer)}`);
+  throw new Error(`An answer to ${kind === "approval" ? "an approval" : `a ${kind}`} question doesn't take ${JSON.stringify(answer)}`);
 }
 
 /** The board's `updateTask` input for a row hold's answer: a question's words, or a confirm's go with its note. */
@@ -26,7 +26,7 @@ function updateOf(kind: InboxAskKind, answer: InboxAnswer): { message?: string; 
   if (kind === "confirm" && typeof a.done === "boolean") {
     return { done: a.done, ...(typeof a.note === "string" && a.note.trim().length > 0 ? { message: a.note } : {}) };
   }
-  throw new Error(`An answer to a ${kind} hold doesn't take ${JSON.stringify(answer)}`);
+  throw new Error(`An answer to a ${kind} question doesn't take ${JSON.stringify(answer)}`);
 }
 
 /** How long the board's answer is waited on, and how often the request's wait looks at it. */
@@ -39,13 +39,13 @@ const ANSWER_POLL_MS = 150;
  * question already answered, the task finished), which rejects here with its
  * words.
  */
-async function answerRowHold(client: Client, source: RowHoldSource, holdId: string, update: { message?: string; done?: boolean }): Promise<void> {
+async function answerRowQuestion(client: Client, source: RowQuestionSource, questionId: string, update: { message?: string; done?: boolean }): Promise<void> {
   const { flowId, sessionId, action } = source;
-  if (flowId === null || sessionId === null || action === null) throw new Error(`Inbox hold "${holdId}" names no board to answer through`);
+  if (flowId === null || sessionId === null || action === null) throw new Error(`Inbox question "${questionId}" names no board to answer through`);
   const flow = client.flow(flowId);
   let requestId: string;
   try {
-    requestId = (await flow.send(action, { id: source.taskId, question: holdId, ...update }, { sessionId })).id;
+    requestId = (await flow.send(action, { id: source.taskId, answers: questionId, ...update }, { sessionId })).id;
   } catch (error) {
     if (error instanceof ClientHttpError && error.status >= 400 && error.status < 500) throw new Error(error.message);
     throw error;
@@ -68,33 +68,33 @@ async function answerRowHold(client: Client, source: RowHoldSource, holdId: stri
 /** The Inbox's client: its one answer call. */
 export type InboxClient = {
   /**
-   * Answer `item`'s hold `holdId` (its first when omitted) with the answer
+   * Answer `item`'s hold `questionId` (its first when omitted) with the answer
    * its ask takes. Rejects when the hold isn't answerable, or the route refuses.
    */
-  answer(item: InboxItem<unknown>, answer: InboxAnswer, holdId?: string): Promise<void>;
+  answer(item: InboxItem<unknown>, answer: InboxAnswer, questionId?: string): Promise<void>;
   /** Answer one hold, as an item's are answered: for a hold drawn on its own, such as an ask in a task's session view. */
-  answerHold(hold: InboxHold<unknown>, answer: InboxAnswer): Promise<void>;
+  answerOne(hold: InboxQuestion<unknown>, answer: InboxAnswer): Promise<void>;
 };
 
 /** The Inbox's client over one connection. */
 export function createInboxClient(client: Client): InboxClient {
-  const answerHold: InboxClient["answerHold"] = async (hold, answer) => {
+  const answerOne: InboxClient["answerOne"] = async (hold, answer) => {
     if (hold.unanswerable !== null) throw new Error(hold.unanswerable);
     if (hold.source.kind === "row") {
-      await answerRowHold(client, hold.source, hold.id, updateOf(hold.ask.kind, answer));
+      await answerRowQuestion(client, hold.source, hold.id, updateOf(hold.ask.kind, answer));
       return;
     }
     const { flowId, requestId, suspensionId } = hold.source;
-    if (flowId === null) throw new Error(`Inbox hold "${hold.id}" names no flow`);
+    if (flowId === null) throw new Error(`Inbox question "${hold.id}" names no flow`);
     const resume = resumeOf(hold.ask.kind, answer);
     await client.flow(flowId).request(requestId).answer({ suspensionId, ...resume });
   };
   return {
-    answerHold,
-    async answer(item, answer, holdId) {
-      const hold = holdId === undefined ? item.holds[0] : item.holds.find((h) => h.id === holdId);
-      if (hold === undefined) throw new Error(`Inbox item "${item.id}" holds no "${holdId}"`);
-      await answerHold(hold, answer);
+    answerOne,
+    async answer(item, answer, questionId) {
+      const hold = questionId === undefined ? item.questions[0] : item.questions.find((h) => h.id === questionId);
+      if (hold === undefined) throw new Error(`Inbox item "${item.id}" holds no "${questionId}"`);
+      await answerOne(hold, answer);
     },
   };
 }

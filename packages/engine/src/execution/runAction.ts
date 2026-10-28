@@ -2090,7 +2090,8 @@ async function runActionAttempt<
             suspension.blockInstanceId
           );
           (ctx as any)._resumeState = {
-            state: checkpoint?.state as Record<string, unknown> | undefined
+            state: checkpoint?.state as Record<string, unknown> | undefined,
+            blockInstanceId: suspension.blockInstanceId
           };
         }
       }

@@ -64,6 +64,12 @@ const DEFAULT_MAX_LOOP_GUARD = 250;
  */
 export type ResumeState = {
   state?: Record<string, unknown>;
+  /**
+   * The durable sequencer whose checkpoint `state` is: the one that caught
+   * the suspension, nested or not. Only that sequencer restores it. Absent:
+   * the root sequencer's, the only one that sees it.
+   */
+  blockInstanceId?: string;
 };
 
 /** Output schema for `.waitForCondition` — a single boolean `timedOut` flag. */
@@ -711,7 +717,9 @@ function createRuntimeState(): SequencerRuntimeState {
     scopeId: `seq_scope_${sequencerScopeCounter}`,
     lastChildPath: undefined,
     lastChildInputHint: undefined,
-    activeLoopGeneration: 0
+    activeLoopGeneration: 0,
+    loopJumps: 0,
+    openLoopPasses: new Map<number, number>()
   };
 }
 
@@ -909,7 +917,10 @@ function runSequencerOperations(
         );
 
         // Checkpoint over schema defaults, so a field the checkpoint lacks keeps its default (BP-030).
-        if (resumeState !== undefined && resumeState.state !== undefined && ctx.sequencer !== undefined) {
+        // Only the sequencer the checkpoint belongs to restores it: a nested one sees it too.
+        const ownsResumeState =
+          resumeState?.blockInstanceId === undefined || resumeState.blockInstanceId === ctx._blockIdentity?.blockInstanceId;
+        if (resumeState !== undefined && resumeState.state !== undefined && ownsResumeState && ctx.sequencer !== undefined) {
           ctx.sequencer.setState({ ...ctx.sequencer.state, ...resumeState.state });
         }
 
@@ -1769,25 +1780,30 @@ function createSequencer<
         {
           name: `loopBack:${targetStepName}`,
           run: async (value, ctx, runtime, stepIndex) => {
-            const shouldLoop = options.when === undefined ? true : await options.when(value, ctx);
-            if (!shouldLoop) {
-              // Loop exits: steps after this op run unsegmented (FIX-643).
-              runtime.activeLoopGeneration = 0;
+            // Loop exits: steps after this op run in the pass of a later
+            // loopBack that is still open, else unsegmented (FIX-643).
+            const exit = () => {
+              let enclosing = 0;
+              for (const [index, generation] of runtime.openLoopPasses) {
+                if (index <= stepIndex) runtime.openLoopPasses.delete(index);
+                else enclosing = Math.max(enclosing, generation);
+              }
+              runtime.activeLoopGeneration = enclosing;
               return { value };
-            }
+            };
+            const shouldLoop = options.when === undefined ? true : await options.when(value, ctx);
+            if (!shouldLoop) return exit();
 
             const key = `${targetStepName}:${stepIndex}`;
             const currentCount = runtime.loopCounts.get(key) ?? 0;
-            if (currentCount >= options.maxIterations) {
-              runtime.activeLoopGeneration = 0;
-              return { value };
-            }
+            if (currentCount >= options.maxIterations) return exit();
 
-            // The upcoming re-execution is generation `currentCount + 1`; carry
-            // it on runtime so re-run children get a distinct `loop[N]` prefix.
-            const nextGeneration = currentCount + 1;
-            runtime.loopCounts.set(key, nextGeneration);
-            runtime.activeLoopGeneration = nextGeneration;
+            // Each jump starts a pass with a generation no earlier pass used;
+            // carry it on runtime so re-run children get a distinct `loop[N]` prefix.
+            runtime.loopCounts.set(key, currentCount + 1);
+            runtime.loopJumps += 1;
+            runtime.openLoopPasses.set(stepIndex, runtime.loopJumps);
+            runtime.activeLoopGeneration = runtime.loopJumps;
             return { value, jumpTo: targetStepName };
           }
         },

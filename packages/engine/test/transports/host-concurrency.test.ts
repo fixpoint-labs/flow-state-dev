@@ -191,7 +191,7 @@ describe("host concurrency — queue", () => {
 
     // The second run hasn't started, but its requestId must already resolve to a
     // record (so a 202 client polling .../requests/:id/stream gets the record,
-    // not a 404). FIX-837 materializes it up front, like the external dispatcher.
+    // not a 404). FIX-837 materializes it up front, like the external runner.
     expect(h.liveCount).toBe(1);
     const queuedRecord = await h.stores.request.get(r2.requestId);
     expect(queuedRecord).toBeDefined();

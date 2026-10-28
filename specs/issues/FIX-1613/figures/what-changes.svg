@@ -1,0 +1,77 @@
+<svg viewBox="0 0 940 330" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Three rows of one 60-turn conversation with a 50-turn window. Today: turns 1 to 10 fall out of what the model reads, unmarked. Summary off: the same turns fall out, and a divider before turn 11 reads earlier turns out of view. Summary on: turns 1 to 12 are one summary the model reads first, a divider before turn 13 reads earlier turns summarized, and turns 13 to 60 are read word for word.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  
+    .read  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .out   { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .sum   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .div   { stroke:var(--accent); stroke-width:2.5; }
+    .divoff{ stroke:var(--gone); stroke-width:2.5; }
+    .c-gone{ fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="330"/>
+  <g id="axis">
+    <text class="t-lbl" x="16" y="30">ONE CONVERSATION · 60 TURNS · WINDOW 50 · WHAT TURN 61 READS</text>
+    <text class="t-s" x="212.0" y="54">turn 1</text>
+    <text class="t-s" x="328.7" y="54">turn 11</text>
+    <text class="t-s" x="550.3" y="54">turn 30</text>
+    <text class="t-s" x="900.3" y="54">turn 60</text>
+  </g>
+  <g id="today">
+    <text class="t-lbl" x="16" y="84">TODAY</text>
+    <text class="t-s" x="16" y="99">no trace</text>
+    <rect class="out" x="210.0" y="70" width="116.7" height="30" rx="3"/>
+    <rect class="read" x="326.7" y="70" width="583.3" height="30" rx="3"/>
+    <text class="t-s c-gone" x="214.0" y="120">dropped, unmarked</text>
+    <text class="t-s" x="330.7" y="120">read word for word</text>
+  </g>
+  <g id="summary-off">
+    <text class="t-lbl" x="16" y="164">SUMMARY OFF</text>
+    <text class="t-s" x="16" y="179">every flow</text>
+    <rect class="out" x="210.0" y="150" width="116.7" height="30" rx="3"/>
+    <rect class="read" x="326.7" y="150" width="583.3" height="30" rx="3"/>
+    <line class="divoff" x1="326.7" y1="144" x2="326.7" y2="186"/>
+    <text class="t-s c-gone" x="214.0" y="200">dropped</text>
+    <text class="t-tag c-gone" x="332.7" y="200">DIVIDER · EARLIER TURNS OUT OF VIEW</text>
+  </g>
+  <g id="summary-on">
+    <text class="t-lbl" x="16" y="244">SUMMARY ON</text>
+    <text class="t-s" x="16" y="259">flows that opt in</text>
+    <rect class="sum" x="210.0" y="230" width="140.0" height="30" rx="3"/>
+    <rect class="read" x="350.0" y="230" width="560.0" height="30" rx="3"/>
+    <text class="t-b c-acc" x="216.0" y="250">summary</text>
+    <line class="div" x1="350.0" y1="224" x2="350.0" y2="266"/>
+    <text class="t-s c-acc" x="214.0" y="280">read first, in short</text>
+    <text class="t-tag c-acc" x="356.0" y="280">DIVIDER · EARLIER TURNS SUMMARIZED</text>
+    <text class="t-s" x="356.0" y="296">turns 13 to 60 read word for word; the next fold moves the divider on</text>
+  </g>
+</svg>

@@ -28,9 +28,9 @@ import {
   MIN_LEASE_DURATION_MS,
   resolveResourceCollection,
   type Task,
-  type TaskDispatcher,
+  type ClaimOrder,
   type TaskWorkerInput,
-  openRowHolds,
+  openRowQuestions,
 } from "../../src/tasks";
 import { askMidway, taskBoard, taskToolActions, taskWorkerInputSchema } from "../../src/task-board";
 import { currentLeaseRenewal } from "../../src/tasks/lease-renewal-scope";
@@ -225,7 +225,7 @@ const conversationKey = ({ sessionId }: { sessionId: string }): string =>
   `${sessionId}#${births.get(sessionId) ?? 0}`;
 
 /** Each telling of a midway question to its filer (FIX-2241): the row, its filer, the questions. */
-const told: Array<{ taskId: string; filer: string | undefined; holds: string[]; prompts: string[] }> = [];
+const told: Array<{ taskId: string; filer: string | undefined; questions: string[]; prompts: string[] }> = [];
 
 const partitionedLedger = defineTaskCollection({
   id: PARTITION_LEDGER,
@@ -234,7 +234,7 @@ const partitionedLedger = defineTaskCollection({
   // The board's default delivery, plus a declared telling of midway questions.
   delivery: {
     onMidwayQuestion: async (_ctx, row, holds) => {
-      told.push({ taskId: row.id, filer: row.filer?.sessionId, holds: holds.map((h) => h.id), prompts: holds.map((h) => h.ask.prompt) });
+      told.push({ taskId: row.id, filer: row.filer?.sessionId, questions: holds.map((h) => h.id), prompts: holds.map((h) => h.ask.prompt) });
     },
   },
 });
@@ -251,7 +251,7 @@ const parkIn = new Map<string, string>();
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Claims under a short lease, so renewal and a lapse are observable on the wall clock. */
-const shortLease: TaskDispatcher = {
+const shortLease: ClaimOrder = {
   async claim(collection, workerId) {
     return collection.claim(workerId, { leaseDurationMs: MIN_LEASE_DURATION_MS });
   },
@@ -270,7 +270,7 @@ function partitionCoordinator(sameFlow = false, isolated = false) {
     boardId: PARTITION_BOARD,
     mode: "delegation",
     collection: partitionedLedger,
-    dispatcher: shortLease,
+    claimOrder: shortLease,
     // Bounded, so a drain that never reaches its exit shows as a number rather
     // than a hang (POC E1): by default a board polls 10,000 times.
     maxIterations: 40,
@@ -291,7 +291,7 @@ function partitionCoordinator(sameFlow = false, isolated = false) {
     outputSchema: z.null(),
     uses: [board.capability],
     execute: async (input, ctx) => {
-      await (ctx.cap as any).conv_board.addTask({ id: input.id, goal: input.id, assignee: "work" });
+      await (ctx.cap as any).conv_board.createTask({ id: input.id, goal: input.id, assignee: "work" });
       return null;
     },
   });
@@ -632,7 +632,7 @@ describe("a ledger kept per conversation, handed to a task session", () => {
       await h.drained(ALICE, "conv_a");
       const held = async () => {
         const row = await h.row(ALICE, "conv_a#0", "ask");
-        return row !== undefined && row.status === "in_progress" && openRowHolds(row).length === 1;
+        return row !== undefined && row.status === "in_progress" && openRowQuestions(row).length === 1;
       };
       await until(held, "the question");
       // The request's end leaves a held row held: nothing settles it.
@@ -652,8 +652,8 @@ describe("a ledger kept per conversation, handed to a task session", () => {
       await h.drained(ALICE, "conv_a");
       await until(() => told.length > 0, "the telling");
       const row = await h.row(ALICE, "conv_a#0", "ask");
-      const holds = openRowHolds(row!);
-      expect(told).toEqual([{ taskId: "ask", filer: "conv_a", holds: holds.map((hold) => hold.id), prompts: ["needs a person"] }]);
+      const holds = openRowQuestions(row!);
+      expect(told).toEqual([{ taskId: "ask", filer: "conv_a", questions: holds.map((hold) => hold.id), prompts: ["needs a person"] }]);
     } finally {
       await h.state.dispose();
     }
@@ -668,10 +668,10 @@ describe("a ledger kept per conversation, handed to a task session", () => {
       await h.drained(ALICE, "conv_a");
       await until(() => told.length >= 2, "both tellings");
       const row = await h.row(ALICE, "conv_a#0", "replay");
-      const [hold] = openRowHolds(row!);
+      const [hold] = openRowQuestions(row!);
       // One question on the row; both tellings name it, so a per-hold id dedupes them.
-      expect(openRowHolds(row!)).toHaveLength(1);
-      expect(told.map((t) => t.holds)).toEqual([[hold!.id], [hold!.id]]);
+      expect(openRowQuestions(row!)).toHaveLength(1);
+      expect(told.map((t) => t.questions)).toEqual([[hold!.id], [hold!.id]]);
     } finally {
       await h.state.dispose();
     }

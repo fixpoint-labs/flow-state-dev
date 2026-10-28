@@ -8,7 +8,7 @@ import type { GeneratorModel, HarnessBlock } from "@flow-state-dev/core/types";
 import { createFlowState } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
-import { harnessManager, harnessSessionDoor, type HarnessFeeds } from "@flow-state-dev/harness-manager";
+import { harnessManager, harnessSessionDoor, taskIssueSegment, type HarnessFeeds } from "@flow-state-dev/harness-manager";
 import type { Task, TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import {
   STEER_TURN_ENTRY,
@@ -56,7 +56,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
     },
     {
       module: "packages/orchestration/src/task-board/task-request.ts",
-      from: String.raw`  const fenceSteers = !noProgress && !rechecked && record\.rules\.steerTurn !== undefined && ref\.setWaitingOn !== undefined;`,
+      from: String.raw`  const fenceSteers = !noProgress && !rechecked && record\.rules\.steerTurn !== undefined && ref\.setKeptOpenBy !== undefined;`,
       to: "  const fenceSteers = false; void rechecked;"
     }
   ],
@@ -75,7 +75,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
     },
     {
       module: "packages/orchestration/src/tasks/steers.ts",
-      from: String.raw`(\.\.\.\(task\.status === "in_progress" && task\.waitingOn === "filed" \?)`,
+      from: String.raw`(\.\.\.\(task\.status === "in_progress" && task\.keptOpenBy === "filed" \?)`,
       to: '...(task.status === "completed" ? { status: "pending", attempts: 0 } : {}), $1'
     },
     {
@@ -270,7 +270,7 @@ function defineCoderFlow(installation: WorkerInstallation, repo: string, checkou
     stopsOnAbort: true,
     harness: fakeHarness
   } as never) as TaskWorker;
-  const runOf = (row: Task) => ({ issue: row.id, phase: "answer" });
+  const runOf = (row: Task) => ({ issue: taskIssueSegment(row.id), phase: "answer" });
   const message = harnessSessionDoor({
     name: "steer-goal-coder",
     harness: fakeHarness,

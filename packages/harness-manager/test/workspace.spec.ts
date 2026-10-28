@@ -26,6 +26,7 @@ import {
   encodeSegment,
   isStrictlyInside,
   releaseCheckout,
+  taskIssueSegment,
 } from "../src/workspace";
 import { WorkspaceRefusedError } from "@flow-state-dev/workspace";
 import { seedRepo } from "./fixtures";
@@ -1762,6 +1763,31 @@ describe("the identity rule — injective, and safe for every consumer", () => {
     for (const bad of ["thing.lock", "phase.", "a.b"]) {
       expect(() => harnessTaskId("FIX-1", bad)).toThrow(/not a usable identity segment/);
     }
+  });
+});
+
+describe("a board-minted task id standing in for the issue", () => {
+  it("keeps an id the grammar accepts, so a run recorded under it is found again", () => {
+    expect(taskIssueSegment("task_01J9ABC")).toBe("task_01J9ABC");
+    expect(taskIssueSegment("t1")).toBe("t1");
+  });
+
+  it("encodes an id no checkout, branch or task id can carry, into one that each can", () => {
+    // Colons, dots and URI escapes, as a coordinator's routed ids have them.
+    const routed = "routed:req_01J9.x%2Fy:0:eng.coder";
+    const segment = taskIssueSegment(routed);
+    expect(segment).not.toBe(routed);
+    expect(() => harnessTaskId(segment, "answer")).not.toThrow();
+    expect(branchFor(at(segment, "answer"))).toContain(harnessTaskId(segment, "answer"));
+  });
+
+  it("gives distinct ids distinct segments, an id shaped like an encoding included", () => {
+    const ids = ["routed:a:0:eng.coder", "routed:a:1:eng.coder", "routed:b:0:eng.coder", "task_a"];
+    const encoded = taskIssueSegment(ids[0]!);
+    // A raw id spelling another's encoding must not take that encoding's place.
+    ids.push(encoded);
+    const segments = ids.map(taskIssueSegment);
+    expect(new Set(segments).size).toBe(ids.length);
   });
 });
 

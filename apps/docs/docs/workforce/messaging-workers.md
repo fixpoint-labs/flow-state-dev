@@ -186,18 +186,18 @@ That coding worker answers from the coding session the task ran in, by resuming 
 
 ## When a task asks a question
 
-A task can stop midway to ask a question and wait for the answer (see [A task held on questions](../orchestration/task-board.md#a-task-held-on-questions)). The question comes from a model's `askQuestion` tool, from code calling `askMidway(ctx, board, [{ prompt }])`, or from a coding run in Shift Manager's `devteam` Lab. Whichever it is, the worker that filed the task gets a message about it.
+A task can stop midway to ask a question and wait for the answer (see [A task's questions](../orchestration/task-board.md#a-tasks-questions)). The question comes from a model's `askQuestion` tool, from code calling `askMidway(ctx, board, [{ prompt }])`, or from a coding run in Shift Manager's `devteam` Lab. Whichever it is, the worker that filed the task gets a message about it.
 
 Each question is one message from the task's worker to the filer. It lands in the conversation that filed the task and wakes the filing worker there, like any other message. The filer's model reads:
 
 ```text
 From researcher: Your task "Write the adoption script" (task_7d2e41) asks: "Which CSV export should the script read?"
-Answer it with updateTask({ id: "task_7d2e41", question: "hold_5a2c", message }), or leave it to the user, who sees it in their Inbox.
+Answer it with updateTask({ id: "task_7d2e41", answers: "question_5a2c", message }), or leave it to the user, who sees it in their Inbox.
 ```
 
 The task is named by its title, or by its goal when it has no title. A very long question is cut short with an ellipsis so the whole text fits in one message.
 
-The filer can answer from the message alone, with `updateTask({ id, question, message })`. It doesn't need `getTask` first. When the task asks for a yes or a no, the message says to answer with `done: true` or `done: false` as well. The task then goes on, on the same attempt. Or the filer can leave the question to the user. The user's Inbox lists the task once either way, as the place they answer it. The message adds nothing to the Inbox and holds nothing up.
+The filer can answer from the message alone, with `updateTask({ id, answers, message })`. It doesn't need `getTask` first. When the task asks for a yes or a no, the message says to answer with `done: true` or `done: false` as well. The task then goes on, on the same attempt. Or the filer can leave the question to the user. The user's Inbox lists the task once either way, as the place they answer it. The message adds nothing to the Inbox and holds nothing up.
 
 A task filed to a workstream, with `target` or `targetSessionId`, has questions only the user answers. Its message ends `The user answers it from their Inbox; it isn't yours to answer.` instead, and an `updateTask` answer from the filer is refused with `question_is_the_users`.
 
@@ -243,7 +243,7 @@ Your message msg_3f1c0a9e2b7d4c6a8e10 to chief-of-staff wasn't delivered: <reaso
 
 Its next turn reads the line in its history. No turn is started for it.
 
-**Resends need a host that keeps wakes.** The resend runs on the sending session's [wake](../advanced/durable-execution.md#wakes), so it needs a durable host. On a host without wakes, an owed message is sent again only when that session's board runs for something else. A worker flow without the session kit's entries, `board.entries(turn)`, sends a message once and never again.
+**Resends need a host that keeps wakes.** The resend runs on the sending session's [wake](../advanced/durable-execution.md#wakes), so it needs a durable host. On a host without wakes, an owed message is sent again only when that session's board runs for something else. A worker flow that offers `sendMessage` needs the session kit's entries, `board.entries(turn)`, which carry those resends. `hireWorkforce` refuses one without them, naming the flow. A flow that sends from its own code without the kit sends a message once and never again.
 
 ## The budget
 

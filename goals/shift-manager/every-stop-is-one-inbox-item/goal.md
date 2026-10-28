@@ -20,7 +20,7 @@
 **Beside the walk** (plan rows 1, 3 and 4):
 
 - *The sweep* (`sweep:no-old-path`): `node goals/workforce-coordination/runs-on-one-task/sweep.mjs` passes; `--control` reports exactly its plants; `--at b8328ccb` (before the epic) fails.
-- *Every child's goal and its controls:* FIX-2129 `goals/task-board/holds-a-task-waiting-on-a-person`, FIX-2133 `goals/task-board/holds-a-task-on-questions` (plus `holds.test.ts` on both store backings), FIX-2131 `goals/task-board/asks-a-person-one-way`, FIX-2132 `goals/shift-manager/a-coding-runs-question-is-answered-in-the-inbox`, FIX-2063 `goals/durable-by-default/a-local-stop-is-held-and-answered` (its control: the goal on pre-FIX-2063 `main`, 7d69c4068). FIX-2137 has no goal; leg b's work counter is its check. None is skipped: the walk covers each kind only together, not each child's own legs.
+- *Every child's goal and its controls:* FIX-2129 `goals/task-board/holds-a-task-waiting-on-a-person`, FIX-2133 `goals/task-board/waits-on-its-questions` (plus `questions.test.ts` on both store backings), FIX-2131 `goals/task-board/asks-a-person-one-way`, FIX-2132 `goals/shift-manager/a-coding-runs-question-is-answered-in-the-inbox`, FIX-2063 `goals/durable-by-default/a-local-stop-is-held-and-answered` (its control: the goal on pre-FIX-2063 `main`, 7d69c4068). FIX-2137 has no goal; leg b's work counter is its check. None is skipped: the walk covers each kind only together, not each child's own legs.
 - *The gap sweep:* each coordination seam in `specs/epics/FIX-2058/DECISIONS.md` read from both sides; the human-in-the-loop guide, the task-board page and the runtime page followed as written; each epic *not done if* state checked absent.
 
 **Not in this goal, and why:**

@@ -1,0 +1,87 @@
+{
+  "sdkVersion": "0.164.0",
+  "model": "gpt-5.4-codex",
+  "results": [
+    {
+      "name": "A \u00b7 a new thread names its id",
+      "pass": true,
+      "detail": {
+        "id": "01a183a8-ebf4-78e3-bf1f-b1378d74105a",
+        "threw": null
+      }
+    },
+    {
+      "name": "B \u00b7 a resumed turn re-names the same id",
+      "pass": true,
+      "detail": {
+        "named": [
+          "01a183a8-ebf4-78e3-bf1f-b1378d74105a"
+        ],
+        "threw": null
+      }
+    },
+    {
+      "name": "C \u00b7 an unknown id is refused, no thread named, no new thread started",
+      "pass": true,
+      "detail": {
+        "named": [],
+        "threw": "thread/resume failed: no rollout found for thread id 0199a213-81c0-7800-8aa1-bbab2a035a53 (code -32600)"
+      }
+    },
+    {
+      "name": "E \u00b7 after a stop, the next turn continues the same id",
+      "pass": true,
+      "detail": {
+        "stoppedThrew": "The operation was aborted",
+        "named": [
+          "01a183a8-ebf4-78e3-bf1f-b1378d74105a"
+        ],
+        "threw": null
+      }
+    },
+    {
+      "name": "D0 \u00b7 the probe reads the offered tools (exec_command is among them)",
+      "pass": true,
+      "detail": {
+        "tools": [
+          "exec_command",
+          "write_stdin",
+          "request_user_input",
+          "view_image",
+          "multi_agent_v1",
+          "get_goal",
+          "create_goal",
+          "update_goal",
+          "web_search"
+        ]
+      }
+    },
+    {
+      "name": "D1 \u00b7 Codex offers the model a plan tool (update_plan)",
+      "pass": false,
+      "detail": {
+        "tools": [
+          "exec_command",
+          "write_stdin",
+          "request_user_input",
+          "view_image",
+          "multi_agent_v1",
+          "get_goal",
+          "create_goal",
+          "update_goal",
+          "web_search"
+        ]
+      }
+    },
+    {
+      "name": "D2 \u00b7 a scripted update_plan call surfaces as a todo_list item",
+      "pass": false,
+      "detail": {
+        "todoEvents": 0,
+        "whatTheCliAnsweredTheCall": [
+          "unsupported call: update_plan"
+        ]
+      }
+    }
+  ]
+}

@@ -323,7 +323,7 @@ A conversation keeps at most 50 rounds open. A message past that is still delive
 
 Each delegate a message goes to gets a routed task for it on the conversation's [task board](./delegating-work.md), one per delegate per round. It is an ordinary task, in your list next to the tasks you filed yourself, with three settings: `session: "ongoing"`, so it runs in the delegate's one session for this conversation; `resultTo: "conversation"`, so its answer lands here under the delegate's name; and one attempt. `getTask_tasks` shows them. It ends like any task: completed with the delegate's answer, which lands as the delegate's line, failed, or cancelled.
 
-When a task the coordinator's own turn filed fails, the failure lands once as the delegate's line, naming the task and its error, and wakes that turn, so it can tell you or file the work again. The coordinator's own turn is the one that files under `judgment`, and under `best-fit` for a message best fit picks the coordinator for. When the routing filed the task with no coordinator turn behind it, a failure ends that delegate's part with no line.
+When a task the coordinator's own turn filed fails, the failure lands once as the delegate's line, naming the task and its error, and wakes that turn, so it can tell you or file the work again. The coordinator's own turn is the one that files under `judgment`, and under `best-fit` for a message best fit picks the coordinator for. When the routing filed the task with no coordinator turn behind it, a failure still lands once as the delegate's line, saying it couldn't answer and why, for example `support.general couldn't answer: No API key found`. No turn wakes for it, and the rest of the round goes on without that delegate.
 
 Each delegate's answer to a message lands once, even across a restart or a dropped connection. A delegate handed the same message twice in one round gets one task, and the record says the second was skipped.
 
@@ -494,12 +494,12 @@ Two conversations can file a task with the same id for the same worker, and each
 
 A delegate working a task sometimes can't go on without you: which region, which account, whether it may delete something. It asks you instead of guessing, with its `askQuestion` tool. The task waits on the question, nothing runs while it waits, and the question shows in your Inbox.
 
-Answer it from the Inbox, or by typing the answer in the task's session: a line there answers the task's oldest open question. An app answers with the board's `updateTask` action, naming the question (`getTask_tasks` lists it under `holds`):
+Answer it from the Inbox, or by typing the answer in the task's session: a line there answers the task's oldest open question. An app answers with the board's `updateTask` action, naming the question (`getTask_tasks` lists it under `questions`):
 
 ```ts
 await help.send(
   "updateTask_tasks",
-  { id: taskId, question: questionId, message: "Use eu-west." },
+  { id: taskId, answers: questionId, message: "Use eu-west." },
   { sessionId: session.id },
 )
 ```

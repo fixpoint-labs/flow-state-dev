@@ -36,9 +36,9 @@ import { z } from "zod";
 import { defineFlow, dispatcher, handler, harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
 import type { HarnessBlock } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { defineTaskCollection, openRowHolds, type Task } from "@flow-state-dev/orchestration/tasks";
+import { defineTaskCollection, openRowQuestions, type Task } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { harnessManager, harnessTaskInputSchema, runOwnerDispatcher, type HarnessFeeds } from "@flow-state-dev/harness-manager";
+import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessFeeds } from "@flow-state-dev/harness-manager";
 import { defineProjectBlocks, projectWorkspace, projectWorkspaceCapability, type ProjectCheckout } from "@flow-state-dev/workforce";
 import { hashContent, localWorkspaceHost } from "@flow-state-dev/workspace";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, silentLogger, type ModulePatch } from "../../lib/index.mts";
@@ -227,7 +227,7 @@ await runGoal(async (failures) => {
     mode: "delegation",
     collection: ledger,
     concurrency: 1,
-    dispatcher: runOwnerDispatcher(),
+    claimOrder: runOwnerClaimOrder(),
     workers: { shared: filedFrom(`shared/${PROJECT}`), private: filedFrom(`private/${PROJECT}`) },
   });
   const seed = handler({
@@ -238,7 +238,7 @@ await runGoal(async (failures) => {
     execute: async (input, ctx) => {
       const tasks = (ctx as { cap: Record<string, any> }).cap["goal-board"];
       const id = `${input.issue}--${PHASE}`;
-      await tasks.addTask({ id, goal: input.issue, input: { issue: input.issue, phase: PHASE }, assignee: input.assignee, maxAttempts: 3 });
+      await tasks.createTask({ id, goal: input.issue, input: { issue: input.issue, phase: PHASE }, assignee: input.assignee, maxAttempts: 3 });
       return { id };
     },
   });
@@ -253,8 +253,8 @@ await runGoal(async (failures) => {
       const id = `${input.issue}--${PHASE}`;
       const row = tasks.get(id) as Task | undefined;
       let answered = 0;
-      for (const hold of row === undefined ? [] : openRowHolds(row)) {
-        await tasks.answer(id, { hold: hold.id, message: "Yes, carry on.", from: "user", by: OWNER });
+      for (const hold of row === undefined ? [] : openRowQuestions(row)) {
+        await tasks.answer(id, { questionId: hold.id, message: "Yes, carry on.", from: "user", by: OWNER });
         answered += 1;
       }
       return { answered };
@@ -311,7 +311,7 @@ await runGoal(async (failures) => {
     return row;
   };
   /** A row's status, with a running row held on a question read as `held`. */
-  const stateOf = (row: Task): string => (row.status === "in_progress" && openRowHolds(row).length > 0 ? "held" : row.status);
+  const stateOf = (row: Task): string => (row.status === "in_progress" && openRowQuestions(row).length > 0 ? "held" : row.status);
   const SETTLED = ["held", "completed", "errored", "failed", "cancelled"] as const;
   /** File `issue` for `assignee` in `orgId`, drain, and wait until it settles. */
   const runRow = async (orgId: string, issue: string, assignee: "shared" | "private") => {

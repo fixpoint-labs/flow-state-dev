@@ -141,7 +141,7 @@ async function stateLedger(): Promise<TaskCollectionRef> {
 describe("a waited-on row's ending, on each backing", () => {
   it("resource: a cancel writes the resume and the declared recorder's marker in one write, told once", async () => {
     const { ref, told } = await resourceLedger();
-    await ref.addTask({ id: "t1", goal: "find out" });
+    await ref.createTask({ id: "t1", goal: "find out" });
     await ref.markWait!("t1", { gateId: "g1", deadline: Date.now() + 60_000, requestId: "r1" });
     const before = ref.get("t1")!.revision!;
     await ref.cancel("t1", "not needed");
@@ -152,7 +152,7 @@ describe("a waited-on row's ending, on each backing", () => {
 
   it("resource: a cancel of a running waited-on row owes the resume too", async () => {
     const { ref } = await resourceLedger();
-    await ref.addTask({ id: "t1", goal: "find out" });
+    await ref.createTask({ id: "t1", goal: "find out" });
     await ref.markWait!("t1", { gateId: "g1", deadline: Date.now() + 60_000, requestId: "r1" });
     const task = (await ref.claim("w"))!;
     expect(task.id).toBe("t1");
@@ -162,7 +162,7 @@ describe("a waited-on row's ending, on each backing", () => {
 
   it("resource: a completion is told once, with the resume beside it", async () => {
     const { ref, told } = await resourceLedger();
-    await ref.addTask({ id: "t1", goal: "find out" });
+    await ref.createTask({ id: "t1", goal: "find out" });
     await ref.markWait!("t1", { gateId: "g1", deadline: Date.now() + 60_000, requestId: "r1" });
     const task = (await ref.claim("w"))!;
     await ref.complete("t1", "the answer", { claim: ticketForClaim(ref.collectionId, task) });
@@ -172,8 +172,8 @@ describe("a waited-on row's ending, on each backing", () => {
 
   it("state: a cancel of a waited-on row owes the resume, pending or running", async () => {
     const ref = await stateLedger();
-    await ref.addTask({ id: "t1", goal: "find out" });
-    await ref.addTask({ id: "t2", goal: "find out too" });
+    await ref.createTask({ id: "t1", goal: "find out" });
+    await ref.createTask({ id: "t2", goal: "find out too" });
     await ref.markWait!("t1", { gateId: "g1", deadline: Date.now() + 60_000, requestId: "r1" });
     await ref.markWait!("t2", { gateId: "g2", deadline: Date.now() + 60_000, requestId: "r2" });
     await ref.claim("w", { eligibility: (row) => row.id === "t2" });

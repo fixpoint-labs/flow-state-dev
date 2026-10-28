@@ -93,7 +93,7 @@
   <g id="driver">
     <rect class="n-box" x="330" y="336" width="296" height="44" rx="5"/>
     <text class="t-b" x="342" y="355">run-scenario.mts · the driver</text>
-    <text class="t-s" x="342" y="371">HTTP: addTask · answerTask · reads the store</text>
+    <text class="t-s" x="342" y="371">HTTP: createTask · answerTask · reads the store</text>
     <path class="flow" d="M626 358 L651 358 L651 182 L660 182"/>
   </g>
 

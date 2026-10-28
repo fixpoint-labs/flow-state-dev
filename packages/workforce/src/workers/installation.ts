@@ -273,7 +273,8 @@ export interface WorkerInstallation extends WorkerGrants {
    * `stateSchema`, {@link createCheck}, and as
    * `serverOwned` the delegate and board fields only the server writes
    * ({@link SESSION_BOARD_SERVER_OWNED}, which carries `workProjectId` too). A flow without those fields still refuses a
-   * create that seeds one, by name, rather than dropping it. It also carries,
+   * create that seeds one, by name, rather than dropping it. `workProjectId` is exposed to the
+   * session read too, so a screen shows the project a conversation works in. It also carries,
    * under a framework-only symbol, the request-end hook that adds every
    * request's spend to the worker's usage record (`worker-usage`).
    */
@@ -283,6 +284,7 @@ export interface WorkerInstallation extends WorkerGrants {
     stateSchema: z.ZodObject<WorkerSessionStateShape & TShape>;
     createCheck: SessionCreateCheck;
     serverOwned: readonly string[];
+    client: { expose: readonly string[] };
     [SESSION_REQUEST_END_HOOK]: SessionRequestEndHook;
   };
   /**
@@ -913,6 +915,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
         stateSchema: z.object({ ...sessionStateShape, ...workerMessageStateShape, ...(extraShape ?? {}) }) as never,
         createCheck,
         serverOwned: SESSION_BOARD_SERVER_OWNED,
+        client: { expose: [WORK_PROJECT_STATE_KEY] },
         [SESSION_REQUEST_END_HOOK]: workerSpendHook
       };
     },

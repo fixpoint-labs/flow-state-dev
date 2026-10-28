@@ -90,7 +90,7 @@ function fakeTimer(): {
 
 /** Seed and claim `t` with `leaseDurationMs`, returning the committed row. */
 async function claimed(h: Harness, leaseDurationMs: number): Promise<Task> {
-  await h.collection.addTask({ id: "t", goal: "t" });
+  await h.collection.createTask({ id: "t", goal: "t" });
   return (await h.collection.claim("w", { leaseDurationMs }))!;
 }
 
@@ -146,7 +146,7 @@ describe("renewLease — the write", () => {
       onChange: (e) => events.push(e),
       now: () => clock,
     });
-    await collection.addTask({ id: "t", goal: "t" });
+    await collection.createTask({ id: "t", goal: "t" });
     const task = (await collection.claim("w", { leaseDurationMs: 30_000 }))!;
     events.length = 0;
 
@@ -793,7 +793,7 @@ describe("a slow renewal does not push the retry past the deadline", () => {
     // second after the lease it was meant to save. Phased from the due time it
     // goes out immediately instead, with 450ms of lease still in hand.
     const h = harness();
-    await h.collection.addTask({ id: "t", goal: "t" });
+    await h.collection.createTask({ id: "t", goal: "t" });
     const task = (await h.collection.claim("w", { leaseDurationMs: 3_000 }))!;
     const deadline = task.leaseUntil!;
     const clock = recordingTimer(h);
@@ -826,7 +826,7 @@ describe("a slow renewal does not push the retry past the deadline", () => {
     // deadline that has already gone would otherwise be a hot loop of failing
     // writes, so no retry is ever scheduled closer than MIN_RENEWAL_DELAY_MS.
     const h = harness();
-    await h.collection.addTask({ id: "t", goal: "t" });
+    await h.collection.createTask({ id: "t", goal: "t" });
     const task = (await h.collection.claim("w", { leaseDurationMs: 3_000 }))!;
     const clock = recordingTimer(h);
 
@@ -856,7 +856,7 @@ describe("a slow renewal does not push the retry past the deadline", () => {
   it("leaves a healthy worker's cadence alone", async () => {
     // The control: when writes are fast, ticks stay one cadence apart.
     const h = harness();
-    await h.collection.addTask({ id: "t", goal: "t" });
+    await h.collection.createTask({ id: "t", goal: "t" });
     const task = (await h.collection.claim("w", { leaseDurationMs: 3_000 }))!;
     const clock = recordingTimer(h);
 
@@ -906,7 +906,7 @@ describe("a custom collection's clock is called as a method", () => {
 
   it("startLeaseRenewal does not drop the receiver", async () => {
     const h = harness();
-    await h.collection.addTask({ id: "t", goal: "t" });
+    await h.collection.createTask({ id: "t", goal: "t" });
     const task = (await h.collection.claim("w", { leaseDurationMs: 30_000 }))!;
     const timer = fakeTimer();
 
@@ -926,7 +926,7 @@ describe("a custom collection's clock is called as a method", () => {
   it("and neither does a renewal write once ticking", async () => {
     // The second read is inside `renew()`, on the timer path.
     const h = harness();
-    await h.collection.addTask({ id: "t", goal: "t" });
+    await h.collection.createTask({ id: "t", goal: "t" });
     const task = (await h.collection.claim("w", { leaseDurationMs: 30_000 }))!;
     const timer = fakeTimer();
 
@@ -944,7 +944,7 @@ describe("a custom collection's clock is called as a method", () => {
     // The override is a plain function by contract, so it must not be affected
     // by the binding fix.
     const h = harness();
-    await h.collection.addTask({ id: "t", goal: "t" });
+    await h.collection.createTask({ id: "t", goal: "t" });
     const task = (await h.collection.claim("w", { leaseDurationMs: 30_000 }))!;
     const timer = fakeTimer();
     let overrideCalls = 0;

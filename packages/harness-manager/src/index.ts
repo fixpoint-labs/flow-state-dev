@@ -25,7 +25,7 @@
  *   a message about a finished task.
  * - `upgradeKeptTurns`, the upgrade's one-off step that writes a line the
  *   coding door kept before FIX-2086 onto its task as a steer.
- * - `runOwnerDispatcher`, for a board kept per organization: a run belongs to
+ * - `runOwnerClaimOrder`, for a board kept per organization: a run belongs to
  *   the member who started it, and another member's drain leaves it alone.
  * - `PhaseSpec` and the run-context types a phase's hooks are handed: the
  *   shared base, plus the prompt side and the completion side.
@@ -59,6 +59,7 @@ export {
   harnessManagerInputSchema,
   harnessJudgeInputSchema,
   harnessJudgeVerdictSchema,
+  harnessReviewAnswerSchema,
   MAX_ANSWER_CHARS,
   HarnessAttemptFailed,
   HarnessAttemptSuperseded,
@@ -70,6 +71,7 @@ export {
   type HarnessJudge,
   type HarnessJudgeInput,
   type HarnessJudgeVerdict,
+  type HarnessReviewAnswer,
   type HarnessSlot,
   type HarnessFeeds,
   type PhaseSpec,
@@ -100,7 +102,7 @@ export { upgradeKeptTurns, type KeptTurnUpgradeOptions, type KeptTurnUpgradeStor
 
 // ── Whose run a row is, on a board kept per organization ────────────────────
 export {
-  runOwnerDispatcher,
+  runOwnerClaimOrder,
   HARNESS_RUN_OWNER_KEY,
   runOwnerOf,
   type RunOwner,
@@ -132,6 +134,11 @@ export {
  * issue, phase)` is that run's record key.
  */
 export { runBoardSegment } from "./workspace";
+/**
+ * The issue a task's own id stands in for, on a board that mints its ids: a
+ * session door's `runOf` keys a row's run with it, as the manager did.
+ */
+export { taskIssueSegment } from "./workspace";
 
 // ── Subscription usage left, per person and harness ─────────────────────────
 //
