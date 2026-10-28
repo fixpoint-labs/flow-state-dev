@@ -173,7 +173,7 @@ function replyTextOf(output: unknown): string {
 }
 
 /** What an `onMessageReceived` request outputs: the reply, when it landed a message. */
-export const messageReceivedOutputSchema = z.object({ reply: z.string().optional() });
+const messageReceivedOutputSchema = z.object({ reply: z.string().optional() });
 
 /**
  * Build the `onMessageReceived` entry for a flow: spread it under
