@@ -87,7 +87,7 @@ const approvalGateStep = handler({
     try {
       ctx.emit.message(`Approval ${input.approvalId} requested: "${input.request}"`);
       const data = (await ctx.suspend!({
-        reason: "human_approval",
+        reason: "user_approval",
         message: `Approve action: "${input.request}"?`,
         resumeSchema: approvalResumeSchema,
       })) as z.infer<typeof approvalResumeSchema> | undefined;

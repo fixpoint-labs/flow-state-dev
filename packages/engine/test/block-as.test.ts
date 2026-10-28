@@ -183,7 +183,7 @@ function routerFixture(rename: Rename) {
     name: "gate",
     inputSchema: z.any(),
     outputSchema: z.unknown(),
-    execute: async (_input, ctx) => ctx.suspend!({ reason: "human_approval", message: "go on?" }),
+    execute: async (_input, ctx) => ctx.suspend!({ reason: "user_approval", message: "go on?" }),
   });
   const after = handler({
     name: "after",
@@ -410,7 +410,7 @@ describe("state, routes and lookups by the copy (BR-11, BR-12)", () => {
       name: "gate",
       inputSchema: z.any(),
       outputSchema: z.unknown(),
-      execute: async (_input, ctx) => ctx.suspend!({ reason: "human_approval", message: "go on?" }),
+      execute: async (_input, ctx) => ctx.suspend!({ reason: "user_approval", message: "go on?" }),
     });
     const after = handler({
       name: "after",

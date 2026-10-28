@@ -35,7 +35,7 @@ const approve = handler({
   outputSchema: input,
   execute: async (value: Input, ctx) => {
     await ctx.suspend!({
-      reason: "human_approval",
+      reason: "user_approval",
       message: `Publish "${value.title}"?`,
       ...(value.deadlineMs === undefined ? {} : { timeoutMs: value.deadlineMs }),
     });
@@ -49,7 +49,7 @@ const question = handler({
   outputSchema: z.object({ title: z.string(), answer: z.string() }),
   execute: async (value: Input, ctx) => {
     const answer = (await ctx.suspend!({
-      reason: "human_input",
+      reason: "user_input",
       message: `What should "${value.title}" say?`,
       resumeSchema: z.string().min(1),
     })) as string;

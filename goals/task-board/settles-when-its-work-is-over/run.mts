@@ -171,7 +171,8 @@ function buildHost(filename: string) {
   };
 
   // A peer's message arriving mid-task, addressed to this task session: one
-  // delivered row in the user's message log, and its delivery dispatched.
+  // row in the user's message log, unconfirmed as a send writes it, and its
+  // delivery dispatched.
   const queueMessage = markDispatcher(
     handler({
       name: "settles-queue-message",
@@ -192,7 +193,7 @@ function buildHost(filename: string) {
           toSession: sessionId,
           toFlow: "doer",
           hop: 1,
-          status: "delivered",
+          status: "unconfirmed",
           at: Date.now()
         } as never);
         await dispatchThroughSeam(ctx, {
@@ -559,7 +560,7 @@ async function legC(run: Run): Promise<void> {
 }
 
 const STOPS = [
-  ["human_input", "user"],
+  ["user_input", "user"],
   ["external_event", "wait"]
 ] as const;
 
@@ -577,7 +578,7 @@ async function resumeStop(run: Run, taskId: string, reason: string): Promise<voi
     run.failures.push(`d:resumes — the ${reason} stop had no pending suspension to resume`);
     return;
   }
-  const action = reason === "human_input" ? "submit" : "approve";
+  const action = reason === "user_input" ? "submit" : "approve";
   const provider = run.h.runtime.runtimeConfig.durabilityProvider!;
   const record = await provider.loadSuspension(suspension.requestId, suspension.suspensionId);
   await provider.suspend({ ...record!, status: action === "submit" ? "submitted" : "approved", resolvedAt: Date.now(), resumeData: { reason } } as never);

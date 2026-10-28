@@ -157,7 +157,7 @@ export type SuspensionItemOptions = {
   message?: string;
   data?: Record<string, unknown>;
   requestId?: string;
-  /** Defaults to `"human_approval"`; pass `"human_input"` for the non-binary cards. */
+  /** Defaults to `"user_approval"`; pass `"user_input"` for the non-binary cards. */
   reason?: SuspensionReason;
   /** JSON Schema describing the expected resume payload (drives question/form/selection). */
   resumeSchema?: Record<string, unknown>;
@@ -174,7 +174,7 @@ export function suspensionItem(
     message = "Approve this action?",
     data,
     requestId = "req-1",
-    reason = "human_approval",
+    reason = "user_approval",
     resumeSchema,
     allow,
   } = options;
