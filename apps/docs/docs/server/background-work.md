@@ -124,7 +124,7 @@ A refusal at run time throws `DispatchRefusedError`, with `code:
 | `create-refused` | The addressed flow refused to create the run's session: its `stateSchema` or `session.createCheck` refused the `state` the dispatcher named, or the lack of one |
 | `no-dispatch-operation` | This process runs requests but was not set up to dispatch one |
 | `dispatch-rejected` | The entry's `concurrency` policy is `reject` and its key is held |
-| `external-dispatcher` | A delivery into an existing session, by `id` or a `{ from: true }` reply, from a process whose dispatcher hands work to another process and can't hold a session's concurrency policy across processes: a dispatcher passed directly, or a `worker` adapter that doesn't supply one. `bullmqWorker` supplies one, so it doesn't refuse. A reply from a run on a `worker-only` worker goes in process. A `key` dispatch is unaffected |
+| `external-dispatcher` | A delivery into an existing session, by `id` or a `{ from: true }` reply, from a process whose runner hands work to another process and can't hold a session's concurrency policy across processes: a dispatcher passed directly, or a `worker` adapter that doesn't supply one. `bullmqWorker` supplies one, so it doesn't refuse. A reply from a run on a `worker-only` worker goes in process. A `key` dispatch is unaffected |
 
 On a queue-backed deployment, an `id` delivery runs in whichever worker picks it
 up, and it waits for the recipient session's concurrency policy like any other

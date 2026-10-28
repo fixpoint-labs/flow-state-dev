@@ -14,7 +14,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
-import { defineTaskCollection, openRowHolds } from "@flow-state-dev/orchestration/tasks";
+import { defineTaskCollection, openRowQuestions } from "@flow-state-dev/orchestration/tasks";
 import {
   askMidway,
   goalSeekLoop,
@@ -84,8 +84,8 @@ function buildFlow() {
     uses: [capability],
     execute: async (input, ctx) => {
       const tasks = await (ctx.cap as any)[capability.name].tasks();
-      const [hold] = openRowHolds(tasks.get("a"));
-      return tasks.answer("a", { hold: hold!.id, message: input.message, from: "user", by: USER_ID });
+      const [hold] = openRowQuestions(tasks.get("a"));
+      return tasks.answer("a", { questionId: hold!.id, message: input.message, from: "user", by: USER_ID });
     },
   });
   const flow = defineFlow({

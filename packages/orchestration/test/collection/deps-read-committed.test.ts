@@ -34,7 +34,7 @@ async function boardOf(ctx: BlockContext): Promise<TaskCollectionRef> {
 
 /**
  * `fileAfter` reads the board, lets `meanwhile` run as another request, then
- * files a row depending on `dep`: alone (`addTask`), or in a batch (`addTasks`).
+ * files a row depending on `dep`: alone (`createTask`), or in a batch (`createTasks`).
  */
 function depsFlow(meanwhile: { run?: () => Promise<unknown> }): FlowInstance {
   return defineFlow({
@@ -46,7 +46,7 @@ function depsFlow(meanwhile: { run?: () => Promise<unknown> }): FlowInstance {
           name: "file",
           inputSchema: z.object({ id: z.string() }),
           outputSchema: z.any(),
-          execute: async (input, ctx) => (await (await boardOf(ctx as never)).addTask({ id: input.id, goal: input.id, assignee: "w" })).id
+          execute: async (input, ctx) => (await (await boardOf(ctx as never)).createTask({ id: input.id, goal: input.id, assignee: "w" })).id
         })
       },
       fail: {
@@ -74,8 +74,8 @@ function depsFlow(meanwhile: { run?: () => Promise<unknown> }): FlowInstance {
             await meanwhile.run?.();
             try {
               const dependent = { id: "dependent", goal: "dependent", assignee: "w", deps: [input.dep] };
-              if (input.batch === true) await board.addTasks([{ id: "sibling", goal: "sibling", assignee: "w" }, dependent]);
-              else await board.addTask(dependent);
+              if (input.batch === true) await board.createTasks([{ id: "sibling", goal: "sibling", assignee: "w" }, dependent]);
+              else await board.createTask(dependent);
               return { before, filed: true };
             } catch (error) {
               if (!(error instanceof TaskFilingRefusedError)) throw error;
@@ -99,8 +99,8 @@ function depsFlow(meanwhile: { run?: () => Promise<unknown> }): FlowInstance {
 
 describe("a filing reads its dependencies as stored now", () => {
   it.each([
-    ["one filing (addTask)", false],
-    ["a batch (addTasks)", true]
+    ["one filing (createTask)", false],
+    ["a batch (createTasks)", true]
   ])("refuses a dependency that failed in another request while %s ran, and stores nothing", async (_how, batch) => {
     const meanwhile: { run?: () => Promise<unknown> } = {};
     const flow = depsFlow(meanwhile);

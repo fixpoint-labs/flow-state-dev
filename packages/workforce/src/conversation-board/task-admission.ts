@@ -21,7 +21,7 @@ import { handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, ConcurrencyConfig } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { afterTaskCheck, taskRequestAdmission, type TaskEndRules } from "@flow-state-dev/orchestration/task-board";
-import { filedWorkHolds, holdsItsFiler, type Task, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
+import { filedWorkKeepsOpen, keepsFilerOpen, type Task, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
 import { boardAboveOf } from "./board-above";
 import { CHECK_TASK_ENTRY, PIECE_OF, STEER_TURN_ENTRY } from "./board-entries";
 import { conversationLedgerAt, ownConversationLedger } from "./ledger";
@@ -48,9 +48,9 @@ export async function worksConversationResultTask(ctx: BlockContext): Promise<bo
  * no `filedByTask`, as rows stored before it carried one are.
  */
 export function piecesHold(board: TaskCollectionRef, taskId: string): boolean {
-  if (filedWorkHolds(board, taskId)) return true;
+  if (filedWorkKeepsOpen(board, taskId)) return true;
   // No filter on metadata: the legacy rows are found by listing the board.
-  return board.list().some((row) => row.filedByTask == null && row.metadata?.[PIECE_OF] === taskId && holdsItsFiler(row));
+  return board.list().some((row) => row.filedByTask == null && row.metadata?.[PIECE_OF] === taskId && keepsFilerOpen(row));
 }
 
 /**
@@ -58,7 +58,7 @@ export function piecesHold(board: TaskCollectionRef, taskId: string): boolean {
  * 6), and the entry that runs the turn a late steer is owed (FIX-2086 D2).
  */
 export const conversationEndRules: TaskEndRules = {
-  filedWorkHolds: async (ctx, task) => {
+  filedWorkKeepsOpen: async (ctx, task) => {
     const own = await ownConversationLedger(ctx);
     return own !== undefined && piecesHold(own, task.id);
   },
@@ -82,7 +82,7 @@ export function checkTaskEntry(concurrency: ConcurrencyConfig) {
     execute: async (_input, ctx) => {
       await afterTaskCheck(ctx, async () => {
         const own = await ownTaskRow(ctx);
-        if (own !== undefined && own.row.waitingOn == null) return;
+        if (own !== undefined && own.row.keptOpenBy == null) return;
         const wakes = ctx.requestHost?.wakes;
         const read = await wakes?.read(CHECK_TASK_ENTRY);
         if (wakes !== undefined && read !== undefined) await wakes.settle(CHECK_TASK_ENTRY, read, null);

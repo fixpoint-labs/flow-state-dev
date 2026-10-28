@@ -32,7 +32,7 @@ type Controls = {
   /** Steps whose turn tries to file one more step for itself. */
   stepFiles: Set<string>;
   answerFiles: Set<string>;
-  /** Workers whose turn files its whole plan in one `addTasks` batch. */
+  /** Workers whose turn files its whole plan in one `createTasks` batch. */
   batches: Set<string>;
   /** A second batch a batching worker's turn files after its plan. */
   secondBatch: Record<string, Step[]>;
@@ -79,13 +79,13 @@ function stepperFlow(installation: WorkerInstallation, controls: Controls) {
         const step = [...(controls.plans[worker] ?? []), ...(controls.secondBatch[worker] ?? [])].find((candidate) => brief.includes(candidate.goal));
         if (step === undefined) throw new Error(`no step matches: ${input.message}`);
         if (controls.failSteps.has(step.goal)) throw new Error(`${step.goal} could not be done`);
-        if (controls.stepFiles.has(step.goal)) await refused(() => ref!.addTask({ goal: `after ${step.goal}`, assignee: worker }));
+        if (controls.stepFiles.has(step.goal)) await refused(() => ref!.createTask({ goal: `after ${step.goal}`, assignee: worker }));
         // A value only this step produces, carrying what it saw of the step before.
         const before = /The results of the steps it depends on:\n([\s\S]*)$/.exec(input.message)?.[1] ?? "";
         return `${step.goal}#done${before.length > 0 ? ` after [${before.trim()}]` : ""}`;
       }
       if (kind === "answer") {
-        if (controls.answerFiles.has(worker)) await refused(() => ref!.addTask({ goal: "one more step", assignee: worker }));
+        if (controls.answerFiles.has(worker)) await refused(() => ref!.createTask({ goal: "one more step", assignee: worker }));
         return `answered: ${input.message}`;
       }
       if (input.message.startsWith('Task "')) return `${worker} heard: ${input.message}`;
@@ -107,12 +107,12 @@ function stepperFlow(installation: WorkerInstallation, controls: Controls) {
         ...(step.session ? { session: step.session } : {})
       });
       if (controls.batches.has(worker)) {
-        await refused(() => ref!.addTasks((controls.plans[worker] ?? []).map(asInit)));
+        await refused(() => ref!.createTasks((controls.plans[worker] ?? []).map(asInit)));
         const second = controls.secondBatch[worker];
-        if (second !== undefined) await refused(() => ref!.addTasks(second.map(asInit)));
+        if (second !== undefined) await refused(() => ref!.createTasks(second.map(asInit)));
       }
       else for (const step of controls.plans[worker] ?? []) {
-        await refused(() => ref!.addTask(asInit(step)));
+        await refused(() => ref!.createTask(asInit(step)));
       }
       if (controls.probes.has(worker)) {
         const first = (controls.plans[worker] ?? [])[0]!;

@@ -49,7 +49,7 @@ async function harness() {
 
   for (const partition of ["conv-a", "conv-b"]) {
     const ref = await at(partition);
-    await ref.addTask({ id: "t1", goal: `do it for ${partition}`, assignee: "work", input: {} });
+    await ref.createTask({ id: "t1", goal: `do it for ${partition}`, assignee: "work", input: {} });
     await ref.claim("drain", { leaseDurationMs: 60_000 });
   }
 

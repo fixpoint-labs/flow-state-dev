@@ -21,7 +21,7 @@ import {
   type Verdict,
   type TaskBoardHandle,
 } from "../../src/task-board";
-import { getOrCreateTaskCollection, openRowHolds } from "../../src/tasks";
+import { getOrCreateTaskCollection, openRowQuestions } from "../../src/tasks";
 import { setNextDrainUnseeded } from "../../src/task-board/blocks/seed-collection";
 
 // ---------------------------------------------------------------------------
@@ -58,7 +58,7 @@ function seedTasks(name: string, board: TaskBoardHandle<any, any, any>, ids: str
     inputSchema: z.unknown(),
     uses: [board.capability],
     execute: async (_input, ctx) => {
-      await (ctx.cap as any)[board.capability.name].addTasks(
+      await (ctx.cap as any)[board.capability.name].createTasks(
         ids.map((id) => ({ id, goal: id })),
       );
     },
@@ -686,8 +686,8 @@ describe("goalSeekLoop - an answer that lands as the drain returns", () => {
       inputSchema: z.unknown(),
       execute: async (_input, ctx) => {
         const collection = await collectionOf(ctx);
-        const [hold] = openRowHolds(collection.get("a")!);
-        if (hold !== undefined) await collection.answer!("a", { hold: hold.id, message: "eu-west", from: "user", by: "u1" });
+        const [hold] = openRowQuestions(collection.get("a")!);
+        if (hold !== undefined) await collection.answer!("a", { questionId: hold.id, message: "eu-west", from: "user", by: "u1" });
       },
     });
     const drain = sequencer({ name: `${name}-racing-drain`, inputSchema: z.unknown() }).step(real.drain).tap(answerOnce);
@@ -738,8 +738,8 @@ describe("goalSeekLoop - an answer that lands as the drain returns", () => {
       inputSchema: z.unknown(),
       execute: async (_input, ctx) => {
         const collection = await collectionOf(ctx);
-        const [hold] = openRowHolds(collection.get("a")!);
-        if (hold !== undefined) await collection.answer!("a", { hold: hold.id, message: "eu-west", from: "user", by: "u1" });
+        const [hold] = openRowQuestions(collection.get("a")!);
+        if (hold !== undefined) await collection.answer!("a", { questionId: hold.id, message: "eu-west", from: "user", by: "u1" });
       },
     });
     const drain = sequencer({ name: `${name}-racing-drain`, inputSchema: z.unknown() }).step(real.drain).tap(answerOnce);
@@ -829,8 +829,8 @@ describe("goalSeekLoop - an answer that lands as the drain returns", () => {
       execute: async (_input, ctx) => {
         const collection = await collectionOf(ctx);
         for (const row of collection.list()) {
-          const [hold] = openRowHolds(row);
-          if (hold !== undefined) await collection.answer!(row.id, { hold: hold.id, message: "eu-west", from: "user", by: "u1" });
+          const [hold] = openRowQuestions(row);
+          if (hold !== undefined) await collection.answer!(row.id, { questionId: hold.id, message: "eu-west", from: "user", by: "u1" });
         }
       },
     });
@@ -880,8 +880,8 @@ describe("goalSeekLoop - an answer that lands as the drain returns", () => {
       inputSchema: z.unknown(),
       execute: async (_input, ctx) => {
         const collection = await collectionOf(ctx);
-        const [hold] = openRowHolds(collection.get("a")!);
-        if (hold !== undefined) await collection.answer!("a", { hold: hold.id, message: "eu-west", from: "user", by: "u1" });
+        const [hold] = openRowQuestions(collection.get("a")!);
+        if (hold !== undefined) await collection.answer!("a", { questionId: hold.id, message: "eu-west", from: "user", by: "u1" });
       },
     });
     const drain = sequencer({ name: `${name}-racing-drain`, inputSchema: z.unknown() }).step(real.drain).tap(answerEach);

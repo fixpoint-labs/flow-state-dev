@@ -33,9 +33,9 @@ describe("getOrCreateTaskCollection — backing: \"state\" default slots", () =>
         const alpha = await getOrCreateTaskCollection({ ctx, backing: "state", collectionId: "alpha" });
         const beta = await getOrCreateTaskCollection({ ctx, backing: "state", collectionId: "beta" });
 
-        await onRef.addTask({ goal: "ref task" });
-        await alpha.addTask({ goal: "alpha task" });
-        await beta.addTask({ goal: "beta task" });
+        await onRef.createTask({ goal: "ref task" });
+        await alpha.createTask({ goal: "alpha task" });
+        await beta.createTask({ goal: "beta task" });
 
         return {
           alphaSees: alpha.list().map((t) => t.goal),
@@ -87,8 +87,8 @@ describe("getOrCreateTaskCollection — backing: \"state\" default slots", () =>
           stateKey: "shared-slot",
           collectionId: "also-ignored",
         });
-        await onRef.addTask({ goal: "ref" });
-        await onRequest.addTask({ goal: "request" });
+        await onRef.createTask({ goal: "ref" });
+        await onRequest.createTask({ goal: "request" });
         return { requestState: ctx.request.state as Record<string, unknown> };
       },
     });

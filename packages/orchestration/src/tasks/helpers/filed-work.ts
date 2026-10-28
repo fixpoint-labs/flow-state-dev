@@ -17,7 +17,7 @@ import type { Task } from "../schema/task";
 import { isTerminalStatus } from "../schema/task-status";
 
 /** Whether a row a task filed still holds that task: it is open, or its ending is still owed. */
-export function holdsItsFiler(row: Task): boolean {
+export function keepsFilerOpen(row: Task): boolean {
   return !isTerminalStatus(row.status) || owesAnyNotice(row);
 }
 
@@ -25,9 +25,9 @@ export function holdsItsFiler(row: Task): boolean {
  * Whether any row on `ledger` that `taskId` filed still holds it. Filters at
  * the source (`filedByTask`) and stops at the first that holds.
  */
-export function filedWorkHolds(ledger: TaskCollectionRef, taskId: string): boolean {
+export function filedWorkKeepsOpen(ledger: TaskCollectionRef, taskId: string): boolean {
   for (const row of ledger.list({ filedByTask: taskId })) {
-    if (holdsItsFiler(row)) return true;
+    if (keepsFilerOpen(row)) return true;
   }
   return false;
 }

@@ -65,7 +65,7 @@ export function createMockTransportHost(
     stores: minimalStores(),
     // The mock runs everything in-process, so an `{ id }` dispatch is admitted
     // as it would be on a colocated host.
-    usesExternalDispatcher: false,
+    usesExternalRunner: false,
     async validateDispatch() {},
     dispatch(envelope) {
       dispatchCalls.push({ envelope });

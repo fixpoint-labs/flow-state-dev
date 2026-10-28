@@ -1,6 +1,6 @@
 /**
  * Unit tests for `bullmqWorker` — the WorkerAdapter composition for
- * `createFlowState({ worker })`. The runtime/bridge/dispatcher factories are
+ * `createFlowState({ worker })`. The runtime/bridge/runner factories are
  * mocked; these tests pin the composition contract: option threading, mode
  * default, queue exposure, and that the worker side maps the resolved
  * FlowStateRuntime onto FlowWorkerDeps verbatim.
@@ -17,7 +17,7 @@ const fakeRuntime = {
   close: vi.fn().mockResolvedValue(undefined),
 };
 const fakeBridge = { createPublisher: vi.fn(), createSubscriber: vi.fn() };
-const fakeDispatcher = { dispatch: vi.fn(), close: vi.fn() };
+const fakeRunner = { dispatch: vi.fn(), close: vi.fn() };
 const fakeLeaseBackend = { leaseMs: 10_000, close: vi.fn().mockResolvedValue(undefined) };
 
 vi.mock("../src/runtime", () => ({
@@ -26,8 +26,8 @@ vi.mock("../src/runtime", () => ({
 vi.mock("../src/stream-bridge", () => ({
   createRedisStreamBridge: vi.fn(() => fakeBridge),
 }));
-vi.mock("../src/dispatcher", () => ({
-  createWorkerDispatcher: vi.fn(() => fakeDispatcher),
+vi.mock("../src/runner", () => ({
+  createWorkerRunner: vi.fn(() => fakeRunner),
 }));
 vi.mock("../src/lease-backend", () => ({
   createRedisLeaseBackend: vi.fn(() => fakeLeaseBackend),
@@ -35,7 +35,7 @@ vi.mock("../src/lease-backend", () => ({
 
 import { createBullmqRuntime } from "../src/runtime";
 import { createRedisStreamBridge } from "../src/stream-bridge";
-import { createWorkerDispatcher } from "../src/dispatcher";
+import { createWorkerRunner } from "../src/runner";
 import { createRedisLeaseBackend } from "../src/lease-backend";
 import { bullmqWorker } from "../src/flowstate-adapter";
 
@@ -48,7 +48,7 @@ const flowStateRuntime = {
 beforeEach(() => {
   vi.mocked(createBullmqRuntime).mockClear();
   vi.mocked(createRedisStreamBridge).mockClear();
-  vi.mocked(createWorkerDispatcher).mockClear();
+  vi.mocked(createWorkerRunner).mockClear();
   vi.mocked(createRedisLeaseBackend).mockClear();
   fakeLeaseBackend.close.mockClear();
   fakeRuntime.createWorker.mockClear();
@@ -85,15 +85,15 @@ describe("bullmqWorker", () => {
     expect(adapter.runtime).toBe(fakeRuntime);
   });
 
-  it("createDispatcher wires the shared queue, bridge, and retry config", () => {
+  it("createRunner wires the shared queue, bridge, and retry config", () => {
     const adapter = bullmqWorker({
       connection: "redis://localhost:6379",
       retry: { attempts: 2 },
     });
-    const dispatcher = adapter.createDispatcher(flowStateRuntime);
+    const runner = adapter.createRunner(flowStateRuntime);
 
-    expect(dispatcher).toBe(fakeDispatcher);
-    expect(createWorkerDispatcher).toHaveBeenCalledWith({
+    expect(runner).toBe(fakeRunner);
+    expect(createWorkerRunner).toHaveBeenCalledWith({
       queue: fakeQueue,
       bridge: fakeBridge,
       retryConfig: { attempts: 2 },

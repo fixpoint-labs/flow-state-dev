@@ -1,10 +1,27 @@
+import { defaultRehypePlugins } from "streamdown";
 import type { ThreadEntry } from "../adapter";
 import { TASK_STATUS } from "../lib/task-status";
 import { cn } from "../lib/utils";
+import { MessageResponse } from "./flow-state/message";
+
+/**
+ * Streamdown's own pipeline without `raw`: agent text is Markdown, and any
+ * HTML in it shows as the text it is rather than being built into elements.
+ */
+const NO_RAW_HTML = [defaultRehypePlugins.sanitize!, defaultRehypePlugins.harden!];
+
+/** An agent's Markdown, drawn as it streams: an unfinished fence or list renders as far as it goes. */
+function AgentMarkdown({ text, className }: { text: string; className?: string }) {
+  return (
+    <MessageResponse className={cn("text-sm leading-relaxed", className)} rehypePlugins={NO_RAW_HTML}>
+      {text}
+    </MessageResponse>
+  );
+}
 
 /**
  * One entry of a thread. Your lines sit in a box on the right; the main
- * session's text is plain; a tool call is one mono line; a background result
+ * session's text is Markdown; a tool call is one mono line; a background result
  * is a card at the point the main session took it, and so is a thread in
  * threads mode (`ThreadCard`, which the main thread draws).
  */
@@ -22,9 +39,9 @@ export function Entry({ entry }: { entry: ThreadEntry }) {
       );
     case "assistant":
       return (
-        <p className="text-sm leading-relaxed whitespace-pre-wrap" data-entry="assistant">
-          {entry.text}
-        </p>
+        <div data-entry="assistant">
+          <AgentMarkdown text={entry.text} />
+        </div>
       );
     case "tool":
       return (
@@ -44,7 +61,7 @@ export function Entry({ entry }: { entry: ThreadEntry }) {
           <div className={cn("font-mono text-[10px] tracking-widest uppercase", status.tone)}>
             Background result · {entry.title} · {status.label}
           </div>
-          <p className="mt-1 text-sm">{entry.summary}</p>
+          <AgentMarkdown text={entry.summary} className="mt-1" />
           {entry.duringTurn ? <p className="mt-0.5 text-xs text-muted-foreground">arrived while this turn was running</p> : null}
         </section>
       );
