@@ -35,7 +35,7 @@ const taskRow = (answered: boolean) => ({
   id: "t1",
   status: "in_progress",
   run: { sessionId: "s_task" },
-  holds: [{ id: "h1", source: { kind: "row" }, kind: "question", prompt: "Which branch?" }],
+  questions: [{ id: "h1", source: { kind: "row" }, kind: "question", prompt: "Which branch?" }],
   steers: answered ? [{ id: "s1", answers: "h1", text: "main" }] : []
 });
 

@@ -46,7 +46,7 @@ const schemas: Record<string, ActionInputSchema> = {
     type: "object",
     fields: { taskId: { type: "string", required: true }, answer: { type: "string", required: true } },
   },
-  cancelTask_issues: withTaskId,
+  dismiss_issues: withTaskId,
 };
 
 /** One request as the session's request list reports it: status and recorded result. */
@@ -87,7 +87,7 @@ describe("the actions a row offers", () => {
 
     const actions = within(row()).getByRole("group", { name: /actions/i });
     expect(within(actions).getByRole("button", { name: "answer" })).toBeInTheDocument();
-    expect(within(actions).getByRole("button", { name: "cancelTask_issues" })).toBeInTheDocument();
+    expect(within(actions).getByRole("button", { name: "dismiss_issues" })).toBeInTheDocument();
     expect(within(actions).queryByRole("button", { name: "post" })).toBeNull();
   });
 
@@ -103,7 +103,7 @@ describe("the actions a row offers", () => {
   it("BR-12 · opens the form with the task's id filled in and locked", async () => {
     render(<Harness />);
     await open();
-    await userEvent.click(within(row()).getByRole("button", { name: "cancelTask_issues" }));
+    await userEvent.click(within(row()).getByRole("button", { name: "dismiss_issues" }));
 
     const field = row().querySelector<HTMLInputElement>('[data-field="taskId"] input')!;
     expect(field.value).toBe("task-a");
@@ -116,19 +116,19 @@ describe("running one", () => {
     const run = vi.fn(async () => ({ requestId: "req_1" }));
     render(<Harness run={run} />);
     await open();
-    await userEvent.click(within(row()).getByRole("button", { name: "cancelTask_issues" }));
+    await userEvent.click(within(row()).getByRole("button", { name: "dismiss_issues" }));
     await userEvent.type(row().querySelector<HTMLInputElement>('[data-field="reason"] input')!, "dupe");
     await userEvent.click(within(row()).getByRole("button", { name: /^run$/i }));
 
     expect(run).toHaveBeenCalledTimes(1);
-    expect(run).toHaveBeenCalledWith("cancelTask_issues", { taskId: "task-a", reason: "dupe" });
+    expect(run).toHaveBeenCalledWith("dismiss_issues", { taskId: "task-a", reason: "dupe" });
   });
 
   async function submitted(requests: RowActions["requests"], dispatch: Awaited<ReturnType<RowActions["run"]>> = { requestId: "req_1" }) {
     const run = vi.fn(async () => dispatch);
     const { rerender } = render(<Harness run={run} />);
     await open();
-    await userEvent.click(within(row()).getByRole("button", { name: "cancelTask_issues" }));
+    await userEvent.click(within(row()).getByRole("button", { name: "dismiss_issues" }));
     await userEvent.click(within(row()).getByRole("button", { name: /^run$/i }));
     rerender(<Harness run={run} requests={requests} />);
     return row().querySelector<HTMLElement>("[data-outcome]");
@@ -193,7 +193,7 @@ describe("running one", () => {
     const answered = [request("req_1", "completed", { output: { ok: true } })];
     const { rerender } = render(<Harness run={run} requests={answered} />);
     await open();
-    await userEvent.click(within(row()).getByRole("button", { name: "cancelTask_issues" }));
+    await userEvent.click(within(row()).getByRole("button", { name: "dismiss_issues" }));
     await userEvent.click(within(row()).getByRole("button", { name: /^run$/i }));
     expect(row().querySelector("[data-outcome]")?.getAttribute("data-outcome")).toBe("ok");
 
@@ -213,7 +213,7 @@ describe("running one", () => {
     const run = vi.fn<RowActions["run"]>(() => new Promise((resolve) => releases.push(resolve)));
     const { rerender } = render(<Harness run={run} />);
     await open();
-    await userEvent.click(within(row()).getByRole("button", { name: "cancelTask_issues" }));
+    await userEvent.click(within(row()).getByRole("button", { name: "dismiss_issues" }));
     await userEvent.click(within(row()).getByRole("button", { name: /^run$/i }));
     await userEvent.click(within(row()).getByRole("button", { name: "answer" }));
     await userEvent.type(row().querySelector<HTMLInputElement>('[data-field="answer"] input')!, "yes");
@@ -239,7 +239,7 @@ describe("running one", () => {
     ]);
     expect(outcomes).toEqual([
       ["answer", "refused"],
-      ["cancelTask_issues", "ok"],
+      ["dismiss_issues", "ok"],
     ]);
   });
 
@@ -259,8 +259,8 @@ describe("an action that stops being this row's", () => {
     // row's task id to another board's ledger.
     const run = vi.fn(async () => ({ requestId: "req_1" }));
     const props = { taskId: "task-a", schemas, run, requests: [] };
-    const { rerender } = render(<TaskRowActions {...props} actions={["answer", "cancelTask_issues"]} />);
-    await userEvent.click(screen.getByRole("button", { name: "cancelTask_issues" }));
+    const { rerender } = render(<TaskRowActions {...props} actions={["answer", "dismiss_issues"]} />);
+    await userEvent.click(screen.getByRole("button", { name: "dismiss_issues" }));
     expect(document.querySelector('[data-field="taskId"]')).not.toBeNull();
 
     rerender(<TaskRowActions {...props} actions={["answer"]} />);

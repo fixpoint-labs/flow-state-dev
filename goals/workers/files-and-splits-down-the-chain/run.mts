@@ -170,7 +170,7 @@ function chainUnder(all: StoredSession[], root: string): StoredSession[] {
 }
 
 /** The `tool` calls a session's turns made, each one's answer; only one request's when `requestId` is given. `createTask` starts work, and with `held` holds it. */
-function addTasks(tool: "createTask", store: string, sessionId: string | null | undefined, requestId?: string | null): any[] {
+function toolOutputs(tool: "createTask", store: string, sessionId: string | null | undefined, requestId?: string | null): any[] {
   if (sessionId == null) return [];
   return items(store, sessionId, "tool_output")
     .filter((i) => i.toolCall?.name === tool && (requestId === undefined || i.requestId === requestId))
@@ -201,7 +201,7 @@ function gradeA(o: any, store: string): LegResult {
   const bob = o.people.bob.userId as string;
   const rows = taskRows(store, alice, o.org);
   const all = sessions(store);
-  const filed = addTasks("createTask", store, A.conv, A.turn.requestId);
+  const filed = toolOutputs("createTask", store, A.conv, A.turn.requestId);
   const topId = (filed.find((x) => x?.ok === true)?.taskId as string | undefined) ?? null;
   const top = rows.find((x) => x.id === topId);
 
@@ -210,7 +210,7 @@ function gradeA(o: any, store: string): LegResult {
   }
   const plannerSessions = all.filter((s) => topId !== null && s.state.taskId === topId);
   const planner = plannerSessions[0];
-  const pieceCalls = addTasks("createTask", store, planner?.id);
+  const pieceCalls = toolOutputs("createTask", store, planner?.id);
   const pieces = planner === undefined ? [] : onBoardOf(rows, planner.id);
   if (plannerSessions.length !== 1 || pieceCalls.filter((x) => x?.ok === true).length !== 2 || pieces.length !== 2 || show(pieces.map((p) => p.assignee).sort()) !== show(["crew.one", "crew.two"])) {
     r.failures.push(`a:split — wanted crew.planner's task session to file two pieces, one for crew.one and one for crew.two, on its own board by its own createTask; sessions ${plannerSessions.length}, its createTask answered ${show(pieceCalls)}, pieces on its board ${show(pieces.map((p) => [p.assignee, p.status]))}`);
@@ -254,8 +254,8 @@ function gradeA(o: any, store: string): LegResult {
   }
   // Bob's worker of the same name: his own row, so it lists only his delegate.
   const bobRows = taskRows(store, bob, o.org);
-  const bobTried = addTasks("createTask", store, A.bobConv, A.bobTurn.requestId);
-  const bobOwnId = addTasks("createTask", store, A.bobConv, A.bobOwn.requestId).find((x) => x?.ok === true)?.taskId as string | undefined;
+  const bobTried = toolOutputs("createTask", store, A.bobConv, A.bobTurn.requestId);
+  const bobOwnId = toolOutputs("createTask", store, A.bobConv, A.bobOwn.requestId).find((x) => x?.ok === true)?.taskId as string | undefined;
   const bobOwn = bobRows.find((x) => x.id === bobOwnId);
   const bobOwnSessions = all.filter((s) => bobOwnId !== undefined && s.state.taskId === bobOwnId);
   const herRowsNamingIt = rows.filter((x) => x.assignee === A.lead);
@@ -287,7 +287,7 @@ function gradeB(o: any, store: string): LegResult {
   const rows = taskRows(store, alice, o.org);
   const all = sessions(store);
   const conv = all.find((s) => s.id === B.conv);
-  const filed = addTasks("createTask", store, B.conv, B.turn.requestId);
+  const filed = toolOutputs("createTask", store, B.conv, B.turn.requestId);
   const id = (filed.find((x) => x?.ok === true)?.taskId as string | undefined) ?? null;
   const row = rows.find((x) => x.id === id);
   if (conv?.flowKind !== "foreman" || conv.state.workerId !== "shop.foreman" || row === undefined || row.assignee !== "crew.one" || !row.partition.startsWith(`${B.conv}~`)) {
@@ -321,7 +321,7 @@ function gradeC(o: any, store: string): LegResult {
       .join("\n");
     const listed = /tools=(\[[^\]]*\])/.exec(said);
     const tools = listed === null ? null : (JSON.parse(listed[1]!) as string[]);
-    const tried = addTasks("createTask", store, X.conv, X.turn.requestId);
+    const tried = toolOutputs("createTask", store, X.conv, X.turn.requestId);
     const stored = onBoardOf(rows, X.conv);
     const assigned = stored.filter((row) => row.assignee != null);
     const taskSessions = all.filter((s) => s.parentSessionId === X.conv && s.state.taskId !== undefined);
@@ -343,7 +343,7 @@ function gradeD(o: any, store: string, cap: any, capStore: string | undefined): 
   const rows = taskRows(store, alice, o.org);
   const all = sessions(store);
   const chain = chainUnder(all, D.conv);
-  const deepTried = addTasks("createTask", store, D.d5);
+  const deepTried = toolOutputs("createTask", store, D.d5);
   const boards = chain.filter((s) => onBoardOf(rows, s.id).length > 0);
   const toD6 = allTaskRows(store).filter((x) => x.assignee === "deep.d6");
   if (
@@ -359,7 +359,7 @@ function gradeD(o: any, store: string, cap: any, capStore: string | undefined): 
       `d:depth — wanted the filing onto the sixth board refused, by deep.d5's own createTask and by the app, total_task_cap_exceeded, and five boards holding one row each; deep.d5's session ${D.d5 ?? "missing"}, its createTask answered ${show(deepTried)}, the app's ${show(D.deepApp?.output ?? D.deepApp?.error)}, rows for deep.d6 ${toD6.length}, boards ${show(boards.map((s) => [s.state.workerId, onBoardOf(rows, s.id).length]))}`,
     );
   }
-  const fanCalls = addTasks("createTask", store, D.fan);
+  const fanCalls = toolOutputs("createTask", store, D.fan);
   const fanOk = fanCalls.filter((x) => x?.ok === true).length;
   const fanRefused = fanCalls.filter((x) => refusedWith(x, "total_task_cap_exceeded")).length;
   const fanRows = D.fan === null ? [] : onBoardOf(rows, D.fan);
@@ -369,7 +369,7 @@ function gradeD(o: any, store: string, cap: any, capStore: string | undefined): 
   r.notes.push(`depth: boards ${boards.length}, deep.d5's createTask ${show(deepTried)}, app ${show(D.deepApp?.output)}; fan: ${fanOk} ok, ${fanRefused} refused, app ${show(D.fanApp?.output)}`);
   if (cap !== undefined && capStore !== undefined) {
     const capRows = cap.fan === null ? [] : onBoardOf(taskRows(capStore, alice, cap.org), cap.fan);
-    const capCalls = addTasks("createTask", capStore, cap.fan);
+    const capCalls = toolOutputs("createTask", capStore, cap.fan);
     const capOk = capCalls.filter((x) => x?.ok === true).length;
     const capRefused = capCalls.filter((x) => refusedWith(x, "total_task_cap_exceeded")).length;
     if (cap.fan === null || capOk !== APP_CAP || capRefused !== 1 || capRows.length !== APP_CAP || !refusedWith(cap.fanApp?.output ?? cap.fanApp?.error, "total_task_cap_exceeded")) {

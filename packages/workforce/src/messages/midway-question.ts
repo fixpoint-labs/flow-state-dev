@@ -21,7 +21,7 @@
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { WorkerInstallation } from "../workers/installation";
-import type { RowHold, Task } from "@flow-state-dev/orchestration/tasks";
+import type { RowQuestion, Task } from "@flow-state-dev/orchestration/tasks";
 import { FILING_WORKER_STATE_KEY } from "../workers/keys";
 import { MAX_MESSAGE_CHARS } from "./log-row";
 import type { MessageTarget } from "./message-target";
@@ -31,8 +31,8 @@ import { sendMessage } from "./send-message";
 const MIDWAY_QUESTION_SENDER = "midway-question";
 
 /** The id a question's message is sent under: one per task and question, whichever turn tells it. */
-export function midwayQuestionMessageId(taskId: string, holdId: string): string {
-  return `q:${taskId}:${holdId}`;
+export function midwayQuestionMessageId(taskId: string, questionId: string): string {
+  return `q:${taskId}:${questionId}`;
 }
 
 /** Whether `row` was routed to a workstream: its questions are the user's to answer (FIX-2133 ER-4). */
@@ -53,11 +53,11 @@ function clip(text: string, max: number): string {
  * and how to answer it (a confirm's answer is `done`), or, for a routed task,
  * that the user answers it.
  */
-export function midwayQuestionText(row: Task, hold: RowHold): string {
+export function midwayQuestionText(row: Task, hold: RowQuestion): string {
   const title = clip(row.title ?? row.goal, TASK_LABEL_CHARS);
   const how = isRouted(row)
     ? "The user answers it from their Inbox; it isn't yours to answer."
-    : `Answer it with updateTask({ id: "${row.id}", question: "${hold.id}", ${hold.ask.kind === "confirm" ? "done: true or false, " : ""}message }), or leave it to the user, who sees it in their Inbox.`;
+    : `Answer it with updateTask({ id: "${row.id}", answers: "${hold.id}", ${hold.ask.kind === "confirm" ? "done: true or false, " : ""}message }), or leave it to the user, who sees it in their Inbox.`;
   const head = `Your task "${title}" (${row.id}) asks: "`;
   const space = MAX_MESSAGE_CHARS - head.length - how.length - 2;
   const prompt = clip(hold.ask.prompt, space);
@@ -87,7 +87,7 @@ export async function sendQuestionToFiler(
   ctx: BlockContext,
   sender: { readonly installation: WorkerInstallation; readonly flowKind: string },
   row: Task,
-  holds: readonly RowHold[]
+  questions: readonly RowQuestion[]
 ): Promise<void> {
   if (row.filer?.sessionId === ctx.session.identity.id) return;
   const filer = filerOf(ctx, row);
@@ -95,7 +95,7 @@ export async function sendQuestionToFiler(
     console.warn("[workforce] a task's midway question has no worker to tell: it is in the Inbox only", { taskId: row.id });
     return;
   }
-  for (const hold of holds) {
+  for (const hold of questions) {
     const sent = await sendMessage(
       ctx,
       sender.installation,
@@ -105,7 +105,7 @@ export async function sendQuestionToFiler(
       { id: midwayQuestionMessageId(row.id, hold.id), exempt: true }
     );
     if (!sent.ok) {
-      console.warn("[workforce] a task's midway question couldn't be sent to its filer: it is in the Inbox only", { taskId: row.id, holdId: hold.id, error: sent.error });
+      console.warn("[workforce] a task's midway question couldn't be sent to its filer: it is in the Inbox only", { taskId: row.id, questionId: hold.id, error: sent.error });
     }
   }
 }

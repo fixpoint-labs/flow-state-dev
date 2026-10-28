@@ -45,7 +45,7 @@ function watchedStores(filename: string): { adapter: StoreAdapter; seen: Seen; a
   };
   // A held write stays pending in the store, so the store's flush waits for it too.
   let pending: Promise<void> = Promise.resolve();
-  const holdWrite = async () => {
+  const questionWrite = async () => {
     if (!writeArmed) return pending;
     writeArmed = false;
     writeReached();
@@ -74,12 +74,12 @@ function watchedStores(filename: string): { adapter: StoreAdapter; seen: Seen; a
         request: {
           ...request,
           persistItems: async (requestId: string, items: Parameters<typeof request.persistItems>[1]) => {
-            await holdWrite();
+            await questionWrite();
             if (seen.closed) seen.writesAfterClose.push(`items ${requestId}`);
             return request.persistItems(requestId, items);
           },
           persistEvents: async (requestId: string, events: Parameters<typeof request.persistEvents>[1]) => {
-            await holdWrite();
+            await questionWrite();
             if (seen.closed) seen.writesAfterClose.push(`events ${requestId}`);
             return request.persistEvents(requestId, events);
           },

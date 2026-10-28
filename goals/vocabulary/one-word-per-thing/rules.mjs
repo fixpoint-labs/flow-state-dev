@@ -68,6 +68,34 @@ export const RETIRED = [
     pattern: /\b(an|every|each) ask\b|\basks? (gate|resume|binding|marker|option)s?\b|\basked (task|row|worker|turn|colleague)s?\b|\basker\b|\bthe ask\b(?! (card|inbox))|\b(task|work|row)s? (it|they|you|a turn|the turn) asked for\b/i
   },
   {
+    id: "hold-names",
+    files: CODE_OR_PUBLISHED,
+    // FIX-2183: hold keeps one meaning, the filer's hold before a start. A task's open asks are its
+    // questions, what keeps a running task open is keptOpenBy, a request's right on its task is its claim.
+    pattern: /\b(TaskHold|taskHoldSchema|RowHold|rowHoldSchema|SuspensionHold|suspensionHoldSchema|RowHoldSource|SuspensionHoldSource|InboxHold|HoldAsk|HoldReleaser|HoldAnswer|MAX_HOLD_PROMPT|openHolds|hasOpenHold|openRowHolds|isRowHold|isSuspensionHold|suspensionHoldOf|holdsDue|nextHoldDue|newRowHolds|holdWrite|HoldChange|HoldWriteResult|payHoldDeadlines|holdDueMs|holdOfSuspension|openUserHolds|whileHoldOpen|refuseWhenHeld|answerHold|done_without_question|waitingOn|TaskWaitingOn|setWaitingOn|filedWorkHolds|holdsItsFiler|heldTask|heldTaskId|heldRowOf|ticketHoldsRow|holderSessionId|holderOf)\b|\bno-such-hold\b/
+  },
+  {
+    id: "hold-prose",
+    files: PUBLISHED,
+    // FIX-2183: a task waits on its questions; no question holds it.
+    pattern: /\bheld on (a|its|the) questions?\b|\bheld on questions\b|\bquestions? holds?\b|\b(a|the|one|its|open) (row|suspension) holds?\b|\bopen holds\b/i
+  },
+  {
+    id: "task-tool-names",
+    files: CODE_OR_PUBLISHED,
+    // FIX-2243: the collection files with the filer tool's name, createTask; getTask reads, updateTask
+    // cancels; the old task tools and the question and review parks are gone with no new name.
+    pattern: /\b(addTasks?|readTask|cancelTask|dispatchTask|assignTask|failTask|blockTask|completeTask|answerTask\w*|(create)?[Pp]arkOnQuestion|parkedOnQuestion|awaitReview|unparkAndDrain|onReview|answerQuestion)(_\w+)?\b/
+  },
+  {
+    id: "dispatcher-names",
+    files: CODE_OR_PUBLISHED,
+    // FIX-2245: "dispatcher" is the dispatcher block. A board's rule for the next task is a ClaimOrder;
+    // what decides where a flow action runs is a FlowRunner. Both pick up their old helpers and files.
+    pattern: /\b(TaskDispatcher|(fifo|topological|priority|runOwner)Dispatcher|TaskBoardDispatcherInput|resolveDispatcher|FlowDispatcher|InProcessDispatcher(Deps)?|(create|is)InProcessDispatcher|(create|Create)WorkerDispatcher(Options)?|WorkerDispatcher|usesExternalDispatcher)\b|tasks\/dispatchers\/|in-process-dispatcher/,
+    pathName: /(^|\/)(in-process-dispatcher\.ts|run-owner-dispatcher\.spec\.ts)$|\/tasks\/dispatchers\/|^packages\/engine\/src\/transports\/dispatcher\.ts$|^packages\/bullmq\/(src|test)\/dispatcher\.(test\.)?ts$/
+  },
+  {
     id: "post-to-mailbox",
     files: new RegExp(`${CODE_OR_PUBLISHED.source}|${PENDING_NOTES.source}`),
     pattern: /post-to-mailbox|postToMailbox/
@@ -164,33 +192,33 @@ export const KEEP = [
   {
     path: /^packages\/orchestration\/(src\/inbox\/|test\/inbox(-truth-control)?\.test\.ts$)/,
     rules: ["ask-prose", "ask-symbol", "ask-symbol-in-docs", "ask-mark"],
-    why: "the Inbox read (FIX-2133): a hold's `ask`, what it asks the user, as FIX-2058's TaskHold names it"
+    why: "the Inbox read (FIX-2133): a question's `ask`, what it asks the user, as FIX-2058's TaskQuestion names it"
   },
   {
-    path: /^packages\/orchestration\/(src\/tasks\/(schema\/hold|collection\/holds)\.ts|test\/(collection\/(holds|waiting-on-user)|skills\/questions-tools)\.test\.ts)$/,
+    path: /^packages\/orchestration\/(src\/tasks\/(schema\/question|collection\/questions)\.ts|test\/(collection\/(questions|waiting-on-user)|skills\/questions-tools)\.test\.ts)$/,
     rules: ["ask-prose", "ask-symbol", "ask-symbol-in-docs", "ask-mark"],
-    why: "a task's holds (FIX-2133): a hold's `ask`, a question to the user, and the collection's `ask` that opens one midway, as FIX-2058's TaskHold names them"
+    why: "a task's questions (FIX-2133): a question's `ask`, a question to the user, and the collection's `ask` that opens one midway, as FIX-2058's TaskQuestion names them"
   },
   {
     path: /^(packages\/orchestration\/(src|test)\/|packages\/integration-tests\/src\/scenarios\/|packages\/workforce\/src\/conversation-board\/board\.ts$|apps\/docs\/docs\/orchestration\/task-board\.md$)/,
-    // The hold's names only: a question to the user, opened at filing or midway. Any other ask word on these lines' files stays open.
-    line: /\b(askMidway|MidwayAsk|AskDeclineReason|HoldAsk|askProblem|assertAskable|askOf|askOptions)\b|\b(hold|ledger|board|collection|ref)\??\.ask\b|TaskCollectionRef(\["ask"\]|\.ask\b)|^\s*ask: (\{|z\.)|\{ ask: \{|\.ask\.(kind|prompt)\b/,
+    // The question's names only: a question to the user, opened at filing or midway. Any other ask word on these lines' files stays open.
+    line: /\b(askMidway|MidwayAsk|AskDeclineReason|QuestionInit|askProblem|assertAskable|askOf|askOptions)\b|\b(hold|ledger|board|collection|ref)\??\.ask\b|TaskCollectionRef(\["ask"\]|\.ask\b)|^\s*ask: (\{|z\.)|\{ ask: \{|\.ask\.(kind|prompt)\b/,
     rules: ["ask-symbol", "ask-symbol-in-docs", "ask-mark"],
-    why: "a task's holds (FIX-2133): a hold's `ask` and the midway ask that opens one, a question to the user"
+    why: "a task's questions (FIX-2133): a question's `ask` and the midway ask that opens one, a question to the user"
   },
   {
     path: /^(packages\/(orchestration|workforce)\/(src|test)\/|apps\/docs\/(docs|guides)\/|packages\/(orchestration|workforce)\/README\.md$)/,
     // The worker's question tool and the one-wait-per-turn rule's names only: a question to the user.
     line: /\b(askQuestion|createAskQuestion|turnAsked|askMidway)\b|\.ask(\.(kind|prompt)\b|\)\.toMatchObject)/,
     rules: ["ask-symbol", "ask-symbol-in-docs", "ask-mark"],
-    why: "FIX-2131: the worker's `askQuestion`, a question to the user that holds its task, and the turn-asked fact it is refused on"
+    why: "FIX-2131: the worker's `askQuestion`, a question to the user that its task waits on, and the turn-asked fact it is refused on"
   },
   {
     path: /^packages\/devtool\/(src\/react\/lib\/task-collection-state\.ts|test\/task-collections-reason\.test\.tsx)$/,
-    // The DevTool's wire mirror of a hold's `ask` only, and the reason slot reading its prompt.
+    // The DevTool's wire mirror of a question's `ask` only, and the reason slot reading its prompt.
     line: /^\s*ask: \{ kind: string|\bask: \{ kind: "(question|review)"|\)\?\.ask\.prompt;$/,
     rules: ["ask-mark"],
-    why: "FIX-2131: the DevTool's mirror of a task's holds (FIX-2133's TaskHold), whose `ask` is what the user was asked"
+    why: "FIX-2131: the DevTool's mirror of a task's questions (FIX-2133's TaskQuestion), whose `ask` is what the user was asked"
   },
   {
     path: /^packages\/harness-manager\//,
@@ -352,5 +380,29 @@ export const KEEP = [
     line: /\basked\??:/,
     rules: ["ask-mark", "ask-prose"],
     why: "D2: a notice's asked flag is a process-internal wire value, kept so a notice owed across the upgrade is taken (WR-13)"
+  },
+  {
+    path: /^packages\/((core|engine)\/(src\/execution\/request-side-chain-pool\.ts|test\/request-side-chain-pool\.test\.ts)|tools\/test\/bash-moat-purge\.test\.ts)$/,
+    line: /\baddTask\b/,
+    rules: ["task-tool-names"],
+    why: "FIX-2243: the engine's side-chain pool's addTask (or a test's stand-in pool) adds a promise to a request's pool, not a task to a collection"
+  },
+  {
+    path: /^packages\/core\/src\/blocks\/sequencer\.ts$/,
+    line: /\bpool\.addTask\(/,
+    rules: ["task-tool-names"],
+    why: "FIX-2243: a side chain's promise added to the request's side-chain pool, not a task"
+  },
+  {
+    path: /^packages\/orchestration\/src\/skills\/task-tools-capability\.ts$/,
+    line: /\banswerQuestion\(/,
+    rules: ["task-tool-names"],
+    why: "FIX-2243: updateTask's live helper that answers a task's open question; the harness manager's removed answerQuestion() was another thing"
+  },
+  {
+    path: /^(packages\/(workforce|cli)\/README\.md|apps\/docs\/docs\/workforce\/documents-on-disk\.md)$/,
+    line: /\banswerQuestion\b/,
+    rules: ["task-tool-names"],
+    why: "FIX-2243: an example app's own block or action that answers a person's question, not a task tool"
   }
 ];

@@ -494,12 +494,12 @@ Two conversations can file a task with the same id for the same worker, and each
 
 A delegate working a task sometimes can't go on without you: which region, which account, whether it may delete something. It asks you instead of guessing, with its `askQuestion` tool. The task waits on the question, nothing runs while it waits, and the question shows in your Inbox.
 
-Answer it from the Inbox, or by typing the answer in the task's session: a line there answers the task's oldest open question. An app answers with the board's `updateTask` action, naming the question (`getTask_tasks` lists it under `holds`):
+Answer it from the Inbox, or by typing the answer in the task's session: a line there answers the task's oldest open question. An app answers with the board's `updateTask` action, naming the question (`getTask_tasks` lists it under `questions`):
 
 ```ts
 await help.send(
   "updateTask_tasks",
-  { id: taskId, question: questionId, message: "Use eu-west." },
+  { id: taskId, answers: questionId, message: "Use eu-west." },
   { sessionId: session.id },
 )
 ```

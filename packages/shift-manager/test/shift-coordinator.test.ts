@@ -79,9 +79,9 @@ describe("which worker is the Shift Coordinator (V2, D2)", () => {
 
 // ---- the summary -----------------------------------------------------------------
 
-const row = (holderSessionId: string, id: string, status: string): BoardRow => ({
-  boardRef: `${holderSessionId}.tasks`,
-  holderSessionId,
+const row = (ownerSessionId: string, id: string, status: string): BoardRow => ({
+  boardRef: `${ownerSessionId}.tasks`,
+  ownerSessionId,
   id,
   title: id,
   goal: null,
@@ -92,7 +92,7 @@ const row = (holderSessionId: string, id: string, status: string): BoardRow => (
   deps: [],
   run: null,
   error: null,
-  holds: [],
+  questions: [],
   steers: [],
   createdAt: null,
   updatedAt: null,
@@ -166,15 +166,15 @@ describe("what needs the user, in the shift summary (FIX-2131)", () => {
   const heldOnQuestion = (holder: string, id: string, extra: Partial<BoardRow> = {}): BoardRow => ({
     ...row(holder, id, "in_progress"),
     assignee: "eng.coder",
-    holds: [
+    questions: [
       {
         id: `q-${id}`,
         actor: "user",
         openedAt: 1,
-        source: { kind: "row", releasedBy: [{ by: "answer" }] },
+        source: { kind: "row", closedBy: [{ by: "answer" }] },
         ask: { kind: "question", prompt: "Approve the plan to merge the rounding copies?" },
       },
-    ] as BoardRow["holds"],
+    ] as BoardRow["questions"],
     ...extra,
   });
 

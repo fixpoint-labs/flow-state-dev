@@ -4,7 +4,7 @@
  * The same shape is returned from `getOrCreateTaskCollection` regardless
  * of how the collection is stored (atomic state — a ref, or the request — vs
  * resource).
- * Patterns and dispatchers consume `TaskCollectionRef` and never reach for
+ * Patterns and claim orders consume `TaskCollectionRef` and never reach for
  * the underlying storage directly.
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
@@ -13,8 +13,8 @@ import type { Task, TaskRunLink, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import type { TaskSettingsPatch } from "./internal";
 import type { SteerInput } from "../steers";
-import type { HoldAsk, SuspensionHold } from "../schema/hold";
-import type { HoldAnswer } from "./holds";
+import type { QuestionInit, SuspensionQuestion } from "../schema/question";
+import type { QuestionAnswer } from "./questions";
 import type { NoticeEnding as TaskNoticeEnding } from "../notice/task-notice";
 
 /**
@@ -35,14 +35,14 @@ export type CancelOptions = TaskTransitionOptions & {
    * The cancel is a confirm's No (FIX-2133, owner 2026-10-25): it lands only
    * while this row hold is open, decided on the committed row in the cancel's
    * own write, as an answer is. Declines `answered` once the hold has an
-   * answer (a yes first, say), and `no-such-hold` for an id that isn't a
+   * answer (a yes first, say), and `no-such-question` for an id that isn't a
    * question or a confirm on the row.
    */
-  readonly whileHoldOpen?: string;
+  readonly whileQuestionOpen?: string;
 };
 
-/** What a running task waits on (`Task.waitingOn`, FIX-2077). */
-export type TaskWaitingOn = NonNullable<Task["waitingOn"]>;
+/** What a running task waits on (`Task.keptOpenBy`, FIX-2077). */
+export type TaskKeptOpenBy = NonNullable<Task["keptOpenBy"]>;
 
 /** What a running task's worker reports (FIX-2081, `reportProgress`). */
 export interface TaskProgress {
@@ -124,17 +124,17 @@ export type TaskWriteDeclineReason =
    */
   | "steer-limit"
   /**
-   * The row is held (FIX-2133, `Task.holds`): a settlement, a lease renewal or
+   * The row is held (FIX-2133, `Task.questions`): a settlement, a lease renewal or
    * a turn's mirror of its stop, refused while a hold is open. A held row
    * settles only by cancel; it starts no turn and renews no lease until its
    * holds close. Its open holds come from one source at a time, so a turn that
    * waits once can't wait again.
    */
-  | "held"
+  | "open-question"
   /** An answer to a question already answered with other words, or by another sender (FIX-2133). */
   | "answered"
   /** An answer naming no question or confirm on the row (FIX-2133). */
-  | "no-such-hold";
+  | "no-such-question";
 
 /**
  * What a write actually did (FIX-976).
@@ -190,7 +190,7 @@ export interface TaskWaitSlot {
   readonly drain?: true;
 }
 
-/** Options for `claim` — let the dispatcher narrow eligibility and tweak ordering. */
+/** Options for `claim` — let the claim order narrow eligibility and tweak ordering. */
 export interface ClaimOptions {
   /**
    * Per-task predicate that **narrows** the substrate's candidates. It does not
@@ -212,7 +212,7 @@ export interface ClaimOptions {
    * ```
    *
    * A status assertion compiles, reads correctly, and quietly makes stranded
-   * jobs unrecoverable for that dispatcher, because the row it must match is
+   * jobs unrecoverable for that claim order, because the row it must match is
    * `in_progress`. Claimability is the substrate's call — `isClaimable` — and
    * composing rather than replacing is what stops the newest invariant being
    * the one most easily switched off by accident.
@@ -271,7 +271,7 @@ export interface ClaimOptions {
  * methods behave exactly as before, throwing on an illegal transition.
  *
  * Intended for the substrate's own write-backs — a task board's result
- * recorders, a dispatcher's claim/execute cycle — where the task may have
+ * recorders, a claim order's claim/execute cycle — where the task may have
  * been settled by someone with better information (a coordinator cancelled
  * it, the worker settled it through its own task tools, a lease reclaim
  * re-queued it for another attempt) while the worker was still running.
@@ -367,7 +367,7 @@ export interface TaskTransitionOptions {
    * precisely means.
    *
    * Correlation is available on the seven methods that take this options
-   * object. `addTask`, `addTasks`, `claim`, `reclaim` and the five field
+   * object. `createTask`, `createTasks`, `claim`, `reclaim` and the five field
    * mutators still bump the task's `revision` but mint no receipt, so a caller
    * of those cannot correlate its own write. Widening means adding an options
    * argument to nine more methods on an already-large interface; it waits for a
@@ -393,7 +393,7 @@ export interface TaskTransitionOptions {
    * mirror of its run's stop, one source at a time). Decided on the committed
    * row inside the write. Set by the backings' own verbs, never by a caller.
    */
-  refuseWhenHeld?: "any" | "row";
+  refuseWithOpenQuestion?: "any" | "row";
 }
 
 /**
@@ -437,7 +437,7 @@ export interface FailOptions extends TaskTransitionOptions {
  * `task-board-recorder-failure` — because they are the board's events, not
  * the worker's.
  *
- * Mutators (`claim`, `addTask`, ...) still return raw `Task`. The
+ * Mutators (`claim`, `createTask`, ...) still return raw `Task`. The
  * just-claimed task has no items in its window yet, so a handle would be
  * empty by construction; re-fetch via `get(id)` post-completion if a
  * handle is needed.
@@ -519,7 +519,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * **Exposed because a lease is a comparison, and a comparison needs one
    * clock.** `leaseUntil` is written by the claim write against this clock, so
    * anything asking "has this lease run out" — the board's wake probe, the
-   * ready-task preview, a dispatcher's candidate scan, the renewal driver
+   * ready-task preview, a claim order's candidate scan, the renewal driver
    * deciding when to write next — has to ask the same one. Reading
    * `Date.now()` instead works right up until a collection is built on an
    * injected clock, at which point the two sides silently answer different
@@ -555,8 +555,8 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   readonly maxTotalRetries: number | null;
 
   // creation
-  addTask(task: TaskInit<TInput>): Promise<Task<TInput, TOutput>>;
-  addTasks(tasks: TaskInit<TInput>[]): Promise<Task<TInput, TOutput>[]>;
+  createTask(task: TaskInit<TInput>): Promise<Task<TInput, TOutput>>;
+  createTasks(tasks: TaskInit<TInput>[]): Promise<Task<TInput, TOutput>[]>;
 
   // lifecycle
   claim(workerId: string, options?: ClaimOptions): Promise<Task<TInput, TOutput> | null>;
@@ -632,7 +632,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * Steer an open task (FIX-2086): keep `steer` on the row (`Task.steers`),
    * for every later attempt to read. Changes nothing else: no status, no
    * claim, no lease, no attempt count, and no ending. A row running nothing
-   * while it waits on work it filed (`waitingOn: "filed"`) waits on the steer
+   * while it waits on work it filed (`keptOpenBy: "filed"`) waits on the steer
    * instead, in the same write: a turn is owed for it, which its caller
    * starts.
    *
@@ -781,7 +781,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * request's end when the task is not done, and at the next request's
    * admission.
    *
-   * - `waitingOn` set: the row keeps its claim and drops its lease
+   * - `keptOpenBy` set: the row keeps its claim and drops its lease
    *   (`leaseUntil`), so no reclaim takes it back, unless `options.leaseUntil`
    *   is given. `options.answer` is that
    *   request's result, kept as the output (unless this attempt reported a
@@ -802,9 +802,9 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * Optional, so a ref written before it keeps compiling (BP-030); the gate
    * then keeps the lease as before.
    */
-  setWaitingOn?(
+  setKeptOpenBy?(
     id: string,
-    waitingOn: TaskWaitingOn | null,
+    keptOpenBy: TaskKeptOpenBy | null,
     options: {
       claim: TaskClaimTicket;
       leaseUntil?: number;
@@ -814,7 +814,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
        * a suspension hold in the same write (FIX-2133). Refused `held` while a
        * row hold is open: the stop arm then cancels the stop.
        */
-      hold?: SuspensionHold;
+      question?: SuspensionQuestion;
       /**
        * With `null`: the run's own resume, which closes the mirror. A later
        * request admitted while the run stays parked passes none and keeps it.
@@ -830,7 +830,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   ): Promise<TaskWriteOutcome>;
   /**
    * Ask questions midway (FIX-2133): the turn holding the task's claim opens
-   * row holds (`Task.holds`), drops the lease and ends its turn unsettled, in
+   * row holds (`Task.questions`), drops the lease and ends its turn unsettled, in
    * one write. The row stays `in_progress` on its attempt with no lease until
    * every question is answered (or a deadline the host set passes), then owes
    * one more turn on that attempt (`turnOwed`), which the claim takes.
@@ -847,9 +847,9 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    */
   ask?(
     id: string,
-    asks: readonly HoldAsk[],
+    asks: readonly QuestionInit[],
     options: { claim: TaskClaimTicket }
-  ): Promise<TaskWriteOutcome & { readonly holds?: readonly string[] }>;
+  ): Promise<TaskWriteOutcome & { readonly questions?: readonly string[] }>;
   /**
    * Answer one of the row's questions or confirms (FIX-2133 D1): the answer is
    * kept as a steer carrying the hold's id, from `answer.from`, and joins the
@@ -859,14 +859,14 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    *
    * The same words from the same sender again are `unchanged`, even after the
    * task has finished. Declines `answered` for other words or another sender,
-   * `terminal` on a finished row, and `no-such-hold` for an id that isn't a
+   * `terminal` on a finished row, and `no-such-question` for an id that isn't a
    * question or a confirm on it. Who may answer which hold is the caller's
    * rule (the board's `updateTask`); this write never checks a caller.
    * Publishes `answered`.
    *
    * Optional, so a ref written before it keeps compiling (BP-030).
    */
-  answer?(id: string, answer: HoldAnswer): Promise<TaskWriteOutcome>;
+  answer?(id: string, answer: QuestionAnswer): Promise<TaskWriteOutcome>;
   /**
    * A touch of the board (FIX-2133): close every open question past the due
    * time a host set, with the board's "no answer came" steer, which lets the
@@ -876,7 +876,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    *
    * Optional: both built-in backings implement it.
    */
-  payHoldDeadlines?(): Promise<string[]>;
+  payQuestionDeadlines?(): Promise<string[]>;
   /**
    * Reset stale leases. Tasks whose `leaseUntil` has passed are returned
    * to `pending`. Returns the number of tasks reclaimed; emits one

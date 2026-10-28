@@ -203,7 +203,7 @@ await runGoal(async (failures): Promise<GoalResult> => {
 
   try {
     await run("seed", async (tasks) => {
-      await tasks.addTasks(
+      await tasks.createTasks(
         [fixture.contendedTask, fixture.otherTask].map((id) => ({
           id,
           goal: id,

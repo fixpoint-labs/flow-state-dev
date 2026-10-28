@@ -367,12 +367,12 @@ function filingStampOf(ctx: BlockContext): FilingStamp {
   const identity = ctx.request?.identity ?? ctx.session?.identity;
   const tenantId = identity?.tenantId;
   const orgId = identity?.orgId;
-  const holdDueMs = ctx.requestHost?.userDeadlineMs;
+  const questionDueMs = ctx.requestHost?.userDeadlineMs;
   return {
     ...(tenantId !== undefined || orgId !== undefined
       ? { filedUnder: { ...(tenantId !== undefined ? { tenantId } : {}), ...(orgId !== undefined ? { orgId } : {}) } }
       : {}),
-    ...(typeof holdDueMs === "number" && holdDueMs > 0 ? { holdDueMs } : {}),
+    ...(typeof questionDueMs === "number" && questionDueMs > 0 ? { questionDueMs } : {}),
   };
 }
 

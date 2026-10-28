@@ -4,13 +4,13 @@
  * `index.ts` publishes the ones a caller uses; the rest stay inside the read.
  */
 import type { WaitForUserKind } from "@flow-state-dev/core/types";
-import type { TaskHold } from "../tasks/schema/hold";
+import type { TaskQuestion } from "../tasks/schema/question";
 
 /** What a hold asks the user for: a task run's stop (`approval`, `review`, `input`) or a row's own (`question`, `confirm`). */
 export type InboxAskKind = WaitForUserKind | "question" | "confirm";
 
 /** Where a suspension hold's answer goes: the run's flow, its request and the stop. */
-export type SuspensionHoldSource = {
+export type SuspensionQuestionSource = {
   readonly kind: "suspension";
   /** The flow that owns the run's session; `null` when the session names none, which leaves the hold unanswerable. */
   readonly flowId: string | null;
@@ -24,7 +24,7 @@ export type SuspensionHoldSource = {
  * through the board's `updateTask` action, as the user, on the session that
  * holds the board.
  */
-export type RowHoldSource = {
+export type RowQuestionSource = {
   readonly kind: "row";
   /** The flow that owns the board's session; `null` when the reader can't name it, which leaves the hold unanswerable. */
   readonly flowId: string | null;
@@ -37,11 +37,11 @@ export type RowHoldSource = {
 };
 
 /** One open hold an item shows. */
-export type InboxHold<TDetail = unknown> = {
+export type InboxQuestion<TDetail = unknown> = {
   /** A suspension hold's suspension id; a row hold's own id. */
   readonly id: string;
   /** What answers it: a suspension through the engine, a row hold through the board. */
-  readonly source: SuspensionHoldSource | RowHoldSource;
+  readonly source: SuspensionQuestionSource | RowQuestionSource;
   readonly ask: { readonly kind: InboxAskKind; readonly prompt: string; readonly title?: string };
   /** When it opened, epoch ms. */
   readonly openedAt: number;
@@ -71,7 +71,7 @@ export type InboxItem<TDetail = unknown> = {
   /** The task it holds; `null` for a suspension in a request with no task row. */
   readonly task: InboxTask | null;
   /** Its open holds, oldest first. Never empty. Each says where its own answer goes. */
-  readonly holds: readonly InboxHold<TDetail>[];
+  readonly questions: readonly InboxQuestion<TDetail>[];
   /** When the oldest opened, epoch ms. */
   readonly since: number;
   /** Whether the user can answer any of its holds from the Inbox. */
@@ -92,12 +92,12 @@ export type InboxRow = {
   readonly updatedAt?: number | null;
   /** The run working it: the session and request its stop is in. */
   readonly run?: { readonly sessionId: string; readonly requestId: string } | null;
-  /** What holds it (`Task.holds`): its questions and confirms, and its run's stop for a person. */
-  readonly holds?: readonly TaskHold[] | null;
+  /** What holds it (`Task.questions`): its questions and confirms, and its run's stop for a person. */
+  readonly questions?: readonly TaskQuestion[] | null;
   /** Its steers, as far as the Inbox reads them: which hold each answers. A question is open while none carries its id. */
   readonly steers?: readonly { readonly id: string; readonly answers?: string }[] | null;
   /**
-   * Where its row holds are answered: the session that holds the board, and
+   * Where its row questions are answered: the session that holds the board, and
    * the board's `updateTask` action there. `null` when the reader can't say,
    * which leaves them unanswerable.
    */

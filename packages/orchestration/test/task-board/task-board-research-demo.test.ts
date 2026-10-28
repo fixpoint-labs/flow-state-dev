@@ -104,7 +104,7 @@ describe("taskBoard - research-board demo", () => {
       name: "research-board",
       collection: { backing: "sequencer", collectionId: "research" },
       concurrency: 3,
-      dispatcher: "topological",
+      claimOrder: "topological",
       workers: {
         "market-analyst": makeAnalyst("market"),
         "financial-analyst": makeAnalyst("financial"),

@@ -7,7 +7,7 @@
  * whole ledger to find one would load every partition's rows (BP-033). The
  * index is the missing read: one marker per (task id, partition), kept at the
  * ledger's own scope in a collection of its own, and written by the ledger's
- * own add, before the row (`addTask` / `addTasks` in `./resource-backed`), the
+ * own add, before the row (`createTask` / `createTasks` in `./resource-backed`), the
  * one path every filing passes. A marker without a row (the row's create
  * failed after it) answers a lookup that then finds no row, never a wrong one.
  *

@@ -1,5 +1,5 @@
 /**
- * Regression for FIX-999: a request that is queued with an EXTERNAL dispatcher
+ * Regression for FIX-999: a request that is queued with an EXTERNAL runner
  * and not yet claimed by a worker must not be read as dead.
  *
  * The host registers the request at enqueue time and deliberately does not
@@ -31,7 +31,7 @@ import {
 import { readLiveness } from "../../src/context/liveness-read";
 import { detectInterruptedRequests } from "../../src/execution/request-recovery";
 import { runAction } from "../../src/execution/runAction";
-import type { FlowDispatcher } from "../../src/transports/dispatcher";
+import type { FlowRunner } from "../../src/transports/runner";
 import type { FlowRegistry } from "../../src/registry/flow-registry";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { StoreRegistry } from "../../src/stores/types";
@@ -73,7 +73,7 @@ function buildRegistry(): FlowRegistry {
  * pending is the backlog. No `dispatchLocal`, which is what marks it external
  * to the host.
  */
-function backloggedExternalDispatcher(): FlowDispatcher {
+function backloggedExternalRunner(): FlowRunner {
   return {
     dispatch: vi.fn(async (env) => ({
       requestId: env.requestId,
@@ -94,7 +94,7 @@ async function enqueueViaHost(
     stores,
     resolvePrincipal: defaultBodyUserIdPrincipalResolver,
     runtimeConfig: {},
-    dispatcher: backloggedExternalDispatcher()
+    runner: backloggedExternalRunner()
   });
 
   const handle = host.dispatch({

@@ -180,7 +180,7 @@ Where the policy holds depends on how your server runs requests.
 - **One server, no queue.** The policy is enforced in memory, in the process that runs the request.
 - **A queue-backed deployment**, such as [`bullmqWorker`](/guides/background-jobs-bullmq). The policy holds across every process: the web process and each worker. Details below.
 - **Several web servers, each running requests in process, with no queue between them.** Each server keeps its own keys, so two requests on one session can run at once if they land on different servers. Run that shape as a single instance, or put a queue in front of it.
-- **A dispatcher you pass to `createFlowState` directly**, rather than through a `worker` adapter. It applies no policy to the work it dispatches, and a [delivery into an existing session](../server/background-work.md#starting-a-job-from-a-flow) is refused with `external-dispatcher`.
+- **A runner you pass to `createFlowState` directly**, rather than through a `worker` adapter. It applies no policy to the work it dispatches, and a [delivery into an existing session](../server/background-work.md#starting-a-job-from-a-flow) is refused with `external-dispatcher`.
 
 ### On a queue
 

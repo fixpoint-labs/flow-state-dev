@@ -335,9 +335,9 @@ const remotes = new Map<string, { url: string }>();
 
 /** The task's open review: a hold of the run's own stop, asking for a review. */
 const reviewOf = (task: Record<string, any> | undefined) =>
-  task?.status === "in_progress" ? (task.holds ?? []).find((hold: any) => hold.source?.kind === "suspension" && hold.ask?.kind === "review") : undefined;
+  task?.status === "in_progress" ? (task.questions ?? []).find((hold: any) => hold.source?.kind === "suspension" && hold.ask?.kind === "review") : undefined;
 const questionOf = (task: Record<string, any> | undefined) =>
-  task?.status === "in_progress" ? (task.holds ?? []).find((hold: any) => hold.source?.kind === "row" && hold.ask?.kind === "question") : undefined;
+  task?.status === "in_progress" ? (task.questions ?? []).find((hold: any) => hold.source?.kind === "row" && hold.ask?.kind === "question") : undefined;
 const isSettled = (task: Record<string, any> | undefined) => ["completed", "errored", "cancelled", "pending"].includes(task?.status);
 const isWaiting = (task: Record<string, any> | undefined) => reviewOf(task) !== undefined || questionOf(task) !== undefined || isSettled(task);
 const lockFree = (cwd: string | undefined) => cwd !== undefined && !existsSync(`${cwd}.lock`);
@@ -383,14 +383,14 @@ await runGoal(async (failures, tell) => {
       const hold = reviewOf(waiting);
       const item = await host.itemOf();
       tell.over("a · the runs", seen.prompts);
-      if (hold === undefined) fail("a:waits", `the task is ${waiting?.status} with holds ${show(waiting?.holds ?? [])}, output ${show(waiting?.output ?? null)}; not waiting on a review`);
+      if (hold === undefined) fail("a:waits", `the task is ${waiting?.status} with questions ${show(waiting?.questions ?? [])}, output ${show(waiting?.output ?? null)}; not waiting on a review`);
       else {
         const prompt = String(hold.ask.prompt);
         const judged = `The judge: done (${fixture.judge.confidence.toFixed(2)})`;
         if (!prompt.includes("1 commit") || !prompt.includes(fixture.subjects[0]) || !prompt.includes(judged)) {
           fail("a:prompt", `the review's prompt ${show(prompt)} doesn't name the commit count, its subject and the judge's verdict and confidence`);
         }
-        if (item?.holds.length !== 1 || item.holds[0]!.ask.kind !== "review") fail("a:inbox", `the Inbox's item for it holds ${show(item?.holds.map((h) => h.ask.kind) ?? null)}`);
+        if (item?.questions.length !== 1 || item.questions[0]!.ask.kind !== "review") fail("a:inbox", `the Inbox's item for it has questions ${show(item?.questions.map((h) => h.ask.kind) ?? null)}`);
       }
       if (waiting?.attempts !== 1 || waiting?.leaseUntil != null) fail("a:attempt-1-no-lease", `attempts ${waiting?.attempts}, lease ${show(waiting?.leaseUntil)}`);
       if (!lockFree(seen.cwds[0])) fail("a:checkout-free", `the checkout's lock ${seen.cwds[0]}.lock is still there`);
@@ -429,7 +429,7 @@ await runGoal(async (failures, tell) => {
         const again = await host.until(host.task, (t) => (reviewOf(t) !== undefined && seen.prompts.length >= 2) || isSettled(t), 30_000);
         const hold = reviewOf(again);
         if (hold === undefined || !String(hold.ask.prompt).includes("2 commits") || !String(hold.ask.prompt).includes(fixture.subjects[1])) {
-          fail("c:reviewed-again", `after the revision the task is ${again?.status}, holds ${show(again?.holds ?? [])}`);
+          fail("c:reviewed-again", `after the revision the task is ${again?.status}, questions ${show(again?.questions ?? [])}`);
         } else {
           const accepted = await host.review({ verdict: "accepted" });
           if (accepted !== "ok") fail("c:answered", `the second accept was refused: ${accepted}`);
@@ -545,10 +545,10 @@ await runGoal(async (failures, tell) => {
       if (reviewOf(waiting) === undefined) fail("g:waits", `the task is ${waiting?.status}`);
       const cancelled = await host.act(UPDATE_TASK_ACTION, { id: host.taskId, status: "cancelled" });
       if (cancelled.output?.ok !== true) fail("g:cancelled", `the cancel was refused: ${show(cancelled.output ?? cancelled.error)}`);
-      const done = await host.until(host.task, (t) => t?.status === "cancelled" && (t.holds ?? []).length === 0, 10_000);
+      const done = await host.until(host.task, (t) => t?.status === "cancelled" && (t.questions ?? []).length === 0, 10_000);
       await sleep(1_000);
       tell.over("g · the runs", seen.prompts);
-      if (done?.status !== "cancelled" || (done.holds ?? []).length !== 0) fail("g:closed", `the task is ${done?.status} with holds ${show(done?.holds ?? [])}`);
+      if (done?.status !== "cancelled" || (done.questions ?? []).length !== 0) fail("g:closed", `the task is ${done?.status} with questions ${show(done?.questions ?? [])}`);
       if (seen.prompts.length !== 1) fail("g:no-run", `${seen.prompts.length} runs after the cancel`);
       if (lastSubject(seen.cwds[0]) !== fixture.subjects[0]) fail("g:branch-commit", `the checkout's last commit is ${show(lastSubject(seen.cwds[0]))}`);
       const stored = Object.entries(await host.lab.stored("org")).filter(([key]) => key.includes("project-files/") && key.endsWith("notes.md"));
@@ -581,7 +581,7 @@ await runGoal(async (failures, tell) => {
     try {
       const held = await host.until(host.task, isWaiting, 30_000);
       tell.over("i · the runs", seen.prompts);
-      if (questionOf(held) === undefined || reviewOf(held) !== undefined) fail("i:question", `the task is ${held?.status} with holds ${show(held?.holds ?? [])}`);
+      if (questionOf(held) === undefined || reviewOf(held) !== undefined) fail("i:question", `the task is ${held?.status} with questions ${show(held?.questions ?? [])}`);
       if (!failures.some((f) => f.startsWith("i:"))) evidence.push("i: the judge's ask held a question, no review");
     } finally {
       await host.close();

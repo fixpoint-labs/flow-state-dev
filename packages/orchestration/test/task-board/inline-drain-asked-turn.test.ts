@@ -11,9 +11,9 @@ import { z } from "zod";
 import {
   createStateBackedTaskCollection,
   MIN_LEASE_DURATION_MS,
-  openHolds,
+  openQuestions,
   type TaskCollectionRef,
-  type TaskDispatcher,
+  type ClaimOrder,
   type TaskWorker,
 } from "../../src/tasks";
 import { askMidway, taskBoard, taskWorkerInputSchema } from "../../src/task-board";
@@ -35,7 +35,7 @@ describe("an inline board's drain, after a turn that asked midway", () => {
         if (turns.length > 1) return { answer: "the whole answer" };
         const asked = await askMidway(ctx, collection, [{ prompt: "Which date column?" }]);
         // The person answers at once: before the worker returns and the drain records it.
-        if (asked.ok) await collection.answer!(input.taskId, { hold: asked.holds[0]!, message: "signup_date", from: "user", by: "u1" });
+        if (asked.ok) await collection.answer!(input.taskId, { questionId: asked.questions[0]!, message: "signup_date", from: "user", by: "u1" });
         return { answer: "a partial answer" };
       },
     }) as TaskWorker;
@@ -62,7 +62,7 @@ describe("an inline board's drain, after a turn that asked midway", () => {
       collectionId: "inline-asked-renewal",
       state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
     });
-    const shortLease: TaskDispatcher = {
+    const shortLease: ClaimOrder = {
       async claim(ref, workerId) {
         return ref.claim(workerId, { leaseDurationMs: MIN_LEASE_DURATION_MS });
       },
@@ -85,7 +85,7 @@ describe("an inline board's drain, after a turn that asked midway", () => {
       collection: () => collection,
       concurrency: 1,
       onError: "fail",
-      dispatcher: shortLease,
+      claimOrder: shortLease,
       initialTasks: [{ id: "t", goal: "write the script" }],
       workers: worker,
     });
@@ -94,6 +94,6 @@ describe("an inline board's drain, after a turn that asked midway", () => {
     expect(aborted).toBe(false);
     const row = collection.get("t")!;
     expect(row).toMatchObject({ status: "in_progress", attempts: 1 });
-    expect(openHolds(row).map((hold) => hold.ask.prompt)).toEqual(["Which date column?"]);
+    expect(openQuestions(row).map((hold) => hold.ask.prompt)).toEqual(["Which date column?"]);
   });
 });

@@ -185,8 +185,8 @@ kind and principal; an unknown id, another principal's, or another tenant's is
 session of the running principal, from that state, judged by the target
 flow's `createCheck` with `via: "dispatch"` (`create-refused` otherwise), and
 delivers into an existing one. Either form addressed at another flow's session
-or a mismatched org is `session-not-addressable`, and either is refused under an external dispatcher whose
-adapter supplies no shared lease backend (`usesExternalDispatcher` without
+or a mismatched org is `session-not-addressable`, and either is refused under an external runner whose
+adapter supplies no shared lease backend (`usesExternalRunner` without
 `arbitratesExternalDispatch`, refusal `external-dispatcher`), because the run
 would start on another process against a session this one cannot fence. With a
 lease backend the delivery takes its place on the session's key before it is
