@@ -12,7 +12,7 @@ Two calls are this spec's: how the walk puts the legs together, and where the sw
 flowchart TD
   I["FIX-2242"] --> D1["D1 · one walk where the legs collide, one durable host"]
   D1 -.->|"rejected · each child already walks its leg alone"| X1["the children's checks re-run side by side"]
-  I --> D2["D2 · the removed names are one rule in the CI sweep"]
+  I --> D2["D2 · the removed names are rows in the vocabulary sweep"]
   D2 -.->|"rejected · a later PR brings a name back unseen"| X2["the sweep in one goal's run only"]
 ```
 
@@ -35,21 +35,22 @@ It comes down to collisions: a check that walks one leg on a calm host can never
 Then a and c walk on their own, and e meets a parked call that never crosses a restart.
 
 <a name="d2"></a>
-## D2 · The removed names are one rule in the CI sweep, beside FIX-2134's, not a check one goal runs
+## D2 · The removed names are two rows in the vocabulary sweep's `RETIRED`, not a check one goal runs
 
 | | |
 |---|---|
 | **Instead of** | `workers-message-each-other`'s own sweep (`run.mts`, `REMOVED`), which runs only when that goal runs, over `packages/*/src` |
-| **Because** | The epic promises one entry and one tool. The likeliest way to break that after the wrap is a later PR bringing back `messageWorker`, the relay or a refusal under its old name, and only CI sees every PR. FIX-2087's engine already runs in CI with plants, and FIX-2134 added `PERSON_STOPS_REMOVED` beside its rows, so this is one more list in the same pass, not a second sweep. The goal's sweep then reads this list, so there is one copy |
-| **Locks in** | A PR naming one of the twelve where the sweep reads (package source and tests, the pages a user reads; comments skipped) fails CI until it edits the list. `replyTo` is a word `core`'s dispatcher and tests still use for their own fields, so it is matched only in `packages/workforce`, `packages/shift-manager` and the pages, as FIX-2134 scoped `answerQuestion` |
+| **Because** | The epic promises one entry and one tool. The likeliest way to break that after the wrap is a later PR bringing back `messageWorker`, the relay or a refusal under its old name, and only CI sees every PR. FIX-2071's renames table (#3985, ER-3) already names `one-word-per-thing`'s `RETIRED` as these names' home, so putting them in FIX-2087's engine too would make two lists with two `replyTo` scopes. `RETIRED` runs in CI with a `--control` plant, and the goal's sweep then reads its rows, so there is one copy. #3985 moves the row's owner from FIX-2249 to this issue |
+| **Locks in** | A PR naming one of the nineteen in package code (tests included) or a published page fails CI until it edits the rows. `replyTo` is a word `core`'s dispatcher and tests still use for their own fields, so its row reads only `packages/workforce`, `packages/shift-manager` and the pages. The entry's first name is swept as `receiveProblem`, `receiveEntry` and `RECEIVE_ENTRY`, never a bare `receive` |
 
-![D2: one rule in the CI sweep, chosen, beside the sweep in one goal's run; decided by a later PR bringing a removed name back](figures/d2-sweep-in-ci.svg)
+![D2: rows in the vocabulary sweep, chosen, beside the sweep in one goal's run; decided by a later PR bringing a removed name back](figures/d2-sweep-in-ci.svg)
 
 It comes down to a later PR: swept only by one goal, a returned `messageWorker` is seen at the next closure, if ever.
 
 **On `main` today the list is not yet green:** `packages/shift-manager/test/messages-view.test.tsx`
-still renders a `takes_tasks_only` refusal, which FIX-2238 removed. The CI sweep reads tests, so
-the PR adding the rule updates that fixture to a refusal that exists.
+still renders a `takes_tasks_only` refusal (line 126), which FIX-2238 removed, and #4020, #4021
+and #4022 carry it too. `RETIRED` reads tests, so the PR adding the rows updates that fixture to a
+refusal that exists, on the commit it lands on.
 
 ## The plan in full
 
@@ -63,8 +64,8 @@ the PR adding the rule updates that fixture to a refusal that exists.
 **Must be green first:** every other child merged with its goal's PASS and its controls' FAIL;
 #4021 merged; the D2 rule in CI. **FIX-2240's leg 9 is not on `main`:** #4008 merged with its
 model-free tests and without the goal leg its spec names (`9:crash-after-row` and the rest, with
-`no-debt` and the other four controls). It lands before the run, as its own child of FIX-2070
-blocking this issue, since leg c reuses its faults and `no-debt`.
+`no-debt` and the other four controls). FIX-2240's approved spec still owes it, so it is filed as
+a child of FIX-2070 ("FIX-2240's goal leg 9 on the real model") and lands before the run, blocking this issue, since leg c reuses its faults and `no-debt`.
 
 ## Decided, not asked
 
@@ -78,7 +79,9 @@ blocking this issue, since leg c reuses its faults and `no-debt`.
 - **[FIX-2087 D1](../FIX-2087/DECISIONS.md#d1), inherited:** a structural miss on any attempt is a
   finding; only a judgment miss (what the model chose to write) earns another attempt.
 - **One new control, `call-holds-session`:** a parked call keeps its session's place, so a
-  question to the filer waits for the call to end. It is the one collision no child's control
+  question to the filer waits for the call to end. It patches FIX-2239's call park
+  (`packages/workforce/src/messages/call.ts` in #4020) to hold the turn in-process instead of
+  parking on the wait gate. It is the one collision no child's control
   breaks. A patch that never fired fails the build.
 - **Today's `main` is `e2c190e`,** the commit before FIX-2238. Leg d can pass there, since
   FIX-1989's hop limit already stopped a ring at 6; the epic names a, b, c and e.
@@ -100,12 +103,13 @@ blocking this issue, since leg c reuses its faults and `no-debt`.
   filer parked on a call; FIX-2134's shape and FIX-2087's D1 kept; the sweep added to the CI
   engine beside `PERSON_STOPS_REMOVED`. Found on `main`: FIX-2240's leg 9 never landed, and a
   shift-manager test still names `takes_tasks_only`.
-- **Review** — leg e waits again by call id (`e:kept-once`), j1 reads a call as a tool result, rows 3 and 4 trimmed (Codex, Cursor).
+- **Review** — leg e waits again by call id (`e:kept-once`), j1 reads a call as a tool result, rows 3 and 4 trimmed (Codex, Cursor); D2 moved into the vocabulary sweep's `RETIRED`, and the epic's leg a reworded (FSD Architect).
 
 ## Notes from review
 
 - **Codex, folded:** `j1:own-item` looked for the call's answer as a received item, which `a:no-relay` forbids; it now reads the call in Researcher's conversation and the answered tool line in Helper A's. `send-again` graded `a:one-place`, which never waits again; leg e now waits again by call id and `e:kept-once` carries the control.
 - **Cursor, folded:** row 3 says nothing is skipped and why; row 4 points at the seam table instead of restating it; j1 grades the screen only; the docs line says the pages are followed, not written.
+- **FSD Architect, folded:** D2 moved from FIX-2087's engine to `one-word-per-thing`'s `RETIRED`, the home #3985's renames table already gives these names, so there is one list and one `replyTo` scope; the list gained `SendWorkerMessage`, the two input schemas, `WORKER_MESSAGES_SEEN_STATE` and the entry's first names (`receiveProblem`, `receiveEntry`, `RECEIVE_ENTRY`); the fixture note corrected (FIX-2087's engine skips tests, `RETIRED` reads them); leg 9's owner and `call-holds-session`'s file named; the epic's "writer calls coder" amended.
 - **Cursor, kept:** the sequence diagram is the required *What changes* figure, and the flowchart is the goal's; the figures' CSS is the trade-off template's, copied as every spec does.
 
 **Open: none of its own.**

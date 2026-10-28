@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2, where the removed-names sweep keeps running. Chosen: one rule in the CI sweep, beside FIX-2134's list. Instead of: the sweep in one goal's run only. It comes down to the first row, a later PR that brings messageWorker or the relay back: in CI it fails that PR; swept only by one goal, it is seen at the next closure, if ever. The price is the second row: a list to edit when a later PR reuses a name, with replyTo scoped to Workforce, Shift Manager and the pages, where the goal-only check costs nothing between closures. The third row is a tie: on the closure's commit both report the same lines. Locks in: naming a removed name fails CI until the PR edits the list. Flips if: the CI sweep stops reading package source and pages."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, where the removed-names sweep keeps running. Chosen: two rows in the vocabulary sweep's RETIRED, the home FIX-2071's renames table gives these names. Instead of: the sweep in one goal's run only. It comes down to the first row, a later PR that brings messageWorker or the relay back: in CI it fails that PR; swept only by one goal, it is seen at the next closure, if ever. The price is the second row: a list to edit when a later PR reuses a name, with replyTo scoped to Workforce, Shift Manager and the pages, where the goal-only check costs nothing between closures. The third row is a tie: on the closure's commit both report the same lines. Locks in: naming a removed name fails CI until the PR edits the list. Flips if: the CI sweep stops reading package source and pages."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -42,7 +42,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">One rule in the CI sweep</text>
+    <text class="t-h c-code" x="228" y="112">Rows in the vocabulary sweep</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">The sweep in one goal's run</text>

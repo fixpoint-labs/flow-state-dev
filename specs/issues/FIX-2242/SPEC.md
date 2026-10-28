@@ -63,7 +63,7 @@ The walk reads sessions and the log through public actions; each control breaks 
 | `b:task-unchanged` | The row's status, output, attempts and session are the same before and after both |
 | `d:per-request` | Started on its own line from Alice, the ring's fourth send from one request is refused |
 | `d:seventh-refused` | The ring's exchange holds exactly 6 messages and the seventh is refused at the limit, while leg e's call is parked |
-| `sweep:no-old-path` | None of [D2](DECISIONS.md#d2)'s `MESSAGE_NAMES_REMOVED` has a reference in what the CI sweep reads, each at its scope |
+| `sweep:no-old-path` | None of [D2](DECISIONS.md#d2)'s `message-names` and `message-reply-to` rows has a hit in what the vocabulary sweep reads, tests included, each at its scope |
 
 **The rest of the plan** is [in DECISIONS](DECISIONS.md#the-plan-in-full): one browser journey,
 the children's checks under a skip map, and the gap sweep. A failure becomes a child of FIX-2070
@@ -93,25 +93,30 @@ sequenceDiagram
 
 Before, each arrow lived in its own child's check on a calm host; the closure runs them on one.
 
-**The sweep, one rule in the engine CI already runs** ([D2](DECISIONS.md#d2)):
+**The sweep, two rows in the vocabulary sweep CI already runs** ([D2](DECISIONS.md#d2)), the home
+FIX-2071's renames table (#3985) gives these names:
 
 ```diff
-  // goals/workforce-coordination/runs-on-one-task/rules.mjs
-+ // FIX-2070's old message surface: no reference where the sweep reads, matched as
-+ // PERSON_STOPS_REMOVED is, with the same `--control` plant
-+ export const MESSAGE_NAMES_REMOVED = [
-+   "onWorkerMessage", "messageWorker", "MESSAGE_WORKER_TOOL", "WORKER_MESSAGE_ENTRY",
-+   "workerMessageEntry", "sendWorkerMessage", "takesWorkerMessages", "workforceRelayTo",
-+   "takes_tasks_only", "no_turn", "answerTo",
-+   { name: "replyTo", files: /^packages\/(workforce|shift-manager)\/|^apps\/docs\/(docs|guides)\// }, // core keeps the word
-+ ];
+  // goals/vocabulary/one-word-per-thing/rules.mjs
+  export const RETIRED = [
+    …
++   { id: "message-names", files: CODE_OR_PUBLISHED,          // FIX-2070's retired message surface
++     pattern: /\b(onWorkerMessage|messageWorker|MESSAGE_WORKER_TOOL|WORKER_MESSAGE_ENTRY|workerMessageEntry|
++       sendWorkerMessage|SendWorkerMessage|takesWorkerMessages|messageWorkerInputSchema|
++       workerMessageInputSchema|WORKER_MESSAGES_SEEN_STATE|workforceRelayTo|takes_tasks_only|no_turn|
++       answerTo|receiveProblem|receiveEntry|RECEIVE_ENTRY)\b/ },   // never a bare `receive`
++   { id: "message-reply-to",                                 // core's dispatcher keeps the word
++     files: new RegExp(`^packages\\/(workforce|shift-manager)\\/.*\\.(ts|tsx|mts)$|${PUBLISHED.source}`),
++     pattern: /\breplyTo\b/ },
+  ];
 ```
 
 **Docs:** no documentation impact: no page is written or changed. Row 4 follows the pages FIX-2238 and FIX-2239 published, and the sweep reads them; a page that doesn't hold when followed
 is a finding against its child.
 
 **Stays as it is:** all product code; every child's check as it is on `main`, except that
-`workers-message-each-other`'s own sweep reads D2's list instead of its copy. No legacy leg:
+`workers-message-each-other`'s own sweep reads D2's rows instead of its copy, and one Shift
+Manager test fixture that still renders a removed refusal. No legacy leg:
 stores are reset between the refactor epics.
 
 ## What's already here, and the debt
@@ -121,7 +126,8 @@ stores are reset between the refactor epics.
 | The epic's legs a to e and its sweep | **Builds on.** Walked together, not apart |
 | `workers-message-each-other` (legs 1 to 8 on `main`, 9 and 10 to come) and `every-stop-is-one-inbox-item` j1 | **Composed.** Cast and world reused; five controls reused |
 | `workers-message-each-other`'s `sweep` in `run.mts`, run only with that goal | **Replaced** by D2's rule, which it then reads |
-| [FIX-2134](../FIX-2134/SPEC.md), the last closure, and `PERSON_STOPS_REMOVED` | **Kept** its shape; **extended** by one list beside it |
+| [FIX-2134](../FIX-2134/SPEC.md), the last closure | **Kept** its shape |
+| The vocabulary sweep's `RETIRED`, where FIX-2071's renames table (#3985, ER-3) puts these names | **Extended** by two rows; #3985's row moves from FIX-2249 to this issue |
 | Anything else grading the set | **None.** Searched `goals/` for `sendMessage`, `onMessageReceived`, `callId`, `closure` |
 
 | The debt | |
@@ -139,12 +145,12 @@ host, colliding, on a real model and one commit. If wrong: the epic wraps on pie
 and break together.
 
 **[The debt](#whats-already-here-and-the-debt), net up a little:** one goal and one CI rule. If
-wrong: a CI rule that fails a later PR reusing one of twelve names.
+wrong: a CI rule that fails a later PR reusing one of nineteen names.
 
 1. **[D1](DECISIONS.md#d1) · One walk where the legs collide, not the children's checks side by
    side.** If wrong: a longer run whose failures are harder to split.
-2. **[D2](DECISIONS.md#d2) · The removed names are one rule in the CI sweep, beside FIX-2134's.**
-   If wrong: one more list to edit when a name is reused.
+2. **[D2](DECISIONS.md#d2) · The removed names are two rows in the vocabulary sweep's `RETIRED`,**
+   the home FIX-2071's renames table already gives them. If wrong: one more row to edit when a name is reused.
 
 **Open: none of its own.** D1 is the one to weigh. Before the run: FIX-2240's leg 9 is not on
 `main` yet ([Must be green first](DECISIONS.md#the-plan-in-full)).
