@@ -486,7 +486,9 @@ If you'd rather not write the list yourself, the package exports one.
 `CLAUDE_CODE_PASS` names what a run needs to work: `PATH`, `HOME`, `USER`,
 `SHELL` and `TMPDIR`, the two credential variables (`ANTHROPIC_API_KEY` and
 `CLAUDE_CODE_OAUTH_TOKEN`), and the proxy and CA settings a proxied network
-needs, in upper and lower case, because curl reads only lowercase `http_proxy`.
+needs, in upper and lower case.
+
+Include lowercase proxy names too; curl reads only `http_proxy`.
 
 ```ts
 import { CLAUDE_CODE_PASS } from "@flow-state-dev/claude-code/sdk";
@@ -494,8 +496,10 @@ import { CLAUDE_CODE_PASS } from "@flow-state-dev/claude-code/sdk";
 const env = harnessEnv({ pass: CLAUDE_CODE_PASS });
 ```
 
-Give that same `env` to `probeClaudeAccount`, `listClaudeModels` and
-`readClaudeUsage`, so they see the account the run sees. If your runs need
+Give that same `env` to
+[`probeClaudeAccount`](#checking-for-a-credential-before-you-start),
+[`listClaudeModels`](#choosing-the-model) and
+[`readClaudeUsage`](#reading-usage-left), so they see the account the run sees. If your runs need
 more, pass your own list.
 
 **`sandbox`** is the Agent SDK's sandbox settings, forwarded as given. Take a

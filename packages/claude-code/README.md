@@ -213,10 +213,11 @@ included, and a named variable that is unset is left out.
 `CLAUDE_CODE_PASS` is the list a run needs to work, if you'd rather not write
 your own: `PATH`, `HOME`, `USER`, `SHELL`, `TMPDIR`, `ANTHROPIC_API_KEY`,
 `CLAUDE_CODE_OAUTH_TOKEN`, and the proxy and CA settings a proxied network
-needs (both cases of each proxy name, since curl reads only lowercase
-`http_proxy`). `harnessEnv({ pass: CLAUDE_CODE_PASS })` builds the `env`; hand
-the same one to `probeClaudeAccount`, `listClaudeModels` and `readClaudeUsage`
-so they see the run's account.
+needs, in upper and lower case. `harnessEnv({ pass: CLAUDE_CODE_PASS })`
+builds the `env`; hand the same one to `probeClaudeAccount`, `listClaudeModels`
+and `readClaudeUsage` so they see the run's account.
+
+Include lowercase proxy names too; curl reads only `http_proxy`.
 
 **`mcpTools` gives the run tools your process serves.** Each entry becomes an MCP
 server inside your process, named by its key, and the run calls its tools as
