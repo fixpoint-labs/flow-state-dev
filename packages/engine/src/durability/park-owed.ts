@@ -15,7 +15,10 @@
  */
 import { SuspensionError } from "@flow-state-dev/core";
 import type { WakeKey, WakeStore } from "../stores/types";
+import { generateId } from "../utils/generate-id";
 import { noteWakeOwed } from "./request-wakes";
+import { RESUME_LEASE_MS } from "./resume-under-lease";
+import type { DurabilityProvider } from "./types";
 
 /** The prefix of the wake entry a request's owed park is kept under. No flow declares one. */
 const PARK_OWED_PREFIX = "parkOwed:";
@@ -54,6 +57,30 @@ export async function owesPark(
 export async function clearParkOwed(store: WakeStore, key: WakeKey): Promise<void> {
   const wake = await store.get(key);
   if (wake !== null) await store.clear(key, wake.version);
+}
+
+/**
+ * Let the park a stopped request owes go, under the request's lease. The sweep
+ * admits a continuation under the same lease and reads the owe again there,
+ * so a stop and a continuation never both land: `busy` when a continuation
+ * (or a resume) holds the lease, and the request runs again.
+ */
+export async function letOwedParkGo(
+  provider: DurabilityProvider,
+  store: WakeStore,
+  request: { readonly id: string; readonly sessionId?: string; readonly tenantId?: string | null }
+): Promise<"let-go" | "busy"> {
+  const key = parkOwedKey(request);
+  // Nothing owed: only the running request writes the owe, and it is dead.
+  if (key === undefined || (await store.get(key)) === null) return "let-go";
+  const lease = await provider.acquireLease(request.id, { holder: generateId("park-owed-stop"), durationMs: RESUME_LEASE_MS });
+  if (lease === null) return "busy";
+  try {
+    await clearParkOwed(store, key);
+    return "let-go";
+  } finally {
+    await provider.releaseLease(request.id, lease.leaseId);
+  }
 }
 
 /** What {@link createOwingPark} is built from: the running request, server-derived. */

@@ -90,6 +90,15 @@ None.
   on a flow with a pass, left the dispatch to the pass. The call then had no request to wait on and
   answered `running`. A repeat of a call's send now dispatches itself, pass or not; the take keeps
   the message once.
+- **The dispatcher does not owe a park yet (review, Codex P1).** `runOnce` records a result only
+  after its function returns, so a dispatcher that dies after its child is accepted and before the
+  record would dispatch a second child on the continuation: the dispatch seam takes no stable
+  request id. A call is safe in the same window (its message id is kept first and the recipient
+  takes it once), so only the call owes a park. The dispatcher keeps today's behaviour (left
+  `interrupted` for a hand continue) until it has a dispatch identity kept before the send.
+- **A stop and a continuation are fenced by the request's lease (review, Codex P2).** The stop lets
+  the owe go under the lease, and the sweep's admission reads the owe again under it; a stop that
+  finds the lease held answers `already-resolved` (it runs again).
 
 ## Notes from review
 

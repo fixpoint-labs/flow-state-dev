@@ -82,7 +82,7 @@ import { onWakeOwed } from "./request-wakes";
 import { onSuspensionDeadline } from "./suspension-deadlines";
 import { owesRedrive, PARKED, redriveResolvedGate, stopSuspendedRequest } from "./stop-suspended";
 import { continueUnderLease, expireUnderLease, latestGateIdOf } from "./resume-under-lease";
-import { PARK_OWED_GIVE_UP_MS, parkOwedRequestOf } from "./park-owed";
+import { PARK_OWED_GIVE_UP_MS, owesPark, parkOwedRequestOf } from "./park-owed";
 import type { ResumeDeps } from "./resume-under-lease";
 
 /**
@@ -677,8 +677,11 @@ async function continueOwedPark(args: ResolvedTickArgs, wake: WakeRecord, reques
     requestId,
     holder: "park-owed",
     admit: async () => {
+      // Read again under the lease a stop lets the owe go under (`letOwedParkGo`).
       const current = await stores.request.get(requestId);
-      return current?.status === "interrupted" ? { resumeContext: undefined } : { refusal: "not-interrupted" };
+      return current?.status === "interrupted" && (await owesPark(wakes, current))
+        ? { resumeContext: undefined }
+        : { refusal: "not-interrupted" };
     }
   });
   if (result.ok) {

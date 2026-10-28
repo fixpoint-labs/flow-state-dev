@@ -302,6 +302,50 @@ describe("a wait killed before it parks", () => {
     expect(await status(h, id)).toBe("interrupted");
   });
 
+  it("stays stopped when the stop lands between the sweep's read of the owe and its continuation", async () => {
+    const script: Script = { freeze: "after-work", owe: true, started: 0 };
+    const flow = waitingFlow(script);
+    const h = setup(flow);
+    const id = await dieWhileRunning(h, flow, script);
+    expect(await owedParkDueNow(h, id)).toBe(true);
+
+    // The sweep has read the owe and moved its wake; a person's stop lands
+    // before it takes the lease to continue.
+    const stopDeps = { provider: h.provider, stores: h.stores, continueRequest: (async () => undefined) as never };
+    const acquire = h.provider.acquireLease.bind(h.provider);
+    let stop: unknown;
+    vi.spyOn(h.provider, "acquireLease").mockImplementation(async (requestId, options) => {
+      if (stop === undefined && options.holder.startsWith("park-owed_")) {
+        stop = "stopping";
+        stop = await recordRequestStop(h.stores.request, (await h.stores.request.get(id))!, stopDeps);
+      }
+      return acquire(requestId, options);
+    });
+    await h.sweep();
+
+    expect(stop).toEqual({ kind: "finished", status: "interrupted" });
+    expect(h.continued).toHaveLength(0);
+    expect(await status(h, id)).toBe("interrupted");
+  });
+
+  it("is continued when its continuation holds the lease as a stop arrives: the stop says it runs again", async () => {
+    const script: Script = { freeze: "after-work", owe: true, started: 0 };
+    const flow = waitingFlow(script);
+    const h = setup(flow);
+    const id = await dieWhileRunning(h, flow, script);
+    const lease = (await h.provider.acquireLease(id, { holder: "continuation", durationMs: 60_000 }))!;
+
+    const stop = await recordRequestStop(h.stores.request, (await h.stores.request.get(id))!, {
+      provider: h.provider,
+      stores: h.stores,
+      continueRequest: (async () => undefined) as never
+    });
+    expect(stop).toEqual({ kind: "already-resolved" });
+    // The owe is kept: the stop wrote nothing.
+    expect(await owedParkDueNow(h, id)).toBe(true);
+    await h.provider.releaseLease(id, lease.leaseId);
+  });
+
   it("is left interrupted, and its owe let go, once it has owed its park past the give-up age", async () => {
     const script: Script = { freeze: "after-work", owe: true, started: 0 };
     const flow = waitingFlow(script);
