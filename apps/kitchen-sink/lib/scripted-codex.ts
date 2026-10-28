@@ -37,7 +37,7 @@ import { scriptedReceived } from "./scripted-received";
 export const scriptedCodexPauses = { stepMs: 400, slowMs: 20_000, longMs: 35_000 };
 
 /** What a `[long]` turn replies once its hold is over. */
-export const SCRIPTED_LONG_DONE = "Scripted Codex, done after the long hold.";
+const SCRIPTED_LONG_DONE = "Scripted Codex, done after the long hold.";
 
 /** The command every scripted turn runs, as Codex reports it. */
 export const SCRIPTED_COMMAND = "ls";
