@@ -12,14 +12,9 @@
  * No model. A test fixture, not a Lab: Shift Manager names nothing in it.
  */
 import { defineFlow, handler, sequencer, SuspensionRejectedError } from "@flow-state-dev/core";
-import {
-  MESSAGE_RECEIVED_ENTRY,
-  messageReceivedEntry,
-  workerConfigSchema,
-  workerMessagesResources,
-  type WorkerInstallation,
-} from "@flow-state-dev/workforce";
+import { workerConfigSchema, type WorkerInstallation } from "@flow-state-dev/workforce";
 import { z } from "zod";
+import { hearsMessages } from "../../../../lib/worker-door.mts";
 
 /** The kind the fixture's `WORKER.md` names. */
 export const ASKER_FLOW = "asker";
@@ -65,7 +60,7 @@ export function defineAskerFlow(installation: WorkerInstallation) {
   return defineFlow({
     kind: ASKER_FLOW,
     session: installation.session(),
-    resources: { ...installation.resources, ...workerMessagesResources },
+    ...hearsMessages(installation, ASKER_FLOW),
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     actions: {
@@ -77,6 +72,5 @@ export function defineAskerFlow(installation: WorkerInstallation) {
         description: "A person's line into this seat's session.",
       },
     },
-    internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: ASKER_FLOW }) } },
   } as never);
 }

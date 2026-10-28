@@ -40,7 +40,6 @@ import {
   FILING_SESSION_STATE_KEY,
   TASK_ID_STATE_KEY,
   workerConfigSchema,
-  workerMessagesResources,
   workerTaskEntry,
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
@@ -163,9 +162,8 @@ export function defineBuilderWorkerFlow(options: BuilderWorkerFlowOptions) {
     kind: BUILDER_KIND,
     configSchema: builderSettingsSchema(),
     session: installation.session(),
-    resources: { ...installation.resources, ...workerMessagesResources },
+    ...hearsMessages(installation, BUILDER_KIND),
     actions: { ...workerDoor },
-    internal: { actions: hearsMessages(installation, BUILDER_KIND) },
     task: { actions: { [WORK_ENTRY]: work } },
   } as never);
 }

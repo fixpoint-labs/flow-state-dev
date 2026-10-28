@@ -24,7 +24,6 @@ import {
   defineSessionBoard,
   hireWorkforce,
   workerConfigSchema,
-  workerMessagesResources,
   workerTaskEntry
 } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
@@ -215,9 +214,8 @@ function startHost(db: string) {
     kind: "taker",
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources, ...workerMessagesResources },
+    ...hearsMessages(installation, "taker"),
     actions: { respond: { inputSchema: doorInput, block: takerTurn, userMessage: (input: { message: string }) => input.message } },
-    internal: { actions: hearsMessages(installation, "taker") },
     task: { actions: { work: workerTaskEntry({ name: "split-to-roster-taker-task", turn: takerTurn }) } }
   } as never);
 

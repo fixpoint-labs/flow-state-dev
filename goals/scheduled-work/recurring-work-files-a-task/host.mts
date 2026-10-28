@@ -32,7 +32,6 @@ import {
   deriveWorkerSessionId,
   hireWorkforce,
   workerConfigSchema,
-  workerMessagesResources,
   workerTaskEntry,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
@@ -89,9 +88,8 @@ const researcherFlow = defineFlow({
   kind: "researcher",
   configSchema: workerConfigSchema(),
   session: installation.session(),
-  resources: { ...installation.resources, ...workerMessagesResources },
+  ...hearsMessages(installation, "researcher"),
   actions: { respond: { inputSchema: doorInput, block: researchTurn, userMessage: (input: { message: string }) => input.message } },
-  internal: { actions: hearsMessages(installation, "researcher") },
   task: { actions: { work: workerTaskEntry({ name: "goal-research-task", turn: researchTurn }) } }
 } as never);
 workerFlows = { launch: { flow: launchFlow, roles: ["manager"] }, researcher: { flow: researcherFlow, roles: ["contributor"] } };

@@ -55,7 +55,6 @@ import {
   defineSessionBoard,
   hireWorkforce,
   workerConfigSchema,
-  workerMessagesResources,
   workerTaskEntry,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
@@ -235,9 +234,8 @@ await runGoal(async (failures) => {
       kind,
       configSchema: workerConfigSchema(),
       session: installation.session(),
-      resources: { ...installation.resources, ...workerMessagesResources },
+      ...hearsMessages(installation, kind),
       actions: { respond: { inputSchema: doorInput, block: turn, userMessage: (input: { message: string }) => input.message } },
-      internal: { actions: hearsMessages(installation, kind) },
       task: { actions: { work: workerTaskEntry({ name: `run-link-goal-${kind}-task`, turn }) } }
     } as never);
   };

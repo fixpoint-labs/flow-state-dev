@@ -23,7 +23,6 @@ import {
   steerTurnEntry,
   workerTaskEntry,
   workerConfigSchema,
-  workerMessagesResources,
   type WorkerInstallation,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
@@ -282,17 +281,18 @@ function defineCoderFlow(installation: WorkerInstallation, repo: string, checkou
     },
     onSteered: (ctx, row) => startOwedSteerTurn(ctx, row)
   });
+  const heard = hearsMessages(installation, "coder");
   return defineFlow({
     kind: "coder",
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources, ...workerMessagesResources },
+    resources: heard.resources,
     actions: { respond: message },
     internal: {
       actions: {
         [STEER_TURN_ENTRY]: steerTurnEntry({ name: "steer-goal-coder-steer-turn", block: manager as never }),
-        ...hearsMessages(installation, "coder")
+        ...heard.internal.actions
       }
     },
     task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "steer-goal-coder-work", block: manager as never }) } }

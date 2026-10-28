@@ -45,7 +45,6 @@ import {
   inventoryWriterActions,
   openInventory,
   workerConfigSchema,
-  workerMessagesResources,
   workerTaskEntry,
   type InventoryActionRequest,
 } from "@flow-state-dev/workforce";
@@ -216,8 +215,7 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
         cardinality: "collection",
         configSchema: workerConfigSchema(),
         session: installation.session(),
-        resources: { ...installation.resources, ...workerMessagesResources },
-        internal: { actions: hearsMessages(installation, SEAT_KIND) },
+        ...hearsMessages(installation, SEAT_KIND),
         actions: { ...workerDoor, ask: { block: sequencer({ name: "shift-lab-ask", inputSchema: z.object({ what: z.string() }) }).step(gate), durable: true } },
         task: { actions: { work: workerTaskEntry({ name: "shift-lab-task", turn: taskTurn }) } },
       } as never) },

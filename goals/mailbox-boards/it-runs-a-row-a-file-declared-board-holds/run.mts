@@ -43,7 +43,6 @@ import {
   defineSessionBoard,
   hireWorkforce,
   workerConfigSchema,
-  workerMessagesResources,
   workerTaskEntry,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
@@ -128,9 +127,8 @@ await runGoal(async (failures) => {
     kind: delegateKind,
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources, ...workerMessagesResources },
+    ...hearsMessages(installation, delegateKind),
     actions: { respond: { inputSchema: doorInput, block: delegateTurn, userMessage: (input: { message: string }) => input.message } },
-    internal: { actions: hearsMessages(installation, delegateKind) },
     task: { actions: { work: workerTaskEntry({ name: "row-goal-delegate-task", turn: delegateTurn }) } }
   } as never);
 

@@ -17,7 +17,7 @@
  * with that.
  */
 import { defineFlow, handler, type BlockContext } from "@flow-state-dev/core";
-import { workerConfigOf, workerConfigSchema, workerFlow, workerMessagesResources } from "@flow-state-dev/workforce";
+import { workerConfigOf, workerConfigSchema, workerFlow } from "@flow-state-dev/workforce";
 import { z } from "zod";
 import { hearsMessages, workerDoor } from "../../../../../../lib/worker-door.mts";
 
@@ -42,7 +42,7 @@ export default workerFlow((installation) =>
     cardinality: "collection",
     configSchema: settings,
     session: installation.session(),
-    resources: { ...installation.resources, ...workerMessagesResources },
+    ...hearsMessages(installation, "desk-clerk"),
     request: {
       onStarted: handler({
         name: "desk-clerk-load-worker",
@@ -54,6 +54,5 @@ export default workerFlow((installation) =>
       }),
     },
     actions: { ...workerDoor, answer: { block: answer } },
-    internal: { actions: hearsMessages(installation, "desk-clerk") },
   } as never),
 );

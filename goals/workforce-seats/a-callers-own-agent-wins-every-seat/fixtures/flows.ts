@@ -6,7 +6,7 @@
  * turn reads one ran on the caller's flow.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
-import { workerConfigSchema, workerMessagesResources, type WorkerInstallation } from "@flow-state-dev/workforce";
+import { workerConfigSchema, type WorkerInstallation } from "@flow-state-dev/workforce";
 import { z } from "zod";
 import { hearsMessages, workerDoor } from "../../../lib/worker-door.mts";
 
@@ -54,7 +54,7 @@ export function defineCallerAgent(installation: WorkerInstallation) {
     kind: "agent",
     cardinality: "collection",
     configSchema: callerSettings,
-    resources: { ...installation.resources, ...workerMessagesResources },
+    ...hearsMessages(installation, "agent"),
     actions: {
       run: {
         inputSchema,
@@ -62,7 +62,6 @@ export function defineCallerAgent(installation: WorkerInstallation) {
       },
       ...workerDoor
     },
-    internal: { actions: hearsMessages(installation, "agent") },
     session: {
       ...session,
       client: {
