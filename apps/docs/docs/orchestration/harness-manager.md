@@ -125,6 +125,44 @@ A [judge's](#checking-the-work-with-a-judge) *ask*, and saved work that doesn't 
 
 **A session the agent can't find is replaced.** The manager records only a session the harness *confirmed* it was in. If the agent can't find the session a run asked to continue, the next run starts a fresh one, with the brief, the question and the answer in its prompt.
 
+## Reviewing a run's changes
+
+Build the manager with `reviewChanges: true` and a user looks at a run's commits before its task completes. It's off by default.
+
+```ts
+harnessManager({ ledgers: conversationLedgers, judge: { block: answerJudge, floor: 0.6 }, reviewChanges: true /* , … */ });
+```
+
+A run's changes are the commits it made over the base its branch was cut from. A run is reviewed when it would otherwise complete (the [judge](#checking-the-work-with-a-judge) said done, there is no judge, or the judge's verdict fell under its floor) and its branch has commits. If git can't read the count, the run is reviewed anyway, and the review says the commits couldn't be read. A run with no commits completes without a review, and a failed run fails its attempt without one. A judge's confident verdicts skip the review: *not done* fails the attempt, and *ask* holds the task on a question.
+
+While the review waits, the task stays `in_progress` on the same attempt and keeps its claim. The checkout is released. The user's Inbox lists it as a review titled "Review the run's changes". The prompt gives the number of commits and up to 20 of their subjects, then what the judge said: its verdict, confidence and reason, or "No judge read this run." The judge's verdict is information, not approval, and the prompt says so. On the task row, the review is an open hold with `source.kind: "suspension"` and `ask.kind: "review"` (see [A task waiting on a user](./task-board.md#a-task-waiting-on-a-user)), and its data carries `{ branch, commits, subjects, judge }`.
+
+The user answers from the Inbox. A screen of your own answers with the Inbox client, and the answer must match `harnessReviewAnswerSchema`:
+
+```ts
+import { createInboxClient } from "@flow-state-dev/orchestration/inbox";
+
+const inbox = createInboxClient(client);
+
+// Accept the changes
+await inbox.answer(item, { value: { verdict: "accepted" } });
+
+// Or ask for changes, in words
+await inbox.answer(item, { value: { verdict: "revise", words: "Keep the old endpoint as a fallback." } });
+```
+
+A revision with blank words is refused with a 400, and the review stays open.
+
+**Accepting** completes the task. No further run starts, and the output says `review: "accepted"`.
+
+**Asking for changes** writes the words onto the task as that user's message, and one more run starts on the same attempt. It continues the same coding session with the words in its prompt, the way any [steer](#steering-a-run) is taken. If it commits again, it's reviewed again, and the new review counts every commit on the branch. Each request for changes counts toward the task's message limit, and past that limit the attempt fails. If the harness never confirmed a coding session, asking for changes fails the attempt instead, and the next attempt's brief carries the words.
+
+**A review has no deadline** unless the host sets `userDeadlineMs` (see [runtime configuration](/docs/configuration/runtime#createflowstate-fields)). At the deadline the task completes with no further run, and the output says `review: "deadline"`. Show that as not reviewed, never as approved. Without a review, or with the option off, `review` is `null`.
+
+**A cancel while the review waits** closes it and starts nothing. The branch's commits and the run's kept files stay.
+
+Reviews need a host with [durable execution](../advanced/durable-execution.md). A host can restart while a review waits. The answer picks the run back up.
+
 ## Running tasks from more than one board
 
 A manager built with `boardCollectionId` works one board. A worker that also takes tasks a coordinator files in a conversation needs more. Each conversation keeps its own board, the list of tasks filed from it, so there is no single board to name.
@@ -147,7 +185,7 @@ const answering = harnessManager({
 
 `conversationLedgers` comes from Workforce. It finds the board of the conversation the task came from, for the user the run belongs to, and nothing else. The manager reads the board and partition from the claim, never from the task. Each run's checkout, branch and run record are kept apart by board and partition, so two conversations that file the same task never share a tree. Pass `boardCollectionId` as well, and the manager also runs that board's rows.
 
-A task from a conversation usually carries a goal and no `issue` or `phase`. The manager then uses the task's id in their place. A task that names only one of the two is refused. A completed run's output carries the agent's last message as `answer` (up to 8,000 characters), the run's `branch`, or `null` when it worked on files alone, and how many `commits` it made.
+A task from a conversation usually carries a goal and no `issue` or `phase`. The manager then uses the task's id in their place. A task that names only one of the two is refused. A completed run's output carries the agent's last message as `answer` (up to 8,000 characters), the run's `branch`, or `null` when it worked on files alone, and how many `commits` it made. With [`reviewChanges`](#reviewing-a-runs-changes) on, `review` says how the review ended.
 
 A run refused before it starts (no project, a remote the host doesn't allow) fails a conversation's task for good, so the conversation hears why; on a fixed board the row is cancelled. A question the run asks holds the task on it, the same on either kind of board (see [Asking and being answered](#asking-and-being-answered)).
 
@@ -393,7 +431,7 @@ stable.
 
 `@flow-state-dev/harness-manager` is the supported host API: everything above,
 plus the pieces you need around it: `harnessManager` and its options,
-`harnessSessionDoor`, `PhaseSpec`
+`harnessSessionDoor`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer`, `PhaseSpec`
 and the run-context types, `WorkspaceConfig`, the construction-time guards
 (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`,
 `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing
@@ -419,6 +457,7 @@ If the coding agent switches its checkout to another branch, the next attempt st
 - **Usage rows are keyed by the bare user id.** Where one user id is reachable from two tenants, both see that user's usage row: their plan and percents, with no email.
 - **No retention policy.** Run records grow without bound. Fine for a board driving a few tasks; a long-lived one needs pruning, which is not built.
 - **A harness that can't resume can't be talked to once finished.** Talk resumes the coding session the run confirmed, so a finished run whose harness never confirmed one is refused (`cannot-continue`). A steer to an open task needs no session to be kept, but the step that takes it resumes one: on a run with none confirmed, only the late-message turn (`STEER_TURN_ENTRY`) acts on it.
+- **Reviewing changes needs durable execution.** On a host without it, a manager built with `reviewChanges: true` refuses each run before the harness starts, and cancels the task with a message naming durable execution.
 - **Git worktrees for a repository.** A run on a repository works in a `git worktree` of it. Where the repository comes from is up to the workspace host you pass as `workspace`; see the package README's "Running a project's work". For a project's work, Workforce's `projectWorkspace` is that source: see [A project's code and files](../workforce/projects.md#coding-work-in-a-project).
 
 ## Related pages
