@@ -196,7 +196,9 @@ async function oneRun(n: number, failures: string[], notes: string[]): Promise<v
 
   let lab = await startLab(data, USER, env);
   try {
-    let { me, other } = clientsFor(lab.origin);
+    const clients = clientsFor(lab.origin);
+    const { me } = clients;
+    let { other } = clients;
     const projectsSession = (await me.fsd.flow("projects").createSession()).id;
     await act(me.fsd, "projects", projectsSession, "createProject", {
       id: projectId,
@@ -247,7 +249,7 @@ async function oneRun(n: number, failures: string[], notes: string[]): Promise<v
     const dropped = dropMember(join(data, "lab.db"), projectId, OTHER);
     if (dropped !== 1) throw new Error(`setup: the project row to edit was found ${dropped} time(s) in ${join(data, "lab.db")}`);
     lab = await startLab(data, USER, env);
-    ({ me, other } = clientsFor(lab.origin));
+    ({ other } = clientsFor(lab.origin));
     const offMembers = await ask(other.fsd, theirs, fixture.question);
     if (offMembers.reply.includes(value)) fail("leg 3 · no value: a user taken off the members was told the value");
     if (offMembers.reads.length === 0) fail("leg 3 · read refused: the turn made no read call");
