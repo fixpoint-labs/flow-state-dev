@@ -74,8 +74,10 @@ Before, *hold* named four things and *waiting* two. After, each state has one wo
 +if (task.keptOpenBy === "filed") …     if (hasOpenQuestion(task)) …
 
  // a screen's Inbox
--inbox.answerHold(item.holds[0], { text: "orders-v2.csv" });
-+inbox.answer(item.questions[0], { text: "orders-v2.csv" });
+-inbox.answer(item, { text: "orders-v2.csv" }, item.holds[0].id);
+-inbox.answerHold(hold, { text: "orders-v2.csv" });
++inbox.answer(item, { text: "orders-v2.csv" }, item.questions[0].id);
++inbox.answerOne(question, { text: "orders-v2.csv" });
 
  // unchanged: the filer's hold
  await createTask({ goal, held: true });
@@ -136,7 +138,6 @@ and `@flow-state-dev/workforce` names every renamed public name.
 | The coordination concept's vocabulary rows "held on questions … never waiting on a person" and "waiting on a person: its request suspended by `waitForUser`" | **Superseded**: PR-3 made both one Inbox item over one list; one state, *waiting on a user*, an open question, of any `ask.kind` |
 | FIX-2092's D2 and ER-4 (#3970): phase steps filed held, released with `updateTask({ status: "pending" })` | **Unchanged** by D1. Its prose about a suspension hold reads "a question on the feature row" once this lands |
 | `goals/vocabulary/one-word-per-thing` (FIX-1876), extended by the epic | **Extended**: two rows; its KEEP reasons that cite `TaskHold` are reworded |
-| FIX-2243's row: harness-manager's `answerQuestion()` retired, with task-tools' live `answerQuestion` helper kept by file | **Ends the keep:** the helper is renamed `answerTaskQuestion`, so the identifier is nowhere live |
 
 | Builds on / Adds | Existing piece considered | Why that doesn't fit, or how this is composed |
 |---|---|---|
@@ -145,11 +146,11 @@ and `@flow-state-dev/workforce` names every renamed public name.
 
 | The debt | |
 |---|---|
-| **Removes** | Four meanings of hold down to one; two meanings of "waiting on a user" down to one; `question` beside `questions`; the `answerQuestion` keep entry |
+| **Removes** | Four meanings of hold down to one; two meanings of "waiting on a user" down to one; `question` beside `questions` |
 | **Adds** | Two sweep rows |
 | **Leaves** | Status `held` on rung 3 of the termination ladder reports `blocked-by-failures`, though a held task waits on its filer, not a failure: a behaviour question, filed as [FIX-2261](https://linear.app/fixpoint-labs/issue/FIX-2261) |
 
-**Net: down.** No mechanism; fewer meanings per word, one fewer keep entry.
+**Net: down.** No mechanism; fewer meanings per word.
 
 ## Sign off
 
@@ -171,7 +172,7 @@ sweep doesn't catch it.
    50 files renamed for a word a reader would have learned.
 
 **Decided, engineering:** the claim and board-owner words, the decline reasons, the Inbox client's
-`answer` ([Decided, not asked](DECISIONS.md#decided-not-asked)). **Open:** none.
+`answerOne` ([Decided, not asked](DECISIONS.md#decided-not-asked)). **Open:** none.
 
 Improvement · `orchestration`, `workforce`, `harness-manager`, `shift-manager`, `devtool` + docs ·
 medium (one codemod, about 170 files, no behaviour) · 1 PR · build after FIX-2070, before FIX-2243 ·

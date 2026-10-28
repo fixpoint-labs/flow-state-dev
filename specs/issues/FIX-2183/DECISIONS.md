@@ -71,9 +71,15 @@ It comes down to `waitingOn` being silent on the one wait a reader most wants to
   `closedBy`, `HoldReleaser` → `QuestionCloser`. Release stays the filer's verb.
 - **`HoldAsk` → `QuestionInit`,** the shape a filer or worker asks with, like `TaskInit`. Not
   `QuestionAsk`: the sweep's `ask-symbol` row refuses a new `…Ask…` identifier.
-- **The Inbox client's `answerHold` → `answer`,** and task-tools' live `answerQuestion` helper →
-  `answerTaskQuestion`, so FIX-2243's keep entry for it goes. No new name lands on
-  `answerQuestion`, which FIX-2243 retires.
+- **The Inbox client keeps its two calls, renamed only.** `answer(item, answer, holdId?)` stays
+  `answer`, its third argument `questionId`; `answerHold(question, answer)`, for a question drawn
+  on its own, → `answerOne`. Shift Manager's `LabData.answerHold` follows (`answerOne`). Neither
+  call changes what it does. No new name lands on `answerQuestion`, which FIX-2243 retires; the
+  live task-tools helper of that name stays FIX-2243's, on its keep list.
+- **Why the claim and the board owner ride here.** "A request holds a task" is the issue's third
+  meaning, so the claim is in scope. "The session that holds the board" is the same word on the
+  same page (the Inbox row's `sessionId`), and one codemod pass is cheaper than a second PR over
+  the same Shift Manager files.
 - **Prose:** "a question holds its task", "held on questions" and "a task held midway" become "a
   task waits on its questions" / "waiting on a user". The docs prose row in `RETIRED` refuses
   "held on (a|its) question", "question holds", "row hold", "suspension hold" and "open holds" in
@@ -121,3 +127,8 @@ codemod in `scripts/codemod/`, nothing new.
 - **Draft** — 2026-10-28: four meanings of hold and two of waiting mapped on `main`; hold kept for
   the filer's status, a task's asks named `questions` end to end, `waitingOn` named for what it
   says, building on the epic's sweep and codemods.
+- **Review round 1** (Codex, Cursor on `df5831f`), folded: the Inbox client already has
+  `answer(item, …)`, so `answerHold` becomes `answerOne`, not `answer`; the task-tools
+  `answerQuestion` helper is left to FIX-2243; why the claim and board-owner words ride here;
+  a README for the inventory check. Kept: one PR for the whole set (one codemod pass), and leg b
+  as the implementer's evidence at completion.
