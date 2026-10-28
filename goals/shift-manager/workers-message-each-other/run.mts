@@ -1,11 +1,11 @@
 /**
- * Goal check for FIX-1989, amended for FIX-2238. See goal.md.
+ * Goal check for FIX-1989, amended for FIX-2238, FIX-2160 and FIX-2239. See goal.md.
  *
  * Run:      pnpm tsx goals/shift-manager/workers-message-each-other/run.mts
  * Controls: GOAL_CONTROL=<name> (controls.mts names each)
  *           (each runs the legs it needs, unless GOAL_LEGS says otherwise)
  * Before:   GOAL_COMMIT=<sha> serves that commit, from its own tree and install
- * Legs:     GOAL_LEGS=1,1b,2,2b,3b,3,4,6,7,8,5 (default: all, in that order)
+ * Legs:     GOAL_LEGS=1,1b,2,3b,3,4,6,7,8,10,10b,10c,5 (default: all, in that order)
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
@@ -24,7 +24,6 @@ import {
   leg1,
   leg1b,
   leg2,
-  leg2b,
   leg3,
   leg3b,
   leg4,
@@ -39,10 +38,11 @@ import {
   type Person,
   type World,
 } from "./legs.mts";
+import { leg10, leg10b, leg10c, WAIT_DEFAULT_MS } from "./legs-calls.mts";
 import { leg6, leg7, leg8, setupTargets, type Targets } from "./legs-targets.mts";
 
 const SCRATCH = goalTmpDir("workers-message");
-const ORDER = ["1", "1b", "2", "2b", "3b", "3", "4", "6", "7", "8", "5"] as const;
+const ORDER = ["1", "1b", "2", "3b", "3", "4", "6", "7", "8", "10", "10b", "10c", "5"] as const;
 const say = (s: string) => console.error(`[messages ${new Date().toISOString().slice(11, 19)}] ${s}`);
 
 const controlName = process.env.GOAL_CONTROL ?? "";
@@ -193,7 +193,8 @@ await runGoal(async () => {
       config: join(profile, "fsdev.config.mts"),
       pages,
       // The coder's scripted run paces its steps, so leg 8 can message a task while it runs.
-      env: { DEVTEAM_STORE: store, DEVFORCE_LAB_STEP_MS: "6000", ...env },
+      // A call with no deadline waits the host default, short here so leg 10 can time it.
+      env: { DEVTEAM_STORE: store, DEVFORCE_LAB_STEP_MS: "6000", DEVTEAM_WAIT_DEFAULT_MS: String(WAIT_DEFAULT_MS), ...env },
       root: join(checkout.root, "packages", "shift-manager"),
       tsx: join(checkout.root, "node_modules", ".bin", "tsx"),
       timeoutMs: 180_000,
@@ -234,7 +235,6 @@ await runGoal(async () => {
       filedGoals.push("helper-a");
       return leg2(world);
     });
-    await runLeg("2b", () => leg2b(world));
     await runLeg("3b", async () => {
       filedGoals.push(world.words.w3b);
       return leg3b(world);
@@ -271,6 +271,9 @@ await runGoal(async () => {
         await runLeg("8", () => leg8(world, targets));
       }
     }
+    await runLeg("10", () => leg10(world));
+    await runLeg("10b", () => leg10b(world));
+    await runLeg("10c", () => leg10c(world));
     for (const t of world.turns) {
       say(`turn (${t.leg}) ${t.worker} ${t.status}: calls ${t.calls.map((c) => `${typeof c.args.to === "string" ? c.args.to : JSON.stringify(c.args.to)}→${c.output?.sent ?? String(c.output?.error ?? "").slice(0, 40)}`).join(", ") || "none"}; reply: ${t.reply.slice(0, 200).replace(/\n/g, " ")}`);
     }

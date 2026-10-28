@@ -189,6 +189,8 @@ const lab = await openLab({
   workstreams: DEFAULT_WORKSTREAMS,
   // The shift coordinator records each conversation into its memory only when asked.
   memoryCapture: process.env.DEVTEAM_MEMORY_CAPTURE === "1",
+  // A goal that grades a call's default deadline shortens it (DEVTEAM_WAIT_DEFAULT_MS).
+  ...(process.env.DEVTEAM_WAIT_DEFAULT_MS === undefined ? {} : { waitDeadlines: { defaultMs: Number(process.env.DEVTEAM_WAIT_DEFAULT_MS) } }),
   // The Error Reporter reads this checkout's code with Claude Code and keeps
   // its reports in Inbox: this team names no tracker, so nothing is filed.
   errorReporter: { harness: errorReporterHarness, cwd: CHECKOUT },
