@@ -1,0 +1,94 @@
+<svg viewBox="0 0 940 434" role="img" aria-label="D1, where the pull-request record lives. Chosen: core beside the plan record, GitHub as one replaceable rule, with the GitHub check in workspace on the host. Instead of: harness-manager or Workforce. Decides it: flows with no harness manager and no task must record too. The price: a coding record in core that only coding flows use. A tie: Shift Manager reads it either way. Locks in the collection key and its exports. Flips if every flow that opens pull requests runs under the harness manager."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; --gone-soft:#F4E2E0; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; --gone-soft:#3A2220; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .bad    { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.2; }
+    .good   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+  </style>
+
+  <rect class="bg" x="0" y="0" width="940" height="434"/>
+  <g id="call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Where do the pull-request record and its recorder live?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="340" height="46" rx="5"/>
+    <text class="t-tag c-code" x="226" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="226" y="112">core, GitHub as one rule</text>
+    <rect class="lost" x="568" y="76" width="340" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="582" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="582" y="112">harness-manager or Workforce</text>
+  </g>
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="t-lbl" x="32" y="154">WHO MUST WRITE IT</text>
+    <text class="mark plus" x="216" y="162">+</text>
+    <text class="t-b" x="234" y="161">Every harness and our generator</text>
+    <text class="t-s" x="234" y="179">Kitchen Sink modes run without the manager</text>
+    <text class="mark minus" x="572" y="162">−</text>
+    <text class="t-b" x="590" y="161">Only managed coding tasks</text>
+    <text class="t-s" x="590" y="179">Kitchen Sink and Flow State record nothing</text>
+    <line class="row" x1="16" y1="196" x2="924" y2="196"/>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="216">WHAT IT COSTS</text>
+    <text class="mark minus" x="216" y="224">−</text>
+    <text class="t-b" x="234" y="223">A coding record in core</text>
+    <text class="t-s" x="234" y="241">apps that never code carry the exports</text>
+    <text class="mark plus" x="572" y="224">+</text>
+    <text class="t-b" x="590" y="223">Core stays as it is</text>
+    <text class="t-s" x="590" y="241">the record sits with the task</text>
+    <line class="row" x1="16" y1="258" x2="924" y2="258"/>
+  </g>
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="278">SHIFT MANAGER</text>
+    <text class="mark c-mute" x="216" y="286">=</text>
+    <text class="t-b" x="234" y="285">Reads it by run link</text>
+    <text class="t-s" x="234" y="303">the task&#x27;s run.sessionId</text>
+    <text class="mark c-mute" x="572" y="286">=</text>
+    <text class="t-b" x="590" y="285">Reads it by run link</text>
+    <text class="t-s" x="590" y="303">the task&#x27;s run.sessionId</text>
+    <line class="row" x1="16" y1="320" x2="924" y2="320"/>
+  </g>
+  <g id="foot">
+    <rect class="foot" x="16" y="336" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="357">LOCKS IN</text>
+    <text class="t-b" x="32" y="377">observed-pull-requests and five exports</text>
+    <text class="t-s" x="32" y="395">core: rules, recorder, writer · workspace: branch check</text>
+    <rect class="foot" x="478" y="336" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="357">FLIPS IF</text>
+    <text class="t-b" x="494" y="377">Every flow that opens pull requests runs managed</text>
+    <text class="t-s" x="494" y="395">then harness-manager could own it</text>
+  </g>
+</svg>
