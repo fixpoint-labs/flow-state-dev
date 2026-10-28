@@ -118,8 +118,9 @@ if (planted) {
     ["packages/core/src/__planted__.ts", "ask-symbol"],
     ["packages/workforce/src/__planted__.ts", "message-names"],
     ["packages/workforce/src/__planted__.ts", "message-reply-to"]
-  ];
-  const caught = want.every(([path, rule]) => open.some((h) => h.path === path && h.rule === rule));
+  ].filter(([, rule]) => inScope(rule));
+  // Under `--only`, only the selected families' plants are expected; none selected proves nothing.
+  const caught = want.length > 0 && want.every(([path, rule]) => open.some((h) => h.path === path && h.rule === rule));
   console.log(caught ? "CONTROL OK: every planted hit was caught" : "CONTROL BROKEN: a planted hit passed");
   process.exit(caught ? 0 : 1);
 }
