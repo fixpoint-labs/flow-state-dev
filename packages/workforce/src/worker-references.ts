@@ -176,7 +176,7 @@ export interface DeclaredWorkerId {
  * @returns The folders, or `undefined` for an id the loader cannot mint.
  *
  * @example
- * parseDeclaredWorkerId("chief-of-staff"); // { name: "chief-of-staff" }
+ * parseDeclaredWorkerId("shift-coordinator"); // { name: "shift-coordinator" }
  * parseDeclaredWorkerId("eng.lead");       // { team: "eng", name: "lead" }
  */
 export function parseDeclaredWorkerId(workerId: string): DeclaredWorkerId | undefined {

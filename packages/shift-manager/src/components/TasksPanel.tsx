@@ -90,28 +90,28 @@ export function TasksPanel({
 
   if (sessionId === null || worker.kind === null) {
     return (
-      <p className="px-1 text-xs text-muted-foreground" data-testid="cos-tasks-none">
+      <p className="px-1 text-xs text-muted-foreground" data-testid="shift-coordinator-tasks-none">
         Tasks belong to a conversation. Say something to start one.
       </p>
     );
   }
   if (read === undefined) {
     return (
-      <p className="px-1 text-xs text-muted-foreground" data-testid="cos-tasks-reading">
+      <p className="px-1 text-xs text-muted-foreground" data-testid="shift-coordinator-tasks-reading">
         Reading the tasks…
       </p>
     );
   }
   if ("failure" in read) {
     return (
-      <p className="px-1 text-xs text-destructive" data-testid="cos-tasks-failure">
+      <p className="px-1 text-xs text-destructive" data-testid="shift-coordinator-tasks-failure">
         The tasks didn't load: {read.failure}
       </p>
     );
   }
   if (read.tasks.length === 0) {
     return (
-      <p className="px-1 text-xs text-muted-foreground" data-testid="cos-tasks-empty">
+      <p className="px-1 text-xs text-muted-foreground" data-testid="shift-coordinator-tasks-empty">
         This conversation hasn't filed a task.
       </p>
     );
@@ -124,7 +124,7 @@ export function TasksPanel({
   return (
     <div className="space-y-1">
       {active.length === 0 ? (
-        <p className="px-1 text-xs text-muted-foreground" data-testid="cos-tasks-none-active">
+        <p className="px-1 text-xs text-muted-foreground" data-testid="shift-coordinator-tasks-none-active">
           No task is active.
         </p>
       ) : (
@@ -139,7 +139,7 @@ export function TasksPanel({
 function TaskGroup({ tasks, name, boardRef }: { tasks: readonly ConversationTask[]; name: string; boardRef: string }) {
   if (tasks.length === 0) return null;
   return (
-    <Collapsible className="group/tasks px-1" data-testid="cos-task-group" data-group={name}>
+    <Collapsible className="group/tasks px-1" data-testid="shift-coordinator-task-group" data-group={name}>
       <CollapsibleTrigger className="inline-flex items-center gap-1 text-left text-xs text-muted-foreground hover:text-foreground">
         <span className={name === "errored" ? "text-destructive" : undefined}>
           {tasks.length} {name}
@@ -156,12 +156,12 @@ function TaskGroup({ tasks, name, boardRef }: { tasks: readonly ConversationTask
 /** Each task opens its session on the conversation's board. */
 function TaskList({ tasks, boardRef }: { tasks: readonly ConversationTask[]; boardRef: string }) {
   return (
-    <ul className="space-y-0.5" data-testid="cos-tasks">
+    <ul className="space-y-0.5" data-testid="shift-coordinator-tasks">
       {tasks.map((task) => (
         <li
           key={task.id}
           className="flex items-start gap-2 px-1 py-1 text-sm"
-          data-testid="cos-task"
+          data-testid="shift-coordinator-task"
           data-task-id={task.id}
           data-status={task.status}
         >
@@ -169,7 +169,7 @@ function TaskList({ tasks, boardRef }: { tasks: readonly ConversationTask[]; boa
           <button
             type="button"
             className="min-w-0 text-left hover:underline"
-            data-testid="cos-task-open"
+            data-testid="shift-coordinator-task-open"
             onClick={() => navigate({ level: "task", boardRef, taskId: task.id, tab: "session" })}
           >
             <span className="line-clamp-2">{task.title || task.goal}</span>

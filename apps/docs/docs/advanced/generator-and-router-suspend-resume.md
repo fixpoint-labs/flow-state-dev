@@ -28,7 +28,7 @@ const publishPost = handler({
     // Suspend BEFORE the side effect. On resume this call returns the
     // human's typed payload; on rejection it throws instead of returning.
     const decision = await ctx.suspend!({
-      reason: "human_approval",
+      reason: "user_approval",
       message: `Publish "${input.title}"?`,
       resumeSchema: z.object({ note: z.string().nullable() }),
     });

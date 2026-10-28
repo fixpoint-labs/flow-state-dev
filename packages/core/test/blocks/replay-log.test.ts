@@ -73,7 +73,7 @@ function suspensionItem(
     status: "completed",
     suspensionId,
     suspensionStatus: "pending",
-    reason: "human_approval",
+    reason: "user_approval",
     message: "approve?",
     blockInstanceId: `${REQ}:${path}:0`,
     requestId: REQ,
@@ -240,7 +240,7 @@ describe("buildReplayLog", () => {
         suspensionItem("root/step[3]", "susp_b", 2),
       ]);
       expect(log.resolvedResumes(`${REQ}:root/step[2]`)).toEqual([
-        { data: { observed: "In Spec Review" }, rejected: false, expired: false, cancelled: false, stopped: false, skipped: false, resolution: "approved", reason: "human_approval", suspensionId: "susp_a", resolvedBy: undefined },
+        { data: { observed: "In Spec Review" }, rejected: false, expired: false, cancelled: false, stopped: false, skipped: false, resolution: "approved", reason: "user_approval", suspensionId: "susp_a", resolvedBy: undefined },
       ]);
       expect(log.resolvedResumes(`${REQ}:root/step[3]`)).toEqual([]);
     });
@@ -265,7 +265,7 @@ describe("buildReplayLog", () => {
         }),
       ]);
       expect(log.resolvedResumes(`${REQ}:root/step[2]`)).toEqual([
-        { data: { note: "no" }, rejected: true, expired: false, cancelled: false, stopped: false, skipped: false, resolution: "rejected", reason: "human_approval", suspensionId: "susp_a", resolvedBy: "reviewer" },
+        { data: { note: "no" }, rejected: true, expired: false, cancelled: false, stopped: false, skipped: false, resolution: "rejected", reason: "user_approval", suspensionId: "susp_a", resolvedBy: "reviewer" },
       ]);
     });
 
@@ -280,7 +280,7 @@ describe("buildReplayLog", () => {
         }),
       ]);
       expect(log.resolvedResumes(`${REQ}:root/step[2]`)).toEqual([
-        { data: undefined, rejected: true, expired: true, cancelled: false, stopped: false, skipped: false, resolution: "expired", reason: "human_approval", suspensionId: "susp_a", resolvedBy: "durability-sweeper" },
+        { data: undefined, rejected: true, expired: true, cancelled: false, stopped: false, skipped: false, resolution: "expired", reason: "user_approval", suspensionId: "susp_a", resolvedBy: "durability-sweeper" },
       ]);
     });
 
@@ -292,7 +292,7 @@ describe("buildReplayLog", () => {
         suspensionResumeItem("root/step[2]", "susp_a", 1, { resolution: "cancelled", resolvedBy: "cancel" }),
       ]);
       expect(log.resolvedResumes(`${REQ}:root/step[2]`)).toEqual([
-        { data: undefined, rejected: true, expired: false, cancelled: true, stopped: false, skipped: false, resolution: "cancelled", reason: "human_approval", suspensionId: "susp_a", resolvedBy: "cancel" },
+        { data: undefined, rejected: true, expired: false, cancelled: true, stopped: false, skipped: false, resolution: "cancelled", reason: "user_approval", suspensionId: "susp_a", resolvedBy: "cancel" },
       ]);
     });
 
@@ -306,7 +306,7 @@ describe("buildReplayLog", () => {
         suspensionResumeItem("root/step[2]", "susp_b", 3, { resolution: "stopped", resolvedBy: "stop" }),
       ]);
       expect(log.resolvedResumes(`${REQ}:root/step[2]`)).toMatchObject([
-        { rejected: false, stopped: true, resolution: "stopped", reason: "human_approval", suspensionId: "susp_b" },
+        { rejected: false, stopped: true, resolution: "stopped", reason: "user_approval", suspensionId: "susp_b" },
       ]);
       expect(log.resolvedInOrder().map((r) => [r.suspensionId, r.resolution])).toEqual([
         ["susp_a", "approved"],

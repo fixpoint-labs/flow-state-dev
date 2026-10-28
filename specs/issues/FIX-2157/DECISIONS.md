@@ -179,6 +179,14 @@ size on this PR's successor, not worked around by skipping review.
   works in a worktree of the mapped repository, so the check is the worktree's repository), and the
   `no-project` control is a session opened on no project.
 
+- <a name="worktrees"></a>**Amendment at build (Jake, 2026-10-28):** the first build ran step 6
+  in a clone and with no judge, and fsd-architect held the PR on both. Jake chose worktrees by
+  default and the judge. The lab lists the repositories it cuts worktrees from (the `checkouts`
+  mapping needs a shared project in an organization, which the lab doesn't have), the judge is
+  harness-manager's new `goalJudge` (DevTeam's judge, moved so both use it), and the checkout
+  control is `GOAL_CONTROL=no-mapping`. Working directly in the checked-out branch, with no
+  worktree, is filed as FIX-2297.
+
 ## Notes from review
 
 For the implementer, recorded and not folded:

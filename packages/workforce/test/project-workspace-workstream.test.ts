@@ -28,6 +28,7 @@ import {
 } from "../src/index";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import type { WorkerInstallation } from "../src/workers/installation";
+import { PROJECT_ROW_RESOURCES, projectRowsAt } from "../src/projects/project-address";
 import { bootProjectsHost } from "./projects-harness";
 
 const root = mkdtempSync(join(tmpdir(), "project-workspace-workstream-"));
@@ -81,6 +82,22 @@ const seedFile = handler({
   }
 });
 
+/**
+ * Takes `user` off a shared project's members, by editing the stored row: the
+ * package has no write that removes a member, and this is what one would do.
+ */
+const takeOffProject = handler({
+  name: "take-off-project",
+  inputSchema: z.object({ id: z.string(), user: z.string() }),
+  outputSchema: z.object({}),
+  resources: { ...PROJECT_ROW_RESOURCES },
+  execute: async (input, ctx) => {
+    const row = await projectRowsAt(ctx, "shared").get(input.id);
+    await row.updateState((state) => ({ ...state, members: state.members.filter((member) => member !== input.user) }));
+    return {};
+  }
+});
+
 async function boot() {
   const projects = defineProjectBlocks();
   const leadFlow = { kind: "lead", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
@@ -89,6 +106,7 @@ async function boot() {
       ...projects.actions,
       ...defineWorkstreamBlocks({ installation, leadFlows: [leadFlow] }).actions,
       seedFile: { block: seedFile },
+      takeOffProject: { block: takeOffProject },
       askSource: { block: askSource }
     }),
     lead: () => ({ askSource: { block: askSource } }),
@@ -138,6 +156,22 @@ describe("projectWorkspace for a workstream", () => {
     const asked = (await h.ok("alice", "lead", session, "askSource", { runAs: "bob" })) as any;
     expect(asked.answer).toMatchObject({ kind: "refused", reason: "not-the-owner" });
     expect(asked.answer.message).toContain('"bob"');
+    expect(asked.answer.message).toContain('"alice"');
+  });
+
+  it("refuses a run for a workstream whose owner was taken off the project's members, as the project path does", async () => {
+    const h = await boot();
+    await h.ok("alice", "lab", await h.lab("alice"), "createProject", {
+      id: "storefront",
+      title: "Storefront",
+      repository: "https://github.com/acme/storefront.git"
+    });
+    const session = await h.openWorkstream("alice", { visibility: "shared", id: "storefront" }, "checkout");
+    expect(((await h.ok("alice", "lead", session, "askSource", {})) as any).answer).toMatchObject({ kind: "repo" });
+
+    await h.ok("alice", "lab", await h.lab("alice"), "takeOffProject", { id: "storefront", user: "alice" });
+    const asked = (await h.ok("alice", "lead", session, "askSource", {})) as any;
+    expect(asked.answer).toMatchObject({ kind: "refused", reason: "not-a-member" });
     expect(asked.answer.message).toContain('"alice"');
   });
 

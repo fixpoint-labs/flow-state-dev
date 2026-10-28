@@ -31,7 +31,7 @@ const notifyAndWait = handler({
   execute: async (input, ctx) => {
     await sendEmail(input.email, `Please review: ${input.draft}`);
     const decision = await ctx.suspend!({
-      reason: "human_approval",
+      reason: "user_approval",
       message: "Awaiting review",
     });
     return decision as { approved: boolean };
@@ -57,7 +57,7 @@ const notifyAndWait = handler({
       await sendEmail(input.email, `Please review: ${input.draft}`);
     });
     const decision = await ctx.suspend!({
-      reason: "human_approval",
+      reason: "user_approval",
       message: "Awaiting review",
     });
     return decision as { approved: boolean };

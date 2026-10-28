@@ -58,11 +58,11 @@ const gate = handler({
   outputSchema: z.object({ answer: z.string() }),
   execute: async (input, ctx) => {
     if (input.kind === "approval") {
-      await ctx.suspend!({ reason: "human_approval", message: `Approve "${input.subject}"?` });
+      await ctx.suspend!({ reason: "user_approval", message: `Approve "${input.subject}"?` });
       return { answer: "approved" };
     }
     const answer = (await ctx.suspend!({
-      reason: "human_input",
+      reason: "user_input",
       message: `What should "${input.subject}" say?`,
       resumeSchema: z.string().min(1),
     })) as string;

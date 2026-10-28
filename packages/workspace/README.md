@@ -225,6 +225,27 @@ const report = await host.save(place);   // a FlushReport, as above
 await host.release(place);
 ```
 
+### Reading without a run
+
+A host can also read the files a source answers with, without making a place. `readSource` takes the answer and one of three requests:
+
+```ts
+const answer = await host.source(ctx);
+await host.readSource!(answer, { kind: "glob", pattern: "src/**" });                       // paths
+await host.readSource!(answer, { kind: "read", path: "src/index.ts", startLine: 1, endLine: 80 }); // one file's lines
+await host.readSource!(answer, { kind: "grep", pattern: "LEDGER_[A-Z]+", prefix: "src" }); // matching lines
+```
+
+`localWorkspaceHost` reads:
+
+- **a repository** from its shared clone, at the remote's default branch, never a run's own branch. The clone is fetched when the last fetch is more than a minute old, and the time of that fetch is kept beside the clone, so every host on the root sees it. A read never waits for the clone's lock: if a provision holds it, the read serves the last fetched commit. The first read of a remote makes the clone.
+- **a repository in `localRepositories`** at the commit a new run there would be cut from. The working tree isn't read.
+- **kept files** from their collection, asking it for the answer's `projectId` prefix only.
+
+Each result carries `at`: `{ kind: "repo", commit, branch, fetchedAt, ageMs }` or `{ kind: "files" }`. One request reads one commit. The caps are `SOURCE_READ_LIMITS`: 500 paths, 2,000 lines or 256 KB per read, 200 matches with 200-character snippets. A result that hit one has `cut: { left, by }`. A read of a binary file answers `status: "binary"`, and a grep skips binary files. A grep on a repository uses git's extended regular expressions, and the result says so in `dialect` (`"extended-regex"`); a pattern git can't compile is searched for as plain text (`"literal"`). On kept files it is JavaScript's (`"javascript-regex"`). Paths are repository paths: `/`-separated, no leading `/`, no `.` or `..` part, matched literally. Anything else is refused as `invalid-path`, before any git process runs. A refused answer is refused with its own reason, as `provision` does.
+
+`readSource` is optional on the `WorkspaceHost` type, so a host of your own may leave it out.
+
 ### What a place looks like
 
 ```
@@ -485,7 +506,7 @@ Git itself runs with `GIT_ALLOW_PROTOCOL` set to the listed schemes, with `--` b
 | `principalFromContext(ctx)` | The scoping identity, read off a block's execution context. |
 | `collectionIdFor(collection, principal)` | A `Mount.collectionId` for a scoped door. |
 | `unscopedCollectionId(collection)` | A `Mount.collectionId` for a door with no principal. |
-| `localWorkspaceHost({ root, remotes, source, localRepositories?, provisionTimeoutMs?, heldWork? })` | A workspace host on this machine. Returns `{ root, source, provisionTimeoutMs, locate, provision, save, hostId, holds, checkpoint, dropHeld, restore, release }`. With a `heldWork` store, `checkpoint(place, previous?)` saves a repository run's work to it and returns a `HeldWork` (or `null` when holding doesn't apply), `dropHeld(place, key)` deletes one of the place's earlier keys, and `provision` takes `recorded` and rebuilds a lost checkout from it, reporting `origin`. |
+| `localWorkspaceHost({ root, remotes, source, localRepositories?, provisionTimeoutMs?, heldWork? })` | A workspace host on this machine. Returns `{ root, source, provisionTimeoutMs, locate, provision, save, hostId, holds, checkpoint, dropHeld, readSource, restore, release }`. `readSource(answer, request)` reads without a run; see [Reading without a run](#reading-without-a-run). With a `heldWork` store, `checkpoint(place, previous?)` saves a repository run's work to it and returns a `HeldWork` (or `null` when holding doesn't apply), `dropHeld(place, key)` deletes one of the place's earlier keys, and `provision` takes `recorded` and rebuilds a lost checkout from it, reporting `origin`. |
 | `HeldWorkStore` | Where held work goes: `put(key, bytes)`, `get(key)`, `delete(key)`, `list(prefix)`. `put` must be atomic. |
 | `fileHeldWorkStore({ dir })` | A `HeldWorkStore` that keeps each key as a file under `dir`, written atomically. |
 | `HeldWorkMismatchError` | What `provision` rejects with when held work disagrees with the run's record, or this host has no store to rebuild from. `field` is one of `remote`, `branch`, `scope`, `base`, `pack`, `head`, `snapshot`, `tree`, `disabled`. |
@@ -501,8 +522,11 @@ Git itself runs with `GIT_ALLOW_PROTOCOL` set to the listed schemes, with `--` b
 | `isStrictlyInside(candidate, root)` | Whether `candidate` is a path below `root`, never `root` itself. |
 | `run(cmd, args, options)`, `GIT_TIMEOUT_MS`, `CHECKOUT_CLEANUP_TIMEOUT_MS` | The bounded child-process runner the host runs git with, and its timeouts. |
 | `acquireLock`, `releaseLock`, `sleep` | The lock file the host takes on a place or a clone, for a caller that holds one of its own. |
+| `tryAcquireLock(path, bounds?)` | One try at the same lock: a lease, or `undefined` while a live holder has it. Never waits. A lock left by a holder that died counts as free. |
+| `SourceReadRequest`, `SourceReadResult`, `SourceReadAt`, `SourceReadCut`, `GrepDialect`, `SOURCE_READ_LIMITS`, `SOURCE_READ_FRESH_MS` | What `readSource` takes and answers, its caps, and how long a fetch serves reads. |
 | `WorkspaceRefusedError` | What `provision` rejects with when it won't make a place. Carries `reason`. |
 | `RunSource`, `RunSourceAnswer` | The run-source function type and its three answers. |
+| `recordBranchPullRequests(ctx, { cwd, branches?, openedSince?, requestId?, timeoutMs?, gh? })`, `BRANCH_PULL_REQUESTS_TIMEOUT_MS` | The branch check: asks GitHub, through the host's signed-in `gh`, which pull requests the checkout's branch (and any `branches`) has, and writes the ones created since `openedSince` into the session's pull-request record as `source: "branch"`. `timeoutMs` bounds the whole check. Returns `{ status: "recorded", branches, pullRequests }`, or `{ status: "unavailable", reason }` when `gh`, the remote or the store can't answer. It never throws. See [pull requests on a branch](https://flow-state.dev/docs/tools/workspace#pull-requests-on-a-branch). |
 
 `ownedPaths()` returns the paths the projection currently holds a baseline for — what it would write to, and what it would delete.
 

@@ -2,7 +2,7 @@
 
 **Issue:** FIX-1972
 
-**Outcome:** In the DevTeam lab, a person asks the Shift Coordinator (chief of staff) "what did we
+**Outcome:** In the DevTeam lab, a person asks the Shift Coordinator (Shift Coordinator) "what did we
 decide about the tech debt?" after the coder's scan has finished. The coordinator reads the task
 off its own board and answers with the item the scan picked, the plan it proposed, and that the
 plan still waits on their approval, naming the task. It never asks the person to tell it what its
@@ -17,7 +17,7 @@ read from the fixture, and they sit past the start of the result a task's line c
 correct implementation passes another report whose pick comes late.
 
 **Signal:** one leg on the DevTeam lab opened as its profile opens it, driven over its HTTP door as
-the lab's owner. A conversation with the chief of staff is opened; the scan is dispatched to
+the lab's owner. A conversation with the Shift Coordinator is opened; the scan is dispatched to
 `eng.coder` on its board through the `createTask_tasks` action, as an app's screen would; the
 coder's run (the lab's stub) answers with the report, and the task completes. Once the lab is
 quiet, the ask is sent as one turn.
@@ -47,10 +47,10 @@ writable temp directory and `AI_GATEWAY_API_KEY`.
 
 ## What this establishes, and what it does not
 
-It establishes that the chief of staff answers "what did we decide" from a finished task's whole
+It establishes that the Shift Coordinator answers "what did we decide" from a finished task's whole
 result, says whether the proposal was approved, and doesn't push the question back. It does not
 grade a proposal parked on a question showing under "Needs you"; that is a unit test of the shift
-summary (`packages/shift-manager/test/chief-of-staff.test.ts`).
+summary (`packages/shift-manager/test/shift-coordinator.test.ts`).
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

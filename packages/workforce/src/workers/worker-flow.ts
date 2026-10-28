@@ -37,6 +37,8 @@ export interface WorkerFlowBuilder {
    * the builder names none, so a built-in flow it builds keeps its own.
    */
   readonly roles: readonly WorkerRole[] | undefined;
+  /** The flow's settings a user may see on the roster; empty when it names none. */
+  readonly showSettings: readonly string[];
 }
 
 /**
@@ -48,19 +50,21 @@ export interface WorkerFlowBuilder {
  *   `contributor` (takes tasks on `work`, from `workerTaskEntry`) and
  *   `manager` (runs its delegation board on `dispatch`, from
  *   `defineSessionBoard`). The hire checks each role's entries, and refuses a
- *   role's piece on a flow that doesn't declare it.
+ *   role's piece on a flow that doesn't declare it. `showSettings` names the
+ *   flow's settings a user may see on the roster.
  * @returns An entry for `createWorkerInstallation({ workerFlows })`, and for
  *   the `workerFlows` map `fsdev gen` writes.
  */
 export function workerFlow(
   build: (installation: WorkerInstallation) => unknown,
-  options: { standardOnly?: boolean; roles?: readonly WorkerRole[] } = {}
+  options: { standardOnly?: boolean; roles?: readonly WorkerRole[]; showSettings?: readonly string[] } = {}
 ): WorkerFlowBuilder {
   return {
     [BUILDER]: true,
     build,
     standardOnly: options.standardOnly === true,
-    roles: options.roles === undefined ? undefined : [...options.roles]
+    roles: options.roles === undefined ? undefined : [...options.roles],
+    showSettings: [...(options.showSettings ?? [])]
   };
 }
 

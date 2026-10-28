@@ -273,11 +273,11 @@ await runGoal(async (failures) => {
   return { failures, evidence: `parts ${ONLY.join(", ")}; report at ${report}` };
 });
 
-/** The model the forked standard worker's file names, or the DevTeam's chief of staff's when none was forked. */
+/** The model the forked standard worker's file names, or the DevTeam's Shift Coordinator's when none was forked. */
 function modelOf(root: string, worker: string | undefined): string {
   const tree = join(profileOf(root), "workforce");
   const found = execFileSync("find", [tree, "-name", "WORKER.md"], { encoding: "utf8" }).split("\n").filter(Boolean);
-  const file = found.find((f) => f.endsWith(`/${worker ?? "chief-of-staff"}/WORKER.md`)) ?? found.find((f) => f.endsWith("/chief-of-staff/WORKER.md"));
+  const file = found.find((f) => f.endsWith(`/${worker ?? "shift-coordinator"}/WORKER.md`)) ?? found.find((f) => f.endsWith("/shift-coordinator/WORKER.md"));
   const model = file === undefined ? undefined : /^model:\s*(\S+)/m.exec(readFileSync(file, "utf8"))?.[1];
   return model ?? "the install's default";
 }

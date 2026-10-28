@@ -8,7 +8,7 @@
  * Shift Manager is built with Vite (or `GOAL_PAGES=<dir>` serves pages built
  * elsewhere) and served by its own command over two Labs: DevTeam, with
  * its one ask pending and a filed row running, and this check's own desk Lab
- * (`lab/`), whose chief of staff answers one line from a scripted mock model.
+ * (`lab/`), whose Shift Coordinator answers one line from a scripted mock model.
  * Chromium walks every screen by clicking, picks the day and night themes with
  * the sidebar's theme mark and toggles the window width in place, and reads
  * the computed style of every visible element in one `page.evaluate` per
@@ -34,7 +34,7 @@
  *            as an extra one
  *
  * Which regions are graded whole grows with the screens' slices: the sidebar,
- * the shared parts, Chief of Staff's centre, the workstream, Board, task and
+ * the shared parts, Shift Coordinator's centre, the workstream, Board, task and
  * team strip, and the parts of Inbox, Tasks and Roster drawn to v2. Each
  * slice's rows, exceptions and regions live in a file of their own (slice B's
  * under `rows/`, slice C's in `look-c.mts`, slice D's, with its content grade,
@@ -71,12 +71,12 @@ import { buildShiftManagerCopy, labApi, pendingSeatAsks, pickShift, startShiftMa
 import * as inboxTasksRoster from "./screens-inbox-tasks-roster.mts";
 // ---- end slice D ----
 import {
-  SIDEBAR_AND_COS_EXCEPTIONS,
-  SIDEBAR_AND_COS_ROWS,
-  SIDEBAR_AND_COS_WHOLE,
-  sidebarAndCosContent,
-  type SidebarAndCosRead,
-} from "./rows/sidebar-and-cos.mts";
+  SIDEBAR_AND_SHIFT_COORDINATOR_EXCEPTIONS,
+  SIDEBAR_AND_SHIFT_COORDINATOR_ROWS,
+  SIDEBAR_AND_SHIFT_COORDINATOR_WHOLE,
+  sidebarAndShiftCoordinatorContent,
+  type SidebarAndShiftCoordinatorRead,
+} from "./rows/sidebar-and-shift-coordinator.mts";
 import { SLICE_C_EXCEPTIONS, SLICE_C_ROWS, SLICE_C_WHOLE } from "./look-c.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -113,7 +113,7 @@ const LABS = {
 } as const;
 type LabName = keyof typeof LABS;
 
-const SCREENS = ["workstream", "board", "task", "tasks", "cos", "inbox", "roster", "project"] as const;
+const SCREENS = ["workstream", "board", "task", "tasks", "shift-coordinator", "inbox", "roster", "project"] as const;
 export type Screen = (typeof SCREENS)[number];
 const SHIFTS = ["day", "night"] as const;
 type Shift = (typeof SHIFTS)[number];
@@ -132,8 +132,8 @@ export type Store = {
   seats: number;
   /** Rows per board status, across every board. */
   running: number;
-  /** Whether the Lab has a chief-of-staff seat. */
-  chiefOfStaff: boolean;
+  /** Whether the Lab has a shift-coordinator seat. */
+  shiftCoordinator: boolean;
   /** Whether the person's conversation with it holds a reply: only the desk Lab's sweep sends a line. */
   replied: boolean;
   /** The person's pending asks, across the seats' sessions. */
@@ -149,7 +149,7 @@ export type Store = {
   screens: inboxTasksRoster.StoreScreens;
   // ---- end slice D ----
 };
-export type Where = { screen: Screen; width: Width; store: Store; /** A line to the chief of staff is held in flight. */ working?: boolean };
+export type Where = { screen: Screen; width: Width; store: Store; /** A line to the Shift Coordinator is held in flight. */ working?: boolean };
 
 /** The computed values a row's elements must have. Each is graded in its own leg. */
 export type Want = {
@@ -223,8 +223,8 @@ const SHIPPED = "36bed1297 / #2825";
 const SIDEBAR_SRC = "packages/shift-manager/src/surfaces/Sidebar.tsx";
 const MARK_SRC = "packages/shift-manager/src/components/ShiftManagerMark.tsx";
 
-const OFF_COS: readonly Screen[] = SCREENS.filter((s) => s !== "cos");
-const WITH_RAIL: readonly Screen[] = ["cos", "workstream", "board", "task"];
+const OFF_SHIFT_COORDINATOR: readonly Screen[] = SCREENS.filter((s) => s !== "shift-coordinator");
+const WITH_RAIL: readonly Screen[] = ["shift-coordinator", "workstream", "board", "task"];
 const WITH_TABS: readonly Screen[] = ["workstream", "board", "task", "project"];
 const COMPOSERS = "[data-testid=composer], [data-testid=task-composer], [data-testid=inbox-reply]";
 // ---- slice D ----
@@ -256,8 +256,8 @@ const LOOK: Row[] = [
   { id: "status square", audit: "F4", v2: { line: 99, has: "width:7px;height:7px" }, select: "[data-testid=sidebar] [data-mark]", min: ({ store }) => store.seats, want: {} },
   { id: "team on-shift count", audit: "F2", v2: { line: 99, has: "font:500 10.5px 'IBM Plex Mono'" }, select: "[data-testid=team-on-shift]", min: ({ store }) => store.teams, want: { family: "mono", size: 10.5 } },
   { id: "footer", audit: "F2", v2: { line: 107, has: "font:500 11px 'IBM Plex Mono'" }, select: "[data-testid=sidebar-footer], [data-testid=sidebar-footer] > p, [data-testid=sidebar-footer] span:not([data-mark]):not([data-look=avatar])", min: 1, want: { family: "mono", size: 11 } },
-  // The sidebar's entries and Chief of Staff: slice B's rows.
-  ...SIDEBAR_AND_COS_ROWS,
+  // The sidebar's entries and Shift Coordinator: slice B's rows.
+  ...SIDEBAR_AND_SHIFT_COORDINATOR_ROWS,
   // The sidebar's header, as shipped: the theme mark in place of v2's shift switch, the app's name, and the theme it's in.
   { id: "sidebar header", audit: "F10", shipped: { file: SIDEBAR_SRC, has: 'border-b px-3.5 pt-3.5 pb-3" data-testid="sidebar-header"' }, select: "[data-testid=sidebar-header]", min: 1, want: { surface: "none", padding: [14, 14, 12, 14], width: 247 } },
   { id: "theme mark", audit: "F10", shipped: { file: MARK_SRC, has: 'className="block h-auto w-[42px] overflow-visible"' }, select: "[data-testid=theme-mark], [data-testid=theme-mark] > svg", min: 2, want: { surface: "none", width: 42 } },
@@ -267,8 +267,8 @@ const LOOK: Row[] = [
   { id: "theme name", audit: "F10", shipped: { file: SIDEBAR_SRC, has: '<Meta role="label" className="block truncate text-muted-foreground" testId="sidebar-theme-name">' }, select: "[data-testid=sidebar-theme-name]", min: 1, want: { family: "mono", size: 10, weight: 500, tracking: 0.14, lineHeight: 1.5 } },
 
   // A screen's title.
-  { id: "screen title", audit: "F5", v2: { line: 215, has: "font-size:18px;font-weight:700;letter-spacing:-.02em" }, select: "[data-look=screen-title]", on: OFF_COS, min: 1, want: { family: "sans", size: 18, weight: 700, tracking: -0.02 } },
-  { id: "Chief of Staff title", audit: "F5", v2: { line: 127, has: "font-size:22px;font-weight:700;letter-spacing:-.03em" }, select: "[data-look=screen-title]", on: ["cos"], min: 1, want: { family: "sans", size: 22, weight: 700, tracking: -0.03 } },
+  { id: "screen title", audit: "F5", v2: { line: 215, has: "font-size:18px;font-weight:700;letter-spacing:-.02em" }, select: "[data-look=screen-title]", on: OFF_SHIFT_COORDINATOR, min: 1, want: { family: "sans", size: 18, weight: 700, tracking: -0.02 } },
+  { id: "Shift Coordinator title", audit: "F5", v2: { line: 127, has: "font-size:22px;font-weight:700;letter-spacing:-.03em" }, select: "[data-look=screen-title]", on: ["shift-coordinator"], min: 1, want: { family: "sans", size: 22, weight: 700, tracking: -0.03 } },
 
   // Tabs.
   { id: "tab strip", audit: "W4", v2: { line: 220, has: "display:flex;gap:22px" }, select: "[role=tablist]", on: WITH_TABS, min: 1, want: {} },
@@ -279,10 +279,10 @@ const LOOK: Row[] = [
   // The composers.
   { id: "composer box", audit: "W12", v2: { line: 306, has: "border:1px solid var(--ink);background:var(--card)" }, select: `:is(${COMPOSERS}) [data-look=composer]`, on: ["workstream", "task", "inbox"], min: replyBox, want: { border: { width: 1, colour: "foreground" } } },
   { id: "composer input", audit: "W12", v2: { line: 307, has: "padding:11px 12px;font-size:14px" }, select: `:is(${COMPOSERS}) [data-look=composer-input]`, on: ["workstream", "task", "inbox"], min: replyBox, want: { family: "sans", size: 14 } },
-  { id: "composer footer", audit: "W12", v2: { line: 308, has: "font:500 11px 'IBM Plex Mono'" }, select: `:is(${COMPOSERS}, [data-testid=cos-composer]) [data-look=composer-footer], :is(${COMPOSERS}, [data-testid=cos-composer]) [data-look=composer-footer] :is(p, span, label, button)`, on: ["workstream", "task", "inbox", "cos"], min: (where) => (where.screen === "cos" ? 0 : replyBox(where)), want: { family: "mono", size: 11 } },
-  { id: "Chief of Staff composer box", audit: "C9", v2: { line: 175, has: "border:1.5px solid var(--ink);background:var(--card)" }, select: "[data-testid=cos-composer] [data-look=composer]", on: ["cos"], min: ({ store }) => (store.chiefOfStaff ? 1 : 0), want: { border: { width: 1.5, colour: "foreground" } } },
-  { id: "Chief of Staff composer input", audit: "C9", v2: { line: 176, has: "padding:16px;font-size:16px" }, select: "[data-testid=cos-composer] [data-look=composer-input]", on: ["cos"], min: ({ store }) => (store.chiefOfStaff ? 1 : 0), want: { family: "sans", size: 16 } },
-  { id: "Chief of Staff send", audit: "C9", v2: { line: 177, has: "font:500 12px 'IBM Plex Mono'" }, select: "[data-testid=cos-composer] [data-look=composer] > [data-look=composer-send]", on: ["cos"], min: ({ store }) => (store.chiefOfStaff ? 1 : 0), want: { family: "mono", size: 12 } },
+  { id: "composer footer", audit: "W12", v2: { line: 308, has: "font:500 11px 'IBM Plex Mono'" }, select: `:is(${COMPOSERS}, [data-testid=shift-coordinator-composer]) [data-look=composer-footer], :is(${COMPOSERS}, [data-testid=shift-coordinator-composer]) [data-look=composer-footer] :is(p, span, label, button)`, on: ["workstream", "task", "inbox", "shift-coordinator"], min: (where) => (where.screen === "shift-coordinator" ? 0 : replyBox(where)), want: { family: "mono", size: 11 } },
+  { id: "Shift Coordinator composer box", audit: "C9", v2: { line: 175, has: "border:1.5px solid var(--ink);background:var(--card)" }, select: "[data-testid=shift-coordinator-composer] [data-look=composer]", on: ["shift-coordinator"], min: ({ store }) => (store.shiftCoordinator ? 1 : 0), want: { border: { width: 1.5, colour: "foreground" } } },
+  { id: "Shift Coordinator composer input", audit: "C9", v2: { line: 176, has: "padding:16px;font-size:16px" }, select: "[data-testid=shift-coordinator-composer] [data-look=composer-input]", on: ["shift-coordinator"], min: ({ store }) => (store.shiftCoordinator ? 1 : 0), want: { family: "sans", size: 16 } },
+  { id: "Shift Coordinator send", audit: "C9", v2: { line: 177, has: "font:500 12px 'IBM Plex Mono'" }, select: "[data-testid=shift-coordinator-composer] [data-look=composer] > [data-look=composer-send]", on: ["shift-coordinator"], min: ({ store }) => (store.shiftCoordinator ? 1 : 0), want: { family: "mono", size: 12 } },
 
   // A task's state, as v2's square.
   { id: "state square, needs you", audit: "F7", v2: { line: 894, has: "needs: { nb: Y, nbd: INK, nbs: 'solid' }" }, select: "[data-state-square=needs]", min: 0, want: { square: "needs" } },
@@ -313,7 +313,7 @@ const EXCEPTIONS: Exception[] = [
   { id: "section failure", select: "[data-testid$=-failure], [data-testid$=-failure] *", why: "a section's Retry; v2 draws no failed state" },
   { id: "also post to the workstream", select: "[data-testid=task-also-post]", why: "the task composer's also-post box waits on FIX-1474" },
   { id: "registry pill", select: "[data-slot=badge]", why: "a registry part whose `rounded-full` is a literal the theme's radius can't reach", radius: "skip" },
-  ...SIDEBAR_AND_COS_EXCEPTIONS,
+  ...SIDEBAR_AND_SHIFT_COORDINATOR_EXCEPTIONS,
   // ---- slice C ----
   ...SLICE_C_EXCEPTIONS,
   // ---- end slice C ----
@@ -329,7 +329,7 @@ const WHOLE = [
   "[data-look=composer]",
   "[data-look=composer-footer]",
   "[data-look=screen-title]",
-  ...SIDEBAR_AND_COS_WHOLE,
+  ...SIDEBAR_AND_SHIFT_COORDINATOR_WHOLE,
   // ---- slice C ----
   ...SLICE_C_WHOLE,
   // ---- end slice C ----
@@ -368,7 +368,7 @@ type Sweep = {
   faces: Array<{ family: string; weight: string; status: string }>;
   mentions: string[] | null;
   boardCount: string | null;
-  sidebarAndCos: SidebarAndCosRead;
+  sidebarAndShiftCoordinator: SidebarAndShiftCoordinatorRead;
   // ---- slice D ----
   /** Per content key, what each match reads (see `inboxTasksRoster.TEXTS`), and the page's clock when it was read. */
   texts: Record<string, inboxTasksRoster.Read[]>;
@@ -459,14 +459,14 @@ function sweep(args: {
     faces: Array.from(document.fonts).map((f) => ({ family: f.family.replace(/^["']|["']$/g, ""), weight: f.weight, status: f.status })),
     mentions: document.querySelector("[data-testid=composer]") === null ? null : mentionEls.map((m) => m.getAttribute("data-name") ?? ""),
     boardCount: document.querySelector("[data-testid=tab-count-board]")?.textContent ?? null,
-    sidebarAndCos: {
+    sidebarAndShiftCoordinator: {
       inbox: ((el) => (el === null ? null : { text: el.textContent ?? "", waiting: el.getAttribute("data-waiting") }))(document.querySelector("[data-testid=nav-inbox-count]")),
       dots: Array.from(document.querySelectorAll("[data-testid^=nav-workstream-]:not([data-testid=nav-workstream-gone])")).map((el) => ({
         mailbox: el.getAttribute("data-testid")!.slice("nav-workstream-".length),
         dot: el.getAttribute("data-dot"),
       })),
-      sub: document.querySelector("[data-testid=cos-sub]")?.textContent ?? null,
-      watching: document.querySelector("[data-testid=cos-watching]")?.textContent ?? null,
+      sub: document.querySelector("[data-testid=shift-coordinator-sub]")?.textContent ?? null,
+      watching: document.querySelector("[data-testid=shift-coordinator-watching]")?.textContent ?? null,
     },
     texts,
     now: Date.now(),
@@ -626,8 +626,8 @@ function grade(read: Sweep, where: Where, tag: string, failures: Failures, lab: 
     }
   }
 
-  // content: what the sidebar and Chief of Staff draw from the store.
-  for (const failure of sidebarAndCosContent(read.sidebarAndCos, where.store, where.screen, where.working)) failures.add("content", failure, tag);
+  // content: what the sidebar and Shift Coordinator draw from the store.
+  for (const failure of sidebarAndShiftCoordinatorContent(read.sidebarAndShiftCoordinator, where.store, where.screen, where.working)) failures.add("content", failure, tag);
 
   // content: what the shared parts draw from the store.
   if (where.screen === "workstream" && lab === "devteam") {
@@ -647,7 +647,7 @@ function grade(read: Sweep, where: Where, tag: string, failures: Failures, lab: 
 // ---- the store, read by this check ----------------------------------------------
 
 /** Suspension reasons that are a person being asked something. */
-const PERSON_REASONS = new Set(["human_approval", "human_input"]);
+const PERSON_REASONS = new Set(["user_approval", "user_input"]);
 
 async function readStore(api: LabApi, userId: string, boards: readonly string[] = []): Promise<Store> {
   const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`);
@@ -690,7 +690,7 @@ async function readStore(api: LabApi, userId: string, boards: readonly string[] 
     teams: new Set(seats.map((s) => (s.id.includes(".") ? s.id.split(".")[0] : "_general"))).size,
     seats: seats.length,
     running,
-    chiefOfStaff: seats.some((s) => s.name === "chief-of-staff"),
+    shiftCoordinator: seats.some((s) => s.name === "shift-coordinator"),
     replied: false,
     asks: [...asks.values()].reduce((a, b) => a + b, 0),
     mailboxes,
@@ -795,11 +795,11 @@ async function open(page: Page, screen: Screen, ids: { mailbox: string; project:
       await page.getByTestId("nav-tasks").click();
       await ready("tasks");
       return;
-    case "cos":
-      await page.getByTestId("nav-cos").click();
-      await ready("cos");
+    case "shift-coordinator":
+      await page.getByTestId("nav-shift-coordinator").click();
+      await ready("shift-coordinator");
       // The conversation, once read, or the named state in its place.
-      await page.locator("[data-testid=cos-items], [data-testid=cos-conversation-empty], [data-testid=cos-none], [data-testid=cos-several]").first().waitFor({ timeout: 20_000 });
+      await page.locator("[data-testid=shift-coordinator-items], [data-testid=shift-coordinator-conversation-empty], [data-testid=shift-coordinator-none], [data-testid=shift-coordinator-several]").first().waitFor({ timeout: 20_000 });
       return;
     case "inbox":
       await page.getByTestId("nav-inbox").click();
@@ -830,7 +830,7 @@ async function open(page: Page, screen: Screen, ids: { mailbox: string; project:
       await ready("project-lane");
       // The lane reads its session's tasks before it draws them.
       await page
-        .locator("[data-testid=project-lane] :is([data-testid=cos-tasks-empty], [data-testid=cos-tasks], [data-testid=cos-tasks-failure])")
+        .locator("[data-testid=project-lane] :is([data-testid=shift-coordinator-tasks-empty], [data-testid=shift-coordinator-tasks], [data-testid=shift-coordinator-tasks-failure])")
         .first()
         .waitFor({ timeout: 20_000 })
         .catch(async () => {
@@ -910,14 +910,14 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
       if ((await pendingAsks(api, injected.userId)) === 0) throw new Error("devteam: no ask is pending, so Inbox has nothing to select");
       screens = SCREENS.filter((screen) => screen !== "workstream" && screen !== "board");
     } else {
-      // One exchange through the chief of staff's door, as a person sends it.
-      await page.getByTestId("cos").waitFor({ timeout: 20_000 });
-      await page.getByTestId("cos-composer-input").fill(fixture.desk.line);
-      await page.getByTestId("cos-composer-send").click();
-      await page.locator("[data-testid=cos-item]", { hasText: fixture.desk.reply }).first().waitFor({ timeout: 30_000 });
+      // One exchange through the Shift Coordinator's door, as a person sends it.
+      await page.getByTestId("shift-coordinator").waitFor({ timeout: 20_000 });
+      await page.getByTestId("shift-coordinator-composer-input").fill(fixture.desk.line);
+      await page.getByTestId("shift-coordinator-composer-send").click();
+      await page.locator("[data-testid=shift-coordinator-item]", { hasText: fixture.desk.reply }).first().waitFor({ timeout: 30_000 });
       // ---- slice D ----
       // The desk has no ask and no board: Inbox and Tasks with nothing in them, and a one-seat Roster.
-      screens = ["cos", "inbox", "tasks", "roster"];
+      screens = ["shift-coordinator", "inbox", "tasks", "roster"];
       // ---- end slice D ----
     }
     // The page read the Lab before the row was filed; read it again.
@@ -925,7 +925,7 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
     await page.getByTestId("shell").waitFor({ timeout: 20_000 });
     // The desk Lab's exchange above waited for the seat's reply to be drawn.
     const store = { ...(await readStore(api, injected.userId, boards)), replied: lab === "desk" };
-    evidence.push(`${lab}: ${store.teams} team(s), ${store.seats} seats, ${store.running} running, ${store.asks} ask(s) pending, chief of staff ${store.chiefOfStaff ? "yes" : "no"}`);
+    evidence.push(`${lab}: ${store.teams} team(s), ${store.seats} seats, ${store.running} running, ${store.asks} ask(s) pending, Shift Coordinator ${store.shiftCoordinator ? "yes" : "no"}`);
 
     const counts: string[] = [];
     for (const screen of screens) {
@@ -954,7 +954,7 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
       }
     }
     if (lab === "desk") {
-      // Chief of Staff while it works: a line held in flight (its delivery check waits), so the
+      // Shift Coordinator while it works: a line held in flight (its delivery check waits), so the
       // working dot, the sub line and the thinking line are graded drawn, not only absent.
       let release!: () => void;
       const held = new Promise<void>((resolve) => (release = resolve));
@@ -963,13 +963,13 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
         await route.continue();
       });
       // ---- slice D ----
-      // The desk's sweep ends on another screen; go back to Chief of Staff.
-      await open(page, "cos", { mailbox, project, taskId });
+      // The desk's sweep ends on another screen; go back to Shift Coordinator.
+      await open(page, "shift-coordinator", { mailbox, project, taskId });
       // ---- end slice D ----
       await page.setViewportSize({ width: WIDTHS[0], height: 1000 });
-      await page.getByTestId("cos-composer-input").fill(fixture.desk.line);
-      await page.getByTestId("cos-composer-send").click();
-      await page.getByTestId("cos-working").waitFor({ timeout: 20_000 });
+      await page.getByTestId("shift-coordinator-composer-input").fill(fixture.desk.line);
+      await page.getByTestId("shift-coordinator-composer-send").click();
+      await page.getByTestId("shift-coordinator-working").waitFor({ timeout: 20_000 });
       for (const shift of SHIFTS) {
         await pickShift(page, shift);
         await settle(page, shift);
@@ -980,12 +980,12 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
           tokens: [...TOKENS],
           texts: inboxTasksRoster.TEXTS,
         });
-        grade(read, { screen: "cos", width: WIDTHS[0], store, working: true }, `${lab} cos working ${shift} ${WIDTHS[0]}`, failures, lab);
-        counts.push(`cos working ${shift} ${WIDTHS[0]}: ${read.els.length}`);
-        if (process.env.GOAL_SHOTS !== undefined) await page.screenshot({ path: join(process.env.GOAL_SHOTS, `${lab}-cos-working-${shift}-${WIDTHS[0]}.png`) });
+        grade(read, { screen: "shift-coordinator", width: WIDTHS[0], store, working: true }, `${lab} shiftCoordinator working ${shift} ${WIDTHS[0]}`, failures, lab);
+        counts.push(`shiftCoordinator working ${shift} ${WIDTHS[0]}: ${read.els.length}`);
+        if (process.env.GOAL_SHOTS !== undefined) await page.screenshot({ path: join(process.env.GOAL_SHOTS, `${lab}-shiftCoordinator-working-${shift}-${WIDTHS[0]}.png`) });
       }
       release();
-      await page.getByTestId("cos-working").waitFor({ state: "detached", timeout: 30_000 });
+      await page.getByTestId("shift-coordinator-working").waitFor({ state: "detached", timeout: 30_000 });
       await page.unroute("**/requests/*/status");
     }
     if (errors.length > 0) failures.add("totality", `the page threw: ${errors.join(" | ")}`, lab);
