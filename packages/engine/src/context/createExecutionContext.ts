@@ -857,6 +857,11 @@ export async function createExecutionContext<
       return false;
     }
   };
+  // An interrupted turn a retry re-ran still takes its row in the window, so
+  // it is listed settled with nothing to read, by id too: history reads the
+  // retry, and a summary counting the window's turns counts what it counts.
+  const isRetried = (record: RequestRecord): boolean => record.status === "interrupted" && retried.has(record.id);
+  const retriedTurn = (record: RequestRecord): HistoryTurn => ({ ...historyTurn(record, true), messages: [] });
   const readTurns = async (query?: HistoryTurnQuery): Promise<HistoryTurn[]> => {
     if (query?.requestIds !== undefined) {
       const turns: HistoryTurn[] = [];
@@ -866,21 +871,18 @@ export async function createExecutionContext<
         // Read by id, so held to the session's scope: an id from anywhere
         // never reads another session's turn.
         if (record === undefined || !requestInSessionScope(record, turnScope)) continue;
+        if (isRetried(record)) {
+          turns.push(retriedTurn(record));
+          continue;
+        }
         const open = record.status === "in_progress" || record.status === "suspended" || (await isParked(record));
         turns.push(historyTurn(record, !open));
       }
       return turns.sort((a, b) => compareTurnsOldestFirst(a.startedAtMs, a.requestId, b.startedAtMs, b.requestId));
     }
-    // An interrupted turn a retry re-ran still takes its row in the window, so
-    // it is listed as settled with nothing to read (history reads the retry):
-    // a summary counting the window's turns counts what the window counts.
     const windowTurns = priorRequests
       .filter((r) => r.id !== requestId)
-      .map((r) =>
-        r.status === "interrupted" && retried.has(r.id)
-          ? { ...historyTurn(r, true), messages: [] }
-          : historyTurn(r, !parked.has(r.id))
-      );
+      .map((r) => (isRetried(r) ? retriedTurn(r) : historyTurn(r, !parked.has(r.id))));
     const listed = new Set(windowTurns.map((t) => t.requestId));
     const openTurns = (
       await stores.request.list({ ...turnScope, status: ["in_progress", "suspended"], orderBy: "startedAtMs" })
