@@ -85,7 +85,8 @@ ends, however it ended.
  // core/src/types/pull-requests.ts (new, beside harness-plan.ts)
 +export const OBSERVED_PULL_REQUESTS = "observed-pull-requests" as const;
 +export const observedPullRequestsCollection  // session scope, client-readable, live
-+/** One row per pull request: host, repository, number, url, title, state, branch, requestId, source. */
++/** One row per pull request: host, repository, number, url, title, state, branch, requestId, source.
++ *  `requestId` is a read key: a reader narrows a shared session's rows to one run's request by it. */
 +export const observedPullRequestStateSchema
 +/** The pull requests a create call's result names, by the given rules; [] for any other item. */
 +export function findOpenedPullRequests(item: RuntimeItem, rules?: PullRequestRule[]): PullRequestRef[]
@@ -94,7 +95,7 @@ ends, however it ended.
 +export function recordPullRequests(ctx: BlockContext): void
 +/** A handler block that records this request's pull requests and declares the collection. */
 +export function pullRequestRecorder(): HandlerBlock
-+/** The one write path: upsert by key, keep the first requestId; every writer calls it. */
++/** The one write path: upsert by key, fill nulls only; every writer calls it, FIX-2256's handle too. */
 +export function writePullRequests(collection, refs: PullRequestRef[], opts: { requestId?, source }): Promise<void>
 
  // An app's own flow, Flow State mode
@@ -180,7 +181,7 @@ If wrong: two places that name a run's pull request grow apart.
 
 1. **[D1](DECISIONS.md#d1) · The record and the recorder live in core beside the plan record,
    with GitHub as one rule set; the GitHub check lives in `workspace` on the host; Workforce and
-   the harness manager only read.** (Architect confirming.) If wrong: a coding record in core
+   the harness manager only read.** Architect confirmed. If wrong: a coding record in core
    that only coding flows use.
 2. **[D2](DECISIONS.md#d2) · A pull request counts when the session opened it: a create call
    whose result names it, or a pull request on the session's own branch at turn end.** If wrong:

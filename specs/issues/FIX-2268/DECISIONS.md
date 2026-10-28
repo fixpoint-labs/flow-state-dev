@@ -35,8 +35,13 @@ It comes down to who must write it: Kitchen Sink's harness modes and our own gen
 **What would change my mind:** the Architect placing coding records in a package of their own.
 The record then moves with the plan record, and the harness packages gain that dependency.
 
-**Status:** the issue names placement as the Architect's call. Asked on the coordinator mailbox
-(agent-mailbox #35, 2026-10-28); this card is the proposal put to them.
+**Status:** confirmed by the Architect on the PR (2026-10-28, comment 6476389332), answering
+the ask on agent-mailbox #35, with three conditions this card keeps: no GitHub client in core
+(core holds the record, the writer and a pure rule; anything that runs `gh` or calls the API
+stays in `workspace` or the host); one writer (the branch check and FIX-2256's handle field write
+through `writePullRequests` and grow no record or reader of their own; FIX-2256's issue carries a
+line saying so); and no Workforce or harness-manager concept in core, with `requestId` stated as
+a read key in the row contract.
 
 <a name="d2"></a>
 ## D2 · A pull request counts when the session opened it: a create call whose result names it, or a pull request on the session's own branch at turn end
@@ -83,7 +88,9 @@ generator.
 - **One convergence point for writes.** Every writer goes through core's `writePullRequests`:
   the recorder, the host's branch check, and, when FIX-2256 ships, Cursor's cloud handle. It
   upserts by key and never moves `requestId` or `firstSeenAt` once set; a later sighting only
-  fills a null `title`, `state` or `branch`. That is what makes a repeated link, a second
+  fills a null `title`, `state`, `branch` or `requestId`, and a `tool` sighting upgrades a
+  `branch` row's `source`, so a branch check that wins the race does not hide the turn that
+  opened it. That is what makes a repeated link, a second
   recorder and the branch check all land on one row.
 - **The key is host, owner, repository and number**, each a key segment escaped with
   `planKeySegment`, lower-cased where GitHub is case-insensitive (host, owner, repository). Not
@@ -128,8 +135,7 @@ generator.
 
 ## Open
 
-None. The Architect's confirmation of D1 is pending on the mailbox; an answer that moves it
-folds into D1 before merge.
+None.
 
 ## Settled
 
@@ -170,6 +176,8 @@ folds into D1 before merge.
   mix; Shift Manager narrows by the run's `requestId`. Update the "declares no session state"
   header comments in the Cursor and Claude Code agent files, and declare the collection on the
   harness manager's flow so its branch-check writes show in the manifest.
+- **Key spelling.** Add a fixture for owner and repository names with `.`, `-` and upper case,
+  so the case-folded key cannot fork by spelling.
 - Harness-manager's comment at `manager.ts:974` names a `gh pr list` completion probe that no
   longer exists. Fix the comment if the branch check lands near it.
 
@@ -193,6 +201,8 @@ Linear and the web were not swept. **Verdict: right approach, fold needed.**
 ## Notes from review
 
 - **Cursor review on `18ca05c`** (comment): (1) optional phasing, recorder, rules, panel and legs r1/r2 first, then the branch check, leg b and the harness manager; (2) add "a Flow State generator that can open pull requests was not opted in" to the goal's *not done if*, since Flow State runs several generators; (3) merge should wait on the Architect's answer on D1. Folded inline: leg b now runs in the harness modes only, matching the debt row, and the diff names `writePullRequests`.
+- **Second look on `18ca05c`** (comment): (1) a per-generator option is the wrong altitude; make it flow-level or add an exhaustiveness test; (2) split into PR A (record, recorder, rule, harness blocks, panel, r1/r2) and PR B (branch check, harness manager and Shift Manager read, leg b); (3) record a real Cursor `gh pr create` fixture before merge, not after; (4) gate on the model-free fixtures and the controls, with one real-model smoke per mode rather than 2/2 × every leg. Smaller: a line on FIX-2256 that it writes through `writePullRequests`; `requestId` as a read key in the row contract; a key-spelling fixture; a branch-first race that leaves `requestId` null; the stale `manager.ts:974` comment. D1 placement agreed. Folded: (1) is answered by Jake's direction (no generator option; a step); the row contract names `requestId` as a read key; the writer fills a null `requestId` and upgrades `source`; the key-spelling fixture is a note; the FIX-2256 line is on its issue. Left to the implementer and Jake: (2) the PR split is the build plan; (3) stays the implementer's first step, with stop-and-re-gate if Cursor's result lacks the output; (4) is recorded for Jake to weigh against the real-model goal convention.
+- **Architect on `38df5a6`** (comment): D1 confirmed with three conditions, folded into D1's status.
 
 ## How it got here
 
