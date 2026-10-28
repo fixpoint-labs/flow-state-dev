@@ -516,9 +516,9 @@ describe("who it files for, and which board (V2)", () => {
       await h.settled();
       // The routed task to ana is a task on the conversation's board; her filing is the other.
       const all = await h.rows("alice");
-      const routed = all.filter((row) => typeof row.sealed?.postId === "string");
+      const routed = all.filter((row) => typeof row.sealed?.messageRequestId === "string");
       expect(routed.map((row) => [row.assignee, row.status])).toEqual([["ana", "completed"]]);
-      const rows = all.filter((row) => row.sealed?.postId === undefined);
+      const rows = all.filter((row) => row.sealed?.messageRequestId === undefined);
       expect(rows.map((row) => [row.goal, row.assignee, row.status])).toEqual([["Book the venue", "eng.tasker", "completed"]]);
       // On ana's delegate session's board, not the conversation's, and a piece of the routed task.
       const chiefFiling = await h.filingOf("alice", conv);

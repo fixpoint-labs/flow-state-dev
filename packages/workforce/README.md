@@ -2082,7 +2082,7 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   `ensureWorkerSession({ worker, filingSessionId })` returns it but never creates it, and a session
   create whose `state` carries `filingSessionId` is refused with a 400.
 - **The record.** Every routing decision leaves one `coordinator-route` component item:
-  `postId`, `round`, `policy`, `by` (`judgment`, `held`, `evaluated`, `fallback`,
+  `messageRequestId`, `round`, `policy`, `by` (`judgment`, `held`, `evaluated`, `fallback`,
   `round-robin`, `everyone` or `unplaced`), `delegates` (each with `worker`, `outcome` of
   `delivered`, `skipped` or `failed`, and a `reason` when it wasn't delivered), `none` (why
   nobody was delivered to, when nobody was), `note` (why the round's answers go no further,

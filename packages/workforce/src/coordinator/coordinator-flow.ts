@@ -197,7 +197,7 @@ import {
   routeOnSchema,
   wakeMessage,
   type ClosedRound,
-  type RoundPost,
+  type RoundTask,
   type RoundRead,
   type RoundRows,
   type RouteOn
@@ -248,7 +248,7 @@ const POST_STATE = "coordinatorPost";
 
 const postStateSchema = z.object({
   /** The user's post. Answers going back out keep its id, in a later round. */
-  postId: z.string(),
+  messageRequestId: z.string(),
   body: z.string(),
   from: z.string(),
   round: z.number().int().min(0),
@@ -291,7 +291,7 @@ export function withDispatches(post: PostState): PostState {
 
 /** One routed task to file. */
 const deliveryRequestSchema = z.object({
-  postId: z.string(),
+  messageRequestId: z.string(),
   round: z.number().int().min(0),
   delegate: delegateRefSchema,
   /** The flow the delegate's worker runs on. */
@@ -363,8 +363,8 @@ function fitOf(placed: Exclude<BestFitPlacement, { by: "held" | "evaluated" }>, 
  * ledger keeps a task id to one path segment and a workstream target has
  * slashes.
  */
-function routedTaskId(postId: string, round: number, delegate: DelegateRef): string {
-  return `routed:${routedIdParts(postId, round, delegate)}`;
+function routedTaskId(messageRequestId: string, round: number, delegate: DelegateRef): string {
+  return `routed:${routedIdParts(messageRequestId, round, delegate)}`;
 }
 
 /**
@@ -372,12 +372,12 @@ function routedTaskId(postId: string, round: number, delegate: DelegateRef): str
  * delegate, as a post row (BP-030): a routing replayed across the upgrade
  * finds it, and files no second task for a pick already handed the message.
  */
-function legacyPostRowId(postId: string, round: number, delegate: DelegateRef): string {
-  return `post:${routedIdParts(postId, round, delegate)}`;
+function legacyPostRowId(messageRequestId: string, round: number, delegate: DelegateRef): string {
+  return `post:${routedIdParts(messageRequestId, round, delegate)}`;
 }
 
-function routedIdParts(postId: string, round: number, delegate: DelegateRef): string {
-  const parts = [postId, String(round), delegate.worker, ...(delegate.target === undefined ? [] : [delegate.target])];
+function routedIdParts(messageRequestId: string, round: number, delegate: DelegateRef): string {
+  const parts = [messageRequestId, String(round), delegate.worker, ...(delegate.target === undefined ? [] : [delegate.target])];
   return parts.map(encodeURIComponent).join(":");
 }
 
@@ -482,17 +482,17 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     for (const row of ref?.list() ?? []) {
       const brief = routedBriefOf(row);
       if (brief === undefined) continue;
-      const key = JSON.stringify([brief.postId, brief.round]);
+      const key = JSON.stringify([brief.messageRequestId, brief.round]);
       byRound.set(key, [...(byRound.get(key) ?? []), row]);
     }
     const read = new Map<string, RoundRead>();
-    for (const { postId, round, begun, opening } of open) {
-      const rows = byRound.get(JSON.stringify([postId, round])) ?? [];
+    for (const { messageRequestId, round, begun, opening } of open) {
+      const rows = byRound.get(JSON.stringify([messageRequestId, round])) ?? [];
       const replied = rows.flatMap((row) => {
         const brief = row.status === "completed" && answerTextOf(row.output) !== undefined ? routedBriefOf(row) : undefined;
         return brief === undefined ? [] : [brief.delegate];
       });
-      read.set(JSON.stringify([postId, round]), {
+      read.set(JSON.stringify([messageRequestId, round]), {
         ids: rows.map((row) => row.id),
         running: rows.some((row) => !isTerminalStatus(row.status)),
         replied,
@@ -501,7 +501,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       });
     }
     const unseen: RoundRead = { ids: [], running: false, replied: [], begun: -1, opening: 0 };
-    return (postId, round) => read.get(JSON.stringify([postId, round])) ?? unseen;
+    return (messageRequestId, round) => read.get(JSON.stringify([messageRequestId, round])) ?? unseen;
   };
 
   /**
@@ -564,14 +564,14 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     // it: a crash between leaves a wake with nothing to close, never a
     // deadline with no wake. A routing that sets none after all leaves an
     // extra wake, which closes nothing.
-    const planned = roundDeadline(roundsIn(ctx.session.state), request.postId, request.round, now, deadlineMs).deadlineAt;
+    const planned = roundDeadline(roundsIn(ctx.session.state), request.messageRequestId, request.round, now, deadlineMs).deadlineAt;
     if (planned !== undefined) await oweRoundDeadline(ctx, planned);
     const timed = await withOutcome(
       (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
         ctx.session.atomicState(mutator as never),
       (state: Readonly<Record<string, unknown>>) => {
         const rounds = roundsIn(state);
-        const deadline = roundDeadline(rounds, request.postId, request.round, now, deadlineMs);
+        const deadline = roundDeadline(rounds, request.messageRequestId, request.round, now, deadlineMs);
         return {
           state: { ...(deadline.deadlineAt === undefined ? {} : { [ROUNDS_STATE]: deadline.rounds }), ...dropRetiredLedger(state) },
           result: deadline.deadlineAt
@@ -591,17 +591,17 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       body: request.body,
       from: request.from,
       coordinator: request.coordinator,
-      postId: request.postId,
+      messageRequestId: request.messageRequestId,
       round: request.round,
       delegate: named,
       ...linesField(request.recent),
       // The judgment turn's call, so a replay of it finds its own task (BR-15).
       ...(call !== undefined ? { call } : {})
     };
-    const id = routedTaskId(request.postId, request.round, named);
+    const id = routedTaskId(request.messageRequestId, request.round, named);
     const handedBefore = { routed: { ...named, outcome: "skipped" as const, reason: "it was already handed this message in this round" } };
     // Handed this message before the upgrade, as a post row (BP-030).
-    const legacyId = legacyPostRowId(request.postId, request.round, named);
+    const legacyId = legacyPostRowId(request.messageRequestId, request.round, named);
     if ((await conversationLedgerAt(ctx, request.filingSessionId))?.get(legacyId) !== undefined) return { ...handedBefore, taskId: legacyId };
     try {
       const filed = await sessionBoard.fileRouted(ctx as never, {
@@ -676,7 +676,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     flow: string,
     passed: { from: string; body: string } = post
   ): DeliveryRequest => ({
-    postId: post.postId,
+    messageRequestId: post.messageRequestId,
     round: post.round,
     delegate: bare(delegate),
     flow,
@@ -689,7 +689,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
 
   /** What every record of this request's routing starts with, its note and best fit's evaluator error included when it has them. */
   const recordOf = (post: PostState) => ({
-    postId: post.postId,
+    messageRequestId: post.messageRequestId,
     round: post.round,
     policy: post.policy,
     ...(post.note === undefined ? {} : { note: post.note }),
@@ -703,7 +703,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   /** The post state every routing of this conversation starts from. */
   const postStateOf = async (
     ctx: BlockContext,
-    opening: Pick<PostState, "postId" | "body" | "from" | "round"> & Partial<Pick<PostState, "answers" | "exclude">>
+    opening: Pick<PostState, "messageRequestId" | "body" | "from" | "round"> & Partial<Pick<PostState, "answers" | "exclude">>
   ) => {
     const { worker, config, defaults } = await coordinatorOf(ctx);
     // The first read seeds the conversation's copy of the defaults.
@@ -732,7 +732,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
           ctx.session.atomicState(mutator as never),
         (state: Readonly<Record<string, unknown>>) => {
-          const result = beginRound(roundsIn(state), post.postId, post.round);
+          const result = beginRound(roundsIn(state), post.messageRequestId, post.round);
           return { state: result.opened ? { [ROUNDS_STATE]: result.rounds } : {}, result: result.opened };
         }
       );
@@ -755,7 +755,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     requestStateSchema: requestStateSchema.merge(userTurnStateSchema),
     execute: async (input: DoorInput, ctx) => {
       const post = await postStateOf(ctx as never, {
-        postId: ctx.request.identity.id,
+        messageRequestId: ctx.request.identity.id,
         body: input.message,
         from: ctx.session.identity.userId ?? "",
         round: 0
@@ -1129,7 +1129,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       }
       const target = bestFit.byLabel[placed.worker]!;
       if (holds) {
-        await ctx.session.patchState({ [HOLD_STATE]: { postId: post.postId, delegate: target.delegate } } as never);
+        await ctx.session.patchState({ [HOLD_STATE]: { messageRequestId: post.messageRequestId, delegate: target.delegate } } as never);
       }
       return {
         place: "deliver",
@@ -1400,7 +1400,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    */
   const routeOnsFor = async (
     ctx: BlockContext,
-    event: { landed?: { posted: RoundPost; body: string; kept: boolean }; closed: readonly ClosedRound[] }
+    event: { landed?: { posted: RoundTask; body: string; kept: boolean }; closed: readonly ClosedRound[] }
   ): Promise<RouteOn[]> => {
     // An answer that landed outside an open round, and no round closed: nothing goes on.
     if (event.landed?.kept !== true && event.closed.length === 0) return [];
@@ -1501,7 +1501,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     execute: async (_value: unknown, ctx) => {
       const post = postOf(ctx as never);
       const now = Date.now();
-      const isThisRound = (open: OpenRound) => open.postId === post.postId && open.round === post.round;
+      const isThisRound = (open: OpenRound) => open.messageRequestId === post.messageRequestId && open.round === post.round;
       // A round at the limit was never opened, one closed at its deadline is
       // gone, and nothing is overdue: nothing to write.
       const open = (ctx.session.state[ROUNDS_STATE] ?? []) as OpenRound[];
@@ -1513,7 +1513,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         (state: Readonly<Record<string, unknown>>) => {
           const rounds = roundsIn(state);
           const ended = rounds.some(isThisRound)
-            ? closeRound(endRound(rounds, post.postId, post.round), rows, post.postId, post.round, now, true)
+            ? closeRound(endRound(rounds, post.messageRequestId, post.round), rows, post.messageRequestId, post.round, now, true)
             : { rounds };
           const swept = closeOverdue(ended.rounds, rows, now);
           return {
@@ -1552,7 +1552,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       if (routeOn.answers.length === 0) {
         const { config } = await coordinatorOf(ctx as never);
         await emitCoordinatorRoute(ctx as never, {
-          postId: routeOn.postId,
+          messageRequestId: routeOn.messageRequestId,
           round: routeOn.round,
           policy: config.routing,
           by: config.routing === "judgment" ? "judgment" : "everyone",
@@ -1562,7 +1562,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         return { message: "", policy: config.routing, done: true };
       }
       const post = await postStateOf(ctx as never, {
-        postId: routeOn.postId,
+        messageRequestId: routeOn.messageRequestId,
         round: routeOn.round,
         ...passedOn(routeOn.answers),
         answers: routeOn.answers,
@@ -1611,7 +1611,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         if (body !== undefined) ctx.emit.message(body, ending.assignee === undefined ? {} : { agentName: ending.assignee });
         return { landed: body !== undefined };
       }
-      const posted: RoundPost = { postId: post.postId, round: post.round, delegate: post.delegate };
+      const posted: RoundTask = { messageRequestId: post.messageRequestId, round: post.round, delegate: post.delegate };
       const now = Date.now();
       const rows = await roundRowsOf(ctx as never);
       type Ended = { kept: boolean; again?: true; closed: ClosedRound[] };
@@ -1620,11 +1620,11 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
           ctx.session.atomicState(mutator as never),
         (state: Readonly<Record<string, unknown>>): { state: Record<string, unknown>; result: Ended } => {
           const rounds = roundsIn(state);
-          const hold = state[HOLD_STATE] as { postId: string; delegate: DelegateRef } | null | undefined;
+          const hold = state[HOLD_STATE] as { messageRequestId: string; delegate: DelegateRef } | null | undefined;
           const held =
-            hold !== null && hold !== undefined && hold.postId === post.postId && sameDelegate(hold.delegate, post.delegate);
+            hold !== null && hold !== undefined && hold.messageRequestId === post.messageRequestId && sameDelegate(hold.delegate, post.delegate);
           if (body === undefined) {
-            const closing = closeRound(rounds, rows, post.postId, post.round, now);
+            const closing = closeRound(rounds, rows, post.messageRequestId, post.round, now);
             const swept = closeOverdue(closing.rounds, rows, now);
             // A failed or cancelled holder holds nothing (FIX-1610 D1); an empty answer keeps its hold.
             const releases = held && ending.ending !== "completed";

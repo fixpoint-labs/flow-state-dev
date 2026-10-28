@@ -130,7 +130,7 @@ function allRows(file: string, userId: string): Array<Record<string, any>> {
 }
 
 type Line = { role: string | null; agentName: string | null; text: string };
-type Route = { by?: string; round?: number; postId?: string; delegates?: Array<{ worker: string; outcome: string; reason?: string }> };
+type Route = { by?: string; round?: number; messageRequestId?: string; delegates?: Array<{ worker: string; outcome: string; reason?: string }> };
 type Heard = { worker: string; message: string; sessionId: string; at: number };
 
 /** Grade what the host reported and the file it left. */
@@ -149,7 +149,7 @@ function grade(o: any, restart: { kill: any; restart: any }): { failures: string
   const rows = (sessionId: string): RoutedDelivery[] => routedDeliveries(o.store, o.userId, sessionId);
   const stored = allRows(o.store, o.userId);
   const linesBy = (lines: Line[], worker: string, word: string) => lines.filter((l) => l.agentName === worker && l.text.includes(word));
-  const routesFor = (records: Route[], postId: string) => records.filter((r) => r.postId === postId);
+  const routesFor = (records: Route[], messageRequestId: string) => records.filter((r) => r.messageRequestId === messageRequestId);
 
   // ---- a: one task per delegate, ordinary, in Alice's list ----------------
   const all = o.a.all;
@@ -161,7 +161,7 @@ function grade(o: any, restart: { kill: any; restart: any }): { failures: string
   if (assignees.join(",") !== [...o.delegates].sort().join(",") || settingsOff.length > 0 || listed.length !== o.delegates.length) {
     fail("a:tasks", `wanted Alice's list to hold one task per delegate (${o.delegates.join(", ")}), each read with session "ongoing", result to the conversation and one attempt; listed ${listed.length}, read ${show(forPost.map((t) => [t.assignee, t.session, t.resultTo, t.maxAttempts]))}`);
   } else notes.push(`one message to everyone: ${forPost.length} tasks in Alice's list, one per delegate, each session ongoing, result to the conversation, one attempt`);
-  const allRowsHere = rows(all.sessionId).filter((r) => r.postId === all.post.requestId);
+  const allRowsHere = rows(all.sessionId).filter((r) => r.messageRequestId === all.post.requestId);
   if (!allRowsHere.every((r) => r.status === "delivered" && r.answered) || allRowsHere.length !== o.delegates.length) {
     fail("a:tasks", `wanted each task worked in its delegate's session and answered; the board holds ${show(allRowsHere.map((r) => [r.delegate.worker, r.rowStatus, r.status]))}`);
   }
@@ -182,11 +182,11 @@ function grade(o: any, restart: { kill: any; restart: any }): { failures: string
     fail("a:judgment-attempts", `the judgment turn filed with createTask and left maxAttempts out; wanted its task read with session "ongoing", result to the conversation and one attempt; read ${show(judged)}`);
   } else notes.push(`the judgment turn's createTask with no maxAttempts: read with one attempt, session ongoing, result to the conversation`);
   const threeRefusal = (o.read.judge.tools as Array<{ name: string; output: any }>).find((t) => JSON.stringify(t.output ?? "").includes("conversation_result_one_attempt"));
-  const threeRows = rows(judge.sessionId).filter((r) => r.postId === judge.three.requestId);
+  const threeRows = rows(judge.sessionId).filter((r) => r.messageRequestId === judge.three.requestId);
   if (threeRefusal === undefined || threeRows.length !== 0) {
     fail("a:three-refused", `wanted the judgment turn's maxAttempts: 3 refused at filing, naming FIX-2080's rule (conversation_result_one_attempt), and nothing filed; tool outputs ${show(o.read.judge.tools)}, tasks for it ${threeRows.length}`);
   } else notes.push(`maxAttempts: 3 refused at filing: ${show(threeRefusal.output).slice(0, 160)}`);
-  const twiceRows = rows(judge.sessionId).filter((r) => r.postId === judge.twice.requestId);
+  const twiceRows = rows(judge.sessionId).filter((r) => r.messageRequestId === judge.twice.requestId);
   const outcomes = routesFor(o.read.judge.records, judge.twice.requestId).flatMap((r) => (r.delegates ?? []).filter((d) => d.worker === first).map((d) => d.outcome));
   const twiceLines = linesBy(o.read.judge.lines, first, w.twice).length;
   if (twiceRows.length !== 1 || outcomes.join(",") !== "delivered,skipped" || twiceLines !== 1) {
@@ -201,7 +201,7 @@ function grade(o: any, restart: { kill: any; restart: any }): { failures: string
   if (one.waiting?.b !== "pending" || listedB?.status !== "pending" || ha === undefined || hb === undefined || hb.at < ha.at + o.slowMs * 0.9 || hb.sessionId !== ha.sessionId) {
     fail("a:waits", `a second message to ${third}, busy on the first for ${o.slowMs} ms, should wait pending in Alice's list and start after the first ends, in the same session; waiting ${show(one.waiting)}, listed ${show(listedB)}, heard ${show(busy.map((h) => [h.message.slice(-14), h.sessionId.slice(-6), h.at - (ha?.at ?? 0)]))}`);
   } else notes.push(`a busy delegate: the second message waited pending in Alice's list and started ${hb.at - ha.at} ms after the first, in the same session`);
-  const cRow = rows(one.sessionId).find((r) => r.postId === one.c.requestId);
+  const cRow = rows(one.sessionId).find((r) => r.messageRequestId === one.c.requestId);
   const cHeard = busy.some((h) => h.message.endsWith(`${w.busy} third`));
   if (one.cancelWaiting?.status !== "completed" || cRow?.rowStatus !== "cancelled" || cHeard) {
     fail("a:cancel-waiting", `Alice cancelled the waiting third message's task; wanted it cancelled and never started; cancel ${show(one.cancelWaiting)}, task ${show(cRow?.rowStatus)}, heard ${cHeard}`);
@@ -233,11 +233,11 @@ function grade(o: any, restart: { kill: any; restart: any }): { failures: string
 
   // ---- b: a failed delegate ---------------------------------------------------
   const fails = o.b.fails;
-  const failedRow = rows(fails.sessionId).find((r) => r.postId === fails.post.requestId && r.round === 0 && r.delegate.worker === third);
+  const failedRow = rows(fails.sessionId).find((r) => r.messageRequestId === fails.post.requestId && r.round === 0 && r.delegate.worker === third);
   // Each failed task says, once, that it couldn't answer and why (FIX-1872 BR-9 as amended), never an
   // answer carrying the word. Round 1 hands it the other's answer, which carries its fail mark, so it fails twice.
   const failedLines = (o.read.fails.lines as Line[]).filter((l) => l.agentName === third).map((l) => l.text);
-  const failedTasks = rows(fails.sessionId).filter((r) => r.postId === fails.post.requestId && r.delegate.worker === third && r.rowStatus === "errored").length;
+  const failedTasks = rows(fails.sessionId).filter((r) => r.messageRequestId === fails.post.requestId && r.delegate.worker === third && r.rowStatus === "errored").length;
   const failedSays = `${third} couldn't answer: ${third} fails on this message`;
   if (failedRow?.rowStatus !== "errored" || failedLines.length !== failedTasks || failedLines.some((text: string) => text !== failedSays)) {
     fail("b:failed", `${third} fails the message; wanted its task errored and one line by it per failed task (${failedTasks}), "${failedSays}"; task ${show(failedRow?.rowStatus)}, lines ${show(failedLines)}`);
@@ -255,14 +255,14 @@ function grade(o: any, restart: { kill: any; restart: any }): { failures: string
   // Its answer to the person's message, not to the other delegate's answer in round 1.
   const answeredPost = `${second} answers: ${o.userId}, through desk.late:`;
   const lateLines = linesBy(o.read.late.lines, second, w.late).filter((l) => l.text.startsWith(answeredPost)).length;
-  const round1 = rows(late.sessionId).filter((r) => r.postId === late.post.requestId && r.round === 1).map((r) => r.delegate.worker);
+  const round1 = rows(late.sessionId).filter((r) => r.messageRequestId === late.post.requestId && r.round === 1).map((r) => r.delegate.worker);
   if (lateLines !== 1 || round1.join(",") !== second) {
     fail("b:late", `wanted ${second}'s late answer landed once and handed to nobody in round 1; its lines ${lateLines}, round 1's tasks to ${show(round1)} (want only ${second}, with ${first}'s answer)`);
   } else if (!failures.some((f) => f.startsWith("b:late"))) notes.push(`a late delegate: round 0 closed ${atClose.closedAt! - late.deadlineAt} ms past its deadline, its answer landed once and went no further`);
 
   // ---- c: the writer's answer waits for the work it filed --------------------
   const writerLines = (o.read.write.lines as Line[]).filter((l) => l.agentName === o.writer);
-  const routedToWriter = stored.find((r) => r.assignee === o.writer && typeof r.sealed?.postId === "string" && r.sealed.postId === o.c.post.requestId);
+  const routedToWriter = stored.find((r) => r.assignee === o.writer && typeof r.sealed?.messageRequestId === "string" && r.sealed.messageRequestId === o.c.post.requestId);
   const piece = stored.find((r) => r.assignee === first && typeof r.goal === "string" && r.goal.includes(w.write));
   if (writerLines.length !== 1 || !writerLines[0]!.text.includes(`${first} answers:`) || !writerLines[0]!.text.includes(w.write)) {
     fail("c:after", `wanted one line under ${o.writer}'s name, carrying the result of the task it filed; its lines ${show(writerLines.map((l) => l.text))}`);
@@ -282,7 +282,7 @@ function grade(o: any, restart: { kill: any; restart: any }): { failures: string
   const fitCalls = d.fitCalls as FitCall[];
   /** The one fit check's calls about `word`: one `worker` choice each, on the one evaluation. */
   const checked = (word: string) => fitCalls.filter((c) => JSON.stringify(c.about).includes(word) && c.questions.join(",") === "worker");
-  const fitRoute = (postId: string) => routesFor(o.read.fit.records, postId)[0] as (Route & { fit?: { reason?: string } }) | undefined;
+  const fitRoute = (messageRequestId: string) => routesFor(o.read.fit.records, messageRequestId)[0] as (Route & { fit?: { reason?: string } }) | undefined;
   const pickRoute = fitRoute(d.fit.pick.requestId);
   const pickHeard = heard.filter((h) => h.message.includes(w.pick)).map((h) => h.worker);
   const pickCalls = checked(w.pick);

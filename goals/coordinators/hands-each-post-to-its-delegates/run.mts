@@ -115,7 +115,7 @@ function gradeE(o: any): LegResult {
   const { ladder } = o;
   const records = ladder.graced.records as Array<Record<string, any>>;
   const lines = ladder.graced.lines as Array<{ agentName: string | null; text: string }>;
-  const recordFor = (post: { requestId: string }) => records.filter((d) => d.postId === post.requestId);
+  const recordFor = (post: { requestId: string }) => records.filter((d) => d.messageRequestId === post.requestId);
   const delivered = (d: Record<string, any> | undefined, worker: string) => (d?.delegates ?? []).some((x: any) => x.worker === worker && x.outcome === "delivered");
   const one = (name: string, post: { requestId: string }, by: string, worker: string | undefined) => {
     const found = recordFor(post);
@@ -136,7 +136,7 @@ function gradeE(o: any): LegResult {
   }
   const judged = one("e:judgment", ladder.posts.p4, "judgment", "desk.alpha");
   const p4Answers = lines.filter((l) => l.agentName === "desk.alpha" && l.text.includes(ladder.words.p4)).length;
-  const p4Ledger = (ladder.graced.ledger as any[]).filter((d) => d.postId === ladder.posts.p4.requestId);
+  const p4Ledger = (ladder.graced.ledger as any[]).filter((d) => d.messageRequestId === ladder.posts.p4.requestId);
   const skippedAgain = (judged?.delegates ?? []).some((x: any) => x.worker === "desk.alpha" && x.outcome === "skipped");
   if (!skippedAgain || p4Answers !== 1 || p4Ledger.length !== 1) {
     r.failures.push(`e:redelivery — handed desk.alpha twice, wanted the second skipped, one delivery and one answer; skipped again: ${skippedAgain}, deliveries: ${p4Ledger.length}, answers after ${o.graceMs} ms: ${p4Answers}`);
@@ -153,7 +153,7 @@ function gradeE(o: any): LegResult {
     r.failures.push(`e:below-floor — leg e's host reported no \`desk.floor\` conversation`);
   } else {
     const flRecords = fl.read.records as Array<Record<string, any>>;
-    const flFor = (name: string) => flRecords.filter((d) => d.postId === fl.posts[name].requestId);
+    const flFor = (name: string) => flRecords.filter((d) => d.messageRequestId === fl.posts[name].requestId);
     const fitIs = (d: Record<string, any> | undefined, want: Record<string, unknown>) =>
       d?.fit !== undefined && Object.entries(want).every(([k, v]) => d.fit[k] === v);
     const doubtful = (tag: string, name: string, want: Record<string, unknown>) => {
@@ -183,7 +183,7 @@ function gradeE(o: any): LegResult {
 
   // Round robin.
   const rr = o.roundRobin;
-  const rrRecords = rr.posts.map((p: { requestId: string }) => (rr.read.records as any[]).filter((d) => d.postId === p.requestId));
+  const rrRecords = rr.posts.map((p: { requestId: string }) => (rr.read.records as any[]).filter((d) => d.messageRequestId === p.requestId));
   const order = rrRecords.map((found: any[]) => (found.length === 1 && found[0].by === "round-robin" ? found[0].delegates.find((x: any) => x.outcome === "delivered")?.worker : `?${found.length}`));
   if (order.join(",") !== "desk.alpha,desk.beta,desk.alpha") r.failures.push(`e:round-robin — three posts went to ${order.join(", ")}, not alpha, beta, alpha`);
   r.notes.push(`round robin: ${order.join(", ")}`);
@@ -195,11 +195,11 @@ function gradeE(o: any): LegResult {
   const DELEGATES = ["desk.alpha", "desk.beta"];
   const linesBy = (read: any) => Object.fromEntries(DELEGATES.map((w) => [w, (read.lines as any[]).filter((l) => l.agentName === w).length]));
   const deliveredIn = (ev.graced.records as any[])
-    .filter((d) => d.postId === ev.post.requestId)
+    .filter((d) => d.messageRequestId === ev.post.requestId)
     .flatMap((d) => (d.delegates as any[]).filter((x) => x.outcome === "delivered").map((x) => `${d.round}:${x.worker}`))
     .sort();
   const answeredInLedger = (ev.graced.ledger as any[])
-    .filter((d) => d.postId === ev.post.requestId && d.answered === true)
+    .filter((d) => d.messageRequestId === ev.post.requestId && d.answered === true)
     .map((d) => `${d.round}:${d.delegate.worker}`)
     .sort();
   const wanted = ["0:desk.alpha", "0:desk.beta", "1:desk.alpha", "1:desk.beta"];

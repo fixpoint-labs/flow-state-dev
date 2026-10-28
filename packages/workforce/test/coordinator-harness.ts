@@ -364,7 +364,7 @@ export function bootHost(options: HostOptions = {}) {
     const entries = await runtime.stores.resourceState.getByPrefix("user", `${userId}:~org:${ORG}`, "tasks/");
     return Object.values(entries)
       .map((value) => value.state as any)
-      .filter((row) => typeof row?.sealed?.postId === "string")
+      .filter((row) => typeof row?.sealed?.messageRequestId === "string")
       .sort((a, b) => a.createdAt - b.createdAt);
   };
 

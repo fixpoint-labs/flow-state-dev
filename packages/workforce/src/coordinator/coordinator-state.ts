@@ -34,7 +34,7 @@ export function dropRetiredLedger(state: Readonly<Record<string, unknown>>): Rec
 }
 
 /** Who best fit holds the user's next post for: the delegate the last one went to. */
-export const bestFitHoldSchema = z.object({ postId: z.string(), delegate: delegateRefSchema });
+export const bestFitHoldSchema = z.object({ messageRequestId: z.string(), delegate: delegateRefSchema });
 
 /**
  * Where round robin's turn stands: the delegate the user's last post went
@@ -52,7 +52,7 @@ export type RoundAnswer = z.infer<typeof roundAnswerSchema>;
 
 /** A round still open: below the coordinator's limit, and waiting for its answers (`coordinator-rounds.ts`). */
 export const openRoundSchema = z.object({
-  postId: z.string(),
+  messageRequestId: z.string(),
   round: z.number().int().min(0),
   /** Routings still filing rows in it. It doesn't close on its answers while one runs. */
   opening: z.number().int().min(0),

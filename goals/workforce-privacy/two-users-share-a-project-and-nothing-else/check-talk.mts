@@ -51,7 +51,7 @@ const routedTo = (worker: string): Item => ({
   type: "component",
   component: "coordinator-route",
   requestId: POST,
-  data: { postId: POST, round: 0, policy: "everyone", by: "everyone", delegates: [{ worker, outcome: "delivered" }] },
+  data: { messageRequestId: POST, round: 0, policy: "everyone", by: "everyone", delegates: [{ worker, outcome: "delivered" }] },
 });
 
 /** A person connected to `session`, through fakes of the two surfaces `talk` reads. */

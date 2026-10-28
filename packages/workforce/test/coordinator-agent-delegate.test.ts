@@ -119,7 +119,7 @@ async function postToOtto(answer: MockGeneratorInstance, message: string, desk: 
   const postRows = async (): Promise<any[]> =>
     Object.values(await runtime.stores.resourceState.getByPrefix("user", "alice:~org:acme", "tasks/"))
       .map((value) => value.state as any)
-      .filter((row) => typeof row?.sealed?.postId === "string");
+      .filter((row) => typeof row?.sealed?.messageRequestId === "string");
   /** The rounds still open in the conversation. */
   const rounds = async (): Promise<any[]> =>
     (((await runtime.stores.session.get(sessionId))?.state ?? {}) as { openRounds?: any[] }).openRounds ?? [];
