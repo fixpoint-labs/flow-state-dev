@@ -21,10 +21,10 @@ Belongs in Kitchen Sink:
 Belongs in a framework package, not here:
 
 - **Features.** New behaviour a user of the framework would want. Build it in the owning package, with its tests and README, then wire it here.
-- **Knowledge about an outside tool.** Model lists, version pins, sign-in checks, parsing a CLI's output. The integration package owns these, because every app using that integration needs the same answer. Example: Codex mode kept a hand-written model list and parsed `codex login status` itself; both belonged in `@flow-state-dev/codex`, and became `listCodexModels()` (#4035).
+- **Knowledge about an outside tool.** Model lists, version pins, sign-in probes, parsing a CLI's output. The integration package owns these, because every app using that integration needs the same answer. Kitchen Sink may still decide whether one of its modes is on by composing those probes (`lib/harness-gate.ts`). Example: Codex mode kept a hand-written model list and parsed `codex login status` itself; #4035 moves both into `@flow-state-dev/codex`.
 - **Workarounds.** If a package misbehaves, fix the package. A workaround here hides the bug from every other app and from the package's tests.
 - **Custom config that should be a default.** If Kitchen Sink has to pass the same option every app would pass, change the package's default or add a preset.
-- **Reusable UI.** Components go in `packages/ui/registry/` first (see "UI Components: Upstream-First Convention" below) or in `@flow-state-dev/react`.
+- **Reusable UI.** See "UI Components: Upstream-First Convention" below.
 
 If the framework change is too large for the task you're on, don't land the workaround here as a stopgap. Raise it as a scope decision (see `docs/contributing/asking-for-decisions.md`): build it in the package now, or file the package work and leave the Kitchen Sink side undone.
 

@@ -265,7 +265,7 @@ Never dispatch a Claude agent as a stand-in for a bot review. Make sure Codex ha
 - Lifecycle hooks: past tense (`onStarted`, `onCompleted`, `onErrored`, `onFinished`)
 - Package boundary: `react` wraps `client` — no transport logic in react
 - Package boundary: `engine` never depends on `client` or `react`
-- Kitchen Sink is glue: it assembles framework pieces and stays clean. Features, workarounds and custom config belong in the owning package; see `apps/kitchen-sink/CLAUDE.md` → "What belongs here, and what belongs in the framework".
+- Kitchen Sink is glue, not a feature home: `apps/kitchen-sink/CLAUDE.md` → "What belongs here, and what belongs in the framework".
 - Collection key resolution: `collection.create("key")` auto-prepends the pattern prefix. `ref.name` returns the full storage key (e.g., `"artifacts/my-doc"`). Strip the prefix for bare keys.
 - Resource mutations emit `resource_change` SSE events via `onResourceChanged` in `createScopeResourceRegistry`. These are transient items — `useSession` checks for them before the transient filter.
 
