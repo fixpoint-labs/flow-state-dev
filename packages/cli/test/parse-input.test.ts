@@ -12,6 +12,11 @@ describe("parseInputArg", () => {
     expect(result).toEqual({ key: "value" });
   });
 
+  it("trims surrounding whitespace in --input", () => {
+    const result = parseInputArg({ input: '  {"key": "value"}  \n' });
+    expect(result).toEqual({ key: "value" });
+  });
+
   it("returns undefined when neither flag is provided", () => {
     const result = parseInputArg({});
     expect(result).toBeUndefined();

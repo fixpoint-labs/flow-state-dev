@@ -27,7 +27,7 @@ export function parseInputArg(options: ParseInputOptions): unknown {
 
   if (options.input !== undefined) {
     try {
-      return JSON.parse(options.input);
+      return JSON.parse(options.input.trim());
     } catch {
       throw new CliError(
         "Invalid JSON in --input flag",
