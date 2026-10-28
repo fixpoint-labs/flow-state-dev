@@ -5,7 +5,7 @@
  * and each one's own to write.
  *
  * Real path, out of CI. The screens, entries, race and restart legs need no
- * model; the shiftCoordinator leg runs the Shift Coordinator on a real one. See goal.md for
+ * model; the shift-coordinator leg runs the Shift Coordinator on a real one. See goal.md for
  * the contract.
  *
  * Built like `it-opens-a-lab`: Shift Manager is built with Vite into a scratch
@@ -38,7 +38,7 @@
  *            every field lands.
  *   restart  the Lab stopped and started on the same store: every project row,
  *            shared and private, and every entry is as it was.
- *   shiftCoordinator      HTTP, as the member, on a real model. Asked for two projects, the
+ *   shift-coordinator     HTTP, as the member, on a real model. Asked for two projects, the
  *            Shift Coordinator creates them, each owned by the person who asked:
  *            the first a shared row with them and whoever they named as
  *            members; the second, "just for me", either their private project
@@ -51,7 +51,7 @@
  * and releases each burst from a barrier, so the bursts really race.
  *
  * Legs: `GOAL_LEG=model-free` runs screens, the outsider, race and restart,
- * `GOAL_LEG=shiftCoordinator` runs shiftCoordinator; unset runs them all, entries included: a
+ * `GOAL_LEG=shift-coordinator` runs shift-coordinator; unset runs them all, entries included: a
  * workstream opens when its owner asks their project coordinator, whose turn
  * runs on its own model.
  *
@@ -74,7 +74,7 @@
  *   drop-solo a create of a project the asker holds alone answers as if it
  *             wrote it and writes nothing (Node swap of project-writes.ts).
  *             Must fail at "shift-coordinator" on the second project. Runs with
- *             `GOAL_LEG=shiftCoordinator` only: the screens leg's private project is such
+ *             `GOAL_LEG=shift-coordinator` only: the screens leg's private project is such
  *             a create.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-groups-workstreams-under-their-projects/run.mts
@@ -105,17 +105,17 @@ if (CONTROL !== "" && !(CONTROLS as readonly string[]).includes(CONTROL)) {
 }
 const LEG = process.env.GOAL_LEG ?? "";
 if (!["", "model-free", "shift-coordinator"].includes(LEG)) {
-  console.error(`unknown GOAL_LEG "${LEG}"; known: model-free, shiftCoordinator`);
+  console.error(`unknown GOAL_LEG "${LEG}"; known: model-free, shift-coordinator`);
   process.exit(2);
 }
 const MODEL_FREE = LEG !== "shift-coordinator";
 const SHIFT_COORDINATOR_LEG = LEG !== "model-free";
 if (CONTROL === "no-tool" && !SHIFT_COORDINATOR_LEG) {
-  console.error(`control ${CONTROL} grades the shiftCoordinator leg, which GOAL_LEG=model-free leaves out`);
+  console.error(`control ${CONTROL} grades the shift-coordinator leg, which GOAL_LEG=model-free leaves out`);
   process.exit(2);
 }
 if (CONTROL === "drop-solo" && LEG !== "shift-coordinator") {
-  console.error("control drop-solo runs with GOAL_LEG=shiftCoordinator only: it also drops the private project the screens leg creates");
+  console.error("control drop-solo runs with GOAL_LEG=shift-coordinator only: it also drops the private project the screens leg creates");
   process.exit(2);
 }
 
@@ -1042,7 +1042,7 @@ async function shiftCoordinator(apis: { owner: LabApi; member: LabApi }, fail: (
   }
   if (created.length + createdPrivate.length > 2) fail(leg, `asked for two projects, the store holds ${created.length + createdPrivate.length} new ones: ${shown}`);
   evidence.push(
-    `shiftCoordinator: asked by ${person.user.userId}, the Shift Coordinator created ${[
+    `shift-coordinator: asked by ${person.user.userId}, the Shift Coordinator created ${[
       ...created.map((r) => `shared ${r.id} {owner ${r.ownerUserId}, members [${r.members.join(",")}]}`),
       ...createdPrivate.map((r) => `private ${r.id} {owner ${r.ownerUserId}, members [${r.members.join(",")}]}`),
     ].join(" and ")}`,
@@ -1134,7 +1134,7 @@ await runGoal(async (failures) => {
   const modelKeys = keysServing(shiftCoordinatorModel);
   if (SHIFT_COORDINATOR_LEG && !modelKeys.some((key) => (process.env[key] ?? "") !== "")) {
     return {
-      failures: [`blocked: the shiftCoordinator leg runs the Shift Coordinator on ${shiftCoordinatorModel}, and no key here serves it; none of ${modelKeys.join(", ")} is set. GOAL_LEG=model-free runs the other legs without one`],
+      failures: [`blocked: the shift-coordinator leg runs the Shift Coordinator on ${shiftCoordinatorModel}, and no key here serves it; none of ${modelKeys.join(", ")} is set. GOAL_LEG=model-free runs the other legs without one`],
       evidence: "",
     };
   }
