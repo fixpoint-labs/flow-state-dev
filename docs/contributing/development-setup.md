@@ -229,13 +229,12 @@ pnpm --filter @flow-state-dev/core test:watch
 
 ### Redis in CI
 
-The `test` and `packed-install` jobs in `.github/workflows/ci.yml` start a Redis
-service container for the BullMQ cases, which fail rather than skip when `CI` is
-set and Redis is missing. The image is the official `redis` image from Docker
-Hub, pinned by tag and digest (`redis:7.4.12@sha256:…`) so a moved tag can't
-change what CI runs. To bump it, pick the new tag on Docker Hub, read its index
-digest with `docker buildx imagetools inspect redis:<tag>` (the `Digest:` line),
-and update both `image:` lines together.
+`test` and `packed-install` share `&redis_service` in `.github/workflows/ci.yml`.
+BullMQ cases fail rather than skip when `CI` is set and that service is missing.
+The image is official `redis`, pinned by tag and index digest
+(`redis:7.4.12@sha256:…`). To bump it, run
+`docker buildx imagetools inspect redis:<tag>` and put the `Digest:` line on
+that anchor.
 
 ### Type-level assertions
 
