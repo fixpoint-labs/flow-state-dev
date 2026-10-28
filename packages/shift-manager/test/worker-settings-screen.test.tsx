@@ -101,7 +101,7 @@ describe("the Roster's way in (BR-20, BR-21a)", () => {
     const page = await screen.findByTestId("worker-settings");
     expect(page.getAttribute("data-worker-id")).toBe("researcher");
     expect(await within(page).findByTestId("rules")).toBeTruthy();
-    expect(screen.queryByTestId("cos")).toBeNull();
+    expect(screen.queryByTestId("shift-coordinator")).toBeNull();
     expect(window.location.pathname).toBe("/roster/researcher/rules");
     // Roster stays highlighted, as on the page's own address.
     expect(screen.getByTestId("nav-roster").getAttribute("aria-current")).toBe("page");
@@ -198,47 +198,47 @@ describe("a worker's Rules (BR-19 to BR-21)", () => {
 });
 
 describe("the Shift Coordinator: no rules in its panel, a gear to its settings", () => {
-  const withCos = (id: string, kind: string, rules: boolean) => lab(toWorker({ id, kind, rules })!);
+  const withShiftCoordinator = (id: string, kind: string, rules: boolean) => lab(toWorker({ id, kind, rules })!);
   // The panel opens beside the conversation only on a wide window.
   beforeEach(() => {
     (window as unknown as { happyDOM: { setViewport(v: { width: number; height: number }): void } }).happyDOM.setViewport({ width: 1600, height: 900 });
   });
 
-  it("draws no rules section in the panel, and never asks the Lab, even for a chief of staff that keeps them", async () => {
-    fixture = withCos("chief-of-staff", "agent", true);
-    await open("/cos");
-    const panel = await screen.findByTestId("cos-panel");
-    expect(within(panel).getByTestId("cos-panel-empty")).toBeTruthy();
+  it("draws no rules section in the panel, and never asks the Lab, even for a Shift Coordinator that keeps them", async () => {
+    fixture = withShiftCoordinator("shift-coordinator", "agent", true);
+    await open("/shift-coordinator");
+    const panel = await screen.findByTestId("shift-coordinator-panel");
+    expect(within(panel).getByTestId("shift-coordinator-panel-empty")).toBeTruthy();
     expect(within(panel).queryByTestId("rules")).toBeNull();
     expect(panel.textContent).not.toMatch(/RULES/);
     expect(calls).toEqual([]);
   });
 
   it("opens the org coordinator's settings, with its Rules, from the gear in its header", async () => {
-    fixture = withCos("chief-of-staff", "agent", true);
-    await open("/cos");
-    fireEvent.click(await within(await screen.findByTestId("cos-header")).findByTestId("cos-settings"));
-    expect(window.location.pathname).toBe("/roster/chief-of-staff/settings");
+    fixture = withShiftCoordinator("shift-coordinator", "agent", true);
+    await open("/shift-coordinator");
+    fireEvent.click(await within(await screen.findByTestId("shift-coordinator-header")).findByTestId("shift-coordinator-settings"));
+    expect(window.location.pathname).toBe("/roster/shift-coordinator/settings");
     const page = await screen.findByTestId("worker-settings");
     expect(within(page).getByTestId("worker-settings-title").textContent).toBe("Shift Coordinator");
-    expect((await within(page).findByTestId("rules")).getAttribute("data-worker-id")).toBe("chief-of-staff");
-    await waitFor(() => expect(calls).toEqual([{ worker: "chief-of-staff", input: { op: "read" } }]));
+    expect((await within(page).findByTestId("rules")).getAttribute("data-worker-id")).toBe("shift-coordinator");
+    await waitFor(() => expect(calls).toEqual([{ worker: "shift-coordinator", input: { op: "read" } }]));
   });
 
   it("links the gear to a team's coordinator by its own id, and shows it even when its flow keeps no rules", async () => {
-    fixture = withCos("ops.chief-of-staff", "coordinator", false);
-    await open("/cos");
-    fireEvent.click(await within(await screen.findByTestId("cos-header")).findByTestId("cos-settings"));
-    expect(window.location.pathname).toBe("/roster/ops.chief-of-staff/settings");
+    fixture = withShiftCoordinator("ops.shift-coordinator", "coordinator", false);
+    await open("/shift-coordinator");
+    fireEvent.click(await within(await screen.findByTestId("shift-coordinator-header")).findByTestId("shift-coordinator-settings"));
+    expect(window.location.pathname).toBe("/roster/ops.shift-coordinator/settings");
     expect((await screen.findByTestId("rules-not-kept")).textContent).toMatch(/doesn't keep standing rules/);
     expect(calls).toEqual([]);
   });
 
   it("offers no gear when several workers could be the coordinator, rather than guessing one", async () => {
-    fixture = lab(toWorker({ id: "chief-of-staff", kind: "agent", rules: true })!, toWorker({ id: "ops.chief-of-staff", kind: "agent", rules: true })!);
-    await open("/cos");
-    const header = await screen.findByTestId("cos-header");
-    await within(header).findByTestId("cos-watching");
-    expect(within(header).queryByTestId("cos-settings")).toBeNull();
+    fixture = lab(toWorker({ id: "shift-coordinator", kind: "agent", rules: true })!, toWorker({ id: "ops.shift-coordinator", kind: "agent", rules: true })!);
+    await open("/shift-coordinator");
+    const header = await screen.findByTestId("shift-coordinator-header");
+    await within(header).findByTestId("shift-coordinator-watching");
+    expect(within(header).queryByTestId("shift-coordinator-settings")).toBeNull();
   });
 });

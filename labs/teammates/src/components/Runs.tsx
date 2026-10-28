@@ -27,7 +27,7 @@ export function Runs({
       <header className="flex items-center gap-3 border-b border-border px-6 py-3">
         <h1 className="text-sm font-semibold">{worker.name}</h1>
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{worker.role}</span>
-        <span className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase">takes tasks · {worker.harness}</span>
+        <span className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase">takes tasks</span>
       </header>
       <div className="flex-1 overflow-y-auto px-6 py-4">
         <div className="mx-auto flex max-w-2xl flex-col gap-3">

@@ -1,5 +1,5 @@
 /**
- * Jump to (⌘K; Shift+⌘K opens it in message mode): find Chief of Staff, a worker, a task or a declared document by
+ * Jump to (⌘K; Shift+⌘K opens it in message mode): find Shift Coordinator, a worker, a task or a declared document by
  * name, from the one snapshot, and go there (BR-10). A document opens
  * read-only. A Lab that serves no document to the browser gets a line saying
  * so, and a failed read of them says what the Lab answered. Up and Down move
@@ -12,8 +12,8 @@
  * go to leaves the palette open with the reason and the draft intact.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { allRows, chiefOfStaffOf, workerLabel, type LoadedSnapshot } from "../lib/derive";
-import { handToChiefOfStaff } from "../lib/outbox";
+import { allRows, shiftCoordinatorOf, workerLabel, type LoadedSnapshot } from "../lib/derive";
+import { handToShiftCoordinator } from "../lib/outbox";
 import { navigate, type Route } from "../lib/routes";
 import type { Gaps } from "../gaps";
 
@@ -47,7 +47,7 @@ export function JumpTo({
   const index = useMemo<Entry[]>(() => {
     const workers = snapshot.inventory.ok ? snapshot.inventory.value.workers : [];
     return [
-      { group: "Views", label: "Shift Coordinator", hint: "where Shift Manager opens", to: { level: "cos" } },
+      { group: "Views", label: "Shift Coordinator", hint: "where Shift Manager opens", to: { level: "shift-coordinator" } },
       ...workers.map((s): Entry => ({ group: "Workers", label: workerLabel(s.id), hint: s.kind ?? "", to: { level: "roster", team: null } })),
       ...allRows(snapshot).map((r): Entry => ({ group: "Tasks", label: r.title, hint: `${r.status} · ${r.boardRef}`, to: { level: "task", boardRef: r.boardRef, taskId: r.id, tab: "session" } })),
       ...(snapshot.resources.ok ? snapshot.resources.value : []).map((d): Entry => ({ group: "Resources", label: d.ref, hint: "read-only", to: { level: "resource", sessionId: d.sessionId, ref: d.ref } })),
@@ -70,11 +70,11 @@ export function JumpTo({
     const message = query.slice(MESSAGE_PREFIX.length).trim();
     if (message === "") return;
     if (!snapshot.inventory.ok) return setSendFailure("The Lab's workers didn't load, so there is no one to send this to.");
-    const cos = chiefOfStaffOf(snapshot.inventory.value.workers);
-    if (cos.kind !== "one") return setSendFailure("There isn't exactly one Shift Coordinator to send this to.");
-    if (cos.worker.door === null) return setSendFailure(`${workerLabel(cos.worker.id)} ${gaps.turn.noDoor}`);
-    handToChiefOfStaff(message);
-    navigate({ level: "cos" });
+    const shiftCoordinator = shiftCoordinatorOf(snapshot.inventory.value.workers);
+    if (shiftCoordinator.kind !== "one") return setSendFailure("There isn't exactly one Shift Coordinator to send this to.");
+    if (shiftCoordinator.worker.door === null) return setSendFailure(`${workerLabel(shiftCoordinator.worker.id)} ${gaps.turn.noDoor}`);
+    handToShiftCoordinator(message);
+    navigate({ level: "shift-coordinator" });
     onClose();
   };
 

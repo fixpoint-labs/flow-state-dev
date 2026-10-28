@@ -365,8 +365,8 @@ function refusedDeclaration(
  * a "lead" without coordinating names, and dot-joined because a `/` inside an
  * id survives registration and then fails to route — the identity is a flow
  * instance id, and a slashed one 404s on every flow route. An org worker's id
- * carries no dot, so it can never equal a team worker's: `chief-of-staff` and
- * `eng.chief-of-staff` are two workers. `parseDeclaredWorkerId` reads both shapes
+ * carries no dot, so it can never equal a team worker's: `shift-coordinator` and
+ * `eng.shift-coordinator` are two workers. `parseDeclaredWorkerId` reads both shapes
  * back.
  *
  * Throws when either segment breaks the rules, naming the rule: an id that

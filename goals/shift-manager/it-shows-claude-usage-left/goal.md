@@ -4,7 +4,7 @@
 
 **Outcome:** A person running Shift Manager on their own Claude subscription opens Usage and sees, for Claude Code, each window their runs reported: which limit, when it resets, and how close it is, as a percent when Claude Code sent one and in words when it didn't. A run only ever writes its own person's row, and a look at who is signed in never throws a run's window away or brings back an old account's.
 
-**Input:** DevTeam's tree and `openLab`, served by Shift Manager's command (`lab/fsdev.config.mts`), with the coder on `claudeCodeHarness`. A scripted chief of staff files one task per tag, and the coder's runs go to `lab/scripted-sdk.mjs` in place of the Agent SDK (`sdkSeam` in `controls.mts`): each run sends the `rate_limit_event`s its tag scripts, in the shape the pinned CLI (0.3.234) builds for each status, and answers `accountInfo()` with the scripted account. The `claude-code` usage reader asks the same seam who is signed in, or the real Agent SDK over an empty home (with and without an API key). Each leg runs as its own person.
+**Input:** DevTeam's tree and `openLab`, served by Shift Manager's command (`lab/fsdev.config.mts`), with the coder on `claudeCodeHarness`. A scripted Shift Coordinator files one task per tag, and the coder's runs go to `lab/scripted-sdk.mjs` in place of the Agent SDK (`sdkSeam` in `controls.mts`): each run sends the `rate_limit_event`s its tag scripts, in the shape the pinned CLI (0.3.234) builds for each status, and answers `accountInfo()` with the scripted account. The `claude-code` usage reader asks the same seam who is signed in, or the real Agent SDK over an empty home (with and without an API key). Each leg runs as its own person.
 
 **Signal:** each failure tagged `<leg>:<assertion>`.
 
@@ -18,10 +18,10 @@
 
 **Anti-game:**
 - No assertion reads Shift Manager's modules or stubs the query. Rows are read through `harnessUsage` over the Lab's HTTP door, and the view in a browser.
-- Runs go through the real chain: chief of staff, task board, harness manager, `claudeCodeAgent`, `onUsage`, the writer. Only the SDK module is replaced.
+- Runs go through the real chain: Shift Coordinator, task board, harness manager, `claudeCodeAgent`, `onUsage`, the writer. Only the SDK module is replaced.
 - The empty-home and API-key looks run the real Agent SDK probe.
 
-**Model:** n/a (scripted chief of staff and SDK).
+**Model:** n/a (scripted Shift Coordinator and SDK).
 
 **Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-shows-claude-usage-left/run.mts` (about 100 s: leg e waits out the minute between looks).
 

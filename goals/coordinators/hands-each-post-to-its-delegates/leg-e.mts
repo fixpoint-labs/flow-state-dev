@@ -103,8 +103,12 @@ const helper = core.defineFlow({
   kind: "helper",
   configSchema: wf.workerConfigSchema(),
   session: installation.session(),
-  resources: { ...installation.resources },
+  resources: { ...installation.resources, ...(wf.workerMessagesResources ?? {}) },
   actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
+  // Every worker flow hears messages (FIX-2238); an older commit has no entry to build.
+  ...(typeof wf.messageReceivedEntry === "function"
+    ? { internal: { actions: { [wf.MESSAGE_RECEIVED_ENTRY]: wf.messageReceivedEntry({ installation, flowKind: "helper" }) } } }
+    : {}),
   // A delegate is a worker whose flow takes tasks: a routed task arrives on `work` (FIX-2083).
   task: { actions: { [wf.WORKER_TASK_ENTRY ?? "work"]: wf.workerTaskEntry({ name: "goal-helper-task", turn: door }) } },
 } as never);

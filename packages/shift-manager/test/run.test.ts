@@ -144,7 +144,7 @@ describe("the Session's items (V1, V2; BR-5, BR-8)", () => {
 });
 
 describe("what the run recorded (V5; BR-19, BR-20)", () => {
-  it("lists the plan and files a recording flow wrote under this request, and says a flow that records none does", async () => {
+  it("lists the plan, files and pull requests a recording flow wrote under this request, and says a flow that records none does", async () => {
     const own = await linked("held", "own");
     const recorded = await eventually(async () => {
       const work = await readRecordedWork(client, own.run!);
@@ -155,9 +155,13 @@ describe("what the run recorded (V5; BR-19, BR-20)", () => {
       ["Write the audit note", "in_progress"],
     ]);
     expect(recorded.files?.rows).toEqual([{ path: "notes/audit.md", kind: "created" }]);
+    // Only the pull request this run's request opened: the session's earlier one is narrowed out by requestId.
+    expect(recorded.pullRequests?.rows).toEqual([
+      { url: "https://github.com/acme/audit/pull/7", repository: "acme/audit", number: 7, title: "Audit note 7", state: "open", source: "tool" },
+    ]);
 
     const same = await linked("held", "shared");
-    expect(await readRecordedWork(client, same.run!)).toEqual({ plan: null, files: null });
+    expect(await readRecordedWork(client, same.run!)).toEqual({ plan: null, files: null, pullRequests: null });
   });
 });
 

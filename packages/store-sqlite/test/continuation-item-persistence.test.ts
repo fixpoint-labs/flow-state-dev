@@ -59,7 +59,7 @@ describe("continuation item persists and round-trips through SQLite (FIX-865)", 
       name: "gate",
       inputSchema: z.any(),
       outputSchema: z.unknown(),
-      execute: async (_i, ctx) => ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+      execute: async (_i, ctx) => ctx.suspend!({ reason: "user_approval", message: "Approve?" })
     });
     const flow = defineFlow({
       kind: "sqlite-continuation-item",

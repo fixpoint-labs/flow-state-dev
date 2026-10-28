@@ -17,7 +17,7 @@ const approvalStep = handler({
   outputSchema: z.string(),
   execute: async (input, ctx) => {
     const decision = (await ctx.suspend!({
-      reason: "human_approval",
+      reason: "user_approval",
       message: `Approve ${input.request}?`,
       resumeSchema: z.object({ approved: z.boolean() })
     })) as { approved: boolean };

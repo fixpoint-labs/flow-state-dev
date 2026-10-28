@@ -162,7 +162,7 @@ function renderBlockToolOutputFallback(item: ToolOutputItem): ReactNode {
  *  1. `item.render.component` — if it names a registered `renderers.component`
  *     entry, the author's custom component wins (the escape hatch for schemas
  *     richer than the bounded default can handle).
- *  2. by `reason`: `human_approval` → the approve/reject card; `human_input` →
+ *  2. by `reason`: `user_approval` → the approve/reject card; `user_input` →
  *     by `resumeSchema` shape (free-text question, enum selection, or flat form).
  *  3. fallback to the approval card.
  *
