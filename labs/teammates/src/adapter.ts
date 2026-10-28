@@ -199,6 +199,8 @@ interface WindowRead {
   historyStart?: string;
   /** The newest turn folded into the summary, once one was. */
   summarizedThrough?: string;
+  /** Whether the summary covers every turn before its mark; one with a hole can't be called that. */
+  summaryComplete?: boolean;
 }
 
 /**
@@ -225,7 +227,7 @@ export function windowMarkOf(items: readonly Item[], entries: readonly Conversat
   if (from < 0) return undefined;
   const drawn = new Set(entries.map((e) => e.id));
   const first = items.slice(from).find((i) => drawn.has(i.id));
-  return first === undefined ? undefined : { firstVerbatimEntryId: first.id, summarized: folded >= 0 && folded >= start };
+  return first === undefined ? undefined : { firstVerbatimEntryId: first.id, summarized: read.summaryComplete !== false && folded >= 0 && folded >= start };
 }
 
 /** Read `read` now and every {@link POLL_MS} until stopped; a failed read keeps the last value. */
@@ -489,8 +491,8 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
           const through = summary?.clientData?.throughRequestId;
           return {
             ...(latest?.historyStart == null ? {} : { historyStart: latest.historyStart.requestId }),
-            // A summary with a hole is not what the worker would have read: call those turns out of view.
-            ...(through == null || summary?.clientData?.complete !== true ? {} : { summarizedThrough: through }),
+            // The worker reads after the mark whether or not the summary has a hole; a hole only changes the label.
+            ...(through == null ? {} : { summarizedThrough: through, summaryComplete: summary?.clientData?.complete === true }),
           };
         },
         (next) => {

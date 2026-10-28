@@ -40,6 +40,11 @@ describe("the history window's divider", () => {
     expect(windowMarkOf(overlapped, toEntries(overlapped, new Set()), { summarizedThrough: "r1" })).toEqual({ firstVerbatimEntryId: "r2_you", summarized: true });
   });
 
+  it("still sits after the mark, but not labelled summarized, when the summary has a hole", () => {
+    // The worker reads only after r2 whatever the summary covers; a hole means it can't claim to remember r1 and r2.
+    expect(windowMarkOf(items, entries, { historyStart: "r2", summarizedThrough: "r2", summaryComplete: false })).toEqual({ firstVerbatimEntryId: "r3_you", summarized: false });
+  });
+
   it("calls turns out of view when the window starts past the summary's mark", () => {
     expect(windowMarkOf(items, entries, { historyStart: "r4", summarizedThrough: "r2" })).toEqual({ firstVerbatimEntryId: "r4_you", summarized: false });
   });
