@@ -204,7 +204,7 @@ export async function sceneAC(world: World, servers: Servers, walked: Walked): P
 }
 
 /** The midway questions a row has ever had, answered or not. */
-const everAsked = (row: TaskRow | undefined): TaskRow[] => ((row?.holds ?? []) as TaskRow[]).filter((h) => h.source?.kind === "row" && h.midway === true);
+const everAsked = (row: TaskRow | undefined): TaskRow[] => ((row?.questions ?? []) as TaskRow[]).filter((h) => h.source?.kind === "row" && h.midway === true);
 
 /** Scene ed: a call parked while a midway question reaches its filer, and a ring runs on its own line. */
 export async function sceneED(world: World, walked: Walked, run: { ring: boolean; question: boolean }): Promise<LegResult> {
@@ -231,7 +231,7 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
 
   // Helper A's file tells it to answer a worker's question by message; a task's question is answered by
   // updateTask, so Alice gives it a standing rule first, through its own rules tool.
-  const rule = await talkThrough(world, "e", HELPER_A, helperA, `Save this as a standing rule with rules_add, word for word: "When a task I filed asks me a question, I answer it only with updateTask (the task's id, the question's id as question, the answer as message), never with sendMessage."`);
+  const rule = await talkThrough(world, "e", HELPER_A, helperA, `Save this as a standing rule with rules_add, word for word: "When a task I filed asks me a question, I answer it only with updateTask (the task's id, the question's id as answers, the answer as message), never with sendMessage."`);
   const saved = (await alice.routes.items(helperA.id, "tool_output")).some((i) => i.requestId === rule.requestId && /^rules[_/]add$/.test(String(i.toolCall?.name)));
   if (!saved) r.notes.push(`e: Helper A saved no standing rule (${rule.status}): ${rule.reply.slice(0, 200)}`);
 
@@ -241,7 +241,7 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
     `Do these in order, in this one turn. First, start ${HELPER_B} on a task with createTask, leaving the questions field out entirely (the task asks its own while it works), whose goal is, word for word: ` +
     `"Write a one-line welcome for the ${topic} gala that names its venue. You don't know the venue. Your first step is to call the askQuestion tool, asking the worker who filed this task for the venue; never finish without that tool call. Then write the line." ` +
     `Second, call sendMessage with to "${RESEARCHER}", text "What is seven times six? Answer with the number only.", wait: true and deadline: ${PARKED_CALL_MS}. ` +
-    `Then tell me what you got. The ${topic} gala's venue is ${venue}. When ${HELPER_B}'s task asks you for it, answer only by calling updateTask with that task's id, the question's id as question, and the venue as message. Don't message or call anyone about it.`;
+    `Then tell me what you got. The ${topic} gala's venue is ${venue}. When ${HELPER_B}'s task asks you for it, answer only by calling updateTask with that task's id, the question's id as answers, and the venue as message. Don't message or call anyone about it.`;
   const requestId = (await alice.flow(helperA.flowKind).send("respond", { message: words }, { sessionId: helperA.id })).id;
   const watching = follow(alice, helperA.flowKind, requestId, PARKED_CALL_MS + 240_000);
 
@@ -272,7 +272,7 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
     for (const a of ["e:filer-hears", "e:heard-while-calling", "e:steer-releases"]) r.failures.push(`${a} — setup: Helper A filed Helper B no task: calls ${show(calls.map((c) => c.args))}`);
   } else if (run.question) {
     const taskId = String(filed.id);
-    // The task read lists only open holds, so the question is caught while it is open.
+    // The task read lists only open questions, so the question is caught while it is open.
     let question: TaskRow | undefined;
     const after = await until(async () => {
       const now = await rowOf(alice, helperA, taskId);
@@ -296,7 +296,7 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
     r.notes.push(`e: task ${filed.id} ended ${final?.status} on attempt ${final?.attempts}; question ${question?.id ?? "none"}; ${heard.length} received item(s) about it, the first at ${tsOf(heardItem)} in ${heardAction ?? "?"}`);
     if (question === undefined) {
       // Nothing for e's other assertions to grade either: each says so, so none reads as a pass.
-      for (const a of ["e:filer-hears", "e:heard-while-calling", "e:steer-releases"]) r.failures.push(`${a} — setup: Helper B's task never asked midway: ${final?.status}, holds ${show(final?.holds)}`);
+      for (const a of ["e:filer-hears", "e:heard-while-calling", "e:steer-releases"]) r.failures.push(`${a} — setup: Helper B's task never asked midway: ${final?.status}, questions ${show(final?.questions)}`);
     } else {
       // e:filer-hears — one received item from Helper B naming the task and the question, on onMessageReceived, in the filing session.
       if (heard.length !== 1 || !heard[0]!.text.includes(String(question.id)) || heardAction !== "onMessageReceived") {
