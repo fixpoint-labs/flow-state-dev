@@ -37,7 +37,7 @@ function flowOf(model: ReturnType<typeof stepModel>["model"]): FlowInstance {
     outputSchema: z.any(),
     execute: async (_input, ctx) => {
       const board = (await boardOf(ctx))!;
-      await board.addTask({ id: "root", goal: "the first job", assignee: "researcher" });
+      await board.createTask({ id: "root", goal: "the first job", assignee: "researcher" });
       const claimed = (await board.claim("w"))!;
       const ticket = ticketForClaim(board.collectionId, claimed, board.partition);
       await board.linkRun("root", { sessionId: "s-root", requestId: "r-root", attempt: claimed.attempts }, { claim: ticket });

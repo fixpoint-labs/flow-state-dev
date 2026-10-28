@@ -65,6 +65,8 @@ describe("a completed run's output", () => {
       branch: record!.branch,
       commits: 1,
       judged: false,
+      // No review was asked: a manager built without `reviewChanges`.
+      review: null,
     });
   }, 60_000);
 });

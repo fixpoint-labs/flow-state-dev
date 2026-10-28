@@ -385,7 +385,7 @@ describe("a row filed by a block run outside a request (FIX-2123)", () => {
       uses: [board.capability],
       execute: async (_input, ctx) => {
         const tasks = await (ctx.cap as Record<string, { tasks: () => Promise<TaskCollectionRef> }>)["outside-run"].tasks();
-        await tasks.addTask({ goal: "work", assignee: "implement" });
+        await tasks.createTask({ goal: "work", assignee: "implement" });
         return {};
       }
     });

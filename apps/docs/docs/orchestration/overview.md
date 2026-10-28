@@ -18,7 +18,7 @@ Patterns          (patterns)      — supervisor, parallelTasks, planAndExecute,
   ▲
 Task board        (orchestration) — a concurrent drain over a collection
   ▲
-Task substrate    (orchestration) — the Task record + TaskCollection + dispatchers
+Task substrate    (orchestration) — the Task record + TaskCollection + claim orders
 ```
 
 Read it bottom-up.
@@ -45,13 +45,13 @@ Which path you take depends on who decides the shape of the work.
 
 **Agent-first.** A generator decides what work to run at runtime. Give it the task tools over a board with `createTaskToolsCapability(resolver)` (`createTask`, `getTask`, `listTasks` and `updateTask`) and it plans the work as tasks, with an `assignee` and `deps` on each, for the board's workers to take.
 
-Both paths drive the same substrate, and a worker can enqueue follow-up work mid-run either way. In a code-defined board, a worker resolves the collection with `getOrCreateTaskCollection` and calls `addTask`. A model calls the `createTask` task tool.
+Both paths drive the same substrate, and a worker can enqueue follow-up work mid-run either way. In a code-defined board, a worker resolves the collection with `getOrCreateTaskCollection` and calls `createTask`. A model calls the `createTask` task tool.
 
 ## Where work blocks, and where it doesn't
 
-Dependencies are how you say "this can't start until that finishes." A task lists the ids it depends on, and the default dispatcher won't hand it to a worker until every dependency has completed. That's how a synthesizer waits for its analysts without any glue code on your side.
+Dependencies are how you say "this can't start until that finishes." A task lists the ids it depends on, and the default claim order won't hand it to a worker until every dependency has completed. That's how a synthesizer waits for its analysts without any glue code on your side.
 
-A board also needs a rule for when to stop. By default it drains until either every task completed or nothing runnable is left (a failure upstream can strand the tasks that depended on it). You can also tell a board to wait indefinitely for work that arrives from outside. A task waiting for a person doesn't keep a board running: a board whose open tasks only wait on a person stops, and the answer starts the task's next turn. Those termination modes are covered in [Task board](./task-board), and the waits in [A task held on questions](./task-board#a-task-held-on-questions) and [A task waiting on a user](./task-board#a-task-waiting-on-a-user).
+A board also needs a rule for when to stop. By default it drains until either every task completed or nothing runnable is left (a failure upstream can strand the tasks that depended on it). You can also tell a board to wait indefinitely for work that arrives from outside. A task waiting for a person doesn't keep a board running: a board whose open tasks only wait on a person stops, and the answer starts the task's next turn. Those termination modes are covered in [Task board](./task-board), and the waits in [A task's questions](./task-board#a-tasks-questions) and [A task waiting on a user](./task-board#a-task-waiting-on-a-user).
 
 A drain normally runs inside the request that mounted it, so every worker's task finishes before that request does. The exception is a worker declared to run in a *dispatch run* instead of inline. The board claims a task for it as usual, hands the task to that run, and moves on. The drain can finish while the task is still running, and the run records the result when the worker is done. See [Workers that dispatch](./task-board#assignees-that-dispatch) for what such a board requires, and [Work that outlives the turn](/guides/background-work) for that path beside the other background-work surfaces.
 

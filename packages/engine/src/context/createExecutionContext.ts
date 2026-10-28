@@ -4188,24 +4188,20 @@ export async function createExecutionContext<
         // scope so the core `executeBlock` replay short-circuit fires for blocks
         // anywhere in the tree, not just direct children of the root sequencer.
         // Read from the parent `context` (set by runAction on the root ctx) so a
-        // late assignment still reaches descendants. `_resumeState` is
-        // deliberately NOT propagated — it carries the root sequencer's restored
-        // checkpoint state only; nested-sequencer state restore is a follow-up.
+        // late assignment still reaches descendants.
         const inheritedReplayLog = (context as { _replayLog?: unknown })._replayLog;
         if (inheritedReplayLog !== undefined) {
           (childContext as { _replayLog?: unknown })._replayLog = inheritedReplayLog;
         }
-        // Propagate `_resumeState` (the restored checkpoint state) to the ROOT
-        // block's scope only — `parentChain === undefined` marks the root-level
-        // dispatch. The root durable sequencer reads it to `setState` before
-        // running children. Deeper scopes do NOT inherit it, so a nested durable
-        // sequencer isn't wrongly seeded with the root's state (nested-sequencer
-        // accumulator restore is a documented follow-up, FIX-811).
-        if (parentChain === undefined) {
-          const inheritedResumeState = (context as { _resumeState?: unknown })._resumeState;
-          if (inheritedResumeState !== undefined) {
-            (childContext as { _resumeState?: unknown })._resumeState = inheritedResumeState;
-          }
+        // Propagate `_resumeState` (the restored checkpoint state). Named by
+        // the sequencer it belongs to, it reaches every scope, and only that
+        // sequencer restores it, so a durable sequencer nested under a gate
+        // (a task entry's worker) gets its own state back. Unnamed, it is the
+        // root's and reaches the root-level dispatch only (`parentChain ===
+        // undefined`), so no nested sequencer is seeded with the root's state.
+        const inheritedResumeState = (context as { _resumeState?: { blockInstanceId?: string } })._resumeState;
+        if (inheritedResumeState !== undefined && (parentChain === undefined || inheritedResumeState.blockInstanceId !== undefined)) {
+          (childContext as { _resumeState?: unknown })._resumeState = inheritedResumeState;
         }
 
         // Capture start time before execution — this is the only trace cost paid

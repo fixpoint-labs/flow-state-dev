@@ -162,7 +162,7 @@ describe("didWriteLand — the three answers", () => {
 
   it("answers did-not-land on a first attempt, whose log is empty", () => {
     // The commonest routine history, and the one the never-dropped marker
-    // exists for: `addTask`, the claim, a reclaim and the replacement claim all
+    // exists for: `createTask`, the claim, a reclaim and the replacement claim all
     // bump the revision and mint no receipt, so there is no older receipt to
     // prove coverage with. Without the marker this would escalate to
     // cannot-tell on the ordinary path.
@@ -433,7 +433,7 @@ describe.each(backings)("%s — the two histories", (_name, makeBacking) => {
   async function history(landed: boolean) {
     const backing = await makeBacking();
     const { collection } = backing;
-    await collection.addTask({ id: "t", goal: "t", maxAttempts: 3 });
+    await collection.createTask({ id: "t", goal: "t", maxAttempts: 3 });
 
     // Worker A takes the task and opens a correlated write against it.
     const mine = await collection.claim("worker-a");
@@ -525,7 +525,7 @@ describe.each(backings)("%s — the two histories", (_name, makeBacking) => {
 describe.each(backings)("%s — what the stamp records", (_name, makeBacking) => {
   it("starts a task at revision 1 with no log and nothing dropped", async () => {
     const { collection } = await makeBacking();
-    await collection.addTask({ id: "t", goal: "t" });
+    await collection.createTask({ id: "t", goal: "t" });
     expect(provenanceOf(collection, "t")).toEqual({
       revision: 1,
       writeLog: [],
@@ -539,8 +539,8 @@ describe.each(backings)("%s — what the stamp records", (_name, makeBacking) =>
     // shape of bug this test exists to catch before it ever reaches the ABA
     // guard.
     const { collection } = await makeBacking();
-    await collection.addTask({ id: "solo", goal: "t" });
-    await collection.addTasks([
+    await collection.createTask({ id: "solo", goal: "t" });
+    await collection.createTasks([
       { id: "batch-1", goal: "t" },
       { id: "batch-2", goal: "t" },
     ]);
@@ -558,7 +558,7 @@ describe.each(backings)("%s — what the stamp records", (_name, makeBacking) =>
     // wrong. Every mutating path on the ref is walked here, in one legal
     // lifecycle, and each is checked against what it should have done.
     const { collection } = await makeBacking();
-    await collection.addTask({ id: "t", goal: "t", maxAttempts: 5 });
+    await collection.createTask({ id: "t", goal: "t", maxAttempts: 5 });
 
     /** Run one write and assert whether it advanced the record. */
     async function step(what: string, run: () => Promise<unknown>, commits: boolean) {
@@ -590,7 +590,7 @@ describe.each(backings)("%s — what the stamp records", (_name, makeBacking) =>
 
   it("mints a receipt only when a caller supplied a token", async () => {
     const { collection } = await makeBacking();
-    await collection.addTask({ id: "t", goal: "t", maxAttempts: 5 });
+    await collection.createTask({ id: "t", goal: "t", maxAttempts: 5 });
     await collection.claim("w");
 
     // Off-state (BP-035): a call omitting the token still advances the record.
@@ -608,7 +608,7 @@ describe.each(backings)("%s — what the stamp records", (_name, makeBacking) =>
 
   it("records nothing for a declined write", async () => {
     const { collection } = await makeBacking();
-    await collection.addTask({ id: "t", goal: "t" });
+    await collection.createTask({ id: "t", goal: "t" });
     await collection.claim("w");
     await collection.complete("t", { ok: true });
     const settled = provenanceOf(collection, "t");
@@ -624,7 +624,7 @@ describe.each(backings)("%s — what the stamp records", (_name, makeBacking) =>
     // Stamping on every call would make "my receipt is absent" stop meaning
     // "my write changed nothing", which is the question this answers.
     const { collection } = await makeBacking();
-    await collection.addTask({ id: "t", goal: "t", priority: 3 });
+    await collection.createTask({ id: "t", goal: "t", priority: 3 });
     const before = provenanceOf(collection, "t");
     const verdict = await collection.setPriority("t", 3);
     expect(verdict).toEqual({ outcome: "unchanged" });
@@ -633,7 +633,7 @@ describe.each(backings)("%s — what the stamp records", (_name, makeBacking) =>
 
   it("evicts oldest-first at the cap and flips the marker exactly once", async () => {
     const { collection } = await makeBacking();
-    await collection.addTask({ id: "t", goal: "t" });
+    await collection.createTask({ id: "t", goal: "t" });
     const tokens: TaskWriteToken[] = [];
 
     for (let i = 0; i < CAP + 2; i += 1) {
@@ -658,7 +658,7 @@ describe.each(backings)("%s — what the stamp records", (_name, makeBacking) =>
 
   it("never unflips the marker once a receipt has been dropped", async () => {
     const { collection } = await makeBacking();
-    await collection.addTask({ id: "t", goal: "t" });
+    await collection.createTask({ id: "t", goal: "t" });
     for (let i = 0; i < CAP + 1; i += 1) {
       const write = beginTaskWrite(collection.get("t"));
       await correlatedWrite(collection, "t", write);
@@ -673,7 +673,7 @@ describe.each(backings)("%s — what the stamp records", (_name, makeBacking) =>
 
   it("an evicted caller gets cannot-tell, never a false did-not-land", async () => {
     const { collection } = await makeBacking();
-    await collection.addTask({ id: "t", goal: "t" });
+    await collection.createTask({ id: "t", goal: "t" });
     const first = beginTaskWrite(collection.get("t"));
     await correlatedWrite(collection, "t", first);
 
@@ -709,7 +709,7 @@ describe("resource-backed — the ABA case (FIX-989 follow-up)", () => {
       collection: resources,
       now: () => 1_000,
     });
-    await first.addTask({ id: "t", goal: "t" });
+    await first.createTask({ id: "t", goal: "t" });
 
     // A caller reads the task and opens a correlated write against it, exactly
     // as `beginTaskWrite`'s own usage example does.
@@ -729,7 +729,7 @@ describe("resource-backed — the ABA case (FIX-989 follow-up)", () => {
       collection: resources,
       now: () => 2_000,
     });
-    await second.addTask({ id: "t", goal: "t" });
+    await second.createTask({ id: "t", goal: "t" });
 
     // The replacement restarts at revision 1 — exactly the caller's baseline —
     // which is precisely the state that would satisfy "nothing committed since
@@ -761,7 +761,7 @@ describe("resource-backed — the ABA case (FIX-989 follow-up)", () => {
         collectionId: "tasks",
         collection: resources,
       });
-      await first.addTask({ id: "t", goal: "t" });
+      await first.createTask({ id: "t", goal: "t" });
 
       const write = beginTaskWrite(first.get("t"));
 
@@ -770,7 +770,7 @@ describe("resource-backed — the ABA case (FIX-989 follow-up)", () => {
         collectionId: "tasks",
         collection: resources,
       });
-      await second.addTask({ id: "t", goal: "t" });
+      await second.createTask({ id: "t", goal: "t" });
 
       const verdict = didWriteLand(second.get("t"), write);
       if (verdict === undefined) withheld += 1;
@@ -811,7 +811,7 @@ describe("a lost CAS round stamps once, off the state that committed", () => {
       state: seedState,
       now: () => clock,
     });
-    await seed.addTask({ id: "t", goal: "t" });
+    await seed.createTask({ id: "t", goal: "t" });
     await seed.claim("w");
 
     const replaying = createFakeSequencerState<{ tasks: Record<string, unknown> }>(
@@ -848,14 +848,14 @@ describe("a lost CAS round stamps once, off the state that committed", () => {
     const resources = createFakeResourceCollection<JsonObject>(undefined, {
       onReplay: (state) => concurrent(state as unknown as Task) as unknown as typeof state,
     });
-    // `addTask` goes through `create`, not `updateState`, so seeding through
+    // `createTask` goes through `create`, not `updateState`, so seeding through
     // the same collection is not itself replayed.
     const seed = await createResourceBackedTaskCollection({
       collectionId: "tasks",
       collection: resources,
       now: () => clock,
     });
-    await seed.addTask({ id: "t", goal: "t" });
+    await seed.createTask({ id: "t", goal: "t" });
 
     const collection = await createResourceBackedTaskCollection({
       collectionId: "tasks",

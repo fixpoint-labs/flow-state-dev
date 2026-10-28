@@ -41,7 +41,7 @@ delegates: all
 
 The roster is read on every call, so a worker you hire partway through a conversation can be handed work on the next call, and a worker you fire drops off. Removing one delegate from such a session turns its list into the roster as it stands then, less that worker, and it stops following the roster. Only the worker's file sets `all`; no action or tool switches a list to it. `all` isn't bounded by the 25-delegate limit a written list has.
 
-When at least one of a session's delegates can take a task, the worker gets the [task board](../orchestration/task-board.md)'s task tools in that session: `createTask`, `getTask`, `listTasks` and `updateTask` ([one task, five tools](../orchestration/task-board.md#one-task-five-tools)). `createTask` starts work on a delegate now. With `held: true` it files a task that doesn't start until `updateTask` releases it. With `questions` it files one that doesn't start until the user has answered them from their Inbox, and the answers join the delegate's brief; see [a task held on questions](../orchestration/task-board.md#a-task-held-on-questions). Your app can send the same tools as actions on any of that worker's sessions, named for the board, `tasks`: `createTask_tasks`, `updateTask_tasks` and so on. They act as the signed-in user, and another user's call to them is refused.
+When at least one of a session's delegates can take a task, the worker gets the [task board](../orchestration/task-board.md)'s task tools in that session: `createTask`, `getTask`, `listTasks` and `updateTask` ([one task, five tools](../orchestration/task-board.md#one-task-five-tools)). `createTask` starts work on a delegate now. With `held: true` it files a task that doesn't start until `updateTask` releases it. With `questions` it files one that doesn't start until the user has answered them from their Inbox, and the answers join the delegate's brief; see [a task's questions](../orchestration/task-board.md#a-tasks-questions). Your app can send the same tools as actions on any of that worker's sessions, named for the board, `tasks`: `createTask_tasks`, `updateTask_tasks` and so on. They act as the signed-in user, and another user's call to them is refused.
 
 A worker working a task also gets `reportProgress`, which writes a status note and a checkpoint of its output on that task, `askQuestion`, which asks the user a question the task then waits on, and `waitForUser`, which stops its turn for the user's approval or review. None is an action.
 
@@ -176,7 +176,7 @@ The filing session hears each ending once, even if the server stops just after t
 
 ### Where a task runs, and where its result goes
 
-Code that files on a conversation's board through the collection (`addTask` on the board's ref) can choose two more things per task:
+Code that files on a conversation's board through the collection (`createTask` on the board's ref) can choose two more things per task:
 
 - `session`: `"new"` (the default) runs the task in a task session of its own. `"ongoing"` runs it in the session where that delegate works for this conversation, so it starts from everything that session already knows. A session works one task at a time, so a second task for the same session waits until the first ends.
 - `resultTo`: `"filer"` (the default) means the result is for whoever filed the task. `"conversation"` marks a result that belongs to the conversation itself. Such a task runs once: it takes one attempt, any other `maxAttempts` is refused, and so is a wait on it.
@@ -214,7 +214,7 @@ The read answers in pages: 50 rows by default, up to 200 if you pass `limit`. `r
 
 A worker given a task can split it into pieces for its own delegates. A piece for any other worker is refused with `unknown_assignee`, and nothing is filed. When the task needs a worker that isn't a delegate, the worker should say so in its answer, and whoever filed the task decides. A piece filed with no assignee goes to the worker's delegate when it has exactly one.
 
-The pieces go on the task session's own board. The worker either waits on a piece in the same turn, with `getTask({ id, wait: true })`, or files them and ends its turn. Waits nest up to five deep, so a task's turn can wait on a piece whose own turn waits on another. When the turn ends instead, nothing runs for the task while the pieces are worked, but the task stays `in_progress`, with `waitingOn: "filed"` on its row, and it isn't handed out again while it waits. See [When a dispatched task is done](../orchestration/task-board.md#when-a-dispatched-task-is-done) for the rule every dispatched task follows.
+The pieces go on the task session's own board. The worker either waits on a piece in the same turn, with `getTask({ id, wait: true })`, or files them and ends its turn. Waits nest up to five deep, so a task's turn can wait on a piece whose own turn waits on another. When the turn ends instead, nothing runs for the task while the pieces are worked, but the task stays `in_progress`, with `keptOpenBy: "filed"` on its row, and it isn't handed out again while it waits. See [When a dispatched task is done](../orchestration/task-board.md#when-a-dispatched-task-is-done) for the rule every dispatched task follows.
 
 Each piece's ending wakes the worker for a turn in the task session, where it reads the result and decides what it means. A turn can file more pieces, and the task waits on those too. A message to the worker in its task session doesn't hold the task and isn't part of it. While the task's turn is running, the worker hears it after that turn; while the task waits on its pieces, it may hear and answer it before the task is done. Either way its turn on the message can't write to the task, and a failure in it doesn't fail the task.
 
@@ -339,7 +339,7 @@ const woken = await backfillBoardWakes(runtime.stores, {
 
 It returns how many sessions it woke, and `0` on a store that keeps no wakes. Running it again is safe. A Shift Manager Lab runs it for you when it starts.
 
-A split task stored by an earlier version reads as `in_progress` with `waitingOn: "filed"`. It settles like any split task: after the worker's turn on its last piece's ending, once nothing else holds it.
+A split task stored by an earlier version reads as `in_progress` with `keptOpenBy: "filed"`. It settles like any split task: after the worker's turn on its last piece's ending, once nothing else holds it.
 
 ## Related pages
 

@@ -108,7 +108,7 @@ function colocatedState(kind: string, seen: Seen): {
     modelResolver: (() => undefined) as never,
     worker: {
       mode: "colocated",
-      createDispatcher: () => undefined as never,
+      createRunner: () => undefined as never,
       startWorker: (runtime) => {
         capturedRuntime = runtime;
         return { close: async () => {} };
@@ -188,7 +188,7 @@ describe("a colocated worker sees its own process's sweeper (FIX-999)", () => {
       modelResolver: (() => undefined) as never,
       worker: {
         mode: "colocated",
-        createDispatcher: () => undefined as never,
+        createRunner: () => undefined as never,
         startWorker: (runtime) => {
           sawStartWorker = true;
           cadenceAtStartWorker = runtime.runtimeConfig.requestHost?.staleSweepIntervalMs;

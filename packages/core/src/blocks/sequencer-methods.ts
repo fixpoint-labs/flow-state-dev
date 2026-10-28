@@ -540,9 +540,20 @@ export type SequencerRuntimeState = {
   /**
    * Active `loopBack` generation for child path construction (FIX-643). 0
    * (the default) on the first pass and after a loop exits, so child paths are
-   * unchanged for non-looping code. Each `loopBack` jump bumps it to the
-   * loop's incremented `loopCounts` value, so steps re-executed in pass N get a
-   * `loop[N]` parent-path prefix and a distinct `blockInstanceId` per iteration.
+   * unchanged for non-looping code. Each `loopBack` jump bumps it to the next
+   * value of `loopJumps`, so steps re-executed in pass N get a `loop[N]`
+   * parent-path prefix and a distinct `blockInstanceId` per pass, even when two
+   * `loopBack`s target the same step.
    */
   activeLoopGeneration: number;
+  /** Jumps taken by any `loopBack` in this sequencer run; the source of each pass's generation. */
+  loopJumps: number;
+  /**
+   * The generation each `loopBack` (by step index) last jumped into, while
+   * that pass is still open. A loop that exits inside a later loop's pass
+   * returns to that pass's generation rather than to 0, so the steps after it
+   * never reuse a path from an earlier pass (which a resume's replay log would
+   * answer with that earlier pass's output).
+   */
+  openLoopPasses: Map<number, number>;
 };

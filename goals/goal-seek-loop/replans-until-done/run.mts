@@ -172,7 +172,7 @@ function buildLoop(): { board: TaskBoardHandle<any, any, any>; loop: ReturnType<
     inputSchema: z.unknown(),
     uses: [board.capability],
     execute: async (_input, ctx) => {
-      await (ctx.cap as any)[board.capability.name].addTasks([
+      await (ctx.cap as any)[board.capability.name].createTasks([
         { id: "covered", goal: `Research ${fx.coveredAspect} of ${fx.subject}.` },
       ]);
     },
@@ -196,7 +196,7 @@ function buildLoop(): { board: TaskBoardHandle<any, any, any>; loop: ReturnType<
     execute: async (_drainResult, ctx) => {
       // `.tasks()` is the accessor that yields the live `TaskCollectionRef` —
       // the capability object itself only carries the write conveniences
-      // (`addTasks`), not the query surface (`list`).
+      // (`createTasks`), not the query surface (`list`).
       const collection = await (
         ctx.cap as Record<string, { tasks: () => Promise<TaskCollectionRef> }>
       )[board.capability.name].tasks();

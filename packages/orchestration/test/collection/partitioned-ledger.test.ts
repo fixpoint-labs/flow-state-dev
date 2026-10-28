@@ -105,7 +105,7 @@ describe("resolving a partitioned ledger", () => {
 
   it("names its partition on a claim ticket, which, like the dispatch, holds no empty partition", async () => {
     const ref = await at(storeFor(partitioned()), "conv-a");
-    await ref.addTask({ id: "t1", goal: "g" });
+    await ref.createTask({ id: "t1", goal: "g" });
     const ticket = ticketForClaim(ref.collectionId, (await ref.claim("w"))!, ref.partition);
     expect(taskClaimTicketSchema.parse(ticket).partition).toBe("conv-a");
     expect(taskClaimTicketSchema.safeParse({ ...ticket, partition: "" }).success).toBe(false);
@@ -116,7 +116,7 @@ describe("a ref resolved at one partition", () => {
   it("keys each row <partition segment>/<task id>, under the collection id", async () => {
     const store = storeFor(partitioned());
     const a = await at(store, "Conv A/1");
-    await a.addTask({ id: "t1", goal: "g" });
+    await a.createTask({ id: "t1", goal: "g" });
     // The segment is the injective one-segment encoding: a "/" in the
     // partition value cannot make the row nest.
     const keys = (await store.list()).map((ref) => ref.path);
@@ -126,14 +126,14 @@ describe("a ref resolved at one partition", () => {
 
   it("refuses a task id that would nest under the partition", async () => {
     const a = await at(storeFor(partitioned()), "p");
-    await expect(a.addTask({ id: "parent/child", goal: "g" })).rejects.toThrow(/one path segment/);
-    await expect(a.addTask({ id: "parent\\child", goal: "g" })).rejects.toThrow(/one path segment/);
+    await expect(a.createTask({ id: "parent/child", goal: "g" })).rejects.toThrow(/one path segment/);
+    await expect(a.createTask({ id: "parent\\child", goal: "g" })).rejects.toThrow(/one path segment/);
   });
 
   it("adopts only its partition's direct children", async () => {
     const store = storeFor(partitioned());
     const a = await at(store, "p");
-    await a.addTask({ id: "mine", goal: "g" });
+    await a.createTask({ id: "mine", goal: "g" });
     // A row nested a level deeper, written past the partitioned ref, is not
     // the partition's: no read of the partition finds it.
     const nested = (await a.get("mine")) as Task;
@@ -144,11 +144,11 @@ describe("a ref resolved at one partition", () => {
 
   it("BR-11 · reads, counts, claims and settles only its own rows", async () => {
     const store = storeFor(partitioned());
-    await (await at(store, "conv-a")).addTask({ id: "a1", goal: "a's" });
+    await (await at(store, "conv-a")).createTask({ id: "a1", goal: "a's" });
     const filer = await at(store, "conv-b");
-    await filer.addTask({ id: "b1", goal: "b's" });
+    await filer.createTask({ id: "b1", goal: "b's" });
     // One task id in both: two rows, one per partition.
-    await filer.addTask({ id: "a1", goal: "b's a1" });
+    await filer.createTask({ id: "a1", goal: "b's a1" });
 
     // Resolved after the rows exist, so each reads the store, not what it added.
     const a = await at(store, "conv-a");
@@ -174,8 +174,8 @@ describe("a ref resolved at one partition", () => {
 
   it("does not take a partition whose encoded segment starts with another's", async () => {
     const store = storeFor(partitioned());
-    await (await at(store, "conv")).addTask({ id: "short", goal: "g" });
-    await (await at(store, "conv2")).addTask({ id: "long", goal: "g" });
+    await (await at(store, "conv")).createTask({ id: "short", goal: "g" });
+    await (await at(store, "conv2")).createTask({ id: "long", goal: "g" });
     expect((await at(store, "conv")).list().map((task) => task.id)).toEqual(["short"]);
   });
 
@@ -193,8 +193,8 @@ describe("a ref resolved at one partition", () => {
       collection: store,
       partition: "conv-a",
     });
-    await (await at(store, "conv-b")).addTask({ id: "b1", goal: "g" });
-    await a.addTask({ id: "a1", goal: "g" });
+    await (await at(store, "conv-b")).createTask({ id: "b1", goal: "g" });
+    await a.createTask({ id: "a1", goal: "g" });
     expect(seen).toEqual(["a1"]);
   });
 });

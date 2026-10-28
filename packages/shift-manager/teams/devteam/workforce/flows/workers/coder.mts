@@ -126,6 +126,8 @@ export interface CoderWorkerFlowOptions {
   answerPhase: PhaseSpec;
   /** The judge both managers run on a task. Absent, a task settles on its phase's check alone. */
   judge?: HarnessJudge;
+  /** Both managers hold a run with commits for the user's review (`reviewChanges`). Absent: off. */
+  reviewChanges?: boolean;
   /** Wall-clock budget for one harness run. */
   runTimeoutMs: number;
   /** The file-declared documents, as `resourcesFromDocs` built them. */
@@ -147,12 +149,15 @@ function namesFeatureWork(input: unknown): boolean {
 export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
   const { installation } = options;
   const readOwnFacts = defineReadOwnFacts(workerOf(installation, CODER_FLOW));
-  const judge = options.judge === undefined ? {} : { judge: options.judge };
+  const checks = {
+    ...(options.judge === undefined ? {} : { judge: options.judge }),
+    ...(options.reviewChanges === true ? { reviewChanges: true } : {}),
+  };
 
   // Feature work: a task that names an issue and a phase.
   const implement = harnessManager({
     ledgers: conversationLedgers,
-    ...judge,
+    ...checks,
     tenant: undefined,
     phase: options.phase,
     workspace: options.workspace,
@@ -166,7 +171,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
   const answer = harnessManager({
     name: ANSWER_MANAGER,
     ledgers: conversationLedgers,
-    ...judge,
+    ...checks,
     tenant: undefined,
     phase: options.answerPhase,
     workspace: options.answerWorkspace,

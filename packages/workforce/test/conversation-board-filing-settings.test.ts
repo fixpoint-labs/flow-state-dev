@@ -17,7 +17,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { bootSplitHost, type SplitHost } from "./split-harness";
-import { openHolds } from "@flow-state-dev/orchestration/tasks";
+import { openQuestions } from "@flow-state-dev/orchestration/tasks";
 
 /** The one row filed with `goal`. */
 async function one(h: SplitHost, goal: string) {
@@ -321,7 +321,7 @@ describe("the work a task filed goes with it (FIX-2080 D2)", () => {
       h.controls.plans.s1 = [{ goal: "[slow:3000] Book the hall", assignee: "eng.tasker" }];
       const planner = await h.open("alice", "planner");
       const goal = await file(h, planner);
-      expect(await h.until(async () => openHolds(await one(h, goal)).some((hold) => hold.source.kind === "suspension"))).toBe(true);
+      expect(await h.until(async () => openQuestions(await one(h, goal)).some((hold) => hold.source.kind === "suspension"))).toBe(true);
       const task = await one(h, goal);
       expect(await h.tool("alice", planner, "updateTask", { id: task.id, status: "cancelled" })).toEqual({ ok: true });
       expect(await h.until(async () => h.controls.refusals.some((r) => r.worker === "s1"))).toBe(true);

@@ -16,7 +16,7 @@ import { taskBoard, createTaskBoardCapability } from "../src/task-board";
 declare const collection: TaskCollectionRef<{ q: string }, { a: number }>;
 
 async function checkTaskTypes() {
-  const created: Task<{ q: string }, { a: number }> = await collection.addTask({
+  const created: Task<{ q: string }, { a: number }> = await collection.createTask({
     goal: "g",
     input: { q: "hello" },
   });
@@ -48,7 +48,7 @@ void _registry;
 
 // ---------------------------------------------------------------------------
 // Task board capability accessor propagates the board's TInput/TOutput
-// (FIX-908 §4.3): a mismatched addTask payload must be a compile error, both
+// (FIX-908 §4.3): a mismatched createTask payload must be a compile error, both
 // through `taskBoard()` and through a direct `createTaskBoardCapability` call.
 // ---------------------------------------------------------------------------
 
@@ -65,7 +65,7 @@ async function checkBoardAccessorTypes() {
   const accessor = board.capability.fns!(undefined as never);
 
   // Correct payload — no error.
-  const created: Task<{ q: string }, { a: number }> = await accessor.addTask({
+  const created: Task<{ q: string }, { a: number }> = await accessor.createTask({
     goal: "g",
     input: { q: "hello" },
   });
@@ -78,7 +78,7 @@ async function checkBoardAccessorTypes() {
   void q;
 
   // @ts-expect-error — input payload shape mismatch is rejected, not erased to unknown.
-  await accessor.addTask({ goal: "g", input: { q: 123 } });
+  await accessor.createTask({ goal: "g", input: { q: 123 } });
 
   // Same guarantee through a direct createTaskBoardCapability call.
   const directCap = createTaskBoardCapability<{ q: string }, { a: number }>({
@@ -88,7 +88,7 @@ async function checkBoardAccessorTypes() {
   });
   const direct = directCap.fns!(undefined as never);
   // @ts-expect-error — mismatched payload rejected on the direct accessor too.
-  await direct.addTask({ goal: "g", input: { q: 123 } });
+  await direct.createTask({ goal: "g", input: { q: 123 } });
 }
 
 void checkBoardAccessorTypes;

@@ -19,7 +19,7 @@ import { z } from "zod";
 import type { WorkerInstallation } from "../workers/installation";
 import { WORKER_ID_STATE_KEY } from "../workers/keys";
 import { messageTurnStateSchema } from "./hop";
-import { SEND_MESSAGE_TOOL } from "./keys";
+import { SEND_MESSAGE_TOOL, SENDS_MESSAGES_MARK } from "./keys";
 import { MAX_MESSAGE_CHARS, workerMessagesResources } from "./message-log";
 import { conversationLedgerResources } from "../conversation-board/ledger";
 import { recipientRefusal, sendMessage } from "./send-message";
@@ -157,7 +157,7 @@ export function defineSendMessageCapability(installation: WorkerInstallation, fl
     });
   // One tool per distinct list, so a roster that doesn't change keeps one block.
   const built = new Map<string, ReturnType<typeof toolWith>>();
-  return defineCapability({
+  const capability = defineCapability({
     name: "workerMessages",
     resources: { ...workerMessagesResources },
     presets: {
@@ -178,4 +178,7 @@ export function defineSendMessageCapability(installation: WorkerInstallation, fl
       default: ["tools"]
     }
   });
+  // The hire reads it: a flow that offers the tool must carry the pass that resends (FIX-2271).
+  (capability as unknown as Record<symbol, true>)[SENDS_MESSAGES_MARK] = true;
+  return capability;
 }
