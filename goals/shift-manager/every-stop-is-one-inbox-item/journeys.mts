@@ -30,8 +30,8 @@ async function receivedFrom(c: Context, from: string): Promise<Array<{ text: str
   );
 }
 
-/** The row holds a row has ever had, answered or not: a question's id outlives its answer. */
-const everAsked = (row: Row | undefined): Row[] => ((row?.holds ?? []) as Row[]).filter((h) => h.source?.kind === "row");
+/** The midway questions a row has ever had, answered or not: a question's id outlives its answer. */
+const everAsked = (row: Row | undefined): Row[] => ((row?.holds ?? []) as Row[]).filter((h) => h.source?.kind === "row" && h.midway === true);
 
 /**
  * j1: `desk.front`'s model files work and answers for it.
@@ -52,11 +52,13 @@ export async function journeyFiles(c: Context): Promise<void> {
   const goal = `Write a one-line greeting for the ${c.words.topic} gala.`;
   const answer = "Formal, for the board members.";
   const filedTurn = await c.alice.say(
-    `File one task for ${CAST.asker} with the goal "${goal}". If it asks you anything about ${c.words.askerAbout}, the answer is: "${answer}". File nothing else, and don't wait on it.`,
+    `File one task for ${CAST.asker} with the goal "${goal}", and no questions: it asks its own while it works. ` +
+      `If it later asks you anything about ${c.words.askerAbout}, the answer is: "${answer}". File nothing else, and don't wait on it.`,
   );
   const mine = (await c.alice.rows()).filter((r) => !before.has(r.id) && r.assignee === CAST.asker);
-  if (filedTurn.status !== "completed" || mine.length !== 1) {
-    c.fail("j1:filer-files", `desk.front's turn ${filedTurn.status} filed ${mine.length} task(s) for ${CAST.asker}`);
+  // A question at filing is the user's: the task must ask its own, midway.
+  if (filedTurn.status !== "completed" || mine.length !== 1 || ((mine[0]!.holds ?? []) as Row[]).some((h) => h.midway !== true)) {
+    c.fail("j1:filer-files", `desk.front's turn ${filedTurn.status} filed ${mine.length} task(s) for ${CAST.asker}, holds ${show(mine[0]?.holds)}`);
     return;
   }
   const id = mine[0]!.id as string;
