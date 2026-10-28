@@ -68,7 +68,7 @@ async function snapshot(page: Page): Promise<Snapshot> {
       }));
       const status = thread?.querySelector('[role="status"]');
       const tasks = [...document.querySelectorAll('aside[aria-label="Background tasks"] [data-task-status]')].map((el) => ({
-        title: (el.querySelector(".font-semibold")?.textContent ?? "").trim(),
+        title: (el.querySelector("[data-task-title]")?.textContent ?? "").trim(),
         status: el.getAttribute("data-task-status") ?? "",
       }));
       return {
@@ -82,6 +82,12 @@ async function snapshot(page: Page): Promise<Snapshot> {
 }
 
 /** The lab, served for USER from a fresh data folder. */
+/** Open the pane's *Done* group, where a finished task's row folds, as a person would to see it. */
+async function openDoneGroup(page: Page): Promise<void> {
+  const done = page.locator('aside[aria-label="Background tasks"] details');
+  if ((await done.count()) > 0 && !(await done.evaluate((el) => (el as HTMLDetailsElement).open))) await done.locator("summary").click();
+}
+
 async function startLab(data: string, env: Record<string, string>): Promise<{ origin: string; child: ChildProcess; log: () => string }> {
   const port = 45_000 + Math.floor(Math.random() * 10_000);
   const origin = `http://127.0.0.1:${port}`;
@@ -304,7 +310,7 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
       cancelled = (await rowsOf(sessionId)).find((task) => open.some((o) => o.id === task.id) && task.status === "cancelled");
     }
     if (cancelled === undefined) failures.push(`5: ${open.map((t) => t.title).join(", ")} never read cancelled through listTasks`);
-    else await page.locator('[data-task-status="cancelled"]').first().waitFor({ timeout: 15_000 }).catch(() => failures.push("5: the cancelled row never showed in the pane"));
+    else await openDoneGroup(page).then(() => page.locator('[data-task-status="cancelled"]').first().waitFor({ timeout: 15_000 })).catch(() => failures.push("5: the cancelled row never showed in the pane"));
 
     // ── Signal 6, the harness leg: a one-line change runs through Claude Code in the project's clone.
     await page.locator('[role="status"]').waitFor({ state: "detached", timeout: 5 * 60_000 }).catch(() => undefined);
@@ -319,6 +325,7 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
     if (coding === undefined) failures.push("6: no coding task was filed to desk.coder");
     else {
       if (coding.status !== "completed") failures.push(`6: the coding task ended ${coding.status}: ${coding.statusNote ?? ""}`);
+      await openDoneGroup(page);
       const row = page.locator('aside[aria-label="Background tasks"] [data-task-status]').filter({ hasText: "desk.coder" }).first();
       await row.click();
       const work = page.locator('section[aria-label^="Work:"] [data-entry]');
