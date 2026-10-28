@@ -1,0 +1,81 @@
+<svg viewBox="0 0 940 424" role="img" aria-label="D2: what are a task&#x27;s open asks to a user called? Chosen: questions, one word from createTask&#x27;s questions to the row&#x27;s questions to updateTask&#x27;s answers. Instead of: keeping holds beside status held. It comes down to the first row: a filer files questions and reads them back as holds today, two words for one list. The price is the second row: an approval or a review mirrored from a run&#x27;s stop is listed as a question too. The third row: updateTask answers names the id the stored steer already calls answers. Locks in Task.questions, TaskQuestion and updateTask answers. Flips if a run&#x27;s stops need a list apart from the row&#x27;s own questions."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="424"/>
+  <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+  <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+  <text class="t-q" x="32" y="52">What are a task's open asks to a user called?</text>
+  <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+  <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+  <text class="t-h c-code" x="228" y="112">questions, from filing to answering</text>
+  <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+  <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+  <text class="t-h c-lost" x="592" y="112">holds, kept beside status held</text>
+  <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+  <rect class="bar" x="16" y="134" width="4" height="62"/>
+  <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+  <text class="t-lbl" x="32" y="156">FILED, STORED,</text>
+  <text class="t-lbl" x="32" y="169">ANSWERED</text>
+  <text class="mark plus" x="228" y="162">+</text>
+  <text class="t-b" x="248" y="161">One word: questions</text>
+  <text class="t-s" x="248" y="179">file questions, read questions, answers: id</text>
+  <text class="mark minus" x="592" y="162">−</text>
+  <text class="t-b" x="612" y="161">Two words for one list</text>
+  <text class="t-s" x="612" y="179">file questions, read holds, question: id</text>
+  <text class="t-lbl" x="32" y="218">A RUN'S STOP</text>
+  <text class="t-lbl" x="32" y="231">ON THE LIST</text>
+  <text class="mark minus" x="228" y="224">−</text>
+  <text class="t-b" x="248" y="223">Listed as a question</text>
+  <text class="t-s" x="248" y="241">its ask.kind says approval or review</text>
+  <text class="mark tie" x="592" y="224">=</text>
+  <text class="t-b" x="612" y="223">Listed as a hold</text>
+  <text class="t-s" x="612" y="241">its ask.kind says the same</text>
+  <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  <text class="t-lbl" x="32" y="280">THE ANSWER'S</text>
+  <text class="t-lbl" x="32" y="293">FIELD</text>
+  <text class="mark plus" x="228" y="286">+</text>
+  <text class="t-b" x="248" y="285">answers, the steer's own field</text>
+  <text class="t-s" x="248" y="303">the tool and the record agree</text>
+  <text class="mark minus" x="592" y="286">−</text>
+  <text class="t-b" x="612" y="285">question, holding an id</text>
+  <text class="t-s" x="612" y="303">beside questions holding prompts</text>
+  <line class="row" x1="16" y1="316" x2="924" y2="316"/>
+  <rect class="foot" x="16" y="334" width="446" height="74" rx="5"/>
+  <text class="t-lbl" x="32" y="355">LOCKS IN</text>
+  <text class="t-b" x="32" y="375">Task.questions, TaskQuestion, updateTask answers</text>
+  <text class="t-s" x="32" y="393">and waiting on a user is an open question</text>
+  <rect class="foot" x="478" y="334" width="446" height="74" rx="5"/>
+  <text class="t-lbl" x="494" y="355">FLIPS IF</text>
+  <text class="t-b" x="494" y="375">A run's stops need a list of their own</text>
+  <text class="t-s" x="494" y="393">then questions keeps the row's, stops get one</text>
+</svg>
