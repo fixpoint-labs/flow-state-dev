@@ -4,7 +4,7 @@
 
 **Outcome:** A person opens a worker from Shift Manager's Roster, goes to its **Settings**, and adds, edits or deletes a standing rule in its Rules section. The worker's next conversation follows the list as the page left it, and the page shows that same list after a reload. A worker on a custom flow has a settings page too, whose Rules section says it keeps no rules rather than offering an empty list. The old `/roster/<id>/rules` address opens the same page. The Shift Coordinator screen no longer draws the rules in its panel; a gear in its header opens the coordinator's settings, with its Rules.
 
-**Input:** DevTeam's Shift Manager install, served by its own command over a store the run owns, opened in Chromium as its owner. The researcher (built-in `agent` flow) is the worker edited, and `eng.coder` (DevTeam's own `coder` flow) is the one that keeps none. The coordinator is the worker Shift Manager's `chiefOfStaffOf` finds on the roster. The rule added is "Start every reply with `Page —`.", edited to "Start every reply with `Edited —`.". Held out: the markers and asks are constants the checks read.
+**Input:** DevTeam's Shift Manager install, served by its own command over a store the run owns, opened in Chromium as its owner. The researcher (built-in `agent` flow) is the worker edited, and `eng.coder` (DevTeam's own `coder` flow) is the one that keeps none. The coordinator is the worker Shift Manager's `shiftCoordinatorOf` finds on the roster. The rule added is "Start every reply with `Page —`.", edited to "Start every reply with `Edited —`.". Held out: the markers and asks are constants the checks read.
 
 **Signal:** each failure is tagged with its leg.
 
@@ -14,7 +14,7 @@
 - **reload**: after a reload the page draws the edited rule.
 - **edit-is-followed**: 3 of 3 fresh conversations with the researcher open with `Edited —` and never mention `Page —`.
 - **delete**: after the page's delete it draws the empty state, and 0 of 3 fresh conversations open with `Edited —`.
-- **cos**: `/cos` draws no RULES in its panel; the gear in its header opens `/roster/<coordinator's id>/settings` with that worker's Rules.
+- **shiftCoordinator**: `/shift-coordinator` draws no RULES in its panel; the gear in its header opens `/roster/<coordinator's id>/settings` with that worker's Rules.
 - **reach**: the page throws nothing.
 
 **Anti-game:** the replies are read back from the sessions that stored them, by request id. The check never reads the rules record. A page that draws its edits without saving them passes add and edit, so the claim rests on reload and edit-is-followed, which only the Lab's list can satisfy.
@@ -23,7 +23,7 @@
 
 **Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/standing-rules/the-rules-page-edits-what-the-worker-follows/run.mts`
 
-**Controls:** `GOAL_CONTROL=page-does-not-save` builds Shift Manager from a scratch copy whose `src/lib/rules.ts` edits its own copy of the list and never calls the rules action, so the page renders every change and saves none. The build fails if the patch matches nothing. It must fail **reload** and **edit-is-followed**, and stops before the old address, delete and cos.
+**Controls:** `GOAL_CONTROL=page-does-not-save` builds Shift Manager from a scratch copy whose `src/lib/rules.ts` edits its own copy of the list and never calls the rules action, so the page renders every change and saves none. The build fails if the patch matches nothing. It must fail **reload** and **edit-is-followed**, and stops before the old address, delete and shiftCoordinator.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

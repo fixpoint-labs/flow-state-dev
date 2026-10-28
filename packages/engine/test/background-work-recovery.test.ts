@@ -100,7 +100,7 @@ describe("attached durable background-work recovery", () => {
       outputSchema: z.unknown(),
       execute: async (_i, ctx) =>
         ctx.suspend!({
-          reason: "human_approval",
+          reason: "user_approval",
           message: "Approve?",
           data: { observed: ctx.getBlockOutput!(bg) }
         })
@@ -183,7 +183,7 @@ describe("attached durable background-work recovery", () => {
       outputSchema: z.unknown(),
       execute: async (_i, ctx) =>
         ctx.suspend!({
-          reason: "human_approval",
+          reason: "user_approval",
           message: "Approve?",
           // All iterations share the element block name, so getBlockOutput
           // resolves to the most recent completed one — non-undefined proves
@@ -323,7 +323,7 @@ describe("attached durable background-work recovery — mid-drain fan-out", () =
       outputSchema: z.unknown(),
       execute: async (_input, ctx) => {
         await readyToSuspend.promise;
-        return ctx.suspend!({ reason: "human_approval", message: "Approve?" });
+        return ctx.suspend!({ reason: "user_approval", message: "Approve?" });
       }
     });
 

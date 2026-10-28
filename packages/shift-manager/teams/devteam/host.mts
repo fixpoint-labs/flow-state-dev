@@ -305,7 +305,7 @@ function projectSetup(installation: WorkerInstallation) {
  */
 const LEAD_FLOWS = [AGENT_FLOW, EM_FLOW].map((flow) => ({ kind: flow, internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } }));
 
-/** The project tools, by the names the chief of staff's and the project coordinator's `tools:` lines spell. */
+/** The project tools, by the names the Shift Coordinator's and the project coordinator's `tools:` lines spell. */
 const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setRepository", "setBrief", "openWorkstream", "editWorkstream", "listProjects"];
 
 /** The user's projects, with what a coder's task that names no project does next. */
@@ -337,7 +337,7 @@ const forCoding = handler({
 });
 
 /**
- * The project writes as the chief of staff's tools, `createProject`,
+ * The project writes as the Shift Coordinator's tools, `createProject`,
  * `setRepository` and `openWorkstream`, and its one project read,
  * `listProjects`: the same blocks the Lab's own projects flow runs, under the
  * names its `tools:` line spells. A catalog key must be the tool's own name,
@@ -345,7 +345,7 @@ const forCoding = handler({
  * are sequencers named for the tool, since each waits for an approval first,
  * or, for `listProjects`, adds `forCoding`.
  *
- * `listProjects` is how the chief of staff knows which project a coder's task
+ * `listProjects` is how the Shift Coordinator knows which project a coder's task
  * works in: the projects the user is a member of, read when asked, never
  * guessed.
  *
@@ -353,18 +353,18 @@ const forCoding = handler({
  * lead, and whose description says it does the work. The project coordinator
  * opens workstreams through the same block.
  *
- * The owner is the session's user, so a project the chief of staff creates
+ * The owner is the session's user, so a project the Shift Coordinator creates
  * belongs to the user talking to it, who is always a project member; `members` adds
  * whoever they name.
  *
  * **A repository waits for the user.** Which remote a project's code is
  * cloned from is the user's to say, so `setRepository`, and `createProject`
- * with a `repository`, pause on a stock `human_approval` before the write.
+ * with a `repository`, pause on a stock `user_approval` before the write.
  * Approve writes it; Deny throws out of the tool before the write runs, and
  * nothing changes. Without durable execution the tool refuses rather than
  * writing unasked.
  */
-export function chiefOfStaffProjectTools(blocks: ProjectBlocks, workstreams: WorkstreamBlocks) {
+export function shiftCoordinatorProjectTools(blocks: ProjectBlocks, workstreams: WorkstreamBlocks) {
   return {
     listProjects: sequencer({
       name: "listProjects",
@@ -391,7 +391,7 @@ export function chiefOfStaffProjectTools(blocks: ProjectBlocks, workstreams: Wor
         "Create a project for the user you are talking to. They own it and are always a project member. " +
         "`id` is a short lowercase slug; `members` adds the user ids they name; `repository` is the git " +
         "remote its code lives in, if they named one. With a repository, the user approves it first.",
-      // A project's MCP servers are set on its page, not by the chief of staff.
+      // A project's MCP servers are set on its page, not by the Shift Coordinator.
       inputSchema: createProjectInputSchema.omit({ mcpServers: true }),
       outputSchema: createProjectOutputSchema,
     })
@@ -426,18 +426,18 @@ export function chiefOfStaffProjectTools(blocks: ProjectBlocks, workstreams: Wor
 }
 
 /**
- * Hire and fire as the chief of staff's tools, under the names its `tools:`
+ * Hire and fire as the Shift Coordinator's tools, under the names its `tools:`
  * line spells: Workforce's hire blocks, each a write to the roster of the
  * user talking to it. A catalog key must be the tool's own name, so `hire`
  * is the block under `.as()`; `fire` is a sequencer, because it waits for an
  * approval first.
  *
- * **A fire waits for the user.** It pauses on a stock `human_approval`
+ * **A fire waits for the user.** It pauses on a stock `user_approval`
  * naming the worker before the write; Deny throws out of the tool before the
  * write runs, and nothing changes. Without durable execution the tool refuses
  * rather than firing unasked.
  */
-export function chiefOfStaffRosterTools(installation: WorkerInstallation) {
+export function shiftCoordinatorRosterTools(installation: WorkerInstallation) {
   const blocks = createWorkerHireBlocks(installation);
   return {
     hire: blocks.hire.as({
@@ -458,15 +458,15 @@ export function chiefOfStaffRosterTools(installation: WorkerInstallation) {
   };
 }
 
-/** The approval a fire waits on: a stock `human_approval` naming the worker. Returns on Approve; on Deny the runtime throws out of it. */
+/** The approval a fire waits on: a stock `user_approval` naming the worker. Returns on Approve; on Deny the runtime throws out of it. */
 const askFire = handler({
-  name: "devforce-cos-ask-fire",
+  name: "devforce-shift-coordinator-ask-fire",
   inputSchema: z.object({ id: z.string() }).passthrough(),
   outputSchema: z.void(),
   execute: async (input: { id: string }, ctx: BlockContext) => {
     // A host without durable execution refuses at the stop itself (FIX-2063).
     await ctx.suspend!({
-      reason: "human_approval",
+      reason: "user_approval",
       message: `Fire worker "${input.id}"?`,
       data: { worker: input.id },
       allow: ["approve", "reject"],
@@ -484,7 +484,7 @@ const repositoryAskInputSchema = z
   .passthrough();
 
 /**
- * The approval a repository write waits on: a stock `human_approval` naming
+ * The approval a repository write waits on: a stock `user_approval` naming
  * the project and the remote, with any user or password left out of what
  * Inbox shows. Returns on Approve; on Deny the runtime throws out of it.
  */
@@ -492,7 +492,7 @@ function askRepository(
   projectOf: (input: z.infer<typeof repositoryAskInputSchema>, ctx: BlockContext) => string | undefined,
 ) {
   return handler({
-    name: "devforce-cos-ask-repository",
+    name: "devforce-shift-coordinator-ask-repository",
     inputSchema: repositoryAskInputSchema,
     outputSchema: z.void(),
     execute: async (input: z.infer<typeof repositoryAskInputSchema>, ctx: BlockContext) => {
@@ -502,7 +502,7 @@ function askRepository(
       const repository = input.repository == null ? null : redactRemote(input.repository);
       // A host without durable execution refuses at the stop itself (FIX-2063).
       await ctx.suspend!({
-        reason: "human_approval",
+        reason: "user_approval",
         message:
           repository === null
             ? `Clear the repository of project "${project}"? Its coding work will run on its files.`
@@ -680,18 +680,18 @@ export interface OpenLabOptions {
    */
   dropTask?: boolean;
   /**
-   * Leave the chief of staff's `listProjects` out: not in the catalog, and not
+   * Leave the Shift Coordinator's `listProjects` out: not in the catalog, and not
    * in its `tools:`, so it can't read which projects the user has. The red
-   * state of "the chief of staff names the project a coder's task works in
+   * state of "the Shift Coordinator names the project a coder's task works in
    * without asking".
    */
   withoutProjectList?: boolean;
   /**
    * Leave the project tools out: not in the catalog the agent turn is built
-   * with (the `agent` worker flow's, and the chief of staff's on the coordinator
-   * flow), and not in any worker's `tools:`, as before the chief of staff had
+   * with (the `agent` worker flow's, and the Shift Coordinator's on the coordinator
+   * flow), and not in any worker's `tools:`, as before the Shift Coordinator had
    * them. Applied to the record before the mint, so the worker boots and
-   * genuinely cannot create a project. The red state of "the chief of staff
+   * genuinely cannot create a project. The red state of "the Shift Coordinator
    * creates projects".
    */
   withoutProjectTools?: boolean;
@@ -919,7 +919,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   );
 
   // The project writes, built once: the flow that creates projects at open runs
-  // them as actions, and the chief of staff calls the same ones as tools. The
+  // them as actions, and the Shift Coordinator calls the same ones as tools. The
   // workstream writes are built with the installation, below.
   const projectBlocks = defineProjectBlocks({ mcpServers: Object.keys(options.mcpServers ?? {}) });
 
@@ -994,7 +994,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     leadFlows: LEAD_FLOWS,
     leadFit: { model: "openai/gpt-6-luna" },
   });
-  const { listProjects, ...projectWrites } = chiefOfStaffProjectTools(projectBlocks, workstreamBlocks);
+  const { listProjects, ...projectWrites } = shiftCoordinatorProjectTools(projectBlocks, workstreamBlocks);
   const projectTools = options.withoutProjectList === true ? projectWrites : { listProjects, ...projectWrites };
   const flowOf = (workerId: string): string =>
     (installation.standardWorker(workerId)?.declared.flow as string | undefined) ?? AGENT_FLOW;
@@ -1057,22 +1057,22 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     resources,
   });
 
-  // The built-in `agent` worker flow, which the chief of staff (`org/workers/
-  // chief-of-staff/`) runs on. Every worker on it gets the discovery door; a
+  // The built-in `agent` worker flow, which the Shift Coordinator (`org/workers/
+  // shift-coordinator/`) runs on. Every worker on it gets the discovery door; a
   // worker holds hire, fire and the project writes only by naming them in
-  // its `tools:`: in this tree the chief of staff names them, and the project
+  // its `tools:`: in this tree the Shift Coordinator names them, and the project
   // coordinator names the writes to its own project. Hire and fire
   // write the roster of the user talking to it: a worker of their own, which
   // runs on that user's turns only. A fire, and a project's repository, wait
   // for a user's Approve in Inbox, which needs durable execution (asked for
   // below).
-  const rosterTools = chiefOfStaffRosterTools(installation);
+  const rosterTools = shiftCoordinatorRosterTools(installation);
   // What the agent's turn is built with. The `agent` flow runs it behind its
-  // door, and the `coordinator` flow, which the chief of staff runs on, runs
+  // door, and the `coordinator` flow, which the Shift Coordinator runs on, runs
   // the same turn for its judgment, with memory added (below).
   const agentTurn = {
     // The project tools and the roster writes a worker names in `tools:`.
-    // The worker flow carries them, and only the chief of staff's line names
+    // The worker flow carries them, and only the Shift Coordinator's line names
     // the roster writes; a project coordinator's line names `readProject`,
     // `setBrief`, `setRepository`, `listLeads`, `openWorkstream` and
     // `editWorkstream`, and a workstream's lead's `updateWorkstream`.
@@ -1102,10 +1102,10 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     [EM_FLOW]: { flow: emFlow as never, roles: ["contributor", "manager"] },
     [CODER_FLOW]: { flow: coderFlow as never, roles: ["contributor"] },
     [AGENT_FLOW]: agentFlow as never,
-    // The chief of staff's flow. A routed task reaches a delegate on any flow
-    // that takes a conversation's tasks: here the chief of staff hands feature
+    // The Shift Coordinator's flow. A routed task reaches a delegate on any flow
+    // that takes a conversation's tasks: here the Shift Coordinator hands feature
     // work to its EM delegate. Best fit's evaluator runs on Jev, through the
-    // AI Gateway: it reports the confidence the chief of staff's
+    // AI Gateway: it reports the confidence the Shift Coordinator's
     // `minConfidence:` reads.
     [COORDINATOR_FLOW]: defineCoordinatorFlow({
       installation,
@@ -1170,8 +1170,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   }
   // The flow projects and workstreams are written through: the project and
   // workstream writes, as an app installs them. A project is created through
-  // it at open, and Shift Manager reads the project setup from it. The chief
-  // of staff and the project coordinator open workstreams with the same
+  // it at open, and Shift Manager reads the project setup from it. The Shift
+  // Coordinator and the project coordinator open workstreams with the same
   // writes as tools.
   const projectsFlow = defineFlow({
     kind: PROJECTS_FLOW,

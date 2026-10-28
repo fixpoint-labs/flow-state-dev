@@ -79,6 +79,13 @@ Leave `client.env` unset and the Codex CLI process inherits your server's entire
 than adding to it (the SDK's rule), so `client: { env: harnessEnv({ pass: [...] }) }`,
 with `harnessEnv` from `@flow-state-dev/core`, passes only the variables you name.
 
+`CODEX_PASS` is the list a run needs to work, if you'd rather not write your
+own: `PATH`, `HOME`, `CODEX_HOME`, `USER`, `SHELL`, `TMPDIR`, `CODEX_API_KEY`,
+and the proxy and CA settings a proxied network needs, in upper and lower case.
+`client: { env: harnessEnv({ pass: CODEX_PASS }) }` builds it; hand the same
+`env` to `probeCodexAccount`, `listCodexModels` and `readCodexUsage` so they
+see the run's account.
+
 ## The handle
 
 The neutral harness handle (`source: "codex/sdk"`, `status`, `sessionId`, `url`,
@@ -89,6 +96,15 @@ reasoning output) and `failureMessage`.
 `outcome` is `"finished"` or `"failed"`. Codex reports no turn or budget cap, so
 `"stopped-at-limit"` never appears here, and a run stopped by your deadline throws
 rather than returning a handle.
+
+## Pull requests it opened
+
+The block records the pull requests a run opens in the session's pull-request
+record, `observed-pull-requests`, defined in `@flow-state-dev/core`. A
+`gh pr create` command or a `create_pull_request` MCP tool whose output holds the
+pull request's link is one row, written as the call settles. On by default; with
+`recordPullRequests: false` the block records none and declares no collection.
+Guide: [pull requests a session opened](https://flow-state.dev/docs/tools/coding-agents#pull-requests-a-session-opened).
 
 ## Warnings and failures
 

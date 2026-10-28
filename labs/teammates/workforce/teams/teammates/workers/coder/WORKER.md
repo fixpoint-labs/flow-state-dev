@@ -1,6 +1,7 @@
 ---
 name: coder
 description: Makes code changes lead hands it, in lead's project.
+flow: teammates-coder
 harness: claude-code
 ---
 

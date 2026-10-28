@@ -119,7 +119,7 @@ function emptyInbox(store: Store): string {
   return `Nothing needs you. ${n(running, "session is", "sessions are")} still running.`;
 }
 /** Suspension reasons that are a person being asked something. */
-const PERSON_REASONS = new Set(["human_approval", "human_input"]);
+const PERSON_REASONS = new Set(["user_approval", "user_input"]);
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const sorted = (values: Iterable<string>) => [...values].sort();
@@ -569,11 +569,11 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       if (count !== String(queuedCount)) fail("Tasks equals the store's open rows", `the Queued toggle says ${count}, the store holds ${queuedCount} queued row(s)`);
     }
 
-    // ---- Chief of Staff, where the Lab lands -----------------------------------
-    await page.getByTestId("nav-cos").click();
-    if (!(await visible(page, "cos"))) fail("reach", "Chief of Staff does not open");
-    if (!(await visible(page, "cos-summary"))) fail("reach", "Chief of Staff draws no shift summary");
-    if (!(await visible(page, "cos-panel"))) fail("reach", "Chief of Staff has no right panel");
+    // ---- Shift Coordinator, where the Lab lands -----------------------------------
+    await page.getByTestId("nav-shift-coordinator").click();
+    if (!(await visible(page, "shift-coordinator"))) fail("reach", "Shift Coordinator does not open");
+    if (!(await visible(page, "shift-coordinator-summary"))) fail("reach", "Shift Coordinator draws no shift summary");
+    if (!(await visible(page, "shift-coordinator-panel"))) fail("reach", "Shift Coordinator has no right panel");
 
     // ---- each conversation's board: its task level is reached from Tasks ----
     for (const holder of Object.keys(store.rows)) {
@@ -600,8 +600,8 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       if (!(await lane.first().waitFor({ timeout: 15_000 }).then(() => true, () => false))) {
         fail("its owner sees the lead's board", `${project}'s Board draws no lane for ${id}'s session ${session}`);
       } else {
-        await lane.locator("[data-testid=cos-task], [data-testid=cos-tasks-empty], [data-testid=cos-tasks-failure]").first().waitFor({ timeout: 15_000 }).catch(() => undefined);
-        const drawn = await lane.locator("[data-testid=cos-task]").evaluateAll((els) => els.map((e) => `${e.getAttribute("data-task-id")}:${e.getAttribute("data-status")}`));
+        await lane.locator("[data-testid=shift-coordinator-task], [data-testid=shift-coordinator-tasks-empty], [data-testid=shift-coordinator-tasks-failure]").first().waitFor({ timeout: 15_000 }).catch(() => undefined);
+        const drawn = await lane.locator("[data-testid=shift-coordinator-task]").evaluateAll((els) => els.map((e) => `${e.getAttribute("data-task-id")}:${e.getAttribute("data-status")}`));
         const want = filed.map((r) => `${r.id}:${r.status}`);
         if (!same(drawn, want)) fail("its owner sees the lead's board", `${id}'s lane: ${diff(want, drawn)}`);
       }

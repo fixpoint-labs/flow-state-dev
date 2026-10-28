@@ -2,15 +2,20 @@
  * The `run` action — the chat turn's root sequencer.
  *
  * Pipeline order:
- *   applyRequestedMode → applyFeatures → skillActivator → resolveThinkingStyle
+ *   recordPullRequests → applyRequestedMode → applyFeatures → skillActivator → resolveThinkingStyle
  *     → thinkingStyleRouter → biasCheck (.sideChain) → perspective capture (.sideChainIf)
  *     → mem.captureFromItems (.sideChain) → autoTitle (.sideChain) → incrementRequestCount
  *
  * The router dispatches to the assistant generator (default) or the
  * background-work pipeline; everything after it runs as background
  * `.sideChain()` except the terminal request-count bump.
+ *
+ * The first step starts core's pull-request recorder for the turn, before any
+ * generator runs, so a pull request the assistant opens through the bash tool
+ * reaches the session's record, and the page, as its call settles. The
+ * background workers hold no bash tool, so their requests carry no recorder.
  */
-import { sequencer, utility } from "@flow-state-dev/core";
+import { pullRequestRecorder, sequencer, utility } from "@flow-state-dev/core";
 import {
   applyRequestedMode,
   applyFeatures,
@@ -32,6 +37,7 @@ const autoTitle = utility.sessionTitleGenerator({
 });
 
 export const runSequencer = sequencer({ name: "run", inputSchema })
+  .tap(pullRequestRecorder())
   .tap(applyRequestedMode)
   .tap(applyFeatures)
   // FIX-421: up-front skill router. Decides activeSkills before the

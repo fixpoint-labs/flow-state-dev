@@ -3,8 +3,8 @@
  * pending approval and question in the worker sessions the Lab lists for this
  * user, dispatch runs included, and every task holding questions for them. It
  * draws the snapshot's `inbox` section and reads no other list (`inbox.ts`).
- * A list and a detail pane; the detail draws an ask with the same card Chief
- * of Staff uses, and answers it through the same resume (BR-25).
+ * A list and a detail pane; the detail draws an ask with the same card Shift
+ * Coordinator uses, and answers it through the same resume (BR-25).
  *
  * Drawn as design v2's Inbox (v2:559-645): a 400px list whose items carry the
  * highlighter square (each one waits on the user), and a detail on the
@@ -92,7 +92,7 @@ function askOfItem(item: InboxItem): Ask {
       suspensionId: hold.source.suspensionId,
       requestId: hold.source.requestId,
       suspensionStatus: "pending",
-      reason: approval ? "human_approval" : "human_input",
+      reason: approval ? "user_approval" : "user_input",
       message: hold.ask.prompt,
       ...(hold.ask.title !== undefined ? { title: hold.ask.title } : {}),
       allow: approval ? ["approve", "reject"] : ["submit"],

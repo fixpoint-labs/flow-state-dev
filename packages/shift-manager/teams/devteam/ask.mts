@@ -11,7 +11,7 @@
  * the one `file` and `drain` run in, and which a session listing returns),
  * opened naming the EM worker if it isn't there yet ({@link openWorkerSession}),
  * run the asking door as the given user until it suspends on a stock
- * `human_approval`. The answer is not this module's business: it arrives
+ * `user_approval`. The answer is not this module's business: it arrives
  * through the engine's resume route, the one Shift Manager's Inbox uses.
  *
  * **Once per feature, per store, claimed atomically.** Before it runs anything

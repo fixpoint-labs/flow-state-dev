@@ -149,6 +149,33 @@ export async function acquireLock(
 }
 
 /**
+ * Take the lock at `path` if it is free now, or `undefined` when a live holder
+ * has it. Never waits: for a caller that does something else when the lock is
+ * held, such as a read serving what it already has instead of fetching.
+ *
+ * A lock left by a holder that died counts as free, judged by the same stale
+ * rule a waiting acquire uses, so a crash can't keep a try failing for ever.
+ * The lease refreshes itself as an acquired one does; release it the same way.
+ */
+export function tryAcquireLock(
+  path: string,
+  bounds: LockBounds = HOST_LOCK_BOUNDS,
+  options: Pick<AcquireOptions, "owner" | "now"> = {},
+): LockLease | undefined {
+  const { now = Date.now, owner } = options;
+  mkdirSync(dirname(path), { recursive: true });
+  for (;;) {
+    const taken = attempt(path, bounds, owner, now);
+    if (taken === "again") continue;
+    if (taken === "held") return undefined;
+    if (bounds.heartbeatMs === undefined) return taken;
+    const timer = setInterval(() => refresh(path, taken.token), bounds.heartbeatMs);
+    timer.unref();
+    return { ...taken, timer };
+  }
+}
+
+/**
  * Run `operation` holding the lock at `path`, for a caller that can't wait
  * asynchronously (a host's synchronous startup). The wait blocks the thread,
  * so it is only for a lock held for milliseconds; `bounds.heartbeatMs` is

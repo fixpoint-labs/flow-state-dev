@@ -93,7 +93,7 @@ function buildHost(
                 name: "approve",
                 inputSchema: z.any(),
                 outputSchema: z.unknown(),
-                execute: async (_input, ctx) => ctx.suspend!({ reason: "human_approval", message: "Go?" })
+                execute: async (_input, ctx) => ctx.suspend!({ reason: "user_approval", message: "Go?" })
               })
             )
             .step(handler({ name: "afterApproval", inputSchema: z.any(), outputSchema: z.any(), execute: block("resumed") }))

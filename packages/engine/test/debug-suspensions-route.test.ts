@@ -28,7 +28,7 @@ function makeRecord(overrides: Partial<SuspensionRecord>): SuspensionRecord {
     actionName: "ask",
     sessionId: SESSION_ID,
     userId: "user_1",
-    reason: "human_approval",
+    reason: "user_approval",
     message: "Approve?",
     status: "pending",
     blockInstanceId: "block_1",

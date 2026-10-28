@@ -10,7 +10,8 @@
  * progress worked out from its entries; `project-files.ts` for a member's read
  * of a project's files; `run-project.ts` for the one read of a coding run's
  * project and owner; `project-workspace.ts` for the run source a coding run
- * gets its files from; `project-mcp-tools.ts` and `mcp-credentials.ts` for the
+ * gets its files from; `project-source.ts` for the tools that read those files
+ * without a run; `project-mcp-tools.ts` and `mcp-credentials.ts` for the
  * MCP servers a run gets and each user's keys for them; `work-project.ts` for
  * the action that sets the project a user's conversation works in.
  */
@@ -182,3 +183,12 @@ export {
   type SetWorkProjectInput,
   type SetWorkProjectOutput
 } from "./work-project";
+
+export {
+  globProjectSourceOutputSchema,
+  grepProjectSourceOutputSchema,
+  PROJECT_SOURCE_CAPABILITY,
+  projectSourceCapability,
+  readProjectSourceOutputSchema,
+  type ProjectSourceCapabilityOptions
+} from "./project-source";

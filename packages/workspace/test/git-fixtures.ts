@@ -3,9 +3,9 @@
  * reaches over `file://`, and helpers to move it on underneath a run.
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const AUTHOR = ["-c", "user.email=test@example.com", "-c", "user.name=test"];
@@ -58,6 +58,7 @@ export function createRemote(marker = "marker A"): Remote {
       git(work, "fetch", "-q", bare, "+refs/heads/*:refs/remotes/bare/*");
       const exists = git(bare, "branch", "--list", branch) !== "";
       git(work, "checkout", "-q", "-B", branch, exists ? `bare/${branch}` : "HEAD");
+      mkdirSync(dirname(join(work, file)), { recursive: true });
       writeFileSync(join(work, file), content);
       git(work, "add", file);
       git(work, "commit", "-q", "-m", `${file} on ${branch}`);

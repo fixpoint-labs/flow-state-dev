@@ -15,7 +15,7 @@
  *
  * Legs:
  *
- *   a   the shift coordinator (the chief of staff) files a task naming
+ *   a   the shift coordinator (the Shift Coordinator) files a task naming
  *       storefront; one completed line under eng.coder carries the marker, its
  *       run worked in a checkout of its own, and storefront's branches are as
  *       they were.
@@ -81,12 +81,12 @@ interface Fixture {
 }
 const fixture = loadFixture<Fixture>(import.meta.url);
 
-/** The worker a coordinator files the coder's tasks for, and the chief of staff. */
+/** The worker a coordinator files the coder's tasks for, and the Shift Coordinator. */
 const CODER = "eng.coder";
-const CHIEF = "chief-of-staff";
+const SHIFT_COORDINATOR = "shift-coordinator";
 /** A worker of the person's own on `agent`, hired to lead workstreams: it files the coder's tasks. */
 const WORKSTREAM_LEAD = "workstream-lead";
-/** The flows a conversation runs on: the chief of staff's, and a workstream lead's. */
+/** The flows a conversation runs on: the Shift Coordinator's, and a workstream lead's. */
 const COORDINATOR_FLOW = "coordinator";
 const AGENT_FLOW = "agent";
 const LIST_TASKS = "listTasks_tasks";
@@ -158,7 +158,7 @@ function scriptedResolver(): ModelResolver {
     modelId: "goal/judge",
     supportedQuestionTypes: ["choice", "score", "boolean"],
     async doEvaluate(call: { questions: Record<string, unknown> }) {
-      // The chief of staff's best-fit route: no pick, so its own judgment takes the post.
+      // The Shift Coordinator's best-fit route: no pick, so its own judgment takes the post.
       if (!("verdict" in call.questions)) throw new Error("no route in this check");
       const next = script.verdicts.shift() ?? { choice: "done", confidence: 0.95 };
       return {
@@ -174,7 +174,7 @@ function scriptedResolver(): ModelResolver {
     },
   };
   // Best fit's question goes unanswered (the judge above has no route either), so the post
-  // reaches the chief of staff's own turn, which makes the scripted call.
+  // reaches the Shift Coordinator's own turn, which makes the scripted call.
   const resolve = (_id: string, block?: string): GeneratorModel => {
     if (block === "coordinator-route-ask") throw new Error("no route model in this check");
     return block?.startsWith("agent") ? agent : coordinator;
@@ -510,7 +510,7 @@ await runGoal(async (failures) => {
       commitToRemote(storefront.path, fixture.markerFile, `${markerA}\n`);
       commitToRemote(second.path, fixture.markerFile, `${markerB}\n`);
 
-      const chief = () => http.open(COORDINATOR_FLOW, { workerId: CHIEF });
+      const shiftCoordinator = () => http.open(COORDINATOR_FLOW, { workerId: SHIFT_COORDINATOR });
       const fileForCoder = (goal: string, input?: Record<string, unknown>): ToolCall => ({
         toolName: "createTask",
         args: { goal, assignee: CODER, ...(input === undefined ? {} : { input }) },
@@ -522,7 +522,7 @@ await runGoal(async (failures) => {
         const branchesBefore = git(storefront.path, "branch", "--list");
         mode = { kind: "read" };
         script.coordinator = [fileForCoder("Take a look at our repo and tell me what it holds.", { project: { visibility: "shared", id: "storefront" } })];
-        const a = await fileFrom(lab, COORDINATOR_FLOW, await chief(), fixture.ask);
+        const a = await fileFrom(lab, COORDINATOR_FLOW, await shiftCoordinator(), fixture.ask);
         gradeAnswered("a", a, markerA, note);
         const cwd = a.record?.workspacePath as string | undefined;
         if (failures.length === before) {
@@ -603,7 +603,7 @@ await runGoal(async (failures) => {
 
         // No project named.
         mode = { kind: "read" };
-        let sessionId = await chief();
+        let sessionId = await shiftCoordinator();
         script.coordinator = [fileForCoder("Take a look at our repo.")];
         const none = await fileFrom(lab, COORDINATOR_FLOW, sessionId, fixture.ask);
         gradeErrored("no-project", none, "input.project", 1, 0);
@@ -613,7 +613,7 @@ await runGoal(async (failures) => {
         const strangers = await http.open("projects", {}, "outsider");
         const made = await http.act("projects", strangers, "createProject", { id: fixture.strangersProject.id, title: fixture.strangersProject.title }, "outsider");
         if (made.error !== undefined) throw new Error(`the stranger's createProject was refused — ${made.error}`);
-        sessionId = await chief();
+        sessionId = await shiftCoordinator();
         script.coordinator = [fileForCoder("Take a look at their repo.", { project: { visibility: "shared", id: fixture.strangersProject.id } })];
         const stranger = await fileFrom(lab, COORDINATOR_FLOW, sessionId, fixture.ask);
         gradeErrored("not-a-member", stranger, "not a member", 1, 0);
@@ -622,7 +622,7 @@ await runGoal(async (failures) => {
         // A run that throws, twice.
         const boom = `boom-${globalThis.crypto.randomUUID()}`;
         mode = { kind: "throw", message: boom };
-        sessionId = await chief();
+        sessionId = await shiftCoordinator();
         script.coordinator = [fileForCoder("Take a look at our repo.", { project: { visibility: "shared", id: "storefront" } })];
         const thrown = await fileFrom(lab, COORDINATOR_FLOW, sessionId, fixture.ask);
         gradeErrored("throws", thrown, boom, 2, 2);
@@ -634,7 +634,7 @@ await runGoal(async (failures) => {
           { choice: "not-done", why: "unsupported", confidence: 0.9 },
           { choice: "not-done", why: "unsupported", confidence: 0.9 },
         ];
-        sessionId = await chief();
+        sessionId = await shiftCoordinator();
         script.coordinator = [fileForCoder("Take a look at our repo and tell me what it holds.", { project: { visibility: "shared", id: "storefront" } })];
         const unread = await fileFrom(lab, COORDINATOR_FLOW, sessionId, fixture.ask);
         gradeErrored("judged-not-done", unread, "The judge read the answer against the goal", 2, 2);
@@ -695,7 +695,7 @@ await runGoal(async (failures) => {
          * control too.
          */
         const fileLive = async (leg: string): Promise<Filed | undefined> => {
-          const filed = await fileFrom(lab, COORDINATOR_FLOW, await http.open(COORDINATOR_FLOW, { workerId: CHIEF }), fixture.ask);
+          const filed = await fileFrom(lab, COORDINATOR_FLOW, await http.open(COORDINATOR_FLOW, { workerId: SHIFT_COORDINATOR }), fixture.ask);
           const row = filed.task === undefined ? undefined : await storedTask(lab, filed.task.id);
           if (row?.assignee === CODER && row.input?.project?.visibility === "shared" && row.input.project.id === "storefront") return filed;
           note(

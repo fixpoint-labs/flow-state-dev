@@ -10,7 +10,8 @@
  * Red state produced before this was trusted: register the Cursor flow with
  * `recordPlan` off, and the panel reads "Cursor reports no plan", so the
  * plan case fails. And record a failure only on a throw: the errored case
- * reads "continued".
+ * reads "continued". And have the scripted run's `steer` refuse every line:
+ * the taken-line case finds no "taken into the running turn" note.
  */
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
@@ -118,5 +119,57 @@ test.describe("Cursor's to-do list in the plan panel (V6)", () => {
     await expect(panel.locator("[data-plan-state]")).toHaveAttribute("data-plan-state", "rows");
     await expect(panel.getByTestId("plan-row-title")).toHaveText(["Read the request", "Answer it", "Check the answer", "Say what changed"]);
     await expect(panel).not.toContainText("reports no plan");
+  });
+});
+
+test.describe("A line sent while a Cursor turn runs", () => {
+  test("is taken into the running turn, and doesn't run again as a turn of its own", async ({
+    page,
+    consoleErrors: _consoleErrors,
+  }) => {
+    await newSession(page);
+    await send(page, "[slow] look around");
+    await expect(page.getByTestId("conversation")).toContainText("Scripted Cursor, turn 1 of agent");
+    await expect(stop(page)).toBeVisible();
+
+    await send(page, "check the tests too");
+    // The turn took it and is still running: the line shows before the turn ends.
+    await expect(page.getByTestId("line-taken")).toHaveText("You, taken into the running turn: check the tests too");
+    await expect(page.getByTestId("line-after")).toHaveCount(0);
+    await expect(stop(page)).toBeVisible();
+
+    await stop(page).click();
+    await expect(notice(page)).toHaveAttribute("data-kind", "stopped");
+    await expect(bound(page)).toHaveText(/^scripted-cursor-/);
+    const agent = (await bound(page).textContent())!.trim();
+
+    // Had the line also gone as a turn, it would be turn 2 and this turn 3.
+    await send(page, "go on");
+    await expect(notice(page)).toHaveAttribute("data-kind", "continued");
+    await expect(page.getByTestId("conversation")).toContainText(`turn 2 of agent ${agent}`);
+    await expect(stop(page)).toHaveCount(0);
+    await expect(page.getByTestId("conversation")).not.toContainText("turn 3 of agent");
+  });
+
+  test("a run that can't take it runs it as the next turn, once the running turn ends", async ({
+    page,
+    consoleErrors: _consoleErrors,
+  }) => {
+    // The running turn is left to end on its own (the script's 20-second hold), not stopped.
+    test.setTimeout(60_000);
+    await newSession(page);
+    await send(page, "[slow][steer-refuse] look around");
+    await expect(page.getByTestId("conversation")).toContainText("Scripted Cursor, turn 1 of agent");
+    await expect(stop(page)).toBeVisible();
+
+    await send(page, "check the tests too");
+    await expect(page.getByTestId("conversation")).toContainText("Scripted Cursor, turn 2 of agent", { timeout: 30_000 });
+    await expect(notice(page)).toHaveAttribute("data-kind", "continued");
+    const agent = (await bound(page).textContent())!.trim();
+    await expect(page.getByTestId("conversation")).toContainText(`turn 2 of agent ${agent}`);
+    // It ran as a turn, never into the first one.
+    await expect(page.getByTestId("line-taken")).toHaveCount(0);
+    await expect(stop(page)).toHaveCount(0);
+    await expect(page.getByTestId("conversation")).not.toContainText("turn 3 of agent");
   });
 });

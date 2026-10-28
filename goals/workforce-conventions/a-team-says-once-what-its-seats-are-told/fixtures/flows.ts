@@ -13,9 +13,9 @@
  * string would satisfy neither on its own.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
-import { workerConfigSchema, workerConfigOf, type WorkerInstallation } from "@flow-state-dev/workforce";
+import { workerConfigSchema, workerConfigOf, workerMessagesResources, type WorkerInstallation } from "@flow-state-dev/workforce";
 import { z } from "zod";
-import { workerDoor } from "../../../lib/worker-door.mts";
+import { hearsMessages, workerDoor } from "../../../lib/worker-door.mts";
 
 export const TRIAGE_KIND = "request-triage";
 
@@ -130,8 +130,9 @@ export function defineTriageFlow(installation: WorkerInstallation) {
   kind: TRIAGE_KIND,
   cardinality: "collection",
   configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
-  resources: { ...installation.resources },
+  resources: { ...installation.resources, ...workerMessagesResources },
   request: { onStarted: loadWorker },
+  internal: { actions: hearsMessages(installation, TRIAGE_KIND) },
   actions: { ...workerDoor,
     run: {
       inputSchema,

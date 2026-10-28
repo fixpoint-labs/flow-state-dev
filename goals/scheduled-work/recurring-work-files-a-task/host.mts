@@ -32,10 +32,11 @@ import {
   deriveWorkerSessionId,
   hireWorkforce,
   workerConfigSchema,
+  workerMessagesResources,
   workerTaskEntry,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
-import { actingAs, silentLogger, untilIdle, writeGoalReport } from "../../lib/index.mts";
+import { actingAs, hearsMessages, silentLogger, untilIdle, writeGoalReport } from "../../lib/index.mts";
 
 const env = (name: string): string => {
   const value = process.env[name];
@@ -88,8 +89,9 @@ const researcherFlow = defineFlow({
   kind: "researcher",
   configSchema: workerConfigSchema(),
   session: installation.session(),
-  resources: { ...installation.resources },
+  resources: { ...installation.resources, ...workerMessagesResources },
   actions: { respond: { inputSchema: doorInput, block: researchTurn, userMessage: (input: { message: string }) => input.message } },
+  internal: { actions: hearsMessages(installation, "researcher") },
   task: { actions: { work: workerTaskEntry({ name: "goal-research-task", turn: researchTurn }) } }
 } as never);
 workerFlows = { launch: { flow: launchFlow, roles: ["manager"] }, researcher: { flow: researcherFlow, roles: ["contributor"] } };

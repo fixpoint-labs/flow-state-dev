@@ -35,6 +35,7 @@ export function ThreadCard({
       aria-label={`Thread: ${task.title}`}
       data-entry="thread"
       data-column={column}
+      data-task-id={task.id}
       className={cn(
         "flex items-start gap-3 border px-3 py-2",
         column === "waiting" && "border-attention bg-attention/10",

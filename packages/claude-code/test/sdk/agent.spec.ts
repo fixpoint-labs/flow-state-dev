@@ -2164,7 +2164,9 @@ describe("claudeCodeAgent — recordWork", () => {
   ];
 
   it("is off by default and declares nothing", () => {
-    const block = claudeCodeAgent({ resolveClaudeAgent: scriptedQuery([RESULT_OK]) });
+    // The pull-request record is its own option, on by default; off here so the
+    // assertion is about recordWork alone.
+    const block = claudeCodeAgent({ resolveClaudeAgent: scriptedQuery([RESULT_OK]), recordPullRequests: false });
     expect(block.declaredResources).toBeUndefined();
   });
 
@@ -2172,6 +2174,7 @@ describe("claudeCodeAgent — recordWork", () => {
     const block = claudeCodeAgent({
       resolveClaudeAgent: scriptedQuery([RESULT_OK]),
       recordWork: true,
+      recordPullRequests: false,
     });
     expect(Object.keys(block.declaredResources ?? {}).sort()).toEqual([
       "observed-file-ops",
@@ -2710,6 +2713,7 @@ describe("claudeCodeAgent — recordWork", () => {
     const block = claudeCodeAgent({
       resolveClaudeAgent: scriptedQuery(RECORDING_SCRIPT),
       includePartialMessages: false,
+      recordPullRequests: false,
     });
     const { output, error } = await testBlock(block, { input: { prompt: "go" } });
     expect(error).toBeNull();

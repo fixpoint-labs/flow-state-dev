@@ -87,8 +87,8 @@ const CONTROLS: Record<string, { legs: string[]; does: string; fails: string; pa
   },
   "rescue-unreported": {
     legs: ["C"],
-    does: "the chief of staff's rescued crash is answered and not reported",
-    fails: "leg C: the chief of staff's own crash reaches Inbox",
+    does: "the Shift Coordinator's rescued crash is answered and not reported",
+    fails: "leg C: the Shift Coordinator's own crash reaches Inbox",
     patches: [{ module: COORDINATOR_SRC, from: "await reportRescuedFailure\\(ctx as never, \\{", to: "if (false) await reportRescuedFailure(ctx as never, {" }],
   },
   "post-on-touch": {
@@ -142,11 +142,11 @@ const LAB_SECRET = `ghp_goalLabSecret${Date.now()}x7`;
 /** The Lab user's tracker key, set through the key route as Settings sets it. */
 const MCP_KEY = `lin_api_goalRecordingKey${Date.now()}z9`;
 
-const CHIEF = "chief-of-staff";
+const SHIFT_COORDINATOR = "shift-coordinator";
 /**
  * The coordinator most planted failures are sent to: Sandbox's project
  * coordinator. Its routing is `judgment`, so a failure in its turn fails the
- * request. Leg C sends them to the chief of staff, whose `best-fit` routing
+ * request. Leg C sends them to the Shift Coordinator, whose `best-fit` routing
  * answers a crash in its own turn with "Nobody took this message".
  */
 const PROJECT_COORDINATOR = "project-coordinator";
@@ -229,14 +229,14 @@ interface Opened {
   reportAsks(): Promise<Ask[]>;
   /** Answer an ask the way Inbox's card does. */
   answer(ask: Ask, data: Record<string, unknown>): Promise<void>;
-  /** Send a message to the chief of staff; the request id and whether it failed. */
-  tellChief(message: string): Promise<{ requestId: string; failed: boolean; error?: string }>;
+  /** Send a message to the Shift Coordinator; the request id and whether it failed. */
+  tellShiftCoordinator(message: string): Promise<{ requestId: string; failed: boolean; error?: string }>;
   /** Send a message to a project's project coordinator, opening its session the first time. */
   tellProject(projectId: string, message: string): Promise<{ requestId: string; failed: boolean; error?: string }>;
-  /** The chief of staff's tasks. */
+  /** The Shift Coordinator's tasks. */
   tasks(): Promise<Array<Record<string, any>>>;
   addDelegate(worker: string): Promise<void>;
-  chiefSession: string;
+  shiftCoordinatorSession: string;
 }
 
 /** Open the devteam Lab with the reporter, serve it, and give the legs their reads. */
@@ -290,9 +290,9 @@ async function open(options: {
   const intake = runtime.registry.get(ERROR_REPORTER_INTAKE_FLOW) as FlowInstance;
   const coordinator = runtime.registry.get("coordinator") as FlowInstance;
 
-  const chiefSession = `s-goal-chief-${Date.now()}`;
-  const created = await lab.door("POST", "coordinator/sessions", { body: { userId: LAB_USER_ID, sessionId: chiefSession, state: { workerId: CHIEF } } });
-  if (created.status !== 201) throw new Error(`opening the chief of staff's session answered ${created.status}`);
+  const shiftCoordinatorSession = `s-goal-shift-coordinator-${Date.now()}`;
+  const created = await lab.door("POST", "coordinator/sessions", { body: { userId: LAB_USER_ID, sessionId: shiftCoordinatorSession, state: { workerId: SHIFT_COORDINATOR } } });
+  if (created.status !== 201) throw new Error(`opening the Shift Coordinator's session answered ${created.status}`);
   const projectSessions = new Map<string, string>();
   const projectSession = async (projectId: string) => {
     const known = projectSessions.get(projectId);
@@ -326,7 +326,7 @@ async function open(options: {
   return {
     lab,
     baseUrl,
-    chiefSession,
+    shiftCoordinatorSession,
     close: async () => {
       await handle.close();
       await lab.dispose();
@@ -344,20 +344,20 @@ async function open(options: {
       return snapshot.asks.value.filter((ask) => ask.sessionId.startsWith("error-report~"));
     },
     answer: (ask, data) => reader.resume(ask, { action: "submit", data }),
-    tellChief: async (message) => told(await act(coordinator, chiefSession, "respond", { message })),
+    tellShiftCoordinator: async (message) => told(await act(coordinator, shiftCoordinatorSession, "respond", { message })),
     tellProject: async (projectId, message) => told(await act(coordinator, await projectSession(projectId), "respond", { message })),
-    tasks: async () => ((await act(coordinator, chiefSession, LIST_TASKS_ACTION, {})).output?.tasks ?? []) as Array<Record<string, any>>,
+    tasks: async () => ((await act(coordinator, shiftCoordinatorSession, LIST_TASKS_ACTION, {})).output?.tasks ?? []) as Array<Record<string, any>>,
     addDelegate: async (worker) => {
-      const added = await act(coordinator, chiefSession, "addDelegate", { worker });
+      const added = await act(coordinator, shiftCoordinatorSession, "addDelegate", { worker });
       if (added.error !== undefined) throw new Error(`adding ${worker} as a delegate failed: ${JSON.stringify(added.error)}`);
     },
   };
 }
 
-/** Dispatch one task through the chief of staff, and wait for it to settle. */
+/** Dispatch one task through the Shift Coordinator, and wait for it to settle. */
 async function runTask(lab: Opened, goal: string, maxAttempts: number): Promise<Record<string, any> | undefined> {
   const before = new Set((await lab.tasks()).map((t) => t.id));
-  const filed = await lab.tellChief(`dispatch ${JSON.stringify({ goal, assignee: CODER, input: { project: FSD }, maxAttempts })}`);
+  const filed = await lab.tellShiftCoordinator(`dispatch ${JSON.stringify({ goal, assignee: CODER, input: { project: FSD }, maxAttempts })}`);
   if (filed.failed) throw new Error(`filing "${goal}" failed: ${filed.error}`);
   return until(async () => {
     const task = (await lab.tasks()).find((t) => !before.has(t.id) && String(t.goal ?? t.title).includes(goal));
@@ -493,8 +493,8 @@ await runGoal(async (failures) => {
                   const tripped =
                     replay.worker === PROJECT_COORDINATOR
                       ? await clean.tellProject((replay.project ?? "").replace(/^shared\//, "").toLowerCase(), replay.message)
-                      : replay.worker === CHIEF
-                        ? await clean.tellChief(replay.message)
+                      : replay.worker === SHIFT_COORDINATOR
+                        ? await clean.tellShiftCoordinator(replay.message)
                         : undefined;
                   if (tripped === undefined) throw new Error(`the replay named ${replay.worker}, which this check can't message`);
                   const replayRow = await until(async () => (await clean.rows()).find((r) => r.occurrences.some((o) => o.requestId === tripped.requestId)), 60_000);
@@ -653,25 +653,25 @@ await runGoal(async (failures) => {
       lab = undefined;
     }
 
-    // ---- leg C: the chief of staff, in a fresh Lab ------------------------------
+    // ---- leg C: the Shift Coordinator, in a fresh Lab ------------------------------
     if (runs("C")) {
       lab = await open({ store: "memory", tracker: undefined, harness: draftingStub });
       const inInbox = async (row: ReportRow | undefined) =>
         row !== undefined && (await lab!.reportAsks()).some((a) => a.sessionId === row.sessionId);
 
-      const crashed = await lab.tellChief("What's the status of the Sandbox project?");
-      say(`leg C: the chief of staff's turn ${crashed.failed ? "failed" : "completed"} (request ${crashed.requestId}${crashed.error === undefined ? "" : `: ${crashed.error}`})`);
-      if (crashed.failed) fail("C", "the chief of staff answers its own crash: the request failed");
+      const crashed = await lab.tellShiftCoordinator("What's the status of the Sandbox project?");
+      say(`leg C: the Shift Coordinator's turn ${crashed.failed ? "failed" : "completed"} (request ${crashed.requestId}${crashed.error === undefined ? "" : `: ${crashed.error}`})`);
+      if (crashed.failed) fail("C", "the Shift Coordinator answers its own crash: the request failed");
       const own = await until(async () => {
         const row = (await lab!.rows()).find((r) => r.occurrences.some((o) => o.requestId === crashed.requestId));
         return row !== undefined && row.status === "previewing" ? row : undefined;
       }, 120_000);
-      say(`leg C: ${own === undefined ? "no report" : `report ${own.id}, ${own.status}`} for the chief of staff's crash`);
-      if (!(await inInbox(own))) fail("C", "the chief of staff's own crash reaches Inbox: it did not");
-      else evidence.push("leg C: the chief of staff's crash, answered with \"Nobody took this message\", reached Inbox as a report");
+      say(`leg C: ${own === undefined ? "no report" : `report ${own.id}, ${own.status}`} for the Shift Coordinator's crash`);
+      if (!(await inInbox(own))) fail("C", "the Shift Coordinator's own crash reaches Inbox: it did not");
+      else evidence.push("leg C: the Shift Coordinator's crash, answered with \"Nobody took this message\", reached Inbox as a report");
 
       await lab.addDelegate(POST_TAKER);
-      const posted = await lab.tellChief(`post to ${POST_TAKER}: Summarize the Sandbox notes [post-bug]`);
+      const posted = await lab.tellShiftCoordinator(`post to ${POST_TAKER}: Summarize the Sandbox notes [post-bug]`);
       if (posted.failed) fail("C", `the post was handed on: ${posted.error}`);
       const delegated = await until(async () => {
         const row = (await lab!.rows()).find((r) => r.source === "task" && r.task?.assignee === POST_TAKER);

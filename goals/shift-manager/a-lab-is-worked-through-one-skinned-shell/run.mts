@@ -2,7 +2,7 @@
  * Goal check (epic closure): a Lab is reached and worked through one skinned
  * shell. See goal.md for the contract; the plan it runs is FIX-1663's
  * `PLAN.md`, read with the epic's 2026-10-01 amendment (design v2's
- * structure: Chief of Staff, Roster, the Day / Night switch).
+ * structure: Shift Coordinator, Roster, the Day / Night switch).
  *
  * A thin driver over one commit, in the plan's order:
  *
@@ -441,9 +441,9 @@ const CHILDREN: Child[] = [
   // Inbox's reply to the EM's ask goes through the same send path (FIX-1789's em door leg), so it goes red with delivered.
   { id: "P3.2 FIX-1690 it-sends-a-turn-into-a-seat-session", run: SM("it-sends-a-turn-into-a-seat-session"), control: "optimistic-turn", must: /\] delivered:/, allowed: /\] (delivered|stopped|continued|standing|heard|em door):/ },
   { id: "P3.2 FIX-1690 it-sends-a-turn-into-a-seat-session", run: SM("it-sends-a-turn-into-a-seat-session"), control: "fresh-session", must: /\] continued:/, allowed: /\] continued:/ },
-  { id: "P3.2 FIX-1722 it-briefs-and-talks-with-the-chief-of-staff", run: SM("it-briefs-and-talks-with-the-chief-of-staff") },
-  { id: "P3.2 FIX-1722 it-briefs-and-talks-with-the-chief-of-staff", run: SM("it-briefs-and-talks-with-the-chief-of-staff"), control: "optimistic-reply", must: /\[desk\] talk/, allowed: /\[desk\] talk/ },
-  { id: "P3.2 FIX-1722 it-briefs-and-talks-with-the-chief-of-staff", run: SM("it-briefs-and-talks-with-the-chief-of-staff"), control: "static-brief", must: /\[desk\] inline/, allowed: /\[desk\] inline/ },
+  { id: "P3.2 FIX-1722 it-briefs-and-talks-with-the-shift-coordinator", run: SM("it-briefs-and-talks-with-the-shift-coordinator") },
+  { id: "P3.2 FIX-1722 it-briefs-and-talks-with-the-shift-coordinator", run: SM("it-briefs-and-talks-with-the-shift-coordinator"), control: "optimistic-reply", must: /\[desk\] talk/, allowed: /\[desk\] talk/ },
+  { id: "P3.2 FIX-1722 it-briefs-and-talks-with-the-shift-coordinator", run: SM("it-briefs-and-talks-with-the-shift-coordinator"), control: "static-brief", must: /\[desk\] inline/, allowed: /\[desk\] inline/ },
   { id: "P3.2 FIX-1723 it-shows-who-is-on-shift", run: SM("it-shows-who-is-on-shift") },
   { id: "P3.2 FIX-1723 it-shows-who-is-on-shift", run: SM("it-shows-who-is-on-shift"), control: "ignore-asks", must: /\] status/, allowed: /\] (status|summary|sidebar|TEAMS)/ },
   { id: "P3.2 FIX-1723 it-shows-who-is-on-shift", run: SM("it-shows-who-is-on-shift"), control: "count-queued", must: /\] slots/, allowed: /\] (slots|holding)/ },

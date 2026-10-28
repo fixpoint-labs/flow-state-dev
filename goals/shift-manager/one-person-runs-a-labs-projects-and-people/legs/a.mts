@@ -1,14 +1,14 @@
 /**
- * Leg a: the person asks the chief of staff for two projects, one shared with
+ * Leg a: the person asks the Shift Coordinator for two projects, one shared with
  * another member, and finds them under PROJECTS, each with four tabs whose Stream is
  * the person's own project coordinator for it, before and after a restart.
  *
- * Steps a1 to a5 (PLAN.md → Checks). Only rows the chief of staff created in
+ * Steps a1 to a5 (PLAN.md → Checks). Only rows the Shift Coordinator created in
  * this run are graded: the boot's own rows are snapshotted first and must be
  * unchanged.
  */
 import type { Page } from "playwright";
-import { hex, quote, callsTo, projectCoordinatorOf, projectsDrawn, readProjects, same, sleep, streamCoordinator, visible, askCos, type ProjectRow, type World } from "../steps.mts";
+import { hex, quote, callsTo, projectCoordinatorOf, projectsDrawn, readProjects, same, sleep, streamCoordinator, visible, askShiftCoordinator, type ProjectRow, type World } from "../steps.mts";
 
 /** Open Shift Manager at `url` in another person's page: whether its shell drew, or the refusal it drew instead. */
 async function openAs(page: Page, url: string): Promise<{ ok: true } | { ok: false; why: string }> {
@@ -55,19 +55,19 @@ export async function legA(world: World): Promise<LegA | undefined> {
 
   // ---- a1 · ask for two projects ---------------------------------------------
   // A project lists no mailbox, so D1's "one workstream on each of two teams" has no subject:
-  // a project's workstreams are entries people open in it, which the chief of staff doesn't pick.
+  // a project's workstreams are entries people open in it, which the Shift Coordinator doesn't pick.
   const boot = await readProjects(world.routes.owner);
   const titles = [`Launch ${hex(2)}`, `Research ${hex(2)}`];
   const words =
     `Please create two projects for me. The first is called "${titles[0]}": add ${member.userId} as a member. ` +
     `The second is called "${titles[1]}": a shared project too, with only me as a member.`;
-  const turn = await askCos(world, "a1", words);
+  const turn = await askShiftCoordinator(world, "a1", words);
   if (turn === undefined) {
-    r.fail("a1", "no CoS seat: the Chief of Staff view draws no chief of staff to ask");
+    r.fail("a1", "no Shift Coordinator seat: the Shift Coordinator view draws no Shift Coordinator to ask");
     return undefined;
   }
   const creates = callsTo(turn, "createProject");
-  if (creates.length !== 2 || creates.some((c) => !c.ok)) r.fail("a1", `CoS's session holds ${creates.length} createProject call(s), ${creates.filter((c) => c.ok).length} ok, not two ok: ${quote(turn)}`);
+  if (creates.length !== 2 || creates.some((c) => !c.ok)) r.fail("a1", `Shift Coordinator's session holds ${creates.length} createProject call(s), ${creates.filter((c) => c.ok).length} ok, not two ok: ${quote(turn)}`);
   const after = await readProjects(world.routes.owner);
   const before = new Set(boot.rows.map((row) => row.id));
   const created = after.rows.filter((row) => !before.has(row.id));
@@ -87,9 +87,9 @@ export async function legA(world: World): Promise<LegA | undefined> {
   const defaults = after.rows.filter((row) => before.has(row.id));
   for (const row of boot.rows) {
     const now = defaults.find((d) => d.id === row.id);
-    if (now === undefined || rowKey(now) !== rowKey(row)) r.fail("a1", `the default project ${row.id} changed while CoS created the new ones`);
+    if (now === undefined || rowKey(now) !== rowKey(row)) r.fail("a1", `the default project ${row.id} changed while Shift Coordinator created the new ones`);
   }
-  r.saw("a1", `asked "${words}"; CoS: ${quote(turn)}; new rows ${p1.id} {owner ${p1.ownerUserId}, members [${p1.members}]} and ${p2.id} {owner ${p2.ownerUserId}, members [${p2.members}]}`);
+  r.saw("a1", `asked "${words}"; Shift Coordinator: ${quote(turn)}; new rows ${p1.id} {owner ${p1.ownerUserId}, members [${p1.members}]} and ${p2.id} {owner ${p2.ownerUserId}, members [${p2.members}]}`);
 
   const state: LegA = { p1, p2, defaults: boot.rows, streams: {} };
   await readBack(world, state, false);
@@ -121,7 +121,7 @@ export async function readBack(world: World, state: LegA, restarted: boolean): P
   }
 
   // ---- a2 · PROJECTS ---------------------------------------------------------
-  await world.open("/cos");
+  await world.open("/shift-coordinator");
   const groups = await projectsDrawn(world.page);
   for (const row of [row1, row2]) {
     const g = groups.find((x) => x.id === row.id);
@@ -204,7 +204,7 @@ export async function readBack(world: World, state: LegA, restarted: boolean): P
   }
   const outsiderView = await world.as("outsider");
   try {
-    const url = `${world.served.origin}/cos`;
+    const url = `${world.served.origin}/shift-coordinator`;
     const refused = await openAs(outsiderView.page, url);
     if (!refused.ok) r.fail(a4, `the outsider can't open Shift Manager: "${refused.why}"`);
     const opened = refused.ok ? refused : await openWithSession(world, "outsider", outsiderView.page, url);

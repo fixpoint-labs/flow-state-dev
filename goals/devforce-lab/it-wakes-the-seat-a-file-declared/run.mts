@@ -78,7 +78,7 @@ interface Fixture {
   /**
    * The org seats the tree declares under `org/workers/`, by id, with their
    * kind. Hired with the team seats, and outside this check's per-seat legs:
-   * the chief of staff runs the `coordinator` kind, which has no inspect entry.
+   * the Shift Coordinator runs the `coordinator` kind, which has no inspect entry.
    */
   orgWorkers: Record<string, { kind: string }>;
   /**

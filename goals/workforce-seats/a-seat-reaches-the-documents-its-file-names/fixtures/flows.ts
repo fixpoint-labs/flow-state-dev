@@ -23,9 +23,9 @@ import {
   writeResourceContentTool,
 } from "@flow-state-dev/core";
 import type { WorkerInstallation } from "@flow-state-dev/workforce";
-import { workerConfigSchema } from "@flow-state-dev/workforce";
+import { workerConfigSchema, workerMessagesResources } from "@flow-state-dev/workforce";
 import { z } from "zod";
-import { workerDoor } from "../../../lib/worker-door.mts";
+import { hearsMessages, workerDoor } from "../../../lib/worker-door.mts";
 
 export const DESK_FLOW = "desk";
 
@@ -69,7 +69,7 @@ export function buildDesk(installation: WorkerInstallation, options: { withoutRu
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources, ...installation.documents, [STORE]: auditLog },
+    resources: { ...installation.resources, ...installation.documents, [STORE]: auditLog, ...workerMessagesResources },
     ...(options.withoutRule === true ? {} : { resourceVisibility: installation.resourceVisibility }),
     request: { onStarted: loadWorker },
     actions: {
@@ -81,5 +81,6 @@ export function buildDesk(installation: WorkerInstallation, options: { withoutRu
       discover: { inputSchema: z.object({}).passthrough(), block: discover },
       peek: { inputSchema: z.object({ uri: z.string() }), block: peek },
     },
+    internal: { actions: hearsMessages(installation, DESK_FLOW) },
   });
 }

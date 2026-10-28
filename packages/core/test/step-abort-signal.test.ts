@@ -151,7 +151,7 @@ const suspends = handler({
   inputSchema: z.unknown(),
   outputSchema: z.unknown(),
   execute: async () => {
-    throw new SuspensionError({ suspensionId: "sus", reason: "human_approval" });
+    throw new SuspensionError({ suspensionId: "sus", reason: "user_approval" });
   },
 });
 
