@@ -171,8 +171,11 @@ interface Item {
   output?: unknown;
 }
 
-/** How the settled notice the main session takes names a task and its ending. */
-const RESULT_LINE = /^Task "([\s\S]+?)" \(([^)\s]+)\) (completed by [^:]+|failed for good with [^:]+|was cancelled)(?:: ([\s\S]*))?$/;
+/**
+ * How the settled notice the main session takes names a task and its ending: orchestration's
+ * `noticeText` (`tasks/notice/task-notice.ts`), where a cancel may add "; it cancelled …".
+ */
+const RESULT_LINE = /^Task "([\s\S]+?)" \(([^)\s]+)\) (completed by [^:]+|failed for good with [^:]+|was cancelled)(?:[:;] ([\s\S]*))?$/;
 
 /**
  * Read `read` now and every `everyMs`, reporting a value only when it
