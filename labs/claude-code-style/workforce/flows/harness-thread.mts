@@ -33,7 +33,6 @@ import {
   startOwedSteerTurn,
   STEER_TURN_ENTRY,
   steerTurnEntry,
-  WORKER_ID_STATE_KEY,
   WORKER_TASK_ENTRY,
   workerConfigSchema,
   workerMessagesResources,
@@ -111,11 +110,15 @@ export function defineHarnessThreadFlow({ installation, root }: HarnessThreadFlo
     ]),
   );
 
-  /** What the session's worker names in its `harness:` line; the config schema refused any other name at hire. */
-  const harnessOf = (ctx: { session: { state?: unknown } }) => {
-    const worker = String((ctx.session.state as Record<string, unknown> | undefined)?.[WORKER_ID_STATE_KEY]);
-    const found = built[String(installation.standardWorker(worker)?.declared.harness)];
-    if (found === undefined) throw new Error(`worker "${worker}" names no \`harness:\` in its WORKER.md`);
+  /**
+   * What the session's worker names in its `harness:` line, read from the worker as this turn
+   * resolves it (a standard worker or the user's own copy on the roster); the config schema
+   * refused any other name at hire.
+   */
+  const harnessOf = async (ctx: Parameters<WorkerInstallation["resolveWorker"]>[0]) => {
+    const worker = await installation.resolveWorker(ctx, HARNESS_THREAD_FLOW);
+    const found = built[String(worker.config.harness)];
+    if (found === undefined) throw new Error(`worker "${worker.id}" names no \`harness:\` in its WORKER.md`);
     return found;
   };
   const byHarness = (name: string, inputSchema: unknown, pick: (b: (typeof built)[string]) => unknown) =>
@@ -123,7 +126,9 @@ export function defineHarnessThreadFlow({ installation, root }: HarnessThreadFlo
       name,
       inputSchema,
       routes: Object.values(built).map(pick),
-      execute: (_input: unknown, ctx: never) => pick(harnessOf(ctx)),
+      // resolveWorker reads the user's roster, so the router declares the installation's resources.
+      resources: installation.resources,
+      execute: async (_input: unknown, ctx: never) => pick(await harnessOf(ctx)),
     } as never) as BlockDefinition<any, any>;
   const anyDoor = Object.values(built)[0]!.door;
 
