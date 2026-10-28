@@ -38,7 +38,6 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { z } from "zod";
 import { handler, harnessRunInputSchema, sequencer } from "@flow-state-dev/core";
 import type { FlowInstance, GeneratorModel, HarnessBlock, ModelResolver } from "@flow-state-dev/core/types";
 import { runAction } from "@flow-state-dev/engine";
