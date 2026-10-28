@@ -65,8 +65,8 @@ export const CONTROLS: Record<string, Control> = {
     patches: [
       {
         module: "packages/workforce/src/conversation-board/delivery.ts",
-        from: String.raw`onMidwayQuestion: async \(ctx, row, holds\) =>`,
-        to: "onMidwayQuestionOff: async (ctx: unknown, row: unknown, holds: unknown) =>",
+        from: String.raw`const tell = midwayQuestionTellerOf\(`,
+        to: "const tell = undefined && midwayQuestionTellerOf(",
       },
     ],
   }),

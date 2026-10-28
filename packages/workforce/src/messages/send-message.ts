@@ -48,7 +48,7 @@ import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, FILING_WORKER_STATE_KE
 import { newChainId, TURN_CHAIN_STATE, TURN_SENT_STATE, turnChainOf, turnHopOf } from "./hop";
 import { carriesPass, dispatchMessage, dropOwed, endMessage, isFinalRefusal, oweMessage } from "./delivery";
 import { messageLimitsOf } from "./message-limits";
-import { messageHearingOf } from "./message-received-entry";
+import { messageHearingOf } from "./received-mark";
 import { checkTargetSession, checkTaskTarget, type MessageTarget } from "./message-target";
 import {
   MAX_MESSAGE_CHARS,

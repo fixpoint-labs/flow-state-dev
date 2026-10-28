@@ -20,10 +20,10 @@
  * one stop, and a filer that can't be told leaves the question there.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
+import type { WorkerInstallation } from "../workers/installation";
 import type { RowHold, Task } from "@flow-state-dev/orchestration/tasks";
 import { FILING_WORKER_STATE_KEY } from "../workers/keys";
 import { MAX_MESSAGE_CHARS } from "./log-row";
-import { messageSenderOf } from "./message-received-entry";
 import type { MessageTarget } from "./message-target";
 import { sendMessage } from "./send-message";
 
@@ -74,11 +74,15 @@ function filerOf(ctx: BlockContext, row: Task): MessageTarget | undefined {
  * built by `messageReceivedEntry`. A send refused is said in the log: the
  * question stands in the Inbox.
  */
-export async function sendQuestionToFiler(ctx: BlockContext, row: Task, holds: readonly RowHold[]): Promise<void> {
+export async function sendQuestionToFiler(
+  ctx: BlockContext,
+  sender: { readonly installation: WorkerInstallation; readonly flowKind: string },
+  row: Task,
+  holds: readonly RowHold[]
+): Promise<void> {
   if (row.filer?.sessionId === ctx.session.identity.id) return;
-  const sender = messageSenderOf((ctx as { readonly flow?: unknown }).flow);
   const filer = filerOf(ctx, row);
-  if (sender === undefined || filer === undefined) {
+  if (filer === undefined) {
     console.warn("[workforce] a task's midway question has no worker to tell: it is in the Inbox only", { taskId: row.id });
     return;
   }
