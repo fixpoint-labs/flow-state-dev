@@ -11,7 +11,7 @@
 | **runs a flow that never opts in** (the stock agent flow, every app today) | 50 turns, older ones dropped | The same model input, byte for byte. The divider's mark is still recorded, so any screen can say *out of view* honestly |
 | **writes a generator with a narrow history** (`history: { limit: { turns: 8 } }`) | Sees its last 8 turns | The same. The summary rides only with a history that reaches back to the divider |
 | **hits a summary call that fails** | n/a | The turn runs anyway, on the summary it had and every turn past it, all still in the window. The fold starts a quarter of the window early, so it is tried again on the next turns before anything leaves |
-| **leaves a turn waiting on an approval while the conversation goes on** | The parked turn shows once it settles, if it is still inside the window | The same: the fold never moves past a turn that hasn't settled, so a late turn is summarized or read, never skipped |
+| **leaves a turn waiting on an approval while the conversation goes on** | The parked turn shows once it settles, if it is still inside the window | The same: the fold waits for a turn that hasn't settled, and one still parked when it leaves the window is kept by id and folded once it settles. Never skipped |
 
 A session that lives for weeks is now normal (workstreams, coordinators, the lab's workers), and
 Jake set the direction in [FIX-1775](https://linear.app/fixpoint-labs/issue/FIX-1775): how a

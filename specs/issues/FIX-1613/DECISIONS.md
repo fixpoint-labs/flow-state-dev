@@ -81,7 +81,10 @@ It comes down to a lost fold: in the background, a killed fold drops a turn with
 - **The fold takes settled turns in order and stops at the first unsettled one** (running, or
   parked on a gate). The high-water mark never passes a turn that hasn't settled, so a turn that
   settles late is never behind it. If an unsettled turn is about to leave the window, the fold
-  moves past it, and the mark reads `summarized: false` for what it skipped.
+  moves past it and keeps its id in a pending list on `historySummary`. Each later turn reads
+  those ids directly (a get by id, bounded by the list, not a deep read) and folds any that has
+  settled, in its own place in the summary. While one is pending the mark reads
+  `summarized: false`. A pending turn that retention deletes unsettled is dropped from the list.
 - **A session switched on late** starts its summary with what the window holds. What fell out
   before stays out of view, and the mark says so.
 - **A failed summary call** is logged, the turn goes on with the summary it had and every turn
@@ -144,5 +147,7 @@ It comes down to a lost fold: in the background, a killed fold drops a turn with
   block-facing read dropped for want of a caller.
 - **Analysis** — the fold now starts a quarter of the window early and never passes an unsettled
   turn, because a failed or late fold lost turns for good.
+- **Review round 1, Codex** — a parked turn the fold moves past is kept by id and folded when
+  it settles, because moving the mark past it lost it for good.
 
 **Open: none.**
