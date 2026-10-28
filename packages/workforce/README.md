@@ -2268,9 +2268,9 @@ Send to talk; call when the worker needs to use the answer now; file a task for 
   `{ id, from, text, inReplyTo?, budget, call }`, for an app to draw. Then the flow's turn, if it gave one, runs
   with a `MessageReceived` (`{ id, from, text, call, inReplyTo?, budget }`; `call` is `true` when the
   sender waits for the reply). A copy delivered twice wakes the recipient once; a recipient mid-turn hears it after
-  that turn. A message to a conversation stopped for a person (an approval or an input), or, in a
-  task's session, to a task held on a person's stop or question, lands once nothing holds it; while
-  it waits its row has `queuedBehind: "person"`. Coordinators hear messages whatever their routing, in their own turn.
+  that turn. A message to a conversation stopped for the user (an approval or an input), or, in a
+  task's session, to a task held on the user's stop or question, lands once nothing holds it; while
+  it waits its row has `queuedBehind: "user"`. Coordinators hear messages whatever their routing, in their own turn.
 - **Where it lands.** An answer lands in the session the original was sent from, even a task's
   session whose task has finished. A message to the worker that filed the sender's current task
   (or delegate session) lands in the conversation that filed it. A message to the project
@@ -2285,12 +2285,12 @@ Send to talk; call when the worker needs to use the answer now; file a task for 
   characters); the recipient's prompt tells it to answer there, not with `sendMessage`. The tool
   answers `{ status: "answered", callId, reply }`. At the deadline it answers
   `{ status: "running", callId, recipient? }` (`recipient: "waiting_on_person"` when the message
-  waits behind a person); nothing is stopped and the reply is kept. `{ callId, deadline? }` waits
+  waits behind the user); nothing is stopped and the reply is kept. `{ callId, deadline? }` waits
   again for it, sending nothing, writing no row and spending no budget. `{ status: "failed",
   callId, error }` when the message was refused or couldn't be delivered (`not_delivered: …`) or
   the recipient's turn failed. `deadline` is in ms, defaults to the host's wait default (5
-  minutes) and must lie within the host's `waitDeadlines` bounds (1 s to 24 h by default). A
-  person stopping the calling request ends the call; the recipient's turn runs on. Refusals,
+  minutes) and must lie within the host's `waitDeadlines` bounds (1 s to 24 h by default). The
+  user stopping the calling request ends the call; the recipient's turn runs on. Refusals,
   nothing sent: `wait_unavailable` (the host needs durable execution, a store that keeps wakes
   and a sweeper; the call is never turned into a send), `wait_deadline_out_of_range`,
   `wait_already_pending` (one wait per model step, shared with `getTask`'s `wait`),
@@ -2322,7 +2322,7 @@ Send to talk; call when the worker needs to use the answer now; file a task for 
   `at`, plus `addressedBy` (`"task"` or `"session"`,
   absent for a worker's id) and `toTask` (the task, when `addressedBy` is `"task"`), and for a call
   `call: true`, `deadlineAt` (when the sender stops waiting, ms) and `repliedAt` (when the reply was
-  given, ms), plus `queuedBehind: "person"` while a message waits behind a person. Another user's
+  given, ms), plus `queuedBehind: "user"` while a message waits behind the user. Another user's
   rows are never returned.
 - **Delivery.** `status` is `unconfirmed` until the recipient's `onMessageReceived` takes the
   message, `delivered` once it lands in the recipient's conversation, `refused` (final, with

@@ -8,7 +8,7 @@
  * had only a task and `getTask` to get one. A call must not turn into a send
  * where it can't wait, must never wait past its deadline, must keep a late
  * reply for the caller to collect without sending again, and must queue behind
- * a recipient stopped for a person instead of running beside the stop.
+ * a recipient stopped for the user instead of running beside the stop.
  *
  * The caller is the agent worker (Otto), driven step by step so its tool call
  * can park and resume. Everything is read from the store and each session's
@@ -281,7 +281,7 @@ describe("a call", { timeout: 40_000 }, () => {
   });
 });
 
-describe("a call into a session stopped for a person", { timeout: 60_000 }, () => {
+describe("a call into a session stopped for the user", { timeout: 60_000 }, () => {
   it("queues behind the stop, answers running at its deadline saying so, and waiting again by its id returns the kept reply", async () => {
     let callId = "";
     const { model } = ottoModel({
@@ -299,17 +299,17 @@ describe("a call into a session stopped for a person", { timeout: 60_000 }, () =
     expect(await until(async () => (await ottoTurns(h, otto))[0]?.status === "completed")).toBe(true);
     const outputs = await toolOutputs(h, otto);
     const call = outputs.find((o) => o.callId !== undefined)!;
-    // The deadline came first: the caller goes on, told the recipient waits on a person.
+    // The deadline came first: the caller goes on, told the recipient waits on the user.
     expect(call).toEqual({ status: "running", callId: expect.stringMatching(/^msg_/), recipient: "waiting_on_person" });
     expect(Date.now() - asked).toBeGreaterThanOrEqual(1_000);
     // Nothing landed while the stop is open: neither the call nor the plain message.
     expect(await landedIn(h, sessionId)).toEqual([]);
     const rows = await logRows(h);
-    expect(rows.every((row) => row.queuedBehind === "person" && row.status === "unconfirmed")).toBe(true);
-    // The stopped request still waits on its person: the queued messages never touched it.
+    expect(rows.every((row) => row.queuedBehind === "user" && row.status === "unconfirmed")).toBe(true);
+    // The stopped request still waits on its user: the queued messages never touched it.
     expect((await (await h.state.getRuntime()).stores.request.get(stopped))?.status).toBe("suspended");
 
-    // The person answers; the stopped request ends, and only then do the messages land.
+    // The user answers; the stopped request ends, and only then do the messages land.
     await answerStop(h, stopped);
     expect(await until(async () => (await landedIn(h, sessionId)).length === 2)).toBe(true);
     // Landed after the stopped request ended, not when it merely resumed: the session was busy until then.
@@ -356,7 +356,7 @@ describe("a call into a busy recipient", { timeout: 60_000 }, () => {
     await h.post("alice", otto, "respond", { message: "Ask the lead for the codename" }, "agent");
     expect(await until(async () => (await ottoTurns(h, otto))[0]?.status === "completed")).toBe(true);
     const call = (await toolOutputs(h, otto)).find((o) => o.callId !== undefined)!;
-    // Busy, not waiting on a person: running, and nothing more said.
+    // Busy, not waiting on the user: running, and nothing more said.
     expect(call).toEqual({ status: "running", callId: expect.stringMatching(/^msg_/) });
     expect(await landedIn(h, lead)).toEqual([]);
     // The deadline stopped nothing: the lead's turn runs on, then the call's turn after it.

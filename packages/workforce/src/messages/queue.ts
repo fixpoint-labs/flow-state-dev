@@ -1,23 +1,23 @@
 /**
- * A message queues behind a person (FIX-2239, epic ER-4 and D3): one to a
- * session stopped for a person, or to a task held on one, lands only once
+ * A message queues behind the user (FIX-2239, epic ER-4 and D3): one to a
+ * session stopped for the user, or to a task held on one, lands only once
  * nothing holds it. Checked at `onMessageReceived`'s admission, after the take
  * and before the items, the one point every send, call and resend passes.
  *
  * What holds a session:
  *
- * - **a request of the session parked for a person** (`RequestHost.waits.personStop`).
+ * - **a request of the session parked for the user** (`RequestHost.waits.personStop`).
  *   The message parks on the wait gate bound to that request, and the engine
  *   resumes it when that request ends: it waits for the stopped request to
  *   end, not merely resume, since the session is busy until then.
  * - **in a task's session, an open hold on its task** (`hasOpenHold`, FIX-2058
- *   ER-2): a stop for a person and a question both hold. A question has no
+ *   ER-2): a stop for the user and a question both hold. A question has no
  *   request to wait on, so the message parks bound to the task row, with a
  *   short deadline, and looks again.
  *
  * Every resume looks again. While it waits, the row says so
- * (`queuedBehind: "person"`), which a call's `running` answer reads. A parked
- * message is a wait, never a person's stop: nothing a person answers counts it.
+ * (`queuedBehind: "user"`), which a call's `running` answer reads. A parked
+ * message is a wait, never the user's stop: nothing the user answers counts it.
  * A message whose park would pass `MAX_WAIT_DEPTH` isn't admitted: its request
  * ends without landing it, and the sending session's pass sends it again.
  */
@@ -31,7 +31,7 @@ import { messageLogOf, type WorkerMessageRow } from "./message-log";
 /** How often a message queued behind a task's question looks again, at most. */
 export const QUESTION_RECHECK_MS = 30_000;
 
-/** What holds the running session for a person now, as a wait binds to it; `null` when nothing does. */
+/** What holds the running session for the user now, as a wait binds to it; `null` when nothing does. */
 async function personHoldOf(ctx: BlockContext): Promise<WaitGateBinding | null> {
   const stop = await ctx.requestHost?.waits?.personStop?.();
   if (stop !== undefined) return { requestId: stop.requestId };
@@ -48,7 +48,7 @@ async function personHoldOf(ctx: BlockContext): Promise<WaitGateBinding | null> 
 }
 
 /**
- * Wait while a person holds the running session, before message `row` lands.
+ * Wait while the user holds the running session, before message `row` lands.
  *
  * @returns `"admitted"` once nothing holds it; `"not_admitted"` when its wait
  *   would be too deep, or the request was stopped while it waited.
@@ -68,7 +68,7 @@ export async function queueBehindPerson(ctx: BlockContext, row: Pick<WorkerMessa
     }
     const depth = await once(`fsd.queue.depth:${row.id}:${round}`, () => waits.depth({ binding: hold }));
     if (depth > MAX_WAIT_DEPTH) return "not_admitted";
-    if (round === 0) await ref?.patchState({ queuedBehind: "person" });
+    if (round === 0) await ref?.patchState({ queuedBehind: "user" });
     const planned = await once(`fsd.queue.plan:${row.id}:${round}`, async () => ({
       gateId: `queue:${row.id}#${globalThis.crypto.randomUUID()}`,
       deadline:
@@ -81,7 +81,7 @@ export async function queueBehindPerson(ctx: BlockContext, row: Pick<WorkerMessa
       gateId: planned.gateId,
       binding: hold,
       deadline: planned.deadline,
-      message: `Message ${row.id} waits for the person to answer`
+      message: `Message ${row.id} waits for the user to answer`
     });
     if ("stopped" in outcome) return "not_admitted";
   }

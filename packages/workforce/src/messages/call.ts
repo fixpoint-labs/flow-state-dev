@@ -159,7 +159,7 @@ async function awaitReply(
     });
   const running = async (): Promise<CallResult> => {
     const row = (await log.getOptional(id))?.state;
-    return { status: "running", callId: id, ...(row?.queuedBehind === "person" ? { recipient: "waiting_on_person" as const } : {}) };
+    return { status: "running", callId: id, ...(row?.queuedBehind === "user" ? { recipient: "waiting_on_person" as const } : {}) };
   };
 
   let target = first;

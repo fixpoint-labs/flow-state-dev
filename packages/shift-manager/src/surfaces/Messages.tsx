@@ -38,7 +38,7 @@ function statusNote(row: WorkerMessageRow): string | null {
 /** Where a call's answer is, or `null` for a plain message or a call that ended undelivered. */
 function callNote(row: WorkerMessageRow): string | null {
   if (row.call !== true || row.status === "refused" || row.status === "undeliverable") return null;
-  if (row.repliedAt === undefined) return row.queuedBehind === "person" ? "call · waiting on a person" : "call · waiting";
+  if (row.repliedAt === undefined) return row.queuedBehind === "user" ? "call · waiting on the user" : "call · waiting";
   return row.deadlineAt !== undefined && row.repliedAt > row.deadlineAt ? "call · answered late" : "call · answered";
 }
 

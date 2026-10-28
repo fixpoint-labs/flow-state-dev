@@ -87,9 +87,9 @@ export const workerMessageRowSchema = z.object({
   repliedAt: z.number().optional(),
   /**
    * Why a taken message waits before it lands (FIX-2239): its session is
-   * stopped for a person, or its task is held on one. Cleared when it lands.
+   * stopped for the user, or its task is held on one. Cleared when it lands.
    */
-  queuedBehind: z.literal("person").optional(),
+  queuedBehind: z.literal("user").optional(),
   /** The `onMessageReceived` request that took it (FIX-2123's take, on a message). */
   takenBy: z.string().min(1).optional(),
   /** The request it landed in. Set once. */

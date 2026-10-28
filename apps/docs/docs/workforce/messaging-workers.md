@@ -58,7 +58,7 @@ Then the recipient takes a turn on it. That turn is told the message id, who sen
 
 A recipient in the middle of a turn hears the message after that turn ends. If the same message is delivered twice, the recipient wakes once.
 
-A message also waits while a person holds the conversation it's going to: the conversation is stopped for a person's approval or input, or, in a task's session, the task is held on a person's stop or a question. The message lands once nothing holds it. While it waits, its row in the [log](#showing-messages-in-your-app) has `queuedBehind: "person"`.
+A message also waits while the user holds the conversation it's going to: the conversation is stopped for the user's approval or input, or, in a task's session, the task is held on the user's stop or a question. The message lands once nothing holds it. While it waits, its row in the [log](#showing-messages-in-your-app) has `queuedBehind: "user"`.
 
 You see all of it. Both workers' sessions are yours, and the message, the turn it started and any answer are in them like anything else.
 
@@ -123,13 +123,13 @@ Nothing is stopped. The recipient keeps working, and its reply is kept. The send
 
 Waiting again sends nothing: no new message, no row in the log, no budget spent. It answers the same way a call does. The model should never send the question again to get its answer.
 
-A call waits behind whatever the recipient is doing. A recipient in the middle of a turn takes the call after that turn ends. A conversation [held by a person](#what-the-recipient-sees) takes it once nothing holds it, and a `running` answer in that case says so:
+A call waits behind whatever the recipient is doing. A recipient in the middle of a turn takes the call after that turn ends. A conversation [held by the user](#what-the-recipient-sees) takes it once nothing holds it, and a `running` answer in that case says so:
 
 ```json
 { "status": "running", "callId": "msg_3f1c0a9e2b7d4c6a8e10", "recipient": "waiting_on_person" }
 ```
 
-If a person stops the sender's request while it waits, the call ends with it. The recipient's turn runs on.
+If the user stops the sender's request while it waits, the call ends with it. The recipient's turn runs on.
 
 ### When a call fails
 
@@ -455,7 +455,7 @@ Each row has:
 | `call` | `true` for a [call](#calls). Absent on a plain message. |
 | `deadlineAt` | When a call's sender stops waiting, in ms. A `repliedAt` later than this means the reply came after the call answered `running`. |
 | `repliedAt` | When the recipient's turn gave a call's reply, in ms. |
-| `queuedBehind` | `"person"` while the message waits for a person to answer in the recipient's conversation. Cleared when it lands. |
+| `queuedBehind` | `"user"` while the message waits for the user to answer in the recipient's conversation. Cleared when it lands. |
 | `at` | When it was sent, in ms. |
 
 The read never returns another user's messages.

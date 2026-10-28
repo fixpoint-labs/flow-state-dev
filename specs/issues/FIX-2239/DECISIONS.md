@@ -77,7 +77,7 @@ It comes down to the handle: a call id finds the reply whatever words the model 
   short deadline, since a question has no request to wait on. It checks again at every resume, and
   runs its turn, on the same `defer` line, once nothing holds it. It waits for the stopped request
   to *end*, not merely resume: until then the session is busy, which ER-4's first sentence already
-  covers. While held, the row says so (`queuedBehind: "person"`), which a call's `running` output reads.
+  covers. While held, the row says so (`queuedBehind: "user"`), which a call's `running` output reads.
   A parked message is a wait, never a person's stop: the Inbox and `waiting-on-a-user` never count
   it. If its own park would be a sixth wait deep, it isn't admitted and FIX-2240's resend tries
   again.
@@ -146,7 +146,7 @@ controls. The busy recipient, the depth and the no-wait host are CI tests named 
 
 - **Cross-spec review, amended at build (Jake approved the four points):** a call parks on the
   row's `takenBy` until the message is delivered, then on `deliveredAs`, as FIX-2240 writes them;
-  the row's mark is `queuedBehind: "person"`, not `heldBy`; a task's session reads its row with
+  the row's mark is `queuedBehind`, not `heldBy`, with the value `"user"`: the cross-spec point said `"person"`, which the CI vocabulary check retires (say user), so the value follows the check; `recipient: "waiting_on_person"` stays as epic D3 locked it, since the check reads it as one word; a task's session reads its row with
   FIX-2160's `rowsInSession` and `hasOpenHold`; a call's gate ids and keys are `call:` and
   `fsd.call.*`, not a question's `ask:` and `fsd.ask.*`. Found at build: a held message parks with
   `parkOnWait`, not `waitOnRequest`, since it binds to a task row too and must see a stop.

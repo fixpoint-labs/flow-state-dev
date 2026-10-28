@@ -1,12 +1,12 @@
 /**
- * A message queues behind a person (FIX-2239, epic ER-4): in a task's session,
- * a task held on a person's question holds a message as a stop does. A
+ * A message queues behind the user (FIX-2239, epic ER-4): in a task's session,
+ * a task held on the user's question holds a message as a stop does. A
  * question has no request to wait on, so the message parks bound to the task
  * row with a short deadline, looks again at each resume, and lands once the
  * question is answered. Every write and park is read off a hand-built context.
  *
  * Why it matters: a message landing beside an open question would reach the
- * work while it waits for its person (FIX-2058 ER-2's rule that both a stop and
+ * work while it waits for its user (FIX-2058 ER-2's rule that both a stop and
  * a question hold a task).
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -100,7 +100,7 @@ describe("a message to a task held on a question", () => {
     expect(parked[0]!.data.deadline - before).toBeGreaterThanOrEqual(QUESTION_RECHECK_MS);
     expect(parked[0]!.data.deadline - before).toBeLessThan(QUESTION_RECHECK_MS + 1_000);
     // Queued while held, and the mark is gone once it lands.
-    expect(parked[0]!.queuedBehind).toBe("person");
+    expect(parked[0]!.queuedBehind).toBe("user");
     expect(row.queuedBehind).toBeUndefined();
   });
 
@@ -111,9 +111,9 @@ describe("a message to a task held on a question", () => {
     expect(parked).toEqual([]);
   });
 
-  it("waits on the stopped request when the session is stopped for a person, and is not admitted past five waits deep", async () => {
+  it("waits on the stopped request when the session is stopped for the user, and is not admitted past five waits deep", async () => {
     const stopped = harness({ personStop: "r_stopped" });
-    // The first resume finds the stop gone (the person answered), so it lands.
+    // The first resume finds the stop gone (the user answered), so it lands.
     stopped.ctx.requestHost.waits.personStop = (() => {
       let first = true;
       return async () => (first ? ((first = false), { requestId: "r_stopped" }) : undefined);

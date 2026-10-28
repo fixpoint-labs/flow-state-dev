@@ -74,7 +74,7 @@ const callResultSchema = z.object({
   callId: z.string(),
   reply: z.string().optional(),
   error: z.string().optional(),
-  /** Why a call still runs: the recipient waits on a person (epic D3). */
+  /** Why a call still runs: the recipient waits on the user (epic D3). */
   recipient: z.literal("waiting_on_person").optional()
 });
 

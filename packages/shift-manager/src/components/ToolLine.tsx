@@ -150,7 +150,7 @@ function messageTargetLabel(to: unknown): string {
 function callOutcomeLine(output: { status?: unknown; reply?: unknown; recipient?: unknown } | undefined): string | null {
   if (output?.status === "answered" && typeof output.reply === "string") return output.reply;
   if (output?.status === "running") {
-    return output.recipient === "waiting_on_person" ? "No answer by the deadline: it waits on a person." : "No answer by the deadline yet.";
+    return output.recipient === "waiting_on_person" ? "No answer by the deadline: it waits on the user." : "No answer by the deadline yet.";
   }
   return null;
 }

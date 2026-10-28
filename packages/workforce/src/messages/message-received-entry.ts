@@ -25,7 +25,7 @@
  * back to the sender as its tool's result. Every request that lands a message
  * outputs it, and only a call's sender reads it; one that acted on nothing
  * (a copy) outputs no reply. Between the take and the items, a message to a
- * session stopped for a person, or to a task held on one, queues until
+ * session stopped for the user, or to a task held on one, queues until
  * nothing holds it (`./queue`).
  */
 import { handler, sequencer } from "@flow-state-dev/core";
@@ -202,7 +202,7 @@ export function messageReceivedEntry(options: {
       // for), and only by the request that took it.
       const row = await takeMessage(ctx as never, input.messageId);
       if (row === undefined) return { act: "none" };
-      // Queued behind a person's stop, before anything lands. Not admitted:
+      // Queued behind the user's stop, before anything lands. Not admitted:
       // this request ends with the take, and a resend takes it over.
       if ((await queueBehindPerson(ctx as never, row)) === "not_admitted") return { act: "none" };
       await startTurnAtHop(ctx as never, row.hop, row.chain ?? null);
