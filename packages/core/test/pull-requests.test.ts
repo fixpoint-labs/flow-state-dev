@@ -101,11 +101,35 @@ describe("findOpenedPullRequests — a create call whose result names it", () =>
     }
   });
 
-  it("records only the first pull request a `gh pr create` prints", () => {
-    const item = toolItem("bash", { command: "gh pr create --fill && gh pr view 12 --json url -q .url" }, {
-      stdout: "https://github.com/acme/app/pull/89\nhttps://github.com/acme/app/pull/12\n",
+  it("reads the created pull request from a nested result, and a plain-text result's first link", () => {
+    const args = { owner: "acme", repo: "app", title: "Eighty-nine", head: "eighty-nine", base: "main" };
+    const body = "Follow-up to https://github.com/acme/app/pull/12";
+    const nested = { pullRequest: { body, html_url: "https://github.com/acme/app/pull/89" } };
+    const plain = "Created https://github.com/acme/app/pull/89\n\n" + body;
+    for (const output of [JSON.stringify(nested), plain]) {
+      expect(findOpenedPullRequests(toolItem("mcp__github__create_pull_request", args, output)).map((r) => r.number)).toEqual([89]);
+    }
+  });
+
+  it("records every pull request a command of only `gh pr create`s prints", () => {
+    const item = toolItem("bash", { command: "for r in app api; do gh pr create -R acme/$r --fill; done" }, {
+      stdout: "https://github.com/acme/app/pull/89\nhttps://github.com/acme/api/pull/4\n",
     });
-    expect(findOpenedPullRequests(item).map((r) => r.number)).toEqual([89]);
+    expect(findOpenedPullRequests(item).map((r) => `${r.name}#${r.number}`)).toEqual(["app#89", "api#4"]);
+  });
+
+  it("records nothing from a create mixed with a command that prints other links, in either order", () => {
+    // The output can't be split by command, so any row would be a guess; the branch check finds the real one.
+    for (const command of [
+      "gh pr create --fill && gh pr view 12 --json url -q .url",
+      "gh pr view 12 --json url -q .url && gh pr create --fill",
+      "gh api repos/acme/app/pulls/12 --jq .html_url; gh pr create --fill",
+    ]) {
+      const item = toolItem("bash", { command }, {
+        stdout: "https://github.com/acme/app/pull/12\nhttps://github.com/acme/app/pull/89\n",
+      });
+      expect(findOpenedPullRequests(item)).toEqual([]);
+    }
   });
 
   it("counts a create that failed because the branch already has the pull request", () => {
