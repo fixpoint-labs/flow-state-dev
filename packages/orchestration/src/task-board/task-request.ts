@@ -68,7 +68,7 @@ import {
   type TaskKeptOpenBy,
 } from "../tasks";
 import { ticketClaimsRow } from "../tasks/collection/internal";
-import { askedOnTicket } from "../tasks/collection/questions";
+import { askedOnTicket, suspensionQuestionOf } from "../tasks/collection/questions";
 import { advisoryComplete, advisoryFail } from "../tasks/collection/advisory-write-back";
 import { settleAtRequestEnd } from "./blocks/record-result";
 import { startLeaseRenewal, type LeaseRenewalDriver } from "../tasks/lease-renewal";
@@ -659,7 +659,10 @@ export function taskRequestAdmission(options: TaskRequestAdmissionOptions) {
             row,
             ticket: ticketForClaim(ref.collectionId, row, ref.partition),
             answerCounts: options.answerCounts,
-            own: false,
+            // The resume of the stop the row waits on is that stop's own request, whichever entry
+            // started it (a steer's turn, after an answered question): its admission closes the
+            // mirror, and its end settles the task. Any other request admitted meanwhile is a later one.
+            own: suspensionQuestionOf(row)?.source.requestId === ctx.request.identity.id,
             ...(options.endRules !== undefined ? { rules: options.endRules } : {}),
           });
         } catch (error) {

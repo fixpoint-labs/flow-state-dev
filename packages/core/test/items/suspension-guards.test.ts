@@ -26,7 +26,7 @@ describe("isSuspensionItem", () => {
       type: "suspension",
       suspensionId: "susp-1",
       suspensionStatus: "pending",
-      reason: "human_approval",
+      reason: "user_approval",
       message: "Approve this?"
     };
 
@@ -76,7 +76,7 @@ describe("isSuspensionResumeItem", () => {
       type: "suspension",
       suspensionId: "susp-1",
       suspensionStatus: "pending",
-      reason: "human_approval",
+      reason: "user_approval",
       message: "Approve this?"
     };
 

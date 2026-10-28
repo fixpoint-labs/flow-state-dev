@@ -1,0 +1,92 @@
+<svg viewBox="0 0 940 426" role="img" aria-label="D3, whose word the model and harness on a task card are. Chosen: what the run reported. Instead of: the worker&#x27;s configuration. Decides it: config says what should run, and the card says what is running. The price: a model-only task shows no model until its first call answers. Locks in: a generic model field on the harness report. Flips if: a card must show the model before anything runs, which the lab&#x27;s ER-9 tag already covers."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="426"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D3 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Whose word are the card&#x27;s model and harness?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">What the run reported</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">The worker&#x27;s configuration</text>
+  </g>
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHAT THE CARD CLAIMS</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">What is running</text>
+    <text class="t-s" x="248" y="179">a default or override shows true</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">What should run</text>
+    <text class="t-s" x="612" y="179">can name a model never used</text>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="218">BEFORE THE FIRST CALL</text>
+    <text class="mark minus" x="228" y="224">−</text>
+    <text class="t-b" x="248" y="223">Model-only task: no model</text>
+    <text class="t-s" x="248" y="241">for its first few seconds</text>
+    <text class="mark plus" x="592" y="224">+</text>
+    <text class="t-b" x="612" y="223">Known at once</text>
+    <text class="t-s" x="612" y="241">read from WORKER.md</text>
+    <line class="row" x1="16" y1="256" x2="924" y2="256"/>
+  </g>
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="280">CORE SURFACE</text>
+    <text class="mark minus" x="228" y="286">−</text>
+    <text class="t-b" x="248" y="285">model on the harness report</text>
+    <text class="t-s" x="248" y="303">generic, nothing vendor-specific</text>
+    <text class="mark plus" x="592" y="286">+</text>
+    <text class="t-b" x="612" y="285">Nothing new</text>
+    <text class="t-s" x="612" y="303">the setting is already there</text>
+    <line class="row" x1="16" y1="318" x2="924" y2="318"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="336" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="357">LOCKS IN</text>
+    <text class="t-b" x="32" y="377">model on HarnessRunSpend</text>
+    <text class="t-s" x="32" y="395">a string or null</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="336" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="357">FLIPS IF</text>
+    <text class="t-b" x="494" y="377">A card must show a model before it runs</text>
+    <text class="t-s" x="494" y="395">the lab&#x27;s ER-9 tag covers that</text>
+  </g>
+</svg>

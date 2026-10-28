@@ -90,6 +90,15 @@ reasoning output) and `failureMessage`.
 `"stopped-at-limit"` never appears here, and a run stopped by your deadline throws
 rather than returning a handle.
 
+## Pull requests it opened
+
+The block records the pull requests a run opens in the session's pull-request
+record, `observed-pull-requests`, defined in `@flow-state-dev/core`. A
+`gh pr create` command or a `create_pull_request` MCP tool whose output holds the
+pull request's link is one row, written as the call settles. On by default; with
+`recordPullRequests: false` the block records none and declares no collection.
+Guide: [pull requests a session opened](https://flow-state.dev/docs/tools/coding-agents#pull-requests-a-session-opened).
+
 ## Warnings and failures
 
 Codex's own warnings, such as a configured service tier the model doesn't

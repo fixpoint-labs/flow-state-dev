@@ -146,14 +146,14 @@ describe("waitForUser: what the stop records", () => {
     const flow = askingFlow(seen);
     const h = harness(flow);
     const none = await park(h, flow, { options: { kind: "review", prompt: "Look at this." } });
-    expect(none.gate).toMatchObject({ reason: "human_input", kind: "review", message: "Look at this.", allow: ["submit"] });
+    expect(none.gate).toMatchObject({ reason: "user_input", kind: "review", message: "Look at this.", allow: ["submit"] });
     expect(none.gate.expiresAt).toBeUndefined();
 
     const host = harness(flow);
     host.runtimeConfig.userDeadlineMs = 60_000;
     // The host's setting reaches the request through its request host.
     const set = await park(host, flow, { options: { kind: "approval", prompt: "Ship?" } });
-    expect(set.gate).toMatchObject({ reason: "human_approval", kind: "approval" });
+    expect(set.gate).toMatchObject({ reason: "user_approval", kind: "approval" });
     expect(set.gate.expiresAt! - set.gate.createdAt).toBeGreaterThanOrEqual(59_000);
 
     // A caller that runs the action directly, with no request host wired, keeps the deadline it set.
@@ -523,8 +523,8 @@ describe("a stop of a task's run waiting on a user", () => {
     await h.drain();
     expect((await h.stores.request.get(requestId))?.status).toBe("aborted");
     expect(seen).toEqual(["work"]);
-    expect(stopsAtItsGate({ source: "http" }, { reason: "human_input" })).toBe(false);
+    expect(stopsAtItsGate({ source: "http" }, { reason: "user_input" })).toBe(false);
     expect(stopsAtItsGate({ source: "task" }, { reason: "external_event" })).toBe(false);
-    expect(stopsAtItsGate({ source: "task" }, { reason: "human_approval" })).toBe(true);
+    expect(stopsAtItsGate({ source: "task" }, { reason: "user_approval" })).toBe(true);
   });
 });

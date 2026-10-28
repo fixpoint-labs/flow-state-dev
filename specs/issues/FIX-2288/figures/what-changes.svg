@@ -1,0 +1,96 @@
+<svg viewBox="0 0 940 410" role="img" aria-label="Before and after. Before: a harness reports its run once, at the end, into the request's spend ledger; the ledger hands its spend on only when the request ends, to worker usage; the task row names its run and nothing it spent. After: a harness reports at start, on each usage event and at the end, keyed by run and with its model; the task's run reads the ledger every few seconds and settles each ending onto the task row's spend; listTasks folds it into model, harness and tokens for a card."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+      .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-gone { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .arr    { stroke:var(--ink-3); stroke-width:1.3; fill:none; }
+    .arr-n  { stroke:var(--code); stroke-width:1.6; fill:none; }
+    .ah     { fill:var(--ink-3); }
+    .ahn    { fill:var(--code); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="410"/>
+  <g id="before">
+    <text class="t-tag c-mute" x="16" y="28">BEFORE</text>
+    <rect class="n-box" x="16" y="40" width="250" height="64" rx="5"/>
+    <text class="t-lbl" x="28" y="58">HARNESS</text>
+    <text class="t-b" x="28" y="77">Claude Code · Codex · Cursor</text>
+    <text class="t-s" x="28" y="94">reports once, in finally, no model</text>
+    <rect class="n-box" x="340" y="40" width="250" height="64" rx="5"/>
+    <text class="t-lbl" x="352" y="58">REQUEST · L1</text>
+    <text class="t-b" x="352" y="77">The spend ledger</text>
+    <text class="t-s" x="352" y="94">held in memory while it runs</text>
+    <rect class="n-box" x="664" y="40" width="260" height="64" rx="5"/>
+    <text class="t-lbl" x="676" y="58">AT THE ENDING</text>
+    <text class="t-b" x="676" y="77">Worker usage · FIX-2145</text>
+    <text class="t-s" x="676" y="94">by worker and day</text>
+    <rect class="n-gone" x="340" y="124" width="250" height="64" rx="5"/>
+    <text class="t-lbl" x="352" y="142">TASK ROW</text>
+    <text class="t-b" x="352" y="161">run: session and request</text>
+    <text class="t-s" x="352" y="178">nothing it spent</text>
+    <path class="arr" d="M266,72 L336,72"/>
+    <path class="ah" d="M329,68 L337,72 L329,76 z"/>
+    <path class="arr" d="M590,72 L660,72"/>
+    <path class="ah" d="M653,68 L661,72 L653,76 z"/>
+  </g>
+  <g id="after">
+    <text class="t-tag c-code" x="16" y="226">AFTER</text>
+    <rect class="n-new" x="16" y="238" width="250" height="64" rx="5"/>
+    <text class="t-lbl" x="28" y="256">HARNESS</text>
+    <text class="t-b" x="28" y="275">Reports by run, with its model</text>
+    <text class="t-s" x="28" y="292">at start, each usage event, end</text>
+    <rect class="n-box" x="340" y="238" width="250" height="64" rx="5"/>
+    <text class="t-lbl" x="352" y="256">REQUEST · L1</text>
+    <text class="t-b" x="352" y="275">The spend ledger</text>
+    <text class="t-s" x="352" y="292">+ readRequestSpend</text>
+    <rect class="n-box" x="664" y="238" width="260" height="64" rx="5"/>
+    <text class="t-lbl" x="676" y="256">AT THE ENDING</text>
+    <text class="t-b" x="676" y="275">Worker usage · FIX-2145</text>
+    <text class="t-s" x="676" y="292">same conversion, now shared</text>
+    <rect class="n-new" x="340" y="326" width="250" height="64" rx="5"/>
+    <text class="t-lbl" x="352" y="344">TASK ROW · ORCHESTRATION</text>
+    <text class="t-b" x="352" y="363">spend, per request</text>
+    <text class="t-s" x="352" y="380">live every 2 s, settled at the end</text>
+    <rect class="n-new" x="664" y="326" width="260" height="64" rx="5"/>
+    <text class="t-lbl" x="676" y="344">LISTTASKS</text>
+    <text class="t-b" x="676" y="363">model · harness · tokens</text>
+    <text class="t-s" x="676" y="380">null until reported · live</text>
+    <path class="arr-n" d="M266,270 L336,270"/>
+    <path class="ahn" d="M329,266 L337,270 L329,274 z"/>
+    <path class="arr" d="M590,270 L660,270"/>
+    <path class="ah" d="M653,266 L661,270 L653,274 z"/>
+    <path class="arr-n" d="M465,302 L465,322"/>
+    <path class="ahn" d="M461,315 L465,323 L469,315 z"/>
+    <path class="arr-n" d="M590,358 L660,358"/>
+    <path class="ahn" d="M653,354 L661,358 L653,362 z"/>
+  </g>
+</svg>

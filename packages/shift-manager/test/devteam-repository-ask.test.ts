@@ -132,7 +132,7 @@ async function ask(
   expect((await runtime.stores.request.get(started.requestId!))?.status).toBe("suspended");
   const pending = (await runtime.stores.suspensions.list({ status: "pending" })) as SuspensionRecord[];
   expect(pending).toHaveLength(1);
-  expect(pending[0]!.reason).toBe("human_approval");
+  expect(pending[0]!.reason).toBe("user_approval");
   return { requestId: started.requestId!, suspension: pending[0]! };
 }
 

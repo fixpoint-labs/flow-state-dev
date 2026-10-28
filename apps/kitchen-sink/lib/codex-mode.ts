@@ -59,6 +59,7 @@ import {
   type ResolveCodexClient,
 } from "@flow-state-dev/codex";
 
+import { goalControl } from "./goal-control";
 import { harnessSessionFlow, type HarnessBlock, type HarnessFeeds } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";
@@ -244,6 +245,8 @@ export function codexBlockOptions(feeds: HarnessFeeds, seams: CodexSeams = {}): 
     model: async (ctx) => (await feeds.model(ctx)) ?? (await codexDefaultModel(seams)),
     thread: codexThreadOptions(),
     resolveCodexClient: seams.resolveCodexClient ?? (codexIsScripted() ? scriptedCodex() : codexClient()),
+    // Records no pull request in the turn, so goal leg **r1** can be seen to fail.
+    recordPullRequests: goalControl() !== "no-pr-record",
     name: "codex",
   };
 }

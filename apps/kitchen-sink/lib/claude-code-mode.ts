@@ -80,6 +80,8 @@ export function claudeCodeBlock(feeds: HarnessFeeds, seams: ClaudeCodeSeams = {}
     detached: true,
     // Declares no plan record, so goal leg **p** can be seen to fail.
     recordWork: goalControl() !== "no-record",
+    // Records no pull request in the turn, so goal leg **r1** can be seen to fail.
+    recordPullRequests: goalControl() !== "no-pr-record",
     permissionMode: "bypassPermissions",
     // The run doesn't load the worktree's own Claude Code settings: a turn can
     // edit `.claude/settings.json`, and a hook it added would run outside the
