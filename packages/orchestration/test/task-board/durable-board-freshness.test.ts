@@ -30,11 +30,11 @@ import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
   defineTaskCollection,
-  fifoDispatcher,
+  fifoClaimOrder,
   getOrCreateTaskCollection,
   type Task,
   type TaskCollectionRef,
-  type TaskDispatcher,
+  type ClaimOrder,
   type TaskWorker,
 } from "../../src/tasks";
 import {
@@ -56,16 +56,16 @@ function delay(ms: number): Promise<void> {
  * emits nothing on the item stream (an exhausted iteration budget is silent),
  * so the attempt count is the direct measurement of it.
  *
- * Counted in total rather than per worker: the `workerId` the dispatcher
+ * Counted in total rather than per worker: the `workerId` the claim order
  * receives is the claim block's `blockInstanceId`, which is fresh on every
  * loop iteration (it exists for trace attribution, not identity). The board
  * below runs `concurrency: 1`, so the total *is* that one worker's count.
  */
-function countingDispatcher(attempts: { total: number }): TaskDispatcher {
+function countingClaimOrder(attempts: { total: number }): ClaimOrder {
   return {
     async claim(collection, workerId, ctx): Promise<Task | null> {
       attempts.total += 1;
-      return fifoDispatcher.claim(collection, workerId, ctx);
+      return fifoClaimOrder.claim(collection, workerId, ctx);
     },
   };
 }
@@ -127,7 +127,7 @@ function buildScenario() {
       stateSchema: z.object({ topic: z.string() }),
     }),
     concurrency: 1,
-    dispatcher: countingDispatcher(attempts),
+    claimOrder: countingClaimOrder(attempts),
     workers: worker,
     initialTasks: [
       // Its dep is held and never released, so it is `pending` but no claim
@@ -150,7 +150,7 @@ function buildScenario() {
       await delay(IDLE_POLL_MS * 20);
       const tasks: TaskCollectionRef = await ctx.cap[boardName].tasks();
 
-      await tasks.addTask({ id: "parked", goal: "parked", input: { topic: "p" } });
+      await tasks.createTask({ id: "parked", goal: "parked", input: { topic: "p" } });
       const claimed = await tasks.claim("external-actor", {
         eligibility: (task) => task.id === "parked",
       });
@@ -255,10 +255,10 @@ describe("taskBoard - durable collection resolutions inside one request", () => 
           });
 
         const refA = await resolve();
-        await refA.addTask({ id: "t1", goal: "t1" });
-        await refA.addTask({ id: "t2", goal: "t2" });
+        await refA.createTask({ id: "t1", goal: "t1" });
+        await refA.createTask({ id: "t2", goal: "t2" });
         // Third create trips the cap and evicts the oldest instance.
-        await refA.addTask({ id: "t3", goal: "t3" });
+        await refA.createTask({ id: "t3", goal: "t3" });
 
         // A later resolution reconciles the shared record against the store.
         const refB = await resolve();
@@ -297,7 +297,7 @@ describe("taskBoard - durable collection resolutions inside one request", () => 
         stateSchema: z.object({ topic: z.string() }),
       }),
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: handler({
         name: "two-resolutions-worker",
         inputSchema: taskWorkerInputSchema,
@@ -316,7 +316,7 @@ describe("taskBoard - durable collection resolutions inside one request", () => 
         // Both refs resolve before the add — the shape of a parked worker.
         const refA: TaskCollectionRef = await acc.tasks();
         const refB: TaskCollectionRef = await acc.tasks();
-        await refA.addTask({ id: "t1", goal: "g1", input: { topic: "t" } });
+        await refA.createTask({ id: "t1", goal: "g1", input: { topic: "t" } });
         return { viaA: refA.count(), viaB: refB.count() };
       },
     });

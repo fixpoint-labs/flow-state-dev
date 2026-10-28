@@ -308,7 +308,7 @@ describe("a steer on a routed task in a workstream's session", () => {
     // The EM filed the coder's task and ended its turn: the routed task, in the workstream's session, waits on that work.
     const routed = await eventually(async () => {
       const [task, coder] = [await host.routedRow(), await host.coderRow()];
-      return coder?.status === "in_progress" && task?.waitingOn === "filed" ? task : undefined;
+      return coder?.status === "in_progress" && task?.keptOpenBy === "filed" ? task : undefined;
     }, "the routed task waits on the coder's task", 60_000);
     expect(routed.run?.sessionId).toBe(host.workstream);
     expect(seen.turns).toHaveLength(1);
@@ -339,7 +339,7 @@ describe("a routed task to a workstream from another conversation's board", () =
     const host = await handOn({ id: EM, em: emModel(seen) }, coderRuns);
     const first = await eventually(async () => {
       const [task, coder] = [await host.routedRow(FIRST_ASK), await host.coderRow()];
-      return coder?.status === "in_progress" && task?.waitingOn === "filed" ? task : undefined;
+      return coder?.status === "in_progress" && task?.keptOpenBy === "filed" ? task : undefined;
     }, "the first routed task waits on the coder's task", 60_000);
 
     // Alice's project coordinator conversation is one per project: deleted and opened again, it is a new

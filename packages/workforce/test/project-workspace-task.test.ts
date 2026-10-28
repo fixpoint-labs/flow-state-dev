@@ -39,7 +39,7 @@ import {
   WORKSTREAM_OPENED_ENTRY,
   workstreamOpenedEntry
 } from "../src/index";
-import { heldTask } from "../src/conversation-board/held-task";
+import { claimedTask } from "../src/conversation-board/held-task";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import type { WorkerManifest } from "../src/manifest";
 import { PROJECT_ROW_RESOURCES } from "../src/projects/project-address";
@@ -93,7 +93,7 @@ function takerFlow(installation: WorkerInstallation, asked: Asked[], source: Run
     resources: { ...installation.resources },
     execute: async (_input, ctx) => {
       await installation.resolveWorker(ctx, "taker");
-      const input = (await heldTask(ctx as never))?.row.input;
+      const input = (await claimedTask(ctx as never))?.row.input;
       asked.push({ state: { ...(ctx.session.state as object) }, input, answer: view(await source(ctx as never)) });
       return "asked";
     }

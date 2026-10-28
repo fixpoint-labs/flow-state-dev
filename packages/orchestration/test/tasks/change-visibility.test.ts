@@ -35,8 +35,8 @@ function makeBoardMutator(changeVisibility?: { client: boolean; history: boolean
         ...(changeVisibility ? { changeVisibility } : {}),
       });
       // Two additions → two `task-change` emits, no illegal transition.
-      await collection.addTask({ goal: "do a thing" });
-      await collection.addTask({ goal: "do another thing" });
+      await collection.createTask({ goal: "do a thing" });
+      await collection.createTask({ goal: "do another thing" });
       return { ok: true };
     },
   });

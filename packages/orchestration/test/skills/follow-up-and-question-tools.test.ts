@@ -51,7 +51,7 @@ async function claimAsGate(ref: TaskCollectionRef, id: string, base: object, req
 
 /** File `id` for researcher and run it to completion, as a board does: claimed, run-linked, completed. */
 async function ranAndCompleted(ref: TaskCollectionRef, id: string) {
-  await ref.addTask({ id, goal: `do ${id}`, assignee: "researcher" });
+  await ref.createTask({ id, goal: `do ${id}`, assignee: "researcher" });
   const claimed = (await ref.claim("w", { eligibility: (t) => t.id === id }))!;
   const ticket = ticketForClaim(ref.collectionId, claimed, ref.partition);
   await ref.linkRun(id, { sessionId: "s-root", requestId: "r-root", attempt: claimed.attempts }, { claim: ticket });
@@ -285,7 +285,7 @@ describe("askQuestion off a task turn (FIX-2131)", () => {
     const out = (await runForTest(ask.tool, { question: "Which?", taskId: "t" } as never, person as never)) as any;
     expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^not_a_task_turn/) });
     expect(b.get("t")!.status).toBe("in_progress");
-    expect(b.get("t")!.holds ?? []).toEqual([]);
+    expect(b.get("t")!.questions ?? []).toEqual([]);
   });
 
   it("is not offered outside a task session at all", async () => {

@@ -107,7 +107,7 @@ describe("a durable board's completed-task output", () => {
       collectionId: "desk",
       collection: serializingCollection(rows),
     });
-    await board.addTask({ id: "t1", goal: "Size NVDA" });
+    await board.createTask({ id: "t1", goal: "Size NVDA" });
     await board.claim("w1");
     await board.complete("t1", { ticker: "NVDA", sizePct: 4 });
 

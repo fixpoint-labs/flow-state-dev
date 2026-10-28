@@ -57,7 +57,7 @@ describe("retry budget — the storm the creation caps cannot see (FIX-948 repro
       maxEnqueuedTasks: 100,
       maxTotalRetries: 3,
     });
-    const task = await collection.addTask({ goal: "flaky", maxAttempts: 1_000 });
+    const task = await collection.createTask({ goal: "flaky", maxAttempts: 1_000 });
 
     let cycles = 0;
     while (cycles < 50) {
@@ -81,7 +81,7 @@ describe("retry budget — the storm the creation caps cannot see (FIX-948 repro
 
   it("is unbounded on this axis when the budget is `null` — today's behaviour exactly", async () => {
     const collection = makeCollection({ maxTotalRetries: null });
-    const task = await collection.addTask({ goal: "flaky", maxAttempts: 20 });
+    const task = await collection.createTask({ goal: "flaky", maxAttempts: 20 });
 
     for (let i = 0; i < 10; i++) await claimAndFail(collection);
 
@@ -97,7 +97,7 @@ describe("retry budget — what is counted", () => {
     // retried a failure, which is exactly the dishonest report this bound
     // exists to remove.
     const collection = makeCollection({ maxTotalRetries: 1 });
-    const task = await collection.addTask({ goal: "t", maxAttempts: 10 });
+    const task = await collection.createTask({ goal: "t", maxAttempts: 10 });
 
     await collection.hold(task.id);
     await collection.release(task.id);
@@ -116,7 +116,7 @@ describe("retry budget — what is counted", () => {
     // mean treating an expired lease as evidence of abandonment, which the
     // substrate does not do.
     const collection = makeCollection({ maxTotalRetries: 1 });
-    const abandoned = await collection.addTask({ goal: "abandoned", maxAttempts: 5 });
+    const abandoned = await collection.createTask({ goal: "abandoned", maxAttempts: 5 });
     await collection.claim("w1");
     await collection.fail(abandoned.id, "worker died mid-attempt");
     expect(collection.get(abandoned.id)?.status).toBe("pending");
@@ -126,7 +126,7 @@ describe("retry budget — what is counted", () => {
     await collection.reclaim(Date.now() + 60_000);
 
     // The board's only grant is gone, so a genuine failure elsewhere settles.
-    const other = await collection.addTask({ goal: "other", maxAttempts: 5 });
+    const other = await collection.createTask({ goal: "other", maxAttempts: 5 });
     await collection.claim("w2", { eligibility: (t) => t.id === other.id });
     await collection.fail(other.id, "boom");
     expect(collection.get(other.id)?.status).toBe("errored");
@@ -134,8 +134,8 @@ describe("retry budget — what is counted", () => {
 
   it("never refuses a first attempt, even at a budget of `0`", async () => {
     const collection = makeCollection({ maxTotalRetries: 0 });
-    const a = await collection.addTask({ goal: "a", maxAttempts: 3 });
-    const b = await collection.addTask({ goal: "b", maxAttempts: 3 });
+    const a = await collection.createTask({ goal: "a", maxAttempts: 3 });
+    const b = await collection.createTask({ goal: "b", maxAttempts: 3 });
 
     const claimedA = await collection.claim("w1");
     const claimedB = await collection.claim("w2");
@@ -157,8 +157,8 @@ describe("retry budget — the boundary lands exactly the budget's worth", () =>
     // under that quantity both failures below read a board total of zero and
     // both re-pend — even though they are strictly sequential.
     const collection = makeCollection({ maxTotalRetries: 1 });
-    const a = await collection.addTask({ goal: "a", maxAttempts: 5 });
-    const b = await collection.addTask({ goal: "b", maxAttempts: 5 });
+    const a = await collection.createTask({ goal: "a", maxAttempts: 5 });
+    const b = await collection.createTask({ goal: "b", maxAttempts: 5 });
 
     await collection.claim("w1");
     await collection.claim("w2");
@@ -172,8 +172,8 @@ describe("retry budget — the boundary lands exactly the budget's worth", () =>
 
   it("admits exactly one retry across two CONCURRENT failures at a budget of 1", async () => {
     const collection = makeCollection({ maxTotalRetries: 1 });
-    const a = await collection.addTask({ goal: "a", maxAttempts: 5 });
-    const b = await collection.addTask({ goal: "b", maxAttempts: 5 });
+    const a = await collection.createTask({ goal: "a", maxAttempts: 5 });
+    const b = await collection.createTask({ goal: "b", maxAttempts: 5 });
     await collection.claim("w1");
     await collection.claim("w2");
 
@@ -205,11 +205,11 @@ describe("retry budget — the denial is scoped to attempt-owned failures", () =
   ): Promise<{ collection: TaskCollectionRef; taskId: string }> {
     const collection = makeCollection({ maxTotalRetries: budget === 0 ? 0 : 1 });
     if (budget === "exhausted") {
-      const spender = await collection.addTask({ goal: "spender", maxAttempts: 5 });
+      const spender = await collection.createTask({ goal: "spender", maxAttempts: 5 });
       await collection.claim("w0");
       await collection.fail(spender.id, "spend the budget");
     }
-    const task = await collection.addTask({ goal: "t", maxAttempts: 5 });
+    const task = await collection.createTask({ goal: "t", maxAttempts: 5 });
     if (status === "held") await collection.hold(task.id);
     return { collection, taskId: task.id };
   }
@@ -232,8 +232,8 @@ describe("retry budget — the denial is scoped to attempt-owned failures", () =
 
   it("does not consume the budget from a non-attempt-owned status", async () => {
     const collection = makeCollection({ maxTotalRetries: 1 });
-    const parked = await collection.addTask({ goal: "parked", maxAttempts: 5 });
-    const real = await collection.addTask({ goal: "real", maxAttempts: 5 });
+    const parked = await collection.createTask({ goal: "parked", maxAttempts: 5 });
+    const real = await collection.createTask({ goal: "real", maxAttempts: 5 });
 
     // A `pending` fail re-pends but must not spend the board's allowance.
     await collection.fail(parked.id, "boom");
@@ -248,7 +248,7 @@ describe("retry budget — the denial is scoped to attempt-owned failures", () =
 describe("retry budget — the terminal settlement is honest", () => {
   it("names the board budget rather than the task's own `maxAttempts`", async () => {
     const collection = makeCollection({ maxTotalRetries: 0 });
-    const task = await collection.addTask({ goal: "t", maxAttempts: 5 });
+    const task = await collection.createTask({ goal: "t", maxAttempts: 5 });
     await collection.claim("w1");
     await collection.fail(task.id, "worker exploded");
 
@@ -269,7 +269,7 @@ describe("retry budget — the terminal settlement is honest", () => {
       maxTotalRetries: 0,
       onChange: captured.onChange,
     });
-    const task = await collection.addTask({ goal: "t", maxAttempts: 5 });
+    const task = await collection.createTask({ goal: "t", maxAttempts: 5 });
     await collection.claim("w1");
     await collection.fail(task.id, "boom");
 
@@ -279,7 +279,7 @@ describe("retry budget — the terminal settlement is honest", () => {
 
   it("reports `recorded` for a budget denial — not a new write outcome", async () => {
     const collection = makeCollection({ maxTotalRetries: 0 });
-    const task = await collection.addTask({ goal: "t", maxAttempts: 5 });
+    const task = await collection.createTask({ goal: "t", maxAttempts: 5 });
     await collection.claim("w1");
 
     const outcome = await collection.fail(task.id, "boom");

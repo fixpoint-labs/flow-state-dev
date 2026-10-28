@@ -2,7 +2,7 @@
  * `getTask({ id, wait, deadline })` as a model calls it (FIX-2082): a task
  * filed with `createTask`, now or in an earlier request, is waited on through
  * the read, which returns the task once it ends or as it stands at the
- * deadline. `createTask` never waits, and `dispatchTask` is gone (FIX-2083).
+ * deadline. `createTask` never waits (FIX-2083).
  *
  * The waiting request is a generator holding the task tools capability over a
  * durable board, the shape a coordinator's turn has. "The colleague" is a

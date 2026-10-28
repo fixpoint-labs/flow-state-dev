@@ -271,7 +271,7 @@ async function main(tell: Tell): Promise<{ failures: string[]; evidence: string 
     /** The row's open question: a row hold on a running row no steer answers yet. */
     const openQuestion = (row: BoardRow | undefined) => {
       const answered = new Set((row?.steers ?? []).flatMap((steer) => (steer.answers === undefined ? [] : [steer.answers])));
-      return row?.status === "in_progress" ? row.holds?.find((hold) => hold.source.kind === "row" && !answered.has(hold.id)) : undefined;
+      return row?.status === "in_progress" ? row.questions?.find((hold) => hold.source.kind === "row" && !answered.has(hold.id)) : undefined;
     };
     const parked = await lab.waitForRow(
       (row) => String(row.goal).includes(piece.goal) && openQuestion(row) !== undefined,
