@@ -76,7 +76,7 @@ The top row builds left to right: each box is made of the one before it. The Eng
 
 ## Orchestration: a task board
 
-<Figure svg={OrchestrationDrawing} caption="Orchestration: what a task board is made of" description={"A task is a row with a goal, a status and an optional assignee. Tasks live in a task collection, kept either in state or in a resource collection. A task board is a sequencer that drains the collection: a dispatcher picks the next ready task, the assignee routes it to a board worker, and a board worker is any block. Built on the board: the goal-seek loop wraps a drain with a judge, the harness manager is a board worker that runs a coding agent, and four patterns use a board."} />
+<Figure svg={OrchestrationDrawing} caption="Orchestration: what a task board is made of" description={"A task is a row with a goal, a status and an optional assignee. Tasks live in a task collection, kept either in state or in a resource collection. A task board is a sequencer that drains the collection: a claim order picks the next ready task, the assignee routes it to a board worker, and a board worker is any block. Built on the board: the goal-seek loop wraps a drain with a judge, the harness manager is a board worker that runs a coding agent, and four patterns use a board."} />
 
 | Term | Package | What it is | Built from |
 |---|---|---|---|
@@ -86,7 +86,7 @@ The top row builds left to right: each box is made of the one before it. The Eng
 | **Task tools** | orchestration | What a model changes a task with: the filer's `createTask`, `getTask`, `listTasks` and `updateTask`, and the worker's `reportProgress`. Each `updateTask` field has one rule: edits before the task starts, a cancel until it finishes. See [One task, five tools](./orchestration/task-board.md#one-task-five-tools). | Task, task board |
 | **Board worker** | orchestration | A block that runs one claimed task. | Block |
 | **Assignee** | orchestration | Who a task goes to: an entry in a task board's workers, or a name the board's assignee check accepts, such as one of a Workforce worker's delegates. A task's `assignee` names it, and it runs the task inline or dispatches it to a dispatch run in another session. A task whose assignee names no entry goes to the default assignee, or fails. See [Task board](./orchestration/task-board.md). | Board worker, task |
-| **Dispatcher** | orchestration | The rule that picks the next ready task. By name: `topological` (the default), `fifo` or `priority`. You can also pass your own `TaskDispatcher`. | Task collection |
+| **Claim order** | orchestration | The rule that picks the next ready task. By name: `topological` (the default), `fifo` or `priority`. You can also pass your own `ClaimOrder`. | Task collection |
 | **Dispatch a task** | orchestration | Start a task on another worker now. How a recorded task starts depends on the board. On a conversation's board, `createTask` starts a task as soon as it is filed, and a task filed `held` doesn't start until `updateTask` releases it. On a board a drain runs, recording is enough: the drain starts each task when it claims it, and dispatches it when its assignee holds a `dispatcher()`. | Task, wait, dispatcher block |
 | **Wait** | orchestration | What a caller does on a task it filed, or a request it dispatched, when its next step needs the result: `getTask({ id, wait: true })`, or `dispatcher({ wait: true })`. Its turn pauses until the work ends, or until the deadline, when it carries on with the work as it stands; the deadline cancels nothing. Nothing holds a request open while it lasts, and waits nest up to five deep. A board's `onIdle: "wait"` is a different setting: the board stays alive when it has nothing to do. | Dispatch a task |
 | **Hand-off** | orchestration | A session that was doing the work passes it to another session, mid-work. Giving another worker new work isn't a hand-off; it's dispatching a task. | Dispatch a task |
@@ -156,5 +156,4 @@ A few words are used in two places. The package tells you which one you're readi
 
 - **Worker.** In Workforce, a configuration one user owns. On a task board, a board worker: the block that runs a task. A task's assignee names a board worker, or, on a board that asks Workforce's worker lookup, one of your workers.
 - **Kind.** A flow's `kind` is its name to the engine. Workforce calls the flow a worker runs on its worker flow.
-- **Dispatcher.** Core's `dispatcher()` is a block that sends to another flow. A task board's dispatcher is the rule that picks the next task.
 - **Roster.** Your Workforce roster is your workers. Shift Manager's Roster screen shows them by what they are doing.

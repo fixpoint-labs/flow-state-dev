@@ -46,7 +46,7 @@ describe("resource-backed task set: two resolutions in one request", () => {
       now: () => 1000,
     });
 
-    await refA.addTask({ id: "t1", goal: "g1" });
+    await refA.createTask({ id: "t1", goal: "g1" });
 
     expect(refA.count()).toBe(1);
     // The assertion the fix is for: 0 before, 1 after. No timing involved.
@@ -64,7 +64,7 @@ describe("resource-backed task set: two resolutions in one request", () => {
       collection: backing,
       now: () => 1000,
     });
-    await refA.addTask({ id: "t1", goal: "g1" });
+    await refA.createTask({ id: "t1", goal: "g1" });
 
     const refB = await createResourceBackedTaskCollection({
       collectionId: "tasks",
@@ -89,7 +89,7 @@ describe("resource-backed task set: two resolutions in one request", () => {
       now: () => 1000,
     });
 
-    await refA.addTask({ id: "t1", goal: "g1" });
+    await refA.createTask({ id: "t1", goal: "g1" });
     await refB.claim("w1");
 
     expect(refA.get("t1")?.status).toBe("in_progress");
@@ -113,7 +113,7 @@ describe("resource-backed task set: two resolutions in one request", () => {
       now: () => 1000,
     });
 
-    await refOne.addTask({ id: "mine", goal: "mine" });
+    await refOne.createTask({ id: "mine", goal: "mine" });
 
     expect(refOne.count()).toBe(1);
     expect(refTwo.count()).toBe(0);
@@ -132,8 +132,8 @@ describe("resource-backed task set: two resolutions in one request", () => {
       collection: backing,
       now: () => 1000,
     });
-    await refA.addTask({ id: "keep", goal: "keep" });
-    await refA.addTask({ id: "gone", goal: "gone" });
+    await refA.createTask({ id: "keep", goal: "keep" });
+    await refA.createTask({ id: "gone", goal: "gone" });
 
     await backing.delete("gone");
 
@@ -163,7 +163,7 @@ describe("resource-backed task set: two resolutions in one request", () => {
       collection: backing,
       now: () => 1000,
     });
-    await refA.addTask({ id: "early", goal: "early" });
+    await refA.createTask({ id: "early", goal: "early" });
 
     // Gate `list` on `backing` ITSELF rather than on a wrapper object: the
     // record is keyed on the collection instance, so a wrapper would get its
@@ -187,7 +187,7 @@ describe("resource-backed task set: two resolutions in one request", () => {
     // Let the gated list() take its snapshot and park on the barrier.
     await Promise.resolve();
     backing.list = realList; // the add's own reads must not block
-    await refA.addTask({ id: "during", goal: "during" });
+    await refA.createTask({ id: "during", goal: "during" });
     release();
     const refB = await pendingRefB;
 
@@ -212,7 +212,7 @@ describe("resource-backed task set: two resolutions in one request", () => {
       collection: backing,
       now: () => 1000,
     });
-    await refA.addTask({ id: "recycled", goal: "first" });
+    await refA.createTask({ id: "recycled", goal: "first" });
 
     // Removed underneath the record: the store drops it, the record still
     // holds the ref from before.
@@ -237,7 +237,7 @@ describe("resource-backed task set: two resolutions in one request", () => {
     await Promise.resolve();
     backing.list = realList;
     // Recreated under the same id while that snapshot is outstanding.
-    await refA.addTask({ id: "recycled", goal: "second" });
+    await refA.createTask({ id: "recycled", goal: "second" });
     release();
     const refB = await pendingRefB;
 
@@ -260,8 +260,8 @@ describe("resource-backed task set: two resolutions in one request", () => {
       collection: backing,
       now: () => 1000,
     });
-    await refA.addTask({ id: "safe", goal: "safe" });
-    await refA.addTask({ id: "doomed", goal: "doomed" });
+    await refA.createTask({ id: "safe", goal: "safe" });
+    await refA.createTask({ id: "doomed", goal: "doomed" });
 
     const realList = backing.list.bind(backing);
     let release = (): void => {};
@@ -326,8 +326,8 @@ describe("resource-backed task set: two resolutions in one request", () => {
     });
 
     await Promise.all([
-      refA.addTask({ id: "a", goal: "a" }),
-      refB.addTask({ id: "b", goal: "b" }),
+      refA.createTask({ id: "a", goal: "a" }),
+      refB.createTask({ id: "b", goal: "b" }),
     ]);
 
     expect(refA.list().map((t) => t.id).sort()).toEqual(["a", "b"]);

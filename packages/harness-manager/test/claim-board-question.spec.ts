@@ -10,7 +10,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { afterAll, describe, expect, it } from "vitest";
-import { openRowHolds, ticketForClaim, untakenSteers } from "@flow-state-dev/orchestration/tasks";
+import { openRowQuestions, ticketForClaim, untakenSteers } from "@flow-state-dev/orchestration/tasks";
 import { ALICE, CONVERSATIONS, FIXED_BOARD, PHASE, claimHost, cleanUpHosts, messageOf } from "./claim-host";
 
 afterAll(cleanUpHosts);
@@ -32,7 +32,7 @@ describe("a run's question holds its task", () => {
       // Held on the run's question: still this attempt's, with no lease, and not settled.
       expect(held).toMatchObject({ status: "in_progress", attempts: 1 });
       expect(held.leaseUntil ?? undefined).toBeUndefined();
-      expect(openRowHolds(held).map((hold) => [hold.ask.kind, hold.ask.prompt])).toEqual([["question", "which branch should I read?"]]);
+      expect(openRowQuestions(held).map((hold) => [hold.ask.kind, hold.ask.prompt])).toEqual([["question", "which branch should I read?"]]);
 
       await lab.act("answer", { ledgerId: ledger, ...(partition !== undefined ? { partition } : {}), id, answer: "main, please" });
       const second = await lab.runAttempt(ledger, id, partition);
@@ -66,7 +66,7 @@ describe("a run's question holds its task", () => {
     await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
     const again = await lab.row(CONVERSATIONS, "t1", "conv-a");
     expect(again).toMatchObject({ status: "in_progress", attempts: 1 });
-    expect(openRowHolds(again).map((hold) => hold.ask.prompt)).toEqual(["and which package?"]);
+    expect(openRowQuestions(again).map((hold) => hold.ask.prompt)).toEqual(["and which package?"]);
 
     await lab.act("answer", { ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", answer: "storefront" });
     await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
@@ -97,7 +97,7 @@ describe("a run's question holds its task", () => {
     const marker = (prompt: string) => /ASK: (\S+)/.exec(prompt)?.[1];
     expect(marker(lab.seen[1]!.prompt)).not.toBe(marker(lab.seen[0]!.prompt));
     const done = await lab.row(CONVERSATIONS, "t1", "conv-a");
-    expect(openRowHolds(done)).toEqual([]);
+    expect(openRowQuestions(done)).toEqual([]);
     expect(done).toMatchObject({ status: "completed", attempts: 1 });
   }, 60_000);
 
@@ -109,7 +109,7 @@ describe("a run's question holds its task", () => {
     await lab.act("cancel", { ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1" });
     const cancelled = await lab.row(CONVERSATIONS, "t1", "conv-a");
     expect(cancelled.status).toBe("cancelled");
-    expect(openRowHolds(cancelled)).toEqual([]);
+    expect(openRowQuestions(cancelled)).toEqual([]);
     await expect(lab.runAttempt(CONVERSATIONS, "t1", "conv-a")).rejects.toThrow(/not claimable/);
     expect(lab.seen).toHaveLength(1);
 
@@ -135,7 +135,7 @@ describe("a run presents the claim its turn was given", () => {
         const ref = (await lab.ledgerAt(ctx, CONVERSATIONS, "conv-a"))!;
         const row = ref.get("t1")!;
         await ref.ask!("t1", [{ kind: "question", prompt: "a question" }], { claim: ticketForClaim(CONVERSATIONS, row, "conv-a") });
-        await ref.answer!("t1", { hold: openRowHolds(ref.get("t1")!)[0]!.id, message: "an answer", from: "user", by: ALICE });
+        await ref.answer!("t1", { questionId: openRowQuestions(ref.get("t1")!)[0]!.id, message: "an answer", from: "user", by: ALICE });
         const next = await ref.claim("next-turn", { leaseDurationMs: 120_000, eligibility: (t) => t.id === "t1" });
         expect(next).toMatchObject({ attempts: 1, turn: 3 });
         await ref.steer!("t1", { message: "for the next turn", from: "user", by: ALICE });
