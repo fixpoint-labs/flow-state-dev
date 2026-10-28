@@ -107,14 +107,15 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
         if (streaming.current || viewedSession.current !== sessionId) return;
         const running = turns[0];
         // The turn followed still runs, and only its stream ended: follow it
-        // again, so its end moves the view on to the waiting turn.
+        // again, so its end moves the view on to the waiting turn. One the
+        // person stopped is not followed again: move on to the waiting turn.
         if (running !== undefined && !waiting.current.includes(running.id)) {
           const drops = (reattached.current.get(running.id) ?? 0) + 1;
           reattached.current.set(running.id, drops);
           if (drops > MAX_REATTACH) return;
           streaming.current = true;
-          followRequest(running.id);
-          return;
+          if (followRequest(running.id) !== false) return;
+          streaming.current = false;
         }
         const next = waiting.current.shift();
         if (next === undefined) return;

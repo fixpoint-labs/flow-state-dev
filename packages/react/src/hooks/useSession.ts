@@ -436,14 +436,16 @@ export type SessionView = {
    * its items into `items`, from the start, and make it the request
    * `abortRequest` stops. The stream followed now is closed. Followed again
    * after its stream dropped, it picks up after the last event the view had,
-   * so state changes already applied are not applied twice.
+   * so state changes already applied are not applied twice. Returns `false`
+   * and follows nothing for a request the person stopped: a stopped request
+   * is not picked back up, even while the server still lists it as running.
    *
    * For a request sent beside the one the page follows, so the page stays on
    * that one until it ends: a turn that waits for the running turn, say, sent
    * through the client and followed once the running turn is over. Sends
    * nothing.
    */
-  followRequest: (requestId: string) => void;
+  followRequest: (requestId: string) => boolean;
   refresh: () => Promise<void>;
   /**
    * Subscribe to streaming TTS audio chunks (FIX-523). Chunks are live-only
@@ -1987,10 +1989,12 @@ export function useSession(
     (requestId: string) => {
       // Resume only the stream that dropped: anything since (an end, a
       // session change, a stop) clears the drop, and the view's state for it.
+      if (stoppedRequestsRef.current.has(requestId)) return false;
       const last = lastStreamEventRef.current;
       const resume = latestRequestIdAfterDropRef.current === requestId && last?.requestId === requestId;
       activeRequestIdRef.current = requestId;
       attachToStream(requestId, resume ? String(last.sequence) : undefined);
+      return true;
     },
     [attachToStream]
   );

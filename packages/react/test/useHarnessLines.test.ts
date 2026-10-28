@@ -15,6 +15,9 @@
  *     nothing follows the running turn again, so neither turn is seen.
  *   - follow a running turn again with no limit, and the "keeps dropping"
  *     case fails: the view reattaches on every drop.
+ *   - follow the running turn again when the view refuses it (the person
+ *     stopped it), and the "stopped" case fails: the waiting turn is never
+ *     followed.
  *   - act on a running-turns read after the view moved to another session,
  *     and the "session changed" case fails: the old session's turn is
  *     followed into the new session's view.
@@ -138,6 +141,20 @@ describe("useHarnessLines", () => {
     }
     expect(followRequest).toHaveBeenCalledTimes(3);
     expect(followRequest).not.toHaveBeenCalledWith("line-1");
+  });
+
+  it("when the person stopped the running turn, moves on to the waiting one", async () => {
+    // The view refuses a turn the person stopped.
+    followRequest.mockImplementation((id: string) => id !== "turn-1");
+    const { result, rerender } = mount();
+    await result.current.send("later");
+    running = [
+      { id: "turn-1", actionName: "turn", startedAtMs: 1 },
+      { id: "line-1", actionName: "turn", startedAtMs: 2 }
+    ];
+    rerender({ session: view(false) });
+    await waitFor(() => expect(followRequest).toHaveBeenLastCalledWith("line-1"));
+    followRequest.mockReset();
   });
 
   it("ignores a running-turns read that lands after the view moved to another session", async () => {
