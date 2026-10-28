@@ -2,7 +2,7 @@
  * What every leg of this goal does the way a person does it, and what it
  * reads back from the Lab's store to grade it.
  *
- * A person asks the chief of staff in Shift Manager's Chief of Staff view,
+ * A person asks the Shift Coordinator in Shift Manager's Shift Coordinator view,
  * answers asks in Inbox, posts in a project's Stream or a workstream's
  * composer, and reads PROJECTS and TEAMS in the sidebar. What happened is read
  * through the Lab's routes as a verified user ({@link labRoutes}), never from
@@ -26,13 +26,13 @@ import {
   type StoredItem,
 } from "../../lib/shift-manager.mts";
 
-/** The seat Shift Manager and the Lab find the chief of staff by. */
-export const COS = "chief-of-staff";
+/** The seat Shift Manager and the Lab find the Shift Coordinator by. */
+export const SHIFT_COORDINATOR = "shift-coordinator";
 /** The flow a person's roster is read through (Workforce's roster flow). */
 const ROSTER_FLOW = "workforce-roster";
 /** Where a person's own workers are stored: one row per worker, in their scope. */
 const WORKERS_PATTERN = "workforce/workers/*";
-/** How long one turn of the chief of staff may take: a real model answers it. */
+/** How long one turn of the Shift Coordinator may take: a real model answers it. */
 export const TURN_MS = 240_000;
 
 export const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -44,7 +44,7 @@ export const same = (a: Iterable<string>, b: Iterable<string>) => JSON.stringify
 
 export type Verdict = "PASS" | "FAIL" | "BLOCKED";
 
-/** One CoS turn, as the report quotes it. */
+/** One Shift Coordinator turn, as the report quotes it. */
 export interface Turn {
   step: string;
   words: string;
@@ -342,9 +342,9 @@ export async function answerInInbox(world: World, suspensionId: string, action: 
   return { card: text, clicked: true };
 }
 
-// ---- asking the chief of staff ------------------------------------------------------
+// ---- asking the Shift Coordinator ------------------------------------------------------
 
-/** A provider error: the model never answered (QR-8), as opposed to a CoS that answered wrong. */
+/** A provider error: the model never answered (QR-8), as opposed to a Shift Coordinator that answered wrong. */
 function providerError(message: string): boolean {
   return /rate.?limit|429|5\d\d |overloaded|timed? ?out|ECONNRESET|fetch failed|provider|gateway|unavailable|AI SDK stream failed/i.test(message);
 }
@@ -364,25 +364,25 @@ export async function treeWorkers(world: World): Promise<Array<{ id: string; dec
 }
 
 /**
- * The flow the chief of staff runs on, as its `WORKER.md` names it, in the
+ * The flow the Shift Coordinator runs on, as its `WORKER.md` names it, in the
  * tree beside the profile the Lab is served from now. A worker has no flow
  * address of its own: its sessions are sessions of this flow, naming it.
  */
-export async function cosFlowOf(world: World): Promise<string> {
-  const flow = (await treeWorkers(world)).find((w) => w.id === COS)?.declared.flow;
-  if (typeof flow !== "string") throw new Error(`the tree beside ${world.config} declares no "${COS}" with a flow`);
+export async function shiftCoordinatorFlowOf(world: World): Promise<string> {
+  const flow = (await treeWorkers(world)).find((w) => w.id === SHIFT_COORDINATOR)?.declared.flow;
+  if (typeof flow !== "string") throw new Error(`the tree beside ${world.config} declares no "${SHIFT_COORDINATOR}" with a flow`);
   return flow;
 }
 
 /**
- * Say `words` to the chief of staff in the Chief of Staff view, as the person
+ * Say `words` to the Shift Coordinator in the Shift Coordinator view, as the person
  * whose page `world.page` is, and wait for the turn to end (completed, or
  * suspended on an ask).
  *
- * Graded once (D2). Returns `undefined` when the view draws no chief of staff
- * to talk to (its named no-CoS state).
+ * Graded once (D2). Returns `undefined` when the view draws no Shift Coordinator
+ * to talk to (its named no-Shift Coordinator state).
  */
-export async function askCos(world: World, step: string, words: string): Promise<Turn | undefined> {
+export async function askShiftCoordinator(world: World, step: string, words: string): Promise<Turn | undefined> {
   const turn = await sayOnce(world, step, words);
   if (turn !== undefined && (turn.status === "failed" || turn.status === "refused") && providerError(turn.reply)) {
     const first = turn.reply;
@@ -399,21 +399,21 @@ export async function askCos(world: World, step: string, words: string): Promise
 
 async function sayOnce(world: World, step: string, words: string): Promise<Turn | undefined> {
   const { page } = world;
-  await world.open("/cos");
-  await Promise.race([page.getByTestId("cos-conversation").waitFor({ timeout: 20_000 }), page.getByTestId("cos-none").waitFor({ timeout: 20_000 })]).catch(() => undefined);
-  if ((await page.getByTestId("cos-none").count()) > 0 || (await page.getByTestId("cos-conversation").count()) === 0) return undefined;
-  const input = page.getByTestId("cos-composer-input");
+  await world.open("/shift-coordinator");
+  await Promise.race([page.getByTestId("shift-coordinator-conversation").waitFor({ timeout: 20_000 }), page.getByTestId("shift-coordinator-none").waitFor({ timeout: 20_000 })]).catch(() => undefined);
+  if ((await page.getByTestId("shift-coordinator-none").count()) > 0 || (await page.getByTestId("shift-coordinator-conversation").count()) === 0) return undefined;
+  const input = page.getByTestId("shift-coordinator-composer-input");
   await input.waitFor();
   await input.fill(words);
-  await page.getByTestId("cos-composer-send").click();
+  await page.getByTestId("shift-coordinator-composer-send").click();
   let state = "";
   for (const until = Date.now() + TURN_MS; Date.now() < until; await sleep(100)) {
-    state = (await page.getByTestId("cos-composer-status").getAttribute("data-state")) ?? "";
+    state = (await page.getByTestId("shift-coordinator-composer-status").getAttribute("data-state")) ?? "";
     if (["delivered", "refused", "not-sent", "unconfirmed"].includes(state)) break;
   }
   const turn: Turn = { step, words, sessionId: null, requestId: null, status: state || "not-delivered", tools: [], reply: "", onScreen: false };
   if (state !== "delivered") {
-    turn.reply = (await page.getByTestId("cos-composer-error").textContent({ timeout: 500 }).catch(() => null)) ?? "";
+    turn.reply = (await page.getByTestId("shift-coordinator-composer-error").textContent({ timeout: 500 }).catch(() => null)) ?? "";
     // A turn that suspends on an ask ends "suspended" by design (FIX-1719 D2). The
     // composer may report that as not sent; the store still decides what happened.
     if (!/ended suspended/.test(turn.reply)) return turn;
@@ -423,17 +423,17 @@ async function sayOnce(world: World, step: string, words: string): Promise<Turn 
   // The session the line went into, as the view names it, and the request that carries the line.
   let sessionId = "";
   for (let i = 0; i < 100 && sessionId === ""; i += 1) {
-    sessionId = (await page.getByTestId("cos-conversation").getAttribute("data-session-id")) ?? "";
+    sessionId = (await page.getByTestId("shift-coordinator-conversation").getAttribute("data-session-id")) ?? "";
     if (sessionId === "") await sleep(100);
   }
   turn.sessionId = sessionId || null;
   if (sessionId === "") return { ...turn, status: "no-session" };
   const owner = world.routes.owner;
-  // The conversation is a session of the chief of staff's flow, bound to it as its worker when it was created.
-  const flow = await cosFlowOf(world);
+  // The conversation is a session of the Shift Coordinator's flow, bound to it as its worker when it was created.
+  const flow = await shiftCoordinatorFlowOf(world);
   const session = (await owner.get(`/sessions/${encodeURIComponent(sessionId)}`)).session as { flowKind?: string; state?: Record<string, unknown> } | undefined;
-  if (session?.flowKind !== flow || session.state?.workerId !== COS) {
-    return { ...turn, status: `wrong-session: ${sessionId} is on "${session?.flowKind}" naming worker "${String(session?.state?.workerId)}", not on "${flow}" naming "${COS}"` };
+  if (session?.flowKind !== flow || session.state?.workerId !== SHIFT_COORDINATOR) {
+    return { ...turn, status: `wrong-session: ${sessionId} is on "${session?.flowKind}" naming worker "${String(session?.state?.workerId)}", not on "${flow}" naming "${SHIFT_COORDINATOR}"` };
   }
   const userItem = (await owner.items(sessionId, "message")).filter((m) => m.role === "user" && textOf(m).includes(words)).at(-1);
   turn.requestId = userItem?.requestId ?? null;
@@ -453,9 +453,9 @@ async function sayOnce(world: World, step: string, words: string): Promise<Turn 
   turn.reply = reply !== undefined ? textOf(reply) : error !== undefined ? `error: ${JSON.stringify(error.error ?? error).slice(0, 300)}` : "";
   // The reply is on screen: the view draws the stored assistant item by id.
   if (reply !== undefined) {
-    await world.open("/cos");
+    await world.open("/shift-coordinator");
     try {
-      await page.locator(`[data-testid=cos-item][data-item-id="${reply.id}"]`).waitFor({ timeout: 15_000 });
+      await page.locator(`[data-testid=shift-coordinator-item][data-item-id="${reply.id}"]`).waitFor({ timeout: 15_000 });
       turn.onScreen = true;
     } catch {
       turn.onScreen = false;
@@ -471,7 +471,7 @@ export function callsTo(turn: Turn | undefined, name: string) {
 
 /** One line quoting a turn, for a failure. */
 export function quote(turn: Turn | undefined): string {
-  if (turn === undefined) return "no chief of staff to ask";
+  if (turn === undefined) return "no Shift Coordinator to ask";
   return `turn ${turn.status} (session ${turn.sessionId}, request ${turn.requestId}); tools [${turn.tools.map((t) => `${t.name}#${t.itemId} ${t.ok ? "ok" : "not ok"}`).join(", ")}]; said "${turn.reply.slice(0, 300)}"${turn.composerSaid !== undefined ? `; composer showed "${turn.composerSaid}"` : ""}`;
 }
 

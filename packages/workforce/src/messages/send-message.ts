@@ -15,6 +15,8 @@
  *   hears only in its tasks' sessions (the coder) is refused here,
  *   `task_sessions_only`;
  * - an answer (`inReplyTo`) names a message the recipient sent this worker;
+ * - a call lands where a turn runs on it: one to a flow whose entry runs
+ *   nothing is refused, `no_reply` (FIX-2300);
  * - the budget: one per message a user types (`hop.ts`), at most `perTurn`
  *   per request.
  *
@@ -48,7 +50,7 @@ import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, FILING_WORKER_STATE_KE
 import { newChainId, TURN_CHAIN_STATE, TURN_SENT_STATE, turnChainOf, turnHopOf } from "./hop";
 import { carriesPass, dispatchMessage, dropOwed, endMessage, isFinalRefusal, oweMessage } from "./delivery";
 import { messageLimitsOf } from "./message-limits";
-import { messageHearingOf } from "./received-mark";
+import { messageHearingOf, noReplyError, runsMessageTurn } from "./received-mark";
 import { checkTargetSession, checkTaskTarget, type MessageTarget } from "./message-target";
 import {
   MAX_MESSAGE_CHARS,
@@ -315,6 +317,12 @@ export async function sendMessage(
     } else {
       destination = filingSessionFor(state, to) ?? (await conversationAddress(ctx, installation, to, recipient.flow, state));
     }
+  }
+
+  // ---- a call needs a turn to answer it -----------------------------------
+  // The flow it lands on, which for an answer is the original sender's.
+  if (options.call !== undefined && runsMessageTurn(installation.workerFlows()[destination.flow]?.flow) === false) {
+    return refuse(`${noReplyError(recipient.id)} Nothing was sent.`);
   }
 
   // ---- the budget ----------------------------------------------------------

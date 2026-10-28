@@ -1,7 +1,7 @@
 /**
- * Small derivations the sidebar and Chief of Staff draw in design v2's form:
+ * Small derivations the sidebar and Shift Coordinator draw in design v2's form:
  * the user's initials in the footer (v2:110), a clock time on a line
- * (v2:135), and the lines Chief of Staff offers to start a message with
+ * (v2:135), and the lines Shift Coordinator offers to start a message with
  * (v2:174). Each is drawn from what the Lab already holds; none invents a
  * value the Lab doesn't.
  */

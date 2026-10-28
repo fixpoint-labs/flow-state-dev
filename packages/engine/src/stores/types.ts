@@ -173,6 +173,14 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   source: string;
   status: RequestStatus;
   startedAtMs: number;
+  /**
+   * Where the turns this request read begin (FIX-1613): the first past turn
+   * its history window held, when earlier turns had fallen out of it. A
+   * screen draws its divider before that request and says the turns above it
+   * are out of view. Absent when every earlier turn was in the window, and on
+   * records written before this field existed (guard with `== null`, BP-030).
+   */
+  historyStart?: { requestId: string };
   completedAtMs?: number;
   /**
    * When the request's run finished writing under this id: set as the run's

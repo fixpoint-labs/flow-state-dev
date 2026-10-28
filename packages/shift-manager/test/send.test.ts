@@ -105,7 +105,7 @@ describe("sendTurn", () => {
     await expect(sendTurn(client, TARGET, "hello", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: false, stopped: null });
   });
 
-  // A turn that stops on a user's approval (a chief of staff's fire or retire) holds the
+  // A turn that stops on a user's approval (a Shift Coordinator's fire or retire) holds the
   // line already: it is delivered, and resending it would raise the ask twice.
   it("is delivered, stopped on an ask, when the door's request suspended on a user's approval and the session holds its user item", async () => {
     const { client } = stubClients({

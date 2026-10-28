@@ -1,6 +1,6 @@
 /**
- * Goal check — asked "what did we decide?", the Shift Coordinator (the chief
- * of staff) answers from what its own finished task found: the item the
+ * Goal check — asked "what did we decide?", the Shift Coordinator (the Shift
+ * Coordinator) answers from what its own finished task found: the item the
  * coder's scan picked, the plan it proposed, and that the plan still waits on
  * approval, naming the task. It never asks the person to tell it.
  *
@@ -43,13 +43,13 @@ interface Fixture {
 const fixture = loadFixture<Fixture>(import.meta.url);
 
 const CODER = "eng.coder";
-const CHIEF = "chief-of-staff";
+const SHIFT_COORDINATOR = "shift-coordinator";
 const COORDINATOR_FLOW = "coordinator";
 const READ_TASK = "getTask";
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 const show = (value: unknown, n = 300): string => (JSON.stringify(value) ?? "undefined").slice(0, n);
 
-/** A real model for every turn, and the gateway's evaluation model for the chief of staff's routing. */
+/** A real model for every turn, and the gateway's evaluation model for the Shift Coordinator's routing. */
 function liveResolver(): ModelResolver {
   stripIntentOverrides();
   const base = createModelResolver();
@@ -87,7 +87,7 @@ function door(lab: Lab) {
     const sessionId = `s-${COORDINATOR_FLOW}-${globalThis.crypto.randomUUID()}`;
     const created = await lab.door("POST", `${COORDINATOR_FLOW}/sessions`, {
       as: "owner",
-      body: { userId: LAB_USERS.owner.userId, sessionId, state: { workerId: CHIEF } },
+      body: { userId: LAB_USERS.owner.userId, sessionId, state: { workerId: SHIFT_COORDINATOR } },
     });
     if (created.status !== 201) throw new Error(`opening a conversation answered ${created.status}: ${show(created.body)}`);
     return sessionId;

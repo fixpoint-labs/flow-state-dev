@@ -53,7 +53,7 @@ export function ConversationFrame({
   composer?: ReactNode;
   /** The ref that makes the column follow the latest turn ({@link useFollowLatest}). */
   feed?: (node: HTMLElement | null) => void;
-  /** Prefix for the frame's test ids: `cos` gives `cos` and `cos-feed`. */
+  /** Prefix for the frame's test ids: `shift-coordinator` gives `shift-coordinator` and `shift-coordinator-feed`. */
   testId?: string;
 }) {
   return (
@@ -111,9 +111,9 @@ export function Conversation({
   onAutoSend?: () => void;
   /** Draw an item its own way; return `undefined` to leave it to the registry. */
   renderItem?: (item: OutputItem) => ReactNode | undefined;
-  /** The composer's size: `cos` is the larger one the Shift Coordinator's screen uses. */
-  scale?: "default" | "cos";
-  /** Prefix for every test id inside: `cos` gives `cos`, `cos-conversation`, `cos-item`. */
+  /** The composer's size: `shift-coordinator` is the larger one the Shift Coordinator's screen uses. */
+  scale?: "default" | "shift-coordinator";
+  /** Prefix for every test id inside: `shift-coordinator` gives `shift-coordinator`, `shift-coordinator-conversation`, `shift-coordinator-item`. */
   testId?: string;
   /**
    * Open on the latest turn, and follow it, rather than at the top. A view

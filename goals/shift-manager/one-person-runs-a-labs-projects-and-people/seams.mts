@@ -74,7 +74,7 @@ export function seams(base: string): SeamRow[] {
   // ---- One remove path (ER-19) --------------------------------------------------
   // A worker the person hires is a row on their own roster (FIX-1788). The one
   // place a row is deleted is Workforce's fire block, which both the roster
-  // flow's `fire` and the chief of staff's `fire` tool run.
+  // flow's `fire` and the Shift Coordinator's `fire` tool run.
   row("One remove path (ER-19)", (out) => {
     const files = sources(["packages", "apps/kitchen-sink"]).filter((f) => /WORKERS_RESOURCE|WORKERS_PATTERN|workforceWorkers|workforce\/workers\//.test(readFileSync(join(REPO_ROOT, f), "utf8")));
     const deletes = grep(files, /\.delete\(/);
@@ -118,15 +118,15 @@ export function seams(base: string): SeamRow[] {
       const m = /^tools:\s*\[(.*)\]\s*$/m.exec(readFileSync(file, "utf8"));
       return m === null ? [] : m[1]!.split(",").map((t) => t.trim()).filter(Boolean);
     };
-    const cos = toolsOf(join(tree, "org/workers/chief-of-staff/WORKER.md"));
+    const shiftCoordinator = toolsOf(join(tree, "org/workers/shift-coordinator/WORKER.md"));
     // PLAN's six less `rehire` and `brokenSeats`, which FIX-1788 retired, and `setWorkstreams` and
     // `post-to-mailbox`, which went with mailboxes (FIX-1792); `setRepository` (FIX-1762),
     // `openWorkstream` (FIX-1793), `memory/recall` (FIX-1776), `listProjects`, which reads a project before filing,
     // and `listLeads` (FIX-1920), which picks a workstream's lead.
     const want = ["hire", "fire", "listProjects", "createProject", "setRepository", "listLeads", "openWorkstream", "memory/recall"];
-    out.push(`CoS tools: [${cos.join(", ")}]`);
-    const cosOk = JSON.stringify([...cos].sort()) === JSON.stringify([...want].sort());
-    if (!cosOk) out.push(`FAIL: wanted [${want.join(", ")}]`);
+    out.push(`Shift Coordinator tools: [${shiftCoordinator.join(", ")}]`);
+    const shiftCoordinatorOk = JSON.stringify([...shiftCoordinator].sort()) === JSON.stringify([...want].sort());
+    if (!shiftCoordinatorOk) out.push(`FAIL: wanted [${want.join(", ")}]`);
     const teams = join(tree, "teams");
     const hirers: string[] = [];
     for (const team of readdirSync(teams)) {
@@ -141,7 +141,7 @@ export function seams(base: string): SeamRow[] {
       }
     }
     if (hirers.length > 0) out.push(`FAIL: team seats naming a hire tool: ${hirers.join(", ")}`);
-    return cosOk && hirers.length === 0;
+    return shiftCoordinatorOk && hirers.length === 0;
   });
 
   // ---- Gap copy (ER-8) -------------------------------------------------------------
@@ -183,16 +183,16 @@ export function seams(base: string): SeamRow[] {
     for (const [status, file] of changed) {
       if (file === undefined) continue;
       // `projection` is a read shape, not a project.
-      const pathHit = /project(?!ion)|workstream|chief.?of.?staff|admin.?seat/i.test(file);
+      const pathHit = /project(?!ion)|workstream|shift.?coordinator|admin.?seat/i.test(file);
       const addedLines = git("diff", base, "HEAD", "-U0", "--", file)
         .split("\n")
         .filter((l) => l.startsWith("+") && !l.startsWith("+++"));
-      // Type-cased `Project`/`Workstream` (a lowercase `project` is a projection function here), and any CoS or admin-seat name.
+      // Type-cased `Project`/`Workstream` (a lowercase `project` is a projection function here), and any Shift Coordinator or admin-seat name.
       // A capital `Project` followed by an article is the verb opening a sentence ("Project a stored session"), not the noun.
-      const contentHits = addedLines.filter((l) => /\bProjects?\b(?!\s+(a|an|the)\b)|\bWorkstreams?\b/.test(l) || /chief.?of.?staff|admin.?seat/i.test(l));
+      const contentHits = addedLines.filter((l) => /\bProjects?\b(?!\s+(a|an|the)\b)|\bWorkstreams?\b/.test(l) || /shift.?coordinator|admin.?seat/i.test(l));
       if (pathHit || contentHits.length > 0) naming.push(`${status} ${file}: ${pathHit ? "path names it; " : ""}${contentHits.slice(0, 3).map((l) => l.trim().slice(0, 120)).join(" | ")}`);
     }
-    out.push(`$ git diff ${base.slice(0, 9)}..HEAD packages/core packages/engine: ${changed.length} file(s) changed; naming a Project, Workstream, CoS or admin seat: ${naming.length}`);
+    out.push(`$ git diff ${base.slice(0, 9)}..HEAD packages/core packages/engine: ${changed.length} file(s) changed; naming a Project, Workstream, Shift Coordinator or admin seat: ${naming.length}`);
     for (const n of naming) out.push(`  ${n}`);
     const addedPaths = git("diff", "--name-only", "--diff-filter=A", base, "HEAD").split("\n").filter(Boolean);
     // A Lab tree's `workforce/projects/` or `workforce/agents/` folder; `packages/workforce/src/projects/`
@@ -221,7 +221,7 @@ export function seams(base: string): SeamRow[] {
     );
     // The one key the epic added, `mintFor`, went with the project rooms (FIX-1793): the list is the base's again.
     const keysOk = before !== undefined && (binderGone || (after !== undefined && gained.length === 0 && lost.length === 0));
-    if (naming.length > 0) out.push("FAIL: core or engine gained a Project, Workstream, CoS or admin-seat name");
+    if (naming.length > 0) out.push("FAIL: core or engine gained a Project, Workstream, Shift Coordinator or admin-seat name");
     if (all.length > 0) out.push("FAIL: a forbidden tree folder or MAILBOXES.md was added");
     if (!keysOk) out.push("FAIL: MAILBOX.md's key list changed");
     return naming.length === 0 && all.length === 0 && keysOk;
@@ -232,12 +232,12 @@ export function seams(base: string): SeamRow[] {
     const has = (page: string, re: RegExp) => existsSync(join(REPO_ROOT, page)) && re.test(readFileSync(join(REPO_ROOT, page), "utf8"));
     const owned: Array<[string, string, RegExp]> = [
       // Since FIX-1793 a project no longer groups workstreams by list: the section defines both terms.
-      // FIX-1960 renamed the chief of staff the Shift Coordinator in the docs.
+      // FIX-1960 gave the docs the name Shift Coordinator.
       ["the shared section, projects and workstreams (FIX-1718)", "apps/docs/docs/workforce/overview.md", /^## Projects and the Shift Coordinator\n[\s\S]*?\*\*project\*\*[\s\S]*?\*\*workstream\*\* is one area of a project\b/im],
       ["the shared section, org seat and mailbox (FIX-1719)", "apps/docs/docs/workforce/overview.md", /^## Projects and the Shift Coordinator\n[\s\S]*?Shift Coordinator[\s\S]*?(approve)/im],
-      ["Asking CoS for a project (FIX-1718)", "apps/docs/docs/workforce/projects.md", /^# Projects$[\s\S]*Shift Coordinator/m],
+      ["Asking Shift Coordinator for a project (FIX-1718)", "apps/docs/docs/workforce/projects.md", /^# Projects$[\s\S]*Shift Coordinator/m],
       ["Shift Manager's PROJECTS (FIX-1718)", "packages/shift-manager/README.md", /^## What you see$[\s\S]*?PROJECTS/m],
-      ["The CoS page (FIX-1719)", "apps/docs/docs/workforce/shift-coordinator.md", /^# The Shift Coordinator$[\s\S]*?^## Adding one$[\s\S]*?^## What asks first$[\s\S]*?"reason": "user_approval"/m],
+      ["The Shift Coordinator page (FIX-1719)", "apps/docs/docs/workforce/shift-coordinator.md", /^# The Shift Coordinator$[\s\S]*?^## Adding one$[\s\S]*?^## What asks first$[\s\S]*?"reason": "user_approval"/m],
       // Each person talks to a project through their own project coordinator; the project rooms are gone (FIX-1793).
       ["Talking to a project (FIX-1793)", "apps/docs/docs/workforce/projects.md", /^## Talking to a project$[\s\S]*?\*\*project coordinator\*\*[\s\S]*?^### How its delegates follow your workstreams$/m],
       // FIX-1621's repair of a seat whose kind is gone was retired by FIX-1788: a worker is a row its owner fires or edits.

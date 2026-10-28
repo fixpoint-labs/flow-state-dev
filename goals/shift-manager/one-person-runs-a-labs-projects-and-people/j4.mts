@@ -2,7 +2,7 @@
  * Part 2, J4: someone builds the next Lab from the published docs alone (D3).
  *
  * A writer that sees only the pages DOCS.md lists, the pentest Lab's README
- * and a scratch copy of `goals/pentest-lab/lab/` (S5) adds the chief of staff,
+ * and a scratch copy of `goals/pentest-lab/lab/` (S5) adds the Shift Coordinator,
  * its `hire` and `fire` tools from `createWorkerHireBlocks` with the fire
  * asking first, the `projects` collection and the project tools it names. The
  * task also states what the Lab's other checks need of it (every start fresh;
@@ -20,8 +20,8 @@
  * `J4_CUT=store` is the control: it cuts the Shift Manager README's stores and
  * restarts from the writer's copy of the docs, a real gap J4 must fail on.
  *
- * Then Shift Manager serves the copy, and the person asks its chief of staff
- * for a project and a worker in the Chief of Staff view: PROJECTS must list
+ * Then Shift Manager serves the copy, and the person asks its Shift Coordinator
+ * for a project and a worker in the Shift Coordinator view: PROJECTS must list
  * the project; the person's roster must hold the worker it hired, and Roster
  * list it as theirs; and a fire of that worker must suspend on one
  * `user_approval` in the store naming it. The copy is deleted after the run;
@@ -34,7 +34,7 @@ import type { Browser } from "playwright";
 import { REPO_ROOT } from "../../lib/index.mts";
 import { labRoutes, personPage, startShiftManager, openShiftManager } from "../../lib/shift-manager.mts";
 import { judgeSilent, sectionsOf, type JudgedLine } from "./j4-judge.mts";
-import { askCos, asksOf, callsTo, hex, projectsDrawn, quote, readWorkers, RunRecord, rosterOwn, sleep, World } from "./steps.mts";
+import { askShiftCoordinator, asksOf, callsTo, hex, projectsDrawn, quote, readWorkers, RunRecord, rosterOwn, sleep, World } from "./steps.mts";
 
 /** The pages D3's writer sees, as published on the commit (DOCS.md). */
 export const J4_PAGES = [
@@ -53,11 +53,11 @@ const TASK = `You are setting up the Lab in \`lab/\` so that Shift Manager can r
 Read only the pages under \`docs/\` (and the Lab's own files) to learn how. Nothing else is available to you.
 
 What the Lab must get:
-1. A chief of staff: the org worker Shift Manager talks to, able to hire workers of the person's own at once and
+1. A Shift Coordinator: the org worker Shift Manager talks to, able to hire workers of the person's own at once and
    fire them only after the person approves.
 2. Projects: the organization's \`projects\` collection, and the project tools \`createProject\` and \`openWorkstream\`
-   on the chief of staff, so a person can ask it to create a project and open workstreams in it.
-The chief of staff runs on the \`coordinator\` flow with no \`delegates:\`, and its model is \`anthropic/claude-haiku-5-5\`.
+   on the Shift Coordinator, so a person can ask it to create a project and open workstreams in it.
+The Shift Coordinator runs on the \`coordinator\` flow with no \`delegates:\`, and its model is \`anthropic/claude-haiku-5-5\`.
 It needs no \`setRepository\` and no memory; whether it also gets \`discover\` doesn't matter.
 
 What the Lab's other checks need of it, which its files don't show you:
@@ -170,7 +170,7 @@ async function write(workspace: string, labCopy: string, log: (s: string) => voi
 }
 
 /**
- * The flow J4 names when it asks the chief of staff to hire, read from the
+ * The flow J4 names when it asks the Shift Coordinator to hire, read from the
  * writer's files, never from the model: the built-in `agent`, which takes a
  * hire with no settings unless the Lab marks it `standardOnly`. `error` when
  * no file builds the hire blocks, or when the Lab keeps `agent` for its
@@ -235,7 +235,7 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
       else notes.push(`J4 doc-silent line dropped (judge: ${read}): ${j.line.slice(0, 300)}`);
     }
 
-    // ---- Shift Manager over the copy: the person asks CoS for a project and a worker ----
+    // ---- Shift Manager over the copy: the person asks Shift Coordinator for a project and a worker ----
     let served;
     try {
       served = await startShiftManager({ scratch, label: "j4", config: join(copy, "fsdev.config.mts"), pages, timeoutMs: 120_000 });
@@ -257,12 +257,12 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
       world.page = opened.page;
       try {
         const title = `Recon ${hex(2)}`;
-        const project = await askCos(world, "J4", `Please create a project called "${title}" for me.`);
-        if (project === undefined) failures.push("J4: the Chief of Staff view draws no chief of staff for the writer's Lab");
+        const project = await askShiftCoordinator(world, "J4", `Please create a project called "${title}" for me.`);
+        if (project === undefined) failures.push("J4: the Shift Coordinator view draws no Shift Coordinator for the writer's Lab");
         else {
           const created = callsTo(project, "createProject").filter((c) => c.ok);
-          if (created.length !== 1) failures.push(`J4: asked for a project, CoS made ${created.length} ok createProject call(s): ${quote(project)}`);
-          await openShiftManager(world.page, served.origin, "/cos");
+          if (created.length !== 1) failures.push(`J4: asked for a project, Shift Coordinator made ${created.length} ok createProject call(s): ${quote(project)}`);
+          await openShiftManager(world.page, served.origin, "/shift-coordinator");
           const groups = await projectsDrawn(world.page);
           const ids = groups.map((g) => g.id);
           const titled = await world.page.locator("[data-testid=project-group]").evaluateAll((els, t) => els.filter((e) => (e.textContent ?? "").toLowerCase().includes(String(t).toLowerCase())).map((e) => e.getAttribute("data-project-id") ?? ""), title);
@@ -271,11 +271,11 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
           else notes.push(`J4: PROJECTS lists ${id} ("${title}")`);
         }
         const worker = `helper-${hex()}`;
-        // Name the flow, so the chief of staff isn't left to ask which one: the writer's Lab says whether `agent` takes a hire.
+        // Name the flow, so the Shift Coordinator isn't left to ask which one: the writer's Lab says whether `agent` takes a hire.
         const hireable = hireableFlow(copy);
-        const hire = "error" in hireable ? undefined : await askCos(world, "J4", `Please hire a worker with the id "${worker}" on the "${hireable.flow}" flow. It needs no settings.`);
+        const hire = "error" in hireable ? undefined : await askShiftCoordinator(world, "J4", `Please hire a worker with the id "${worker}" on the "${hireable.flow}" flow. It needs no settings.`);
         if ("error" in hireable) failures.push(`J4: no flow to hire on: ${hireable.error}`);
-        else if (hire === undefined) failures.push("J4: asked for a worker, the Chief of Staff view draws no chief of staff to ask");
+        else if (hire === undefined) failures.push("J4: asked for a worker, the Shift Coordinator view draws no Shift Coordinator to ask");
         else {
           await sleep(500);
           // A worker the person hires is theirs: a row on their own roster, which Roster lists as theirs.
@@ -286,7 +286,7 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
           else {
             notes.push(`J4: the person's roster holds "${worker}" on "${row.flow}", and Roster lists it as theirs`);
             // The fire asks first: a fire of that worker suspends on the person's approval, read from the store. Left unanswered.
-            const fire = await askCos(world, "J4", `Please fire the worker "${worker}".`);
+            const fire = await askShiftCoordinator(world, "J4", `Please fire the worker "${worker}".`);
             if (fire === undefined || fire.sessionId === null || fire.requestId === null) failures.push(`J4: the fire was not asked: ${quote(fire)}`);
             else {
               const asks = (await asksOf(world.routes.owner, fire.sessionId, fire.requestId)).filter((a) => a.reason === "user_approval");

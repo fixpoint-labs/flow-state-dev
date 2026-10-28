@@ -8,7 +8,7 @@
  * gives its conversation the task tools, and it files each task on that
  * conversation's own board, at the Lab user's scope. `eng.desk` and
  * `ops.desk` are coordinators on Workforce's `coordinator` flow that nothing
- * posts to. One org-level seat, `chief-of-staff`, has no team: the tree has
+ * posts to. One org-level seat, `shift-coordinator`, has no team: the tree has
  * no place for one yet, so it is registered in the seat inventory beside the
  * hired workers, as an org seat's row will be.
  *
@@ -45,6 +45,7 @@ import {
   inventoryWriterActions,
   openInventory,
   workerConfigSchema,
+  workerMessagesResources,
   workerTaskEntry,
   type InventoryActionRequest,
 } from "@flow-state-dev/workforce";
@@ -53,7 +54,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { actingAs } from "../../../lib/client-actions.mts";
-import { workerDoor } from "../../../lib/worker-door.mts";
+import { hearsMessages, workerDoor } from "../../../lib/worker-door.mts";
 import { installWorkers } from "../../../lib/workers.mts";
 
 /** The tree this Lab reads. */
@@ -61,7 +62,7 @@ const SHIFT_LAB_TREE = join(dirname(fileURLToPath(import.meta.url)), "workforce"
 /** The one person this Lab runs as. */
 export const SHIFT_LAB_USER_ID = "u_shift_lab";
 /** The org-level seat, registered with no team. */
-export const ORG_SEAT = { id: "chief-of-staff", kind: "chief-of-staff", actions: {} } as const;
+export const ORG_SEAT = { id: "shift-coordinator", kind: "shift-coordinator", actions: {} } as const;
 
 /** The kind the filing worker is hired into. */
 const LEAD_KIND = "lead";
@@ -215,7 +216,8 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
         cardinality: "collection",
         configSchema: workerConfigSchema(),
         session: installation.session(),
-        resources: { ...installation.resources },
+        resources: { ...installation.resources, ...workerMessagesResources },
+        internal: { actions: hearsMessages(installation, SEAT_KIND) },
         actions: { ...workerDoor, ask: { block: sequencer({ name: "shift-lab-ask", inputSchema: z.object({ what: z.string() }) }).step(gate), durable: true } },
         task: { actions: { work: workerTaskEntry({ name: "shift-lab-task", turn: taskTurn }) } },
       } as never) },

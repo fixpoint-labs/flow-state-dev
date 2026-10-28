@@ -92,7 +92,9 @@ describe("history windowing (Slice C)", () => {
       flowKind: "win-flow",
       flowId: "win-flow",
       status: ["completed", "interrupted"],
-      limit: 50,
+      // The 50-turn window plus the one row read to learn whether an earlier
+      // turn fell out of it (FIX-1613's `historyStart`).
+      limit: 51,
       orderBy: "startedAtMs",
       withItems: true
     });
@@ -112,7 +114,7 @@ describe("history windowing (Slice C)", () => {
       stores
     });
 
-    expect(listSpy).toHaveBeenCalledWith(expect.objectContaining({ limit: 7 }));
+    expect(listSpy).toHaveBeenCalledWith(expect.objectContaining({ limit: 8 }));
   });
 
   it("bounds the default history() to the window, keeping the most recent turns", async () => {
