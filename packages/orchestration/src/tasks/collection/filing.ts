@@ -3,7 +3,7 @@
  * filing settings a board honours, and the dependencies it takes.
  *
  * The convergence point for both rules (tenet 5). Every add path, on both
- * backings (`addTask`, `addTasks`, a seeded board, a replan, the Workforce
+ * backings (`createTask`, `createTasks`, a seeded board, a replan, the Workforce
  * add), and the one patch that edits dependencies (`patchSettings`), check a
  * filing here. A refusal throws {@link TaskFilingRefusedError}, naming the
  * rule, and files nothing.

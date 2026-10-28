@@ -59,7 +59,7 @@ describe.each([
   /** Claim `t` at t=1000 under a 10-second lease. */
   async function claimed(): Promise<Backing & { claim: TaskClaimTicket }> {
     const backing = await makeBacking();
-    await backing.collection.addTask({ id: "t", goal: "t" });
+    await backing.collection.createTask({ id: "t", goal: "t" });
     const task = (await backing.collection.claim("w", { leaseDurationMs: 10_000 }))!;
     return { ...backing, claim: ticketForClaim(backing.collection.collectionId, task) };
   }

@@ -176,7 +176,7 @@ The filing session hears each ending once, even if the server stops just after t
 
 ### Where a task runs, and where its result goes
 
-Code that files on a conversation's board through the collection (`addTask` on the board's ref) can choose two more things per task:
+Code that files on a conversation's board through the collection (`createTask` on the board's ref) can choose two more things per task:
 
 - `session`: `"new"` (the default) runs the task in a task session of its own. `"ongoing"` runs it in the session where that delegate works for this conversation, so it starts from everything that session already knows. A session works one task at a time, so a second task for the same session waits until the first ends.
 - `resultTo`: `"filer"` (the default) means the result is for whoever filed the task. `"conversation"` marks a result that belongs to the conversation itself. Such a task runs once: it takes one attempt, any other `maxAttempts` is refused, and so is a wait on it.

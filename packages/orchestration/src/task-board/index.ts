@@ -65,7 +65,7 @@
  * its run's stop for a review or an approval) is in flight but is no active
  * worker (FIX-2131), so a `complete-or-blocked` board whose only open rows
  * wait on a person exits `blocked` and leaves them as they are. The answer
- * owes the task its next turn; a board built with the retired `onReview` is
+ * owes the task its next turn; a board built with the removed review option is
  * refused by name.
  *
  * ## CAS-safe dispatch
@@ -637,7 +637,7 @@ export interface TaskBoardHandle<
    * Capability exposing the board's tasks at `ctx.cap.<name>` (the board name
    * verbatim; hyphenated names via bracket access, e.g. `ctx.cap["my-board"]`).
    * Add to any block's `uses` array and call the sugar directly —
-   * `ctx.cap.<name>.addTask({...})`, `.listTasks(...)`, `.tasks()` for the full
+   * `ctx.cap.<name>.createTask({...})`, `.listTasks(...)`, `.tasks()` for the full
    * ref.
    *
    * Backing-aware: the request default (and resource backing) let sibling and
@@ -647,7 +647,7 @@ export interface TaskBoardHandle<
    * backed boards defer entirely to the user's factory.
    *
    * Carries the board's `TInput`/`TOutput` AND its name literal, so a consumer
-   * doing `ctx.cap.<name>.addTask({ input })` type-checks the payload against the
+   * doing `ctx.cap.<name>.createTask({ input })` type-checks the payload against the
    * board's task input rather than `unknown`, and only the actual `<name>` key is
    * exposed on `ctx.cap` (a wrong key is a compile error, not a runtime
    * `undefined`).

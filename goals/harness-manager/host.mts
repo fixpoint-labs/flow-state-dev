@@ -188,7 +188,7 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
       const taskId = harnessTaskId(input.issue, input.phase);
       const existing = await ctx.cap[boardId].getTask(taskId);
       if (existing !== undefined) return { taskId: existing.id };
-      const task = await ctx.cap[boardId].addTask({
+      const task = await ctx.cap[boardId].createTask({
         id: taskId,
         goal: `Drive ${input.issue} through its ${input.phase} phase.`,
         assignee: ASSIGNEE,

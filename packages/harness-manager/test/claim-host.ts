@@ -243,7 +243,7 @@ export function claimHost(options: HostOptions) {
       // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
       const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
       if (ref.get(input.id) === undefined) {
-        await ref.addTask({
+        await ref.createTask({
           id: input.id,
           goal: input.goal,
           assignee: ASSIGNEE,

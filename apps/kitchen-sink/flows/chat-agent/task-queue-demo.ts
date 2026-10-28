@@ -6,7 +6,7 @@
  * the chain shape (SEARCH → ANALYZE → maybe EXTRACT → done) is unchanged.
  *
  * Each handler enqueues follow-up tasks by resolving the same request-scoped
- * collection via `getOrCreateTaskCollection` and calling `addTask`. Workers
+ * collection via `getOrCreateTaskCollection` and calling `createTask`. Workers
  * are routed by `task.assignee`.
  */
 import { handler } from "@flow-state-dev/core";
@@ -49,7 +49,7 @@ const handleSearch = handler({
     const found = `Search results for "${query}": [doc-1, doc-2, doc-3]`;
 
     const collection = await getCollection(ctx as unknown as BlockContext);
-    await collection.addTask({
+    await collection.createTask({
       goal: `analyze: ${query}`,
       assignee: "ANALYZE",
       input: { data: found },
@@ -71,7 +71,7 @@ const handleAnalyze = handler({
 
     if (hasStructuredData) {
       const collection = await getCollection(ctx as unknown as BlockContext);
-      await collection.addTask({
+      await collection.createTask({
         goal: "extract fields",
         assignee: "EXTRACT",
         input: { source: data, fields: ["title", "author", "date"] },

@@ -200,7 +200,7 @@ describe("updateTask's answers", () => {
 
   it("the filer's own tool answers a question its worker asked midway, on a task not routed, as the filer", async () => {
     const b = await board();
-    await b.ref.addTask({ id: "t4", goal: "clean the export" });
+    await b.ref.createTask({ id: "t4", goal: "clean the export" });
     const claimed = (await b.ref.claim("w"))!;
     const asked = await b.ref.ask!("t4", [{ kind: "question", prompt: COLUMN }], { claim: ticketForClaim(b.ref.collectionId, claimed) });
     const hold = asked.questions![0]!;
@@ -211,7 +211,7 @@ describe("updateTask's answers", () => {
   it("the filer's own tool answers no midway question on a task routed to a workstream: the user answers it in that session", async () => {
     for (const routed of [{ targetSessionId: "s_workstream" }, { target: "pricing-page" }]) {
       const b = await board();
-      await b.ref.addTask({ id: "t5", goal: "clean the export", ...routed });
+      await b.ref.createTask({ id: "t5", goal: "clean the export", ...routed });
       const claimed = (await b.ref.claim("w"))!;
       const asked = await b.ref.ask!("t5", [{ kind: "question", prompt: COLUMN }], { claim: ticketForClaim(b.ref.collectionId, claimed) });
       const hold = asked.questions![0]!;

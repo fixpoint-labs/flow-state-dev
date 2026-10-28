@@ -135,7 +135,7 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
     execute: async (_input, ctx) => {
       const tasks = (ctx as { cap: Record<string, any> }).cap["review-board"];
       if ((await tasks.getTask(TASK_ID)) === undefined) {
-        await tasks.addTask({ id: TASK_ID, goal: "the feature", input: { issue: ISSUE, phase: PHASE }, assignee: "coder", maxAttempts: 2 });
+        await tasks.createTask({ id: TASK_ID, goal: "the feature", input: { issue: ISSUE, phase: PHASE }, assignee: "coder", maxAttempts: 2 });
       }
       return { id: TASK_ID };
     },

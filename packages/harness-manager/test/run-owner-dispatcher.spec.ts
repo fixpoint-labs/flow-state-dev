@@ -58,7 +58,7 @@ const as = (userId: string) =>
   ({ user: { identity: { id: `${userId}:~org:acme`, userId } }, request: { identity: { orgId: "acme" } } }) as unknown as BlockContext;
 
 async function ownedBy(tasks: TaskCollectionRef, id: string, userId: string) {
-  await tasks.addTask({ id, goal: id });
+  await tasks.createTask({ id, goal: id });
   await tasks.patchMetadata(id, { [HARNESS_RUN_OWNER_KEY]: { userId } });
 }
 
@@ -89,7 +89,7 @@ describe("runOwnerDispatcher", () => {
   it("claims an unowned row for anyone, and returns null on an empty board", async () => {
     const tasks = board();
     await expect(runOwnerDispatcher().claim(tasks, "w", as("bob"))).resolves.toBeNull();
-    await tasks.addTask({ id: "fresh", goal: "fresh" });
+    await tasks.createTask({ id: "fresh", goal: "fresh" });
     expect((await runOwnerDispatcher().claim(tasks, "w", as("bob")))?.id).toBe("fresh");
   });
 });

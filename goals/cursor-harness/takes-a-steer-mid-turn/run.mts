@@ -213,7 +213,7 @@ await runGoal(async (failures) => {
       outputSchema: z.unknown(),
       uses: [board.capability],
       execute: async (_input, ctx) =>
-        (ctx as { cap: Record<string, any> }).cap["goal-board"].addTask({
+        (ctx as { cap: Record<string, any> }).cap["goal-board"].createTask({
           id: TASK,
           goal: "the files",
           input: { issue: "GOAL-1", phase: "implement" },

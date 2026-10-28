@@ -58,7 +58,7 @@ function seedTasks(name: string, board: TaskBoardHandle<any, any, any>, ids: str
     inputSchema: z.unknown(),
     uses: [board.capability],
     execute: async (_input, ctx) => {
-      await (ctx.cap as any)[board.capability.name].addTasks(
+      await (ctx.cap as any)[board.capability.name].createTasks(
         ids.map((id) => ({ id, goal: id })),
       );
     },

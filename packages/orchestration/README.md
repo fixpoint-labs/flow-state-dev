@@ -256,8 +256,8 @@ maintains no provenance leaves its callers with `undefined`, never a false `fals
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
 
 const collection = await getOrCreateTaskCollection({ ctx, backing: "state", collectionId: "plan" });
-await collection.addTask({ id: "research", goal: "research the topic" });
-await collection.addTask({ goal: "draft the post", deps: ["research"] });
+await collection.createTask({ id: "research", goal: "research the topic" });
+await collection.createTask({ goal: "draft the post", deps: ["research"] });
 ```
 
 ### Leases and recovery

@@ -85,15 +85,15 @@ async function collectionInState(
     case "empty":
       break;
     case "claimable":
-      await collection.addTask({ id: "a", goal: "a" });
+      await collection.createTask({ id: "a", goal: "a" });
       break;
     case "working":
-      await collection.addTask({ id: "a", goal: "a" });
+      await collection.createTask({ id: "a", goal: "a" });
       await collection.claim("w1");
       break;
     case "held":
     case "review":
-      await collection.addTask({ id: "a", goal: "a" });
+      await collection.createTask({ id: "a", goal: "a" });
       await waitOnPerson(collection, "a", state === "held" ? "question" : "review");
       break;
     case "dep-blocked":
@@ -101,11 +101,11 @@ async function collectionInState(
       // neither can be claimed and no worker is in flight. The state the
       // `blocked` verdict exists for. (A dep that failed no longer leaves one:
       // the board cancels its dependents, FIX-2080.)
-      await collection.addTask({ id: "dep", goal: "dep", held: true });
-      await collection.addTask({ id: "a", goal: "a", deps: ["dep"] });
+      await collection.createTask({ id: "dep", goal: "dep", held: true });
+      await collection.createTask({ id: "a", goal: "a", deps: ["dep"] });
       break;
     case "settled":
-      await collection.addTask({ id: "a", goal: "a" });
+      await collection.createTask({ id: "a", goal: "a" });
       await collection.claim("w1");
       await collection.complete("a", null);
       break;
@@ -241,7 +241,7 @@ async function boardWithRows(
     now: () => now,
   });
   for (const spec of specs) {
-    await collection.addTask({
+    await collection.createTask({
       id: spec.id,
       goal: spec.id,
       ...(spec.assignee !== undefined ? { assignee: spec.assignee } : {}),

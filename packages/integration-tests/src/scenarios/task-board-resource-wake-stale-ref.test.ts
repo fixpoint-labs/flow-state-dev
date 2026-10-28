@@ -95,7 +95,7 @@ function buildFlow(backing: "resource" | "request") {
       // install its `.waitForCondition` subscription before we add.
       await new Promise((r) => setTimeout(r, IDLE_POLL_MS * 4));
       addedAt.value = Date.now();
-      await ctx.cap[boardName].addTask({
+      await ctx.cap[boardName].createTask({
         id: "late",
         goal: "late-task",
         ...(backing === "resource" ? { input: { topic: "late" } } : {}),

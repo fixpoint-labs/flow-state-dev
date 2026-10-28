@@ -253,7 +253,7 @@ function buildHost(filename: string) {
   const fileSplit = async (ctx: BlockContext, row: Task | undefined, split: RegExpExecArray) => {
     const ref = await doerBoard.board.resolver(ctx as never);
     for (let i = 0; i < Number(split[1]); i += 1) {
-      await ref!.addTask({ goal: `piece ${i} of ${row?.id} ${RUN_STAMP} [slow:${split[2]}]`, assignee: "eng.helper" });
+      await ref!.createTask({ goal: `piece ${i} of ${row?.id} ${RUN_STAMP} [slow:${split[2]}]`, assignee: "eng.helper" });
     }
   };
   /** The task's own turn, by its marks. */

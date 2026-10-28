@@ -89,14 +89,14 @@ function capabilityWriter(board: ReturnType<typeof taskBoard>, count: number) {
     }),
     execute: async (_input, ctx) => {
       const accessor = (ctx.cap as Record<string, never>)[board.capability.name] as unknown as {
-        addTask: (init: { goal: string }) => Promise<unknown>;
+        createTask: (init: { goal: string }) => Promise<unknown>;
         tasks: () => Promise<TaskCollectionRef>;
       };
       let added = 0;
       let error: string | null = null;
       for (let i = 0; i < count; i++) {
         try {
-          await accessor.addTask({ goal: `t-${i}` });
+          await accessor.createTask({ goal: `t-${i}` });
           added++;
         } catch (err) {
           error = err instanceof TaskCapExceededError ? err.cap : `unexpected: ${String(err)}`;
@@ -107,7 +107,7 @@ function capabilityWriter(board: ReturnType<typeof taskBoard>, count: number) {
       // capped too — it is not a bypass.
       let viaEscapeHatch: string | null = null;
       try {
-        await (await accessor.tasks()).addTask({ goal: "escape-hatch" });
+        await (await accessor.tasks()).createTask({ goal: "escape-hatch" });
       } catch (err) {
         viaEscapeHatch = err instanceof TaskCapExceededError ? err.cap : `unexpected: ${String(err)}`;
       }
@@ -272,7 +272,7 @@ describe("taskBoard caps — a SECOND ref over the same ledger", () => {
           backing: "state",
           collectionId: "second-ref",
         });
-        await bare.addTasks(
+        await bare.createTasks(
           Array.from({ length: 9 }, (_, i) => ({ id: `bare-${i}`, goal: `b-${i}` })),
         );
 
@@ -285,7 +285,7 @@ describe("taskBoard caps — a SECOND ref over the same ledger", () => {
         });
         let capped = "inserted";
         try {
-          await withCaps.addTask({ id: "capped", goal: "c" });
+          await withCaps.createTask({ id: "capped", goal: "c" });
         } catch (err) {
           capped = err instanceof TaskCapExceededError ? err.cap : `unexpected: ${String(err)}`;
         }
@@ -384,7 +384,7 @@ describe("initialTasks seed — atomic, loud, and still idempotent", () => {
 
   it("still skips ids already present in the collection (replay idempotency)", async () => {
     const collection = cappedCollection({});
-    await collection.addTask({ id: "t1", goal: "already here" });
+    await collection.createTask({ id: "t1", goal: "already here" });
     const seed = createSeedCollection({
       name: "seed-replay",
       collection: async () => collection,
@@ -400,7 +400,7 @@ describe("initialTasks seed — atomic, loud, and still idempotent", () => {
     // Regression guard for the atomic rewrite. The old per-task loop re-read
     // `collection.get` after each awaited insert, so it skipped within-seed
     // duplicates for free. A one-time pre-filter would let both copies reach
-    // `addTasks`, whose duplicate-id guard rejects the ENTIRE batch.
+    // `createTasks`, whose duplicate-id guard rejects the ENTIRE batch.
     const collection = cappedCollection({});
     const seed = createSeedCollection({
       name: "seed-dupe",
@@ -433,7 +433,7 @@ describe("initialTasks seed — atomic, loud, and still idempotent", () => {
 describe("applyReplan — propagates the breach and inserts nothing", () => {
   it("throws and leaves the capped board untouched when the batch is oversized", async () => {
     const collection = cappedCollection({ maxEnqueuedTasks: 2 });
-    await collection.addTask({ goal: "existing" });
+    await collection.createTask({ goal: "existing" });
 
     const capability = { name: "replanBoard" } as never;
     const applyReplan = createApplyReplan({

@@ -38,7 +38,7 @@ describe("the claim a drain keeps with its request", () => {
   it("keeps the row's id and attempt, and a replay shows the row as claimed without claiming again", async () => {
     const memo = new Map<string, unknown>();
     const board = await boardOf(ctxWith(memo));
-    const filed = await board.addTask({ goal: "outline", assignee: "writer", input: { big: "x".repeat(10_000) } });
+    const filed = await board.createTask({ goal: "outline", assignee: "writer", input: { big: "x".repeat(10_000) } });
     let claims = 0;
     const block = createClaimTask({
       name: "claim",
@@ -84,7 +84,7 @@ describe("the claim a drain keeps with its request", () => {
     expect(await run(ctxWith(memo))).toEqual({ claimed: false });
     expect([...memo.values()]).toEqual([null]);
     // A row filed since doesn't change what the replay of this pass claimed.
-    await board.addTask({ goal: "later", assignee: "writer" });
+    await board.createTask({ goal: "later", assignee: "writer" });
     expect(await run(ctxWith(memo))).toEqual({ claimed: false });
     expect(claims).toBe(1);
   });

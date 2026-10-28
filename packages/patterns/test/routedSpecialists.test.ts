@@ -161,7 +161,7 @@ describe("routedSpecialists", () => {
   it("completes every iteration's task under the attempt guard (FIX-951)", async () => {
     // The advisory write-backs scope themselves to the attempt they claimed
     // under, and the attempt number has to come from `claim`'s return value.
-    // `addTask` returns the PRE-claim task, whose `attempts` is still 0,
+    // `createTask` returns the PRE-claim task, whose `attempts` is still 0,
     // while the claim increments it to 1 — so stamping the wrong one makes
     // every completion decline against a mismatched attempt and leaves each
     // task stuck `in_progress`.

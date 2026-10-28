@@ -1,7 +1,7 @@
 /**
  * Task creation and filter helpers.
  *
- * `TaskInit` is the input shape accepted by `addTask`. Every field except
+ * `TaskInit` is the input shape accepted by `createTask`. Every field except
  * `goal` is optional — sensible defaults are stamped in by the
  * collection (`status: 'pending'`, `attempts: 0`, timestamps, etc).
  *

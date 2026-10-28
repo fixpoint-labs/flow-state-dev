@@ -119,7 +119,7 @@ describe.each(BACKINGS)("recovery — admission (%s)", (_name, makeBacking) => {
     // task reads as already exhausted after attempt 1 — the whole feature off
     // by default unless every caller opts into retries.
     const backing = await makeBacking();
-    await backing.collection.addTask({ id: "t", goal: "t" });
+    await backing.collection.createTask({ id: "t", goal: "t" });
     await abandon(backing, "t");
 
     const recovered = await backing.collection.claim("w2");
@@ -131,8 +131,8 @@ describe.each(BACKINGS)("recovery — admission (%s)", (_name, makeBacking) => {
 
   it("still gates on deps — an abandoned row with an unfinished dep is not admitted", async () => {
     const backing = await makeBacking();
-    await backing.collection.addTask({ id: "dep", goal: "dep" });
-    await backing.collection.addTask({ id: "t", goal: "t", deps: ["dep"] });
+    await backing.collection.createTask({ id: "dep", goal: "dep" });
+    await backing.collection.createTask({ id: "t", goal: "t", deps: ["dep"] });
     // Claim `t` directly so it can lapse while its dep is still open.
     await abandon(backing, "t");
 
@@ -143,7 +143,7 @@ describe.each(BACKINGS)("recovery — admission (%s)", (_name, makeBacking) => {
     // A suite that only exercises `claim()` directly passes against an
     // implementation whose board never wakes for the row it could recover.
     const backing = await makeBacking();
-    await backing.collection.addTask({ id: "t", goal: "t" });
+    await backing.collection.createTask({ id: "t", goal: "t" });
     await abandon(backing, "t");
     const at = backing.now();
 
@@ -167,7 +167,7 @@ describe.each(BACKINGS)("recovery — a caller's eligibility NARROWS (%s)", (_na
     // recovery was unreachable for any dispatcher that asserted
     // `status === "pending"` — including the recipe our own docs recommended.
     const backing = await makeBacking();
-    await backing.collection.addTask({
+    await backing.collection.createTask({
       id: "t",
       goal: "t",
       metadata: { topic: "billing" },
@@ -183,7 +183,7 @@ describe.each(BACKINGS)("recovery — a caller's eligibility NARROWS (%s)", (_na
     // row, and a suite that never builds this case lets a later reader believe
     // the invariant is wider than it is.
     const backing = await makeBacking();
-    await backing.collection.addTask({
+    await backing.collection.createTask({
       id: "t",
       goal: "t",
       metadata: { topic: "billing" },
@@ -203,7 +203,7 @@ describe.each(BACKINGS)("recovery — disposition and the allowance (%s)", (_nam
 
   it("counts each recovery, and a row missing the counter reads as zero", async () => {
     const backing = await makeBacking();
-    await backing.collection.addTask({ id: "t", goal: "t" });
+    await backing.collection.createTask({ id: "t", goal: "t" });
     // BP-030, and the direction is the assertion: a task persisted before the
     // upgrade carries no counter, and absent must read as zero rather than as
     // exhausted — the second reading would strand exactly the rows this
@@ -219,7 +219,7 @@ describe.each(BACKINGS)("recovery — disposition and the allowance (%s)", (_nam
 
   it("settles a row whose allowance is spent, in the same write, rather than running it", async () => {
     const backing = await makeBacking();
-    await backing.collection.addTask({ id: "t", goal: "t" });
+    await backing.collection.createTask({ id: "t", goal: "t" });
     await abandonRepeatedly(backing, DEFAULT_MAX_ABANDONMENTS + 1);
     backing.events.length = 0;
 
@@ -238,7 +238,7 @@ describe.each(BACKINGS)("recovery — disposition and the allowance (%s)", (_nam
     // event. Without it a streamed UI and every change subscriber keep showing
     // `in_progress` on a row storage has terminalized.
     const backing = await makeBacking();
-    await backing.collection.addTask({ id: "t", goal: "t" });
+    await backing.collection.createTask({ id: "t", goal: "t" });
     await abandonRepeatedly(backing, DEFAULT_MAX_ABANDONMENTS + 1);
     backing.events.length = 0;
 
@@ -256,7 +256,7 @@ describe.each(BACKINGS)("recovery — disposition and the allowance (%s)", (_nam
     // `in_progress` forever, because the settling branch lives behind the
     // candidate filter.
     const backing = await makeBacking();
-    await backing.collection.addTask({ id: "t", goal: "t" });
+    await backing.collection.createTask({ id: "t", goal: "t" });
     await abandonRepeatedly(backing, DEFAULT_MAX_ABANDONMENTS + 1);
 
     // Admitted: the wake probe fires for it.
@@ -268,9 +268,9 @@ describe.each(BACKINGS)("recovery — disposition and the allowance (%s)", (_nam
 
   it("scans past an exhausted row to the work behind it", async () => {
     const backing = await makeBacking();
-    await backing.collection.addTask({ id: "t", goal: "t" });
+    await backing.collection.createTask({ id: "t", goal: "t" });
     await abandonRepeatedly(backing, DEFAULT_MAX_ABANDONMENTS + 1);
-    await backing.collection.addTask({ id: "next", goal: "next" });
+    await backing.collection.createTask({ id: "next", goal: "next" });
 
     expect((await backing.collection.claim("w-last"))?.id).toBe("next");
     expect(backing.collection.get("t")?.status).toBe("errored");
@@ -284,7 +284,7 @@ describe.each(BACKINGS)("the two budgets are separate (%s)", (_name, makeBacking
     // reads `attempts` undiscounted. That is precisely the shape "separate in
     // name only" takes, and a suite asserting only the field passes against it.
     const backing = await makeBacking();
-    await backing.collection.addTask({ id: "t", goal: "t", maxAttempts: 3 });
+    await backing.collection.createTask({ id: "t", goal: "t", maxAttempts: 3 });
     await abandon(backing, "t"); // attempt 1 — the worker died
     await abandon(backing, "t"); // attempt 2 — so did the next one
     const third = await claimShort(backing, "t", "w3");
@@ -306,7 +306,7 @@ describe.each(BACKINGS)("the two budgets are separate (%s)", (_name, makeBacking
   it("still terminalizes once the task's OWN failures spend the budget", async () => {
     // The discount must not become an escape hatch: real failures still count.
     const backing = await makeBacking();
-    await backing.collection.addTask({ id: "t", goal: "t", maxAttempts: 2 });
+    await backing.collection.createTask({ id: "t", goal: "t", maxAttempts: 2 });
     await backing.collection.claim("w1");
     await backing.collection.fail("t", "boom 1");
     await backing.collection.claim("w2");
@@ -325,7 +325,7 @@ describe.each(BACKINGS)("the counter is not caller-writable (%s)", (_name, makeB
     // recovery) or inflated (a live task terminalized early) — an execution
     // decision driven by caller-controllable input.
     const backing = await makeBacking();
-    await backing.collection.addTask({ id: "t", goal: "t" });
+    await backing.collection.createTask({ id: "t", goal: "t" });
     await abandon(backing, "t");
     await claimShort(backing, "t", "w2");
     expect(backing.collection.get("t")?.abandonments).toBe(1);
@@ -342,8 +342,8 @@ describe.each(BACKINGS)("the lease default and its bounds (%s)", (_name, makeBac
     // Asserted as behaviour rather than as a constant: what changed is which
     // jobs get taken back early, and a caller-supplied lease must not move.
     const backing = await makeBacking();
-    await backing.collection.addTask({ id: "a", goal: "a" });
-    await backing.collection.addTask({ id: "b", goal: "b" });
+    await backing.collection.createTask({ id: "a", goal: "a" });
+    await backing.collection.createTask({ id: "b", goal: "b" });
 
     const defaulted = await backing.collection.claim("w1", {
       eligibility: (t) => t.id === "a",
@@ -366,7 +366,7 @@ describe.each(BACKINGS)("the lease default and its bounds (%s)", (_name, makeBac
       // they asked for. Same posture the repo already takes for a numeric
       // argument outside its domain.
       const backing = await makeBacking();
-      await backing.collection.addTask({ id: "t", goal: "t" });
+      await backing.collection.createTask({ id: "t", goal: "t" });
 
       await expect(backing.collection.claim("w", { leaseDurationMs })).rejects.toThrow(
         /leaseDurationMs/

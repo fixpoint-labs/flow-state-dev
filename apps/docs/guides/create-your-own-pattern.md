@@ -88,7 +88,7 @@ export function planMapReduce<TResult>(
       // `backing: "state"` with no `state` field. Same tasks, on the request.
       const collection = await getOrCreateTaskCollection({ ctx, backing: "state", collectionId });
       for (const item of input.items) {
-        await collection.addTask({ id: item.id, goal: item.id, assignee: "map", input: item.input });
+        await collection.createTask({ id: item.id, goal: item.id, assignee: "map", input: item.input });
       }
       return { seeded: input.items.length };
     },

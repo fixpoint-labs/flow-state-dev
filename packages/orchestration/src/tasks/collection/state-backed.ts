@@ -251,7 +251,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
    * against the winner's committed map on every CAS retry: concurrent same-step
    * adds serialize, and a burst at a boundary lands exactly the cap's worth.
    * Throwing here aborts the mutate, so nothing is written — which is also what
-   * makes a batch `addTasks` all-or-nothing.
+   * makes a batch `createTasks` all-or-nothing.
    *
    * Only creation is capped. Transitions that move a task back into `pending`
    * (retry, unblock, resume, reclaim) never reach this, by design.
@@ -574,7 +574,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     // This backing enforces, so the resolved budget IS the limit in force.
     maxTotalRetries: maxTotalRetries ?? null,
 
-    async addTask(init) {
+    async createTask(init) {
       assertFilingSettings(init, options.settings, collectionId);
       // Build the task once — id and createdAt are stable across CAS retries
       // so the emitted item matches what's in state on a successful write.
@@ -594,7 +594,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       return task;
     },
 
-    async addTasks(inits) {
+    async createTasks(inits) {
       for (const init of inits) assertFilingSettings(init, options.settings, collectionId);
       const built = inits.map((init) => buildInitialTask<TInput, TOutput>(withFollowUpPlacement(init, committedRow), now(), options.createdBy, undefined, options.filing));
       if (built.length === 0) return [];

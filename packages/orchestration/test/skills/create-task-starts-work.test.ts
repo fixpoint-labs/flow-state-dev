@@ -72,7 +72,7 @@ const run = (tool: GeneratorTool, input: Record<string, unknown>, ctx: BlockCont
 
 describe("createTask replayed after the team changed (BR-15)", () => {
   /** A board whose ready write commits and then the process dies, once. */
-  function dyingOnce(collection: TaskCollectionRef, method: "addTask") {
+  function dyingOnce(collection: TaskCollectionRef, method: "createTask") {
     let died = false;
     return Object.assign(Object.create(Object.getPrototypeOf(collection)), collection, {
       [method]: async (...args: unknown[]) => {
@@ -88,7 +88,7 @@ describe("createTask replayed after the team changed (BR-15)", () => {
 
   it("a new row filed for a named delegate who has since left answers as the first call did", async () => {
     const collection = await board();
-    const dying = dyingOnce(collection, "addTask");
+    const dying = dyingOnce(collection, "createTask");
     const t = team(["eng.a", "eng.b"]);
     const memo = new Map<string, unknown>();
     const input = { goal: "Draft the release note", assignee: "eng.a" };
@@ -106,12 +106,12 @@ describe("createTask replayed after the team changed (BR-15)", () => {
     const collection = await board();
     let died = false;
     const dying = Object.assign(Object.create(Object.getPrototypeOf(collection)), collection, {
-      addTask: async (...args: unknown[]) => {
+      createTask: async (...args: unknown[]) => {
         if (!died) {
           died = true;
           throw new Error("the process died before the add");
         }
-        return (collection.addTask as (...a: unknown[]) => Promise<unknown>)(...args);
+        return (collection.createTask as (...a: unknown[]) => Promise<unknown>)(...args);
       }
     }) as TaskCollectionRef;
     const t = team(["eng.a"]);
@@ -206,8 +206,8 @@ describe("createTask title", () => {
 describe("listTasks title", () => {
   it("answers a task's title when it has one, and none when it has none", async () => {
     const collection = await board();
-    await collection.addTask({ id: "t_titled", goal: "A long brief about the licenses", title: "Audit licenses", assignee: "eng.a" });
-    await collection.addTask({ id: "t_plain", goal: "Write the notes", assignee: "eng.a" });
+    await collection.createTask({ id: "t_titled", goal: "A long brief about the licenses", title: "Audit licenses", assignee: "eng.a" });
+    await collection.createTask({ id: "t_plain", goal: "Write the notes", assignee: "eng.a" });
     const tools = taskToolsForTurn(async () => collection, () => team(["eng.a"]).roster, { dispatches: true })({});
     const list = tools.find((t) => (t as { name?: string }).name === "listTasks")!;
     const out = (await runForTest(list as never, {} as never, turnCtx(new Map()))) as { tasks: { id: string; title?: string }[] };

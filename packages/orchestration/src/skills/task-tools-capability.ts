@@ -26,8 +26,7 @@
  *
  * On a board that starts a ready row at once (`TaskToolsOptions.dispatches`,
  * a conversation's board), `createTask` starts a ready row at once: the board
- * hands it over as soon as it is filed. `dispatchTask` is gone (FIX-2083): a
- * held row is released with `updateTask({ id, status: "pending" })`, and a
+ * hands it over as soon as it is filed. A held row is released with `updateTask({ id, status: "pending" })`, and a
  * wait is `getTask`'s (FIX-2082).
  *
  * `createTask` starts a task as its start setting says: at once, after its
@@ -1135,7 +1134,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         // once per call, so a replay finds its own row (BR-15).
         const filed = dispatches
           ? await fileReady(ctx, collection, checked.init)
-          : { ok: true as const, taskId: (await collection.addTask(checked.init)).id };
+          : { ok: true as const, taskId: (await collection.createTask(checked.init)).id };
         return input.held === true ? { ...filed, status: "held" as const } : filed;
       });
     },
@@ -1145,12 +1144,12 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
    * File a new row ready, once per call: its id is recorded with the call, so
    * a replay after a crash finds its own row instead of filing a second
    * (BR-15). Where the turn carries no tool call or no `runOnce`, it is the
-   * unguarded path: a plain `addTask`, with no replay protection.
+   * unguarded path: a plain `createTask`, with no replay protection.
    */
   async function fileReady(ctx: BlockContext, collection: TaskCollectionRef, init: TaskInit) {
     const call = toolCallOf(ctx);
     if (call === undefined || ctx.runOnce === undefined) {
-      const task = await collection.addTask(init);
+      const task = await collection.createTask(init);
       return { ok: true as const, taskId: task.id };
     }
     // Whether this run recorded the call's id, or a replay read it back.
@@ -1173,7 +1172,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     if (existing !== undefined && (!picked || filedBy === call.logicalId || (filedBy === undefined && !recordedNow))) {
       return { ok: true as const, taskId: id };
     }
-    const task = await collection.addTask(
+    const task = await collection.createTask(
       picked ? { ...init, id, metadata: { ...(init.metadata ?? {}), [FILED_BY_CALL_KEY]: call.logicalId } } : { ...init, id }
     );
     return { ok: true as const, taskId: task.id };

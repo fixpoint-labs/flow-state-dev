@@ -367,7 +367,7 @@ export interface TaskTransitionOptions {
    * precisely means.
    *
    * Correlation is available on the seven methods that take this options
-   * object. `addTask`, `addTasks`, `claim`, `reclaim` and the five field
+   * object. `createTask`, `createTasks`, `claim`, `reclaim` and the five field
    * mutators still bump the task's `revision` but mint no receipt, so a caller
    * of those cannot correlate its own write. Widening means adding an options
    * argument to nine more methods on an already-large interface; it waits for a
@@ -437,7 +437,7 @@ export interface FailOptions extends TaskTransitionOptions {
  * `task-board-recorder-failure` — because they are the board's events, not
  * the worker's.
  *
- * Mutators (`claim`, `addTask`, ...) still return raw `Task`. The
+ * Mutators (`claim`, `createTask`, ...) still return raw `Task`. The
  * just-claimed task has no items in its window yet, so a handle would be
  * empty by construction; re-fetch via `get(id)` post-completion if a
  * handle is needed.
@@ -555,8 +555,8 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   readonly maxTotalRetries: number | null;
 
   // creation
-  addTask(task: TaskInit<TInput>): Promise<Task<TInput, TOutput>>;
-  addTasks(tasks: TaskInit<TInput>[]): Promise<Task<TInput, TOutput>[]>;
+  createTask(task: TaskInit<TInput>): Promise<Task<TInput, TOutput>>;
+  createTasks(tasks: TaskInit<TInput>[]): Promise<Task<TInput, TOutput>[]>;
 
   // lifecycle
   claim(workerId: string, options?: ClaimOptions): Promise<Task<TInput, TOutput> | null>;

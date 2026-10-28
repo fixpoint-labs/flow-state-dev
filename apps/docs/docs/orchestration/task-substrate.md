@@ -99,7 +99,7 @@ Set `maxAttempts` and, while `attempts < maxAttempts`, a call to `fail` is a *so
 
 ### Holding a task until someone releases it
 
-A *held* task is filed but won't start. No claim takes it, whatever its `deps`, until something releases it. File one held with `addTask({ ..., held: true })`, or hold a pending one later with `hold(id)`. `release(id)` puts it back in `pending`, and from there it starts like any other task once its `deps` have finished.
+A *held* task is filed but won't start. No claim takes it, whatever its `deps`, until something releases it. File one held with `createTask({ ..., held: true })`, or hold a pending one later with `hold(id)`. `release(id)` puts it back in `pending`, and from there it starts like any other task once its `deps` have finished.
 
 A held task keeps a board from finishing: nothing will start it, so a [task board](./task-board.md#termination-onidle-modes)'s drain reports it with the failures, as `"blocked-by-failures"`. Release it, or cancel it, to let the board finish.
 
@@ -109,7 +109,7 @@ A task can also wait on a person's answers. Its `questions` list what it waits o
 
 There are two kinds, told apart by `source.kind`:
 
-- **A question or a confirm** (`"row"`). File the task with `addTask({ ..., questions: [{ kind: "question", prompt }] })` and it stays `pending` until each is answered. A worker asks midway with `ask(id, asks, { claim })`, from the turn holding the task's claim: the write drops the lease and the turn ends without settling the task, which stays `in_progress`. A `confirm` asks for a yes or a no. Its `ask.onNo` says what a No does: `"cancel"`, the default, or `"continue"`. The collection stores it; the board's `updateTask` acts on it, cancelling the task on a `"cancel"` No.
+- **A question or a confirm** (`"row"`). File the task with `createTask({ ..., questions: [{ kind: "question", prompt }] })` and it stays `pending` until each is answered. A worker asks midway with `ask(id, asks, { claim })`, from the turn holding the task's claim: the write drops the lease and the turn ends without settling the task, which stays `in_progress`. A `confirm` asks for a yes or a no. Its `ask.onNo` says what a No does: `"cancel"`, the default, or `"continue"`. The collection stores it; the board's `updateTask` acts on it, cancelling the task on a `"cancel"` No.
 - **A stop its run waits on** (`"suspension"`). When a run working the task waits for a person (`ctx.waitForUser`), the task records the stop here with its `requestId` and `suspensionId`, and the run's resume closes it.
 
 `answer(id, { questionId, message, from })` answers one question. The answer is kept on the task as a message carrying the question's id, so it joins the next turn's brief. The last answer lets the work go on in the same write: a task that hadn't started can be claimed, and one asked midway owes one more turn on its same attempt, which the next claim takes without charging `maxAttempts`. Sending the same words again reports `unchanged`, even after the task has finished. Different words for a question already answered are declined `answered`.
@@ -133,13 +133,13 @@ Once a worker has claimed the task, the answer is `started`. A retry that return
 
 ### Dependencies are checked when you file
 
-`addTask`, `addTasks` and `patchSettings` refuse a dependency the board could never satisfy, and file nothing. Each refusal throws a `TaskFilingRefusedError` whose `rule` names what was wrong:
+`createTask`, `createTasks` and `patchSettings` refuse a dependency the board could never satisfy, and file nothing. Each refusal throws a `TaskFilingRefusedError` whose `rule` names what was wrong:
 
 - `dependency_not_on_board`: the id names no task on this board. To wait on work somewhere else, wait on it, or file the task held and release it when the other work is done.
 - `dependency_ended`: the dependency has already failed or been cancelled, so the task could never start.
 - `dependency_loop`: the dependencies lead back to the task itself.
 
-In an `addTasks` batch, the ids in the same batch count as on the board, so a batch can file a whole chain. A batch row filed already failed or cancelled counts as an ended dependency, and a batch that names one id twice is refused (`duplicate_task_id`). A refusal anywhere in the batch files none of it.
+In a `createTasks` batch, the ids in the same batch count as on the board, so a batch can file a whole chain. A batch row filed already failed or cancelled counts as an ended dependency, and a batch that names one id twice is refused (`duplicate_task_id`). A refusal anywhere in the batch files none of it.
 
 ### When a task ends badly, its dependents end too
 
@@ -153,7 +153,7 @@ A `TaskCollection` stores tasks and exposes a mutation API. Every mutation is co
 
 The mutation surface:
 
-- **Create** — `addTask`, `addTasks`.
+- **Create** — `createTask`, `createTasks`.
 - **Lifecycle** — `claim`, `renewLease`, `complete`, `fail`, `hold` / `release`, `cancel`, `reclaim` (reset stale leases back to `pending`), `payOwedCascades`.
 - **Mutate** — `patchSettings` (until the task starts), `steer` / `takeSteers` (until the task finishes; [below](#messages-on-an-open-task)), `setAssignee`, `setPriority`, `addLabel` / `removeLabel`, `patchMetadata`.
 - **Query** — `get`, `list`, `count`. These are synchronous reads of the latest committed view.
@@ -187,11 +187,11 @@ export const seedResearchPlan = handler({
       collectionId: "research-plan",
     });
 
-    await collection.addTask({
+    await collection.createTask({
       id: "research",
       goal: `Research the current state of ${input.topic}`,
     });
-    await collection.addTask({
+    await collection.createTask({
       id: "draft",
       goal: `Draft a briefing on ${input.topic}`,
       deps: ["research"],
@@ -389,7 +389,7 @@ Surface `undefined` as its own condition instead of guessing. It means the task 
 
 A `false` says your write changed nothing. It does not say why. If you need to know whether a write was *refused* and on what grounds, that's the `declined` verdict above: a refusal is a value, not a throw. The two are worth reading together.
 
-**Which writes you can correlate.** The methods whose options carry a write token: `complete`, `fail` and `cancel`, where the argument is optional, and `renewLease` and `linkRun` (which records the run working a claimed task), where it is required because it carries the claim ticket. `addTask`, `addTasks`, `claim`, `reclaim`, `hold`, `release`, `patchSettings` and the five field mutators advance the task's revision, so every committed write moves the record, but they take no options object and so carry no token.
+**Which writes you can correlate.** The methods whose options carry a write token: `complete`, `fail` and `cancel`, where the argument is optional, and `renewLease` and `linkRun` (which records the run working a claimed task), where it is required because it carries the claim ticket. `createTask`, `createTasks`, `claim`, `reclaim`, `hold`, `release`, `patchSettings` and the five field mutators advance the task's revision, so every committed write moves the record, but they take no options object and so carry no token.
 
 **A collection ref you wrote yourself** maintains none of this. Absence of a record reads as `undefined`, never as "your write did not land".
 

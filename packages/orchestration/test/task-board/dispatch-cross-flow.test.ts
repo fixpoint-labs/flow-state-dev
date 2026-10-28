@@ -291,7 +291,7 @@ function partitionCoordinator(sameFlow = false, isolated = false) {
     outputSchema: z.null(),
     uses: [board.capability],
     execute: async (input, ctx) => {
-      await (ctx.cap as any).conv_board.addTask({ id: input.id, goal: input.id, assignee: "work" });
+      await (ctx.cap as any).conv_board.createTask({ id: input.id, goal: input.id, assignee: "work" });
       return null;
     },
   });

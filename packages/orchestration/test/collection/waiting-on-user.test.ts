@@ -64,7 +64,7 @@ describe.each([
 ])("a task waiting on a user (%s)", (_name, make) => {
   async function waiting(): Promise<{ collection: TaskCollectionRef; claim: TaskClaimTicket }> {
     const collection = await make();
-    await collection.addTask({ id: "t", goal: "t" });
+    await collection.createTask({ id: "t", goal: "t" });
     const task = (await collection.claim("w", { leaseDurationMs: 10_000 }))!;
     const claim = ticketForClaim(collection.collectionId, task);
     await collection.setKeptOpenBy!("t", "wait", { claim, question: STOP });
@@ -111,7 +111,7 @@ describe.each([
 
   it("an ending of a row that waits on nothing owes nothing", async () => {
     const collection = await make();
-    await collection.addTask({ id: "t", goal: "t" });
+    await collection.createTask({ id: "t", goal: "t" });
     await collection.cancel("t");
     expect(collection.get("t")!.resumeOwed).toBeUndefined();
   });
@@ -163,14 +163,14 @@ describe.each([
 
   it("refuses a filing by a task that is already cancelled, on the same board", async () => {
     const collection = await make();
-    await collection.addTask({ id: "parent", goal: "p" });
-    await collection.addTask({ id: "early", goal: "c", filedByTask: "parent" });
+    await collection.createTask({ id: "parent", goal: "p" });
+    await collection.createTask({ id: "early", goal: "c", filedByTask: "parent" });
     await collection.cancel("parent");
-    await expect(collection.addTask({ id: "late", goal: "c", filedByTask: "parent" })).rejects.toMatchObject({
+    await expect(collection.createTask({ id: "late", goal: "c", filedByTask: "parent" })).rejects.toMatchObject({
       name: TaskFilingRefusedError.name,
       rule: "parent_cancelled",
     });
-    await expect(collection.addTasks([{ id: "late2", goal: "c", filedByTask: "parent" }])).rejects.toMatchObject({ rule: "parent_cancelled" });
+    await expect(collection.createTasks([{ id: "late2", goal: "c", filedByTask: "parent" }])).rejects.toMatchObject({ rule: "parent_cancelled" });
     expect(collection.get("late")).toBeUndefined();
   });
 });

@@ -139,7 +139,7 @@ function doerFlow(installation: WorkerInstallation, seen: Seen[], behaviour: Beh
         if (input.message.startsWith('Task "')) return "the woken turn's answer";
         if (behaviour.piece !== undefined) {
           const ref = await board.board.resolver(ctx as never);
-          await ref!.addTask({ goal: "a piece of it", assignee: "eng.helper" });
+          await ref!.createTask({ goal: "a piece of it", assignee: "eng.helper" });
         }
         await sendToSelf(ctx);
         // Still working when the message arrives.
