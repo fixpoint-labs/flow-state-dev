@@ -18,17 +18,17 @@
  *   - Setting an escape hatch field without its schema is a compile error
  */
 import { z } from "zod";
-import { defineCapability } from "../../capability/define-capability";
-import { defineResource } from "../resource";
+import { defineCapability } from "../src/capability/define-capability";
+import { defineResource } from "../src/types/resource";
 import type {
   InferCapabilityOwnState,
   InferCapabilityResources,
   InferCapabilitySequencerState,
   InferCapabilitySessionState,
   InferCapabilityTargets,
-} from "../../capability/types";
-import type { StateRef } from "../block";
-import type { ResourceRef } from "../resource";
+} from "../src/capability/types";
+import type { StateRef } from "../src/types/block";
+import type { ResourceRef } from "../src/types/resource";
 
 // ── Minimal type-level assertion helpers ─────────────────────────────
 type Equal<A, B> =

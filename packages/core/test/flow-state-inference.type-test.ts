@@ -1,10 +1,10 @@
 import type { ZodTypeAny } from "zod";
-import type { BlockContext } from "../block";
+import type { BlockContext } from "../src/types/block";
 import type {
   FlowDefinition,
   InferFlowBlockContext,
   InferFlowStateMap
-} from "../flow";
+} from "../src/types/flow";
 
 type SchemaOf<T> = ZodTypeAny & { _output: T };
 

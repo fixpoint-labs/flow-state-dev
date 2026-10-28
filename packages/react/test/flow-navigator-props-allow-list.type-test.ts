@@ -12,7 +12,7 @@
 import {
   flowNavigatorPropNames,
   type FlowNavigatorProps
-} from "./FlowNavigator";
+} from "../src/components/flow-navigator/FlowNavigator";
 
 type Published = (typeof flowNavigatorPropNames)[number];
 

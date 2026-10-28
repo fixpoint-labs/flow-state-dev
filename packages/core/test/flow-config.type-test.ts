@@ -9,12 +9,12 @@
  *   annotation and no flow named — so the block stays portable and its type
  *   has an actual check behind it.
  *
- * `pnpm typecheck` compiles this file, as it does the package's `test/` files.
+ * `pnpm typecheck` compiles this file with the package's other `test/` files.
  */
 import { z } from "zod";
-import { defineFlow } from "../../flow/defineFlow";
-import { handler } from "../../blocks/handler";
-import { sequencer } from "../../blocks/sequencer";
+import { defineFlow } from "../src/flow/defineFlow";
+import { handler } from "../src/blocks/handler";
+import { sequencer } from "../src/blocks/sequencer";
 
 const workerConfig = z.object({
   harness: z.enum(["claude-code", "codex", "cursor"]),

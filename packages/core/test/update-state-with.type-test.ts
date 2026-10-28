@@ -8,7 +8,7 @@
  * delete the sync overload and it becomes an unused-directive error, which
  * fails `pnpm typecheck`.
  */
-import { withOutcome, updateStateWith } from "../update-state-with";
+import { withOutcome, updateStateWith } from "../src/helpers/update-state-with";
 
 type Tasks = Record<string, { id: string }>;
 type Wm = { entries: string[]; turn: number };

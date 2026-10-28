@@ -2,12 +2,12 @@
  * Type test (FIX-741): the resource hooks thread their `TClient` generic onto
  * the `clientData` field of the returned handle instead of leaving it `unknown`,
  * and `ClientDataOf<typeof def>` composes with the hook generic. Compile-time
- * only — validated by `tsc` over `src/**` via the package typecheck.
+ * only — validated by `tsc` via the package typecheck.
  */
 import type { ClientDataOf, DefinedResourceCollection } from "@flow-state-dev/core";
-import { useResource } from "./useResource";
-import { useResourceCollectionItem } from "./useResourceCollectionItem";
-import { useResourceCollectionList } from "./useResourceCollectionList";
+import { useResource } from "../src/hooks/useResource";
+import { useResourceCollectionItem } from "../src/hooks/useResourceCollectionItem";
+import { useResourceCollectionList } from "../src/hooks/useResourceCollectionList";
 
 type Equals<A, B> =
   (<T>() => T extends A ? 1 : 2) extends

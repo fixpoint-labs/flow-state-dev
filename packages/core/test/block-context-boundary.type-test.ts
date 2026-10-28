@@ -1,7 +1,7 @@
 /**
  * Type-level tests pinning the public `BlockContext` boundary (FIX-999).
  *
- * `pnpm typecheck` compiles this file, as it does the package's `test/` files.
+ * `pnpm typecheck` compiles this file with the package's other `test/` files.
  *
  * What they pin down, and why it is worth a file:
  *
@@ -33,11 +33,11 @@
  *    directive below reports "unused". The request host has no start verb of
  *    its own: a child is started only by a dispatch.
  */
-import type { BlockContext } from "../block";
-import type { AnyResourceRef } from "../resource";
-import type { RequestHost } from "../request-host";
-import { requireRequestHost } from "../request-host";
-import { DISPATCH_SEAM, dispatchThroughSeam, type DispatchOutcome } from "../dispatch";
+import type { BlockContext } from "../src/types/block";
+import type { AnyResourceRef } from "../src/types/resource";
+import type { RequestHost } from "../src/types/request-host";
+import { requireRequestHost } from "../src/types/request-host";
+import { DISPATCH_SEAM, dispatchThroughSeam, type DispatchOutcome } from "../src/types/dispatch";
 
 declare const ctx: BlockContext;
 

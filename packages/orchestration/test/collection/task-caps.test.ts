@@ -222,5 +222,5 @@ describe("task caps — construction-time validation", () => {
 });
 
 // A cap passed with `backing: "resource"` does not compile. Asserted in
-// `src/tasks/collection/tests/task-caps.type-test.ts`. `pnpm typecheck`
+// `task-caps.type-test.ts`, next to this file. `pnpm typecheck`
 // compiles that file and this one.

@@ -1,6 +1,6 @@
 import type { RequestStreamEvent } from "@flow-state-dev/core/items";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import type { RequestSSECallbacks } from "./index";
+import type { RequestSSECallbacks } from "../src/types/index";
 
 type Equals<A, B> =
   (<T>() => T extends A ? 1 : 2) extends

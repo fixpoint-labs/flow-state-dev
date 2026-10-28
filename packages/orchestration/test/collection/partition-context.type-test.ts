@@ -8,9 +8,9 @@
  * `TaskPartitionContext`, a `@ts-expect-error` below reports "unused" and
  * typecheck fails. The runtime half is `test/collection/partitioned-ledger.test.ts`.
  *
- * `pnpm typecheck` compiles this file, as it does the package's `test/` files.
+ * `pnpm typecheck` compiles this file with the package's other `test/` files.
  */
-import type { TaskPartitionContext, TaskPartitionFn } from "../partition";
+import type { TaskPartitionContext, TaskPartitionFn } from "../../src/tasks/collection/partition";
 
 declare const view: TaskPartitionContext;
 

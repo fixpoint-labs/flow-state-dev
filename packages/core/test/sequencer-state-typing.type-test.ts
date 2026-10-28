@@ -9,7 +9,7 @@
  * assertions use the local `Assert<Equal<A, B>>` pattern.
  */
 import { z } from "zod";
-import { handler, router, sequencer } from "../../blocks";
+import { handler, router, sequencer } from "../src/blocks";
 
 // ---------- minimal type-level assertion helpers ----------
 type Equal<A, B> =

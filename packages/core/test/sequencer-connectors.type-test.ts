@@ -1,6 +1,6 @@
 import { z } from "zod";
-import type { BlockDefinition, ConnectorFn } from "../block";
-import { handler } from "../../blocks/handler";
+import type { BlockDefinition, ConnectorFn } from "../src/types/block";
+import { handler } from "../src/blocks/handler";
 
 const summarizeBlock = handler({
   name: "summarize",

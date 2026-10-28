@@ -9,7 +9,7 @@
  * - Scalar config is accepted wholesale and type-checked.
  */
 import { z } from "zod";
-import { defineCapability } from "../../capability/define-capability";
+import { defineCapability } from "../src/capability/define-capability";
 
 // ── A skills-like capability: a flag preset + defaulted object config ──
 

@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { handler, sequencer } from "../../blocks";
-import { defineFlow } from "../../flow/defineFlow";
-import type { SequencerDefinition } from "../../blocks";
+import { handler, sequencer } from "../src/blocks";
+import { defineFlow } from "../src/flow/defineFlow";
+import type { SequencerDefinition } from "../src/blocks";
 import type { ZodTypeAny } from "zod";
 import type {
   ActionConfig,
@@ -9,7 +9,7 @@ import type {
   FlowActionInput,
   InferFlowBlockContext,
   InferFlowStateMap
-} from "../index";
+} from "../src/types/index";
 
 type Equals<A, B> =
   (<T>() => T extends A ? 1 : 2) extends

@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { generator, handler, router } from "../../blocks";
-import type { StateRef } from "../block";
+import { generator, handler, router } from "../src/blocks";
+import type { StateRef } from "../src/types/block";
 
 const routeA = handler({
   name: "route-a",

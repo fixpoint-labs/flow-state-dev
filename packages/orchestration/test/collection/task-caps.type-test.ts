@@ -2,7 +2,7 @@
  * Type-level tests for the task collection factory's options: the creation caps
  * (FIX-931) and the backing discriminant (FIX-960).
  *
- * `pnpm typecheck` compiles this file, as it does the package's `test/` files.
+ * `pnpm typecheck` compiles this file with the package's other `test/` files.
  *
  * What they pin down:
  *
@@ -23,8 +23,8 @@
  */
 import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import type { JsonObject } from "@flow-state-dev/core";
-import type { GetOrCreateTaskCollectionOptions } from "../get-or-create";
-import type { StateBackedOptions } from "../state-backed";
+import type { GetOrCreateTaskCollectionOptions } from "../../src/tasks/collection/get-or-create";
+import type { StateBackedOptions } from "../../src/tasks/collection/state-backed";
 
 declare const ctx: BlockContext;
 declare const resourceCollection: ResourceCollectionRef<JsonObject>;

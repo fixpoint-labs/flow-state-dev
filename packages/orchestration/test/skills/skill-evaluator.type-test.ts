@@ -1,15 +1,15 @@
 /**
  * Type-level tests for `createSkillActivator`'s `evaluator` slot.
  *
- * `pnpm typecheck` compiles this file, as it does the package's `test/` files.
+ * `pnpm typecheck` compiles this file with the package's other `test/` files.
  *
  * What they pin down: both documented ways to fill the slot compile (the
  * helper, with or without `recentMessages`, and a block hand-built from
  * `skillQuestions`), and a block of another kind does not.
  */
 import { evaluator, handler } from "@flow-state-dev/core";
-import { createSkillActivator } from "../skill-activator";
-import { skillEvaluator, skillQuestions } from "../skill-evaluator";
+import { createSkillActivator } from "../../src/skills/skill-activator";
+import { skillEvaluator, skillQuestions } from "../../src/skills/skill-evaluator";
 
 // The helper, with a model string.
 createSkillActivator({ evaluator: skillEvaluator("provider/model") });

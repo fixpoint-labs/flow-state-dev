@@ -20,7 +20,7 @@
     ".omp/test/*.mjs",
 
     "packages/*/test/**/*.{test,spec}.{ts,tsx}",
-    "packages/*/**/*.type-test.ts",
+    "packages/*/test/**/*.type-test.ts",
     "packages/cli/bin/*.ts",
     "packages/cli/test/fixtures/**/*.ts",
     // Fake Codex programs the codex specs spawn by path.

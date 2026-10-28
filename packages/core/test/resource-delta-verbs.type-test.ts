@@ -1,4 +1,4 @@
-import type { ResourceContext, ResourceRef } from "../resource";
+import type { ResourceContext, ResourceRef } from "../src/types/resource";
 
 /**
  * Type test: `incState` / `pushState` are typed against the resource's own

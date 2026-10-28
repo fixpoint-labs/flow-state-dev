@@ -1,10 +1,10 @@
 import { z } from "zod";
-import { defineFlow } from "../../flow/defineFlow";
-import { defineResource } from "../resource";
-import type { ClientDataOf } from "../resource";
-import { defineResourceCollection } from "../resource-collection";
-import { contextFn } from "../../context";
-import { section, list } from "../../prompt";
+import { defineFlow } from "../src/flow/defineFlow";
+import { defineResource } from "../src/types/resource";
+import type { ClientDataOf } from "../src/types/resource";
+import { defineResourceCollection } from "../src/types/resource-collection";
+import { contextFn } from "../src/context";
+import { section, list } from "../src/prompt";
 
 type Equals<A, B> =
   (<T>() => T extends A ? 1 : 2) extends

@@ -8,10 +8,10 @@
  * - .presets() builder only accepts known preset names
  */
 import { z } from "zod";
-import { defineCapability } from "../../capability/define-capability";
-import { defineResource } from "../resource";
-import type { InferCapabilities, UsesEntry } from "../../capability/types";
-import type { BlockContext } from "../block";
+import { defineCapability } from "../src/capability/define-capability";
+import { defineResource } from "../src/types/resource";
+import type { InferCapabilities, UsesEntry } from "../src/capability/types";
+import type { BlockContext } from "../src/types/block";
 
 // ── Resources for testing ────────────────────────────────────────────
 
@@ -113,7 +113,7 @@ void _noFnsAccess;
 
 // ── Block factory ctx.cap type inference ─────────────────────────────
 
-import { handler } from "../../blocks/handler";
+import { handler } from "../src/blocks/handler";
 
 // Handler with uses — ctx.cap should have the memory namespace
 handler({
