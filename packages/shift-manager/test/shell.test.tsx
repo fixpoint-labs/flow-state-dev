@@ -462,12 +462,12 @@ describe("Shift Coordinator (FIX-1722)", () => {
     expect(screen.getByTestId("nav-inbox").getAttribute("aria-current")).toBeNull();
     expect(screen.queryByTestId("nav-shift-coordinator-count")).toBeNull();
     expect(screen.getByTestId("centre").getAttribute("data-level")).toBe("shift-coordinator");
-    // Shift Manager names the view Shift Coordinator; the worker keeps its id (FIX-1747).
+    // Shift Manager names the view Shift Coordinator (FIX-1747).
     // The entry's label and the screen's title carry the name; v2's square beside each carries initials.
     expect(screen.getByTestId("nav-shift-coordinator").querySelector("[data-look=nav-label]")!.textContent).toBe("Shift Coordinator");
     expect(within(screen.getByTestId("shift-coordinator-header")).getByText("Shift Coordinator")).toBeTruthy();
-    expect(screen.getByTestId("sidebar").textContent).not.toMatch(/Shift Coordinator/i);
-    expect(screen.getByTestId("shift-coordinator").textContent).not.toMatch(/Shift Coordinator/i);
+    expect(screen.getByTestId("sidebar").textContent).not.toMatch(/chief of staff/i); // retired-name-refusal: the old name is never shown
+    expect(screen.getByTestId("shift-coordinator").textContent).not.toMatch(/chief of staff/i); // retired-name-refusal: the old name is never shown
     cleanup();
     setURL(`${served[0]!.baseUrl}/no/such/place`);
     render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
@@ -532,7 +532,7 @@ describe("Shift Coordinator (FIX-1722)", () => {
     const { client } = await openShiftCoordinator("/", { shiftCoordinator: true });
     const conversation = await screen.findByTestId("shift-coordinator-conversation");
     expect(conversation.getAttribute("data-worker-id")).toBe("ops.shift-coordinator");
-    expect(conversation.textContent).not.toMatch(/Shift Coordinator/i);
+    expect(conversation.textContent).not.toMatch(/chief of staff/i); // retired-name-refusal: the old name is never shown
     expect(await screen.findByTestId("shift-coordinator-conversation-empty")).toBeTruthy();
 
     // Hold the door's request open: nothing may read delivered, or draw a reply, while it is.

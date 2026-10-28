@@ -188,7 +188,7 @@ model: openai/gpt-6-luna
 You are the Shift Coordinator for this Lab. Answer questions about who is working on what.
 ```
 
-A `shift-coordinator` worker declared as a team's worker, at `teams/<team>/workers/shift-coordinator/`, works too: Shift Manager talks to that worker. Wherever Shift Manager names a worker, such as Roster, Inbox and Jump to, it shows this one as Shift Coordinator; its id stays `shift-coordinator`.
+A `shift-coordinator` worker declared as a team's worker, at `teams/<team>/workers/shift-coordinator/`, works too: Shift Manager talks to that worker. Wherever Shift Manager names a worker, such as Roster, Inbox and Jump to, it shows this one as Shift Coordinator.
 
 Shift Coordinator shows your newest conversation with that worker. If you have none, the first line you send starts one. Your host doesn't need to open one, whichever flow the Shift Coordinator runs on.
 
