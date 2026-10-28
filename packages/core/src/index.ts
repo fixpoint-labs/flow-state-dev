@@ -255,6 +255,7 @@ export {
   blockPathBranch,
   blockPathIteration,
   blockPathLoop,
+  blockPathObserver,
   blockPathRescue,
   blockPathSegment,
   blockPathTool,
