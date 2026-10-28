@@ -299,7 +299,15 @@ await runGoal(async () => {
         world.bob = connect(shipped, served.origin, bobPerson);
         say(`${label}: serving at ${served.origin}${faults.length === 0 ? "" : ` with ${faults.join(", ")}`}`);
       },
-      crashed: async (timeoutMs) => Promise.race([served.exited.then(() => true), new Promise<boolean>((resolve) => setTimeout(() => resolve(false), timeoutMs))]),
+      crashed: async (timeoutMs) => {
+        let timer: NodeJS.Timeout | undefined;
+        const late = new Promise<boolean>((resolve) => (timer = setTimeout(() => resolve(false), timeoutMs)));
+        try {
+          return await Promise.race([served.exited.then(() => true), late]);
+        } finally {
+          clearTimeout(timer);
+        }
+      },
     };
     await runLeg("9", async () => {
       try {
