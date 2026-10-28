@@ -155,8 +155,8 @@ It returns a `CursorSignIn`:
 - `{ status: "login" }` when there is no key and the SDK finds an unexpired stored login. A stored
   login is the API key that `Cursor.auth.login()` saves to `~/.cursor/sdk/auth.json` after a
   browser sign-in.
-- `{ status: "none", reason }` otherwise. Today the reason is always
-  `"no CURSOR_API_KEY in the run's environment and no stored login"`.
+- `{ status: "none", reason }` otherwise. `reason` is a message for people, not a value
+  to match on, for example `"no CURSOR_API_KEY in the run's environment and no stored login"`.
 
 The stored login is looked up under the `HOME` of the process that calls `cursorSignIn`.
 `env.HOME` is not used. A run with `env` set reads its stored login under `env.HOME` instead, so
