@@ -15,6 +15,8 @@
  *   - send a refused line through the session hook (`sendAction`), as the
  *     page did, and the "stays on the running turn" case fails: the hook
  *     leaves the running turn's stream for the waiting line's.
+ *   - follow the waiting line whenever streaming stops, and the "stream
+ *     drops" case fails: the page leaves a turn that still runs.
  *   - one button that stops while a turn runs, as the page had, and the
  *     "Send and Stop" case fails: there is no Send to press, and pressing
  *     the one button stops the turn and keeps the line in the box.
@@ -31,6 +33,8 @@ const abortRequest = vi.fn(async () => undefined);
 const clientSend = vi.fn(async () => ({ id: "line-1" }));
 /** Ends the running turn in the stubbed hook. */
 let endTurn: () => void = () => undefined;
+/** The session's running requests, as the client lists them. */
+let inProgress: Array<{ id: string; actionName: string; startedAtMs: number }> = [];
 /** Session state the server holds; `refresh` reads it. */
 let serverState: Record<string, unknown> = {};
 
@@ -39,7 +43,7 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => ({
   steerRunningTurn: (...args: unknown[]) => steerRunningTurn(...args),
   createClient: () => ({
     flow: () => ({ send: (...args: unknown[]) => clientSend(...(args as [])) }),
-    sessions: { requests: async () => [] },
+    sessions: { requests: async () => inProgress },
   }),
 }));
 
@@ -81,6 +85,7 @@ afterEach(() => {
   abortRequest.mockClear();
   clientSend.mockClear();
   serverState = {};
+  inProgress = [];
   localStorage.clear();
 });
 
@@ -149,5 +154,20 @@ describe("a line sent while the turn runs", () => {
     expect(abortRequest).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Stop" }));
     expect(abortRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays on the running turn when only its stream ended", async () => {
+    steerRunningTurn.mockResolvedValue({ taken: false, live: false });
+    mount();
+    sendLine("after that");
+    await waitFor(() => expect(clientSend).toHaveBeenCalled());
+    // The stream dropped; the server still runs the turn, and the line waits behind it.
+    inProgress = [
+      { id: "turn-1", actionName: "turn", startedAtMs: 1 },
+      { id: "line-1", actionName: "turn", startedAtMs: 2 },
+    ];
+    act(() => endTurn());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(followRequest).not.toHaveBeenCalled();
   });
 });

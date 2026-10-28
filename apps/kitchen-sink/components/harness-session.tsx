@@ -170,15 +170,34 @@ function SessionBody({
   // rather than through the session hook, so the page stays on the running
   // turn. The page follows the next one once the turn it follows ends.
   const waiting = useRef<string[]>([]);
+  const checkingRunning = useRef(false);
   const { followRequest } = session;
   const followWaiting = useCallback(() => {
-    if (streaming.current) return;
-    const next = waiting.current.shift();
-    if (next === undefined) return;
-    // Following until the next render says so, so a second call follows nothing more.
-    streaming.current = true;
-    followRequest(next);
-  }, [followRequest]);
+    if (streaming.current || checkingRunning.current || waiting.current.length === 0) return;
+    // A stream that drops stops streaming too, while its turn still runs: read
+    // which turn runs before moving on from it.
+    checkingRunning.current = true;
+    client.sessions.requests(sessionId, { status: "in_progress", limit: 20 }).then(
+      (requests) => {
+        checkingRunning.current = false;
+        if (streaming.current) return;
+        const running = requests
+          .filter((request) => request.actionName === "turn")
+          .sort((a, b) => (a.startedAtMs ?? 0) - (b.startedAtMs ?? 0))[0];
+        // The turn followed still runs, and only its stream ended: stay on it.
+        if (running !== undefined && !waiting.current.includes(running.id)) return;
+        const next = waiting.current.shift();
+        if (next === undefined) return;
+        // Following until the next render says so, so a second call follows nothing more.
+        streaming.current = true;
+        followRequest(next);
+      },
+      // Unread, the page stays on the request it follows.
+      () => {
+        checkingRunning.current = false;
+      },
+    );
+  }, [client, sessionId, followRequest]);
   useEffect(() => {
     if (!isStreaming) followWaiting();
   }, [isStreaming, followWaiting]);
