@@ -139,6 +139,18 @@ describe("historySummary on the engine", () => {
     expect(users).toEqual(["u5", "u6", "u7", "u8", "u9", "u10"]);
   });
 
+  it("keeps answering when the summary keeps failing, and says turns were lost", async () => {
+    const stores = createInMemoryStores();
+    const calls: ModelCall[] = [];
+    const results = await talk(stores, chatFlow({ window: 4, summarize: foldingSummarize({ failTimes: 100 }) }), calls, 7);
+
+    // Every turn completed; turn 1 left the window unsummarized, so the
+    // summary says it can never be complete again.
+    expect(results.map((r) => r.error)).toEqual(Array(7).fill(undefined));
+    const row = await stores.resourceState.get("session", "s", "historySummary");
+    expect(row?.state).toMatchObject({ summary: null, folds: 0, gap: true, complete: false });
+  });
+
   it("keeps a turn that had not settled by id and folds it once it does, never twice", async () => {
     const stores = createInMemoryStores();
     const calls: ModelCall[] = [];
