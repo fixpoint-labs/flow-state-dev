@@ -107,6 +107,9 @@ None.
 - **A stop and a continuation are fenced by the request's lease (review, Codex P2).** The stop lets
   the owe go under the lease, and the sweep's admission reads the owe again under it; a stop that
   finds the lease held answers `already-resolved` (it runs again).
+- **Waits owing the park at once share it (review, Codex P2).** Parallel branches of one request owe
+  the same wake, so the wrapper counts them: the last to settle clears it, and none does once one
+  has parked (the engine clears that one after its gate is logged).
 
 ## Notes from review
 

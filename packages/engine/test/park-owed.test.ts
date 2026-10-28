@@ -14,7 +14,7 @@
  * again) and its record written `interrupted`, as the stale-request sweep
  * writes it.
  */
-import { defineFlow, handler, parkOnWait, sequencer } from "@flow-state-dev/core";
+import { SuspensionError, defineFlow, handler, parkOnWait, sequencer } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance, WaitOutcome } from "@flow-state-dev/core/types";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -24,7 +24,7 @@ import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint
 import { createWaitResumeOperation } from "../src/context/wait-resume-operation";
 import { resumeWaitGate } from "../src/durability/resume-wait-gate";
 import { runTick } from "../src/durability/durability-sweeper";
-import { PARK_OWED_GIVE_UP_MS, parkOwedKey } from "../src/durability/park-owed";
+import { PARK_OWED_GIVE_UP_MS, createOwingPark, parkOwedKey } from "../src/durability/park-owed";
 import { parkedInterruptedIds } from "../src/durability/stop-suspended";
 import { recordRequestStop } from "../src/execution/record-request-stop";
 import type { ExecutionResult } from "../src/execution/types";
@@ -425,5 +425,55 @@ describe("a wait killed before it parks", () => {
     expect(await status(h, id)).toBe("in_progress");
     const wake = await h.stores.wakes!.get(parkOwedKey({ id, sessionId: SESSION })!);
     expect(wake!.dueAt).toBeGreaterThan(Date.now());
+  });
+
+  describe("when two waits in one request owe the park together", () => {
+    const owingPark = () => {
+      const wakes = createInMemoryStores().wakes!;
+      const owe = createOwingPark({
+        store: wakes,
+        requestId: "req_both",
+        identity: { userId: "u_waiter", tenantId: undefined, orgId: DEFAULT_ORG_ID, sessionId: SESSION },
+        flowId: "park-owed",
+        fenceMs: 60_000
+      });
+      const owed = async () => (await wakes.get(parkOwedKey({ id: "req_both", sessionId: SESSION })!)) !== null;
+      return { owe, owed };
+    };
+    const held = () => {
+      let release!: (outcome: "return" | "park") => void;
+      const gate = new Promise<"return" | "park">((r) => (release = r));
+      const work = async () => {
+        if ((await gate) === "park") throw new SuspensionError({ reason: "waiting", suspensionId: "s_held" } as never);
+        return "done";
+      };
+      return { work, release };
+    };
+
+    it("keeps owing it while the other is still between its work and its gate", async () => {
+      const { owe, owed } = owingPark();
+      const other = held();
+      const pending = owe(other.work);
+      await owe(async () => "refused");
+
+      expect(await owed()).toBe(true);
+      other.release("return");
+      await pending;
+      expect(await owed()).toBe(false);
+    });
+
+    it("keeps owing it once one has parked, though the other returns after", async () => {
+      const { owe, owed } = owingPark();
+      const parks = held();
+      const parked = owe(parks.work).catch((error: unknown) => error);
+      const returns = held();
+      const returned = owe(returns.work);
+      parks.release("park");
+      expect(await parked).toBeInstanceOf(SuspensionError);
+      returns.release("return");
+      await returned;
+
+      expect(await owed()).toBe(true);
+    });
   });
 });

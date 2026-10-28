@@ -99,27 +99,32 @@ export type OwingParkInputs = {
 export function createOwingPark(inputs: OwingParkInputs): <T>(work: () => Promise<T>) => Promise<T> {
   const now = inputs.now ?? Date.now;
   const key = parkOwedKey({ id: inputs.requestId, sessionId: inputs.identity.sessionId, tenantId: inputs.identity.tenantId })!;
+  // One wake for the request, shared by every wait owing it at once (parallel
+  // branches): the last to settle clears it, and none does once one has parked.
+  let owing = 0;
+  let parked = false;
   return async <T>(work: () => Promise<T>): Promise<T> => {
-    const dueAt = now() + inputs.fenceMs;
-    const owed = await inputs.store.owe({
-      ...key,
-      flowKind: inputs.flowId,
-      userId: inputs.identity.userId,
-      orgId: inputs.identity.orgId,
-      dueAt,
-      landBy: dueAt
-    });
-    noteWakeOwed(inputs.store, owed.dueAt);
-    let parking = false;
+    owing += 1;
     try {
+      const dueAt = now() + inputs.fenceMs;
+      const owed = await inputs.store.owe({
+        ...key,
+        flowKind: inputs.flowId,
+        userId: inputs.identity.userId,
+        orgId: inputs.identity.orgId,
+        dueAt,
+        landBy: dueAt
+      });
+      noteWakeOwed(inputs.store, owed.dueAt);
       return await work();
     } catch (error) {
       // The park unwinds as a throw: the engine writes the gate after it, and
       // clears the owe then. Clearing here would open the window again.
-      parking = error instanceof SuspensionError;
+      if (error instanceof SuspensionError) parked = true;
       throw error;
     } finally {
-      if (!parking) await clearParkOwed(inputs.store, key);
+      owing -= 1;
+      if (owing === 0 && !parked) await clearParkOwed(inputs.store, key);
     }
   };
 }
