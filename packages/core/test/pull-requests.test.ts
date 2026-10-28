@@ -132,6 +132,16 @@ describe("findOpenedPullRequests — a create call whose result names it", () =>
     }
   });
 
+  it("reads a create whose title or body only mentions another gh command", () => {
+    for (const command of [
+      'gh pr create --title "Document CLI" --body "Test with gh pr view 12"',
+      `/bin/bash -lc "gh pr create -t 'Docs' -b 'run gh api repos/acme/app' --fill"`,
+    ]) {
+      const item = toolItem("bash", { command }, { stdout: "https://github.com/acme/app/pull/89\n" });
+      expect(findOpenedPullRequests(item).map((r) => r.number)).toEqual([89]);
+    }
+  });
+
   it("counts a create that failed because the branch already has the pull request", () => {
     expect(refsOf(cursorAlreadyExists)).toEqual(["Acme-Org/My.App#88"]);
   });

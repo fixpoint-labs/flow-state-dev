@@ -218,6 +218,12 @@ const GH_PR_CREATE = /(?:^|[\s;&|("'`])gh\s+pr\s+(?:create|new)\b/;
 const GH_READS_LINKS = /(?:^|[\s;&|("'`])gh\s+(?:pr\s+(?!(?:create|new)\b)[a-z]|search\b|api\b)/;
 
 /**
+ * A create's `--title`/`--body` text, which the command does not run: a body
+ * that says "test with gh pr view 12" is not a second command.
+ */
+const GH_CREATE_TEXT = /(?:^|\s)(?:--title|-t|--body|-b)(?:\s+|=)(?:'[^']*'|"(?:[^"\\]|\\.)*"|[^\s'"]+)/g;
+
+/**
  * A pull request's web link. `/pull/new/<branch>` (the link `git push`
  * prints) is not a pull request, and its next segment is not a number.
  */
@@ -334,7 +340,7 @@ export const githubPullRequestRule: PullRequestRule = {
       // arguments last, for a harness that passes a bare command string.
       const texts = typeof call.arguments === "string" ? [...stringsIn(args), call.arguments] : stringsIn(call.arguments);
       const command = texts.find((text) => GH_PR_CREATE.test(text));
-      if (command === undefined || GH_READS_LINKS.test(command)) return [];
+      if (command === undefined || GH_READS_LINKS.test(command.replace(GH_CREATE_TEXT, " "))) return [];
       title = flagValue(command, ["--title", "-t"]);
       branch = flagValue(command, ["--head", "-H"]);
       return linksIn(stringsIn(call.output)).map((ref) => ({ ...ref, title, branch, state: "open" }));
