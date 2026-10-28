@@ -53,7 +53,7 @@ count, is the check.
 
 FIX-2070 removes these outright as it builds their replacements, with no alias
 ([FIX-2070's ER-7](https://github.com/fixpoint-labs/flow-state-dev/pull/3983), [D4](DECISIONS.md#d4)). FIX-2070's closure,
-FIX-2242, puts them in `RETIRED` ([#4024](https://github.com/fixpoint-labs/flow-state-dev/pull/4024), its D2); FIX-2249 checks they are there, and one still in package source then is FIX-2246's to remove.
+FIX-2242, puts every name in this section in `RETIRED` ([#4024](https://github.com/fixpoint-labs/flow-state-dev/pull/4024), its D2: rows `message-names` and `message-reply-to`), so FIX-2249 sweeps only the rows above, and one still in package source then is FIX-2246's to remove.
 
 | Retired | Becomes | Files |
 |---|---|---|
@@ -63,6 +63,7 @@ FIX-2242, puts them in `RETIRED` ([#4024](https://github.com/fixpoint-labs/flow-
 | `replyTo` | `inReplyTo` | 10 / 3 / 2 |
 | The `takes_tasks_only` and `no_turn` refusals | Nothing: anyone on the roster | — |
 | `workerMessageEntry`, `takesWorkerMessages`, `sendWorkerMessage`, `SendWorkerMessage`, `messageWorkerInputSchema`, `workerMessageInputSchema` (FIX-2238) | Nothing: the entry and tool above replace them | — |
+| `MESSAGE_WORKER_TOOL`, `WORKER_MESSAGE_ENTRY`, `answerTo` | Nothing: the entry, the tool and `inReplyTo` above replace them | — |
 | `WORKER_MESSAGES_SEEN_STATE` (FIX-2240) | Nothing: delivery once replaces the seen window | — |
 
 The entry was first specced as `receive` (#3983); the owner renamed it `onMessageReceived` on 2026-10-27. FIX-2238 (#3986) builds it under the new name and amends FIX-2070's merged spec, figures and the coordination design docs. FIX-2242 puts `receiveProblem`, `receiveEntry` and `RECEIVE_ENTRY` in `RETIRED`, never a bare `receive`, which is an ordinary verb and a live identifier elsewhere.
