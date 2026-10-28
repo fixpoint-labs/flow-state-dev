@@ -423,7 +423,7 @@ describe("the claim gate settles a task when its work is over", () => {
   it("a resume keeps the attempt's start on its run link", async () => {
     // The gate links the run again on a resume: the same attempt, started when it was.
     const h = await harness();
-    h.setBehaviour(async (ctx) => ({ resumedWith: await ctx.suspend!({ reason: "human_input", message: "waiting" }) }));
+    h.setBehaviour(async (ctx) => ({ resumedWith: await ctx.suspend!({ reason: "user_input", message: "waiting" }) }));
     const first = await h.run();
     const startedAt = (await h.row())!.run!.startedAt;
     expect(startedAt).toEqual(expect.any(Number));
@@ -439,7 +439,7 @@ describe("the claim gate settles a task when its work is over", () => {
     async (later) => {
       const h = await harness();
       h.setBehaviour(async (ctx) => {
-        const resolution = await ctx.suspend!({ reason: "human_input", message: "which one?" });
+        const resolution = await ctx.suspend!({ reason: "user_input", message: "which one?" });
         return { resumedWith: resolution };
       });
       const first = await h.run();
@@ -462,7 +462,7 @@ describe("the claim gate settles a task when its work is over", () => {
 
   it("a parked request stopped while it waits for a user cancels its task on that attempt (FIX-2129): never left waiting, never asked again", async () => {
     const h = await harness();
-    h.setBehaviour(async (ctx) => ctx.suspend!({ reason: "human_input", message: "which one?" }));
+    h.setBehaviour(async (ctx) => ctx.suspend!({ reason: "user_input", message: "which one?" }));
     const first = await h.run();
     expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "wait", questions: [{ ask: { kind: "input", prompt: "which one?" } }] });
 
@@ -475,8 +475,8 @@ describe("the claim gate settles a task when its work is over", () => {
   });
 
   it.each([
-    ["human_input", true],
-    ["human_approval", true],
+    ["user_input", true],
+    ["user_approval", true],
     ["external_event", false],
   ] as const)("a %s stop keeps its claim with no lease, and the resume settles it on attempt 1", async (reason, forPerson) => {
     const h = await harness();

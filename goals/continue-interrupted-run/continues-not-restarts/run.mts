@@ -90,7 +90,7 @@ await runGoal(async (failures) => {
     inputSchema: z.any(),
     outputSchema: z.unknown(),
     execute: async (_i: unknown, ctx: { suspend?: (payload: unknown) => unknown }) =>
-      ctx.suspend!({ reason: "human_approval", message: "Approve?" }),
+      ctx.suspend!({ reason: "user_approval", message: "Approve?" }),
   });
 
   const finish = handler({

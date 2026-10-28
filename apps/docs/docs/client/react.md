@@ -427,7 +427,7 @@ Filter to a specific reason or request:
 
 ```tsx
 const { pending } = useSuspensions(session, {
-  reasons: ["human_approval"],
+  reasons: ["user_approval"],
   requestId: "req_abc",
 });
 ```
@@ -464,12 +464,12 @@ A suspension doesn't have to be a yes/no gate. The same pause-and-resume machine
 
 Which card renders is decided by the suspension's `reason` and the shape of its `resumeSchema`:
 
-- `reason: "human_approval"` renders the Approve / Reject card.
-- `reason: "human_input"` picks by schema shape: a free-text **question** when there's no flat schema, a **selection** when the schema is a single enum (or array of enums), and a **form** when it's a flat object of scalars and enums.
+- `reason: "user_approval"` renders the Approve / Reject card.
+- `reason: "user_input"` picks by schema shape: a free-text **question** when there's no flat schema, a **selection** when the schema is a single enum (or array of enums), and a **form** when it's a flat object of scalars and enums.
 
-`<ItemsRenderer>` makes that choice automatically, so a `human_input` suspension renders an actionable card with no extra wiring. A registered `renderers.suspension` still wins, and `renderers.suspension: false` still suppresses inline cards.
+`<ItemsRenderer>` makes that choice automatically, so a `user_input` suspension renders an actionable card with no extra wiring. A registered `renderers.suspension` still wins, and `renderers.suspension: false` still suppresses inline cards.
 
-On the server, a `human_input` gate defaults to `allow: ["submit"]`. Add `"skip"` to make the step optional. When a human skips, `ctx.suspend()` returns the `SUSPENSION_SKIPPED` sentinel instead of throwing, so the flow author branches on it and falls back to a default.
+On the server, a `user_input` gate defaults to `allow: ["submit"]`. Add `"skip"` to make the step optional. When a human skips, `ctx.suspend()` returns the `SUSPENSION_SKIPPED` sentinel instead of throwing, so the flow author branches on it and falls back to a default.
 
 ```ts
 import { handler, SUSPENSION_SKIPPED } from "@flow-state-dev/core";
@@ -481,7 +481,7 @@ const clarify = handler({
   outputSchema: z.object({ priority: z.string() }),
   execute: async (input, ctx) => {
     const answer = await ctx.suspend!({
-      reason: "human_input",
+      reason: "user_input",
       message: "How should we triage this draft?",
       resumeSchema: z.object({
         priority: z.enum(["low", "normal", "urgent"]),
@@ -496,7 +496,7 @@ const clarify = handler({
 ```
 
 ```tsx
-// Client: ItemsRenderer auto-picks the form card for this human_input gate.
+// Client: ItemsRenderer auto-picks the form card for this user_input gate.
 <SuspensionResolverProvider resolve={session.resumeSuspension}>
   <ItemsRenderer items={session.items} />
 </SuspensionResolverProvider>

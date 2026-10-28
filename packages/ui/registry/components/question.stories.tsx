@@ -9,7 +9,7 @@ const SUSPENSION_ID = "susp-question";
 
 const item = suspensionItem({
   suspensionId: SUSPENSION_ID,
-  reason: "human_input",
+  reason: "user_input",
   message: "What should we know about the launch deadline?",
   resumeSchema: { type: "string", minLength: 1 },
   allow: ["submit"],
@@ -52,7 +52,7 @@ export const Skippable: Story = {
           <Question
             item={suspensionItem({
               suspensionId: "susp-question-skip",
-              reason: "human_input",
+              reason: "user_input",
               message: "Any extra context? (optional)",
               resumeSchema: { type: "string" },
               allow: ["submit", "skip"],

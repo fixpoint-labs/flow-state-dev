@@ -27,7 +27,7 @@ function seededSuspension(requestId: string): SuspensionRecord {
     flowKind: "cleanup-test",
     actionName: "run",
     userId: "u1",
-    reason: "human_approval",
+    reason: "user_approval",
     message: "stale gate",
     status: "approved",
     blockInstanceId: "seq",

@@ -769,8 +769,8 @@ async function legE(run: Run, dbFile: string, restart: () => Promise<Run>): Prom
 /** f. The host's setting: waitForUser with none reads it; a raw ctx.suspend keeps its own. */
 async function legF(run: Run): Promise<void> {
   const own = await file(run, word("[ask:input] the host's deadline"));
-  const rawTimed = await file(run, word(`[raw:human_input:${RAW_TIMEOUT_MS}] a raw stop with its own`));
-  const rawNone = await file(run, word("[raw:human_input] a raw stop with none"));
+  const rawTimed = await file(run, word(`[raw:user_input:${RAW_TIMEOUT_MS}] a raw stop with its own`));
+  const rawNone = await file(run, word("[raw:user_input] a raw stop with none"));
   for (const id of [own, rawTimed, rawNone]) if (!(await untilWaiting(run, id, "f"))) return;
   const deadlineOf = async (id: string) => {
     const row = await run.h.byId(id);

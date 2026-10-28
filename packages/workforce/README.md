@@ -1394,7 +1394,7 @@ const { hire, fire } = createWorkerHireBlocks(installation);
 const rosterTools = {
   hire: hire.as({ name: "hire", description: "Hire a worker of the user's own." }),
   fire: sequencer({ name: "fire", description: "Fire one of the user's own workers.", inputSchema: fire.inputSchema, outputSchema: fire.outputSchema })
-    .tap(askFire) // your own `human_approval` suspension, if a fire should wait for the user
+    .tap(askFire) // your own `user_approval` suspension, if a fire should wait for the user
     .step(fire),
 };
 
@@ -2460,7 +2460,7 @@ await reporter.bind(host); // after the runtime exists; restarts owed work
 - **One report per fingerprint** (flow, action, error code, normalized message). A repeat raises the count; a redelivered occurrence counts once. At most `limits.newPerWindow` (5) new reports per `limits.windowMs` (1 hour); the rest go into one storm report.
 - **Secrets are redacted at intake**, before a row, a held request or a storm entry is written: the environment's keys, `secrets()`, and the operator's stored MCP keys.
 - **The draft run has no tracker tools.** A separate filing run gets the tracker project's MCP servers, and a failed filing is tried again.
-- **Preview.** The draft waits on a `human_input` suspension (so the runtime needs `durable: true`) until the operator files or dismisses it, unless `preview.autoFile` or `preview.autoFileAfterMs` say otherwise.
+- **Preview.** The draft waits on a `user_input` suspension (so the runtime needs `durable: true`) until the operator files or dismisses it, unless `preview.autoFile` or `preview.autoFileAfterMs` say otherwise.
 - **A filed report's repeats** add a comment at most every `limits.commentEveryMs`.
 - **It never reports its own failures**, and runs on its own flow, never through a coordinator.
 

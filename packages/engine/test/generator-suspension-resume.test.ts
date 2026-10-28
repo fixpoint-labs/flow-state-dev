@@ -1142,7 +1142,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
       inputSchema: z.object({ repository: z.string() }),
       outputSchema: z.object({ repository: z.string() }),
       execute: async (input, ctx) => {
-        await ctx.suspend!({ reason: "human_approval", message: `Set the repository to ${input.repository}?` });
+        await ctx.suspend!({ reason: "user_approval", message: `Set the repository to ${input.repository}?` });
         return { repository: input.repository };
       },
     });

@@ -38,7 +38,7 @@ describe("retryWithPolicy (p-retry backed)", () => {
     // It also must not be relabeled "Retry aborted".
     let attempts = 0;
     const suspension = new SuspensionError({
-      reason: "human_approval",
+      reason: "user_approval",
       suspensionId: "susp_1"
     });
     await expect(
@@ -55,7 +55,7 @@ describe("retryWithPolicy (p-retry backed)", () => {
 
   it("classifies SuspensionError as non-retryable regardless of policy", () => {
     const suspension = new SuspensionError({
-      reason: "human_approval",
+      reason: "user_approval",
       suspensionId: "susp_2"
     });
     expect(
