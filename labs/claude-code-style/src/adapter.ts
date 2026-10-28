@@ -254,7 +254,7 @@ export function createLabAdapter(): LabAdapter {
 }
 
 /** The adapter over one client. */
-export function createWiredLab(fsd: Client): LabAdapter {
+function createWiredLab(fsd: Client): LabAdapter {
   const workforce = createWorkforceClient(fsd);
   const modes = MODES.filter((mode) => mode.id === "session");
   const flows = new Map<string, Promise<string>>();

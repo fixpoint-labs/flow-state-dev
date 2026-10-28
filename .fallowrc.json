@@ -41,6 +41,9 @@
     "labs/knowledge-hub/test/**/*.spec.ts",
     "labs/knowledge-hub/scripts/**/*.mts",
 
+    // Loaded by `fsdev dev --config`, which no import reaches.
+    "labs/claude-code-style/fsdev.config.mts",
+
     "plugins/flow-state-dev/test/**/*.test.mjs",
     "plugins/flow-state-dev/skills/install-fsd/detect/detect.mjs",
 
