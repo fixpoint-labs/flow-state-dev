@@ -15,6 +15,9 @@
  *   - send a refused line through the session hook (`sendAction`), as the
  *     page did, and the "stays on the running turn" case fails: the hook
  *     leaves the running turn's stream for the waiting line's.
+ *   - one button that stops while a turn runs, as the page had, and the
+ *     "Send and Stop" case fails: there is no Send to press, and pressing
+ *     the one button stops the turn and keeps the line in the box.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCallback, useState, type ReactNode } from "react";
@@ -23,6 +26,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 const steerRunningTurn = vi.fn();
 const sendAction = vi.fn(async () => undefined);
 const followRequest = vi.fn();
+const abortRequest = vi.fn(async () => undefined);
 /** The client's `flow(kind).send`: a line sent beside the running turn. */
 const clientSend = vi.fn(async () => ({ id: "line-1" }));
 /** Ends the running turn in the stubbed hook. */
@@ -53,7 +57,7 @@ vi.mock("@flow-state-dev/react", () => ({
       refresh,
       sendAction,
       followRequest,
-      abortRequest: vi.fn(),
+      abortRequest,
       detail: undefined,
       isLoading: false,
       isStreaming,
@@ -74,6 +78,7 @@ afterEach(() => {
   steerRunningTurn.mockReset();
   sendAction.mockClear();
   followRequest.mockClear();
+  abortRequest.mockClear();
   clientSend.mockClear();
   serverState = {};
   localStorage.clear();
@@ -130,5 +135,19 @@ describe("a line sent while the turn runs", () => {
     act(() => endTurn());
     await waitFor(() => expect(followRequest).toHaveBeenCalledWith("line-1"));
     expect(followRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("while a turn runs, Send sends the line and clears the box, and Stop is a button of its own", async () => {
+    steerRunningTurn.mockResolvedValue({ taken: false, live: false });
+    mount();
+    expect(screen.getByTestId("line-hint").textContent).toContain("joins this turn if Cursor can take it, or runs after this turn");
+    const box = screen.getByPlaceholderText("Ask Cursor…") as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "after that" } });
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    await waitFor(() => expect(clientSend).toHaveBeenCalledWith("turn", { prompt: "after that" }, { sessionId: "s1" }));
+    await waitFor(() => expect(box.value).toBe(""));
+    expect(abortRequest).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    expect(abortRequest).toHaveBeenCalledTimes(1);
   });
 });

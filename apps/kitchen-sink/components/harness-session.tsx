@@ -18,6 +18,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
+import { SquareIcon } from "lucide-react";
 import { createClient, harnessLines, steerRunningTurn, type SessionRequestSummary } from "@flow-state-dev/client";
 import {
   FlowProvider,
@@ -44,6 +45,7 @@ import {
 } from "@/components/flow-state/conversation";
 import {
   PromptInput,
+  PromptInputButton,
   PromptInputSubmit,
   PromptInputTextarea,
   type PromptInputMessage,
@@ -282,12 +284,13 @@ function SessionBody({
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
               />
-              <PromptInputSubmit
-                className="mr-2 sm:mr-4"
-                status={session.isStreaming ? "streaming" : "ready"}
-                disabled={!session.isStreaming && message.trim().length === 0}
-                onStop={session.abortRequest}
-              />
+              {/* While a turn runs, Stop and Send are two buttons: one that did both would stop the turn when a line was meant. */}
+              {session.isStreaming && (
+                <PromptInputButton aria-label="Stop" data-testid="turn-stop" onClick={() => void session.abortRequest()}>
+                  <SquareIcon className="size-4" />
+                </PromptInputButton>
+              )}
+              <PromptInputSubmit className="mr-2 sm:mr-4" status="ready" disabled={message.trim().length === 0} />
             </PromptInput>
           </div>
         </div>
@@ -322,7 +325,7 @@ function SessionModel({ model, models, label }: { model: string | undefined; mod
   );
 }
 
-/** The lines the latest turn took while it ran, and where the last line sent went. */
+/** While a turn runs, what a line sent now does; the lines the latest turn took; and where the last line sent went. */
 function LineNotes({
   steered,
   last,
@@ -334,15 +337,21 @@ function LineNotes({
   running: boolean;
   label: string;
 }) {
-  if (steered.length === 0 && !(running && last === "after-this-turn")) return null;
+  const after = running && last === "after-this-turn";
+  if (steered.length === 0 && !running) return null;
   return (
     <div className="mx-auto max-w-3xl px-3 pt-2 text-sm text-muted-foreground sm:px-4" data-testid="line-notes">
+      {running && !after && (
+        <p data-testid="line-hint">
+          {label} is working. A line you send now joins this turn if {label} can take it, or runs after this turn. Stop ends the turn.
+        </p>
+      )}
       {steered.map((line, i) => (
         <p key={i} className="break-words" data-testid="line-taken">
           You, taken into the running turn: {line}
         </p>
       ))}
-      {running && last === "after-this-turn" && (
+      {after && (
         <p data-testid="line-after">{label} couldn&apos;t take your line into this turn. It runs after this turn.</p>
       )}
     </div>

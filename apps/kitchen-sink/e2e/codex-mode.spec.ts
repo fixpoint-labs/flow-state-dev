@@ -106,6 +106,8 @@ test.describe("a line sent while a long turn runs (FIX-2265)", () => {
   // fix), and the line never runs: "turn 2" never shows, before or after a
   // reload. With the page sending the line through the session hook, as it
   // did, the page leaves the running turn and this fails before the line runs.
+  // With one button that stops while a turn runs, as the page had, there is no
+  // Send to press, and that button stops the turn and keeps the line.
   test("runs after the turn, the page stays on the running turn, and both survive a reload", async ({
     page,
     consoleErrors: _consoleErrors,
@@ -117,8 +119,12 @@ test.describe("a line sent while a long turn runs (FIX-2265)", () => {
     await expect(conversation).toContainText(/turn 1 of thread scripted-codex-\S+\./);
     const thread = /turn 1 of thread (scripted-codex-\S+)\./.exec((await conversation.textContent())!)![1]!;
 
-    await send(page, "After that, reply BRAVO.");
+    // Sent with the Send button, as a person does: while a turn runs it sends, and Stop is a button of its own.
+    await expect(page.getByTestId("line-hint")).toContainText("joins this turn if Codex can take it, or runs after this turn");
+    await page.getByTestId("message-input").fill("After that, reply BRAVO.");
+    await page.getByRole("button", { name: "Submit" }).click();
     await expect(page.getByTestId("line-after")).toBeVisible();
+    await expect(page.getByTestId("message-input")).toHaveValue("");
     // Still on the running turn: its stop control is up and nothing stamps it finished.
     await expect(stop(page)).toBeVisible();
     await expect(page.getByTestId("worked-for")).toHaveCount(0);
