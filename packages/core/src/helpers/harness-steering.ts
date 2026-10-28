@@ -72,7 +72,7 @@ function offerKeyOf(ctx: HarnessCallbackContext): string {
  * defineFlow({
  *   kind: "coder",
  *   actions: {
- *     turn: { block: turn(agent), concurrency: "queue" },
+ *     turn: { block: turn(agent), concurrency: "defer" },
  *     steer: steering.action(),
  *   },
  * });

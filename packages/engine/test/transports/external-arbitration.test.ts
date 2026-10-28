@@ -29,7 +29,7 @@ import {
   runAction,
   type ConcurrencyLeaseBackend,
   type DispatchEnvelope,
-  type FlowDispatcher,
+  type FlowRunner,
   type WorkerAdapter
 } from "../../src";
 import type { FlowStateRuntime } from "../../src/flowstate/types";
@@ -112,7 +112,7 @@ function testWorker(options: {
   return {
     mode: "dispatch-only",
     ...(options.backend !== undefined ? { leaseBackend: options.backend } : {}),
-    createDispatcher(runtime: FlowStateRuntime): FlowDispatcher {
+    createRunner(runtime: FlowStateRuntime): FlowRunner {
       return {
         async dispatch(envelope) {
           if (options.failEnqueue?.() === true) throw new Error("queue unavailable");
@@ -123,7 +123,7 @@ function testWorker(options: {
           return { requestId: envelope.requestId, finished, abort: () => {} };
         },
         close: async () => {}
-      } as FlowDispatcher;
+      } as FlowRunner;
     },
     startWorker: () => ({ close: async () => {} })
   };

@@ -49,7 +49,8 @@ import type {
   TransportBindings,
   TransportRoute
 } from "../transports/types";
-import type { FlowDispatcher } from "../transports/dispatcher";
+import type { FlowRunner } from "../transports/runner";
+import { refuseRetiredDispatcherOption } from "../transports/runner";
 import type { ConcurrencyArbiter } from "../transports/concurrency/arbiter";
 
 /**
@@ -170,7 +171,7 @@ export type CreateFlowApiRouterOptions = {
   staleSweepThresholdMs?: number;
 
   /**
-   * How long a request handed to an external dispatcher may sit unclaimed in
+   * How long a request handed to an external runner may sit unclaimed in
    * the queue before a sweep treats it as lost (milliseconds).
    *
    * A queued request has no executor heartbeat — nothing is running it yet — so
@@ -259,10 +260,10 @@ export type CreateFlowApiRouterOptions = {
 
   /**
    * Controls where flow actions execute. Default: in-process via runAction.
-   * Set to a FlowDispatcher implementation to route execution to an
-   * external worker (e.g., BullMQ WorkerDispatcher).
+   * Set to a FlowRunner implementation to route execution to an
+   * external worker (e.g., BullMQ WorkerRunner).
    */
-  dispatcher?: FlowDispatcher;
+  runner?: FlowRunner;
   /**
    * Concurrency arbiter for this router's host. Defaults to a fresh one.
    *
@@ -422,6 +423,7 @@ export async function dispatchDedicatedRoute(
  * Creates a catch-all route adapter with default no-op internal seam behavior.
  */
 export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowApiRouter {
+  refuseRetiredDispatcherOption(options, "createFlowApiRouter");
   // Server-internal sweeper: marks requests whose executor heartbeat stopped
   // as interrupted, releasing session locks. Disabled when interval is 0.
   //
@@ -492,7 +494,7 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     ...options,
     runtimeConfig,
     internalSeams: NOOP_INTERNAL_ROUTE_SEAMS,
-    dispatcher: options.dispatcher,
+    runner: options.runner,
     arbiter: options.arbiter
   });
 

@@ -3,7 +3,7 @@
  * state (FIX-1244).
  *
  * The board's per-run tool cache and observation ledger are installed at the
- * top of every drain and cleared at its end. `board.unparkAndDrain` makes an
+ * top of every drain and cleared at its end. An answer's drain makes an
  * overlapping drain the ordinary case rather than an accident: on a hold
  * board the drain that parked the task is still open when the answer's drain
  * starts, and on an exit board two answers can arrive in two requests at

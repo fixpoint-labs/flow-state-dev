@@ -348,7 +348,7 @@ Two rules make the seam safe, and both are structural rather than validated:
 
 Adoption validates the stored record's full identity — flow kind, principal, tenant, org, parent session — before reusing it. The derivation alone is not sufficient, because the seam is not the only writer: the public session-create route lets a caller choose a session id, so a record can be pre-created at the deterministic child key, and `createExecutionContext` validates user/tenant/org bindings but neither flow kind nor parent session. A mismatch is a named refusal, never a silent create.
 
-The member is optional in the *type* so a hand-built test context still type-checks. It is not optional in *deployment*: a process that executes requests without one is a construction failure, `worker-only` included — that mode constructs no dispatcher today, so a deployment whose capabilities dispatch must supply the start operation there explicitly.
+The member is optional in the *type* so a hand-built test context still type-checks. It is not optional in *deployment*: a process that executes requests without one is a construction failure, `worker-only` included — that mode constructs no runner today, so a deployment whose capabilities dispatch must supply the start operation there explicitly.
 
 ### The liveness enablement gate
 

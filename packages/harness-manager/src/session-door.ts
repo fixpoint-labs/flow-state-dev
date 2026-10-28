@@ -289,7 +289,7 @@ export function harnessSessionDoor(options: HarnessSessionDoorOptions) {
       if (refused !== undefined) throw new SessionDoorRefused(refused);
       const after = board.tasks.get(row.id);
       // A line that answered the task's last open question owes it its turn too (FIX-2133).
-      if (after?.waitingOn === "steer" || after?.turnOwed === true) await options.onSteered?.(ctx, after);
+      if (after?.keptOpenBy === "steer" || after?.turnOwed === true) await options.onSteered?.(ctx, after);
       return { steered: row.id };
     },
   });

@@ -10,7 +10,7 @@
  *   The message parks on the wait gate bound to that request, and the engine
  *   resumes it when that request ends: it waits for the stopped request to
  *   end, not merely resume, since the session is busy until then.
- * - **in a task's session, an open hold on its task** (`hasOpenHold`, FIX-2058
+ * - **in a task's session, an open hold on its task** (`hasOpenQuestion`, FIX-2058
  *   ER-2): a stop for the user and a question both hold. A question has no
  *   request to wait on, so the message parks bound to the task row, with a
  *   short deadline, and looks again.
@@ -23,7 +23,7 @@
  */
 import { canHoldWait, MAX_WAIT_DEPTH, parkOnWait } from "@flow-state-dev/core";
 import type { BlockContext, WaitGateBinding } from "@flow-state-dev/core/types";
-import { findTaskPartitions, hasOpenHold, rowsInSession } from "@flow-state-dev/orchestration/tasks";
+import { findTaskPartitions, hasOpenQuestion, rowsInSession } from "@flow-state-dev/orchestration/tasks";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt } from "../conversation-board/ledger";
 import { TASK_ID_STATE_KEY } from "../workers/keys";
 import { messageLogOf, type WorkerMessageRow } from "./message-log";
@@ -41,7 +41,7 @@ async function userHoldOf(ctx: BlockContext): Promise<WaitGateBinding | null> {
   for (const partition of await findTaskPartitions(ctx, CONVERSATION_LEDGER_ID, taskId)) {
     const ledger = await conversationLedgerAt(ctx, partition);
     if (ledger === undefined) continue;
-    const held = rowsInSession(ledger, sessionId).find(hasOpenHold);
+    const held = rowsInSession(ledger, sessionId).find(hasOpenQuestion);
     if (held !== undefined) return { board: ledger.collectionId, taskId: held.id };
   }
   return null;

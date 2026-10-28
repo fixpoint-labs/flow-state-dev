@@ -20,7 +20,7 @@
  * | `recorded` | the recorded-not-started mark (`undispatched`) | `held` | FIX-2080 |
  * | `post` | a post row (`sealed.kind === "post"`) | a task in the delegate's ongoing session, its result to the conversation | FIX-2083 |
  * | `reopened` | a reopened row (`reopened`) | unmarked, with one steer pointing at the session's latest line | FIX-2086 |
- * | `queued` | a running row held open for a message queued to its session (`waitingOn: "queued"`) | running, `waitingOn: "filed"`, no lease | FIX-2103 |
+ * | `queued` | a running row held open for a message queued to its session (`keptOpenBy: "queued"`) | running, `keptOpenBy: "filed"`, no lease | FIX-2103 |
  *
  * An entry that is off reads its shape as it is stored, which is what the
  * code that still writes it expects. Removed no earlier than FIX-2071.
@@ -38,7 +38,7 @@ import { isTerminalStatus, type TaskStatus } from "./task-status";
 const REOPENED_STEER =
   "The user wrote to you about this task after you had finished it; their message is the latest line in this session. Pick the task up again from there.";
 
-/** The wait a row held open for a queued message stored (`waitingOn`), which no write makes now. */
+/** The wait a row held open for a queued message stored (`keptOpenBy`), which no write makes now. */
 export const QUEUED_WAIT = "queued";
 
 /** The retired shapes, one entry each. */
@@ -84,7 +84,7 @@ export const RETIRED_SHAPES: Readonly<Record<RetiredShape, RetiredShapeEntry>> =
       return { ...rest, status: "held", metadata: { ...metadata, heldReason: row.error } };
     },
   },
-  // The recorded-not-started mark (`dispatchTask`'s, FIX-1875) is a held row:
+  // The recorded-not-started mark (`dispatchTask`'s, FIX-1875) is a held row: // retired-name-refusal: a legacy reader
   // it starts when something releases it, and not before.
   recorded: {
     on: true,
@@ -142,7 +142,7 @@ export const RETIRED_SHAPES: Readonly<Record<RetiredShape, RetiredShapeEntry>> =
   queued: {
     on: true,
     owner: "FIX-2103",
-    read: (row) => (row.waitingOn === QUEUED_WAIT ? { ...without(row, "leaseUntil"), waitingOn: "filed" } : undefined),
+    read: (row) => (row.keptOpenBy === QUEUED_WAIT ? { ...without(row, "leaseUntil"), keptOpenBy: "filed" } : undefined),
   },
 };
 

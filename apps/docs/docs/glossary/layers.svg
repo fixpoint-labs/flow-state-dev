@@ -44,7 +44,7 @@
 <text class="t" x="265" y="598">react also uses client</text>
 <rect class="thin" x="466" y="466" width="201" height="146"/><text class="nm" x="478" y="490">Orchestration</text>
 <text class="t" x="478" y="512">Tasks, task boards,</text>
-<text class="t" x="478" y="528">dispatchers, skills</text>
+<text class="t" x="478" y="528">claim orders, skills</text>
 <text class="t" x="478" y="544">and the task tools</text>
 <line class="hi" x1="466" y1="560" x2="667" y2="560"/><text class="lb" x="478" y="580">USES</text>
 <text class="c" x="522" y="580">core</text>

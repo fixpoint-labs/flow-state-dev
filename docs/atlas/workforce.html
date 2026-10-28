@@ -1684,7 +1684,7 @@ const teamDocs = <b>defineResourceCollection</b>({
 
         <rect class="n-code" x="528" y="16" width="396" height="120" rx="5"/>
         <text class="t-lbl f-code" x="544" y="38">ORDER &#183; deps[] EXISTS</text>
-        <text class="t-b" x="544" y="64">addTasks with deps</text>
+        <text class="t-b" x="544" y="64">createTasks with deps</text>
         <text class="t-xs" x="544" y="88">isClaimable WAITS ON deps[]</text>
         <text class="t-xs" x="544" y="106">SETTLE = completed. NEXT UNLOCKS.</text>
         <text class="t-xs" x="544" y="122">task.ts &#183; collection/internal.ts</text>
@@ -1896,7 +1896,7 @@ const claimed = await collection.<b>claim</b>(subscriberId, {
 <i>// Team role, L2 worker. Not a package API. Not a coordinator L1 type.</i>
 <i>// Order is task.deps + isClaimable. Work is dispatcher() into that session.</i>
 <i>// Idle chain before newer posts. Broke path = lease / parked / retry.</i>
-await collection.<b>addTasks</b>([
+await collection.<b>createTasks</b>([
   { id: <em>"reply-alice"</em>, goal: <em>"reply as alice"</em>, assignee: <em>"alice"</em> },
   { id: <em>"reply-bob"</em>,   goal: <em>"reply as bob"</em>,   assignee: <em>"bob"</em>,   deps: [<em>"reply-alice"</em>] },
   { id: <em>"reply-cara"</em>,  goal: <em>"reply as cara"</em>,  assignee: <em>"cara"</em>,  deps: [<em>"reply-bob"</em>] },
