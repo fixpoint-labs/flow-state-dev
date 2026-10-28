@@ -18,7 +18,7 @@ vi.mock("../src/usage", async (importOriginal) => ({
   findCodexProgram,
 }));
 
-import { probeCodexAccount } from "../src/auth";
+import { probeCodexAccount } from "../src/account-probe";
 
 const program = { path: "/sdk/bin/codex", pathDirs: ["/sdk/bin"] };
 type Callback = (error: (Error & Record<string, unknown>) | null, stdout: string, stderr: string) => void;

@@ -21,7 +21,7 @@ export {
 export { translateCodexEvent } from "./translate";
 export { estimateCodexCost } from "./cost";
 export { findCodexProgram, readCodexUsage, type CodexProgram, type ReadCodexUsageOptions } from "./usage";
-export { probeCodexAccount, type CodexAccountProbe, type ProbeCodexAccountOptions } from "./auth";
+export { probeCodexAccount, type CodexAccountProbe, type ProbeCodexAccountOptions } from "./account-probe";
 export {
   createEmitState,
   emitTranslatedEvent,

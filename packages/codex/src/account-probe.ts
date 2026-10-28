@@ -53,13 +53,7 @@ export interface ProbeCodexAccountOptions {
 /** {@link ProbeCodexAccountOptions.timeoutMs}'s default. */
 const DEFAULT_TIMEOUT_MS = 10_000;
 
-/**
- * Ask Codex whether it has a credential, without a model turn.
- *
- * @param options The environment to start Codex with, and how long to wait.
- * @returns `account` with where the credential comes from, `none` with a
- *   reason, or `sdk-missing`. Never throws.
- */
+/** Ask Codex whether it has a credential, without a model turn (see the file header). Never throws. */
 export async function probeCodexAccount(options: ProbeCodexAccountOptions): Promise<CodexAccountProbe> {
   if ((options.env.CODEX_API_KEY ?? "") !== "") return { status: "account", source: "api-key" };
   let program: CodexProgram;

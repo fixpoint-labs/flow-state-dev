@@ -313,6 +313,7 @@ export const HOST_CHECKS: CodexHostChecks = {
     return root;
   },
   // A loaded host can take a while to start Codex: give it longer than the package's default.
+  // Deliberate: 30 s keeps the limit this check had before it moved, for cold hosts, so it is longer than Claude Code mode's 10 s probe.
   probe: (env) => probeCodexAccount({ env, timeoutMs: 30_000 }),
 };
 

@@ -1,15 +1,10 @@
-/**
- * The variables of a host's environment a Claude Code run needs:
- * `CLAUDE_CODE_PASS`, for `harnessEnv({ pass })` from `@flow-state-dev/core`.
- *
- * Without a list, a run inherits the server's whole `process.env` — every key,
- * token and connection string in it — and its model has a shell. This names
- * what a run needs to work, so a host hands it that and nothing else.
- */
+/** The environment pass-list a Claude Code run needs: `CLAUDE_CODE_PASS`. */
 
 /**
  * The only variables of the server's environment a Claude Code run needs, for
- * `harnessEnv({ pass: CLAUDE_CODE_PASS })`.
+ * `harnessEnv({ pass: CLAUDE_CODE_PASS })` from `@flow-state-dev/core`.
+ * Without a list, a run inherits the server's whole `process.env` — every key,
+ * token and connection string in it — and its model has a shell.
  *
  * `PATH` (its shell commands and git are found through it), `HOME`, `USER`
  * and `SHELL` (its sign-in, git identity and Bash tool), `TMPDIR`, the two
