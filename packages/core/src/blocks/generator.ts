@@ -130,7 +130,10 @@ interface DynamicCapCollect {
 
 /**
  * Extract context and tool entries from a capability's active presets in a
- * single traversal. Walks nested static uses recursively via flattenCapabilities.
+ * single traversal. Its nested static uses are flattened first
+ * (flattenCapabilities: dependencies first, each once, so a dependency two
+ * capabilities share counts once, as it does on a static uses entry); then
+ * each one's own presets are read, the capability's last.
  * Only the tool buckets named in `collect` are resolved; the others come back empty.
  */
 async function resolveDynamicCapSurface(
@@ -138,6 +141,23 @@ async function resolveDynamicCapSurface(
   ctx: BlockContext,
   collect: DynamicCapCollect,
 ): Promise<DynamicCapSurface> {
+  const surface: DynamicCapSurface = { contextEntries: [], historyEntries: [], tools: [], controlTools: [] };
+  const nested = cap.uses
+    ? flattenCapabilities(cap.uses.filter((e): e is CapabilityRef => typeof e !== "function"))
+    : [];
+  for (const each of [...nested, cap]) {
+    await collectOwnPresets(each, ctx, collect, surface);
+  }
+  return surface;
+}
+
+/** One capability's own active presets into `surface`, its nested uses left to the caller. */
+async function collectOwnPresets(
+  cap: CapabilityRef,
+  ctx: BlockContext,
+  collect: DynamicCapCollect,
+  surface: DynamicCapSurface,
+): Promise<void> {
   // Open config is a build-time transform resolved by mergeCapabilities. A
   // config-declaring capability reaching the dynamic `uses` path — returned
   // directly by a dynamic resolver, or nested in a dynamically-resolved
@@ -154,25 +174,7 @@ async function resolveDynamicCapSurface(
     );
   }
 
-  const contextEntries: Array<unknown> = [];
-  const historyEntries: Array<NonNullable<PresetDef["history"]>> = [];
-  const tools: GeneratorTool[] = [];
-  const controlTools: GeneratorTool[] = [];
-
-  // Walk nested static uses
-  if (cap.uses) {
-    const flattened = flattenCapabilities(
-      cap.uses.filter((e): e is CapabilityRef => typeof e !== "function")
-    );
-    for (const nested of flattened) {
-      const nestedSurface = await resolveDynamicCapSurface(nested, ctx, collect);
-      contextEntries.push(...nestedSurface.contextEntries);
-      historyEntries.push(...nestedSurface.historyEntries);
-      tools.push(...nestedSurface.tools);
-      controlTools.push(...nestedSurface.controlTools);
-    }
-  }
-
+  const { contextEntries, historyEntries, tools, controlTools } = surface;
   for (const { preset } of resolveActivePresets(cap)) {
     if (preset.context) {
       const entries = Array.isArray(preset.context) ? preset.context : [preset.context];
@@ -198,8 +200,6 @@ async function resolveDynamicCapSurface(
       }
     }
   }
-
-  return { contextEntries, historyEntries, tools, controlTools };
 }
 
 /**
