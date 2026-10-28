@@ -329,14 +329,14 @@ await runGoal(async () => {
     const leg = a.split(":")[0]!;
     return scenes.has(leg === "a" || leg === "c" ? "ac" : leg === "e" || leg === "d" ? "ed" : (leg as Scene));
   });
-  // A scene that threw graded none of its assertions: each reads FAIL, never PASS.
+  // A scene that threw or stopped early graded none of its assertions: each reads FAIL, never PASS.
   const sceneOf = (a: string): Scene => {
     const leg = a.split(":")[0]!;
     return leg === "a" || leg === "c" ? "ac" : leg === "e" || leg === "d" ? "ed" : (leg as Scene);
   };
   const broken = (a: string) => {
     const r = results[sceneOf(a)];
-    return r === undefined || r.failures.some((f) => /^[a-z0-9]+:threw /.test(f));
+    return r === undefined || r.failures.some((f) => /^[a-z0-9]+:(threw|stopped) /.test(f));
   };
   for (const a of ran) say(`${failures.some((f) => f.startsWith(`${a} `)) || broken(a) ? "FAIL" : "PASS"}  ${a}`);
   if (control !== undefined) {

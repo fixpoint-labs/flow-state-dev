@@ -19,6 +19,7 @@
  * message log and the board's own task read. Sent messages are counted from
  * each turn's own tool outputs.
  */
+import type { Scene } from "./controls.mts";
 import { faultLines } from "../workers-message-each-other/faults.mts";
 import { resumedAt, talkThrough } from "../workers-message-each-other/legs-calls.mts";
 import { RESEND_FROM, TAKEOVER_MS, requestsFor, senderOf, tookWithin, type Servers } from "../workers-message-each-other/legs-delivery.mts";
@@ -122,6 +123,12 @@ export async function hireRing(world: World): Promise<string[]> {
   return failures;
 }
 
+/** A scene that ends early grades none of its other assertions: the report reads all of them FAIL, never PASS. */
+function stopped(r: LegResult, scene: Scene): LegResult {
+  r.failures.push(`${scene}:stopped — setup: the scene ended here, so its other assertions never ran`);
+  return r;
+}
+
 /**
  * Scene ac. `servers.restart` serves the store with Helper A's `exit-after-row`
  * fault; the runner applies it to Helper A's messages only.
@@ -146,13 +153,13 @@ export async function sceneAC(world: World, servers: Servers, walked: Walked): P
   if (!(await servers.crashed(240_000))) {
     r.failures.push(`c:lands-once — setup: the server didn't exit within 240 s of Helper A's line (request ${asked})`);
     await servers.restart([], "ac-no-crash");
-    return r;
+    return stopped(r, "ac");
   }
   const line = faultLines(servers.faultLog).find((l) => l.fault === "exit-after-row" && l.at >= since);
   await servers.restart([], "ac-after-row");
   if (line === undefined) {
     r.failures.push(`c:lands-once — setup: the exit-after-row fault never fired on Helper A's call, so this scene shows nothing`);
-    return r;
+    return stopped(r, "ac");
   }
   walked.crashedCall = line.id;
   r.notes.push(`the server died after writing call ${line.id}'s row, in Helper A's request ${line.request} (the line was ${asked})`);
@@ -226,7 +233,7 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
   }, 30_000, 1_000);
   if (stop === undefined) {
     r.failures.push(`e:heard-while-calling — setup: Researcher's turn opened no stop for Alice (${stopTurn.status})`);
-    return r;
+    return stopped(r, "ed");
   }
 
   // Helper A's file tells it to answer a worker's question by message; a task's question is answered by
@@ -408,7 +415,7 @@ export async function sceneB(world: World): Promise<LegResult> {
   const taskSession = await sessionOfTask(alice, helperA, taskId);
   if (taskSession === undefined) {
     r.failures.push(`b:in-task-session — setup: Helper B's task ${taskId} named no session within 180 s`);
-    return r;
+    return stopped(r, "b");
   }
   const runningWhenSent = (await rowOf(alice, helperA, taskId))?.status;
   const first = await talk(world.turns, "b", alice, HERALD, herald, `Call sendMessage with exactly these arguments, as written: ${JSON.stringify({ to: { task: taskId }, text: "Herald here: a heads-up, no answer needed." })}. Report what the tool answered.`);
