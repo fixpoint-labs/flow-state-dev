@@ -16,6 +16,10 @@
  * cancelled run returns no handle, so the hook is the only carrier that survives
  * exactly the deadline it exists for.
  *
+ * `onSteerable` is the one channel the other way during a run: once a local
+ * run is sent, the block offers the host Cursor's `run.steer`, so a line can
+ * join the turn in flight, and withdraws it before returning.
+ *
  * The run's outcome comes from `run.wait()` and from nowhere else. Cursor
  * reports its terminal result there rather than on the stream, so a `status`
  * message saying `FINISHED` is a note and nothing more. That is the difference
@@ -46,6 +50,8 @@ import type {
   HarnessResolver,
   HarnessRunOutcome,
   HarnessSessionHook,
+  HarnessSteer,
+  HarnessSteerHook,
   PlanListItem,
 } from "@flow-state-dev/core/types";
 import type { UsesSlot } from "@flow-state-dev/core";
@@ -135,6 +141,20 @@ export interface CursorAgentOptions {
    * agent, so no dead id is ever written back over a good one.
    */
   onSession?: HarnessSessionHook;
+  /**
+   * Offered Cursor's `run.steer` once the prompt is sent, on a run that has
+   * one (a local run), so the host can hand a line to the turn in flight; then
+   * `null` before the block returns, on every exit. Never called for a run
+   * that can't steer.
+   *
+   * The steer answers `"delivered"` only for Cursor's `complete_delivered`;
+   * `revert_to_followup`, a throw, or a line sent after the offer was
+   * withdrawn are `"refused"`, and the host sends the line its own way. A turn
+   * that ends with an answer still owed waits for it before the block returns,
+   * with no timer; only a run stopped from outside (its deadline) leaves one
+   * unanswered.
+   */
+  onSteerable?: HarnessSteerHook;
   /**
    * Which model the run uses: a fixed id, or a resolver called once per
    * invocation, like `cwd` and `resume`, so one block can run a different
@@ -367,6 +387,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
     cwd: resolveCwd,
     resume: resolveResume,
     onSession,
+    onSteerable,
     model,
     agent: agentOptions,
     send: sendOptions,
@@ -420,6 +441,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
       const writePlan = recordPlan ? openPlanWriter(ctx) : null;
       const dispatchedAt = Date.now();
       let agent: CursorAgentLike | null = null;
+      let steering: SteerOffer | null = null;
       let sessionId: string | null = null;
       let runModel: CursorModelSelection | undefined;
 
@@ -441,8 +463,13 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         // aborted never fires `abort` again.
         if (ctx.signal?.aborted) throw new CursorAgentAbortedError(agent.agentId);
         const run = await agent.send(prompt, sendOptions);
+        steering = offerSteer(run, ctx, onSteerable);
         const mirrored = await mirrorRun(run, ctx, emitState, name, writePlan);
         const settled = await settleRun(run, mirrored, ctx.signal);
+        if (steering !== null) {
+          steering.withdraw();
+          await steering.answered(ctx.signal);
+        }
         // A call still `running` when the stream closed has no result coming,
         // and an `error` or `cancelled` wait is an OUTCOME this block returns
         // rather than a throw — so the `catch` below never sees it. Left open,
@@ -469,10 +496,65 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         );
         throw failure;
       } finally {
+        steering?.withdraw();
         closeQuietly(agent);
       }
     },
   });
+}
+
+/** A run's live steer while the host holds it. */
+interface SteerOffer {
+  /** Stop taking lines and tell the host. Idempotent. */
+  withdraw(): void;
+  /** Wait for every line already handed over to have Cursor's answer, or for the deadline. */
+  answered(signal: AbortSignal | undefined): Promise<void>;
+}
+
+/**
+ * Offer `run.steer` to the host, when there is a host to offer it to and the
+ * run has one. Not gated on `supports`: the SDK's probe knows no `"steer"`
+ * operation and answers `false` for it on every run (1.0.40). A run whose
+ * steer can't take a line answers "send it as a follow-up", which is `refused`.
+ */
+function offerSteer(
+  run: CursorRunLike,
+  ctx: AgentCallbackContext,
+  onSteerable: HarnessSteerHook | undefined,
+): SteerOffer | null {
+  if (onSteerable === undefined || typeof run.steer !== "function") return null;
+  const runSteer = run.steer.bind(run);
+  const pending = new Set<Promise<unknown>>();
+  let open = true;
+  const steer: HarnessSteer = (text) => {
+    if (!open) return Promise.resolve("refused");
+    const answer = Promise.resolve()
+      .then(() => runSteer(text))
+      .then(
+        (outcome) => (outcome === "complete_delivered" ? ("delivered" as const) : ("refused" as const)),
+        () => "refused" as const,
+      );
+    pending.add(answer);
+    void answer.finally(() => pending.delete(answer));
+    return answer;
+  };
+  onSteerable(steer, ctx);
+  return {
+    withdraw() {
+      if (!open) return;
+      open = false;
+      onSteerable(null, ctx);
+    },
+    async answered(signal) {
+      if (pending.size === 0) return;
+      const deadline = abortRace(signal);
+      try {
+        await Promise.race([Promise.all([...pending]), deadline.promise]);
+      } finally {
+        deadline.dispose();
+      }
+    },
+  };
 }
 
 /**

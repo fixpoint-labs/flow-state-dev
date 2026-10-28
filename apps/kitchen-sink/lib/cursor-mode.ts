@@ -106,6 +106,7 @@ export function cursorBlockOptions(feeds: HarnessFeeds, seams: CursorSeams = {})
     cwd: feeds.cwd,
     resume: feeds.resume,
     onSession: feeds.onSession,
+    onSteerable: feeds.onSteerable,
     model: async (ctx) => cursorModelSelection(await feeds.model(ctx)),
     // Declares no plan record, so goal leg **p** can be seen to fail.
     recordPlan: goalControl() !== "no-record",

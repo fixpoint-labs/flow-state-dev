@@ -21,7 +21,11 @@
  * | `[fail]` | opens the agent, then the run's stream fails with another error |
  * | `[errored]` | opens the agent and streams its reply, then Cursor reports the run as errored (a result, not a throw) |
  * | `[fail-early]` | fails before opening any agent |
+ * | `[steer-refuse]` | the run answers a steer the way a run that can't take one does: "send it as a follow-up" |
  *
+ * Every run has a `steer`, as a local Cursor run does: while its stream runs
+ * it takes a line into the turn and answers `complete_delivered`; after, or
+ * under `[steer-refuse]`, it answers `revert_to_followup`.
  * The reply names how many turns the agent has had, which is how a test sees
  * a second turn continue the first's agent.
  */
@@ -32,6 +36,8 @@ import type {
   CursorSdkMessage,
   ResolveCursorClient,
 } from "@flow-state-dev/cursor";
+
+import { scriptedReceived } from "./scripted-received";
 
 /**
  * The script's pauses, in milliseconds: between steps, and the long one a
@@ -131,7 +137,13 @@ function scriptedRun(agentId: string, turn: number, prompt: string): CursorRunLi
   }
 
   let finished!: () => void;
-  const ended = new Promise<void>((resolve) => (finished = resolve));
+  let running = true;
+  const ended = new Promise<void>((resolve) =>
+    (finished = () => {
+      running = false;
+      resolve();
+    }),
+  );
   async function* streamed(): AsyncGenerator<CursorSdkMessage> {
     try {
       yield* stream();
@@ -150,6 +162,11 @@ function scriptedRun(agentId: string, turn: number, prompt: string): CursorRunLi
     cancel: async () => {
       cancel.abort();
     },
+    steer: async (text: string) => {
+      if (!running || cancel.signal.aborted || has("steer-refuse")) return "revert_to_followup";
+      scriptedReceived.push(text);
+      return "complete_delivered";
+    },
   };
 }
 
@@ -164,6 +181,7 @@ export function scriptedCursor(): ResolveCursorClient {
     send: async (prompt) => {
       const turn = (agents.turns.get(agentId) ?? 0) + 1;
       agents.turns.set(agentId, turn);
+      scriptedReceived.push(prompt);
       return scriptedRun(agentId, turn, prompt);
     },
   });

@@ -26,7 +26,7 @@ const manager = harnessManager({
   workspace: { root, sourceRepo, baseRef },
   runTimeoutMs: 30 * 60_000,
 
-  // The slot. Called once; the manager hands down four feeds.
+  // The slot. Called once; the manager hands down its feeds.
   harness: ({ cwd, resume, onSession, onUsage }) =>
     claudeCodeAgent({ cwd, resume, onSession, onUsage, detached: true, recordWork: true }),
 });
@@ -183,13 +183,14 @@ picture.
 
 ## The slot
 
-The manager calls your factory once, with four feeds (`HarnessFeeds`):
+The manager calls your factory once, with five feeds (`HarnessFeeds`):
 
 | Feed | What it does |
 |---|---|
 | `cwd` | Where this run works: the checkout the manager derived and provisioned. |
 | `resume` | Which session this attempt continues, or `null` for a fresh one. |
 | `onSession` | Called by the harness when it names its session, so the manager records it. |
+| `onSteerable` | Called by a harness whose run can take a line mid-turn, with the run's `steer` while it can and `null` after, so a steer reaches the step [as it runs](#a-run-that-takes-a-steer-live). Optional; a harness that can't steer ignores it. |
 | `onUsage` | Called by the harness with each subscription usage window its run reports, so the manager stores it in the run owner's [usage record](#subscription-usage). A harness that reports no usage ignores it. |
 
 They are the harness contract's own signatures, declared in `@flow-state-dev/core`. Each is handed the block's context, not the run's prompt.
@@ -206,11 +207,11 @@ harness: ({ cwd, resume, onSession }) =>
 ```ts
 import { cursorAgent } from "@flow-state-dev/cursor";
 
-harness: ({ cwd, resume, onSession }) =>
-  cursorAgent({ cwd, resume, onSession, agent: { model: { id: "composer-2.5" } } }),
+harness: ({ cwd, resume, onSession, onSteerable }) =>
+  cursorAgent({ cwd, resume, onSession, onSteerable, agent: { model: { id: "composer-2.5" } } }),
 ```
 
-Any block that takes the four feeds and returns a run handle conforming to `@flow-state-dev/core`'s harness contract is one this manager can drive.
+Any block that takes the feeds and returns a run handle conforming to `@flow-state-dev/core`'s harness contract is one this manager can drive.
 
 Claude Code needs `detached: true`. Leave it out and your flow fails to build, naming the entry. Codex and Cursor need no equivalent.
 
@@ -384,6 +385,12 @@ A step never runs for a task its attempt no longer holds: if the task is cancell
 
 A message taken mid-run shows in the run's session as a line from its sender.
 
+### A run that takes a steer live
+
+A harness whose run can take a line mid-turn (Cursor, passed the `onSteerable` feed) offers the manager a way in while a step runs. The manager then reads the task's row every `STEER_POLL_MS` while the step runs, and hands each new message to the running turn as it arrives. The step carries on, with no stop, no new step and no new attempt. A message taken this way shows in the run's session as a line from its sender.
+
+A line the run refuses is not lost. The next step the request runs takes it, as if it had arrived after the step: by default when the step ends, or at once under `stopsOnAbort: true`, which stops the step for it. A line still waiting on the run's answer when the step ends is taken by the next step too, with a note to the agent that it may already have acted on it. Lines owed this way are held in the server's memory for the request, so a server that dies mid-step loses them.
+
 ### Upgrading from `messageDoor`
 
 Before `harnessSessionDoor`, a manager's `messageDoor` (and `harnessMessageDoor`) kept a user's line in the `turns/**` collection for the attempt that would act on it. Nothing reads that collection now. If your host ran a version with `messageDoor`, run `upgradeKeptTurns` once at host start, before the first request (Shift Manager's DevTeam host does):
@@ -466,7 +473,7 @@ from `/`. Given a location it cannot resolve, it refuses and names the option.
 - **Usage rows are keyed by the bare user id.** Where one user id is reachable from two tenants, both see that user's plan and percents.
 - **No retention policy.** Run records grow without bound.
 - **A harness that can't resume can't be talked to once finished.** Talk resumes the confirmed coding session, so the door refuses a finished run whose harness never confirmed one (`cannot-continue`).
-- **A steer waits for the step to end** unless the manager is built with `stopsOnAbort: true`.
+- **A steer waits for the step to end** unless the run takes it live (Cursor today) or the manager is built with `stopsOnAbort: true`. Claude Code and Codex runs don't take a line mid-turn yet.
 - **A steer step needs a confirmed session.** The step a steer adds resumes the coding session the run confirmed. On a run whose harness confirmed none, a steer that arrives after its last step is left on the task untaken: only the `STEER_TURN_ENTRY` turn acts on it, and a host without that entry completes the task over it.
 - **Git worktrees specifically**, as above.
 

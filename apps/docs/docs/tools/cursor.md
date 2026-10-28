@@ -299,6 +299,31 @@ Keeping no session state also means the block declares none, which is what lets 
 task board dispatch it without any further option. `recordPlan` is the one option
 that adds some, and it is off by default.
 
+## Steering a running turn
+
+A message can join a turn while it's still running. Pass `onSteerable`, and once
+the prompt is sent the block calls it with a `steer` function. When the turn is
+over, it calls it again with `null`.
+
+```ts
+cursorAgent({
+  // …
+  onSteerable: (steer, ctx) => (steer ? holdSteer(ctx, steer) : dropSteer(ctx)),
+});
+```
+
+`steer(text)` resolves `"delivered"` when Cursor took the line into the turn in
+flight. It resolves `"refused"` when Cursor said the line should wait for the next
+turn, when the call failed, or when the turn had already ended. A refused line
+was not taken, so send it as the next prompt. When the run ends on its own, the
+block waits for every `steer` call still in flight to answer before it returns. A
+run stopped by its deadline doesn't wait.
+
+Only local runs whose SDK offers steering get a `steer`. Otherwise `onSteerable`
+is never called. To steer from a session, hand it `harnessSteering().onSteerable`
+from `@flow-state-dev/core` ([Steering a running turn](./coding-agents.md#steering-a-running-turn)). The [harness manager](../orchestration/harness-manager.md#steering-a-run)
+uses this hook to hand a task's new messages to the running step.
+
 ## How a run ends
 
 The outcome comes from the run's terminal record, not from the messages on the
