@@ -774,6 +774,31 @@ describe("a steer no request took gives the task one more turn before it settles
     expect(h.events.filter((e) => e.kind === "completed")).toHaveLength(0);
   });
 
+  it("a steer turn that stops for a person settles the task when that stop's own resume ends, and closes its mirror", async () => {
+    const h = await harness({ steerTurn: true });
+    // The task's own turn asks which region; the user's answer owes it one more turn.
+    h.setBehaviour(async (ctx, ledger) => askMidway(ctx, ledger, [{ prompt: "Which region?" }]));
+    await h.run();
+    const hold = openHolds((await h.row())!)[0]!.id;
+    await (await h.ledger()).answer!("t1", { hold, message: "EU", from: "user", by: "u1" });
+    // That owed turn asks the user to review its work before it finishes, as a thread does.
+    h.setSteerTurn(async (_steers, ctx) => {
+      const resolution = await ctx.suspend!({ reason: "human_input", message: "review the EU draft" });
+      return { reviewed: resolution };
+    });
+    const turn = await h.runLater("steerTurn");
+    expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "wait" });
+    expect(openHolds((await h.row())!).map((open) => open.source)).toEqual([expect.objectContaining({ kind: "suspension", requestId: turn.requestId })]);
+
+    const resumed = await h.resume(turn.requestId!, { verdict: "accepted" });
+
+    expect(resumed.error).toBeUndefined();
+    // Its own resume: the task was waiting on this request, so the request's end settles it.
+    expect(await h.row()).toMatchObject({ status: "completed", attempts: 1 });
+    expect(openHolds((await h.row())!)).toEqual([]);
+    expect(h.events.filter((e) => e.kind === "completed")).toHaveLength(1);
+  });
+
   it("a steer turn that takes none of its steers settles the task instead of owing another turn", async () => {
     const h = await harness({ steerTurn: true });
     h.setBehaviour(async (_ctx, ledger) => {
