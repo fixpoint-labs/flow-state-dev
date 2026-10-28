@@ -434,8 +434,10 @@ await runGoal(async (failures, tell_) => {
         }
         if (!/Claude Code/.test(runText ?? "")) fail("5", `the run's steps don't show it ran on Claude Code: "${(runText ?? "").slice(0, 200)}"`);
 
-        const result = await readUntil(page, (es) => es.some((e) => e.kind === "result" && e.label === `From ${coder}`), 60_000);
-        // The refused task's ending lands from coder too, before the pick; the run's is the last one.
+        // The refused task's ending lands from coder too, before the pick: wait for one after it.
+        const resultAfterPick = (es: Drawn[]) => es.some((e, i) => i > userAt(es, PICKED_LINE) && e.kind === "result" && e.label === `From ${coder}`);
+        const result = await readUntil(page, (es) => userAt(es, PICKED_LINE) >= 0 && resultAfterPick(es), 60_000);
+        // The run's is the last one.
         const resultAt = result.entries.map((e) => e.kind === "result" && e.label === `From ${coder}`).lastIndexOf(true);
         if (resultAt < 0) fail("5", `the result never landed in lead's conversation as a line from ${coder}`);
         else if (resultAt < userAt(result.entries, PICKED_LINE)) fail("5", `no result from ${coder} after your pick`);

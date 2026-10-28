@@ -13,7 +13,7 @@
  * | `watchActivity`     | `listSessionRequests` on the worker's conversation                           |
  * | `watchWindow`       | the mark the history window leaves: gap G1 (FIX-1613), not yet in the package |
  * | `listProjects`      | the user's projects, read through their roster session                       |
- * | `watchWorkProject`  | the answer of the conversation's last `setWorkProject` (FIX-2161)            |
+ * | `watchWorkProject`  | the last `setWorkProject` answer, read once, then each pick made here (FIX-2280) |
  * | `setWorkProject`    | the workforce client's `setWorkProject(worker, project)`                     |
  * | `watchTasks`        | the board's rows, as the conversation's stream carries each one (`task-change`) |
  * | `watchRun`          | the items of the session the task's row names as its run                     |
@@ -158,6 +158,8 @@ export interface LabAdapter {
   watchRun(taskId: string, onChange: (steps: RunStep[]) => void): Unsubscribe;
 }
 
+/** How many finished requests one read of a conversation's history takes. */
+const REQUEST_PAGE = 200;
 /** How often the reads with no stream are read again. */
 const POLL_MS = 1_500;
 /** The accessor the user's shared projects are read under, on their roster session. */
@@ -303,10 +305,12 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   let workerIds = new Set<string>();
   /** Each shared project's visibility, as listed. */
   const visibility = new Map<string, "shared" | "private">();
-  /** The run session of each task seen on a board. */
+  /** The run session of each task, from the rows `watchTasks` reads; each task card is drawn from those. */
   const runOf = new Map<string, string>();
-  /** A pick this page made, until the conversation's own requests show it. */
+  /** Each worker's project as this page knows it: read once, then set by each pick here. */
   const picked = new Map<string, string>();
+  /** Who is told when a pick here changes a worker's project. */
+  const pickWatchers = new Map<string, Set<(project: string | undefined) => void>>();
 
   const conversationOf = async (worker: string) => {
     const known = conversations.get(worker);
@@ -347,10 +351,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       let entries: ConversationEntry[] = [];
       let running = false;
       const emit = () => onChange({ entries, running });
-      const stopFeed = watchFeed(sessionId, (items) => {
-        for (const row of boardRows(items).values()) if (typeof row.run?.sessionId === "string") runOf.set(row.id, row.run.sessionId);
-        return toEntries(items, workerIds);
-      }, (next) => {
+      const stopFeed = watchFeed(sessionId, (items) => toEntries(items, workerIds), (next) => {
         entries = next;
         emit();
       });
@@ -416,28 +417,52 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       });
     },
     watchWorkProject(worker, onChange) {
-      return poll(async () => {
-        const { sessionId } = await conversationOf(worker);
-        const done = await client.sessions.requests(sessionId, { status: "completed", includeResultOutput: true, limit: 200 });
-        const last = done
-          .filter((r) => r.actionName === SET_WORK_PROJECT_ACTION)
-          .sort((a, b) => (b.completedAtMs ?? 0) - (a.completedAtMs ?? 0))[0];
-        const project = (last?.result?.output as { project?: { id?: string } } | undefined)?.project?.id;
-        return project ?? picked.get(worker);
-      }, onChange);
+      // Read once, from every page of the conversation's finished requests; after that only a pick
+      // made here changes it. A pick made elsewhere shows on the next load (FIX-2280).
+      let live = true;
+      const watchers = pickWatchers.get(worker) ?? new Set();
+      pickWatchers.set(worker, watchers);
+      watchers.add(onChange);
+      void (async () => {
+        if (!picked.has(worker)) {
+          const { sessionId } = await conversationOf(worker);
+          let last: SessionRequestSummary | undefined;
+          for (let offset = 0; ; offset += REQUEST_PAGE) {
+            const page = await client.sessions.requests(sessionId, { status: "completed", includeResultOutput: true, limit: REQUEST_PAGE, offset });
+            for (const r of page) {
+              if (r.actionName === SET_WORK_PROJECT_ACTION && (last === undefined || (r.completedAtMs ?? 0) > (last.completedAtMs ?? 0))) last = r;
+            }
+            if (page.length < REQUEST_PAGE) break;
+          }
+          const project = (last?.result?.output as { project?: { id?: string } } | undefined)?.project?.id;
+          if (project !== undefined && !picked.has(worker)) picked.set(worker, project);
+        }
+        if (live) onChange(picked.get(worker));
+      })().catch((error: unknown) => console.error(`teammates: ${worker}'s project could not be read`, error));
+      return () => {
+        live = false;
+        watchers.delete(onChange);
+      };
     },
     async setWorkProject(worker, project) {
       await workforce.setWorkProject(worker, { visibility: visibility.get(project) ?? "shared", id: project });
       picked.set(worker, project);
+      for (const watcher of pickWatchers.get(worker) ?? []) watcher(project);
     },
     watchTasks(sessionId, onChange) {
-      return watchFeed(sessionId, (items) => [...boardRows(items).values()].map(toBoardTask), onChange);
+      return watchFeed(sessionId, (items) => {
+        const tasks = [...boardRows(items).values()].map(toBoardTask);
+        for (const task of tasks) if (task.runSessionId !== undefined) runOf.set(task.id, task.runSessionId);
+        return tasks;
+      }, onChange);
     },
     watchRun(taskId, onChange) {
       let stopFeed: Unsubscribe | undefined;
       // The run's session is named on the task's row once it starts.
-      const stopWait = poll(async () => runOf.get(taskId), (sessionId) => {
+      const stopWait: Unsubscribe = poll(async () => runOf.get(taskId), (sessionId) => {
         if (sessionId === undefined || stopFeed !== undefined) return;
+        // Found: the feed follows the run from here, so the wait stops.
+        stopWait();
         stopFeed = watchFeed(sessionId, (items) => {
           const steps: RunStep[] = [];
           const block = items.find((i) => HARNESS_LABEL[i.provenance?.blockName ?? ""] !== undefined)?.provenance?.blockName;
