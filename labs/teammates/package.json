@@ -9,8 +9,9 @@
     ".": "./cli/index.ts"
   },
   "scripts": {
-    "dev": "vite",
+    "dev": "vite build && tsx ../../packages/cli/bin/fsdev.ts dev --app @flow-state-dev/teammates",
     "build": "vite build",
+    "fsdev": "tsx ../../packages/cli/bin/fsdev.ts",
     "typecheck": "node ../../scripts/typecheck.mjs",
     "test": "vitest run --root .",
     "inventory": "node scripts/inventory.mjs",
@@ -33,5 +34,21 @@
     "tailwindcss": "^4.1.12",
     "vite": "^7.1.3",
     "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "@flow-state-dev/claude-code": "workspace:*",
+    "@flow-state-dev/client": "workspace:*",
+    "@flow-state-dev/codex": "workspace:*",
+    "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/devtool": "workspace:*",
+    "@flow-state-dev/engine": "workspace:*",
+    "@flow-state-dev/fsdev": "workspace:*",
+    "@flow-state-dev/harness-manager": "workspace:*",
+    "@flow-state-dev/memory": "workspace:*",
+    "@flow-state-dev/orchestration": "workspace:*",
+    "@flow-state-dev/store-sqlite": "workspace:*",
+    "@flow-state-dev/workforce": "workspace:*",
+    "@flow-state-dev/workspace": "workspace:*",
+    "zod": "^3.24.1"
   }
 }

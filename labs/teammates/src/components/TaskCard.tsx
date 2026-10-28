@@ -40,8 +40,10 @@ export function TaskCard({
         ? "refused · no project"
         : "needs a project"
       : task.status === "running"
-        ? `running in ${task.project}`
-        : `done in ${task.project}`;
+        ? task.project ? `running in ${task.project}` : "running"
+        : task.status === "failed"
+          ? "failed"
+          : `done in ${task.project}`;
   const asking = task.status === "needs-project" && !workProject && onPick;
   return (
     <div

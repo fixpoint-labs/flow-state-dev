@@ -7,6 +7,9 @@ import { Composer } from "./Composer";
 import { Entry } from "./Entry";
 import { TaskCard } from "./TaskCard";
 
+/** Your line to the worker once you picked its project from a card that asked. */
+export const PICKED_LINE = "I picked a project for you. File the task again.";
+
 /**
  * The center: the worker's one conversation. A divider marks where the turns
  * the worker reads word for word begin. A message another worker sent that
@@ -41,10 +44,11 @@ export function Conversation({
   const workProject = useWatch(adapter.watchWorkProject, worker.id);
   // A job refused for want of a project waits on the pick, from its card or the header.
   const waiting = !workProject && tasks.some((t) => t.status === "needs-project");
-  // The pick is stored on the worker, then said to it as your line, so it files the job again.
+  // The pick is stored on the worker, then said to it as your line, so it files the job again. The line
+  // doesn't name the project: the job is filed in the stored one, never in one the worker names.
   const pick = async (project: string) => {
     await adapter.setWorkProject(worker.id, project);
-    await adapter.send(sessionId, `Work in ${projects.find((p) => p.id === project)?.name ?? project}.`);
+    await adapter.send(sessionId, PICKED_LINE);
   };
 
   const end = useRef<HTMLDivElement>(null);
