@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 300" role="img" aria-label="Who owns what. Four rules, ER-1 to ER-4, across seven children and the closure FIX-2249. Every child owns each rule for its own rows: a renamed name is gone with no alias, renames come from one committed codemod, the rows go into RETIRED in the same PR, and no behaviour changes. The closure checks all four on one main commit, and owns adding FIX-2070’s message names to RETIRED."
+<svg viewBox="0 0 940 300" role="img" aria-label="Who owns what. Four rules, ER-1 to ER-4, across seven children and the closure FIX-2249. Every child owns each rule for its own rows: a renamed name is gone with no alias, renames come from one committed codemod, the rows go into RETIRED in the same PR, and no behaviour changes. The closure checks all four on one main commit. FIX-2070’s closure, FIX-2242, adds its removed message names to RETIRED."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -93,8 +93,8 @@
   <text class="t-s" x="660" y="177">owns</text>
   <rect class="chosen" x="740" y="160" width="76" height="26" rx="4"/>
   <text class="t-s" x="746" y="177">owns</text>
-  <rect class="chosen" x="826" y="160" width="76" height="26" rx="4"/>
-  <text class="t-s" x="832" y="177">owns · 2070</text>
+  <rect class="decide" x="826" y="160" width="76" height="26" rx="4"/>
+  <text class="t-s" x="832" y="177">checks</text>
   <line class="row" x1="16" y1="202" x2="924" y2="202"/>
   <text class="t-b" x="32" y="228">ER-4 · no behaviour change</text>
   <rect class="chosen" x="224" y="212" width="76" height="26" rx="4"/>
@@ -114,5 +114,5 @@
   <rect class="decide" x="826" y="212" width="76" height="26" rx="4"/>
   <text class="t-s" x="832" y="229">checks</text>
   <line class="row" x1="16" y1="254" x2="924" y2="254"/>
-  <text class="t-s" x="32" y="280">Each child owns every rule for its own rows. The closure checks all four on one main commit, and adds FIX-2070’s names to RETIRED.</text>
+  <text class="t-s" x="32" y="280">Each child owns every rule for its own rows. The closure checks all four on one main commit. FIX-2070’s closure adds its names to RETIRED.</text>
 </svg>
