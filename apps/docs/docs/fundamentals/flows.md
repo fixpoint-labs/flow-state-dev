@@ -2,6 +2,9 @@
 sidebar_position: 3
 ---
 
+import Figure from "@site/src/components/Figure";
+import FlowTypeInstanceSessionDrawing from "./flow-type-instance-session.svg";
+
 # Flows
 
 A flow is the top-level unit — the thing you register with the server and clients connect to. It ties together your blocks, actions, state, resources, and client data into a single, deployable definition.
@@ -71,7 +74,7 @@ const chatFlow = defineFlow({ kind: "my-chat", ... });
 export default chatFlow();
 ```
 
-![Definition, instance and session, and where each lives. defineFlow returns a definition in your code: its kind, its cardinality, the configSchema a copy's settings must match, the webhooks, schedules and MCP entry points every copy serves, and the entries only the flow can call; it answers no request itself. Calling it makes an instance with its own id, settings and resources, and its own isolated state when set, such as review-east and review-west of kind review, which you register; a singleton's id is its kind, and the settings stay in the process, never listed or stored. Requests name an instance id, and the kind is never a fallback. Sessions live in the store: session chat-1 records flowId review-east as its owner and flowKind review only as a label for listings. Named through review-west, it is refused with 409 wrong-instance-session before anything runs](./flow-type-instance-session.svg)
+<Figure svg={FlowTypeInstanceSessionDrawing} caption="Definition, instance, session: where each lives" description={"Definition, instance and session, and where each lives. defineFlow returns a definition in your code: its kind, its cardinality, the configSchema a copy's settings must match, the webhooks, schedules and MCP entry points every copy serves, and the entries only the flow can call; it answers no request itself. Calling it makes an instance with its own id, settings and resources, and its own isolated state when set, such as review-east and review-west of kind review, which you register; a singleton's id is its kind, and the settings stay in the process, never listed or stored. Requests name an instance id, and the kind is never a fallback. Sessions live in the store: session chat-1 records flowId review-east as its owner and flowKind review only as a label for listings. Named through review-west, it is refused with 409 wrong-instance-session before anything runs"} />
 
 A definition describes a flow. A registered instance names one configured copy of it. Most flows have exactly one copy, and that is the default: a flow is a **singleton** unless you say otherwise, and its instance id is its `kind`. Calling the factory with no argument gives you that instance; `chatFlow({ id: "my-chat" })` is the same thing spelled out, and registering a singleton under any other id is refused.
 
@@ -129,7 +132,7 @@ const engineer = defineFlow({
 });
 
 export const alice = engineer({ id: "eng-alice", config: { harness: "claude-code", model: "opus" } });
-export const bob = engineer({ id: "eng-bob", config: { harness: "codex", model: "gpt-5.4" } });
+export const bob = engineer({ id: "eng-bob", config: { harness: "codex", model: "gpt-6.1-sol" } });
 ```
 
 One definition, one block graph, two registered copies that behave differently. A roster mints the
@@ -139,7 +142,7 @@ A copy carries only settings the definition declared. A key that isn't in the sc
 the copy is created, naming the flow, the id and the key:
 
 ```
-engineer({ id: "eng-carol", config: { harnes: "codex", model: "gpt-5.4" } })
+engineer({ id: "eng-carol", config: { harnes: "codex", model: "gpt-6.1-sol" } })
 // Flow "engineer" instance "eng-carol" has an invalid config bag:
 // "harnes" is not a declared setting.
 ```
@@ -256,7 +259,7 @@ const outcome = await ctx.session.stopRequest(requestId);
 // "stopped" | "already-finished" | "already-resolved" | "not-in-this-session"
 ```
 
-The stop is recorded on the request, so it reaches a request running in another process on that process's next heartbeat, exactly like an abort. A request paused at `ctx.suspend()` can be stopped too, on a runtime with durable execution: it ends `aborted`. `"already-resolved"` means it was paused, but something resumed it before the stop arrived, so it is running again; stop it again to stop the running request. `"not-in-this-session"` is the answer for any id outside the session, including one that doesn't exist, so the call can't be used to learn about other sessions' requests.
+The stop is recorded on the request, so it reaches a request running in another process on that process's next heartbeat, exactly like an abort. A request paused at `ctx.suspend()` can be stopped too, on a runtime with durable execution: it ends `aborted`. That holds even when someone already approved it, if the request hasn't run again yet (say its process restarted in between): the stop wins, and the approved step never runs. The approval itself isn't kept: the request records only that it was stopped. `"already-resolved"` means it was paused, but something resumed it before the stop arrived, so it is running again; stop it again to stop the running request. `"not-in-this-session"` is the answer for any id outside the session, including one that doesn't exist, so the call can't be used to learn about other sessions' requests.
 
 See [Actions](/docs/fundamentals/actions) for the full picture.
 
@@ -284,7 +287,7 @@ const documents = defineFlow({
 ```
 
 - **`internal.actions`** — reached by a `dispatcher({ action })` block running in this flow, which sends the work to a session of its own (a *dispatch run*) or to one that already exists. See [Starting a job from a flow](/docs/server/background-work#starting-a-job-from-a-flow).
-- **`task.actions`** — reached by a `dispatcher({ action, session })` sitting as a worker on a task board, which hands each claimed task to a dispatch run. See [Workers that hand off](/docs/orchestration/task-board#assignees-that-hand-off).
+- **`task.actions`** — reached by a `dispatcher({ action, session })` sitting as a worker on a task board, which hands each claimed task to a dispatch run. See [Workers that dispatch](/docs/orchestration/task-board#assignees-that-dispatch).
 
 Each map is looked up on its own. An action named `summarize` does not satisfy a dispatcher whose action is the internal entry `summarize`, and `defineFlow()` throws at definition time when a reachable dispatcher names an entry its map does not hold. Both maps nest under `actions`; the flat spelling `internal: { summarize: { block } }` is refused by name.
 

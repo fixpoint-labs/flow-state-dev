@@ -124,6 +124,28 @@ describe("ctx.suspend() — initial suspension", () => {
     expect(suspItem.resumeSchema).toBeDefined();
   });
 
+  it("keeps a suspension's short title apart from its body, on the item and the record", async () => {
+    const step = handler({
+      name: "titledSuspension",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) =>
+        ctx.suspend!({ reason: "human_input", title: "Deploy failed", message: "It failed twice.\n\n- Retry it?" })
+    });
+    const flow = defineFlow({
+      kind: "suspend-title-test",
+      actions: { ask: { block: sequencer({ name: "titledSeq", durable: true }).step(step), inputSchema: z.any() } }
+    })();
+    const { stores, provider } = createDurableStores();
+
+    const result = await runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "ask", input: {}, userId: "u1", stores, runtimeConfig: { durabilityProvider: provider } });
+
+    const suspItem = result.items.find((i) => i.type === "suspension") as any;
+    expect(suspItem).toMatchObject({ title: "Deploy failed", message: "It failed twice.\n\n- Retry it?" });
+    const [record] = await provider.listSuspended({ status: "pending" });
+    expect(record).toMatchObject({ title: "Deploy failed", message: "It failed twice.\n\n- Retry it?" });
+  });
+
   it("records the nested suspending block's identity so the ReplayLog can recover it (FIX-811)", async () => {
     const approvalStep = handler({
       name: "approvalStep",
@@ -457,6 +479,7 @@ describe("same-request continuation (FIX-811)", () => {
     });
     const requestId = initial.requestId!;
     expect((await stores.request.get(requestId))?.status).toBe("suspended");
+    const preSuspensionMax = Math.max(...(await stores.request.getEvents(requestId)).map((e) => e.sequence_number));
 
     const [suspension] = await provider.listSuspended({ status: "pending" });
     const finished = await resolve(
@@ -474,6 +497,12 @@ describe("same-request continuation (FIX-811)", () => {
     expect(resumed.requestId).toBe(requestId);
     expect((await stores.request.get(requestId))?.status).toBe("completed");
     expect(resumed.output).toContain("confirmed");
+
+    // The continuation's events climb on from the suspension's: a log that
+    // ends in a terminal event (here `request.suspended`) is continued with no
+    // gap. Only a log with none skips one number (FIX-2077).
+    const postResume = (await stores.request.getEvents(requestId)).filter((e) => e.sequence_number > preSuspensionMax);
+    expect(postResume[0]?.sequence_number).toBe(preSuspensionMax + 1);
 
     // No orphan: exactly one request record exists.
     const allRequests = await stores.request.list();
@@ -693,6 +722,90 @@ describe("same-request continuation (FIX-811)", () => {
     const record = await stores.request.get(requestId);
     const resumeItems = (record!.items ?? []).filter((i) => i.type === "suspension_resume");
     expect(resumeItems.length).toBe(2);
+  });
+
+  it("resolves only the gate it names when one block parks again with a new gate id (FIX-2082)", async () => {
+    // A wait that waits again at its deadline parks twice from one block, on
+    // two gates. The resolution of the first must not answer the second.
+    const twice = handler({
+      name: "twice",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) => {
+        const first = await ctx.suspend!({ reason: "human_approval", message: "first?", suspensionId: "gate-1" });
+        const second = await ctx.suspend!({ reason: "human_approval", message: "second?", suspensionId: "gate-2" });
+        return { first, second };
+      }
+    });
+    const flow = defineFlow({
+      kind: "fix2082-same-block-gates",
+      actions: { run: { block: sequencer({ name: "twiceSeq", durable: true }).step(twice), inputSchema: z.any() } }
+    })({ id: "fix2082-same-block-gates" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+
+    const [first] = await provider.listSuspended({ status: "pending" });
+    expect(first!.suspensionId).toBe("gate-1");
+    await (await resolve(flow, stores, provider, requestId, first!, "approve", "one"));
+    // Parked again, on the second gate: the first's answer did not answer it.
+    expect((await stores.request.get(requestId))?.status).toBe("suspended");
+    const [second] = await provider.listSuspended({ status: "pending" });
+    expect(second!.suspensionId).toBe("gate-2");
+
+    const resumed = await (await resolve(flow, stores, provider, requestId, second!, "approve", "two"));
+    expect(resumed.output).toEqual({ first: "one", second: "two" });
+  });
+
+  it("answers each of one block's unnamed stops with its own resolution", async () => {
+    // Two stops in one block with no ids: answering the first must not answer
+    // the second, which parks until its own answer comes.
+    const twice = handler({
+      name: "twice",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) => {
+        const first = await ctx.suspend!({ reason: "human_approval", message: "first?" });
+        const second = await ctx.suspend!({ reason: "human_approval", message: "second?" });
+        return { first, second };
+      }
+    });
+    const flow = defineFlow({
+      kind: "unnamed-same-block-gates",
+      actions: { run: { block: sequencer({ name: "twiceSeq", durable: true }).step(twice), inputSchema: z.any() } }
+    })({ id: "unnamed-same-block-gates" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+
+    const [first] = await provider.listSuspended({ status: "pending" });
+    await (await resolve(flow, stores, provider, requestId, first!, "approve", "one"));
+    // Parked again, on the second stop: the first's answer did not answer it.
+    expect((await stores.request.get(requestId))?.status).toBe("suspended");
+    const [second] = await provider.listSuspended({ status: "pending" });
+    expect(second!.suspensionId).not.toBe(first!.suspensionId);
+    expect(second!.message).toBe("second?");
+
+    const resumed = await (await resolve(flow, stores, provider, requestId, second!, "approve", "two"));
+    expect(resumed.output).toEqual({ first: "one", second: "two" });
   });
 
   it("continues an interrupted request under its own id, replaying completed blocks (FIX-811 crash recovery)", async () => {

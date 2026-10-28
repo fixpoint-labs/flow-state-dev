@@ -154,7 +154,7 @@ export const SLICE_C_EXCEPTIONS: Exception[] = [
   { id: "reading", select: "[data-testid=transcript] > p", why: "the feed's loading line; v2 draws no loading state" },
   {
     id: "project lane task",
-    select: "[data-testid=project-lane] [data-testid=cos-task], [data-testid=project-lane] [data-testid=cos-task] > span, [data-testid=project-lane] [data-testid=cos-task] > span *",
+    select: "[data-testid=project-lane] [data-testid=cos-task], [data-testid=project-lane] [data-testid=cos-task] > [data-testid=cos-task-open], [data-testid=project-lane] [data-testid=cos-task] > [data-testid=cos-task-open] *",
     why: "a lane's task, drawn as the shipped task list (b2f2d4c2): v2 has no lane, and its task cards wait on FIX-1651's step (P6), like the board card",
   },
 ];

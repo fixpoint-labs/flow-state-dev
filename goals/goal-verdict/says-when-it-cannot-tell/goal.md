@@ -1,0 +1,16 @@
+# goal-verdict › it says when it cannot tell
+
+**Issue:** FIX-1183
+**Outcome:** A goal check that read no evidence for an assertion reports **CAN'T TELL**, naming the assertion, and the sweep counts it as not passed. A green sweep means every goal looked and saw. Before this, a renamed field filtered a list to `[]`, `[].every()` was true, a `values.length > 0 &&` guard skipped the check, and the goal printed PASS with evidence claiming a property nothing read.
+**Input:** the items a real, model-free run persists: kitchen-sink's `requestApproval` suspends at its approval gate, and its request record's items are read back from the store. The request text comes from `fixtures/request.json`. Two probe legs grade those items through the real `runGoal` and `tell.over`: the blind leg reads `seq`, which persisted items don't carry; the sighted leg reads `itemIndex`, which they do. Any field the items lack must go CAN'T TELL; any field they carry must PASS.
+**Signal:** (1) **the blind leg says CAN'T TELL**: it exits with the can't-tell code (3) and prints `CAN'T TELL —` with `ordering · persisted items' seq: read 0`, and no PASS. (2) **the sighted leg says PASS and names what it read**: exit 0, and its PASS line ends `read: ordering · persisted items' itemIndex: <n>`, where `<n>` is the number of persisted items carrying an `itemIndex`. (3) **the sweep counts the blind leg as CAN'T TELL**: `pnpm goal:all --root=<probe tree>` lists `CAN'T TELL  blind-leg` and `PASS  sighted-leg`, prints `1/2 passed, 1 can't tell`, and exits non-zero.
+**Anti-game:** don't assert on `tell.over`'s return value or on a hand-built empty array: both pass while a real run's evidence string still lies. The check reads what each leg printed, its exit code, and the sweep's summary and exit code, over items a real run persisted. The run's own items are floored with `tell.over` too, so a harness that returned nothing is CAN'T TELL here, not a pass.
+**Model:** n/a — `requestApproval` is pure handlers and `ctx.suspend()`; the probe legs read stored items. No model credential needed.
+**Run:** `pnpm tsx goals/goal-verdict/says-when-it-cannot-tell/run.mts`
+**Controls:** `GOAL_CONTROL=length-guard` writes the blind leg in today's shape, `if (values.length > 0 && !nonDecreasing(values))`, without `tell.over`. It prints PASS, so the run must FAIL on **the blind leg says CAN'T TELL** and **the sweep counts the blind leg as CAN'T TELL**, and on nothing else.
+
+## Verdict log
+| Date | Commit | Model | Verdict | Notes |
+|------|--------|-------|---------|-------|
+| 2026-10-17 | 98b093b7ba + FIX-1183 (pre-PR) | n/a | FAIL (expected) | `GOAL_CONTROL=length-guard`: the blind leg printed `PASS — persisted items in order by seq` and exited 0; the sweep listed `PASS  blind-leg`, `2/2 passed`, exit 0. Failed on the two named assertions only; the sighted leg passed. |
+| 2026-10-17 | 98b093b7ba + FIX-1183 (pre-PR) | n/a | PASS | The suspended run persisted 7 items, none carrying `seq`. Blind leg: exit 3, `CAN'T TELL — ordering · persisted items' seq: read 0`. Sighted leg: exit 0, `read: ordering · persisted items' itemIndex: 7`. Sweep: `CAN'T TELL  blind-leg`, `PASS  sighted-leg`, `1/2 passed, 1 can't tell`, exit 1. |

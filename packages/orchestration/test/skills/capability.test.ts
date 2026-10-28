@@ -47,7 +47,8 @@ describe("createSkillsCapability", () => {
 
   it("`runSkill` preset carries the runSkill tool and the catalog context formatter", () => {
     const cap = createSkillsCapability({ catalog: { stubTool } });
-    const preset = cap.__presetDefs?.runSkill as {
+    // A probe: reads the preset's built shape, which PresetDef types loosely.
+    const preset = cap.__presetDefs?.runSkill as unknown as {
       tools: { name: string }[];
       context: { skills: unknown[] };
     };

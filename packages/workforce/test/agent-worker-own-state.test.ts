@@ -50,7 +50,7 @@ async function runAs(users: readonly string[]): Promise<Write[]> {
       const result = await runAction({
         orgId: ORG,
         flow: worker!,
-        actionName: "run",
+        actionName: "respond",
         input: { message: "how long do refunds take?" },
         userId: user,
         sessionId: `${user}-conversation`,

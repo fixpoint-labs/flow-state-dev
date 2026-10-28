@@ -21,27 +21,12 @@ Read [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Sett
 claim (POC settlement)" for when this fires, what it costs, and where the record lands. That
 is canonical; this file is how you execute it.
 
-**Not this skill: validating a direction before the gate.** A settlement is *reactive* — it
-arbitrates between two parties who have already stopped converging, which is why it's an
-independent worker and why its output is a verdict. Building throwaway code *proactively*, so
-reviewers and the human at the approval gate can see the shape a spec proposes, is
-[`spec-poc`](../spec-poc/SKILL.md): it fires on a trigger rather than a loop, lives published on
-the owning retained spec's `poc/<experiment>/` rather than in a deleted worktree, and answers *"is this direction
-right?"* rather than *"who is right?"*. A trigger noticed during authoring is the cheap case; by
-the time you're here, prose has already cost two rounds.
+**Not this skill: validating a direction before the gate.** That is
+[`spec-poc`](../spec-poc/SKILL.md) (compared in its "Which POC skill is this?").
 
-**What justifies running at all: a loop, not an assertion.** This is for a claim that has been
-asserted and counter-asserted **at least twice** — it came back after being answered, the spec
-flipped on it, or two review rounds concluded opposite things. A claim asserted once gets
-answered in the thread, not experimented on. If you're invoked directly and the claim in front
-of you has only been asserted once, say so and check whether reading the code (Step 2) settles
-it before building anything.
-
-**The other loop: a *new* defect every round, in the same mechanism.** Rounds that each find a
-different fault in the last round's fix — not one claim re-argued, a fresh one each pass — are
-the same signal wearing different clothes: what is unsettled is the mechanism, not any single
-assertion about it. Prose has failed there too, and it will keep failing. Stop revising and run
-it.
+**What justifies running at all: a loop, not an assertion** — the trigger in that
+`orchestration.md` section. If you're invoked directly on a claim asserted only once, say so
+and check whether reading the code (Step 2) settles it before building anything.
 
 ## The one rule that matters
 
@@ -110,7 +95,7 @@ Follow [`prototype`](../prototype/SKILL.md) → "Rules that apply to both" for t
   mechanism you're testing.
 - **Prefer model-free.** Most claims about composition, state, routing, and streaming need no
   model, and a model-free check is cheaper, faster, and less noisy. When the claim does need
-  one, `openai/gpt-5.4-mini` unless it's specifically about a stronger model.
+  one, `openai/gpt-6-luna` unless it's specifically about a stronger model.
 
 Keep it small. If the POC is growing past a couple of files, the claim was too broad — narrow
 it to the part that's actually disputed and say in the verdict what you narrowed to.

@@ -21,13 +21,16 @@ import type {
   StateRef,
 } from "@flow-state-dev/core/types";
 import type { TaskCollectionRef } from "./types";
-import type { TaskClaimIdentity } from "../schema/task";
+import type { Task, TaskClaimIdentity } from "../schema/task";
 import { toEmittedTask, type TaskChangeEvent } from "./change-event";
 import { createStateBackedTaskCollection } from "./state-backed";
 import { createResourceBackedTaskCollection } from "./resource-backed";
 import { isDefinedTaskCollection } from "./define-task-collection";
 import { partitionedResourceCollection } from "./partition";
+import { recordTaskIdPartition, resolveTaskIdIndex } from "./id-index";
+import { createDelivery } from "../notice/delivery";
 import type { TaskCapOptions } from "./task-caps";
+import type { FilingStamp } from "./internal";
 
 /** Component-item type emitted on every task lifecycle transition. */
 export const TASK_CHANGE_COMPONENT_TYPE = "task-change";
@@ -93,7 +96,7 @@ export interface ResourceBackingSpec extends CommonOptions {
   /**
    * Refuse `setAssignee` on an `in_progress` task in this collection (FIX-982,
    * narrowed by FIX-1780). Set by a task board with dispatcher assignees, whose
-   * child's routing key is derived from the assignee. Only this backing carries it — a handed-off board is refused at
+   * child's routing key is derived from the assignee. Only this backing carries it — a dispatched board is refused at
    * construction on any other.
    */
   immutableAssignee?: boolean;
@@ -158,6 +161,9 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   const claimIdentity = readClaimIdentity(options.ctx);
   // Who is adding tasks through this ref: the session owner, server-set.
   const createdBy = options.ctx.session?.identity?.userId;
+  // Where they file it (FIX-2133 D1), and how long a question waits when the
+  // host sets a deadline for a person (the epic's D3): server-set.
+  const filing = filingStampOf(options.ctx);
 
   const onChange = (event: TaskChangeEvent): void => {
     options.ctx.emit.component(
@@ -194,6 +200,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
       now: options.now,
       claimIdentity,
       ...(createdBy !== undefined ? { createdBy } : {}),
+      filing,
       maxTotalTasks: options.maxTotalTasks,
       maxEnqueuedTasks: options.maxEnqueuedTasks,
       maxTotalRetries: options.maxTotalRetries,
@@ -208,6 +215,35 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   const recordEnding = isDefinedTaskCollection(declared)
     ? declared.__taskCollection.recordEnding
     : undefined;
+  const settings = isDefinedTaskCollection(declared) ? declared.__taskCollection.settings : undefined;
+  // The ledger's filed-task payer, bound to this context (FIX-2080 D2).
+  const filed = isDefinedTaskCollection(declared) ? declared.__taskCollection.cascadeFiled : undefined;
+  const ctx = options.ctx;
+  // A partitioned ledger's add records which partition holds the id
+  // (FIX-2160), through the index the running flow installs beside it.
+  const idIndexOf = isDefinedTaskCollection(declared) ? declared.__taskCollection.idIndex : undefined;
+  const ledgerId = isDefinedTaskCollection(declared) ? declared.__taskCollection.id : options.collectionId;
+  const recordTaskId =
+    partition !== undefined && idIndexOf !== undefined
+      ? (taskId: string) => recordTaskIdPartition(resolveTaskIdIndex(ctx, ledgerId), taskId, partition)
+      : undefined;
+  // A ledger a board hands rows out from delivers each ending to its filer
+  // (FIX-2078), bound to this request; and stamps the filer on each row it files.
+  const declaredDelivery = isDefinedTaskCollection(declared) ? declared.__taskCollection.delivery : undefined;
+  const sessionId = ctx.session?.identity?.id;
+  // The engine's identity of the running request (FIX-2123), never input (BP-031).
+  const requestId = ctx.request?.identity?.id;
+  const delivery =
+    declaredDelivery !== undefined && sessionId !== undefined
+      ? {
+          ownSession: sessionId,
+          ...(requestId !== undefined ? { ownRequest: requestId } : {}),
+          hooks: createDelivery(ctx, declaredDelivery, {
+            collectionId: options.collectionId,
+            ...(partition !== undefined ? { partition } : {}),
+          }),
+        }
+      : undefined;
   return await createResourceBackedTaskCollection<TInput, TOutput>({
     collectionId: options.collectionId,
     collection:
@@ -219,9 +255,14 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
     now: options.now,
     claimIdentity,
     ...(createdBy !== undefined ? { createdBy } : {}),
+    filing,
     immutableAssignee: options.immutableAssignee,
     ...(partition !== undefined ? { partition } : {}),
+    ...(recordTaskId !== undefined ? { recordTaskId } : {}),
     ...(recordEnding !== undefined ? { recordEnding } : {}),
+    ...(settings !== undefined ? { settings } : {}),
+    ...(filed !== undefined ? { cascadeFiled: { owes: filed.owes, pay: (row: Task) => filed.pay(ctx, row) } } : {}),
+    ...(delivery !== undefined ? { delivery } : {}),
   });
 }
 
@@ -312,6 +353,26 @@ function readClaimIdentity(ctx: BlockContext): TaskClaimIdentity | undefined {
     sessionId,
     requestId,
     ...(tenantId !== undefined ? { tenantId } : {}),
+  };
+}
+
+/**
+ * What every row this ref files is stamped with beside its filer (FIX-2133):
+ * the tenant and org of the request filing it, from its verified identity
+ * (D1, the caller check on answering a question), and how long a question
+ * waits unanswered when the host sets a deadline for a person's stop
+ * (`RequestHost.userDeadlineMs`; none by default, the epic's D3). Server-set.
+ */
+function filingStampOf(ctx: BlockContext): FilingStamp {
+  const identity = ctx.request?.identity ?? ctx.session?.identity;
+  const tenantId = identity?.tenantId;
+  const orgId = identity?.orgId;
+  const holdDueMs = ctx.requestHost?.userDeadlineMs;
+  return {
+    ...(tenantId !== undefined || orgId !== undefined
+      ? { filedUnder: { ...(tenantId !== undefined ? { tenantId } : {}), ...(orgId !== undefined ? { orgId } : {}) } }
+      : {}),
+    ...(typeof holdDueMs === "number" && holdDueMs > 0 ? { holdDueMs } : {}),
   };
 }
 

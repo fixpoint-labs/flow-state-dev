@@ -143,6 +143,13 @@ describe("translateCursorMessage — what does NOT reach the stream", () => {
     ).toEqual([{ kind: "message", text: "running it" }]);
   });
 
+  it("words a lifecycle status as a label, not as 'Cursor run running'", () => {
+    expect(translateCursorMessage({ type: "status", status: "RUNNING" })).toEqual([{ kind: "status", message: "Working" }]);
+    expect(translateCursorMessage({ type: "status", status: "ERROR", message: "quota" })).toEqual([
+      { kind: "status", message: "Run hit an error: quota" },
+    ]);
+  });
+
   it("does not decide the outcome from a terminal status message", () => {
     // The outcome comes from `run.wait()` and from one place only, so a stream
     // that ends early can never disagree with the SDK about how the run ended.

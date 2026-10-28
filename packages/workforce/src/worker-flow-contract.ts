@@ -1,7 +1,7 @@
 /**
  * The worker contract: what a flow must be before any worker runs on it.
  *
- * Three checks, each read off the flow DEFINITION rather than off a worker's
+ * Four checks, each read off the flow DEFINITION rather than off a worker's
  * copy of it, so they hold however many workers share one flow:
  *
  * 1. **Configuration.** The flow takes the configuration a real hire supplies.
@@ -11,13 +11,18 @@
  *    undeclared and a key it types differently (`workerId` as a number) both
  *    count; a refusal of the flow's OWN settings does not, because every
  *    worker supplies those and no probe can.
- * 2. **One door.** Exactly one public action takes a user's message, so an
- *    app can talk to any worker without knowing its flow. "Door" is
- *    `workerDoorOf`'s definition, read here and not restated.
+ * 2. **One door, `respond`.** Exactly one public action takes a user's
+ *    message, and it is named `respond`, so an app can talk to any worker
+ *    without knowing its flow. "Door" is `worker-door.ts`'s definition, read
+ *    here and not restated.
  * 3. **Attribution.** A resource that declares `writtenBy` was built by
  *    `sharedResource()`, which owns the field. Judged by where the resource
  *    came from, not by what its schema happens to accept: no finite set of
  *    sample values proves an arbitrary schema stores the whole field.
+ * 4. **Roles.** Each role the flow is registered with has its entries, built
+ *    by the role's factory and taking what their caller sends, and no piece of
+ *    a role's factory sits on a flow that doesn't declare it
+ *    (`./worker-roles`, the one table of a role's entries).
  *
  * What is deliberately NOT checked: where a flow keeps its data. Org scope is
  * shared with the whole org by design, and a flow writes there because its
@@ -31,9 +36,10 @@
 import { FlowConfigRefusalError } from "@flow-state-dev/core";
 import { deepEqual } from "@flow-state-dev/core/helpers";
 import type { FlowType } from "@flow-state-dev/core/types";
-import { workerDoorOf } from "./worker-door";
+import { doorProblem } from "./worker-door";
 import { workerConfigSchema } from "./worker-config";
 import { WRITTEN_BY_KEY, declaresWrittenBy, isSharedResource } from "./shared-resource";
+import { builtInRolesOf, roleProblems, type WorkerRole } from "./worker-roles";
 
 /** Any flow definition, whatever it declares. */
 export type WorkerFlowDefinition = FlowType<any, any, any, any, any, any, any>;
@@ -189,28 +195,6 @@ function configurationProblem(name: string, flow: WorkerFlowDefinition): string 
   return undefined;
 }
 
-type ActionMap = Readonly<Record<string, unknown>>;
-
-/** Check 2: exactly one door, by `workerDoorOf`'s definition. */
-function doorProblem(name: string, flow: WorkerFlowDefinition): string | undefined {
-  const actions = (flow.actions ?? {}) as ActionMap;
-  const found = workerDoorOf({ id: name, kind: name, actions });
-  if (found.door !== null) return undefined;
-  if (found.problem === undefined) {
-    return (
-      `worker flow "${name}" has no door: no public action declares \`userMessage\` and takes ` +
-      `\`{ message }\`, so no worker on it could take a user's message. Give it one.`
-    );
-  }
-  // Two or more. Each action is asked on its own, so "door" keeps one definition.
-  const doors = Object.keys(actions)
-    .filter((action) => workerDoorOf({ id: name, kind: name, actions: { [action]: actions[action] } }).door === action)
-    .sort();
-  return (
-    `worker flow "${name}" has ${doors.length} doors (${doors.map((d) => `"${d}"`).join(", ")}). ` +
-    `Keep one: a door is the one public action with \`userMessage\` and a \`{ message }\` input.`
-  );
-}
 
 type DeclaredResourceLike = {
   scope?: unknown;
@@ -248,9 +232,16 @@ function attributionProblems(name: string, flow: WorkerFlowDefinition): string[]
  *
  * @param name The name the flow is registered under. It must be the flow's own `kind`.
  * @param flow The flow definition, as `defineFlow` returned it.
+ * @param roles The roles its registration declares (`contributor`, `manager`,
+ *   `coordinator`). Omitted, the roles a built-in flow declares itself, and
+ *   none for any other flow.
  * @returns One sentence per problem, each naming the flow.
  */
-export function workerFlowProblems(name: string, flow: WorkerFlowDefinition): string[] {
+export function workerFlowProblems(
+  name: string,
+  flow: WorkerFlowDefinition,
+  roles: readonly WorkerRole[] = builtInRolesOf(flow) ?? []
+): string[] {
   const misnamed =
     flow.kind === name
       ? undefined
@@ -259,7 +250,8 @@ export function workerFlowProblems(name: string, flow: WorkerFlowDefinition): st
   return [
     misnamed,
     configurationProblem(name, flow),
-    doorProblem(name, flow),
-    ...attributionProblems(name, flow)
+    doorProblem(name, (flow.actions ?? {}) as Readonly<Record<string, unknown>>),
+    ...attributionProblems(name, flow),
+    ...roleProblems(name, flow, roles)
   ].filter((problem): problem is string => problem !== undefined);
 }

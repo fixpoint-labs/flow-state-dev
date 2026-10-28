@@ -3,8 +3,9 @@
   "compilerOptions": {
     "composite": true,
     "rootDir": "src",
-    "outDir": "dist"
+    "outDir": "dist",
+    "types": ["node"]
   },
   "include": ["src/**/*"],
-  "references": [{ "path": "../client" }, { "path": "../core" }, { "path": "../orchestration" }, { "path": "../workspace" }]
+  "references": [{ "path": "../client" }, { "path": "../core" }, { "path": "../orchestration" }, { "path": "../scheduled" }, { "path": "../tools" }, { "path": "../workspace" }]
 }

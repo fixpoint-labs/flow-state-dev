@@ -10,7 +10,6 @@
  * loop's slots and `goalSeekLoop` assembles the judge-gated drain loop:
  *
  *   seed:      synthesizeGoal? → stampOuterGoal → captureAndPlan
- *   afterDrain: cascadeSkipDependents
  *   judge:     evaluator → (replanner on replan-without-tasks) → Verdict
  *   finalize:  synthesize
  *   onError:   "fail"   (an evaluator throw propagates, as before)
@@ -47,7 +46,6 @@ import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
 import {
   taskBoard,
-  createCascadeSkipDependents,
   goalSeekLoop,
   type Verdict,
 } from "@flow-state-dev/orchestration/task-board";
@@ -94,10 +92,7 @@ export {
 export { createCaptureAndPlan } from "./blocks/capture-and-plan";
 // Re-exported from the task-board substrate (true home after FIX-910 / FIX-631)
 // to preserve plan-and-execute's public subpath API (BP-034).
-export {
-  createApplyReplan,
-  createCascadeSkipDependents,
-} from "@flow-state-dev/orchestration/task-board";
+export { createApplyReplan } from "@flow-state-dev/orchestration/task-board";
 export {
   createSynthesize,
   createBuildPlanOutput,
@@ -273,7 +268,7 @@ function createDefaultReplanner(config: {
   return generator({
     name: `${config.name}-replanner`,
     activeStatusMessage: "Adjusting the plan",
-    model: config.model ?? "openai/gpt-5.4-mini",
+    model: config.model ?? "openai/gpt-6-luna",
     ...(config.context !== undefined ? { context: config.context } : {}),
     ...(config.history !== undefined ? { history: config.history } : {}),
     ...(config.tools !== undefined ? { tools: config.tools as any } : {}),
@@ -568,7 +563,7 @@ function createDefaultSynthesizer(config: {
   return generator({
     name: `${config.name}-synthesizer`,
     activeStatusMessage: "Putting it all together",
-    model: config.model ?? "openai/gpt-5.4-mini",
+    model: config.model ?? "openai/gpt-6-luna",
     ...(config.context !== undefined ? { context: config.context } : {}),
     ...(config.history !== undefined ? { history: config.history } : {}),
     ...(config.tools !== undefined ? { tools: config.tools } : {}),
@@ -708,11 +703,9 @@ export function planAndExecute<
   // the planner/replanner contracts don't carry, so we stay on the
   // uniform path even when the spec illustration shows a registry.
   //
-  // Relies on the substrate's default `onIdle: "complete-or-blocked"`
-  // (FIX-626): a pending task whose dep `errored` is never claimable,
-  // and the substrate now exits the drain as soon as no claimable work
-  // remains. Pendings with `errored` deps get cascade-skipped by
-  // `cascadeSkipDependents` after the drain.
+  // A pending task whose dep failed or was cancelled is cancelled by the
+  // board on that dep's ending (FIX-2080), labelled `skipped`, so no
+  // pending row waits on work that will never finish.
   const board = taskBoard({
     name: `${name}-board`,
     collection: { collectionId: name },
@@ -744,7 +737,6 @@ export function planAndExecute<
     caps: board.caps,
   });
 
-  const cascadeSkipDependents = createCascadeSkipDependents({ name });
   const synthesize = createSynthesize({ name, synthesizer });
 
   // ------- Assemble on goalSeekLoop (FIX-910) ------------------------------
@@ -816,7 +808,6 @@ export function planAndExecute<
     stateSchema: planAndExecuteStateSchema,
     board,
     seed,
-    afterDrain: cascadeSkipDependents,
     judge: judgeAdapter,
     maxAttemptsPerTask,
     ...(config.taskContext !== undefined ? { taskContext: config.taskContext } : {}),

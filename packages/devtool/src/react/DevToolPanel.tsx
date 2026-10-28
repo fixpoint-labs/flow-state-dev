@@ -8,13 +8,11 @@
  * `userIdControl="host"` so the panel doesn't expose its own userId editor.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Copy, PanelLeft, User } from "lucide-react";
+import { ChevronLeft, ChevronRight, PanelLeft } from "lucide-react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { ChildSessionSummary } from "@flow-state-dev/client";
 
-import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
-import { Separator } from "./components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 
 import { DevToolProvider, useDevTool, type UserIdControl } from "./context/devtool-context";
@@ -41,6 +39,8 @@ import { SessionContextPanel } from "./components/detail/session-context";
 import { TokenUsageSummary } from "./components/detail/token-usage-summary";
 import { ItemDetail } from "./components/detail/item-detail";
 import { FlowStateMark } from "./components/shared/flow-state-mark";
+import { shortSessionId } from "./lib/utils";
+import { DEVTOOL_THEMES, THEME_ATTRIBUTE, useDevtoolTheme, type DevtoolTheme } from "./hooks/use-devtool-theme";
 
 import { useRequestStream } from "./hooks/use-request-stream";
 import { useActionDispatch } from "./hooks/use-action-dispatch";
@@ -130,13 +130,14 @@ export function DevToolPanel({
 }
 
 function PanelContent({ className }: { className?: string }) {
+  const [theme, setTheme] = useDevtoolTheme();
   const {
     config,
     activeFlow,
     activeFlowId,
     activeSessionId,
     workspaceToken,
-    recoveryClient,
+    client,
     selectWorkspace,
     sessionAddressError,
   } = useDevTool();
@@ -709,7 +710,7 @@ function PanelContent({ className }: { className?: string }) {
     [],
   );
   const { continueRequest, isContinuing } = useContinueRequest({
-    recoveryClient,
+    client,
     flowId: activeFlowId,
     sessionId: effectiveSessionId,
     onItems: handleContinueItems,
@@ -805,7 +806,7 @@ function PanelContent({ className }: { className?: string }) {
     window.addEventListener("mouseup", onUp);
   };
 
-  const rootClass = ["fsd-devtool-panel", "h-full overflow-hidden bg-slate-950 text-slate-100", className]
+  const rootClass = ["fsd-devtool-panel", "h-full overflow-hidden bg-fs-surface text-fs-ink", className]
     .filter(Boolean)
     .join(" ");
 
@@ -825,24 +826,41 @@ function PanelContent({ className }: { className?: string }) {
 
   return (
     <TraceLookupProvider requestGroups={requestGroups}>
-    <div className={rootClass}>
-      <header className="flex h-10 select-none items-center justify-between border-b border-slate-800 px-4">
-        <div className="flex items-center gap-2.5">
-          <FlowStateMark theme="dark" className="h-[22px] w-[22px] shrink-0" />
-          <h1 className="text-sm font-semibold tracking-wide">FSD DevTools</h1>
-          <Badge variant="secondary" className="text-[10px]">v0.1.0</Badge>
+    <div className={rootClass} data-fs-theme={THEME_ATTRIBUTE[theme]}>
+      <header className="flex h-11 select-none items-center gap-3.5 border-b border-fs-ink/30 bg-fs-sidebar px-3.5">
+        <FlowStateMark className="h-[26px] w-[26px] shrink-0" />
+        <h1 className="shrink-0 whitespace-nowrap text-sm font-bold tracking-[-.01em]">FSD DevTools</h1>
+        <span className="shrink-0 border border-fs-ink/35 px-1.5 py-px font-fs-mono text-[10.5px] font-medium text-fs-ink3">
+          v0.1.0
+        </span>
+        {activeFlowId ? (
+          <>
+            <span aria-hidden className="h-[18px] w-px bg-fs-ink/25" />
+            <div className="flex min-w-0 items-center gap-2 font-fs-mono text-xs font-medium text-fs-ink3">
+              <span className="shrink-0 whitespace-nowrap">{activeFlowId}</span>
+              {effectiveSessionId ? (
+                <>
+                  <span className="text-fs-ink4">/</span>
+                  <span className="truncate text-fs-ink">{shortSessionId(effectiveSessionId)}</span>
+                </>
+              ) : null}
+            </div>
+          </>
+        ) : null}
+        <div className="ml-auto flex min-w-0 items-center gap-3.5">
+          {sessionAddressError === null ? null : (
+            <p className="truncate font-fs-mono text-[11px] text-fs-red" role="status" data-testid="session-address-error">
+              {sessionAddressError}
+            </p>
+          )}
+          <ThemeToggle theme={theme} onChange={setTheme} />
         </div>
-        {sessionAddressError === null ? null : (
-          <p className="truncate text-xs text-amber-300" role="status" data-testid="session-address-error">
-            {sessionAddressError}
-          </p>
-        )}
       </header>
 
-      <div className="flex h-[calc(100%-2.5rem)]">
+      <div className="flex h-[calc(100%-2.75rem)]">
         {/* Navigator */}
         <aside
-          className="flex flex-col select-none border-r border-slate-800 bg-slate-900/50"
+          className="flex flex-col select-none border-r border-fs-ink/30 bg-fs-sidebar"
           style={{ width: navExpanded ? `${navWidth}px` : `${NAV_COLLAPSED_WIDTH}px` }}
         >
           <div className="p-2">
@@ -868,10 +886,11 @@ function PanelContent({ className }: { className?: string }) {
                   onRefreshActiveSession={refreshActiveSession}
                 />
               </div>
-              <Separator />
-              <div className="p-2 space-y-1">
-                <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-slate-400">
-                  <User className="h-3.5 w-3.5" />
+              <div className="space-y-1 border-t border-fs-ink/20 px-2.5 py-2">
+                <div className="flex items-center gap-2 px-1 py-1 font-fs-mono text-[11.5px] font-medium text-fs-ink2">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center border border-fs-ink text-[9.5px] uppercase">
+                    {config.userId.slice(0, 2)}
+                  </span>
                   <span className="truncate">{config.userId}</span>
                 </div>
                 <SettingsSheet />
@@ -883,7 +902,7 @@ function PanelContent({ className }: { className?: string }) {
         <div
           role="separator"
           aria-orientation="vertical"
-          className="w-1 cursor-col-resize bg-slate-800/50 hover:bg-sky-500"
+          className="relative z-10 -mx-0.5 w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-fs-blue"
           onMouseDown={(e) => onStartResize("nav", e.clientX)}
         />
 
@@ -932,9 +951,9 @@ function PanelContent({ className }: { className?: string }) {
         <SelectionProvider key={workspaceKey}>
         <InventoryProvider sessionId={effectiveSessionId}>
         {/* Main workspace */}
-        <main className="flex min-w-0 min-h-0 flex-1 flex-col bg-slate-950">
-          <Tabs defaultValue="stream" className="flex flex-1 flex-col min-h-0">
-            <div className="flex select-none items-center justify-between gap-3 px-3 pt-2">
+        <main className="flex min-w-0 min-h-0 flex-1 flex-col bg-fs-surface">
+          <Tabs defaultValue="stream" className="flex flex-1 flex-col min-h-0 gap-0">
+            <div className="flex min-h-11 select-none items-end justify-between gap-4 border-b border-fs-ink/20 px-[18px]">
               <TabsList>
                 <TabsTrigger value="stream">Stream</TabsTrigger>
                 <TabsTrigger value="trace">Trace</TabsTrigger>
@@ -942,7 +961,7 @@ function PanelContent({ className }: { className?: string }) {
                 <TabsTrigger value="suspensions">Suspensions</TabsTrigger>
                 <InventoryTabTrigger />
               </TabsList>
-              <div className="flex items-center gap-3 min-w-0">
+              <div className="flex min-w-0 items-center gap-3 pb-[9px]">
                 <SessionIdBadge sessionId={effectiveSessionId} />
                 {(liveStatus !== "idle" || showToggle) && (
                   <LiveSwitch
@@ -955,8 +974,6 @@ function PanelContent({ className }: { className?: string }) {
                 )}
               </div>
             </div>
-
-            <Separator className="mt-2" />
 
             <TabsContent value="stream" className="flex-1 min-h-0 m-0">
               <StreamView
@@ -1006,9 +1023,7 @@ function PanelContent({ className }: { className?: string }) {
 
             <InventoryTabContent sessionId={effectiveSessionId} />
 
-            <Separator />
-
-            <div className="p-2">
+            <div className="border-t border-fs-ink/25 bg-fs-inspector px-[18px] pt-2.5 pb-3.5">
               <ActionBar
                 flowId={activeFlowId}
                 sessionId={effectiveSessionId}
@@ -1025,20 +1040,18 @@ function PanelContent({ className }: { className?: string }) {
         <div
           role="separator"
           aria-orientation="vertical"
-          className="w-1 cursor-col-resize bg-slate-800/50 hover:bg-sky-500"
+          className="relative z-10 -mx-0.5 w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-fs-blue"
           onMouseDown={(e) => onStartResize("detail", e.clientX)}
         />
 
         {/* Detail panel */}
         <aside
-          className="flex flex-col border-l border-slate-800 bg-slate-900/40 overflow-auto"
+          className="flex flex-col border-l border-fs-ink/30 bg-fs-inspector overflow-auto"
           style={{ width: `${detailWidth}px` }}
         >
-          <div className="flex-1 p-3 space-y-4">
+          <div className="flex-1 divide-y divide-fs-ink/20 [&>*]:px-4 [&>*]:py-3.5">
             <TokenUsageSummary requestGroups={requestGroups} />
-            <Separator />
             <SessionContextPanel sessionId={effectiveSessionId} refreshKey={stateRefreshKey} />
-            <Separator />
             <ItemDetail />
           </div>
         </aside>
@@ -1049,12 +1062,40 @@ function PanelContent({ className }: { className?: string }) {
   );
 }
 
+const THEME_LABELS: Record<DevtoolTheme, string> = { paper: "Paper", draft: "Draft", night: "Night" };
+
+/** Header segmented switch between the three app themes. */
+function ThemeToggle({ theme, onChange }: { theme: DevtoolTheme; onChange: (theme: DevtoolTheme) => void }) {
+  return (
+    <div role="radiogroup" aria-label="Theme" className="flex shrink-0 border border-fs-ink font-fs-mono text-[11px] font-medium">
+      {DEVTOOL_THEMES.map((option) => {
+        const active = option === theme;
+        return (
+          <button
+            key={option}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(option)}
+            className={[
+              "px-2.5 py-1 not-first:border-l not-first:border-fs-ink outline-none focus-visible:ring-2 focus-visible:ring-fs-blue/40",
+              active ? "bg-fs-ink text-fs-paper" : "text-fs-ink hover:bg-fs-ink/5",
+            ].join(" ")}
+          >
+            {THEME_LABELS[option]}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function SessionIdBadge({ sessionId }: { sessionId: string | null }) {
   const [copied, setCopied] = useState(false);
 
   if (!sessionId) {
     return (
-      <span className="text-[10px] text-slate-600 italic">no session</span>
+      <span className="font-fs-mono text-[11px] text-fs-ink4">no session</span>
     );
   }
 
@@ -1071,15 +1112,11 @@ function SessionIdBadge({ sessionId }: { sessionId: string | null }) {
       type="button"
       onClick={handleCopy}
       title={`Session ID: ${sessionId}\nClick to copy`}
-      className="group inline-flex items-center gap-1.5 rounded border border-slate-800 bg-slate-900/60 px-2 py-0.5 text-[10px] font-mono text-slate-300 hover:border-slate-700 hover:bg-slate-800"
+      className="group inline-flex items-center gap-2 border border-fs-ink/30 px-2 py-[3px] font-fs-mono text-[11px] font-medium text-fs-ink hover:border-fs-ink"
     >
-      <span className="text-[9px] uppercase tracking-wide text-slate-500 font-sans">session</span>
+      <span className="text-fs-ink4">session</span>
       <span>{truncated}</span>
-      {copied ? (
-        <Check className="h-3 w-3 text-green-400" />
-      ) : (
-        <Copy className="h-3 w-3 text-slate-500 group-hover:text-slate-300" />
-      )}
+      <span className="text-fs-ink3">{copied ? "copied" : "copy"}</span>
     </button>
   );
 }

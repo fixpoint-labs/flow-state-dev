@@ -86,8 +86,7 @@ import { z } from "zod";
 export const RUNS = "runs" as const;
 
 /** How the last attempt on an issue-phase ended. */
-export const runOutcomeSchema = z.enum(["running", "succeeded", "failed"]);
-export type RunOutcome = z.infer<typeof runOutcomeSchema>;
+const runOutcomeSchema = z.enum(["running", "succeeded", "failed"]);
 
 /**
  * Where a run's place stands, on a host that holds a run's work. The host's
@@ -148,6 +147,24 @@ export const runRecordStateSchema = z.object({
    * itself. See {@link writeRunRow}.
    */
   attempt: z.number().nullable().default(null),
+  /**
+   * The row's turn generation when this run opened the record (FIX-2133 D3).
+   * Two turns can share an attempt (an answered question owes one more), so a
+   * write from an earlier turn of the same attempt is refused once a later
+   * one has opened. See {@link writeRunRow}.
+   */
+  turn: z.number().nullable().default(null),
+  /** The incarnation of the task that last wrote the record: what {@link turn} is compared within. */
+  incarnationId: z.string().nullable().default(null),
+  /**
+   * How many runs the manager has opened on this issue-phase, this one
+   * included: the second number of the run's ask marker (`./ask`). Kept across
+   * attempts and never reset, so no run is pointed at a marker an earlier
+   * turn, attempt or task under the same id already wrote.
+   */
+  runs: z.number().nullable().default(null),
+  /** What opened run {@link runs} (its request, turn and task), so a replay of that run counts it once. */
+  runKey: z.string().nullable().default(null),
   /** The board task this row describes. */
   taskId: z.string().nullable().default(null),
 
@@ -170,6 +187,13 @@ export const runRecordStateSchema = z.object({
   remote: z.string().nullable().default(null),
   /** The branch {@link remote}'s run branch was cut from, recorded with it. */
   baseRef: z.string().nullable().default(null),
+  /**
+   * The commit {@link baseRef} named when the run's branch was cut, recorded
+   * with it. Unlike a ref, nothing a run does can move it, so it is what a
+   * run's own commits are counted from. `null` on a row written before this
+   * field existed (BP-030).
+   */
+  baseCommit: z.string().nullable().default(null),
   /**
    * The run was first provisioned with no repository: its kept files alone.
    * Kept across attempts for the reason {@link remote} is, so a project that
@@ -215,14 +239,6 @@ export const runRecordStateSchema = z.object({
    * attempts. Never set while {@link place} is `null` (BR-27).
    */
   held: heldSchema.nullable().default(null),
-  /**
-   * The question the run last parked its row on, on a board read from the
-   * claim, where the row itself carries the question to the person and gives
-   * back only the answer. The next attempt pairs the answer with it in its
-   * prompt. Kept across attempts. Absent on a fixed board, whose questions are
-   * kept in its inbox, and on a record written before it existed (BP-030).
-   */
-  question: z.string().nullable().optional(),
   /** How the last attempt ended. */
   outcome: runOutcomeSchema.nullable().default(null),
   /** Why, in the harness's own words or the throw's message. */
@@ -309,8 +325,7 @@ export const runRecordCollection = defineResourceCollection({
  * fold closed.
  *
  * The rule this applies: a key two boards write, whose reader is a JOB, needs
- * the board's discriminator. A key whose reader is a PERSON does not — which is
- * why the inbox's key does not move.
+ * the board's discriminator. A key whose reader is a PERSON does not.
  *
  * Three segments, which `runs/**` matches and `runs/*` would not.
  */
@@ -362,6 +377,12 @@ export interface AttemptIdentity {
   taskId: string;
   /** `attempts` as the board packed it into this worker's input at claim time. */
   attempt: number;
+  /**
+   * The turn generation of the claim this run holds (FIX-2133 D3). Two turns
+   * can share an attempt, so a write is refused once a later turn is claimed.
+   * Absent only for a run that holds no claim ticket.
+   */
+  turn?: number;
   /** The bare topic — `<epic>/<issue>/<phase>`. See {@link runTopic}. */
   topic: string;
   /** The board's ledger collection id, resolved from `ctx.resources`. */
@@ -389,6 +410,7 @@ export interface AttemptIdentity {
 interface ClaimView {
   status?: string;
   attempts?: number;
+  turn?: number;
   leaseUntil?: number | null;
   incarnationId?: string;
 }
@@ -401,22 +423,12 @@ interface ClaimView {
  * claim a displaced worker matches the counter by construction. This mirrors
  * the substrate's own `ATTEMPT_OWNED_STATUSES` rather than guessing at it.
  */
-const ATTEMPT_OWNED_STATUSES = new Set(["in_progress", "parked"]);
+const ATTEMPT_OWNED_STATUSES = new Set(["in_progress"]);
 
-/**
- * The status `parked` replaced. A row persisted before that rename still
- * carries it. The substrate maps it forward at its own read boundary, but the
- * fence reads the board as a plain resource collection and never passes that
- * boundary — so it maps the value forward itself, or a parked attempt from
- * before the rename has every write refused and its run record freezes.
- */
-const LEGACY_PARKED_STATUS = "awaiting_review";
-
-/** The board row as the fence reads it, with the legacy status mapped forward. */
+/** The board row as the fence reads it. */
 function readClaim(state: unknown): ClaimView | undefined {
   if (state === undefined) return undefined;
-  const claim = state as ClaimView;
-  return claim.status === LEGACY_PARKED_STATUS ? { ...claim, status: "parked" } : claim;
+  return state as ClaimView;
 }
 
 /**
@@ -433,9 +445,8 @@ function readClaim(state: unknown): ClaimView | undefined {
  * remove, so the conjunct is taken from the same rule rather than reasoned
  * about separately.
  *
- * Only `in_progress` rows can lapse. A `parked` row is
- * waiting on a person, not on a lease, so its writes still apply — which is the
- * behaviour the substrate has too.
+ * Only `in_progress` rows can lapse, which is the behaviour the substrate has
+ * too.
  *
  * **The clock is the wall clock, and that is a limit.** A lease is a
  * comparison, and a comparison needs one clock; the board collection's own is
@@ -525,6 +536,7 @@ export async function writeRunRow(
   const claim = readClaim(row);
   if (claim === undefined) return "refused";
   if (claim.attempts !== identity.attempt) return "refused";
+  if (identity.turn !== undefined && (claim.turn ?? 0) !== identity.turn) return "refused";
   if (!ATTEMPT_OWNED_STATUSES.has(String(claim.status))) return "refused";
   if (leaseHasLapsed(claim, Date.now())) return "refused";
   if (
@@ -538,11 +550,28 @@ export async function writeRunRow(
   const existing = (await runs.getOptional(identity.topic))?.state as
     | RunRecordState
     | undefined;
-  if (existing?.attempt != null && existing.attempt > identity.attempt) return "refused";
+  // A later attempt, or a later turn of the same attempt, of the same task has opened the
+  // record: this one is over. Only within one task: a task filed again under the same id
+  // starts its attempts and turns over, and the board row's fence above already refuses the
+  // old task's writes.
+  const sameTask =
+    existing?.incarnationId == null || identity.incarnationId === undefined || existing.incarnationId === identity.incarnationId;
+  if (sameTask && existing?.attempt != null && existing.attempt > identity.attempt) return "refused";
+  if (
+    identity.turn !== undefined &&
+    sameTask &&
+    existing?.attempt === identity.attempt &&
+    existing.turn != null &&
+    existing.turn > identity.turn
+  ) {
+    return "refused";
+  }
 
   await runs.upsert(identity.topic, {
     ...update,
     attempt: identity.attempt,
+    ...(identity.turn !== undefined ? { turn: identity.turn } : {}),
+    ...(identity.incarnationId !== undefined ? { incarnationId: identity.incarnationId } : {}),
     taskId: identity.taskId,
     updatedAt: Date.now(),
   });
@@ -581,34 +610,16 @@ export async function writeRunRow(
 export async function openRunRow(
   ctx: CollectionHoldingContext,
   identity: AttemptIdentity,
-  opened: { workspacePath: string; branch: string; childSessionId: string },
+  opened: { workspacePath: string; branch: string; childSessionId: string; run?: number; runKey?: string },
 ): Promise<RunRowWrite> {
   return writeRunRow(ctx, identity, {
     ...ATTEMPT_SCOPED_CLEAR,
     workspacePath: opened.workspacePath,
     branch: opened.branch,
     childSessionId: opened.childSessionId,
+    ...(opened.run !== undefined ? { runs: opened.run, runKey: opened.runKey ?? null } : {}),
     outcome: "running",
   });
-}
-
-/**
- * The row of the run that last opened an attempt in `sessionId`, within one
- * board's topics, or `undefined` when none did.
- *
- * `epic` is the board's run segment (`runBoardSegment` in `./workspace`): a
- * fixed board's id as it is, or a ledger id and its partition's digest for a
- * board read from a claim, so two conversations' runs are never confused.
- */
-export async function findRunRowBySession(
-  ctx: CollectionHoldingContext,
-  epic: string,
-  sessionId: string,
-): Promise<RunRecordState | undefined> {
-  const rows = await collectionRef(ctx, RUNS).list(`${epic}/`);
-  return rows
-    .map((ref) => ref.state as RunRecordState | undefined)
-    .find((state) => state?.childSessionId === sessionId);
 }
 
 /** Read one issue-phase's row, or `undefined` when nothing has opened it. */
@@ -626,7 +637,7 @@ export async function readRunRow(
  * by clearing it, so until then the attempt has confirmed nothing. A record
  * written before attempts were recorded counts its session as the current one.
  */
-export function sessionConfirmedBy(
+function sessionConfirmedBy(
   record: { sessionId?: string | null; attempt?: number | null } | undefined,
   attempt: number,
 ): string | null {

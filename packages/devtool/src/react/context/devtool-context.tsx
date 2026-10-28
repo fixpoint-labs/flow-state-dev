@@ -39,14 +39,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { Client, FlowListEntry, RecoveryClient, ResourceClient, SessionClient } from "@flow-state-dev/client";
-import {
-  createDevToolClient,
-  createDevToolRecoveryClient,
-  createDevToolResourceClient,
-  createDevToolSessionClient,
-  type DevToolConfig,
-} from "../lib/client";
+import { createClient, type Client, type FlowListEntry } from "@flow-state-dev/client";
+import { withBearerToken, type DevToolConfig } from "../lib/client";
 import { describeReadError, isConclusiveRefusal, recordBelongsTo } from "../lib/instance-ownership";
 import {
   clearLegacySingletonSessionHint,
@@ -62,11 +56,11 @@ export type UserIdControl = "host" | "internal";
 
 type DevToolState = {
   config: DevToolConfig;
+  /**
+   * The one client every DevTool call and stream goes through: the operator's
+   * user, the server's `baseUrl`, and the bearer token on its fetcher.
+   */
   client: Client;
-  sessionClient: SessionClient;
-  recoveryClient: RecoveryClient;
-  /** The production resource read (manifest + collection state), bearer-aware like the rest. */
-  resourceClient: ResourceClient;
   /** The EXACT instance id the workspace is on. Never a kind. */
   activeFlowId: string | null;
   activeSessionId: string | null;
@@ -91,10 +85,8 @@ type Action =
 
 function buildClients(config: DevToolConfig, baseUrl: string | undefined) {
   return {
-    client: createDevToolClient(config, baseUrl),
-    sessionClient: createDevToolSessionClient(baseUrl, config.bearerToken),
-    recoveryClient: createDevToolRecoveryClient(baseUrl, config.bearerToken),
-    resourceClient: createDevToolResourceClient(baseUrl, config.bearerToken),
+    // An unset base URL is the page's own origin.
+    client: createClient({ userId: config.userId, baseUrl: baseUrl ?? "", fetcher: withBearerToken(config.bearerToken) }),
   };
 }
 
@@ -287,7 +279,7 @@ export function DevToolProvider({
     dispatch({ type: "SET_FLOWS_LOADING", loading: true });
     dispatch({ type: "SET_FLOWS_ERROR", error: null });
     try {
-      const flows = await state.client.listFlows();
+      const flows = await state.client.flows();
       dispatch({ type: "SET_FLOWS", flows });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to fetch flows";
@@ -393,7 +385,7 @@ export function DevToolProvider({
     const hint = scoped ?? legacy;
     if (hint === null) return;
 
-    const sessionClient = state.sessionClient;
+    const client = state.client;
     void (async () => {
       // Three outcomes, not two. A hint is only DISCARDED on a conclusive
       // answer — the session is genuinely not this copy's, or genuinely not
@@ -406,7 +398,7 @@ export function DevToolProvider({
       // afterwards, with nothing on screen to say why.
       let verdict: "owned" | "foreign" | "indeterminate";
       try {
-        const detail = await sessionClient.getSession(hint);
+        const detail = await client.sessions.get(hint);
         verdict =
           recordBelongsTo(detail, instance) && detail.userId === state.config.userId
             ? "owned"
@@ -432,7 +424,7 @@ export function DevToolProvider({
     baseUrl,
     state.activeSessionId,
     state.config.userId,
-    state.sessionClient,
+    state.client,
     state.workspaceToken,
   ]);
 
@@ -454,7 +446,7 @@ export function DevToolProvider({
   // catalog load or credential change tries again. The catalog itself is not
   // user-scoped (`GET /api/flows` takes no user), so a user change needs no
   // catalog refetch before the new attempt.
-  const { flows, flowsLoaded, sessionClient } = state;
+  const { flows, flowsLoaded, client } = state;
   const addressUserId = state.config.userId;
   useEffect(() => {
     const attempt = addressAttempt;
@@ -465,7 +457,7 @@ export function DevToolProvider({
       let owner: FlowListEntry | undefined;
       let failure: unknown;
       try {
-        const detail = await sessionClient.getSession(openSessionId);
+        const detail = await client.sessions.get(openSessionId);
         owner = detail.userId === addressUserId ? flows.find((flow) => recordBelongsTo(detail, flow)) : undefined;
       } catch (err) {
         failure = err;
@@ -494,7 +486,7 @@ export function DevToolProvider({
       writeSessionHint({ baseUrl, userId: addressUserId, flowId: owner.id }, openSessionId);
       dispatch({ type: "SELECT_WORKSPACE", flowId: owner.id, sessionId: openSessionId });
     })();
-  }, [openSessionId, addressAttempt, baseUrl, flows, flowsLoaded, sessionClient, addressUserId]);
+  }, [openSessionId, addressAttempt, baseUrl, flows, flowsLoaded, client, addressUserId]);
 
   // Propagate EXTERNAL config changes (a new `initialConfig`/`baseUrl` prop from
   // the standalone shell's focus re-read or a host swapping identity/token) into
@@ -529,10 +521,11 @@ export function DevToolProvider({
     if (!autoRecoverInterrupted) return;
     const userId = state.config.userId;
     if (userId.trim().length === 0) return;
-    void state.recoveryClient.checkInterrupted({ userId }).catch((err) => {
+    // Marks the user's stale requests interrupted, so their rows offer Resume.
+    void state.client.requests.interrupted().catch((err) => {
       console.warn("[devtool] checkInterrupted failed", err);
     });
-  }, [autoRecoverInterrupted, state.recoveryClient, state.config.userId]);
+  }, [autoRecoverInterrupted, state.client, state.config.userId]);
 
   const value = useMemo(
     () => ({

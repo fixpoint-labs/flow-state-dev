@@ -12,7 +12,7 @@
  *
  * - a coordinator's turn files a `[file:<worker>]` message as a task for that
  *   worker, with the message less that mark as its goal, through its own
- *   `dispatchTask` tool; a `[split:<worker>]` message it tries to split, filing a
+ *   `createTask` tool; a `[split:<worker>]` message it tries to split, filing a
  *   piece for that worker; a line that tells it a task ended it notes, and
  *   files nothing; anything else it notes;
  * - an `agent` worker's turn holds its answer for `[slow:<ms>]`, fails on
@@ -83,12 +83,12 @@ const judgment = {
       const file = /\[file:([a-z.-]+)\]/.exec(asked);
       if (file !== null) {
         const goal = asked.replace(file[0], "").trim();
-        return { toolCalls: [{ toolCallId: "file-0", toolName: "dispatchTask", args: { goal, assignee: file[1] } }], finishReason: "tool-calls" };
+        return { toolCalls: [{ toolCallId: "file-0", toolName: "createTask", args: { goal, assignee: file[1] } }], finishReason: "tool-calls" };
       }
       const split = /\[split:([a-z.-]+)\]/.exec(asked);
       if (split !== null) {
         const goal = `a piece of: ${asked.replace(split[0], "").trim()}`;
-        return { toolCalls: [{ toolCallId: "split-0", toolName: "dispatchTask", args: { goal, assignee: split[1] } }], finishReason: "tool-calls" };
+        return { toolCalls: [{ toolCallId: "split-0", toolName: "createTask", args: { goal, assignee: split[1] } }], finishReason: "tool-calls" };
       }
       return { text: "Noted.", finishReason: "stop" };
     }
@@ -124,7 +124,7 @@ const modelResolver = Object.assign(
 let flows: Record<string, unknown> = {};
 const installation = wf.createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => flows });
 const agent = wf.defineAgentWorkerFlow({ installation });
-const coordinator = wf.defineCoordinatorFlow({ installation, delegateFlows: [agent], routeModel: "scripted/route" });
+const coordinator = wf.defineCoordinatorFlow({ installation, routeModel: "scripted/route" });
 flows = { agent, coordinator };
 const copies = wf.hireWorkforce(installation) as Array<{ id: string }>;
 

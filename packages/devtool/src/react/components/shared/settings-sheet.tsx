@@ -25,7 +25,7 @@ export function SettingsSheet() {
   if (!open) {
     return (
       <button
-        className="flex w-full items-center gap-2 px-2 py-1.5 text-xs text-slate-400 hover:bg-slate-800/60 rounded"
+        className="flex w-full items-center gap-2 px-2 py-1.5 font-fs-mono text-[11.5px] text-fs-ink3 hover:bg-fs-ink/5 hover:text-fs-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fs-blue/40"
         onClick={() => setOpen(true)}
       >
         <Settings className="h-3.5 w-3.5" />
@@ -37,9 +37,9 @@ export function SettingsSheet() {
   const showUserIdField = userIdControl === "internal";
 
   return (
-    <div className="rounded-md border border-slate-800 bg-slate-900 p-3 space-y-3">
+    <div className="border border-fs-ink/20 bg-fs-card p-3 space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium">Settings</span>
+        <span className="font-fs-mono text-[10px] font-medium uppercase tracking-[.14em] text-fs-ink3">Settings</span>
         <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => setOpen(false)}>
           <X className="h-3 w-3" />
         </Button>
@@ -71,7 +71,7 @@ export function SettingsSheet() {
           </Button>
         </>
       ) : (
-        <p className="text-[10px] text-slate-500">
+        <p className="text-[11px] text-fs-ink4">
           User ID is owned by the host application.
         </p>
       )}

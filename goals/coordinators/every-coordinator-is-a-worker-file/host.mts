@@ -33,7 +33,7 @@ export const REPLY_MARKER = "[reply:converted-desk]";
  * The model best fit's evaluator call would run on. This desk routes to
  * everyone and never makes that call, but the flow names no default.
  */
-const ROUTE_MODEL = "vercel/typesafe-ai/jev";
+const ROUTE_MODEL = "vercel:typesafe-ai/jev";
 
 /** The app, booted: its router and its runtime. */
 export interface ConvertedDesk {
@@ -60,7 +60,7 @@ export async function startConvertedDesk(tree: string, dbFile: string): Promise<
   const agent = defineAgentWorkerFlow({ installation });
   flows = {
     agent,
-    coordinator: defineCoordinatorFlow({ installation, delegateFlows: [agent] as never, routeModel: ROUTE_MODEL })
+    coordinator: defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL })
   };
   const copies = hireWorkforce(installation);
 

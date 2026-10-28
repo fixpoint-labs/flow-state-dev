@@ -26,6 +26,9 @@ import { resolveHeldPackages } from "../src/worker-packages";
 import { WORKER_PACKAGES_KEY, type PackageManifest, type WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
 import { workerDoor } from "./worker-door";
+import { RULE_TOOLS } from "../src/standing-rules/keys";
+
+const OFFERED_ON_EVERY_USER_TURN = new Set<string>(Object.values(RULE_TOOLS));
 
 /** A named tool that does nothing; the checks read whether it was OFFERED. */
 function tool(name: string) {
@@ -133,7 +136,10 @@ async function turn(worker: FlowInstance): Promise<Turn> {
     modelId: "m",
     async generate(options: { tools?: Array<{ name: string }>; messages: unknown[] }) {
       generateCalls += 1;
-      tools.push(...(options.tools ?? []).map((t) => t.name));
+      // The rule tools ride every user's turn as a control; they have tests of their own (FIX-1945).
+      tools.push(...(options.tools ?? [])
+        .filter((t) => !OFFERED_ON_EVERY_USER_TURN.has(t.name))
+        .map((t) => t.name));
       system = (options.messages as Array<{ role?: string; content?: unknown }>)
         .filter((message) => message.role === "system")
         .map((message) => String(message.content ?? ""))
@@ -148,13 +154,13 @@ async function turn(worker: FlowInstance): Promise<Turn> {
     orgId: "test-org",
     org: { state: {} },
     sessionId: `session-${worker.id}`,
-    sequencerName: worker.actions.run!.block.name,
-    declaredResources: worker.actions.run!.block.declaredResources,
+    sequencerName: worker.actions.respond!.block.name,
+    declaredResources: worker.actions.respond!.block.declaredResources,
     modelResolver: recording
   });
 
   const result = await executeBlock({
-    block: worker.actions.run.block,
+    block: worker.actions.respond.block,
     input: { message: "go" },
     ctx: runtime.ctx
   });

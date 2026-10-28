@@ -13,8 +13,9 @@ import {
   handler,
   type FlowInstance,
 } from "@flow-state-dev/core";
-import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
+import { createFlowState, inMemoryStores, createInProcessFetch } from "@flow-state-dev/engine";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
+import { taskSettledEntry } from "@flow-state-dev/orchestration";
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import {
   defineTaskCollection,
@@ -78,6 +79,13 @@ const seatWork = handler({
   },
 });
 
+/** Each flow here hands rows out, so it hears each ending; this goal grades the seat, not the notice. */
+const heard = {
+  onTaskSettled: taskSettledEntry({
+    block: handler({ name: "goal-heard", inputSchema: z.unknown(), outputSchema: z.unknown(), execute: () => ({}) }),
+  }),
+};
+
 const workerFlowName = defineFlow({
   kind: "seat",
   cardinality: "collection",
@@ -89,6 +97,7 @@ const workerFlowName = defineFlow({
       block: taskBoard({
         name: "seat-board",
         boardId: BOARD_ID,
+        mode: "delegation",
         collection: ledger(),
         workers: {
           work: dispatcher<TaskWorkerInput>({ name: "seat-hand-off", action: "work", session: "per-task" }),
@@ -97,6 +106,7 @@ const workerFlowName = defineFlow({
     },
   },
   task: { actions: { work: { block: seatWork } } },
+  internal: { actions: heard },
   authentication: verified,
 });
 
@@ -106,6 +116,7 @@ const seatHandOff = (name: string, flowKind: string) =>
 const orgBoard = taskBoard({
   name: "org-board",
   boardId: BOARD_ID,
+  mode: "delegation",
   collection: ledger(),
   workers: {
     org: seatHandOff("to-org-seat", fixture.orgWorker),
@@ -122,6 +133,7 @@ const orgBoard = taskBoard({
 const boardFlow = defineFlow({
   kind: "board",
   actions: { start: { block: orgBoard.drain } },
+  internal: { actions: heard },
   authentication: verified,
 });
 
@@ -153,8 +165,7 @@ await runGoal(async (failures) => {
     const runtime = await state.getRuntime();
 
     const call = async (method: "GET" | "POST", path: string[], who: Who, body?: unknown) => {
-      const response = await router[method](
-        new Request(`http://goal/api/flows/${path.join("/")}`, {
+      const response = await createInProcessFetch(router as never)(`http://goal/api/flows/${path.join("/")}`, {
           method,
           headers: {
             "content-type": "application/json",
@@ -162,9 +173,7 @@ await runGoal(async (failures) => {
             "x-verified-org": who.org,
           },
           ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-        }),
-        { params: { path } },
-      );
+        });
       const text = await response.text();
       return { status: response.status, json: text.length > 0 ? JSON.parse(text) : undefined };
     };

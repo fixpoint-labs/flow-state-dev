@@ -150,7 +150,7 @@ interface Asked {
 async function ask(lab: Lab): Promise<Asked> {
   const http = door(lab);
   const sessionId = await http.open(COORDINATOR_FLOW, { workerId: CHIEF });
-  const turn = await http.act(COORDINATOR_FLOW, sessionId, "run", { message: fixture.ask });
+  const turn = await http.act(COORDINATOR_FLOW, sessionId, "respond", { message: fixture.ask });
   const read = turn.requestId === undefined ? { tools: [], reply: "" } : await http.turnOf(sessionId, turn.requestId);
   const listed = ((await http.act(COORDINATOR_FLOW, sessionId, LIST_TASKS, {})).output?.tasks ?? []) as Array<{ id: string }>;
   // The rows as the board stores them, which carry the task's input.

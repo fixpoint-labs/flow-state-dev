@@ -10,7 +10,8 @@
  * them walks:
  *
  * - P1.a, leg a: `goals/hand-offs/ask-survives-a-restart/run.mts`, plain, then
- *   under `no-run-once` and `no-waker`.
+ *   under `no-waker`, the one control it has since FIX-2082 retired
+ *   `no-run-once` (FIX-2121).
  * - P1.b, leg b: `goals/coordinators/task-session-stays-open/run.mts`, plain,
  *   then under `new-session` and `drop-answer`.
  * - P1.c and P1.d, the neighbouring checks on the same board, plain.
@@ -57,12 +58,11 @@ interface ControlCheck {
 type Check = PlainCheck | ControlCheck;
 
 /** J4's tags after the answer: with no answer accepted there is no task to finish, so all of them go red with `j:answered`. */
-const AFTER_THE_ANSWER = ["j:completed", "j:same-session", "j:names-ticket", "j:names-region", "j:one-draw", "j:one-completed", "j:second-answer", "j:still-answers", "j:row-unchanged"];
+const AFTER_THE_ANSWER = ["j:completed", "j:same-session", "j:names-ticket", "j:names-region", "j:one-draw", "j:one-completed", "j:second-answer", "j:still-answers", "j:unchanged"];
 
 const CHECKS: Check[] = [
   { id: "P1.a", script: "goals/hand-offs/ask-survives-a-restart/run.mts" },
-  // Leg a's goal.md: `b:once` goes red with `one-row`; `a:word` goes red with `a:completed`.
-  { id: "P1.a", script: "goals/hand-offs/ask-survives-a-restart/run.mts", control: "no-run-once", mustFail: ["one-row"], alsoRed: ["b:once"] },
+  // Leg a's goal.md: `a:word` goes red with `a:completed`.
   { id: "P1.a", script: "goals/hand-offs/ask-survives-a-restart/run.mts", control: "no-waker", mustFail: ["a:completed"], alsoRed: ["a:word"] },
   { id: "P1.b", script: "goals/coordinators/task-session-stays-open/run.mts" },
   // Leg b's verdict log: a fresh session per attempt also reddens the same-session tags, leg b's answer and the one-draw count.

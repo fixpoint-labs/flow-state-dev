@@ -29,9 +29,9 @@ function buildHost(opts?: { dispatcher?: FlowDispatcher }) {
       actions: {
         run: {
           inputSchema: z.object({ value: z.string() }),
-          block: handler<{ value: string }, { ok: true }>({
+          block: handler({
             name: "host-test-run",
-            execute: () => ({ ok: true })
+            execute: (_input: { value: string }): { ok: true } => ({ ok: true })
           })
         }
       }
@@ -87,9 +87,9 @@ describe("createInboundTransportHost", () => {
       leases: stores.leases
     });
 
-    const gate = handler<{ value: string }, unknown>({
+    const gate = handler({
       name: "gate",
-      execute: async (_input, ctx) =>
+      execute: async (_input: { value: string }, ctx): Promise<unknown> =>
         ctx.suspend!({ reason: "human_approval", message: "approve?" })
     });
     registry.register(
@@ -166,9 +166,9 @@ describe("createInboundTransportHost", () => {
         actions: {
           run: {
             inputSchema: z.object({ value: z.string() }),
-            block: handler<{ value: string }, { ok: true }>({
+            block: handler({
               name: "keepalive-run",
-              execute: () => ({ ok: true })
+              execute: (_input: { value: string }): { ok: true } => ({ ok: true })
             })
           }
         }
@@ -421,7 +421,7 @@ describe("createInboundTransportHost", () => {
   });
 
   describe("external dispatch — enqueue-time materialization (FIX-828)", () => {
-    it("registers activeRequests + an in_progress record before handing off to the dispatcher", async () => {
+    it("registers activeRequests + an in_progress record before dispatching to the dispatcher", async () => {
       let storesAtDispatch: { active: boolean; status?: string } | undefined;
       // The fake worker never starts: it reads the stores at the instant it is
       // handed the job, then leaves `finished` pending forever.
@@ -494,7 +494,7 @@ describe("createInboundTransportHost", () => {
     });
 
     it("terminates the in_progress record when the enqueue fails, leaving no orphan", async () => {
-      // The writes succeed, then the dispatcher hand-off rejects. `accepted`
+      // The writes succeed, then the dispatcher call rejects. `accepted`
       // covers the enqueue, so it rejects — and the record must not linger
       // in_progress: the dispatch teardown deregisters the activeRequests entry,
       // so without cleanup the stale-request sweeper would have nothing to reap.

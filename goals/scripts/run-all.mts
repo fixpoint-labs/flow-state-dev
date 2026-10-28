@@ -14,13 +14,21 @@
  *                                  # model-free legs of goals that declare a Model-free run
  *   pnpm goal:all suspension       # only goals whose path contains "suspension"
  *   pnpm goal:all --list           # show what would run, run nothing
+ *   pnpm goal:all --root=<dir>     # sweep another goals tree (a goal check's probe)
+ *
+ * Each goal's verdict comes from its exit code: 0 PASS, `CANT_TELL_EXIT`
+ * CAN'T TELL (the goal read no evidence for an assertion, so it neither passed
+ * nor failed), anything else FAIL. CAN'T TELL is not passed: the sweep exits
+ * non-zero on it, and lists it apart from FAIL.
  */
 import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { CANT_TELL_EXIT } from "../lib/verdict.mts";
 
-const GOALS_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+/** The goals package: where each runner is spawned from, whatever tree is swept. */
+const GOALS_PACKAGE = dirname(dirname(fileURLToPath(import.meta.url)));
 
 interface Goal {
   /** Path relative to `goals/`, e.g. `suspension/resumes-after-a-cold-restart`. */
@@ -96,6 +104,9 @@ const USAGE = `pnpm goal:all [options] [path-filter...]
   --model-free   Only goals whose goal.md declares Model: n/a / none, plus the
                  model-free legs of a goal that declares a Model-free run.
   --help         This message.
+  --root=<dir>   Discover goals under <dir> instead of goals/. For a goal check
+                 that proves how the sweep counts a verdict; runners still
+                 start from the goals package.
   --timeout=<m>  Per-goal wall-clock cap in minutes (default 20). A goal that
                  exceeds it is killed, recorded TIMEOUT, and the sweep goes on.
                  Keep it above ~1 — pnpm+tsx startup alone can trip a
@@ -112,9 +123,10 @@ const args = process.argv.slice(2);
 // path filter, which selects the ENTIRE corpus and starts every model-backed
 // goal — a discovery command or a slip must never spend real inference.
 const TIMEOUT_FLAG = "--timeout=";
+const ROOT_FLAG = "--root=";
 const KNOWN_OPTIONS = new Set(["--list", "--model-free", "--help"]);
 const unknown = args.filter(
-  (a) => a.startsWith("-") && !KNOWN_OPTIONS.has(a) && !a.startsWith(TIMEOUT_FLAG),
+  (a) => a.startsWith("-") && !KNOWN_OPTIONS.has(a) && !a.startsWith(TIMEOUT_FLAG) && !a.startsWith(ROOT_FLAG),
 );
 if (unknown.length > 0) {
   console.error(`Unknown option(s): ${unknown.join(", ")}\n\n${USAGE}`);
@@ -143,6 +155,9 @@ if (!Number.isFinite(timeoutMinutes) || timeoutMinutes <= 0) {
   console.error(`Invalid ${TIMEOUT_FLAG}<minutes>: ${timeoutArg}\n\n${USAGE}`);
   process.exit(2);
 }
+
+const rootArg = args.find((a) => a.startsWith(ROOT_FLAG));
+const GOALS_ROOT = rootArg === undefined ? GOALS_PACKAGE : resolve(rootArg.slice(ROOT_FLAG.length));
 
 const listOnly = args.includes("--list");
 const modelFreeOnly = args.includes("--model-free");
@@ -178,7 +193,7 @@ if (runnable.length === 0) {
   process.exit(1);
 }
 
-type Verdict = "PASS" | "FAIL" | "TIMEOUT";
+type Verdict = "PASS" | "FAIL" | "CAN'T TELL" | "TIMEOUT";
 const results: { id: string; verdict: Verdict; note: string }[] = [];
 
 for (const [index, goal] of runnable.entries()) {
@@ -199,11 +214,11 @@ for (const [index, goal] of runnable.entries()) {
   // Raising `maxBuffer` only moves the cliff. Inheriting removes it: the goal's
   // output streams straight to the terminal (better for a long sweep anyway),
   // and the verdict comes from the EXIT CODE, which `runGoal` already
-  // guarantees — 0 for PASS, 1 for FAIL. The PASS evidence line has by then
-  // already been printed by the goal itself, so nothing is lost by not
-  // re-capturing it here.
+  // guarantees — 0 for PASS, 1 for FAIL, CANT_TELL_EXIT for CAN'T TELL. The
+  // verdict line has by then already been printed by the goal itself, so
+  // nothing is lost by not re-capturing it here.
   const run = spawnSync("pnpm", ["tsx", join(goal.dir, "run.mts")], {
-    cwd: GOALS_ROOT,
+    cwd: GOALS_PACKAGE,
     stdio: ["ignore", "inherit", "inherit"],
     timeout: timeoutMinutes * 60_000,
     ...(legEnv === undefined ? {} : { env: { ...process.env, ...legEnv } }),
@@ -219,13 +234,19 @@ for (const [index, goal] of runnable.entries()) {
   // need manual cleanup. Bounding the sweep is the goal here; full
   // process-group teardown would need a different spawn strategy.
   const timedOut = (run.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT";
-  const verdict: Verdict = timedOut ? "TIMEOUT" : run.status === 0 ? "PASS" : "FAIL";
+  const verdict: Verdict = timedOut
+    ? "TIMEOUT"
+    : run.status === 0
+      ? "PASS"
+      : run.status === CANT_TELL_EXIT
+        ? "CAN'T TELL"
+        : "FAIL";
   results.push({
     id: `${goal.id}${legNote}`,
     verdict,
     note: timedOut
       ? `exceeded ${timeoutMinutes}m — killed`
-      : run.status === 0
+      : run.status === 0 || run.status === CANT_TELL_EXIT
         ? ""
         : run.status === null
           ? `killed by signal ${run.signal ?? "unknown"}`
@@ -238,6 +259,7 @@ for (const [index, goal] of runnable.entries()) {
 
 const failed = results.filter((r) => r.verdict !== "PASS");
 const timedOutCount = results.filter((r) => r.verdict === "TIMEOUT").length;
+const cantTellCount = results.filter((r) => r.verdict === "CAN'T TELL").length;
 
 console.log(`\n${"=".repeat(80)}\nGOAL SWEEP SUMMARY\n${"=".repeat(80)}`);
 for (const result of results) {
@@ -251,6 +273,7 @@ if (missingRunner.length > 0) {
 }
 console.log(
   `\n${results.length - failed.length}/${results.length} passed` +
+    (cantTellCount > 0 ? `, ${cantTellCount} can't tell` : "") +
     (timedOutCount > 0 ? `, ${timedOutCount} timed out` : "") +
     (missingRunner.length > 0 ? `, ${missingRunner.length} unimplemented` : ""),
 );

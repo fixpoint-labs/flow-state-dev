@@ -19,7 +19,7 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeProvider(overrides: Partial<VoiceProvider> & {
+function makeProvider(overrides: Omit<Partial<VoiceProvider>, "abilities"> & {
   abilities: Partial<VoiceAbilities>;
 }): VoiceProvider {
   const abilities: VoiceAbilities = {

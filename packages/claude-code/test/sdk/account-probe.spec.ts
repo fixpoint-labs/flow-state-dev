@@ -53,18 +53,61 @@ describe("probeClaudeAccount, scripted", () => {
     expect(await probeClaudeAccount({ env: {}, importSdk: sdk.importSdk })).toEqual({ status: "account", tokenSource: "claude.ai" });
   });
 
+  it("says account for a subscription sign-in, which names no key or token source", async () => {
+    // The shape the SDK returns for a `claude` login (keychain / ~/.claude) with no API key set.
+    const sdk = scriptedSdk(async () => ({ email: "a@b.c", organization: "o", subscriptionType: "Claude Max", apiProvider: "firstParty" }));
+    expect(await probeClaudeAccount({ env: {}, importSdk: sdk.importSdk })).toEqual({
+      status: "account",
+      email: "a@b.c",
+      subscriptionType: "Claude Max",
+    });
+  });
+
+  it("says account for an email alone, and for a subscription type alone", async () => {
+    // The SDK documents accountInfo() as the logged-in user's account, so either
+    // field present means a sign-in was found. The probe still does not check
+    // that the credential works (see the file header).
+    const emailOnly = scriptedSdk(async () => ({ email: "a@b.c", apiProvider: "firstParty" }));
+    expect(await probeClaudeAccount({ env: {}, importSdk: emailOnly.importSdk })).toEqual({ status: "account", email: "a@b.c" });
+    const planOnly = scriptedSdk(async () => ({ subscriptionType: "Claude Pro" }));
+    expect(await probeClaudeAccount({ env: {}, importSdk: planOnly.importSdk })).toEqual({
+      status: "account",
+      subscriptionType: "Claude Pro",
+    });
+  });
+
   it("says none, with the reason, when neither source comes back", async () => {
-    const sdk = scriptedSdk(async () => ({ apiProvider: "firstParty", subscriptionType: null }));
+    // The shape the SDK returns with no credential: subscriptionType "Claude API", its no-plan label.
+    const sdk = scriptedSdk(async () => ({ apiProvider: "firstParty", subscriptionType: "Claude API" }));
     const result = await probeClaudeAccount({ env: {}, importSdk: sdk.importSdk });
     expect(result.status).toBe("none");
     expect(result.status === "none" && result.reason).toMatch(/no API key and no sign-in/);
     expect(sdk.seen.closed).toBe(true);
   });
 
+  it("says none when the plan is null or absent", async () => {
+    for (const info of [{ apiProvider: "firstParty", subscriptionType: null }, { apiProvider: "firstParty" }]) {
+      const sdk = scriptedSdk(async () => info);
+      expect((await probeClaudeAccount({ env: {}, importSdk: sdk.importSdk })).status).toBe("none");
+    }
+  });
+
   it("says none when Claude Code does not answer within timeoutMs", async () => {
     const sdk = scriptedSdk(() => new Promise(() => {}));
     const result = await probeClaudeAccount({ env: {}, timeoutMs: 50, importSdk: sdk.importSdk });
-    expect(result).toEqual({ status: "none", reason: "Claude Code did not report an account within 50 ms" });
+    expect(result).toEqual({ status: "none", reason: "Claude Code did not report an account within 50 ms", unanswered: true });
+    expect(sdk.seen.closed).toBe(true);
+  });
+
+  it("stops and closes Claude Code when its signal aborts, without waiting out timeoutMs", async () => {
+    // A usage refresh that gives up must not leave the probe's process running.
+    const sdk = scriptedSdk(() => new Promise(() => {}));
+    const stop = new AbortController();
+    const started = Date.now();
+    setTimeout(() => stop.abort(), 20);
+    const result = await probeClaudeAccount({ env: {}, timeoutMs: 60_000, signal: stop.signal, importSdk: sdk.importSdk });
+    expect(result.status).toBe("none");
+    expect(Date.now() - started).toBeLessThan(5_000);
     expect(sdk.seen.closed).toBe(true);
   });
 
@@ -75,6 +118,7 @@ describe("probeClaudeAccount, scripted", () => {
     expect(await probeClaudeAccount({ env: {}, importSdk: sdk.importSdk })).toEqual({
       status: "none",
       reason: "Claude Code could not be asked for its account: spawn claude ENOENT",
+      unanswered: true,
     });
   });
 

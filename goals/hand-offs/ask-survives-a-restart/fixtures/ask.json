@@ -1,5 +1,6 @@
 {
-  "asker": "You coordinate this week's release. When a person needs something only a colleague of yours knows, ask that colleague and wait for the reply before you answer.",
+  "asker": "You coordinate this week's release. When a person needs something only a colleague of yours knows, ask that colleague and wait for the reply before you answer. You ask a colleague by filing a task for them with createTask and waiting on it with getTask by its id; a message to them can't be waited on.",
   "colleague": "You keep the release records. This week's release code word is {word}. When someone asks you for it, answer with the word itself.",
-  "ask": "What's this week's release code word? {colleague} keeps it. Ask them, wait for their reply, and tell me the word."
+  "ask": "What's this week's release code word? {colleague} keeps it. Ask them, wait for their reply, and tell me the word.",
+  "askRecorded": "What's this week's release code word? {colleague} keeps it. First file a task for them with createTask, then wait on it with getTask by its id, and tell me the word."
 }

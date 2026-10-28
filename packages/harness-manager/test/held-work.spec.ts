@@ -3,7 +3,7 @@
  * another machine (FIX-1766).
  *
  * Driven end to end like `workspace-host.spec.ts`: a real flow, board and
- * hand-off, and real `localWorkspaceHost`s. Two host roots stand in for two
+ * dispatch, and real `localWorkspaceHost`s. Two host roots stand in for two
  * machines; they share one `file://` remote and one held-work folder, and the
  * manager's workspace is switched from one to the other between attempts.
  * Only the harness is a stub.
@@ -21,6 +21,7 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
+  openRowHolds,
   resolveResourceCollection,
   type Task,
 } from "@flow-state-dev/orchestration/tasks";
@@ -34,9 +35,9 @@ import {
   type WorkspaceHost,
 } from "@flow-state-dev/workspace";
 import { harnessManager, harnessTaskInputSchema, runOwnerDispatcher, type HarnessFeeds } from "../src";
-import { answerQuestion, inboxCollection, listQuestions } from "../src/inbox";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
+import { heard } from "./heard";
 
 vi.setConfig({ testTimeout: 90_000 });
 
@@ -59,7 +60,8 @@ afterAll(() => {
  * - `write` / `write-ask` / `write-throw` — writes `notes.md` (turn N), then finishes, asks, or the harness throws.
  * - `read` — records `notes.md` as it found it, then finishes.
  */
-type Step = "write" | "write-ask" | "write-throw" | "read";
+/** `write-session` writes like `write`, and confirms a coding session a steer's step can resume. */
+type Step = "write" | "write-ask" | "write-throw" | "read" | "write-session";
 
 interface Seen {
   step: Step;
@@ -100,7 +102,6 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
     },
     list: (prefix) => folder.list(prefix),
   };
-  const inboxCapability = defineCapability({ name: "held-inbox", resources: { inbox: inboxCollection } });
   const answer = (): RunSourceAnswer => ({ kind: "repo", repo: remote, baseRef: "main", heldPrefix: PREFIX });
   const machine = (name: string, heldWork: HeldWorkStore | null) =>
     localWorkspaceHost({
@@ -161,11 +162,12 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
       inputSchema: harnessRunInputSchema,
       outputSchema: harnessRunHandleSchema,
       execute: async (input, ctx) => {
-        const cwd = feeds.cwd(ctx as never);
+        const cwd = await feeds.cwd(ctx as never);
         const step = options.script[seen.length] ?? "write";
         attempt += 1;
         const notesPath = join(cwd, "notes.md");
         seen.push({ step, notes: existsSync(notesPath) ? readFileSync(notesPath, "utf8") : null, prompt: input.prompt });
+        if (step === "write-session") await feeds.onSession("sess_held", ctx as never);
         if (step !== "read") writeFileSync(notesPath, `turn ${attempt}\n`);
         if (step === "write-ask") {
           const marker = /write it as the entire contents of this file:\n {2}(\S+)/.exec(input.prompt)?.[1];
@@ -187,6 +189,8 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
       },
     }) as unknown as HarnessBlock;
 
+  // Run inside the phase's done-condition, one per call: what lands while the verdict is read.
+  const duringVerdict: Array<() => Promise<void>> = [];
   const manager = harnessManager({
     boardCollectionId: BOARD_ID,
     boardCollection: ledger,
@@ -195,7 +199,10 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
       phase: PHASE,
       buildPrompt: (run) =>
         [`Work on ${run.issue}, attempt ${run.attempt}.`, "To ask, write it as the entire contents of this file:", `  ${run.askMarkerPath}`].join("\n"),
-      isDone: () => true,
+      isDone: async () => {
+        await duringVerdict.shift()?.();
+        return true;
+      },
     },
     workspace,
     runTimeoutMs: 30_000,
@@ -205,11 +212,11 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
   const board = taskBoard({
     name: "held-board",
     boardId: "held-board",
+    mode: "delegation",
     collection: ledger,
     concurrency: 1,
-    onReview: "exit",
     dispatcher: runOwnerDispatcher(),
-    workers: { coder: dispatcher({ name: "held-board-hand-off", action: "work", session: "per-task" }) },
+    workers: { coder: dispatcher({ name: "held-board-dispatch", action: "work", session: "per-task" }) },
   });
   const seed = handler({
     name: "held-seed",
@@ -228,28 +235,45 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
       return { id: TASK_ID };
     },
   });
-  // A person answers the run's open question, and the row goes back in the queue.
+  // A person answers the task's open questions, which owes it one more turn on its attempt.
   const answerOpen = handler({
     name: "held-answer",
     inputSchema: z.object({}),
     outputSchema: z.object({}),
-    uses: [board.capability, inboxCapability],
+    uses: [board.capability],
     execute: async (_input, ctx) => {
-      const open = (await listQuestions(ctx as never, ISSUE, PHASE)).filter((q) => q.state.status === "open");
-      for (const q of open) await answerQuestion(ctx as never, q.topic, "go ahead");
       const tasks = await getOrCreateTaskCollection({
         ctx: ctx as never,
         backing: "resource",
         collectionId: BOARD_ID,
         collection: resolveResourceCollection(ctx as never, BOARD_ID)!,
       });
-      await tasks.unpark(TASK_ID, "go ahead");
+      const row = tasks.get(TASK_ID);
+      for (const hold of row === undefined ? [] : openRowHolds(row)) {
+        await tasks.answer!(TASK_ID, { hold: hold.id, message: "go ahead", from: "user", by: ALICE });
+      }
       return {};
     },
   });
-  const flow = defineFlow({
+  // A steer from the person, as `updateTask({ message })` writes one.
+  const steer = handler({
+    name: "held-steer",
+    inputSchema: z.object({}),
+    outputSchema: z.unknown(),
+    uses: [board.capability],
+    execute: async (_input, ctx) => {
+      const tasks = await getOrCreateTaskCollection({
+        ctx: ctx as never,
+        backing: "resource",
+        collectionId: BOARD_ID,
+        collection: resolveResourceCollection(ctx as never, BOARD_ID)!,
+      });
+      return tasks.steer!(TASK_ID, { message: "One more turn.", from: "user", by: ALICE });
+    },
+  });
+  const flow = defineFlow({ internal: { actions: { ...heard } },
     kind: "held-flow",
-    actions: { seed: { block: seed }, drain: { block: board.drain }, answer: { block: answerOpen } },
+    actions: { seed: { block: seed }, drain: { block: board.drain }, answer: { block: answerOpen }, steer: { block: steer } },
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "held-flow" } as never);
   const state = createFlowState({
@@ -309,15 +333,25 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
     await rt.stores.resourceState.set("user", RECORD_SCOPE, key, { ...value, ...patch }, "any");
   };
 
-  const questions = async (): Promise<string[]> => {
-    const rt = await runtime();
-    const rows = await rt.stores.resourceState.getByPrefix("user", RECORD_SCOPE, "inbox/");
-    return Object.values(rows).map((r) => (r as { state: { question: string } }).state.question);
+  /** The questions the task was ever held on, as its row keeps them. */
+  const questions = async (): Promise<string[]> => ((await row())?.holds ?? []).flatMap((hold) => (hold.source.kind === "row" ? [hold.ask.prompt] : []));
+
+  /** Wait until the task is held on a question: still this attempt's, with no lease, and not settled. */
+  const held = async (): Promise<Task> => {
+    const deadline = Date.now() + 60_000;
+    for (;;) {
+      const current = await row();
+      if (current !== undefined && current.status === "in_progress" && current.leaseUntil == null && openRowHolds(current).length > 0) return current;
+      if (Date.now() > deadline) throw new Error(`timed out waiting for a held task; row is ${JSON.stringify(current)}`);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
   };
 
   return {
     act,
     settled,
+    held,
+    duringVerdict,
     record,
     rewriteRecord,
     questions,
@@ -381,11 +415,26 @@ describe("a run's work is held at every save point (BR-1, BR-6, Q1)", () => {
     expect(record.place).toEqual({ host: run.hostId("A"), state: "ready" });
   });
 
-  it("when the run parks on a question", async () => {
+  it("after a step a late steer adds: the pack the record names is that step's work", async () => {
+    const run = lab({ script: ["write-session", "write-session"] });
+    run.duringVerdict.push(() => run.act("steer"));
+    await run.act("seed");
+    await run.act("drain");
+    const done = await run.settled("completed");
+
+    expect(run.seen.map((s) => s.step)).toEqual(["write-session", "write-session"]);
+    expect(done.steers).toEqual([expect.objectContaining({ takenBy: 1 })]);
+    // Two holds, one per step, and the record names the second.
+    const puts = run.calls.filter((call) => call.startsWith("put "));
+    expect(puts).toHaveLength(2);
+    expect((await run.record()).held).toMatchObject({ key: puts[1]!.slice("put ".length), error: null });
+  });
+
+  it("when the run's question holds its task", async () => {
     const run = lab({ script: ["write-ask"] });
     await run.act("seed");
     await run.act("drain");
-    await run.settled("parked");
+    await run.held();
     const keys = await run.keys();
     expect(keys).toHaveLength(1);
     expect((await run.record()).held?.key).toBe(keys[0]);
@@ -495,7 +544,7 @@ describe("held work that cannot be used parks the run for its owner (BR-19, BR-2
     run.lose("A");
   }
 
-  it("a changed pack: row parked, place lost, the owner asked naming the field, no harness ran, the pack untouched", async () => {
+  it("a changed pack: task held on the owner's question naming the field, place lost, no harness ran, the pack untouched", async () => {
     const run = lab({ script: ["write-throw"], maxAttempts: 3 });
     await heldThenLost(run);
     const key = (await run.record()).held.key as string;
@@ -505,7 +554,7 @@ describe("held work that cannot be used parks the run for its owner (BR-19, BR-2
     run.use("B");
 
     await run.act("drain").catch(() => undefined);
-    await run.settled("parked");
+    await run.held();
 
     expect(run.seen).toHaveLength(1);
     const record = await run.record();
@@ -516,13 +565,13 @@ describe("held work that cannot be used parks the run for its owner (BR-19, BR-2
     expect(await run.pack(key)).toEqual(bytes);
   });
 
-  it("a host with holding off parks the same way, naming disabled", async () => {
+  it("a host with holding off holds the task the same way, naming disabled", async () => {
     const run = lab({ script: ["write-throw"], maxAttempts: 3 });
     await heldThenLost(run);
     run.use("B-off");
 
     await run.act("drain").catch(() => undefined);
-    await run.settled("parked");
+    await run.held();
 
     expect(run.seen).toHaveLength(1);
     expect((await run.questions()).some((q) => q.includes("(disabled)"))).toBe(true);
@@ -535,7 +584,7 @@ describe("held work that cannot be used parks the run for its owner (BR-19, BR-2
     const parked = (await run.record()).held.key as string;
     run.use("B-off");
     await run.act("drain").catch(() => undefined);
-    await run.settled("parked");
+    await run.held();
 
     await run.act("answer");
     run.use("B");
@@ -562,7 +611,7 @@ describe("after an answer, held work that still cannot be read (BR-20)", () => {
     run.use("B");
     await run.rewriteRecord({ held: { ...(await run.record()).held, head: "0".repeat(40) } });
     await run.act("drain").catch(() => undefined);
-    await run.settled("parked");
+    await run.held();
     expect((await run.questions()).some((q) => q.includes("(head)"))).toBe(true);
 
     await run.act("answer");

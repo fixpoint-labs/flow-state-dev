@@ -2,12 +2,13 @@
 /**
  * Behavioral tests for the react `useRequestStream` hook after its port onto the
  * shared `@flow-state-dev/client` store + `bindStoreToCallbacks`. The transport
- * (`createSSEClient` / `createSSEClientFromResponse`) is mocked to capture the
- * callbacks so the test drives events directly (replicating the client's event
- * dispatcher). The first test is the regression guard for the "no streaming
+ * (a request's `stream()` on the client / `createSSEClientFromResponse`) is
+ * mocked to capture the callbacks so the test drives events directly
+ * (replicating the client's event dispatcher). The first test is the regression guard for the "no streaming
  * text" bug: with the old hand-rolled reducer it failed (deltas were dropped).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { Content } from "@flow-state-dev/core/items";
 import { renderHook, act, cleanup } from "@testing-library/react";
 
 // Capture the callbacks handed to the transport so the test can drive events.
@@ -22,10 +23,20 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
     connections.push(rec);
     return { close() { rec.closed = true; }, get lastEventId() { return undefined; } };
   };
-  return { ...actual, createSSEClient: make, createSSEClientFromResponse: make };
+  const { fakeClient } = await import("./support/fake-client");
+  return {
+    ...actual,
+    createClient: () => fakeClient({ requestStream: make as never }),
+    createSSEClientFromResponse: make
+  };
 });
 
 import { useRequestStream } from "../src/hooks/useRequestStream";
+
+function firstText(message: { content: readonly Content[] } | undefined): string | undefined {
+  const part = message?.content[0];
+  return part !== undefined && "text" in part ? part.text : undefined;
+}
 
 let seq = 0;
 function base() {
@@ -130,7 +141,7 @@ describe("useRequestStream (react)", () => {
     });
 
     // The deltas are visible before any item.done / terminal event.
-    expect(result.current.messages[0]?.content[0]?.text).toBe("Hello");
+    expect(firstText(result.current.messages[0])).toBe("Hello");
   });
 
   it("coalesces deltas on a RAF in the default flush mode", () => {
@@ -146,7 +157,7 @@ describe("useRequestStream (react)", () => {
       // RAF hasn't fired yet — nothing flushed to React.
       expect(result.current.items.length).toBe(0);
       act(() => { vi.runAllTimers(); });
-      expect(result.current.messages[0]?.content[0]?.text).toBe("Hi");
+      expect(firstText(result.current.messages[0])).toBe("Hi");
     } finally {
       vi.useRealTimers();
     }
@@ -163,7 +174,7 @@ describe("useRequestStream (react)", () => {
       feed(itemAdded(makeMessage("m", "")));
       feed(contentDelta("m", 0, "yo"));
     });
-    expect(result.current.messages[0]?.content[0]?.text).toBe("yo");
+    expect(firstText(result.current.messages[0])).toBe("yo");
   });
 
   it("accumulates reasoning summary content, not just message content", () => {
@@ -249,6 +260,21 @@ describe("useRequestStream (react)", () => {
     expect(connections.length).toBe(2);
     expect(connections[0]!.closed).toBe(true);
     expect(result.current.items.length).toBe(0);
+  });
+
+  it("keeps its stream open across a re-render with the same inputs", () => {
+    // The hook's client is memoized on its transport: a client rebuilt each
+    // render would close and re-open the stream every render.
+    const { rerender } = renderHook(
+      ({ label }: { label: string }) =>
+        useRequestStream({ flowKind: "demo", source: { requestId: "r1" }, flush: "immediate", filter: undefined, enabled: label.length > 0 }),
+      { initialProps: { label: "a" } },
+    );
+    act(() => { rerender({ label: "b" }); });
+    act(() => { rerender({ label: "c" }); });
+
+    expect(connections.length).toBe(1);
+    expect(connections[0]!.closed).toBe(false);
   });
 
   it("opens no connection when initially disabled", () => {

@@ -1,0 +1,95 @@
+<svg viewBox="0 0 940 428" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="D1: the existing take record written in the turn&#x27;s name, chosen, beside a new taken-in-R list on the conversation. Decided by one mark that the queued entry already obeys. Locks in today&#x27;s guarantees for a result taken in the turn; flips if a store can&#x27;t keep the take record after the clear.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="428"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">What marks a result as taken by the running turn?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="344" height="46" rx="5"/>
+    <text class="t-tag c-code" x="226" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="226" y="112">FIX-2123&#x27;s take record</text>
+    <rect class="lost" x="572" y="76" width="344" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="586" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="586" y="112">A new taken-in-R list</text>
+  </g>
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">THE QUEUED</text>
+    <text class="t-lbl" x="32" y="169">ENTRY OBEYS IT</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="226" y="162">+</text>
+    <text class="t-b" x="244" y="161">Already, today</text>
+    <text class="t-s" x="244" y="179">skips, waits, takes over</text>
+    <text class="mark minus" x="586" y="162">−</text>
+    <text class="t-b" x="604" y="161">Only once taught to</text>
+    <text class="t-s" x="604" y="179">a second rule to keep in step</text>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="218">CRASH</text>
+    <text class="t-lbl" x="32" y="231">SAFETY</text>
+    <text class="mark plus" x="226" y="224">+</text>
+    <text class="t-b" x="244" y="223">Proven by the POC</text>
+    <text class="t-s" x="244" y="241">taken over after a failed turn</text>
+    <text class="mark tie" x="586" y="224">=</text>
+    <text class="t-b" x="604" y="223">Same, once built</text>
+    <text class="t-s" x="604" y="241">the same write, written again</text>
+    <line class="row" x1="16" y1="256" x2="924" y2="256"/>
+  </g>
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="280">WHAT IT</text>
+    <text class="t-lbl" x="32" y="293">COSTS</text>
+    <text class="mark minus" x="226" y="286">−</text>
+    <text class="t-b" x="244" y="285">Two kinds of taker</text>
+    <text class="t-s" x="244" y="303">the entry or a person&#x27;s turn</text>
+    <text class="mark minus" x="586" y="286">−</text>
+    <text class="t-b" x="604" y="285">A new field</text>
+    <text class="t-s" x="604" y="303">and its read-back</text>
+    <line class="row" x1="16" y1="318" x2="924" y2="318"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="338" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="359">LOCKS IN</text>
+    <text class="t-b" x="32" y="379">A result taken in the turn has today&#x27;s guarantees</text>
+    <text class="t-s" x="32" y="397">never twice; a death after the ack drops the line, as today</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="338" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="359">FLIPS IF</text>
+    <text class="t-b" x="494" y="379">A store can&#x27;t keep the take record after the clear</text>
+    <text class="t-s" x="494" y="397">then the turn needs its own list</text>
+  </g>
+</svg>

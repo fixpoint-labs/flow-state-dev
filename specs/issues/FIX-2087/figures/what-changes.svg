@@ -1,0 +1,95 @@
+<svg viewBox="0 0 940 440" role="img" aria-label="Today, on the left: every child, each green on its own commit, no walk of the whole, and the sweep reading 39 live lines. After, right of one main commit line: one runner with four bands. Band 1, the goal check: legs a, b and c on a real model, and the sweep, which also runs in CI. Band 2: three team journeys. Band 3: every child's check with its controls, and the coordinator and hand-off goals. Band 4, the gap sweep: seams from both sides, the published page, not-done-if states, 31 of 31 gaps rows. Along the bottom, a finding becomes a child of the epic that blocks the closure and sends the whole plan round again."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .kid   { fill:var(--code-soft); stroke:var(--code); stroke-width:1; }
+    .band  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .ci    { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .bad   { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .loop  { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .commit{ stroke:var(--accent); stroke-width:2.4; }
+    .tick  { stroke:var(--ink-3); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-k   { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; font-weight:600; letter-spacing:.1em; }
+    .t-gone{ fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="440"/>
+
+  <g id="today">
+    <text class="t-lbl" x="16" y="26">TODAY · EACH ON ITS OWN COMMIT</text>
+    <g id="children">
+      <rect class="kid" x="16" y="38" width="86" height="24" rx="4"/><text class="t-k" x="24" y="54">2076</text>
+      <rect class="kid" x="108" y="38" width="86" height="24" rx="4"/><text class="t-k" x="116" y="54">2077</text>
+      <rect class="kid" x="200" y="38" width="86" height="24" rx="4"/><text class="t-k" x="208" y="54">2078</text>
+      <rect class="kid" x="16" y="70" width="86" height="24" rx="4"/><text class="t-k" x="24" y="86">2080</text>
+      <rect class="kid" x="108" y="70" width="86" height="24" rx="4"/><text class="t-k" x="116" y="86">2081</text>
+      <rect class="kid" x="200" y="70" width="86" height="24" rx="4"/><text class="t-k" x="208" y="86">2082</text>
+      <rect class="kid" x="16" y="102" width="86" height="24" rx="4"/><text class="t-k" x="24" y="118">2083</text>
+      <rect class="kid" x="108" y="102" width="86" height="24" rx="4"/><text class="t-k" x="116" y="118">2084</text>
+      <rect class="kid" x="200" y="102" width="86" height="24" rx="4"/><text class="t-k" x="208" y="118">2085</text>
+      <rect class="kid" x="16" y="134" width="86" height="24" rx="4"/><text class="t-k" x="24" y="150">2086</text>
+      <rect class="kid" x="108" y="134" width="86" height="24" rx="4"/><text class="t-k" x="116" y="150">2088</text>
+    </g>
+    <text class="t-s" x="16" y="182">Each child green apart, none model-backed</text>
+    <rect class="bad" x="16" y="196" width="270" height="52" rx="5"/>
+    <text class="t-lbl" x="28" y="214">NOBODY WALKS THE WHOLE</text>
+    <text class="t-s" x="28" y="234">no routed task handed down and back up</text>
+    <rect class="bad" x="16" y="258" width="270" height="52" rx="5"/>
+    <text class="t-lbl" x="28" y="276">THE SWEEP · 96404D2</text>
+    <text class="t-gone" x="28" y="296">FAIL · 39 live lines</text>
+  </g>
+
+  <g id="commit-line">
+    <line class="commit" x1="312" y1="20" x2="312" y2="330"/>
+    <text class="t-acc" x="322" y="26">ONE MAIN COMMIT · ONE RUNNER</text>
+  </g>
+
+  <g id="band-1">
+    <rect class="band" x="322" y="38" width="602" height="62" rx="5"/>
+    <text class="t-lbl" x="336" y="56">1 · THE GOAL CHECK · REAL MODEL</text>
+    <text class="t-b" x="336" y="76">Leg a, the walk · leg b, the crash · leg c, the failure</text>
+    <text class="t-s" x="336" y="92">each ending once · nothing settled but by the gate or the drain</text>
+    <rect class="ci" x="790" y="50" width="122" height="38" rx="4"/>
+    <text class="t-acc" x="802" y="66">THE SWEEP</text>
+    <text class="t-s" x="802" y="81">also in CI · D2</text>
+  </g>
+
+  <g id="band-2">
+    <rect class="band" x="322" y="110" width="602" height="52" rx="5"/>
+    <text class="t-lbl" x="336" y="128">2 · ONE JOURNEY PER TEAM THE WALK MISSES</text>
+    <text class="t-s" x="336" y="148">hands out work and waits · steers and cancels a routed task · a goal-seek loop</text>
+  </g>
+
+  <g id="band-3">
+    <rect class="band" x="322" y="172" width="602" height="52" rx="5"/>
+    <text class="t-lbl" x="336" y="190">3 · EVERY CHILD'S CHECK, WITH ITS CONTROLS</text>
+    <text class="t-s" x="336" y="210">every child blocking the closure, pinned at run start · coordinators/ · hand-offs/ · FIX-2005's leg</text>
+  </g>
+
+  <g id="band-4">
+    <rect class="band" x="322" y="234" width="602" height="76" rx="5"/>
+    <text class="t-lbl" x="336" y="252">4 · THE GAP SWEEP</text>
+    <text class="t-s" x="336" y="272">each seam read from both sides · the task-board page followed as written</text>
+    <text class="t-s" x="336" y="290">each not-done-if state absent · 31 of 31 gaps rows read by a check</text>
+  </g>
+
+  <g id="findings">
+    <rect class="bad" x="322" y="352" width="602" height="62" rx="5"/>
+    <text class="t-lbl" x="336" y="372">ANY FAILURE</text>
+    <text class="t-b" x="336" y="392">A child of FIX-2056 that blocks this issue</text>
+    <text class="t-s" x="336" y="406">fixed, merged, then the whole plan again on a fresh commit · a clean run opens the PR</text>
+    <line class="tick" x1="623" y1="310" x2="623" y2="352"/>
+    <path class="loop" d="M 924 383 L 932 383 L 932 30 L 924 30"/>
+  </g>
+</svg>

@@ -1,0 +1,78 @@
+<svg viewBox="0 0 940 344" role="img" aria-label="Three kinds of final failure on the left: a request that ends failed in any flow, the Shift Coordinator included; a task that ends errored, seen Lab-wide; a harness run that fails for good. All flow into one intake in Workforce that filters, fingerprints, counts repeats and caps new reports at five an hour. A new failure starts the Error Reporter's own flow directly. The Shift Coordinator sits off the path, crossed out. The reporter runs as the Lab operator, gathers a redacted dossier, runs its harness, Claude Code by default, and waits for the operator in Inbox. After the answer it files an issue, or a comment on the matching one, in Linear, and writes one line with the link in its Teams chat."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .src   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .flow  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .off   { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .arr   { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .cross { stroke:var(--gone); stroke-width:2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13.5px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="344"/>
+
+  <g id="sources">
+    <text class="t-lbl" x="20" y="28">FAILURES THAT STAY FAILED · D1</text>
+    <rect class="src" x="16" y="40" width="210" height="58" rx="5"/>
+    <text class="t-h" x="28" y="62">A request ends failed</text>
+    <text class="t-s" x="28" y="80">any flow, the coordinator's too</text>
+    <rect class="src" x="16" y="110" width="210" height="58" rx="5"/>
+    <text class="t-h" x="28" y="132">A task ends errored</text>
+    <text class="t-s" x="28" y="150">the board's ending signal</text>
+    <rect class="src" x="16" y="180" width="210" height="58" rx="5"/>
+    <text class="t-h" x="28" y="202">A harness run fails</text>
+    <text class="t-s" x="28" y="220">for good, after its retries</text>
+    <path class="arr" d="M226 69 H252 V139 H270 M226 139 H270 M226 209 H252 V139"/>
+  </g>
+
+  <g id="intake">
+    <rect class="new" x="272" y="96" width="196" height="88" rx="6"/>
+    <text class="t-lbl" x="286" y="116">INTAKE · WORKFORCE · D2</text>
+    <text class="t-b" x="286" y="136">filter · fingerprint</text>
+    <text class="t-b" x="286" y="154">a repeat adds to a count</text>
+    <text class="t-b" x="286" y="172">at most five new an hour</text>
+    <path class="arr" d="M468 140 H500"/>
+  </g>
+
+  <g id="coordinator-off-path">
+    <rect class="off" x="292" y="270" width="160" height="56" rx="5"/>
+    <text class="t-h c-gone" x="306" y="292">Shift Coordinator</text>
+    <text class="t-s" x="306" y="310">not on the path</text>
+    <path class="cross" d="M370 196 L370 262 M360 222 L380 242 M380 222 L360 242"/>
+  </g>
+
+  <g id="reporter">
+    <rect class="flow" x="502" y="58" width="220" height="168" rx="6"/>
+    <text class="t-lbl" x="516" y="78">ERROR REPORTER · ITS OWN FLOW</text>
+    <text class="t-b" x="516" y="102">runs as the Lab operator</text>
+    <text class="t-b" x="516" y="126">gathers a dossier, redacted</text>
+    <text class="t-s" x="516" y="142">request, items, session, task, board</text>
+    <text class="t-b" x="516" y="166">runs its harness</text>
+    <text class="t-s" x="516" y="182">Claude Code by default</text>
+    <text class="t-b" x="516" y="208">waits for the operator in Inbox</text>
+    <path class="arr" d="M722 110 H756 M722 182 H756"/>
+  </g>
+
+  <g id="outputs">
+    <rect class="new" x="758" y="76" width="166" height="64" rx="5"/>
+    <text class="t-h" x="770" y="100">Linear</text>
+    <text class="t-s" x="770" y="118">after the answer: an issue,</text>
+    <text class="t-s" x="770" y="132">or a comment on its match</text>
+    <rect class="new" x="758" y="152" width="166" height="64" rx="5"/>
+    <text class="t-h" x="770" y="176">In its Teams chat</text>
+    <text class="t-s" x="770" y="194">one line per issue,</text>
+    <text class="t-s" x="770" y="208">with the link</text>
+  </g>
+</svg>

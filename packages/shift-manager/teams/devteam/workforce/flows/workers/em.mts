@@ -4,8 +4,9 @@
  *
  * **This worker flow declares no harness slot, and that is the point.** "The EM
  * does no harness work" is a locked DevForce opinion, and it is graded on the
- * worker flow rather than on behaviour: there is no `task:` entry here and no option
- * through which one could be installed, so the worker cannot run a coding
+ * worker flow rather than on behaviour: its one `task:` entry is a coordinator's
+ * delegated post, which runs the EM's own turn, and there is no option through
+ * which a harness could be installed, so the worker cannot run a coding
  * harness — not merely "it happened not to". Search this file for the word
  * harness and the only hits are in this paragraph.
  *
@@ -44,15 +45,14 @@ import type { GeneratorTool } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
-  DELEGATED_POST_ENTRY,
-  delegatedPostEntry,
-  delegatedPostHistory,
-  delegatedPostOnFinished,
   defineSessionBoard,
   projectAddressSchema,
+  routedTaskHistory,
   workerConfigOf,
   WORKSTREAM_OPENED_ENTRY,
   workstreamOpenedEntry,
+  WORKER_TASK_ENTRY,
+  workerTaskEntry,
   type ProjectAddress,
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
@@ -77,9 +77,9 @@ export const DRAIN_ENTRY = "drain";
 
 /**
  * The worker's door: the action a user's own line in the EM's session
- * reaches. Every worker flow has exactly one. The turn answers it.
+ * reaches, `respond` on every worker flow. The turn answers it.
  */
-export const MESSAGE_ENTRY = "message";
+export const MESSAGE_ENTRY = "respond";
 
 /** The turn's generator name, which a scripted model resolves it by. */
 export const EM_TURN = "devforce-em-turn";
@@ -179,15 +179,16 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
   /**
    * The turn: one model call, as the worker the session names, with its
    * file's instructions and model, the session board's task tools, and the
-   * tools its `tools:` line names. Its history is the conversation's, with a
-   * delegated post's lines shown before the post.
+   * tools its `tools:` line names. Its history is the session's, with a
+   * routed task's recent lines from the conversation that routed it shown
+   * just before the message, on that turn only.
    */
   const turn = generator({
     name: EM_TURN,
     inputSchema: z.object({ message: z.string() }),
     itemVisibility: { client: true, history: true },
-    history: delegatedPostHistory,
-    uses: [kit.tools],
+    history: routedTaskHistory,
+    uses: [kit.tools, kit.messages],
     prompt: [
       (_input: unknown, ctx: BlockContext) => settingsOf(ctx).teamInstructions,
       (_input: unknown, ctx: BlockContext) => settingsOf(ctx).instructions,
@@ -322,9 +323,9 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     .step(prepareAsk)
     .step(askGate)
     .tapIf((decision) => decision.approved, fileApproved)
-    // The board runs inside the approved branch of the same request, so
-    // Approve starts the coder's run without a second call.
-    .tapIf((decision) => decision.approved, () => ({}), kit.board.runBoard)
+    // The approved branch runs the board's pass, through its entry (one at a
+    // time, FIX-2078), so Approve starts the coder's run without a second call.
+    .tapIf((decision) => decision.approved, () => ({}), kit.board.triggerPass)
     .tapIf((decision) => !decision.approved, refuseAsked);
 
   /**
@@ -350,13 +351,11 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     }),
     session: { ...installation.session(kit.sessionStateShape), serverOwned: [...kit.serverOwned] },
     resources: { ...options.resources, ...installation.resources, ...kit.resources },
-    // The worker is loaded first; a handed-on post whose run is cancelled
-    // before it answers tells its coordinator, so a round with answers to send
-    // on doesn't wait for its deadline.
-    request: { onStarted: resolveEmWorker, onFinished: delegatedPostOnFinished },
+    // The worker is loaded first.
+    request: { onStarted: resolveEmWorker },
     actions: {
       [FILE_ENTRY]: { block: fileRow, description: "File one feature as a row on this session's board." },
-      [DRAIN_ENTRY]: { block: kit.board.runBoard, description: "Run this session's board until nothing it can start is waiting." },
+      [DRAIN_ENTRY]: { block: kit.board.triggerPass, description: "Run this session's board until nothing it can start is waiting." },
       // A third action rather than a flag on `file`: `file` is the direct door
       // a check drives, and a flag that made it wait would change what that
       // check proves. Durable, because the answer arrives in a later request
@@ -380,11 +379,12 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
       // The nine task actions and the four delegate actions.
       ...kit.actions,
     },
+    // A coordinator's routed task (FIX-2083): the project coordinator's, for
+    // the workstream this worker leads, or the chief of staff's. A routed task
+    // is a task on the coordinator's board, taken on `work` like any.
+    task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "em-task", turn }) } },
     internal: {
       actions: {
-        // A coordinator's delegated post: the project coordinator's hand-off
-        // to the workstream this worker leads, or the chief of staff's.
-        [DELEGATED_POST_ENTRY]: delegatedPostEntry(turn),
         // Opening a workstream this worker leads starts its session here.
         [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry(),
         // A run of the board, each task's notice (which wakes the turn), and

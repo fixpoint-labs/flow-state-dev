@@ -5,34 +5,32 @@
  * `resumeLatestRequest` /retry path). `@flow-state-dev/client`'s session and
  * recovery clients are mocked; the SSE transport is mocked the same way
  * `useRequestStream.test.ts` does — capturing the callbacks handed to
- * `createSSEClientFromResponse`/`createSSEClient` so the test can feed events
+ * `createSSEClientFromResponse`/a request's `stream()` so the test can feed events
  * directly instead of parsing real SSE wire bytes.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, cleanup } from "@testing-library/react";
 
-const { connections, recoveryClientMock, sessionClientMock } = vi.hoisted(() => ({
+const { connections, requestMock, sessionsMock } = vi.hoisted(() => ({
   connections: [] as Array<{
     callbacks: Record<string, ((e: unknown) => void) | undefined>;
     closed: boolean;
   }>,
-  recoveryClientMock: {
-    continueStream: vi.fn(),
+  requestMock: {
     continue: vi.fn(),
     retry: vi.fn(),
-    resumeSuspension: vi.fn(),
-    resumeSuspensionStream: vi.fn(),
-    checkInterrupted: vi.fn()
+    resume: vi.fn()
   },
-  sessionClientMock: {
-    getSession: vi.fn(),
-    getSessionState: vi.fn(),
-    listSessionRequests: vi.fn()
+  sessionsMock: {
+    get: vi.fn(),
+    state: vi.fn(),
+    requests: vi.fn()
   }
 }));
 
 vi.mock("@flow-state-dev/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@flow-state-dev/client")>();
+  const { fakeClient } = await import("./support/fake-client");
   const makeSSE = (options: Record<string, ((e: unknown) => void) | undefined>) => {
     const rec = { callbacks: options, closed: false };
     connections.push(rec);
@@ -40,14 +38,14 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
   };
   return {
     ...actual,
-    createSSEClient: makeSSE,
     createSSEClientFromResponse: makeSSE,
-    createRecoveryClient: () => recoveryClientMock,
-    createSessionClient: () => sessionClientMock,
-    createClient: () => ({
-      sendActionStream: vi.fn(),
-      abortRequest: vi.fn()
-    })
+    createClient: () =>
+      fakeClient({
+        sessions: { ...sessionsMock },
+        flow: { send: vi.fn(), abort: vi.fn() },
+        request: requestMock,
+        requestStream: makeSSE
+      })
   };
 });
 
@@ -109,15 +107,15 @@ describe("useSession.continueRequest (FIX-865)", () => {
     connections.length = 0;
     seq = 0;
     vi.clearAllMocks();
-    sessionClientMock.getSession.mockResolvedValue({
+    sessionsMock.get.mockResolvedValue({
       id: "sess1",
       flowKind: "demo",
       userId: "devuser",
       createdAt: 0,
       updatedAt: 0
     });
-    sessionClientMock.getSessionState.mockResolvedValue(emptySnapshot("sess1"));
-    sessionClientMock.listSessionRequests.mockResolvedValue([]);
+    sessionsMock.state.mockResolvedValue(emptySnapshot("sess1"));
+    sessionsMock.requests.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -125,7 +123,7 @@ describe("useSession.continueRequest (FIX-865)", () => {
   });
 
   it("continues the request by the given id and streams its items into the hook (not resumeLatestRequest's /retry path)", async () => {
-    recoveryClientMock.continueStream.mockResolvedValue(sseResponse());
+    requestMock.continue.mockResolvedValue(sseResponse());
 
     const { result } = renderHook(() =>
       useSession("sess1", { flowKind: "demo" })
@@ -139,15 +137,11 @@ describe("useSession.continueRequest (FIX-865)", () => {
       await result.current.continueRequest("req_interrupted_1");
     });
 
-    // continueStream (the FIX-865 route) was called with the exact id passed
-    // in — not derived from `latestRequest`.
-    expect(recoveryClientMock.continueStream).toHaveBeenCalledWith({
-      flowKind: "demo",
-      sessionId: "sess1",
-      requestId: "req_interrupted_1"
-    });
+    // The streaming continue (the FIX-865 route) was called with the exact id
+    // passed in — not derived from `latestRequest`.
+    expect(requestMock.continue).toHaveBeenCalledWith("req_interrupted_1", { stream: true });
     // The /retry-based method must be untouched by this call.
-    expect(recoveryClientMock.retry).not.toHaveBeenCalled();
+    expect(requestMock.retry).not.toHaveBeenCalled();
 
     act(() => {
       feed(itemAdded("req_interrupted_1", makeMessage("m1", "req_interrupted_1", "resumed output")));
@@ -159,7 +153,7 @@ describe("useSession.continueRequest (FIX-865)", () => {
   });
 
   it("does not re-POST /continue when the server returns a non-SSE 202 — reconnects via GET instead", async () => {
-    recoveryClientMock.continueStream.mockResolvedValue(jsonAcceptedResponse());
+    requestMock.continue.mockResolvedValue(jsonAcceptedResponse());
 
     const { result } = renderHook(() =>
       useSession("sess1", { flowKind: "demo" })
@@ -173,9 +167,9 @@ describe("useSession.continueRequest (FIX-865)", () => {
       await result.current.continueRequest("req_interrupted_2");
     });
 
-    expect(recoveryClientMock.continueStream).toHaveBeenCalledTimes(1);
-    // Must not fall back to a second POST via the JSON continue() method.
-    expect(recoveryClientMock.continue).not.toHaveBeenCalled();
+    // One streaming POST, and no fallback second POST as a JSON continue().
+    expect(requestMock.continue).toHaveBeenCalledTimes(1);
+    expect(requestMock.continue).toHaveBeenCalledWith("req_interrupted_2", { stream: true });
 
     // A GET-based reconnect opened a second stream connection (the inline
     // SSE POST body was cancelled, not consumed as a stream).

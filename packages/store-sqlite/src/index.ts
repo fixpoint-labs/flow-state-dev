@@ -15,6 +15,7 @@ import { createSQLiteCheckpointStore } from "./checkpoint-store";
 import { createSQLiteTraceStore, type SQLiteTraceStoreOptions } from "./trace-store";
 import { createSQLiteSuspensionStore } from "./suspension-store";
 import { createSQLiteLeaseStore } from "./lease-store";
+import { createSQLiteWakeStore } from "./wake-store";
 
 // Inlined to avoid a value import from `@flow-state-dev/engine` — the
 // store-sqlite package boundary forbids value imports from server, and the
@@ -74,6 +75,7 @@ export function createSQLiteStores(options: SQLiteStoreOptions): SQLiteStoreRegi
     }),
     suspensions: createSQLiteSuspensionStore(db),
     leases: createSQLiteLeaseStore(db),
+    wakes: createSQLiteWakeStore(db),
     close() {
       db.close();
     }
@@ -108,7 +110,8 @@ export {
   createSQLiteCheckpointStore,
   createSQLiteTraceStore,
   createSQLiteSuspensionStore,
-  createSQLiteLeaseStore
+  createSQLiteLeaseStore,
+  createSQLiteWakeStore
 };
 
 export { createSQLiteScheduleIndex } from "./schedule-index";

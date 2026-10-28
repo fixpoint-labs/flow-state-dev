@@ -56,7 +56,7 @@ function makeAnalyst(role: "market" | "financial"): TaskWorker {
     name: `${role}-analyst`,
     inputSchema: analystWorkerInputSchema,
     outputSchema: analysisOutputSchema,
-    execute: (input) => ({
+    execute: (input: z.infer<typeof analystWorkerInputSchema>) => ({
       findings: `${role}: ${input.input?.topic ?? "unknown"} analysis`,
     }),
   }) as TaskWorker;
@@ -74,7 +74,7 @@ function makeSynthesizer(): TaskWorker {
     name: "synthesizer",
     inputSchema: synthWorkerInputSchema,
     outputSchema: synthesisOutputSchema,
-    execute: async (input, ctx: BlockContext) => {
+    execute: async (input: z.infer<typeof synthWorkerInputSchema>, ctx: BlockContext) => {
       const collection = await getOrCreateTaskCollection({
         ctx,
         backing: "state",
@@ -84,7 +84,7 @@ function makeSynthesizer(): TaskWorker {
       const self = collection.get(input.taskId) as Task | undefined;
       const depOutputs = (self?.deps ?? [])
         .map((id) => collection.get(id))
-        .filter((t): t is Task => t !== undefined)
+        .filter((t) => t !== undefined)
         .map((t) => t.output as { findings?: string } | undefined);
       const findings = depOutputs.map((o) => o?.findings ?? "?").join(" | ");
       return {

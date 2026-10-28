@@ -11,7 +11,13 @@
  * - **Two projects, FSD and Shift Manager**, created at start as the Lab's
  *   owner, with the project members DevTeam's projects have, unless the store
  *   already holds them. Both are shared, and both name this repository's
- *   remote ({@link REPOSITORY}).
+ *   remote, and both name Linear's MCP server (`fsd-projects.mts`).
+ * - **Linear, for a coding run.** The Lab offers Linear's hosted MCP server,
+ *   and a run on either project reads Linear with the key of the user it runs
+ *   for, set on Settings. `LINEAR_MCP_API_KEY` stands in for the Lab's own
+ *   user's key until that user stores one.
+ * - **Its own coder brief and commit style** ({@link FSD_DOCUMENTS},
+ *   {@link FSD_SKILLS}), in place of the tree's.
  * - **Nothing else at open**: no ask waiting in Inbox and no workstream, so a
  *   user's first act is asking for work.
  * - **Claude Code as the coder by default** (`harness.mts`): at start the Lab
@@ -19,11 +25,18 @@
  *   what to set. `DEVFORCE_LAB_HARNESS=stub` runs the scripted coder instead.
  * - **Runs work in this checkout.** A coding run on FSD or Shift Manager gets
  *   a fresh worktree of the checkout this file sits in, on a branch of its
- *   own cut from local `main` ({@link CHECKOUTS}, in `fsd-checkouts.mts`). The
- *   checkout's location is worked out from that file's, never written down.
- * - **No remote is reached.** The workspace hosts allow none, so a run the
+ *   own cut from the newer of local `main` and its upstream ({@link CHECKOUTS},
+ *   in `fsd-checkouts.mts`). The checkout's location is worked out from that
+ *   file's, never written down.
+ * - **No remote is cloned.** The workspace hosts allow none, so a run the
  *   mapping misses (a project a user made, or one in another organization) is
- *   refused, naming the remote, and nothing is fetched.
+ *   refused, naming the remote, and nothing is cloned. The one remote reached
+ *   is the checkout's own upstream, fetched before a new run's branch is cut.
+ * - **The Error Reporter**, with Claude Code: every request that stays
+ *   failed and every task that ends errored becomes one report, previewed in
+ *   Inbox and filed in FSD's Linear once the Lab's user answers. Its worker
+ *   is the tree's `error-reporter`. It drafts with Claude Code even when the
+ *   coder is scripted, and a draft waits for an account when there is none.
  * - **Its own store**: SQLite at `FSD_STORE` or
  *   `packages/shift-manager/.fsdev/fsd.sqlite`. DevTeam's rows never show
  *   here. Delete the file for a fresh start.
@@ -36,36 +49,17 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { CHECKOUTS, REPOSITORY } from "./fsd-checkouts.mts";
-import { startHarness } from "./harness.mts";
-import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab } from "./host.mts";
+import { CHECKOUT, CHECKOUTS } from "./fsd-checkouts.mts";
+import { FSD_DOCUMENTS, FSD_MCP_SERVERS, FSD_PROJECTS, FSD_SKILLS } from "./fsd-projects.mts";
+import { readClaudeUsage } from "@flow-state-dev/claude-code/sdk";
+import { claudeCodeEnv, errorReporterHarness, startHarness } from "./harness.mts";
+import { LAB_TREE, openLab } from "./host.mts";
 import { CODER_FLOW } from "./workforce/flows/workers/coder.mts";
 import { EM_FLOW } from "./workforce/flows/workers/em.mts";
 
 /** Where this Lab keeps what it was told, across restarts. */
 const STORE = process.env.FSD_STORE ?? fileURLToPath(new URL("../../.fsdev/fsd.sqlite", import.meta.url));
 mkdirSync(dirname(STORE), { recursive: true });
-
-/** Who may open workstreams in each project: the Lab's other users, as in DevTeam's. */
-const OTHER_USERS = [LAB_USERS.member.userId, ...LAB_CROWD.map((u) => u.userId)];
-
-/** The two projects a fresh open shows. */
-const PROJECTS = [
-  {
-    id: "fsd",
-    title: "FSD",
-    brief: "The framework: the packages under packages/ other than Shift Manager, their docs and their goal checks.",
-    members: OTHER_USERS,
-    repository: REPOSITORY,
-  },
-  {
-    id: "shift-manager",
-    title: "Shift Manager",
-    brief: "This app: packages/shift-manager, its pages, its team profiles and its checks under goals/shift-manager/.",
-    members: OTHER_USERS,
-    repository: REPOSITORY,
-  },
-];
 
 // Read off the tree, as DevTeam's profile reads it: the EM, and the coder its
 // doors file for, its first delegate on the coder worker flow.
@@ -90,8 +84,20 @@ export const lab = await openLab({
   coderWorkerId,
   inventory: true,
   devtool: true,
-  projects: PROJECTS,
+  projects: FSD_PROJECTS,
+  mcpServers: FSD_MCP_SERVERS,
+  documents: FSD_DOCUMENTS,
+  skills: FSD_SKILLS,
   memoryCapture: process.env.DEVTEAM_MEMORY_CAPTURE === "1",
+  // The Error Reporter files into FSD's Linear, through the FSD project's MCP
+  // servers with the Lab user's key, and drafts with Claude Code from this
+  // checkout's code, whichever coder the Lab runs.
+  errorReporter: { harness: errorReporterHarness, cwd: CHECKOUT, tracker: { project: "shared/fsd" } },
+  // Who Claude Code is signed in as, read when someone opens Usage; its
+  // windows come from the coder's runs.
+  usage: {
+    "claude-code": ({ signal } = {}) => readClaudeUsage({ env: claudeCodeEnv(), ...(signal === undefined ? {} : { signal }) }),
+  },
 });
 
 export default lab.state;

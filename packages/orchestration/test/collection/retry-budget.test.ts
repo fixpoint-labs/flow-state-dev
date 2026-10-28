@@ -90,8 +90,8 @@ describe("retry budget — the storm the creation caps cannot see (FIX-948 repro
 });
 
 describe("retry budget — what is counted", () => {
-  it("counts only authorized failure retries, never `unblock` / `unpark` / `reclaim`", async () => {
-    // A budget of 1 with three non-retry re-entries in front of it. If any of
+  it("counts only authorized failure retries, never `release` / `reclaim`", async () => {
+    // A budget of 1 with two non-retry re-entries in front of it. If any of
     // them consumed the budget, the single real failure below would settle
     // terminally — a board reporting "retry budget exhausted" having never
     // retried a failure, which is exactly the dishonest report this bound
@@ -99,11 +99,8 @@ describe("retry budget — what is counted", () => {
     const collection = makeCollection({ maxTotalRetries: 1 });
     const task = await collection.addTask({ goal: "t", maxAttempts: 10 });
 
-    await collection.block(task.id);
-    await collection.unblock(task.id);
-    await collection.claim("w1");
-    await collection.awaitReview(task.id);
-    await collection.unpark(task.id);
+    await collection.hold(task.id);
+    await collection.release(task.id);
     await collection.claim("w1");
     // Reclaim needs an expired lease — claim above set one 30s out.
     await collection.reclaim(Date.now() + 60_000);
@@ -190,10 +187,12 @@ describe("retry budget — the boundary lands exactly the budget's worth", () =>
 
 describe("retry budget — the denial is scoped to attempt-owned failures", () => {
   // `errored` is reachable from `in_progress` and `parked` and from
-  // NEITHER `pending` nor `blocked`. The routing predicate is status-blind, so
-  // without this gate a `fail()` on a pending/blocked task carrying
-  // `maxAttempts` would attempt an illegal transition and THROW instead of
-  // settling — on a reachable path.
+  // NEITHER `pending` nor `held`. The routing predicate is status-blind, so
+  // without this gate a `fail()` on a pending task carrying `maxAttempts`
+  // would attempt an illegal transition and THROW instead of settling — on a
+  // reachable path. A held task is the exception (FIX-2080): it hasn't
+  // started, so a failure is refused rather than re-pending, which would
+  // release it.
 
   /**
    * Build a collection whose budget is either `0` or already spent, plus the
@@ -202,7 +201,7 @@ describe("retry budget — the denial is scoped to attempt-owned failures", () =
    */
   async function boardAtBound(
     budget: 0 | "exhausted",
-    status: "pending" | "blocked",
+    status: "pending" | "held",
   ): Promise<{ collection: TaskCollectionRef; taskId: string }> {
     const collection = makeCollection({ maxTotalRetries: budget === 0 ? 0 : 1 });
     if (budget === "exhausted") {
@@ -211,19 +210,24 @@ describe("retry budget — the denial is scoped to attempt-owned failures", () =
       await collection.fail(spender.id, "spend the budget");
     }
     const task = await collection.addTask({ goal: "t", maxAttempts: 5 });
-    if (status === "blocked") await collection.block(task.id);
+    if (status === "held") await collection.hold(task.id);
     return { collection, taskId: task.id };
   }
 
   for (const budget of [0, "exhausted"] as const) {
-    for (const status of ["pending", "blocked"] as const) {
-      it(`re-pends a \`${status}\` task without throwing at a ${budget} budget`, async () => {
-        const { collection, taskId } = await boardAtBound(budget, status);
+    it(`re-pends a \`pending\` task without throwing at a ${budget} budget`, async () => {
+      const { collection, taskId } = await boardAtBound(budget, "pending");
 
-        await expect(collection.fail(taskId, "boom")).resolves.toBeDefined();
-        expect(collection.get(taskId)?.status).toBe("pending");
-      });
-    }
+      await expect(collection.fail(taskId, "boom")).resolves.toBeDefined();
+      expect(collection.get(taskId)?.status).toBe("pending");
+    });
+
+    it(`refuses a failure on a \`held\` task at a ${budget} budget, leaving it held`, async () => {
+      const { collection, taskId } = await boardAtBound(budget, "held");
+
+      await expect(collection.fail(taskId, "boom")).rejects.toThrow(/illegal status transition/);
+      expect(collection.get(taskId)?.status).toBe("held");
+    });
   }
 
   it("does not consume the budget from a non-attempt-owned status", async () => {

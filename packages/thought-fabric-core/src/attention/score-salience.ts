@@ -89,7 +89,7 @@ export function scoreSalience<TOutputSchema extends ZodTypeAny = typeof salience
 
   return generator({
     name: config.name,
-    model: config.model ?? 'gpt-5-mini',
+    model: config.model ?? 'openai/gpt-6-luna',
     inputSchema: salienceInputSchema,
     outputSchema: config.outputSchema ?? salienceOutputSchema,
     itemVisibility: { client: false, history: false },

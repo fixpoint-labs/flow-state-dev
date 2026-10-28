@@ -2,8 +2,8 @@
  * Tests for flow-level history windowing (FIX-685 Slice C).
  *
  * The per-request execution context windows the cross-turn history load at
- * the store query — `request.list({ status:"completed", limit, orderBy:
- * "startedAtMs" })` — instead of loading the full session and trimming
+ * the store query — `request.list({ status: ["completed", "interrupted"],
+ * limit, orderBy: "startedAtMs" })` — instead of loading the full session and trimming
  * afterward. The default generator's `history()` is bounded by the window;
  * per-call `history({ limit })` refines within it. A regression guard asserts
  * the terminal write order (flushItems before the completed patch) the window
@@ -41,6 +41,7 @@ function completedTurn(sessionId: string, n: number): RequestRecord {
     flowId: "win-flow",
     orgId: DEFAULT_ORG_ID,
     actionName: "run",
+    source: "http",
     userId: "u1",
     sessionId,
     status: "completed",
@@ -90,7 +91,7 @@ describe("history windowing (Slice C)", () => {
       orgId: DEFAULT_ORG_ID,
       flowKind: "win-flow",
       flowId: "win-flow",
-      status: "completed",
+      status: ["completed", "interrupted"],
       limit: 50,
       orderBy: "startedAtMs",
       withItems: true

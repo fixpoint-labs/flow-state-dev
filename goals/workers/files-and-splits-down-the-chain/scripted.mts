@@ -30,7 +30,7 @@ const messageOf = (error: unknown) => (error instanceof Error ? error.message : 
 
 /** The shipped clients, as the checkout under test exports them. */
 export interface Shipped {
-  client: { createClient(options: Record<string, unknown>): any; createSessionClient(options: Record<string, unknown>): any };
+  client: { createClient(options: Record<string, unknown>): any };
 }
 
 /** Load the shipped clients from the checkout at `root`. */
@@ -52,8 +52,10 @@ export function connect(shipped: Shipped, origin: string, store: string, person:
     return fetch(input, { ...init, headers });
   };
   const transport = { baseUrl: origin, fetcher };
-  const sessions = shipped.client.createSessionClient(transport);
-  const flow = (flowKind: string) => shipped.client.createClient({ flowKind, userId: person.userId, ...transport });
+  // One client, as the person.
+  const fsd = shipped.client.createClient({ userId: person.userId, ...transport });
+  const sessions = fsd.sessions;
+  const flow = (flowKind: string) => fsd.flow(flowKind);
 
   /** Send `action` on `sessionId` and wait for it to end. */
   const act = async (flowKind: string, sessionId: string, action: string, input: unknown, timeoutMs = 90_000): Promise<Acted> => {
@@ -61,34 +63,34 @@ export function connect(shipped: Shipped, origin: string, store: string, person:
     const client = flow(flowKind);
     let requestId: string;
     try {
-      requestId = (await client.sendAction(action, input, { sessionId })).request.id;
+      requestId = (await client.send(action, input, { sessionId })).id;
     } catch (error) {
       const status = (error as { status?: unknown }).status;
       return { status: `http ${typeof status === "number" ? status : "?"}`, requestId: null, output: undefined, error: messageOf(error), startedAt, endedAt: Date.now() };
     }
     let status = "timed-out";
     for (const until = Date.now() + timeoutMs; Date.now() < until; await sleep(50)) {
-      const now = (await client.getRequestStatus(requestId).catch(() => undefined))?.status as string | undefined;
+      const now = (await client.request(requestId).status().catch(() => undefined))?.status as string | undefined;
       if (now !== undefined && TERMINAL.has(now)) {
         status = now;
         break;
       }
     }
     const endedAt = Date.now();
-    const listed = (await sessions.listSessionRequests(sessionId, { includeResultOutput: true, limit: 500 }).catch(() => [])) as any[];
+    const listed = (await sessions.requests(sessionId, { includeResultOutput: true, limit: 500 }).catch(() => [])) as any[];
     const found = listed.find((r) => r.id === requestId);
     return { status, requestId, output: found?.result?.output, error: found?.result?.error?.message, startedAt, endedAt };
   };
 
   /** Open a conversation with `worker` on `flowKind`, as an app opens one. */
   const conversation = async (flowKind: string, worker: string): Promise<string> =>
-    (await sessions.createSession({ flowKind, userId: person.userId, state: { workerId: worker } })).id as string;
+    (await fsd.flow(flowKind).createSession({ state: { workerId: worker } })).id as string;
 
   /** Hire a worker of this person's own, through the roster flow. */
   const hire = async (input: Record<string, unknown>): Promise<Acted> => {
     const roster =
-      ((await sessions.listSessions({ flowKind: ROSTER, userId: person.userId })) as Array<{ id: string }>)[0]?.id ??
-      ((await sessions.createSession({ flowKind: ROSTER, userId: person.userId })) as { id: string }).id;
+      ((await sessions.list({ flowKind: ROSTER, userId: person.userId })) as Array<{ id: string }>)[0]?.id ??
+      ((await fsd.flow(ROSTER).createSession()) as { id: string }).id;
     return act(ROSTER, roster, "hire", input);
   };
 
@@ -150,10 +152,10 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
       const bobConv = await bob.conversation("agent", lead);
       const w = word();
       const bw = word();
-      const turn = await alice.act("agent", conv, "run", { message: `[file:crew.planner] [split:crew.one,crew.two] Plan the ${w} launch` });
+      const turn = await alice.act("agent", conv, "respond", { message: `[file:crew.planner] [split:crew.one,crew.two] Plan the ${w} launch` });
       // While Alice's chain runs, Bob's worker of the same name tries her delegate, then files for its own.
-      const bobTurn = await bob.act("agent", bobConv, "run", { message: `[file:crew.planner] Plan the ${bw} launch` });
-      const bobOwn = await bob.act("agent", bobConv, "run", { message: `[file:crew.one] Sort the ${bw} receipts` });
+      const bobTurn = await bob.act("agent", bobConv, "respond", { message: `[file:crew.planner] Plan the ${bw} launch` });
+      const bobOwn = await bob.act("agent", bobConv, "respond", { message: `[file:crew.one] Sort the ${bw} receipts` });
       const quietAt = await quiet(o.store);
       out.a = { lead, hired, conv, bobConv, word: w, bobWord: bw, turn, bobTurn, bobOwn, quietAt };
     });
@@ -163,12 +165,12 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
     await leg("b", async () => {
       const conv = await alice.conversation("foreman", "shop.foreman");
       const w = word();
-      const turn = await alice.act("foreman", conv, "run", { message: `[file:crew.one] Paint the ${w} shed` });
+      const turn = await alice.act("foreman", conv, "respond", { message: `[file:crew.one] Paint the ${w} shed` });
       const quietAt = await quiet(o.store);
       out.b = { conv, word: w, turn, quietAt };
     });
 
-  // c: a routing coordinator whose one delegate takes only posts, and a worker
+  // c: a routing coordinator whose one delegate takes no task, and a worker
   // with no delegates: each turn says which tools it was handed and tries to
   // file; the app tries to file on each conversation.
   if (o.legs.has("c"))
@@ -180,8 +182,8 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
         ["solo", "agent", "crew.solo"],
       ] as const) {
         const conv = await alice.conversation(flowKind, worker);
-        const turn = await alice.act(flowKind, conv, "run", { message: `[tools] [try-file] Sort the ${w} pile` });
-        const app = await alice.act(flowKind, conv, "addTask_tasks", { goal: `Sort the ${w} pile` });
+        const turn = await alice.act(flowKind, conv, "respond", { message: `[tools] [try-file] Sort the ${w} pile` });
+        const app = await alice.act(flowKind, conv, "createTask_tasks", { held: true, goal: `Sort the ${w} pile` });
         c[label] = { conv, flowKind, worker, turn, app };
       }
       c.quietAt = await quiet(o.store);
@@ -194,17 +196,17 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
       const w = word();
       const conv = await alice.conversation("agent", "deep.d0");
       const marks = [1, 2, 3, 4, 5, 6].map((i) => `[file:deep.d${i}]`).join(" ");
-      const turn = await alice.act("agent", conv, "run", { message: `${marks} Dig the ${w} well` });
+      const turn = await alice.act("agent", conv, "respond", { message: `${marks} Dig the ${w} well` });
       await quiet(o.store);
       // The app files on the deepest board too: the session of the task on the fifth.
       const d5 = sessionOf(o.store, "deep.d5", conv);
-      const deepApp = d5 === null ? null : await alice.act("agent", d5, "dispatchTask_tasks", { goal: `Dig the ${w} well deeper`, assignee: "deep.d6" });
+      const deepApp = d5 === null ? null : await alice.act("agent", d5, "createTask_tasks", { goal: `Dig the ${w} well deeper`, assignee: "deep.d6" });
       const fw = word();
       const fanConv = await alice.conversation("agent", "wide.top");
-      const fanTurn = await alice.act("agent", fanConv, "run", { message: `[file:wide.fan] [fan:101] Count the ${fw} beans` }, 180_000);
+      const fanTurn = await alice.act("agent", fanConv, "respond", { message: `[file:wide.fan] [fan:101] Count the ${fw} beans` }, 180_000);
       await quiet(o.store, 300_000);
       const fan = sessionOf(o.store, "wide.fan", fanConv);
-      const fanApp = fan === null ? null : await alice.act("agent", fan, "addTask_tasks", { goal: `Count the ${fw} beans again` });
+      const fanApp = fan === null ? null : await alice.act("agent", fan, "createTask_tasks", { held: true, goal: `Count the ${fw} beans again` });
       const quietAt = await quiet(o.store);
       out.d = { word: w, conv, turn, d5, deepApp, fanWord: fw, fanConv, fanTurn, fan, fanApp, quietAt };
     });
@@ -220,10 +222,10 @@ export async function capLeg(o: { origin: string; store: string; shipped: Shippe
   const alice = connect(o.shipped, o.origin, o.store, PEOPLE.alice);
   const fw = word();
   const fanConv = await alice.conversation("agent", "wide.top");
-  const fanTurn = await alice.act("agent", fanConv, "run", { message: `[file:wide.fan] [fan:${o.cap + 1}] Count the ${fw} beans` });
+  const fanTurn = await alice.act("agent", fanConv, "respond", { message: `[file:wide.fan] [fan:${o.cap + 1}] Count the ${fw} beans` });
   await quiet(o.store);
   const fan = sessionOf(o.store, "wide.fan", fanConv);
-  const fanApp = fan === null ? null : await alice.act("agent", fan, "addTask_tasks", { goal: `Count the ${fw} beans again` });
+  const fanApp = fan === null ? null : await alice.act("agent", fan, "createTask_tasks", { held: true, goal: `Count the ${fw} beans again` });
   await quiet(o.store);
   await sleep(GRACE_MS);
   const quietAt = await quiet(o.store);

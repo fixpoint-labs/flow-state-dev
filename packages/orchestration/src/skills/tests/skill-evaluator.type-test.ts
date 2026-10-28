@@ -1,9 +1,7 @@
 /**
  * Type-level tests for `createSkillActivator`'s `evaluator` slot.
  *
- * Under `src/` on purpose: this package's typecheck includes `src/**` only,
- * and vitest does not check types, so a `@ts-expect-error` in `test/` would be
- * inert (same convention as `tasks/collection/tests/task-caps.type-test.ts`).
+ * `pnpm typecheck` compiles this file, as it does the package's `test/` files.
  *
  * What they pin down: both documented ways to fill the slot compile (the
  * helper, with or without `recentMessages`, and a block hand-built from

@@ -383,6 +383,50 @@ describe("claudeCodeAgent", () => {
     });
   });
 
+  describe("the tools a run is offered", () => {
+    // Why this matters: outside its terminal, Claude Code on its current models
+    // offers its to-do tools only when `allowedTools` names one. A run that
+    // isn't offered them can't keep a list, so the plan record stays empty
+    // however the agent is asked. Every run gets them, whatever list the host
+    // passes; a host that wants them off says so in `disallowedTools`.
+    const TODO_TOOLS = ["TaskCreate", "TaskUpdate", "TaskGet", "TaskList"];
+
+    async function handedToSdk(options: Partial<Parameters<typeof claudeCodeAgent>[0]>) {
+      const spy = vi.fn();
+      await testBlock(claudeCodeAgent({ resolveClaudeAgent: scriptedQuery([RESULT_OK], spy), ...options }), {
+        input: { prompt: "go" },
+      });
+      return spy.mock.calls[0][0].options as { allowedTools?: string[]; disallowedTools?: string[] };
+    }
+
+    it("names Claude Code's to-do tools when the host names nothing", async () => {
+      expect((await handedToSdk({})).allowedTools).toEqual(TODO_TOOLS);
+    });
+
+    it("adds them to the host's own list instead of replacing it, once each", async () => {
+      const options = await handedToSdk({ allowedTools: ["Bash(git status)", "TaskCreate"] });
+      expect(options.allowedTools).toEqual(["Bash(git status)", "TaskCreate", "TaskUpdate", "TaskGet", "TaskList"]);
+    });
+
+    it("adds Grep and Glob too, but only under bypassPermissions, where naming them allows nothing new", async () => {
+      // Claude Code offers its search tools outside its terminal only when they are named here.
+      // They check paths for permission, so naming them for a host that prompts would approve
+      // searches outside the working directory that it would otherwise be asked about.
+      expect((await handedToSdk({ permissionMode: "bypassPermissions" })).allowedTools).toEqual([...TODO_TOOLS, "Grep", "Glob"]);
+      expect(
+        (await handedToSdk({ permissionMode: "bypassPermissions", allowedTools: ["Grep", "Bash"] })).allowedTools,
+      ).toEqual(["Grep", "Bash", ...TODO_TOOLS, "Glob"]);
+      expect((await handedToSdk({})).allowedTools).toEqual(TODO_TOOLS);
+      expect((await handedToSdk({ permissionMode: "default" })).allowedTools).toEqual(TODO_TOOLS);
+      expect((await handedToSdk({ permissionMode: "acceptEdits" })).allowedTools).toEqual(TODO_TOOLS);
+    });
+
+    it("leaves the host's disallowedTools as the way to turn them off", async () => {
+      const options = await handedToSdk({ disallowedTools: ["TaskCreate"] });
+      expect(options.disallowedTools).toEqual(["TaskCreate"]);
+    });
+  });
+
   it("resolves sandbox settings per run, so they can name the run's own paths", async () => {
     // The settings that confine a run name the directory it works in, and one
     // flow build serves many runs. A build-time constant can say "sandboxed"
@@ -583,13 +627,13 @@ describe("claudeCodeAgent", () => {
       const controller = new AbortController();
       (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
 
-      const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+      const runPromise = Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never));
       await firstMessageSeen;
       controller.abort();
 
       let caught: unknown = null;
       await expect(
-        withRaceTimeout(runPromise!.catch((err) => {
+        withRaceTimeout(runPromise.catch((err) => {
           caught = err;
           throw err;
         }), 500),
@@ -609,10 +653,10 @@ describe("claudeCodeAgent", () => {
       const controller = new AbortController();
       (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
 
-      const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+      const runPromise = Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never));
       await firstMessageSeen;
       controller.abort();
-      await withRaceTimeout(runPromise!.catch(() => {}), 500);
+      await withRaceTimeout(runPromise.catch(() => {}), 500);
 
       expect(
         (runtime.ctx.session.state as Record<string, unknown>)[SDK_SESSION_ID_KEY],
@@ -662,12 +706,12 @@ describe("claudeCodeAgent", () => {
         const controller = new AbortController();
         (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
 
-        const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+        const runPromise = Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never));
         await vendor.state.sawFirstMessage;
         controller.abort();
 
         const caught = await withRaceTimeout(
-          runPromise!.then(
+          runPromise.then(
             () => null,
             (err) => err,
           ),
@@ -730,12 +774,12 @@ describe("claudeCodeAgent", () => {
         const controller = new AbortController();
         (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
 
-        const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+        const runPromise = Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never));
         await sawFirstMessage;
         controller.abort();
 
         const caught = await withRaceTimeout(
-          runPromise!.then(
+          runPromise.then(
             () => null,
             (err) => err,
           ),
@@ -753,12 +797,12 @@ describe("claudeCodeAgent", () => {
         const controller = new AbortController();
         (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
 
-        const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+        const runPromise = Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never));
         await vendor.state.sawFirstMessage;
         controller.abort();
 
         const caught = await withRaceTimeout(
-          runPromise!.then(
+          runPromise.then(
             () => null,
             (err) => err,
           ),
@@ -783,9 +827,9 @@ describe("claudeCodeAgent", () => {
       const runtime = await createTestContext({ declaredResources: block.declaredResources });
       (runtime.ctx as unknown as { signal: AbortSignal }).signal = AbortSignal.abort();
 
-      const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+      const runPromise = Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never));
       const caught = await withRaceTimeout(
-        runPromise!.then(
+        runPromise.then(
           () => null,
           (err) => err,
         ),
@@ -859,10 +903,10 @@ describe("claudeCodeAgent", () => {
       const controller = new AbortController();
       (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
 
-      const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+      const runPromise = Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never));
       await firstMessageSeen;
       controller.abort();
-      await withRaceTimeout(runPromise!.catch(() => {}), 500);
+      await withRaceTimeout(runPromise.catch(() => {}), 500);
 
       // The abort branch's cleanup has now run. Only NOW let the abandoned
       // loop see the second message.
@@ -913,7 +957,7 @@ describe("claudeCodeAgent", () => {
         sawFirstEmit = resolve;
       });
       let emitCount = 0;
-      (runtime.response as { emit: typeof originalEmit }).emit = async (event) => {
+      (runtime.response as { emit: typeof originalEmit }).emit = async (event: unknown) => {
         emitCount += 1;
         if (emitCount === 1) {
           sawFirstEmit();
@@ -922,14 +966,14 @@ describe("claudeCodeAgent", () => {
         return originalEmit(event);
       };
 
-      const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+      const runPromise = Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never));
       await firstEmitStarted;
       controller.abort();
 
       // While OUR OWN write is still held open, the run must not settle —
       // that would mean the abort branch finalized past it, exactly the bug.
       let settledEarly = false;
-      runPromise!.catch(() => {}).then(() => {
+      runPromise.catch(() => {}).then(() => {
         settledEarly = true;
       });
       await new Promise((resolve) => setTimeout(resolve, 30));
@@ -937,7 +981,7 @@ describe("claudeCodeAgent", () => {
 
       releaseFirstEmit();
       const caught = await withRaceTimeout(
-        runPromise!.then(
+        runPromise.then(
           () => null,
           (err) => err,
         ),
@@ -991,13 +1035,13 @@ describe("claudeCodeAgent", () => {
       const firstEmitStarted = new Promise<void>((resolve) => {
         sawFirstEmit = resolve;
       });
-      (runtime.response as { emit: typeof originalEmit }).emit = async (event) => {
+      (runtime.response as { emit: typeof originalEmit }).emit = async (event: unknown) => {
         sawFirstEmit();
         await firstEmitHeld;
         return originalEmit(event);
       };
 
-      const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+      const runPromise = Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never));
       await firstEmitStarted;
       const timeoutReason = new DOMException("The operation timed out.", "TimeoutError");
       controller.abort(timeoutReason);
@@ -1005,7 +1049,7 @@ describe("claudeCodeAgent", () => {
       // While our own write is still held open, the run must not settle —
       // proves the in-flight-write wait still runs for a TimeoutError reason.
       let settledEarly = false;
-      runPromise!.catch(() => {}).then(() => {
+      runPromise.catch(() => {}).then(() => {
         settledEarly = true;
       });
       await new Promise((resolve) => setTimeout(resolve, 30));
@@ -1013,7 +1057,7 @@ describe("claudeCodeAgent", () => {
 
       releaseFirstEmit();
       const caught = await withRaceTimeout(
-        runPromise!.then(
+        runPromise.then(
           () => null,
           (err) => err,
         ),
@@ -1032,6 +1076,49 @@ describe("claudeCodeAgent", () => {
       }>;
       expect(messageItems.some((i) => i.status === "in_progress")).toBe(false);
     });
+  });
+
+  it("ends a run by saying how long it took", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(0);
+      const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+        query: async function* () {
+          vi.setSystemTime((5 * 60 + 24) * 1000);
+          yield RESULT_OK;
+        },
+      });
+      const { items } = await testBlock(claudeCodeAgent({ resolveClaudeAgent }), { input: { prompt: "go" } });
+      const statuses = items.filter((i) => i.type === "status").map((i) => String((i as { message: string }).message));
+      expect(statuses).toContain("Claude Code agent run completed in 5 mins, 24 seconds.");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("says Claude Code is starting before the SDK has said anything", async () => {
+    const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+      query: async function* () {
+        yield RESULT_OK;
+      },
+    });
+    const { items } = await testBlock(claudeCodeAgent({ resolveClaudeAgent }), { input: { prompt: "go" } });
+    const statuses = items.filter((i) => i.type === "status").map((i) => String((i as { message: string }).message));
+    expect(statuses[0]).toBe("Starting Claude Code…");
+  });
+
+  it("clears the starting line once the SDK speaks, so it does not sit beside the answer", async () => {
+    const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+      query: async function* () {
+        yield { type: "assistant", message: { content: [{ type: "text", text: "hi" }] } } as SdkMessageLike;
+        yield RESULT_OK;
+      },
+    });
+    const { items } = await testBlock(claudeCodeAgent({ resolveClaudeAgent, includePartialMessages: false }), {
+      input: { prompt: "go" },
+    });
+    const statuses = items.filter((i) => i.type === "status").map((i) => String((i as { message: string }).message));
+    expect(statuses.slice(0, 2)).toEqual(["Starting Claude Code…", ""]);
   });
 
   it("routes onToolApproval deny onto canUseTool and emits a status item", async () => {
@@ -1328,9 +1415,9 @@ describe("claudeCodeAgent", () => {
 });
 
 /**
- * `detached: true` — the mode that runs the block as handed-off background work.
+ * `detached: true` — the mode that runs the block as dispatched background work.
  *
- * `defineFlow` refuses a handed-off entry whose block (or any block under it)
+ * `defineFlow` refuses a dispatched entry whose block (or any block under it)
  * authors a `sessionStateSchema`, because the block runs in a child session it
  * may share with other rows. A background job is one run in one child session,
  * so the conversation state this block keeps — a resume handle and a run log —
@@ -1708,6 +1795,7 @@ describe("claudeCodeAgent — resume and onSession", () => {
 
     const { error } = await testBlock(block, {
       input: { prompt: "go" },
+      // @ts-expect-error — source bug FIX-1317: testBlock takes no signal, so this one never reaches the block.
       signal: controller.signal,
     });
 
@@ -2172,12 +2260,20 @@ describe("claudeCodeAgent — recordWork", () => {
     ]);
     expect(fileRows[0].state).toMatchObject({ lastKind: "created", outcome: "applied" });
 
+    // The plan is the conversation's, keyed by the session the SDK confirmed,
+    // so the next turn of it updates these rows; files stay the run's.
     const planRows = await resources["observed-plan"].list();
-    expect(planRows.map((r) => r.path)).toEqual([`observed-plan/${runId}/5`]);
+    expect(planRows.map((r) => r.path)).toEqual([`observed-plan/conversation/sess_new/5`]);
     expect(planRows[0].state).toMatchObject({
       title: "Create the file",
       status: "in_progress",
       lastOutcome: "applied",
+      requestId: runtime.ctx.request.identity.id,
+    });
+    // And the run points at it, so a reader that knows only the run finds it.
+    const markers = await resources["observed-plan-list"].list();
+    expect(markers.find((r) => r.path === `observed-plan-list/${runId}`)?.state).toMatchObject({
+      conversation: "conversation/sess_new",
     });
   });
 
@@ -2213,7 +2309,7 @@ describe("claudeCodeAgent — recordWork", () => {
       expect(fileRows[0].state).toMatchObject({ lastKind: "created", outcome: "applied" });
 
       const planRows = await resources["observed-plan"].list();
-      expect(planRows.map((r) => r.path)).toEqual([`observed-plan/${runId}/5`]);
+      expect(planRows.map((r) => r.path)).toEqual([`observed-plan/conversation/sess_new/5`]);
 
       // The gap row matters most: it is the record OF a loss, so if it shares
       // the doomed namespace there is nothing left to notice the failure by.
@@ -2652,11 +2748,11 @@ describe("claudeCodeAgent — recordWork", () => {
  * in the repo, so the first thing a reader would do with a brand-new option was
  * paste code that dies on an undefined symbol.
  *
- * Nothing here compiles fenced code blocks, and this package's `tsconfig`
- * includes only `src/**` — so a type-level guard under `test/` would never have
- * run. This is a runtime one instead: the snippet is reproduced verbatim and
- * driven through the block, so an unresolvable symbol is a hard failure and a
- * resolver whose shape stopped matching the option is a red test.
+ * Nothing compiles fenced code blocks, so the prose copies have no check of
+ * their own. This test is the guard: the snippet is reproduced verbatim here,
+ * where `pnpm typecheck` compiles it, and driven through the block, so an
+ * unresolvable symbol is a hard failure and a resolver whose shape stopped
+ * matching the option is a red test.
  *
  * **Keep this a copy-paste match for the three prose copies.** If it needs an
  * edit to pass, they need the same edit.
@@ -3033,7 +3129,7 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
       },
     } as never);
 
-    await testBlock(block as never, { input: { prompt: "  raw  " } });
+    await testBlock(block, { input: { prompt: "  raw  " } });
 
     expect(args).toHaveLength(3);
     for (const received of args) {
@@ -3192,5 +3288,44 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
       expect(parsed.cost).toEqual({ usd: 0.02, basis: "reported" });
       expect(parsed).not.toHaveProperty("costUsd");
     });
+  });
+});
+
+describe("claudeCodeAgent — the model, per run", () => {
+  it("asks the resolver on every run, and hands its answer to a fresh run and a resumed one alike", async () => {
+    const spy = vi.fn();
+    // Two runs of ONE block, as two sessions of a host share it: the second
+    // resumes, and must still name the model its own run picked.
+    const picks = ["model-for-run-1", "model-for-run-2"];
+    const resumes = [null, "sess_saved"];
+    let modelRun = 0;
+    let resumeRun = 0;
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
+      detached: true,
+      model: () => picks[modelRun++]!,
+      resume: () => resumes[resumeRun++],
+    });
+    await testBlock(block, { input: { prompt: "one" } });
+    await testBlock(block, { input: { prompt: "two" } });
+
+    expect(spy.mock.calls[0][0].options).toMatchObject({ model: "model-for-run-1" });
+    expect(spy.mock.calls[0][0].options).not.toHaveProperty("resume");
+    expect(spy.mock.calls[1][0].options).toMatchObject({ model: "model-for-run-2", resume: "sess_saved" });
+  });
+
+  it("forwards a fixed id as before, and names none when the resolver has none", async () => {
+    const spy = vi.fn();
+    await testBlock(claudeCodeAgent({ resolveClaudeAgent: scriptedQuery([RESULT_OK], spy), model: "fixed-id" }), {
+      input: { prompt: "go" },
+    });
+    expect(spy.mock.calls[0][0].options?.model).toBe("fixed-id");
+    for (const none of [null, undefined, ""]) {
+      spy.mockClear();
+      await testBlock(claudeCodeAgent({ resolveClaudeAgent: scriptedQuery([RESULT_OK], spy), model: () => none }), {
+        input: { prompt: "go" },
+      });
+      expect(spy.mock.calls[0][0].options?.model).toBeUndefined();
+    }
   });
 });

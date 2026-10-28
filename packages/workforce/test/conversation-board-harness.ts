@@ -7,9 +7,10 @@
  * - `tasker` takes tasks and nothing else. Its turn records each run (who,
  *   where, which attempt, as whom) and does what the task's goal says:
  *   `[fail]` throws, `[fail-until:N]` throws on every attempt below N,
- *   `[park:<question>]` parks the task on its question on the first attempt,
- *   `[slow:<ms>]` takes that long, and anything else is done.
- * - `helper` takes delegated posts and no task.
+ *   `[ask:<question>]` holds the task on its question, once,
+ *   `[slow:<ms>]` takes that long, `[hold:<name>]` waits until the test
+ *   releases the gate of that name (`holds`), and anything else is done.
+ * - `helper` answers the message a routed task hands it.
  * - `agent` is the built-in worker flow, scripted by its generator's block name
  *   (`agent-answer`).
  *
@@ -19,16 +20,20 @@
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { encodeUserSegment } from "@flow-state-dev/core/types";
 import type { FlowInstance, GeneratorModel } from "@flow-state-dev/core/types";
-import { createFlowState, inMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/engine";
-import { ticketForClaim, type Task } from "@flow-state-dev/orchestration/tasks";
+import { createFlowState, createInProcessFetch, inMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/engine";
+import { createClient } from "@flow-state-dev/client";
+import type { Task } from "@flow-state-dev/orchestration/tasks";
+import { askMidway } from "@flow-state-dev/orchestration/task-board";
 import { createMockModelResolver, mockGenerator, type MockGeneratorInstance } from "@flow-state-dev/testing";
 import { z } from "zod";
-import { defineAgentWorkerFlow } from "../src/agent-worker-flow";
+import { defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "../src/agent-worker-flow";
 import { conversationLedgerAt, conversationLedgerResources } from "../src/conversation-board/ledger";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
+import { MESSAGE_RECEIVED_ENTRY } from "../src/messages/keys";
+import { workerMessagesResources } from "../src/messages/message-log";
+import { messageReceivedEntry } from "../src/messages/message-received-entry";
 import { defineCoordinatorFlow, type CoordinatorFlowOptions } from "../src/coordinator/coordinator-flow";
 import { COORDINATOR_ROUTE } from "../src/coordinator/coordinator-keys";
-import { delegatedPostEntry } from "../src/coordinator/delegated-post";
 import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
 import { createWorkforceClient } from "../src/workers/client";
@@ -39,7 +44,7 @@ import { mockEvaluationModel } from "@flow-state-dev/testing";
 
 export const ORG = "acme";
 
-/** The standard workers: coordinators that file, workers that take tasks, one that takes only posts. */
+/** The standard workers: coordinators that file, workers that take tasks, one that answers what it is handed. */
 export function boardWorkers(overrides: Partial<Record<string, Record<string, unknown>>> = {}): WorkerManifest[] {
   const worker = (id: string, declared: Record<string, unknown>, body = ""): WorkerManifest => ({
     id,
@@ -62,13 +67,13 @@ export function boardWorkers(overrides: Partial<Record<string, Record<string, un
     worker("front", { flow: "coordinator", routing: "best-fit", delegates: ["otto"], fallback: "otto" }),
     worker("eng.tasker", { flow: "tasker", description: "Does tasks." }),
     worker("eng.writer", { flow: "tasker", description: "Writes things." }),
-    worker("eng.helper", { flow: "helper", description: "Answers posts." }),
+    worker("eng.helper", { flow: "helper", description: "Answers what it is handed." }),
     worker("otto", { description: "An agent worker." }, "You do what you're asked.")
   ];
 }
 
 /** One run of a task, as the worker's turn saw it. */
-export type TaskRun = {
+type TaskRun = {
   worker: string;
   message: string;
   sessionId: string;
@@ -81,7 +86,7 @@ const doorInput = z.object({ message: z.string() });
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function taskerFlow(installation: WorkerInstallation, runs: TaskRun[]) {
+function taskerFlow(installation: WorkerInstallation, runs: TaskRun[], holds: ReadonlyMap<string, Promise<void>>) {
   const turn = handler({
     name: "tasker-turn",
     inputSchema: doorInput,
@@ -107,13 +112,20 @@ function taskerFlow(installation: WorkerInstallation, runs: TaskRun[]) {
       const message = input.message;
       const slow = /\[slow:(\d+)\]/.exec(message);
       if (slow !== null) await sleep(Number(slow[1]));
+      const hold = /\[hold:([^\]]+)\]/.exec(message);
+      if (hold !== null) {
+        const gate = holds.get(hold[1]!);
+        if (gate === undefined) throw new Error(`[hold:${hold[1]}] names no gate the test passed in holds`);
+        await gate;
+      }
       if (message.includes("[fail]")) throw new Error(`${worker.id} could not do it`);
       const until = /\[fail-until:(\d+)\]/.exec(message);
       if (until !== null && attempt < Number(until[1])) throw new Error(`${worker.id} failed attempt ${attempt}`);
-      const park = /\[park:([^\]]+)\]/.exec(message);
-      if (park !== null && attempt === 1 && held !== undefined) {
-        await tasks!.awaitReview(taskId, park[1], { claim: ticketForClaim(tasks!.collectionId, held, partition), onQuestion: true });
-        return "parked";
+      const ask = /\[ask:([^\]]+)\]/.exec(message);
+      if (ask !== null && held !== undefined && held.askedInTurn === undefined && tasks !== undefined) {
+        const asked = await askMidway(ctx as never, tasks, [{ prompt: ask[1]! }]);
+        if (!asked.ok) throw new Error(`the question could not hold the task: ${asked.reason}`);
+        return "asked";
       }
       return `${worker.id} did: ${message}`;
     }
@@ -122,8 +134,10 @@ function taskerFlow(installation: WorkerInstallation, runs: TaskRun[]) {
     kind: "tasker",
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources, ...conversationLedgerResources },
-    actions: { run: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
+    resources: { ...installation.resources, ...conversationLedgerResources, ...workerMessagesResources },
+    actions: { respond: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
+    // Like a coding worker: it hears messages only in its tasks' sessions.
+    internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "tasker", hears: "task-sessions" }) } },
     task: { actions: { work: workerTaskEntry({ name: "tasker-task", turn }) } }
   });
 }
@@ -139,14 +153,15 @@ function helperFlow(installation: WorkerInstallation) {
     kind: "helper",
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources },
-    actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
-    internal: { actions: { onDelegatedPost: delegatedPostEntry(door) } }
+    resources: { ...installation.resources, ...workerMessagesResources },
+    actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
+    internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "helper", hears: "task-sessions" }) } },
+    task: { actions: { work: workerTaskEntry({ name: "helper-task", turn: door }) } }
   });
 }
 
 /** What the default judgment turn says: it reads what woke it and does nothing else. */
-export const QUIET_TURN = "Noted.";
+const QUIET_TURN = "Noted.";
 
 export type BoardHostOptions = {
   standard?: WorkerManifest[];
@@ -160,6 +175,8 @@ export type BoardHostOptions = {
   agentAnswer?: MockGeneratorInstance;
   /** The options the judgment turn is built with: the agent worker flow's catalog and capabilities. */
   agent?: CoordinatorFlowOptions["agent"];
+  /** The `agent` flow's `answerAgain` (FIX-2159), which the coordinator flow doesn't take. */
+  answerAgain?: AgentWorkerFlowOptions["answerAgain"];
   stores?: StoreRegistry;
   /** Told the names of the tools each model call is handed, by the calling block's name. */
   observeTools?: (blockName: string | undefined, names: string[], input: unknown) => void;
@@ -170,18 +187,34 @@ export type BoardHostOptions = {
   afterModelCall?: (blockName: string | undefined) => Promise<void>;
   /** Durable execution, so a turn can park (FIX-1816's asks). Off by default. */
   durable?: boolean;
+  /** The host's debt age (`RequestWakes.maxDebtAgeMs`): how long a debt may stay owed before a pass ends it. */
+  maxDebtAgeMs?: number;
+  /** The gates a `[hold:<name>]` task waits on, by name, until the test releases them. */
+  holds?: ReadonlyMap<string, Promise<void>>;
   /**
    * A step model for the judgment turn, in place of `judgment`'s script: one
    * the generator drives step by step, so a turn parked in a tool call resumes
    * at its next step (FIX-1816's asks).
    */
   judgmentModel?: GeneratorModel;
+  /**
+   * A step model for the agent worker's turn, in place of `agentAnswer`'s
+   * script: the generator drives it step by step, re-reading its context
+   * before each step (FIX-2086's steers).
+   */
+  agentModel?: GeneratorModel;
   /** More worker flows, built on the installation, registered beside the four, keyed by `kind`. */
   flows?: (installation: WorkerInstallation) => Record<string, unknown>;
   /** More scripted generators, by block name. */
   generators?: Record<string, MockGeneratorInstance>;
   /** What `hireWorkforce` is called with beside the installation. */
   hire?: HireWorkforceOptions;
+  /** Flows that are no worker flow, registered beside them as they are, keyed by id. */
+  plainFlows?: Record<string, FlowInstance>;
+  /** The engine's `errorCapture` handler (FIX-1983's reporter). */
+  errorCapture?: (event: any) => void;
+  /** Inbound transport adapters for the router, such as the scheduled-dispatch one. */
+  adapters?: unknown[];
 };
 
 /**
@@ -218,16 +251,18 @@ function observingTools(
   return Object.assign(resolver, base);
 }
 
-/** `base`, with the judgment turn's block answered by `model` when one is given. */
+/** `base`, with the judgment turn's block answered by `model` when one is given, and the agent's by `agent`. */
 function withJudgmentModel(
   base: ReturnType<typeof createMockModelResolver>,
-  model: GeneratorModel | undefined
+  model: GeneratorModel | undefined,
+  agent?: GeneratorModel
 ): ReturnType<typeof createMockModelResolver> {
-  if (model === undefined) return base;
-  const resolver = ((modelId: string, blockName?: string) =>
-    blockName === "coordinator-judgment" ? model : (base as any)(modelId, blockName)) as ReturnType<
-    typeof createMockModelResolver
-  >;
+  if (model === undefined && agent === undefined) return base;
+  const resolver = ((modelId: string, blockName?: string) => {
+    if (model !== undefined && blockName === "coordinator-judgment") return model;
+    if (agent !== undefined && blockName?.startsWith("agent-answer") === true) return agent;
+    return (base as any)(modelId, blockName);
+  }) as ReturnType<typeof createMockModelResolver>;
   return Object.assign(resolver, base);
 }
 
@@ -240,21 +275,31 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     standardWorkers: options.standard ?? boardWorkers(),
     workerFlows: () => flows as never
   });
-  const tasker = taskerFlow(installation, runs);
+  const tasker = taskerFlow(installation, runs, options.holds ?? new Map());
   const helper = helperFlow(installation);
-  const agent = defineAgentWorkerFlow({ installation, ...(options.agent ?? {}) });
+  const agent = defineAgentWorkerFlow({
+    installation,
+    ...(options.agent ?? {}),
+    ...(options.answerAgain === undefined ? {} : { answerAgain: options.answerAgain })
+  });
   const coordinator = defineCoordinatorFlow({
     installation,
-    delegateFlows: [helper, agent],
     routeModel: "typesafe-ai/jev",
     ...(options.agent === undefined ? {} : { agent: options.agent })
   });
-  flows = { tasker, helper, agent, coordinator, ...(options.flows?.(installation) ?? {}) };
+  flows = {
+    tasker: { flow: tasker, roles: ["contributor"] },
+    helper: { flow: helper, roles: ["contributor"] },
+    agent,
+    coordinator,
+    ...(options.flows?.(installation) ?? {})
+  };
 
   // One copy per worker flow, and the roster flow, as an app registers them.
   const instances: Record<string, FlowInstance> = Object.fromEntries(
     hireWorkforce(installation, options.hire).map((copy) => [copy.id === ROSTER_FLOW ? "roster" : copy.id, copy])
   );
+  Object.assign(instances, options.plainFlows ?? {});
   const judgment = options.judgment ?? mockGenerator({ script: [{ when: () => true, then: { text: QUIET_TURN } }] });
   const agentAnswer = options.agentAnswer ?? mockGenerator({ script: [] });
   const models = createMockModelResolver({
@@ -267,11 +312,15 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     flows: instances,
     stores: { default: { primary: stores } },
     ...(options.durable === true ? { durable: true } : {}),
+    ...(options.maxDebtAgeMs === undefined ? {} : { maxDebtAgeMs: options.maxDebtAgeMs }),
+    ...(options.errorCapture === undefined ? {} : { errorCapture: options.errorCapture }),
+    ...(options.adapters === undefined ? {} : { adapters: options.adapters }),
     modelResolver: withJudgmentModel(
       options.observeTools === undefined && options.afterModelCall === undefined
         ? models
         : observingTools(models, options.observeTools, options.afterModelCall),
-      options.judgmentModel
+      options.judgmentModel,
+      options.agentModel
     ),
     resolvePrincipal: (context: any) => {
       const user = context.request?.headers.get("x-user");
@@ -341,14 +390,19 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
   /** Every request in the store, once none is still running. */
   const settled = async (timeoutMs = 10_000) => {
     const deadline = Date.now() + timeoutMs;
+    // Still running: in progress, or ended but not finalized. A record reads
+    // `completed` before `onFinished` and the request-end check (FIX-2077)
+    // have run, and a task's row is settled by that check.
+    const running = (r: { status: string; finalizedAtMs?: number | null }) =>
+      r.status === "in_progress" || (r.status !== "suspended" && r.status !== "pending" && r.finalizedAtMs == null);
     for (;;) {
       const all = await (await state.getRuntime()).stores.request.list({});
-      if (!all.some((r) => r.status === "in_progress")) {
+      if (!all.some(running)) {
         // Read again after a beat: a dispatch accepted just now may not have
         // written its request yet.
         await sleep(20);
         const again = await (await state.getRuntime()).stores.request.list({});
-        if (!again.some((r) => r.status === "in_progress") && again.length === all.length) return again;
+        if (!again.some(running) && again.length === all.length) return again;
         continue;
       }
       if (Date.now() > deadline) throw new Error("a request never finished");
@@ -393,18 +447,19 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
       .map((item) => ({ agentName: item.agentName as string | undefined, text: textOf(item) }));
 
   /** An app's workforce client for `userId`, talking to this host's router. */
+  const inProcess = createInProcessFetch(state);
   const client = (userId: string) =>
-    createWorkforceClient({
-      userId,
-      fetcher: async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-        const url = new URL(String(input), "http://localhost");
-        const headers = new Headers(init?.headers);
-        headers.set("x-user", userId);
-        const path = url.pathname.replace(/^\/api\/flows\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
-        const method = (init?.method ?? "GET").toUpperCase();
-        return (await router())[method](new Request(url, { ...init, headers }), { params: { path } });
-      }
-    });
+    createWorkforceClient(
+      createClient({
+        userId,
+        // This host's router in-process, as `userId`.
+        fetcher: (input, init) => {
+          const headers = new Headers(init?.headers);
+          headers.set("x-user", userId);
+          return inProcess(input, { ...init, headers });
+        }
+      })
+    );
 
   /**
    * Make every new request on `actionName` fail to be written, as a store
@@ -467,6 +522,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     fire,
     loseDispatches,
     writeRow,
+    router,
     dispose: () => state.dispose()
   };
 }
@@ -484,4 +540,14 @@ export function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (error !== null && typeof error === "object" && "message" in error) return String((error as { message: unknown }).message);
   return String(error);
+}
+
+/**
+ * A fixture worker flow's `onMessageReceived`, which every worker flow on an
+ * installation must carry: spread into `internal.actions`, with
+ * `workerMessagesResources` in the flow's resources. No turn: a message lands
+ * as its items and nothing runs.
+ */
+export function hearsMessages(installation: WorkerInstallation, flowKind: string, hears?: "task-sessions") {
+  return { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind, ...(hears === undefined ? {} : { hears }) }) };
 }

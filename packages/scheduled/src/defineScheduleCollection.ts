@@ -10,7 +10,7 @@
  *  - `enabled: false` rows are removed from the index (or skipped on
  *    create), so toggling a schedule off stops it from firing without
  *    deleting the underlying resource.
- *  - Cron parsing happens here (the index never parses); rows hand off
+ *  - Cron parsing happens here (the index never parses); rows carry
  *    a pre-computed `nextFireAt`.
  *  - Every created row records the organization its run was admitted
  *    under (`stampOrgId`), index or not — the resolver refuses a row

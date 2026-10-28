@@ -2,9 +2,9 @@
  * Resolve a suspension and continue its request, under the request's lease.
  *
  * The one path every resume takes, whoever asks for it: the public resume route
- * (`routes/resume-routes.ts`), a conversation resuming its own ask
- * (`context/ask-resume-operation.ts`), and the durability sweep resuming an
- * overdue ask (`durability/durability-sweeper.ts`). Each caller decides
+ * (`routes/resume-routes.ts`), a conversation resuming its own wait
+ * (`context/wait-resume-operation.ts`), and the durability sweep resuming an
+ * overdue wait (`durability/durability-sweeper.ts`). Each caller decides
  * whether it may resume; this does the part that must be identical for all of
  * them:
  *
@@ -13,10 +13,18 @@
  *    refuse. A refusal releases the lease and writes nothing.
  * 3. Record the resolution on the suspension, then continue the SAME request.
  *    `runAction` releases the lease when the run ends or parks again.
- * 4. If setup fails before the run starts, put the suspension back exactly as
- *    it was admitted, release the lease, and rethrow, so the resume can be
- *    tried again. Nothing after the run starts can reach this: see the
- *    containment note on `createInboundTransportHost`'s `continueRequest`.
+ * 4. If setup fails before the continuation's handle is returned, put the
+ *    suspension back exactly as it was admitted, release the lease, and
+ *    rethrow, so the resume can be tried again. Nothing after the handle is
+ *    returned can reach this: see the containment note on
+ *    `createInboundTransportHost`'s `continueRequest`.
+ *
+ * Waiting for the request's turn on its session's concurrency key is not
+ * setup. That wait runs after the handle is returned, inside `finished`, so
+ * the resolution is already accepted. If the wait fails (the queue budget runs
+ * out, or the backend fails), the host releases this resume's own
+ * lease (passed as `leaseId`) and the suspension keeps its resolution. The
+ * request stays parked and the durability sweep re-drives it.
  */
 import {
   RESUME_ACTION_STATUS,
@@ -50,7 +58,7 @@ export const RESUME_LEASE_MS = 60_000;
  * Write a pending gate `expired`, fenced under its request's lease: the one
  * way every expiry writer (the durability sweep, the resume route) records an
  * expiry (FIX-1846). Every other resolution of a gate (a person's resume, an
- * ask's answer, a stop) is written under that lease, so the gate re-read while
+ * wait's answer, a stop) is written under that lease, so the gate re-read while
  * holding it is current: a resolution that landed after the caller's own read
  * is never overwritten. `gate` names the gate; its fields are not written.
  * A lease held elsewhere (a resume, or its run) writes nothing: `busy`.
@@ -138,6 +146,7 @@ export async function resumeUnderLease<TRefusal>(
     });
     const handle = await deps.continueRequest({
       requestId: args.requestId,
+      leaseId: lease.leaseId,
       resumeContext: {
         suspensionId: suspension.suspensionId,
         action: args.action,
@@ -147,7 +156,8 @@ export async function resumeUnderLease<TRefusal>(
     });
     return { ok: true, handle };
   } catch (error) {
-    await provider.suspend({ ...suspension, status: "pending" }).catch(() => {});
+    // As admitted: `pending`, or the resolution a stop overrode (FIX-2108).
+    await provider.suspend(suspension).catch(() => {});
     await provider.releaseLease(args.requestId, lease.leaseId).catch(() => {});
     throw error;
   }
@@ -162,7 +172,7 @@ export async function resumeUnderLease<TRefusal>(
  * lease is released and the gate keeps its resolution for the next sweep: here
  * the error is rethrown; after the handle is returned, `runAction`'s
  * pre-transition recovery leaves the gates a re-drive continues (an answered
- * ask, a stop) resolved.
+ * wait, a stop) resolved.
  */
 export async function continueUnderLease<TRefusal>(
   deps: ResumeDeps,
@@ -187,6 +197,7 @@ export async function continueUnderLease<TRefusal>(
     }
     const handle = await deps.continueRequest({
       requestId: args.requestId,
+      leaseId: lease.leaseId,
       ...(admitted.resumeContext !== undefined ? { resumeContext: admitted.resumeContext } : {})
     });
     return { ok: true, handle };

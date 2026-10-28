@@ -9,14 +9,14 @@
  * places but shared one directory would fail here.
  */
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { run } from "../src/exec";
 import { localWorkspaceHost, type WorkspaceHost, type WorkspacePlace } from "../src/local-host";
 import { createFakeCollection, type FakeCollection } from "./fake-collection";
-import { createRemote, git, tempDir } from "./git-fixtures";
+import { createRemote, git, subcommand, tempDir } from "./git-fixtures";
 
 vi.mock("../src/exec", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/exec")>();
@@ -74,9 +74,9 @@ function branches(): string[] {
 }
 
 /** Every `git` call the host made whose arguments start with `prefix`. */
-function gitCalls(...prefix: string[]): string[][] {
+function gitCalls(...prefix: string[]): (readonly string[])[] {
   return spawned.mock.calls
-    .map(([, args]) => args as string[])
+    .map(([, args]) => subcommand(args))
     .filter((args) => prefix.every((word, i) => args[i] === word));
 }
 
@@ -226,5 +226,46 @@ describe("where a run's branch is cut from, and what becomes of it", () => {
     expect(git(repo, "rev-parse", "--abbrev-ref", "HEAD")).toBe("fsd/run-1");
     expect(readFileSync(join(repo, "mine.txt"), "utf8")).toBe("the person's own edit");
     expect(worktrees()).toEqual([repo]);
+  });
+});
+
+describe("the operator's own git hooks", () => {
+  /**
+   * A post-checkout hook like a developer's `pnpm packages:build`: it fails in
+   * a fresh tree with no dependencies, and leaves a mark whenever it runs.
+   */
+  function installFailingHook(dir: string): string {
+    const ran = join(tempDir("hook"), "ran");
+    mkdirSync(dir, { recursive: true });
+    const hook = join(dir, "post-checkout");
+    writeFileSync(hook, `#!/bin/sh\necho "$PWD" >> '${ran}'\necho "no node_modules here" >&2\nexit 1\n`);
+    chmodSync(hook, 0o755);
+    return ran;
+  }
+
+  it("never run while a run's worktree is cut, so a failing one can't stop the run", async () => {
+    const ran = installFailingHook(join(repo, ".git", "hooks"));
+    // Control: the hook is live. The operator's own `worktree add` runs it and fails.
+    expect(() => git(repo, "worktree", "add", "-q", "-b", "control", join(tempDir("control"), "tree"))).toThrow(
+      /no node_modules here/,
+    );
+    expect(existsSync(ran)).toBe(true);
+    rmSync(ran);
+
+    const place = await host().provision(mapped("web"), { place: ["run-1"], branch: "fsd/run-1" });
+
+    expect(worktrees()).toContain(place.cwd);
+    expect(git(place.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("fsd/run-1");
+    expect(existsSync(ran), "the operator's post-checkout hook ran while the worktree was cut").toBe(false);
+  });
+
+  it("are not run from a configured hooks directory either (husky's core.hooksPath)", async () => {
+    const ran = installFailingHook(join(repo, ".husky"));
+    git(repo, "config", "core.hooksPath", ".husky");
+
+    const place = await host().provision(mapped("web"), { place: ["run-1"], branch: "fsd/run-1" });
+
+    expect(worktrees()).toContain(place.cwd);
+    expect(existsSync(ran), "the configured post-checkout hook ran while the worktree was cut").toBe(false);
   });
 });

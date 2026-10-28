@@ -1,10 +1,18 @@
 ---
 name: debug-flow
-description: Debug flow execution by running flows via the CLI, analyzing NDJSON traces and stderr logs, isolating failing blocks, and diagnosing root causes.
+description: The fsdev-run toolkit diagnose calls for flow-execution failures — NDJSON traces, stderr logs, fsdev block isolation, and the failure-pattern table. Not a second diagnosis loop; start at diagnose.
 argument-hint: "<flow-kind> <action> [description of the problem]"
 ---
 
-You are a flow debugging agent for the `@flow-state-dev` framework. Your job is to reproduce, isolate, and diagnose problems in flows and blocks by executing them through the CLI and reading the full execution trace.
+You are the **`fsdev run` toolkit** that [`diagnose`](../diagnose/SKILL.md) calls
+when the symptom is a flow-execution failure. This file is the CLI, the two
+streams, `fsdev block`, and the failure-pattern table. `diagnose` owns classify,
+fix, verify, and report.
+
+If you were invoked directly (`/debug-flow`), run Steps 1–5, then hand the
+traces and isolation back to `diagnose`. That work *is* Phase 1 (the loop) and
+Phase 2 (the repro). Continue from Phase 3 (hypothesise). Do not classify, fix,
+verify, or report here.
 
 ## Core Principle
 
@@ -152,11 +160,13 @@ The `fsdev block` command returns structured JSON (not NDJSON):
 - `error.message` + `error.stack` — The actual exception with stack trace.
 - `execution.durationMs` — Near-zero suggests a validation or early-exit failure. Very high suggests a timeout or hung model call.
 
-### Step 6: Diagnose Root Cause
+### Step 6: Hand off to `diagnose`
 
-Based on the trace evidence, classify the problem:
+Take the traces, the isolated block result, and the matching row from the
+table below, and continue [`diagnose`](../diagnose/SKILL.md) at **Phase 3
+(hypothesise)**. Classify, fix, verify, and report live there — not here.
 
-#### Common Failure Patterns
+#### Failure-pattern table
 
 | Pattern | Trace Signal | Likely Cause | Fix Direction |
 |---------|-------------|--------------|---------------|
@@ -171,28 +181,6 @@ Based on the trace evidence, classify the problem:
 | **Wrong route selected** | `router selected route` shows unexpected block | Router's `execute` function returned wrong block based on input | Test router selection logic with known inputs |
 | **Timeout** | `code: "timeout_error"` in error event | Block or model call exceeded timeout | Check tool `timeoutMs` config, network conditions, model latency |
 | **Retry exhaustion** | Multiple `block execution retry` logs then `block execution failed` | All retry attempts failed | Check `retry: { maxAttempts, retryableErrors }` config, investigate underlying transient error |
-
-### Step 7: Fix and Verify
-
-1. Implement the fix based on your diagnosis
-2. Re-run the flow with the same input to verify:
-   ```bash
-   source ~/.zshrc && pnpm --filter @flow-state-dev/fsdev fsdev run <flowKind> <action> -i '<same-input>' --flow-dir <path> 2>&1
-   ```
-3. Confirm the trace now shows `flow_complete` (not `error`)
-4. Run the package tests:
-   ```bash
-   source ~/.zshrc && pnpm --filter <affected-package> typecheck && pnpm --filter <affected-package> test
-   ```
-5. Present the diagnosis and fix to the user
-
-### Step 8: Report
-
-Summarize for the user:
-- **Root cause**: What specifically was wrong
-- **Evidence**: Which trace signals led to the diagnosis
-- **Fix**: What changed and why
-- **Verification**: Output showing the flow now succeeds
 
 ---
 
@@ -373,10 +361,10 @@ Tools are compiled from block definitions and auto-executed in the model loop (u
 
 ## Guidelines
 
-- **Run it first.** Never diagnose from code alone when you can execute and observe.
+- **Run it first.** Never hypothesise from code alone when you can execute and observe.
 - **Read both streams.** Stderr logs show execution flow; stdout NDJSON shows data flow. You need both.
-- **Isolate before fixing.** Use `fsdev block` to test suspected failing blocks in isolation before touching code.
+- **Isolate, then hand off.** Use `fsdev block` on the suspected block, then continue `diagnose` from Phase 3. Do not fix from this skill.
 - **Check the connector.** Most sequencer bugs are missing or wrong connector functions between `.step()` steps.
 - **Check the schema.** Schema validation errors are the most common failure. Always check `inputSchema`/`outputSchema` compatibility.
 - **Verify environment.** Missing API keys in `.env.local` cause cryptic generator failures. Check `OPENAI_API_KEY` and similar.
-- **Report with evidence.** Every diagnosis should cite specific trace lines — block names, error codes, durations, item IDs.
+- **Cite the trace.** The handoff names block names, error codes, durations, and item IDs. `diagnose` writes the report.

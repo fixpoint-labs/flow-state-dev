@@ -65,6 +65,7 @@ describe("executeTurn", () => {
       orgId: DEFAULT_ORG_ID,
       stores,
       runtimeConfig: { modelResolver },
+      answerAt: "Answer it in a server on these stores.",
       renderer,
     };
 
@@ -95,6 +96,7 @@ describe("executeTurn", () => {
       orgId: DEFAULT_ORG_ID,
       stores,
       runtimeConfig: {},
+      answerAt: "Answer it in a server on these stores.",
       renderer,
     });
 
@@ -125,6 +127,7 @@ describe("executeTurn", () => {
       orgId: DEFAULT_ORG_ID,
       stores,
       runtimeConfig: {},
+      answerAt: "Answer it in a server on these stores.",
       renderer,
     });
 
@@ -172,6 +175,7 @@ describe("executeTurn", () => {
       orgId: DEFAULT_ORG_ID,
       stores: flakyStores,
       runtimeConfig: {},
+      answerAt: "Answer it in a server on these stores.",
       renderer,
     });
 
@@ -206,6 +210,7 @@ describe("executeTurn", () => {
       orgId: DEFAULT_ORG_ID,
       stores,
       runtimeConfig: {},
+      answerAt: "Answer it in a server on these stores.",
       renderer,
     });
     await delay(30);
@@ -222,6 +227,7 @@ describe("executeTurn", () => {
       orgId: DEFAULT_ORG_ID,
       stores,
       runtimeConfig: { modelResolver },
+      answerAt: "Answer it in a server on these stores.",
       renderer,
     }).done;
 
@@ -260,6 +266,7 @@ describe("executeTurn", () => {
       orgId: DEFAULT_ORG_ID,
       stores,
       runtimeConfig: {},
+      answerAt: "Answer it in a server on these stores.",
       renderer,
     }).done;
 

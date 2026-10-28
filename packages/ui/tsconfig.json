@@ -12,6 +12,7 @@
     "src/**/*",
     "test/**/*",
     "registry/components/tool-grouping.ts",
+    "registry/components/tool-naming.ts",
     "registry/components/task-plan-state.ts"
   ],
   "exclude": ["registry/**/*.tsx", "test/render/**"],

@@ -3,6 +3,7 @@ import type { BlockContext, BlockDefinition, BlockOutputHint, ConnectorFn, Rescu
 import { asRuntime } from "../types/block";
 import type { ModelIdentity } from "../types/model";
 import type { BlockValue, BlockValueInternal, OutputItem, StructureShape } from "../items/types";
+import type { RuntimeItem } from "../items/internal";
 import { SuspensionError } from "../errors/suspension-error";
 import { RecordedValueOmittedError } from "../errors/recorded-value-omitted-error";
 import type {
@@ -21,6 +22,7 @@ import type {
 import { buildBlock, mergeDeclaredResources, stampInformationalOutputSchema } from "./internal/build-block";
 import { SequencerOutputSchemaError, SequencerSchemaMismatchError } from "../errors/sequencer-output-schema-error";
 import { resolveCapabilities } from "./internal/resolve-capabilities";
+import { absorbSequencerStateRequirement, foldSequencerStateRequirements } from "./internal/sequencer-state";
 import { resolveActiveStatusMessage } from "./internal/resolve-active-status-message";
 import { findBlockTraceIdByInstance } from "./internal/find-block-trace";
 import { stashEvaluatorModelResult } from "./internal/evaluator-model-result";
@@ -481,7 +483,7 @@ export async function executeBlock(
       // `_withExecutionScope` builds below (name/kind/instanceId/path/transient);
       // `getBlockOutput` keys on `parent.name`. No-op in unit contexts.
       const registerReplayed = (ctx as {
-        _registerReplayedChild?: (p: import("../types/block").ExecutionParent, o: unknown) => void;
+        _registerReplayedChild?: (p: import("../types/block").ExecutionParent, o: unknown, r?: boolean) => void;
       })._registerReplayedChild;
       registerReplayed?.(
         {
@@ -491,7 +493,8 @@ export async function executeBlock(
           path,
           transient: block.transient || undefined
         },
-        cached.value
+        cached.value,
+        replayLog.completedRescued(`${requestId}:${path}`)
       );
       return cached.value;
     }
@@ -924,9 +927,9 @@ function runSequencerOperations(
           stateSchema
         );
 
-        // In resume mode, restore sequencer state from the checkpoint.
+        // Checkpoint over schema defaults, so a field the checkpoint lacks keeps its default (BP-030).
         if (resumeState !== undefined && resumeState.state !== undefined && ctx.sequencer !== undefined) {
-          ctx.sequencer.setState(resumeState.state as any);
+          ctx.sequencer.setState({ ...ctx.sequencer.state, ...resumeState.state });
         }
 
         for (let index = 0; index < operations.length; index += 1) {
@@ -1162,6 +1165,15 @@ function createSequencer<
   // semantics is cheap (constant storage per sequencer); explicit `false` is
   // the opt-out for tests and ephemeral fanouts.
   const durable = config.durable ?? true;
+
+  // Children's sequencerStateSchema joins stateSchema, or passes up when this
+  // sequencer has none. Recomputed from the unchanged `config` on every
+  // rebuild, so nothing is folded twice.
+  const composedChildren = [...childBlocks, ...rescueHandlers.map((handler) => handler.block)];
+  const foldedState = foldSequencerStateRequirements(config.stateSchema, composedChildren, config.name);
+  const stateSchema = config.stateSchema === undefined ? undefined : foldedState;
+  const sequencerStateSchema = config.stateSchema === undefined ? foldedState : undefined;
+
   const baseBlock = buildBlock({
     kind: "sequencer",
     config: {
@@ -1170,7 +1182,8 @@ function createSequencer<
       transient: config.transient,
       inputSchema: resolvedInputSchema ?? config.inputSchema,
       outputSchema: undefined,
-      stateSchema: config.stateSchema,
+      stateSchema,
+      ...(sequencerStateSchema !== undefined ? { sequencerStateSchema } : {}),
       container: config.container,
       activeStatusMessage: config.activeStatusMessage,
       // Carried through like every other declared slot. Unlike the three leaf
@@ -1182,7 +1195,7 @@ function createSequencer<
       flowConfigSchema: config.flowConfigSchema
     },
     execute: wrapWithOutputValidation(
-      runSequencerOperations(operations, rescueHandlers, durable, config.stateSchema),
+      runSequencerOperations(operations, rescueHandlers, durable, stateSchema),
       config.outputSchema
     ),
     declaredResources: accumulatedResources,
@@ -1192,7 +1205,7 @@ function createSequencer<
     // block and may itself contain a board. It is listed here rather than in
     // `config.rescue` (which `buildBlock` folds in on its own) because a
     // sequencer keeps its handlers outside the config, in the operation loop.
-    childBlocks: [...childBlocks, ...rescueHandlers.map((handler) => handler.block)],
+    childBlocks: composedChildren,
   });
 
   // Override the informational schema on the block definition so devtools and consumers
@@ -1880,11 +1893,16 @@ function createSequencer<
               // settled-but-undrained entries still need to be drained so
               // their failures surface. drainScope is a no-op when no
               // entries match — let it handle the empty case.
+              // Told when this wait gives up, so what settles later is the pool's to keep.
+              const abandoned = new AbortController();
               const result = await withTimeout(
-                pool.drainScope(runtime.scopeId, { failOnError: options?.failOnError }),
+                pool.drainScope(runtime.scopeId, { failOnError: options?.failOnError, abandoned: abandoned.signal }),
                 options?.timeoutMs,
                 "waitForSideChain"
-              );
+              ).catch((error: unknown) => {
+                abandoned.abort();
+                throw error;
+              });
               // drainScope already throws when failOnError is true and any
               // task failed. With failOnError off, log failures so they still
               // surface in diagnostics — matches the per-sequencer auto-await
@@ -2322,10 +2340,15 @@ function createSequencer<
             if (response === undefined) {
               throw new Error("waitForCondition requires a response emitter on the context");
             }
+            // Predicates and wakeOn stay OutputItem; both receive trace rows unfiltered.
+            const items = (): readonly OutputItem[] => response.getItems() as readonly OutputItem[];
+            const wakeOn = options.wakeOn as
+              | ((item: RuntimeItem, kind: "added" | "updated" | "done") => boolean)
+              | undefined;
 
             // Initial synchronous eval — if already satisfied, no subscription
             // and no timer. Predicate throws here propagate directly.
-            if (predicate(response.getItems())) {
+            if (predicate(items())) {
               return { value: { timedOut: false } };
             }
 
@@ -2374,7 +2397,7 @@ function createSequencer<
                   (_item, _kind) => {
                     if (settled) return;
                     try {
-                      if (predicate(response.getItems())) {
+                      if (predicate(items())) {
                         controller.abort();
                       }
                     } catch (error) {
@@ -2382,7 +2405,7 @@ function createSequencer<
                       controller.abort();
                     }
                   },
-                  options.wakeOn !== undefined ? { filter: options.wakeOn } : undefined
+                  wakeOn !== undefined ? { filter: wakeOn } : undefined
                 );
               });
             } finally {
@@ -2500,13 +2523,26 @@ export function sequencer<
 >(
   config: SequencerConfig<TInputSchema, TInput, TStateSchema, TFlowConfigSchema>
 ): SequencerDefinition<TInput, TInput, TStateSchema, TFlowConfigSchema> {
-  const { declaredResources, resolvedCapabilities, stateSchema } = resolveCapabilities(config, "sequencer");
+  const { declaredResources, resolvedCapabilities, stateSchema: ownStateSchema, mergedSurface } =
+    resolveCapabilities(config, "sequencer");
 
   // FIX-914 PR2: `resolveCapabilities` already merged any capability-
   // contributed own state (`ctx.self`) with the sequencer's own `stateSchema`
   // declaration. Runtime-only — sequencer capabilities aren't statically typed
   // (see `SequencerCtx`'s hardcoded `TCapabilities = {}`), so this doesn't
   // affect the `TStateSchema` generic.
+  const capabilityRequirement = mergedSurface?.sequencerStateSchema;
+  // With no own stateSchema the requirement lands on an empty object, so a
+  // required field joins as optional like a child's would.
+  const stateSchema =
+    capabilityRequirement === undefined
+      ? ownStateSchema
+      : absorbSequencerStateRequirement(
+          ownStateSchema ?? z.object({}),
+          capabilityRequirement,
+          config.name,
+          "its capabilities"
+        );
   const effectiveConfig = { ...config, stateSchema };
 
   // A sequencer has no direct `resources` config field — its OWN declarations

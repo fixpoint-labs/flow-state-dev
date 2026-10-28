@@ -124,24 +124,6 @@ describe("an ending written with its recorder's metadata, in one write", () => {
     expect(r.seen.map((s) => s.ending)).toEqual([{ kind: "retried", error: "flaky" }]);
   });
 
-  it("parked: the question, and whether the park asks anyone anything", async () => {
-    const r = recorder();
-    const { ref } = await ledgerWith(r.recordEnding);
-    const asked = await claimed(ref, { id: "asked" });
-    await ref.awaitReview("asked", "which region?", { claim: asked.ticket });
-    expect(ref.get("asked")!.revision).toBe(asked.revision + 1);
-    const quiet = await claimed(ref, { id: "quiet" });
-    await ref.awaitReview("quiet", "waiting on my pieces", { claim: quiet.ticket, quiet: true });
-    const turn = await claimed(ref, { id: "turn" });
-    await ref.awaitReview("turn", undefined, { claim: turn.ticket, forTurn: true });
-    expect(r.seen.map((s) => s.ending)).toEqual([
-      { kind: "parked", question: "which region?", quiet: false },
-      { kind: "parked", question: "waiting on my pieces", quiet: true },
-      { kind: "parked", quiet: true },
-    ]);
-    expect(ref.get("asked")).toMatchObject({ status: "parked", metadata: { owed: "parked" } });
-  });
-
   it("cancelled: told, with the reason", async () => {
     const r = recorder();
     const { ref } = await ledgerWith(r.recordEnding);

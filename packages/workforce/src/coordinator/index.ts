@@ -1,15 +1,11 @@
 /**
- * The coordinator: a worker flow that hands each post to delegates from its
- * user's own roster, by its routing policy.
+ * The coordinator: a worker flow that hands each of its user's messages to
+ * delegates from their own roster, by its routing policy, as tasks (FIX-2083).
+ * A delegate is a worker whose flow takes a conversation's tasks
+ * (`workerTaskEntry`); nothing else makes it one.
  *
  * - `defineCoordinatorFlow`: the `coordinator` worker flow, registered on a
  *   worker installation like any worker flow.
- * - `delegatedPostEntry`: the internal entry a worker flow declares so its
- *   workers can be delegates that take posts; `delegatedPostOnFinished`, the
- *   request `onFinished` that reports a cancelled run; and
- *   `delegatedPostHistory`, a generator `history` that hands a turn's model
- *   the conversation's recent lines a post came with, as a user-role message.
- *   The built-in `agent` flow has all three.
  * - The pinned names: the flow's name, its `coordinator-route` record and
  *   its configuration keys. Its delegates, and their four actions, are any
  *   worker's (`../delegates`).
@@ -33,12 +29,3 @@ export {
   type CoordinatorRouteRecord,
   type RoutedDelegate
 } from "./coordinator-route";
-export {
-  delegatedAnswerSchema,
-  delegatedPostEntry,
-  delegatedPostHistory,
-  delegatedPostOnFinished,
-  delegatedPostSchema,
-  type DelegatedAnswer,
-  type DelegatedPost
-} from "./delegated-post";

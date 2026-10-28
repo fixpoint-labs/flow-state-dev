@@ -1,0 +1,136 @@
+<svg viewBox="0 0 940 632" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The lab's one screen, three columns. Left: the list of workers, lead, researcher, writer, and coder, which takes tasks and runs Claude Code, each a row with a status and an unread count, and no session list and no new-chat button. Centre: the selected worker's one conversation: a divider where the turns read word for word begin, your lines on the right, the worker's answers on the left, a one-line card where lead messaged researcher, and a pending line saying researcher replied and lead reads it after this turn; a task card for the job lead filed for coder, which opens to the run; the composer at the bottom. In the header, lead's directory, a project, asked for the first time a job needs files. Right: the Talk panel, the exchanges lead had with other workers, grouped by the other worker, read from the message log.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --attn:#A8761C; --attn-soft:#F3E8D2; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --attn:#D9A44B; --attn-soft:#332612; } }
+    .bg    { fill:var(--surface); }
+    .side  { fill:var(--surface-2); }
+    .frame { fill:none; stroke:var(--rule); stroke-width:1.2; }
+    .rule  { stroke:var(--rule); stroke-width:1; }
+    .sel   { fill:var(--accent-soft); }
+    .you   { fill:var(--accent-soft); }
+    .them  { fill:var(--surface); stroke:var(--rule); stroke-width:1; }
+    .talk  { fill:none; stroke:var(--code); stroke-width:1; stroke-dasharray:3 3; }
+    .pend  { fill:var(--attn-soft); stroke:var(--attn); stroke-width:1; stroke-dasharray:4 3; }
+    .comp  { fill:var(--surface); stroke:var(--ink-3); stroke-width:1; }
+    .dot-w { fill:var(--code); }
+    .dot-i { fill:var(--ink-3); }
+    .badge { fill:var(--accent); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-mono{ fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .t-w   { fill:#FCFCFA; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; font-weight:700; }
+    .t-c   { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-a   { fill:var(--attn); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .num   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:700; }
+    .numc  { fill:var(--surface); stroke:var(--ink); stroke-width:1.2; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="632"/>
+  <rect class="frame" x="16" y="16" width="908" height="500" rx="6"/>
+
+  <g id="workers">
+    <rect class="side" x="17" y="17" width="200" height="498"/>
+    <text class="t-lbl" x="32" y="40">TEAMMATES</text>
+    <rect class="sel" x="17" y="54" width="200" height="50"/>
+    <circle class="dot-i" cx="40" cy="79" r="11"/><text class="t-w" x="36.5" y="82">L</text>
+    <text class="t-h" x="58" y="75">lead</text>
+    <circle class="dot-w" cx="200" cy="71" r="3.5"/>
+    <text class="t-s" x="58" y="92">talking to researcher</text>
+    <circle class="dot-i" cx="40" cy="129" r="11"/><text class="t-w" x="36.5" y="132">R</text>
+    <text class="t-h" x="58" y="125">researcher</text>
+    <circle class="dot-w" cx="200" cy="121" r="3.5"/>
+    <text class="t-s" x="58" y="142">working</text>
+    <rect class="badge" x="186" y="133" width="18" height="13" rx="6"/><text class="t-w" x="192" y="143">1</text>
+    <circle class="dot-i" cx="40" cy="179" r="11"/><text class="t-w" x="36" y="182">W</text>
+    <text class="t-h" x="58" y="175">writer</text>
+    <text class="t-s" x="58" y="192">idle · 2h</text>
+    <circle class="dot-i" cx="40" cy="229" r="11"/><text class="t-w" x="36" y="232">C</text>
+    <text class="t-h" x="58" y="225">coder</text>
+    <circle class="dot-w" cx="200" cy="221" r="3.5"/>
+    <text class="t-s" x="58" y="242">takes tasks · Claude Code</text>
+    <line class="rule" x1="17" y1="470" x2="217" y2="470"/>
+    <text class="t-mono" x="32" y="496">theme · day</text>
+  </g>
+
+  <g id="conversation">
+    <text class="t-h" x="236" y="40">lead</text>
+    <text class="t-s" x="272" y="40">plans the launch with you</text>
+    <rect class="talk" x="470" y="27" width="104" height="18" rx="4"/>
+    <text class="t-c" x="478" y="40">in · relay   ▾</text>
+    <circle class="dot-w" cx="680" cy="36" r="3.5"/><text class="t-mono" x="626" y="40">working</text>
+    <line class="rule" x1="217" y1="54" x2="696" y2="54"/>
+
+    <line class="rule" x1="236" y1="76" x2="352" y2="76"/>
+    <text class="t-lbl" x="362" y="79">EARLIER TURNS OUT OF VIEW</text>
+    <line class="rule" x1="542" y1="76" x2="676" y2="76"/>
+
+    <rect class="you" x="400" y="94" width="276" height="40" rx="8"/>
+    <text class="t-b" x="412" y="111">Ask researcher for the launch date,</text>
+    <text class="t-b" x="412" y="126">and help me outline the post.</text>
+
+    <rect class="them" x="236" y="146" width="300" height="56" rx="8"/>
+    <text class="t-b" x="248" y="164">Asking researcher now. An outline:</text>
+    <text class="t-b" x="248" y="180">1 · the problem  2 · what ships</text>
+    <text class="t-b" x="248" y="195">3 · how to try it</text>
+
+    <rect class="talk" x="236" y="212" width="300" height="24" rx="4"/>
+    <text class="t-c" x="246" y="228">→ to researcher · What's our launch date?   ▸</text>
+
+    <rect class="you" x="456" y="250" width="220" height="26" rx="8"/>
+    <text class="t-b" x="468" y="267">Make section 2 about pricing.</text>
+
+    <rect class="them" x="236" y="288" width="140" height="26" rx="8"/>
+    <text class="t-s" x="248" y="305">lead is answering…</text>
+
+    <rect class="pend" x="236" y="326" width="380" height="24" rx="4"/>
+    <text class="t-a" x="246" y="342">← researcher replied · lead reads it after this turn</text>
+
+    <rect class="talk" x="236" y="362" width="380" height="24" rx="4"/>
+    <text class="t-c" x="246" y="378">⚙ task for coder · Fix the README typo · running in relay   ▸</text>
+
+    <rect class="comp" x="236" y="460" width="440" height="40" rx="6"/>
+    <text class="t-s" x="250" y="484">Message lead…</text>
+  </g>
+
+  <g id="talk">
+    <rect class="side" x="697" y="17" width="226" height="498"/>
+    <line class="rule" x1="696" y1="17" x2="696" y2="515"/>
+    <text class="t-lbl" x="712" y="40">TALK · LEAD</text>
+    <text class="t-h" x="712" y="72">with researcher</text>
+    <text class="t-mono" x="880" y="72">2</text>
+    <text class="t-c" x="712" y="94">lead → researcher</text>
+    <text class="t-s" x="712" y="109">What's our launch date?</text>
+    <text class="t-c" x="712" y="130">researcher → lead</text>
+    <text class="t-s" x="712" y="145">Nov 12, per the plan doc.</text>
+    <line class="rule" x1="712" y1="162" x2="908" y2="162"/>
+    <text class="t-h" x="712" y="184">with writer</text>
+    <text class="t-mono" x="880" y="184">4  ▸</text>
+    <text class="t-mono" x="712" y="496">from the message log</text>
+  </g>
+
+  <g id="callouts">
+    <circle class="numc" cx="206" cy="30" r="8"/><text class="num" x="203" y="34">1</text>
+    <circle class="numc" cx="560" cy="77" r="8"/><text class="num" x="557" y="81">2</text>
+    <circle class="numc" cx="548" cy="224" r="8"/><text class="num" x="545" y="228">3</text>
+    <circle class="numc" cx="628" cy="338" r="8"/><text class="num" x="625" y="342">4</text>
+    <circle class="numc" cx="912" cy="30" r="8"/><text class="num" x="909" y="34">5</text>
+    <circle class="numc" cx="586" cy="36" r="8"/><text class="num" x="583" y="40">6</text>
+    <circle class="numc" cx="628" cy="374" r="8"/><text class="num" x="625" y="378">7</text>
+  </g>
+
+  <g id="legend">
+    <text class="t-mono" x="16" y="540">1 · workers, not sessions: one row each, one conversation each · no session list, no new chat</text>
+    <text class="t-mono" x="16" y="556">2 · where the turns read word for word begin; reads “summarized” only with G1’s summary on · 3 · lead's message to researcher, one line, opens to full text</text>
+    <text class="t-mono" x="16" y="572">4 · a reply waiting behind your turn (D2): it lands as its own line after lead answers you</text>
+    <text class="t-mono" x="16" y="588">5 · Talk: this worker's exchanges with the others, grouped by worker, from the message log (D1) · closes to give the centre the width</text>
+    <text class="t-mono" x="16" y="604">6 · lead's one directory, a project (D3): asked the first time a job needs files; talking needs none</text>
+    <text class="t-mono" x="16" y="620">7 · a task lead filed for coder, which runs it through Claude Code in lead's directory (D4); opens to the run, read only</text>
+  </g>
+</svg>

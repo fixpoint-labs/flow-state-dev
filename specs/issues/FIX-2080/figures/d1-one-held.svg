@@ -1,0 +1,105 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, what a filed task that has not started is called. Chosen: one status, held, replacing blocked and the recorded-not-started mark. Instead of: adding held beside them. It comes down to the first row: a screen listing unstarted work shows one word with one way out, where the other option shows three states that mean the same, one of them with no way out. The price is the second row: apps outside the repo that read blocked rewrite at upgrade, where adding held breaks nobody. The third row: rows in a store at upgrade read as held through two map entries, where the other option needs none. Locks in: the public status held and the verbs hold and release; blocked, block, unblock and blockTask removed. Flips if: a filer must tell held by me from another not-started reason it can act on."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">What is a filed task that has not started yet called?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">One status: held</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Held beside blocked and recorded</text>
+  </g>
+
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">A SCREEN OF</text>
+    <text class="t-lbl" x="32" y="169">UNSTARTED WORK</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">One word, one way out</text>
+    <text class="t-s" x="248" y="179">release starts it</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Three words for one state</text>
+    <text class="t-s" x="612" y="179">and blocked has no way out</text>
+  </g>
+
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="222">APPS OUTSIDE</text>
+    <text class="t-lbl" x="32" y="235">READING BLOCKED</text>
+    <text class="mark minus" x="228" y="224">−</text>
+    <text class="t-b" x="248" y="223">Rewrite at upgrade</text>
+    <text class="t-s" x="248" y="241">one migration line</text>
+    <text class="mark plus" x="592" y="224">+</text>
+    <text class="t-b" x="612" y="223">Nothing breaks</text>
+    <text class="t-s" x="612" y="241">the old names stay</text>
+    <line class="row" x1="16" y1="256" x2="924" y2="256"/>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="282">ROWS IN A</text>
+    <text class="t-lbl" x="32" y="295">STORE AT UPGRADE</text>
+    <text class="mark minus" x="228" y="284">−</text>
+    <text class="t-b" x="248" y="283">Two map entries</text>
+    <text class="t-s" x="248" y="301">both read as held</text>
+    <text class="mark plus" x="592" y="284">+</text>
+    <text class="t-b" x="612" y="283">No map entry</text>
+    <text class="t-s" x="612" y="301">the old marks stay written</text>
+    <line class="row" x1="16" y1="316" x2="924" y2="316"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="336" width="446" height="72" rx="5"/>
+    <text class="t-lbl" x="32" y="357">LOCKS IN</text>
+    <text class="t-b" x="32" y="377">Public held, hold and release</text>
+    <text class="t-s" x="32" y="395">blocked, block, unblock and blockTask go outright</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="336" width="446" height="72" rx="5"/>
+    <text class="t-lbl" x="494" y="357">FLIPS IF</text>
+    <text class="t-b" x="494" y="377">A filer needs a second not-started reason</text>
+    <text class="t-s" x="494" y="395">one it acts on, apart from its own hold</text>
+  </g>
+</svg>

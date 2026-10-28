@@ -17,8 +17,8 @@ import {
 } from "@flow-state-dev/workforce";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { afterEach, describe, expect, it } from "vitest";
-import { createLabClients } from "../src/lib/connection";
-import { workforceClientFor } from "../src/lib/workforce";
+import { createClient } from "@flow-state-dev/client";
+import { connect } from "../src/lib/connection";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";
 
 const USER = "ada";
@@ -63,10 +63,10 @@ async function workerLab() {
 describe("useWorkforce's client, on a Lab that runs its workers as data", () => {
   it("lists the user's roster with each worker's flow, and opens one session per worker", async () => {
     const { baseUrl } = await workerLab();
-    const workforce = workforceClientFor(createLabClients({ userId: USER, bearerToken: SECRET, baseUrl }));
+    const workforce = createWorkforceClient(connect({ userId: USER, bearerToken: SECRET, baseUrl }));
 
     expect(await workforce.roster()).toEqual([
-      { id: "desk.amy", flow: "agent", standard: true, description: "Answers the front desk.", forkedFrom: null },
+      { id: "desk.amy", flow: "agent", standard: true, description: "Answers the front desk.", forkedFrom: null, name: null, teamName: null },
     ]);
 
     const first = await workforce.ensureWorkerSession({ worker: "desk.amy" });
@@ -78,7 +78,7 @@ describe("useWorkforce's client, on a Lab that runs its workers as data", () => 
 
   it("carries the connection's credential: the same client without it is refused", async () => {
     const { baseUrl } = await workerLab();
-    const bare = createWorkforceClient({ userId: USER, baseUrl });
+    const bare = createWorkforceClient(createClient({ userId: USER, baseUrl }));
     await expect(bare.roster()).rejects.toThrow();
   });
 });

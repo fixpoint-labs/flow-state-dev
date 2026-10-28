@@ -21,7 +21,7 @@ export const WEBHOOK_SOURCE = "webhook";
 export const SCHEDULED_SOURCE = "scheduled";
 
 /**
- * Stamped by the dispatch seam on a task hand-off — a board drain handing a
+ * Stamped by the dispatch seam on a task dispatch — a board drain handing a
  * claimed row to `flow.task.actions[name]` in a child session. Deliberately
  * absent from the public re-entry allow-list and present in its never-set: a
  * task request has no caller-facing entry, so it must have no caller-facing

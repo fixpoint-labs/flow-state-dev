@@ -39,7 +39,7 @@
  * named member, so that the set of blocks that dispatch is the set of blocks
  * carrying a {@link DispatchAddress}. That is what lets `defineFlow` walk the
  * block graph and refuse an address that resolves nothing, and what lets a
- * task board see statically which of its assignees hand off. A substrate package
+ * task board see statically which of its assignees dispatch. A substrate package
  * that must reach the seam directly (the task board's drain) marks its block
  * with `markDispatcher` so the walk stays complete.
  */
@@ -66,7 +66,7 @@ export const DISPATCH_TYPES: readonly DispatchType[] = [
 export type BlockDispatchType = "internal" | "task";
 
 /**
- * Which child session a `task` dispatch runs in, decided per row.
+ * Which session a `task` dispatch runs in, decided per row.
  *
  * - `"per-task"` — one child per row, keyed on the task id (a follow-up row,
  *   whose payload names `followUpOf`, on the task it follows). Rows are
@@ -76,6 +76,12 @@ export type BlockDispatchType = "internal" | "task";
  * - `{ key }` — keyed on what the function returns, read from the worker
  *   input the row was packed into. One issue across several phases, or a key
  *   shared across assignees.
+ * - `{ by }` — chosen per row (see {@link TaskSessionChoice}): a keyed child,
+ *   as `{ key }` makes, or an **existing** session by id. One board can then
+ *   send some rows to a child of their own and others into a session that is
+ *   already running. An id is delivered into, never created, and refused by
+ *   name when it is missing or not this principal's on this flow, so an id
+ *   read off a row cannot reach a session the claimer could not.
  *
  * The presets frame the board id into the key, so two boards' children stay
  * apart even when their task ids coincide; a custom key is used as returned.
@@ -83,7 +89,38 @@ export type BlockDispatchType = "internal" | "task";
 export type TaskSessionPolicy<TPayload = unknown> =
   | "per-task"
   | "per-worker"
-  | { readonly key: (task: TPayload, ctx: BlockContext) => string };
+  | { readonly key: (task: TPayload, ctx: BlockContext) => string }
+  | {
+      readonly by: (
+        task: TaskTargetQuery,
+        ctx: BlockContext
+      ) => TaskSessionChoice | Promise<TaskSessionChoice>;
+    };
+
+/** The session policies that always derive a keyed child: every policy but `{ by }`. */
+export type KeyedTaskSessionPolicy<TPayload = unknown> = Exclude<
+  TaskSessionPolicy<TPayload>,
+  { readonly by: unknown }
+>;
+
+/**
+ * What a `{ by }` session policy answers for one row: a child `key`, minted on
+ * first use and adopted after exactly as a `{ key }` policy's is, or the `id`
+ * of an existing session to deliver into (the {@link SessionTarget} `{ id }`).
+ */
+export type TaskSessionChoice = { readonly key: string } | { readonly id: string };
+
+/**
+ * A `task` address's entry, chosen per row: `by` answers, for each row, one of
+ * the entry names listed in `among`. Every listed name is declared and
+ * verified like a string `action` (`defineFlow` for this flow, the seam for
+ * another), so the entries a board's rows can land on are still declared, not
+ * computed. An answer outside `among` is refused before anything is dispatched.
+ */
+export type TaskEntryChoice = {
+  readonly among: readonly string[];
+  readonly by: (task: TaskTargetQuery, ctx: BlockContext) => string | Promise<string>;
+};
 
 /**
  * The task a `task` dispatcher's per-task target is asked about: who the row
@@ -132,12 +169,14 @@ export type TaskStateTarget = (
 /**
  * Where a dispatcher sends. `(type, action)` is static by construction: it is
  * what the block declares, so its reachable entries are declared rather than
- * computed at run time. An action chosen from data is a router over declared
- * dispatchers, not a dynamic address. The one per-task part is a `task`
- * dispatcher's `flowKind`, which may be a {@link TaskFlowTarget}: the entry is
- * still declared, and only which flow serves it is looked up when a task is
- * handed over. Such a target is cross-flow, so nothing at definition time can
- * list the flows it reaches.
+ * computed at run time. An `internal` action chosen from data is a router over
+ * declared dispatchers, not a dynamic address. A `task` address may choose its
+ * entry per row ({@link TaskEntryChoice}), but only among declared ones: every
+ * name it can answer is listed on the address and verified like a string
+ * `action`. Its `flowKind` may be a {@link TaskFlowTarget}: the entry is still
+ * declared, and only which flow serves it is looked up when a task is handed
+ * over. Such a target is cross-flow, so nothing at definition time can list
+ * the flows it reaches.
  *
  * `defineFlow` verifies the same-flow pair. A cross-flow address is equally
  * static and equally declared — it is simply verified one layer later, by the
@@ -145,7 +184,7 @@ export type TaskStateTarget = (
  *
  * A `task` address also carries the dispatcher's session policy — declared
  * once on the dispatcher and read by the board that holds it, so the board can
- * list statically which of its assignees hand off and where their rows land.
+ * list statically which of its assignees dispatch and where their rows land.
  */
 export type DispatchAddress =
   | {
@@ -168,8 +207,11 @@ export type DispatchAddress =
     }
   | {
       readonly type: "task";
-      /** The entry name — `flow.task.actions[action]`. */
-      readonly action: string;
+      /**
+       * The entry name — `flow.task.actions[action]` — or a choice among
+       * declared entry names, made per row (see {@link TaskEntryChoice}).
+       */
+      readonly action: string | TaskEntryChoice;
       readonly session: TaskSessionPolicy<any>;
       /**
        * The flow the entry lives on, when it is **not this one**. Same skip
@@ -184,12 +226,18 @@ export type DispatchAddress =
        * that already exists keeps its own.
        */
       readonly state?: Readonly<Record<string, unknown>> | TaskStateTarget;
+      /**
+       * Whether the board's drain waits on a row it hands over (FIX-2082).
+       * Absent follows the board's mode: a plan board waits, a delegation
+       * board doesn't. A board refuses one that contradicts its mode.
+       */
+      readonly wait?: boolean;
     };
 
 /**
  * What a `task` dispatch carries: the claim's identity and the worker's input.
  *
- * Every field is **server-derived at hand-off** — the board supplies them from
+ * Every field is **server-derived at dispatch** — the board supplies them from
  * the ticket it minted off the row it claimed. `attempt`, `createdAt` and
  * `incarnationId` say *which* claim this dispatch believes it is running;
  * `assignee` names the assignee the board routed the row to. The entry's
@@ -204,6 +252,13 @@ export const taskDispatchInputSchema = z.object({
   taskId: z.string().min(1),
   /** The attempt this dispatch believes it is running. */
   attempt: z.number().int().nonnegative(),
+  /**
+   * The row's turn generation as of the claim: two turns of one attempt are
+   * two claims (a task held on questions midway runs its next turn on its
+   * same attempt). Optional so an envelope persisted before it still parses;
+   * the gate compares it when present.
+   */
+  turn: z.number().int().nonnegative().optional(),
   /** The claimed row's creation stamp. */
   createdAt: z.number(),
   /**
@@ -260,7 +315,7 @@ export function readFramed(
 
 /**
  * The child-session key a `task` dispatch runs under, for one envelope and one
- * policy. Shared by `dispatcher()` and the board's hand-off so both derive the
+ * policy. Shared by `dispatcher()` and the board's dispatch so both derive the
  * same child for the same row.
  *
  * @throws when a `key` policy returns something other than a non-empty string —
@@ -268,7 +323,7 @@ export function readFramed(
  */
 export function taskSessionKeyFor(
   blockName: string,
-  policy: TaskSessionPolicy<any>,
+  policy: KeyedTaskSessionPolicy<any>,
   envelope: TaskDispatchInput,
   ctx: BlockContext
 ): string {
@@ -294,6 +349,59 @@ export function taskSessionKeyFor(
 }
 
 /**
+ * The session a `task` dispatch runs in, for one row, as the seam takes it:
+ * the address's keyed child (see {@link taskSessionKeyFor}) with its initial
+ * state, or what a `{ by }` policy answers for this row. A `{ key }` answer is
+ * a child like any other and gets the address's state; an `{ id }` answer is an
+ * existing session, which keeps its own, so the state is not looked up.
+ * Shared by `dispatcher()` and the board's dispatch, so both send the same row
+ * to the same session.
+ *
+ * @throws when a `{ by }` policy answers anything but exactly one non-empty
+ *   `key` or `id`, or the state target answers a non-object. Decided before
+ *   anything is dispatched.
+ */
+export async function resolveTaskSessionTarget(
+  blockName: string,
+  address: Extract<DispatchAddress, { type: "task" }>,
+  envelope: TaskDispatchInput,
+  task: TaskTargetQuery,
+  ctx: BlockContext
+): Promise<SessionTarget> {
+  const choice = await chooseTaskSession(blockName, address.session, envelope, task, ctx);
+  if ("id" in choice) return { id: choice.id };
+  const state = await resolveTaskState(blockName, address, task, ctx);
+  return state === undefined ? { key: choice.key } : { key: choice.key, state };
+}
+
+async function chooseTaskSession(
+  blockName: string,
+  policy: TaskSessionPolicy<any>,
+  envelope: TaskDispatchInput,
+  task: TaskTargetQuery,
+  ctx: BlockContext
+): Promise<TaskSessionChoice> {
+  if (typeof policy !== "object" || !("by" in policy)) {
+    return { key: taskSessionKeyFor(blockName, policy, envelope, ctx) };
+  }
+  const choice: unknown = await policy.by(task, ctx);
+  if (typeof choice === "object" && choice !== null) {
+    const { key, id } = choice as { key?: unknown; id?: unknown };
+    if (key !== undefined && id === undefined && typeof key === "string" && key.length > 0) {
+      return { key };
+    }
+    if (id !== undefined && key === undefined && typeof id === "string" && id.length > 0) {
+      return { id };
+    }
+  }
+  throw new Error(
+    `[dispatcher] "${blockName}" chose a session for task "${task.taskId}" that is not one ` +
+      `non-empty \`key\` or \`id\` (${JSON.stringify(choice)}). Answer \`{ key }\` for a child ` +
+      `session or \`{ id }\` for an existing one.`
+  );
+}
+
+/**
  * Which session a dispatch runs in.
  *
  * - `key` — a **child** of the running session, derived from this key together
@@ -303,7 +411,12 @@ export function taskSessionKeyFor(
  * - `id` — an **existing** session. Delivered into it when it exists and is
  *   this principal's on this flow; refused by name otherwise. Never created —
  *   an unknown id is a typo, a stale reference, or a hallucinated value, and
- *   auto-creating turns all three into work nobody is watching.
+ *   auto-creating turns all three into work nobody is watching. **Unless it
+ *   carries `state`**: then a session absent at that id is created there, as a
+ *   session of its own (no parent), from that state, judged by the target
+ *   flow's `session.createCheck` with `via: "dispatch"` exactly as a `key`
+ *   child is. The block computed the id and the state, so the create check is
+ *   what decides whether that id is this principal's to create.
  * - `from` — the **seam-stamped sender**. The runtime reads
  *   `metadata.dispatch.from.sessionId` through `readDispatchStamp` and delivers
  *   into that session as an `id` would. The author names no session. A request
@@ -321,7 +434,14 @@ export type SessionTarget =
        */
       readonly state?: Readonly<Record<string, unknown>>;
     }
-  | { readonly id: string }
+  | {
+      readonly id: string;
+      /**
+       * Initial state, read only when this id is created (see `id` above).
+       * From the dispatching block's code, never a caller's input.
+       */
+      readonly state?: Readonly<Record<string, unknown>>;
+    }
   | { readonly from: true };
 
 /** What a dispatcher hands the seam. Every field is computed by the block that dispatches. */
@@ -344,6 +464,13 @@ export type DispatchSpec = {
    * the wire as server truth, so only put here what the runtime produced.
    */
   readonly provenance?: Readonly<Record<string, unknown>>;
+  /**
+   * The sending request parks on the dispatched request at once, waiting for
+   * it (`dispatcher({ wait: true })`, FIX-2082). The seam stamps the child
+   * with who waits on it, from the sender's own server-derived facts, so the
+   * child's wait depth counts its sender before the sender's park is written.
+   */
+  readonly waits?: boolean;
 };
 
 /**
@@ -360,13 +487,13 @@ export type DispatchRefusal =
    * that was never deployed here, or one deployed behind a different host.
    */
   | "flow-not-found"
-  /** An `id` target names a session that does not exist. */
+  /** An `id` target with no starting state names a session that does not exist. */
   | "session-not-found"
   /** An `id` target names a session that is not this principal's, or not this flow's. */
   | "session-not-addressable"
   /** A `key` target derived a child id already held by a record that is not this request's child. */
   | "key-occupied"
-  /** The target flow's `session.createCheck` refused to create the child session. */
+  /** The target flow's `session.createCheck` refused to create the session: a `key` child, or an `id` target carrying starting state. */
   | "create-refused"
   /** This process executes requests but was not wired to dispatch one. */
   | "no-dispatch-operation"
@@ -447,11 +574,54 @@ export class DispatchRefusedError extends Error {
     readonly detail: string
   ) {
     super(
-      `Block "${blockName}" could not dispatch to ${address.type}:"${address.action}": ` +
+      `Block "${blockName}" could not dispatch to ${address.type}:${describeAction(address)}: ` +
         `${refused} — ${detail}`
     );
     this.name = "DispatchRefusedError";
   }
+}
+
+/**
+ * Every entry name an address can reach: its `action`, or each name a per-row
+ * choice lists. What `defineFlow` and the run-time routability check verify,
+ * and what a board lists as where an assignee's rows can land.
+ */
+export function addressEntries(address: DispatchAddress): readonly string[] {
+  return typeof address.action === "string" ? [address.action] : address.action.among;
+}
+
+/** An address's action for messages: `"name"`, or `one of "a", "b"` for a per-row choice. */
+export function describeAction(address: DispatchAddress): string {
+  return typeof address.action === "string"
+    ? `"${address.action}"`
+    : `one of ${address.action.among.map((name) => `"${name}"`).join(", ")}`;
+}
+
+/**
+ * The entry a `task` dispatch goes to: the address's string as declared, or
+ * its per-row choice's answer for this task.
+ *
+ * @throws {DispatchRefusedError} `no-entry` when the choice answers a name its
+ *   `among` does not list. Decided before anything is dispatched, like every
+ *   refusal, so a board's dispatch still holds the claim.
+ */
+export async function resolveTaskAction(
+  blockName: string,
+  address: Extract<DispatchAddress, { type: "task" }>,
+  task: TaskTargetQuery,
+  ctx: BlockContext
+): Promise<string> {
+  const action = address.action;
+  if (typeof action === "string") return action;
+  const chosen: unknown = await action.by(task, ctx);
+  if (typeof chosen === "string" && action.among.includes(chosen)) return chosen;
+  throw new DispatchRefusedError(
+    blockName,
+    address,
+    "no-entry",
+    `the entry chosen for task "${task.taskId}" (assignee "${task.assignee}") was ` +
+      `${JSON.stringify(chosen)}, which is not among the entries this dispatcher declares.`
+  );
 }
 
 /**
@@ -511,7 +681,7 @@ export async function resolveTaskFlowKind(
  * Put a dispatch through the runtime's dispatch seam.
  *
  * Substrate-facing. Authored flows reach this through `dispatcher()`; a
- * substrate block that calls it directly (the task board's hand-off) must also
+ * substrate block that calls it directly (the task board's dispatch) must also
  * be marked with {@link markDispatcher}, or `defineFlow`'s walk cannot see the
  * address it dispatches to.
  */
@@ -526,7 +696,7 @@ export function dispatchThroughSeam(
 
 /**
  * Stamp a block with the address it dispatches to, so `defineFlow` can verify
- * the target resolves and a board can see the hand-off statically.
+ * the target resolves and a board can see the dispatch statically.
  *
  * Assigns in place: the caller owns the block it just built, and every rebuild
  * path (`connectInput`, `.rescue()`, `asTool`) forwards `definition.dispatch`.
@@ -557,12 +727,12 @@ export type InternalEntry = ActionCore;
  */
 export type TaskEntry = ActionCore & {
   /**
-   * Where this entry takes tasks from when no board in this flow hands off to
+   * Where this entry takes tasks from when no board in this flow dispatches to
    * it: a binding whose gate reads each task off the ledger its dispatch
    * names, so one entry serves tasks from many ledgers, including ones made
    * after the flow was defined. `defineFlow` applies this gate exactly as it
    * applies a board's, so the entry still never runs against a row nothing
-   * verified. An entry a board in this flow also hands off to is refused: one
+   * verified. An entry a board in this flow also dispatches to is refused: one
    * entry runs behind one gate.
    */
   readonly from?: TaskBinding;
@@ -577,7 +747,7 @@ export type TaskEntry = ActionCore & {
 };
 
 /**
- * What a task board binds onto the hand-off it installs at a `task`
+ * What a task board binds onto the dispatch it installs at a `task`
  * dispatcher: which board it is, and the claim gate every entry the dispatcher
  * addresses must run behind.
  *
@@ -592,12 +762,29 @@ export type TaskBinding = {
   readonly boardId: string;
   /** Wrap an entry in this board's claim gate. The second argument is the entry's name on the flow. */
   readonly gate: (entry: ActionCore, target: string) => ActionCore;
+  /**
+   * Internal entries the flow holding this board must declare (FIX-2078: a
+   * board that hands rows out is heard back on `onTaskSettled`). `defineFlow`
+   * refuses a flow that reaches the board and lacks one, by name.
+   */
+  readonly requiresInternal?: readonly string[];
+  /**
+   * The board hands its rows to an entry that declares where it takes tasks
+   * from (`TaskEntry.from`) through that entry's own gate, which reads the row
+   * off this board's ledger by id (FIX-2082: a worker's step filed
+   * `session: "new"`, handed to its own `work` entry). Without it, an entry
+   * with `from` that this board also dispatches to is refused. An entry
+   * without `from` still runs behind this board's gate, and a flow that
+   * declares no such entry is not refused: it files no row for it, and a
+   * dispatch to it is refused `no-entry`.
+   */
+  readonly viaEntrySource?: boolean;
 };
 
 /**
  * Bindings are keyed by the block's ADDRESS object, not the block. Every
  * rebuild path (`connectInput`, `.rescue()`, `asTool`) forwards
- * `definition.dispatch` by reference, so a hand-off the drain connects into
+ * `definition.dispatch` by reference, so a dispatch the drain connects into
  * its routing table — a rebuilt copy — still resolves the binding its board
  * put on the original. A block whose address is a different object is unbound.
  */
@@ -605,12 +792,12 @@ const taskBindings = new WeakMap<object, TaskBinding>();
 
 /**
  * Bind a board's claim gate to the block that dispatches its tasks. Substrate-
- * facing; called by `taskBoard()` on the hand-off it installs at each
+ * facing; called by `taskBoard()` on the dispatch it installs at each
  * `dispatcher({ type: "task" })`, after `markDispatcher` has stamped the
  * address the binding is keyed by.
  *
  * @throws when the block carries no `task` address, or is already bound to a
- *   different board — one hand-off serves one board, or the walk could not say
+ *   different board — one dispatch serves one board, or the walk could not say
  *   whose gate the entry gets.
  */
 export function bindTaskDispatcher(block: BlockDefinition<any, any>, binding: TaskBinding): void {

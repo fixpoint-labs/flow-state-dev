@@ -10,7 +10,7 @@ import type { StoreRegistry } from "../stores/types";
 import type { InboundTransportHost, ResolvedPrincipal } from "../transports/types";
 import type { DurabilityProvider } from "../durability/types";
 import { isPublicReentryAllowed } from "./public-reentry";
-import { isAskGate } from "@flow-state-dev/core/types";
+import { isWaitGate } from "@flow-state-dev/core/types";
 import { expireUnderLease, resumeUnderLease } from "../durability/resume-under-lease";
 import {
   callerReachesRequest,
@@ -24,10 +24,10 @@ import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { InternalRouteSeams, RequestContext } from "./http-handlers";
 
 /** The resolution actions the resume endpoint accepts on the wire. */
-const RESUME_ACTIONS: readonly ResumeAction[] = ["approve", "reject", "submit", "skip"];
+export const RESUME_ACTIONS: readonly ResumeAction[] = ["approve", "reject", "submit", "skip"];
 
 /** Narrow an arbitrary string to a known resume action. */
-function isResumeAction(value: string | undefined): value is ResumeAction {
+export function isResumeAction(value: string | undefined): value is ResumeAction {
   return value !== undefined && (RESUME_ACTIONS as readonly string[]).includes(value);
 }
 
@@ -38,7 +38,7 @@ function isResumeAction(value: string | undefined): value is ResumeAction {
  * mirroring rjsf's `extraErrors` shape so a client can pin each error to its
  * field. Only `submit`/`approve` carry a payload — `skip`/`reject` skip this.
  */
-function validateResumePayload(
+export function validateResumePayload(
   schema: Record<string, unknown> | undefined,
   data: unknown
 ): Record<string, string> | null {
@@ -128,7 +128,6 @@ export async function handleResumeSuspension(
   const suspensionId = getString(body.suspensionId);
   const action = getString(body.action);
   const resumeData = body.data;
-  const resumedBy = getString(body.resumedBy);
 
   if (suspensionId === undefined) {
     return jsonResponse(400, { error: "Missing required field: suspensionId" });
@@ -153,11 +152,11 @@ export async function handleResumeSuspension(
   }
 
   const suspension = await provider.loadSuspension(route.requestId, suspensionId);
-  // An ask gate is never resumed from here, whatever source the asking turn
-  // arrived on: its answer is the asked task's ending, and only the asker's
-  // own conversation (`RequestHost.resumeAsk`) delivers it. Answered exactly as a missing gate, so a caller cannot tell the two
+  // A wait gate is never resumed from here, whatever source the waiting turn
+  // arrived on: its answer is the waited-on task's ending, and only the waiting turn's
+  // own conversation (`RequestHost.resumeWait`) delivers it. Answered exactly as a missing gate, so a caller cannot tell the two
   // apart, and cannot hand the turn a forged answer.
-  if (suspension === null || isAskGate(suspension)) {
+  if (suspension === null || isWaitGate(suspension)) {
     return jsonResponse(404, {
       error: `Suspension "${suspensionId}" not found`
     });
@@ -213,6 +212,9 @@ export async function handleResumeSuspension(
       });
     }
   }
+
+  // Who resumed is the signed-in caller, never a field of the body (BP-031).
+  const resumedBy = ctx.principal?.userId ?? originalRequest.userId;
 
   // Lease, resolve, continue the SAME request (FIX-811), and revert if setup
   // fails before the run starts: the path every resume shares. Reverting is

@@ -23,8 +23,8 @@
  *
  * Roughly *in-flight ⊆ enqueued ⊆ total*, but only **at creation time**. Tasks
  * also re-enter `pending` through the lifecycle (a retry under `maxAttempts`, an
- * `unblock`, a `unpark`, a reclaimed lease). Of those, only the RETRY
- * is bounded, and only by `maxTotalRetries`; `unblock` / `unpark` /
+ * `unblock`, a reclaimed lease). Of those, only the RETRY
+ * is bounded, and only by `maxTotalRetries`; `unblock` /
  * `reclaim` remain deliberately uncapped and do not consume the retry budget —
  * so `pending` can still transiently exceed `maxEnqueuedTasks`. The hard runaway
  * bounds are `maxTotalTasks` on creation and `maxTotalRetries` on re-runs.
@@ -63,8 +63,8 @@
  *
  *   The trap, because this bullet gets cited: `backing: "state"` takes any
  *   `StateRef`, not only a sequencer's. `StateBackingSpec.state` accepts any
- *   `StateRef` (`get-or-create.ts`), and the task tools' default own-state
- *   resolver passes a GENERATOR's own state (`defaultOwnStateResolver`).
+ *   `StateRef` (`get-or-create.ts`), so a caller can pass a GENERATOR's own
+ *   state.
  *   Only a sequencer block checkpoints: the lone `state_snapshot` emitter bails
  *   when `ctx.sequencer` is undefined, and that resolves only through a parent
  *   whose `kind === "sequencer"`. A generator's own-state container is rebuilt
@@ -204,7 +204,7 @@ export interface TaskCapOptions {
    *   relative to real model calls, never over-spend — and refunding it would
    *   mean inferring abandonment from lease expiry, which the task substrate
    *   does not treat as evidence.
-   * - **Only failure retries count.** `unblock`, `unpark`, and
+   * - **Only failure retries count.** `unblock` and
    *   `reclaim` also return a task to `pending` and do NOT consume the budget.
    *
    * Enforced only on the backings that can check atomically against the whole

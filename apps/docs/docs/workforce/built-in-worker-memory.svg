@@ -1,75 +1,92 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 478" role="img" aria-labelledby="title desc">
-  <title id="title">What a built-in worker keeps, and who shares it</title>
-  <desc id="desc">One conversation is one session: it holds the recent turns, up to the history window of 50, and the skills made active in it; nothing in it reaches another conversation. Each worker's skills are stored per user and per worker, so two workers never read each other's and two people do not share them. Memory is off until you add it; when on, it is kept per user and shared by the workers serving that user. isolateUserState keeps it apart from other flows, not from other workers on the same flow.</desc>
-  <defs>
-    <style>
-      :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
-              --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
-              --org-fill:#f0fdf4; --org:#15803d; --card:#ffffff; --card-line:#334155; --box:#f8fafc;
-              --faint:#94a3b8; --no:#b91c1c; }
-      @media (prefers-color-scheme: dark) {
-        :root { --bg:#0e0e14; --ink:#e5e7eb; --ink-2:#cbd5e1; --muted:#94a3b8;
-                --proc-fill:#1d1030; --proc:#c084fc; --sess-fill:#0f1a33; --sess:#60a5fa;
-                --org-fill:#0b2016; --org:#4ade80; --card:#14141c; --card-line:#64748b; --box:#181822;
-                --faint:#64748b; --no:#f87171; } }
-      .bg { fill: var(--bg); }
-      .wall-sess { fill: var(--sess-fill); stroke: var(--sess); stroke-width: 2; }
-      .wall-org { fill: var(--org-fill); stroke: var(--org); stroke-width: 2; }
-      .out { fill: var(--box); stroke: var(--faint); stroke-width: 2; stroke-dasharray: 6 4; }
-      .box { fill: var(--box); stroke: var(--card-line); stroke-width: 1.5; }
-      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
-      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
-      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: var(--ink-2); }
-      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: var(--muted); }
-      .code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: var(--ink); }
-    </style>
-  </defs>
-
-  <rect x="0" y="0" width="920" height="478" rx="16" class="bg"/>
-
-  <text x="28" y="36" class="title">What a built-in worker keeps, and who shares it</text>
-  <text x="28" y="58" class="muted">Each lives in its own place.</text>
-
-  <!-- Conversation -->
-  <rect x="28" y="84" width="272" height="250" rx="14" class="wall-sess"/>
-  <text x="44" y="108" class="h">One conversation</text>
-  <text x="44" y="126" class="muted">A session: a direct chat, or a task session</text>
-  <text x="44" y="158" class="p">The recent turns</text>
-  <text x="44" y="176" class="muted">Up to the history window, 50 by default.</text>
-  <text x="44" y="192" class="muted">Older turns fall out. Nothing summarizes.</text>
-  <text x="44" y="222" class="p">Skills made active here</text>
-  <text x="44" y="240" class="code">activeSkills</text>
-  <text x="44" y="276" class="muted">Nothing said here reaches the worker's</text>
-  <text x="44" y="292" class="muted">other conversations.</text>
-
-  <!-- Skills -->
-  <rect x="320" y="84" width="272" height="250" rx="14" class="wall-org"/>
-  <text x="336" y="108" class="h">One worker, one user</text>
-  <text x="336" y="126" class="muted">Stored at user scope</text>
-  <text x="336" y="158" class="p">The worker's skills</text>
-  <text x="336" y="176" class="code">skills</text>
-  <text x="336" y="198" class="muted">Seeded from the folders around</text>
-  <text x="336" y="214" class="muted">its WORKER.md</text>
-  <text x="336" y="250" class="p">Two workers never read each</text>
-  <text x="336" y="268" class="p">other's. Two people do</text>
-  <text x="336" y="286" class="p">not share one worker's skills.</text>
-
-  <!-- Memory -->
-  <rect x="612" y="84" width="280" height="250" rx="14" class="out"/>
-  <text x="628" y="108" class="h">One user</text>
-  <text x="628" y="126" class="muted">Memory: off until you add it</text>
-  <text x="628" y="158" class="p">What the worker remembers</text>
-  <text x="628" y="176" class="p">about the user it serves</text>
-  <text x="628" y="208" class="muted">Default: one store, shared by the</text>
-  <text x="628" y="224" class="muted">workers serving that user</text>
-  <text x="628" y="256" class="code">isolateUserState: true</text>
-  <text x="628" y="274" class="muted">Kept apart from other flows. Workers</text>
-  <text x="628" y="290" class="muted">on the same flow share it.</text>
-
-  <!-- Not a copy -->
-  <rect x="28" y="354" width="864" height="104" rx="12" class="box"/>
-  <text x="44" y="378" class="h">Not a copy</text>
-  <text x="44" y="402" class="p">A conversation holds which skills are active in it. The skills themselves live with the worker, per user.</text>
-  <text x="44" y="422" class="p">Memory is about a user, not a conversation. A new conversation starts with no turns but the same memory.</text>
-  <text x="44" y="444" class="muted">isolateUserState is set once for the whole flow. A memory tier can set its own flowIsolation to differ from it.</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 34 920 694">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<line class="thin" x1="320" y1="62" x2="880" y2="62"/>
+<line class="thin" x1="320.5" y1="56" x2="320.5" y2="68"/>
+<line class="thin" x1="879.5" y1="56" x2="879.5" y2="68"/>
+<rect class="ground" x="515.9" y="55" width="168.2" height="15"/><text class="plate" x="600" y="66" text-anchor="middle">TWO WORKERS · ONE USER</text>
+<rect class="solid" x="320" y="84" width="200" height="48"/>
+<text class="nm" x="332" y="106">Worker A</text>
+<text class="sub" x="332" y="123">serving one user</text>
+<rect class="solid" x="660" y="84" width="220" height="48"/>
+<text class="nm" x="672" y="106">Worker B</text>
+<text class="sub" x="672" y="123">serving the same user</text>
+<rect fill="url(#hatch)" x="28" y="84" width="236" height="10"/><line class="thin" x1="28" y1="94.5" x2="264" y2="94.5"/>
+<rect class="solid" x="28" y="84" width="236" height="332"/>
+<text class="lb" x="40" y="116">ONE SESSION</text>
+<text class="nm" x="40" y="138">One conversation</text>
+<text class="sub" x="40" y="156">a direct chat, or a task session</text>
+<line class="hi" x1="28" y1="168" x2="264" y2="168"/>
+<text class="t" x="40" y="190">The recent turns</text>
+<text class="sub" x="40" y="208">up to the history window,</text>
+<text class="sub" x="40" y="224">50 by default. Older turns fall</text>
+<text class="sub" x="40" y="240">out. Nothing summarizes.</text>
+<line class="hi" x1="28" y1="256" x2="264" y2="256"/>
+<text class="t" x="40" y="278">Skills made active here</text>
+<text class="c" x="40" y="298">activeSkills</text>
+<line class="hi" x1="28" y1="314" x2="264" y2="314"/>
+<text class="t" x="40" y="336">Nothing said here reaches</text>
+<text class="t" x="40" y="352">the worker's other</text>
+<text class="t" x="40" y="368">conversations.</text>
+<rect fill="url(#hatch)" x="340" y="172" width="250" height="10"/><line class="thin" x1="340" y1="182.5" x2="590" y2="182.5"/>
+<rect class="solid" x="340" y="172" width="250" height="154"/>
+<text class="lb" x="352" y="204">WORKER A · THIS USER</text>
+<text class="nm" x="352" y="226">The worker's skills</text>
+<text class="sub" x="352" y="244">stored at user scope</text>
+<line class="hi" x1="340" y1="256" x2="590" y2="256"/>
+<text class="c" x="352" y="278">skills</text>
+<text class="sub" x="352" y="298">seeded from the folders</text>
+<text class="sub" x="352" y="314">around its WORKER.md</text>
+<rect fill="url(#hatch)" x="610" y="172" width="250" height="10"/><line class="thin" x1="610" y1="182.5" x2="860" y2="182.5"/>
+<rect class="solid" x="610" y="172" width="250" height="154"/>
+<text class="lb" x="622" y="204">WORKER B · THIS USER</text>
+<text class="nm" x="622" y="226">The worker's skills</text>
+<text class="sub" x="622" y="244">stored at user scope</text>
+<line class="hi" x1="610" y1="256" x2="860" y2="256"/>
+<text class="c" x="622" y="278">skills</text>
+<text class="sub" x="622" y="298">seeded from the folders</text>
+<text class="sub" x="622" y="314">around its WORKER.md</text>
+<rect fill="url(#hatch)" x="300" y="360" width="592" height="10"/><line class="thin" x1="300" y1="370.5" x2="892" y2="370.5"/>
+<rect class="solid" x="300" y="360" width="592" height="124"/>
+<text class="lb" x="312" y="392">ONE USER · OFF UNTIL YOU ADD IT</text>
+<text class="nm" x="312" y="414">Memory</text>
+<text class="t" x="312" y="438">What the worker remembers</text>
+<text class="t" x="312" y="454">about the user it serves</text>
+<line class="hi" x1="588" y1="372" x2="588" y2="472"/>
+<text class="t" x="600" y="392">Default: one store, shared by</text>
+<text class="t" x="600" y="408">the workers serving that user</text>
+<text class="c" x="600" y="436">isolateUserState: true</text>
+<text class="t" x="600" y="454">Kept apart from other flows.</text>
+<text class="t" x="600" y="470">Workers on the same flow share it.</text>
+<line class="ln" x1="319" y1="108" x2="265" y2="108" marker-end="url(#ah)"/>
+<rect class="ground" x="277.6" y="101" width="24.7" height="15"/><text class="plate" x="290" y="112" text-anchor="middle">01</text>
+<line class="ln" x1="420" y1="133" x2="420" y2="171" marker-end="url(#ah)"/>
+<rect class="ground" x="407.6" y="145" width="24.7" height="15"/><text class="plate" x="420" y="156" text-anchor="middle">02</text>
+<line class="ln" x1="735" y1="133" x2="735" y2="171" marker-end="url(#ah)"/>
+<rect class="ground" x="722.6" y="145" width="24.7" height="15"/><text class="plate" x="735" y="156" text-anchor="middle">02</text>
+<line class="ln-dash" x1="330" y1="133" x2="330" y2="359" marker-end="url(#ah)"/>
+<rect class="ground" x="317.6" y="335" width="24.7" height="15"/><text class="plate" x="330" y="346" text-anchor="middle">03</text>
+<line class="ln-dash" x1="872" y1="133" x2="872" y2="359" marker-end="url(#ah)"/>
+<rect class="ground" x="859.6" y="335" width="24.7" height="15"/><text class="plate" x="872" y="346" text-anchor="middle">03</text>
+<line class="hi" x1="0" y1="508" x2="920" y2="508"/>
+<text class="n" x="28" y="534">01</text>
+<text class="t" x="60" y="534">One conversation is one session. It holds which skills are active in it; the skills themselves live with</text>
+<text class="t" x="60" y="551">the worker, per user.</text>
+<text class="n" x="28" y="576">02</text>
+<text class="t" x="60" y="576">Each worker's skills are stored per user and per worker. Two workers never read each other's. Two people</text>
+<text class="t" x="60" y="593">do not share one worker's skills.</text>
+<text class="n" x="28" y="618">03</text>
+<text class="t" x="60" y="618">Memory is off until you add it. It is about a user, not a conversation: a new conversation starts with</text>
+<text class="t" x="60" y="635">no turns but the same memory.</text>
+<text class="n" x="28" y="660">04</text>
+<text class="t" x="60" y="660">isolateUserState is set once for the whole flow. A memory tier can set its own flowIsolation to differ</text>
+<text class="t" x="60" y="677">from it.</text>
+<line class="ln" x1="28" y1="704" x2="54" y2="704" marker-end="url(#ah)"/>
+<text class="lb" x="62" y="708">USES</text>
+<line class="ln-dash" x1="132.0" y1="704" x2="158.0" y2="704" marker-end="url(#ah)"/>
+<text class="lb" x="166.0" y="708">ONLY ONCE YOU ADD IT</text>
+<rect fill="url(#hatch)" x="356.0" y="698" width="26" height="11"/><rect class="thin" x="356.0" y="698" width="26" height="11"/>
+<text class="lb" x="390.0" y="708">OUTLIVES THE REQUEST</text>
 </svg>

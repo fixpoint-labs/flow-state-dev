@@ -23,7 +23,7 @@ import myFlow from "@/flows/my-flow/flow";
 
 export const flowstate = createFlowState({
   flows: { myFlow },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: { default: "openai/gpt-6-luna" },
   stores: {
     prod: { primary: vercelPostgresStores() },
     dev: { primary: inMemoryStores() },
@@ -188,7 +188,7 @@ export const GET = createScheduleTickHandler({
 });
 ```
 
-Both helpers authenticate inbound requests via constant-time bearer compare against `CRON_SECRET` and forward the same bearer to the dispatch endpoint. Runtime deps stay zero — only `@flow-state-dev/scheduled` type imports cross the boundary.
+The shim POSTs no body, so each run counts against the latest scheduled time already due; the tick sends each row's due time. Either way the endpoint fires a scheduled time once, however late or often Vercel invokes the route. Both helpers authenticate inbound requests via constant-time bearer compare against `CRON_SECRET` and forward the same bearer to the dispatch endpoint. Runtime deps stay zero — only `@flow-state-dev/scheduled` type imports cross the boundary.
 
 See [Scheduled actions on Vercel Cron](https://flowstate.dev/guides/scheduled-vercel-cron) for the full setup.
 

@@ -1,36 +1,37 @@
 /**
- * The task entries a board's assignees hand off to, and how the flow declares
+ * The task entries a board's assignees dispatch to, and how the flow declares
  * them (FIX-982 P2, ported to the one-dispatch-protocol design).
  *
- * A hand-off dispatch arrives carrying a task row and nothing else — the
+ * A task dispatch arrives carrying a task row and nothing else — the
  * request that made the original routing decision is gone, possibly along
  * with the process. So the flow has to be able to answer "which block runs
  * this row?" from strings alone, which is what a task entry is for: a plain
- * `{ block }` under `defineFlow({ tasks })`, addressed by the
+ * `{ block }` under `defineFlow({ internal: { actions: { ...heard } }, tasks })`, addressed by the
  * `dispatcher({ type: "task", action })` the board holds at the assignee.
  *
  * **The gate.** The flow's entry is a plain block, but a `task` dispatch never
- * reaches it directly: `defineFlow` rebuilds every entry a reachable hand-off
+ * reaches it directly: `defineFlow` rebuilds every entry a reachable dispatch
  * addresses as that board's claim gate around the block. The board binds the
- * gate onto the hand-off it installs at each dispatcher assignee, and the walk
+ * gate onto the dispatch it installs at each dispatcher assignee, and the walk
  * applies it — so the instance carries the gated entry, scoped to the board's
  * id, with the author's policy riding beside it.
  *
- * **How `defineFlow` sees the hand-off through `board.drain`.** The drain's
- * hand-off block sits inside the per-worker pool `.forEach` builds from a
+ * **How `defineFlow` sees the dispatch through `board.drain`.** The drain's
+ * dispatch block sits inside the per-worker pool `.forEach` builds from a
  * runtime factory (`(workerId) => makeWorker(workerId)`), which on its own is
  * invisible to a static walk of `childBlocks`. The pool therefore declares the
  * static blocks every worker is composed from (`blocks: [claimTask,
  * workerBody, checkBoard]`), and the worker router inside `workerBody` carries
- * the hand-off for each assignee — so the walk reaches it from wherever the drain
+ * the dispatch for each assignee — so the walk reaches it from wherever the drain
  * is nested, and a flow that forgets the entry is refused at definition rather
- * than at the first hand-off.
+ * than at the first dispatch.
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow, dispatcher, generator, handler, router, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineTaskCollection, type TaskWorker } from "../../src/tasks";
 import { taskBoard, taskWorkerInputSchema } from "../../src/task-board";
+import { heard } from "../fixtures/heard";
 
 function worker(name: string): TaskWorker {
   return handler({
@@ -42,7 +43,7 @@ function worker(name: string): TaskWorker {
 }
 
 let assigneeCount = 0;
-/** An assignee that hands off to the task entry `target`. */
+/** An assignee that dispatches to the task entry `target`. */
 function assignee(target: string, session: "per-task" | "per-worker" = "per-task"): TaskWorker {
   assigneeCount += 1;
   return dispatcher({
@@ -58,23 +59,24 @@ function assignee(target: string, session: "per-task" | "per-worker" = "per-task
  * two DIFFERENT references under one accessor key, never the same one twice. */
 const durable = defineTaskCollection({ id: "board-tasks-tasks", scope: "user" });
 
-/** A board with one handed-off assignee, addressed to the task entry `target`. */
-function handOffBoard(options: { name: string; boardId: string; assignee?: string; target?: string }) {
+/** A board with one dispatched assignee, addressed to the task entry `target`. */
+function dispatchBoard(options: { name: string; boardId: string; assignee?: string; target?: string }) {
   const assigneeName = options.assignee ?? "implement";
   return taskBoard({
     name: options.name,
     boardId: options.boardId,
+    mode: "delegation",
     collection: durable,
     workers: { [assigneeName]: assignee(options.target ?? assigneeName) },
   });
 }
 
-describe("the gated task entry — what the flow carries for a handed-off assignee", () => {
+describe("the gated task entry — what the flow carries for a dispatched assignee", () => {
   it("rebuilds the declared entry as the board's claim gate around its block", () => {
-    const board = handOffBoard({ name: "issue-work", boardId: "issue-work" });
+    const board = dispatchBoard({ name: "issue-work", boardId: "issue-work" });
     const implement = worker("implement");
 
-    const flow = defineFlow({
+    const flow = defineFlow({ internal: { actions: { ...heard } },
       kind: "board",
       actions: { run: { block: board.drain } },
       task: { actions: { implement: { block: implement, concurrency: "queue" } } },
@@ -99,37 +101,37 @@ describe("the gated task entry — what the flow carries for a handed-off assign
     expect(entry?.inputSchema?.safeParse({ ...envelope, boardId: "reviews" }).success).toBe(false);
   });
 
-  it("lets an assignee hand off to an entry named differently from the assignee", () => {
-    const board = handOffBoard({ name: "issue-work", boardId: "issue-work", assignee: "rework", target: "implement" });
+  it("lets an assignee dispatch to an entry named differently from the assignee", () => {
+    const board = dispatchBoard({ name: "issue-work", boardId: "issue-work", assignee: "rework", target: "implement" });
 
-    const flow = defineFlow({
+    const flow = defineFlow({ internal: { actions: { ...heard } },
       kind: "board",
       actions: { run: { block: board.drain } },
       task: { actions: { implement: { block: worker("implement") } } },
     });
 
-    expect(board.handedOff[0]?.dispatch?.action).toBe("implement");
+    expect(board.dispatchers[0]?.dispatch?.action).toBe("implement");
     expect(flow.task?.actions.implement.block.name).toBe("issue-work-implement-gate");
   });
 
-  it("hands nothing off on an inline board", () => {
+  it("dispatches nothing on an inline board", () => {
     const board = taskBoard({
       name: "inline-board",
       workers: { summarize: worker("summarize") },
     });
 
-    expect(board.handedOff).toEqual([]);
+    expect(board.dispatchers).toEqual([]);
     expect(() =>
-      defineFlow({ kind: "inline", actions: { run: { block: board.drain } } })
+      defineFlow({ internal: { actions: { ...heard } }, kind: "inline", actions: { run: { block: board.drain } } })
     ).not.toThrow();
   });
 });
 
-describe("defineFlow({ task: { actions } }) — declaring the entries a board hands off to", () => {
+describe("defineFlow({ internal: { actions: { ...heard } }, task: { actions } }) — declaring the entries a board dispatches to", () => {
   it("defines when the drain IS the action root", () => {
-    const board = handOffBoard({ name: "issue-work", boardId: "issue-work" });
+    const board = dispatchBoard({ name: "issue-work", boardId: "issue-work" });
 
-    const flow = defineFlow({
+    const flow = defineFlow({ internal: { actions: { ...heard } },
       kind: "board",
       actions: { run: { block: board.drain } },
       task: { actions: { implement: { block: worker("implement") } } },
@@ -141,13 +143,13 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board ha
   it("defines when the drain is a step inside another sequencer", () => {
     // The ordinary shape: an app wraps the drain with setup/teardown. A real
     // board's resource and schema validation must still pass at this depth.
-    const board = handOffBoard({ name: "issue-work", boardId: "issue-work" });
+    const board = dispatchBoard({ name: "issue-work", boardId: "issue-work" });
     const outer = sequencer({ name: "outer" })
       .tap(handler({ name: "setup", execute: () => undefined }))
       .step(board.drain);
 
     expect(() =>
-      defineFlow({
+      defineFlow({ internal: { actions: { ...heard } },
         kind: "board",
         actions: { run: { block: outer } },
         task: { actions: { implement: { block: worker("implement") } } },
@@ -156,12 +158,12 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board ha
   });
 
   it("defines from two levels of nesting", () => {
-    const board = handOffBoard({ name: "issue-work", boardId: "issue-work" });
+    const board = dispatchBoard({ name: "issue-work", boardId: "issue-work" });
     const inner = sequencer({ name: "inner" }).step(board.drain);
     const outer = sequencer({ name: "outer" }).step(inner);
 
     expect(() =>
-      defineFlow({
+      defineFlow({ internal: { actions: { ...heard } },
         kind: "board",
         actions: { run: { block: outer } },
         task: { actions: { implement: { block: worker("implement") } } },
@@ -170,7 +172,7 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board ha
   });
 
   it("defines from a board reached down one arm of a router", () => {
-    const board = handOffBoard({ name: "issue-work", boardId: "issue-work" });
+    const board = dispatchBoard({ name: "issue-work", boardId: "issue-work" });
     const plain = handler({ name: "plain", execute: () => null });
     const route = router({
       name: "pick",
@@ -179,7 +181,7 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board ha
     });
 
     expect(() =>
-      defineFlow({
+      defineFlow({ internal: { actions: { ...heard } },
         kind: "board",
         actions: { run: { block: route } },
         task: { actions: { implement: { block: worker("implement") } } },
@@ -191,10 +193,10 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board ha
     // Same board, two entry points — a diamond in the reachable set, not a
     // duplicate. The walk visits each block once (a `Set`), so this must not
     // throw on double-counted resources or a repeated visit.
-    const board = handOffBoard({ name: "issue-work", boardId: "issue-work" });
+    const board = dispatchBoard({ name: "issue-work", boardId: "issue-work" });
 
     expect(() =>
-      defineFlow({
+      defineFlow({ internal: { actions: { ...heard } },
         kind: "board",
         actions: {
           runA: { block: board.drain },
@@ -205,11 +207,11 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board ha
     ).not.toThrow();
   });
 
-  it("defines when two boards hand off to two entries", () => {
-    const a = handOffBoard({ name: "issue-work", boardId: "issue-work", assignee: "implement" });
-    const b = handOffBoard({ name: "review-work", boardId: "review-work", assignee: "review" });
+  it("defines when two boards dispatch to two entries", () => {
+    const a = dispatchBoard({ name: "issue-work", boardId: "issue-work", assignee: "implement" });
+    const b = dispatchBoard({ name: "review-work", boardId: "review-work", assignee: "review" });
 
-    const flow = defineFlow({
+    const flow = defineFlow({ internal: { actions: { ...heard } },
       kind: "board",
       actions: { runA: { block: a.drain }, runB: { block: b.drain } },
       task: { actions: { implement: { block: worker("implement") }, review: { block: worker("review") } } },
@@ -220,22 +222,22 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board ha
     expect(flow.task?.actions.review.block.name).toBe("review-work-review-gate");
   });
 
-  it('throws with the hand-off\'s assignee when `tasks` is omitted', () => {
+  it('throws with the dispatch\'s assignee when `tasks` is omitted', () => {
     // The real drain, nowhere else: the worker pool declares the blocks its
-    // per-worker factory composes, so `defineFlow`'s walk reaches the hand-off
+    // per-worker factory composes, so `defineFlow`'s walk reaches the dispatch
     // sitting in the worker router and refuses the flow before any request
     // could hand a row to an entry nobody declared.
-    const board = handOffBoard({ name: "issue-work", boardId: "issue-work" });
+    const board = dispatchBoard({ name: "issue-work", boardId: "issue-work" });
     expect(() =>
-      defineFlow({
+      defineFlow({ internal: { actions: { ...heard } },
         kind: "board",
         actions: { run: { block: board.drain } },
       })
-    ).toThrow(/hands off to task:"implement".*declares no such task entry/);
+    ).toThrow(/dispatches to task:"implement".*declares no such task entry/);
   });
 
   it("throws the same way when the drain is nested and reached as a tool", () => {
-    const board = handOffBoard({ name: "issue-work", boardId: "issue-work" });
+    const board = dispatchBoard({ name: "issue-work", boardId: "issue-work" });
     const agent = generator({
       name: "agent",
       model: "openai/gpt-5.4-mini",
@@ -243,42 +245,43 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board ha
       tools: [board.drain],
     });
     expect(() =>
-      defineFlow({
+      defineFlow({ internal: { actions: { ...heard } },
         kind: "board-as-tool",
         actions: { run: { block: sequencer({ name: "run" }).step(agent) } },
       })
-    ).toThrow(/hands off to task:"implement".*declares no such task entry/);
+    ).toThrow(/dispatches to task:"implement".*declares no such task entry/);
   });
 
-  it("refuses two boards handing off to one entry — one entry settles against one ledger", () => {
-    const a = handOffBoard({ name: "board-a", boardId: "board-a", assignee: "implement" });
-    const b = handOffBoard({ name: "board-b", boardId: "board-b", assignee: "implement" });
+  it("refuses two boards dispatching to one entry — one entry settles against one ledger", () => {
+    const a = dispatchBoard({ name: "board-a", boardId: "board-a", assignee: "implement" });
+    const b = dispatchBoard({ name: "board-b", boardId: "board-b", assignee: "implement" });
 
     expect(() =>
-      defineFlow({
+      defineFlow({ internal: { actions: { ...heard } },
         kind: "board",
         actions: { runA: { block: a.drain }, runB: { block: b.drain } },
         task: { actions: { implement: { block: worker("implement") } } },
       })
-    ).toThrow(/handed off to by two boards, "board-[ab]" and "board-[ab]"/);
+    ).toThrow(/dispatched to by two boards, "board-[ab]" and "board-[ab]"/);
   });
 
-  it("refuses two boards that spell one boardId over different ledgers, handing off to one entry", () => {
+  it("refuses two boards that spell one boardId over different ledgers, dispatching to one entry", () => {
     // A `boardId` string is not a board. Two `taskBoard()` instances can share
     // it while claiming from different collections; only one of their gates
     // could front the entry, and a dispatch from the other would be checked
     // against the wrong ledger — starving as stale at best.
     const other = defineTaskCollection({ id: "board-tasks-other-ledger", scope: "user" });
-    const a = handOffBoard({ name: "board-a", boardId: "shared-id", assignee: "implement" });
+    const a = dispatchBoard({ name: "board-a", boardId: "shared-id", assignee: "implement" });
     const b = taskBoard({
       name: "board-b",
       boardId: "shared-id",
+      mode: "delegation",
       collection: other,
       workers: { implement: assignee("implement") },
     });
 
     expect(() =>
-      defineFlow({
+      defineFlow({ internal: { actions: { ...heard } },
         kind: "board",
         actions: { runA: { block: a.drain }, runB: { block: b.drain } },
         task: { actions: { implement: { block: worker("implement") } } },
@@ -286,31 +289,31 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board ha
     ).toThrow(/two boards that both declare boardId "shared-id"/);
   });
 
-  it("refuses a task entry no reachable board hands off to", () => {
+  it("refuses a task entry no reachable board dispatches to", () => {
     expect(() =>
-      defineFlow({
+      defineFlow({ internal: { actions: { ...heard } },
         kind: "board",
         actions: {},
         task: { actions: { implement: { block: worker("implement") } } },
       })
-    ).toThrow(/no task board reachable from the flow hands off to it/);
+    ).toThrow(/no task board reachable from the flow dispatches to it/);
   });
 });
 
 describe("a board reached only as a tool still lands its ledger on the flow", () => {
   it("collects the durable collection through the task entry, not the tool edge", () => {
-    // The walk takes the tool edge to find the hand-off; resources are collected
+    // The walk takes the tool edge to find the dispatch; resources are collected
     // off the action roots alone. Those agree because the ledger is declared by
     // the gate on the task entry, which is a root — so a board a model reaches
     // only through `tools: [board.drain]` (FIX-1074) still prefetches its ledger.
-    const board = handOffBoard({ name: "tool-only-ledger", boardId: "tool-only-ledger" });
+    const board = dispatchBoard({ name: "tool-only-ledger", boardId: "tool-only-ledger" });
     const agent = generator({
       name: "agent-ledger",
       model: "openai/gpt-5.4-mini",
       prompt: "drain the board",
       tools: [board.drain],
     });
-    const flow = defineFlow({
+    const flow = defineFlow({ internal: { actions: { ...heard } },
       kind: "tool-only-ledger",
       actions: { run: { block: sequencer({ name: "run-ledger" }).step(agent) } },
       task: { actions: { implement: { block: worker("implement-ledger") } } },

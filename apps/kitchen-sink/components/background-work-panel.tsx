@@ -36,6 +36,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { SessionConversationLoading } from "@/components/session-conversation-loading";
 import { cn } from "@/lib/utils";
 import { ChevronRight, Hourglass, RotateCw } from "lucide-react";
 
@@ -59,7 +60,7 @@ function statusLabel(status: ChildSessionSummary["status"]): string {
 }
 
 function statusTone(status: ChildSessionSummary["status"]): string {
-  if (status === "completed") return "text-emerald-600 dark:text-emerald-400";
+  if (status === "completed") return "text-success";
   if (status === "failed" || status === "aborted") return "text-destructive";
   return "text-muted-foreground";
 }
@@ -168,13 +169,13 @@ export function BackgroundWorkPanel({ session, flowKind }: BackgroundWorkPanelPr
 
   return (
     <div className="mx-auto max-w-3xl px-3 pt-2 sm:px-4" data-testid="background-work-panel">
-      <div className="rounded-md border border-indigo-500/40 bg-indigo-500/5">
+      <div className="rounded-md border border-border bg-card">
         <div className="flex items-center gap-2 px-3 py-2">
-          <Hourglass className="size-3.5 text-indigo-500 dark:text-indigo-400" />
+          <Hourglass className="size-3.5 text-info" />
           <span className="text-xs font-medium">Background work</span>
           <span className="text-xs text-muted-foreground">{childSessions.length}</span>
           {childSessionsStale && (
-            <span className="text-xs text-amber-600 dark:text-amber-400">
+            <span className="text-xs text-warning">
               may be out of date
             </span>
           )}
@@ -190,12 +191,12 @@ export function BackgroundWorkPanel({ session, flowKind }: BackgroundWorkPanelPr
           </Button>
         </div>
 
-        <ul className="border-t border-indigo-500/20">
+        <ul className="border-t border-border">
           {childSessions.map((childSession) => (
             <li key={childSession.id}>
               <button
                 type="button"
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-indigo-500/10"
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-accent"
                 onClick={() => setOpenId(childSession.id)}
                 data-testid="background-work-row"
               >
@@ -259,9 +260,11 @@ function BackgroundWorkDetail({
 
   return (
     <ScrollArea className="min-h-0 flex-1 pr-3">
-      {childSession.items.length === 0 ? (
+      {childSession.isLoading ? (
+        <SessionConversationLoading />
+      ) : childSession.items.length === 0 ? (
         <p className="py-6 text-center text-xs text-muted-foreground">
-          {childSession.isLoading ? "Loading…" : "Nothing has been recorded yet."}
+          Nothing has been recorded yet.
         </p>
       ) : (
         <ItemsRenderer items={childSession.items} />

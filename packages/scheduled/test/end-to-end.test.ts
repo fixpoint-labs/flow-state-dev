@@ -14,19 +14,23 @@ import {
   disposeFlowApiRouter
 } from "@flow-state-dev/engine";
 import { createScheduledTransportAdapter } from "../src";
+import { recentTimes } from "./recent-times";
+
+/** The latest time of the monthly cron below already due. */
+const MONTH_START = recentTimes("0 0 1 * *").latest;
 
 const SECRET = "scheduler-secret-do-not-share";
 
 // Event-only handler blocks. They carry the action core inline on their
 // schedule bindings (FIX-838) and are intentionally absent from `flow.actions`
 // — a scheduled handler has no caller-addressed surface.
-const generateInvoices = handler<{ topic?: string }, { ok: true }>({
+const generateInvoices = handler({
   name: "generate-invoices",
   inputSchema: z.object({ topic: z.string().optional() }),
   execute: () => ({ ok: true })
 });
 
-const sendDigest = handler<Record<string, never>, { ok: true }>({
+const sendDigest = handler({
   name: "send-digest",
   inputSchema: z.object({}),
   execute: () => ({ ok: true })
@@ -154,7 +158,7 @@ describe("scheduled adapter — end-to-end", () => {
     const { router, stores } = buildRouter();
     try {
       const response = await postDispatch(router, "billing", "monthly-invoices", {
-        nominalFireTime: "2026-06-01T00:00:00Z"
+        nominalFireTime: MONTH_START
       });
       expect(response.status).toBe(202);
 

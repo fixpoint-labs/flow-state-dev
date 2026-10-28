@@ -7,9 +7,9 @@
  * turn while the work is still going. The reply a later turn gives is where
  * the result shows up.
  *
- * ## The three declarations that make the hand-off legal
+ * ## The three declarations that make the dispatch legal
  *
- * - **`backgroundWorkLedger` is resource-backed.** A handed-off row
+ * - **`backgroundWorkLedger` is resource-backed.** A dispatched row
  *   outlives the claiming request, so the board refuses anything but a durable
  *   collection at construction.
  * - **`sharedToLineage: true`.** The ledger is session-scoped, and a
@@ -33,6 +33,7 @@
  * the child session sees completed items, not tokens arriving.
  */
 import { dispatcher, generator, handler, sequencer } from "@flow-state-dev/core";
+import { taskSettledEntry } from "@flow-state-dev/orchestration";
 import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { TaskWorker, TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
@@ -62,6 +63,21 @@ export const backgroundWorkLedger = defineTaskCollection({
   scope: "session",
   sharedToLineage: true,
   stateSchema: briefRequestSchema,
+});
+
+/**
+ * The flow's `onTaskSettled` entry: each ending of a background row is sent
+ * here, in the conversation that filed it. A board that hands rows out needs
+ * one. The conversation takes nothing from the notice: a later turn's report
+ * reads the finished row from the ledger.
+ */
+export const backgroundWorkSettled = taskSettledEntry({
+  block: handler({
+    name: "background-work-settled",
+    inputSchema: z.unknown(),
+    outputSchema: z.object({}),
+    execute: () => ({}),
+  }),
 });
 
 /**
@@ -112,7 +128,7 @@ function renderOutput(output: unknown): string {
  * Build the `background-work` pipeline from the resolved router config.
  *
  * The board is constructed here rather than at module scope because its worker
- * takes the router's model resolver, and because the hand-off its assignee
+ * takes the router's model resolver, and because the dispatch its assignee
  * carries reaches the flow through this pipeline being a route — a board
  * nobody composes declares nothing.
  */
@@ -176,12 +192,12 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
   const { modelId } = config;
 
   /**
-   * The handed-off worker.
+   * The dispatched worker.
    *
    * Deliberately bare — no capabilities, no context bundle, no history. It runs
    * in a child session whose session state and conversation are not the parent's,
    * so anything it read from them would be empty rather than wrong, and a
-   * handed-off entry may not declare `sessionStateSchema` at all (`defineFlow`
+   * dispatched entry may not declare `sessionStateSchema` at all (`defineFlow`
    * refuses one: rows sharing a child session under a `per-worker` or `key`
    * policy would corrupt each other's state silently).
    */
@@ -212,9 +228,10 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
   const board = taskBoard({
     name: "background-work",
     boardId: BOARD_ID,
+    mode: "delegation",
     collection: backgroundWorkLedger,
     // Not the default (`"skip"`), and deliberately. `onError` decides what a
-    // worker failure does to the run executing it — and for a handed-off worker
+    // worker failure does to the run executing it — and for a dispatched worker
     // that run is the **child session's**, not the drain's. Under `"skip"` a
     // worker that throws leaves the task `errored` while its child request
     // still completes, so the panel renders the row green while the next turn
@@ -227,14 +244,14 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
     // and costs the honest status.
     onError: "fail",
     workers: {
-      // The assignee is a dispatcher: it hands each row off to the flow's
+      // The assignee is a dispatcher: it dispatches each row to the flow's
       // `brief` task entry (`briefWorker`, declared below) instead of running
       // anything in the drain. Keyed on the task's `metadata.topic`: two
       // requests on one topic land in the same child session and continue its
       // history, which is the point of the topic (see `routingTopicFor`). A
       // row with no topic gets a child of its own.
       [ASSIGNEE]: dispatcher<TaskWorkerInput>({
-        name: "background-work-hand-off",
+        name: "background-work-dispatch",
         action: ASSIGNEE,
         session: {
           key: (task) =>
@@ -244,7 +261,7 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
     },
   });
 
-  /** File this turn's message as a durable row for the board to hand off. */
+  /** File this turn's message as a durable row for the board to dispatch. */
   const fileSideChainTask = handler({
     name: "file-background-task",
     inputSchema: z.object({ message: z.string() }),
@@ -270,7 +287,7 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
    * The turn's reply: what was just filed, plus anything that has landed since.
    *
    * Reads the ledger rather than the drain's output, because the rows a
-   * *previous* turn handed off are the interesting ones — this turn's own row is
+   * *previous* turn dispatched are the interesting ones — this turn's own row is
    * still `in_progress` by construction.
    */
   const reportBackgroundWork = handler({
@@ -428,8 +445,8 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
 
   // The task entry rides along so the flow can declare it under
   // `task: { actions }`: the block that runs in the child session for each row
-  // the assignee hands off. `defineFlow` puts it behind the board's claim gate,
-  // and refuses the flow if the hand-off is reachable and the entry is not
+  // the assignee dispatches. `defineFlow` puts it behind the board's claim gate,
+  // and refuses the flow if the dispatch is reachable and the entry is not
   // declared. Cast: a registry is heterogeneous, so `TaskWorker` fixes its
   // output at `unknown` while this worker settles a `string` — the same
   // narrowing `task-queue-demo` takes.

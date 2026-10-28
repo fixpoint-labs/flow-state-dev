@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { inMemoryStores } from "@flow-state-dev/engine";
-import { createLabClients } from "../src/lib/connection";
+import { connect } from "../src/lib/connection";
 import { createLabReader } from "../src/lib/reads";
 import { harnessStub } from "../teams/devteam/harness-stub.mts";
 import { LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
@@ -48,7 +48,7 @@ it("the project member and the outsider read the organization's workers and proj
   const seen: Record<string, string[]> = {};
   for (const who of [LAB_USERS.owner, LAB_USERS.member, LAB_USERS.outsider]) {
     const snapshot = await createLabReader(
-      createLabClients({ userId: who.userId, baseUrl: served.baseUrl, bearerToken: who.bearer }),
+      connect({ userId: who.userId, baseUrl: served.baseUrl, bearerToken: who.bearer }),
     ).read();
     if (!("inventory" in snapshot)) throw new Error(`${who.userId}'s read was refused or unreachable: ${JSON.stringify(snapshot)}`);
     expect(snapshot.inventory, `${who.userId}'s inventory`).toMatchObject({ ok: true });

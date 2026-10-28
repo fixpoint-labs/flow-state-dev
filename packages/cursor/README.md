@@ -15,7 +15,7 @@ contract every harness implements is
 ## Install
 
 ```bash
-pnpm add @flow-state-dev/cursor @cursor/sdk@1.0.31
+pnpm add @flow-state-dev/cursor @cursor/sdk@1.0.40
 ```
 
 The SDK is an **exact-pinned optional peer**, and the pin is enforced: building a
@@ -40,22 +40,31 @@ const agent = cursorAgent({
   cwd: (ctx) => workspacePathFor(ctx),              // where the run works
   resume: (ctx) => storedAgentId(ctx),              // which agent to continue
   onSession: (id, ctx) => storeAgentId(id, ctx),    // called the moment one is opened
-  agent: {
-    model: { id: "composer-2.5" },
-    apiKey: process.env.CURSOR_API_KEY,
-  },
+  model: (ctx) => storedModel(ctx) ?? "composer-2.5", // which model, per run (or a fixed id)
+  agent: { apiKey: process.env.CURSOR_API_KEY },
 });
 ```
 
 `createCursorAgentCapability(options)` takes the same options and exposes the
 block to a generator as a tool.
 
-**A model is required.** Cursor's SDK refuses to create a local agent without one,
-so `agent.model` is not optional in practice. `Cursor.models.list()` from the SDK
-enumerates what your account can select.
+**A model is required.** Cursor's SDK refuses to create a local agent without one.
+Name it with `model`: an id, a model with its settings
+(`{ id, params: [{ id, value }] }`, Cursor's own parameter list, such as a
+reasoning effort), or a resolver returning either, asked once per run. The result
+goes to the agent on create and on resume alike, so a resolver that reads the
+session can run a different model and settings for each one.
+`Cursor.models.list()` from the SDK enumerates what your account can select.
 
-**The block's input is the prompt and nothing else.** Where a run writes and which
-conversation it continues are configuration, because the same block can be handed
+A resolver that returns `null`, `undefined` or an empty id names no model. With no
+model named from `model` or `agent.model`, Cursor's SDK refuses to open the agent
+and the run fails. `agent.model` also takes `{ id, params }`, is the model when
+`model` is unset, and is one value for every run. `model` beside `agent.model` or `send.model` throws
+when the block is built; `agent` and `send` are the SDK's option groups, described
+under [Option groups](#option-groups).
+
+**The block's input is the prompt and nothing else.** Where a run writes, which
+conversation it continues and which model it runs are configuration, because the same block can be handed
 to a model as a tool, and a field on the input is a field the model could set. The
 resolvers are handed the block context alone and never the prompt, so a path or a
 session id cannot be derived from text the model wrote.
@@ -65,6 +74,23 @@ moment the SDK opens one, before the prompt is sent. A cancelled or crashed run
 returns no handle, so this is the only carrier that reaches your state in the case
 resuming exists for. A resume Cursor refuses throws instead of opening an agent,
 so the id you already hold is left untouched.
+
+**`onSteerable` lets the running turn take a line.** Once the prompt is sent, the
+block calls it with a `steer` function, and with `null` when the turn is over.
+`steer(text)` hands the line to the turn in flight and resolves `"delivered"` when
+Cursor took it into that turn, or `"refused"` when it didn't (Cursor answered that
+the line should wait for the next turn, the call failed, or the turn had already
+ended). A refused line was not taken, so send it as the next turn. A run that ends
+on its own waits for any `steer` call still in flight to answer before it returns;
+one stopped by its deadline doesn't. Only local
+runs whose SDK offers steering get a `steer`; otherwise `onSteerable` is never called.
+
+```ts
+const agent = cursorAgent({
+  // …
+  onSteerable: (steer, ctx) => (steer ? holdSteer(ctx, steer) : dropSteer(ctx)),
+});
+```
 
 ## Option groups
 
@@ -80,8 +106,12 @@ verbatim. Three keys are refused when the block is built:
 
 `recordPlan: true` records Cursor's to-do list in the run's plan record, `observed-plan`, the
 shape every harness shares and `@flow-state-dev/core` defines. The record holds the whole list
-Cursor last confirmed, one row per place in the list, with Cursor's own status words. Off by
-default; off, the block declares no session state. Guide:
+Cursor last confirmed, one row per place in the list, with Cursor's own status words. The plan
+is the agent's: rows and their marker are keyed under `conversation/<Cursor agent id>`, so a
+later run of the same agent that doesn't touch its list leaves the plan as it was, and a
+different agent has its own. Each run writes a pointer to that plan when the agent is created
+or resumed; core's `readPlanTarget` follows it from a request id. Off by default; off, the block
+declares no session state. Guide:
 [Recording the run's plan](https://flow-state.dev/docs/tools/cursor#recording-the-runs-plan).
 
 `env` is the environment Cursor's runtime sees. Set it and the block runs the runtime in a
@@ -94,6 +124,17 @@ server's included, through `/proc`. Use a separate user or a container when that
 `resolveCursorClient` are refused when the block is built, because they can't reach that process.
 Leave it out and the runtime runs in your process, as before. Guide:
 [Choosing the environment the run starts with](https://flow-state.dev/docs/tools/cursor#choosing-the-environment-the-run-starts-with).
+
+`agent.local.sandboxOptions: { enabled: true }` asks Cursor to confine the run's writes to its
+`cwd`. Cursor fails a run whose sandbox can't start, rather than running without it. The sandbox
+needs a helper binary from Cursor's platform package (`@cursor/sdk-darwin-arm64` and the like).
+This package depends on the platform packages, so a run with `env` set finds the helper under any
+package manager. Without `env`, under pnpm, your app must depend on the platform package too.
+
+`probeCursorSandbox({ cwd, env })` asks the SDK whether the sandbox can start for a run in `cwd`,
+the way a run with that `env` would, without starting one. It returns `{ supported: true }` or
+`{ supported: false, reason }` with Cursor's own message. It takes about a second, so call it once,
+from a startup or health check.
 
 ## The handle
 

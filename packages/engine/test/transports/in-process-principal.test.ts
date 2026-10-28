@@ -15,7 +15,7 @@
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
@@ -95,20 +95,19 @@ describe("resolveInProcessPrincipal · the host's own answer", () => {
   });
 
   it("with no resolver anywhere, keeps the caller-named user in the development organization", async () => {
-    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const app = createFlowState({
       flows: { echo: flow("echo") },
-      stores: { default: { primary: inMemoryStores() } },
-      logger
+      stores: { default: { primary: inMemoryStores() } }
     });
     await expect(app.resolveInProcessPrincipal(question("echo", "alice"))).resolves.toEqual({
       userId: "alice",
       orgId: DEFAULT_ORG_ID,
       from: "development-default"
     });
-    // The CLI reports the identity it used itself; the host's once-per-deployment
-    // warning would be a second, redundant line on every terminal run.
-    expect(logger.warn).not.toHaveBeenCalled();
+    // Not asserted: that this path stays silent (the CLI reports the identity
+    // itself, so the host's development-default warning would be a second line).
+    // Source bug FIX-2055: resolveInProcessPrincipal builds its resolution with no
+    // warning sink, so no spy a test can attach would ever be called.
   });
 
   it("answers a bare registry the same way (the discovery path)", async () => {

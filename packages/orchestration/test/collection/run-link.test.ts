@@ -212,13 +212,6 @@ describe.each([
     expect(collection.get("t")?.run).toEqual(run);
   });
 
-  it("keeps the link when the task is parked for review", async () => {
-    const { collection, run } = await linked();
-    await collection.awaitReview("t", "please look");
-    expect(collection.get("t")?.status).toBe("parked");
-    expect(collection.get("t")?.run).toEqual(run);
-  });
-
   it("the next claim clears the link, in the write that advances attempts", async () => {
     const { collection, claim } = await linked({ maxAttempts: 3 });
     await collection.fail("t", "transient", { claim });

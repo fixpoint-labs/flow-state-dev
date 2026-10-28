@@ -42,7 +42,7 @@ export const USER_ID = "u_look_goal";
  * The model best fit's one evaluator call would run on. `desk.front` routes
  * to everyone and never makes that call, but the flow names no default.
  */
-const ROUTE_MODEL = "vercel/openai/gpt-5.4-mini";
+const ROUTE_MODEL = "vercel:openai/gpt-5.4-mini";
 
 /** The flow the inventory's worker rows are written from. */
 const INVENTORY_WRITER_FLOW = "inventory-writer";
@@ -61,7 +61,7 @@ const { installation, copies } = installWorkers(tree.workers, (installation) => 
   const agent = defineAgentWorkerFlow({ installation });
   return {
     [AGENT_FLOW]: agent,
-    [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, delegateFlows: [agent], routeModel: ROUTE_MODEL }),
+    [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL }),
   };
 });
 // The worker-row write takes caller-supplied rows, so it is internal only.

@@ -58,7 +58,7 @@ export function createFakeSequencerState<TState extends Record<string, unknown>>
 ): StateRef<TState> & { __raw: () => TState } {
   let state = { ...initial };
   let version = 0;
-  let busy = Promise.resolve();
+  let busy: Promise<unknown> = Promise.resolve();
 
   const ref: StateRef<TState> & { __raw: () => TState } = {
     name: "fake-sequencer",
@@ -72,23 +72,29 @@ export function createFakeSequencerState<TState extends Record<string, unknown>>
       await busy;
       state = { ...state, ...updates };
       version += 1;
+      return true;
     },
     async setState(next: TState) {
       await busy;
       state = { ...next };
       version += 1;
+      return true;
     },
     async incState(_increments: Record<string, number>) {
       // not exercised in these tests
+      return true;
     },
     async pushState(_field: string, _value: unknown) {
       // not exercised in these tests
+      return true;
     },
     async setStateRecord(_field: string, _key: string, _value: unknown) {
       // not exercised
+      return true;
     },
     async deleteStateRecord(_field: string, _key: string) {
       // not exercised
+      return true;
     },
     async atomicState(mutator) {
       const prev = busy;
@@ -103,6 +109,7 @@ export function createFakeSequencerState<TState extends Record<string, unknown>>
         const update = mutator(state as Readonly<TState>);
         state = { ...state, ...update };
         version += 1;
+        return true;
       })();
       busy = next.catch(() => undefined);
       return next;
@@ -127,7 +134,8 @@ export function createFakeResourceCollection<TState extends JsonObject>(
   const inFlight = new Map<string, Promise<void>>();
 
   function instanceRef(key: string): ResourceRef<TState> {
-    return {
+    // Deliberately partial: the substrate never reaches these three.
+    const instance: Omit<ResourceRef<TState>, "incState" | "pushState" | "getOrPatchState"> = {
       path: key,
       scope: "session",
       uri: `session/${key}`,
@@ -171,9 +179,11 @@ export function createFakeResourceCollection<TState extends JsonObject>(
         // not exercised
       },
     };
+    return instance as ResourceRef<TState>;
   }
 
-  const ref: ResourceCollectionRef<TState> = {
+  // Deliberately partial: the substrate never calls upsert.
+  const ref: Omit<ResourceCollectionRef<TState>, "upsert"> = {
     pattern,
     scope: "session",
     config: { pattern, scope: "session" } as ResourceCollectionRef<TState>["config"],
@@ -221,5 +231,5 @@ export function createFakeResourceCollection<TState extends JsonObject>(
     },
   };
 
-  return ref;
+  return ref as ResourceCollectionRef<TState>;
 }

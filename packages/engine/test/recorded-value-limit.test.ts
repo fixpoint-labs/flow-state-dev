@@ -228,7 +228,7 @@ async function runOnce(flow: FlowInstance, input: unknown, runtimeConfig: Record
     runtimeConfig: { maxRecordedValueBytes: LIMIT, ...runtimeConfig }
   });
   const record = await stores.request.get(result.requestId!);
-  return { result, persisted: (record?.items ?? []) as OutputItem[] };
+  return { result, persisted: record?.items ?? [] };
 }
 
 describe("the record limit through runAction", () => {

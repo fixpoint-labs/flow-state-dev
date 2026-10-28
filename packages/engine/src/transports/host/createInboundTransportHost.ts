@@ -13,7 +13,7 @@
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { SessionCreateRefusedError } from "../../context/session-birth";
 import type { FlowRegistry } from "../../registry/flow-registry";
-import type { SessionRecord, StoreRegistry } from "../../stores/types";
+import type { RequestRecord, SessionRecord, StoreRegistry } from "../../stores/types";
 import type { ExecutionResult } from "../../execution/types";
 import type { RuntimeConfig } from "../../runtime-config";
 import { createLiveRequestStream } from "../../streaming/live-stream";
@@ -59,6 +59,7 @@ import {
   PrincipalResolutionError
 } from "../errors";
 import {
+  continuationDecision,
   createConcurrencyArbiter,
   isPendingAdmission,
   type ConcurrencyAdmission,
@@ -176,7 +177,7 @@ function isRefusedAdmission(error: unknown): boolean {
  * adapter builds its own resolution context, so an adapter declaring any
  * source of its own could still stamp `cli` on the context it resolves.
  */
-const inProcessAsks = new WeakSet<PrincipalResolutionContext>();
+const inProcessWaits = new WeakSet<PrincipalResolutionContext>();
 
 /** An answer to "who is this caller", with whether the framework supplied it. */
 type PrincipalResolution = {
@@ -266,7 +267,7 @@ function createPrincipalResolution(options: {
     // before any resolver runs, whatever source the adapter that built this
     // context declared — a resolver branching on `source === "cli"` must never
     // see a network request.
-    if (context.source === CLI_SOURCE && !inProcessAsks.has(context)) {
+    if (context.source === CLI_SOURCE && !inProcessWaits.has(context)) {
       throw new PrincipalResolutionError(
         `source "${CLI_SOURCE}" is reserved for the engine's in-process entry point ` +
           `(fsdev run and fsdev chat); a transport adapter cannot resolve a request under it.`,
@@ -411,7 +412,7 @@ export async function resolveInProcessPrincipal(
       })
     })
   });
-  inProcessAsks.add(context);
+  inProcessWaits.add(context);
   const { principal, isDevelopmentDefault } = await resolution(context);
   return {
     ...principal,
@@ -455,6 +456,14 @@ export function createInboundTransportHost(
   // when the job is queued rather than when the run completes.
   const arbiter = options.arbiter ?? createConcurrencyArbiter();
   const arbitratesExternalDispatch = isExternalDispatcher && arbiter.arbitratesAcrossProcesses;
+  /**
+   * Per concurrency key, the turn of the latest dispatch to take a place there
+   * after its ownership check. A dispatch waits for the one before it on its
+   * key to take its place (or be refused, or fail ownership) before taking
+   * its own, so places are taken in dispatch order however long each
+   * ownership read takes. Removed when the last turn on a key passes.
+   */
+  const admissionTurns = new Map<string, Promise<void>>();
 
   /**
    * Hand a STARTED run's `finished` to the adapter's keep-alive hook, containing
@@ -757,13 +766,11 @@ export function createInboundTransportHost(
     // SSE client gets an open stream while queued. External dispatch without a
     // shared backend skips arbitration (no key, nothing taken).
     //
-    // WHEN the place is taken depends on the backend. Over the in-memory
-    // default it is taken here, synchronously, before any record or stream
-    // exists, so a `reject` is still thrown from `dispatch`. Over a shared
-    // backend it is taken only once `admitOwnership` has passed (BP-031): a
-    // caller that does not own the session or request id must not hold, or
-    // stand in line on, its key, where every process would honour the place.
-    // That refusal, and the backend's own errors, arrive through `accepted`.
+    // The place is taken only once `admitOwnership` has passed, on every
+    // backend (BP-031): a non-owner must not hold or stand in line on the
+    // key for that read. A `reject` refusal, and a shared backend's own
+    // errors, arrive through `accepted` / `finished`, never as a throw
+    // from `dispatch`.
     //
     // `hold` and `defer` cross the queue too (FIX-1836): the job carries how
     // it reaches its turn (`leaseTurn`), and its worker carries that out.
@@ -771,13 +778,7 @@ export function createInboundTransportHost(
       isExternalDispatcher && !arbitratesExternalDispatch
         ? { policy: "allow" as const, key: undefined }
         : arbiter.resolve(flow, envelope.action, dispatchEnvelope);
-    // `hold` and `defer` take their place only once ownership has passed, on
-    // every backend. Neither is refused synchronously (a `defer` over its cap
-    // is refused through the handle), so nothing is lost by waiting, and a
-    // caller who does not own the session never marks its key held or uses
-    // up its defer cap, not even for the moment before the refusal (BP-031).
-    const admitsAfterOwnership =
-      arbiter.arbitratesAcrossProcesses || decision.policy === "hold" || decision.policy === "defer";
+    const admitsAfterOwnership = decision.policy !== "allow" && decision.key !== undefined;
     const upFront = admitsAfterOwnership ? undefined : arbiter.admit(decision, requestId);
     // The admission once taken. From here until a branch below hands it to its
     // run, every failure gives it back: the synchronous setup is wrapped below,
@@ -809,6 +810,51 @@ export function createInboundTransportHost(
           held = admitted;
           return next(admitted);
         });
+    };
+    /**
+     * Check ownership, then take the place and continue with it. On a key the
+     * place is taken in dispatch order: after this dispatch's own ownership
+     * check and after the dispatch before it on the key has taken its place,
+     * been refused, or failed its own check. A dispatch that fails ownership
+     * takes nothing and passes its turn on. Without a key to wait on, the place
+     * is taken as `admitThen` takes it.
+     */
+    const admitOwnedThen = <T>(
+      next: (session: SessionRecord | undefined, admitted: ConcurrencyAdmission) => T | Promise<T>
+    ): Promise<T> => {
+      const ownership = admitOwnership(flow, dispatchEnvelope);
+      const key = admitsAfterOwnership ? decision.key : undefined;
+      if (key === undefined) {
+        return ownership.then((session) => admitThen((admitted) => next(session, admitted)));
+      }
+      const ahead = admissionTurns.get(key);
+      let passTurn!: () => void;
+      const turn = new Promise<void>((resolve) => {
+        passTurn = resolve;
+      });
+      admissionTurns.set(key, turn);
+      const pass = (): void => {
+        passTurn();
+        if (admissionTurns.get(key) === turn) admissionTurns.delete(key);
+      };
+      return ownership.then(
+        async (session) => {
+          await ahead;
+          let admitted: ConcurrencyAdmission;
+          try {
+            admitted = await arbiter.admit(decision, requestId);
+          } finally {
+            pass();
+          }
+          held = admitted;
+          return next(session, admitted);
+        },
+        async (error: unknown) => {
+          await ahead;
+          pass();
+          throw error;
+        }
+      );
     };
     /**
      * Undo a dispatch that failed after admission and before its run started,
@@ -981,9 +1027,8 @@ export function createInboundTransportHost(
           const ts = Date.now();
           // Ownership first, then the place, then the writes: see the
           // admission note above for why the place waits on ownership.
-          const materialized = admitOwnership(flow, dispatchEnvelope)
-            .then((admitted) =>
-              admitThen(() => materializeOwned(flow, dispatchEnvelope, admitted, {
+          const materialized = admitOwnedThen((admitted) =>
+              materializeOwned(flow, dispatchEnvelope, admitted, {
                 requestId,
                 actionName: dispatchEnvelope.actionName,
                 sessionId: dispatchEnvelope.sessionId,
@@ -1001,7 +1046,7 @@ export function createInboundTransportHost(
                 // moment the record exists, because a cancel can land from then on.
                 claimedIncarnation = incarnation;
                 tagAbortController(requestId, queuedAbort, incarnation);
-              }))
+              })
             )
             .then(() => {
               entryOwned = true;
@@ -1191,15 +1236,9 @@ export function createInboundTransportHost(
             });
         } else {
           // Nothing is written before the run here (`runAction` writes its own
-          // records), so a shared backend's place waits only on ownership.
-          const arbitrated =
-            admitsAfterOwnership &&
-            decision.key !== undefined &&
-            decision.policy !== "allow";
-          finished = arbitrated
-            ? admitOwnership(flow, dispatchEnvelope).then(() =>
-                admitThen((admitted) => admitted.run(startRun))
-              )
+          // records), so the place waits only on ownership.
+          finished = admitsAfterOwnership
+            ? admitOwnedThen((_session, admitted) => admitted.run(startRun))
             : admitThen((admitted) => admitted.run(startRun));
           // A start that never happens (the gate threw on the way in) must fail
           // acceptance rather than leave it pending forever. Once the run has
@@ -1215,7 +1254,7 @@ export function createInboundTransportHost(
         // time, so the stream route resolves a live record and tails events
         // immediately (FIX-828). The shared `createInitialRequestRecord` builder
         // constructs this stub the same way the worker would, so the worker
-        // adopts it as-is and skips its own write. Gating the dispatcher hand-off
+        // adopts it as-is and skips its own write. Gating the dispatcher call
         // on these writes means a store failure fails the dispatch rather than
         // enqueueing a job with no discoverable record (no orphan). Resume and the
         // Vercel adapter route through here too, so both inherit the fix.
@@ -1251,9 +1290,8 @@ export function createInboundTransportHost(
         // is enqueued the place is this dispatch's, so every failure on the way
         // gives it back. Without a shared backend nothing was taken.
         const ts = Date.now();
-        const acceptance = admitOwnership(flow, dispatchEnvelope)
-          .then((admitted) =>
-            admitThen(() => materializeOwned(flow, dispatchEnvelope, admitted, {
+        const acceptance = admitOwnedThen((admitted) =>
+            materializeOwned(flow, dispatchEnvelope, admitted, {
               requestId,
               actionName: dispatchEnvelope.actionName,
               sessionId: dispatchEnvelope.sessionId,
@@ -1268,7 +1306,7 @@ export function createInboundTransportHost(
               queuedAt: ts
             }, (incarnation) => {
               claimedIncarnation = incarnation;
-            }))
+            })
           )
           .then(async () => {
             entryOwned = true;
@@ -1366,6 +1404,80 @@ export function createInboundTransportHost(
     };
   };
 
+  /**
+   * Wait for this continuation's place inside `finished`, after the handle
+   * returns, so a run that continues another request in its own session is
+   * not blocked on its own place. The key is the stored record's. An external
+   * dispatcher with no shared backend skips arbitration, as `dispatch` does.
+   * The run stops if a shared backend can no longer keep the place. A wait
+   * that ends before the run starts releases the caller's lease (`leaseId`),
+   * never one another process took after it lapsed; the answer stays on the
+   * parked request for the sweep.
+   */
+  const startContinuationInTurn = async (
+    { flow, record, orgId }: { flow: FlowInstance; record: RequestRecord; orgId: string },
+    start: (signal?: AbortSignal) => Promise<ExecutionResult>,
+    leaseId: string | undefined
+  ): Promise<ExecutionResult> => {
+    const decision =
+      isExternalDispatcher && !arbitratesExternalDispatch
+        ? { policy: "allow" as const, key: undefined }
+        : continuationDecision(
+            arbiter.resolve(flow, record.actionName, {
+              requestId: record.id,
+              flowKind: record.flowKind,
+              actionName: record.actionName,
+              input: record.input,
+              userId: record.userId,
+              sessionId: record.sessionId,
+              orgId,
+              tenantId: record.tenantId,
+              source: record.source,
+              metadata: record.metadata
+            })
+          );
+    if (decision.key === undefined || decision.policy === "allow") return start();
+    let started = false;
+    // The active-request entry is registered before this wait, so it is kept
+    // warm until the run's own heartbeat takes over, as a queued dispatch's is.
+    const heartbeatMs = resolveQueuedHeartbeatMs(flow.request?.heartbeatIntervalMs);
+    let heartbeat: ReturnType<typeof setInterval> | undefined;
+    const stopHeartbeat = (): void => {
+      if (heartbeat !== undefined) clearInterval(heartbeat);
+      heartbeat = undefined;
+    };
+    if (heartbeatMs > 0) {
+      heartbeat = setInterval(() => {
+        stores.activeRequests.heartbeat(record.id).catch(() => {});
+      }, heartbeatMs);
+      (heartbeat as { unref?: () => void }).unref?.();
+    }
+    try {
+      const admission = await arbiter.admit(decision, record.id);
+      return await admission.run(() => {
+        started = true;
+        stopHeartbeat();
+        return start(admission.lost);
+      });
+    } catch (error) {
+      if (!started) {
+        logSafely(
+          runtimeConfig.logger,
+          "warn",
+          "[flow-state] a continued request did not get its turn in its session; it stays parked with its resolution recorded, and the durability sweep continues it",
+          { requestId: record.id, key: decision.key, error: summarizeForLog(error) }
+        );
+        if (leaseId !== undefined) {
+          // The lease lapses on its own. The wait error is rethrown below.
+          await stores.leases.release(record.id, leaseId).catch(() => {});
+        }
+      }
+      throw error;
+    } finally {
+      stopHeartbeat();
+    }
+  };
+
   const continueRequest = async (
     opts: HostContinueRequestOptions
   ): Promise<ContinueRequestResult> => {
@@ -1377,7 +1489,8 @@ export function createInboundTransportHost(
       includeTrace: opts.includeTrace,
       stores,
       flowRegistry: registry,
-      runtimeConfig
+      runtimeConfig,
+      startRun: (run, start) => startContinuationInTurn(run, start, opts.leaseId)
     });
 
     // Keep the serverless function alive until the resumed run finishes, exactly

@@ -10,23 +10,32 @@
 import type { RequestStatusSnapshot } from "@flow-state-dev/core/types";
 import type { StoreRegistry } from "../stores/types";
 import type { FlowRegistry } from "../registry/flow-registry";
+import type { ResolvedPrincipal } from "../transports/types";
 import { ownsRecord } from "../context/record-owner";
-import { jsonResponse, unknownRequestResponse } from "./route-utils";
+import { callerReachesRequest, jsonResponse, unknownRequestResponse } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
 type RequestStatusRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
+  /** Caller's tenant, extracted the same way as every other request route. */
+  tenantId?: string;
+  /** The authenticated caller, when route-level authentication is active. */
+  principal?: ResolvedPrincipal;
 };
 
 /**
  * GET /api/flows/:flowKind/requests/:requestId/status
  *
- * - 200 with `RequestStatusSnapshot` when the request exists.
- * - 404 with `{ error }` when no record is found.
+ * - 200 with `RequestStatusSnapshot` when the request exists and the caller
+ *   reaches it (`callerReachesRequest`, the check the abort and recovery
+ *   routes make).
+ * - 404 with `{ error }` when no record is found, or it belongs to another
+ *   tenant or principal: the two are indistinguishable here.
  *
  * `lastHeartbeatAt` is best-effort: the registry entry may have already
  * been deregistered (terminal status), in which case the field is omitted.
+ * `sessionId` is omitted for a request that has no session.
  */
 export async function handleGetRequestStatus(
   _request: Request,
@@ -36,7 +45,7 @@ export async function handleGetRequestStatus(
   const { requestId } = route;
 
   const record = await ctx.stores.request.get(requestId);
-  if (record === undefined) {
+  if (record === undefined || !callerReachesRequest(record, ctx.tenantId, ctx.principal)) {
     return unknownRequestResponse(requestId);
   }
 
@@ -60,7 +69,8 @@ export async function handleGetRequestStatus(
       : {}),
     ...(active?.lastHeartbeatAt !== undefined
       ? { lastHeartbeatAt: active.lastHeartbeatAt }
-      : {})
+      : {}),
+    ...(record.sessionId != null ? { sessionId: record.sessionId } : {})
   };
 
   return jsonResponse(200, snapshot);

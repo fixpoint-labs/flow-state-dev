@@ -30,7 +30,7 @@ slot; the third adds the two ends of the path neither of them reaches:
 | [`goals/devforce-lab/it-waits-for-a-user-before-it-files/`](../../../../goals/devforce-lab/it-waits-for-a-user-before-it-files/) | The approval check. With the ask turned on, the EM worker asks a user before it files a feature. Approve files the row and the coder starts; Deny files nothing. No model, and the answer goes through the session's own resume. |
 | [`goals/devforce-lab/it-codes-in-the-projects-repository/`](../../../../goals/devforce-lab/it-codes-in-the-projects-repository/) | The project check. The coder runs on a workspace host whose source is the project holding the board's workstream: a project with a repository gets a branch of it, one without runs on its files, a remote the host does not allow is refused by name, and what a run keeps is saved to the project. No model. |
 | [`goals/devforce-lab/it-answers-a-conversations-task/`](../../../../goals/devforce-lab/it-answers-a-conversations-task/) | The conversation check. A coordinator files a task for the coder from a conversation: the coder answers it from the right project's code in a checkout of its own, the conversation hears it once, and a task that can't be done is heard failing, with Jev judging the answer against the goal. Scripted legs, and a real-model leg when a key serves it. |
-| [`goals/devforce-lab/it-names-the-project-a-coders-task-works-in/`](../../../../goals/devforce-lab/it-names-the-project-a-coders-task-works-in/) | The project-list check. Asked to have the coder look at "our repo", the chief of staff reads the user's projects and files the task for the one with a repository without asking; with two, it asks, naming both; a project the user isn't a member of never appears. Real model. |
+| [`goals/devforce-lab/it-names-the-project-a-coders-task-works-in/`](../../../../goals/devforce-lab/it-names-the-project-a-coders-task-works-in/) | The project-list check. Asked to have the coder look at "our repo", the Shift Coordinator reads the user's projects and files the task for the one with a repository without asking; with two, it asks, naming both; a project the user isn't a member of never appears. Real model. |
 
 It is **evidence, not an application**. Nobody opens it and clicks through it;
 you re-run it a year from now and compare against the verdict logs in the two
@@ -56,11 +56,9 @@ workforce/
       workers/coder/skills/branch-naming/SKILL.md  the coder's alone
       workers/reviewer/WORKER.md                   flow: coder   — declared, never woken
       workers/triage/WORKER.md                     flow: coordinator — hands every post to eng.em
-    ops/
-      workers/oncall/WORKER.md                     flow: coordinator — hands every post to eng.em
 ```
 
-Nine Markdown files, and **none of them is named anywhere in this directory's
+Eight Markdown files, and **none of them is named anywhere in this directory's
 code** except the root of the tree. Everything else is walked.
 
 Nothing in either `WORKER.md` names Claude Code, Codex or Cursor. The harness is
@@ -83,7 +81,7 @@ no opinion at that spot — not because a convention is missing.
 |---|---|
 | `workforce/flows/workers/em.mts` | The coordinator worker flow. It keeps a board on each of its sessions and files rows there, with the task tools its `delegates:` give it, and declares **no task entry at all** — so "the EM worker does no harness work" is a fact about the worker flow, not about one run. |
 | `workforce/flows/workers/coder.mts` | The working worker flow. One task entry, taking the feature board's rows and any conversation's tasks, with two `harnessManager`s behind it (feature work, which needs a commit, and a user's ask, which needs an answer), one message door over both, and the harness itself passed in as a slot. |
-| `judge.mts` | What the coder's judge asks Jev about a conversation's task, and the confidence floor it reads the verdict against: the same model and floor the chief of staff's best fit runs on. |
+| `judge.mts` | What the coder's judge asks Jev about a conversation's task, and the confidence floor it reads the verdict against: the same model and floor the Shift Coordinator's best fit runs on. |
 | `host.mts` | Read the tree, build the installation and the worker flows, register one copy of each. The `coder` assignee's address is supplied by the caller, so a control can point it at the wrong worker; any other assignee, filed through the doors or the task tools, is resolved by the Workforce worker lookup. The HTTP door is wired with a host-owned `resolvePrincipal`, so an unauthenticated read is refused rather than waved through under the development-organization fallback. |
 | the bare clone in `scratch-repo.mts` | Where an artifact has to survive to is the lab's question, not the framework's. A temp-directory repository plus a bare repository at a declared path the work is published to keeps the check re-runnable with no credential while still giving the artifact an address that outlives the process. |
 | `acceptance-check.mjs`, with `acceptance.mts` | The requester's half of the brief. It names the module, the export and the behaviour, and is spawned from here against the produced tree — never copied into a checkout, because a check the run can reach is a check the run can satisfy by rewriting it. |
@@ -140,9 +138,10 @@ that opens it through `openLab`; `fsdev dev --config` takes either file:
 
 - `fsd.fsdev.config.mts` is the `fsd` profile, what `pnpm shift-manager:dev` opens: the
   same tree with two projects on this repository, FSD and Shift Manager, and Claude Code as
-  its coder. A coding run on either works in a fresh worktree of the checkout this file sits
-  in, on a branch cut from local `main`; a run on any other project is refused, and nothing
-  is cloned.
+  its coder. Its coders read the profile's own brief and commit style (`fsd-projects.mts`)
+  in place of `feature-brief.md` and `commit-style`, DevTeam's demo contract and marker. A coding run on either works in a
+  fresh worktree of the checkout this file sits in, on a branch cut from local `main`; a run
+  on any other project is refused, and nothing is cloned.
 - `fsdev.config.mts` is the `devteam` profile, DevTeam's demo, which the checks run against.
   It opens with
   `pnpm shift-manager:dev --config packages/shift-manager/teams/devteam/fsdev.config.mts`.

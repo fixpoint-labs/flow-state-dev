@@ -5,7 +5,7 @@
  * build time and render clearly in DevTool.
  */
 import { handler } from "@flow-state-dev/core";
-import type { BlockContext, DefinedResource } from "@flow-state-dev/core/types";
+import type { DefinedResource } from "@flow-state-dev/core/types";
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 import { coerceText } from "../../shared/coerce";
@@ -44,7 +44,7 @@ export function createRecordArgument(opts: {
       } as Parameters<typeof ctx.resources.transcript.setState>[0]);
 
       const collection = await getOrCreateTaskCollection({
-        ctx: ctx as unknown as BlockContext,
+        ctx,
         backing: "state",
         collectionId: opts.collectionId,
         state: ctx.sequencer!,

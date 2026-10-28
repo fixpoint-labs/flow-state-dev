@@ -79,6 +79,33 @@ jobs:
       - name: OMP mailbox regressions
         run: node --test .omp/test/mailbox.test.mjs
 
+      # `git push --no-verify` skips the pre-push hook.
+      - name: Lint
+        run: pnpm lint
+
+      - name: The lint gate can fail
+        run: node --test scripts/lint-gate.test.mjs
+
+      # One task surface (FIX-2087). Here rather than beside "One word per thing"
+      # in Process guards: the endings rule reads callers by type, so it needs the
+      # TypeScript this job installs. The goal's rules.mjs owns the allow lists;
+      # its goal.md says why.
+      - name: One task surface
+        run: node goals/workforce-coordination/runs-on-one-task/sweep.mjs
+
+      # Every plant must be reported, and nothing else, or the sweep above could
+      # pass because it stopped reading a rule. It runs even when the sweep is red.
+      - name: The task-surface sweep reports its plants
+        if: ${{ !cancelled() }}
+        run: node goals/workforce-coordination/runs-on-one-task/sweep.mjs --control
+
+      # `--at` sweeps a tree extracted with `git archive`, which has no node_modules.
+      # On this commit's own tree it must give the plain sweep's verdict, or `--at`
+      # on an older commit says CAN'T TELL where it should name what it found.
+      - name: The task-surface sweep reads an extracted tree
+        if: ${{ !cancelled() }}
+        run: node goals/workforce-coordination/runs-on-one-task/sweep.mjs --at HEAD
+
   # The package tests, split across runners by scripts/test-shards.mjs. Each
   # shard runs its packages one at a time, as `pnpm test` does: two at once on
   # one runner oversubscribe it and tests start timing out.
@@ -164,6 +191,9 @@ jobs:
     name: Packed release installs and imports
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # needs is queue order, not a build dependency. Still runs if Typecheck & Test fails.
+    needs: [ci]
+    if: ${{ !cancelled() }}
 
     # The two-users-one-tenant suite runs against the installed copies, and its
     # queue case needs a real Redis. The script refuses that leg without one,
@@ -299,12 +329,39 @@ jobs:
       - name: The retired-term guard refuses its plants
         run: node scripts/check-retired-terms.mjs --control
 
-  knip:
-    name: Knip (unused files & broken imports)
+      # One word per thing (FIX-1876): dispatch, wait, ask and hand-off each
+      # name one mechanism. The goal's rules own the words, the keep list and
+      # the exclusions; goals/vocabulary/one-word-per-thing/goal.md says why.
+      - name: One word per thing
+        run: node goals/vocabulary/one-word-per-thing/sweep.mjs
+
+      # The planted parkOnAsk must still be reported, or the sweep above could
+      # pass because it stopped reading a file.
+      - name: The vocabulary sweep reports its plant
+        run: node goals/vocabulary/one-word-per-thing/sweep.mjs --control
+
+      # A goal that guards a check with `xs.length > 0 &&` skips it on an empty
+      # list and prints PASS having read nothing (FIX-1183). Goals floor the
+      # list with tell.over instead; the script header owns the one shape it
+      # refuses and the two it leaves alone.
+      - name: No goal hides an empty list behind a length guard
+        run: node goals/scripts/check-tell-suppress.mjs
+
+      # The plants must still be refused, and the look-alikes left alone, or
+      # the check above could pass because it stopped reading the shape.
+      - name: The length-guard check refuses its plants
+        run: node goals/scripts/check-tell-suppress.mjs --control
+
+  fallow:
+    name: Fallow (broken imports & new dead code)
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The audit step checks out the PR's base commit to tell new findings
+          # from inherited ones.
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
 
@@ -315,16 +372,36 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # Gates on the high-signal categories only (undeclared deps, missing
-      # binaries, unresolved imports). The broader unused-files / unused-exports
-      # analysis is available locally via `pnpm knip` for dead-code hunting.
-      - name: Knip
-        run: pnpm knip:ci
+      # Whole tree, every run: undeclared dependencies and imports that don't
+      # resolve. These are clean on main, so any finding is new.
+      - name: Unresolved imports & unlisted dependencies
+        run: pnpm fallow:ci
+
+      # PRs only: fails on unused files, exports, types or dependencies this
+      # PR leaves anywhere in the tree, including an export in a file it never
+      # touched whose last caller it deleted. Findings already on the base
+      # don't count, so the existing backlog never blocks a PR. The checkout
+      # is the PR merged into its base branch's current tip, so the base is
+      # the merge's first parent (`HEAD^1`), not `pull_request.base.sha`,
+      # which goes stale as the base branch moves.
+      - name: New dead code
+        if: github.event_name == 'pull_request'
+        run: pnpm fallow:new-dead-code HEAD^1
+
+      # PRs only: new duplication and complexity in the changed files, reported
+      # without failing (see .fallowrc.json). `pnpm fallow` locally shows the
+      # whole backlog.
+      - name: New duplication & complexity
+        if: github.event_name == 'pull_request'
+        run: pnpm fallow:audit --base HEAD^1
 
   e2e:
     name: Kitchen-sink E2E (Playwright)
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # needs is queue order, not a build dependency. Still runs if Typecheck & Test fails.
+    needs: [ci]
+    if: ${{ !cancelled() }}
 
     steps:
       - uses: actions/checkout@v4
@@ -355,10 +432,46 @@ jobs:
           KITCHEN_SINK_TEST_MODE: "1"
           NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE: "1"
 
-      - name: Install Playwright browsers
-        run: pnpm --filter @flow-state-dev/kitchen-sink exec playwright install --with-deps chromium
+      # The browser install is the step that blew the job's time limit: it
+      # normally takes ~20s, but `--with-deps` ran `apt-get update` and
+      # downloaded the browsers on every run, and when a mirror or the
+      # browser CDN was slow it sat there for 5-9 minutes. So the browser
+      # comes from a cache keyed on the Playwright version, and apt only runs
+      # when the runner is actually missing a library. Both network steps
+      # carry their own limit, so a slow one fails by name, not as a
+      # cancelled job.
+      - name: Resolve Playwright version
+        id: playwright
+        working-directory: apps/kitchen-sink
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Playwright browser cache
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      # Headless shell only: the suite runs headless, so the full Chrome
+      # build is never launched. ffmpeg (for videos) comes with it.
+      - name: Install Playwright browser
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 4
+        run: pnpm --filter @flow-state-dev/kitchen-sink exec playwright install --only-shell chromium
+
+      - name: Install browser system dependencies (if missing)
+        timeout-minutes: 3
+        working-directory: apps/kitchen-sink
+        run: |
+          shell_bin=$(ls ~/.cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell | head -n 1)
+          if ldd "$shell_bin" | grep -q "not found"; then
+            pnpm exec playwright install-deps chromium
+          else
+            echo "All shared libraries for $shell_bin are present; skipping apt."
+          fi
 
       - name: Run Playwright tests
+        timeout-minutes: 6
         run: pnpm --filter @flow-state-dev/kitchen-sink test:e2e
 
       - name: Upload Playwright report
@@ -372,6 +485,9 @@ jobs:
   storybook:
     name: Storybook Build
     runs-on: ubuntu-latest
+    # needs is queue order, not a build dependency. Still runs if Typecheck & Test fails.
+    needs: [ci]
+    if: ${{ !cancelled() }}
 
     steps:
       - uses: actions/checkout@v4
@@ -402,6 +518,9 @@ jobs:
   docs:
     name: Docs Site Build
     runs-on: ubuntu-latest
+    # needs is queue order, not a build dependency. Still runs if Typecheck & Test fails.
+    needs: [ci]
+    if: ${{ !cancelled() }}
 
     steps:
       - uses: actions/checkout@v4
@@ -414,6 +533,11 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      # Diagrams and custom.css keep to the page register: token colours only,
+      # strokes 1/1.3/1.4, `5 4` dashes, mono diagram text, no `--info`.
+      - name: Lint docs brand rules
+        run: pnpm --filter @flow-state-dev/docs lint:brand
 
       # No `packages:build` and no Turborepo cache, unlike the jobs above:
       # `apps/docs` declares no workspace dependency, and `docs:build` runs

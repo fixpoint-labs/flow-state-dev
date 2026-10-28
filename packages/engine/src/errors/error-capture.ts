@@ -43,11 +43,20 @@ export interface ErrorCaptureEvent {
   scope?: FlowErrorScope;
   /** True for high-frequency transient blocks (poll loops); lets adapters down-sample. */
   transient?: boolean;
+  /**
+   * Set on the one event a request sends when it settles `failed` (FIX-1983),
+   * after its failed record is written. Its `scope` is `"request"`, and it
+   * names the leaf that threw when one did. A failure a retry or a rescue
+   * healed never gets one, so a sink that files bugs keys on it; a sink that
+   * forwards every failing block ignores it.
+   */
+  final?: true;
 }
 
 /**
  * Operator-supplied error sink. Opt-in; omit for no capture. Fires once per
- * failing block (deduped to the leaf). Read-only: the return value is ignored.
+ * failing block (deduped to the leaf), and once more, marked `final`, for a
+ * request that settles failed. Read-only: the return value is ignored.
  * May be async; the runtime awaits it inside a guard so a throw or rejection
  * can never affect the request. Keep it fast (enqueue-and-return).
  */
@@ -105,6 +114,19 @@ export function toErrorCaptureEvent(
     scope: error.scope ?? block?.scope,
     transient: block?.transient
   };
+}
+
+/**
+ * Build the final-failure event for a request that settled `failed`: the
+ * request's identity, `scope: "request"`, `final: true`, and the leaf block
+ * that threw when the caller knows it.
+ */
+export function toFinalErrorCaptureEvent(
+  error: FlowError,
+  identity: ErrorCaptureIdentity,
+  leaf?: ErrorCaptureBlockInfo
+): ErrorCaptureEvent {
+  return { ...toErrorCaptureEvent(error, identity, leaf), scope: "request", final: true };
 }
 
 /**

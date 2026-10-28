@@ -8,6 +8,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type {
   JsonObject,
   ResourceConfig,
@@ -191,6 +192,7 @@ function makeRegistry(options: {
   return createScopeResourceRegistry({
     scope: "session",
     scopeId: "sess_1",
+    orgId: DEFAULT_ORG_ID,
     cellOf: () => "sess_1",
     configs: options.configs ?? {},
     readResources: () => state,
@@ -226,6 +228,7 @@ describe("concurrent resource writes", () => {
     const registry = createScopeResourceRegistry({
       scope: "session",
       scopeId: "sess_1",
+      orgId: DEFAULT_ORG_ID,
       cellOf: () => "sess_1",
       configs: {
         spine: makeResourceConfig({ stateSchema: z.object({}).passthrough(), default: {} }),
@@ -258,6 +261,7 @@ describe("concurrent resource writes", () => {
     const registry = createScopeResourceRegistry({
       scope: "session",
       scopeId: "sess_1",
+      orgId: DEFAULT_ORG_ID,
       cellOf: () => "sess_1",
       configs: {
         spine: makeResourceConfig({ stateSchema: z.object({}).passthrough(), default: {} }),
@@ -287,6 +291,7 @@ describe("concurrent resource writes", () => {
     const registry = createScopeResourceRegistry({
       scope: "session",
       scopeId: "sess_1",
+      orgId: DEFAULT_ORG_ID,
       cellOf: () => "sess_1",
       configs: {
         spine: makeResourceConfig({ stateSchema: z.object({}).passthrough(), default: {} }),
@@ -819,6 +824,27 @@ describe("delta-verb change notification (FIX-1269)", () => {
 });
 
 /**
+ * A `secret` field stays out of the live delta a mutation streams to clients.
+ * The config has no projection, so without `secret` the delta is the whole
+ * state, key included.
+ */
+describe("live delta omits secret fields", () => {
+  it("streams a live resource's state without the field its config marks secret", async () => {
+    const onChange = vi.fn();
+    const config = makeResourceConfig({ default: {}, secret: ["value"], client: { live: true } });
+    const registry = makeRegistry({ configs: { token: config }, onResourceChanged: onChange });
+    const ref = registry.get("token");
+
+    await ref.patchState({ value: "sk-secret-sentinel", setAt: "2026-10-13" });
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange.mock.calls[0]![2]).toEqual({ delta: { setAt: "2026-10-13" } });
+    // The server-side handle still reads it.
+    expect(ref.state).toEqual({ value: "sk-secret-sentinel", setAt: "2026-10-13" });
+  });
+});
+
+/**
  * FIX-1269: a refusal must not be laundered through the write-path schema parse.
  *
  * The suite above uses `passthrough()` schemas, which parse the cached row to
@@ -864,6 +890,7 @@ describe("delta-verb refusal against a rewriting schema (FIX-1269)", () => {
     const registry = createScopeResourceRegistry({
       scope: "session",
       scopeId: "sess_1",
+      orgId: DEFAULT_ORG_ID,
       cellOf: () => "sess_1",
       configs: options.configs,
       readResources: () => state,
@@ -1271,6 +1298,7 @@ describe("createScopeResourceRegistry — collections", () => {
     const registry = createScopeResourceRegistry({
       scope: "session",
       scopeId: "sess_1",
+      orgId: DEFAULT_ORG_ID,
       cellOf: () => "sess_1",
       configs: { items: nsConfig },
       readResources: () => state,
@@ -1314,6 +1342,7 @@ describe("createScopeResourceRegistry — collections", () => {
     const registry = createScopeResourceRegistry({
       scope: "session",
       scopeId: "sess_1",
+      orgId: DEFAULT_ORG_ID,
       cellOf: () => "sess_1",
       configs: { items: nsConfig },
       readResources: () => state,
@@ -1508,6 +1537,7 @@ describe("createScopeResourceRegistry — lifecycle hooks", () => {
     const registry = createScopeResourceRegistry({
       scope: "session",
       scopeId: "sess_1",
+      orgId: DEFAULT_ORG_ID,
       cellOf: () => "sess_1",
       configs: { items: nsConfig },
       readResources: () => state,
@@ -1552,6 +1582,7 @@ describe("createScopeResourceRegistry — lifecycle hooks", () => {
     const registry = createScopeResourceRegistry({
       scope: "session",
       scopeId: "sess_1",
+      orgId: DEFAULT_ORG_ID,
       cellOf: () => "sess_1",
       configs: { items: nsConfig },
       readResources: () => state,

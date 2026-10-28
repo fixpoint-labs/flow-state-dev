@@ -135,7 +135,7 @@ anything rests on.
   related to FIX-1791 and FIX-1795 and closed only on a green run; neither merges while it is
   open, and their builds run in parallel, as ER-30 has it (D1). Retesting each
   finding on its own instead of rerunning the whole plan was not taken: the closure rule
-  requires the whole plan.
+  requires the whole plan. *Superseded 2026-10-13 by [re-check failures](#re-check-failures) (QR-19).*
 - **Review round 1** — the milestone got its own steps, limited to what FIX-1788's merge has, and
   a rerun on each fix's commit before FIX-1791 and FIX-1795 are released (D1). The pre-epic
   baseline became a role the run resolves, with its own control expectation. P3.9's list became
@@ -197,3 +197,16 @@ anything rests on.
   refuses settles b4; any other error still fails it. Serving the closure without the judge was
   rejected, because the served install has no switch for it and adding one is product surface for
   a test.
+- <a name="re-check-failures"></a>**Amended after merge (re-check failures, 2026-10-13)**: the
+  product owner chose to have a re-run re-grade only the failed checks and every check the diff
+  since the run touches, instead of the whole plan. Every other check carries forward, each with
+  the run it passed in. QR-19 states the rule.
+- <a name="closed-by-the-owner"></a>**Amended after merge (closed by the owner, 2026-10-23)**: the
+  product owner closed FIX-1797 without a final run that files nothing (QR-22). The last graded
+  commit was `e2ee2c18` (run r6d). Every finding was fixed and measured on its own before merge,
+  but no single run graded the fixes together. Why: FIX-2056 and FIX-2058 were rewriting the
+  coordinator and task surfaces this plan grades, so a re-grade would have measured that
+  refactor rather than this epic. The run folders and the findings list are under
+  `/mnt/project-files/FIX-1797/` and in the closure PR. The lesson for the next closure is to
+  grade one pinned commit and close on that verdict, rather than re-pinning to chase other
+  epics' merges.

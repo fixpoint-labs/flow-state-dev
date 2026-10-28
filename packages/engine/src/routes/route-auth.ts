@@ -212,6 +212,7 @@ export function routeSubject(route: ParsedFlowRoute): RouteSubject {
     case "request_stream":
     case "abort_request":
     case "resume_suspension":
+    case "answer_suspension":
     case "request_status":
     case "retry_request":
     case "continue_request":
@@ -227,6 +228,7 @@ export function routeSubject(route: ParsedFlowRoute): RouteSubject {
     // then probes it with cross-org, cross-tenant and anonymous callers.
     case "user_stream":
     case "check_interrupted_requests":
+    case "list_interrupted_requests":
       return { kind: "user", userId: route.userId };
 
     // Cross-flow. The two listings scope their rows to the caller in the
@@ -573,6 +575,12 @@ export async function authorizeManagementRoute(
   // point is that the caller does not get to say which organization they are
   // in; the verified principal does.
   if (ownerOrgId !== undefined && principal.orgId !== ownerOrgId) {
+    // A request id travels as freely across organizations as across users, so
+    // another organization's is answered as an id nobody has used, exactly as
+    // another user's is above.
+    if (subject.kind === "request") {
+      return { denied: hiddenRequestResponse(request, route, ctx.registry, subject.requestId) };
+    }
     return {
       denied: jsonResponse(403, {
         error: "Caller's organization does not own the requested resource"

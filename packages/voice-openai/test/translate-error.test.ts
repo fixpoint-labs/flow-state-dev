@@ -5,7 +5,10 @@ import { translateError } from "../src/translate-error";
 
 const headers = new Headers();
 
-function makeApiErr<T extends typeof OpenAI.APIError>(
+/** Any `APIError` subclass; each narrows `status` to its own code, so the base class's constructor type is too wide. */
+type ApiErrorClass = new (status: never, error: never, message: string | undefined, headers: Headers) => InstanceType<typeof OpenAI.APIError>;
+
+function makeApiErr<T extends ApiErrorClass>(
   Cls: T,
   status: number,
   body: object,

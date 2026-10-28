@@ -1,6 +1,6 @@
 ---
 description: Runs deployments and keeps a ticket for each one.
-model: vercel/openai/gpt-5.4-mini
+model: vercel:openai/gpt-5.4-mini
 tools: [drawTicket]
 ---
 

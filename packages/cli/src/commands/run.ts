@@ -19,9 +19,8 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import {
   runAction,
   resolveInProcessPrincipal,
-  createInMemoryStores,
-  createFilesystemStores,
   createModelResolver,
+  resolveDurabilityProvider,
   createResponseEmitter,
   type ExecutionResult,
   type RequestStreamEventWithId,
@@ -45,6 +44,7 @@ import {
   type CliPrincipal,
   type PinOf,
 } from "../principal";
+import { openLocalStores, parseStoreFlag, STORE_FLAG_HELP, type LocalStoreKind } from "../local-store";
 import { EXIT_SUCCESS, EXIT_EXECUTION_ERROR, EXIT_INVALID_ARGS, EXIT_CONFIG_ERROR, EXIT_DISCOVERY_ERROR, EXIT_INTERNAL_ERROR } from "../exit-codes";
 
 /** NDJSON event types emitted to stdout during flow execution. */
@@ -55,7 +55,23 @@ export type FlowEvent =
   | { type: "content_delta"; itemId: string; delta: string }
   | { type: "state_change"; scope: string; resourcePath: string; changeType: string }
   | { type: "flow_complete"; output: unknown; durationMs: number; items: number }
+  | ({ type: "suspended" } & RunSuspension)
   | { type: "error"; message: string; code?: string };
+
+/**
+ * A stop the run ended on (FIX-2063 D3): the request is held, waiting for a
+ * person, and is answered through a server on the same store (`fsdev dev`).
+ */
+export interface RunSuspension {
+  requestId: string;
+  sessionId: string;
+  suspensionId: string;
+  reason: string;
+  title?: string;
+  message?: string;
+  /** Where to answer it, as one sentence a person reads. */
+  answer: string;
+}
 
 /** Structured final result for `fsdev run`. */
 export interface FlowRunResult {
@@ -64,6 +80,8 @@ export interface FlowRunResult {
   output: unknown;
   execution: { durationMs: number; itemCount: number };
   error?: { message: string; stack?: string };
+  /** Set when the run ended waiting for a person; the exit code is 0. */
+  suspended?: RunSuspension;
 }
 
 /** Writes a single NDJSON line to stdout. */
@@ -112,7 +130,7 @@ export function registerRunCommand(program: Command): void {
     .option("-m, --model <model>", "Override model for generator blocks run in this process")
     .option("-s, --session <id>", "Session ID for reuse across invocations")
     .option("--org <id>", "Run in this organization and skip the app's resolver")
-    .option("-u, --user <id>", "Run as this user. The organization comes from the app's resolver unless you also pass --org. Default: the user your app's resolver returns, or cli-user if the app has none or you pass --org")
+    .option("-u, --user <id>", "Run as this user. The organization comes from the app's resolver unless you also pass --org. Default: the user your app's resolver returns, or devuser (the DevTool's local user) if the app has none or you pass --org")
     .option("--seed-session <json>", "Seed session-level state (JSON or file path)")
     .option("--flow-dir <path>", "Override flow discovery root (repeatable)", collectValues, undefined)
     .option("--dotenv <path>", "Load a specific .env file, e.g. an app's (repeatable, resolved from cwd)", collectValues, undefined)
@@ -121,6 +139,7 @@ export function registerRunCommand(program: Command): void {
     .option("--quiet", "Suppress runtime logs on stderr (NDJSON on stdout still emitted)")
     .option("--log-level <level>", "Stderr log level: debug | info | warn | error (default: info)")
     .option("--capture <path>", "Write the full structured run output to a JSON file")
+    .option("--store <kind>", STORE_FLAG_HELP)
     .action(async (flowKind: string, action: string, options: RunCommandOptions) => {
       try {
         await executeRunCommand(flowKind, action, options);
@@ -162,6 +181,8 @@ export interface RunCommandOptions {
   logLevel?: RuntimeLoggerLevel;
   /** When set, writes the full structured run output to this JSON file. */
   capture?: string;
+  /** `--store`: the local store without an app config (default SQLite). */
+  store?: LocalStoreKind;
 }
 
 /** Final on-disk shape written by `--capture`. */
@@ -195,7 +216,7 @@ function writeCaptureFile(path: string, payload: CapturePayload): void {
 export interface RunCommandInternalOptions extends RunCommandOptions {
   /** Override flow discovery directory (defaults to process.cwd()). */
   cwd?: string;
-  /** Override stores (defaults to filesystem at .fsdev/data). */
+  /** Override stores (defaults to the local SQLite file `fsdev dev` reads). */
   stores?: StoreRegistry;
 }
 
@@ -232,9 +253,13 @@ export async function executeRunCommand(
         }
       : undefined;
 
+  let closeLocalStores: (() => void) | undefined;
   try {
+    const storeKind = parseStoreFlag(options.store, resolved.source === "config");
     let flow: FlowInstance;
     let stores: StoreRegistry;
+    /** Where a stop this run ends on is answered, as the waiting report says it. */
+    let answerAt: string;
     let baseRuntimeConfig: RuntimeConfig | undefined;
     let askPrincipal: AskPrincipal;
     let pinOf: PinOf;
@@ -267,6 +292,7 @@ export async function executeRunCommand(
       baseRuntimeConfig = runtime.runtimeConfig;
       askPrincipal = askFlowState(resolved.flowState, resolved.configPath);
       pinOf = (id) => runtime.registry.pinOf(id);
+      answerAt = `Answer it in a server on this app's stores, such as fsdev dev with ${resolved.configPath}.`;
     } else {
       // --- discovery path: scan conventional directories, CLI defaults ---
       const found = resolved.flows.find((f) => f.id === flowKind);
@@ -285,11 +311,28 @@ export async function executeRunCommand(
       registry.register(flow);
       askPrincipal = (question) => resolveInProcessPrincipal({ registry }, question);
       pinOf = (id) => registry.pinOf(id);
-      // `fsdev run` is a local one-shot runner, so the filesystem store is
-      // acknowledged development-only (FIX-406 6A).
-      stores =
-        options.stores ??
-        createFilesystemStores({ rootDir: ".fsdev/data", developmentOnly: true });
+      // The store `fsdev dev` reads, so a stop this run ends on is answered
+      // there, after the run exits (FIX-2063 D1). Durable by the one engine
+      // rule: on wherever the stores persist.
+      if (options.stores !== undefined) {
+        stores = options.stores;
+        answerAt = "Answer it in a server on these stores.";
+      } else {
+        const local = await openLocalStores(storeKind);
+        closeLocalStores = local.close;
+        stores = local.stores;
+        answerAt =
+          local.kind === "filesystem"
+            ? `Answer it in fsdev dev --store filesystem, started after this run exits: the filesystem store is ` +
+              `single-process. Its state is under ${local.dataLine}.`
+            : `Answer it in fsdev dev, which reads this store: ${local.dataLine}.`;
+        if (local.kind === "filesystem" && !options.quiet) {
+          process.stderr.write(
+            `[fsdev] store: ${local.dataLine}. It is single-process: don't run fsdev dev on it while this run is going.\n`,
+          );
+        }
+      }
+      baseRuntimeConfig = { durabilityProvider: resolveDurabilityProvider({ stores }) };
     }
 
     // 2. Validate action exists on flow
@@ -506,8 +549,16 @@ export async function executeRunCommand(
 
     const durationMs = Date.now() - startMs;
 
+    // 8b. A run that ended on a stop is held, not done (FIX-2063 D3): the
+    // request waits for a person, answered through a server on this store,
+    // and the command exits 0 saying so.
+    const suspended = success ? await heldStop(result, stores, sessionId, answerAt) : undefined;
+
     // 9. Emit terminal NDJSON event
-    if (success) {
+    if (suspended !== undefined) {
+      recordEvent({ type: "suspended", ...suspended });
+      if (!options.quiet) process.stderr.write(describeHeldStop(suspended));
+    } else if (success) {
       recordEvent({
         type: "flow_complete",
         output: result.output ?? null,
@@ -527,6 +578,7 @@ export async function executeRunCommand(
       output: result.output ?? null,
       execution: { durationMs, itemCount: result.items.length },
       ...(error !== undefined ? { error } : {}),
+      ...(suspended !== undefined ? { suspended } : {}),
     };
 
     const exitCode = success ? EXIT_SUCCESS : EXIT_EXECUTION_ERROR;
@@ -559,8 +611,49 @@ export async function executeRunCommand(
 
     return runResult;
   } finally {
+    closeLocalStores?.();
     await disposeConfig?.();
   }
+}
+
+/**
+ * The stop a run ended on, when its request is held waiting for a person:
+ * the request record says `suspended`, and the stop is its last suspension item.
+ * `fsdev chat` reads a held turn the same way.
+ */
+export async function heldStop(
+  result: ExecutionResult,
+  stores: StoreRegistry,
+  sessionId: string,
+  answer: string,
+): Promise<RunSuspension | undefined> {
+  if (result.requestId === undefined) return undefined;
+  const record = await stores.request.get(result.requestId);
+  if (record?.status !== "suspended") return undefined;
+  const item = [...result.items].reverse().find((i) => (i as { type?: string }).type === "suspension") as
+    | { suspensionId?: string; reason?: unknown; title?: string; message?: string }
+    | undefined;
+  if (item?.suspensionId === undefined) return undefined;
+  return {
+    requestId: result.requestId,
+    sessionId,
+    suspensionId: item.suspensionId,
+    reason: String(item.reason),
+    ...(item.title === undefined ? {} : { title: item.title }),
+    ...(item.message === undefined ? {} : { message: item.message }),
+    answer,
+  };
+}
+
+/** The waiting report on stderr: what waits, its ids, where to answer it, and when its deadline fires. */
+function describeHeldStop(stop: RunSuspension): string {
+  const what = stop.message ?? stop.title ?? stop.reason;
+  return (
+    `[fsdev] waiting for a person: ${what}\n` +
+    `[fsdev]   suspension ${stop.suspensionId} · request ${stop.requestId} · session ${stop.sessionId}\n` +
+    `[fsdev]   ${stop.answer}\n` +
+    `[fsdev]   Its deadline fires only while a server runs on this store.\n`
+  );
 }
 
 /**

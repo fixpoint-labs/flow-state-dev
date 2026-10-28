@@ -10,6 +10,7 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { mockGenerator, testBlock } from "@flow-state-dev/testing";
 import { handler } from "@flow-state-dev/core";
+import type { ComponentItem } from "@flow-state-dev/core/items";
 import { z } from "zod";
 import {
   planAndExecute,
@@ -292,6 +293,100 @@ describe("plan-and-execute pattern", () => {
       expect(output.tasks.find((t: any) => t.id === "s3")?.status).toBe(
         "skipped",
       );
+    });
+
+    it("skips a replanned task that depends on a failed one, and keeps the run going (FIX-2080)", async () => {
+      // A replan comes after a failure, which is when a model is most likely
+      // to name the failed task. That task is skipped, as a dependent of a
+      // failure always was; the rest of the replan runs, and the evaluator
+      // judges again.
+      const planner = createDeterministicPlanner([{ id: "s1", goal: "Will fail" }]);
+      let evalCalls = 0;
+      const evaluator = handler({
+        name: "replan-dead-dep-eval",
+        inputSchema: z.any(),
+        outputSchema: z.object({
+          decision: z.enum(["continue", "complete", "replan"]),
+          tasks: z.array(z.object({ id: z.string(), goal: z.string(), deps: z.array(z.string()).optional() })).optional(),
+        }),
+        execute: () => {
+          evalCalls += 1;
+          if (evalCalls === 1) {
+            return {
+              decision: "replan" as const,
+              tasks: [
+                { id: "after", goal: "Build on s1", deps: ["s1"] },
+                { id: "after-after", goal: "Build on that", deps: ["after"] },
+                { id: "fresh", goal: "Start over" },
+              ],
+            };
+          }
+          return { decision: "complete" as const };
+        },
+      });
+      const block = planAndExecute({
+        name: "replan-dead-dep",
+        planner,
+        stepExecutor: handler({
+          name: "fail-first-executor",
+          inputSchema: z.any(),
+          outputSchema: z.any(),
+          execute: (input) => {
+            if ((input as any)?.stepId === "s1") throw new Error("Failed");
+            return { summary: "ok", success: true };
+          },
+        }),
+        evaluator,
+        enableReplanning: true,
+        maxIterations: 5,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(block, { input: { goal: "Test a replan naming a failed task" } });
+
+      expect(result.error).toBeNull();
+      expect(evalCalls).toBe(2);
+      const output = result.output as any;
+      const status = (id: string) => output.tasks.find((t: any) => t.id === id)?.status;
+      expect(status("s1")).toBe("failed");
+      expect(status("after")).toBe("skipped");
+      expect(status("after-after")).toBe("skipped");
+      expect(status("fresh")).toBe("completed");
+      // Skipped the way a cascade skips: each says which dependency ended it.
+      const error = (id: string) => output.tasks.find((t: any) => t.id === id)?.error;
+      expect(error("after")).toBe("dep s1 failed");
+      expect(error("after-after")).toBe("dep after was cancelled");
+    });
+
+    it("still fails the run on a replanned task whose dependency is on no board", async () => {
+      const planner = createDeterministicPlanner([{ id: "s1", goal: "First" }]);
+      let evalCalls = 0;
+      const evaluator = handler({
+        name: "replan-unknown-dep-eval",
+        inputSchema: z.any(),
+        outputSchema: z.object({
+          decision: z.enum(["continue", "complete", "replan"]),
+          tasks: z.array(z.object({ id: z.string(), goal: z.string(), deps: z.array(z.string()).optional() })).optional(),
+        }),
+        execute: () => {
+          evalCalls += 1;
+          return evalCalls === 1
+            ? { decision: "replan" as const, tasks: [{ id: "lost", goal: "Needs a ghost", deps: ["nowhere"] }] }
+            : { decision: "complete" as const };
+        },
+      });
+      const block = planAndExecute({
+        name: "replan-unknown-dep",
+        planner,
+        stepExecutor: echoExecutor,
+        evaluator,
+        enableReplanning: true,
+        maxIterations: 5,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(block, { input: { goal: "Test a replan naming no task" } });
+      expect(String((result.error as any)?.message ?? result.error)).toMatch(/dependency_not_on_board/);
     });
 
     it("marks task failed when executor returns success: false", async () => {
@@ -1296,9 +1391,9 @@ describe("plan-and-execute pattern", () => {
 
       expect(result.error).toBeNull();
       const metaItems = result.items.filter(
-        (it: any) =>
+        (it): it is ComponentItem =>
           it.type === "component" && it.component === "task-board-meta",
-      ) as Array<{ data: { status: string; collectionId: string } }>;
+      );
       // FIX-491: keyed component emissions upsert in place. The pattern
       // emits "planning" → "active" → "completed" against the same key, so
       // the persisted record collapses to the latest snapshot. Live SSE
@@ -1350,7 +1445,8 @@ describe("plan-and-execute pattern", () => {
       expect(exports.createLLMEvaluator).toBeDefined();
       expect(exports.createCaptureAndPlan).toBeDefined();
       expect(exports.createApplyReplan).toBeDefined();
-      expect(exports.createCascadeSkipDependents).toBeDefined();
+      // The dependents cascade is the board's own now (FIX-2080): no step to export.
+      expect(exports).not.toHaveProperty("createCascadeSkipDependents");
       expect(exports.createSynthesize).toBeDefined();
       expect(exports.normalizeOutputStatus).toBeDefined();
     });

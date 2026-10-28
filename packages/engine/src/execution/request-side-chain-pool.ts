@@ -26,6 +26,15 @@ interface PoolEntry {
 
 class RequestSideChainPoolImpl implements RequestSideChainPool {
   private readonly entries: PoolEntry[] = [];
+  /** Every failure a drain returned, kept across drains (see `failures`). */
+  private readonly kept: RequestSideChainPoolResult["failed"] = [];
+  /**
+   * Scope drains still awaiting their entries. A scope drain takes its
+   * entries out of the pool first, so a caller that stops waiting (a
+   * `.waitForSideChain({ timeoutMs })` that timed out) would leave them
+   * where no other drain sees them; `drainToQuiescence` waits for these too.
+   */
+  private readonly scopeDrains = new Set<Promise<RequestSideChainPoolResult>>();
   private pending = 0;
   /** Listener installed by an active `drainAll` for status emission. */
   private drainListener: ((count: number) => void) | undefined;
@@ -79,7 +88,26 @@ class RequestSideChainPoolImpl implements RequestSideChainPool {
       return { completed: [], failed: [] };
     }
 
-    const result = await this.awaitEntries(matching);
+    // The keep runs as the entries settle, whether or not the caller still
+    // waits. A caller that gave up can no longer throw or log what failed, so
+    // then the pool keeps and logs it, `failOnError` or not.
+    const drain: Promise<RequestSideChainPoolResult> = this.awaitEntries(matching).then((settled) => {
+      this.scopeDrains.delete(drain);
+      const abandoned = options?.abandoned?.aborted === true;
+      if (options?.failOnError !== true || abandoned) this.kept.push(...settled.failed);
+      if (abandoned) {
+        for (const f of settled.failed) {
+          // eslint-disable-next-line no-console
+          console.error(
+            `[runAction] Background work "${f.meta.name}" failed:`,
+            (f.reason as { message?: string } | undefined)?.message ?? f.reason
+          );
+        }
+      }
+      return settled;
+    });
+    this.scopeDrains.add(drain);
+    const result = await drain;
     if (options?.failOnError === true && result.failed.length > 0) {
       const reason = result.failed[0]!.reason;
       throw reason instanceof Error ? reason : new Error(String(reason));
@@ -98,7 +126,9 @@ class RequestSideChainPoolImpl implements RequestSideChainPool {
 
     try {
       const matching = this.entries.splice(0, this.entries.length);
-      return await this.awaitEntries(matching, options?.signal);
+      const result = await this.awaitEntries(matching, options?.signal);
+      this.kept.push(...result.failed);
+      return result;
     } finally {
       this.drainListener = undefined;
     }
@@ -114,10 +144,14 @@ class RequestSideChainPoolImpl implements RequestSideChainPool {
     // `drainAll` returns an empty result the moment `entries` is empty, so
     // that is both the termination condition and a cheap no-op for a request
     // that never queued anything.
+    // A pass that consumes nothing ends it only once no scope drain is still
+    // awaiting entries it took out of the pool.
     for (;;) {
       const pass = await this.drainAll({ onPendingChange: options?.onPendingChange });
       if (pass.completed.length + pass.failed.length === 0) {
-        return { completed, failed };
+        if (this.scopeDrains.size === 0) return { completed, failed };
+        await Promise.all([...this.scopeDrains]);
+        continue;
       }
       completed.push(...pass.completed);
       failed.push(...pass.failed);
@@ -126,6 +160,10 @@ class RequestSideChainPoolImpl implements RequestSideChainPool {
 
   pendingCount(): number {
     return this.pending;
+  }
+
+  failures(): ReadonlyArray<RequestSideChainPoolResult["failed"][number]> {
+    return [...this.kept];
   }
 
   private notifyDrainListener(): void {

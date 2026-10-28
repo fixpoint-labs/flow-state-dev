@@ -137,6 +137,8 @@ async function setupCtx(opts: {
     flowKind: "debug-flow",
     userId: "user_1",
     state: {},
+    journal: [],
+    version: 0,
     createdAt: Date.now(),
     updatedAt: Date.now()
   };

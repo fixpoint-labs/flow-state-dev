@@ -59,7 +59,7 @@ or report line that shows the rule held.
 | A swept part was never rendered in leg c | QR-13 |
 | Leg c passed because more than the theme was removed | The patch in the report is the theme import alone |
 | A reused component was restyled in Shift Manager, or a copy differs from its source | FIX-1655's drift check, with Shift Manager listed, in part 3 |
-| A Shift Manager value sits in an FSD package | Leg c's static half, and FIX-1655's check in part 3 |
+| A Shift Manager value sits in an FSD package (the DevTool's own brand aside, [amended](EVOLUTION.md#amendment--2026-10-13--the-devtools-brand)) | Leg c's static half, and FIX-1655's check in part 3 |
 | A surface shows a model the shell invented | Leg a's rows equal store rows by id; J4 |
 | A Lab needed a wrapper, or opened with no org | b0's comparison, and b's org step under a Lab with no resolver, with the `no-org` control failing it |
 | A control never failed, or failed at setup | Each FAIL names its leg and signal, except today's `main`, whose expected red is that Shift Manager is absent |

@@ -18,7 +18,7 @@ type Flight = {
 const EMPTY_REQUESTS: SessionRequestSummary[] = [];
 
 export function useSessionRequests(sessionId: string | null) {
-  const { sessionClient, recoveryClient, config, autoRecoverInterrupted } = useDevTool();
+  const { client, config, autoRecoverInterrupted } = useDevTool();
   const [requests, setRequests] = useState<SessionRequestSummary[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,8 +64,8 @@ export function useSessionRequests(sessionId: string | null) {
       // session must not mutate a stale `in_progress` row to `interrupted` as
       // a side effect unless the panel explicitly asked for that behavior.
       if (autoRecoverInterrupted && config.userId.trim().length > 0) {
-        await recoveryClient
-          .checkInterrupted({ userId: config.userId })
+        await client.requests
+          .interrupted()
           .catch((err) => {
             console.warn("[devtool] checkInterrupted failed", err);
           });
@@ -73,7 +73,7 @@ export function useSessionRequests(sessionId: string | null) {
       // Request full item logs so requests that completed before this view
       // opened still render their trace tree (FIX-733), and each request's
       // action output, which a Tasks-tab row reads its answer from (FIX-1661).
-      const result = await sessionClient.listSessionRequests(sessionId, {
+      const result = await client.sessions.requests(sessionId, {
         includeItems: true,
         includeResultOutput: true
       });
@@ -87,8 +87,7 @@ export function useSessionRequests(sessionId: string | null) {
     }
   }, [
     fence,
-    sessionClient,
-    recoveryClient,
+    client,
     sessionId,
     config.userId,
     autoRecoverInterrupted,

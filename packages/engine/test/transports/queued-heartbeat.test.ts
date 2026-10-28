@@ -39,9 +39,9 @@ function buildHost(heartbeatIntervalMs: number | undefined) {
         run: {
           concurrency: "queue",
           inputSchema: z.object({ value: z.string() }),
-          block: handler<{ value: string }, { ok: true }>({
+          block: handler({
             name: "queued-hb-run",
-            execute: async () => {
+            execute: async (_input: { value: string }): Promise<{ ok: true }> => {
               await new Promise<void>((resolve) => gates.push(resolve));
               return { ok: true };
             }

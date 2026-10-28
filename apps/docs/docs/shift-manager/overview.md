@@ -43,35 +43,9 @@ Add `--dev` and leave it running. When you save a file your Lab loaded, a flow m
 
 If the Lab fails to start after a save, the error prints and Shift Manager waits for the next save. A restart is a new process: a Lab with in-memory stores starts empty each time, so use SQLite if you want your data to survive edits.
 
-### Working on Shift Manager itself
+### From a clone of this repository
 
-In this repository, `pnpm shift-manager:dev` opens the `fsd` profile: a Lab for working on this repository with Shift Manager itself. It has two projects from the start. **FSD** is the framework packages, and **Shift Manager** is this app. Both are shared with everyone in the Lab, and both point at this repository. Inbox is empty until a worker asks you something.
-
-Ask the [chief of staff](../workforce/chief-of-staff.md) for work on either project, and say which one, for example "on Shift Manager, make the empty Inbox say who to ask". A coding agent picks it up in a fresh worktree of your checkout, on a branch of its own cut from your local `main`. It doesn't fetch first, so pull `main` when you want the run to start from the latest. Review the work in that worktree, or from your checkout with `git diff main...<branch>`. The branch stays checked out in its worktree, so git won't check it out a second time in yours.
-
-Only those two projects get a worktree of your checkout. The Lab reaches no git remote, so a coding run on a project you add yourself, even one on this repository, is refused, naming the repository, and nothing is fetched.
-
-The coding agent is Claude Code. Sign in to Claude Code, or set `ANTHROPIC_API_KEY`, before you start. Without either, the Lab refuses to start and says so. To run the scripted coder (`stub`) instead, which writes one file and costs nothing, set `DEVFORCE_LAB_HARNESS=stub`. A `Coder:` line at start names the coder it started with. The chief of staff answers on a model of its own, so its turns need `ANTHROPIC_API_KEY` or `AI_GATEWAY_API_KEY`.
-
-The Lab keeps its data in SQLite at `packages/shift-manager/.fsdev/fsd.sqlite`, or wherever `FSD_STORE` points. Delete the file to start fresh.
-
-`pnpm shift-manager:dev` runs with `--dev`, which serves Shift Manager's pages from source, so a change to a screen shows as you save it. `pnpm --filter @flow-state-dev/shift-manager start` runs the same profile on the built pages, and builds them first when they're older than their source. To open the `devteam` profile instead, pass its config, a path from the repository root:
-`pnpm shift-manager:dev --config packages/shift-manager/teams/devteam/fsdev.config.mts`.
-
-To open another Lab from a checkout, pass its config:
-`pnpm --filter @flow-state-dev/shift-manager dev --config ../my-lab/fsdev.config.mts`.
-
-### The `devteam` profile
-
-`devteam` is the profile this repository's checks run against. Open it with `--config`, as above.
-
-It's at `teams/devteam/fsdev.config.mts`. It isn't in the published package, because it builds on the repository's own test Labs. It's a software team: an EM worker files features as rows on the team's board, and a coder worker runs each row as a supervised coding run. On start the EM asks you to approve one feature, so Inbox has something in it. Three projects exist from the start: Storefront, with two workstreams, and Platform and Sandbox, with none.
-
-Its [chief of staff](../workforce/chief-of-staff.md) is a coordinator with the EM and the coder as delegates. Ask it for feature work with a line like `cart-badge: show a badge on the cart`, in the form `<issue-slug>: <what the feature is>`, and its instructions have it hand the post to the EM. The EM files that feature as a row on the board, or answers that it filed nothing because the post names no feature.
-
-Rows run on the scripted coder (`stub`), with no model. Set `DEVFORCE_LAB_HARNESS=claude-code` to run them on Claude Code instead; the Lab then checks for a Claude Code sign-in or `ANTHROPIC_API_KEY` at start, as the `fsd` profile does. The Lab keeps its data in SQLite at `packages/shift-manager/.fsdev/devteam.sqlite`, or wherever `DEVTEAM_STORE` points. Delete the file to start fresh.
-
-The chief of staff has [memory](../workforce/chief-of-staff.md#giving-it-memory): working memory within a conversation, a rolling digest across conversations, and the `memory/recall` tool to search it. By default it records nothing, so that memory stays empty; ask it to remember something for later and it says it can't keep it. Start Shift Manager with `DEVTEAM_MEMORY_CAPTURE=1` to record each conversation into its memory after each answer, at the cost of extra model calls every turn. Its memory is kept per user, apart from your other flows. Workers it hires onto the built-in `agent` flow get none.
+In a checkout of flow-state-dev, `pnpm shift-manager:dev` opens a Lab for working on the framework and on Shift Manager itself. See [From a checkout](./from-a-checkout.md) for that profile, and for `devteam`, the Lab the repository's checks run against.
 
 ## What you see
 
@@ -79,21 +53,27 @@ These are Shift Manager's own screens and words. Where one maps onto a Workforce
 
 | Screen | What it is |
 |--------|------------|
-| **Shift Coordinator** | Where Shift Manager opens. A summary of the asks waiting on you and the runs going, then your conversation with the Lab's [chief of staff](../workforce/chief-of-staff.md). When the chief of staff is a [coordinator](../workforce/coordinators.md), the DELEGATES panel lists who it hands this conversation's work to: add a worker from your roster, or remove one. A refused add shows why. Without a chief of staff, you get the summary and a line saying how to add one. |
+| **Shift Coordinator** | Where Shift Manager opens. A summary of the asks waiting on you and the runs going, then your conversation with the Lab's [Shift Coordinator](../workforce/shift-coordinator.md). When the Shift Coordinator is a [coordinator](../workforce/coordinators.md), the DELEGATES panel lists who it hands this conversation's work to: add a worker from your roster, or remove one. A refused add shows why. Without a Shift Coordinator, you get the summary and a line saying how to add one. The gear at the right of its header opens the Shift Coordinator's settings, where its [standing rules](../workforce/standing-rules.md) are. |
 | **Inbox** | Every approval and question a worker is waiting on you for, oldest first. Answer on the card, or reply to the worker under it. |
 | **Tasks** | Every row on every board that isn't done, grouped by state, worker or workstream. Queued rows are behind a toggle. |
-| **Roster** | Every worker, grouped as on shift (running a task), on call (waiting on you), or off shift. |
+| **Roster** | Every worker, grouped as on shift (running a task, or waiting on you) or off shift. Each worker has a **Settings** button that opens its settings page. Its Rules section lists the notes the worker keeps for you, its [standing rules](../workforce/standing-rules.md), with when each was added and where it came from. Add, edit or delete them there; the next turn reads the change. For a worker whose flow doesn't keep rules, the section says so. |
 | **A project** | Shared with your org, or private to you. Tabs: Stream (your own [project coordinator](../workforce/projects.md#talking-to-a-project)), Workstreams (every workstream's entry, with the progress worked out from them), Board (the tasks of your own workstreams) and Brief, which also names the project's repository, or says its coding work runs on the project's files. See [Projects](../workforce/projects.md). |
 | **A workstream** | On a project, your own workstream opens on its lead's conversation. Someone else's opens on its details and latest report. |
+| **Messages** | Every [message](../workforce/messaging-workers.md) one of your workers sent another, newest first, with a message and its answers kept together. Each line shows when it was sent, who sent it, who got it and its first line of text. The sender and the recipient are links: each opens the conversation that holds the message on that side. A delivered message shows nothing more. One still on its way says *on its way*, a refused one *not delivered*, and one that never landed in time *couldn't be delivered*. See [Delivery](../workforce/messaging-workers.md#delivery). Messages aren't tasks, so nothing here shows on Tasks. |
+| **Scheduled work** | Your [schedules](../workforce/delegating-work.md#recurring-work), soonest first. Each line shows when the schedule is next due, the task it files, on whose board and for whom, and its cron and time zone. A schedule that is off says so. The tasks a schedule files show on Tasks like any other. |
+| **Usage** | How much of each coding agent's subscription you have used, one card per agent: each limit window's percent and reset time, the plan, and where the numbers came from and how old they are. Opening Usage asks for a fresh reading, at most once a minute. A window whose reset has passed shows when it reset instead of a percent. An agent with no number (an API key, nobody signed in, a read that failed) says why. |
+| **Settings** | Your own keys for the MCP servers the Lab offers its projects' coding runs. See [Settings](./settings.md). |
 | **A task** | One worker's run, live, with Interrupt to stop it. *Open trace* opens the run's session in the DevTool (see [Opening a session from a link](../devtool/overview.md#opening-a-session-from-a-link)). |
 
-The sidebar lists, under PROJECTS, the org's shared projects and your own private ones, marked private, then the teams under TEAMS. Jump to (⌘K) finds workstreams, workers, tasks and the Lab's readable documents.
+The sidebar lists, under PROJECTS, the org's shared projects and your own private ones, marked private, then the teams under TEAMS. A project's workstreams sit beneath it: the project you're on shows them, and the arrow beside any project shows or hides them. Jump to (⌘K) finds workstreams, workers, tasks and the Lab's readable documents. Press ⇧⌘K to open it ready to message the Shift Coordinator.
 
-**Opening a workstream.** Ask your project coordinator, in the project's Stream tab, for work none of your workstreams there covers. The coordinator opens a workstream for that work, led by the worker on your roster whose description fits, such as your engineering manager for a feature, and hands your ask to the new workstream. The ask stays in the workstream's conversation as its brief. One worker can lead several of your workstreams, with a separate conversation and board for each. When nobody on your roster does the work, the coordinator says so; ask your chief of staff to hire someone.
+**Opening a workstream.** Ask your project coordinator, in the project's Stream tab, for work none of your workstreams there covers. The coordinator opens a workstream for that work, led by the worker on your roster whose description fits, such as your engineering manager for a feature, and hands your ask to the new workstream. The ask stays in the workstream's conversation as its brief. One worker can lead several of your workstreams, with a separate conversation and board for each. When nobody on your roster does the work, the coordinator says so; ask your Shift Coordinator to hire someone.
 
 In your own app, `openWorkstream` takes whichever lead you name. See [Projects](../workforce/projects.md#workstreams).
 
 Shift Coordinator, a workstream and a task also have a panel on the right. The sidebar and the right panel each collapse from their own toggle or from the keyboard: `[` for the sidebar, which shrinks to a column of icons, and `]` for the right panel, which shrinks to a strip. Each one's state is kept in the browser for the signed-in user. On a window narrower than 1180px, the right panel starts collapsed and opens over the center.
+
+In a conversation, a message the worker sent another worker shows as its own line, *To &lt;worker&gt;: &lt;text&gt;*, with a link to Messages. One that was refused says it wasn't sent, and why. If it was sent but can't be delivered, Messages marks it, and the sender's conversation gets a line saying so. A message the worker received shows as its own item: the sender's name, the time it arrived, *answering your message* when it answers one the worker sent, a *Messages ›* link, and the text.
 
 A board has five columns: QUEUED, RUNNING, IN REVIEW, NEEDS YOU and DONE. In a workstream's composer, a message that starts with `@` and a worker's name goes to that worker's task in the workstream.
 
@@ -117,7 +97,8 @@ Shift Manager reads a Lab only through the routes its `FlowState` serves. It bui
 - **An organization**, named by `resolvePrincipal` on `createFlowState`. Without one, the Lab runs in the development organization, `DEFAULT_ORG_ID`.
 - **An open [inventory](../workforce/inventory.md)**, which TEAMS, Roster and Inbox read to find the Lab's workers. Without it, TEAMS says there's none and the rest loads.
 - **Who Shift Manager reads as**: `devtool: { userId }` on `createFlowState`, plus `bearerToken` when your resolver checks one. Shift Manager hands these to the page only on a loopback host.
-- **Optionally, a chief of staff**: a worker named `chief-of-staff`, declared under `org/workers/`. On the `coordinator` flow it also gets the DELEGATES panel. See [The chief of staff](../workforce/chief-of-staff.md).
+- **Optionally, a Shift Coordinator**: a worker named `chief-of-staff`, declared under `org/workers/`. On the `coordinator` flow it also gets the DELEGATES panel. See [The Shift Coordinator](../workforce/shift-coordinator.md).
+- **Optionally, a usage query**: a flow with a `harnessUsage` action built by `harnessUsageAction`, which Usage reads. See [Subscription usage](../orchestration/harness-manager.md#subscription-usage). Without one, Usage shows *No usage to show*.
 
 A document under a `resources/` folder shows in Jump to only when its frontmatter sets `client.content.read: true`.
 
@@ -127,5 +108,4 @@ Several parts are drawn as named empty states or disabled controls:
 
 - On a task: Hand off, reassign and Open PR are disabled. Diff, Checks, acceptance criteria, reviewer, harness, tokens and cost are empty.
 - A workstream's Results tab, and the IN REVIEW column, are always empty.
-- On call means waiting on you. A worker that only waits on a webhook or a schedule reads off shift.
 - Roster matches a task to a worker by its assignee. A task whose assignee matches no single worker counts for no one.

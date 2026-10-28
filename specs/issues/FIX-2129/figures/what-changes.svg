@@ -1,0 +1,90 @@
+<svg viewBox="0 0 940 300" role="img" aria-label="A grid of five moments in the life of a task whose run suspends for a person, today and after. Reading the task: today it shows running, after it shows waiting on a person with the kind, prompt and deadline. Answered in the Inbox: today a run a task started can't be answered there, after it is answered there and the same try carries on. No answer by the deadline: today an approval reads as a rejection and an input waits for good, after a deadline only where the call or the host sets one, and there the flow decides; unhandled, an approval is a no and a review or input fails the try. The task is cancelled: today the run stays parked and its item open, after the block resumes cancelled, runs to its end, its writes to the task are refused, and the item closes. The user stops it: today the try fails and the task runs again, after the request ends, the item closes and the task is cancelled."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .lane  { fill:var(--surface-2); }
+    .cell  { fill:var(--surface); stroke:var(--rule); stroke-width:1; }
+    .good  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.08em; }
+    .t-row { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; letter-spacing:.1em; font-weight:600; }
+    .t-bad { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-ok  { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="300"/>
+
+  <g id="headers">
+    <text class="t-lbl" x="144" y="30">READING THE TASK</text>
+    <text class="t-lbl" x="300" y="30">ANSWERED IN THE INBOX</text>
+    <text class="t-lbl" x="456" y="30">NO ANSWER BY DEADLINE</text>
+    <text class="t-lbl" x="612" y="30">THE TASK IS CANCELLED</text>
+    <text class="t-lbl" x="768" y="30">THE USER STOPS IT</text>
+  </g>
+
+  <g id="today">
+    <rect class="lane" x="16" y="42" width="908" height="116" rx="6"/>
+    <text class="t-row" x="28" y="104">TODAY</text>
+    <rect class="cell" x="140" y="50" width="150" height="100" rx="4"/>
+    <text class="t-bad" x="150" y="72">Shows running</text>
+    <text class="t-s" x="150" y="92">nothing says it waits</text>
+    <text class="t-s" x="150" y="108">on a person, or for</text>
+    <text class="t-s" x="150" y="124">what it asked</text>
+    <rect class="cell" x="296" y="50" width="150" height="100" rx="4"/>
+    <text class="t-bad" x="306" y="72">Can't be answered</text>
+    <text class="t-s" x="306" y="92">the Inbox never</text>
+    <text class="t-s" x="306" y="108">reopens a run that</text>
+    <text class="t-s" x="306" y="124">a task started</text>
+    <rect class="cell" x="452" y="50" width="150" height="100" rx="4"/>
+    <text class="t-bad" x="462" y="72">Only an approval acts</text>
+    <text class="t-s" x="462" y="92">it reads as a rejection;</text>
+    <text class="t-s" x="462" y="108">an input stays</text>
+    <text class="t-s" x="462" y="124">parked for good</text>
+    <rect class="cell" x="608" y="50" width="150" height="100" rx="4"/>
+    <text class="t-bad" x="618" y="72">Item stays open</text>
+    <text class="t-s" x="618" y="92">the row cancels, but</text>
+    <text class="t-s" x="618" y="108">the run stays parked</text>
+    <text class="t-s" x="618" y="124">for the person</text>
+    <rect class="cell" x="764" y="50" width="150" height="100" rx="4"/>
+    <text class="t-bad" x="774" y="72">The try fails</text>
+    <text class="t-s" x="774" y="92">and the task runs</text>
+    <text class="t-s" x="774" y="108">again in a new try,</text>
+    <text class="t-s" x="774" y="124">asking again</text>
+  </g>
+
+  <g id="after">
+    <rect class="lane" x="16" y="170" width="908" height="116" rx="6"/>
+    <text class="t-row" x="28" y="232">AFTER</text>
+    <rect class="good" x="140" y="178" width="150" height="100" rx="4"/>
+    <text class="t-ok" x="150" y="200">Waiting on a person</text>
+    <text class="t-s" x="150" y="220">getTask and listTasks</text>
+    <text class="t-s" x="150" y="236">show the kind, the</text>
+    <text class="t-s" x="150" y="252">prompt and the deadline</text>
+    <rect class="good" x="296" y="178" width="150" height="100" rx="4"/>
+    <text class="t-ok" x="306" y="200">Answered there</text>
+    <text class="t-s" x="306" y="220">through one trusted</text>
+    <text class="t-s" x="306" y="236">route; the same try</text>
+    <text class="t-s" x="306" y="252">carries on, claim kept</text>
+    <rect class="good" x="452" y="178" width="150" height="100" rx="4"/>
+    <text class="t-ok" x="462" y="200">The flow decides</text>
+    <text class="t-s" x="462" y="220">if a deadline is set;</text>
+    <text class="t-s" x="462" y="236">unhandled, approval is no,</text>
+    <text class="t-s" x="462" y="252">review or input fails</text>
+    <rect class="good" x="608" y="178" width="150" height="100" rx="4"/>
+    <text class="t-ok" x="618" y="200">Resumes cancelled</text>
+    <text class="t-s" x="618" y="220">the block runs to its</text>
+    <text class="t-s" x="618" y="236">end, its task writes are</text>
+    <text class="t-s" x="618" y="252">refused; the item closes</text>
+    <rect class="good" x="764" y="178" width="150" height="100" rx="4"/>
+    <text class="t-ok" x="774" y="200">The task is cancelled</text>
+    <text class="t-s" x="774" y="220">the request ends and</text>
+    <text class="t-s" x="774" y="236">its item closes; no</text>
+    <text class="t-s" x="774" y="252">second try</text>
+  </g>
+</svg>

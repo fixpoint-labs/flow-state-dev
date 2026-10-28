@@ -87,6 +87,8 @@
     "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/orchestration": "workspace:*",
+    "@flow-state-dev/scheduled": "workspace:*",
+    "@flow-state-dev/tools": "workspace:*",
     "@flow-state-dev/workspace": "workspace:*",
     "zod": "^3.24.1"
   },
@@ -96,13 +98,12 @@
     "@flow-state-dev/store-sqlite": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
-    "typescript": "^5.9.3",
+    "cron-parser": "^5.5.0",
     "vitest": "^3.2.4"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && node ../../scripts/add-esm-extensions.mjs dist",
     "typecheck": "node ../../scripts/typecheck.mjs && tsc -p tsconfig.test-d.json && tsc -p tsconfig.test-d-strict.json",
-    "lint": "echo 'lint not configured yet'",
     "test": "vitest run --root .",
     "test:watch": "vitest --root ."
   }

@@ -54,7 +54,7 @@ export function translateCodexEvent(event: CodexThreadEvent): TranslatedEvent[] 
     }
 
     case "turn.started":
-      return [{ kind: "status", message: "Codex turn started." }];
+      return [{ kind: "status", message: "Codex turn started" }];
 
     case "turn.completed":
       return [{ kind: "turn_completed", usage: normalizeUsage((event as { usage?: unknown }).usage) }];
@@ -63,9 +63,10 @@ export function translateCodexEvent(event: CodexThreadEvent): TranslatedEvent[] 
       return [
         {
           kind: "turn_failed",
-          message:
+          message: readableFailure(
             readString((event as { error?: { message?: unknown } }).error?.message) ??
-            "Codex reported a failed turn with no message.",
+              "Codex reported a failed turn with no message.",
+          ),
         },
       ];
 
@@ -81,13 +82,15 @@ export function translateCodexEvent(event: CodexThreadEvent): TranslatedEvent[] 
     case "item.updated":
       return [];
 
-    // The stream's own fatal error. Surfaced as an error item; the run settles
-    // on whatever terminal turn event does or does not follow, exactly as a
-    // mid-turn `error` item does.
+    // The stream's own error. Measured at 0.152.1 it is Codex's retry progress
+    // ("Reconnecting... 2/5 (…)") or a copy of the failure the `turn.failed`
+    // that follows carries, so it is shown as the in-flight status, not an
+    // error item. The block keeps the last one: when no terminal turn event
+    // follows, it is the run's failure (the SDK's type calls it unrecoverable).
     case "error":
       return [
         {
-          kind: "error",
+          kind: "stream_error",
           message:
             readString((event as { message?: unknown }).message) ??
             "Codex reported an error with no message.",
@@ -198,11 +201,15 @@ function translateItem(
         items: (item as { items?: unknown }).items ?? [],
       });
 
+    // Non-fatal by the SDK's own type ("a non-fatal error surfaced as an
+    // item"): Codex's warnings, such as a configured service tier the model
+    // does not advertise or a model it has no metadata for. A kept note, not an
+    // error item: nothing about it ends the run.
     case "error":
       return phase === "completed" || phase === "started"
         ? [
             {
-              kind: "error",
+              kind: "notice",
               message:
                 readString((item as { message?: unknown }).message) ??
                 "Codex reported an error item with no message.",
@@ -260,4 +267,23 @@ function readNumber(value: unknown): number {
 /** A string the wire actually carried, or `undefined`. */
 function readString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+/**
+ * A failure message as one readable line. Codex passes the API's error body
+ * through as the message (`{"detail": "The '…' model is not supported …"}`),
+ * so a JSON body's own `detail`, `error.message` or `message` is the line; any
+ * other message is kept as it is.
+ */
+export function readableFailure(message: string): string {
+  const trimmed = message.trim();
+  if (!trimmed.startsWith("{")) return message;
+  try {
+    const body = JSON.parse(trimmed) as { detail?: unknown; message?: unknown; error?: { message?: unknown } };
+    return (
+      readString(body.detail) ?? readString(body.error?.message) ?? readString(body.message) ?? message
+    );
+  } catch {
+    return message;
+  }
 }

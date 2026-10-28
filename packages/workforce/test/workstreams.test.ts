@@ -12,6 +12,7 @@
  * try it by every path a user has: the app's action, the lead's tool, and flow
  * code writing the collection directly from a registered flow.
  */
+import { createClient } from "@flow-state-dev/client";
 import { describe, expect, it } from "vitest";
 import { defineFlow, defineResourceCollection, handler, sequencer } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
@@ -24,6 +25,7 @@ import {
   WORKSTREAM_RESOURCES,
   WORKSTREAMS_RESOURCE,
   workstreamEntryKey,
+  updateOwnWorkstreamInputSchema,
   workstreamOpenedEntry,
   workstreamRef
 } from "../src/index";
@@ -336,10 +338,10 @@ describe("opening a workstream", () => {
     const named = second.workstream.sessionId as string;
     expect(named).not.toBe(stalled);
     // The stalled session is the most recent: it took a turn after the entry named the other.
-    await h.ok("alice", "lead", stalled, "run", { message: "still here" });
+    await h.ok("alice", "lead", stalled, "respond", { message: "still here" });
     expect((await h.sessionsWith("workstreamId", ref)).map((s) => s.id).sort()).toEqual([named, stalled].sort());
 
-    const client = createWorkforceClient({ userId: "alice", fetcher: h.fetcherFor("alice") });
+    const client = createWorkforceClient(createClient({ userId: "alice", fetcher: h.fetcherFor("alice") }));
     expect((await client.findWorkerSession({ worker: "alice-lead", workstreamId: address }))?.id).toBe(named);
     expect((await client.ensureWorkerSession({ worker: "alice-lead", workstreamId: address })).id).toBe(named);
   });
@@ -351,7 +353,7 @@ describe("opening a workstream", () => {
     await h.ok("alice", "lab", await h.lab("alice"), "plantStalledOpen", { id: "checkout", lead: "alice-lead" });
     const stray = await h.openSession("alice", "lead", { workerId: "alice-lead", workstreamId: workstreamRef(address) });
 
-    const client = createWorkforceClient({ userId: "alice", fetcher: h.fetcherFor("alice") });
+    const client = createWorkforceClient(createClient({ userId: "alice", fetcher: h.fetcherFor("alice") }));
     expect(await client.findWorkerSession({ worker: "alice-lead", workstreamId: address })).toBeUndefined();
     await expect(client.ensureWorkerSession({ worker: "alice-lead", workstreamId: address })).rejects.toThrow(
       /no lead session yet.*openWorkstream/
@@ -380,7 +382,7 @@ describe("opening a workstream", () => {
     await h.hire("bob", "bob-lead", "lead");
     expect((await h.tryOpenSession("bob", "lead", { workerId: "bob-lead", workstreamId: ref })).status).toBe(404);
 
-    const client = createWorkforceClient({ userId: "alice", fetcher: h.fetcherFor("alice") });
+    const client = createWorkforceClient(createClient({ userId: "alice", fetcher: h.fetcherFor("alice") }));
     const found = await client.findWorkerSession({ worker: "alice-lead", workstreamId: { project: apollo, id: "checkout" } });
     expect(found?.id).toBe(out.workstream.sessionId);
     // A lookup that doesn't name the workstream never returns its session.
@@ -469,6 +471,35 @@ describe("who writes an entry", () => {
     expect(entry!.report).toBe("Payments sandbox is down.");
   });
 
+  it("never lets a lead of two workstreams rename one from the other's ask: its tool takes no title", async () => {
+    // One worker leading two workstreams is the normal case: each is its own
+    // session on that worker. The coordinator hands each post over with the
+    // conversation's recent lines, which name the other workstream, so a lead
+    // whose tool took a title could write that one's name onto this one.
+    const h = await boot();
+    await h.hire("alice", "alice-lead", "lead");
+    const lab = await h.lab("alice");
+    await h.ok("alice", "lab", lab, "openWorkstream", { project: apollo, id: "onboarding-docs", title: "Onboarding docs", lead: "alice-lead" });
+    const pricing = await h.ok("alice", "lab", lab, "openWorkstream", {
+      project: apollo,
+      id: "competitor-pricing",
+      title: "Competitor pricing research",
+      lead: "alice-lead"
+    });
+
+    // What the model is shown: no title to write.
+    expect(Object.keys(updateOwnWorkstreamInputSchema.shape)).not.toContain("title");
+
+    const renamed = await h.act("alice", "lead", pricing.workstream.sessionId, "updateOwn", { title: "Onboarding docs", status: "researching" });
+    expect(JSON.stringify(renamed.error)).toContain("Unrecognized key(s) in object: 'title'");
+    const titles = Object.fromEntries((await entriesOf(h)).map((e) => [e.path.split("/").at(-1), e.state.title]));
+    expect(titles).toEqual({ "onboarding-docs": "Onboarding docs", "competitor-pricing": "Competitor pricing research" });
+
+    // Its own status and report still land, on its own workstream only.
+    const updated = await h.ok("alice", "lead", pricing.workstream.sessionId, "updateOwn", { status: "researching", report: "Handed to the researcher." });
+    expect(updated.workstream).toMatchObject({ id: "competitor-pricing", title: "Competitor pricing research", status: "researching" });
+  });
+
   it("refuses the lead's tool on a session that leads no workstream", async () => {
     const h = await boot();
     await h.hire("alice", "alice-lead", "lead");
@@ -500,7 +531,7 @@ describe("who reads an entry", () => {
 
     const session = await h.call("GET", "bob", ["sessions", out.workstream.sessionId]);
     expect(session.status).toBeGreaterThanOrEqual(400);
-    const run = await h.call("POST", "bob", ["lead", out.workstream.sessionId, "actions", "run"], { userId: "bob", input: { message: "hi" } });
+    const run = await h.call("POST", "bob", ["lead", out.workstream.sessionId, "actions", "respond"], { userId: "bob", input: { message: "hi" } });
     expect(run.status).toBeGreaterThanOrEqual(400);
   });
 });

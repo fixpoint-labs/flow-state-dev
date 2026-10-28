@@ -1,7 +1,8 @@
 /**
  * Internal streaming seam hooks for item/envelope interception.
  */
-import type { OutputItem, StreamEvent } from "@flow-state-dev/core/items";
+import type { StreamEvent } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type { StreamEnvelope } from "../types";
 
 export type InternalItemInterceptionStage = "item.added" | "item.done";
@@ -10,7 +11,7 @@ export type InternalEnvelopeInterceptionStage =
   | "event.before_encode";
 
 export type InternalStreamingSeams = {
-  interceptItem?: <TItem extends OutputItem>(
+  interceptItem?: <TItem extends RuntimeItem>(
     item: TItem,
     stage: InternalItemInterceptionStage
   ) => TItem | void;
@@ -28,7 +29,7 @@ export const NOOP_INTERNAL_STREAMING_SEAMS: InternalStreamingSeams = {};
 /**
  * Applies optional item interception.
  */
-export function applyItemSeam<TItem extends OutputItem>(
+export function applyItemSeam<TItem extends RuntimeItem>(
   seams: InternalStreamingSeams | undefined,
   item: TItem,
   stage: InternalItemInterceptionStage

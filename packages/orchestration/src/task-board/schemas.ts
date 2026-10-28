@@ -18,7 +18,7 @@
  */
 import { z, type ZodTypeAny } from "zod";
 import { transientSlot } from "@flow-state-dev/core";
-import { taskClaimTicketSchema, taskStatusSchema, type Task, type TaskWriteOutcome } from "../tasks";
+import { taskClaimTicketSchema, type Task } from "../tasks";
 
 /**
  * Default outer-sequencer state shape: a `tasks` record under the default key.
@@ -133,67 +133,11 @@ export type ClaimResult = {
 export { taskWorkerInputSchema } from "../tasks/workers/types";
 
 /**
- * Output of `checkBoard` — drives the worker's `loopBack` predicate, and
- * carries the exit decision's causal verdict out to the board's completion
- * item.
- *
- * `excusedParked` (FIX-1234) is present, and `true`, only on the iteration
- * where this worker stopped *because* rows parked for a human were excused
- * from the board's waitable count. It is the exit reason's carrier, and it
- * rides the worker's own output for one reason: the value flows from the exit
- * decision to the completion item through the drain's own dataflow — the
- * worker loop's final value becomes an element of the `forEach` result, which
- * is what the completion tap receives — so it is scoped to this drain
- * *invocation* by construction rather than by a policy someone has to keep.
- * Two drains of one board, even inside one request, cannot see each other's.
- *
- * Optional rather than defaulted so a board on the default `onReview` emits
- * exactly the output shape it always did (BP-030), and so a worker-state
- * checkpoint written under the old shape reads as "nothing was excused"
- * instead of failing validation.
+ * Output of `checkBoard` — drives the worker's `loopBack` predicate.
  */
 export const checkBoardOutputSchema = z.object({
   shouldContinue: z.boolean(),
   reason: z.enum(["drained", "exit", "claimed", "idle", "blocked"]),
-  excusedParked: z.boolean().optional(),
 });
 
 export type CheckBoardOutput = z.infer<typeof checkBoardOutputSchema>;
-
-/**
- * What `board.unparkAndDrain` takes (FIX-1244): the id of the task being
- * answered and the prose answer, which reaches the worker as `input.feedback`
- * on the next attempt. Read from the value the step is handed — the action's
- * input when it is the first step, the previous step's output otherwise —
- * never from state or construction config.
- */
-export const unparkAndDrainInputSchema = z.object({
-  taskId: z.string(),
-  feedback: z.string().optional(),
-});
-
-export type UnparkAndDrainInput = z.infer<typeof unparkAndDrainInputSchema>;
-
-/**
- * The substrate's `TaskWriteOutcome`, as a schema, so a step that returns the
- * write's verdict unwrapped can declare it (BP-025). `reason` is the decline
- * vocabulary `TaskWriteDeclineReason` enumerates; kept as a string enum here
- * rather than derived, because the type is a union of literals with doc
- * comments and has no schema of its own.
- */
-export const taskWriteOutcomeSchema: z.ZodType<TaskWriteOutcome> = z.discriminatedUnion("outcome", [
-  z.object({ outcome: z.literal("recorded") }),
-  z.object({ outcome: z.literal("unchanged") }),
-  z.object({
-    outcome: z.literal("declined"),
-    reason: z.enum([
-      "immutable-assignee",
-      "terminal",
-      "not-my-task",
-      "disallowed",
-      "lost-claim",
-      "parked",
-    ]),
-    status: taskStatusSchema,
-  }),
-]);

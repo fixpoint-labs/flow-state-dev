@@ -9,7 +9,8 @@
  * `client.*` config so the panel can render projection badges.
  *
  * Bypasses `buildResourceSnapshot` and its `client.*` shaping by design —
- * production client semantics live elsewhere. Off-by-default at the route
+ * production client semantics live elsewhere. It does not bypass a
+ * definition's `secret` fields: those are omitted from every state it returns. Off-by-default at the route
  * gate (`debugEndpointsEnabled` / `FSDEV_DEBUG_ENDPOINTS=1`).
  *
  * It does not bypass the owner-private key fence. These reads go to the store,
@@ -23,7 +24,11 @@ import type {
   ResourceConfig
 } from "@flow-state-dev/core/types";
 import { getPatternPrefix, matchesPattern } from "@flow-state-dev/core/types";
-import { hasClientProjection, resolveClientProjection } from "@flow-state-dev/core/helpers";
+import {
+  hasClientProjection,
+  omitSecretFields,
+  resolveClientData
+} from "@flow-state-dev/core/helpers";
 import {
   getPersistedData,
   isCollectionConfig,
@@ -34,11 +39,11 @@ import {
   type ResourcePersistenceContext
 } from "../resources/internal";
 import { resourceStorageKeys } from "../resources/storage-keys";
-import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
+import type { SessionRecord } from "../stores/types";
 import { resolveRecordOwner } from "../context/record-owner";
 import { ownerKeyAdmits } from "../resources/owner-private";
 import { isJsonObject } from "../utils/json-helpers";
-import { extractBareTopic, isResourceConfig } from "./route-utils";
+import { extractBareTopic, isResourceConfig, loadCheckedSession } from "./route-utils";
 
 /**
  * Per-entry projection result. `null` means "not applicable" (e.g. no state
@@ -123,7 +128,8 @@ export interface DebugResourcesResponse {
 }
 
 /**
- * Compute the client-view projection for a single resource state. Wraps the
+ * Compute the client-view projection for a single resource state, through the
+ * same {@link resolveClientData} the client reads use. Wraps the
  * author's `client.data` in try/catch since it can throw. Returns `null` when
  * the entry has no state to project.
  */
@@ -142,7 +148,7 @@ export function computeClientView(
     return { ok: false, reason: "no_client_data" };
   }
   try {
-    const value = resolveClientProjection(config.client, state);
+    const value = resolveClientData(config, state);
     if (value instanceof Promise) {
       // Author-supplied async `data` functions are uncommon but not forbidden.
       // The debug snapshot is synchronous-only; surface as "threw" so the
@@ -345,16 +351,17 @@ export async function buildDebugResourceTree(opts: {
   countLimit: number;
   /** Tenant id for namespacing the session lookup (FIX-682). */
   tenantId?: string;
+  /** Session the route guard checked (`RouteAuthResult.session`). */
+  checkedSession?: SessionRecord | null;
 }): Promise<DebugResourcesResponse | null> {
   const { sessionId, ctx, countLimit, tenantId } = opts;
-  const session = await ctx.stores.session.get(
-    resolveSessionStorageKey(sessionId, tenantId)
+  const session = await loadCheckedSession(
+    ctx.stores.session,
+    sessionId,
+    tenantId,
+    opts.checkedSession
   );
-  // Reject a tenant-key collision: the stored tenant must match the request's
-  // (FIX-682), so a crafted `sessionId` can't inspect another tenant's data.
-  if (!session || !tenantMatches(session.tenantId, tenantId)) {
-    return null;
-  }
+  if (!session) return null;
   const owner = resolveRecordOwner(ctx.registry, session);
   if (!owner.ok) return null;
   const flow = owner.flow;
@@ -375,7 +382,8 @@ export async function buildDebugResourceTree(opts: {
         flow as ResourceOwnerFlow,
         sessionId,
         scope,
-        tenantId
+        tenantId,
+        session
       );
       persistedCache.set(scope, data ?? null);
     })
@@ -434,9 +442,8 @@ export async function buildDebugResourceTree(opts: {
     // Single resource. Dual-registered aliases share one persisted slot at
     // the group's canonical storage key (FIX-591).
     const rawState = persisted ? persisted.resources[group.storageKey] : undefined;
-    const state: JsonObject | null = isJsonObject(rawState)
-      ? (rawState as JsonObject)
-      : null;
+    const raw: JsonObject | null = isJsonObject(rawState) ? (rawState as JsonObject) : null;
+    const state = raw === null ? null : omitSecretFields(group.config, raw);
     const rawContent = persisted ? persisted.content[group.storageKey] : undefined;
     const hasContent = typeof rawContent === "string";
     entries.push({
@@ -446,7 +453,7 @@ export async function buildDebugResourceTree(opts: {
       scope: group.scope,
       isCollection: false,
       state,
-      clientView: computeClientView(group.config, state),
+      clientView: computeClientView(group.config, raw),
       hasContent,
       contentByteLength: hasContent
         ? Buffer.byteLength(rawContent!, "utf-8")
@@ -511,6 +518,8 @@ export async function buildDebugCollectionItems(opts: {
   ctx: ResourcePersistenceContext;
   /** Tenant id for namespacing the session lookup (FIX-682). */
   tenantId?: string;
+  /** Session the route guard checked (`RouteAuthResult.session`). */
+  checkedSession?: SessionRecord | null;
 }): Promise<BuildItemsResult> {
   const { sessionId, ref, ctx, tenantId } = opts;
   const limit = clampLimit(opts.limit);
@@ -522,12 +531,13 @@ export async function buildDebugCollectionItems(opts: {
     return { ok: false, kind: "bad_request", detail: "invalid_cursor" };
   }
 
-  const session = await ctx.stores.session.get(
-    resolveSessionStorageKey(sessionId, tenantId)
+  const session = await loadCheckedSession(
+    ctx.stores.session,
+    sessionId,
+    tenantId,
+    opts.checkedSession
   );
-  if (!session || !tenantMatches(session.tenantId, tenantId)) {
-    return { ok: false, kind: "session_not_found" };
-  }
+  if (!session) return { ok: false, kind: "session_not_found" };
   const owner = resolveRecordOwner(ctx.registry, session);
   if (!owner.ok) return { ok: false, kind: "session_not_found" };
   const flow = owner.flow;
@@ -548,7 +558,8 @@ export async function buildDebugCollectionItems(opts: {
     flow as ResourceOwnerFlow,
     sessionId,
     group.scope,
-    tenantId
+    tenantId,
+    session
   );
   if (!persisted) {
     return {
@@ -570,16 +581,15 @@ export async function buildDebugCollectionItems(opts: {
     const topic = extractBareTopic(pattern, storageKey);
     if (filter.length > 0 && !topic.includes(filter)) continue;
     const rawState = persisted.resources[storageKey];
-    const state: JsonObject | null = isJsonObject(rawState)
-      ? (rawState as JsonObject)
-      : null;
+    const raw: JsonObject | null = isJsonObject(rawState) ? (rawState as JsonObject) : null;
+    const state = raw === null ? null : omitSecretFields(config, raw);
     const rawContent = persisted.content[storageKey];
     const hasContent = typeof rawContent === "string";
     items.push({
       topic,
       storageKey,
       state,
-      clientView: computeClientView(config, state),
+      clientView: computeClientView(config, raw),
       hasContent,
       contentByteLength: hasContent
         ? Buffer.byteLength(rawContent!, "utf-8")
@@ -659,14 +669,17 @@ export async function lookupDebugContent(opts: {
   ctx: ResourcePersistenceContext;
   /** Tenant id for namespacing the session lookup (FIX-682). */
   tenantId?: string;
+  /** Session the route guard checked (`RouteAuthResult.session`). */
+  checkedSession?: SessionRecord | null;
 }): Promise<DebugContentResult> {
   const { sessionId, ref, topic, ctx, tenantId } = opts;
-  const session = await ctx.stores.session.get(
-    resolveSessionStorageKey(sessionId, tenantId)
+  const session = await loadCheckedSession(
+    ctx.stores.session,
+    sessionId,
+    tenantId,
+    opts.checkedSession
   );
-  if (!session || !tenantMatches(session.tenantId, tenantId)) {
-    return { ok: false, kind: "session_not_found" };
-  }
+  if (!session) return { ok: false, kind: "session_not_found" };
   const owner = resolveRecordOwner(ctx.registry, session);
   if (!owner.ok) return { ok: false, kind: "session_not_found" };
   const flow = owner.flow;
@@ -683,7 +696,8 @@ export async function lookupDebugContent(opts: {
     flow as ResourceOwnerFlow,
     sessionId,
     group.scope,
-    tenantId
+    tenantId,
+    session
   );
   if (!persisted) return { ok: false, kind: "content_not_found" };
 

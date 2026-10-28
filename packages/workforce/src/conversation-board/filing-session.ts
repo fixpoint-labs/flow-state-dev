@@ -13,8 +13,10 @@ import {
   FILING_PROJECT_STATE_KEY,
   FILING_WORKSTREAM_STATE_KEY,
   PROJECT_STATE_KEY,
+  WORK_PROJECT_STATE_KEY,
   WORKSTREAM_STATE_KEY
 } from "../workers/keys";
+import { parseProjectRef, parseWorkstreamRef, type ProjectAddressRef } from "../projects/workstream-ref";
 
 /**
  * The workstream a session works for, from its server-written fields: the one
@@ -31,15 +33,42 @@ export function filingWorkstreamOf(state: unknown): string | undefined {
 
 /**
  * The project a session works in, from its server-written fields: the one it
- * is the conversation of (`projectId`), else the one it was filed from
- * (`filingProjectId`), in `projectRef` form. `undefined` for neither.
+ * is the coordinator conversation of (`projectId`), else the one its user
+ * set it to work in (`workProjectId`, FIX-2161), else the one it was filed
+ * from (`filingProjectId`), in `projectRef` form. `undefined` for none. The
+ * work-project action refuses a session carrying either of the others, so no
+ * two meet on one session.
  */
 export function filingProjectOf(state: unknown): string | undefined {
   const fields = state as Record<string, unknown> | undefined;
   const own = fields?.[PROJECT_STATE_KEY];
   if (typeof own === "string") return own;
+  const set = fields?.[WORK_PROJECT_STATE_KEY];
+  if (typeof set === "string") return set;
   const filed = fields?.[FILING_PROJECT_STATE_KEY];
   return typeof filed === "string" ? filed : undefined;
+}
+
+/**
+ * A session's state as it stood before a user could set the project it works
+ * in (`workProjectId`, FIX-2161): the state a row filed before rows carried
+ * the project stamp was filed from.
+ */
+export function stateBeforeWorkProject(state: unknown): Record<string, unknown> {
+  const { [WORK_PROJECT_STATE_KEY]: _set, ...before } = (state ?? {}) as Record<string, unknown>;
+  return before;
+}
+
+/**
+ * The session's project, in the run's order: its workstream's, else its own.
+ * The board writes it on the tasks the session files; the run source checks
+ * them against it.
+ */
+export function filingProjectAddressOf(state: unknown): ProjectAddressRef | undefined {
+  const workstream = filingWorkstreamOf(state);
+  if (workstream !== undefined) return parseWorkstreamRef(workstream)?.project;
+  const project = filingProjectOf(state);
+  return project === undefined ? undefined : parseProjectRef(project);
 }
 
 /** Hex of the first 8 bytes of the SHA-256 of `text`. */

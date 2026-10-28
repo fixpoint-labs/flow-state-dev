@@ -1,156 +1,187 @@
 ---
 name: adhoc-quick-fix
-description: Log an issue to Linear and immediately start fixing it. Handles duplicate detection, ticket creation, implementation, quality review via sub-agents, and Linear status updates — only pausing for user review before committing.
-argument-hint: "<description of the issue or improvement>"
+description: Log a Linear issue for ad-hoc work and ship it. Two entries — fix it now, or the work is already done — then branch, commit, and open a PR. Handles duplicate detection, ticket creation, optional implementation, and Linear status.
+argument-hint: "<description of the issue, or of the work already done>"
 ---
 
-You are an autonomous issue-fixing agent. The user has spotted something during testing that needs to be fixed right now. Your job is to log it, fix it, and present the result for review — with minimal interruption.
+# Adhoc
 
-## Core Principle
+One pipeline: Linear issue → (optional fix) → branch → commit → PR. Two entries,
+picked from the ask.
 
-**Act autonomously on implementation. Gate on commit.** Do not ask for approval to start coding, choose an approach, or create the Linear ticket. Only pause for the user when presenting the completed fix for review.
+## Which entry
 
-The one exception: if the issue description is ambiguous or you genuinely can't determine the right fix without more info, ask clarifying questions before starting work. Keep questions focused and minimal — ask all at once, not one at a time.
+| The user… | Entry | You implement? | You wait before commit? |
+|---|---|---|---|
+| Saw something broken / wants it fixed now | **A — Fix it now** | Yes | Yes — present, then ship |
+| Already did the work (or is finishing it) and wants it logged and shipped | **B — Work already done** | No. Do not modify code. | No — ship in one pass |
 
-## Workflow
+If the description is ambiguous between A and B, look at the working tree. Dirty
+or staged changes that match the description → B. Nothing to commit → A.
 
-### Step 1: Understand the Issue
+## Core principle
 
-Parse $ARGUMENTS to understand what needs fixing. Determine:
-- What's broken or suboptimal
-- Where in the codebase it likely lives
-- Whether this is a **bug** (broken behavior) or **improvement** (suboptimal behavior)
-- Severity: is this blocking work or a polish item?
+**Act autonomously on logistics. Gate Entry A on commit.** Do not ask for
+approval to start coding, choose an approach, or create the Linear ticket.
+Entry A pauses only when presenting the completed fix. Entry B does not pause.
+The one exception: if the issue is ambiguous and you cannot pick a fix (A) or
+infer the description (B), ask all clarifying questions at once.
 
-If the description is unclear or could mean multiple things, ask the user to clarify **before proceeding**. Batch all questions into a single ask. If you're confident you understand the issue, move straight to Step 2.
+## Shared — Steps 1 to 3
 
-### Step 2: Check for Existing Issues
+### Step 1: Understand
 
-Before creating anything, search Linear for duplicates:
+Parse the ask (or, on B with no description, the git diff):
 
-1. List Linear issues (see CLAUDE.md → "Linear access" for the channel) and search for issues with similar keywords from the description.
-2. Also search with `list_issues` using broader terms (the component name, the feature area).
-3. If you find a likely duplicate or related issue, tell the user:
-   - Show the existing issue (ID, title, status, description summary)
-   - Ask: "This looks related — should I update the existing issue instead of creating a new one, or is this a separate problem?"
-   - Wait for their answer before proceeding.
+- What is broken, suboptimal, or already changed, and why
+- Where it lives / which packages
+- **Bug**, **improvement**, or **feature**
+- Severity (A) — blocking vs polish
 
-If no duplicates found, proceed to Step 3.
+### Step 2: Check for existing issues
 
-### Step 3: Create Linear Ticket
+Search Linear before creating (CLAUDE.md → "Linear access"):
 
-Create the issue in Linear using the `save_issue` tool:
-- **Title**: concise description of the fix (imperative mood, e.g. "Fix SSE reconnection dropping items")
-- **Label**: "Bug" or "Improvement" based on Step 1 analysis
-- **Priority**: based on severity assessment (1=Urgent, 2=High, 3=Normal, 4=Low)
-- **State**: "In Progress" — you're starting work immediately
-- **Description**: follow the **agent-brief template** at `docs/contributing/agent-brief-template.md`. Quick-fix issues are durable contracts even though we're acting on them immediately — the brief shape (What we're solving → Current → Desired → Key surfaces → Acceptance criteria → Out of scope → Context) keeps the record useful for future readers. Keep each section short; this isn't a feature spec, but it's not freeform prose either.
+1. `list_issues` with keywords from the description, then broader terms
+   (component, feature area).
+2. If a likely duplicate exists, show it (ID, title, status, summary) and ask
+   whether to update/link that issue or create a new one. Wait.
+3. On B, if an existing issue is what this work resolves, use **that** ID for
+   the branch and PR.
 
-Assign the issue to the relevant team and project if determinable from context. If not, create it without — the user can organize later.
+### Step 3: Create the Linear issue
 
-Tell the user the issue was created (show the issue identifier) and that you're starting work.
+`save_issue`:
 
-### Step 4: Investigate and Fix
+- **Title**: concise, imperative ("Fix SSE reconnection dropping items")
+- **Label**: Bug / Improvement / Feature from Step 1
+- **Priority**: A — from severity (1=Urgent … 4=Low). B — 3 unless the user said otherwise
+- **State**: In Progress
+- **Team / project / assignee**: infer when you can (B defaults team "Fixpoint Labs",
+  assignee "me"; engine/core → "flow-state.dev")
+- **Description**:
+  - **A** — the **agent-brief template** at `docs/contributing/agent-brief-template.md`
+    (What we're solving → Current → Desired → Key surfaces → Acceptance criteria →
+    Out of scope → Context). Short; this is not a feature spec.
+  - **B** — 2–3 sentences covering what and why. Not a brief.
 
-Now do the actual work. Follow the project's standard development practices:
+Tell the user the issue identifier. On A, say you are starting work.
 
-1. **Read relevant code** to understand the problem area. Read `CLAUDE.md` orientation docs if you need architectural context.
-2. **Identify the root cause**, not just the symptom.
-3. **Implement the fix** with minimal, focused changes. Don't refactor surrounding code or add unrelated improvements.
-4. **Run typechecks and tests** for affected packages:
+## Entry A — Fix it now
+
+### Step 4: Investigate and fix
+
+1. Read the relevant code. Read `CLAUDE.md` orientation if you need architecture.
+2. Identify the root cause, not just the symptom.
+3. Minimal, focused changes. Do not refactor neighbors.
+4. Typecheck and test the affected packages:
    ```bash
    pnpm --filter <affected-package> typecheck
    pnpm --filter <affected-package> test
    ```
-5. If tests fail, fix them. If existing tests don't cover the fix, add targeted test coverage.
-6. **Confirm the fix against the real path when the behaviour is user-visible** and there's a runnable real path — a flow, generator, or a handler/pattern surfaced through a flow. Mocked specs passing doesn't prove the symptom is gone: run it through a real model (`fsdev run`) and confirm the actual outcome the user reported is fixed — that's the goal. Only pure type/unit fixes with no user-visible behaviour skip this. (See `tdd` → "Two kinds of test".)
+5. If tests fail, fix them. If existing tests don't cover the fix, add targeted coverage.
+6. **Confirm against the real path** when the behaviour is user-visible and there
+   is a runnable real path — `fsdev run` on a real model. Mocked specs passing
+   do not prove the symptom is gone. Pure type/unit fixes skip this.
+   (`tdd` → "Two kinds of test".)
 
-Work autonomously through this step. Don't ask the user for approach approval — just pick the right fix and implement it.
+Do not ask for approach approval.
 
-### Step 5: Quality Review (Sub-agents)
+### Step 5: Quality review (sub-agents, in parallel)
 
-After implementing the fix, launch three sub-agents **in parallel**:
+1. **Code quality** — `feature-dev:code-reviewer`: bugs, security, conventions
+   (`AGENTS.md`, `docs/contributing/best-practices.md` + the relevant category
+   file), coverage.
+2. **Alternative approaches** — `Plan`: simpler/more robust? root cause vs
+   symptom? broader refactor (note it, don't block).
+3. **Impact** — `Explore`: other sites with the same problem; related Linear issues.
+4. **Docs & changelog** — `general-purpose`: architecture docs, `apps/docs`,
+   package READMEs, AGENTS/BPs. Changeset only if a published-package consumer
+   can observe the fix (BP-022). Return a concrete file list.
 
-#### Agent 1: Code Quality Review
-Launch a `feature-dev:code-reviewer` sub-agent to review the changes for:
-- Bugs or logic errors introduced by the fix
-- Security concerns
-- Adherence to project conventions (check `AGENTS.md`, `docs/contributing/best-practices.md` for universal rules + the index, and the relevant `docs/contributing/best-practices/<category>.md` for situational rule text)
-- Test coverage adequacy
+Address critical findings before presenting. Non-critical notes go in the summary.
 
-#### Agent 2: Alternative Approaches
-Launch a `Plan` sub-agent to:
-- Consider whether there's a simpler or more robust approach to this fix
-- Check if the fix addresses the root cause vs. papering over a symptom
-- Flag if the change has broader implications that warrant a larger refactor (but don't block on this — just note it)
+### Step 6: Update Linear
 
-#### Agent 3: Impact Analysis
-Launch an `Explore` sub-agent to:
-- Search for other places in the codebase that might have the same problem
-- Check if any open Linear issues are related to or affected by this change
-- Identify if this fix resolves or partially addresses other known issues
+Comment: root cause, files changed, test results, **real-path verdict**
+(`fsdev run` command + result, or "N/A — type/unit-only"). Keep state
+In Progress until the user approves.
 
-#### Agent 4: Documentation & Changelog Review
-Launch a `general-purpose` sub-agent to determine what documentation and changelog updates are needed. The agent should:
+### Step 7: Present for review
 
-1. **Identify what changed semantically** — not just which files were modified, but what behavior, API surface, or developer-facing contract shifted.
-2. **Check each documentation layer** for staleness against the fix:
-   - `docs/architecture/*.md` — Does the fix change how a system works in a way that contradicts the architecture reference?
-   - `apps/docs/` (hosted site) — Are there guides, references, or getting-started pages that describe the old behavior?
-   - `packages/*/README.md` — Does the affected package's README describe the pre-fix behavior?
-   - `AGENTS.md` or `docs/contributing/best-practices.md` (+ the relevant `best-practices/<category>.md`) — Does the fix introduce a new pattern or deprecate an old one that agents/contributors should know about?
-3. **Changeset** — Determine whether the fix needs a `.changeset/*.md` fragment. Most fixes don't; the default is no. It does if somebody who has installed a published package needs to know:
-   - The fix changes behavior they can observe from outside the package (API response shape, error messages, default values)
-   - The fix affects how developers use the framework
-   - The fix resolves a known issue that users may have worked around
-   - It does NOT need one for internal refactors, test-only changes, or anything scoped to a private package (`labs/*`, `examples/*`, `apps/*`, `plugins/*`, `goals`). Say "no changeset needed" in the PR description; an empty fragment is optional, not required.
+1. What was wrong and what you did
+2. Files changed
+3. Test results
+4. Real-path verdict
+5. Sub-agent findings
+6. Related issues
 
-   When a fragment is warranted, follow the [Release notes workflow](../../../docs/contributing/release-notes-workflow.md) and BP-022: one user-facing sentence per affected package, no file paths, no test counts, no implementation rationale. Pre-1.0: `patch` or `minor` only, never `major`.
-4. **Return a concrete list** of files that need updating and what specifically should change in each. Don't just say "README might need updating" — say which section and what the new content should reflect.
+They may **approve** (→ Ship), **request changes** (fix, re-test, present again),
+or **reject** (revert, Linear → Cancelled or Backlog).
 
-Review the sub-agent results. If they surface anything critical (a bug in the fix, a clearly better approach, a missed test case), address it before presenting to the user. For non-critical observations (possible future refactor, related issues to create), include them in the summary.
+Then **Ship**.
 
-### Step 6: Update Linear Status
+## Entry B — Work already done
 
-Update the Linear issue with a comment summarizing:
-- What was found (root cause)
-- What was changed (files modified, approach taken)
-- Test results
-- **Real-path verdict**: for any user-visible fix with a runnable real path (flow, generator, or handler/pattern surfaced through a flow), the `fsdev run` command and its result confirming the symptom is gone (or "N/A — type/unit-only fix"). Mocked tests passing don't prove the symptom is fixed.
+Skip Steps 4–7. Do not modify any code. Infer the commit message and the issue
+description from the diff if the user said "ship it". Then **Ship**.
 
-Keep the issue in "In Progress" state — it moves to "Done" only after the user approves the commit.
+## Ship (both entries)
 
-### Step 7: Present for Review
+### Branch and stage
 
-Now — and only now — present the completed work to the user. Include:
+1. Current git state:
+   - Already on a feature/fix branch with the right changes → skip creation
+   - On main or an unrelated branch with uncommitted changes: stash, update
+     main, create `fix/FIX-{number}-{slug}`, pop stash (prefer stashed changes
+     on conflict)
+2. Stage **relevant** files only. No `.env`, no credentials, no `git add -A`.
+   On B, leave unrelated dirty files unstaged.
 
-1. **Summary**: what was wrong and what you did to fix it
-2. **Changes made**: list of files modified with brief descriptions
-3. **Test results**: did everything pass?
-4. **Real-path verdict**: for any user-visible fix with a runnable real path (flow, generator, or handler/pattern surfaced through a flow), the `fsdev run` result confirming the reported symptom is gone (or "N/A — type/unit-only fix"). This is the proof the fix works, distinct from the test suite.
-5. **Sub-agent findings**: any notable observations from the quality review
-6. **Related issues**: any other Linear issues affected (from impact analysis)
+### Commit
 
-Ask the user to review the changes. They may:
-- **Approve** → proceed to commit
-- **Request changes** → make the adjustments, re-run affected tests, and present again
-- **Reject** → revert changes, update Linear issue status to "Cancelled" or "Backlog"
+```
+<type>(<scope>): <description>
 
-### Step 8: Commit and Close
+<optional body explaining what and why>
 
-Once approved:
+Fixes FIX-{number}
+```
 
-1. Create a focused commit using the project's commit conventions. The commit message should reference the Linear issue ID.
-2. Update the Linear issue:
-   - State: "Done"
-   - Add a final comment with the commit hash
-3. If the impact analysis found related issues, mention them to the user as potential follow-ups.
+Type: bug → `fix`; new capability → `feat`; improvement → `feat` or `refactor`;
+tests → `test`; docs → `docs`. Scope: the primary package (`engine`, `core`, …).
+
+### Push and open the PR
+
+1. `git push -u origin <branch>`
+2. Open the PR. Title under 70 characters. Body follows
+   [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md)
+   → "The layout" — problem first, then what this does, then what's asked.
+   Language: ASD-STE100. Most of this route is small: one paragraph and a links
+   line. **The reviewer contract is never dropped.**
+   - **A (bug with a visible diagnose chain)** — the direct-route (bug) variant,
+     only when the repro and regression test are in the diff.
+   - **A (otherwise) or B** — variant 4, **no upstream contract**. This route
+     files the issue *after* or *as* the work. Do not paste the brief-backed
+     variant: Step 3's brief (A) is not a one-screen agent brief that constrained
+     the work, and B writes 2–3 sentences.
+   - Links line: `Fixes FIX-{number}`.
+
+### Close Linear
+
+State: Done. Attach the PR URL. On A, the final comment includes the commit hash.
+
+### Report
+
+Linear issue ID and URL, PR URL, branch name. On A, include the review summary
+the user already saw.
 
 ## Guidelines
 
-- **Speed over ceremony.** This workflow exists because the user saw something and wants it fixed now. Don't over-document, over-plan, or over-ask.
-- **Minimal changes.** Fix the issue. Don't improve neighboring code, add types to unrelated functions, or refactor while you're in there.
-- **Trust the sub-agents.** Let them do thorough review so you can focus on shipping.
-- **Keep Linear updated.** The whole point is that this work gets tracked, not lost. Every state change should be reflected.
-- **One ask, not five.** If you need to clarify, ask all your questions at once. Don't drip-feed questions to the user.
-- **Be direct in the review.** When presenting the fix, lead with what changed and why. Don't write an essay.
+- **Minimal changes** (A). Fix the issue. Don't improve neighbors.
+- **No code changes** (B). Logistics only.
+- **Speed over ceremony.** One ask, not five. Don't drip-feed questions.
+- **Keep Linear updated.** Every state change is reflected.
+- **One shot on B.** Don't ask for confirmation at each step.
+- **Handle existing branches.** If the user is already on the right branch, or
+  changes are already committed, push and open the PR.

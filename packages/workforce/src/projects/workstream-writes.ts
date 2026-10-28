@@ -1,6 +1,6 @@
 /**
  * The workstream writes: `openWorkstream` and `updateWorkstream`, as app
- * actions, and `updateWorkstream` and `listLeads` as tools.
+ * actions, and `updateWorkstream`, `editWorkstream` and `listLeads` as tools.
  *
  * **Opening one.** The caller names a project by its address, an id, a title
  * and a lead from their own roster: a worker on a lead flow that lists
@@ -30,17 +30,29 @@
  * when it is (`project-coordinator.ts`). An open made in the owner's
  * coordinator's own turn, with its `openWorkstream` tool, writes the record
  * in that turn instead, since a dispatch into the session it runs in would
- * land after the turn, and the hand-off that follows would find no record
+ * land after the turn, and the dispatch that follows would find no record
  * (BR-38). The coordinator holds at most
  * `MAX_DELEGATES` records, so an owner with that many open workstreams in a
  * project is refused another before anything is written (BR-21b).
+ *
+ * **A worker's open is checked for fit.** With `leadFit` set, the
+ * `openWorkstreamTool` a worker calls asks the one fit check best fit also
+ * routes by, after every other refusal and before anything is written, about
+ * the chosen lead, and refuses `lead-doesnt-fit` only when it answers that
+ * none fits (`lead-fit.ts`). Opening a workstream again is not checked: it was accepted
+ * once. A user's `openWorkstream` action is their own pick and is not checked.
+ * A check that can't answer lets the open through, and the tool's answer says
+ * why in `leadFit`.
  *
  * **Updating one.** Only its owner writes an entry, and the engine enforces
  * that at the store whichever flow writes. The app's action writes the entry
  * its input names, the caller's own unless it names another owner, which the
  * store then refuses. The lead's tool writes the workstream its session
  * leads, read from the session's readonly `workstreamId`, so it only ever
- * reaches its own owner's entry. Each write is a compare-and-swap that
+ * reaches its own owner's entry. It takes no title: naming a workstream is
+ * its owner's. The owner's project coordinator's tool,
+ * `editWorkstream`, writes one of its user's workstreams by id, in the project
+ * its conversation is linked to and no other. Each write is a compare-and-swap that
  * recomputes on retry, stamps `writtenBy` from the session and sets
  * `updatedAt` from the server's clock. Nothing deletes an entry; done is a
  * status.
@@ -55,11 +67,12 @@ import { withWrittenBy, type SharedWriteContext } from "../shared-resource";
 import { deriveWorkerSessionId } from "../workers/derive-session-id";
 import type { RosterWorker, WorkerInstallation } from "../workers/installation";
 import { WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "../workers/keys";
-import { changeWorkstreamRecordHere, linkedProjectOf, WORKSTREAM_DELEGATE_ACTION } from "./project-coordinator";
+import { changeWorkstreamRecordHere, projectOfWrite, WORKSTREAM_DELEGATE_ACTION } from "./project-coordinator";
 import { DONE_STATUS } from "./project-progress";
 import { projectEntries } from "./project-read";
 import { retryOnConflict } from "./cas-retry";
 import { projectAddressSchema, type ProjectAddress } from "./collections";
+import { defineLeadFitCheck, LEAD_FIT_STATE, leadFitCaseSchema, leadFitRecordSchema, leadFitStateSchema, type LeadFitCase } from "./lead-fit";
 import { isMember } from "./membership-gate";
 import { projectAt, PROJECT_ROW_RESOURCES, workstreamsAt, type ResourcesContext } from "./project-address";
 import { ProjectRefusedError } from "./project-refusal";
@@ -78,6 +91,7 @@ import {
 } from "./workstream-collections";
 import { leadsWorkstreams, WORKSTREAM_OPENED_ENTRY } from "./workstream-lead";
 import { parseWorkstreamRef, workstreamRef, type WorkstreamAddress } from "./workstream-ref";
+import { ALL_DELEGATES } from "../delegates/delegate-keys";
 
 /** What a write hands on for its coordinator's record: none, or the change and the record. */
 const recordChangeSchema = z.object({
@@ -105,6 +119,13 @@ export interface WorkstreamBlocksOptions {
    * `agent` flow does. A worker on any other flow is refused as a lead.
    */
   leadFlows: readonly { readonly kind: string }[];
+  /**
+   * Check a worker's pick of lead against the work before its
+   * `openWorkstreamTool` opens it, with the one fit check on this model (asked
+   * again as a language model when the model serves no evaluations). Left out, the
+   * tool opens with any lead that can lead.
+   */
+  leadFit?: { model: string };
 }
 
 /** What opening a workstream takes. Closed: nothing in it names the owner. */
@@ -177,11 +198,40 @@ export const updateWorkstreamInputSchema = z
 /** @see updateWorkstreamInputSchema */
 export type UpdateWorkstreamInput = z.infer<typeof updateWorkstreamInputSchema>;
 
-/** What the lead's tool takes: the changes. Its workstream is the one its session leads. */
-export const updateOwnWorkstreamInputSchema = z.object(changesShape).strict();
+/**
+ * What the lead's tool takes: the changes, but never a title. Its workstream is
+ * the one its session leads. A workstream's name is its owner's, set at the
+ * open and changed by the owner or their project coordinator: a lead of
+ * several workstreams is handed each post with the coordinator conversation's
+ * recent lines, which name the others, and with a title to write it could put
+ * one's name on another.
+ */
+export const updateOwnWorkstreamInputSchema = z
+  .object({ status: changesShape.status, due: changesShape.due, objectives: changesShape.objectives, report: changesShape.report })
+  .strict();
 
 /** @see updateOwnWorkstreamInputSchema */
 export type UpdateOwnWorkstreamInput = z.infer<typeof updateOwnWorkstreamInputSchema>;
+
+/**
+ * What the coordinator's `editWorkstream` tool takes: one of the caller's own
+ * workstreams, by id, and the changes. The latest report stays the lead's.
+ * Left out, `project` is the one the conversation is linked to, the only one
+ * such a conversation may change.
+ */
+export const editWorkstreamInputSchema = z
+  .object({
+    project: projectAddressSchema.optional(),
+    id: z.string().min(1),
+    title: changesShape.title,
+    status: changesShape.status,
+    due: changesShape.due,
+    objectives: changesShape.objectives
+  })
+  .strict();
+
+/** @see editWorkstreamInputSchema */
+export type EditWorkstreamInput = z.infer<typeof editWorkstreamInputSchema>;
 
 /** What an update returns: the entry as written. */
 export const updateWorkstreamOutputSchema = z.object({ workstream: workstreamViewSchema });
@@ -209,11 +259,34 @@ export type WorkstreamBlocks = {
    * a lead flow and listing delegates. Give it to whoever picks a lead.
    */
   listLeadsTool: BlockDefinition<z.ZodObject<{}, "strict">, typeof listLeadsOutputSchema, Record<string, never>, ListLeadsOutput>;
+  /**
+   * `openWorkstream` for a worker to call: with `leadFit` set, it first asks
+   * the one fit check about the lead, and refuses `lead-doesnt-fit` only when
+   * it answers that none fits. Work that doesn't say what sort it is is never refused.
+   * Without `leadFit`, it is `openWorkstream`.
+   */
+  openWorkstreamTool: BlockDefinition<
+    typeof openWorkstreamInputSchema,
+    z.ZodTypeAny,
+    OpenWorkstreamInput,
+    OpenWorkstreamOutput
+  >;
   /** The lead's tool: updates the workstream its session leads. Give it to a lead's flow. */
   updateWorkstreamTool: BlockDefinition<
     typeof updateOwnWorkstreamInputSchema,
     typeof updateWorkstreamOutputSchema,
     UpdateOwnWorkstreamInput,
+    UpdateWorkstreamOutput
+  >;
+  /**
+   * The owner's tool: changes one of the caller's workstreams by id (its
+   * title, status, due date or objectives), in the project the conversation
+   * is linked to. Give it to a project coordinator.
+   */
+  editWorkstreamTool: BlockDefinition<
+    typeof editWorkstreamInputSchema,
+    typeof updateWorkstreamOutputSchema,
+    EditWorkstreamInput,
     UpdateWorkstreamOutput
   >;
   actions: {
@@ -280,6 +353,20 @@ const openStepSchema = z.object({
 
 type OpenStep = z.infer<typeof openStepSchema>;
 
+/** What the check hands on: the open, its lead's flow, and the lead fit check's case, or none to judge. */
+const checkedOpenSchema = z.object({
+  open: openWorkstreamInputSchema,
+  flow: z.string(),
+  fitCase: leadFitCaseSchema.nullable()
+});
+
+type CheckedOpen = z.infer<typeof checkedOpenSchema>;
+
+/** The refusal for an open naming another lead than the open workstream's. */
+function leadDiffers(id: string, lead: string): ProjectRefusedError {
+  return new ProjectRefusedError("lead-differs", `workstream "${id}" is already open, led by "${lead}". A workstream's lead doesn't change.`);
+}
+
 /**
  * Build the workstream writes.
  *
@@ -307,7 +394,8 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
   const leadProblem = (worker: RosterWorker): string | undefined => {
     if (worker.problem !== undefined) return `can't lead a workstream: ${worker.problem}`;
     if (!leadFlowNames.has(worker.flow)) return `runs on flow "${worker.flow}", which can't lead a workstream`;
-    if (worker.delegates.length === 0) {
+    // `all` is the whole roster, never empty: the lead itself is on it.
+    if (worker.delegates !== ALL_DELEGATES && worker.delegates.length === 0) {
       return "lists no delegates, so it can't lead a workstream: a lead runs its workstream through its delegates";
     }
     return undefined;
@@ -315,39 +403,22 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
   const resources = { ...installation.resources, ...PROJECT_ROW_RESOURCES, ...WORKSTREAM_RESOURCES };
 
   /**
-   * Check the open, and make the entry or find it: everything that can refuse
-   * runs before anything is written.
+   * Check the open: everything that can refuse, short of the lead's fit, runs
+   * here, before anything is written. Answers the open, its lead's flow, and
+   * the fit check's case, or none when there is nothing to check: the
+   * workstream is open already, or its lead has no description. Why there is
+   * none is noted for the open's record.
    */
-  /**
-   * The project an open is in: the one it names, or, left out, the one its
-   * conversation is linked to. A conversation linked to a project opens only
-   * in that project, so a coordinator's open never lands in another.
-   */
-  const openingProjectOf = (ctx: { readonly session: { readonly state: unknown } }, named: ProjectAddress | undefined): ProjectAddress => {
-    const linked = linkedProjectOf(ctx.session.state);
-    if (named === undefined) {
-      if (linked === undefined) throw new ProjectRefusedError("no-such-project", "name the project to open the workstream in.");
-      return linked;
-    }
-    if (linked !== undefined && (linked.visibility !== named.visibility || linked.id !== named.id)) {
-      throw new ProjectRefusedError(
-        "other-project",
-        `this conversation is project "${linked.id}"'s; it opens workstreams only there, not in "${named.id}".`
-      );
-    }
-    return named;
-  };
-
   const checkOpen = handler({
     name: "workstream-open-check",
     inputSchema: openWorkstreamInputSchema,
-    outputSchema: openStepSchema,
+    outputSchema: checkedOpenSchema,
     resources,
-    requestStateSchema: openingStateSchema,
-    execute: async (input: OpenWorkstreamInput, ctx): Promise<OpenStep> => {
+    requestStateSchema: leadFitStateSchema,
+    execute: async (input: OpenWorkstreamInput, ctx): Promise<CheckedOpen> => {
       const owner = ownerOf(ctx, "openWorkstream");
       assertWorkstreamId(input.id);
-      const at = openingProjectOf(ctx, input.project);
+      const at = projectOfWrite(ctx.session.state, input.project, "open workstreams");
       const project = await projectAt(ctx, at);
       if (!isMember(project.state, owner)) {
         throw new ProjectRefusedError(
@@ -363,12 +434,13 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
       const cannotLead = leadProblem(lead);
       if (cannotLead !== undefined) throw new ProjectRefusedError("cannot-lead", `Worker "${input.lead}" ${cannotLead}.`);
 
-      const address: WorkstreamAddress = { project: at, id: input.id };
       const entries = workstreamsAt(ctx, at.visibility);
       const key = workstreamEntryKey(at.id, owner, input.id);
+      const held = await entries.getOptional(key);
+      if (held !== undefined && held.state.lead !== input.lead) throw leadDiffers(input.id, held.state.lead);
       // Each open workstream is a record on the owner's coordinator, which
       // holds so many: refused before anything is written (BR-21b).
-      if (installation.projectCoordinator() !== undefined && (await entries.getOptional(key)) === undefined) {
+      if (installation.projectCoordinator() !== undefined && held === undefined) {
         const open = (await projectEntries(ctx, at)).filter(
           (held) => held.owner === owner && held.status !== DONE_STATUS
         );
@@ -380,6 +452,29 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
           );
         }
       }
+      const unchecked = held !== undefined ? "already-open" : lead.description === null ? "no-description" : undefined;
+      if (unchecked !== undefined) await ctx.request.patchState({ [LEAD_FIT_STATE]: { checked: false, why: unchecked } });
+      const fitCase: LeadFitCase | null =
+        unchecked === undefined
+          ? { lead: input.lead, description: lead.description!, title: input.title, objectives: input.objectives ?? [] }
+          : null;
+      return { open: input, flow: lead.flow, fitCase };
+    }
+  });
+
+  /** Make the entry or find it, and say whether the lead's session is still to be created. */
+  const makeOpen = handler({
+    name: "workstream-open-make",
+    inputSchema: checkedOpenSchema,
+    outputSchema: openStepSchema,
+    resources,
+    requestStateSchema: openingStateSchema,
+    execute: async ({ open: input, flow }: CheckedOpen, ctx): Promise<OpenStep> => {
+      const owner = ownerOf(ctx, "openWorkstream");
+      const at = projectOfWrite(ctx.session.state, input.project, "open workstreams");
+      const address: WorkstreamAddress = { project: at, id: input.id };
+      const entries = workstreamsAt(ctx, at.visibility);
+      const key = workstreamEntryKey(at.id, owner, input.id);
       const now = nowIso();
       const fresh: Omit<WorkstreamEntry, "writtenBy"> = {
         title: input.title,
@@ -403,16 +498,12 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
           if (entry === undefined) throw error;
         }
       }
-      if (!opened && entry.state.lead !== input.lead) {
-        throw new ProjectRefusedError(
-          "lead-differs",
-          `workstream "${input.id}" is already open, led by "${entry.state.lead}". A workstream's lead doesn't change.`
-        );
-      }
+      // Another open may have made it since the check.
+      if (!opened && entry.state.lead !== input.lead) throw leadDiffers(input.id, entry.state.lead);
       const needsSession = entry.state.sessionId == null && !(await sessionNamedSoon(entry, opened));
-      const opening: Opening = { address, owner, lead: input.lead, flow: lead.flow, opened, needsSession };
+      const opening: Opening = { address, owner, lead: input.lead, flow, opened, needsSession };
       await ctx.request.patchState({ [OPENING_STATE]: opening });
-      return { needsSession, flow: lead.flow, lead: input.lead, ref: workstreamRef(address) };
+      return { needsSession, flow, lead: input.lead, ref: workstreamRef(address) };
     }
   });
 
@@ -496,9 +587,13 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     });
     const record = { change: change as RecordChange["change"], worker: workstream.lead, target: workstreamRef({ project: workstream.project, id: workstream.id }) };
     // Written from the owner's coordinator's own turn: the record lands in this
-    // turn, so the hand-off after it finds it (BR-38).
-    if (coordinatorSessionId === (ctx.session.identity as { id?: string }).id) {
-      await changeWorkstreamRecordHere(ctx as never, record);
+    // turn, so the dispatch after it finds it (BR-38). Only an open, whose lead
+    // was just checked, or a removal, which needs no check: re-adding a
+    // reopened workstream's record goes through the checked entry, since its
+    // lead may have left the roster since.
+    const here = before === undefined || change === "remove";
+    if (here && coordinatorSessionId === (ctx.session.identity as { id?: string }).id) {
+      await changeWorkstreamRecordHere(ctx as never, record, options.installation);
       return undefined;
     }
     return { ...record, coordinatorSessionId };
@@ -555,21 +650,51 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     }
   });
 
-  const openSteps = sequencer({
-    name: "open-workstream",
-    inputSchema: openWorkstreamInputSchema,
-    outputSchema: openWorkstreamOutputSchema
-  })
-    .step(checkOpen)
-    .stepIf((step: OpenStep) => step.needsSession, createSession)
-    .step(finishOpen);
-  const openWorkstream =
-    changeRecord === undefined
-      ? openSteps
-      : openSteps
-          .step(recordOpen)
-          .tapIf((out: { record?: RecordChange }) => out.record !== undefined, (out: { record?: RecordChange }) => out.record!, changeRecord)
-          .map(({ workstream, opened }: OpenWorkstreamOutput) => ({ workstream, opened }));
+  /**
+   * The open's steps. A worker's open (`checksFit`) runs the lead fit check
+   * between the check and the write, unless the check found nothing to judge,
+   * and answers what became of it as `leadFit`.
+   */
+  const openWith = (name: string, fitCheck?: ReturnType<typeof defineLeadFitCheck>) => {
+    const checked = sequencer({
+      name,
+      inputSchema: openWorkstreamInputSchema,
+      outputSchema: fitCheck === undefined ? openWorkstreamOutputSchema : openWorkstreamOutputSchema.extend({ leadFit: leadFitRecordSchema })
+    }).step(checkOpen);
+    const steps = (
+      fitCheck === undefined
+        ? checked
+        : checked.tapIf((step: CheckedOpen) => step.fitCase !== null, (step: CheckedOpen) => step.fitCase!, fitCheck)
+    )
+      .step(makeOpen)
+      .stepIf((step: OpenStep) => step.needsSession, createSession)
+      .step(finishOpen);
+    const recorded =
+      changeRecord === undefined
+        ? steps
+        : steps
+            .step(recordOpen)
+            .tapIf((out: { record?: RecordChange }) => out.record !== undefined, (out: { record?: RecordChange }) => out.record!, changeRecord)
+            .map(({ workstream, opened }: OpenWorkstreamOutput) => ({ workstream, opened }));
+    return fitCheck === undefined ? recorded : recorded.step(withFitRecord);
+  };
+
+  /** A worker's open answers what became of its lead fit check. */
+  const withFitRecord = handler({
+    name: "workstream-open-fit-record",
+    inputSchema: openWorkstreamOutputSchema,
+    outputSchema: openWorkstreamOutputSchema.extend({ leadFit: leadFitRecordSchema }),
+    requestStateSchema: leadFitStateSchema,
+    execute: (out: OpenWorkstreamOutput, ctx) => ({
+      ...out,
+      leadFit: ctx.request.state[LEAD_FIT_STATE] ?? { checked: false, why: "not-asked" }
+    })
+  });
+
+  const openWorkstream = openWith("open-workstream");
+  const openWorkstreamTool =
+    options.leadFit === undefined ? openWorkstream : openWith("open-workstream-checked", defineLeadFitCheck(options.leadFit.model));
+
 
   const updateFromApp = handler({
     name: "workstream-update-write",
@@ -607,6 +732,27 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     "Update the workstream you lead: its status (a short label in your own words; \"done\" marks it finished), due date, objectives (the whole list, each met or not) and your latest report. Every reader of the project sees it."
   );
 
+  const editFromCoordinator = handler({
+    name: "workstream-edit-write",
+    inputSchema: editWorkstreamInputSchema,
+    outputSchema: updatedStepSchema,
+    resources: WORKSTREAM_RESOURCES,
+    execute: async (input: EditWorkstreamInput, ctx): Promise<UpdatedStep> => {
+      const { project, id, ...changes } = input;
+      const at = projectOfWrite(ctx.session.state, project, "change workstreams");
+      const written = await updateEntry(ctx, { project: at, id }, ownerOf(ctx, "editWorkstream"), changes);
+      const record = await recordFor(ctx, written.workstream, written.before);
+      return { workstream: written.workstream, ...(record === undefined ? {} : { record }) };
+    }
+  });
+  const editWorkstreamTool = withRecord(
+    "editWorkstream",
+    editFromCoordinator,
+    "Change one of the user's own workstreams in this project, by its id: its title, status (\"done\" closes it), " +
+      "due date (YYYY-MM-DD, or null to clear it) or objectives (the whole list, each met or not). What you leave out stays. " +
+      "Leave `project` out. Nobody else's workstream can be changed."
+  );
+
   const listLeadsTool = handler({
     name: "listLeads",
     description:
@@ -624,9 +770,11 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
 
   return {
     openWorkstream,
+    openWorkstreamTool: openWorkstreamTool as WorkstreamBlocks["openWorkstreamTool"],
     updateWorkstream,
     listLeadsTool,
     updateWorkstreamTool,
+    editWorkstreamTool,
     actions: {
       openWorkstream: {
         block: openWorkstream,

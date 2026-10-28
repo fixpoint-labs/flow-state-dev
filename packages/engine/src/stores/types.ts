@@ -9,11 +9,11 @@ import type { JsonObject } from "@flow-state-dev/core/types";
 import type { ExpectedVersion as SharedExpectedVersion } from "@flow-state-dev/core/helpers";
 import type {
   BlockTraceItem,
-  OutputItem,
   RequestStreamEvent,
   RouterDecisionItem,
   StateSnapshotItem
 } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type { Lease, LeaseOptions } from "../durability/types";
 
 export type { RequestStatus };
@@ -202,11 +202,11 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   metadata?: Record<string, unknown>;
   input?: unknown;
   /**
-   * Output items produced by this request. Adapters that store items
+   * The request's item log, trace rows included. Adapters that store items
    * separately may leave this `undefined` on `list()` results unless
    * `RequestListOptions.withItems` is true.
    */
-  items?: OutputItem[];
+  items?: RuntimeItem[];
   interruptedAt?: number;
   /**
    * Whether cancellation has been requested for this request (FIX-1026).
@@ -768,6 +768,25 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    * for the id, so none of them lands after the delete.
    */
   delete(id: string): Promise<void>;
+  /**
+   * {@link RequestStore.delete}, only while the request's status is one of
+   * `allowedStatuses`: the status check and the delete are one atomic step
+   * inside the adapter, the way {@link RequestStore.setFieldsIfStatus} gates
+   * a write. A caller that judged a record by its status (retention judging a
+   * past turn evictable) deletes it only if it is still in that status, so a
+   * request that started running in between (a re-driven `interrupted` one)
+   * keeps its record, items, events and runOnce results.
+   *
+   * Writes already in flight for the id are waited out but not dropped first:
+   * when the predicate fails they belong to a run that is still going.
+   *
+   * Returns the status found under the same step, with the outcomes of
+   * {@link ConditionalWriteResult}: an absent record is never a match.
+   */
+  deleteIfStatus(
+    id: string,
+    allowedStatuses: readonly RequestStatus[]
+  ): Promise<ConditionalWriteResult>;
   list(options?: RequestListOptions): Promise<RequestRecord[]>;
 
   /**
@@ -794,7 +813,7 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    * memoization. Re-persisting an id whose fields changed MUST write the
    * latest content. Enforced by the cross-store conformance suite.
    */
-  persistItems(requestId: string, items: OutputItem[]): void;
+  persistItems(requestId: string, items: RuntimeItem[]): void;
 
   /**
    * Wait for all pending item persistence writes to complete, so none lands
@@ -1454,6 +1473,9 @@ export interface ResourceStateStore {
  * `stepHistory` — those are explicitly out of scope (see FIX-401 spec).
  */
 export interface CheckpointStore {
+  /** `false` when this store keeps nothing past the process. Absent means it persists. */
+  readonly persists?: boolean;
+
   /** Overwrite the latest checkpoint for this sequencer instance. */
   write(checkpoint: SequencerCheckpoint): Promise<void>;
 
@@ -1507,6 +1529,9 @@ export interface TraceStore {
  * created by ctx.suspend() for later resolution via the resume endpoint.
  */
 export interface SuspensionStore {
+  /** `false` when this store keeps nothing past the process. Absent means it persists. */
+  readonly persists?: boolean;
+
   /** Create or update a suspension record. */
   set(record: SuspensionRecord): Promise<void>;
 
@@ -1558,6 +1583,74 @@ export interface LeaseStore {
   pruneExpired(): Promise<void>;
 }
 
+/**
+ * Where a wake is kept: one per session and internal entry (FIX-2078 D1).
+ * `tenantId` is part of the key, so two tenants' sessions under one id never
+ * share a wake.
+ */
+export type WakeKey = {
+  readonly tenantId?: string;
+  /** The session the wake runs its entry in (the session id, not its storage key). */
+  readonly sessionId: string;
+  /** The internal entry the wake dispatches in that session. */
+  readonly entry: string;
+};
+
+/** What a writer owes a wake: the key, its owner and its due time, all server-written. */
+export type WakeInput = WakeKey & {
+  /** The flow instance the session belongs to: its exact `id`. */
+  readonly flowKind: string;
+  /** The session's owner, as the wake's dispatch runs as. */
+  readonly userId: string;
+  readonly orgId: string;
+  /** When the debt is due (epoch ms). */
+  readonly dueAt: number;
+  /**
+   * When the write the wake guards must have landed by (epoch ms): the writer's
+   * request lease. A pass that finds nothing owed before this time moves the
+   * wake here rather than clearing it.
+   */
+  readonly landBy: number;
+};
+
+/**
+ * A wake (FIX-2078 D1): a debt's due time the engine keeps, fired by the
+ * durability sweeper until a pass in its session clears it. Written before the
+ * write that owes, so a crash between the two leaves a wake that pays nothing,
+ * never a debt with no wake.
+ */
+export type WakeRecord = WakeInput & {
+  /** Bumped by every {@link WakeStore.owe}, so a pass clears only what it read. */
+  readonly version: number;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+};
+
+/**
+ * Wake persistence (FIX-2078 D1). Optional on the store registry: an adapter
+ * written before it still type-checks and loads, and a host whose stores keep
+ * no wakes logs once and pays debts on its fast paths only.
+ *
+ * - {@link owe} writes or coalesces: one wake per key, keeping the EARLIER due
+ *   time and the LATER `landBy`, and bumping the version.
+ * - {@link move} and {@link clear} are conditional on the version a pass read,
+ *   so a wake written during the pass survives it. Neither bumps the version.
+ */
+export interface WakeStore {
+  /** Write the wake, or coalesce into the one already kept under its key. */
+  owe(input: WakeInput): Promise<WakeRecord>;
+  /** The wake kept under `key`, or `null`. */
+  get(key: WakeKey): Promise<WakeRecord | null>;
+  /** Move the wake to `dueAt`, if it is still at `version`. `true` when moved. */
+  move(key: WakeKey, version: number, dueAt: number): Promise<boolean>;
+  /** Delete the wake, if it is still at `version`. `true` when cleared. */
+  clear(key: WakeKey, version: number): Promise<boolean>;
+  /** Wakes due at or before `now`, earliest first, at most `limit`. */
+  listDue(now: number, limit: number): Promise<WakeRecord[]>;
+  /** The earliest due time of any wake, or `null` when none is kept. */
+  earliestDueAt(): Promise<number | null>;
+}
+
 export type StoreRegistry = {
   session: SessionStore;
   request: RequestStore;
@@ -1570,6 +1663,11 @@ export type StoreRegistry = {
   traces: TraceStore;
   suspensions: SuspensionStore;
   leases: LeaseStore;
+  /**
+   * Debts' due times (FIX-2078 D1). Optional: a host checks for it once at
+   * start, and without it keeps the fast paths only.
+   */
+  wakes?: WakeStore;
 };
 
 /**

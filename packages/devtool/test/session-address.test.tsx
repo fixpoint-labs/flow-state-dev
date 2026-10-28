@@ -15,11 +15,14 @@ import { ClientHttpError } from "@flow-state-dev/client";
 const listFlows = vi.fn();
 const getSession = vi.fn();
 
-vi.mock("../src/react/lib/client", () => ({
-  createDevToolClient: () => ({ listFlows }),
-  createDevToolSessionClient: () => ({ getSession }),
-  createDevToolRecoveryClient: () => ({ checkInterrupted: vi.fn().mockResolvedValue([]) }),
-  createDevToolResourceClient: () => ({}),
+vi.mock("@flow-state-dev/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@flow-state-dev/client")>()),
+  createClient: () => ({
+    flows: listFlows,
+    sessions: { get: getSession },
+    requests: { interrupted: vi.fn().mockResolvedValue([]) },
+    resources: {},
+  }),
 }));
 
 import { DevToolProvider, useDevTool } from "../src/react/context/devtool-context";

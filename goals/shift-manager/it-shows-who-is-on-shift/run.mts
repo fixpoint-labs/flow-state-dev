@@ -1,13 +1,13 @@
 /**
  * Goal check: a person opens Roster in Shift Manager and sees every worker the
- * Lab has, each on shift, on call or off shift as the Lab's own records say,
+ * Lab has, each on shift or off shift as the Lab's own records say,
  * with the tasks it holds and what it waits on, for all teams and for each.
  *
  * Real path, no model, out of CI. See goal.md for the contract.
  *
  * Shift Manager is built with Vite into a scratch directory, then served by its
  * own command over the shift-lab (`lab/`), once per spread in the fixture:
- * which worker holds a running row, a parked row, a queued row, or a pending
+ * which worker holds a running row, a row held on a question, a queued row, or a pending
  * ask. Chromium clicks Roster, then each team. What the page draws is graded
  * against the Lab's store, read through the Lab's HTTP routes by this script,
  * with this script's own status rule and its own seat matching (a row's
@@ -21,10 +21,10 @@
  *   status    each worker's group equals the store's
  *   slots     each worker's slots equal its held rows
  *   holding   each worker's HOLDING chips are exactly its held rows
- *   waits     each worker's waits-on entries are exactly its parked rows and asks
+ *   waits     each worker's waits-on entries are exactly its rows held on a question and asks
  *   summary   the counts at the top equal the store's, for the workers shown
  *   sidebar   the Roster entry's and the footer's counts equal the store's
- *   TEAMS     one row per team, Staff first, a square per seat with its status
+ *   TEAMS     one row per team, General first, a square per worker with its status
  *   filter    a TEAMS row opens Roster for exactly that team
  *
  * Controls rebuild Shift Manager with `src/lib/derive.ts` swapped for a module
@@ -60,7 +60,7 @@ if (CONTROL !== "" && !(CONTROLS as readonly string[]).includes(CONTROL)) {
   process.exit(2);
 }
 
-type ShiftState = "held" | "parked" | "queued" | "ask";
+type ShiftState = "held" | "asked" | "queued" | "ask";
 const fixture = loadFixture<{ spreads: Array<Record<string, ShiftState[]>> }>(import.meta.url);
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -70,10 +70,10 @@ const SCRATCH = goalTmpDir("shift-manager-roster");
 const CONFIG = join(HERE, "lab", "fsdev.config.mts");
 
 /** The group a seat with no team sits in, as the design names it. */
-const STAFF = "Staff";
+const GENERAL = "_general";
 /** The collection Workforce keeps every conversation's board in, as a flow's manifest publishes it. */
 const CONVERSATION_LEDGER = "tasks";
-const STATUSES = ["on shift", "on call", "off shift"] as const;
+const STATUSES = ["on shift", "off shift"] as const;
 type Status = (typeof STATUSES)[number];
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -198,9 +198,9 @@ type Worker = {
   id: string;
   team: string;
   status: Status;
-  /** `<boardRef>/<taskId>` of each row it holds that is running or parked. */
+  /** `<boardRef>/<taskId>` of each row it holds that is running, held on a question included. */
   held: string[];
-  /** Task ids of its parked rows, and suspension ids of its pending asks. */
+  /** Task ids of its rows held on a question, and suspension ids of its pending asks. */
   waits: string[];
   /** How many of its rows are queued (pending or blocked). */
   queued: number;
@@ -246,14 +246,19 @@ async function readStore(api: LabApi, userId: string): Promise<Store & { unmatch
   // ledger, read through the first session whose flow publishes it. A row is
   // kept under its conversation's partition, the conversation's session id or
   // that id and a `~` suffix, and its board is `<conversation>.<ledger>`.
-  const rows: Array<{ key: string; id: string; status: string; assignee: string }> = [];
+  const rows: Array<{ key: string; id: string; status: string; assignee: string; question: boolean }> = [];
   for (const host of topLevel) {
     if (!(await published(host)).some((r) => r.ref === CONVERSATION_LEDGER)) continue;
     for (const { topic, data } of await api.entries(host.id, CONVERSATION_LEDGER)) {
       const partition = decodeURIComponent(topic.slice(0, topic.indexOf("/")));
       const holder = sessions.find((s) => partition === s.id || partition.startsWith(`${s.id}~`))?.id ?? partition;
       const ref = `${holder}.${CONVERSATION_LEDGER}`;
-      rows.push({ key: `${ref}/${data.id}`, id: String(data.id), status: String(data.status), assignee: String(data.assignee ?? "") });
+      // Held on a question (FIX-2131): running, with a row hold no steer answers.
+      const answered = new Set(((data.steers ?? []) as Array<{ answers?: string }>).flatMap((s) => (typeof s.answers === "string" ? [s.answers] : [])));
+      const question =
+        data.status === "in_progress" &&
+        ((data.holds ?? []) as Array<{ id: string; source?: { kind?: string } }>).some((h) => h.source?.kind === "row" && !answered.has(h.id));
+      rows.push({ key: `${ref}/${data.id}`, id: String(data.id), status: String(data.status), assignee: String(data.assignee ?? ""), question });
     }
     break;
   }
@@ -263,23 +268,22 @@ async function readStore(api: LabApi, userId: string): Promise<Store & { unmatch
   const unmatched = rows.filter((r) => workerOf(seats, r.assignee) === undefined).map((r) => `${r.key} (${r.assignee})`);
   const workers = seats.map((id): Worker => {
     const mine = rows.filter((r) => workerOf(seats, r.assignee) === id);
-    const word = (s: string) => (s === "awaiting_review" ? "parked" : s);
-    const running = mine.filter((r) => word(r.status) === "in_progress");
-    const parked = mine.filter((r) => word(r.status) === "parked");
+    const running = mine.filter((r) => r.status === "in_progress" && !r.question);
+    const asked = mine.filter((r) => r.question);
     const myAsks = asks.filter((a) => a.seat === id);
     return {
       id,
-      team: id.includes(".") ? id.slice(0, id.indexOf(".")) : STAFF,
-      status: running.length > 0 ? "on shift" : parked.length > 0 || myAsks.length > 0 ? "on call" : "off shift",
-      held: [...running, ...parked].map((r) => r.key),
-      waits: [...parked.map((r) => r.id), ...myAsks.map((a) => a.id)],
-      queued: mine.filter((r) => r.status === "pending" || r.status === "blocked").length,
+      team: id.includes(".") ? id.slice(0, id.indexOf(".")) : GENERAL,
+      status: running.length > 0 || asked.length > 0 || myAsks.length > 0 ? "on shift" : "off shift",
+      held: [...running, ...asked].map((r) => r.key),
+      waits: [...asked.map((r) => r.id), ...myAsks.map((a) => a.id)],
+      queued: mine.filter((r) => r.status === "pending" || r.status === "held").length,
     };
   });
   const teams = [...new Set(workers.map((w) => w.team))];
   return {
     workers,
-    teams: [...teams.filter((t) => t === STAFF), ...teams.filter((t) => t !== STAFF)],
+    teams: [...teams.filter((t) => t === GENERAL), ...teams.filter((t) => t !== GENERAL)],
     asks: asks.length,
     signature: JSON.stringify([rows.map((r) => [r.key, r.status, r.assignee]).sort(), asks.map((a) => a.id).sort(), [...seats].sort()]),
     unmatched,
@@ -289,7 +293,6 @@ async function readStore(api: LabApi, userId: string): Promise<Store & { unmatch
 
 const counts = (workers: Worker[]) => ({
   onShift: workers.filter((w) => w.status === "on shift").length,
-  onCall: workers.filter((w) => w.status === "on call").length,
   offShift: workers.filter((w) => w.status === "off shift").length,
   waiting: workers.reduce((n, w) => n + w.waits.length, 0),
 });
@@ -333,7 +336,7 @@ async function gradeRoster(page: Page, store: Store, team: string | null, fail: 
 
   const c = counts(want);
   const summary = (await page.getByTestId("roster-summary").textContent()) ?? "";
-  const wantSummary = `${c.onShift} on shift · ${c.onCall} on call · ${c.offShift} off shift · ${c.waiting} waiting on you`;
+  const wantSummary = `${c.onShift} on shift · ${c.offShift} off shift · ${c.waiting} waiting on you`;
   if (summary !== wantSummary) fail("summary", `${where}: "${summary}", the store gives "${wantSummary}"`);
   if (team !== null) {
     const title = (await page.getByTestId("roster-title").textContent()) ?? "";
@@ -360,7 +363,7 @@ async function checkSpread(n: number, spread: Record<string, ShiftState[]>, page
 
     // ---- store: what the spread built, settled ------------------------------
     const built = (state: ShiftState) => Object.values(spread).flat().filter((s) => s === state).length;
-    const settled = (s: Store) => s.workers.reduce((k, w) => k + w.held.length, 0) === built("held") + built("parked") && s.asks === built("ask");
+    const settled = (s: Store) => s.workers.reduce((k, w) => k + w.held.length, 0) === built("held") + built("asked") && s.asks === built("ask");
     let store = await readStore(api, userId);
     for (let waited = 0; waited < 30_000 && !settled(store); waited += 250) {
       await sleep(250);
@@ -368,20 +371,21 @@ async function checkSpread(n: number, spread: Record<string, ShiftState[]>, page
     }
     const heldStored = store.workers.reduce((k, w) => k + w.held.length, 0);
     const queuedStored = store.workers.reduce((k, w) => k + w.queued, 0);
-    if (heldStored !== built("held") + built("parked")) fail("store", `${heldStored} running or parked row(s), the spread built ${built("held") + built("parked")}`);
+    if (heldStored !== built("held") + built("asked")) fail("store", `${heldStored} running or asked row(s), the spread built ${built("held") + built("asked")}`);
     if (queuedStored !== built("queued")) fail("store", `${queuedStored} queued row(s), the spread built ${built("queued")}`);
     if (store.asks !== built("ask")) fail("store", `${store.asks} pending ask(s), the spread built ${built("ask")}`);
     if (store.unmatched.length > 0) fail("store", `rows whose assignee names no single seat: ${store.unmatched.join(", ")}`);
-    if (!store.teams.includes(STAFF) || store.teams.length < 3) fail("store", `the inventory's groups are [${store.teams.join(", ")}]; the check needs Staff and two teams`);
+    if (!store.teams.includes(GENERAL) || store.teams.length < 3) fail("store", `the inventory's groups are [${store.teams.join(", ")}]; the check needs General and two teams`);
     for (const status of STATUSES) if (!store.workers.some((w) => w.status === status)) fail("store", `no worker is ${status}, so that group goes ungraded`);
 
     // ---- sidebar ---------------------------------------------------------------
     await open(page, served.origin, "/inbox");
     const all = counts(store.workers);
     const navCount = await page.getByTestId("nav-roster-count").textContent();
-    if (navCount !== `${all.onShift}·${all.onCall}`) fail("sidebar", `the Roster entry says "${navCount}", the store gives ${all.onShift} on shift · ${all.onCall} on call`);
-    const footer = [await page.getByTestId("footer-on-shift").textContent(), await page.getByTestId("footer-on-call").textContent()];
-    if (footer[0] !== `${all.onShift} on shift` || footer[1] !== `${all.onCall} on call`) fail("sidebar", `the footer says "${footer.join(" · ")}"`);
+    if (navCount !== `${all.onShift}`) fail("sidebar", `the Roster entry says "${navCount}", the store gives ${all.onShift} on shift`);
+    const footer = await page.getByTestId("footer-on-shift").textContent();
+    if (footer !== `${all.onShift} on shift`) fail("sidebar", `the footer says "${footer}"`);
+    if ((await page.getByTestId("sidebar").textContent())?.match(/on call/i)) fail("sidebar", "the sidebar still says on call");
 
     const teamRows = (await page.getByTestId("team").evaluateAll((els) => els.map((e) => e.getAttribute("data-team") ?? ""))) as string[];
     if (JSON.stringify(teamRows) !== JSON.stringify(store.teams)) fail("TEAMS", `rows [${teamRows.join(", ")}], the store's groups are [${store.teams.join(", ")}]`);

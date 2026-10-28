@@ -47,6 +47,8 @@ type Verdict =
 
 The loop stops by default when the judge throws, returns something that isn't a `Verdict`, or asks to `replan` without producing work (no non-empty `tasks`, no `replanner` configured). It exits with `reason: "judge-error"` and still runs `finalize` over the settled board. Pass `onError: "fail"` to have the failure propagate as a request error instead. A failure in `seed` or in the drain itself always propagates either way.
 
+The loop never judges work that waits on a person. When a drain leaves a task waiting on an answer to a question its worker asked midway, the loop ends there with `reason: "waiting-on-a-user"`. It runs no judge, no replan and no `finalize`, and the drain doesn't count against `maxIterations`. On a resource-backed board, once the person answers, run the loop again: its drain takes the task's next turn, and the loop goes on from there. If the answer arrives just as a drain stops, the loop drains again to take that next turn before it judges, and those extra drains don't count as iterations either. They stop after `maxIterations`. If the task still owes a turn then, the pass ends with `waiting-on-a-user` too, without judging.
+
 When your judge already produces some other decision shape, `mapToVerdict` adapts it and fills in a default `reason`, so a decision-only source is never treated as malformed:
 
 ```ts
@@ -87,6 +89,8 @@ const loop = goalSeekLoop({
 
 The board must be **request- or resource-backed** so its tasks survive across drains. `goalSeekLoop()` throws at construction, before anything runs, on a sequencer- or factory-backed board. Request backing is the default, so the common case needs no extra configuration.
 
+The board must also be a **plan board**, whose drain returns only once every task it could run has ended, so the judge rules on finished work. `goalSeekLoop()` throws on a board declared `mode: "delegation"`, whose drain returns while the tasks it handed out still run.
+
 It also throws when the loop's `maxIterations` is greater than 1 and the board's `initialTasks` include a task with no `id`: an idless initial task is re-added on every drain. Give each initial task an `id`, or seed through the loop's own `seed` slot. A single-drain loop (`maxIterations: 1`) is unaffected.
 
 ## How the patterns map onto it
@@ -126,7 +130,7 @@ const deepResearch = goalSeekLoop({
 
 const chatAgent = generator({
   name: "chat-agent",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   tools: [deepResearch], // callable directly, no wrapper needed
 });
 ```
@@ -143,7 +147,7 @@ The loop emits one `goal-seek-loop-termination` component when it exits:
 { collectionId: string; reason: string; iterations: number }
 ```
 
-`iterations` is the number of drains that ran. `reason` is the terminating verdict's reason: your judge's own string when it returned `done`, `max-iterations` when the budget ran out, or `judge-error` when the judge failed under the default `onError: "skip"`. It's there for tooling reading the live stream, and it never enters model history. The shipped chat renderers skip it. If your app supplies its own renderer registry, add `"goal-seek-loop-termination": false` to its `component` map, or the item falls back to a raw JSON block when the loop ends.
+`iterations` is the number of drains that ran. `reason` is the terminating verdict's reason: your judge's own string when it returned `done`, `max-iterations` when the budget ran out, `judge-error` when the judge failed under the default `onError: "skip"`, or `waiting-on-a-user` when a task waits on an answer. That last pass isn't counted in `iterations`. It's there for tooling reading the live stream, and it never enters model history. The shipped chat renderers skip it. If your app supplies its own renderer registry, add `"goal-seek-loop-termination": false` to its `component` map, or the item falls back to a raw JSON block when the loop ends.
 
 ## Limits
 

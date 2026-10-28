@@ -86,7 +86,11 @@ export function readInstalledCodexSdkVersion(): InstalledSdkVersion {
   // which this package's `exports` map produces for a `require` — means the SDK
   // IS present and we simply could not read its version.
   try {
-    createRequire(import.meta.url).resolve(SDK_MODULE);
+    // Not a literal: a bundler resolves a literal `resolve("…")` at build time
+    // under the `require` condition, which the SDK's `exports` map doesn't
+    // publish, and warns "Module not found" on every dev start.
+    const specifier = SDK_MODULE.split("/").join("/");
+    createRequire(import.meta.url).resolve(specifier);
     return { kind: "unreadable", reason: "its manifest could not be located" };
   } catch (err) {
     const code = (err as { code?: string }).code;

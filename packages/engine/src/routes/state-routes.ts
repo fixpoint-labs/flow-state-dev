@@ -134,9 +134,9 @@ export async function handleGetSessionState(
   // tenant binding — for the owner instance resolved above.
   const persistCtx = { registry: ctx.registry, stores: ctx.stores };
   const [sessionPersisted, userPersisted, orgPersisted] = await Promise.all([
-    getPersistedData(persistCtx, flow, route.sessionId, "session", ctx.tenantId),
-    getPersistedData(persistCtx, flow, route.sessionId, "user", ctx.tenantId),
-    getPersistedData(persistCtx, flow, route.sessionId, "org", ctx.tenantId)
+    getPersistedData(persistCtx, flow, route.sessionId, "session", ctx.tenantId, session),
+    getPersistedData(persistCtx, flow, route.sessionId, "user", ctx.tenantId, session),
+    getPersistedData(persistCtx, flow, route.sessionId, "org", ctx.tenantId, session)
   ]);
   // `undefined` is "this scope has no cell for this session" (org with no org
   // binding); the projection below treats that as an empty scope, as it did

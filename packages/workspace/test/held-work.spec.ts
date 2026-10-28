@@ -26,7 +26,7 @@ import { run } from "../src/exec";
 import { fileHeldWorkStore, HELD_FILE_CAP_BYTES, HeldWorkMismatchError, type HeldWork, type HeldWorkStore } from "../src/held-work";
 import { localWorkspaceHost, type PlaceRequest, type WorkspacePlace } from "../src/local-host";
 import type { RepoRunSource } from "../src/run-source";
-import { createRemote, git, tempDir, type Remote } from "./git-fixtures";
+import { createRemote, git, subcommand, tempDir, type Remote } from "./git-fixtures";
 
 vi.mock("../src/exec", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/exec")>();
@@ -37,7 +37,7 @@ vi.setConfig({ testTimeout: 60_000 });
 
 const spawned = vi.mocked(run);
 const { run: realRun } = await vi.importActual<typeof import("../src/exec")>("../src/exec");
-const gitCommands = () => spawned.mock.calls.map(([, args]) => args.find((a) => !a.startsWith("-")));
+const gitCommands = () => spawned.mock.calls.map(([, args]) => subcommand(args).find((a) => !a.startsWith("-")));
 const noSource = () => ({ kind: "refused" as const, reason: "unused", message: "unused" });
 
 const PREFIX = "worktree-overlay/org/org-1/project-1";
@@ -528,6 +528,32 @@ describe("provision brings a run back (BR-16–BR-22)", () => {
     const place = await hostOn(rootB).provision(answer, request({ host: "machine-a", held: { ...held, parked: true } }));
     expect(place.origin).toBe("base");
     expect(place.heldDir).toBeUndefined();
+  });
+
+  it("runs none of the clone's git hooks while it moves a stale branch aside and rebuilds", async () => {
+    const b = hostOn(rootB);
+    const earlier = await b.provision(answer, request());
+    const ran = join(tempDir("hook"), "ran");
+    // Hooks a run could have planted in the hooks directory its worktree shares with the clone.
+    // Each fails, and marks that it ran: moving a branch runs `reference-transaction`, and
+    // cutting the checkout runs `post-checkout` as well.
+    for (const name of ["reference-transaction", "post-checkout"]) {
+      const hook = join(earlier.repo!.clone, "hooks", name);
+      mkdirSync(join(earlier.repo!.clone, "hooks"), { recursive: true });
+      writeFileSync(hook, `#!/bin/sh\necho ${name} >> '${ran}'\nexit 1\n`);
+      chmodSync(hook, 0o755);
+    }
+    // Control: the hooks are live for git run without the host's options, in the run's own worktree too.
+    expect(() => git(earlier.cwd, "branch", "control")).toThrow();
+    expect(readFileSync(ran, "utf8")).toContain("reference-transaction");
+    rmSync(ran);
+    const held = await holdTurnOne();
+
+    const place = await b.provision(answer, request({ host: hostOn(rootA).hostId(), held }));
+
+    expect(place.origin).toBe("held");
+    expect(git(place.cwd, "rev-parse", "HEAD")).toBe(held.headAfter);
+    expect(existsSync(ran) ? readFileSync(ran, "utf8") : "").toBe("");
   });
 });
 

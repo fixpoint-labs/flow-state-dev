@@ -32,9 +32,9 @@ describe("ensureSeeded", () => {
   it("is idempotent on a second call with the same skills", async () => {
     const c = createMockSkillsCollection();
     await ensureSeeded(c, [linearSkill]);
-    const createBefore = (c.create as { mock: { calls: unknown[] } }).mock.calls.length;
+    const createBefore = vi.mocked(c.create).mock.calls.length;
     await ensureSeeded(c, [linearSkill]);
-    const createAfter = (c.create as { mock: { calls: unknown[] } }).mock.calls.length;
+    const createAfter = vi.mocked(c.create).mock.calls.length;
     expect(createAfter).toBe(createBefore);
   });
 

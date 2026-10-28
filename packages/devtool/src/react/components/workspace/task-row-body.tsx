@@ -3,7 +3,8 @@
  *
  * A field list for the fields a reader looks for, then every other field the
  * task carries under its own name, and the raw record folded at the bottom,
- * complete and unchanged. A field the task does not carry is left out rather
+ * complete and unchanged. Short values sit in a hairline grid; prose and
+ * structured values get a full-width line of their own below it. A field the task does not carry is left out rather
  * than shown as an empty slot.
  *
  * Every value wraps or scrolls inside the row. A stack trace or one unbroken
@@ -12,7 +13,7 @@
  */
 import { useState, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
-import type { ResolvedTask } from "../../lib/task-collection-state";
+import { waitPrompt, type ResolvedTask } from "../../lib/task-collection-state";
 
 type Props = {
   entry: ResolvedTask;
@@ -62,14 +63,15 @@ const WRAP = "whitespace-pre-wrap [overflow-wrap:anywhere]";
 export function TaskRowBody({ entry, id, children }: Props) {
   const { task } = entry;
   const fields: Array<[string, ReactNode]> = [];
-  const add = (label: string, value: ReactNode | undefined, present: boolean) => {
-    if (present) fields.push([label, value]);
+  const wide: Array<[string, ReactNode]> = [];
+  const add = (label: string, value: ReactNode | undefined, present: boolean, isWide = false) => {
+    if (present) (isWide ? wide : fields).push([label, value]);
   };
 
-  add("Id", <span className="font-mono">{task.id}</span>, true);
-  add("Goal", task.goal, true);
-  add("Title", task.title, task.title !== undefined);
-  add("Context", task.context, task.context !== undefined);
+  add("Id", task.id, true);
+  add("Goal", <span className="font-fs-sans">{task.goal}</span>, true, true);
+  add("Title", <span className="font-fs-sans">{task.title}</span>, task.title !== undefined, true);
+  add("Context", <span className="font-fs-sans">{task.context}</span>, task.context !== undefined, true);
   add("Status", task.status, true);
   add(
     "Attempts",
@@ -82,11 +84,12 @@ export function TaskRowBody({ entry, id, children }: Props) {
   add("Labels", listText(task.labels), task.labels !== undefined);
   add("Deps", listText(task.deps), task.deps !== undefined);
   // Keyed on presence and rendered as stored, as the collapsed slot is.
-  add("Reason", task.feedback, task.feedback !== undefined);
-  add("Error", task.error, task.error !== undefined);
-  add("Input", <JsonBlock value={task.input} />, task.input !== undefined);
-  add("Output", <JsonBlock value={task.output} />, task.output !== undefined);
-  add("Metadata", <JsonBlock value={task.metadata} />, task.metadata !== undefined);
+  add("Waiting for", waitPrompt(task), waitPrompt(task) !== undefined, true);
+  add("Reason", task.feedback, task.feedback !== undefined, true);
+  add("Error", <span className="text-fs-red">{task.error}</span>, task.error !== undefined, true);
+  add("Input", <JsonBlock value={task.input} />, task.input !== undefined, true);
+  add("Output", <JsonBlock value={task.output} />, task.output !== undefined, true);
+  add("Metadata", <JsonBlock value={task.metadata} />, task.metadata !== undefined, true);
   add("Revision", String(task.revision), task.revision !== undefined);
   add("Created", formatTime(task.createdAt), task.createdAt !== undefined);
   add("Updated", formatTime(task.updatedAt), task.updatedAt !== undefined);
@@ -97,7 +100,8 @@ export function TaskRowBody({ entry, id, children }: Props) {
   // write-provenance fields, and whatever a later substrate adds.
   for (const [key, value] of Object.entries(task)) {
     if (LISTED_FIELDS.has(key) || value === undefined) continue;
-    add(key, isScalar(value) ? String(value) : <JsonBlock value={value} />, true);
+    if (isScalar(value)) add(key, String(value), true);
+    else add(key, <JsonBlock value={value} />, true, true);
   }
   add(
     "Latest change",
@@ -110,16 +114,34 @@ export function TaskRowBody({ entry, id, children }: Props) {
   );
 
   return (
-    <div id={id} className="min-w-0 border-t border-slate-800/60 bg-slate-950/40 px-3 py-2">
-      <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
-        {fields.map(([label, value]) => (
-          <div key={label} className="contents">
-            <dt className="text-[10px] uppercase tracking-wide text-slate-500">{label}</dt>
-            <dd className={`min-w-0 text-slate-200 ${WRAP}`}>{value}</dd>
-          </div>
-        ))}
-      </dl>
-      {children}
+    <div id={id} className="min-w-0 border-t border-fs-ink/12 bg-fs-card">
+      {/* The negative margins tuck the last column's and last row's hairlines
+          under the clip, so the grid never doubles the card's own border. */}
+      <div className="min-w-0 overflow-hidden border-b border-fs-ink/12">
+        <dl className="-mb-px -mr-px grid min-w-0 grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] font-fs-mono">
+          {fields.map(([label, value]) => (
+            <div key={label} className="min-w-0 border-b border-r border-fs-ink/12 px-3 py-2">
+              <dt className="text-[10.5px] text-fs-ink4">{label}</dt>
+              <dd className={`min-w-0 text-[12.5px] font-medium text-fs-ink ${WRAP}`}>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+      {wide.length > 0 && (
+        <dl className="grid min-w-0 grid-cols-[8rem_minmax(0,1fr)] gap-x-3 gap-y-2 px-3 py-2.5">
+          {wide.map(([label, value]) => (
+            <div key={label} className="contents">
+              <dt className="pt-0.5 font-fs-mono text-[10px] font-medium uppercase tracking-[.12em] text-fs-ink4">
+                {label}
+              </dt>
+              <dd className={`min-w-0 font-fs-mono text-[12px] text-fs-ink2 ${WRAP}`}>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {children != null && (
+        <div className="min-w-0 border-t border-fs-ink/12 px-3 pb-2.5">{children}</div>
+      )}
       <RawJson task={task} />
     </div>
   );
@@ -128,7 +150,7 @@ export function TaskRowBody({ entry, id, children }: Props) {
 /** A structured value, scrolling inside its own box. */
 function JsonBlock({ value }: { value: unknown }) {
   return (
-    <code className={`block max-h-48 overflow-auto rounded bg-slate-950 px-1.5 py-1 font-mono text-[11px] text-slate-300 ${WRAP}`}>
+    <code className={`block max-h-48 overflow-auto border border-fs-ink/12 bg-fs-paper px-2 py-1.5 font-fs-mono text-[11.5px] leading-[1.55] text-fs-ink2 ${WRAP}`}>
       {typeof value === "string" ? value : JSON.stringify(value, null, 2)}
     </code>
   );
@@ -141,12 +163,12 @@ function JsonBlock({ value }: { value: unknown }) {
 function RawJson({ task }: { task: unknown }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="mt-2">
+    <div className="border-t border-fs-ink/12">
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((was) => !was)}
-        className="inline-flex items-center gap-1 text-[10px] text-slate-400 hover:text-slate-200"
+        className="flex w-full items-center gap-1 px-3 py-[7px] font-fs-mono text-[11px] lowercase text-fs-ink3 outline-none hover:text-fs-ink focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fs-blue/40"
       >
         <ChevronRight className={`h-3 w-3 transition-transform ${open ? "rotate-90" : ""}`} aria-hidden />
         Raw JSON
@@ -154,7 +176,7 @@ function RawJson({ task }: { task: unknown }) {
       {open && (
         <pre
           data-raw-json
-          className={`mt-1 max-h-96 overflow-auto rounded border border-slate-800 bg-slate-950 p-2 font-mono text-[11px] text-slate-300 ${WRAP}`}
+          className={`m-0 max-h-96 overflow-auto px-3 pb-3 font-fs-mono text-[11.5px] leading-[1.55] text-fs-ink2 ${WRAP}`}
         >
           {JSON.stringify(task, null, 2)}
         </pre>

@@ -145,6 +145,15 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
    */
   llmWritable?: boolean;
   /**
+   * State fields that never leave the server. Every read the engine serves
+   * omits them: the client snapshot, the list and get-state routes, live
+   * deltas, and the debug routes, which otherwise return full state. A
+   * `client.data` function sees the full state, but a secret field in what it
+   * returns is dropped. Blocks on the server read them through the handle.
+   * A field named here cannot also be named in `client.expose`.
+   */
+  secret?: ReadonlyArray<keyof TState & string>;
+  /**
    * Allow blocks to mutate instance state (`patchState` / `setState` /
    * `updateState` / `upsert` patch) and instance content (`writeContent`),
    * and to overwrite or remove an existing instance (`create` with
@@ -423,7 +432,8 @@ export function defineResourceCollection<
     ref: config.pattern,
     kind: "collection",
     stateSchema: config.stateSchema,
-    client: config.client as Parameters<typeof validateClientProjection>[0]["client"]
+    client: config.client as Parameters<typeof validateClientProjection>[0]["client"],
+    secret: config.secret
   });
 
   validateReactTo("defineResourceCollection()", config.reactTo);

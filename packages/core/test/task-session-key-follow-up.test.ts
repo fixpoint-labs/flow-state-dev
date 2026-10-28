@@ -1,6 +1,6 @@
 /**
  * A follow-up runs in the session of the task it follows, on every board
- * whose worker hands off `per-task` (FIX-1817): the per-task key is the task the
+ * whose worker dispatches `per-task` (FIX-1817): the per-task key is the task the
  * row follows up when its payload names one, so the follow-up adopts that
  * task's child session instead of minting an empty one.
  */

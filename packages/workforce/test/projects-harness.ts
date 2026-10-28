@@ -19,9 +19,16 @@
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { BlockDefinition, FlowInstance } from "@flow-state-dev/core/types";
-import { createFlowState, createInMemoryStores, inMemoryStores, type StoreAdapter } from "@flow-state-dev/engine";
+import {
+  createFlowState,
+  createInMemoryStores,
+  createInProcessFetch,
+  inMemoryStores,
+  type StoreAdapter
+} from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
+import { FILED_PROJECT } from "../src/conversation-board/board-entries";
 import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
 import { createWorkerHireBlocks } from "../src/workers/hire-blocks";
@@ -51,6 +58,8 @@ export type HostExtras = {
   lead?: (installation: WorkerInstallation) => Record<string, unknown>;
   /** Extra internal actions on the `lead` flow. */
   leadInternal?: (installation: WorkerInstallation) => Record<string, unknown>;
+  /** Task entries on the `lead` flow: the delegated-post entry. */
+  leadTask?: (installation: WorkerInstallation) => Record<string, unknown>;
   /** Extra internal actions on the `lead2` flow. */
   lead2Internal?: (installation: WorkerInstallation) => Record<string, unknown>;
   /** The installation's standard workers. Default none. */
@@ -61,6 +70,8 @@ export type HostExtras = {
   flows?: (installation: WorkerInstallation) => Record<string, unknown>;
   /** The scripted models, as `createMockModelResolver` takes them. */
   models?: Parameters<typeof createMockModelResolver>[0];
+  /** Durable execution, for a flow whose request parks on a wait (a worker's step in a session of its own). */
+  durable?: boolean;
 };
 
 const doorInput = z.object({ message: z.string() });
@@ -70,7 +81,8 @@ function workerFlow(
   flow: string,
   installation: WorkerInstallation,
   extra: Record<string, unknown> = {},
-  internal: Record<string, unknown> = {}
+  internal: Record<string, unknown> = {},
+  task: Record<string, unknown> = {}
 ) {
   const door = handler({
     name: `${flow}-run`,
@@ -87,10 +99,11 @@ function workerFlow(
     session: installation.session(),
     resources: { ...installation.resources },
     actions: {
-      run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message },
+      respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message },
       ...extra
     },
-    ...(Object.keys(internal).length === 0 ? {} : { internal: { actions: internal } })
+    ...(Object.keys(internal).length === 0 ? {} : { internal: { actions: internal } }),
+    ...(Object.keys(task).length === 0 ? {} : { task: { actions: task } })
   } as never);
 }
 
@@ -103,11 +116,20 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
     workerFlows: () => flows as never,
     ...(extras.projectCoordinator === undefined ? {} : { projectCoordinator: extras.projectCoordinator })
   });
-  const lead = workerFlow("lead", installation, extras.lead?.(installation), extras.leadInternal?.(installation));
+  const lead = workerFlow(
+    "lead",
+    installation,
+    extras.lead?.(installation),
+    extras.leadInternal?.(installation),
+    extras.leadTask?.(installation)
+  );
   const lead2 = workerFlow("lead2", installation, {}, extras.lead2Internal?.(installation));
   const quiet = workerFlow("quiet", installation);
   const more = extras.flows?.(installation) ?? {};
-  flows = { lead, lead2, quiet, ...more };
+  // A lead given a task entry takes tasks.
+  flows = { lead: { flow: lead, roles: extras.leadTask === undefined ? [] : ["contributor"] }, lead2, quiet, ...more };
+  const flowOf = (entry: unknown): (() => unknown) =>
+    (typeof entry === "function" ? entry : (entry as { flow: () => unknown }).flow) as () => unknown;
 
   const hireBlocks = createWorkerHireBlocks(installation);
   const roster = defineWorkerRosterFlow(installation, {
@@ -123,20 +145,21 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
     quiet: quiet() as unknown as FlowInstance,
     [ROSTER_FLOW]: roster() as unknown as FlowInstance,
     ...Object.fromEntries(
-      Object.entries(more).map(([name, flow]) => [name, (flow as () => unknown)() as unknown as FlowInstance])
+      Object.entries(more).map(([name, flow]) => [name, flowOf(flow)() as unknown as FlowInstance])
     )
   };
   const state = createFlowState({
     flows: instances,
     stores: { default: { primary: stores } },
     modelResolver: createMockModelResolver(extras.models ?? {}),
+    ...(extras.durable === true ? { durable: true } : {}),
     resolvePrincipal: (context: any) => {
       const user = context.request?.headers.get("x-user");
       const org = context.request?.headers.get("x-org") ?? ORG;
       return typeof user === "string" ? { userId: user, orgId: org } : null;
     }
   } as never);
-  const router = (await state.getRouter()) as any;
+  const inProcess = createInProcessFetch(state);
   const runtime = await state.getRuntime();
 
   type Answer = { status: number; json: any };
@@ -147,14 +170,11 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
     body?: unknown,
     options: { org?: Caller; query?: string } = {}
   ): Promise<Answer> => {
-    const response = await router[method](
-      new Request(`http://test/api/flows/${path.join("/")}${options.query ?? ""}`, {
-        method,
-        headers: { "content-type": "application/json", "x-user": user, ...callerHeaders(options.org ?? ORG) },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) })
-      }),
-      { params: { path } }
-    );
+    const response = await inProcess(`/api/flows/${path.join("/")}${options.query ?? ""}`, {
+      method,
+      headers: { "content-type": "application/json", "x-user": user, ...callerHeaders(options.org ?? ORG) },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) })
+    });
     const text = await response.text();
     let json: unknown;
     try {
@@ -236,23 +256,34 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
   const fetcherFor =
     (userId: string, org: Caller = ORG) =>
     async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-      const url = new URL(String(input), "http://localhost");
       const headers = new Headers(init?.headers);
       headers.set("x-user", userId);
       for (const [name, value] of Object.entries(callerHeaders(org))) headers.set(name, value);
-      const request = new Request(url, { ...init, headers });
-      const path = url.pathname.replace(/^\/api\/flows\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
-      const method = (init?.method ?? "GET").toUpperCase() as "GET" | "POST" | "PATCH" | "DELETE";
-      return router[method](request, { params: { path } });
+      return inProcess(input, { ...init, headers });
     };
 
   /** Every session in the store that names `field` = `value` in its state. */
   const sessionsWith = (field: string, value: string) =>
     runtime.stores.session.list({ parentage: "all", state: { [field]: value } });
 
+  /**
+   * Take the project stamp off a row of `user`'s conversation ledger, as a row
+   * stored before rows carried one; `input`, given, replaces the row's input.
+   */
+  const unstamp = async (user: string, taskId: string, input?: unknown) => {
+    const scope = `${user}:~org:${ORG}`;
+    const entries = await runtime.stores.resourceState.getByPrefix("user", scope, "tasks/");
+    const found = Object.entries(entries).find(([, value]) => (value.state as { id?: unknown }).id === taskId);
+    if (found === undefined) throw new Error(`no row "${taskId}" on ${user}'s ledger`);
+    const [key, { state }] = found;
+    const { [FILED_PROJECT]: _stamp, ...metadata } = ((state as { metadata?: Record<string, unknown> }).metadata ?? {}) as Record<string, unknown>;
+    await runtime.stores.resourceState.set("user", scope, key, { ...state, metadata, ...(input === undefined ? {} : { input }) } as never, "any");
+  };
+
   return {
     stores,
     runtime,
+    unstamp,
     installation,
     call,
     openSession,

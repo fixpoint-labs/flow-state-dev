@@ -145,7 +145,7 @@ A `task` dispatch carries the entry name as provenance only, and that name can
 collide with a public `flow.actions` key. The one-map rule is what keeps the
 collision harmless: nothing indexes a framework-stamped dispatch into
 `flow.actions`, for resolution or for concurrency — the arbiter resolves the
-entry's own policy through the same `(type, name)` lookup, so a hand-off never
+entry's own policy through the same `(type, name)` lookup, so a dispatch never
 inherits an unrelated action's `queue` / `reject` by name.
 
 **The sender is a `dispatcher()` handler.** It builds the typed envelope from
@@ -179,10 +179,13 @@ skips it and the graph shows it as looked up per task.
 **Three session targets, two delivery guards.** `{ key }` derives a child of the
 running session (`deriveDispatchRunSessionId`, with the key framed under its
 own `dispatch` namespace) and adopts it on the same key; the adoption check
-includes the parent's lineage. `{ id }` delivers into an existing session of the
-same flow kind and principal — an unknown id, another principal's, or another
-tenant's is `session-not-found`; another flow's or a mismatched org is
-`session-not-addressable` — and is refused under an external dispatcher whose
+includes the parent's lineage. `{ id }` without `state` delivers into an existing session of the same flow
+kind and principal; an unknown id, another principal's, or another tenant's is
+`session-not-found`. `{ id, state }` creates an absent id as a top-level
+session of the running principal, from that state, judged by the target
+flow's `createCheck` with `via: "dispatch"` (`create-refused` otherwise), and
+delivers into an existing one. Either form addressed at another flow's session
+or a mismatched org is `session-not-addressable`, and either is refused under an external dispatcher whose
 adapter supplies no shared lease backend (`usesExternalDispatcher` without
 `arbitratesExternalDispatch`, refusal `external-dispatcher`), because the run
 would start on another process against a session this one cannot fence. With a

@@ -9,6 +9,7 @@
  */
 import {
   fifoDispatcher,
+  hasOpenHold,
   isClaimable,
   leaseLapsed,
   priorityDispatcher,
@@ -58,7 +59,7 @@ export function resolveDispatcher(
  * A board with a `dispatcher({ type: "task" })` assignee hands its claimed rows
  * to a child session, which settles them from its own session. The launching
  * request must not wait on those — waiting on them is precisely the thing the
- * hand-off exists to stop.
+ * dispatch exists to stop.
  *
  * Supplied by the board, which derives it from its own dispatcher assignees, so a
  * board with none passes nothing and every count below is the
@@ -73,25 +74,25 @@ export function resolveDispatcher(
 export type RunsElsewhere = (task: Task) => boolean;
 
 /**
- * Is this row **handed off** — routed to a child session, and still held by one?
+ * Is this row **dispatched** — routed to a child session, and still held by one?
  *
  * The conjunction is the whole definition and neither half stands alone:
  * routing says the work belongs elsewhere, the live lease says somebody is
- * still on it. A row that is handed off by routing and abandoned in fact is not
- * handed off; it is recoverable, and every caller here has to treat it that way.
+ * still on it. A row that is dispatched by routing and abandoned in fact is not
+ * dispatched; it is recoverable, and every caller here has to treat it that way.
  *
  * Exported because two different questions read it and must not answer it
  * differently. {@link countWaitable} asks "is this row mine to wait on"; the
  * board's completion meta asks "did this board finish, or hand its remaining
  * work over" — and a board that answered those with two spellings would report
  * a drain it correctly exited as a failure, or a genuinely stuck board as a
- * clean hand-off. One predicate, one answer (FIX-1074).
+ * clean dispatch. One predicate, one answer (FIX-1074).
  *
- * `runsElsewhere` absent means the board has no dispatcher assignee, so nothing
- * is ever handed off and every caller keeps its pre-hand-off behaviour
- * bit-for-bit.
+ * `runsElsewhere` absent means a plan board (FIX-2076), whose rows all run in
+ * the drain, so nothing is ever dispatched and every caller keeps its
+ * pre-dispatch behaviour bit-for-bit.
  */
-export function isHandedOff(
+export function isDispatched(
   task: Task,
   now: number,
   runsElsewhere: RunsElsewhere | undefined
@@ -104,55 +105,29 @@ export function isHandedOff(
 
 /**
  * Count rows in `statuses`, minus the `in_progress` ones `runsElsewhere`
- * places outside this drain.
+ * places outside this drain, and, with `excuseWaitingOnUser`, minus the
+ * running rows waiting on a user.
  *
  * **Reads through `list` rather than `count` because `TaskFilter` has no
  * predicate slot** — it matches on status, assignee and labels only, and
- * "…and not running elsewhere" is expressible as none of the three. A handed-off
+ * "…and not running elsewhere" is expressible as none of the three. A dispatched
  * assignee is usually an assignee and would *almost* fit `filter.assignee`,
  * but the uniform and floor cases do not (a floor worker is defined by the
  * assignees it is NOT), so the predicate has to see the row. One pass either
  * way; both callers below already ran one.
  *
- * **Only `in_progress` is subject to the exclusion**, and the other two
- * statuses are deliberate omissions rather than oversights:
- *
- * - a `pending` handed-off row is work this drain has yet to claim and dispatch,
- *   so excluding it would let the drain exit *before* spawning anything — the
- *   feature inverted into a board that silently runs nothing;
- * - a `parked` row is parked for an external actor whichever way it
- *   was dispatched, so the *routing* exclusion never reaches it. Whether that
- *   row holds the drain open is a different question with a different answer,
- *   asked by `excuseParked` below.
- *
- * ## The second exclusion: rows parked for a human
- *
- * `excuseParked` (FIX-1234) is the board's `onReview: "exit"` mode reaching
- * this count. It drops `parked` rows, and it is a **predicate of its
- * own beside** the routing one rather than a widening of it, because the two
- * answer different questions. `runsElsewhere` asks *where this row's work
- * belongs*, derived from the board's dispatcher assignees. This one asks
- * whether the row is waiting on a **human**, which is true on any board however
- * it dispatches.
- *
- * **And it carries no liveness conjunct, deliberately.** The routing exclusion
- * is paired with a lease check because a routed row can be abandoned by a
- * claimant that died. A parked row cannot be in that state: parking moves it
- * off `in_progress`, and the lease deliberately stops governing it there so
- * that a slow human cannot have the task reclaimed out from under them. A lease
- * conjunct here would either exclude nothing or reintroduce exactly the reclaim
- * the substrate prevents on purpose.
- *
- * Absent (`false`) for every board that leaves `onReview` at its default, which
- * is what keeps those boards' counts bit-for-bit what they were.
+ * **Only `in_progress` is subject to the exclusion**: a `pending` dispatched
+ * row is work this drain has yet to claim and dispatch, so excluding it would
+ * let the drain exit *before* spawning anything — the feature inverted into a
+ * board that silently runs nothing.
  *
  * ## …and only while the lease is live
  *
  * `runsElsewhere` says where a row's work *belongs*. It cannot say whether
- * anyone is on it, because it reads declarations and an assignee — facts that
- * are just as true of a row nobody is running. A claimant that dies between
+ * anyone is on it, because it reads the board's declaration — a fact that is
+ * just as true of a row nobody is running. A claimant that dies between
  * `claim()` and the child's first breath leaves exactly that: `in_progress`,
- * handed-off assignee, no worker anywhere. So does a child that was accepted and
+ * dispatched assignee, no worker anywhere. So does a child that was accepted and
  * then died. Both become recoverable when the deadline passes, and excluding
  * them on routing alone hides them from the drain at the moment they become so.
  *
@@ -167,10 +142,10 @@ export function isHandedOff(
  * of the exit question have contradicted each other, which is the drift this
  * module was collapsed to prevent.
  *
- * **No persisted "the hand-off was accepted" mark distinguishes those states**,
+ * **No persisted "the dispatch was accepted" mark distinguishes those states**,
  * which is why this is a lease check and not a new field. Whichever side of the
  * spawn such a mark were written on, a crash lands in the gap: write it first
- * and it is present for a hand-off that never happened; write it after and a
+ * and it is present for a dispatch that never happened; write it after and a
  * crash between acceptance and the write leaves it absent for one that did. A
  * mark moves the window; it does not close it — and it says nothing at all
  * about a child that started and then died.
@@ -188,102 +163,64 @@ function countWaitable(
   collection: TaskCollectionRef,
   statuses: TaskStatus[],
   runsElsewhere?: RunsElsewhere,
-  excuseParked = false
-): WaitableCount {
-  if (runsElsewhere === undefined && !excuseParked) {
-    return { waiting: collection.count({ status: statuses }), excusedParked: false };
+  excuseWaitingOnUser = false
+): number {
+  if (runsElsewhere === undefined && !excuseWaitingOnUser) {
+    return collection.count({ status: statuses });
   }
   const rows = collection.list({ status: statuses });
   const now = collection.now();
   let waiting = 0;
-  let excusedParked = false;
   for (let i = 0; i < rows.length; i += 1) {
     const row = rows[i]!;
-    if (isHandedOff(row, now, runsElsewhere)) continue;
-    if (excuseParked && row.status === "parked") {
-      excusedParked = true;
-      continue;
-    }
+    if (isDispatched(row, now, runsElsewhere)) continue;
+    if (excuseWaitingOnUser && waitsOnUser(row)) continue;
     waiting += 1;
   }
-  return { waiting, excusedParked };
+  return waiting;
 }
 
 /**
- * A waitable count, plus whether the park exclusion took anything off it.
- *
- * The two travel together because the second is only meaningful about the pass
- * that produced the first. `excusedParked` is what the board's completion item
- * eventually reports as `parked-for-review` (FIX-1234) — it is read here, at
- * the moment the exit is decided, and carried from there rather than
- * re-derived from rows that may have moved since. A resume landing between the
- * worker pool finishing and the completion item would otherwise turn a
- * successful review exit into a reported failure.
- *
- * A flag rather than a count, because every reader asks only whether the
- * exclusion fired. How many rows are parked is already on the completion item
- * as `counts.parked`, read fresh, which is the number a caller
- * actually wants.
+ * Whether a running row waits on a user (FIX-2131): it has an open hold,
+ * a question it asked (a row hold, its lease dropped) or the mirror of its
+ * run's stop for a user (a suspension hold). Read off the row's open holds
+ * (ER-8), never off a status: no row is parked. Nothing in a drain moves such
+ * a row; the user's answer does.
  */
-export interface WaitableCount {
-  /** Rows this drain must still wait on. */
-  waiting: number;
-  /** Did the park exclusion drop at least one row from `waiting`? */
-  excusedParked: boolean;
+export function waitsOnUser(row: Task): boolean {
+  return row.status === "in_progress" && hasOpenHold(row);
 }
 
 /**
- * Count tasks the loop must wait on. `pending`, `in_progress`, and
- * `parked` are all in-flight — `parked` per FIX-443
- * §10.1, the others by definition. Terminal statuses don't count.
+ * Count tasks the loop must wait on: `pending` and `in_progress`, a running
+ * row waiting on a user included. Terminal statuses don't count.
  *
- * `runsElsewhere` (FIX-982) drops the rows a child session is running;
- * `excuseParked` (FIX-1234) drops the rows parked for a human. See
- * {@link countWaitable} for which statuses each reaches and why they are two
- * predicates rather than one.
+ * `runsElsewhere` (FIX-982) drops the rows a child session is running. See
+ * {@link countWaitable}.
  */
-export function inFlightCount(
-  collection: TaskCollectionRef,
-  runsElsewhere?: RunsElsewhere,
-  excuseParked = false
-): WaitableCount {
-  return countWaitable(
-    collection,
-    ["pending", "in_progress", "parked"],
-    runsElsewhere,
-    excuseParked
-  );
+export function inFlightCount(collection: TaskCollectionRef, runsElsewhere?: RunsElsewhere): number {
+  return countWaitable(collection, ["pending", "in_progress"], runsElsewhere);
 }
 
 /**
- * Count the rows an active worker is holding — `in_progress` or
- * `parked`. The `complete-or-blocked` arm reads this to ask whether
- * anything is still producing state changes *in this drain*.
+ * Count the rows an active worker is holding — `in_progress`, less the rows
+ * waiting on a user. The `complete-or-blocked` arm reads this to ask
+ * whether anything is still producing state changes *in this drain*.
  *
  * Split out of `boardQuiescence`'s inline `count` so it takes the same
  * `runsElsewhere` exclusion `inFlightCount` does. Without that the two arms
- * would disagree about the same handed-off row — one calling the board drained,
+ * would disagree about the same dispatched row — one calling the board drained,
  * the other still seeing an active worker — which is the drift the quiescence
  * module exists to prevent.
  *
- * `excuseParked` (FIX-1234) reaches this arm for the same reason. A board whose
- * parked row has a `pending` dependent is not drained — the dependent is still
- * waitable — and the honest verdict for it is `blocked`. That verdict is only
- * reachable if this count excuses the parked row too; excusing it in one arm
- * and not the other would leave such a board spinning until its iteration
- * budget ran out, which is the defect park-exit exists to remove.
+ * **A row waiting on a user is excused here, and only here** (FIX-2131).
+ * `inFlightCount` keeps it, so the board isn't drained; this count drops it,
+ * so a board whose only open rows wait on a user, with nothing claimable,
+ * reports `blocked` rather than spinning to its iteration limit, which with no
+ * deadline on the wait it would never leave. The row stays as it is.
  */
-export function activeWorkerCount(
-  collection: TaskCollectionRef,
-  runsElsewhere?: RunsElsewhere,
-  excuseParked = false
-): WaitableCount {
-  return countWaitable(
-    collection,
-    ["in_progress", "parked"],
-    runsElsewhere,
-    excuseParked
-  );
+export function activeWorkerCount(collection: TaskCollectionRef, runsElsewhere?: RunsElsewhere): number {
+  return countWaitable(collection, ["in_progress"], runsElsewhere, true);
 }
 
 /**

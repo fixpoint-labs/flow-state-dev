@@ -3,8 +3,8 @@
  *
  * Real path, no mocking, out of CI. See goal.md for the contract.
  *
- * Unlike the warm sibling (resumes-and-completes-after-approval, one in-memory
- * runtime), this proves the durable guarantee across a process restart:
+ * It also carries the warm goal's signal (an approved resume completes with the
+ * request and note), as leg (b), and proves it across a process restart:
  *   Process A: dispatch kitchen-sink's `requestApproval` against an on-disk store
  *              → suspends at the gate; the suspension is persisted to disk.
  *   Process B: a FRESH runtime over the SAME on-disk store dir (the cold restart)

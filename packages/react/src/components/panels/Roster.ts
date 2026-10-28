@@ -81,7 +81,7 @@ export type RosterProps = {
    */
   readonly problems?: readonly string[];
   /**
-   * The host's own resource client, so the read carries the host's transport
+   * The host's own client, so the read carries the host's transport
    * and its credential (BR-29).
    *
    * Pass a STABLE reference — one held in a context or a `useMemo`, not an
@@ -90,7 +90,7 @@ export type RosterProps = {
    * previous backend's rows; a fresh object every render reads as a rebuilt
    * client every render.
    */
-  readonly resourceClient?: PanelRowSource;
+  readonly client?: PanelRowSource;
   /**
    * Workers to request per page: the size of each fetch, not a cap on what
    * renders. The panel follows the cursor for up to 1,000 pages; a collection
@@ -110,10 +110,10 @@ export type RosterProps = {
  * whether or not whoever added it remembered this array (BR-24, V5).
  */
 export const rosterPropNames = [
+  "client",
   "collectionRef",
   "limit",
   "problems",
-  "resourceClient",
   "sessionId",
   "slots"
 ] as const;
@@ -164,12 +164,12 @@ export function Roster(props: RosterProps): ReactNode {
     sessionId,
     collectionRef = DEFAULT_ROSTER_REF,
     problems,
-    resourceClient,
+    client,
     limit,
     slots = {}
   } = props;
 
-  const source = usePanelSource(resourceClient);
+  const source = usePanelSource(client);
 
   const state = usePanelRows<unknown>(
     source,

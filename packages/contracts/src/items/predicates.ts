@@ -120,3 +120,14 @@ export function isSuspensionItem(item: OutputItem): item is SuspensionItem {
 export function isSuspensionResumeItem(item: OutputItem): item is SuspensionResumeItem {
   return item.type === "suspension_resume";
 }
+
+/**
+ * True when `item` is a tool call waiting on an approval or a question, not a
+ * failed one. A tool that calls `ctx.suspend()` is recorded as a failed
+ * `tool_output` whose `error.code` is `"SUSPENSION"`, with the suspension's message as
+ * its error; its real result replaces it once the answer resumes the run.
+ * Renderers use this to draw the wait as waiting rather than as an error.
+ */
+export function isSuspensionWait(item: { readonly type: string; readonly status?: string; readonly error?: { readonly code?: string } }): boolean {
+  return item.type === "tool_output" && item.status === "failed" && item.error?.code === "SUSPENSION";
+}

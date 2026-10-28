@@ -15,11 +15,12 @@ import { describe, expect, it, afterEach, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { createElement } from "react";
 import { WorkerDetail } from "../src/components/panels/WorkerDetail";
+import type { PanelItemSource } from "../src/components/panels/reads";
 
 afterEach(cleanup);
 
 /** A `getCollectionItemState` source that answers one fixed result. */
-function fakeSource(result: unknown) {
+function fakeSource(result: Awaited<ReturnType<PanelItemSource["resources"]["getCollectionItemState"]>>) {
   return { getCollectionItemState: vi.fn(async () => result) };
 }
 
@@ -38,7 +39,7 @@ function failingSource(message: string) {
 describe("WorkerDetail", () => {
   it("treats an empty-string workerId like no workerId at all: not published, zero reads (Cursor nit)", () => {
     const source = fakeSource({ topic: "", clientData: { workerId: "x", flow: "agent", instructions: "hi" } });
-    render(createElement(WorkerDetail, { sessionId: "s1", kind: "support-agent", workerId: "", resourceClient: source }));
+    render(createElement(WorkerDetail, { sessionId: "s1", kind: "support-agent", workerId: "", client: { resources: source } }));
 
     expect(document.querySelector('[data-state="not-published"]')).toBeTruthy();
     expect(source.getCollectionItemState).not.toHaveBeenCalled();
@@ -46,7 +47,7 @@ describe("WorkerDetail", () => {
 
   it("shows the kind from the prop and makes no read when no workerId is given (BR-5, BR-31)", () => {
     const source = fakeSource({ topic: "irrelevant", clientData: { workerId: "x", flow: "agent", instructions: "hi" } });
-    render(createElement(WorkerDetail, { sessionId: "s1", kind: "support-agent", resourceClient: source }));
+    render(createElement(WorkerDetail, { sessionId: "s1", kind: "support-agent", client: { resources: source } }));
 
     expect(screen.getByText("support-agent")).toBeTruthy();
     expect(document.querySelector('[data-state="not-published"]')).toBeTruthy();
@@ -60,7 +61,7 @@ describe("WorkerDetail", () => {
     // Authorization: it answers only when the host's own client is the one
     // making the request. Building the component on `useResourceCollection`,
     // or on any path that ignores the prop, reads through the fallback
-    // (`createResourceClient({ baseUrl })`, no fetcher) and would 401 here.
+    // (one built from `baseUrl` with no fetcher) and would 401 here.
     const source = {
       getCollectionItemState: vi.fn(async (_sessionId: string, _ref: string, topic: string) => ({
         topic,
@@ -73,7 +74,7 @@ describe("WorkerDetail", () => {
         kind: "support-agent",
         workerId: "support.ada",
         collectionRef: "roster",
-        resourceClient: source
+        client: { resources: source }
       })
     );
 
@@ -90,7 +91,7 @@ describe("WorkerDetail", () => {
         sessionId: "s1",
         kind: "k",
         workerId: "a",
-        resourceClient: fakeSource({ topic: "a", clientData: { workerId: "a", flow: "agent", instructions: "Do the thing." } })
+        client: { resources: fakeSource({ topic: "a", clientData: { workerId: "a", flow: "agent", instructions: "Do the thing." } }) }
       })
     );
     await waitFor(() => expect(document.querySelector('[data-state="text"]')).toBeTruthy());
@@ -104,7 +105,7 @@ describe("WorkerDetail", () => {
         workerId: "b",
         // BR-30: hired with no instructions — the key is present and null,
         // not absent.
-        resourceClient: fakeSource({ topic: "b", clientData: { workerId: "b", flow: "agent", instructions: null } })
+        client: { resources: fakeSource({ topic: "b", clientData: { workerId: "b", flow: "agent", instructions: null } }) }
       })
     );
     await waitFor(() => expect(document.querySelector('[data-state="none"]')).toBeTruthy());
@@ -117,14 +118,14 @@ describe("WorkerDetail", () => {
         workerId: "c",
         // The topic is not present in the collection — `getCollectionItemState`
         // returns `null` (per its own doc comment).
-        resourceClient: fakeSource(null)
+        client: { resources: fakeSource(null) }
       })
     );
     await waitFor(() => expect(document.querySelector('[data-state="not-published"]')).toBeTruthy());
     unmountNotPublished();
 
     const { unmount: unmountLoading } = render(
-      createElement(WorkerDetail, { sessionId: "s1", kind: "k", workerId: "d", resourceClient: pendingSource() })
+      createElement(WorkerDetail, { sessionId: "s1", kind: "k", workerId: "d", client: { resources: pendingSource() } })
     );
     await waitFor(() => expect(document.querySelector('[data-state="loading"]')).toBeTruthy());
     unmountLoading();
@@ -134,7 +135,7 @@ describe("WorkerDetail", () => {
         sessionId: "s1",
         kind: "k",
         workerId: "e",
-        resourceClient: failingSource("network down")
+        client: { resources: failingSource("network down") }
       })
     );
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
@@ -152,8 +153,10 @@ describe("WorkerDetail", () => {
     // the collection has no client projection configured. The item EXISTS;
     // it just can't be read through this surface. That is the distinct
     // "could not be read" state, not the "no such topic" state.
-    const source = fakeSource({ topic: "f", storageKey: "roster/f", hint: "no client.data configured" });
-    render(createElement(WorkerDetail, { sessionId: "s1", kind: "k", workerId: "f", resourceClient: source }));
+    // The route's metadata keys are not on the client's `CollectionItemState` type.
+    const metadataOnly = { topic: "f", storageKey: "roster/f", hint: "no client.data configured" };
+    const source = fakeSource(metadataOnly);
+    render(createElement(WorkerDetail, { sessionId: "s1", kind: "k", workerId: "f", client: { resources: source } }));
 
     await waitFor(() => expect(document.querySelector('[data-state="error"]')).toBeTruthy());
     expect(document.querySelector('[data-state="not-published"]')).toBeNull();
@@ -169,7 +172,7 @@ describe("WorkerDetail", () => {
     });
 
     expect(() =>
-      render(createElement(WorkerDetail, { sessionId: "s1", kind: "k", workerId: "g", resourceClient: source }))
+      render(createElement(WorkerDetail, { sessionId: "s1", kind: "k", workerId: "g", client: { resources: source } }))
     ).not.toThrow();
 
     await waitFor(() => expect(document.querySelector('[data-state="error"]')).toBeTruthy());
@@ -194,7 +197,7 @@ describe("WorkerDetail", () => {
         topic: collidingShortId,
         clientData: { workerId: collidingShortId, flow: "agent", instructions: "The other org-visible worker's own instructions." }
       });
-      render(createElement(WorkerDetail, { sessionId: "s1", kind: "support-agent", resourceClient: source }));
+      render(createElement(WorkerDetail, { sessionId: "s1", kind: "support-agent", client: { resources: source } }));
 
       expect(document.querySelector('[data-state="not-published"]')).toBeTruthy();
       expect(screen.queryByText(/other org-visible worker/)).toBeNull();

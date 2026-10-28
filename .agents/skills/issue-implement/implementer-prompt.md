@@ -1,23 +1,25 @@
 # Implementer Sub-agent Prompt Template
 
-Use this template when dispatching an implementer sub-agent for a task from the spec.
+Use this template when dispatching an implementer sub-agent for a task from your build plan (Step 4.2).
 
 ```
 Agent tool (general-purpose):
   description: "Implement: [task name]"
   prompt: |
-    You are implementing a task from an implementation spec.
+    You are implementing one task of the build for an approved spec.
 
     ## Task
 
-    [FULL TEXT of this task from the spec's Implementation Sequence — paste it, don't reference a file]
+    [FULL TEXT of this task from the build plan — paste it, don't reference a file]
 
     ## Spec Context
 
-    [Approved merged retained spec revision and relevant rules/decisions/plan for this task.
-     Include applicable DOCS.md operations and EVOLUTION.md predecessor anchors, retained
-     versus superseded portions, and compatibility obligations. Include pinned shapes;
-     otherwise exact implementation signatures remain the implementer's to settle.]
+    [Approved merged retained spec revision: the goal, the decision cards and *Decided, not
+     asked* lines this task touches, the debt verdict it must not break, and the
+     what's-already-here rows it keeps, amends or supersedes, with compatibility obligations.
+     A set retained in the older shape: the matching parts of every document it carries.
+     Include pinned shapes; otherwise exact implementation signatures remain the
+     implementer's to settle.]
 
     ## Codebase Context
 
@@ -84,7 +86,8 @@ Agent tool (general-purpose):
     **Against the spec:**
     - Did I implement everything this task requires?
     - Did I handle the edge cases the spec mentions for this task?
-    - Did I build the modules/layers the spec's direction calls for, in the order it sets? (The spec is directional — exact signatures and types are mine to settle, so long as they honor its Decisions and direction. Where it *did* lock a shape — a call signature in `SPEC.md`'s diff, a name in `PLAN.md → Pinned names`, or a type fixed by a decision card — I match it exactly.)
+    - Did I build what the spec's direction and this task call for? (The spec is directional — exact signatures and types are mine to settle, so long as they honor its Decisions and direction. Where it *did* lock a shape — a call signature in `SPEC.md`'s diff, or a name or type a decision card's *Locks in* fixes — I match it exactly.)
+    - Did I add anything a reader could call debt (a second way to do a job, a shim, a special case) that the spec's debt table doesn't list? That is a direction finding to report, not mine to keep.
 
     **Quality:**
     - Are names clear and consistent with the codebase?
@@ -134,8 +137,8 @@ re-assert what Zod already enforces.
 Correct order:
 
 1. **Tracer bullet.** Write ONE test for the first behaviour from the
-   spec's Testing Strategy, using `@flow-state-dev/testing`'s mock
-   context (or `fsdev block` for one-shot block isolation if the spec
+   task's tests, using `@flow-state-dev/testing`'s mock
+   context (or `fsdev block` for one-shot block isolation if the task
    names that seam). Run it and confirm it fails for the intended
    reason — the behaviour doesn't exist yet, not a typo or import error.
    Capture the failing output (the actual error or assertion diff); you
@@ -167,8 +170,8 @@ Correct order:
    Never refactor while red.
 5. **Verify the goal — slice-level only; defer the end-to-end check to the orchestrator.**
    A task completes a *goal-bearing slice* when its acceptance criteria
-   map directly to a user-observable outcome stated in the spec's Testing
-   Strategy goal (an item emitted, a state value written, a returned
+   map directly to a user-observable outcome stated in the spec's
+   goal (an item emitted, a state value written, a returned
    result a user would see). But you implement only THIS task — the
    spec's main goal check is usually an **end-to-end** check that depends
    on later tasks and final integration, and it will not pass yet. Do
@@ -209,9 +212,9 @@ loop produce hours of speculative code changes.
    - `fsdev block <path> -i '<json>'` for single-block isolation
    - `fsdev run <flowKind> <action> -i '<json>' --flow-dir <path>` with
      NDJSON capture to stdout for flow-level repros
-   - For flow execution trace reading specifically, hand off to
-     `debug-flow` for the NDJSON event-type reference and the
-     failure-pattern lookup table.
+   - For flow execution trace reading specifically, use the
+     `debug-flow` toolkit for the NDJSON event-type reference and the
+     failure-pattern lookup table, then continue these phases.
    Do NOT proceed without a loop you believe in.
 2. **Reproduce.** Run the loop. Watch the failure mode appear. Confirm
    it matches what the issue describes — not a nearby-but-different
@@ -226,8 +229,8 @@ loop produce hours of speculative code changes.
    single grep. For perf regressions, use `block_output.durationMs`
    from the NDJSON stream instead of logs.
 5. **Fix + regression test.** Write the regression test BEFORE the
-   fix, at the seam the spec named in Testing Strategy (or the
-   correct equivalent if the spec didn't name one). Run it and watch
+   fix, at the seam the Phase 1 loop exercises (or the one the task
+   names). Run it and watch
    it fail — capture the failing output and confirm the failure
    matches the bug, not a typo or setup error. Apply the fix. Run it
    again and watch it pass — capture that output too; both go in your

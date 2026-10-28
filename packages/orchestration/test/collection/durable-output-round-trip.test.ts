@@ -45,7 +45,7 @@ function serializingCollection(rows: Map<string, string>): ResourceCollectionRef
       return read(key);
     },
     async patchState(updates: Partial<JsonObject>) {
-      write(key, { ...read(key), ...updates });
+      write(key, { ...read(key), ...updates } as JsonObject);
     },
     async setState(next: JsonObject) {
       write(key, next);

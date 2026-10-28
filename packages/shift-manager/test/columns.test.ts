@@ -1,23 +1,21 @@
 /**
- * BR-12 for every status the task substrate ships, plus the legacy word a
- * persisted row may still carry (V5); which worker holds a row; BR-15's
- * "done rows are left out".
+ * BR-12 for every status the task substrate ships; which worker holds a row;
+ * BR-15's "done rows are left out".
  *
  * The status list is the substrate's own enum, not a copy: a status added
  * there lands here and must be placed, or this fails.
  */
 import { describe, expect, it } from "vitest";
 import { taskStatusSchema } from "@flow-state-dev/orchestration/tasks";
-import { COLUMNS, columnFor, isBlocked, isDone } from "../src/lib/columns";
+import { COLUMNS, columnFor, isHeld, isDone } from "../src/lib/columns";
 import { openRows, workerFor, type LoadedSnapshot, type Roster } from "../src/lib/derive";
 import { toBoardRow, toWorker, type BoardRow } from "../src/lib/reads";
 
 /** Where BR-12 puts each shipped status. */
 const EXPECTED: Record<string, (typeof COLUMNS)[number]> = {
   pending: "QUEUED",
-  blocked: "QUEUED",
+  held: "QUEUED",
   in_progress: "RUNNING",
-  parked: "NEEDS YOU",
   errored: "NEEDS YOU",
   completed: "DONE",
   cancelled: "DONE",
@@ -34,12 +32,8 @@ describe("BR-12: a row's column", () => {
     for (const status of shipped) expect([status, columnFor(status)]).toEqual([status, EXPECTED[status]]);
   });
 
-  it("reads the legacy awaiting_review as parked", () => {
-    expect(columnFor("awaiting_review")).toBe("NEEDS YOU");
-  });
-
-  it("tags blocked, and nothing else, in QUEUED", () => {
-    expect(taskStatusSchema.options.filter(isBlocked)).toEqual(["blocked"]);
+  it("tags held, and nothing else, in QUEUED", () => {
+    expect(taskStatusSchema.options.filter(isHeld)).toEqual(["held"]);
   });
 
   it("IN REVIEW holds no shipped status", () => {
@@ -75,12 +69,12 @@ describe("which worker holds a row, when a bare name is in more than one team", 
   });
 });
 
-describe("BR-15: Tasks leaves done rows out, and a parked row with no ask is still a task (BR-27)", () => {
+describe("BR-15: Tasks leaves done rows out (BR-27)", () => {
   it("keeps every open row and drops done ones", () => {
     const rows = taskStatusSchema.options.map((s) => row(s, "builder"));
     const snapshot = {
       boards: { s_1: { ok: true, value: { refs: ["s_1.tasks"], rows } } },
     } as unknown as LoadedSnapshot;
-    expect(openRows(snapshot).map((r) => r.status).sort()).toEqual(["blocked", "errored", "in_progress", "parked", "pending"]);
+    expect(openRows(snapshot).map((r) => r.status).sort()).toEqual(["errored", "held", "in_progress", "pending"]);
   });
 });

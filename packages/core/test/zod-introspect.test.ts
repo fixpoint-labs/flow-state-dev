@@ -13,6 +13,8 @@ import {
   getZodUnionOptions,
   getZodRecordValueType,
   compareZodSchemasStructurally,
+  compareStateFieldKinds,
+  mapZodObjectRoot,
 } from "../src/helpers/zod-introspect";
 import { execSync } from "child_process";
 import { existsSync } from "fs";
@@ -280,6 +282,70 @@ describe("compareZodSchemasStructurally", () => {
 // ---------------------------------------------------------------------------
 // Grep guard — no raw `_def` access outside zod-introspect.ts
 // ---------------------------------------------------------------------------
+
+describe("compareStateFieldKinds", () => {
+  it("accepts a sequencer field whose wrappers differ from the block's (a default, a brand, a lazy)", () => {
+    expect(compareStateFieldKinds(z.number().default(0), z.number())).toBeNull();
+    expect(compareStateFieldKinds(z.string().brand("id"), z.string())).toBeNull();
+    expect(compareStateFieldKinds(z.lazy(() => z.number()), z.number().optional())).toBeNull();
+  });
+
+  it("refuses a different kind under the wrappers", () => {
+    expect(compareStateFieldKinds(z.string().nullable().default(null), z.number())).toMatch(
+      /declared ZodString but a block requires ZodNumber/
+    );
+  });
+
+  it("compares an array's element kind", () => {
+    expect(compareStateFieldKinds(z.array(z.string()).default([]), z.array(z.number()))).toMatch(
+      /array of ZodString/
+    );
+    expect(compareStateFieldKinds(z.array(z.string()), z.array(z.string().optional()))).toBeNull();
+  });
+
+  it("treats any and unknown as compatible with everything", () => {
+    expect(compareStateFieldKinds(z.unknown(), z.number())).toBeNull();
+    expect(compareStateFieldKinds(z.array(z.any()), z.array(z.number()))).toBeNull();
+  });
+
+  it("refuses a transform on either side, whose output kind it cannot read", () => {
+    // `.transform(String)` starts the child with a string where it asked for a
+    // number; the input kind matching says nothing about what the child gets.
+    expect(compareStateFieldKinds(z.number().default(1).transform(String), z.number())).toMatch(/transform/);
+    expect(compareStateFieldKinds(z.string().transform(Number), z.number())).toMatch(/transform/);
+    expect(compareStateFieldKinds(z.array(z.string().transform(Number)), z.array(z.number()))).toMatch(
+      /transform/
+    );
+  });
+
+  it("still sees through a refinement, a preprocess, and one schema shared by both sides", () => {
+    expect(compareStateFieldKinds(z.number().refine((n) => n >= 0).default(0), z.number())).toBeNull();
+    expect(compareStateFieldKinds(z.preprocess((value) => Number(value), z.number()), z.number())).toBeNull();
+    const shared = z.string().transform(Number);
+    expect(compareStateFieldKinds(shared, shared)).toBeNull();
+  });
+});
+
+describe("mapZodObjectRoot", () => {
+  const addB = (object: ZodTypeAny) => (object as z.AnyZodObject).extend({ b: z.number().default(2) });
+
+  it("replaces the object under a default and a refinement, keeping both", () => {
+    const wrapped = z
+      .object({ a: z.number().default(1) })
+      .refine((value) => value.a > 0, "a must be positive")
+      .default({});
+    const mapped = mapZodObjectRoot(wrapped, addB)!;
+
+    expect(mapped.parse(undefined)).toEqual({ a: 1, b: 2 });
+    expect(mapped.safeParse({ a: -1 }).success).toBe(false);
+  });
+
+  it("returns the schema itself when the object is unchanged, and undefined for a non-object", () => {
+    const wrapped = z.object({ a: z.number() }).optional();
+    expect(mapZodObjectRoot(wrapped, (object) => object)).toBe(wrapped);
+    expect(mapZodObjectRoot(z.array(z.string()), addB)).toBeUndefined();
+  });
+});
 
 describe("_def access guard", () => {
   it("no raw _def access outside zod-introspect.ts (with documented exceptions)", () => {

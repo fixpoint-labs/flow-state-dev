@@ -1,0 +1,8 @@
+{
+  "flow": "notes-7",
+  "turns": ["Standup moved to 10:15.", "Ravi owns the release checklist.", "Ship the migration on Thursday."],
+  "approve": { "subject": "the weekly summary", "kind": "input" },
+  "answer": { "action": "submit", "data": "Migration ships Thursday; Ravi has the checklist." },
+  "expectedAnswer": "Migration ships Thursday; Ravi has the checklist.",
+  "hold": "summary-week-43"
+}

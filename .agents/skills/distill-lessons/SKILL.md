@@ -1,6 +1,6 @@
 ---
 name: distill-lessons
-description: The self-improvement engine. Runs periodically to measure the development loop itself — an auto-derived cycle-ledger of review rounds + feedback classes from GitHub/Linear — and push the SMALLEST upstream fix that kills a recurring rework class (sharpen a tenet, sharpen an existing BP, or add a skill checklist line). Also runs per-PR to reflect on a reworked/reviewed change and extract the transferable lesson. Gates hard against best-practice bloat; writes to docs/philosophy.md or best-practices.md only after user review.
+description: The self-improvement engine. Runs periodically to measure the development loop itself — an auto-derived cycle-ledger of review rounds + feedback classes from GitHub/Linear — and push the SMALLEST upstream fix that kills a recurring rework class. Prefers making the mistake structurally impossible (architecture, then types, then a lint/CI check, then a test) before writing a tenet, BP, skill line, or doc. Also runs per-PR to reflect on a reworked/reviewed change. Gates hard against best-practice bloat; writes to docs/philosophy.md or best-practices.md only after user review. Skill-change evals live in eval.md.
 argument-hint: "<what to reflect on, e.g. 'PR #651' or 'the FIX-788 rework' or 'this session'>"
 ---
 
@@ -20,14 +20,44 @@ got better.
   it is most expensive. Higher-value, and what keeps the loop compounding instead of
   the BP list bloating. Run this every N cycles or on demand.
 
-### The bias: sharpen the grounding, don't grow a registry
+### The bias: encode first, then sharpen the grounding, don't grow a registry
 
-`docs/philosophy.md` now settles the grounding's shape, and it changes this skill's
-default output. The lasting layer is the **tenets**; best practices are the *volatile,
-few* tier; and **"most situational guidance is worked out per spec — reason from the
-tenets plus the handful of established BPs, and name the 1–5 that fit *this* change. You
-are not meant to consult, or grow, a large global registry."** So a distilled lesson
-almost never becomes a *new* BP. In descending preference, a lesson lands as:
+A lesson that can be made **structurally impossible** does not belong in a tenet, a BP,
+or a skill. Soft rules are what agents skip. The operator keeps correcting the same
+class; the fix is to change the repo so the next agent cannot make it.
+
+Two ladders, in this order. The first is *how the lesson is enforced*. The second is
+*where leftover judgment lives* — and it still refuses to grow a registry.
+
+**Enforcement (try each rung; stop at the first that works):**
+
+1. **Architecture.** One owner for the state, one supported way to do the job. Hide
+   internals so the wrong import fails. Replace hand-synced lists with one source of
+   truth. Delete the old way an agent would copy.
+2. **Types / the compiler.** Make the bad state unrepresentable.
+3. **A lint or CI check whose error names the fix** — the file, type, or function to
+   use instead. If the pattern is already common, fail only when a change adds more.
+   Prove the new check **fails on a real past mistake** (a commit, a PR, a cycle-ledger
+   row). A check that has never gone red on the class it claims to catch is decoration.
+4. **A test of the behavior.** Fix or delete any test that still passes when the
+   behavior it checks breaks, or that fails when only the internals change.
+5. **Docs or agent rules last, only for judgment calls.** Nothing fails when an
+   agent skips them. This is the only rung that writes prose.
+
+> **Attribution.** The enforcement ladder, "prove the check on a real past mistake",
+> and the rule→enforcer table are adapted from the MIT-licensed **pstack** `correct`
+> skill (and `principle-encode-lessons-in-structure`) by Lauren Tan —
+> <https://github.com/cursor/plugins/tree/main/pstack/skills/correct>. The
+> Accepted / Rejected list and "if a lint could enforce it, it leaves the prose"
+> are from pstack `reflect`. Copyright in [`LICENSE.upstream`](./LICENSE.upstream).
+
+**Landing altitude (only for rung 5 — leftover judgment).**
+`docs/philosophy.md` settles the grounding's shape. The lasting layer is the
+**tenets**; best practices are the *volatile, few* tier; and **"most situational
+guidance is worked out per spec — reason from the tenets plus the handful of
+established BPs, and name the 1–5 that fit *this* change. You are not meant to
+consult, or grow, a large global registry."** A distilled lesson almost never
+becomes a *new* BP. In descending preference, leftover judgment lands as:
 
 1. a **sharpened tenet** (only for a true philosophy gap — tenet 3 governs the grounding
    too: *"if it grows into a checklist, it has failed"*; sharpening a tenet is as gated as
@@ -38,10 +68,14 @@ almost never becomes a *new* BP. In descending preference, a lesson lands as:
 4. **one checklist line** in a skill so the loop catches the class structurally, or
 5. — rarely, and only past the Step-3 gate — a **new BP**.
 
-Steps 4–7 below still describe how to author a BP, but that is the *last-resort branch*.
-Reach for it only after 1–4 don't fit. Weigh the doc's detail accordingly: the machinery
-is heavy because authoring a shared standard is rare and exacting, not because it's the
-expected outcome.
+Steps 4–7 below still describe how to author a BP, but that is the *last-resort branch*
+of the *last* enforcement rung. Reach for it only after architecture / types / lint /
+test don't fit, **and** after landing-altitudes 1–4 don't fit. Weigh the doc's detail
+accordingly: the machinery is heavy because authoring a shared standard is rare and
+exacting, not because it's the expected outcome.
+
+A skill-change you cannot encode should be **eval'd** before you promote it — see
+[`eval.md`](./eval.md).
 
 ### Measuring the loop — the cycle-ledger (auto-derived)
 
@@ -73,6 +107,9 @@ produce, don't add ceremony.
 - **The metric that matters:** rounds-to-approval and `design-off` frequency trending
   **down** across cycles. That downward trend *is* the proof the harness is improving.
   Flat or rising means the upstream fixes aren't landing where the rework actually is.
+- **Read `ways per job` beside it** (defined in the ledger header). Score a rise with no
+  approved keep-ask as a recurring class, and trace where the job check was skipped: the
+  spec, the bug route, or a diff that added the way after its spec.
 - **Score direction artifacts against the review bar, not against comment volume.** A
   **direction artifact** is a PR whose job is to settle an approach rather than ship code —
   **spec PRs and epic PRs both**. Each runs on a budget of two rounds, and most of its
@@ -162,12 +199,15 @@ the ledger by feedback class, find the **recurring** ones, and for the top class
 propose the *single smallest upstream change that stops it recurring*, preferring, in
 order:
 
-1. **Sharpen a tenet** in `docs/philosophy.md` — when the class is a philosophy gap
-   (often surfaced by `audit-coherence`).
-2. **Sharpen an existing BP** so it actually catches the class.
-3. **Add one checklist line to a skill** (`issue-spec` / `issue-implement` / a review
+1. **Encode it** — architecture, then types, then a lint/CI check whose error names
+   the fix, then a test that fails on a real past instance of the class. This is the
+   default. A class that has happened twice and is still a paragraph is a miss.
+2. **Sharpen a tenet** in `docs/philosophy.md` — when the class is a philosophy gap
+   (often surfaced by `audit-coherence`) *and* it cannot be encoded.
+3. **Sharpen an existing BP** so it actually catches the class.
+4. **Add one checklist line to a skill** (`issue-spec` / `issue-implement` / a review
    prompt) so the loop catches the class structurally, before review does.
-4. **Only then**, rarely, a new BP — and only if it clears the gate below.
+5. **Only then**, rarely, a new BP — and only if it clears the gate below.
 
 Success is measured, not asserted: the class's rate in later ledgers should fall. If
 it doesn't, the fix landed at the wrong altitude — move it up or down and try again.
@@ -275,8 +315,16 @@ from "The bias" above. Reach down the list only when the one above genuinely doe
   the `CLAUDE.md` mirror; **use-case-specific** → the matching `best-practices/<category>.md`
   + both indexes. If you're reaching here more than rarely, re-read "The bias."
 
+**Structural enforcement check.** Before a survivor stays on the prose list, ask
+whether a lint, script, metadata flag, or runtime check would enforce it more
+reliably. If yes, it **leaves the prose list** and becomes an encoding (rungs 1–4
+above). A sentence that restates a check that already exists is deleted, not
+sharpened.
+
 State, for the record, which candidates you dropped and why — the discipline of
-cutting is the point.
+cutting is the point. Keep an explicit **Rejected** list with one-line reasons
+(already covered; already a check; one-off; cannot encode and does not clear the
+gate). Rejected is a first-class output, not a side note.
 
 ### 5. Draft in house style
 
@@ -345,4 +393,25 @@ apply it. Only then write.
   compose over features (tenet 2), fix at the owning layer (tenet 5) — and applied it to
   the headline but not the glue. Those are the highest-value catches, because they're
   about *consistency of judgment* against the tenets, not a new fact — and the fix is
-  almost always to sharpen how a tenet or skill is applied, not to mint a BP.
+  almost always to encode the trigger or sharpen how a tenet or skill is applied, not
+  to mint a BP.
+
+## Rule → enforcer
+
+Keep this table honest. A rule with no enforcer is a hope. When a class repeats
+and the rule was already written, that is the signal to move it up a rung, in
+the same change. Drop a row once the mistake cannot happen. The living copy is
+this table; `AGENTS.md` points here.
+
+| Rule | Enforcer | Rung |
+|---|---|---|
+| Package boundaries (`engine` ↛ `client`/`react`; `react` wraps `client`) | `scripts/validate-package-boundaries.mjs` (via `pnpm typecheck`) | CI |
+| Retired vocabulary | `scripts/check-retired-terms.mjs` | CI |
+| Unused exports / unlisted deps / new dead code | `fallow` (`pnpm fallow:ci`, `pnpm fallow:new-dead-code`) | CI |
+| Generator output schemas stay OpenAI-strict (BP-016) | `makeSchemaStrict` walker in the producing package's tests | test |
+| Auth/routing not taken from caller-controllable input (BP-031) | review correctness lens + tests at the trust boundary | test + review |
+| A new way to do a job is named on the spec (question 7) | `review` coherence lens (job check) | review |
+| Spec review converges in two rounds | `orchestration.md` + `epic-wake` `atReviewBudget()` | architecture |
+| PR-feedback auto-handle cap of twelve | `orchestration.md` + `epic-wake` `atPrFeedbackCap()` | architecture |
+| A rule asking "did X happen?" reads X's mark, never a state other causes also produce (BP-035) | the behaviour test at each fix (the one-wait rule: `settles-when-its-work-is-over.test.ts`); judgment otherwise | test + docs |
+| Judgment that cannot be encoded | tenets / existing BPs / a skill checklist line — last | docs |

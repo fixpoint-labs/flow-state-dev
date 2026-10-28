@@ -6,8 +6,8 @@
  * it. Nothing here imports a coding agent, and neither does the package: if that
  * ever stops being true, the import sweep at the bottom of this file fails.
  *
- * The end-to-end behaviours — a real board, a real hand-off, a real claim gate —
- * stay with this package's own host tests (`message-door`, `dotted-board`) and
+ * The end-to-end behaviours — a real board, a real dispatch, a real claim gate —
+ * stay with this package's own host tests (`steer-a-run`, `dotted-board`) and
  * the harness-manager goal checks, which drive the whole loop through a host
  * flow. Duplicating that here would be a second copy of a suite, not a second
  * thing tested.
@@ -22,7 +22,7 @@ import { defineCapability, defineResourceCollection, handler } from "@flow-state
 import { harnessRunInputSchema, harnessRunHandleSchema } from "@flow-state-dev/core";
 import type { HarnessBlock } from "@flow-state-dev/core/types";
 import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
-import { harnessManager, RUNS, INBOX, type HarnessFeeds } from "../src";
+import { harnessManager, RUNS, type HarnessFeeds } from "../src";
 import { joinIdentity, tenantSegment } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 
@@ -214,12 +214,10 @@ describe("a phase's collections ride `uses`", () => {
     );
   });
 
-  it("refuses a capability claiming the question inbox", () => {
-    // A run would park on a question no operator could see and no answer could
-    // reach.
-    expect(() => build({ uses: [capabilityDeclaring(INBOX)] })).toThrow(
-      /the manager owns/,
-    );
+  it("refuses `announce` by name: a question holds its task, where the Inbox lists it", () => {
+    // A host still passing it expects to be told of each question. Ignored, it
+    // would wait on a call that never comes; refused, it is told where to read.
+    expect(() => build({ announce: () => undefined })).toThrow(/`announce` was removed/);
   });
 
   it("refuses a capability claiming the board ledger", () => {

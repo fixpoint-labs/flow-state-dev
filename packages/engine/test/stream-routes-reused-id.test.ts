@@ -27,6 +27,7 @@ function completedRecord(userId: string, incarnation: string): RequestRecord {
     id: REQUEST_ID,
     flowKind: FLOW_KIND,
     actionName: "run",
+    source: "http",
     userId,
     sessionId: `sess_${userId}`,
     status: "completed",

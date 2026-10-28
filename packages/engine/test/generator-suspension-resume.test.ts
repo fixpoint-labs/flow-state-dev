@@ -21,9 +21,11 @@ import type {
 } from "@flow-state-dev/core/types";
 import type { FlowInstance, SuspensionRecord } from "@flow-state-dev/core/types";
 import type { OutputItem } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
+import { expandRequestToMessages } from "../src/context/history";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import type { DurabilityProvider } from "../src/durability/types";
 import type { StoreRegistry } from "../src/stores/types";
@@ -120,7 +122,7 @@ function toolResultParts(
   return out;
 }
 
-function completedToolOutputs(items: readonly OutputItem[]) {
+function completedToolOutputs(items: readonly RuntimeItem[]) {
   return items.filter(
     (i) => i.type === "tool_output" && (i as { status?: string }).status === "completed"
   ) as Array<{ output?: unknown; modelOutput?: unknown; toolCall: { callId: string; name: string } }>;
@@ -836,7 +838,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
       model,
       prompt: "p",
       tools: [gate],
-      itemVisibility: { history: false },
+      itemVisibility: { client: false, history: false },
     });
     const flow = defineFlow({
       kind: "gen-history-false",
@@ -1128,5 +1130,60 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
 
     expect(resumed.output).toBe("Approved and done.");
     expect(JSON.stringify(seen[1]!.messages)).toContain("Checking with a reviewer.");
+  });
+
+  // History after the gate --------------------------------------------------
+  // The wait stays on the record as a failed tool_output (SUSPENSION) beside
+  // the real result. Replayed raw, the next turn shows the model the
+  // approval's question as the call's error, then the same call again.
+  it("the next turn's history holds an approved call once, with its result, never the wait as a failure", async () => {
+    const gate = handler({
+      name: "set_repository",
+      inputSchema: z.object({ repository: z.string() }),
+      outputSchema: z.object({ repository: z.string() }),
+      execute: async (input, ctx) => {
+        await ctx.suspend!({ reason: "human_approval", message: `Set the repository to ${input.repository}?` });
+        return { repository: input.repository };
+      },
+    });
+    const { model, seen } = stepModel([
+      () => ({ toolCalls: [{ toolCallId: "c1", toolName: "set_repository", args: { repository: "acme/web" } }], finishReason: "tool-calls" }),
+      () => ({ text: "repository set", finishReason: "stop" }),
+      () => ({ text: "anything else?", finishReason: "stop" }),
+    ]);
+    const gen = generator({ name: "agent", model, prompt: "p", tools: [gate], history: true });
+    const flow = defineFlow({
+      kind: "gen-history-after-approval",
+      actions: { run: { block: sequencer({ name: "seq", durable: true }).step(gen), inputSchema: anyInput } },
+    })({ id: "gen-history-after-approval" });
+    const { stores, provider } = createDurableStores();
+    const runtimeConfig = { durabilityProvider: provider };
+    const sessionId = "s-history";
+
+    const first = await runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", sessionId, stores, runtimeConfig });
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+    await resolve(flow, stores, provider, first.requestId!, suspension!, "approve");
+    expect((await stores.request.get(first.requestId!))?.status).toBe("completed");
+
+    await runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", sessionId, stores, runtimeConfig });
+    const messages = seen[2]!.messages as Array<Record<string, unknown>>;
+    const calls = messages.flatMap((m) => (Array.isArray(m.content) ? (m.content as Array<Record<string, unknown>>) : [])).filter((p) => p.type === "tool-call");
+    expect(calls.map((c) => c.toolCallId)).toEqual(["c1"]);
+    const results = toolResultParts(messages);
+    expect(results).toHaveLength(1);
+    expect(JSON.stringify(results[0]!.output)).toContain("acme/web");
+    expect(JSON.stringify(results[0]!.output)).not.toContain("failed");
+  });
+
+  it("a request that never waited expands to its history unchanged", () => {
+    const base = { requestId: "r1", provenance: { blockInstanceId: "agent#0" } };
+    const items = [
+      { ...base, id: "m1", type: "message", role: "user", status: "completed", ts: 1, itemIndex: 0, content: [{ type: "output_text", text: "hi" }] },
+      { ...base, id: "t1", type: "tool_output", status: "completed", ts: 2, itemIndex: 1, toolCall: { callId: "c1", name: "lookup", arguments: "{}" }, output: "found" },
+      { ...base, id: "m2", type: "message", role: "assistant", status: "completed", ts: 3, itemIndex: 2, content: [{ type: "output_text", text: "done" }] },
+    ] as unknown as OutputItem[];
+    const messages = expandRequestToMessages(items, new Set(["message", "tool_output"]), undefined);
+    expect(messages.map((m) => m.role)).toEqual(["user", "assistant", "tool", "assistant"]);
+    expect(toolResultParts(messages).map((r) => r.output)).toEqual([{ type: "text", value: "found" }]);
   });
 });

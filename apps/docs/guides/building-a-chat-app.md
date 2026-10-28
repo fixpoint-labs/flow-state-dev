@@ -24,7 +24,7 @@ import { z } from "zod";
 
 export const chatGen = generator({
   name: "chat",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "You are a helpful assistant. Be concise and friendly.",
   inputSchema: z.object({ message: z.string() }),
   history: true,
@@ -143,7 +143,7 @@ import chatFlow from "@/flows/hello-chat/flow";
 
 export const flowstate = createFlowState({
   flows: { chatFlow },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: inMemoryStores() } },
 });
 ```

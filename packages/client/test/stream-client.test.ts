@@ -1,10 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  createSSEClient,
+  createClient,
   createSSEClientFromResponse,
-  createUserSSEClient,
-  type ClientFetch
+  type ClientFetch,
+  type RequestStreamOptions,
+  type UserStreamOptions
 } from "../src";
+
+/** A request's stream, opened through one client's `request(id).stream()`. */
+function requestStream({ url, fetcher, ...options }: RequestStreamOptions & { url: string; fetcher: ClientFetch }) {
+  const [, flow, id] = /\/api\/flows\/([^/]+)\/requests\/([^/]+)\/stream/.exec(url)!;
+  return createClient({ userId: "devuser", baseUrl: "", fetcher }).flow(flow!).request(id!).stream(options);
+}
+
+/** The user stream, opened through one client's `stream()`. */
+function userStream({ url, fetcher, ...options }: UserStreamOptions & { url: string; fetcher: ClientFetch }) {
+  const [, userId] = /\/api\/flows\/users\/([^/]+)\/stream/.exec(url)!;
+  return createClient({ userId: userId!, baseUrl: "", fetcher }).stream(options);
+}
 
 function requestEventFrame(options: {
   id: string;
@@ -27,7 +40,7 @@ async function flushSSE(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-describe("createSSEClient", () => {
+describe("request.stream", () => {
   it("parses request stream events, dedupes by sequence, and tracks lastEventId", async () => {
     const onRequestCreated = vi.fn();
     const onItemAdded = vi.fn();
@@ -125,7 +138,7 @@ describe("createSSEClient", () => {
       });
     });
 
-    const handle = createSSEClient({
+    const handle = requestStream({
       url: "/api/flows/demo/requests/req_1/stream",
       lastEventId: "req_1:0",
       fetcher,
@@ -184,7 +197,7 @@ describe("createSSEClient", () => {
         })
     );
 
-    const handle = createSSEClient({
+    const handle = requestStream({
       url: "/api/flows/demo/requests/req_s/stream",
       fetcher,
       onRequestStatus
@@ -291,7 +304,7 @@ describe("createSSEClient", () => {
       })
     );
 
-    const handle = createSSEClient({
+    const handle = requestStream({
       url: "/api/flows/demo/requests/req_1/stream",
       fetcher,
       dedupWindowSize: 1,
@@ -315,7 +328,7 @@ describe("createSSEClient", () => {
       })
     );
 
-    const handle = createSSEClient({
+    const handle = requestStream({
       url: "/api/flows/demo/requests/req_1/stream",
       lastEventId: "req_1:9",
       startingAfter: 5,
@@ -361,7 +374,7 @@ describe("createSSEClient", () => {
       })
     );
 
-    const handle = createSSEClient({
+    const handle = requestStream({
       url: "/api/flows/demo/requests/req_u/stream",
       fetcher,
       onItemUpdated
@@ -382,7 +395,7 @@ describe("createSSEClient", () => {
   });
 });
 
-describe("createSSEClientFromResponse", () => {
+describe("request.streamFromResponse", () => {
   it("consumes SSE events from a Response body", async () => {
     const onRequestCreated = vi.fn();
     const onRequestStatus = vi.fn();
@@ -529,7 +542,7 @@ describe("createSSEClientFromResponse", () => {
   });
 });
 
-describe("createUserSSEClient", () => {
+describe("client.stream", () => {
   it("parses optional user-stream events and dispatches callbacks", async () => {
     const onResourceChanged = vi.fn();
     const onScopeStateChanged = vi.fn();
@@ -574,7 +587,7 @@ describe("createUserSSEClient", () => {
       })
     );
 
-    const handle = createUserSSEClient({
+    const handle = userStream({
       url: "/api/flows/users/devuser/stream",
       fetcher,
       onResourceChanged,
@@ -591,7 +604,7 @@ describe("createUserSSEClient", () => {
   });
 });
 
-describe("createSSEClient — heartbeat parsing", () => {
+describe("request.stream — heartbeat parsing", () => {
   it("invokes onHeartbeat for `: ping` comment frames and not for normal events", async () => {
     const onHeartbeat = vi.fn();
     const onItemAdded = vi.fn();
@@ -633,7 +646,7 @@ describe("createSSEClient — heartbeat parsing", () => {
       })
     );
 
-    const handle = createSSEClient({
+    const handle = requestStream({
       url: "/api/flows/demo/requests/req_1/stream",
       fetcher,
       onItemAdded,

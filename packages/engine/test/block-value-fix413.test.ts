@@ -12,9 +12,10 @@ import {
   router,
   sequencer
 } from "@flow-state-dev/core";
-import type { BlockTraceItem, BlockValue } from "@flow-state-dev/core/items";
+import type { BlockTraceItem } from "@flow-state-dev/core/items";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { resolveBlockValue, buildItemLookup } from "@flow-state-dev/core/items";
+import { buildItemLookup } from "@flow-state-dev/core/items";
+import { resolveBlockValueInternal, type BlockValueInternal } from "@flow-state-dev/core/items/internal";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import {
@@ -81,7 +82,7 @@ describe("FIX-413 BlockValue on block_output", () => {
     });
 
     expect(items).toHaveLength(1);
-    const out = items[0].output as BlockValue<unknown>;
+    const out = items[0].output as BlockValueInternal<unknown>;
     expect(out.kind).toBe("inline");
     expect((out as { value: unknown }).value).toEqual({ y: 10 });
   });
@@ -113,12 +114,12 @@ describe("FIX-413 BlockValue on block_output", () => {
     expect(outer).toBeDefined();
     expect(innerItem).toBeDefined();
 
-    const outerVal = outer!.output as BlockValue<unknown>;
+    const outerVal = outer!.output as BlockValueInternal<unknown>;
     expect(outerVal.kind).toBe("ref");
     expect((outerVal as { sourceItemId: string }).sourceItemId).toBe(innerItem!.id);
 
     // Inner carries the actual content.
-    const innerVal = innerItem!.output as BlockValue<unknown>;
+    const innerVal = innerItem!.output as BlockValueInternal<unknown>;
     expect(innerVal.kind).toBe("inline");
     expect((innerVal as { value: unknown }).value).toBe("processed:hi");
   });
@@ -149,7 +150,7 @@ describe("FIX-413 BlockValue on block_output", () => {
 
     const outer = items.find((i) => i.blockName === "map-outer");
     expect(outer).toBeDefined();
-    const outerVal = outer!.output as BlockValue<unknown>;
+    const outerVal = outer!.output as BlockValueInternal<unknown>;
     // `.map` is the final op — it produces novel content, so the sequencer's
     // overall BlockValue is inline.
     expect(outerVal.kind).toBe("inline");
@@ -191,9 +192,9 @@ describe("FIX-413 BlockValue on block_output", () => {
     expect(a).toBeDefined();
     expect(b).toBeDefined();
 
-    const outerVal = outer!.output as BlockValue<unknown>;
+    const outerVal = outer!.output as BlockValueInternal<unknown>;
     expect(outerVal.kind).toBe("structure");
-    const shape = (outerVal as { shape: { container: string; entries: BlockValue<unknown>[] } }).shape;
+    const shape = (outerVal as { shape: { container: string; entries: BlockValueInternal<unknown>[] } }).shape;
     expect(shape.container).toBe("array");
     expect(shape.entries).toHaveLength(2);
     expect(shape.entries[0]).toMatchObject({ kind: "ref", sourceItemId: a!.id });
@@ -228,7 +229,7 @@ describe("FIX-413 BlockValue on block_output", () => {
     const outer = items.find((i) => i.blockName === "fanout2")!;
     const lookup = buildItemLookup(allItems);
 
-    const resolved = resolveBlockValue<Array<{ echo: string }>>(outer.output, lookup);
+    const resolved = resolveBlockValueInternal<Array<{ echo: string }>>(outer.output, lookup);
     expect(resolved).toEqual([{ echo: "msg" }, { echo: "msg" }]);
   });
 
@@ -263,18 +264,18 @@ describe("FIX-413 BlockValue on block_output", () => {
     // Every ref in the tree should point at a content-bearing item (inline or
     // structure). Flatten-at-emit forbids ref→ref chains.
     for (const item of items) {
-      const value = item.output as BlockValue<unknown>;
+      const value = item.output as BlockValueInternal<unknown>;
       if (value.kind === "ref") {
         const target = items.find((i) => i.id === (value as { sourceItemId: string }).sourceItemId);
         expect(target).toBeDefined();
-        const targetValue = target!.output as BlockValue<unknown>;
+        const targetValue = target!.output as BlockValueInternal<unknown>;
         expect(targetValue.kind).not.toBe("ref");
       }
     }
 
     // And specifically: the outermost sequencer refs the leaf directly.
     const s1Item = items.find((i) => i.blockName === "s1")!;
-    const s1Val = s1Item.output as BlockValue<unknown>;
+    const s1Val = s1Item.output as BlockValueInternal<unknown>;
     expect(s1Val.kind).toBe("ref");
     expect((s1Val as { sourceItemId: string }).sourceItemId).toBe(leafItem.id);
   });
@@ -308,7 +309,7 @@ describe("FIX-413 BlockValue on block_output", () => {
     // Count how many items carry the full payload inline.
     let contentCopies = 0;
     for (const item of items) {
-      const value = item.output as BlockValue<unknown>;
+      const value = item.output as BlockValueInternal<unknown>;
       if (
         value.kind === "inline" &&
         typeof (value as { value: unknown }).value === "string" &&
@@ -357,7 +358,7 @@ describe("FIX-413 BlockValue on block_output", () => {
     expect(routerItem).toBeDefined();
     expect(leftItem).toBeDefined();
 
-    const routerVal = routerItem.output as BlockValue<unknown>;
+    const routerVal = routerItem.output as BlockValueInternal<unknown>;
     expect(routerVal.kind).toBe("ref");
     expect((routerVal as { sourceItemId: string }).sourceItemId).toBe(leftItem.id);
   });
@@ -391,7 +392,7 @@ describe("FIX-413 BlockValue on block_output", () => {
     expect(tapped).toBe("main:x");
     const outer = items.find((i) => i.blockName === "tap-seq")!;
     const mainItem = items.find((i) => i.blockName === "main")!;
-    const outerVal = outer.output as BlockValue<unknown>;
+    const outerVal = outer.output as BlockValueInternal<unknown>;
     // `.tap` doesn't change the descriptor; the running ref from `.step(main)`
     // carries through.
     expect(outerVal.kind).toBe("ref");

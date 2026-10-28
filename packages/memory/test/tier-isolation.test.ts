@@ -23,7 +23,7 @@ const MODEL = 'openai/gpt-5.4-mini'
 
 function tiers(episodic: { flowIsolation?: boolean } | true, semantic: { flowIsolation?: boolean } | true) {
   const mem = system({ model: MODEL, working: true, episodic, semantic, digest: true })
-  const { episodicMemory, semanticMemory, digestMemory } = mem.capability.userResources
+  const { episodicMemory, semanticMemory, digestMemory } = mem.userResources
   return {
     episodic: episodicMemory?.flowIsolation,
     semantic: semanticMemory?.flowIsolation,
@@ -34,7 +34,7 @@ function tiers(episodic: { flowIsolation?: boolean } | true, semantic: { flowIso
 describe('per-tier flowIsolation', () => {
   it('declares nothing on any tier when no tier asks, so the flow default applies', () => {
     const mem = system({ model: MODEL, working: true, episodic: true, semantic: true, digest: true })
-    for (const resource of Object.values(mem.capability.userResources)) {
+    for (const resource of Object.values(mem.userResources)) {
       expect(resource).toBeDefined()
       expect('flowIsolation' in resource!).toBe(false)
     }
@@ -66,10 +66,10 @@ describe('per-tier flowIsolation', () => {
     // The digest keys at semantic's scope, so it cannot follow the org flag
     // that decides an org-scoped episodic store's isolation.
     const mem = system({ model: MODEL, working: true, episodic: { scope: 'org' }, semantic: { scope: 'user' }, digest: true })
-    expect(mem.capability.userResources.digestMemory?.flowIsolation).toBe(true)
+    expect(mem.userResources.digestMemory?.flowIsolation).toBe(true)
     // Same scope: the digest's default is the one episodic follows.
     const same = system({ model: MODEL, working: true, episodic: true, semantic: { flowIsolation: false }, digest: true })
-    expect(same.capability.userResources.digestMemory?.flowIsolation).toBeUndefined()
+    expect(same.userResources.digestMemory?.flowIsolation).toBeUndefined()
   })
 
   it('does not carry episodic isolation over to semantic', () => {
@@ -79,8 +79,8 @@ describe('per-tier flowIsolation', () => {
   it('hands the same resources to the capture pipeline, so the blocks key where the capability does', () => {
     const mem = system({ model: MODEL, working: true, episodic: true, semantic: { flowIsolation: false } })
     const declared = mem.capture.declaredResources ?? {}
-    expect(declared.semanticMemory).toBe(mem.capability.userResources.semanticMemory)
-    expect(declared.episodicMemory).toBe(mem.capability.userResources.episodicMemory)
+    expect(declared.semanticMemory).toBe(mem.userResources.semanticMemory)
+    expect(declared.episodicMemory).toBe(mem.userResources.episodicMemory)
   })
 })
 

@@ -24,7 +24,6 @@ import {
   createStateBackedTaskCollection,
   DEFAULT_LEASE_DURATION_MS,
   DEFAULT_MAX_ABANDONMENTS,
-  eventDispatcher,
   isClaimable,
   ticketForClaim,
   type Task,
@@ -140,23 +139,6 @@ describe.each(BACKINGS)("recovery — admission (%s)", (_name, makeBacking) => {
     expect(await backing.collection.claim("w2", { eligibility: (x) => x.id === "t" })).toBeNull();
   });
 
-  it("never admits a parked row, however long the review takes", async () => {
-    // `awaitReview` deliberately does not clear `leaseUntil`, so a lapsed lease
-    // on a parked row is an ordinary state rather than an abandoned worker.
-    // Review is an explicit park; the lease governs `in_progress` only.
-    const backing = await makeBacking();
-    await backing.collection.addTask({ id: "t", goal: "t" });
-    const claimed = await backing.collection.claim("w", { leaseDurationMs: 10_000 });
-    await backing.collection.awaitReview("t", "look at this", {
-      ifAllowed: true,
-      claim: ticketForClaim(backing.collection.collectionId, claimed!),
-    });
-    backing.setNow(backing.now() + 10_000_000);
-
-    expect(await backing.collection.claim("w2")).toBeNull();
-    expect(backing.collection.get("t")?.status).toBe("parked");
-  });
-
   it("is read by ALL THREE admission consumers, not just claim()", async () => {
     // A suite that only exercises `claim()` directly passes against an
     // implementation whose board never wakes for the row it could recover.
@@ -176,10 +158,12 @@ describe.each(BACKINGS)("recovery — admission (%s)", (_name, makeBacking) => {
 });
 
 describe.each(BACKINGS)("recovery — a caller's eligibility NARROWS (%s)", (_name, makeBacking) => {
-  it("recovers a lapsed row INSIDE a built-in dispatcher's narrowing", async () => {
-    // Pinned on the composed claim path with a real built-in dispatcher rather
-    // than a bespoke predicate, so the test covers the shape callers get.
-    // Before this composition a caller's predicate REPLACED the substrate's, so
+  /** A narrowing that names no status, the shape the docs tell a dispatcher to use. */
+  const onTopic = (topic: string) => (t: Task) =>
+    (t.metadata as { topic?: string } | undefined)?.topic === topic;
+
+  it("recovers a lapsed row INSIDE a caller's narrowing", async () => {
+    // Pinned on the composed claim path a dispatcher calls. Before this composition a caller's predicate REPLACED the substrate's, so
     // recovery was unreachable for any dispatcher that asserted
     // `status === "pending"` — including the recipe our own docs recommended.
     const backing = await makeBacking();
@@ -190,12 +174,7 @@ describe.each(BACKINGS)("recovery — a caller's eligibility NARROWS (%s)", (_na
     });
     await abandon(backing, "t");
 
-    const dispatcher = eventDispatcher({
-      topicFor: (t: Task) => (t.metadata as { topic?: string } | undefined)?.topic,
-      topic: "billing",
-    });
-
-    expect((await dispatcher.claim(backing.collection, "w2"))?.id).toBe("t");
+    expect((await backing.collection.claim("w2", { eligibility: onTopic("billing") }))?.id).toBe("t");
   });
 
   it("leaves a lapsed row OUTSIDE the narrowing alone — the stated cost, asserted", async () => {
@@ -211,12 +190,7 @@ describe.each(BACKINGS)("recovery — a caller's eligibility NARROWS (%s)", (_na
     });
     await abandon(backing, "t");
 
-    const dispatcher = eventDispatcher({
-      topicFor: (t: Task) => (t.metadata as { topic?: string } | undefined)?.topic,
-      topic: "shipping",
-    });
-
-    expect(await dispatcher.claim(backing.collection, "w2")).toBeNull();
+    expect(await backing.collection.claim("w2", { eligibility: onTopic("shipping") })).toBeNull();
     expect(backing.collection.get("t")?.status).toBe("in_progress");
   });
 });

@@ -141,7 +141,7 @@ function gradeE(o: any): LegResult {
     r.failures.push(`e:redelivery — handed desk.alpha twice, wanted the second skipped, one delivery and one answer; skipped again: ${skippedAgain}, deliveries: ${p4Ledger.length}, answers after ${o.graceMs} ms: ${p4Answers}`);
   }
   one("e:unplaced", ladder.posts.p5, "unplaced", undefined);
-  if (!lines.some((l) => l.agentName === null && /^Nobody took this post/.test(l.text))) {
+  if (!lines.some((l) => l.agentName === null && /^Nobody took this (post|message)/.test(l.text))) {
     r.failures.push(`e:unplaced — the conversation never said the post went unplaced`);
   }
   r.notes.push(`best fit: ${records.map((d) => `${d.by}→${(d.delegates as any[]).map((x) => `${x.worker}:${x.outcome}`).join("+") || "nobody"}`).join(", ")}; evaluator calls ${show(ladder.evaluatorCalls)}`);
@@ -314,11 +314,12 @@ await runGoal(async () => {
     failures.push(...r.failures);
   }
   if (control !== undefined) {
-    const named = failures.some((f) => f.startsWith(`${control.assertion} `));
+    const wanted = control.anyOf ?? [control.assertion];
+    const named = wanted.find((a) => failures.some((f) => f.startsWith(`${a} `)));
     failures.unshift(
-      named
-        ? `control ${control.name}: leg ${control.leg} failed on ${control.assertion}, as it must`
-        : `control ${control.name}: leg ${control.leg} did NOT fail on ${control.assertion}, so the check can't see what the control removes`,
+      named !== undefined
+        ? `control ${control.name}: leg ${control.leg} failed on ${named}, as it must`
+        : `control ${control.name}: leg ${control.leg} did NOT fail on ${wanted.join(" or ")}, so the check can't see what the control removes`,
     );
   }
   return { failures, evidence: `legs ${[...legs].sort().join(", ")} PASS; ${evidence.join("; ")}` };

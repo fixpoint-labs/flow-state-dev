@@ -85,7 +85,7 @@ export interface RecorderFailureReport {
    * the per-REQUEST item buffer and a request can drain a board more than
    * once, so the tail filters on this rather than on collection id — a second
    * batch must not inherit the first one's failure. Absent for a settlement
-   * with no batch around it (the hand-off gate), which raises immediately and
+   * with no batch around it (the dispatch gate), which raises immediately and
    * never filters.
    */
   runId?: string;
@@ -211,7 +211,7 @@ export class TaskBoardReportFailureError extends Error {
  * The error a run fails with once its reports are in.
  *
  * Its own class so the error recorder can recognise it when it arrives as a
- * rescued error and refuse to let `onError` swallow it — the hand-off gate's
+ * rescued error and refuse to let `onError` swallow it — the dispatch gate's
  * whole raise travels that path.
  */
 export class TaskBoardRecorderFailureError extends Error {
@@ -242,4 +242,21 @@ function describeReports(reports: readonly RecorderFailureReport[]): string {
     `task board could not record ${subject} — the write was saved, or may have ` +
     `been, and the change could not be announced: ${each}`
   );
+}
+
+/**
+ * A plan drain failed after it handed `taskId` to a session of its own (see
+ * `dispatch-row.ts`). The row is that session's, so this is never recorded on
+ * it: every recorder rethrows it, whatever `onError` says, and the drain's
+ * request fails.
+ */
+export class HandedOverRowError extends Error {
+  constructor(boardId: string, taskId: string, cause: unknown) {
+    super(
+      `[task-board] "${boardId}" handed task "${taskId}" to a session of its own and then failed, so the plan ` +
+        `fails: ${cause instanceof Error ? cause.message : String(cause)}`
+    );
+    this.name = "HandedOverRowError";
+    this.cause = cause;
+  }
 }

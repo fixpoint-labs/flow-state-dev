@@ -66,9 +66,9 @@ function buildHost(options?: {
       actions: {
         run: {
           inputSchema: z.object({ value: z.string() }),
-          block: handler<{ value: string }, { ok: true }>({
+          block: handler({
             name: "acceptance-run",
-            execute: async () => {
+            execute: async (_input: { value: string }): Promise<{ ok: true }> => {
               ran += 1;
               await runGate;
               return { ok: true };

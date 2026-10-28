@@ -1,38 +1,18 @@
 /**
- * Thin wrappers around the `@flow-state-dev/client` factories used by the
- * DevTool panel. The DevTool is not itself a flow instance (it inspects
- * arbitrary ones), so the shared client is initialised with a synthetic
- * `__devtool__` address for listing and capabilities only, and every addressed
- * call below takes the selected instance's EXACT id.
+ * Who the DevTool reads as, and the credential its one client carries.
  *
- * `flowKind` is the historical spelling of the client's address slot and of the
- * `/api/flows/:flowKind/` URL segment. It carries an instance id — that is what
- * the server resolves — so the parameters here are named `flowId` to say what
- * the value actually is. Passing a kind where two copies exist addresses
- * whichever one the registry happens to hold under that name, which is the
- * defect this panel exists to stop showing.
- *
+ * The DevTool holds one `createClient` (see `context/devtool-context.tsx`).
  * When a `bearerToken` is configured (from `fsdev.config.ts` → `devtool` →
- * injected into the page, or the Settings sheet), every client sends it as
- * `Authorization: Bearer` so a bearer-gated flow's resolver accepts DevTool's
- * requests. The token rides on a wrapping `fetcher`, which is the one hook all
- * client factories (JSON, action, and the fetch-based SSE stream) share.
+ * injected into the page, or the Settings sheet), that client's `fetcher`
+ * sends it as `Authorization: Bearer` on every call and stream, so a
+ * bearer-gated flow's resolver accepts the DevTool's requests.
+ *
+ * Every flow-addressed call takes the selected instance's EXACT id through
+ * `client.flow(id)`: passing a kind where two copies exist addresses whichever
+ * one the registry holds under that name, which is the defect this panel
+ * exists to stop showing.
  */
-import {
-  createClient,
-  createSessionClient,
-  createRecoveryClient,
-  createResourceClient,
-  createSSEClient,
-  type Client,
-  type ClientFetch,
-  type ExecuteActionResponse,
-  type SessionClient,
-  type RecoveryClient,
-  type ResourceClient,
-  type CreateSSEClientOptions,
-  type RequestStreamHandle,
-} from "@flow-state-dev/client";
+import type { ClientFetch } from "@flow-state-dev/client";
 
 export type DevToolConfig = {
   userId: string;
@@ -45,83 +25,16 @@ export type DevToolConfig = {
 };
 
 /**
- * A `fetcher` that adds `Authorization: Bearer <token>` to every request.
- * Returns `undefined` when no token is set, so the client uses its default.
+ * A `fetch` that adds `Authorization: Bearer <token>` to every request, for a
+ * client's `fetcher`. `undefined` when no token is set, so the client uses
+ * the plain `fetch`. Shared with Shift Manager, which reads the Lab the same
+ * way.
  */
-export function bearerFetcher(bearerToken: string | undefined): ClientFetch | undefined {
+export function withBearerToken(bearerToken: string | undefined): ClientFetch | undefined {
   if (bearerToken === undefined || bearerToken.length === 0) return undefined;
   return (input, init) => {
     const headers = new Headers(init?.headers);
     headers.set("authorization", `Bearer ${bearerToken}`);
     return fetch(input, { ...init, headers });
   };
-}
-
-export function createDevToolClient(config: DevToolConfig, baseUrl?: string): Client {
-  return createClient({
-    flowKind: "__devtool__",
-    userId: config.userId,
-    baseUrl,
-    fetcher: bearerFetcher(config.bearerToken),
-  });
-}
-
-export function createDevToolSessionClient(baseUrl?: string, bearerToken?: string): SessionClient {
-  return createSessionClient({ baseUrl, fetcher: bearerFetcher(bearerToken) });
-}
-
-export function createDevToolRecoveryClient(baseUrl?: string, bearerToken?: string): RecoveryClient {
-  return createRecoveryClient({ baseUrl, fetcher: bearerFetcher(bearerToken) });
-}
-
-/**
- * The production resource read — the session's manifest and the
- * collection-state route, the same doors an app's own browser code uses. Built
- * here so it carries the bearer token like every other DevTool client; a bare
- * `createResourceClient()` would pass every unauthenticated check and 401 in
- * any app with a principal resolver.
- */
-export function createDevToolResourceClient(baseUrl?: string, bearerToken?: string): ResourceClient {
-  return createResourceClient({ baseUrl, fetcher: bearerFetcher(bearerToken) });
-}
-
-/** Open a request's SSE stream on the instance that owns it. */
-export function connectRequestStream(
-  flowId: string,
-  requestId: string,
-  callbacks: Omit<CreateSSEClientOptions, "url" | "baseUrl">,
-  baseUrl?: string,
-  bearerToken?: string,
-): RequestStreamHandle {
-  return createSSEClient({
-    ...callbacks,
-    baseUrl,
-    fetcher: bearerFetcher(bearerToken),
-    // Encoded once, here. Instance ids are opaque, so they may carry
-    // punctuation this side does not get to prescribe.
-    url: `/api/flows/${encodeURIComponent(flowId)}/requests/${encodeURIComponent(requestId)}/stream?include=trace`,
-  });
-}
-
-/**
- * Dispatch an action against a specific flow INSTANCE. The DevTool's shared
- * `Client` is bound to the synthetic `__devtool__` address for
- * listing/capabilities, so dispatches build a per-instance client to hit the
- * right endpoint while still threading `baseUrl` for cross-origin embedded
- * mounts.
- */
-export function dispatchDevToolAction(
-  flowId: string,
-  sessionId: string,
-  action: string,
-  input: unknown,
-  options: { userId: string; baseUrl?: string; bearerToken?: string },
-): Promise<ExecuteActionResponse> {
-  const client = createClient({
-    flowKind: flowId,
-    userId: options.userId,
-    baseUrl: options.baseUrl,
-    fetcher: bearerFetcher(options.bearerToken),
-  });
-  return client.sendAction(action, input, { sessionId });
 }

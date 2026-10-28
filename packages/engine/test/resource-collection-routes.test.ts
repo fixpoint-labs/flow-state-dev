@@ -80,6 +80,7 @@ async function setupCtx(
     flowKind: "notes-flow",
     userId: "user_1",
     state: {},
+    version: 0,
     createdAt: Date.now(),
     updatedAt: Date.now(),
     journal: [],

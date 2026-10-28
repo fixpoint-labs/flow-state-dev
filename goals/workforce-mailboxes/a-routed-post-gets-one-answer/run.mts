@@ -42,26 +42,25 @@
  *
  * Run:      pnpm --dir goals exec tsx workforce-mailboxes/a-routed-post-gets-one-answer/run.mts
  * Controls: GOAL_CONTROL=no-route     (the best-fit coordinator read as `routing: everyone`)
- *           GOAL_CONTROL=no-landing   (the agent flow replaced by one that answers a delegated post and hands nothing back)
+ *           GOAL_CONTROL=no-landing   (the agent flow replaced by one that answers a routed task and hands nothing back)
  *           GOAL_CONTROL=no-org       (the host's resolvePrincipal left out)
  *           GOAL_CONTROL=no-recent    (best fit's evaluation handed the post without the conversation's lines)
- *           GOAL_CONTROL=no-context   (the agent flow replaced by one whose delegated post arrives without its lines)
+ *           GOAL_CONTROL=no-context   (the agent flow replaced by one whose turn is shown no lines)
  * Live:     GOAL_LIVE=1 (needs AI_GATEWAY_API_KEY)
  */
+import { createInProcessFetch } from "@flow-state-dev/engine";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { createModelResolver, defineFlow, generator, handler } from "@flow-state-dev/core";
+import { createModelResolver, defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 import type { EvaluationModel, ModelResolver } from "@flow-state-dev/core/types";
 import {
-  delegatedPostEntry,
-  delegatedPostHistory,
-  delegatedPostSchema,
   workerConfigOf,
   workerConfigSchema,
-  type DelegatedPost,
+  workerTaskEntry,
+  WORKER_TASK_ENTRY,
   type WorkerInstallation,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
@@ -92,22 +91,38 @@ if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
 }
 
-/** How a delegate's turn reads a delegated post: `<from>, through <coordinator>: <body>`. */
-const heard = (post: DelegatedPost) => `${post.from}, through ${post.coordinator}: ${post.body}`;
+/** A routed task's brief, as much of it as a delegate's turn reads. */
+const briefSchema = z.object({ body: z.string(), from: z.string(), coordinator: z.string() }).passthrough();
+type Brief = z.infer<typeof briefSchema>;
+
+/** How a delegate's turn reads a routed message: `<from>, through <coordinator>: <body>`. */
+const heard = (brief: Brief) => `${brief.from}, through ${brief.coordinator}: ${brief.body}`;
 
 /**
- * `no-landing`'s agent flow: takes a delegated post and answers it through
- * `agent-answer` in its own conversation, and never hands the answer back.
+ * `no-landing`'s agent flow: takes a routed task behind the published `work`
+ * entry's claim gate and answers it through `agent-answer` in its own
+ * conversation, and never hands the answer back: its turn then fails, so the
+ * task ends with no answer on it, as a delegate's that answers nothing.
  */
 function quietAgentFlow(installation: WorkerInstallation) {
   const answer = generator({
     name: "agent-answer",
-    inputSchema: delegatedPostSchema,
+    inputSchema: briefSchema,
     model: "scripted/answer",
-    prompt: (_post: DelegatedPost, ctx) => (workerConfigOf(ctx) as { instructions?: string }).instructions ?? "",
+    prompt: (_brief: Brief, ctx) => (workerConfigOf(ctx) as { instructions?: string }).instructions ?? "",
     user: heard
   });
   const run = generator({ name: "agent-answer", inputSchema: z.object({ message: z.string() }), model: "scripted/answer", prompt: "", user: (i: { message: string }) => i.message });
+  const keep = handler({
+    name: "quiet-agent-keep",
+    inputSchema: z.unknown(),
+    execute: (): string => {
+      throw new Error("this agent keeps its answer");
+    }
+  });
+  const quiet = sequencer({ name: "quiet-agent-task", inputSchema: z.object({ sealed: z.unknown() }).passthrough() })
+    .step((task: { sealed?: unknown }) => briefSchema.parse(task.sealed), answer)
+    .step(keep);
   const loadWorker = handler({
     name: "quiet-agent-load-worker",
     inputSchema: z.unknown(),
@@ -120,16 +135,16 @@ function quietAgentFlow(installation: WorkerInstallation) {
     session: installation.session(),
     resources: { ...installation.resources },
     request: { onStarted: loadWorker },
-    actions: { run: { inputSchema: z.object({ message: z.string() }), block: run, userMessage: (i: { message: string }) => i.message } },
-    internal: { actions: { onDelegatedPost: { inputSchema: delegatedPostSchema, block: answer, userMessage: heard } } }
+    actions: { respond: { inputSchema: z.object({ message: z.string() }), block: run, userMessage: (i: { message: string }) => i.message } },
+    task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "quiet-agent-task", block: quiet }) } }
   } as never);
 }
 
 /**
- * `no-context`'s agent flow: takes a delegated post through the published
- * entry, answers it through `agent-answer` with `delegatedPostHistory`, and
- * hands the answer back, as the built-in one does; but the post reaches the
- * entry with its lines stripped, so the turn is shown none.
+ * `no-context`'s agent flow: takes a routed task through the published
+ * `work` entry, answers it through `agent-answer` and hands the answer back,
+ * as the built-in one does; but its turn reads the session's history alone,
+ * not the brief's lines beside it, so it is shown none.
  */
 function linelessAgentFlow(installation: WorkerInstallation) {
   const run = generator({
@@ -137,10 +152,9 @@ function linelessAgentFlow(installation: WorkerInstallation) {
     inputSchema: z.object({ message: z.string() }),
     model: "scripted/answer",
     prompt: (_input: { message: string }, ctx) => (workerConfigOf(ctx) as { instructions?: string }).instructions ?? "",
-    history: delegatedPostHistory,
+    history: true,
     user: (i: { message: string }) => i.message
   });
-  const entry = delegatedPostEntry(run);
   const loadWorker = handler({
     name: "lineless-agent-load-worker",
     inputSchema: z.unknown(),
@@ -153,12 +167,8 @@ function linelessAgentFlow(installation: WorkerInstallation) {
     session: installation.session(),
     resources: { ...installation.resources },
     request: { onStarted: loadWorker },
-    actions: { run: { inputSchema: z.object({ message: z.string() }), block: run, userMessage: (i: { message: string }) => i.message } },
-    internal: {
-      actions: {
-        onDelegatedPost: { ...entry, block: entry.block.connectInput(({ recent: _recent, ...post }: DelegatedPost) => post) }
-      }
-    }
+    actions: { respond: { inputSchema: z.object({ message: z.string() }), block: run, userMessage: (i: { message: string }) => i.message } },
+    task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "lineless-agent-task", turn: run }) } }
   } as never);
 }
 
@@ -203,14 +213,11 @@ type Line = { author?: string; text: string };
 /** Reads through the host's own router, the routes a page reads. */
 function reader(app: RoutedHost, owner: string) {
   const call = async (method: "GET" | "POST", segments: string[], body?: unknown, query = "") => {
-    const res = await app.router[method](
-      new Request(`http://routed-host.local/api/flows/${segments.map(encodeURIComponent).join("/")}${query}`, {
+    const res = await createInProcessFetch(app.router)(`http://routed-host.local/api/flows/${segments.map(encodeURIComponent).join("/")}${query}`, {
         method,
         headers: { "content-type": "application/json", accept: "text/event-stream" },
         ...(body === undefined ? {} : { body: JSON.stringify(body) })
-      }),
-      { params: { path: segments } }
-    );
+      });
     return { status: res.status, text: await res.text() };
   };
   return {
@@ -221,7 +228,7 @@ function reader(app: RoutedHost, owner: string) {
       return (JSON.parse(res.text) as { session: { id: string } }).session.id;
     },
     post: async (conversation: string, message: string) => {
-      const res = await call("POST", ["coordinator", "actions", "run"], { userId: owner, sessionId: conversation, input: { message } });
+      const res = await call("POST", ["coordinator", "actions", "respond"], { userId: owner, sessionId: conversation, input: { message } });
       if (res.status !== 200) throw new Error(`post "${message}" refused: ${res.status} ${res.text.slice(0, 300)}`);
     },
     /** A delegate's conversations under one of the person's: the kept messages of each. */

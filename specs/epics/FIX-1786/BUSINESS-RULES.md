@@ -2,6 +2,8 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
+> **Amended after merge (2026-10-23).** The product owner closed FIX-1797 without a final run that files nothing ([QR-22](../../issues/FIX-1797/BUSINESS-RULES.md), [closed by the owner](../../issues/FIX-1797/DECISIONS.md#closed-by-the-owner)). That close-out meets ER-28 and the wrap condition below. The last graded commit was `e2ee2c18`, and every finding was fixed as a child of this epic.
+
 The constraints every child spec and implementation satisfies, and the place a cross-spec
 review checks. Each says who owns it and where it's checked. Under all of them sits the
 concept's [security model](concept/CONCEPT.md#the-security-model): a behaviour none of its
@@ -55,6 +57,6 @@ seven rules explains is a bug in the model.
 
 | # | The epic is done when | Proved by |
 |---|---|---|
-| ER-28 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met) is met: legs a, b and c pass on one `main` commit, leg c fails under its control, and every bug an earlier run found is fixed as a child of this epic | FIX-1797's goal check, real model, two users |
+| ER-28 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met) is met: legs a, b and c pass on one `main` commit, leg c fails under its control, and every bug an earlier run found is fixed as a child of this epic; or the owner closes FIX-1797 under its QR-22 (*amended after merge*) | FIX-1797's goal check, real model, two users |
 | ER-29 | Every row in [DOCS.md's ownership table](DOCS.md#ownership) is published | Each publisher's own PR, followed as written by the closure |
 | ER-30 | Before the end, the privacy spine is proved at its own merge. On the `main` commit FIX-1788 merges on, leg c's worker steps run in Shift Manager with two users: Bob opens Alice's session, reads her worker and links a session to it, each refused, and Alice in a second org sees none of her first org's workers or records. The control must fail. A failure is a bug child that blocks FIX-1791 and FIX-1795 from merging. ER-28's run still decides | FIX-1797's milestone run, from its QA plan |

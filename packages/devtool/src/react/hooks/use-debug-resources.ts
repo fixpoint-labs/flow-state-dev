@@ -1,7 +1,7 @@
 /**
  * Fetches the privileged debug resource tree for a session.
  *
- * Wraps `sessionClient.debug.listResources`. Surfaces the 403 case as a
+ * Wraps `client.sessions.debug.listResources`. Surfaces the 403 case as a
  * dedicated `disabled` flag so the panel can render an explanatory notice
  * instead of an error: the server-side debug gate
  * (`debugEndpointsEnabled` / `FSDEV_DEBUG_ENDPOINTS=1`) and the origin allow
@@ -28,7 +28,7 @@ export type UseDebugResourcesResult = {
 export function useDebugResources(
   sessionId: string | null
 ): UseDebugResourcesResult {
-  const { sessionClient } = useDevTool();
+  const { client } = useDevTool();
   const [data, setData] = useState<DebugResourcesResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +45,7 @@ export function useDebugResources(
     setError(null);
     setDisabled(false);
     try {
-      const result = await sessionClient.debug.listResources(sessionId);
+      const result = await client.sessions.debug.listResources(sessionId);
       setData(result);
     } catch (err) {
       if (isDebugDisabledError(err)) {
@@ -57,7 +57,7 @@ export function useDebugResources(
     } finally {
       setIsLoading(false);
     }
-  }, [sessionClient, sessionId]);
+  }, [client, sessionId]);
 
   // Fetch on mount and whenever the session id changes. The refresh callback's
   // identity is stable across renders with the same sessionId.

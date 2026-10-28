@@ -29,6 +29,8 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import type { useSession } from "@flow-state-dev/react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { SessionConversationLoading } from "@/components/session-conversation-loading";
+import { clearSessionDraftStorage, useSessionDraft } from "@/lib/use-session-draft";
 import { COORDINATOR_ASK, delegateOfRun, isCoordinatorFlow, workerAskFor } from "@/lib/workforce-shell";
 
 type Session = ReturnType<typeof useSession>;
@@ -142,20 +144,26 @@ function CoordinatorTranscript({ session, user }: { session: Session; user: stri
   const lines = useMemo(() => coordinatorLines(session.items, user), [session.items, user]);
   return (
     <div className="min-h-0 flex-1 overflow-y-auto" data-testid="coordinator-transcript">
-      <ol className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-3 py-4 sm:px-4">
-        {lines.map((line) => (
-          <li key={line.id} className="flex flex-col gap-0.5" data-testid="coordinator-line">
-            <span className="text-xs font-medium text-muted-foreground" data-testid="coordinator-line-label">
-              {line.label}
-            </span>
-            <span className="whitespace-pre-wrap text-sm" data-testid="coordinator-line-body">
-              {line.body}
-            </span>
-          </li>
-        ))}
-      </ol>
-      {lines.length === 0 && !session.isLoading && (
-        <p className="px-4 py-6 text-center text-sm text-muted-foreground">Nothing has been posted here yet.</p>
+      {session.isLoading ? (
+        <SessionConversationLoading />
+      ) : (
+        <>
+          <ol className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-3 py-4 sm:px-4">
+            {lines.map((line) => (
+              <li key={line.id} className="flex flex-col gap-0.5" data-testid="coordinator-line">
+                <span className="text-xs font-medium text-muted-foreground" data-testid="coordinator-line-label">
+                  {line.label}
+                </span>
+                <span className="whitespace-pre-wrap text-sm" data-testid="coordinator-line-body">
+                  {line.body}
+                </span>
+              </li>
+            ))}
+          </ol>
+          {lines.length === 0 && (
+            <p className="px-4 py-6 text-center text-sm text-muted-foreground">Nothing has been posted here yet.</p>
+          )}
+        </>
       )}
     </div>
   );
@@ -205,9 +213,13 @@ function Composer({
   placeholder: string;
   send: (text: string) => Promise<{ request: { id: string } }>;
 }) {
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useSessionDraft(session.sessionId);
   const [pending, setPending] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const acceptedTextRef = useRef<string | null>(null);
 
   const items = useRef(session.items);
   items.current = session.items;
@@ -245,7 +257,9 @@ function Composer({
         const status = await requestStatus(pending).catch(() => "in_progress");
         if (cancelled) return;
         if (status === "completed" || status === "suspended") {
-          setDraft("");
+          const accepted = acceptedTextRef.current;
+          if (accepted !== null && draftRef.current.trim() === accepted) setDraft("");
+          acceptedTextRef.current = null;
           setPending(null);
           return;
         }
@@ -270,7 +284,12 @@ function Composer({
     if (text.length === 0 || busy) return;
     setFailure(null);
     try {
+      acceptedTextRef.current = text;
       const response = await send(text);
+      // Storage clears when the door accepts the send so a reload mid-request
+      // does not restore text the server already took, unless the user revised
+      // the draft while the POST was in flight.
+      if (draftRef.current.trim() === text) clearSessionDraftStorage(session.sessionId);
       setPending(response.request.id);
     } catch (cause) {
       setFailure(cause instanceof Error ? cause.message : String(cause));

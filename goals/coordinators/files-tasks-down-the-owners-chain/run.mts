@@ -21,7 +21,7 @@
  * Controls: GOAL_CONTROL=unpartitioned | no-follow-up (each runs the legs it must fail)
  * Before:   GOAL_COMMIT=<sha> serves that commit, from its own tree and install
  * Legs:     GOAL_LEGS=a,c,d,e (default: all)
- * Attempts: GOAL_ATTEMPTS=<n> fresh Labs for leg e, until it first passes (default 3; 1 under a control)
+ * Attempts: GOAL_ATTEMPTS=<n> fresh Labs for leg e, until it first passes (default 3; under a control, only while the first turn never filed)
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
@@ -58,22 +58,25 @@ const CONTROLS: Record<string, Control> = {
   unpartitioned: {
     name: "unpartitioned",
     legs: ["c"],
-    assertions: ["c:runs-its-own"],
+    assertions: ["c:runs-its-own", "c:lists-its-own"],
     patches: [
+      // partitionBy: the drain's claim.
       {
         module: "packages/workforce/src/conversation-board/ledger.ts",
         from: String.raw`return filingSessionIdOf\(\{`,
         to: 'return Promise.resolve("one-ledger"); return filingSessionIdOf({',
       },
+      // conversationLedgerAt: every caller (FIX-1992).
       {
         module: "packages/workforce/src/conversation-board/ledger.ts",
-        from: String.raw`conversationLedgerAt\(ctx, await filingSessionIdOf\(ctx\.session\)\)`,
-        to: 'conversationLedgerAt(ctx, "one-ledger")',
+        from: String.raw`collection,\s*partition,`,
+        to: 'collection, partition: "one-ledger",',
       },
+      // The task entry's check that a task session works only its own conversation's partition.
       {
         module: "packages/workforce/src/conversation-board/task-entry.ts",
-        from: String.raw`partition === (?:undefined|void 0) \|\| filingPartitionOf\(ctx\) !== partition`,
-        to: "partition === undefined",
+        from: String.raw`if \(filingPartitionOf\(ctx\) === partition\) return ledgerId === PLAN_LEDGER_ID \? planLedgerAt\(ctx, partition\) : conversationLedgerAt\(ctx, partition\);`,
+        to: "return ledgerId === PLAN_LEDGER_ID ? planLedgerAt(ctx, partition) : conversationLedgerAt(ctx, partition);",
       },
     ],
     does: "one ledger for all of a user's conversations: every conversation's board reads and writes one partition, and a task session takes its task from it whichever conversation opened it",
@@ -87,6 +90,14 @@ const CONTROLS: Record<string, Control> = {
         module: "packages/orchestration/src/tasks/notice/task-notice.ts",
         from: String.raw`return policy === "judgment" \? \{ act: "wake-turn" \} : \{ act: "line" \};`,
         to: 'return { act: "none" };',
+      },
+      {
+        // Workforce's conversation board maps the decision to a turn or a line itself for a
+        // turn-filed failure (FIX-2115) and an unrouted one (FIX-2122), so `none` there read as a
+        // line, and leg e's failure was still said: both maps say nothing too.
+        module: "packages/workforce/src/conversation-board/task-settled.ts",
+        from: String.raw`const act = (unrouted && )?decideNotice\(notice, options\.policy\(ctx\)\)\.act === "wake-turn" \? "wake-turn" : "line";`,
+        to: 'const act = "none" as const;',
       },
     ],
     does: "a task's ending reaches the conversation that filed it, and nothing follows: no line and no coordinator turn (a retried attempt still runs again)",
@@ -178,7 +189,7 @@ function gradeA(o: any, store: string): LegResult {
 
   if (A.taskId === null || row === undefined || row.assignee !== "desk.alpha" || !row.partition.startsWith(`${A.conv}~`) || row.partition !== A.filingSessionId) {
     r.failures.push(
-      `a:filed — wanted the coordinator's own dispatchTask to store a task for desk.alpha on this conversation's board (partition ${show(A.filingSessionId)}); its turn ${A.filing.status}, tools ${show(A.filed)}, row ${show(row)}`,
+      `a:filed — wanted the coordinator's own createTask to store a task for desk.alpha on this conversation's board (partition ${show(A.filingSessionId)}); its turn ${A.filing.status}, tools ${show(A.filed)}, row ${show(row)}`,
     );
   }
   if (row === undefined || row.status !== "completed" || row.completedAt === undefined || row.completedAt - A.filing.startedAt > 60_000) {
@@ -218,16 +229,18 @@ function gradeA(o: any, store: string): LegResult {
 
   // The split (FIX-1802 P2): a delegate's task session files a piece for its
   // own delegate, by its turn's tool; its task waits on the piece and
-  // completes from it; the app files on that session's board too.
+  // completes after it, with its worker's answer (FIX-2077 D3); the app files
+  // on that session's board too.
   const S = A.split;
   const subRow = rows.find((x) => x.id === S.taskId);
   const subSessions = all.filter((s) => s.state.taskId === S.taskId && S.taskId !== null);
   const sub = subSessions[0];
-  const subTool = sub === undefined ? [] : items(store, sub.id, "tool_output").filter((i) => i.toolCall?.name === "dispatchTask").map(toolOutput);
+  const subTool = sub === undefined ? [] : items(store, sub.id, "tool_output").filter((i) => i.toolCall?.name === "createTask").map(toolOutput);
   const pieces = allTaskRows(store).filter((x) => sub !== undefined && x.partition.startsWith(`${sub.id}~`));
   const toolPiece = pieces.find((x) => x.goal === `a piece of: Plan the ${S.word} rollout`);
   const pieceRun = toolPiece === undefined ? undefined : all.find((s) => s.state.taskId === toolPiece.id);
-  const fromPieces = ((subRow?.output as { pieces?: Array<{ taskId?: string; status?: string }> } | undefined)?.pieces ?? []).map((p) => `${p.taskId}:${p.status}`);
+  // The output is the worker's answer, never a list of its pieces.
+  const listsPieces = (subRow?.output as { pieces?: unknown } | null | undefined)?.pieces !== undefined;
   const heardSub = ((conv?.state.taskNotices as string[] | undefined) ?? []).filter((k) => k.startsWith(`${S.taskId}:`) && k.endsWith(":completed"));
   if (
     subRow?.status !== "completed" ||
@@ -237,14 +250,14 @@ function gradeA(o: any, store: string): LegResult {
     toolPiece?.status !== "completed" ||
     toolPiece.assignee !== "desk.alpha" ||
     pieceRun?.parentSessionId !== sub?.id ||
-    fromPieces.join(",") !== `${toolPiece.id}:completed` ||
+    listsPieces ||
     (toolPiece.completedAt ?? Infinity) > (subRow.completedAt ?? -Infinity) ||
     refusalOf(S.app) !== undefined ||
     pieces.length !== 2 ||
     heardSub.length !== 1
   ) {
     r.failures.push(
-      `a:split — wanted desk.sub's task session to file one piece for desk.alpha by its turn's dispatchTask, run in a child of that session, and its task to complete from it, heard once; the app's filing on that session accepted onto its board. Its task ${subRow?.status ?? "missing"} from ${show(fromPieces)}, sessions ${subSessions.length}, its dispatchTask answered ${show(subTool)}, the piece ${show(toolPiece === undefined ? null : [toolPiece.status, toolPiece.assignee, pieceRun?.parentSessionId === sub?.id])}, the app's ${show(S.app)}, pieces stored ${pieces.length}, heard ${show(heardSub)}`,
+      `a:split — wanted desk.sub's task session to file one piece for desk.alpha by its turn's createTask, run in a child of that session, and its task to complete from it, heard once; the app's filing on that session accepted onto its board. Its task ${subRow?.status ?? "missing"} with ${show(subRow?.output)}, sessions ${subSessions.length}, its createTask answered ${show(subTool)}, the piece ${show(toolPiece === undefined ? null : [toolPiece.status, toolPiece.assignee, pieceRun?.parentSessionId === sub?.id])}, the app's ${show(S.app)}, pieces stored ${pieces.length}, heard ${show(heardSub)}`,
     );
   } else {
     r.notes.push(`desk.sub split its task: one piece for desk.alpha, completed, then its task; the app's ${show(S.app)}`);
@@ -266,11 +279,11 @@ function gradeC(o: any, store: string): LegResult {
 
   const wanted = { t1: [C.c1], t2: [C.c2], t3: [C.c1] };
   const where = { t1: ran(t1), t2: ran(t2), t3: ran(t3) };
-  const reached = refusalOf(C.reach) === undefined;
+  const reached = refusalOf(C.reach) === undefined || refusalOf(C.reachRun) === undefined;
   if (t1 === null || t2 === null || t3 === null || reached || Object.entries(wanted).some(([k, v]) => show(where[k as keyof typeof where]) !== show(v))) {
     r.failures.push(
-      `c:runs-its-own — wanted each task run once, in a session of the conversation that filed it, and the first conversation's assign naming the second's task refused; ` +
-        `ran under ${show({ t1: where.t1.map((p) => (p === C.c1 ? "c1" : p === C.c2 ? "c2" : p)), t2: where.t2.map((p) => (p === C.c1 ? "c1" : p === C.c2 ? "c2" : p)), t3: where.t3.map((p) => (p === C.c1 ? "c1" : p === C.c2 ? "c2" : p)) })}, the reach answered ${show(C.reach.output ?? C.reach.error ?? C.reach.status)}`,
+      `c:runs-its-own — wanted each task run once, in a session of the conversation that filed it, and the first conversation's assign and release naming the second's task refused; ` +
+        `ran under ${show({ t1: where.t1.map((p) => (p === C.c1 ? "c1" : p === C.c2 ? "c2" : p)), t2: where.t2.map((p) => (p === C.c1 ? "c1" : p === C.c2 ? "c2" : p)), t3: where.t3.map((p) => (p === C.c1 ? "c1" : p === C.c2 ? "c2" : p)) })}, the reach answered ${show(C.reach.output ?? C.reach.error ?? C.reach.status)} and ${show(C.reachRun?.output ?? C.reachRun?.error ?? C.reachRun?.status)}`,
     );
   }
   const idsIn = (list: any) => ((list?.output?.tasks ?? []) as Array<{ id: string }>).map((x) => x.id).sort();
@@ -282,7 +295,7 @@ function gradeC(o: any, store: string): LegResult {
   const t2Row = rows.find((x) => x.id === t2);
   const t2Run = reqs.filter((q) => q.actionName === "work" && sessionsOf(t2).some((s) => s.id === q.sessionId))[0];
   const t3FiledAt = C.filed.t3.startedAt as number;
-  const runs1 = reqs.filter((q) => q.sessionId === C.c1 && q.actionName === "runTaskBoard" && q.createdAt >= t3FiledAt);
+  const runs1 = reqs.filter((q) => q.sessionId === C.c1 && q.actionName === "dispatch" && q.createdAt >= t3FiledAt);
   const t2Running = t2Run !== undefined && t2Run.createdAt <= t3FiledAt && t2Row?.completedAt !== undefined && t2Row.completedAt > t3FiledAt;
   if (!t2Running || runs1.length === 0 || runs1.some((q) => q.updatedAt >= t2Row!.completedAt!)) {
     r.failures.push(
@@ -296,7 +309,7 @@ function gradeC(o: any, store: string): LegResult {
   if (wrong.length > 0 || sid(t1) === null || sid(t2) === null) {
     r.failures.push(`c:found-its-own — wanted findWorkerSession to find each task's session only in its own conversation; wrong: ${show(wrong.map(([k, v]) => `${k}: wanted ${v}, got ${finds[k]?.id ?? null}`))}`);
   }
-  r.notes.push(`c1 ran ${show(where.t1)}/${show(where.t3)}, c2 ran ${show(where.t2)}; c1's reach answered ${show(C.reach.output ?? C.reach.status)}; lists ${show(list1)} | ${show(list2)}`);
+  r.notes.push(`c1 ran ${show(where.t1)}/${show(where.t3)}, c2 ran ${show(where.t2)}; c1's reach answered ${show(C.reach.output ?? C.reach.status)} and ${show(C.reachRun?.output ?? C.reachRun?.status)}; lists ${show(list1)} | ${show(list2)}`);
   return r;
 }
 
@@ -353,7 +366,7 @@ function gradeE(E: LegE, store: string, alice: string, org: string): LegResult {
   const rows = taskRows(store, alice, org);
   const tools = items(store, E.conv, "tool_output");
   const messages = items(store, E.conv, "message");
-  const firstCalls = tools.filter((i) => i.requestId === E.turn.requestId && i.toolCall?.name === "dispatchTask");
+  const firstCalls = tools.filter((i) => i.requestId === E.turn.requestId && i.toolCall?.name === "createTask");
   // The leg proves a task that ends after its filing turn is heard (FIX-1794 BR-24). A filing that
   // waits for its answer hears the ending as the tool's result instead, and never reaches a notice.
   const waited = firstCalls.filter((i) => {
@@ -364,7 +377,7 @@ function gradeE(E: LegE, store: string, alice: string, org: string): LegResult {
     }
   });
   if (waited.length > 0) {
-    r.failures.push(`e:filed-without-waiting — wanted the first turn to file with a plain dispatchTask, so the ending arrives as a notice after the turn; ${waited.length} of its ${firstCalls.length} dispatchTask calls set wait: ${show(waited.map((i) => i.toolCall?.arguments))}`);
+    r.failures.push(`e:filed-without-waiting — wanted the first turn to file with a plain createTask, so the ending arrives as a notice after the turn; ${waited.length} of its ${firstCalls.length} createTask calls set wait: ${show(waited.map((i) => i.toolCall?.arguments))}`);
     return r;
   }
   const firstFiled = firstCalls.map(toolOutput);
@@ -372,7 +385,7 @@ function gradeE(E: LegE, store: string, alice: string, org: string): LegResult {
   const task = rows.find((x) => filedIds.includes(x.id) && x.assignee === E.broken);
   const T = task?.id ?? "(none)";
   if (task === undefined || !task.partition.startsWith(`${E.conv}~`)) {
-    r.failures.push(`e:filed — wanted the chief of staff's first turn to file a task for ${E.broken} with dispatchTask; the turn ${E.turn.status}, its dispatchTask calls answered ${show(firstFiled)}; tools it called: ${show(tools.filter((i) => i.requestId === E.turn.requestId).map((i) => i.toolCall?.name))}`);
+    r.failures.push(`e:filed — wanted the chief of staff's first turn to file a task for ${E.broken} with createTask; the turn ${E.turn.status}, its createTask calls answered ${show(firstFiled)}; tools it called: ${show(tools.filter((i) => i.requestId === E.turn.requestId).map((i) => i.toolCall?.name))}`);
     return r;
   }
   const maxAttempts = (task as StoredTask & { maxAttempts?: number }).maxAttempts ?? 2;
@@ -396,10 +409,10 @@ function gradeE(E: LegE, store: string, alice: string, org: string): LegResult {
     r.failures.push(`e:no-turn-on-retry — wanted the first failure to run the task again with no line and no turn; retry lines ${retried.length}, notice requests that woke a turn with no ending ${turnsWithoutEnding.length}`);
   }
   const woke = heard[0]?.requestId;
-  const refiled = tools.filter((i) => i.requestId === woke && i.toolCall?.name === "dispatchTask").map(toolOutput);
+  const refiled = tools.filter((i) => i.requestId === woke && i.toolCall?.name === "createTask").map(toolOutput);
   const again = rows.filter((x) => refiled.some((y) => y?.ok === true && y.taskId === x.id) && x.partition === task.partition && x.goal.includes(E.goalWord));
   if (woke === undefined || again.length === 0) {
-    r.failures.push(`e:refiled — wanted the turn the notice woke to file the task again with dispatchTask; its dispatchTask calls answered ${show(refiled)}; tools it called ${show(tools.filter((i) => i.requestId === woke).map((i) => i.toolCall?.name))}`);
+    r.failures.push(`e:refiled — wanted the turn the notice woke to file the task again with createTask; its createTask calls answered ${show(refiled)}; tools it called ${show(tools.filter((i) => i.requestId === woke).map((i) => i.toolCall?.name))}`);
   }
   const reply = messages
     .filter((m) => m.requestId === woke && m.role === "assistant" && m.agentName !== E.broken && m.agentName !== E.helper)
@@ -487,7 +500,9 @@ await runGoal(async () => {
       const alice: Person = { label: "Alice", ...owner };
       const shipped = await loadShipped(checkout.root);
       // Retry until it first passes, over the model's flakiness: each attempt is a fresh store and a fresh Lab.
-      const attempts = Number(process.env.GOAL_ATTEMPTS ?? (control === undefined ? 3 : 1));
+      // Under a control an attempt whose first turn never filed plainly (`e:filed`,
+      // `e:filed-without-waiting`) leaves no notice to grade, so it is tried again, up to 3.
+      const attempts = Number(process.env.GOAL_ATTEMPTS ?? 3);
       for (let attempt = 1; attempt <= attempts; attempt += 1) {
         const label = `${control?.name ?? "plain"}-${attempt}`;
         const storeDir = join(SCRATCH, "stores", `${RUN_STAMP}-${label}`);
@@ -510,6 +525,7 @@ await runGoal(async () => {
         for (const failure of graded.failures) say(`e attempt ${attempt}: ${failure}`);
         results.e = { ...graded, notes: [`attempt ${attempt} of ${attempts}`, ...graded.notes] };
         if (graded.failures.length === 0) break;
+        if (control !== undefined && !graded.failures.some((f) => f.startsWith("e:filed"))) break;
       }
       evidence.push(`DevTeam's chief of staff (${COS}) on ${cosModel}`);
     }

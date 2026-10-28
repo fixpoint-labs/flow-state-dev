@@ -1,23 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { runForTest } from "@flow-state-dev/testing";
-import { z } from "zod";
 import {
-  taskTools,
   buildTaskToolsList,
   checkAssignee,
   createTaskToolsCapability,
-  defaultOwnStateResolver,
-  delegationBoardSchema,
-  DELEGATION_BOARD_FIELD,
+  READ_OUTPUT_LIMIT,
   type AssigneeRoster,
 } from "../../src/skills/task-tools-capability";
-import { buildDelegationCtx } from "./delegation-ctx";
+import { BOARD_FIELD, buildDelegationCtx, ownStateResolver } from "./delegation-ctx";
 import type { GeneratorTool } from "@flow-state-dev/core";
+
+const taskTools = createTaskToolsCapability(ownStateResolver);
 
 /** The capability's tool list as a turn with no ask host gets it: the list is chosen per turn (FIX-1816). */
 const resolvedControlTools = (list: unknown): GeneratorTool[] =>
   (typeof list === "function" ? list({}) : (list ?? [])) as GeneratorTool[];
-
 
 /** Build a context whose parent exposes no delegation board (→ no_delegation_board). */
 function buildNoBoardCtx() {
@@ -70,161 +67,479 @@ function findTool(name: string): GeneratorTool {
   return tool;
 }
 
+/** A task row as the board stores it. */
+type Row = {
+  status: string;
+  goal: string;
+  title?: string;
+  context?: string;
+  input?: unknown;
+  assignee?: string;
+  priority?: number;
+  labels?: string[];
+  metadata?: Record<string, unknown>;
+  deps?: string[];
+  maxAttempts?: number;
+  cancelledVia?: string;
+};
+
+/** The live board record off a mock ctx. */
+function boardOf(ctx: unknown): Record<string, Row> {
+  return (ctx as { parent: { state: Record<string, unknown> } }).parent.state[BOARD_FIELD] as Record<string, Row>;
+}
+
+/** Seed a board holding exactly one task `a` in `status`, plus any extra fields. */
+function ctxWithTask(status: string, extra: Record<string, unknown> = {}) {
+  return buildCtx({
+    preTasks: {
+      a: { id: "a", goal: "x", status, attempts: 0, createdAt: Date.now(), updatedAt: Date.now(), ...extra },
+      // A task `a` may come to depend on.
+      b: { id: "b", goal: "y", status: "pending", attempts: 0, createdAt: Date.now(), updatedAt: Date.now() },
+    },
+  }).ctx;
+}
+
 describe("taskTools capability", () => {
-  it("registers nine tools under the default preset", () => {
+  it("offers the filer's four task tools, and nothing that settles a task (FIX-2081, FIX-2131)", () => {
     const presetDefs = (taskTools as unknown as {
       __presetDefs?: { tools?: { controlTools?: unknown } };
     }).__presetDefs;
     const names = resolvedControlTools(presetDefs?.tools?.controlTools).map((t) => t.config?.name).sort();
-    expect(names).toEqual([
-      "addTask",
-      "answerTask",
-      "assignTask",
-      "blockTask",
-      "cancelTask",
-      "completeTask",
-      "failTask",
-      "listTasks",
-      "updateTask",
-    ]);
+    expect(names).toEqual(["createTask", "getTask", "listTasks", "updateTask"]);
   });
 
   it("createTaskToolsCapability returns a freshly composable capability", () => {
-    const cap = createTaskToolsCapability();
+    const cap = createTaskToolsCapability(ownStateResolver);
     expect(cap.name).toBe("taskTools");
   });
 
-  it("addTask documents both creation caps it can return", () => {
-    // `addTask` genuinely returns these two errors when the board it resolves
-    // has ceilings, and the model needs to recognize them to react.
-    const description = findTool("addTask").config?.description ?? "";
+  it("createTask documents both creation caps it can return", () => {
+    const description = findTool("createTask").config?.description ?? "";
     expect(description).toContain("enqueued_task_cap_exceeded");
     expect(description).toContain("total_task_cap_exceeded");
   });
 });
 
-describe("delegation board state slot", () => {
-  it("initializes from an empty parse, so the board exists on first use", () => {
-    // The engine seeds a block's initial own state via `stateSchema.safeParse({})`
-    // (see engine route-utils). Without a field default that parse fails, the
-    // state starts as `{}`, and the first addTask hits `no_delegation_board`
-    // even though the binding declared the board.
-    const hostSchema = z.object({ [DELEGATION_BOARD_FIELD]: delegationBoardSchema });
-    const parsed = hostSchema.safeParse({});
-    expect(parsed.success).toBe(true);
-    expect(parsed.success && parsed.data).toEqual({ [DELEGATION_BOARD_FIELD]: {} });
+describe("createTask", () => {
+  it("files a task on the delegation board, starting at once", async () => {
+    const { ctx } = buildCtx();
+    const result = (await runForTest(findTool("createTask"), { goal: "write report" }, ctx)) as { ok: boolean; taskId: string };
+    expect(result.ok).toBe(true);
+    expect(result.taskId).toMatch(/^task_/);
+    expect(boardOf(ctx)[result.taskId]?.status).toBe("pending");
+  });
+
+  it("stores the brief's fields and a structured input on the task", async () => {
+    const { ctx } = buildCtx();
+    const result = (await runForTest(
+      findTool("createTask"),
+      { goal: "analyze", context: "for the board meeting", assignee: "analyst", input: { subject: "ACME" }, labels: ["q3"], priority: 2 },
+      ctx,
+    )) as { taskId: string };
+    expect(boardOf(ctx)[result.taskId]).toMatchObject({
+      goal: "analyze",
+      context: "for the board meeting",
+      assignee: "analyst",
+      input: { subject: "ACME" },
+      labels: ["q3"],
+      priority: 2,
+    });
+  });
+
+  // A notice marker decides what the filer hears; only an ending's write sets
+  // one, so a caller's metadata can't forge one (BP-031, FIX-2078).
+  it("files no notice marker a caller's metadata names, on createTask and on updateTask", async () => {
+    const { ctx } = buildCtx();
+    const forged = {
+      "noticeOwed:0:completed": { attempt: 0, ending: "completed", due: 0 },
+      "noticeUndeliverable:0:completed": { at: 0, detail: "x" },
+      note: "kept",
+    };
+    const result = (await runForTest(findTool("createTask"), { goal: "forged", held: true, metadata: forged }, ctx)) as { taskId: string };
+    expect(boardOf(ctx)[result.taskId]?.metadata).toEqual({ note: "kept" });
+    await runForTest(findTool("updateTask"), { id: result.taskId, metadata: { ...forged, note: "again" } }, ctx);
+    expect(boardOf(ctx)[result.taskId]?.metadata).toEqual({ note: "again" });
+  });
+
+  it("clears no real notice marker through updateTask's metadata", async () => {
+    const owed = { attempt: 0, ending: "completed", due: 0 };
+    const ctx = ctxWithTask("pending", { metadata: { "noticeOwed:0:completed": owed } });
+    expect(await runForTest(findTool("updateTask"), { id: "a", metadata: { "noticeOwed:0:completed": null, note: "kept" } }, ctx)).toEqual({
+      ok: true,
+    });
+    expect(boardOf(ctx).a?.metadata).toEqual({ "noticeOwed:0:completed": owed, note: "kept" });
+  });
+
+  it("files a task held when its start setting says so, and says it is held", async () => {
+    const { ctx } = buildCtx();
+    const result = (await runForTest(findTool("createTask"), { goal: "later", held: true, maxAttempts: 3 }, ctx)) as {
+      ok: boolean;
+      taskId: string;
+      status?: string;
+    };
+    expect(result).toMatchObject({ ok: true, status: "held" });
+    expect(boardOf(ctx)[result.taskId]).toMatchObject({ status: "held", maxAttempts: 3 });
+  });
+
+  it("answers no_delegation_board rather than throwing", async () => {
+    const result = await runForTest(findTool("createTask"), { goal: "x" }, buildNoBoardCtx());
+    expect(result).toEqual({ ok: false, error: "no_delegation_board" });
   });
 });
 
-describe("taskTools — happy paths (own-state board)", () => {
-  it("addTask creates a task on the delegation board", async () => {
-    const { ctx } = buildCtx();
-    const result = await runForTest(findTool("addTask"), { goal: "write report" }, ctx);
-    expect((result as { ok: boolean }).ok).toBe(true);
-    expect((result as { taskId: string }).taskId).toMatch(/^task_/);
-  });
-
-  it("addTask stores a structured input payload on the task", async () => {
-    const { ctx } = buildCtx();
-    const result = await runForTest(
-      findTool("addTask"),
-      { goal: "analyze", assignee: "analyst", input: { subject: "ACME" } },
-      ctx,
-    );
-    expect((result as { ok: boolean }).ok).toBe(true);
-    const taskId = (result as { taskId: string }).taskId;
-    const board = (
-      (ctx as { parent: { state: Record<string, unknown> } }).parent.state[
-        DELEGATION_BOARD_FIELD
-      ] as Record<string, { input?: unknown }>
-    );
-    expect(board[taskId]?.input).toEqual({ subject: "ACME" });
-  });
-
-  it("listTasks returns the seeded board entries", async () => {
+describe("getTask", () => {
+  // A coordinator asked "what did that task find?" answers from the task, not
+  // from a line about it, so the read must carry what listTasks leaves out:
+  // the whole result, the error, the question a parked task waits on (FIX-1972).
+  it("returns a finished task's whole output, which listTasks leaves out", async () => {
+    const found = { picked: "the retry helper", plan: ["merge the two copies", "delete the old one"] };
     const { ctx } = buildCtx({
       preTasks: {
-        a: {
-          id: "a",
-          goal: "first",
-          status: "pending",
-          attempts: 0,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        },
+        scan: { id: "scan", goal: "scan for tech debt", status: "completed", assignee: "eng.coder", attempts: 1, output: found, createdAt: Date.now(), updatedAt: Date.now() },
       },
     });
-    const result = await runForTest(findTool("listTasks"), {}, ctx);
-    expect((result as { ok: boolean }).ok).toBe(true);
-    expect((result as { tasks: Array<{ id: string }> }).tasks.map((t) => t.id)).toEqual(["a"]);
+    const listed = (await runForTest(findTool("listTasks"), {}, ctx)) as { tasks: Array<Record<string, unknown>> };
+    expect(listed.tasks[0]).not.toHaveProperty("output");
+    const read = (await runForTest(findTool("getTask"), { id: "scan" }, ctx)) as { ok: boolean; task: Record<string, unknown> };
+    expect(read.ok).toBe(true);
+    expect(read.task).toMatchObject({ id: "scan", status: "completed", assignee: "eng.coder", output: found });
+    expect(read.task).not.toHaveProperty("outputCut");
+    expect(read.task).not.toHaveProperty("checkpoint");
   });
 
-  it("listTasks names the run working each task, so a reader can open it, and nothing on a task no run has started", async () => {
+  it("shows a running task's checkpoint as its output, marked a checkpoint, with its status note", async () => {
+    const { ctx } = buildCtx({
+      preTasks: {
+        run: { id: "run", goal: "draft", status: "in_progress", attempts: 1, output: "two sections", checkpointed: true, statusNote: "Drafting the summary", createdAt: Date.now(), updatedAt: Date.now() },
+      },
+    });
+    const read = (await runForTest(findTool("getTask"), { id: "run" }, ctx)) as { task: Record<string, unknown> };
+    expect(read.task).toMatchObject({ output: "two sections", checkpoint: true, statusNote: "Drafting the summary" });
+  });
+
+  it("cuts an output too long to return, and says so", async () => {
+    const { ctx } = buildCtx({
+      preTasks: {
+        big: { id: "big", goal: "g", status: "completed", attempts: 1, output: "x".repeat(READ_OUTPUT_LIMIT + 10), createdAt: Date.now(), updatedAt: Date.now() },
+      },
+    });
+    const read = (await runForTest(findTool("getTask"), { id: "big" }, ctx)) as { task: { output: string; outputCut?: true } };
+    expect(read.task.output).toHaveLength(READ_OUTPUT_LIMIT);
+    expect(read.task.outputCut).toBe(true);
+  });
+
+  it("cuts an input too long to return, the same way", async () => {
+    const { ctx } = buildCtx({
+      preTasks: {
+        big: { id: "big", goal: "g", status: "pending", attempts: 0, input: { notes: "y".repeat(READ_OUTPUT_LIMIT) }, createdAt: Date.now(), updatedAt: Date.now() },
+      },
+    });
+    const read = (await runForTest(findTool("getTask"), { id: "big" }, ctx)) as { task: { input: string; inputCut?: true } };
+    expect(read.task.input).toHaveLength(READ_OUTPUT_LIMIT);
+    expect(read.task.inputCut).toBe(true);
+  });
+
+  it("answers task_not_found for a task the board doesn't hold", async () => {
+    const { ctx } = buildCtx();
+    const read = await runForTest(findTool("getTask"), { id: "nope" }, ctx);
+    expect(read).toEqual({ ok: false, error: "task_not_found", taskId: "nope" });
+  });
+});
+
+describe("listTasks", () => {
+  const row = (id: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    goal: id,
+    status: "pending",
+    attempts: 0,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    ...extra,
+  });
+
+  it("returns the seeded board entries", async () => {
+    const { ctx } = buildCtx({ preTasks: { a: row("a") } });
+    const result = (await runForTest(findTool("listTasks"), {}, ctx)) as { ok: boolean; tasks: Array<{ id: string }> };
+    expect(result.ok).toBe(true);
+    expect(result.tasks.map((t) => t.id)).toEqual(["a"]);
+  });
+
+  it("names the run working each task, so a reader can open it, and nothing on a task no run has started", async () => {
     const run = { sessionId: "s-run", requestId: "r-run", attempt: 1 };
-    const { ctx } = buildCtx({
-      preTasks: {
-        a: { id: "a", goal: "running", status: "in_progress", attempts: 1, run, createdAt: Date.now(), updatedAt: Date.now() },
-        b: { id: "b", goal: "waiting", status: "pending", attempts: 0, createdAt: Date.now(), updatedAt: Date.now() },
-      },
-    });
-    const result = (await runForTest(findTool("listTasks"), {}, ctx)) as {
-      tasks: Array<{ id: string; run?: unknown }>;
-    };
+    const { ctx } = buildCtx({ preTasks: { a: row("a", { status: "in_progress", attempts: 1, run }), b: row("b") } });
+    const result = (await runForTest(findTool("listTasks"), {}, ctx)) as { tasks: Array<{ id: string; run?: unknown }> };
     expect(result.tasks.find((t) => t.id === "a")?.run).toEqual(run);
     expect(result.tasks.find((t) => t.id === "b")).not.toHaveProperty("run");
   });
 
-  // Named for what it seeds. It has always seeded `in_progress`; the old name
-  // said `pending`, which is the one status completeTask is REFUSED from.
-  it("completeTask transitions an in_progress task to completed", async () => {
+  it("filters to the tasks one task's request filed, and shows each one's status note, never its checkpoint", async () => {
     const { ctx } = buildCtx({
       preTasks: {
-        a: {
-          id: "a",
-          goal: "x",
-          status: "in_progress",
-          attempts: 1,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        },
+        p1: row("p1", { filedByTask: "parent", status: "in_progress", attempts: 1, statusNote: "Halfway", output: "a big checkpoint", checkpointed: true }),
+        p2: row("p2", { filedByTask: "parent" }),
+        other: row("other", { filedByTask: "elsewhere" }),
+        loose: row("loose"),
       },
     });
-    const result = await runForTest(
-      findTool("completeTask"),
-      { taskId: "a", output: "done" },
-      ctx,
-    );
-    expect((result as { ok: boolean }).ok).toBe(true);
-  });
-});
-
-describe("taskTools — no delegation board", () => {
-  it("addTask returns the no_delegation_board error rather than throwing", async () => {
-    const ctx = buildNoBoardCtx();
-    const result = await runForTest(findTool("addTask"), { goal: "x" }, ctx);
-    expect(result).toEqual({ ok: false, error: "no_delegation_board" });
+    const result = (await runForTest(findTool("listTasks"), { filedByTask: "parent" }, ctx)) as {
+      tasks: Array<Record<string, unknown>>;
+    };
+    expect(result.tasks.map((t) => t.id).sort()).toEqual(["p1", "p2"]);
+    const p1 = result.tasks.find((t) => t.id === "p1")!;
+    expect(p1).toMatchObject({ statusNote: "Halfway", filedByTask: "parent" });
+    expect(p1).not.toHaveProperty("output");
   });
 
-  it("listTasks returns the no_delegation_board error rather than throwing", async () => {
-    const ctx = buildNoBoardCtx();
-    const result = await runForTest(findTool("listTasks"), {}, ctx);
+  it("answers no_delegation_board rather than throwing", async () => {
+    const result = await runForTest(findTool("listTasks"), {}, buildNoBoardCtx());
     expect(result).toEqual({ ok: false, error: "no_delegation_board" });
   });
 });
 
-describe("taskTools — unknown task ids", () => {
-  it("completeTask returns task_not_found for an unknown id", async () => {
+// ---------------------------------------------------------------------------
+// updateTask: one rule per field (FIX-2081)
+// ---------------------------------------------------------------------------
+
+/** Each field updateTask edits, with a value that differs from the seeded row's. */
+const EDITS: Array<[field: string, value: unknown]> = [
+  ["goal", "a new goal"],
+  ["title", "New title"],
+  ["context", "new context"],
+  ["input", { region: "eu" }],
+  ["deps", ["b"]],
+  ["priority", 9],
+  ["labels", ["urgent"]],
+  ["metadata", { audited: true }],
+  ["assignee", "writer"],
+  ["maxAttempts", 4],
+];
+
+/** The task's states, each as the row is seeded, and whether it has started. */
+const STATES: Array<[name: string, seed: Record<string, unknown>, started: boolean]> = [
+  ["pending", { status: "pending", attempts: 0 }, false],
+  ["held", { status: "held", attempts: 0 }, false],
+  ["pending after a retry", { status: "pending", attempts: 1, startedAt: 1 }, true],
+  ["running", { status: "in_progress", attempts: 1, startedAt: 1 }, true],
+  ["completed", { status: "completed", attempts: 1, startedAt: 1 }, true],
+  ["errored", { status: "errored", attempts: 1, startedAt: 1 }, true],
+  ["cancelled", { status: "cancelled", attempts: 0 }, false],
+];
+
+const FINISHED = new Set(["completed", "errored", "cancelled"]);
+
+describe("updateTask — each field, in each state", () => {
+  for (const [state, seed, started] of STATES) {
+    const finished = FINISHED.has(state);
+    for (const [field, value] of EDITS) {
+      const allowed = !started && !finished;
+      it(`${field} on a ${state} task is ${allowed ? "written" : "refused, naming the rule"}`, async () => {
+        const ctx = ctxWithTask(seed.status as string, { ...seed, assignee: "researcher", priority: 1 });
+        const before = structuredClone(boardOf(ctx).a);
+        const result = (await runForTest(findTool("updateTask"), { id: "a", [field]: value }, ctx)) as {
+          ok: boolean;
+          error?: string;
+        };
+        if (allowed) {
+          expect(result).toEqual({ ok: true });
+          expect((boardOf(ctx).a as Record<string, unknown>)[field]).toEqual(value);
+          return;
+        }
+        expect(result.ok).toBe(false);
+        // The refusal names the field, the state and the rule.
+        expect(result.error).toContain(field);
+        expect(result.error).toContain(finished ? "task_finished" : "field_locked_after_start");
+        expect(result.error).toContain(`task "a"`);
+        expect(result.error).toContain("Nothing was written");
+        expect(boardOf(ctx).a).toEqual(before);
+      });
+    }
+  }
+
+  it("a hold lands on a pending task and a release on a held one, before it starts", async () => {
+    const ctx = ctxWithTask("pending");
+    expect(await runForTest(findTool("updateTask"), { id: "a", status: "held" }, ctx)).toEqual({ ok: true });
+    expect(boardOf(ctx).a?.status).toBe("held");
+    expect(await runForTest(findTool("updateTask"), { id: "a", status: "pending" }, ctx)).toEqual({ ok: true });
+    expect(boardOf(ctx).a?.status).toBe("pending");
+  });
+
+  it.each([
+    ["running", "in_progress"],
+    ["pending after a retry", "pending"],
+  ])("a hold on a %s task is refused: it has started", async (_name, status) => {
+    const ctx = ctxWithTask(status, { attempts: 1, startedAt: 1 });
+    const result = (await runForTest(findTool("updateTask"), { id: "a", status: "held" }, ctx)) as { ok: boolean; error: string };
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("field_locked_after_start");
+    expect(result.error).toContain("a hold or a release");
+    expect(boardOf(ctx).a?.status).toBe(status);
+  });
+
+  it("a running task's reassign is refused, saying it keeps one accountable worker", async () => {
+    const ctx = ctxWithTask("in_progress", { attempts: 1, startedAt: 1, assignee: "researcher" });
+    const result = (await runForTest(findTool("updateTask"), { id: "a", assignee: "writer" }, ctx)) as { ok: boolean; error: string };
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("one accountable worker");
+    expect(result.error).toContain("cancel it and file it again");
+    expect(boardOf(ctx).a?.assignee).toBe("researcher");
+  });
+
+  it("labels replace the list whole", async () => {
+    const ctx = ctxWithTask("pending", { labels: ["a", "b"] });
+    await runForTest(findTool("updateTask"), { id: "a", labels: ["c"] }, ctx);
+    expect(boardOf(ctx).a?.labels).toEqual(["c"]);
+  });
+
+  it("refuses an empty update, saying fields are flat", async () => {
+    const ctx = ctxWithTask("pending");
+    const result = (await runForTest(findTool("updateTask"), { id: "a" }, ctx)) as { ok: boolean; error: string };
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("nothing_to_update");
+  });
+
+  it("answers task_not_found for a task the board doesn't hold", async () => {
     const { ctx } = buildCtx();
-    const result = await runForTest(
-      findTool("completeTask"),
-      { taskId: "ghost", output: null },
-      ctx,
-    );
-    expect(result).toEqual({
+    expect(await runForTest(findTool("updateTask"), { id: "ghost", priority: 1 }, ctx)).toMatchObject({
       ok: false,
       error: "task_not_found",
-      taskId: "ghost",
     });
+  });
+});
+
+describe("updateTask — a cancel", () => {
+  it.each([
+    ["pending", { status: "pending", attempts: 0 }],
+    ["held", { status: "held", attempts: 0 }],
+    ["running", { status: "in_progress", attempts: 1, startedAt: 1 }],
+  ])("lands on a %s task, until it finishes, and records it was a model's tool", async (_name, seed) => {
+    const ctx = ctxWithTask(seed.status as string, seed);
+    expect(await runForTest(findTool("updateTask"), { id: "a", status: "cancelled" }, ctx)).toEqual({ ok: true });
+    expect(boardOf(ctx).a).toMatchObject({ status: "cancelled", cancelledVia: "tool" });
+  });
+
+  it.each(["completed", "errored", "cancelled"])("is refused on a %s task, which changes no more", async (status) => {
+    const ctx = ctxWithTask(status, { attempts: 1 });
+    const before = structuredClone(boardOf(ctx).a);
+    const result = (await runForTest(findTool("updateTask"), { id: "a", status: "cancelled" }, ctx)) as { ok: boolean; error: string };
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("task_finished");
+    expect(result.error).toContain("follow-up");
+    expect(boardOf(ctx).a).toEqual(before);
+  });
+
+  it("is refused when it comes with an edit, and nothing is written", async () => {
+    const ctx = ctxWithTask("pending", { priority: 1 });
+    const result = (await runForTest(findTool("updateTask"), { id: "a", status: "cancelled", priority: 5 }, ctx)) as {
+      ok: boolean;
+      error: string;
+    };
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("cancel_takes_no_edits");
+    expect(boardOf(ctx).a).toMatchObject({ status: "pending", priority: 1 });
+  });
+
+  // A model's own cancel owes no notice for it or for the dependents it takes
+  // along (FIX-2078 D2), so the call's result is where it learns of them.
+  it("names the dependents it cancelled", async () => {
+    const now = Date.now();
+    const ctx = buildCtx({
+      preTasks: {
+        a: { id: "a", goal: "x", status: "pending", attempts: 0, createdAt: now, updatedAt: now },
+        b: { id: "b", goal: "y", status: "pending", attempts: 0, deps: ["a"], createdAt: now, updatedAt: now },
+      },
+    }).ctx;
+    expect(await runForTest(findTool("updateTask"), { id: "a", status: "cancelled" }, ctx)).toEqual({ ok: true, cancelled: ["b"] });
+  });
+
+  it("names every dependent down the chain it took, not only the first level", async () => {
+    const now = Date.now();
+    const ctx = buildCtx({
+      preTasks: {
+        a: { id: "a", goal: "x", status: "pending", attempts: 0, createdAt: now, updatedAt: now },
+        b: { id: "b", goal: "y", status: "pending", attempts: 0, deps: ["a"], createdAt: now, updatedAt: now },
+        c: { id: "c", goal: "z", status: "pending", attempts: 0, deps: ["b"], createdAt: now, updatedAt: now },
+      },
+    }).ctx;
+    const result = (await runForTest(findTool("updateTask"), { id: "a", status: "cancelled" }, ctx)) as { ok: boolean; cancelled?: string[] };
+    expect(result.ok).toBe(true);
+    expect([...(result.cancelled ?? [])].sort()).toEqual(["b", "c"]);
+  });
+});
+
+/**
+ * A release and a reassignment in one `updateTask` (FIX-2080): one guarded
+ * write, so a refused reassignment can't leave the task released under the
+ * worker it was meant to leave.
+ */
+describe("updateTask — a release with a reassignment", () => {
+  it("leaves the task held when the reassignment is refused", async () => {
+    // A follow-up keeps the worker of the task it follows.
+    const ctx = ctxWithTask("held", { assignee: "researcher", followUpOf: "root" });
+    const result = await runForTest(findTool("updateTask"), { id: "a", status: "pending", assignee: "writer" }, ctx);
+    expect(result).toMatchObject({ ok: false, taskId: "a" });
+    expect(boardOf(ctx).a).toMatchObject({ status: "held", assignee: "researcher" });
+  });
+
+  it("reassigns and releases when both are allowed", async () => {
+    const ctx = ctxWithTask("held", { assignee: "researcher" });
+    expect(await runForTest(findTool("updateTask"), { id: "a", status: "pending", assignee: "writer" }, ctx)).toEqual({ ok: true });
+    expect(boardOf(ctx).a).toMatchObject({ status: "pending", assignee: "writer" });
+  });
+
+  it("doesn't release a task that wasn't held, so a claim landing mid-call isn't reported as a refusal", async () => {
+    // Pending, never started: there is nothing to release. A worker claims it
+    // right after the priority write lands.
+    const ctx = ctxWithTask("pending", { assignee: "researcher", priority: 1 });
+    const parent = (ctx as { parent: { state: Record<string, unknown>; atomicState: (fn: never) => Promise<void> } }).parent;
+    const write = parent.atomicState.bind(parent);
+    parent.atomicState = (async (fn: never) => {
+      await write(fn);
+      const board = parent.state[BOARD_FIELD] as Record<string, Record<string, unknown>>;
+      if (board.a!.priority === 9) board.a = { ...board.a, status: "in_progress", attempts: 1, startedAt: Date.now() };
+    }) as typeof parent.atomicState;
+
+    const result = await runForTest(findTool("updateTask"), { id: "a", status: "pending", priority: 9 }, ctx);
+
+    expect(result).toEqual({ ok: true });
+    expect(boardOf(ctx).a).toMatchObject({ status: "in_progress", priority: 9 });
+  });
+
+  it("writes nothing when the release is refused: a retried task has started", async () => {
+    // A release, a reassignment and a priority in one call: the refusal
+    // leaves every field as it was, not just the status.
+    const ctx = ctxWithTask("pending", { assignee: "researcher", attempts: 1, priority: 1 });
+
+    const result = await runForTest(findTool("updateTask"), { id: "a", status: "pending", assignee: "writer", priority: 9 }, ctx);
+
+    expect(result).toMatchObject({ ok: false, taskId: "a" });
+    expect((result as { error: string }).error).toContain("field_locked_after_start");
+    expect((result as { error: string }).error).toContain("Nothing was written.");
+    expect(boardOf(ctx).a).toMatchObject({ status: "pending", assignee: "researcher", priority: 1 });
+  });
+
+  it("releases a legacy blocked row that already ran, but edits nothing on it", async () => {
+    // BP-030: a row stored `blocked` after a retry reads as held with attempts
+    // spent, marked `heldFromBlocked` by the read boundary. A release alone is
+    // how it runs again; any edit is still locked.
+    const ctx = ctxWithTask("held", { attempts: 1, assignee: "researcher", heldFromBlocked: true });
+    const edit = (await runForTest(findTool("updateTask"), { id: "a", status: "pending", assignee: "writer" }, ctx)) as { ok: boolean; error: string };
+    expect(edit.ok).toBe(false);
+    expect(edit.error).toContain("field_locked_after_start");
+    expect(boardOf(ctx).a).toMatchObject({ status: "held", assignee: "researcher" });
+    expect(await runForTest(findTool("updateTask"), { id: "a", status: "pending" }, ctx)).toEqual({ ok: true });
+    expect(boardOf(ctx).a).toMatchObject({ status: "pending", assignee: "researcher" });
+    // The mark serves that one release: a later hold is an ordinary one.
+    expect((boardOf(ctx).a as Record<string, unknown>).heldFromBlocked).toBeUndefined();
+  });
+
+  it("refuses to release a started held row that isn't a legacy blocked one", async () => {
+    // No current path holds a started row; if one ever appears, the field
+    // table's rule for a hold or release holds: until the task first starts.
+    const ctx = ctxWithTask("held", { attempts: 1, assignee: "researcher" });
+    const released = (await runForTest(findTool("updateTask"), { id: "a", status: "pending" }, ctx)) as { ok: boolean; error: string };
+    expect(released.ok).toBe(false);
+    expect(released.error).toContain("field_locked_after_start");
+    expect(boardOf(ctx).a).toMatchObject({ status: "held" });
   });
 });
 
@@ -232,9 +547,7 @@ describe("taskTools — unknown task ids", () => {
 // Assignee validation (FIX-924)
 // ---------------------------------------------------------------------------
 
-/**
- * A two-worker roster standing in for a board's declared workers.
- */
+/** A two-worker roster standing in for a board's declared workers. */
 const testRoster: AssigneeRoster = {
   has: (a) => a === "researcher" || a === "writer",
   describe: () => "researcher (Researches sources), writer (Drafts prose)",
@@ -242,31 +555,12 @@ const testRoster: AssigneeRoster = {
 
 /** The roster-carrying tools, as a caller supplying a roster builds them. */
 function rosterTool(name: string): GeneratorTool {
-  const tool = buildTaskToolsList(defaultOwnStateResolver, testRoster).find(
+  const tool = buildTaskToolsList(ownStateResolver, testRoster).find(
     (t) => (t as { config?: { name?: string } }).config?.name === name,
   );
   if (!tool) throw new Error(`tool not found: ${name}`);
   return tool as GeneratorTool;
 }
-
-/** Read the live board record off a mock ctx. */
-function boardOf(ctx: unknown): Record<string, { assignee?: string }> {
-  return (ctx as { parent: { state: Record<string, unknown> } }).parent.state[
-    DELEGATION_BOARD_FIELD
-  ] as Record<string, { assignee?: string }>;
-}
-
-const seededTask = (assignee?: string) => ({
-  a: {
-    id: "a",
-    goal: "x",
-    status: "pending",
-    attempts: 0,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-    ...(assignee !== undefined ? { assignee } : {}),
-  },
-});
 
 describe("checkAssignee — the single assignment gate", () => {
   it("accepts an assignee that names a declared agent", () => {
@@ -274,8 +568,6 @@ describe("checkAssignee — the single assignment gate", () => {
   });
 
   it("accepts an absent assignee, so the default worker stays reachable by intent", () => {
-    // A board's default worker is reached by deliberately omitting the
-    // assignee. Closing that would break it, not just typos.
     expect(checkAssignee(undefined, testRoster)).toBeUndefined();
   });
 
@@ -285,8 +577,6 @@ describe("checkAssignee — the single assignment gate", () => {
 
   it("rejects an unknown assignee, naming it and the agents that do exist", () => {
     const result = checkAssignee("reseacher", testRoster);
-    // The message has to carry both halves or the model can't self-correct:
-    // what it got wrong, and what it could have said instead.
     expect(result?.ok).toBe(false);
     expect(result?.error).toContain("unknown_assignee");
     expect(result?.error).toContain('"reseacher"');
@@ -300,497 +590,63 @@ describe("checkAssignee — the single assignment gate", () => {
 });
 
 describe("taskTools — assignee validation with a roster", () => {
-  it("addTask rejects a typo'd assignee and creates no task", async () => {
+  it("createTask rejects a typo'd assignee and creates no task", async () => {
     const { ctx } = buildCtx();
-    const result = await runForTest(
-      rosterTool("addTask"),
-      { goal: "Find sources", assignee: "reseacher" },
-      ctx,
-    );
-    expect((result as { ok: boolean }).ok).toBe(false);
-    expect((result as { error: string }).error).toContain("unknown_assignee");
-    // The whole point of failing at creation: no phantom task is left behind
-    // to blow up later when the board drains.
+    const result = (await runForTest(rosterTool("createTask"), { goal: "Find sources", assignee: "reseacher" }, ctx)) as {
+      ok: boolean;
+      error: string;
+    };
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("unknown_assignee");
     expect(Object.keys(boardOf(ctx))).toEqual([]);
   });
 
-  it("addTask accepts a declared agent", async () => {
+  it("createTask accepts a declared agent", async () => {
     const { ctx } = buildCtx();
-    const result = await runForTest(
-      rosterTool("addTask"),
-      { goal: "Find sources", assignee: "researcher" },
-      ctx,
-    );
-    expect((result as { ok: boolean }).ok).toBe(true);
+    const result = (await runForTest(rosterTool("createTask"), { goal: "Find sources", assignee: "researcher" }, ctx)) as {
+      ok: boolean;
+    };
+    expect(result.ok).toBe(true);
     expect(Object.values(boardOf(ctx))[0]?.assignee).toBe("researcher");
   });
 
-  it("addTask accepts an unassigned task even with a roster (it runs on the floor)", async () => {
-    const { ctx } = buildCtx();
-    const result = await runForTest(rosterTool("addTask"), { goal: "anything" }, ctx);
-    expect((result as { ok: boolean }).ok).toBe(true);
-  });
-
-  it("assignTask rejects an unknown assignee and leaves the task's assignee unchanged", async () => {
-    const { ctx } = buildCtx({ preTasks: seededTask("researcher") });
-    const result = await runForTest(
-      rosterTool("assignTask"),
-      { taskId: "a", assignee: "ghostwriter" },
-      ctx,
-    );
-    expect((result as { ok: boolean }).ok).toBe(false);
+  it("updateTask rejects an unknown assignee before the task starts", async () => {
+    const ctx = ctxWithTask("pending", { assignee: "researcher" });
+    const result = (await runForTest(rosterTool("updateTask"), { id: "a", assignee: "nobody" }, ctx)) as {
+      ok: boolean;
+      error: string;
+    };
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("unknown_assignee");
     expect(boardOf(ctx).a?.assignee).toBe("researcher");
   });
 
-  it("assignTask reports an unknown TASK before an unknown assignee", async () => {
-    // Both are wrong; the missing task is the more fundamental error and the
-    // one the model must fix first.
-    const { ctx } = buildCtx();
-    const result = await runForTest(
-      rosterTool("assignTask"),
-      { taskId: "ghost", assignee: "nobody" },
-      ctx,
-    );
-    expect((result as { error: string }).error).toBe("task_not_found");
-  });
-
-  it("updateTask rejects an unknown assignee in the patch", async () => {
-    const { ctx } = buildCtx({ preTasks: seededTask("researcher") });
-    const result = await runForTest(
-      rosterTool("updateTask"),
-      { taskId: "a", patch: { assignee: "nobody" } },
-      ctx,
-    );
-    expect((result as { ok: boolean }).ok).toBe(false);
-    expect((result as { error: string }).error).toContain("unknown_assignee");
-    expect(boardOf(ctx).a?.assignee).toBe("researcher");
-  });
-
-  it("updateTask leaves the gate inert for a patch that doesn't touch assignee", async () => {
-    const { ctx } = buildCtx({ preTasks: seededTask("researcher") });
-    const result = await runForTest(
-      rosterTool("updateTask"),
-      { taskId: "a", patch: { priority: 5 } },
-      ctx,
-    );
-    expect((result as { ok: boolean }).ok).toBe(true);
+  it("updateTask leaves the gate inert for an edit that doesn't touch assignee", async () => {
+    const ctx = ctxWithTask("pending", { assignee: "researcher" });
+    expect(await runForTest(rosterTool("updateTask"), { id: "a", priority: 5 }, ctx)).toEqual({ ok: true });
   });
 });
 
 describe("taskTools — no roster supplied (back-compat)", () => {
-  it("addTask accepts any assignee, exactly as before roster validation", async () => {
-    // The standalone `taskTools` singleton knows no workers, so it has nothing
-    // to validate against and must not start rejecting (BP-030).
+  it("createTask accepts any assignee, exactly as before roster validation", async () => {
     const { ctx } = buildCtx();
-    const result = await runForTest(
-      findTool("addTask"),
-      { goal: "x", assignee: "whoever" },
-      ctx,
-    );
-    expect((result as { ok: boolean }).ok).toBe(true);
+    const result = (await runForTest(findTool("createTask"), { goal: "x", assignee: "whoever" }, ctx)) as { ok: boolean };
+    expect(result.ok).toBe(true);
     expect(Object.values(boardOf(ctx))[0]?.assignee).toBe("whoever");
   });
-
-  it("assignTask accepts any assignee", async () => {
-    const { ctx } = buildCtx({ preTasks: seededTask() });
-    const result = await runForTest(
-      findTool("assignTask"),
-      { taskId: "a", assignee: "whoever" },
-      ctx,
-    );
-    expect((result as { ok: boolean }).ok).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Illegal status transitions (FIX-950)
-// ---------------------------------------------------------------------------
-
-/** Seed a board holding exactly one task in `status`, plus any extra fields. */
-function ctxWithTask(status: string, extra: Record<string, unknown> = {}) {
-  return buildCtx({
-    preTasks: {
-      a: {
-        id: "a",
-        goal: "x",
-        status,
-        attempts: 0,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        ...extra,
-      },
-    },
-  }).ctx;
-}
-
-/** The seeded task's status as it stands on the board now. */
-function statusOfA(ctx: unknown): string {
-  const board = (ctx as { parent: { state: Record<string, unknown> } }).parent.state[
-    DELEGATION_BOARD_FIELD
-  ] as Record<string, { status: string }>;
-  return board.a!.status;
-}
-
-/** Drive a tool and return the `error` string it reported. */
-async function errorFrom(tool: string, input: Record<string, unknown>, ctx: unknown) {
-  const result = await runForTest(findTool(tool), input, ctx as never);
-  expect((result as { ok: boolean }).ok).toBe(false);
-  return (result as { error: string }).error;
-}
-
-/**
- * Each of the three tools that could refuse a transition answers with the
- * shared recoverable shape, and leaves the task exactly as it found it.
- */
-describe("taskTools — illegal status transitions return a recoverable result", () => {
-  it("completeTask on a pending task reports not-ok instead of throwing", async () => {
-    const ctx = ctxWithTask("pending");
-    const result = await runForTest(findTool("completeTask"), { taskId: "a", output: "done" }, ctx);
-    expect(result).toMatchObject({ ok: false, taskId: "a" });
-    expect((result as { error: string }).error).toContain("illegal_status_transition");
-    expect(statusOfA(ctx)).toBe("pending");
-  });
-
-  it("blockTask on an in_progress task reports not-ok instead of throwing", async () => {
-    const ctx = ctxWithTask("in_progress");
-    const result = await runForTest(findTool("blockTask"), { taskId: "a", reason: "legal" }, ctx);
-    expect(result).toMatchObject({ ok: false, taskId: "a" });
-    expect((result as { error: string }).error).toContain("illegal_status_transition");
-    expect(statusOfA(ctx)).toBe("in_progress");
-  });
-
-  it("failTask on a pending task reports not-ok instead of throwing", async () => {
-    const ctx = ctxWithTask("pending");
-    const result = await runForTest(findTool("failTask"), { taskId: "a", error: "nope" }, ctx);
-    expect(result).toMatchObject({ ok: false, taskId: "a" });
-    expect((result as { error: string }).error).toContain("illegal_status_transition");
-    expect(statusOfA(ctx)).toBe("pending");
-  });
 });
 
 /**
- * The recovery half. These are the cases where a list derived from
- * `allowedTransitionsFrom` (a fact about the COLLECTION) and one derived from
- * tool-reachable actions (a fact about the TOOL surface, where the model
- * stands) give different answers.
+ * The soft set is a named list of error classes; a scope-mutation failure is
+ * not on it and must still reach the caller as a throw rather than becoming a
+ * polite result the model narrates past.
  */
-describe("taskTools — the recovery list names tool-reachable calls", () => {
-  it("names the calls available from pending, and does not name a status no tool reaches", async () => {
-    const error = await errorFrom(
-      "completeTask",
-      { taskId: "a", output: "done" },
-      ctxWithTask("pending"),
-    );
-    expect(error).toContain('task "a" is pending');
-    expect(error).toContain("transitioning to completed is not available");
-    // `allowedTransitionsFrom("pending")` includes `in_progress`, which no task
-    // tool can reach — a worker claim during a drain is the only route there.
-    expect(error).not.toContain("in_progress");
-    expect(error).toContain("From here you can call blockTask or cancelTask.");
-    // The rejected tool excludes itself: its target is by definition not allowed.
-    expect(error).not.toContain("completeTask");
-    // Said without asserting HOW a task gets started — this surface does not
-    // know whether its consumer has a drain tool.
-    expect(error).toContain("has not been started yet");
-  });
-
-  it("does not imply an unblock exists for a blocked task", async () => {
-    const error = await errorFrom(
-      "completeTask",
-      { taskId: "a", output: "done" },
-      ctxWithTask("blocked"),
-    );
-    expect(error).toContain('task "a" is blocked');
-    // No tool unblocks a task. `allowedTransitionsFrom("blocked")` claims
-    // `pending`, reachable ONLY via failTask with a retry budget — which this
-    // budget-less task does not have. The message must not suggest otherwise.
-    expect(error).not.toMatch(/unblock/i);
-    expect(error).not.toContain("pending");
-    expect(error).toContain("cancelTask");
-    expect(error).not.toContain("failTask");
-  });
-
-  it("still offers blockTask on a blocked task, because that call does real work", async () => {
-    // Pins the RULE ("would this call succeed") against the alternative reading
-    // that a blocked task should advertise only `cancelTask`. `block()` on an
-    // already-blocked task is a legal same-status transition that rewrites the
-    // reason and emits a `blocked` change, so the rule keeps it. Suppressing it
-    // would require a same-status filter, which is the thing that would also
-    // silently drop a budgeted `failTask` from a `pending` task's list.
-    //
-    // This assertion is the difference between the two readings: without it the
-    // blocked case passes under either, and a filter could be reintroduced
-    // unnoticed.
-    const error = await errorFrom(
-      "completeTask",
-      { taskId: "a", output: "done" },
-      ctxWithTask("blocked"),
-    );
-    expect(error).toContain("From here you can call blockTask or cancelTask.");
-  });
-
-  it("names the calls available from parked without claiming pending", async () => {
-    const error = await errorFrom(
-      "blockTask",
-      { taskId: "a", reason: "legal" },
-      ctxWithTask("parked"),
-    );
-    expect(error).toContain('task "a" is parked');
-    // `allowedTransitionsFrom("parked")` includes `pending`; no tool
-    // reaches it from here, so the recovery list must not mention it.
-    expect(error).not.toContain("pending");
-    expect(error).toContain("cancelTask");
-    expect(error).toContain("completeTask");
-    expect(error).toContain("failTask");
-  });
-
-  it("states a terminal task as terminal, without rendering an empty action list", async () => {
-    const error = await errorFrom(
-      "blockTask",
-      { taskId: "a", reason: "legal" },
-      ctxWithTask("completed"),
-    );
-    expect(error).toContain('task "a" is completed, which is terminal');
-    expect(error).toContain("Add a new task instead");
-    // No dangling "From here you can call ." and no claim that nothing at all
-    // can be called. (`cancelTask` on a terminal task is now also refused, and
-    // says so in the same shape — see the declined-write suite below.)
-    expect(error).not.toContain("From here you can call");
-    expect(error).not.toMatch(/nothing/i);
-    // Terminal messages quote no target status; that is what keeps `failTask`'s
-    // retry-branch target from ever being rendered as the model's intent.
-    expect(error).not.toContain("transitioning to");
-  });
-
-  it("renders a non-empty action list from every non-terminal status", async () => {
-    // The composer has no empty-list branch, on the strength of a table
-    // invariant: every non-terminal row of ALLOWED_TRANSITIONS contains
-    // `cancelled`, and `cancelTask` targets it. That invariant lives in
-    // task-status.ts, not here, so a future edit to the table (adding a status,
-    // or narrowing a row) could break this file's output with nothing in it
-    // changing. Asserted here rather than guarded at runtime — an unreachable
-    // `if` would hide the regression, and this names it instead.
-    const probes: Array<[status: string, tool: string]> = [
-      ["pending", "completeTask"],
-      ["in_progress", "blockTask"],
-      ["blocked", "completeTask"],
-      ["parked", "blockTask"],
-    ];
-    for (const [status, tool] of probes) {
-      const error = await errorFrom(tool, { taskId: "a", reason: "r" }, ctxWithTask(status));
-      const clause = /From here you can call (.+)\.$/.exec(error.trim());
-      expect(clause, `${tool} from ${status} advertised no calls`).not.toBeNull();
-      expect(clause![1]!.trim()).not.toBe("");
-      expect(clause![1]).not.toContain("undefined");
-    }
-  });
-});
-
-/**
- * `failTask`'s target is conditional on the task's retry budget, so the composer
- * asks `shouldRetryOnFail` about the task in hand rather than assuming.
- *
- * Note the layer: these tasks are seeded with `maxAttempts` directly onto the
- * board. The `addTask` TOOL exposes no `maxAttempts`, so tasks
- * created through it never carry a budget — but `taskTools` /
- * `buildTaskToolsList` are exported standalone and can be wired onto a
- * collection whose tasks do (the task-board primitive stamps one via
- * `applyReplan`'s `maxAttemptsPerTask`). The composer is surface-agnostic by
- * construction; these cases cover the wiring where the branch is live.
- */
-describe("taskTools — failTask's retry budget", () => {
-  it("succeeds on a pending task that still has retry budget", async () => {
-    const ctx = ctxWithTask("pending", { maxAttempts: 3, attempts: 1 });
-    const result = await runForTest(findTool("failTask"), { taskId: "a", error: "flaky" }, ctx);
-    expect((result as { ok: boolean }).ok).toBe(true);
-    // Same-status, but not inert: it soft-fails back to pending and records the
-    // error as feedback for the next attempt.
-    expect(statusOfA(ctx)).toBe("pending");
-  });
-
-  it("advertises failTask from pending when the task has retry budget", async () => {
-    // Asserted SEPARATELY from the success case above on purpose. A same-status
-    // filter in the composer would leave the call succeeding while silently
-    // dropping it from the recovery list, and only this assertion catches that.
-    const error = await errorFrom(
-      "completeTask",
-      { taskId: "a", output: "done" },
-      ctxWithTask("pending", { maxAttempts: 3, attempts: 1 }),
-    );
-    expect(error).toContain("failTask");
-  });
-
-  it("omits failTask from pending when the task has no retry budget", async () => {
-    const error = await errorFrom(
-      "completeTask",
-      { taskId: "a", output: "done" },
-      ctxWithTask("pending"),
-    );
-    expect(error).not.toContain("failTask");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Declined writes on a terminal task (FIX-976)
-// ---------------------------------------------------------------------------
-
-/** Read the seeded task's mutable fields off a mock ctx. */
-function taskA(ctx: unknown) {
-  return (
-    (ctx as { parent: { state: Record<string, unknown> } }).parent.state[
-      DELEGATION_BOARD_FIELD
-    ] as Record<
-      string,
-      { assignee?: string; priority?: number; labels?: string[]; metadata?: unknown }
-    >
-  ).a;
-}
-
-/**
- * The defect this issue is about. Against a task that already finished, three of
- * these tools used to give three different answers and only one was true:
- * `blockTask` refused honestly, `cancelTask` said it worked and did nothing, and
- * `assignTask` said it worked and wrote the new assignee onto a dead task.
- */
-describe("taskTools — writes to a terminal task are refused, not silently accepted", () => {
-  it.each(["completed", "errored", "cancelled"] as const)(
-    "assignTask on a %s task refuses and does not rewrite the assignee",
-    async (status) => {
-      const ctx = ctxWithTask(status, { assignee: "researcher" });
-
-      const result = await runForTest(
-        findTool("assignTask"),
-        { taskId: "a", assignee: "backup-researcher" },
-        ctx,
-      );
-
-      expect(result).toMatchObject({ ok: false, taskId: "a" });
-      const error = (result as { error: string }).error;
-      expect(error).toContain("terminal_task_write_declined");
-      expect(error).toContain(`task "a" is ${status}, which is terminal`);
-      // Names what the caller actually attempted. `blockTask`'s copy says "its
-      // status will not change again", which would be the wrong thing here —
-      // `assignTask` attempts no status transition.
-      expect(error).toContain("Its assignee will not change.");
-      expect(error).not.toContain("Its status will not change");
-      expect(error).toContain("Add a new task instead");
-      // The heart of it: the write did not land.
-      expect(taskA(ctx)?.assignee).toBe("researcher");
-    },
-  );
-
-  it("cancelTask on a terminal task refuses instead of reporting a phantom success", async () => {
-    const ctx = ctxWithTask("errored");
-
-    const result = await runForTest(findTool("cancelTask"), { taskId: "a", reason: "obsolete" }, ctx);
-
-    expect(result).toMatchObject({ ok: false, taskId: "a" });
-    const error = (result as { error: string }).error;
-    expect(error).toContain("terminal_task_write_declined");
-    expect(error).toContain('task "a" is errored, which is terminal');
-    // A cancel WOULD have changed the status, so this one names the status.
-    expect(error).toContain("Its status will not change again.");
-    expect(statusOfA(ctx)).toBe("errored");
-  });
-
-  it("reads the same as blockTask's refusal on the same task, bar the code and the clause", async () => {
-    // Decision 6: one parameterized renderer, not four bespoke messages. The
-    // sentence shape and the closing suggestion have to match, or the four tools
-    // drift into four ways of saying the same thing.
-    const blocked = await errorFrom("blockTask", { taskId: "a", reason: "r" }, ctxWithTask("completed"));
-    const cancelled = await errorFrom("cancelTask", { taskId: "a" }, ctxWithTask("completed"));
-
-    const shape = (error: string) => error.replace(/^[a-z_]+:/, "CODE:");
-    expect(shape(cancelled)).toBe(shape(blocked));
-  });
-
-  it("cancelTask still succeeds on a live task", async () => {
-    // The control. The refusal must not touch the case it is not for.
-    const ctx = ctxWithTask("pending");
-    const result = await runForTest(findTool("cancelTask"), { taskId: "a" }, ctx);
-    expect(result).toEqual({ ok: true });
-    expect(statusOfA(ctx)).toBe("cancelled");
-  });
-
-  it("assignTask still succeeds on a live task", async () => {
-    const ctx = ctxWithTask("pending", { assignee: "researcher" });
-    const result = await runForTest(
-      findTool("assignTask"),
-      { taskId: "a", assignee: "writer" },
-      ctx,
-    );
-    expect(result).toEqual({ ok: true });
-    expect(taskA(ctx)?.assignee).toBe("writer");
-  });
-});
-
-/**
- * `updateTask` runs the one guardable write first and short-circuits (Decision
- * 4). Under the assignment-only guard exactly one of its five writes can
- * decline, which is what makes a single verdict honest in both directions.
- */
-describe("taskTools — updateTask with an assignee on a terminal task", () => {
-  it("refuses and mutates nothing else — priority, metadata and labels all untouched", async () => {
-    const ctx = ctxWithTask("completed", { assignee: "researcher", priority: 1 });
-
-    const result = await runForTest(
-      findTool("updateTask"),
-      {
-        taskId: "a",
-        patch: {
-          assignee: "writer",
-          priority: 9,
-          metadata: { audited: true },
-          addLabel: "late",
-        },
-      },
-      ctx,
-    );
-
-    expect(result).toMatchObject({ ok: false, taskId: "a" });
-    expect((result as { error: string }).error).toContain("terminal_task_write_declined");
-    // The short-circuit. Ordering the guarded write first is what makes the
-    // single boolean true in both directions: nothing else ever ran.
-    const task = taskA(ctx);
-    expect(task?.assignee).toBe("researcher");
-    expect(task?.priority).toBe(1);
-    expect(task?.metadata).toBeUndefined();
-    expect(task?.labels).toBeUndefined();
-  });
-
-  it("still succeeds WITHOUT an assignee on a terminal task, writing every field", async () => {
-    // Required by the guard's scoping: tagging a failed task after the fact is a
-    // real and used thing. A helper-wide guard would refuse this.
-    const ctx = ctxWithTask("errored", { priority: 1 });
-
-    const result = await runForTest(
-      findTool("updateTask"),
-      { taskId: "a", patch: { priority: 9, metadata: { audited: true }, addLabel: "worker-error" } },
-      ctx,
-    );
-
-    expect(result).toEqual({ ok: true });
-    const task = taskA(ctx);
-    expect(task?.priority).toBe(9);
-    expect(task?.metadata).toEqual({ audited: true });
-    expect(task?.labels).toEqual(["worker-error"]);
-  });
-});
-
-/**
- * The line between this change and the blanket `catch (err)` it rejected. The
- * soft set is exactly one error class; a scope-mutation failure is not on it and
- * must still reach the caller as a throw rather than becoming a polite result
- * the model narrates past.
- */
-describe("taskTools — non-transition failures still propagate", () => {
+describe("taskTools — other failures still propagate", () => {
   it("lets a scope-mutation failure escape instead of returning it as a result", async () => {
-    const ctx = ctxWithTask("in_progress");
+    const ctx = ctxWithTask("pending");
     (ctx as unknown as { parent: { atomicState: unknown } }).parent.atomicState = async () => {
       throw new Error("scope mutation timed out");
     };
-    await expect(
-      runForTest(findTool("completeTask"), { taskId: "a", output: "done" }, ctx),
-    ).rejects.toThrow("scope mutation timed out");
+    await expect(runForTest(findTool("updateTask"), { id: "a", priority: 2 }, ctx)).rejects.toThrow("scope mutation timed out");
   });
 });

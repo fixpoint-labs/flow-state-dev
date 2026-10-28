@@ -21,9 +21,9 @@ function makeFlow(kind: string, id = kind) {
     actions: {
       run: {
         inputSchema: z.object({ value: z.string() }),
-        block: handler<{ value: string }, { ok: true }>({
+        block: handler({
           name: `${kind}-run`,
-          execute: () => ({ ok: true })
+          execute: (_input: { value: string }): { ok: true } => ({ ok: true })
         })
       }
     }
@@ -251,9 +251,9 @@ describe("HTTP transport adapter (via createFlowApiRouter)", () => {
           run: {
             concurrency: "queue",
             inputSchema: z.object({ value: z.string() }),
-            block: handler<{ value: string }, { ok: true }>({
+            block: handler({
               name: "org-run",
-              execute: () => ({ ok: true })
+              execute: (_input: { value: string }): { ok: true } => ({ ok: true })
             })
           }
         }
@@ -310,9 +310,9 @@ describe("HTTP transport adapter (via createFlowApiRouter)", () => {
           run: {
             concurrency: "reject",
             inputSchema: z.object({ value: z.string() }),
-            block: handler<{ value: string }, { ok: true }>({
+            block: handler({
               name: "rej-run",
-              execute: async () => {
+              execute: async (_input: { value: string }): Promise<{ ok: true }> => {
                 await blocked;
                 return { ok: true };
               }

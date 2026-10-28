@@ -80,11 +80,13 @@ import {
 } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "./worker-task-entry";
-import { DELEGATED_POST_ENTRY } from "./worker-task-entry";
-import { delegatedPostEntry, delegatedPostHistory, delegatedPostOnFinished } from "./coordinator/delegated-post";
+import { RESPOND_ACTION } from "./worker-door";
+import { declareBuiltInRoles } from "./worker-roles";
+import { routedTaskHistory } from "./coordinator/routed-brief";
 import { workerTaskEntry } from "./conversation-board/task-entry";
 import { defineSessionBoard, type SessionBoard } from "./conversation-board/session-board";
 import { REPLY_CONCURRENCY } from "./conversation-board/task-settled";
+import { finishedTasksAnswerAgain } from "./conversation-board/take-finished";
 import { WORKSTREAM_OPENED_ENTRY, workstreamOpenedEntry } from "./projects/workstream-lead";
 import { WORKER_PACKAGES_KEY, WORKER_SKILLS_KEY, WORKER_TOOLS_KEY, oneNameMessage } from "./manifest";
 import {
@@ -100,7 +102,14 @@ import {
 import { WORKER_DISCOVER_KEY } from "./worker-discovery";
 import { workerSkillSchema, workerConfigSchema } from "./worker-config";
 import { turnConfigOf, verifiedWorkerOf } from "./workers/verified-worker";
+import { markUserTurnStep } from "./standing-rules/user-turn";
+import { standingRulesCapability } from "./standing-rules/rules-capability";
+import { STANDING_RULES_ACTION, standingRulesAction } from "./standing-rules/rules-action";
+import { setWorkProjectAction } from "./projects/work-project";
+import { SET_WORK_PROJECT_ACTION } from "./workers/keys";
 import type { WorkerInstallation } from "./workers/installation";
+import { steerOrTalk } from "./conversation-board/steer";
+import { worksConversationResultTask } from "./conversation-board/task-admission";
 
 /**
  * The worker flow name the hire step resolves a record to when it names none, and the
@@ -225,6 +234,25 @@ function activateToolOn(ctx: BlockContext): boolean {
   return (turnConfigOf(ctx) as Partial<WorkerConfig>).skills?.activateTool === true;
 }
 
+/** `afterAnswer`, rescuing only when the task row says the result goes to the conversation. */
+function afterAnswerStep(block: BlockDefinition<any, any>) {
+  const keepTheAnswer = handler({
+    name: "agent-after-answer-rescue",
+    inputSchema: z.unknown(),
+    execute: async (error, ctx) => {
+      if (!(await worksConversationResultTask(ctx as never))) throw error;
+      // eslint-disable-next-line no-console
+      console.error(
+        `[agent] Background work "${block.name}" failed; the task's result goes to the conversation, so it keeps its answer:`,
+        error instanceof Error ? error.message : error
+      );
+    }
+  });
+  return sequencer({ name: "agent-after-answer", inputSchema: z.unknown() })
+    .step(block)
+    .rescue([{ block: keepTheAnswer }]);
+}
+
 /** What the app supplies. Everything else is a worker's own setting. */
 export interface AgentWorkerFlowOptions {
   /**
@@ -304,7 +332,10 @@ export interface AgentWorkerFlowOptions {
   isolateUserState?: boolean;
   /**
    * A block run after the worker answers, as a side-chain — it cannot change
-   * the answer, and a failure in it does not fail the turn.
+   * the answer, and a failure in it never fails a conversation turn. In a
+   * task it fails the attempt, as any background step's failure does, except
+   * in a task whose result goes to the conversation, where it is logged and
+   * the task keeps its answer (FIX-2088).
    *
    * **It receives the answer generator's output: the assistant's reply text,
    * as a string.** `.sideChain` with no connector passes the preceding step's
@@ -324,6 +355,32 @@ export interface AgentWorkerFlowOptions {
    */
   afterAnswer?: BlockDefinition<any, any>;
   /**
+   * Answer again, in the same request, with the tasks that finished while the
+   * worker answered (FIX-2159). After the worker answers, this block runs; when
+   * it returns `{ message }`, the worker answers again about that message, and
+   * the block runs again after that answer. Its input is the worker's answer.
+   *
+   * - `true` uses the package's pre-built block
+   *   ({@link finishedTasksAnswerAgain}): it takes what finished
+   *   ({@link takeFinishedTasks}), says each result as a line under its
+   *   delegate's name, and tells the worker to use them.
+   * - A block replaces it, to change what the worker is told:
+   *   `finishedTasksAnswerAgain({ message })`, or a sequencer of your own
+   *   around `takeFinishedTasks`.
+   *
+   * It feeds the one answer-again step the worker's plan already runs, so the
+   * answer after the plan and these count toward one cap,
+   * {@link MAX_ANSWERS_AGAIN} answers again per request. The take hands
+   * over nothing outside a turn a user's own message started, so in a
+   * task's turn, or a turn a notice or another worker's message started,
+   * results arrive after the turn as before. Only on an installation, where
+   * the worker files tasks.
+   *
+   * Omitted, a turn answers once (and again after its plan), and every
+   * result is heard after the turn.
+   */
+  answerAgain?: true | BlockDefinition<any, any>;
+  /**
    * Run workers as data: one copy of this flow for every worker, each
    * session naming its worker when it is created (the installation's create
    * check), and each turn loading that worker's configuration before
@@ -334,6 +391,9 @@ export interface AgentWorkerFlowOptions {
    */
   installation?: WorkerInstallation;
 }
+
+/** The coordinator's tool that once handed a message on, refused by name at load. */
+const RETIRED_HAND_OFF = "handOff"; // retired-name-refusal
 
 /**
  * What one worker on this flow configures, in its file.
@@ -383,6 +443,18 @@ function settingsSchema(
         const known = Object.keys(catalog);
         for (const name of names ?? []) {
           if (Object.hasOwn(catalog, name)) continue;
+          // A coordinator hands a message on with `createTask` and the routing settings now.
+          if (name === RETIRED_HAND_OFF) { // retired-name-refusal: FIX-1872
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message:
+                `names tool "${RETIRED_HAND_OFF}", which no longer exists. A coordinator hands the message it is ` + // retired-name-refusal
+                `routing to a delegate with \`createTask\` and the routing settings (\`session: "ongoing"\`, ` +
+                `\`resultTo: "conversation"\`), which every coordinator turn carries: drop "${RETIRED_HAND_OFF}" ` + // retired-name-refusal
+                `from this worker's \`tools:\` line, and name \`createTask\` in its instructions instead.`
+            });
+            continue;
+          }
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message:
@@ -764,14 +836,14 @@ export interface AgentTurnShare {
   readonly extraTools?: readonly GeneratorTool[];
   /**
    * The session board the turn files through (FIX-1802 S1), when the sharing
-   * flow builds its own: the coordinator does, to name the flows its posts
-   * reach. Omitted, a turn on an installation builds one for its flow. Its
+   * flow builds its own: the coordinator does, to name the flows its routed
+   * tasks reach. Omitted, a turn on an installation builds one for its flow. Its
    * task tools are composed once, here, so a turn carries one instance of
    * each, whatever skill is loaded.
    */
   readonly board?: SessionBoard;
   /**
-   * The answer's history, in place of {@link delegatedPostHistory}: the
+   * The answer's history, in place of {@link routedTaskHistory}: the
    * coordinator's says each delegate's answer as a line from that delegate.
    */
   readonly history?: (input: unknown, ctx: BlockContext) => Promise<LLMMessage[]>;
@@ -947,8 +1019,9 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       : undefined);
   const usesEntries = [
     ...(options.uses ?? []),
+    standingRulesCapability,
     ...(workerCapabilityCatalog.size > 0 ? [workerCapabilities] : []),
-    ...(board !== undefined ? [board.tools, board.questions] : [])
+    ...(board !== undefined ? [board.tools, board.questions, board.progress, board.steers, board.delegateTools, board.messages] : [])
   ];
 
   const answerWith = (binding: ReturnType<typeof skills.with>, name: string) =>
@@ -961,12 +1034,12 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       // subject. A conversation is one session: a worker has one per
       // conversation, so nothing said in one reaches another. Bounded by the
       // session's history window (the framework's default, 50 turns); older turns fall out rather than being summarized.
-      // On a coordinator's delivery, the delivering conversation's recent
-      // lines join it as one user-role message before the post, for this
+      // On a coordinator's routed task, the routing conversation's recent
+      // lines join it as one user-role message before the message, for this
       // call only; on any other turn it is `history: true` unchanged. A
       // sharing flow may read it its own way (the coordinator's says who
       // wrote each delegate's answer).
-      history: share.history ?? delegatedPostHistory,
+      history: share.history ?? routedTaskHistory,
       // What the app's catalog tools declare, declared here so `defineFlow`'s
       // static walk installs it — see `catalogDeclaredResources`. Omitted
       // entirely when the catalog declares nothing, so a flow built without one
@@ -1190,7 +1263,15 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   // an inert extra step. `.sideChain` rather than `.step`: a post-answer block
   // must not be able to change the answer, and a failure inside it — a capture
   // call that times out, say — is not a conversation failure.
-  const run = options.afterAnswer ? answered.sideChain(options.afterAnswer) : answered;
+  const answeredRun = options.afterAnswer
+    ? answered.sideChain(afterAnswerStep(options.afterAnswer), { name: options.afterAnswer.name })
+    : answered;
+  // On an installation, every turn runs with its plan (FIX-2076 D1, D2): a
+  // step the worker files for itself is worked after the turn, in the same
+  // request, one turn of `answeredRun` each, and the worker answers once more.
+  // The app's `answerAgain` is the step's second source (FIX-2159).
+  const answerAgain = options.answerAgain === true ? finishedTasksAnswerAgain() : options.answerAgain;
+  const run = board !== undefined ? board.planned(answeredRun, answerAgain) : answeredRun;
 
   // On an installation the copy declares every document a worker may be
   // granted, and each turn's model reaches only its worker's: the
@@ -1256,7 +1337,7 @@ type AgentTurnBinding = {
   request?: { onStarted: BlockDefinition<any, any> };
 };
 
-/** The built-in `agent` flow: the agent's turn behind its door, its delegated-post and workstream entries, and its task entry. */
+/** The built-in `agent` flow: the agent's turn behind its door, its workstream entries, and its task entry. */
 function defineAgentFlowAround(
   options: AgentWorkerFlowOptions,
   settings: ReturnType<typeof agentWorkerTurn>["settings"],
@@ -1276,6 +1357,9 @@ function defineAgentFlowAround(
    */
   const taskEntry = workerTaskEntry({ name: "agent-task-turn", turn: run });
 
+  // Only this door marks a user turn. Task, notice and workstream entries run `run` unmarked.
+  const userTurn = sequencer({ name: "agent-user-turn", inputSchema }).tap(markUserTurnStep).step(run);
+
   const flow = defineFlow({
     kind: AGENT_FLOW,
     // Required by contract C2. A plain singleton's workers mint and are then
@@ -1287,32 +1371,28 @@ function defineAgentFlowAround(
     isolateUserState: options.isolateUserState ?? false,
     configSchema: settings,
     ...bound,
-    // A delegated post's run that is cancelled before its answer went back
-    // tells the coordinator, so its round doesn't wait for the deadline.
-    request: { ...(bound.request ?? {}), onFinished: delegatedPostOnFinished },
     // `userMessage` keeps the caller's message as their turn, so a worker's
     // conversation holds both sides and survives a reload.
     // On an installation copy the session names its worker, so a turn whose
     // input names one (or carries any other key) is refused, not stripped.
     actions: {
-      // A reply: a task's notice to this session waits for it to end.
-      run: {
+      // A reply: its notice waits for it to end. In a task session whose task
+      // is open, the line steers the task instead (FIX-2086).
+      [RESPOND_ACTION]: {
         inputSchema: installation !== undefined ? inputSchema.strict() : inputSchema,
-        block: run,
+        block: steerOrTalk(userTurn),
         userMessage: (input) => input.message,
         concurrency: REPLY_CONCURRENCY
       },
-      // On an installation: the eight task actions (`addTask_tasks` and the
+      [STANDING_RULES_ACTION]: standingRulesAction,
+      [SET_WORK_PROJECT_ACTION]: setWorkProjectAction,
+      // On an installation: the task actions (`updateTask_tasks` and the
       // rest) over this session's board, and the four delegate actions. A
       // session whose delegates take no task answers `no_delegation_board`.
       ...(board?.actions ?? {})
     },
     internal: {
       actions: {
-        // A coordinator's delivery: one turn of `run` on the post, its reply
-        // handed back to the delivering conversation with the delivery's
-        // token. That is what makes an agent worker a delegate that takes posts.
-        [DELEGATED_POST_ENTRY]: delegatedPostEntry(run),
         // A workstream's open: creates the lead's workstream session, linked
         // at create, and runs nothing. That is what lets an agent worker lead
         // a workstream.
@@ -1322,7 +1402,13 @@ function defineAgentFlowAround(
         ...(board?.entries(run) ?? {})
       }
     },
-    task: { actions: { [WORKER_TASK_ENTRY]: taskEntry } }
+    task: {
+      actions: {
+        // A task, a coordinator's routed message among them (FIX-2083): one
+        // turn of `run`, behind the claim gate, its answer the task's result.
+        [WORKER_TASK_ENTRY]: taskEntry
+      }
+    }
   });
 
   /**
@@ -1339,5 +1425,6 @@ function defineAgentFlowAround(
     if (problem !== undefined) throw new Error(problem);
     return worker;
   };
-  return Object.assign(mint, flow) as typeof flow;
+  // It takes tasks; on an installation it also runs its delegation board.
+  return declareBuiltInRoles(Object.assign(mint, flow), board === undefined ? ["contributor"] : ["contributor", "manager"]) as typeof flow;
 }

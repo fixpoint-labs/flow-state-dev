@@ -1,0 +1,88 @@
+<svg viewBox="0 0 940 440" role="img" aria-label="Two panels. Today: dispatchTask with wait files a row and marks the wait in one write, so only a task filed in that same call can be waited on. A task's own request is refused any wait. The timeout, 30 seconds to an hour, cancels the task. The deadline sits on the suspension's expiry, a second due-time path. A dispatcher never waits: it returns a handle. After: three ways in, getTask with wait on a task filed now or earlier, a plan board's dispatched row, and a dispatcher with wait true, all reach one check: the filer, under 5 waits deep, not a conversation-result task. A sixth wait is refused. The request parks. The claim gate's ending resumes it with the task or the output. At the deadline a wake resumes it with the task as it stands, still running, and nothing is cancelled."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .lane  { fill:var(--surface-2); }
+    .chip  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .one   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .park  { fill:var(--surface); stroke:var(--ink-3); stroke-width:1.4; stroke-dasharray:5 4; }
+    .edge  { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .good  { stroke:var(--code); stroke-width:1.8; fill:none; }
+    .bad   { stroke:var(--gone); stroke-width:1.8; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-c   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-bad { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
+    .t-ok  { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="440"/>
+
+  <g id="today">
+    <rect class="lane" x="16" y="16" width="908" height="160" rx="6"/>
+    <text class="t-lbl" x="32" y="38">TODAY · A WAIT IS AN OPTION ON ONE FILING CALL</text>
+    <rect class="chip" x="32" y="52" width="268" height="26" rx="4"/>
+    <text class="t-c" x="42" y="69">dispatchTask({ wait, timeoutMs })</text>
+    <line class="edge" x1="300" y1="65" x2="330" y2="65"/>
+    <text class="t-s" x="336" y="62">files the row and marks the wait in one write:</text>
+    <text class="t-bad" x="336" y="77">a task filed earlier can't be waited on</text>
+    <rect class="chip" x="32" y="90" width="268" height="26" rx="4"/>
+    <text class="t-s" x="42" y="107">a request working a task</text>
+    <line class="bad" x1="300" y1="103" x2="330" y2="103"/>
+    <text class="t-bad" x="336" y="107">refused any wait: waits are one deep</text>
+    <rect class="chip" x="32" y="128" width="268" height="26" rx="4"/>
+    <text class="t-c" x="42" y="145">dispatcher()</text>
+    <line class="edge" x1="300" y1="141" x2="330" y2="141"/>
+    <text class="t-s" x="336" y="145">returns a handle, never the result</text>
+    <text class="t-lbl" x="640" y="62">THE TIMEOUT</text>
+    <text class="t-s" x="640" y="80">30 s to 1 h, on the suspension's expiry,</text>
+    <text class="t-s" x="640" y="96">a second due-time path beside the wakes</text>
+    <text class="t-bad" x="640" y="118">cancels the task:</text>
+    <text class="t-bad" x="640" y="134">its work so far is lost</text>
+  </g>
+
+  <g id="after">
+    <rect class="lane" x="16" y="192" width="908" height="232" rx="6"/>
+    <text class="t-lbl" x="32" y="214">AFTER · THREE WAYS IN, ONE WAIT</text>
+    <rect class="chip" x="32" y="232" width="250" height="26" rx="4"/>
+    <text class="t-c" x="42" y="249">getTask({ id, wait, deadline })</text>
+    <text class="t-s" x="42" y="272">a task it filed, now or earlier</text>
+    <rect class="chip" x="32" y="286" width="250" height="26" rx="4"/>
+    <text class="t-s" x="42" y="303">a plan board's dispatched row</text>
+    <text class="t-s" x="42" y="326">its drain waits, then waits again</text>
+    <rect class="chip" x="32" y="340" width="250" height="26" rx="4"/>
+    <text class="t-c" x="42" y="357">dispatcher({ wait: true })</text>
+    <text class="t-s" x="42" y="380">the child request's output</text>
+
+    <path class="edge" d="M282 245 C 310 245, 310 299, 336 299"/>
+    <line class="edge" x1="282" y1="299" x2="336" y2="299"/>
+    <path class="edge" d="M282 353 C 310 353, 310 299, 336 299"/>
+
+    <rect class="one" x="336" y="270" width="206" height="58" rx="5"/>
+    <text class="t-b" x="350" y="291">One check</text>
+    <text class="t-s" x="350" y="307">the filer · under 5 waits deep</text>
+    <text class="t-s" x="350" y="321">not a conversation-result task</text>
+    <line class="bad" x1="439" y1="328" x2="439" y2="360"/>
+    <text class="t-bad" x="350" y="378">a sixth wait: refused,</text>
+    <text class="t-bad" x="350" y="394">nothing written</text>
+
+    <line class="edge" x1="542" y1="299" x2="568" y2="299"/>
+    <rect class="park" x="568" y="280" width="110" height="38" rx="5"/>
+    <text class="t-s" x="578" y="303">the request parks</text>
+
+    <path class="good" d="M678 290 C 698 290, 698 252, 716 252"/>
+    <text class="t-ok" x="722" y="246">the claim gate's ending</text>
+    <text class="t-s" x="722" y="262">resumes it with the task or output</text>
+    <path class="good" d="M678 308 C 698 308, 698 340, 716 340"/>
+    <text class="t-ok" x="722" y="334">the wake at the deadline</text>
+    <text class="t-s" x="722" y="350">resumes it with the task as it stands:</text>
+    <text class="t-s" x="722" y="366">still running, nothing cancelled</text>
+  </g>
+</svg>

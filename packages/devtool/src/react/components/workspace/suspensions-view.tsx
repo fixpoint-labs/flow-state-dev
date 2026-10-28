@@ -11,13 +11,11 @@
  * Reads via `useListSuspensions` (client debug endpoint) and resolves via
  * `useResumeSuspension` (client recovery endpoint). No transport lives here.
  */
-import { useMemo, useState } from "react";
-import { PauseCircle } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
 import type { SuspensionRecord, SuspensionStatus } from "@flow-state-dev/client";
 import { useListSuspensions } from "../../hooks/use-list-suspensions";
 import { useResumeSuspension } from "../../hooks/use-resume-suspension";
 import { suspensionOwnerId } from "../../lib/instance-ownership";
-import { EmptyState } from "../shared/empty-state";
 import { StatusBadge } from "../shared/status-badge";
 import { JsonViewer } from "../shared/json-viewer";
 import { Button } from "../ui/button";
@@ -40,7 +38,8 @@ const STATUS_FILTERS: Array<{ value: SuspensionStatus | "all"; label: string }> 
   { value: "rejected", label: "Rejected" },
   { value: "timed_out", label: "Timed out" },
   { value: "expired", label: "Expired" },
-  { value: "stopped", label: "Stopped" }
+  { value: "stopped", label: "Stopped" },
+  { value: "cancelled", label: "Cancelled" }
 ];
 
 /**
@@ -66,23 +65,24 @@ export function SuspensionsView({ sessionId, onResumed }: Props) {
 
   if (disabled) {
     return (
-      <EmptyState
-        icon={<PauseCircle className="h-8 w-8" aria-hidden />}
-        message="Debug endpoints are disabled. Enable them with FSDEV_DEBUG_ENDPOINTS=1 to browse suspensions."
-      />
+      <div className="px-[18px] py-[22px]">
+        <DashedNote title="Suspensions are unavailable">
+          Debug endpoints are disabled. Enable them with FSDEV_DEBUG_ENDPOINTS=1 to browse suspensions.
+        </DashedNote>
+      </div>
     );
   }
 
   return (
     <div className="flex h-full min-h-0">
-      <div className="flex w-1/2 min-w-0 flex-col border-r border-slate-800">
-        <div className="flex items-center gap-2 border-b border-slate-800 px-3 py-2">
+      <div className="flex w-1/2 min-w-0 flex-col border-r border-fs-ink/20">
+        <div className="flex items-center gap-2 border-b border-fs-ink/20 px-3 py-2">
           <select
             value={statusFilter}
             onChange={(e) =>
               setStatusFilter(e.target.value as SuspensionStatus | "all")
             }
-            className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-300"
+            className="h-6 px-2 rounded-none border border-fs-ink/35 bg-fs-card text-fs-ink font-fs-mono text-xs focus:border-fs-blue focus:ring-2 focus:ring-fs-blue/20 outline-none"
           >
             {STATUS_FILTERS.map((f) => (
               <option key={f.value} value={f.value}>
@@ -101,19 +101,21 @@ export function SuspensionsView({ sessionId, onResumed }: Props) {
         </div>
 
         {error !== null && (
-          <p className="px-3 py-2 text-xs text-red-400">{error}</p>
+          <p className="px-3 py-2 font-fs-mono text-[11.5px] text-fs-red">{error}</p>
         )}
 
         {suspensions.length === 0 ? (
-          <EmptyState
-            icon={<PauseCircle className="h-8 w-8" aria-hidden />}
-            message="No suspensions in this session. Durable actions that call ctx.suspend() appear here for approval."
-          />
+          <div className="px-3 py-[22px]">
+            <DashedNote title="No suspensions in this session">
+              Durable actions that call ctx.suspend() park here until someone approves or rejects them. Open ones are
+              marked <NeedsYou>pending</NeedsYou> in this list.
+            </DashedNote>
+          </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-slate-800 text-left text-[10px] uppercase tracking-wide text-slate-500">
+                <tr className="border-b border-fs-ink/20 text-left font-fs-mono text-[10px] uppercase tracking-[.12em] text-fs-ink4">
                   <th className="px-3 py-1.5 font-medium">Created</th>
                   <th className="py-1.5 font-medium">Flow</th>
                   <th className="py-1.5 font-medium">Reason</th>
@@ -137,7 +139,9 @@ export function SuspensionsView({ sessionId, onResumed }: Props) {
 
       <div className="min-h-0 w-1/2 flex-1 overflow-auto">
         {selected === null ? (
-          <EmptyState message="Select a suspension to inspect and resolve it." />
+          <p className="px-4 py-[22px] font-fs-mono text-[11.5px] text-fs-ink4">
+            Select a suspension to inspect and resolve it.
+          </p>
         ) : (
           // key forces a clean remount per selection so one suspension's
           // unsubmitted resume JSON / parse error never carries to another.
@@ -164,16 +168,16 @@ function SuspensionRow({
 }) {
   return (
     <tr
-      className={`cursor-pointer border-b border-slate-800/50 align-top hover:bg-slate-900/40 ${
-        selected ? "bg-slate-800/40" : ""
+      className={`cursor-pointer border-b border-fs-ink/12 align-top ${
+        selected ? "bg-fs-blue/8 shadow-[inset_2px_0_0_var(--fs-blue)]" : "hover:bg-fs-ink/5"
       }`}
       onClick={onSelect}
     >
-      <td className="px-3 py-1.5 text-[11px] text-slate-400">
+      <td className="px-3 py-2 font-fs-mono text-[11px] text-fs-ink4">
         {new Date(record.createdAt).toLocaleString()}
       </td>
       <td
-        className="py-1.5 pr-2 font-mono text-[11px] text-slate-300"
+        className="py-2 pr-2 font-fs-mono text-[11.5px] text-fs-ink"
         title={
           record.flowId != null && record.flowId !== record.flowKind
             ? `Flow instance: ${record.flowId}\nKind: ${record.flowKind}`
@@ -182,9 +186,9 @@ function SuspensionRow({
       >
         {suspensionOwnerId(record)}
       </td>
-      <td className="py-1.5 pr-2 text-slate-300">{record.reason}</td>
-      <td className="px-3 py-1.5">
-        <StatusBadge status={record.status} />
+      <td className="py-2 pr-2 font-fs-mono text-[11.5px] text-fs-ink2">{record.reason}</td>
+      <td className="px-3 py-2">
+        <SuspensionStatus status={record.status} />
       </td>
     </tr>
   );
@@ -247,36 +251,36 @@ function SuspensionDetail({
   };
 
   return (
-    <div className="flex flex-col gap-3 p-3">
-      <div className="flex items-center gap-2">
-        <span className="font-mono text-xs text-slate-200">
+    <div className="flex flex-col gap-3.5 px-4 py-3.5">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="min-w-0 truncate font-fs-mono text-[12.5px] font-semibold text-fs-ink">
           {record.suspensionId}
         </span>
-        <StatusBadge status={record.status} />
+        <SuspensionStatus status={record.status} />
       </div>
 
-      <p className="text-sm text-slate-300">{record.message}</p>
+      <p className="text-[13.5px] text-fs-ink2">{record.message}</p>
 
-      <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-[11px]">
-        <dt className="text-slate-500">Flow</dt>
-        <dd className="font-mono text-slate-300">{record.flowKind}</dd>
-        <dt className="text-slate-500">Action</dt>
-        <dd className="font-mono text-slate-300">{record.actionName}</dd>
-        <dt className="text-slate-500">Reason</dt>
-        <dd className="text-slate-300">{record.reason}</dd>
-        <dt className="text-slate-500">Request</dt>
-        <dd className="font-mono text-slate-300">{record.requestId}</dd>
+      <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1 border-y border-fs-ink/12 py-2 font-fs-mono text-[11.5px]">
+        <dt className="text-fs-ink4">Flow</dt>
+        <dd className="min-w-0 [overflow-wrap:anywhere] text-fs-ink">{record.flowKind}</dd>
+        <dt className="text-fs-ink4">Action</dt>
+        <dd className="min-w-0 [overflow-wrap:anywhere] text-fs-ink">{record.actionName}</dd>
+        <dt className="text-fs-ink4">Reason</dt>
+        <dd className="min-w-0 [overflow-wrap:anywhere] text-fs-ink">{record.reason}</dd>
+        <dt className="text-fs-ink4">Request</dt>
+        <dd className="min-w-0 [overflow-wrap:anywhere] text-fs-ink">{record.requestId}</dd>
         {record.resolvedBy !== undefined && (
           <>
-            <dt className="text-slate-500">Resolved by</dt>
-            <dd className="text-slate-300">{record.resolvedBy}</dd>
+            <dt className="text-fs-ink4">Resolved by</dt>
+            <dd className="min-w-0 [overflow-wrap:anywhere] text-fs-ink">{record.resolvedBy}</dd>
           </>
         )}
       </dl>
 
       {record.data !== undefined && (
         <section>
-          <h4 className="mb-1 text-[10px] uppercase tracking-wide text-slate-500">
+          <h4 className={`mb-1.5 ${SECTION_LABEL}`}>
             Data
           </h4>
           <JsonViewer data={record.data} />
@@ -285,7 +289,7 @@ function SuspensionDetail({
 
       {record.resumeSchema !== undefined && (
         <section>
-          <h4 className="mb-1 text-[10px] uppercase tracking-wide text-slate-500">
+          <h4 className={`mb-1.5 ${SECTION_LABEL}`}>
             Resume schema
           </h4>
           <JsonViewer data={record.resumeSchema} />
@@ -294,7 +298,7 @@ function SuspensionDetail({
 
       {isPending ? (
         <section className="flex flex-col gap-2">
-          <h4 className="text-[10px] uppercase tracking-wide text-slate-500">
+          <h4 className={SECTION_LABEL}>
             Resume data (JSON)
           </h4>
           <textarea
@@ -302,12 +306,12 @@ function SuspensionDetail({
             onChange={(e) => setDataText(e.target.value)}
             placeholder="{}"
             rows={4}
-            className="rounded border border-slate-700 bg-slate-950 p-2 font-mono text-xs text-slate-300"
+            className="resize-y px-2.5 py-2 leading-[1.55] placeholder:text-fs-ink4 rounded-none border border-fs-ink/35 bg-fs-card text-fs-ink font-fs-mono text-xs focus:border-fs-blue focus:ring-2 focus:ring-fs-blue/20 outline-none"
           />
           {parseError !== null && (
-            <p className="text-xs text-red-400">{parseError}</p>
+            <p className="font-fs-mono text-[11.5px] text-fs-red">{parseError}</p>
           )}
-          {error !== null && <p className="text-xs text-red-400">{error}</p>}
+          {error !== null && <p className="font-fs-mono text-[11.5px] text-fs-red">{error}</p>}
           <div className="flex gap-2">
             <Button
               size="sm"
@@ -327,10 +331,43 @@ function SuspensionDetail({
           </div>
         </section>
       ) : (
-        <p className="text-xs italic text-slate-500">
+        <p className="font-fs-mono text-[11.5px] text-fs-ink4">
           This suspension is already resolved.
         </p>
       )}
+    </div>
+  );
+}
+
+/** Mono uppercase section label, the brand's app-register heading. */
+const SECTION_LABEL = "font-fs-mono text-[10px] font-medium uppercase tracking-[.14em] text-fs-ink3";
+
+/**
+ * The highlighter: a suspension that is still pending is waiting on a person,
+ * and that is the one thing in this panel the yellow is for.
+ */
+function NeedsYou({ children }: { children: ReactNode }) {
+  return <span className="bg-fs-hl px-1 font-fs-mono text-fs-on-hl">{children}</span>;
+}
+
+/** A suspension's status: highlighted while pending, the shared badge otherwise. */
+function SuspensionStatus({ status }: { status: SuspensionStatus }) {
+  if (status === "pending") {
+    return (
+      <span className="inline-block bg-fs-hl px-1.5 font-fs-mono text-[10.5px] font-medium text-fs-on-hl">
+        {status}
+      </span>
+    );
+  }
+  return <StatusBadge status={status} />;
+}
+
+/** A dashed, hairline box for an empty or unavailable state. */
+function DashedNote({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="max-w-[560px] border border-dashed border-fs-ink/45 px-[18px] pt-[18px] pb-4">
+      <div className="text-sm font-semibold text-fs-ink">{title}</div>
+      <div className="mt-1.5 font-fs-mono text-[11.5px] leading-[1.7] text-fs-ink3">{children}</div>
     </div>
   );
 }

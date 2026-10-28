@@ -81,7 +81,7 @@ async function say(runtime: FlowStateRuntime, worker: FlowInstance, sessionId: s
   const result = await runAction({
     orgId: DEFAULT_ORG_ID,
     flow: worker,
-    actionName: "run",
+    actionName: "respond",
     input: { message },
     userId: USER_ID,
     sessionId,

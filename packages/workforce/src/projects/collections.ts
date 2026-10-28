@@ -1,7 +1,7 @@
 /**
  * Projects — the `projects` rows, and the collection a project's files live in.
  *
- *   projects/<id>                       one row per project: title, brief, owner, members, repository
+ *   projects/<id>                       one row per project: title, brief, owner, members, repository, MCP servers
  *   project-files/<projectId>/<path>    one row per file the project keeps: notes, memory, a no-repository project's code
  *
  * A project is runtime data. It is created after the tree was read, so no
@@ -108,7 +108,16 @@ export const projectRowSchema = z.object({
    * state is not re-parsed on read: read rows through this schema, or guard
    * with `== null` (BP-030).
    */
-  repository: z.string().nullable().default(null)
+  repository: z.string().nullable().default(null),
+  /**
+   * The MCP servers every coding run on the project gets, by the bare names
+   * the host offers (for example `["linear"]`). Names only: where a server
+   * lives is the host's config, and the key a run uses is its owner's own.
+   * `[]` names none. A row written before the field existed reads as `[]`
+   * through this schema; guard with `== null` when reading a stored row raw
+   * (BP-030).
+   */
+  mcpServers: z.array(z.string()).default([])
 });
 
 /** One stored project. @see projectRowSchema */
@@ -127,7 +136,8 @@ const PROJECT_CLIENT_FIELDS = [
   "status",
   "ownerUserId",
   "members",
-  "repository"
+  "repository",
+  "mcpServers"
 ] as const;
 
 /** Shared across flows on purpose; see the module header. */

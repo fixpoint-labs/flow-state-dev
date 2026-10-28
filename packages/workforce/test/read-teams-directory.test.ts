@@ -187,6 +187,30 @@ describe("reading the file", () => {
     expect(errors[0]!.error.message).toContain("description");
   });
 
+  it("reads a team's display name, and none when the file names none", async () => {
+    await writeTeamMd("eng", "---\nname: Engineering\ndescription: Builds things.\n---\n");
+    await writeTeamMd("ops", teamMd("Runs things.", "Stay up."));
+
+    const { teams, errors } = await readTeamsDirectory(root);
+
+    expect(errors).toEqual([]);
+    expect(team(teams, "eng")).toMatchObject({ id: "eng", name: "Engineering" });
+    expect(Object.hasOwn(team(teams, "ops")!, "name")).toBe(false);
+  });
+
+  it("reports a display name that is not a non-empty string", async () => {
+    await writeTeamMd("eng", '---\nname: "  "\ndescription: Builds things.\n---\n');
+    await writeTeamMd("ops", "---\nname: 42\ndescription: Runs things.\n---\n");
+
+    const { teams, errors } = await readTeamsDirectory(root);
+
+    expect(teams).toEqual([]);
+    expect(errors.map((e) => e.error.message)).toEqual([
+      expect.stringContaining("`name`"),
+      expect.stringContaining("`name`"),
+    ]);
+  });
+
   it("reports an empty description", async () => {
     await writeTeamMd("pentest", '---\ndescription: "  "\n---\n\nStay in scope.\n');
 
@@ -364,6 +388,19 @@ describe("the join", () => {
     // BR-12: absent, not empty. A `toBeUndefined()` here would pass for `""`
     // reaching the record — the exact value the guardrail forbids.
     expect(Object.hasOwn(desk, "teamInstructions")).toBe(false);
+  });
+
+  it("gives each team's workers that team's display name, and none to a team that names none", async () => {
+    await writeWorker("eng", "em", "description: Runs the team\nname: Engineering Manager");
+    await writeWorker("billing", "desk");
+    await writeTeamMd("eng", "---\nname: Engineering\ndescription: Builds things.\n---\n");
+
+    const { workers } = await readWorkforce(root);
+
+    const em = workers.find((w) => w.id === "eng.em")!;
+    expect(em.teamName).toBe("Engineering");
+    expect(em.declared.name).toBe("Engineering Manager");
+    expect(Object.hasOwn(workers.find((w) => w.id === "billing.desk")!, "teamName")).toBe(false);
   });
 
   // BR-12's other arm: a team whose file loaded but whose body was whitespace

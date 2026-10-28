@@ -23,8 +23,8 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { __resetDeprecationWarningsForTests } from "@flow-state-dev/core";
-import type { FlowState } from "@flow-state-dev/engine";
-import { createSessionClient } from "@flow-state-dev/client";
+import { createInProcessFetch, type FlowState } from "@flow-state-dev/engine";
+import { createClient } from "@flow-state-dev/client";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 
 vi.setConfig({ testTimeout: 30_000 });
@@ -47,29 +47,17 @@ async function boot() {
   vi.stubEnv("WORKFORCE_ADMIN_TOKENS", "");
   vi.stubEnv("GOAL_CONTROL", "");
   const flowstate = (await import("@/fsdev.config")).default as FlowState;
-  const router = await flowstate.getRouter();
+  // The app's own router, in-process.
+  const inProcess = createInProcessFetch(flowstate);
   const get = async (segments: string[], query = "") => {
-    const res = await router.GET(new Request(`http://localhost/api/flows/${segments.join("/")}${query}`), {
-      params: { path: segments },
-    });
+    const res = await inProcess(`/api/flows/${segments.join("/")}${query}`);
     expect(res.status).toBe(200);
     return (await res.json()) as unknown;
   };
-  // The page's session client, over the app's own router.
-  const sessionsFetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = new URL(String(input), "http://localhost");
-    const path = url.pathname
-      .replace(/^\/api\/flows\/?/, "")
-      .split("/")
-      .filter((segment) => segment.length > 0)
-      .map(decodeURIComponent);
-    const method = (init?.method ?? "GET").toUpperCase() as "GET" | "POST" | "PATCH" | "DELETE";
-    return await router[method](new Request(url, init), { params: { path } });
-  };
-  const sessions = createSessionClient({ fetcher: sessionsFetcher });
-  // The page's workforce client, over the same router.
-  const workforce = createWorkforceClient({ userId: "devuser", fetcher: sessionsFetcher });
-  return { get, sessions, workforce };
+  // The page's one client, and its workforce client, over the same router.
+  const client = createClient({ userId: "devuser", fetcher: inProcess });
+  const workforce = createWorkforceClient(client);
+  return { get, client, workforce };
 }
 
 describe("V1 · the boot serves one best-fit coordinator and four specialists", () => {
@@ -92,11 +80,15 @@ describe("V1 · the boot serves one best-fit coordinator and four specialists", 
   it("serves the coordinator flow beside the app's own flows, and no other worker flow", async () => {
     const { get } = await boot();
     const { flows } = (await get([])) as { flows: Array<{ id: string; kind: string }> };
-    // The workforce's worker flows are the built-ins: `agent`, `coordinator` and the roster flow. The rest are the app's own flows.
+    // The workforce's worker flows are the built-ins: `agent`, `coordinator` and the roster flow. The rest are the app's own flows,
+    // Claude Code, Codex and Cursor modes' among them: in test mode on a checkout they are available, running the scripted harnesses.
     expect([...new Set(flows.map((flow) => flow.kind))].sort()).toEqual([
       "agent",
       "chat-agent",
+      "claude-code-session",
+      "codex-session",
       "coordinator",
+      "cursor-session",
       "rich-text-component",
       "weekly-digest",
       "workforce-roster",
@@ -104,29 +96,29 @@ describe("V1 · the boot serves one best-fit coordinator and four specialists", 
   });
 
   it("lists support.help in the rail as the user's one conversation with it, a session on coordinator naming it", async () => {
-    const { sessions, workforce } = await boot();
+    const { client, workforce } = await boot();
     const { railSessions } = await import("@/lib/rail-sessions");
     // Not vacuous: on a fresh store the coordinator flow's own listing holds nothing.
-    expect(await sessions.listSessions({ flowKind: "coordinator", userId: "devuser" })).toEqual([]);
+    expect(await client.sessions.list({ flowKind: "coordinator", userId: "devuser" })).toEqual([]);
 
     // The navigator's own query for the flow's leaf.
     const query = { flowKind: "coordinator", userId: "devuser", include: "dispatch-runs" } as const;
-    const listed = await railSessions(sessions, workforce).listSessions(query);
+    const listed = await railSessions(client, workforce).sessions.list(query);
     expect(listed.map((session) => [session.title, session.flowKind])).toEqual([["support.help", "coordinator"]]);
     // The same conversation every time, and the one the coordinator's id finds (BR-7a).
-    const again = await railSessions(sessions, workforce).listSessions(query);
+    const again = await railSessions(client, workforce).sessions.list(query);
     expect(again.map((session) => session.id)).toEqual(listed.map((session) => session.id));
     expect((await workforce.findWorkerSession({ worker: "support.help" }))?.id).toBe(listed[0]!.id);
   });
 
   it("lists every other flow in the rail as the store has it", async () => {
-    const { sessions, workforce } = await boot();
+    const { client, workforce } = await boot();
     const { railSessions } = await import("@/lib/rail-sessions");
-    const created = await sessions.createSession({ flowKind: "chat-agent", userId: "devuser" });
+    const created = await client.flow("chat-agent").createSession();
     const query = { flowKind: "chat-agent", userId: "devuser" } as const;
-    const listed = await railSessions(sessions, workforce).listSessions(query);
+    const listed = await railSessions(client, workforce).sessions.list(query);
     expect(listed.map((session) => session.id)).toContain(created.id);
-    expect(listed).toEqual(await sessions.listSessions(query));
+    expect(listed).toEqual(await client.sessions.list(query));
   });
 
   it("generates no block and no worker flow of the app's own", async () => {

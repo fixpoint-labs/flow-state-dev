@@ -1,9 +1,11 @@
 /**
- * `taskToolActions` — a durable board's eight task tools, as flow actions.
+ * `taskToolActions` — a durable board's task tools, as flow actions: the
+ * filer's four (`createTask`, `getTask`, `listTasks`, `updateTask`)
+ * (FIX-2081). None settles a task.
  *
  * What the actions are for is changing a task from OUTSIDE the request that
- * filed it: a person in the DevTool cancelling a stuck row, or bumping a
- * priority. So every leg below files its row in one request and acts on it in
+ * filed it: a person in the DevTool cancelling a stuck row, holding or
+ * releasing one, or editing one before it starts. So every leg below files its row in one request and acts on it in
  * a later one, through the engine's own action path — a test that filed and
  * acted inside one block would pass against a request-scoped ledger that
  * forgets the row the moment the request ends, which is the case the backing
@@ -28,19 +30,10 @@ import {
   type TaskWorker,
 } from "../../src/tasks";
 import { taskBoard, taskToolActions, taskToolSuffix } from "../../src/task-board";
-import { stampCurrentClaim } from "../../src/task-board/flow-policy-wiring";
+import { openWorkerClaimScope, stampCurrentClaim } from "../../src/task-board/flow-policy-wiring";
+import { heard } from "../fixtures/heard";
 
-const TOOLS = [
-  "addTask",
-  "assignTask",
-  "completeTask",
-  "failTask",
-  "blockTask",
-  "cancelTask",
-  "updateTask",
-  "listTasks",
-  "answerTask",
-] as const;
+const TOOLS = ["createTask", "getTask", "listTasks", "updateTask"] as const;
 
 let seq = 0;
 
@@ -96,26 +89,13 @@ async function host(options: { declareResource?: boolean } = {}) {
     },
   });
 
-  // A row with a retry budget, which `addTask` does not take.
-  const fileRetryable = handler({
-    name: "file-retryable",
-    inputSchema: z.object({ maxAttempts: z.number() }),
-    outputSchema: z.unknown(),
-    uses: [board.capability],
-    execute: async (input, ctx) => {
-      const tasks = await ledger(ctx);
-      return (await tasks.addTask({ goal: "a retryable row", maxAttempts: input.maxAttempts })).id;
-    },
-  });
-
-  const flow = defineFlow({
+  const flow = defineFlow({ internal: { actions: { ...heard } },
     kind: `ops${seq}`,
     ...(options.declareResource === false ? {} : { resources: { [id]: todos } }),
     actions: {
       drain: { block: board.drain },
       claimOne: { block: claimOne },
       settleAsWorker: { block: settleAsWorker },
-      fileRetryable: { block: fileRetryable },
       ...taskToolActions(board),
     },
   } as never);
@@ -147,7 +127,7 @@ async function host(options: { declareResource?: boolean } = {}) {
 
   /** File a row in its own request, so every later action acts across requests. */
   const file = async (goal = "a row"): Promise<string> => {
-    const added = await act(`addTask_${id}`, { goal });
+    const added = await act(`createTask_${id}`, { goal });
     expect(added.output).toMatchObject({ ok: true });
     return added.output.taskId as string;
   };
@@ -156,7 +136,7 @@ async function host(options: { declareResource?: boolean } = {}) {
 }
 
 describe("taskToolActions — the set", () => {
-  it("names the nine tools for the board, and nothing else", async () => {
+  it("names the filer's four for the board, and nothing that settles a task", async () => {
     const h = await host();
     try {
       const names = Object.keys(taskToolActions(h.board)).sort();
@@ -191,7 +171,7 @@ describe("taskToolActions — the set", () => {
     const h = await host();
     try {
       const taskId = await h.file();
-      await h.act(`updateTask_${h.id}`, { taskId, patch: { priority: 3 } });
+      await h.act(`updateTask_${h.id}`, { id: taskId, priority: 3 });
       const stored = await h.row(taskId);
       expect(stored?.status).toBe("pending");
       expect(stored?.attempts ?? 0).toBe(0);
@@ -209,57 +189,49 @@ describe("taskToolActions — each verb on a row an earlier request filed", () =
     const h = await host({ declareResource: false });
     try {
       const taskId = await h.file();
-      expect((await h.act(`cancelTask_${h.id}`, { taskId })).output).toEqual({ ok: true });
+      expect((await h.act(`updateTask_${h.id}`, { id: taskId, status: "cancelled" })).output).toEqual({ ok: true });
     } finally {
       await h.dispose();
     }
   });
 
-
-  it("cancels", async () => {
+  it("cancels, recording that a public action made the cancel", async () => {
     const h = await host();
     try {
       const taskId = await h.file();
-      const result = await h.act(`cancelTask_${h.id}`, { taskId, reason: "not needed" });
+      const result = await h.act(`updateTask_${h.id}`, { id: taskId, status: "cancelled" });
       expect(result.output).toEqual({ ok: true });
-      expect((await h.row(taskId))?.status).toBe("cancelled");
+      expect(await h.row(taskId)).toMatchObject({ status: "cancelled", cancelledVia: "action" });
     } finally {
       await h.dispose();
     }
   });
 
-  it("updates, assigns and blocks", async () => {
+  it("edits, reassigns, holds and releases a row that hasn't started", async () => {
     const h = await host();
     try {
       const a = await h.file("a");
-      expect((await h.act(`updateTask_${h.id}`, { taskId: a, patch: { priority: 7, addLabel: "hot" } })).output).toEqual({ ok: true });
-      expect(await h.row(a)).toMatchObject({ priority: 7, labels: ["hot"] });
+      expect((await h.act(`updateTask_${h.id}`, { id: a, priority: 7, labels: ["hot"], goal: "a, sharper" })).output).toEqual({ ok: true });
+      expect(await h.row(a)).toMatchObject({ priority: 7, labels: ["hot"], goal: "a, sharper" });
 
-      expect((await h.act(`assignTask_${h.id}`, { taskId: a, assignee: "someone" })).output).toEqual({ ok: true });
+      expect((await h.act(`updateTask_${h.id}`, { id: a, assignee: "someone" })).output).toEqual({ ok: true });
       expect((await h.row(a))?.assignee).toBe("someone");
 
-      expect((await h.act(`blockTask_${h.id}`, { taskId: a, reason: "waiting" })).output).toEqual({ ok: true });
-      expect((await h.row(a))?.status).toBe("blocked");
+      expect((await h.act(`updateTask_${h.id}`, { id: a, status: "held" })).output).toEqual({ ok: true });
+      expect((await h.row(a))?.status).toBe("held");
+      expect((await h.act(`updateTask_${h.id}`, { id: a, status: "pending" })).output).toEqual({ ok: true });
+      expect((await h.row(a))?.status).toBe("pending");
     } finally {
       await h.dispose();
     }
   });
 
-  it("fails and completes a started row", async () => {
-    // `failTask` and `completeTask` settle work that started; a pending row
-    // refuses both, which is the verb's rule and not this surface's.
+  it("reads a row whole", async () => {
     const h = await host();
     try {
-      const b = await h.file("b");
-      await h.act("claimOne", {});
-      expect((await h.act(`failTask_${h.id}`, { taskId: b, error: "broke" })).output).toEqual({ ok: true });
-      // A row filed with no retry budget goes terminal on its first failure.
-      expect(await h.row(b)).toMatchObject({ status: "errored", error: "broke" });
-
-      const c = await h.file("c");
-      await h.act("claimOne", {});
-      expect((await h.act(`completeTask_${h.id}`, { taskId: c, output: { done: 1 } })).output).toEqual({ ok: true });
-      expect(await h.row(c)).toMatchObject({ status: "completed", output: { done: 1 } });
+      const taskId = await h.file("read me");
+      const read = await h.act(`getTask_${h.id}`, { id: taskId });
+      expect(read.output).toMatchObject({ ok: true, task: { id: taskId, goal: "read me", status: "pending" } });
     } finally {
       await h.dispose();
     }
@@ -282,12 +254,12 @@ describe("taskToolActions — refusals are values, and the caller can read them"
     const h = await host();
     try {
       const taskId = await h.file();
-      expect((await h.act(`cancelTask_${h.id}`, { taskId })).output).toEqual({ ok: true });
+      expect((await h.act(`updateTask_${h.id}`, { id: taskId, status: "cancelled" })).output).toEqual({ ok: true });
       const before = await h.row(taskId);
 
-      const refused = await h.act(`cancelTask_${h.id}`, { taskId });
+      const refused = await h.act(`updateTask_${h.id}`, { id: taskId, status: "cancelled" });
       expect(refused.output).toMatchObject({ ok: false });
-      expect(String(refused.output.error)).toMatch(/terminal/);
+      expect(String(refused.output.error)).toMatch(/^task_finished: /);
       expect(await h.row(taskId)).toEqual(before);
 
       // The dispatch answers with a request id and no output, and a refusal
@@ -297,7 +269,7 @@ describe("taskToolActions — refusals are values, and the caller can read them"
         actionName: string;
         items?: Array<{ type: string; blockInstanceId?: string; output?: unknown; component?: string }>;
       }>;
-      const [last] = requests.filter((r) => r.actionName === `cancelTask_${h.id}`);
+      const [last] = requests.filter((r) => r.actionName === `updateTask_${h.id}`);
       const root = last?.items?.find((item) => item.type === "block_trace" && item.blockInstanceId?.endsWith(":root:0"));
       expect(root?.output).toEqual({ kind: "inline", value: refused.output });
       expect(last?.items?.some((item) => item.component === "task-change")).toBe(false);
@@ -309,7 +281,7 @@ describe("taskToolActions — refusals are values, and the caller can read them"
   it("names a missing task rather than throwing", async () => {
     const h = await host();
     try {
-      const result = await h.act(`cancelTask_${h.id}`, { taskId: "nope" });
+      const result = await h.act(`updateTask_${h.id}`, { id: "nope", status: "cancelled" });
       expect(result.output).toMatchObject({ ok: false, error: "task_not_found" });
     } finally {
       await h.dispose();
@@ -317,8 +289,8 @@ describe("taskToolActions — refusals are values, and the caller can read them"
   });
 });
 
-describe("taskToolActions — an action settles over a worker's claim (BR-25)", () => {
-  it("lands a completion on a row a worker holds, and the worker's own result is then refused", async () => {
+describe("taskToolActions — an action against a row a worker holds (BR-25, FIX-2081)", () => {
+  it("lands a cancel on a row a worker holds, and the worker's own result is then refused", async () => {
     const h = await host();
     try {
       const taskId = await h.file();
@@ -326,57 +298,33 @@ describe("taskToolActions — an action settles over a worker's claim (BR-25)", 
       expect(claim.taskId).toBe(taskId);
       expect((await h.row(taskId))?.status).toBe("in_progress");
 
-      const settled = await h.act(`completeTask_${h.id}`, { taskId, output: "from the row" });
-      expect(settled.output).toEqual({ ok: true });
+      const cancelled = await h.act(`updateTask_${h.id}`, { id: taskId, status: "cancelled" });
+      expect(cancelled.output).toEqual({ ok: true });
 
       const late = await h.act("settleAsWorker", { taskId, claim });
-      // The action finished the row, so the worker's result is declined as
-      // `terminal`: the substrate checks a settled row before a stale claim.
-      expect(late.output).toEqual({ outcome: "declined", reason: "terminal", status: "completed" });
-      expect(await h.row(taskId)).toMatchObject({ status: "completed", output: "from the row" });
+      // The action ended the row, so the worker's result is declined as `terminal`.
+      expect(late.output).toEqual({ outcome: "declined", reason: "terminal", status: "cancelled" });
+      expect((await h.row(taskId))?.status).toBe("cancelled");
     } finally {
       await h.dispose();
     }
   });
 
-  it("refuses to block a row a worker holds, and leaves the worker's claim standing", async () => {
-    // `blockTask` is not one of the moves that can take a row from its worker:
-    // on an in-progress row it is an illegal transition, so nothing changes.
+  it("refuses to reassign or hold a row a worker holds, and the worker's result lands", async () => {
+    // A started task keeps one accountable worker (FIX-1659 closed with neither option).
     const h = await host();
     try {
       const taskId = await h.file();
       const claim = (await h.act("claimOne", {})).output as TaskClaimTicket;
-      const blocked = await h.act(`blockTask_${h.id}`, { taskId, reason: "waiting on a person" });
-      expect(blocked.output).toMatchObject({ ok: false, error: expect.stringMatching(/^illegal_status_transition/) });
+      const reassigned = await h.act(`updateTask_${h.id}`, { id: taskId, assignee: "someone-else" });
+      expect(reassigned.output).toMatchObject({ ok: false, error: expect.stringMatching(/^field_locked_after_start: assignee/) });
+      const held = await h.act(`updateTask_${h.id}`, { id: taskId, status: "held" });
+      expect(held.output).toMatchObject({ ok: false, error: expect.stringMatching(/^field_locked_after_start: a hold or a release/) });
       expect((await h.row(taskId))?.status).toBe("in_progress");
       expect((await h.act("settleAsWorker", { taskId, claim })).output).toEqual({ outcome: "recorded" });
+      expect(await h.row(taskId)).toMatchObject({ status: "completed", output: "worker's result" });
     } finally {
       await h.dispose();
-    }
-  });
-
-  it("sends a held row with retries left back to pending on failTask, and drops the worker's later result either way", async () => {
-    // A retrying fail leaves the row open, so the displaced worker's result is
-    // not declined `terminal`: the reason depends on what the worker sends.
-    for (const workerFails of [false, true]) {
-      const h = await host();
-      try {
-        const taskId = (await h.act("fileRetryable", { maxAttempts: 3 })).output as string;
-        const claim = (await h.act("claimOne", {})).output as TaskClaimTicket;
-        expect(claim.taskId).toBe(taskId);
-
-        const failed = await h.act(`failTask_${h.id}`, { taskId, error: "from the row" });
-        expect(failed.output).toEqual({ ok: true });
-        const requeued = await h.row(taskId);
-        expect(requeued?.status).toBe("pending");
-
-        const late = await h.act("settleAsWorker", { taskId, claim, fail: workerFails });
-        expect(late.output).toMatchObject({ outcome: "declined", reason: workerFails ? "lost-claim" : "disallowed" });
-        // Nothing the worker sent was written.
-        expect(await h.row(taskId)).toEqual(requeued);
-      } finally {
-        await h.dispose();
-      }
     }
   });
 
@@ -396,8 +344,10 @@ describe("taskToolActions — an action settles over a worker's claim (BR-25)", 
       // Its own async context, so the stamp cannot leak into the rest of the test.
       const settled = await new Promise<{ output?: unknown }>((resolve, reject) => {
         setImmediate(() => {
-          stampCurrentClaim(claim);
-          h.act(`cancelTask_${h.id}`, { taskId: other, reason: "from the row" }).then(resolve, reject);
+          openWorkerClaimScope();
+          // Stamped in the worker's own request; the action below is another.
+          stampCurrentClaim(claim, { request: { identity: { id: "r_worker" }, incarnation: "i1" } });
+          h.act(`updateTask_${h.id}`, { id: other, status: "cancelled" }).then(resolve, reject);
         });
       });
       expect(settled.output).toEqual({ ok: true });

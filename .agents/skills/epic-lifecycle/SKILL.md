@@ -1,6 +1,6 @@
 ---
 name: epic-lifecycle
-description: Drive a related Linear epic through retained spec authoring, human direction approval, checked spec merge, parallel isolated issue lifecycles, and wrap. Hold compact live status from Linear and implementation PRs; meaningful post-merge spec amendments use new PRs. Implementation merges remain human-controlled. Finish with lessons and docs polish.
+description: Drive a related Linear epic through retained spec authoring, human direction approval, checked spec merge, parallel isolated issue lifecycles, and wrap. Hold compact live status from Linear and implementation PRs; meaningful post-merge spec amendments use new PRs. Implementation merges remain human-controlled. Finish with lessons, a retrospective analysis, and docs polish.
 argument-hint: "<epic issue ID, or the related issue IDs to run under one epic, e.g. FIX-1 FIX-2 FIX-3>"
 ---
 
@@ -36,7 +36,7 @@ ends the turn:
 | **EPIC_SETUP** | Discover/create the epic issue; `epic-agent` authors the retained set and opens its review PR; `project-agent` creates/refreshes the unchanged standing project spec | Epic review PR ready → AWAITING_OBJECTIVE |
 | **AWAITING_OBJECTIVE** | Human approves the reviewed direction; preserve the two-round budget, then dispatch `epic-agent` **MERGE-ONLY** under the canonical merge contract. If the owner merges the epic PR themselves, that merge is the approval and nothing is dispatched | Confirmed epic spec merge, not approval alone |
 | **RUNNING** | Advance children through `issue-lifecycle`; derive live status from Linear and implementation PRs. The **closure issue** runs last: its QA runs file bugs as children that block it, and it closes only on a clean run. Meaningful epic amendments use follow-up PRs from `main` | Every child merged, closed, or dropped, the closure issue included |
-| **EPIC_WRAP** | Record terminal epic status in Linear; retain the already-merged original review PR. Retire the mailbox handle; dispatch lessons and docs-polish, then the project wrap update. Only meaningful spec amendments get a new PR | Lessons draft PR surfaced (rows-only if no proposal); docs-polish surfaced or justified skip; completion and amendment links reported |
+| **EPIC_WRAP** | Record terminal epic status in Linear; retain the already-merged original review PR. Retire the mailbox handle; dispatch lessons and docs-polish, then the wrap analysis once lessons returns, then the project wrap update. Only meaningful spec amendments get a new PR | Lessons draft PR surfaced (rows-only if no proposal); wrap analysis posted to the epic issue; docs-polish surfaced or justified skip; completion and amendment links reported |
 
 ## How it stays safe and cheap
 
@@ -195,7 +195,8 @@ The epic-specific delta:
    wrap, each pass's **disposition**
    (`lessons: <PR#> [proposal skipped: why]` — lessons **always** has a PR number, since a
    clean epic still lands its rows as a rows-only PR; only the proposal inside it is skippable
-   · `docs_polish: <PR#|skipped: why>`, which *can* be skipped outright).
+   · `analysis: <Linear comment link> [N filed]`, never skipped, since "right approach" is
+   itself a result · `docs_polish: <PR#|skipped: why>`, which *can* be skipped outright).
 
    **The retained epic set describes approved intent.** Link it at gates alongside live
    status derived from Linear and implementation PRs. Phase transitions update that status,
@@ -478,9 +479,8 @@ The epic-specific delta:
    If the epic awaits objective approval, link its review PR and explain what direction
    the human signs off, and say that merging the PR is the sign-off. Approval binds to that reviewed head; after required checks and
    repository thread policy, the epic spec merges before children start.
-   For each issue awaiting approval, link its full required set, documentation draft,
-   and applicable evolution. Approval authorizes its spec merge, not implementation
-   before that merge, and not the later implementation PR merge.
+   For each issue awaiting approval, link its full retained set. Approval authorizes its
+   spec merge, not implementation before that merge, and not the later implementation PR merge.
    Attribute label signals to the owner and reviewed revision; never treat a standing
    label as approval for a changed head. Preserve the convergence budget without
    presenting required unresolved threads or failed checks as waived.
@@ -489,8 +489,8 @@ The epic-specific delta:
    blocked on it, but the user shouldn't sign off on a contested premise unknowingly. The
    returned `gates` array carries this for you: each `spec-approval` entry names the PR and its
    `settlingInFlight` claim, if any. The coordinator holds the *link*, not the spec text.
-   The *other* issues keep moving. For any issue **ready to merge** — its current head
-   reviewed and checked, per [Gates](../../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge)
+   The *other* issues keep moving. For any issue **ready to merge** — its PR reviewed
+   and its current head checked, per [Gates](../../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge)
    — surface it and stop there (merge is the user's).
 5. **End the turn.** **Subscribe to every currently-open PR named in the (now fully updated)
    table** — each issue's spec PR, each issue's impl PR#(s), and the epic PR —
@@ -540,15 +540,13 @@ The epic-specific delta:
 
 ## Spec review: converge, don't grind
 
-Each sub-issue's spec gets its own spec PR and its own review, and each of those draws
-**automated reviewers we don't control** — tuned for code, pointed at a deliberately
-directional document. Left unbounded that's N parallel grinding loops instead of one, which
-is how an epic of five directionally-sound specs turns into fifty review rounds.
-
-The bar, the three dispositions, and the **two-round convergence budget** are canonical in
+Each sub-issue's spec PR draws its own bot review; unbounded, that is N grinding loops. The bar, the three dispositions, and the **two-round convergence budget** are canonical in
 [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec review: the bar
 and the convergence rule"; the per-issue mechanics live in `issue-lifecycle` → "The
-spec-review round budget".
+spec-review round budget". Every spec and the epic-spec also get
+[`reuse-review`](../reuse-review/SKILL.md) — inside the analysis dispatch (`issue-spec` Step 4.5, and again at 6.5 after a fold) for children,
+`epic-agent`'s analysis dispatch for the epic — kept separate from `second-look`. The rule is
+[`orchestration.md`](../../../docs/contributing/orchestration.md#compose-existing-pieces).
 
 **The budget arithmetic is the `epic-wake` script's, not yours** — one `atReviewBudget()`
 covering issue specs and the epic PR alike, so the three things that make it misfire (counting
@@ -570,12 +568,8 @@ Convergence is per issue and independent — issue B doesn't wait on issue A's s
 
 ### When a thread turns on a fact, dispatch a POC — don't buy another round
 
-A budget bounds *how many* rounds an issue spends; it doesn't help when the rounds keep
-flipping because the thread turns on a **factual claim about how the system behaves**. Running
-N specs in parallel makes this worse, not better: N threads each capable of an unbounded
-flip-flop. Once such a claim has been asserted and counter-asserted **twice**, it gets **run**
-instead of argued — the trigger is that loop, not a single assertion, so expect this to fire on
-a minority of issues rather than routinely. The rules are canonical in
+Once a factual claim about how the system behaves has been asserted and counter-asserted
+**twice**, it gets **run** instead of argued. The rules are canonical in
 [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Settling a disputed claim
 (POC settlement)"; the per-issue mechanics are in `issue-lifecycle` → "POC settlement".
 
@@ -603,25 +597,17 @@ dispatches), replacing what would have been a fourth epic-review round.
 
 ### The epic PR gets the same budget
 
-The epic-spec is a direction artifact too, so it is reviewed at the same altitude and
-**carries its own two-round budget** — without one, the epic PR is the single place an
-unbounded review loop would survive, right at the top-level gate.
-
-The `epic-wake` script applies **the same `atReviewBudget()`** to it that it applies to an
+The epic-spec **carries its own two-round budget** (orchestration.md → "The convergence rule"). The `epic-wake` script applies **the same `atReviewBudget()`** to it that it applies to an
 issue spec, dispatches `epic-agent` to fold while the budget allows, and returns the updated
 `epic.reviewRounds` / `epic.aboveBarFound` for you to persist. At budget it stops folding, logs
 that the epic-spec converged, and sets `epic.converged` — remaining epic-PR threads are then
 carried the way an issue spec carries its review notes, routed to the relevant issues' implementer
 notes (`epicFold.fanOut`) rather than held against the gate.
 
-**The design budget never waives merge policy.** Human direction approval is distinct
-from required checks, required review/thread resolution, and observed spec merge. A bot
-review does not extend design rounds; a blocked merge remains a real wait. Post-merge
-feedback continues through meaningful amendment PRs, not edits to the historical original.
-
-**The budget bounds design rounds, not meaningful corrections.** Dispatch `epic-agent`
-for a correction on the current unmerged review PR, or after merge on a follow-up PR from
-`main`. Material direction changes need renewed approval; never rewrite the original PR.
+**The design budget never waives merge policy, and it bounds design rounds, not
+corrections.** Dispatch `epic-agent` for a correction on the unmerged review PR, or after
+merge on a follow-up PR from `main`; never rewrite the original, and material direction
+changes need renewed approval. Both rules are
 [`orchestration.md`](../../../docs/contributing/orchestration.md) → "The convergence rule".
 
 ## Epic setup (the coordination layer every run has)
@@ -655,8 +641,7 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
     `epic-agent` only for meaningful updates.
   - **Create:** dispatch `epic-agent` to author `specs/epics/<EPIC-ISSUE-ID>/` on
     `epic/<name>`, open its review PR, and link it from Linear. Required documents are
-    `SPEC.md`, `DECISIONS.md`, `BUSINESS-RULES.md`, `PLAN.md`, `DOCS.md`, plus conditional
-    `EVOLUTION.md` and owned authored artifacts. The set always includes the **closure
+    `SPEC.md` and `DECISIONS.md`, plus owned authored artifacts. The set always includes the **closure
     issue**, filed by `epic-agent` and blocked by every other child
     ([`orchestration.md`](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa)).
     Refuse the objective gate on a set without one. On resume, an epic that has none gets
@@ -780,6 +765,12 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
      needs no audit; list it as cleared by that spec. Two or more additions to one job always
      get the audit, because no single spec saw both.
 
+  4. **Records the count** in the epic's ledger row as `ways per job: <job> N→M` (ways
+     before the epic, then after). It covers every job named in step 2, and every job the
+     merged diffs removed or folded an entry from, so a cleanup shows up as a fall. Counts come
+     from the audit's surface map where an audit ran. For a job cleared by a spec, they come
+     from that spec's question-7 count.
+
   The lessons PR body **lists every addition it considered and the job it named**, even when
   no audit ran. `job audit: none grew` alone can't be told from "didn't look", so it is only
   valid under that list. The job audit runs whether or not the grounding proposal below is
@@ -804,6 +795,12 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   `lessons: <PR#> [proposal skipped: <why>]` to the epic record — the same token the coordinator
   state uses — and report it, so EPIC_WRAP completes on a PR that exists rather than waiting on
   one that never opens.
+- **Analyse the epic.** Once the lessons worker returns, dispatch **one bounded sub-agent**
+  (Opus) to run [`analysis`](../analysis/SKILL.md) at **wrap altitude**, with the epic issue,
+  the retained set, the merged child specs and impl PRs, and the lessons PR. Record
+  `analysis: <comment link> [N filed]` and surface the verdict in the wrap report. **It never
+  gates the wrap and never reopens the epic.**
+
 - **Polish the docs.** Each issue edited the docs in isolation, so the corpus accretes the same
   way code does — the same concept re-explained across pages, guides swollen into walls of text,
   navigation that stopped cohering. At epic wrap, once the batch's impl PRs have merged, dispatch
@@ -865,6 +862,8 @@ Then decide whether it joins the epic:
 belongs under the epic: the closure worker files it through `issue-manager` with the epic as
 parent and a blocks relation to the closure issue, and it is admitted like any other row (over
 the cap it queues, it is never left out). Its merge is what lets the next closure run start.
+A check another epic's merge only made stale is not one: the closure worker updates it and
+re-grades it in the same run.
 **Every other admitted child blocks the closure issue too.** On the wake that first sees a new
 child (from intake or discovery), write its blocks relation to the closure issue: one Linear call,
 like a status mirror. When the owner drops a closure finding, remove that relation in the same
@@ -898,8 +897,7 @@ never asks for the pass at all, which is correct.
 is already sound; aligning a good spec to a still-wrong one spreads the flaw. So this pass
 runs only when **both** hold:
 
-1. Every planned spec has a human-approved revision (open or merged), with its required
-   documentation draft and applicable evolution, and
+1. Every planned spec has a human-approved revision (open or merged), and
 2. **You have approved running the cross-spec pass.** Surface "all N specs are
    approved — run the cross-spec coherence pass?" and wait. It does not run
    automatically.
@@ -1001,8 +999,10 @@ step. So:
   wiring *is* observable and must be proven through `fsdev run`) — or a genuine
   inference-credential failure.
 - **The epic's goal is proven by its closure issue, and nothing else.** Every child passing its
-  own goal check is not the epic passing. The closure issue's QA run on one `main` commit is,
-  and it stays open until every bug it found is fixed and retested by a later run
+  own goal check is not the epic passing. The closure issue's QA run on one pinned `main` commit
+  is, and it stays open until every bug it found is fixed and retested by a later run, which
+  re-grades the failed checks, the checks whose subject changed and any check whose file was
+  rebuilt, and carries the rest forward
   ([`orchestration.md`](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa)).
   Never wrap over an open closure issue, and never close it on a run that filed a finding.
 - **Stop before implementation merge**, per issue. Spec merge follows its separate approved-head/checks gate; implementation merges remain human-controlled.

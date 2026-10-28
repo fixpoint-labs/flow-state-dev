@@ -789,7 +789,7 @@ function mapToProviderSearchTool(
  * provider-reported model id from the AI SDK response.
  */
 export interface WrapAiSdkModelIdentityHints {
-  /** The framework's requested model string (e.g. `openai/gpt-5.5`). */
+  /** The framework's requested model string (e.g. `openai/gpt-6.1-sol`). */
   requested?: string;
   /** Gateway name when the model was routed through a gateway. */
   gateway?: string;
@@ -797,7 +797,7 @@ export interface WrapAiSdkModelIdentityHints {
 
 /**
  * Wraps an AI SDK language model instance into a framework GeneratorModel.
- * Use this when you already have a resolved model (e.g. `openai("gpt-5")`)
+ * Use this when you already have a resolved model (e.g. `openai("gpt-6.1-sol")`)
  * and want to pass it directly as a generator's `model` config.
  *
  * Identity hints (`requested`, `gateway`) thread through so that

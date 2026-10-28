@@ -20,7 +20,7 @@
  *   delegate actions take no target, so nothing else writes a record with one.
  *   An open made in the coordinator's own turn, with its `openWorkstream`
  *   tool, writes the record in that turn instead
- *   ({@link changeWorkstreamRecordHere}), so the hand-off that follows finds it.
+ *   ({@link changeWorkstreamRecordHere}), so the dispatch that follows finds it.
  *
  * A post reads its delegates from the session's state only, never from the
  * entries. A delivery to a record goes into the workstream's own session: the
@@ -48,20 +48,17 @@ import {
 } from "../delegates/delegate-list";
 import { PROJECT_STATE_KEY } from "../workers/keys";
 import { workerConfigOf } from "../workers/verified-worker";
+import { delegateDefaultsOf, withRoster } from "../delegates/worker-delegates";
+import type { WorkerInstallation } from "../workers/installation";
 import type { ProjectAddress } from "./collections";
 import { PROJECT_ROW_RESOURCES, workstreamsAt, type ResourcesContext } from "./project-address";
 import { DONE_STATUS } from "./project-progress";
 import { projectEntries, readProjectAt, readProjectOutputSchema } from "./project-read";
 import { ProjectRefusedError } from "./project-refusal";
-import { WORKSTREAM_RESOURCES, workstreamEntryKey, workstreamEntrySchema } from "./workstream-collections";
+import { WORKSTREAM_RESOURCES, workstreamEntryKey, workstreamEntrySchema, workstreamViewSchema } from "./workstream-collections";
 import { parseProjectRef, parseWorkstreamRef, workstreamRef } from "./workstream-ref";
 
-/**
- * The coordinator's internal entry an entry path dispatches into the user's
- * coordinator session, to add or remove one workstream's record. **Pinned**:
- * the workstream writes name it.
- */
-export const WORKSTREAM_DELEGATE_ACTION = "changeWorkstreamDelegate";
+export { WORKSTREAM_DELEGATE_ACTION } from "../coordinator/coordinator-keys";
 
 /** What a workstream's entry path hands its coordinator: the change, and the record. */
 export const workstreamDelegateChangeSchema = z
@@ -86,6 +83,29 @@ type CoordinatorContext = ResourcesContext & {
 export function linkedProjectOf(state: unknown): ProjectAddress | undefined {
   const ref = (state as Record<string, unknown> | undefined)?.[PROJECT_STATE_KEY];
   return typeof ref === "string" ? parseProjectRef(ref) : undefined;
+}
+
+/**
+ * The project a project write acts on: the one it names, or, left out, the
+ * one its conversation is linked to. A conversation linked to a project
+ * writes only that project, so a project coordinator never changes another.
+ *
+ * @param doing What the write does, for its refusals, such as "open workstreams".
+ * @throws `no-such-project` when it names none and is linked to none; `other-project` when it names another.
+ */
+export function projectOfWrite(state: unknown, named: ProjectAddress | undefined, doing: string): ProjectAddress {
+  const linked = linkedProjectOf(state);
+  if (named === undefined) {
+    if (linked === undefined) throw new ProjectRefusedError("no-such-project", `name the project to ${doing} in.`);
+    return linked;
+  }
+  if (linked !== undefined && (linked.visibility !== named.visibility || linked.id !== named.id)) {
+    throw new ProjectRefusedError(
+      "other-project",
+      `this conversation is project "${linked.id}"'s; it may ${doing} only there, not in "${named.id}".`
+    );
+  }
+  return named;
 }
 
 /** The session's user: a workstream's owner, when it is theirs. */
@@ -210,23 +230,25 @@ async function applyWorkstreamRecord(
 /**
  * Change one workstream's record on this session, the owner's project
  * coordinator, in this turn (BR-38): an open made from the coordinator's own
- * turn hands the ask to the workstream next, in the same turn, and a dispatch
+ * turn hands the request to the workstream next, in the same turn, and a dispatch
  * into this session would land only after the turn ends. The same mutation
  * the internal entry runs, with the defaults of the worker this turn loaded;
  * the open already checked that the lead is on the user's roster and can lead.
  *
  * @param ctx A block's context in the coordinator's turn, declaring the workstream entries.
+ * @param installation The installation the coordinator is on: `delegates: all`
+ *   reads its roster, as the coordinator's own defaults do.
  */
 export async function changeWorkstreamRecordHere(
   ctx: CoordinatorContext & { readonly session: Parameters<typeof changeDelegates>[0] },
-  change: WorkstreamDelegateChange
+  change: WorkstreamDelegateChange,
+  installation: WorkerInstallation
 ): Promise<void> {
-  const config = workerConfigOf(ctx) as { delegates?: unknown; fallback?: unknown };
+  const config = workerConfigOf(ctx) as Record<string, unknown>;
   const state = ctx.session.state as Readonly<Record<string, unknown>>;
   const records = state[DELEGATES_STATE] == null ? await workstreamDelegateSeed(ctx) : undefined;
   const defaults: DelegateDefaults = {
-    delegates: Array.isArray(config.delegates) ? (config.delegates as string[]) : [],
-    ...(typeof config.fallback === "string" ? { fallback: config.fallback } : {}),
+    ...(await withRoster(installation, ctx as never, delegateDefaultsOf(config))),
     ...(records === undefined ? {} : { records })
   };
   await applyWorkstreamRecord(
@@ -239,23 +261,29 @@ export async function changeWorkstreamRecordHere(
 
 /**
  * A project coordinator's `readProject` tool: the project its session is
- * linked to, every workstream's entry and the progress worked out from them.
+ * linked to, each workstream marked `yours` when the session's user owns it.
+ * The model sees owners only as user ids, and never its user's own, so without
+ * the mark it can't tell its user's workstream from another member's.
  */
 const readLinkedProject = handler({
   name: "readProject",
   description:
     "Read the project this conversation is about: its title and brief, every workstream in it (whose it is, " +
-    "who leads it, its status, due date and objectives, and when it was last updated), and its progress. " +
-    "Answer how the project is going from this, never from memory.",
+    "with `yours: true` on the user's own, who leads it, its status, due date and objectives, and when it was " +
+    "last updated), and its progress. Answer how the project is going from this, never from memory.",
   inputSchema: z.object({}).strict(),
-  outputSchema: readProjectOutputSchema,
+  outputSchema: readProjectOutputSchema.extend({
+    workstreams: z.array(workstreamViewSchema.extend({ yours: z.boolean() }))
+  }),
   resources: { ...PROJECT_ROW_RESOURCES, ...WORKSTREAM_RESOURCES },
   execute: async (_input, ctx) => {
     const project = linkedProjectOf(ctx.session.state);
     if (project === undefined) {
       throw new ProjectRefusedError("no-such-project", "this conversation is linked to no project.");
     }
-    return readProjectAt(ctx, project);
+    const user = userOf(ctx);
+    const read = await readProjectAt(ctx, project);
+    return { ...read, workstreams: read.workstreams.map((workstream) => ({ ...workstream, yours: workstream.owner === user })) };
   }
 });
 
@@ -264,6 +292,7 @@ const readLinkedProject = handler({
  * agent catalog the coordinator flow is built with
  * (`defineCoordinatorFlow({ agent: { catalog } })`), and list `readProject`
  * in the project coordinator's `tools:`. Handing work to a workstream is the
- * coordinator's own `handOff`, by the workstream's delegate record.
+ * coordinator's own `createTask` with the routing settings, naming the
+ * workstream's delegate record by its `target`.
  */
 export const projectCoordinatorTools = { readProject: readLinkedProject } as const;

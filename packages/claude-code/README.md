@@ -39,7 +39,7 @@ import { createClaudeCodeAgentCapability } from "@flow-state-dev/claude-code/sdk
 
 const orchestrator = generator({
   name: "orchestrator",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   uses: [createClaudeCodeAgentCapability()],
 });
 ```
@@ -63,7 +63,7 @@ claudeCodeAgent({ detached: true });
 
 Nothing is declared, read, or written, and the SDK is handed no `resume`, so each
 run starts fresh. Use it when the agent runs as a task-board worker in a child
-session: rows may share that session, so the board refuses a hand-off whose block
+session: rows may share that session, so the board refuses a dispatch whose block
 declares session state. The run's own history is the child session's item stream
 instead.
 
@@ -181,6 +181,10 @@ claudeCodeAgent({
     enabled: true,
     filesystem: { allowWrite: [await checkoutFor(ctx)] },
   }),
+  // Tools this process serves to the run, grouped by server: a value, or a resolver per run.
+  mcpTools: async (ctx) => ({
+    tracker: { tools: await trackerToolsFor(ctx), close: async () => {} },
+  }),
   // Capabilities installed on the block, same slot any other block takes.
   uses: [myCapability],
   // Runs after the block threw, with the error. It does not swallow it — the
@@ -205,6 +209,19 @@ connection string in it, readable by any shell command the model runs. Setting
 `harnessEnv({ pass: [...] })` from `@flow-state-dev/core` is the way to hand the
 run only what it needs. Nothing is passed unless it is named, `PATH` and `HOME`
 included, and a named variable that is unset is left out.
+
+**`mcpTools` gives the run tools your process serves.** Each entry becomes an MCP
+server inside your process, named by its key, and the run calls its tools as
+`mcp__tracker__…`. Each tool is a name, a description, a JSON Schema for its
+input and a `call` function. The run never sees where a tool's work happens or
+what credential it uses: the option can't carry an address or headers. Set it,
+even to `{}`, and it is the run's whole MCP set: no servers from settings files
+or your claude.ai connectors. The tools are allowed without asking; name one in
+`disallowedTools` to keep it out. A resolver gets the run's context only, like
+`cwd`. Each `close` is called when the run ends. Leave it unset and nothing
+changes. If the run still reports a server it wasn't handed, its session says
+so. A coding run on a Workforce project gets its project's servers this way,
+through `projectMcpTools` from `@flow-state-dev/workforce`.
 
 **`allowWrite` is not a fence.** The SDK documents it as *additional* paths to
 allow writing, merged with the paths that `Edit(...)` permission rules already
@@ -350,8 +367,8 @@ resource collections and writes into them as it goes:
 | Accessor | One entry per |
 |----------|---------------|
 | `observed-file-ops` | path the run's file-writing/editing tools touched — `lastKind`, `outcome` (`pending`/`applied`/`failed`), `lastTouchedAt`, `appliedCount`. Paths, never contents |
-| `observed-plan` | to-do item the run kept — `title`, `status`, `previousStatus`, `lastOutcome` |
-| `observed-plan-list` | run whose plan could not be written in full — `status: "incomplete"` and the `reason`. Written only when a plan entry fails to write |
+| `observed-plan` | to-do item the conversation kept — `title`, `status`, `previousStatus`, `lastOutcome`, and `requestId`, the request that last changed it |
+| `observed-plan-list` | conversation whose plan could not be written in full — `status: "incomplete"` and the `reason`, written only when a plan entry fails to write, and kept for the rest of the conversation; plus one pointer per run, whose `conversation` names the namespace the run's plan is in |
 | `observed-gaps` | mutation the recorder understood and could not record — `kind` (`file`/`plan`/`run`) says which record it stands in for, plus the reason and the raw path |
 
 The `observed-plan` shape and its `observed-plan-list` marker are defined in
@@ -368,15 +385,25 @@ the same one the `claude` CLI uses. To add instructions to it, use
 `systemPrompt: { type: "preset", preset: "claude_code", append: "…" }`. A plain
 string replaces it, and `""` starts the run with no system prompt.
 
-The plan half fills only when the run is offered Claude Code's to-do tools
-(`TaskCreate`, `TaskUpdate`) and the agent chooses to use them. Neither the
-default prompt nor `recordWork` makes it. On newer models Claude Code switches
-those tools off unless they are named in `allowedTools`, and even when they are
-offered the agent often works without a list. An empty `observed-plan` means the
+The plan half fills only when the agent uses Claude Code's to-do tools
+(`TaskCreate`, `TaskUpdate`, `TaskGet`, `TaskList`). Every run is offered them:
+on newer models Claude Code switches them off unless they are named in
+`allowedTools`, so the block adds them to whatever list you pass. They ask no
+permission, so naming them allows nothing else. A run with
+`permissionMode: "bypassPermissions"` also gets Claude Code's search tools,
+`Grep` and `Glob`, which it likewise offers only when named. In other modes
+they're left out, because naming them would approve searches outside the
+working directory without asking; name them yourself if you want that. To keep
+a run from any of these, list them in `disallowedTools`. Neither the default prompt nor `recordWork` makes
+the agent use them, and it often works without a list. An empty `observed-plan` means the
 run kept no list; it is not a recording failure.
 
-Entries are keyed as `<requestId>/<invocation>`, so a session reused across runs —
-and a request that runs the agent more than once — both answer per run.
+File-operation and gap entries are keyed as `<requestId>/<invocation>`, so a session
+reused across runs — and a request that runs the agent more than once — both answer per
+run. Plan entries are keyed by conversation, as `conversation/<Claude Code session id>/<task id>`,
+so a later turn's `TaskUpdate` keeps the title its earlier `TaskCreate` wrote. Each run writes
+its pointer under `<requestId>/<invocation>` once the session id is known; read a request's
+plan through it with core's `readPlanTarget`.
 All four declare client state reads, so
 `GET /sessions/:id/resources/observed-file-ops?topicPrefix=observed-file-ops/<requestId>/`
 returns them; each row's payload is on `clientData`. Follow `nextCursor` — the
@@ -417,7 +444,7 @@ const workspace = createWorkspaceAgentCapability({
 
 generator({
   name: "coder",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "Use the workspace agent to make the change.",
   uses: [workspace],
 });
@@ -479,6 +506,18 @@ doesn't silently take the relocation ones away. `contain: false` turns all
 three off, which is what a trusted-workspace deployment wants and what nothing
 else should.
 
+### Choosing the model
+
+`model` takes a Claude model id, or a resolver asked once per run like `cwd` and
+`resume`, so one block can run a different model per session; a resumed
+conversation is handed it too. `null` leaves Claude Code on its default.
+
+`listClaudeModels({ env })` asks Claude Code which models it offers, with no
+message and no model turn, and resolves to `{ status: "models", models }` or
+`{ status: "failed", reason }`. Each model carries the concrete id its alias
+resolves to (`sonnet`, the default row), its name, and whether it is the default,
+so a stored id keeps naming one model after the alias moves on.
+
 ### Checking for a credential before you start
 
 A run with no credential fails on its first turn, which for a server can be long after it started. `probeClaudeAccount` asks Claude Code up front whether it has something to run on: an API key, or a sign-in under the home folder (the keychain on macOS). It sends no message, so it costs no model turn, and takes about half a second.
@@ -496,11 +535,17 @@ Pass the same `env` you give `claudeCodeAgent`, so the probe sees the credential
 
 | `status` | When | Also carries |
 |----------|------|--------------|
-| `"account"` | Claude Code named where its credential comes from | `apiKeySource` and/or `tokenSource`, as the SDK reports them |
+| `"account"` | Claude Code named where its credential comes from | `apiKeySource` and/or `tokenSource`, as the SDK reports them; a subscription sign-in names neither and comes back as `email` and `subscriptionType` |
 | `"none"` | No credential, no answer within `timeoutMs` (default 10 000 ms), or Claude Code couldn't be asked | `reason`, a sentence you can show the user |
 | `"sdk-missing"` | `@anthropic-ai/claude-agent-sdk` couldn't be loaded | `reason`, with the load error |
 
 It never throws for any of these. It checks where a credential would come from, not that it works: a key that is set but rejected still reads as `"account"`, and fails on the run's first turn.
+
+### Reading usage left
+
+On a subscription, Claude Code reports its limit windows while it runs. `claudeCodeAgent({ onUsage })` hands each one to your `HarnessUsageHook` as a `HarnessUsageReport` (`harness: "claude-code"`, the `window`, `observedAt`, `runStartedAt`, `accountId`), at least once per run. The window names the limit that binds (`five_hour` is 300 minutes, the `seven_day` family 10 080; other ids have `minutes: null`), its `resetsAt` and a `level` (`ok`, `warning`, `reached`). `usedPercent` is set only near a limit and is otherwise `null`. An API-key run reports nothing. A throw from `onUsage` is logged and the run carries on. It works on in-session blocks too.
+
+`readClaudeUsage({ env, timeoutMs?, signal? })` is a `HarnessUsageReader` for who is signed in: `windows` with `plan`, `accountId` and no windows (those come from runs), `api-key`, `signed-out`, or `unavailable` when the SDK isn't installed or Claude Code didn't answer (which keeps a stored reading). It never throws. `usageWindowOf(info)` maps one raw `rate_limit_event` payload to a window, and `CLAUDE_CODE_HARNESS` is `"claude-code"`. Nothing here reads a credentials file, calls a usage endpoint, or uses the SDK's experimental usage call. Guide: [reading usage left](https://flow-state.dev/docs/tools/claude-code-sdk#reading-usage-left).
 
 ## Running tests
 

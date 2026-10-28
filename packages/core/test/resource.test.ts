@@ -55,21 +55,24 @@ describe("defineResource", () => {
   });
 
   it("throws when render is used with contentTemplate", () => {
-    expect(() => defineResource({
+    // Built outside expect(), where an untyped callback still infers.
+    const define = () => defineResource({
       scope: "session",
       stateSchema: z.object({}),
       contentTemplate: stubTemplate,
       render: (c) => c,
-    })).toThrow("rejects render with contentTemplate");
+    });
+    expect(define).toThrow("rejects render with contentTemplate");
   });
 
   it("throws when render is used with contentTemplateRef", () => {
-    expect(() => defineResource({
+    const define = () => defineResource({
       scope: "session",
       stateSchema: z.object({}),
       contentTemplateRef: "templates/analyst",
       render: (c) => c,
-    })).toThrow("rejects render with contentTemplate");
+    });
+    expect(define).toThrow("rejects render with contentTemplate");
   });
 
   it("accepts a single contentTemplate source", () => {

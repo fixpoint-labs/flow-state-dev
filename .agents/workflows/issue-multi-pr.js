@@ -6,10 +6,11 @@
  * wraps the body in an async function, which is why the top-level `return` below is legal.
  * Contract: `docs/contributing/orchestration.md` → "The workflow-script contract".
  *
- * When a spec declares a PR plan (`PLAN.md → Sequence`), the issue's implementation is a
- * DAG of sub-PRs rather than one PR. The ready set, the base each sub-PR takes, the rebase a
- * merged dependency forces, and the assembled end-to-end goal are pure procedure — canonical
- * in `issue-lifecycle` § "Multi-PR issues" and `orchestration.md` § "Worktree branching".
+ * When an issue has a PR plan (the implementer's split, written at implementation start, or
+ * the one an older retained spec carries), its implementation is a DAG of sub-PRs rather than
+ * one PR. The ready set, the base each sub-PR takes, the rebase a merged dependency forces,
+ * and the assembled end-to-end goal are pure procedure — canonical in `issue-lifecycle`
+ * § "Multi-PR issues" and `orchestration.md` § "Worktree branching".
  *
  * NOTE — deliberate twin of framework code. `classify`/`readySet` below re-derive what
  * `packages/orchestration` already does for tasks (`topologicalDispatcher`,
@@ -35,7 +36,7 @@ export const meta = {
   description:
     "Advance a multi-PR issue's DAG by one step: derive the ready set, build independents in parallel worktrees, stack dependents on their dependency, rebase what a merge has unstacked, and run the assembled end-to-end goal once every sub-PR has merged.",
   whenToUse:
-    'Dispatched by issue-lifecycle (or by an epic issue-worker) when the spec declares a PR plan. Not for single-PR issues — those are a one-node plan and need no DAG step.',
+    "Dispatched by issue-lifecycle (or by an epic issue-worker) when the issue has a PR plan (the implementer's split, or an older spec's). Not for single-PR issues — those are a one-node plan and need no DAG step.",
   phases: [
     { title: 'Build', detail: 'one worktree worker per ready sub-PR' },
     { title: 'Assemble', detail: 'end-to-end goal on the fully-merged result' },
@@ -59,7 +60,7 @@ const TERMINAL = 'merged'
 /**
  * A node's dependency edges, under either documented spelling.
  *
- * `issue-spec`'s PR-plan table and `issue-lifecycle`'s cache row both write `depends_on`; this script
+ * A PR-plan table and `issue-lifecycle`'s cache row both write `depends_on`; this script
  * read only `dependsOn` and nothing converted. A coordinator following its own documented cache format
  * hands over rows whose edges read as EMPTY — which `readySet` treats as "all deps merged", so a
  * dependent is built straight onto `origin/main` alongside the prerequisite it declared. Twin of
@@ -691,6 +692,7 @@ const built = await parallel(
             ? `Fetch origin/main first — the checkout you inherited drifts behind as sibling PRs merge.\n`
             : stackedOpenNote(item)) +
           resolutionNote(item.node.id) +
+          (item.node.deliverables ? `Deliverables: ${item.node.deliverables}\n` : '') +
           `Run issue-implement scoped to THIS sub-PR's deliverables only: implement the slice, run \`review\`, open the sub-PR. Stop before merge. Do not prompt the user.`,
       {
         label: `${item.action}:${item.node.id}`,

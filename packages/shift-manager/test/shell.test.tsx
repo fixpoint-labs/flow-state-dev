@@ -3,34 +3,45 @@
  * The shell against a real Lab, in a DOM (V2, V3's second path, V6; BR-14,
  * BR-28). What the screen draws is compared with what the Lab's routes hold.
  */
+import type { Client } from "@flow-state-dev/client";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
 import { bootTheme } from "../src/lib/theme";
-import { createLabClients } from "../src/lib/connection";
+import { connect } from "../src/lib/connection";
 import { ASKER_GATED_LINE, ASKER_FLOW, ASKER_REFUSED_LINE, ASKER_SLOW_LINE, heardLine, holdSlowLines, startProjectLine } from "./fixtures/ask-lab/asker.mts";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";
+import { deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
+
+/** The user's conversation with the Shift Coordinator: the session at its derived address, the one the view shows. */
+const COS_CONVERSATION = await deriveWorkerSessionId({
+  userId: ASK_LAB_USER_ID,
+  orgId: DEFAULT_ORG_ID,
+  flow: ASKER_FLOW,
+  criteria: { worker: "ops.chief-of-staff" },
+});
 
 /**
  * Run a worker's action as a user would: in a session of the asker flow's one
  * copy, opened naming the worker's worker first.
  */
 async function workerAction(
-  clients: ReturnType<typeof createLabClients>,
+  client: Client,
   workerId: string,
   action: string,
   input: unknown,
   sessionId: string,
 ) {
-  await clients.sessions
-    .createSession({ flowKind: ASKER_FLOW, userId: clients.userId, sessionId, state: { workerId: workerId } })
+  await client
+    .flow(ASKER_FLOW)
+    .createSession({ sessionId, state: { workerId: workerId } })
     .catch((error: unknown) => {
       if ((error as { status?: number }).status !== 409) throw error;
     });
-  return clients.actions(ASKER_FLOW).sendAction(action, input, { sessionId });
+  return client.flow(ASKER_FLOW).send(action, input, { sessionId });
 }
 
 const served: ServedLab[] = [];
@@ -67,9 +78,10 @@ async function openApp(path: string, options: Parameters<typeof openAskLab>[0] =
   served.push(lab);
   // The page is served from the Lab's own origin, as the `shift-manager` command serves it.
   (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}${path}`);
-  const clients = createLabClients({ userId: ASK_LAB_USER_ID, ...(bearerToken === undefined ? {} : { bearerToken }) });
-  render(<App clients={clients} />);
-  return { lab, clients };
+  const connection = { userId: ASK_LAB_USER_ID, ...(bearerToken === undefined ? {} : { bearerToken }) };
+  const client = connect(connection);
+  render(<App connection={connection} />);
+  return { lab, client };
 }
 
 describe("the sidebar's mark", () => {
@@ -80,7 +92,7 @@ describe("the sidebar's mark", () => {
     // Storage that keeps nothing and a clock at 21:00: the page opens on Night.
     const look = bootTheme(undefined, { localStorage: { getItem: () => null, setItem: () => {} } } as unknown as Window, document.documentElement, () => new Date(2026, 9, 6, 21, 0));
     try {
-      render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} look={look} />);
+      render(<App connection={{ userId: ASK_LAB_USER_ID }} look={look} />);
       const mark = await screen.findByTestId("theme-mark");
       // The sidebar can commit before its passive effects run, and the mark
       // subscribes to the look in one. Flush them, so the first click can't
@@ -171,13 +183,14 @@ describe("a Lab booted without its inventory (V3, BR-4)", () => {
     // Projects are read on their own: an unread inventory leaves PROJECTS whole.
     expect(screen.queryByTestId("projects-failure")).toBeNull();
     expect(screen.getByTestId("nav-tasks")).toBeTruthy();
-    expect(screen.getByTestId("jump-to")).toBeTruthy();
+    expect(screen.getByTestId("jump-tip").textContent).toMatch(/⌘K/);
+    expect(screen.queryByTestId("jump-to")).toBeNull();
   });
 
-  it("a Lab whose flows declare no inventory still names the organization it binds the user to", async () => {
+  it("a Lab whose flows declare no inventory shows no organization selector", async () => {
     await openApp("/inbox", { inventoryDeclared: false });
     expect((await screen.findByTestId("teams-failure")).textContent).toMatch(/without opening its inventory/);
-    expect(screen.getByTestId("org-switcher").textContent).toContain(DEFAULT_ORG_ID);
+    expect(screen.queryByTestId("org-switcher")).toBeNull();
     expect(document.body.textContent).not.toMatch(/Unknown organization/);
   });
 });
@@ -185,8 +198,8 @@ describe("a Lab booted without its inventory (V3, BR-4)", () => {
 describe("empty states (BR-14, BR-28)", () => {
   it("Inbox and Tasks with nothing say so in a sentence", async () => {
     await openApp("/inbox");
-    // v2's sentence, with what is still going: nothing runs and nobody is on call in this Lab.
-    expect((await screen.findByTestId("inbox-empty")).textContent).toBe("Nothing needs you. 0 sessions are still running and 0 workers are on call.");
+    // v2's sentence, with what is still going: nothing runs in this Lab.
+    expect((await screen.findByTestId("inbox-empty")).textContent).toBe("Nothing needs you. 0 sessions are still running.");
     act(() => fireEvent.click(screen.getByTestId("nav-tasks")));
     expect((await screen.findByTestId("tasks-empty")).textContent).toMatch(/No attached board holds a row/);
   });
@@ -197,25 +210,25 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
   async function openOnAsk(options: Parameters<typeof openAskLab>[0] = {}, beforeRender?: () => void) {
     const lab = await serveLab((await openAskLab(options)).flowState);
     served.push(lab);
-    const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
-    await workerAction(clients, "ops.asker", "ask", { what: "ship it" }, "s_ops_asker");
+    const client = connect({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
+    await workerAction(client, "ops.asker", "ask", { what: "ship it" }, "s_ops_asker");
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/inbox`);
     beforeRender?.();
-    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
+    render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
     const item = await screen.findByTestId("inbox-item");
     act(() => fireEvent.click(item));
     await screen.findByTestId("inbox-reply");
-    return { clients };
+    return { client };
   }
 
   /** The user lines a session holds. */
-  async function userLines(clients: ReturnType<typeof createLabClients>, sessionId: string): Promise<string> {
-    const state = await clients.sessions.getSessionState(sessionId, { includeItems: true, itemTypes: ["message"] });
+  async function userLines(client: Client, sessionId: string): Promise<string> {
+    const state = await client.sessions.state(sessionId, { includeItems: true, itemTypes: ["message"] });
     return JSON.stringify((state.items ?? []).filter((item) => (item as { role?: string }).role === "user"));
   }
 
   it("shows delivered only once the worker's session holds the line, through its door", async () => {
-    const { clients } = await openOnAsk();
+    const { client } = await openOnAsk();
     // The asker asks before doing anything, so its session holds no tool call before the ask.
     expect((await screen.findByTestId("inbox-from-session-none")).textContent).toBe("No tool call before this ask.");
     expect(screen.queryAllByTestId("inbox-reply-line")).toHaveLength(0);
@@ -236,7 +249,7 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
     release();
     await waitFor(() => expect(screen.getByTestId("inbox-reply-status").getAttribute("data-state")).toBe("delivered"));
     expect(input.value).toBe("");
-    expect(await userLines(clients, "s_ops_asker")).toContain("a reply line");
+    expect(await userLines(client, "s_ops_asker")).toContain("a reply line");
     // Read back from the session, the line is drawn under the ask as the user's reply.
     await waitFor(() => expect(screen.getAllByTestId("inbox-reply-line-text").map((el) => el.textContent)).toEqual(["a reply line"]));
     expect(screen.getByTestId("inbox-reply-line-label").textContent).toMatch(/^You · \d\d:\d\d · sent into s_ops_asker$/);
@@ -246,7 +259,7 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
 
   // FIX-1773: the same for a worker that isn't the coordinator.
   it("clears a reply into the conversation under the ask as soon as the worker's session holds it, before the worker answers", async () => {
-    const { clients } = await openOnAsk();
+    const { client } = await openOnAsk();
     const input = screen.getByTestId("inbox-reply-input") as HTMLInputElement;
     expect(input.getAttribute("aria-label")).toBe("Reply to ops.asker");
     const release = holdSlowLines();
@@ -257,7 +270,7 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
       await waitFor(() => expect(screen.getAllByTestId("inbox-reply-line-text").map((el) => el.textContent)).toEqual([ASKER_SLOW_LINE]), { timeout: 5_000 });
       expect(screen.getByTestId("inbox-reply-status").getAttribute("data-state")).toBe("held");
       // The worker hasn't answered: its session holds no reply yet.
-      const state = await clients.sessions.getSessionState("s_ops_asker", { includeItems: true, itemTypes: ["message"] });
+      const state = await client.sessions.state("s_ops_asker", { includeItems: true, itemTypes: ["message"] });
       expect(JSON.stringify(state.items ?? [])).not.toContain(heardLine(ASKER_SLOW_LINE));
     } finally {
       release();
@@ -299,12 +312,12 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
   });
 
   it("says not sent, with Retry, when the line never reached the Lab", async () => {
-    const { clients } = await openOnAsk();
+    const { client } = await openOnAsk();
     const input = screen.getByTestId("inbox-reply-input") as HTMLTextAreaElement;
     const real = globalThis.fetch;
     let down = true;
     vi.spyOn(globalThis, "fetch").mockImplementation((i, init) =>
-      down && String(i instanceof Request ? i.url : i).includes("/actions/message")
+      down && String(i instanceof Request ? i.url : i).includes("/actions/respond")
         ? Promise.resolve(new Response(JSON.stringify({ error: "store offline" }), { status: 503 }))
         : real(i, init),
     );
@@ -315,11 +328,11 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
     down = false;
     act(() => fireEvent.click(screen.getByTestId("inbox-reply-retry")));
     await waitFor(() => expect(screen.getByTestId("inbox-reply-status").getAttribute("data-state")).toBe("delivered"));
-    expect(await userLines(clients, "s_ops_asker")).toContain("try again");
+    expect(await userLines(client, "s_ops_asker")).toContain("try again");
   });
 
   it("keeps the draft and offers no Retry when it can't confirm the line arrived", async () => {
-    const { clients } = await openOnAsk();
+    const { client } = await openOnAsk();
     const input = screen.getByTestId("inbox-reply-input") as HTMLTextAreaElement;
     const real = globalThis.fetch;
     // The door takes the line, then reading the session back fails.
@@ -336,7 +349,7 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
     // A resend here would put the line in the session twice.
     expect(screen.queryByTestId("inbox-reply-retry")).toBeNull();
     vi.restoreAllMocks();
-    expect(await userLines(clients, "s_ops_asker")).toContain("did it land");
+    expect(await userLines(client, "s_ops_asker")).toContain("did it land");
   });
 
   it("is disabled for a worker whose worker flow has no door, and Approve still answers (BR-22)", async () => {
@@ -348,18 +361,55 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
   });
 });
 
+describe("a titled ask in Inbox", () => {
+  it("is headed by its short title, with its message drawn as markdown body text under it", async () => {
+    const lab = await serveLab((await openAskLab()).flowState);
+    served.push(lab);
+    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/inbox`);
+    const client = connect({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
+    const detail = "Seen 2 times. File it?\n\n**Questions**\n\n- Should `runAction` retry?\n- Which team owns it?";
+    await workerAction(client, "ops.asker", "ask", { what: "ship it", detail }, "s_ops_asker");
+    render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
+
+    const item = await screen.findByTestId("inbox-item");
+    expect(within(item).getByTestId("inbox-item-question").textContent).toBe("Approve: ship it");
+    act(() => fireEvent.click(item));
+
+    expect((await screen.findByTestId("inbox-detail-title")).textContent).toBe("Approve: ship it");
+    const body = screen.getByTestId("inbox-detail-body");
+    expect([...body.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["Should runAction retry?", "Which team owns it?"]);
+    expect(body.querySelector("code")?.textContent).toBe("runAction");
+    expect(body.textContent).not.toContain("**");
+    // The card under it still answers the ask.
+    expect(within(screen.getByTestId("inbox-detail")).getByRole("button", { name: "Approve" })).toBeTruthy();
+  });
+
+  it("an ask with no title is headed by its message, with no body under it", async () => {
+    const lab = await serveLab((await openAskLab()).flowState);
+    served.push(lab);
+    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/inbox`);
+    const client = connect({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
+    await workerAction(client, "ops.asker", "ask", { what: "ship it" }, "s_ops_asker");
+    render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
+    const item = await screen.findByTestId("inbox-item");
+    act(() => fireEvent.click(item));
+    expect((await screen.findByTestId("inbox-detail-title")).textContent).toBe("Approve: ship it");
+    expect(screen.queryByTestId("inbox-detail-body")).toBeNull();
+  });
+});
+
 describe("Jump to a declared document (BR-10)", () => {
   it("finds the Lab's document by name and opens it read-only, with the file's body", async () => {
     const lab = await serveLab((await openAskLab()).flowState);
     served.push(lab);
-    const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
+    const client = connect({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
     // A worker session, before the page boots, makes a flow that serves the document listable.
-    await workerAction(clients, "ops.asker", "ask", { what: "ship it" }, "s_ops_asker");
+    await workerAction(client, "ops.asker", "ask", { what: "ship it" }, "s_ops_asker");
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/inbox`);
-    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
+    render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
 
-    const jump = await screen.findByTestId("jump-to");
-    act(() => fireEvent.click(jump));
+    await screen.findByTestId("jump-tip");
+    act(() => void fireEvent.keyDown(document.body, { key: "k", metaKey: true }));
     act(() => fireEvent.change(screen.getByTestId("jump-input"), { target: { value: "runbook" } }));
     const [result, ...rest] = await screen.findAllByTestId("jump-result");
     expect(rest).toEqual([]);
@@ -381,21 +431,21 @@ describe("Chief of Staff (FIX-1722)", () => {
   async function openCos(path: string, options: Parameters<typeof openAskLab>[0] = {}, asks = 0) {
     const lab = await serveLab((await openAskLab(options)).flowState);
     served.push(lab);
-    const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
+    const client = connect({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
     for (let i = 0; i < asks; i += 1) {
-      await workerAction(clients, "ops.asker", "ask", { what: `ship part ${i}` }, `s_ops_asker_${i}`);
+      await workerAction(client, "ops.asker", "ask", { what: `ship part ${i}` }, `s_ops_asker_${i}`);
     }
     setURL(`${lab.baseUrl}${path}`);
-    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
+    render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
     await screen.findByTestId("cos");
-    return { lab, clients };
+    return { lab, client };
   }
 
   /** The asks the store still holds pending, read through the Lab's routes. */
-  async function pendingInStore(clients: ReturnType<typeof createLabClients>, count: number): Promise<number> {
+  async function pendingInStore(client: Client, count: number): Promise<number> {
     let pending = 0;
     for (let i = 0; i < count; i += 1) {
-      const state = await clients.sessions.getSessionState(`s_ops_asker_${i}`, { includeItems: true, itemTypes: ["suspension", "suspension_resume"] });
+      const state = await client.sessions.state(`s_ops_asker_${i}`, { includeItems: true, itemTypes: ["suspension", "suspension_resume"] });
       const items = (state.items ?? []) as Array<{ type: string; suspensionId?: string }>;
       const resumed = new Set(items.filter((it) => it.type === "suspension_resume").map((it) => it.suspensionId));
       pending += items.filter((it) => it.type === "suspension" && !resumed.has(it.suspensionId)).length;
@@ -420,14 +470,14 @@ describe("Chief of Staff (FIX-1722)", () => {
     expect(screen.getByTestId("cos").textContent).not.toMatch(/chief of staff/i);
     cleanup();
     setURL(`${served[0]!.baseUrl}/no/such/place`);
-    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
+    render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
     await screen.findByTestId("cos");
   });
 
   it("Jump to finds it and opens it (BR-2)", async () => {
     await openCos("/");
     act(() => fireEvent.click(screen.getByTestId("nav-tasks")));
-    act(() => fireEvent.click(screen.getByTestId("jump-to")));
+    act(() => void fireEvent.keyDown(document.body, { key: "k", metaKey: true }));
     act(() => fireEvent.change(screen.getByTestId("jump-input"), { target: { value: "coordinator" } }));
     const [result, ...rest] = await screen.findAllByTestId("jump-result");
     expect(rest).toEqual([]);
@@ -438,7 +488,7 @@ describe("Chief of Staff (FIX-1722)", () => {
   });
 
   it("summarises what Inbox lists, and an ask answered there leaves the summary and Inbox together (BR-4 to BR-6)", async () => {
-    const { clients } = await openCos("/cos", {}, 2);
+    const { client } = await openCos("/cos", {}, 2);
     await waitFor(() => expect(screen.getByTestId("cos-needs-you").textContent).toBe("2"));
     expect(screen.getByTestId("nav-inbox-count").textContent).toBe("2");
     expect(screen.getAllByTestId("cos-ask")).toHaveLength(2);
@@ -449,7 +499,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     act(() => fireEvent.click(within(first).getByRole("button", { name: "Approve" })));
     await waitFor(() => expect(screen.getAllByTestId("cos-ask")).toHaveLength(1), { timeout: 5_000 });
     expect(screen.getByTestId("cos-needs-you").textContent).toBe("1");
-    expect(await pendingInStore(clients, 2)).toBe(1);
+    expect(await pendingInStore(client, 2)).toBe(1);
     act(() => fireEvent.click(screen.getByTestId("nav-inbox")));
     expect(await screen.findAllByTestId("inbox-item")).toHaveLength(1);
   });
@@ -460,11 +510,11 @@ describe("Chief of Staff (FIX-1722)", () => {
     expect(screen.getByTestId("cos-summary-running")).toBeTruthy();
   });
 
-  it("draws the workers on call in the rail (BR-19)", async () => {
+  it("draws no on-call list in the rail, even with a worker waiting on the user", async () => {
     await openCos("/cos", {}, 1);
     await waitFor(() => expect(screen.getByTestId("cos-needs-you").textContent).toBe("1"));
-    // ops.asker's pending ask puts it on call, by the rule Roster uses.
-    expect(screen.getAllByTestId("cos-on-call").map((el) => el.getAttribute("data-worker-id"))).toEqual(["ops.asker"]);
+    expect(screen.queryAllByTestId("cos-on-call")).toHaveLength(0);
+    expect(screen.getByTestId("cos-panel").textContent).not.toMatch(/on call/i);
   });
 
   it("names the missing worker in place of the conversation, with the summary still drawn (BR-11)", async () => {
@@ -479,11 +529,11 @@ describe("Chief of Staff (FIX-1722)", () => {
   });
 
   it("opens the conversation with the first line, shows delivered once the session holds it, and draws the worker's stored reply (BR-14 to BR-17)", async () => {
-    const { clients } = await openCos("/", { chiefOfStaff: true });
+    const { client } = await openCos("/", { chiefOfStaff: true });
     const conversation = await screen.findByTestId("cos-conversation");
     expect(conversation.getAttribute("data-worker-id")).toBe("ops.chief-of-staff");
     expect(conversation.textContent).not.toMatch(/chief of staff/i);
-    expect(screen.getByTestId("cos-conversation-empty")).toBeTruthy();
+    expect(await screen.findByTestId("cos-conversation-empty")).toBeTruthy();
 
     // Hold the door's request open: nothing may read delivered, or draw a reply, while it is.
     let release!: () => void;
@@ -506,10 +556,10 @@ describe("Chief of Staff (FIX-1722)", () => {
 
     // The session the door opened is the worker's, and holds the line and the reply drawn.
     const sessionId = screen.getByTestId("cos-conversation").getAttribute("data-session-id")!;
-    const opened = await clients.sessions.getSession(sessionId);
+    const opened = await client.sessions.get(sessionId);
     expect(opened.flowId).toBe(ASKER_FLOW);
     expect(opened.state?.workerId).toBe("ops.chief-of-staff");
-    const state = await clients.sessions.getSessionState(sessionId, { includeItems: true, itemTypes: ["message"] });
+    const state = await client.sessions.state(sessionId, { includeItems: true, itemTypes: ["message"] });
     const stored = (state.items ?? []) as Array<{ id: string; role?: string; content?: unknown }>;
     const reply = stored.find((item) => item.role === "assistant");
     expect(JSON.stringify(stored.find((item) => item.role === "user"))).toContain("what is running");
@@ -519,7 +569,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     // Back later: the same conversation.
     cleanup();
     setURL(`${served[0]!.baseUrl}/cos`);
-    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
+    render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
     await waitFor(() => expect(screen.getByTestId("cos-conversation").getAttribute("data-session-id")).toBe(sessionId));
     await waitFor(() => expect(screen.getAllByTestId("cos-item").map((el) => el.getAttribute("data-item-id"))).toContain(reply!.id));
   });
@@ -576,7 +626,7 @@ describe("Chief of Staff (FIX-1722)", () => {
   // A gated change (fire, retire) stops the worker's turn on the user's approval. The line
   // is delivered and the ask waits in Inbox: Retry would send it, and raise the ask, twice.
   it("reads a line whose turn stopped on an approval as delivered, pointing at Inbox, with no Retry", async () => {
-    const { clients } = await openCos("/", { chiefOfStaff: true });
+    const { client } = await openCos("/", { chiefOfStaff: true });
     expect((await screen.findByTestId("cos-summary-asks")).textContent).toBe("Nothing needs you.");
     const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: ASKER_GATED_LINE } });
@@ -591,7 +641,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     await waitFor(() => expect(screen.getByTestId("cos-summary-asks").textContent).not.toBe("Nothing needs you."), { timeout: 5_000 });
     // The session holds the line once, with the one ask it raised.
     const sessionId = screen.getByTestId("cos-conversation").getAttribute("data-session-id")!;
-    const state = await clients.sessions.getSessionState(sessionId, { includeItems: true, itemTypes: ["message", "suspension"] });
+    const state = await client.sessions.state(sessionId, { includeItems: true, itemTypes: ["message", "suspension"] });
     const items = (state.items ?? []) as Array<{ type: string; role?: string }>;
     expect(items.filter((item) => item.type === "message" && item.role === "user")).toHaveLength(1);
     expect(items.filter((item) => item.type === "suspension")).toHaveLength(1);
@@ -608,7 +658,7 @@ describe("Chief of Staff (FIX-1722)", () => {
       const url = String(i instanceof Request ? i.url : i);
       // The send's own read of the turn's suspended request fails, so it can't tell what the
       // turn stopped on; the refresh after it reads normally.
-      if (failing > 0 && /\/sessions\/conv_[^/]+\/requests/.test(url) && url.includes("include_items=true")) {
+      if (failing > 0 && /\/sessions\/wks_[^/]+\/requests/.test(url) && url.includes("include_items=true")) {
         failing -= 1;
         return new Response(JSON.stringify({ error: "store offline" }), { status: 503 });
       }
@@ -635,7 +685,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
       const url = String(i instanceof Request ? i.url : i);
       // The send's read of the turn's suspended request finds it no longer suspended.
-      if (emptying > 0 && /\/sessions\/conv_[^/]+\/requests/.test(url) && url.includes("include_items=true")) {
+      if (emptying > 0 && /\/sessions\/wks_[^/]+\/requests/.test(url) && url.includes("include_items=true")) {
         emptying -= 1;
         return new Response(JSON.stringify({ requests: [] }), {
           status: 200,
@@ -655,7 +705,7 @@ describe("Chief of Staff (FIX-1722)", () => {
   });
 
   it("keeps a refused first line's conversation, so the next line goes into the same session (BR-15)", async () => {
-    const { clients } = await openCos("/", { chiefOfStaff: true });
+    const { client } = await openCos("/", { chiefOfStaff: true });
     const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: ASKER_REFUSED_LINE } });
     fireEvent.click(screen.getByTestId("cos-composer-send"));
@@ -668,15 +718,15 @@ describe("Chief of Staff (FIX-1722)", () => {
     fireEvent.click(screen.getByTestId("cos-composer-send"));
     await waitFor(() => expect(screen.getByTestId("cos-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
     expect(screen.getByTestId("cos-conversation").getAttribute("data-session-id")).toBe(first);
-    const direct = (await clients.sessions.listSessions({ userId: ASK_LAB_USER_ID })).filter((s) => (s as { state?: { workerId?: string } }).state?.workerId === "ops.chief-of-staff" && s.parentSessionId == null);
+    const direct = (await client.sessions.list({ userId: ASK_LAB_USER_ID })).filter((s) => (s as { state?: { workerId?: string } }).state?.workerId === "ops.chief-of-staff" && s.parentSessionId == null);
     expect(direct.map((s) => s.id)).toEqual([first]);
   });
 
   it("takes no line until the conversation has been read, and Retry keeps it shut until a read succeeds", async () => {
     const lab = await serveLab((await openAskLab({ chiefOfStaff: true })).flowState);
     served.push(lab);
-    const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
-    await workerAction(clients, "ops.chief-of-staff", "message", { message: "earlier" }, "s_cos_earlier");
+    const client = connect({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
+    await workerAction(client, "ops.chief-of-staff", "respond", { message: "earlier" }, COS_CONVERSATION);
     let release!: () => void;
     const held = new Promise<void>((r) => (release = r));
     let failing = false;
@@ -684,16 +734,18 @@ describe("Chief of Staff (FIX-1722)", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
       const url = String(i instanceof Request ? i.url : i);
       // The conversation's read, not the snapshot's ask read of the same session.
-      if (url.includes("/sessions/s_cos_earlier/state") && !url.includes("item_types=suspension")) {
+      if (url.includes(`/sessions/${COS_CONVERSATION}/state`) && !url.includes("item_types=suspension")) {
         await held;
         if (failing) return new Response(JSON.stringify({ error: "store offline" }), { status: 503 });
       }
       return real(i, init);
     });
     setURL(`${lab.baseUrl}/cos`);
-    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
+    render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
     const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
-    expect(screen.getByTestId("cos-conversation").getAttribute("data-session-id")).toBe("s_cos_earlier");
+    // The address is worked out before the read starts; the composer stays shut throughout.
+    expect(input.disabled).toBe(true);
+    await waitFor(() => expect(screen.getByTestId("cos-conversation").getAttribute("data-session-id")).toBe(COS_CONVERSATION));
     expect(input.disabled).toBe(true);
     failing = true;
     release();
@@ -709,36 +761,52 @@ describe("Chief of Staff (FIX-1722)", () => {
   it("draws an answered ask in the conversation as answered, not as waiting on the user", async () => {
     const lab = await serveLab((await openAskLab({ chiefOfStaff: true })).flowState);
     served.push(lab);
-    const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
+    const client = connect({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
     setURL(lab.baseUrl);
-    await workerAction(clients, "ops.chief-of-staff", "ask", { what: "ship it" }, "s_cos_asked");
+    await workerAction(client, "ops.chief-of-staff", "ask", { what: "ship it" }, COS_CONVERSATION);
     let suspension: { requestId: string; suspensionId: string } | undefined;
     await waitFor(async () => {
-      const state = await clients.sessions.getSessionState("s_cos_asked", { includeItems: true, itemTypes: ["suspension"] });
+      const state = await client.sessions.state(COS_CONVERSATION, { includeItems: true, itemTypes: ["suspension"] });
       suspension = (state.items ?? [])[0] as typeof suspension;
       expect(suspension).toBeDefined();
     });
-    await clients.recovery.resumeSuspension(ASKER_FLOW, suspension!.requestId, {
+    await client.flow(ASKER_FLOW).request(suspension!.requestId).resume({
       suspensionId: suspension!.suspensionId,
       action: "approve",
       resumedBy: ASK_LAB_USER_ID,
     });
     await waitFor(async () => {
-      const state = await clients.sessions.getSessionState("s_cos_asked", { includeItems: true, itemTypes: ["suspension_resume"] });
+      const state = await client.sessions.state(COS_CONVERSATION, { includeItems: true, itemTypes: ["suspension_resume"] });
       expect(state.items ?? []).toHaveLength(1);
     });
     setURL(`${lab.baseUrl}/cos`);
-    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
+    render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
     const conversation = await screen.findByTestId("cos-conversation");
     await waitFor(() => expect(within(conversation).getAllByTestId("cos-item").some((el) => el.getAttribute("data-item-type") === "suspension")).toBe(true));
     expect(conversation.textContent).not.toMatch(/Waiting on you/);
+  });
+
+  it("redraws the conversation once its ask is answered on the page, without a line sent (FIX-1901)", async () => {
+    const lab = await serveLab((await openAskLab({ chiefOfStaff: true })).flowState);
+    served.push(lab);
+    const client = connect({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
+    setURL(lab.baseUrl);
+    await workerAction(client, "ops.chief-of-staff", "ask", { what: "ship it" }, COS_CONVERSATION);
+    setURL(`${lab.baseUrl}/cos`);
+    render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
+    const conversation = await screen.findByTestId("cos-conversation");
+    await waitFor(() => expect(conversation.textContent).toMatch(/Waiting on you/));
+    const ask = (await screen.findAllByTestId("cos-ask"))[0]!;
+    act(() => fireEvent.click(within(ask).getByRole("button", { name: "Approve" })));
+    await waitFor(() => expect(screen.getByTestId("cos-conversation").textContent).not.toMatch(/Waiting on you/), { timeout: 5_000 });
+    expect(within(screen.getByTestId("cos-conversation")).getAllByTestId("cos-item").some((el) => el.getAttribute("data-item-type") === "suspension")).toBe(true);
   });
 
   it("says what the Lab answered, with Retry, for asks or a conversation's board that didn't load (BR-8)", async () => {
     const lab = await serveLab((await openAskLab()).flowState);
     served.push(lab);
     // A worker session, so there are asks to read.
-    await workerAction(createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID }), "ops.asker", "ask", { what: "ship it" }, "s_ops_asker");
+    await workerAction(connect({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID }), "ops.asker", "ask", { what: "ship it" }, "s_ops_asker");
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
       const url = String(i instanceof Request ? i.url : i);
@@ -748,15 +816,16 @@ describe("Chief of Staff (FIX-1722)", () => {
       return real(i, init);
     });
     setURL(`${lab.baseUrl}/cos`);
-    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
+    render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
     const asks = await screen.findByTestId("cos-summary-asks-failure");
     expect(asks.textContent).toMatch(/store offline/);
     expect(within(asks).getByRole("button", { name: "Retry" })).toBeTruthy();
     // The user's conversation boards are read once, through one of their
-    // coordinator conversations: Tasks names it, with what the Lab answered.
+    // sessions whose flow keeps them (a coordinator's, or a delegate's that
+    // takes posts, as the asker does): Tasks names it, with what the Lab answered.
     act(() => fireEvent.click(screen.getByTestId("nav-tasks")));
     const board = await screen.findByTestId("section-failure");
-    expect(board.textContent).toMatch(/The boards of ops\.(desk|side) did not load/);
+    expect(board.textContent).toMatch(/The boards of (ops\.(desk|side)|s_ops_asker) did not load/);
     expect(board.textContent).toMatch(/store offline.*503/);
     expect(within(board).getByRole("button", { name: "Retry" })).toBeTruthy();
   });
@@ -765,15 +834,15 @@ describe("Chief of Staff (FIX-1722)", () => {
     await openCos("/", { chiefOfStaff: true, doors: false });
     const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
     expect(input.disabled).toBe(true);
-    expect(screen.getByTestId("cos-composer-blocked").textContent).toBe(`ops.chief-of-staff ${GAPS.turn.noDoor}`);
+    expect(screen.getByTestId("cos-composer-blocked").textContent).toBe(`Shift Coordinator ${GAPS.turn.noDoor}`);
   });
 });
 
 describe("Jump to from the keyboard", () => {
   it("arrow keys move the highlight through the results, and Enter goes to the highlighted one", async () => {
     await openApp("/inbox");
-    const jump = await screen.findByTestId("jump-to");
-    act(() => fireEvent.click(jump));
+    await screen.findByTestId("jump-tip");
+    act(() => void fireEvent.keyDown(document.body, { key: "k", metaKey: true }));
     const input = screen.getByTestId("jump-input");
     const results = await screen.findAllByTestId("jump-result");
     expect(results.length).toBeGreaterThan(2);
@@ -810,8 +879,8 @@ describe("Jump to from the keyboard", () => {
 
   it("the pointer highlights the result it is over", async () => {
     await openApp("/inbox");
-    const jump = await screen.findByTestId("jump-to");
-    act(() => fireEvent.click(jump));
+    await screen.findByTestId("jump-tip");
+    act(() => void fireEvent.keyDown(document.body, { key: "k", metaKey: true }));
     const results = await screen.findAllByTestId("jump-result");
     act(() => fireEvent.mouseMove(results[2]!));
     expect(results.map((r) => r.getAttribute("aria-selected"))).toEqual(results.map((_, i) => String(i === 2)));

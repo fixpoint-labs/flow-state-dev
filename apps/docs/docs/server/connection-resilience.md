@@ -27,7 +27,16 @@ Server:                                Client:
 1. **Wire heartbeat.** `@flow-state-dev/engine` injects `: ping\n\n` comment frames into every live and GET-attach SSE response at a configurable cadence. NAT and proxy idle timeouts stop closing the connection, and clients get a wire-level signal that the server is still alive.
 2. **Stale-request sweeper.** A periodic in-process job that reads the active request registry. If any entry's executor heartbeat has stopped past the threshold, it marks the persisted record `interrupted` so session locks release.
 3. **Client watchdog.** `useSession` tracks the most recent SSE event or heartbeat. When the gap exceeds the configured threshold while a request is in flight, it flips `session.isStuck` so the host can render a dismiss affordance.
-4. **Read-only status endpoint.** `GET /api/flows/:flowKind/requests/:requestId/status` returns a `RequestStatusSnapshot`. The client uses it during dismiss to confirm the actual server state when no SSE is connected.
+4. **Read-only status endpoint.** `GET /api/flows/:flowKind/requests/:requestId/status` returns a `RequestStatusSnapshot`. The client uses it during dismiss to confirm the actual server state when no SSE is connected. The snapshot carries the request's `sessionId` (absent for a request with no session), so a caller holding only a request id can continue or retry it.
+
+### Finding interrupted requests
+
+These routes list requests a crash or restart left `interrupted`. Both are scoped to the caller:
+
+- `POST /api/flows/users/:userId/check-interrupted` sweeps now and answers the requests that call marked.
+- `GET /api/flows/users/:userId/interrupted-requests` lists every `interrupted` request of the user's, whoever marked it, and changes nothing. A request stays listed until it is continued or removed.
+
+Both answer `{ interrupted: [{ requestId, sessionId?, flowKind, flowId, actionName, interruptedAt }] }`. From the client, [`fsd.requests.interrupted()`](/docs/api/client#fsdrequestsinterruptedoptions) calls both and hands back request handles you can `continue()` or `retry()`. See [After a crash](/docs/client/overview#after-a-crash).
 
 ## Configuration
 
@@ -52,7 +61,7 @@ export const flowstate = createFlowState({
 });
 ```
 
-Both sweep bounds — `staleSweepThresholdMs` and `queuedGraceMs` — apply to every sweep: the periodic one, the pass that runs when the server starts, and the on-demand `check-interrupted` call. A restart reaps on the same clock the running server used. To use a longer threshold for one on-demand sweep, pass `staleThresholdMs` to [`recovery.checkInterrupted`](../api/client.md#createrecoveryclientoptions). The call uses whichever is larger, your value or `staleSweepThresholdMs`. A smaller value, including 0, sweeps exactly as if you'd left it out.
+Both sweep bounds — `staleSweepThresholdMs` and `queuedGraceMs` — apply to every sweep: the periodic one, the pass that runs when the server starts, and the on-demand `check-interrupted` call. A restart reaps on the same clock the running server used. To use a longer threshold for one on-demand sweep, pass `staleThresholdMs` to [`fsd.requests.interrupted`](../api/client.md#fsdrequestsinterruptedoptions). The call uses whichever is larger, your value or `staleSweepThresholdMs`. A smaller value, including 0, sweeps exactly as if you'd left it out.
 
 ### Queued jobs and `queuedGraceMs`
 
@@ -135,7 +144,7 @@ The default is 10 seconds. Each tick costs one store read per running request, s
 
 The abort endpoint returns `204` when it fired the request's controller in the process that received the call, and `202` when it recorded the cancellation for the running process to pick up. It returns `404` when no request exists under that id, and `409` when the request has already finished.
 
-A request that is paused (`suspended`) can be stopped too, on a runtime with durable execution. Nothing is running, so there is no controller to fire: the stop resolves whatever the request is waiting on, and the request ends `aborted`. If it was waiting on an approval, a later approve is refused. If it was waiting on another agent's answer, the task it asked for is cancelled first, and the request ends without another model call. The endpoint returns `204`. If an answer reached the paused request first, it is running again and the endpoint returns `409`; send the stop again to stop the running request. Without durable execution, a paused request answers `409` as a finished one does.
+A request that is paused (`suspended`) can be stopped too, on a runtime with durable execution. Nothing is running, so there is no controller to fire: the stop resolves whatever the request is waiting on, and the request ends `aborted`. If it was waiting on an approval, a later approve is refused. If it was waiting on another agent's answer, the task it dispatched is cancelled first, and the request ends without another model call. The endpoint returns `204`. If an answer reached the paused request first, it is running again and the endpoint returns `409`; send the stop again to stop the running request. Without durable execution, a paused request answers `409` as a finished one does.
 
 Between the `202` and the run actually stopping, the request stays `in_progress` and keeps working, so items produced in that window still land on it. Treat `202` as "recorded", not "stopped". Watch for `status: "aborted"` to know it landed; `GET /api/flows/:flowKind/requests/:requestId/status` reports it with no stream attached.
 

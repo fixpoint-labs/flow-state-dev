@@ -141,7 +141,7 @@ Copies that differ by more than their name declare `configSchema` on the definit
 - `sequencer(config)` — Fluent composition DSL (21 methods: `step`, `stepIf`, `parallel`, `forEach`, `forEachSideChain`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `sideChain`, `sideChainIf`, `waitForSideChain`, `waitForCondition`, `loopBack`, `stepAll`, `stepAny`, `race`, `exitIf`)
   - `.forEach()` / `.forEachSideChain()` take a per-item factory `(item, index, ctx) => block` in place of a block. A block built that way does not exist when `defineFlow` walks the graph, so declare what the factory can produce with `blocks: [...]` in the trailing options (`IterationOptions` / `SideChainIterationOptions`); declared blocks count as the step's children for the dispatcher address check and resource merging. Redundant on a call that passes a block directly.
 - `router(config)` — Runtime block selection from declared routes. Route names must be unique per router (validated at build). The selected branch dispatches through the same replay seam as sequencer children, so on a durable resume the branch decision stays stable — the framework validates the re-run selection against the recorded decision and throws `RouteUnavailableError` on a mismatch — and completed work inside the branch replays instead of re-executing. A router whose branch can suspend needs a pure `execute` selector (no side effects, no ambient state reads); see [Control-flow determinism](https://flow-state.dev/docs/advanced/block-memoization-and-replay#control-flow-determinism)
-- `dispatcher(config)` — Send one dispatch to one entry the flow declares, in a child session derived from a key or in an existing session named by id. Returns `{ sessionId, requestId, adopted }`. See [Dispatches, entries, and `dispatcher()`](#dispatches-entries-and-dispatcher)
+- `dispatcher(config)` — Send one dispatch to one entry the flow declares, in a child session derived from a key or in an existing session named by id. Returns `{ sessionId, requestId, adopted }`; with `wait: true`, waits for the request it started and returns `{ status, output?, error?, requestId }` (`completed`, `failed`, or `running` at the host's default deadline, which stops nothing). See [Dispatches, entries, and `dispatcher()`](#dispatches-entries-and-dispatcher)
 
 **Block methods** (available on every `BlockDefinition`):
 - `.connectInput(mapper)` — adapt input shape at the call boundary
@@ -153,6 +153,21 @@ Copies that differ by more than their name declare `configSchema` on the definit
 **Background work lifetime:** `.sideChain()`, `.sideChainIf()`, and `.forEachSideChain()` queue tasks on a per-request pool, not the sequencer that dispatched them. Inner sequencers do not auto-await their own background work before returning; sibling sequencers run their tasks concurrently. The request executor drains the pool before terminal status — on every outcome, and repeatedly until no task is left, so a task that queues more background work is waited on too. Use `.waitForSideChain()` when an inner step depends on a queued task completing first — it drains only the calling sequencer's contributions.
 
 **Event-driven waits:** `.waitForCondition(predicate, { timeoutMs, wakeOn? })` suspends the sequencer until a synchronous predicate over the request's item stream returns true (or the timeout fires). Yields `{ timedOut: boolean }`. Use it to coordinate with side-channel state — a worker writing an artifact, a task-board flipping a status, a projected actor resuming a paused review. Predicate helpers ship in `@flow-state-dev/core/items`: `whenResourceChanged({ scope, path, changeType? })`, `whenResourceMatching({ scope, pattern })` (tiny glob with `*` and `**`), and `whenAnyItem(predicate)` as the generic escape hatch. The optional `wakeOn` filter lets high-fanout patterns skip predicate re-evaluation on irrelevant item types; `@flow-state-dev/orchestration` ships `onTaskChangeFor(collectionId)` for collection-bound waiters.
+
+**Waiting for a user:** `ctx.waitForUser({ kind, prompt, deadline?, title?, resumeSchema?, data? })` stops the request until a person answers, when your code reads the answer on its next line. `kind` is `"approval"`, `"review"` or `"input"`. It needs durable execution, as `ctx.suspend()` does.
+
+```ts
+const asked = await ctx.waitForUser({ kind: "input", prompt: "Which region?", deadline: 2 * DAY });
+if (asked.cancelled) return { skipped: true }; // the task was cancelled; nothing here is kept
+const region = asked.answer;
+```
+
+- An answer comes back as `{ cancelled: false, answer }`; an approval as `{ cancelled: false, approved: true }` or `{ cancelled: false, approved: false, deadline }`.
+- `deadline` is milliseconds from the call. Leave it out and the host's `userDeadlineMs` applies; with neither, the stop waits until it is answered, stopped or cancelled.
+- At a deadline an approval reads as a no with `deadline: true`. A review or an input throws `SuspensionTimeoutError`: catch it to go ahead, end or ask again, or leave it and the try fails.
+- When the task the request works is cancelled while it waits, the call returns `{ cancelled: true }`, and any later `waitForUser` in that run returns it at once.
+
+A raw `ctx.suspend({ reason: "human_approval" | "human_input" })` is the same kind of stop, read by its reason, with its own `timeoutMs` as its only deadline: an input that passes it throws `SuspensionTimeoutError`, and a cancel throws `SuspensionRejectedError` with `cancelled: true`. `isUserSuspension(suspension)` and `waitForUserKindOf(suspension)` (from `@flow-state-dev/core/types`) say whether a suspension waits for a user, and for what.
 
 **Flow:**
 - `defineFlow(definition)` — Create a flow type with actions, `internal` and `task` entries, scopes, resources, and per-scope `client` blocks. See [Dispatches, entries, and `dispatcher()`](#dispatches-entries-and-dispatcher)
@@ -321,7 +336,7 @@ Keys may be authored as `camelCase`, `snake_case`, or `kebab-case` (all normaliz
 - `BlockResult<TOutput>` — The handler `execute` return-value union.
 - `SessionScopeHandle<TState>` / `UserScopeHandle<TState>` / `OrgScopeHandle<TState>` / `RequestScopeHandle<TState>` — The scope handles `ctx.session` / `ctx.user` / etc. resolve to. Use to type a ctx slice (e.g. `(input, ctx: { session: SessionScopeHandle<MySessionState> }) => …`) instead of hand-rolling a `{ session: { patchState: ... } }` shape.
 - `ScopeStateOps<TState>` — The state-mutation interface every scope handle exposes (`patchState`, `setState`, `setStateRecord`, etc.).
-- `LooseBlockContext<TSessionState>` — Variance-friendly alias for `BlockContext`: typed on session scope, permissive on resources. Use for helper functions that take a block's `ctx` as a parameter. The full `BlockContext`'s `TResources` generic is invariant on `ResourceRegistry`, so a handler's narrow inferred `ResourceRegistry<{ memos: ... }>` can't widen to a `BlockContext`'s default. `LooseBlockContext` sidesteps that by leaving `resources` permissive — helpers accept any block's ctx, call sites retain their narrower typing internally.
+- `LooseBlockContext<TSessionState>` — A partial `BlockContext`: typed `ctx.session` state, `ctx.user` / `ctx.request` / optional `ctx.org` with untyped state, `ctx.resources` as `any`, and no other slots. Use for helper functions that take a block's `ctx` as a parameter. A full `BlockContext` parameter checks every slot, so it rejects the `ctx` of a block with a typed `ctx.targets` (one that declares `targetStateSchemas` or lists a capability in `uses`). Declared `resources` don't cause this. A `LooseBlockContext` helper accepts any block's `ctx`, and inside the block, `ctx` keeps its own types.
 
 ### `handler.withDefaults({...})`
 
@@ -441,9 +456,12 @@ Set `client: { live: true }` to stream each mutation's projected `clientData` as
 
 - Runtime schemas, from the package root: `harnessRunInputSchema`, `harnessRunHandleSchema`, `harnessRunEnvelopeSchema`
 - Types, from `@flow-state-dev/core/types`: `HarnessBlock`, `HarnessRunInput`, `HarnessRunHandle`, `HarnessRunEnvelope`, `HarnessSource`, `HarnessRunStatus`, `HarnessRunOutcome`, `HarnessRunUsage`, `HarnessRunCost`, `HarnessCostBasis`, `HarnessResolver`, `HarnessSessionHook`, `HarnessCallbackContext`
+- `harnessSteering()`, from the package root: one flow's live steering for a harness turn run in a session. Hand `onSteerable` to the harness block and declare `action({ onTaken? })` beside the turn action; it answers `{ taken, live }` and is declared `concurrency: "allow"`, `autoResume: false`. Offers are kept per session in the server process, so a line sent to another process answers `live: false`. Pair it with the client's `sendHarnessLine`.
 - `harnessEnv({ pass })`, from the package root (options type `HarnessEnvOptions`): builds a harness's `env` from an allowlist of variable names. A harness's agent runs as a child process, and with no `env` it inherits the server's entire `process.env`. The result holds exactly the named variables that are set, read when `harnessEnv` is called. Nothing else is passed, `PATH` and `HOME` included. Values come from `process.env` by default; pass `env` to read from another source. Where there is no `process` (a browser or edge runtime) and no `env` is given, the result is empty rather than an error.
-- The run's plan record, from the package root: `OBSERVED_PLAN`, `observedPlanCollection`, `observedPlanItemStateSchema`, the type `ObservedOutcome` (with `observedOutcomeSchema`), the per-run list marker (`OBSERVED_PLAN_LIST`, `observedPlanListCollection`) and `replacePlanList`, which writes a whole-list plan as entries. One shape for a coding agent's own to-do list, which a harness that reports one declares and writes. A record of what the agent planned, never a work queue. The keys and collections are also exported from `@flow-state-dev/core/types`, for browser code. Guide: [the run's plan](https://flow-state.dev/docs/tools/coding-agents#the-runs-plan).
+- The plan record (a harness conversation's to-do list), from the package root: `OBSERVED_PLAN`, `observedPlanCollection`, `observedPlanItemStateSchema`, the type `ObservedOutcome` (with `observedOutcomeSchema`), the list markers (`OBSERVED_PLAN_LIST`, `observedPlanListCollection`) and `replacePlanList(plan, marker, namespace, items, { now?, requestId? })`, which writes a whole-list plan as entries and stamps `requestId` on each. One shape for a coding agent's own to-do list, which a harness that reports one declares and writes. A record of what the agent planned, never a work queue. A plan belongs to the harness conversation: `harnessConversationNamespace(conversationId)` returns the namespace it is keyed under (`conversation/<escaped id>`), and `planConversationPrefix(conversationId)` the key prefix of its entries. Each run leaves a pointer marker under its own namespace (`harnessRunNamespace(ctx)`) whose `conversation` field names that namespace. To read one request's plan, list its markers with `planRowsPrefix(requestId, OBSERVED_PLAN_LIST)` as `topicPrefix` and pass them to `readPlanTarget(requestId, markers)` (markers typed `PlanMarkerRead`, `{ topic, conversation? }`): it returns `{ kind: "conversation", namespace, rowsPrefix }` when a run left a pointer, and `{ kind: "run", rowsPrefix }` for a request whose plan is stored under its own runs. `planKeySegment(value)` is how an id or run name is written as one key segment. The keys, collections, `harnessConversationNamespace`, `planConversationPrefix`, `planRowsPrefix`, `planKeySegment` and `readPlanTarget` are also exported from `@flow-state-dev/core/types`, for browser code. Guide: [the run's plan](https://flow-state.dev/docs/tools/coding-agents#the-runs-plan).
+- Subscription usage: `harnessUsageWindowSchema` from the package root, and the types `HarnessUsageWindow`, `HarnessUsageLevel`, `HarnessUsageReading`, `HarnessUsageReader`, `HarnessUsageReport` and `HarnessUsageHook` from `@flow-state-dev/core/types`. A reader `(options?: { signal }) => Promise<HarnessUsageReading>` asks a harness how much of each subscription window is used, with no run. A reading is `windows` (each window's `id`, `label`, `minutes`, `usedPercent` 0 to 100 or `null` when the vendor sent none, `level` (`"ok"`, `"warning"`, `"reached"` or `null`) and `resetsAt` in epoch ms, plus `plan` and `accountId`) or one of `api-key`, `signed-out` and `unavailable`, each with a `reason` and no number. A reader returns those states rather than throwing. A harness that reports usage during a run calls a `HarnessUsageHook` `(report, ctx)` with one `HarnessUsageReport` per window: `{ harness, window, observedAt, runStartedAt, accountId }`. The schema reads a window with no `level` as `level: null`. Guide: [subscription usage](https://flow-state.dev/docs/tools/coding-agents#subscription-usage).
 - `harnessFailureKind(error)`, from the package root (type `HarnessFailureKind` from `@flow-state-dev/core/types`): `"unknown-conversation"` when a harness refused to continue the conversation a run asked to `resume`, `null` for any other failure. Follows `cause`, so it reads through wrapped errors. A harness package sets it on the error it throws.
+- `formatRunDuration(ms)`, from the package root: a readable string for a duration in milliseconds, rounded to the nearest second. `formatRunDuration(324_000)` is `"5 mins, 24 seconds"`. A run of an hour or more shows hours and minutes only (`"1 hr, 3 mins"`). A duration under half a second, a negative number, or `NaN` gives `"less than a second"`. The Claude Code, Codex and Cursor blocks use it for their run-end status.
 
 Two packages implement it: [`@flow-state-dev/claude-code`](../claude-code) (`claude-code/sdk`) and [`@flow-state-dev/codex`](../codex) (`codex/sdk`). [`@flow-state-dev/harness-manager`](../harness-manager) drives either. Full guide: [Coding agents](https://flow-state.dev/docs/tools/coding-agents).
 
@@ -455,7 +473,7 @@ Output item unions, content types, and stream event helpers. Item types: `messag
 
 `state_change` and `resource_change` share an exported `InvalidationItem` base (common `scope`/`delta`/`version` fields) for consumers that react to "something changed in a scope" generically. It is a base type, not a member of the `OutputItem` union — only the two leaves are.
 
-**`BlockValue<T>`** — `block_output.output` is a discriminated union with three cases: `inline` (novel content on the emitter), `ref` (pointer to another item's content), and `structure` (container of nested BlockValues, used by aggregators like `.stepAll`). Use `resolveBlockValue(value, lookup)` to recover the typed payload `T`; `ctx.getBlockOutput()` resolves transparently. Refs may also point at `MessageItem`s — streaming-text generators emit a ref to their just-emitted message instead of duplicating the text inline. `buildItemLookup(items)` indexes every item by id so the resolver can follow either kind of ref.
+**`BlockValue<T>`** — `block_output.output` is a discriminated union with three cases: `inline` (novel content on the emitter), `ref` (pointer to another item's content), and `structure` (container of nested BlockValues, used by aggregators like `.stepAll`). Use `resolveBlockValue(value, lookup)` to recover the typed payload `T`; `ctx.getBlockOutput()` resolves transparently. A ref points at one of three kinds of item: another `block_output`, whose own value is resolved; a `MessageItem`, which resolves to its joined text (streaming-text generators emit a ref to their just-emitted message instead of duplicating the text inline); or a `ToolOutputItem`, which resolves to its `output` (a block run as a tool refs the tool result it recorded). `buildItemLookup(items)` indexes every item by id so the resolver can follow each kind of ref.
 
 ### Running a step under an extra abort signal
 
@@ -581,7 +599,7 @@ Every arrival at a flow is a **dispatch** of one **type**, delivered to one **en
 
 `internal` and `task` are definition-only, like the transport maps: passing either to the instance call (`defineFlow({ ... })({ internal })`) throws. Each nests its entries under `actions`: `internal: { actions: { wake: { block } } }`. The flat `internal: { wake }` spelling is refused by name. Every entry of every type has the same core shape as an action, `{ block, inputSchema?, concurrency?, durable?, tokenBudget?, onCompleted?, onErrored?, userMessage? }`. Only `actions` adds the caller-facing `description` and `mcp` fields.
 
-A `task` entry is declared as a plain block, but a `task` dispatch does not run the entry's block as-is. Before the block runs, the row is re-read and the claim verified; a claim that is no longer current throws `StaleTaskClaimError`. The block then receives the worker input the row was claimed with. `defineFlow` throws, naming the block and the entry, for a task entry no reachable board hands off to and no `from` serves, a task dispatcher no board holds, two boards handing off to one entry, and an entry with `from` that a board in the same flow also hands off to.
+A `task` entry is declared as a plain block, but a `task` dispatch does not run the entry's block as-is. Before the block runs, the row is re-read and the claim verified; a claim that is no longer current throws `StaleTaskClaimError`. The block then receives the worker input the row was claimed with. `defineFlow` throws, naming the block and the entry, for a task entry no reachable board dispatches to and no `from` serves, a task dispatcher no board holds, two boards dispatching to one entry, and an entry with `from` that a board in the same flow also dispatches to.
 
 A task entry may declare `from`, a `TaskBinding` that says where its tasks come from: `task: { actions: { work: { block, from } } }`. Its flow then needs no board, and each arriving task is checked against the ledger the dispatch names. `@flow-state-dev/orchestration`'s `taskLedgers({ name, resolve })` builds one.
 
@@ -589,7 +607,7 @@ A task entry may declare `from`, a `TaskBinding` that says where its tasks come 
 
 ### `dispatcher(config)`
 
-A dispatcher is a handler that sends one dispatch to one declared entry instead of doing the work itself. Its address (`type` and `action`) is fixed on the block; the session and the payload are computed per call from the block's input. It comes in two shapes: an `internal` dispatcher (`InternalDispatcherConfig`) sends this request's own authority to `flow.internal.actions[action]`, and a `task` dispatcher (`TaskDispatcherConfig`) sits in a task board's `workers` under an assignee and hands the rows claimed for that assignee to `flow.task.actions[action]`. Omit `type` in both cases: ordinary dispatchers default to `internal`, and a board's dispatcher is one whose `session` is `"per-task"`, `"per-worker"`, or `{ key }`. Its stamped address is still `type: "task"`.
+A dispatcher is a handler that sends one dispatch to one declared entry instead of doing the work itself. Its address (`type` and `action`) is fixed on the block; the session and the payload are computed per call from the block's input. It comes in two shapes: an `internal` dispatcher (`InternalDispatcherConfig`) sends this request's own authority to `flow.internal.actions[action]`, and a `task` dispatcher (`TaskDispatcherConfig`) sits in a task board's `workers` under an assignee and hands the rows claimed for that assignee to `flow.task.actions[action]`. Omit `type` in both cases: ordinary dispatchers default to `internal`, and a board's dispatcher is one whose `session` is `"per-task"`, `"per-worker"`, `{ key }` or `{ by }`, or whose `action` is a per-row choice. Its stamped address is still `type: "task"`.
 
 ```ts
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
@@ -647,39 +665,52 @@ export default defineFlow({
 | Field | What it does |
 |---|---|
 | `type` | Omit it. Ordinary dispatchers send `internal`. A board's dispatcher stamps `type: "task"` from its session policy. An explicit `"task"` is still accepted. |
-| `action` | The entry name, resolved as `flow.internal.actions[action]` or `flow.task.actions[action]`. Checked when the flow is defined, unless `flowKind` names another flow. |
+| `action` | The entry name, resolved as `flow.internal.actions[action]` or `flow.task.actions[action]`. Checked when the flow is defined, unless `flowKind` names another flow. On a `task` dispatcher it may instead be a `TaskEntryChoice`, `{ among: string[], by: (task, ctx) => string }` (`by` may return a promise), which picks the entry per row: `task` is a `TaskTargetQuery`, `{ assignee, taskId, input, filedBy? }`. Every name in `among` is checked exactly as a string `action` is, and an answer outside `among` refuses the dispatch `no-entry` before anything is sent. `among` must list at least one name, each once; anything else throws when built. |
 | `flowKind` | The **other flow** the entry lives on, on an `internal` or `task` dispatcher. Omit to address this flow's own entry. Checked at run time, not when the flow is defined — see [Dispatching to another flow](#dispatching-to-another-flow). On a `task` dispatcher it may be a `TaskFlowTarget`, `(task, ctx) => string \| undefined` (or a promise of one), where `task` is a `TaskTargetQuery`, `{ assignee, taskId, input }`. It is called once per task at hand-over, and requires `session: "per-task"` (any other policy throws when built); `undefined` or `""` refuses `flow-not-found`, naming the assignee. An `internal` dispatcher given a function throws when built. |
 | `inputSchema` | `internal` only. What the block accepts. Defaults to `z.unknown()`. |
-| `session` | `internal`: `{ key: (input, ctx) => string }` derives a child of the running session; `{ id: (input, ctx) => string }` names an existing one; `{ from: true }` delivers into the seam-stamped sender (refuses `no-sender` when this request was not dispatched). `task`: a `TaskSessionPolicy`, one of `"per-task"` (one child per row; a row whose payload names `followUpOf` runs in the child of the task it follows), `"per-worker"` (one child per assignee, shared by every row routed to it), or `{ key: (task, ctx) => string }`, `task` being the claim envelope's `payload` field (the row's packed input). |
+| `session` | `internal`: `{ key: (input, ctx) => string }` derives a child of the running session; `{ id: (input, ctx) => string }` names an existing one; `{ from: true }` delivers into the seam-stamped sender (refuses `no-sender` when this request was not dispatched). `task`: a `TaskSessionPolicy`, one of `"per-task"` (one child per row; a row whose payload names `followUpOf` runs in the child of the task it follows), `"per-worker"` (one child per assignee, shared by every row routed to it), `{ key: (task, ctx) => string }`, `task` being the claim envelope's `payload` field (the row's packed input), or `{ by: (task, ctx) => { key } \| { id } }` (or a promise of one), `task` being a `TaskTargetQuery`, which chooses per row between a keyed child and an existing session. An `{ id }` is delivered into and never created: a missing session refuses `session-not-found`, one this principal can't reach on this flow refuses `session-not-found` or `session-not-addressable`, the same as an `internal` dispatcher's `{ id }`. A `{ key }` answer gets the dispatcher's `state`; an `{ id }` answer keeps the session's own. An answer that isn't exactly one non-empty `key` or `id` throws before anything is sent. |
 | `payload` | `internal` only. `(input, ctx) => unknown`, the entry's input. Defaults to the input itself. Validated by the entry's own schema on arrival. |
 | `transient` | Hide the block's trace from clients. Default `false`. |
 
 A `task` dispatcher's input is the claim envelope, `taskDispatchInputSchema` / `TaskDispatchInput`: `{ boardId, assignee, taskId, attempt, createdAt, incarnationId?, payload }`; `assignee` names the entry the board routed the row to. Only a task board mints one, from the row it claimed. Put the block under a board's `workers` wherever an ordinary block would go:
 
 ```ts
-import { defineFlow, dispatcher } from "@flow-state-dev/core";
+import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
+import { taskSettledEntry, taskSettledInputSchema } from "@flow-state-dev/orchestration";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
+import { z } from "zod";
 
 const board = taskBoard({
   name: "issue-work",
   boardId: "issue-work",
+  mode: "delegation",                          // every row runs in a child session
   collection: issues,                          // a defineTaskCollection()
   workers: {
-    triage: triageWorker,                        // runs inline, in the drain
-    implement: dispatcher({                      // hands off
-      name: "hand-off-implement",
+    implement: dispatcher({                      // dispatches
+      name: "dispatch-implement",
       action: "implement",                       // flow.task.actions.implement
       session: "per-task",
     }),
   },
 });
 
+// Hears each ending of a task the board handed out.
+const onEnding = handler({
+  name: "on-issue-ending",
+  inputSchema: taskSettledInputSchema,
+  outputSchema: z.object({}),
+  execute: async () => ({}),
+});
+
 export default defineFlow({
   kind: "issues",
   actions: { drain: { block: board.drain } },
+  internal: { actions: { onTaskSettled: taskSettledEntry({ block: onEnding }) } },
   task: { actions: { implement: { block: implementWorker } } },  // what runs in the child session
 })();
 ```
+
+A flow that holds a board that dispatches must declare `onTaskSettled` under `internal.actions`, where the session that filed a row hears how it ended. `defineFlow` throws without it, naming the board. Build the entry with `taskSettledEntry({ block })` from `@flow-state-dev/orchestration`; see [Hearing how a task ended](https://flow-state.dev/docs/orchestration/task-board#hearing-how-a-task-ended).
 
 The block returns a `DispatchHandle` (`dispatchHandleSchema`): `{ sessionId, requestId, adopted }`, the session the dispatch runs in, the request it became, and whether a `key` landed on a child that already existed. It returns once the runtime has accepted the request and does not wait for the work; read the child's progress from that session's own request history.
 
@@ -737,7 +768,7 @@ At run time a refused dispatch throws `DispatchRefusedError` (`code: "dispatch-r
 
 Every refusal is decided before anything is dispatched, so a `.rescue()` on the dispatcher can branch on `refused` knowing nothing started. A `key` or `id` function that returns an empty string throws a plain `Error` naming the block. On a context no runtime wired (a hand-built test context), the block throws `NoDispatchSeamError` (`code: "no-dispatch-seam"`); attach a `DispatchSeam` under the `DISPATCH_SEAM` symbol key to test one.
 
-**Substrate exports.** A package that builds its own dispatching block (a task board's hand-off) calls `dispatchThroughSeam(ctx, spec)` and stamps the block with `markDispatcher(block, address)` so the definition-time walk sees it. A task board also binds its claim gate onto that block with `bindTaskDispatcher(block, { boardId, gate })` (`TaskBinding`; read back with `taskBindingOf`), which is what `defineFlow` applies to the entry the block addresses, and derives the child-session key with `taskSessionKeyFor(blockName, policy, envelope, ctx)`, the same derivation `dispatcher()` uses. `resolveTaskState(blockName, address, task, ctx)` reads a task address's child-session `state` for one task, the same way. The types are `DispatchAddress`, `SessionTarget`, `DispatchSpec`, `DispatchOutcome`, `DispatchRefusal`, `DispatchSeam`, `TaskSessionPolicy`, and `TaskDispatchInput`.
+**Substrate exports.** A package that builds its own dispatching block (a task board's dispatch) calls `dispatchThroughSeam(ctx, spec)` and stamps the block with `markDispatcher(block, address)` so the definition-time walk sees it. A task board also binds its claim gate onto that block with `bindTaskDispatcher(block, { boardId, gate, requiresInternal? })` (`TaskBinding`; read back with `taskBindingOf`), which is what `defineFlow` applies to the entry the block addresses (`requiresInternal` names internal entries the flow holding the board must declare, and `defineFlow` refuses one that lacks any), and derives the child-session key with `taskSessionKeyFor(blockName, policy, envelope, ctx)`, the same derivation `dispatcher()` uses. `resolveTaskState(blockName, address, task, ctx)` reads a task address's child-session `state` for one task, the same way. The types are `DispatchAddress`, `SessionTarget`, `DispatchSpec`, `DispatchOutcome`, `DispatchRefusal`, `DispatchSeam`, `TaskSessionPolicy`, and `TaskDispatchInput`.
 
 ## Reaching the runtime from a capability (`ctx.requestHost`)
 
@@ -759,12 +790,15 @@ Which of the host's verbs answer depends on the deployment:
 - `settleParentTask({ outcome: "complete" | "fail", output?, error? })` — settle that row. Resolves `{ ok: true }`, or `{ ok: false, refused: "no-parent-task" | "fence-rejected", detail }`. `fence-rejected` means this request's claim on the row was superseded, so nothing was written.
 - `livenessOf(requestIds)` — per-id `boolean` answers for requests this request dispatched. **Absent** unless the deployment can support a trustworthy answer: a request registry shared across processes, request heartbeats enabled, and a stale sweeper running. The default in-memory registry is per-process, so it is absent there. `false` means no live registration was found, never "definitely dead".
 
-- `resumeAsk({ gateId, outcome })` — resume a turn in **this** conversation that is parked on an ask gate (see `parkOnAsk`), with `{ answered: true, answer }` or `{ answered: false, error: { code, message } }`. The parked request continues under its own id; the call returns once it has started. Resolves `{ ok: true }`, or `{ ok: false, refused: "gate-not-found" | "already-resolved" | "busy" | "ambiguous", detail }`. A gate resolves once; `ambiguous` means two parked turns in this conversation share the gate id, and neither is resumed. Gate ids must be unique within the session. **Absent** without durable execution.
-- `hasAskSweeper` — `true` when this process runs a durability sweeper that resumes an overdue ask with `wait_timed_out`, so an ask parked here is bounded. Read as the request starts. Orchestration offers an ask only where it is `true` (`canHoldWait`) and the board opts in with `resumesAsks: true`; `resumeAsk` does not depend on it.
+- `resumeWait({ gateId, outcome })` — resume a turn in **this** conversation that is parked on a wait gate (see `parkOnWait`), with `{ answered: true, answer }` or `{ answered: false, error: { code, message } }`. The parked request continues under its own id; the call returns once it has started. Resolves `{ ok: true }`, or `{ ok: false, refused: "gate-not-found" | "already-resolved" | "busy" | "ambiguous", detail }`. A gate resolves once; `ambiguous` means two parked turns in this conversation share the gate id, and neither is resumed. Gate ids must be unique within the session. **Absent** without durable execution.
+- `hasWaitSweeper` — `true` when this process runs a durability sweeper, which fires the wake that resumes a wait at its deadline, so a wait parked here is bounded. Read as the request starts. Orchestration offers a wait only where it is `true` and `waits` is present (`canHoldWait`), and the board opts in with `resumesWaits: true`; `resumeWait` does not depend on it.
+- `waits` — `{ deadlines, depth, ended? }`: the host's wait deadline bounds (`defaultMs`, `minMs`, `maxMs`); `depth({ binding?, own? })`, how many waits the chain a new wait joins would hold, counted live from the waits parked now (a wait past `MAX_WAIT_DEPTH`, 5, is refused before anything is written); and `ended(requestIds)`, whether each request of this session has stopped running its work (it ended, or its process died while it ran), which a board's pass reads to release a wait slot. **Absent** where the host can't hold a wait: no durable execution, or no store that keeps wakes. `canHoldWait(ctx)` says whether the running request's host can hold one.
+- `sessions.read(sessionId)` — a session of the running request's own user, tenant and organization, as `{ flowKind, flowId?, state }`, or `undefined` for any other session or one that doesn't exist. `state` is a frozen copy of the session's state cut to the fields its flow declares `.readonly()` (server-written markers), untyped, so parse it with your own schema. Use it to check a session before writing anything to it. **Absent** on a host that can't read session records, such as a hand-built test context.
+- `dispatchRunsHere` — `true` when what this request dispatches runs in this process (the host's in-process dispatcher), not on another process's worker such as a queue's. Read as the request starts. Bookkeeping that only this process can see, like Workforce's skipping of a repeated board pass, relies on it only when it is `true`.
 
-The types are `RequestHost`, `ParentTaskOutcome`, `SettleParentTaskInput`, `SettleParentTaskResult`, `LivenessAnswers`, `ResumeAskInput`, and `ResumeAskResult`.
+The types are `RequestHost`, `ParentTaskOutcome`, `SettleParentTaskInput`, `SettleParentTaskResult`, `LivenessAnswers`, `ResumeWaitInput`, `ResumeWaitResult`, `RequestWaits`, `WaitDeadlines`, `RequestSessions`, and `SessionView`.
 
-`parkOnAsk(ctx, { gateId, binding: { board, taskId }, deadline? })` parks the running turn on an ask gate and returns the answer once its conversation resumes it; an ask that ended without one throws `WaitEndedError` with `code` `wait_task_failed`, `wait_task_cancelled` or `wait_timed_out`, which a generator's tool surfaces to the model as a failed call (the message leads with the code). With a `deadline`, a host running the durability sweeper resumes a gate still pending past it with `wait_timed_out` on its next sweep, never marking it expired. When a person stops the parked turn, `parkOnAsk` throws `WaitStoppedError` instead: no model reads it, and the caller ends what it asked for and lets the turn end. `recordedAskOutcome(ctx, input)` reads the outcome already recorded for a gate (on a replay) without parking, or `undefined` when there is none. The public resume route never resumes an ask gate. Nothing on the interface names a store, a flow, a session record, or a task row, and no verb takes an identity or a session id: each closes over the running request's own. To start work in another session, use a [`dispatcher()`](#dispatches-entries-and-dispatcher) block; the flow checks its address when it is defined.
+`parkOnWait(ctx, { gateId, binding, own?, deadline })` parks the running request on the wait gate and returns how the wait ended, a `WaitOutcome`: `{ answered: true, answer }`, `{ answered: false, error }` naming the work's ending (`wait_task_failed`, `wait_task_cancelled`), `{ answered: false, deadline: true }` with the work still running, or `{ answered: false, stopped: true }` when a person stopped the parked request. `binding` is a row (`{ board, taskId }`) or a request this one dispatched (`{ requestId }`); `own` is the row the waiting request works, for the depth count. `deadline` (epoch ms) is kept as a wake on the session (`WAIT_DEADLINE_ENTRY`), which the durability sweep fires; it cancels nothing. `recordedWaitOutcome(ctx, input)` reads the outcome already recorded for a gate (on a replay) without parking, or `undefined` when there is none. The public resume route never resumes a wait gate. Nothing on the interface names a store or a task row, and no verb takes an identity: each closes over the running request's own. `sessions.read` is the one verb that takes a session id, and it answers only for the running user's sessions. To start work in another session, use a [`dispatcher()`](#dispatches-entries-and-dispatcher) block; the flow checks its address when it is defined.
 
 ## Key design decisions
 
@@ -826,8 +860,8 @@ Two adapter helpers are shared through `@flow-state-dev/core/helpers`: `sanitize
 
 Generators reference a model with a string. The string can be:
 
-- `provider/model` — direct, e.g., `"anthropic/claude-sonnet-4-6"`
-- `gateway/provider/model` — routed through a gateway, e.g., `"vercel/openai/gpt-5.5"`
+- `provider/model` — direct, e.g., `"anthropic/claude-sonnet-5-5"`
+- `name:model` — a named route: a gateway (`"vercel:openai/gpt-6.1-sol"`) or a provider (`"openai:gpt-6.1-sol"`, or a key of `providers` such as `"triage:native"`). Never falls back to another route. A model string with three slash-separated parts throws, naming its colon spelling.
 - `intent/<name>` — a named routing group resolved by the model resolver
 
 Configure intents on the resolver. Each intent maps a name to an ordered list of candidate model strings. Resolution walks the list, filters to providers the app has keys for, and falls back to `defaultModel` when nothing in the intent is reachable.
@@ -836,11 +870,11 @@ Configure intents on the resolver. Each intent maps a name to an ordered list of
 import { createModelResolver } from "@flow-state-dev/core/models";
 
 const resolver = createModelResolver({
-  defaultModel: "anthropic/claude-sonnet-4-6",
+  defaultModel: "anthropic/claude-sonnet-5-5",
   intents: {
-    utility: ["anthropic/claude-haiku-4-5", "openai/gpt-5.4-nano"],
-    chat: ["anthropic/claude-sonnet-4-6", "openai/gpt-5.5"],
-    synthesize: ["anthropic/claude-sonnet-4-6", "openai/gpt-5.5"],
+    utility: ["anthropic/claude-haiku-5-5", "openai/gpt-6-luna"],
+    chat: ["anthropic/claude-sonnet-5-5", "openai/gpt-6.1-sol"],
+    synthesize: ["anthropic/claude-sonnet-5-5", "openai/gpt-6.1-sol"],
   },
 });
 ```
@@ -855,8 +889,8 @@ Configure `providerOptions` (e.g. Anthropic thinking) per intent so generators d
 
 ```ts
 const resolver = createModelResolver({
-  defaultModel: "openai/gpt-5.4",
-  intents: { plan: ["anthropic/claude-opus-4-7"] },
+  defaultModel: "openai/gpt-6.1-sol",
+  intents: { plan: ["anthropic/claude-opus-5-5"] },
   intentDefaults: {
     plan: {
       providerOptions: {
@@ -876,12 +910,12 @@ Env vars can replace which model a declared intent (or `defaultModel`) resolves 
 - `FSDEV_INTENT_<NAME>` — replace the candidate list for intent `<name>`. `<NAME>` is the intent name uppercased with hyphens replaced by underscores (`my-custom` → `FSDEV_INTENT_MY_CUSTOM`).
 - `FSDEV_DEFAULT_MODEL` — replace `defaultModel`. Useful when an intent falls through.
 
-Each value is a `provider/model` or `gateway/provider/model` string. `intent/*` values are rejected. Vars are read once at construction; setting them after the resolver is built has no effect.
+Each value is a `provider/model` or `name:model` string. `intent/*` values are rejected. Vars are read once at construction; setting them after the resolver is built has no effect.
 
 ```bash
 # .env.local
-FSDEV_INTENT_CHAT=openai/gpt-5.4-mini
-FSDEV_DEFAULT_MODEL=openai/gpt-5.4-mini
+FSDEV_INTENT_CHAT=openai/gpt-6-luna
+FSDEV_DEFAULT_MODEL=openai/gpt-6-luna
 ```
 
 Invalid values (an `intent/*` string, or an empty value) for a declared intent throw at construction. An `FSDEV_INTENT_*` that names an intent the resolver doesn't declare is **warned-and-skipped, not fatal** — env vars are ambient, and an app must not crash because a shared/CI environment pins an intent var for some *other* app. (A typo in an intent the app *does* declare still surfaces as a warning.) `FSDEV_DEFAULT_MODEL` applies whether or not intents are declared, so an app that resolves no model is unaffected by it. Each applied or ignored override emits one dev-only `console.warn` (suppressed by `NODE_ENV=production` and `FSD_QUIET_WARNINGS=1`). Tests can pass an explicit `env` option to `createModelResolver` to avoid mutating `process.env`.

@@ -1,88 +1,62 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 532" role="img" aria-label="Three places took part in your first flow. Your browser runs page.tsx with FlowProvider, useFlow, useSession and ItemsRenderer, and sees only the items marked for the client and the state you expose. Your server holds hello-chat, registered with its chat action, and runs the generator then the counter. The store holds the session: its state, messageCount and its items. This example's store is in memory, so a server restart loses it; SQLite or Postgres keeps it.">
-  <style>
-    :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
-            --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
-            --org-fill:#f0fdf4; --org:#15803d; --card:#ffffff; --card-line:#334155; --box:#f8fafc; }
-    @media (prefers-color-scheme: dark) {
-      :root { --bg:#0e0e14; --ink:#e5e7eb; --ink-2:#cbd5e1; --muted:#94a3b8;
-              --proc-fill:#1d1030; --proc:#c084fc; --sess-fill:#0f1a33; --sess:#60a5fa;
-              --org-fill:#0b2016; --org:#4ade80; --card:#14141c; --card-line:#64748b; --box:#181822; } }
-    .bg { fill:var(--bg); }
-    .wall-proc { fill:var(--proc-fill); stroke:var(--proc); stroke-width:2; }
-    .wall-sess { fill:var(--sess-fill); stroke:var(--sess); stroke-width:2; }
-    .wall-org { fill:var(--org-fill); stroke:var(--org); stroke-width:2; }
-    .wall-file { fill:var(--box); stroke:var(--card-line); stroke-width:2; }
-    .card { fill:var(--card); stroke:var(--card-line); stroke-width:1.5; }
-    .card-sess { fill:var(--card); stroke:var(--sess); stroke-width:1.5; }
-    .box { fill:var(--box); stroke:var(--card-line); stroke-width:1.2; }
-    .title { font:700 20px ui-sans-serif, system-ui, sans-serif; fill:var(--ink); }
-    .h { font:700 14px ui-sans-serif, system-ui, sans-serif; fill:var(--ink); }
-    .p { font:13px ui-sans-serif, system-ui, sans-serif; fill:var(--ink-2); }
-    .muted { font:12px ui-sans-serif, system-ui, sans-serif; fill:var(--muted); }
-    .lbl { font:600 10px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing:.08em; fill:var(--muted); }
-    .code { font:11.5px ui-monospace, SFMono-Regular, Menlo, monospace; fill:var(--ink); }
-  </style>
-
-  <rect class="bg" x="0" y="0" width="940" height="532" rx="16"/>
-  <text class="title" x="24" y="38">Three places took part</text>
-  <text class="muted" x="24" y="60">The browser shows the session, the server runs the flow, the store keeps the session.</text>
-
-  <g id="browser">
-    <rect class="wall-file" x="24" y="80" width="260" height="316" rx="14"/>
-    <text class="h" x="40" y="104">Your browser</text>
-    <text class="muted" x="40" y="122">page.tsx</text>
-    <rect class="card" x="36" y="138" width="236" height="166" rx="10"/>
-    <text class="code" x="50" y="162">FlowProvider</text>
-    <text class="muted" x="50" y="180">the flow, and the user</text>
-    <text class="code" x="50" y="206">useFlow</text>
-    <text class="muted" x="50" y="224">picks this user's session</text>
-    <text class="code" x="50" y="250">useSession</text>
-    <text class="muted" x="50" y="268">items, exposed state, streaming</text>
-    <text class="code" x="50" y="292">ItemsRenderer</text>
-    <text class="p" x="40" y="330">Sees the items marked for</text>
-    <text class="p" x="40" y="348">the client, and the state</text>
-    <text class="p" x="40" y="366">you expose. Nothing else.</text>
-  </g>
-
-  <g id="server">
-    <rect class="wall-proc" x="340" y="80" width="260" height="316" rx="14"/>
-    <text class="h" x="356" y="104">Your server</text>
-    <text class="muted" x="356" y="122">lib/flowstate.ts and the route</text>
-    <rect class="card" x="352" y="138" width="236" height="68" rx="10"/>
-    <text class="lbl" x="366" y="158">REGISTERED</text>
-    <text class="code" x="366" y="180">hello-chat</text>
-    <text class="muted" x="366" y="198">action: chat</text>
-    <rect class="card" x="352" y="216" width="236" height="78" rx="10"/>
-    <text class="lbl" x="366" y="236">RUNS THE BLOCKS</text>
-    <text class="code" x="366" y="258">chatPipeline</text>
-    <text class="muted" x="366" y="278">the generator, then the counter</text>
-    <text class="p" x="356" y="326">Streams each item back</text>
-    <text class="p" x="356" y="344">as it is made.</text>
-  </g>
-
-  <g id="store">
-    <rect class="wall-sess" x="656" y="80" width="260" height="316" rx="14"/>
-    <text class="h" x="672" y="104">The store</text>
-    <text class="muted" x="672" y="122">inMemoryStores() here</text>
-    <rect class="card-sess" x="668" y="138" width="236" height="156" rx="10"/>
-    <text class="lbl" x="682" y="158">ONE SESSION</text>
-    <text class="code" x="682" y="182">state</text>
-    <text class="code" x="682" y="200">  messageCount</text>
-    <text class="code" x="682" y="228">items</text>
-    <text class="muted" x="682" y="246">your messages and replies;</text>
-    <text class="muted" x="682" y="262">history reads them next turn</text>
-    <text class="p" x="672" y="326">A page reload reads it back.</text>
-    <text class="muted" x="672" y="352">Held in memory, it is lost on</text>
-    <text class="muted" x="672" y="368">restart. SQLite or Postgres</text>
-    <text class="muted" x="672" y="384">keeps it.</text>
-  </g>
-
-
-  <g id="footer">
-    <rect class="box" x="24" y="412" width="892" height="104" rx="12"/>
-    <text class="h" x="40" y="436">Not a copy, and who sees what</text>
-    <text class="p" x="40" y="460">The browser holds a view: the items marked for the client and the state you expose. The session itself is in the store.</text>
-    <text class="p" x="40" y="480">Your page calls session.sendAction("chat", { message }), and the flow registered on the server runs it.</text>
-    <text class="p" x="40" y="500">A reload, or the next turn, reads the session back from the store.</text>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 34 940 538">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="solid" x="24" y="56" width="232" height="340"/>
+<text class="lb" x="36" y="88">PLACE 01</text>
+<text class="nm" x="36" y="110">Your browser</text>
+<text class="sub" x="36" y="128">page.tsx · shows the session</text>
+<line class="hi" x1="24" y1="140" x2="256" y2="140"/><rect class="solid" x="354" y="56" width="232" height="340"/>
+<text class="lb" x="366" y="88">PLACE 02</text>
+<text class="nm" x="366" y="110">Your server</text>
+<text class="sub" x="366" y="128">lib/flowstate.ts and the route</text>
+<line class="hi" x1="354" y1="140" x2="586" y2="140"/><rect fill="url(#hatch)" x="684" y="56" width="232" height="10"/><line class="thin" x1="684" y1="66.5" x2="916" y2="66.5"/><rect class="solid" x="684" y="56" width="232" height="340"/>
+<text class="lb" x="696" y="88">PLACE 03</text>
+<text class="nm" x="696" y="110">The store</text>
+<text class="sub" x="696" y="128">inMemoryStores() · keeps it</text>
+<line class="hi" x1="684" y1="140" x2="916" y2="140"/><text class="c" x="36" y="162">FlowProvider</text>
+<text class="t" x="36" y="178">the flow, and the user</text>
+<text class="c" x="36" y="204">useFlow</text>
+<text class="t" x="36" y="220">picks this user's session</text>
+<text class="c" x="36" y="246">useSession</text>
+<text class="t" x="36" y="262">items, exposed state,</text>
+<text class="t" x="36" y="278">and streaming</text>
+<text class="c" x="36" y="304">ItemsRenderer</text>
+<line class="hi" x1="24" y1="318" x2="256" y2="318"/><text class="t" x="36" y="340">Sees the items marked for</text>
+<text class="t" x="36" y="356">the client, and the state</text>
+<text class="t" x="36" y="372">you expose. Nothing else.</text>
+<text class="lb" x="366" y="162">REGISTERED</text>
+<text class="c" x="366" y="182">hello-chat</text>
+<text class="t" x="366" y="198">action: chat</text>
+<line class="hi" x1="354" y1="214" x2="586" y2="214"/><text class="lb" x="366" y="236">RUNS THE BLOCKS</text>
+<text class="c" x="366" y="256">chatPipeline</text>
+<text class="t" x="366" y="272">the generator, then</text>
+<text class="t" x="366" y="288">the counter</text>
+<line class="hi" x1="354" y1="318" x2="586" y2="318"/><text class="t" x="366" y="340">Streams each item back</text>
+<text class="t" x="366" y="356">as it is made.</text>
+<rect class="thin" x="696" y="154" width="208" height="150"/><text class="lb" x="706" y="176">ONE SESSION</text>
+<text class="c" x="706" y="198">state</text>
+<text class="c" x="721" y="214">messageCount</text>
+<text class="c" x="706" y="238">items</text>
+<text class="t" x="706" y="254">your messages and</text>
+<text class="t" x="706" y="270">replies; history reads</text>
+<text class="t" x="706" y="286">them next turn</text>
+<text class="t" x="696" y="330">A page reload reads it back.</text>
+<text class="t" x="696" y="354">Held in memory, it is lost</text>
+<text class="t" x="696" y="370">on restart. SQLite or</text>
+<text class="t" x="696" y="386">Postgres keeps it.</text>
+<line class="ln" x1="258" y1="182" x2="352" y2="182" marker-end="url(#ah)"/><rect class="ground" x="274.4" y="175" width="61.1" height="15"/><text class="plate" x="305" y="186" text-anchor="middle">01 SEND</text>
+<line class="ln" x1="352" y1="260" x2="258" y2="260" marker-end="url(#ah)"/><rect class="ground" x="270.8" y="253" width="68.4" height="15"/><text class="plate" x="305" y="264" text-anchor="middle">02 ITEMS</text>
+<line class="ln" x1="589" y1="222" x2="693" y2="222" marker-start="url(#ah)" marker-end="url(#ah)"/><rect class="ground" x="593.5" y="215" width="83.0" height="15"/><text class="plate" x="635" y="226" text-anchor="middle">03 SESSION</text>
+<line class="hi" x1="0" y1="420" x2="940" y2="420"/>
+<text class="n" x="24" y="446">01</text>
+<text class="t" x="56" y="446">Your page calls session.sendAction("chat", { message }), and the flow registered on the server runs it.</text>
+<text class="n" x="24" y="471">02</text>
+<text class="t" x="56" y="471">The server streams each item back as it is made. The browser holds a view: the items marked for the client and the</text>
+<text class="t" x="56" y="488">state you expose.</text>
+<text class="n" x="24" y="513">03</text>
+<text class="t" x="56" y="513">The session itself is in the store. A reload, or the next turn, reads the session back from the store.</text>
+<line class="solid" x1="24" y1="540" x2="50" y2="540"/><text class="lb" x="58" y="544">A CALL OR A STREAM</text>
+<rect fill="url(#hatch)" x="221" y="534" width="26" height="11"/><rect class="thin" x="221" y="534" width="26" height="11"/><text class="lb" x="255" y="544">OUTLIVES THE REQUEST</text>
 </svg>

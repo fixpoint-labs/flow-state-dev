@@ -14,7 +14,7 @@ import myFlow from "./flows/my-flow";
 
 export const flowstate = createFlowState({
   flows: { myFlow },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: inMemoryStores() } },
 });
 ```
@@ -150,6 +150,8 @@ createFlowState({
 });
 ```
 
+A request that settles `failed` sends one more event, marked `final: true` with `scope: "request"`. It comes after rescues and retries had their chance and after the failed record is written, so a failure a retry healed never gets one. Use it when you want one event per failed request (filing a bug, paging someone). If you forward every block failure, as above, skip it with `if (event.final) return;` so the same failure isn't sent twice.
+
 See the [Error capture docs](https://flow-state.dev/docs/advanced/error-capture) for the full event shape and filtering guidance.
 
 ### Connection resilience
@@ -187,6 +189,38 @@ const router = createFlowApiRouter({ registry, stores });
 
 export const { GET, POST, PATCH, DELETE } = router;
 ```
+
+### Calling the router in process
+
+`createInProcessFetch(app, { basePath? })` takes a `FlowState` or a router and returns a fetch-shaped function, `(input, init?) => Promise<Response>`, that hands each request to the engine in this process, with no web server. Its usual home is a client's `fetcher`:
+
+```ts
+import { createFlowState, createInProcessFetch } from "@flow-state-dev/engine";
+import { createClient } from "@flow-state-dev/client";
+
+const flowState = createFlowState({ flows: { support } });
+const fsd = createClient({ userId: "u1", fetcher: createInProcessFetch(flowState) });
+await fsd.flow("support").send("reply", { text: "Hi" });
+```
+
+You can also call it directly, as you would `fetch`:
+
+```ts
+const fetcher = createInProcessFetch(flowState);
+const res = await fetcher("/api/flows/support/actions/reply", {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ userId: "u1", input: { text: "Hi" } })
+});
+```
+
+- Only the URL's path is read. The origin is ignored, and a relative path works.
+- `basePath` is the mount, `"/api/flows"` by default. A path outside it answers `404`.
+- Each call waits for store init. A failed init answers `500 { error: "Server failed to initialize" }`.
+- `GET`, `POST`, `PATCH` and `DELETE` reach the router. Any other method, `HEAD` included, answers `405`.
+- SSE bodies stream, and an `AbortSignal` passed in `init` reaches the route.
+
+The routes, checks and answers are the same as over HTTP. Credentials ride the request headers, and being in the same process grants nothing.
 
 The registry indexes instances by id and `get(id)` is an exact lookup: a singleton is found by its kind, a collection member only by its own id, and a miss is `undefined` with no first-registered fallback. Ids are unique across the registry, so a duplicate id, a singleton under a custom id, or a kind mixing singleton and collection instances throws `FlowIdentityConflictError` at `register`. See the [Engine API](https://flow-state.dev/docs/api/server#createflowregistry) and [server setup](https://flow-state.dev/docs/server/setup#addressing-an-instance).
 
@@ -262,10 +296,12 @@ in-process dispatcher gates the run there (and, over a shared lease backend,
 the host takes an external run's place before enqueueing; see below), so every
 transport inherits the
 same behavior and adapters only map the outcome to their native response.
-When a `reject` policy drops a competing request, `host.dispatch` throws
-`ConcurrencyRejectedError` synchronously over the default in-memory backend
-(through `accepted` over a shared one; see below), carrying the contended `key` and the
-`inFlightRequestId`); the HTTP adapter maps it to 409, fire-and-forget
+When a `reject` policy drops a competing request, the handle `host.dispatch`
+returns refuses through `accepted` (and `finished`) with
+`ConcurrencyRejectedError`, carrying the contended `key` and the
+`inFlightRequestId`. The place is taken only after the caller's ownership of
+the session has been checked, on every backend, so a caller who does not own a
+session never holds its key; the HTTP adapter maps it to 409, fire-and-forget
 webhook/scheduled adapters to a benign skipped 200, MCP to a server-busy
 error. A `queue` policy that waits past its budget rejects the request's
 `finished` with `ConcurrencyQueueTimeoutError` (it surfaces through the request
@@ -340,7 +376,7 @@ job's next step. It returns one of two shapes:
   spent. Take a place at the back with `take()`, then wait for its turn with
   `planQueueWait({ ..., budgetMs: Infinity })`, which never times out.
 
-The dispatching process counts a handed-off `defer` against its 32-per-key cap
+The dispatching process counts a dispatched `defer` against its 32-per-key cap
 until the job's `finished` settles, including while the job runs.
 
 ## Authentication
@@ -498,7 +534,7 @@ tenant, org and flow kind. `limit` accepts 1–100 (default 25) and `offset`
 Those runs carry a `metadata.dispatch` bag on the request record: `type` and
 `action` for the entry, `from` naming the block and session that dispatched,
 `key` for the derived session key, and `taskId` naming the task-board row on a
-task hand-off. Read the bag at all only when the record's `source` is
+task dispatch. Read the bag at all only when the record's `source` is
 `"internal"` or `"task"` — `metadata` is caller-writable on an ordinary request,
 `source` is not. The runtime assembles the bag from values it derived itself, and
 it is a correlation rather than an authority: display `taskId`, don't key a
@@ -519,8 +555,8 @@ as the session snapshot (`GET /api/flows/sessions/:sessionId/state`) is, before
 anything is streamed. An unknown session answers `404`, and one that needs
 migrating `409` (`migration-required`). In an app that authenticates, both
 routes can also answer `404` when the session is replaced by a new one under
-the same id while the request is being answered. `createSessionSSEClient` in
-`@flow-state-dev/client` reads it.
+the same id while the request is being answered. The client's `sessions.stream`
+in `@flow-state-dev/client` reads it.
 
 Query parameters, all optional:
 
@@ -567,14 +603,14 @@ The server reads the store about once a second per open stream, and each read
 costs what is running or recently changed, not the session's history. Every
 server reads the same store, so a line written on one instance reaches a view
 held by another. The server closes the connection after at most 15 minutes;
-reconnect with `since` to carry on, as `createSessionSSEClient` does. It also
+reconnect with `since` to carry on, as the client's `sessions.stream` does. It also
 closes the connection when the session is deleted or replaced by a new session
 under the same id. The
 reconnect then answers `404` if the session is gone, or `403` if the app
 authenticates and another user or organization now holds the id. If the same
 owner created the session again, or the app doesn't authenticate, the
 reconnect answers `404` when it names `session_created_at`, and otherwise
-follows the new session. `createSessionSSEClient` stops for good,
+follows the new session. The client's `sessions.stream` stops for good,
 without an error, on a `401`, `403`, `404`, `409` or `501`.
 
 A session deleted and created again under the same id, by the same owner in
@@ -616,9 +652,9 @@ Adapters must implement all of these options:
 
 Every path that creates a session (the create route, an action to a session
 id that does not exist yet, a webhook delivery, `fsdev run`, and a dispatch
-into a child session) creates it from an initial state: the create body's
-`state`, `fsdev run --seed-session`, or the `state` a `dispatcher()`'s
-`{ key, state }` session names. The flow's session `stateSchema` parses it. A
+that creates its session) creates it from an initial state: the create body's
+`state`, `fsdev run --seed-session`, or the `state` a `dispatcher()` session
+target names. The flow's session `stateSchema` parses it. A
 flow that binds its sessions (a top-level `.readonly()` field or a
 `createCheck`) refuses a state the schema refuses; any other flow keeps it as
 sent, for its actions to validate when they run. `session.serverOwned`
@@ -627,6 +663,14 @@ names fields a caller may not seed. Most flows need nothing more. The optional
 or on what exists in the store: it receives the verified caller and the parsed
 state, and accepts or refuses the create. A turn on an existing session never
 calls it.
+
+A dispatch creates a session through one of two targets. `{ key }` derives a
+child session of the dispatching one from the key: it creates the child, from
+`state` when the target names one, or adopts the child already on that key.
+`{ id, state }` creates a top-level session at that id when none exists,
+judged by the target flow's `createCheck` (`create-refused` when it refuses),
+and delivers into the session when it does exist. An `{ id }` target without `state` never creates:
+an unknown id is refused as `session-not-found`.
 
 A top-level `stateSchema` field declared `.readonly()` is set when the session
 is created and never changes: a run's write that changes it throws
@@ -649,7 +693,7 @@ sessionId, readonlyFields, createdWith, next)` throws
 
 ## Session retention policies
 
-Long-running sessions accumulate items over time. Retention policies provide a safety net that bounds storage growth by evicting old completed request records when limits are exceeded.
+Long-running sessions accumulate items over time. Retention policies provide a safety net that bounds storage growth by evicting a session's old past turns when limits are exceeded: completed requests, and requests a dead host left `interrupted`, the same statuses the history view reads.
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -666,13 +710,15 @@ const flow = defineFlow({
 });
 ```
 
-Both constraints are optional and independent. When both are set, either condition triggers eviction. Eviction runs lazily after each completed request (no background process). The current request is never evicted. Nor is a request whose run has not finished yet, `onFinished` included, or that finished less than twice the live-tail liveness timeout ago (`LIVE_TAIL_LIVENESS_MS`, 30s by default, so 60s), or one still in the active-request registry. A run that dies before finishing is released by the stale-request sweeper, if it was heartbeating; with the sweeper disabled (`staleSweepIntervalMs: 0`), or heartbeats off (`request.heartbeatIntervalMs: 0`), its request is kept. A request spared this way is evicted when the session's next request completes. A record from an engine version that never wrote `finalizedAtMs` is kept for the stale-request threshold or `maxAge`, whichever is larger, plus that window, so a rolling deploy cannot free the id of a run still finishing on an old instance. A custom `RequestStore` must persist the record's `finalizedAtMs` and `heartbeatsUntilFinalized` fields (the run writes the stamp through `setFieldsIfStatus`), and honor that method's `expectedIncarnation` fence.
+Both constraints are optional and independent. When both are set, either condition triggers eviction. Eviction runs lazily after each completed request (no background process). The current request is never evicted. Nor is a request whose run has not finished yet, `onFinished` included, or that finished less than twice the live-tail liveness timeout ago (`LIVE_TAIL_LIVENESS_MS`, 30s by default, so 60s), or one still in the active-request registry. A completed run that dies before stamping `finalizedAtMs` is released by the stale-request sweeper, if it was heartbeating; with the sweeper disabled (`staleSweepIntervalMs: 0`), or heartbeats off (`request.heartbeatIntervalMs: 0`), its request is kept. A run that dies mid-turn is a different case: once the sweeper marks it `interrupted` it is evicted like any past turn, aged from `interruptedAt` (from its start, on a record without one), after the rollout-safety bound below has passed since it was marked. An `interrupted` request that will run again (a pending gate, or its last logged gate resolved and owed a re-drive) is never evicted, though its items still count toward `maxItems`. A request spared this way is evicted when the session's next request completes. A record from an engine version that never wrote `finalizedAtMs` is kept for the stale-request threshold or `maxAge`, whichever is larger, plus that window, so a rolling deploy cannot free the id of a run still finishing on an old instance. A custom `RequestStore` must persist the record's `finalizedAtMs` and `heartbeatsUntilFinalized` fields (the run writes the stamp through `setFieldsIfStatus`), and honor that method's `expectedIncarnation` fence.
 
 Retention policies operate at **request granularity** — entire old request records are removed, not individual items. For items that should never be stored at all, use `transient: true` on block definitions.
 
 The `maxItems` check counts items through `RequestStore.countItems(requestId)` rather than loading item payloads, so a retention sweep stays cheap on sessions with large logs. Custom `RequestStore` implementations must provide `countItems`; it returns what `get(id)` would surface as `items.length`.
 
 Eviction calls `RequestStore.delete(id)`, which removes everything the store keeps under that id: the record, its items, its stream events and its runOnce results. Request ids can be supplied by the caller, so a freed id may be taken by a later request, possibly from another user. Anything a custom store leaves behind under the id would be replayed on that request's stream. `createRequestStoreConformanceTests` checks the store's `delete`; `createRequestRetentionConformanceTests` (both from `@flow-state-dev/engine/testing`) runs the whole path through retention and the stream route against a `StoreRegistry`.
+
+`applyRetentionPolicy(stores, sessionId, currentRequestId, policy, now?, tenantId?, provider?)` takes the host's durability provider as an optional last argument, to read those gates; `runAction` passes `runtimeConfig.durabilityProvider`. Without one, no request counts as waiting on a gate, which is right for a host that cannot suspend.
 
 Supported duration formats: `'30s'`, `'5m'`, `'2h'`, `'7d'`, or a raw number in milliseconds.
 
@@ -713,6 +759,17 @@ Do not implement it as a version CAS. Terminal transitions persist `version` **u
 How you store the flag is yours. The shipped adapters differ: in-memory and the SQL pair keep it on the record and force the stored value through on `set`; the filesystem adapter keeps a marker file beside the record, because its `get()` loads inline items and would break the O(1) bound. Whichever you pick, `get()` must still surface the flag on the returned record.
 
 **A `set` that leaves `items` off keeps the stored items.** The runtime writes the whole request record when a block changes request state, and it leaves `items` off that record, because its copy is from when the run started. If your adapter keeps items on the record and `set` replaces the record, carry the stored items through whenever `value.items` is absent, or every item persisted since the run started disappears until the request settles. An adapter that keeps items out of `set`, as the SQLite and Postgres adapters do, already holds this. A record that does carry `items` may still replace them.
+
+**`deleteIfStatus`** is the conditional form of `delete`, and is required too:
+
+```ts
+deleteIfStatus(
+  id: string,
+  allowedStatuses: readonly RequestStatus[]
+): Promise<ConditionalWriteResult>;
+```
+
+It deletes what `delete` deletes (the record, its items, stream events and runOnce results), but only while the record's status is one of `allowedStatuses`. Check the status and delete in one atomic step, as `setFieldsIfStatus` does. Session retention deletes through it with the status it judged each record in, so a request that started running in between, such as an `interrupted` one the durability sweep re-drives, keeps everything under its id. The outcomes match `setFieldsIfStatus`: `{ applied: true, status }` when deleted, `{ applied: false, status }` when a record exists outside the predicate, and `{ applied: false, status: undefined }` when no record exists. Wait for item and event writes already in flight for the id to finish, but don't drop them first the way `delete` does: when the predicate fails, they belong to a run that is still going.
 
 The cross-store conformance suite (`createRequestStoreConformanceTests`, from `@flow-state-dev/engine/testing`) covers all of this.
 
@@ -1045,7 +1102,13 @@ By default the final checkpoint is retained after terminal completion (success /
 
 ## DurabilityProvider
 
-`DurabilityProvider` coordinates checkpoint-based crash recovery and HITL (human-in-the-loop) suspend/resume. Wire it onto `RuntimeConfig.durabilityProvider` to enable `ctx.suspend()` in durable actions.
+`DurabilityProvider` coordinates checkpoint-based crash recovery and HITL (human-in-the-loop) suspend/resume.
+
+**On by default wherever stores persist.** `createFlowState` installs the checkpoint provider over its active profile's stores unless `durable: false`. Over in-memory stores it installs none unless `durable: true`, because a suspension held there is lost when the process ends. `resolveDurabilityProvider({ stores, durable })` is that rule, for a host that builds its own `createFlowApiRouter` or calls `runAction`; those take a provider only through `RuntimeConfig.durabilityProvider`. Without one, `ctx.suspend()` throws an error that names the setting to change, and the request fails.
+
+For store authors: `CheckpointStore` and `SuspensionStore` take an optional `persists` field. Set it to `false` on a store that keeps nothing past the process, as the in-memory stores do. Leave it unset on a store that persists.
+
+The durability sweeper runs in a server process (`fsdev dev`, `fsdev serve`, your own router). A suspension a one-shot process left behind expires at its deadline once a server runs on the same store.
 
 ```ts
 import { createCheckpointDurabilityProvider } from "@flow-state-dev/engine";
@@ -1056,7 +1119,7 @@ const provider = createCheckpointDurabilityProvider({
   leases: stores.leases
 });
 
-// Pass to runtime config
+// Pass to runtime config (or use resolveDurabilityProvider({ stores }))
 { durabilityProvider: provider }
 ```
 
@@ -1072,7 +1135,7 @@ A generator tool can also suspend mid-loop (`ctx.suspend()` for tool-call approv
 
 Durability records accumulate on long-lived hosts: a completed run's checkpoints are dead weight, a resolved suspension is only worth keeping for a window, and a crashed run leaves records that `cleanup()` never fires for. `createDurabilitySweeper` is an opt-in periodic job that reclaims them, modeled on the stale-request sweeper (a re-armed, `unref`ed timer, `inFlight` guard, idempotent `dispose`, no-op handle when disabled).
 
-Configure it via `RuntimeConfig.durabilityRetention` (forwarded by `createFlowState` and `createFlowApiRouter`). The router builds the sweeper whenever a `durabilityProvider` is present: it always enforces suspension expiry and carries on the turn behind an expired approval (the gated tool does not run, and the model is told the approval is no longer valid), times out overdue asks, re-drives a request left behind a resolved gate, and carries a stop recorded on a parked request. The pruning steps run only when a `durabilityRetention` policy is present.
+Configure it via `RuntimeConfig.durabilityRetention` (forwarded by `createFlowState` and `createFlowApiRouter`). The router builds the sweeper whenever a `durabilityProvider` is present: it always enforces suspension expiry and carries on the turn behind an expired approval (the gated tool does not run, and the model is told the approval is no longer valid), times out overdue waits, re-drives a request left behind a resolved gate, and carries a stop recorded on a parked request. The pruning steps run only when a `durabilityRetention` policy is present.
 
 ```ts
 createFlowState({
@@ -1088,9 +1151,19 @@ createFlowState({
 });
 ```
 
-Each tick takes a single-holder sentinel lease (co-located hosts serialize), enforces suspension expiry (`pending` past `expiresAt` → `expired`; an ask gate past its deadline is resumed with `wait_timed_out` instead), re-drives a request left `suspended` or `interrupted` behind a gate that is already resolved (an ask's recorded outcome continues it, a `stopped` gate ends it `aborted`, an `expired` approval continues it as a rejection marked `expired`; under the request's lease), prunes resolved suspensions and expired leases past their windows, and prunes orphaned checkpoints. The next tick runs at the earlier of `sweepIntervalMs` and the earliest pending ask deadline, never sooner than a second; an ask parked in this process brings it forward.
+Each tick takes a single-holder sentinel lease (co-located hosts serialize), enforces suspension expiry (`pending` past `expiresAt` → `expired`; a wait gate whose deadline is its expiry, as an earlier version parked them, is resumed with `wait_timed_out` instead), re-drives a request left `suspended` or `interrupted` behind a gate that is already resolved (a wait's recorded outcome continues it, a `stopped` gate ends it `aborted`, an `expired` approval continues it as a rejection marked `expired`, and a gate a person approved, rejected, submitted or skipped continues it with that answer; under the request's lease), prunes resolved suspensions and expired leases past their windows, and prunes orphaned checkpoints. The next tick runs at the earlier of `sweepIntervalMs` and the earliest wake (a wait's deadline is one), never sooner than a second; a wake owed in this process brings it forward.
 
-**Stopping a suspended request.** The abort route and `ctx.session.stopRequest` also stop a `suspended` request when the host has durable execution: the stop resolves its pending gate `stopped` through the gate's single pending state. An ask gate continues the request with a stop outcome, so the parked call (`parkOnAsk` throws `WaitStoppedError`) can end what it asked for and end its turn; any other gate continues the request with the stop recorded, so it ends `aborted` through its own lifecycle (its `onFinished` hook runs) without running past the gate. A stop that finds the gate already resolved answers `409` on the route and `"already-resolved"` from `stopRequest`. Checkpoints of `in_progress` or `suspended` requests are never age-pruned — they are the resume points an active or paused run needs.
+**Wakes.** The sweeper also fires due wakes. A wake is a due time kept in the store for one session and one internal entry; when it falls due, the sweeper runs that entry in that session as the session's owner, with an empty input. The task board sets one for the filing session each time a task it handed out ends, due about two seconds later (or as soon as the server is running again, if it was down then), so a notice lost in a crash is still sent ([Hearing how a task ended](https://flow-state.dev/docs/orchestration/task-board#hearing-how-a-task-ended)). A fired wake is moved 30 seconds out first, so a run that dies leaves it to fire again; the run clears it or moves it to its next due time. A wake due sooner than the next tick brings the tick forward. Work still owed `maxDebtAgeMs` past its due time (a `createFlowState` option, default 24 hours) is given up on and logged. Wakes need durable execution and a store registry with `wakes`; without either, the host logs once at start and keeps none, and no request can wait. A wait's deadline is a wake too (`WAIT_DEADLINE_ENTRY`): a request owes its session one before it parks on a wait gate, and when it falls due the engine resumes each overdue wait in that session with the work still running, cancelling nothing. `createFlowState({ waitDeadlines: { defaultMs, minMs, maxMs } })` sets a wait's default deadline and its bounds (5 minutes, 1 s, 24 h by default). A request a `dispatcher({ wait: true })` started resumes its sender when it ends. Waits nest up to five deep (`RequestHost.waits`). Before it closes the stores, disposing the router waits for any request a wake started to finish, and for any request working a dispatched task, until it has recorded that task's outcome (settled, failed, or waiting on something), up to `shutdownDrainMs` (a `createFlowApiRouter` option, default 10 s; `disposeFlowApiRouter(router, { drainMs })` overrides it for one call, and `@flow-state-dev/node`'s `serve()` passes what is left of its shutdown grace). Past that, it aborts the wake requests still running and logs two counts: the wake requests it aborted, and the task requests that hadn't recorded an outcome. Each aborted request's wake stays and fires again on the next host.
+
+`WakeStore` (`owe`, `get`, `move`, `clear`, `listDue`, `earliestDueAt`) is optional on `StoreRegistry` as `wakes`. `createInMemoryWakeStore()` and `createFilesystemWakeStore(dir)` ship here, and `inMemoryStores()` / `filesystemStores()` include them; the SQLite and Postgres adapters ship their own. A custom `WakeStore` can run `createWakeStoreConformanceTests({ name, createStore })` from `@flow-state-dev/engine/testing`.
+
+**Stopping a suspended request.** The abort route and `ctx.session.stopRequest` also stop a `suspended` request when the host has durable execution: the stop resolves its pending gate `stopped` through the gate's single pending state. A wait gate continues the request with a stop outcome, so the parked call (`parkOnWait` returns `{ answered: false, stopped: true }`) can end the task it waits on and end its turn; any other gate continues the request with the stop recorded, so it ends `aborted` through its own lifecycle (its `onFinished` hook runs) without running past the gate. A gate a person already resolved (approved, say) whose request has not run again yet, so it waits on the sweep's re-drive, is stopped the same way: the gate is recorded `stopped`, the request ends `aborted`, and the approved step never runs. The person's answer, and any form data they sent, is replaced by the stop and not kept. A stop that finds the gate already resolved, with the request running again or about to, answers `409` on the route and `"already-resolved"` from `stopRequest`. A run a task board started (the `task` source) that is parked on a user's stop ends at that stop instead: it continues through the board's claim gate, which cancels the task, and ends `aborted` at the stop itself, with nothing after it run. Checkpoints of `in_progress` or `suspended` requests are never age-pruned — they are the resume points an active or paused run needs.
+
+**Answering a user's stop.** `POST /api/flows/:flowKind/requests/:requestId/answer` with `{ suspensionId, action, data? }` answers a suspension that waits for a user (`ctx.waitForUser`, or a `human_approval` / `human_input` stop), whatever started its run, a task board included, which the resume route refuses. It runs the resume path's ownership checks on the stop's request (flow instance, user, tenant, organization) before it reads the stop, and answers a stop that isn't the caller's, or isn't a user's, as one that doesn't exist (`404`). The answer is checked against the stop's own `allow` and `resumeSchema`; who answered is the signed-in caller, never a body field. It resolves the stop through its single pending state, so of an answer, a cancel, a deadline and a stop, the first wins and the rest are told `already-resolved` (`409`). The client call is a request handle's `answer`.
+
+**A user's stop's deadline.** A `waitForUser` call's `deadline`, else `createFlowState({ userDeadlineMs })` (unset by default, one second to 365 days), else none: a stop with no deadline waits until it is answered, stopped or cancelled, and the sweeper never ends it. A raw `ctx.suspend` keeps its own `timeoutMs`. At a deadline the sweeper continues the request: an approval reads as a no, and a review or an input throws `SuspensionTimeoutError` into the block.
+
+**Cancelling a user's stop.** `RequestHost.resumeWait({ suspension: { requestId, suspensionId }, outcome: { cancelled: true }, first? })` resolves a pending user's stop `cancelled` under its request's lease and continues the request, so `waitForUser` returns `{ cancelled: true }`. The stop must be this principal's (same user, tenant and organization); `first` runs under the lease before the stop resolves, which is where a board writes its task's cancel. A stop already recorded `cancelled` whose request never continued is continued, and so is one the sweeper finds.
 
 ## Connection resilience
 
@@ -1098,7 +1171,14 @@ The server runs three coordinated mechanisms so a dropped SSE connection doesn't
 
 - **Wire-level SSE heartbeat.** Every live and GET-attach SSE response emits `: ping\n\n` comment frames at a configurable cadence. Keeps NAT/proxy idle timeouts from closing the connection and gives clients a robust inactivity signal during long pauses (e.g. an LLM thinking).
 - **Stale-request sweeper.** A periodic in-process job that reads the active request registry and, for entries whose executor heartbeat has stopped, marks the persisted request record `interrupted` so session locks release.
-- **Read-only status endpoint.** `GET /api/flows/:flowKind/requests/:requestId/status` returns a `RequestStatusSnapshot` callable when no SSE stream is attached — used by clients to confirm authoritative server state after the watchdog trips.
+- **Read-only status endpoint.** `GET /api/flows/:flowKind/requests/:requestId/status` returns a `RequestStatusSnapshot` callable when no SSE stream is attached — used by clients to confirm authoritative server state after the watchdog trips. The snapshot carries the request's `sessionId` (absent for a request with no session), which is what a caller holding only a request id needs to continue or retry it. A request in another tenant, or another principal's, answers `404` like a missing one.
+
+Two user-addressed routes cover requests a crash left behind:
+
+- `POST /api/flows/users/:userId/check-interrupted` sweeps now and answers only the requests **that call** marked `interrupted`. A request the startup pass or the sweeper marked first is not in it.
+- `GET /api/flows/users/:userId/interrupted-requests` lists the user's `interrupted` request records, whoever marked them. It changes nothing, so it returns the same records on every call until each is continued or removed. Call `check-interrupted` first for an answer that doesn't wait for the next sweep; the client's `requests.interrupted()` does both.
+
+Both answer `{ interrupted: [{ requestId, sessionId?, flowKind, flowId, actionName, interruptedAt }] }`. `flowId` is the instance address the request's routes take: the kind for a singleton, the instance id for a collection member. A record that names no instance carries its `flowKind` there. Both scope rows the way `GET /active-requests` does: the caller's tenant, then the owning instance's own resolver when it has one, else the caller's user and organization (or, reached anonymously in a mixed app, open flows only).
 
 ```ts
 createFlowApiRouter({
@@ -1138,7 +1218,7 @@ Clients consume the wire heartbeat through `useSession`'s watchdog: it surfaces 
 
 ## Debug endpoints
 
-The server exposes a read-only debug surface at `/api/flows/sessions/:id/debug/resources` and `/api/flows/sessions/:id/debug/resources/:ref`. Each response carries the full server-side state for the matching storage keys alongside the projected client view, so a debugger can show you exactly what `client.data` is dropping. There are no write paths here; the endpoint cannot mutate state. A response lists one entry per resource. Each entry reports the resource's `writable` and `llmWritable` settings where the config declares them. A setting the config does not declare is left out of the entry rather than reported as `false`. A [projected collection](https://flow-state.dev/docs/resources/projected-collections) has no `writable` field. Its debug entry still reports `writable: false`, unlike a resource that simply omits the setting.
+The server exposes a read-only debug surface at `/api/flows/sessions/:id/debug/resources` and `/api/flows/sessions/:id/debug/resources/:ref`. Each response carries the full server-side state for the matching storage keys alongside the projected client view (both without any field a resource names in `secret`), so a debugger can show you exactly what `client.data` is dropping. There are no write paths here; the endpoint cannot mutate state. A response lists one entry per resource. Each entry reports the resource's `writable` and `llmWritable` settings where the config declares them. A setting the config does not declare is left out of the entry rather than reported as `false`. A [projected collection](https://flow-state.dev/docs/resources/projected-collections) has no `writable` field. Its debug entry still reports `writable: false`, unlike a resource that simply omits the setting.
 
 The endpoint is off by default. Opt in with `debugEndpointsEnabled: true` on `createFlowApiRouter`, or set `FSDEV_DEBUG_ENDPOINTS=1` in the environment. By default the route accepts only loopback origins; widen with `debugAllowedOrigins` for non-loopback DevTool hosts.
 

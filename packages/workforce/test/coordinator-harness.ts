@@ -5,16 +5,16 @@
  * blocks, and an HTTP router whose caller is the verified user in an
  * `x-user` header.
  *
- * - `helper` takes delegated posts. Its door answers `<worker> heard: <message>`
- *   and records every delivery it hears; a message carrying `[fail]` makes its
- *   turn throw, so the delivery is never answered. `[fail:<worker>]` fails only
- *   that worker's turn, and `[slow:<worker>]` holds only that worker's answer
- *   for {@link SLOW_MS}. `[hang:<worker>]` holds that worker's first delivery
- *   until its run is cancelled (`cancelDelegate`). Its request `onFinished`
- *   reports a cancelled run unless the host turns that off (`reportCancel`).
+ * - `helper` takes a conversation's tasks, the routed ones a coordinator
+ *   files for its user's messages among them (FIX-2083). Its turn answers
+ *   `<worker> heard: <message>` and records every message it hears; a message
+ *   carrying `[fail]` makes its turn throw, so the task is never answered.
+ *   `[fail:<worker>]` fails only that worker's turn, and `[slow:<worker>]`
+ *   holds only that worker's answer for {@link SLOW_MS}. `[hang:<worker>]`
+ *   holds that worker's first task until its run is cancelled
+ *   (`cancelDelegate`).
  * - `quiet` takes nothing: its workers can't be delegates.
- * - `tasker` takes tasks and no posts; `allround` takes both. Their doors
- *   answer `<flow> heard it`, and neither runs a task here.
+ * - `tasker` and `allround` take tasks. Their turns answer `<flow> heard it`.
  *
  * Models are scripted: the best-fit evaluator by block name
  * (`coordinator-route`), answering from the post's first `[route:<worker>]`
@@ -25,7 +25,8 @@
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { createFlowState, inMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/engine";
+import { createFlowState, createInProcessFetch, inMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/engine";
+import { createClient } from "@flow-state-dev/client";
 import {
   createMockModelResolver,
   mockEvaluationModel,
@@ -34,7 +35,6 @@ import {
 } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { defineCoordinatorFlow, type CoordinatorFlowOptions } from "../src/coordinator/coordinator-flow";
-import { delegatedPostEntry, delegatedPostOnFinished } from "../src/coordinator/delegated-post";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import { COORDINATOR_ROUTE } from "../src/coordinator/coordinator-keys";
 import type { WorkerManifest } from "../src/manifest";
@@ -48,7 +48,7 @@ export const ORG = "acme";
 
 /**
  * The standard workers: two coordinators, four helpers, one worker that takes
- * nothing, one that takes only tasks and one that takes posts and tasks.
+ * nothing, and two more that take tasks.
  */
 export function standardWorkers(overrides: Partial<Record<string, Record<string, unknown>>> = {}): WorkerManifest[] {
   const worker = (id: string, declared: Record<string, unknown>, body = ""): WorkerManifest => ({
@@ -76,7 +76,7 @@ export function standardWorkers(overrides: Partial<Record<string, Record<string,
   ];
 }
 
-/** One delivery a helper heard. */
+/** One message a helper heard. */
 export type Heard = { worker: string; message: string; sessionId: string };
 
 const doorInput = z.object({ message: z.string() });
@@ -87,7 +87,7 @@ export const SLOW_MS = 1_500;
 /** The longest a `[hang:<worker>]` mark waits to be cancelled. */
 const HANG_MS = 10_000;
 
-function helperFlow(installation: WorkerInstallation, heard: Heard[], reportCancel: boolean) {
+function helperFlow(installation: WorkerInstallation, heard: Heard[]) {
   const hung = new Set<string>();
   const door = handler({
     name: "helper-run",
@@ -100,7 +100,7 @@ function helperFlow(installation: WorkerInstallation, heard: Heard[], reportCanc
         throw new Error(`${worker.id} could not answer`);
       }
       if (input.message.includes(`[slow:${worker.id}]`)) await new Promise((resolve) => setTimeout(resolve, SLOW_MS));
-      // The first delivery to this worker waits until its run is cancelled.
+      // The first task for this worker waits until its run is cancelled.
       if (input.message.includes(`[hang:${worker.id}]`) && !hung.has(worker.id)) {
         hung.add(worker.id);
         await new Promise<void>((_resolve, reject) => {
@@ -111,6 +111,8 @@ function helperFlow(installation: WorkerInstallation, heard: Heard[], reportCanc
           });
         });
       }
+      // `[empty]`: the turn answers nothing; `[empty:<worker>]`, only that worker's.
+      if (input.message.includes("[empty]") || input.message.includes(`[empty:${worker.id}]`)) return "";
       return `${worker.id} heard: ${input.message}`;
     }
   });
@@ -119,9 +121,8 @@ function helperFlow(installation: WorkerInstallation, heard: Heard[], reportCanc
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
-    ...(reportCancel ? { request: { onFinished: delegatedPostOnFinished } } : {}),
-    actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
-    internal: { actions: { onDelegatedPost: delegatedPostEntry(door) } }
+    actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
+    task: { actions: { work: workerTaskEntry({ name: "helper-task", turn: door }) } }
   });
 }
 
@@ -132,11 +133,11 @@ function quietFlow(installation: WorkerInstallation) {
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } }
+    actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } }
   });
 }
 
-/** A flow that takes tasks: `tasker` and nothing else, `allround` posts too. */
+/** A flow that takes tasks: `tasker` and `allround`. */
 function taskingFlow(installation: WorkerInstallation, flow: "tasker" | "allround") {
   const door = handler({ name: `${flow}-run`, inputSchema: doorInput, execute: () => `${flow} heard it` });
   return defineFlow({
@@ -144,8 +145,7 @@ function taskingFlow(installation: WorkerInstallation, flow: "tasker" | "allroun
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
-    ...(flow === "allround" ? { internal: { actions: { onDelegatedPost: delegatedPostEntry(door) } } } : {}),
+    actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
     // Takes a conversation's tasks, as the delegate check requires (FIX-1842).
     task: { actions: { work: workerTaskEntry({ name: `${flow}-task`, turn: door }) } }
   });
@@ -162,7 +162,7 @@ function scriptedRoute() {
     answers: ({ state, questions }) => {
       const text = (state as { post: { text: string } }).post.text;
       const marks = [...text.matchAll(/\[route:([a-z.-]+)\]/g)].map((match) => match[1]!);
-      if (marks.length === 0) throw new Error("the scripted route has no answer for this post");
+      if (marks.length === 0) throw new Error("the scripted route has no answer for this message");
       const offered = (questions as { worker?: { criteria?: Record<string, string> } }).worker?.criteria ?? {};
       const picked = marks.find((mark) => Object.hasOwn(offered, mark)) ?? marks[0]!;
       const confidence = /\[conf:([0-9.]+)\]/.exec(text)?.[1];
@@ -187,13 +187,11 @@ export type HostOptions = {
   roundDeadlineMs?: number;
   /** When set, the evaluator throws and this generator answers best fit's question. */
   languageRoute?: MockGeneratorInstance;
-  /**
-   * Whether `helper` reports a cancelled run (`delegatedPostOnFinished` as its
-   * request `onFinished`). Off, a cancelled delegate says nothing, as one whose
-   * process stopped would. On by default.
-   */
-  reportCancel?: boolean;
   stores?: StoreRegistry;
+  /** Durable execution, so the host keeps wakes (FIX-2078). Off by default. */
+  durable?: boolean;
+  /** More flows to register beside the fixture ones, keyed by flow name. */
+  flows?: Record<string, FlowInstance>;
 };
 
 /** One host of the app over `stores`. */
@@ -205,18 +203,23 @@ export function bootHost(options: HostOptions = {}) {
     standardWorkers: options.standard ?? standardWorkers(),
     workerFlows: () => flows as never
   });
-  const helper = helperFlow(installation, heard, options.reportCancel ?? true);
+  const helper = helperFlow(installation, heard);
   const quiet = quietFlow(installation);
   const tasker = taskingFlow(installation, "tasker");
   const allround = taskingFlow(installation, "allround");
   const coordinator = defineCoordinatorFlow({
     installation,
-    delegateFlows: [helper, allround],
     routeModel: "typesafe-ai/jev",
     ...(options.agent === undefined ? {} : { agent: options.agent }),
     ...(options.roundDeadlineMs === undefined ? {} : { roundDeadlineMs: options.roundDeadlineMs })
   });
-  flows = { helper, quiet, tasker, allround, coordinator };
+  flows = {
+    helper: { flow: helper, roles: ["contributor"] },
+    quiet,
+    tasker: { flow: tasker, roles: ["contributor"] },
+    allround: { flow: allround, roles: ["contributor"] },
+    coordinator
+  };
 
   const blocks = createWorkerHireBlocks(installation);
   const rosterFlow = defineWorkerRosterFlow(installation, {
@@ -230,7 +233,8 @@ export function bootHost(options: HostOptions = {}) {
     quiet: quiet() as unknown as FlowInstance,
     tasker: tasker() as unknown as FlowInstance,
     allround: allround() as unknown as FlowInstance,
-    roster: rosterFlow() as unknown as FlowInstance
+    roster: rosterFlow() as unknown as FlowInstance,
+    ...(options.flows ?? {})
   };
   const route =
     options.languageRoute === undefined
@@ -243,6 +247,7 @@ export function bootHost(options: HostOptions = {}) {
   const state = createFlowState({
     flows: instances,
     stores: { default: { primary: stores } },
+    ...(options.durable === true ? { durable: true } : {}),
     modelResolver: createMockModelResolver({
       evaluators: { [COORDINATOR_ROUTE]: route },
       generators: {
@@ -309,8 +314,8 @@ export function bootHost(options: HostOptions = {}) {
   const fire = async (userId: string, id: string) => act(userId, `roster-${userId}`, "fire", { id }, "roster");
 
   /**
-   * Cancel `worker`'s running delegated-post request, as `userId` would through
-   * the app's abort route, once it is running. Returns the route's status.
+   * Abort `worker`'s running task request, as `userId` would through the
+   * app's abort route, once it is running. Returns the route's status.
    */
   const cancelDelegate = async (userId: string, worker: string) => {
     const runtime = await state.getRuntime();
@@ -319,7 +324,7 @@ export function bootHost(options: HostOptions = {}) {
       const running = (await runtime.stores.request.list({})).find(
         (request) =>
           request.status === "in_progress" &&
-          request.actionName === "onDelegatedPost" &&
+          request.actionName === "work" &&
           heard.some((h) => h.worker === worker && h.sessionId === request.sessionId)
       );
       if (running !== undefined) {
@@ -333,7 +338,7 @@ export function bootHost(options: HostOptions = {}) {
         );
         return res.status;
       }
-      if (Date.now() > deadline) throw new Error(`no delegated post to ${worker} is running`);
+      if (Date.now() > deadline) throw new Error(`no task for ${worker} is running`);
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
   };
@@ -347,6 +352,20 @@ export function bootHost(options: HostOptions = {}) {
       if (Date.now() > deadline) throw new Error("a request never finished");
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
+  };
+
+  /**
+   * Every routed task on `userId`'s conversation boards (FIX-2083), oldest
+   * first: each task whose brief names the message it routes, read from the
+   * store, not through a board.
+   */
+  const routedRows = async (userId: string): Promise<any[]> => {
+    const runtime = await state.getRuntime();
+    const entries = await runtime.stores.resourceState.getByPrefix("user", `${userId}:~org:${ORG}`, "tasks/");
+    return Object.values(entries)
+      .map((value) => value.state as any)
+      .filter((row) => typeof row?.sealed?.postId === "string")
+      .sort((a, b) => a.createdAt - b.createdAt);
   };
 
   /** A conversation's session state, as stored. */
@@ -369,19 +388,19 @@ export function bootHost(options: HostOptions = {}) {
   };
 
   /** An app's workforce client for `userId`, talking to this host's router. */
+  const inProcess = createInProcessFetch(state);
   const client = (userId: string) =>
-    createWorkforceClient({
-      userId,
-      fetcher: async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-        const router = (await state.getRouter()) as any;
-        const url = new URL(String(input), "http://localhost");
-        const headers = new Headers(init?.headers);
-        headers.set("x-user", userId);
-        const path = url.pathname.replace(/^\/api\/flows\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
-        const method = (init?.method ?? "GET").toUpperCase();
-        return router[method](new Request(url, { ...init, headers }), { params: { path } });
-      }
-    });
+    createWorkforceClient(
+      createClient({
+        userId,
+        // This host's router in-process, as `userId`.
+        fetcher: (input, init) => {
+          const headers = new Headers(init?.headers);
+          headers.set("x-user", userId);
+          return inProcess(input, { ...init, headers });
+        }
+      })
+    );
 
   return {
     installation,
@@ -398,6 +417,7 @@ export function bootHost(options: HostOptions = {}) {
     cancelDelegate,
     settled,
     sessionState,
+    routedRows,
     items,
     client
   };
@@ -410,6 +430,20 @@ function textOf(item: any): string {
 }
 
 /** An error's message, whatever shape a run reported it in. */
+/**
+ * Every request settled, read again after a grace period, until nothing new
+ * starts: answers that go back out run in requests of their own.
+ */
+export async function quiet(host: { settled(): Promise<unknown[]> }) {
+  let seen = -1;
+  for (;;) {
+    const settled = await host.settled();
+    if (settled.length === seen) return settled;
+    seen = settled.length;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
 export function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (error !== null && typeof error === "object" && "message" in error) return String((error as { message: unknown }).message);

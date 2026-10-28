@@ -44,7 +44,7 @@ import { z } from "zod";
 
 const agent = generator({
   name: "agent",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "You are a helpful assistant.",
   inputSchema: z.object({ message: z.string() }),
   history: true,
@@ -97,7 +97,7 @@ const memoryObserver = generator({ itemVisibility: { client: false, history: fal
 // Pure structured-output transformer. Feeds its typed output to the next
 // block via graph edges. No session items at all.
 const classifier = generator({
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "Classify input as A, B, or C.",
   outputSchema: z.enum(["A", "B", "C"]),
   // itemVisibility omitted — no auto-emission.
@@ -165,7 +165,7 @@ import { notes } from "./notes";
 
 const assistant = generator({
   name: "assistant",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   tools: [
     notes.write.as({
       name: "saveNote",
@@ -228,7 +228,7 @@ Generators have built-in support for *generator-native web search*: web search t
 ```ts
 const agent = generator({
   name: "research-agent",
-  model: "anthropic/claude-sonnet-4-6",
+  model: "anthropic/claude-sonnet-5-5",
   prompt: "You are a research assistant. Search the web when needed.",
   search: true,
   tools: [readDoc, updateDoc],
@@ -243,7 +243,7 @@ For fine-grained control, pass a config object instead of `true`:
 ```ts
 const agent = generator({
   name: "docs-agent",
-  model: "anthropic/claude-sonnet-4-6",
+  model: "anthropic/claude-sonnet-5-5",
   search: {
     maxUses: 3,
     allowedDomains: ["docs.anthropic.com", "developer.mozilla.org"],
@@ -297,7 +297,7 @@ import { anthropic } from "@ai-sdk/anthropic";
 
 const agent = generator({
   name: "code-agent",
-  model: "anthropic/claude-sonnet-4-6",
+  model: "anthropic/claude-sonnet-5-5",
   providerTools: [
     providerTool("code_execution", anthropic.tools.codeExecution()),
   ],
@@ -313,7 +313,7 @@ You can combine `search`, `providerTools`, and block `tools` freely. They all me
 ```ts
 const agent = generator({
   name: "full-agent",
-  model: "anthropic/claude-sonnet-4-6",
+  model: "anthropic/claude-sonnet-5-5",
   search: true,                                    // provider-native search
   providerTools: [                                  // raw provider tools
     providerTool("code_exec", anthropic.tools.codeExecution()),
@@ -337,7 +337,7 @@ generator({
   // otherwise throw, so conforming output is untouched.
   repair: {
     mode: "auto",                              // "auto" | "rescue" | "fail"
-    coerce: { model: "openai/gpt-5.4-mini" },  // override the coercion model
+    coerce: { model: "openai/gpt-6-luna" },  // override the coercion model
   },
 });
 ```
@@ -602,7 +602,7 @@ execute: async (input, ctx) => {
   await ctx.emit.component("progress-bar", { percent: 50 });
 
   // Resolve AI models
-  const model = ctx.resolveModel("openai/gpt-5.4-mini");
+  const model = ctx.resolveModel("openai/gpt-6-luna");
 
   // Access typed targets — named ancestor blocks declared in config
   const research = ctx.targets.research;  // StateRef<{ progress: number }> | undefined

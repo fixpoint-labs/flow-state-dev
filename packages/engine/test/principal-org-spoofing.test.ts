@@ -57,7 +57,7 @@ function buildAuthenticatedFlow(capture: { orgId?: string }) {
           : { userId: "user-a", orgId: token };
       }
     }
-  });
+  })();
 }
 
 async function drain(stream: ReadableStream<Uint8Array> | null): Promise<string> {
@@ -138,7 +138,7 @@ function buildUnauthenticatedFlow() {
   return defineFlow({
     kind: "no-auth-flow",
     actions: { run: { inputSchema: z.object({}), block: probe } }
-  });
+  })();
 }
 
 async function createSession(

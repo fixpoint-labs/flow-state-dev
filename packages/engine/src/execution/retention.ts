@@ -1,6 +1,7 @@
 /**
  * Session retention policy enforcement.
- * Evicts old completed request records when a session exceeds configured limits.
+ * Evicts old past turns (completed or interrupted request records,
+ * `past-turns.ts`) when a session exceeds configured limits.
  * Runs lazily after each request completes (no background process).
  */
 import type { RetentionPolicy } from "@flow-state-dev/core/types";
@@ -8,8 +9,14 @@ import type { RequestRecord, StoreRegistry } from "../stores/types";
 import { parseDuration } from "../utils/duration";
 import { resolveLiveTailLivenessMs } from "../streaming/live-tail-liveness";
 import { DEFAULT_STALE_SWEEP_THRESHOLD_MS } from "../runtime-config";
+import type { DurabilityProvider } from "../durability/types";
+import { PAST_TURN_STATUSES } from "./past-turns";
+import { parkedInterruptedIds } from "../durability/stop-suspended";
 
 const RETENTION_COUNT_BATCH_SIZE = 16;
+
+/** When a past turn ended: its completion, or when it was found interrupted. */
+const endedAt = (r: RequestRecord): number => r.completedAtMs ?? r.interruptedAt ?? r.startedAtMs;
 
 /**
  * Pre-resolved retention policy with maxAge converted to milliseconds.
@@ -70,10 +77,18 @@ export function resolveRetentionPolicy(
 }
 
 /**
- * Applies retention policy to a session's completed request history.
+ * Applies retention policy to a session's past turns: the same set history
+ * reads (`PAST_TURN_STATUSES`), so a turn retention would delete stops
+ * reaching prompts too.
  *
  * Eviction operates at request granularity — entire old requests are removed,
- * not individual items within a request. The current request is never evicted.
+ * not individual items within a request. The current request is never evicted,
+ * and neither is a parked interrupted request (a pending gate, or a logged
+ * gate owed a re-drive: `parkedInterruptedIds`), which `provider` reads (none
+ * is parked without one: nothing can suspend). An interrupted record nothing
+ * else protects is read whole to find its last gate. A failed read rejects,
+ * and nothing is deleted. A record is deleted only while it is still in the
+ * status it was judged in (`RequestStore.deleteIfStatus`).
  */
 export async function applyRetentionPolicy(
   stores: StoreRegistry,
@@ -81,7 +96,8 @@ export async function applyRetentionPolicy(
   currentRequestId: string,
   policy: ResolvedRetentionPolicy,
   now: number = Date.now(),
-  tenantId?: string
+  tenantId?: string,
+  provider?: Pick<DurabilityProvider, "listSuspended" | "loadSuspension">
 ): Promise<{ deletedRequestIds: string[] }> {
   const deletedRequestIds: string[] = [];
 
@@ -92,7 +108,7 @@ export async function applyRetentionPolicy(
     // prune must never delete another tenant's requests that share a bare
     // session id. Always pass the tenant (possibly undefined).
     tenantId,
-    status: "completed",
+    status: PAST_TURN_STATUSES,
     // No `withItems` — maxAge needs only timestamps and maxItems counts via
     // `countItems`, so item payloads stay out of the retention read (FIX-685).
   });
@@ -127,6 +143,12 @@ export async function applyRetentionPolicy(
     (await stores.activeRequests.listAll()).map((entry) => entry.requestId)
   );
   const isEvictable = (r: RequestRecord): boolean => {
+    // An interrupted record the stale sweep wrote has no run left to stamp
+    // `finalizedAtMs`: it is held for the rollout-safety bound after the
+    // sweep marked it, like a record from a version that never stamps.
+    if (r.status === "interrupted" && typeof r.finalizedAtMs !== "number") {
+      return (r.interruptedAt ?? r.startedAtMs) <= legacyCutoff;
+    }
     if (r.finalizedAtMs === null) return false;
     if (r.finalizedAtMs === undefined) {
       return (r.completedAtMs ?? r.startedAtMs) <= legacyCutoff;
@@ -134,36 +156,55 @@ export async function applyRetentionPolicy(
     return r.finalizedAtMs <= graceCutoff;
   };
 
-  // Exclude current request, sort oldest-first by completion time
+  // Exclude current request, sort oldest-first by when each turn ended
   const history = requests.filter((r) => r.id !== currentRequestId);
-  const isProtected = (r: RequestRecord): boolean =>
-    stillRunning.has(r.id) || !isEvictable(r);
+  // The list carries no items; a parked check needs an interrupted record's
+  // log, so only the interrupted records nothing else protects are read whole.
+  // A failed read must abort the pass (it rejects), never default to "not
+  // parked": that would delete a request a resume or re-drive still drives.
+  const heldAnyway = (r: RequestRecord): boolean => stillRunning.has(r.id) || !isEvictable(r);
+  const interruptedLogs =
+    provider === undefined
+      ? []
+      : (
+          await Promise.all(
+            history.filter((r) => r.status === "interrupted" && !heldAnyway(r)).map((r) => stores.request.get(r.id))
+          )
+        ).filter((r): r is RequestRecord => r !== undefined);
+  const parked = await parkedInterruptedIds(provider, interruptedLogs);
+  const isProtected = (r: RequestRecord): boolean => heldAnyway(r) || parked.has(r.id);
   const protectedIds = history.filter(isProtected).map((r) => r.id);
   const sorted = history
     .filter((r) => !isProtected(r))
-    .sort(
-      (a, b) =>
-        (a.completedAtMs ?? a.startedAtMs) - (b.completedAtMs ?? b.startedAtMs)
-    );
+    .sort((a, b) => endedAt(a) - endedAt(b));
 
   let remaining = sorted;
 
-  // Phase 1: maxAge — delete requests completed before the cutoff
+  // Each record was judged by the status it was listed in, and is deleted
+  // only while it still has it. The durability sweep can re-drive an
+  // interrupted turn in between (`interrupted` → `in_progress`); that record
+  // is a running request again and is left alone. There is deliberately no
+  // incarnation fence: for the record to be back in the judged status, a
+  // re-driven run would have to go back to `interrupted`, which takes at least
+  // the stale-request threshold, far longer than this pass.
+  const evict = async (req: RequestRecord): Promise<void> => {
+    const { applied } = await stores.request.deleteIfStatus(req.id, [req.status]);
+    if (applied) deletedRequestIds.push(req.id);
+  };
+
+  // Phase 1: maxAge — delete turns that ended before the cutoff
   if (policy.maxAgeMs !== undefined) {
     const cutoff = now - policy.maxAgeMs;
-    const expired: string[] = [];
+    const expired: RequestRecord[] = [];
     const kept: typeof sorted = [];
     for (const req of remaining) {
-      if ((req.completedAtMs ?? req.startedAtMs) < cutoff) {
-        expired.push(req.id);
+      if (endedAt(req) < cutoff) {
+        expired.push(req);
       } else {
         kept.push(req);
       }
     }
-    for (const id of expired) {
-      await stores.request.delete(id);
-      deletedRequestIds.push(id);
-    }
+    for (const req of expired) await evict(req);
     remaining = kept;
   }
 
@@ -205,10 +246,7 @@ export async function applyRetentionPolicy(
 
     // Delete requests that didn't fit
     for (const req of remaining) {
-      if (!keep.has(req.id)) {
-        await stores.request.delete(req.id);
-        deletedRequestIds.push(req.id);
-      }
+      if (!keep.has(req.id)) await evict(req);
     }
   }
 

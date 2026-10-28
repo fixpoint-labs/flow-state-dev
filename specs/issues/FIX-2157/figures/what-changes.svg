@@ -1,0 +1,122 @@
+<svg viewBox="0 0 940 600" role="img" aria-label="The threads-mode screen. Left: the Projects view is selected over the Sessions view, so every session listed is a threads-mode one; New session sits above them. Center: the main thread. Your line, marked Sent to a thread, then the main session's short reply, then three compact thread cards: one working, one waiting on you with an Answer button, one ready for review with Resolve and Request changes buttons, each with View thread. The composer is at the bottom. Right: the status board titled Threads, with groups Pinned (one thread), Working (one thread with step progress 2 of 7), Waiting on you (one thread with its question), Ready for review (one thread), and Resolved collapsed to a count. Every card and row reads one task row."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .pane  { fill:var(--surface-2); }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .sel   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .res   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .att   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; }
+    .btn   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .btn-p { fill:var(--code); }
+    .rule  { stroke:var(--rule); stroke-width:1; }
+    .dash  { fill:none; stroke:var(--rule); stroke-width:1; stroke-dasharray:4 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-p   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .t-w   { fill:var(--surface); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:10.5px; }
+    .t-m   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .c-code { fill:var(--code); } .c-acc { fill:var(--accent); } .c-pro { fill:var(--prose); }
+    .run  { fill:none; stroke:var(--accent); stroke-width:1.6; }
+    .dot-done { fill:var(--code); } .dot-wait { fill:var(--prose); } .dot-run { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="600"/>
+
+  <g id="sessions">
+    <rect class="pane" x="0" y="0" width="190" height="600"/>
+    <rect class="box" x="8" y="10" width="86" height="26"/>
+    <text class="t-p" x="22" y="28">Sessions</text>
+    <rect class="sel" x="96" y="10" width="86" height="26"/>
+    <text class="t-b" x="110" y="28">Projects</text>
+    <rect class="box" x="16" y="48" width="158" height="30"/>
+    <text class="t-b" x="28" y="68">+ New session</text>
+    <rect class="sel" x="8" y="92" width="174" height="44"/>
+    <text class="t-b" x="20" y="110">Status page vendors</text>
+    <text class="t-m" x="20" y="127">3 THREADS · now</text>
+    <text class="t-p" x="20" y="158">Billing triage</text>
+    <text class="t-m" x="20" y="175">2 THREADS · 1d</text>
+  </g>
+
+  <g id="main">
+    <text class="t-lbl" x="210" y="26">MAIN THREAD</text>
+    <rect class="box" x="400" y="40" width="200" height="50"/>
+    <text class="t-p" x="412" y="60">Research three status-page</text>
+    <text class="t-p" x="412" y="76">vendors, one thread each…</text>
+    <text class="t-s" x="480" y="104">⤷ Sent to a thread</text>
+    <text class="t-p" x="210" y="130">I've started three threads, one per vendor.</text>
+
+    <rect class="box" x="210" y="146" width="390" height="58"/>
+    <circle class="run" cx="226" cy="164" r="5"/>
+    <text class="t-b" x="240" y="168">Vendor A · pricing and uptime</text>
+    <text class="t-s" x="240" y="184">Working · Comparing SLA tiers</text>
+    <rect class="btn" x="510" y="156" width="78" height="22"/>
+    <text class="t-s" x="520" y="171">View thread</text>
+
+    <rect class="att" x="210" y="214" width="390" height="70"/>
+    <circle class="dot-wait" cx="226" cy="232" r="5"/>
+    <text class="t-b" x="240" y="236">Vendor B · regions</text>
+    <text class="t-s" x="240" y="252">Waiting on you · Which region matters, EU or US?</text>
+    <rect class="btn-p" x="240" y="258" width="58" height="20"/>
+    <text class="t-w" x="252" y="272">Answer</text>
+    <rect class="btn" x="306" y="258" width="78" height="20"/>
+    <text class="t-s" x="316" y="272">View thread</text>
+
+    <rect class="res" x="210" y="294" width="390" height="70"/>
+    <circle class="dot-done" cx="226" cy="312" r="5"/>
+    <text class="t-b" x="240" y="316">Vendor C · summary</text>
+    <text class="t-s" x="240" y="332">Ready for review · Draft summary attached</text>
+    <rect class="btn-p" x="240" y="338" width="60" height="20"/>
+    <text class="t-w" x="251" y="352">Resolve</text>
+    <rect class="btn" x="308" y="338" width="110" height="20"/>
+    <text class="t-s" x="318" y="352">Request changes</text>
+    <rect class="btn" x="426" y="338" width="78" height="20"/>
+    <text class="t-s" x="436" y="352">View thread</text>
+
+    <rect class="box" x="210" y="540" width="390" height="40"/>
+    <text class="t-s" x="224" y="564">Ask the main session…</text>
+  </g>
+
+  <g id="board">
+    <line class="rule" x1="620" y1="0" x2="620" y2="600"/>
+    <text class="t-b" x="636" y="28">Threads</text>
+    <text class="t-m" x="870" y="28">⌕  ≡</text>
+    <line class="rule" x1="620" y1="42" x2="940" y2="42"/>
+
+    <text class="t-s" x="636" y="66">Pinned · 1 ▾</text>
+    <circle class="run" cx="642" cy="86" r="5"/>
+    <text class="t-b" x="654" y="90">Weekly uptime digest</text>
+    <text class="t-m" x="900" y="90">3d</text>
+
+    <text class="t-s" x="636" y="124">Working · 1 ▾</text>
+    <circle class="run" cx="642" cy="144" r="5"/>
+    <text class="t-b" x="654" y="148">Vendor A · pricing and uptime</text>
+    <text class="t-m" x="900" y="148">1m</text>
+    <text class="t-m" x="654" y="166">2/7 · Comparing SLA tiers</text>
+
+    <text class="t-s" x="636" y="200">Waiting on you · 1 ▾</text>
+    <circle class="dot-wait" cx="642" cy="220" r="5"/>
+    <text class="t-b" x="654" y="224">Vendor B · regions</text>
+    <text class="t-m" x="900" y="224">2m</text>
+    <text class="t-s" x="654" y="242">Which region matters, EU or US?</text>
+
+    <text class="t-s" x="636" y="276">Ready for review · 1 ▾</text>
+    <circle class="dot-done" cx="642" cy="296" r="5"/>
+    <text class="t-b" x="654" y="300">Vendor C · summary</text>
+    <text class="t-m" x="900" y="300">now</text>
+    <text class="t-s" x="654" y="318">Draft summary attached</text>
+
+    <text class="t-s" x="636" y="352">Resolved · 4 ▸</text>
+    <rect class="dash" x="632" y="372" width="296" height="64"/>
+    <text class="t-lbl" x="644" y="392">EVERY ROW AND CARD READS ONE TASK ROW</text>
+    <text class="t-s" x="644" y="410">status and what it waits on, through listTasks</text>
+    <text class="t-s" x="644" y="426">pins from the lab's pins flow</text>
+  </g>
+</svg>

@@ -22,7 +22,7 @@ describe("runAction — carried action core", () => {
     const flow = defineFlow({
       kind: "carried",
       actions: {}
-    });
+    })();
 
     const dynamicBlock = handler({
       name: "dynamic-digest",
@@ -53,7 +53,7 @@ describe("runAction — carried action core", () => {
   });
 
   it("still throws for an unknown action when no carried core is present", async () => {
-    const flow = defineFlow({ kind: "carried", actions: {} });
+    const flow = defineFlow({ kind: "carried", actions: {} })();
 
     await expect(
       runAction({

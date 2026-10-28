@@ -86,13 +86,13 @@ import type { JsonObject } from "@flow-state-dev/core";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 import { readCommitted, updateStateWith } from "@flow-state-dev/core/helpers";
-import type { Task, TaskClaimIdentity, TaskStatus } from "../schema/task";
+import { withMigratedWait, type Task, type TaskClaimIdentity, type TaskStatus } from "../schema/task";
 import type { TaskFilter } from "../schema/task-init";
 import {
   assertTransitionAllowed,
   isTerminalStatus,
-  withMigratedStatus,
 } from "../schema/task-status";
+import { withRetiredShapes } from "../schema/retired-shapes";
 import type {
   TaskCollectionRef,
   TaskTransitionOptions,
@@ -107,12 +107,19 @@ import {
   type EndingRecording,
   assertValidLeaseDeadline,
   linkRunGuards,
+  waitingOnPatch,
+  completionPatch,
+  cancelPatch,
+  progressPatch,
+  reportsProgress,
   RENEW_LEASE_TICKET_DETAIL,
   requireClaimTicket,
   runLinkPatch,
   assertValidLeaseDuration,
   buildInitialTask,
   claimDisposition,
+  leaseLapsed,
+  readAbandonments,
   createTaskHandleWrapper,
   DEFAULT_LEASE_DURATION_MS,
   DEFAULT_MAX_ABANDONMENTS,
@@ -121,17 +128,37 @@ import {
   isClaimable,
   listTasks,
   routeFailure,
-  assertTransitionFrom,
   transitionDeclineReason,
   assigneeChangeDecline,
-  dispatchWrite,
-  parkPatch,
-  unparkPatch,
+  lapseWaitWrite,
+  markWaitWrite,
+  releaseWaitWrite,
+  noticeReadByWaitWrite,
+  noticeTakeWrite,
+  settingsWrite,
+  settingsChangeKind,
+  type TaskSettingsPatch,
+  type FilingStamp,
 } from "./internal";
+import { assertAskable, hasOpenHold, holdWrite, holdsDue, newRowHolds, type HoldChange } from "./holds";
 import { stampWrite } from "../write-provenance";
+import { generateId } from "../generate-id";
+import { steerWrite, takeSteersPatch, untakenSteers } from "../steers";
 import type { TaskEndingRecorder } from "./ending";
+import type { DeliveryHooks } from "../notice/delivery";
+import { NOTICE_DUE_MS, LAPSED_SLOT_CHECK_MS, owesUntakenNotice, resendNowPatch } from "../notice/task-notice";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 import { createTaskChangeEmitter } from "./change-event";
+import { assertDepsFileable, assertFilingSettings, assertParentsOpen, withFollowUpPlacement, type TaskSettingsSupport } from "./filing";
+import {
+  cascadeCancelPatch,
+  endsDependents,
+  openDependentsOf,
+  payCascadeAfterWrite,
+  payOwedCascades,
+  type CascadeWrites,
+  type TaskFiledCascade,
+} from "./cascade";
 
 /**
  * Module-private signal that a write declined (FIX-951; extended to the patch
@@ -203,16 +230,16 @@ export interface ResourceBackedOptions {
   createdBy?: string;
   /**
    * Refuse `setAssignee` on a task an attempt holds (FIX-982, narrowed by
-   * FIX-1780 to `in_progress` and `parked`).
+   * FIX-1780 to `in_progress`).
    *
    * Set by a task board with dispatcher assignees. The assignee is what a
-   * handed-off task's routing key derives from, so reassigning a task whose
+   * dispatched task's routing key derives from, so reassigning a task whose
    * dispatch is in flight silently strands it — see `TaskCollectionRef.setAssignee`.
    * A pending or blocked task is claimed afresh before it runs, so it can
-   * change hands; a parked one can once `unpark` ends its attempt.
+   * change hands.
    *
    * Only the resource backing carries this, and that is deliberate rather than
-   * an omission: a handed-off board is refused at construction unless its backing
+   * an omission: a dispatched board is refused at construction unless its backing
    * is durable, so no other backing can host one.
    */
   immutableAssignee?: boolean;
@@ -223,18 +250,50 @@ export interface ResourceBackedOptions {
    */
   partition?: string;
   /**
+   * Record that this partition holds a task id, before the row is written
+   * (FIX-2160): the partitioned ledger's id index. Omitted on a ledger with
+   * no partitions.
+   */
+  recordTaskId?: (taskId: string) => Promise<void>;
+  /**
    * The ledger's ending recorder (`defineTaskCollection({ recordEnding })`),
    * run inside every write that records how a task ended. Its `metadata`
    * lands in that same write. See `./ending`.
    */
   recordEnding?: TaskEndingRecorder;
+  /**
+   * The filing settings this board honours (FIX-2080;
+   * `defineTaskCollection({ settings })`). Omitted, only the defaults.
+   */
+  settings?: TaskSettingsSupport;
+  /** What every row this collection files is stamped with beside its filer (FIX-2133). */
+  filing?: FilingStamp;
+  /**
+   * The board's payer for the tasks a task filed (FIX-2080 D2;
+   * `defineTaskCollection({ cascadeFiled })`), bound to the running context.
+   * Omitted, a cascade covers only this board's dependents.
+   */
+  cascadeFiled?: TaskFiledCascade;
+  /**
+   * The ledger's delivery (FIX-2078), bound to the running request: the
+   * session filing through this resolution (stamped as each row's filer) and
+   * the hooks run around every write that may end a row. Omitted on a ledger
+   * no board hands rows out from.
+   */
+  delivery?: {
+    ownSession: string;
+    /** The running request, by its engine identity (FIX-2123): stamped as the filing request of each row it files in its own session. */
+    ownRequest?: string;
+    hooks: DeliveryHooks;
+  };
 }
 
 /**
  * The read boundary for this backing. Collection instances are stored, not
- * parsed, so a row written before the `parked` rename arrives carrying the
- * legacy status; it is mapped forward here (see `withMigratedStatus`), before
- * any filter or the transition guard sees it.
+ * parsed, so a row written before the wait rename arrives carrying its legacy
+ * wait mark, and one in a shape the retired-shape map reads (FIX-2080); both
+ * are mapped forward here (see `withMigratedWait` and
+ * `withRetiredShapes`), before any filter or the transition guard sees it.
  *
  * Every read of committed task state goes through this — `readTaskState` for
  * a ref, and directly for the `current` a CAS updater is handed, since that
@@ -243,7 +302,7 @@ export interface ResourceBackedOptions {
 function readTaskStateOf<TInput, TOutput>(
   state: JsonObject
 ): Task<TInput, TOutput> {
-  return withMigratedStatus(state) as unknown as Task<TInput, TOutput>;
+  return withRetiredShapes(withMigratedWait(state)) as unknown as Task<TInput, TOutput>;
 }
 
 function readTaskState<TInput, TOutput>(
@@ -283,6 +342,22 @@ function sharedTaskSet(
   const created = new Map<string, ResourceRef<JsonObject>>();
   taskSets.set(collection, created);
   return created;
+}
+
+/**
+ * Add the stored task rows `mirror` doesn't hold yet (FIX-2080 D2), for a
+ * touch's sweep: rows another process filed after this mirror was hydrated.
+ * Never replaces or retires an entry; construction's {@link reconcileTaskSet}
+ * owns that, for the reasons it lists.
+ */
+async function adoptUnknownRows(
+  mirror: Map<string, ResourceRef<JsonObject>>,
+  collection: ResourceCollectionRef<JsonObject>
+): Promise<void> {
+  for (const ref of await collection.list()) {
+    const id = readTaskState(ref).id;
+    if (typeof id === "string" && id.length > 0 && !mirror.has(id)) mirror.set(id, ref);
+  }
 }
 
 /**
@@ -410,8 +485,29 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
   const onChange = options.onChange;
   // Every write hands the ledger's recorder to the one place an ending is
   // detected and recorded (`applyTransition`, `applyAbandonmentSettlement`).
-  const recording: EndingRecording | undefined =
-    options.recordEnding !== undefined ? { recordEnding: options.recordEnding } : undefined;
+  // A cascade is owed (FIX-2080 D2) when a failed or cancelled row has an open
+  // dependent on this board, or the board's filed-task payer says this ending
+  // owes it one. Read inside the write, against the rows as committed.
+  const filed = options.cascadeFiled;
+  const delivery = options.delivery;
+  const recording: EndingRecording = {
+    ...(options.recordEnding !== undefined ? { recordEnding: options.recordEnding } : {}),
+    // A delegated row's ending owes its filer a notice (FIX-2078); a cascaded
+    // cancel owes none when its cause shares the filer (D2).
+    ...(delivery !== undefined
+      ? {
+          // A ledger that owes no notices still resumes a parked wait (FIX-2082).
+          delivers: delivery.hooks.notices !== false,
+          causeSharesFiler: (row: Task) => {
+            const cause = row.causedBy === undefined ? undefined : lookupRow(row.causedBy);
+            return cause !== undefined && delivery.hooks.filerOf(cause) === delivery.hooks.filerOf(row);
+          },
+        }
+      : {}),
+    owesCascade: (row, ending) =>
+      (endsDependents(ending) && openDependentsOf(listAll() as Task[], row.id).length > 0) ||
+      filed?.owes(row, ending) === true,
+  };
   const wrap = createTaskHandleWrapper<TInput, TOutput>(
     options.collectionId,
     options.getItems,
@@ -459,24 +555,33 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
    * wake every idle worker on the board into a full collection scan. The
    * store's own `resource_change` still fires, unchanged.
    *
-   * `quiet` tells the ending recorders a park asks nobody anything
-   * (`awaitReview(..., { quiet: true })`). The ending itself is detected where
-   * every write passes, `applyTransition`, which runs the ledger's recorder in
-   * the same write (FIX-1794 P2).
+   * The ending itself is detected where every write passes,
+   * `applyTransition`, which runs the ledger's recorder in the same write
+   * (FIX-1794 P2).
    */
   async function transitionRef(
     id: string,
     targetStatus: TaskStatus,
     kind: TaskChangeKind | null,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
-    guards?: TaskTransitionOptions,
-    requireFrom?: TaskStatus,
-    quiet?: boolean
+    guards?: TaskTransitionOptions
   ): Promise<TaskWriteOutcome> {
     const ref = mirror.get(id);
     if (ref === undefined) {
       throw new Error(`[tasks] task "${id}" not found`);
     }
+    // A write that may end a delegated row owes the filer's wake first (FIX-2078).
+    const ending = delivery !== undefined && mayEnd(readTaskState(ref) as Task, targetStatus);
+    if (ending) await delivery!.hooks.beforeEnding(readTaskState(ref) as Task);
+    const ownCancel =
+      guards?.viaTool === true &&
+      targetStatus === "cancelled" &&
+      delivery !== undefined &&
+      delivery.hooks.filerOf(readTaskState(ref) as Task) === delivery.ownSession;
+    const writeRecording: EndingRecording = {
+      ...recording,
+      ...(ownCancel ? { ownCancel: true } : {}),
+    };
 
     let committed: { task: Task<TInput, TOutput>; prevStatus: TaskStatus } | undefined;
 
@@ -489,13 +594,11 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           guards,
           options.collectionId,
           now(),
-          requireFrom,
           kind ?? undefined
         );
         if (reason !== undefined) {
           throw new WriteDeclined(reason, task.status);
         }
-        assertTransitionFrom(task as Task, requireFrom, targetStatus, id);
         assertTransitionAllowed(task.status, targetStatus, id);
         // Stamped here, inside the serialized write, off the `task` this
         // invocation read. Since FIX-992 this updater is re-run against
@@ -509,7 +612,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
             task,
             { ...patch(task), status: targetStatus },
             now(),
-            quiet === true ? { ...recording, quiet } : recording
+            writeRecording
           ),
           guards?.write
         );
@@ -529,22 +632,44 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     // took a different branch cannot report an earlier attempt's write.
     if (committed === undefined) return { outcome: "unchanged" };
     if (kind !== null) emit(kind, committed.task, committed.prevStatus);
+    // The ending's own pass pays the cascade it owes (FIX-2080 D2).
+    await payCascadeAfterWrite(cascadeWrites, committed.task as Task);
+    // Then the delivery, so a notice names the dependents just cancelled.
+    if (ending) await deliverAfter(committed.task as Task);
     return { outcome: "recorded" };
+  }
+
+  /** Deliver what `row` owes its filer now (FIX-2078). Never fails the committed write. */
+  async function deliverAfter(row: Task): Promise<void> {
+    if (delivery === undefined) return;
+    await delivery.hooks.afterEnding(row, listAll() as Task[], async (id, patch) => {
+      await ref.patchMetadata(id, patch);
+    });
+  }
+
+  /**
+   * Whether a write to `target` may end the row, or make it ready (a retry):
+   * either owes the filer's pass. Read off the mirror,
+   * outside the write, so it errs toward owing: no check of the row's status,
+   * which a concurrent writer may have moved. A spare wake costs one pass that
+   * finds nothing.
+   */
+  function mayEnd(_row: Task, target: TaskStatus): boolean {
+    return target === "completed" || target === "errored" || target === "cancelled" || target === "pending";
   }
 
   /**
    * Patch a task's fields inside the resource's serialized write, returning what
    * it did (FIX-976).
    *
-   * `declineOnTerminal` is the **assignment-only** terminal guard (epic
-   * constraint A1). It is keyed by operation and passed by `setAssignee` alone —
-   * the four sibling patch methods pass nothing and keep writing to terminal
-   * tasks, which two first-party blocks depend on (the supervisor's
-   * failure-category audit and `cascadeSkipDependents`' `skipped` label). Making
-   * this helper-wide would break both.
+   * `declineOnTerminal` is the terminal guard for the writes that change a
+   * task's future (epic constraint A1): `setAssignee` and the settings write
+   * pass it. The four sibling patch methods pass nothing and keep
+   * writing to terminal tasks, which a first-party block depends on (the
+   * supervisor's failure-category audit). Making this helper-wide would break it.
    *
    * `patch` runs inside the same write, so it may decline too by throwing
-   * `WriteDeclined` (as `setAssignee`'s hand-off rule does).
+   * `WriteDeclined` (as `setAssignee`'s dispatch rule does).
    *
    * The decline throws `WriteDeclined` out of the updater rather than returning
    * `current`, for the reason documented on that class: on this backing
@@ -552,7 +677,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
    */
   async function patchRef(
     id: string,
-    kind: TaskChangeKind,
+    kind: TaskChangeKind | null | ((prev: Task<TInput, TOutput>, next: Task<TInput, TOutput>) => TaskChangeKind),
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>> | undefined,
     options?: { declineOnTerminal?: boolean }
   ): Promise<TaskWriteOutcome> {
@@ -561,34 +686,223 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       throw new Error(`[tasks] task "${id}" not found`);
     }
 
-    let nextTask: Task<TInput, TOutput> | undefined;
+    let written: { next: Task<TInput, TOutput>; prev: Task<TInput, TOutput> } | undefined;
 
     try {
-      nextTask = await updateStateWith(ref, (current) => {
+      written = await updateStateWith(ref, (current) => {
         const task = readTaskStateOf<TInput, TOutput>(current);
         if (options?.declineOnTerminal === true && isTerminalStatus(task.status)) {
           throw new WriteDeclined("terminal", task.status);
         }
         const update = patch(task);
         if (update === undefined) return { state: current, result: undefined };
-        // No token: these five methods take no options object, so they bump the
-        // revision and mint no receipt (FIX-989).
         const next = stampWrite(task, applyTransition(task, update, now(), recording));
-        return { state: next as unknown as JsonObject, result: next };
+        return { state: next as unknown as JsonObject, result: { next, prev: task } };
       });
     } catch (err) {
       if (!(err instanceof WriteDeclined)) throw err;
       return { outcome: "declined", reason: err.reason, status: err.status };
     }
 
-    // The idempotent case returns `current` from the updater, so this backing
-    // still persists and still emits a `resource_change`. `unchanged` is a
-    // TASK-level verdict — no task field written, no `task-change` item — and
-    // deliberately says nothing about the store's own notification, which is
-    // unchanged from before FIX-976.
-    if (nextTask === undefined) return { outcome: "unchanged" };
-    emit(kind, nextTask);
+    if (written === undefined) return { outcome: "unchanged" };
+    const changeKind = typeof kind === "function" ? kind(written.prev, written.next) : kind;
+    if (changeKind !== null) {
+      emit(changeKind, written.next, written.prev.status !== written.next.status ? written.prev.status : undefined);
+    }
     return { outcome: "recorded" };
+  }
+
+  /**
+   * The filer a new row is stamped with (FIX-2078): the session filing it, or,
+   * for a follow-up, its root's filer, whoever typed it. With the request
+   * filing it when that is the filer's session (FIX-2123): the row's notice
+   * waits for that request to end.
+   */
+  function filerFor(init: { followUpOf?: string }): Task["filer"] {
+    if (delivery === undefined) return undefined;
+    const root = init.followUpOf === undefined ? undefined : lookupRow(init.followUpOf);
+    const sessionId = (root === undefined ? undefined : delivery.hooks.filerOf(root)) ?? delivery.ownSession;
+    const filing = sessionId === delivery.ownSession ? delivery.ownRequest : undefined;
+    return { sessionId, ...(filing !== undefined ? { requestId: filing } : {}) };
+  }
+
+  /**
+   * Note a row this request filed with itself as the filing request
+   * (FIX-2123), and ask to be called as the request ends: a notice turned
+   * away while it ran is sent then, past any backoff, rather than at the
+   * pass's next resend. The delivery registers once per request and board,
+   * so the call reads every row the request filed there, whichever
+   * resolution of the board filed it. At a park `send` doesn't run: the
+   * delivery owes the filer's pass a wake, and the pass sends.
+   */
+  function noteFiled(row: Task): void {
+    if (delivery?.ownRequest === undefined || row.filer?.requestId !== delivery.ownRequest) return;
+    sendOwedAtStop();
+  }
+
+  /**
+   * Note a wait slot this request lapsed (FIX-2170), and ask to be called as
+   * the request ends, as {@link noteFiled} does: at a park, the delivery owes
+   * the filer's pass a wake, and that pass releases the slot, so an ending it
+   * holds goes out while the request is parked. No row is read or written at
+   * the park. The request's end releases the slot itself (`waitOnTask`).
+   */
+  function noteLapsed(row: Task | undefined): void {
+    const own = delivery?.ownRequest;
+    if (own === undefined || row?.wait?.lapsed !== true || row.wait.requestId !== own) return;
+    sendOwedAtStop();
+  }
+
+  /**
+   * Ask the delivery to send, as this request ends, what the rows it filed
+   * still owe: once per request and board. Registered for a row the request
+   * filed ({@link noteFiled}) and for a wait slot it lapsed
+   * ({@link noteLapsed}): either way its park owes the filer's pass a wake.
+   */
+  function sendOwedAtStop(): void {
+    const own = delivery?.ownRequest;
+    if (delivery === undefined || own === undefined) return;
+    delivery.hooks.whenRequestEnds?.(async () => {
+      await adoptUnknownRows(mirror, options.collection);
+      for (const filed of listAll() as Task[]) {
+        if (filed.filer?.requestId !== own) continue;
+        await ref.refresh?.(filed.id);
+        const current = lookupRow(filed.id);
+        if (current === undefined || !owesUntakenNotice(current)) continue;
+        const sooner = resendNowPatch(current);
+        if (Object.keys(sooner).length > 0) await ref.patchMetadata(current.id, sooner);
+        await deliverAfter(lookupRow(current.id) ?? current);
+      }
+    });
+  }
+
+  /**
+   * Run a conditional write, and confirm a decline against the committed row
+   * before reporting it. A request reads a resource as the snapshot it first
+   * took, and a throw from the updater skips the store's check of that
+   * snapshot, so a row another request has moved on since (claimed,
+   * dispatched, its wait slot released) could be refused on a stale read. A
+   * `terminal` decline needs no second look: an ending is final.
+   */
+  async function confirmedDecline(id: string, write: () => Promise<TaskWriteOutcome>): Promise<TaskWriteOutcome> {
+    const outcome = await write();
+    if (outcome.outcome !== "declined" || outcome.reason === "terminal") return outcome;
+    const ref = mirror.get(id);
+    if (ref === undefined) return outcome;
+    await readCommitted(ref, () => undefined);
+    return write();
+  }
+
+  /**
+   * The one hold write (FIX-2133), decided on the committed row inside the
+   * serialized write: `decline` first (a claim fence), then the hold rule.
+   */
+  function writeHolds(
+    id: string,
+    kind: TaskChangeKind,
+    change: HoldChange,
+    decline?: (task: Task<TInput, TOutput>) => TaskWriteDeclineReason | undefined
+  ): Promise<TaskWriteOutcome> {
+    return patchRef(id, kind, (task) => {
+      const fenced = decline?.(task);
+      if (fenced !== undefined) throw new WriteDeclined(fenced, task.status);
+      const decided = holdWrite(task as Task, change);
+      if (decided === "unchanged") return undefined;
+      if ("decline" in decided) throw new WriteDeclined(decided.decline, task.status);
+      return decided.patch as Partial<Task<TInput, TOutput>>;
+    });
+  }
+
+  /** The board's committed row by id, read through the mirror. */
+  function lookupRow(id: string): Task | undefined {
+    const r = mirror.get(id);
+    return r === undefined ? undefined : (readTaskState(r) as Task);
+  }
+
+  /** Each outside dependency as stored now, so one another request ended is refused here (FIX-2114). */
+  async function refreshDeps(batch: readonly Pick<Task, "id" | "deps" | "filedByTask">[]): Promise<void> {
+    const filed = new Set(batch.map((row) => row.id));
+    // The rows each filing depends on, and the task that files it (FIX-2129):
+    // both are read committed, not from this process's mirror.
+    const read = batch.flatMap((row) => [...(row.deps ?? []), ...(row.filedByTask !== undefined ? [row.filedByTask] : [])]);
+    for (const id of new Set(read)) {
+      if (!filed.has(id)) await ref.refresh?.(id);
+    }
+  }
+
+  /**
+   * The guarded settings write (FIX-2080, ER-4): `patchSettings`, and `hold`
+   * and `release` under their own names, decided on the committed row inside
+   * the write.
+   */
+  function writeSettings(id: string, settings: TaskSettingsPatch): Promise<TaskWriteOutcome> {
+    return patchRef(
+      id,
+      (prev, next) => settingsChangeKind(prev.status, next.status),
+      (task) => {
+        const decided = settingsWrite(task as Task, settings, lookupRow);
+        if (decided === undefined) return undefined;
+        if ("decline" in decided) throw new WriteDeclined(decided.decline, task.status);
+        return decided.patch as Partial<Task<TInput, TOutput>>;
+      },
+      { declineOnTerminal: true }
+    );
+  }
+
+  /**
+   * A dependency that ended while `id` was being written (FIX-2080 D2). The
+   * check before a filing or a deps edit reads the board outside any write,
+   * and an ending's cascade reads it inside its own write: a cancel that
+   * commits between the check and the dependent's write sees no dependent,
+   * and the check saw no ending, so neither cancels it. Re-read once the
+   * dependent has committed: a dependency ended by now cancels it, as its
+   * cascade would have. This mirror only sees what this process wrote or
+   * listed, so a cancel from another process lands on the next touch's read.
+   *
+   * @returns Whether the row was cancelled.
+   */
+  async function cancelIfDepEnded(id: string): Promise<boolean> {
+    const row = lookupRow(id);
+    if (row === undefined || isTerminalStatus(row.status)) return false;
+    for (const depId of row.deps ?? []) {
+      const dep = lookupRow(depId);
+      if (dep !== undefined && (dep.status === "errored" || dep.status === "cancelled")) {
+        await cascadeWrites.cancelDependent(id, dep);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** The reads and writes a cascade is paid with on this board (FIX-2080 D2). */
+  const cascadeWrites: CascadeWrites = {
+    get: lookupRow,
+    list: () => listAll() as Task[],
+    cancelDependent: async (id, cause) => {
+      await transitionRef(
+        id,
+        "cancelled",
+        "cancelled",
+        (dependent) => cascadeCancelPatch(dependent as Task, cause, now()) as Partial<Task<TInput, TOutput>>,
+        { ifAllowed: true }
+      );
+    },
+    settle: async (id, due) => {
+      await patchRef(id, null, (task) =>
+        task.cascadeOwed != null && task.cascadeOwed.due === due ? { cascadeOwed: undefined } : undefined
+      );
+    },
+    ...(filed !== undefined ? { filed } : {}),
+  };
+
+  // A request that runs again after a park (FIX-2123) is a new resolution of
+  // the board: its own rows, and the slots it lapsed (FIX-2170), are noted
+  // again, so it sends what it held when it ends, and a second park owes the
+  // pass a wake again.
+  if (delivery?.ownRequest !== undefined) {
+    const own = listAll().find((row) => row.filer?.requestId === delivery.ownRequest);
+    if (own !== undefined) noteFiled(own as Task);
+    noteLapsed((listAll() as Task[]).find((row) => row.wait?.lapsed === true && row.wait.requestId === delivery.ownRequest));
   }
 
   const ref: TaskCollectionRef<TInput, TOutput> = {
@@ -606,20 +920,35 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     maxTotalRetries: null,
 
     async addTask(init) {
-      const task = buildInitialTask<TInput, TOutput>(init, now(), options.createdBy);
+      assertFilingSettings(init, options.settings, options.collectionId);
+      const task = buildInitialTask<TInput, TOutput>(withFollowUpPlacement(init, lookupRow), now(), options.createdBy, filerFor(init), options.filing);
+      await refreshDeps([task as Task]);
+      assertDepsFileable([task as Task], lookupRow);
+      assertParentsOpen([task as Task], lookupRow);
+      await options.recordTaskId?.(task.id);
       const created = await options.collection.create(
         task.id,
         task as unknown as JsonObject
       );
       mirror.set(task.id, created);
       emit("added", task);
+      noteFiled(task as Task);
+      if (await cancelIfDepEnded(task.id)) return lookupRow(task.id) as Task<TInput, TOutput>;
       return task;
     },
 
     async addTasks(inits) {
+      for (const init of inits) assertFilingSettings(init, options.settings, options.collectionId);
+      const built = inits.map((init) =>
+        buildInitialTask<TInput, TOutput>(withFollowUpPlacement(init, lookupRow), now(), options.createdBy, filerFor(init), options.filing)
+      );
+      // Every row is checked before any is written; ids in the batch count (FIX-2080).
+      await refreshDeps(built as Task[]);
+      assertDepsFileable(built as Task[], lookupRow);
+      assertParentsOpen(built as Task[], lookupRow);
       const created: Task<TInput, TOutput>[] = [];
-      for (const init of inits) {
-        const task = buildInitialTask<TInput, TOutput>(init, now(), options.createdBy);
+      for (const task of built) {
+        await options.recordTaskId?.(task.id);
         const createdRef = await options.collection.create(
           task.id,
           task as unknown as JsonObject
@@ -627,8 +956,17 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         mirror.set(task.id, createdRef);
         created.push(task);
         emit("added", task);
+        noteFiled(task as Task);
       }
-      return created;
+      // A dependency that ended meanwhile cancels its dependents, and a row
+      // that cancels can end another of the batch's, so the pass repeats
+      // until it cancels nothing (at most once per row).
+      let cancelled = true;
+      while (cancelled) {
+        cancelled = false;
+        for (const task of created) if (await cancelIfDepEnded(task.id)) cancelled = true;
+      }
+      return created.map((task) => (lookupRow(task.id) ?? task) as Task<TInput, TOutput>);
     },
 
     async claim(_workerId, claimOptions) {
@@ -647,7 +985,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       // easily opted out of by accident.
       const narrow = claimOptions?.eligibility;
       const admits = (task: Task, at: number): boolean =>
-        isClaimable(task, lookup, at) && (narrow === undefined || narrow(task));
+        isClaimable(task, lookup, at) && (narrow === undefined || narrow(task, listAll() as Task[]));
       const order = claimOptions?.order ?? defaultOrder;
 
       const leaseDurationMs = claimOptions?.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS;
@@ -668,6 +1006,19 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       for (const candidate of candidates) {
         const candidateRef = mirror.get(candidate.id);
         if (candidateRef === undefined) continue;
+        // Before the write, the filer's wake (FIX-2078). A row this write
+        // could settle (a lapsed lease, or a worker that died before) owes it
+        // now: the snapshot may say "claim" where the committed row settles,
+        // so err toward owing. Any other row's claim owes it at the lease's
+        // end, when a worker that died lets the lease lapse.
+        if (delivery !== undefined) {
+          const at = now();
+          if (leaseLapsed(candidate as Task, at) || readAbandonments(candidate as Task) > 0) {
+            await delivery.hooks.beforeEnding(candidate as Task);
+          } else {
+            await delivery.hooks.owePassAt(candidate as Task, at + leaseDurationMs);
+          }
+        }
 
         const written = await updateStateWith<JsonObject, ClaimWrite | undefined>(
           candidateRef,
@@ -716,7 +1067,11 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         emit(written.kind, written.task, written.prevStatus);
         // Settling is not claiming: keep scanning so one exhausted row at the
         // head of the queue does not hide the work behind it.
-        if (written.kind === "errored") continue;
+        if (written.kind === "errored") {
+          await payCascadeAfterWrite(cascadeWrites, written.task as Task);
+          await deliverAfter(written.task as Task);
+          continue;
+        }
         return written.task;
       }
 
@@ -737,12 +1092,13 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       // than an exception: the claim commits `leaseUntil` and `updatedAt` from
       // one clock, so keeping them in step is what preserves
       // `leaseUntil - updatedAt === the committed span` across a renewal.
+      // A held row renews no lease (FIX-2133): a renewal racing a midway question loses.
       return transitionRef(
         id,
         "in_progress",
         null,
         () => ({ leaseUntil }),
-        { ...renewOptions, ifAllowed: true }
+        { ...renewOptions, ifAllowed: true, refuseWhenHeld: "any" }
       );
     },
 
@@ -753,19 +1109,82 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       return transitionRef(id, "in_progress", "run_linked", () => runLinkPatch(run), linkRunGuards(linkOptions));
     },
 
+    async setWaitingOn(id, waitingOn, waitOptions) {
+      requireClaimTicket(
+        waitOptions?.claim,
+        "setWaitingOn",
+        "of the attempt that waits. Only the request holding a task's claim records what it waits on."
+      );
+      // Same-status, fenced like a run link: a finished, recreated or reclaimed
+      // row declines. No `task-change`, as a renewal publishes none.
+      return transitionRef(
+        id,
+        "in_progress",
+        null,
+        (task) => waitingOnPatch(task as Task, waitingOn, waitOptions) as Partial<Task<TInput, TOutput>>,
+        // A mirror of a run's stop is refused on a row a question holds (FIX-2133).
+        { ...linkRunGuards({ claim: waitOptions.claim }), ...(waitOptions.hold !== undefined ? { refuseWhenHeld: "row" as const } : {}) }
+      );
+    },
+
+    async ask(id, asks, askOptions) {
+      requireClaimTicket(askOptions?.claim, "ask", "of the turn that asks. Only the request holding a task's claim asks midway.");
+      assertAskable(asks);
+      const guards = linkRunGuards({ claim: askOptions.claim });
+      // Minted once, outside the write, so a retried write opens the same holds.
+      const holds = newRowHolds(asks, now(), { ...(options.filing?.holdDueMs !== undefined ? { dueMs: options.filing.holdDueMs } : {}), midway: true });
+      const outcome = await confirmedDecline(id, () =>
+        writeHolds(id, "asked", { op: "ask", holds }, (task) =>
+          transitionDeclineReason(task as Task, "in_progress", guards, options.collectionId, now())
+        )
+      );
+      return outcome.outcome === "recorded" ? { ...outcome, holds: holds.map((hold) => hold.id) } : outcome;
+    },
+
+    async answer(id, answer) {
+      // Minted once, outside the write, so a retried write keeps one steer.
+      const change: HoldChange = { op: "answer", answer, steerId: generateId("steer"), at: now() };
+      return confirmedDecline(id, () => writeHolds(id, "answered", change));
+    },
+
+    async payHoldDeadlines() {
+      // Rows another process filed are read too, so their deadlines are paid.
+      await adoptUnknownRows(mirror, options.collection);
+      const at = now();
+      const paid: string[] = [];
+      for (const row of listAll() as Task[]) {
+        if (holdsDue(row, at).length === 0) continue;
+        const outcome = await writeHolds(row.id, "answered", { op: "deadline", at });
+        if (outcome.outcome === "recorded") paid.push(row.id);
+      }
+      return paid;
+    },
+
     async complete(id, output, options) {
+      // A checkpoint the worker reported stays the output (FIX-2081).
       return transitionRef(
         id,
         "completed",
         "completed",
-        () => ({
-          output,
-          completedAt: now(),
-          leaseUntil: undefined,
-          claimedBy: undefined,
-          error: undefined,
-        }),
+        (task) => completionPatch(task as Task, output, now()) as Partial<Task<TInput, TOutput>>,
         options
+      );
+    },
+
+    async reportProgress(id, progress, progressOptions) {
+      requireClaimTicket(
+        progressOptions?.claim,
+        "reportProgress",
+        "of the attempt it reports on. Only the request holding a task's claim reports its progress."
+      );
+      if (!reportsProgress(progress)) return { outcome: "unchanged" };
+      // Same-status, fenced like a run link: a finished, recreated or reclaimed row declines.
+      return transitionRef(
+        id,
+        "in_progress",
+        "progress_reported",
+        () => progressPatch(progress) as Partial<Task<TInput, TOutput>>,
+        linkRunGuards(progressOptions)
       );
     },
 
@@ -802,7 +1221,6 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
               const counts = fresh.action === "retry" && fresh.countsAgainstBudget;
               return {
                 feedback: error,
-                answered: undefined,
                 leaseUntil: undefined,
                 claimedBy: undefined,
                 error: undefined,
@@ -827,71 +1245,56 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       );
     },
 
-    async block(id, reason, options) {
-      return transitionRef(
+    async hold(id) {
+      return writeSettings(id, { held: true });
+    },
+
+    async release(id) {
+      return writeSettings(id, { held: false });
+    },
+
+    async patchSettings(id, settings) {
+      const outcome = await writeSettings(id, settings);
+      // New dependencies have the filing's window (`cancelIfDepEnded`).
+      if (settings.deps !== undefined && outcome.outcome === "recorded") await cancelIfDepEnded(id);
+      return outcome;
+    },
+
+    async steer(id, input) {
+      // Minted once, outside the write, so a retried write keeps one id and one time.
+      const steerId = generateId("steer");
+      const at = now();
+      return patchRef(
         id,
-        "blocked",
-        "blocked",
-        () => (reason !== undefined ? { error: reason } : {}),
-        options
+        "steered",
+        (task) => {
+          const decided = steerWrite(task as Task, input, steerId, at);
+          if (decided === "limit") throw new WriteDeclined("steer-limit", task.status);
+          return decided === "unchanged" ? undefined : (decided.patch as Partial<Task<TInput, TOutput>>);
+        },
+        // A finished task takes no steer: its output never changes (FIX-2086).
+        { declineOnTerminal: true }
       );
     },
 
-    async unblock(id, options) {
-      return transitionRef(
-        id,
-        "pending",
-        "unblocked",
-        () => ({ error: undefined }),
-        options,
-        // `blocked` is the ONLY status this may run from. The other two paths
-        // to `pending` have their own verbs (`reclaim`, and `unpark` with its
-        // own fence), and those clear the lease and the claim coordinate; this
-        // one has nothing to clear because `blocked` is reachable only from
-        // `pending`.
-        "blocked"
+    async takeSteers(id, takeOptions) {
+      requireClaimTicket(
+        takeOptions?.claim,
+        "takeSteers",
+        "of the attempt that reads them. Only the request holding a task's claim takes its steers."
       );
-    },
-
-    async awaitReview(id, feedback, options) {
-      // Writes `feedback` unconditionally, the way `unpark` does: a park with
-      // no reason clears the note, so a failed attempt's text never reads as
-      // why the task is waiting on a person.
-      // A park for a person's turn is fenced to a running attempt: a row that
-      // settled or re-pended first declines naming what it found, instead of
-      // being parked behind the attempt that already ended it. `ifAllowed` is
-      // forced on that path only, the way `unpark` forces its own fence.
-      const forTurn = options?.forTurn === true;
-      const fenced = forTurn || options?.fromRunning === true;
-      // A park its holder marks `quiet` asks nobody anything: the ending
-      // recorders are told so. A park for a person's turn is quiet on its own.
-      return transitionRef(
-        id,
-        "parked",
-        "review_requested",
-        () => parkPatch(feedback, forTurn, options?.onQuestion) as Partial<Task<TInput, TOutput>>,
-        fenced ? { ...options, ifAllowed: true } : options,
-        fenced ? "in_progress" : undefined,
-        options?.quiet === true
-      );
-    },
-
-    async unpark(id, feedback, options) {
-      // Fenced to the one edge it owns (FIX-1244): `parked` is the ONLY status
-      // this may run from, and the check runs inside the atomic write, so a
-      // row a worker is holding, or one somebody already answered, comes back
-      // `declined` naming the status it found — never re-queued. `ifAllowed` is
-      // forced AFTER the spread, the way `cancel` forces it: the fence is the
-      // verb's contract, not an option a caller can switch off, and a terminal
-      // row declines `terminal` instead of throwing.
-      return transitionRef(
-        id,
-        "pending",
-        "resumed",
-        (task) => unparkPatch(task as Task, feedback, options?.answer === true) as Partial<Task<TInput, TOutput>>,
-        { ...options, ifAllowed: true },
-        "parked"
-      );
+      const guards = linkRunGuards({ claim: takeOptions.claim });
+      // The steers the committed row had untaken, as the write that lands read them.
+      let taken: string[] = [];
+      const outcome = await patchRef(id, null, (task) => {
+        // Fenced like a run link, on the committed row: a finished, recreated
+        // or reclaimed row declines.
+        const declined = transitionDeclineReason(task as Task, "in_progress", guards, options.collectionId, now());
+        if (declined !== undefined) throw new WriteDeclined(declined, task.status);
+        taken = untakenSteers(task as Task).map((steer) => steer.id);
+        return takeSteersPatch(task as Task, takeOptions.takenIn) as Partial<Task<TInput, TOutput>> | undefined;
+      });
+      return { ...outcome, taken: outcome.outcome === "recorded" ? taken : [] };
     },
 
     async cancel(id, reason, options) {
@@ -902,19 +1305,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         id,
         "cancelled",
         "cancelled",
-        () =>
-          reason !== undefined
-            ? {
-                error: reason,
-                completedAt: now(),
-                leaseUntil: undefined,
-                claimedBy: undefined,
-              }
-            : {
-                completedAt: now(),
-                leaseUntil: undefined,
-                claimedBy: undefined,
-              },
+        () => cancelPatch(reason, options?.via, now()) as Partial<Task<TInput, TOutput>>,
         // `ifAllowed` is forced AFTER the spread, not merged into it (FIX-981):
         // a caller's ticket must reach the guard, but "advisory by
         // construction" is this method's contract and a caller cannot switch it
@@ -933,7 +1324,9 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         if (
           task.status !== "in_progress" ||
           task.leaseUntil === undefined ||
-          task.leaseUntil >= at
+          task.leaseUntil >= at ||
+          // A held row is never taken back (FIX-2133).
+          hasOpenHold(task as Task)
         ) {
           continue;
         }
@@ -943,7 +1336,8 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           if (
             t.status !== "in_progress" ||
             t.leaseUntil === undefined ||
-            t.leaseUntil >= at
+            t.leaseUntil >= at ||
+            hasOpenHold(t as Task)
           ) {
             return { state: current, result: undefined };
           }
@@ -971,10 +1365,10 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
     async setAssignee(id, assignee) {
       // The one guarded patch operation (FIX-976 / A1): reassigning a finished
-      // task is refused, because its work will never run again. On a handed-off
-      // board a task an attempt holds (`in_progress` or `parked`) is refused
-      // too (FIX-982, narrowed by FIX-1780): its dispatch is keyed by the
-      // assignee it was claimed with, and a parked attempt can still settle.
+      // task is refused, because its work will never run again. On a dispatched
+      // board a task an attempt holds (`in_progress`) is refused too (FIX-982,
+      // narrowed by FIX-1780): its dispatch is keyed by the assignee it was
+      // claimed with.
       // The check runs inside the write, so a claim that lands first refuses
       // the move rather than racing it.
       const write = () =>
@@ -996,12 +1390,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       // from the updater skips the store's check of that snapshot. Unlike
       // `terminal`, an attempt-held status is one another request moves on,
       // so confirm the decline against the committed row before reporting it.
-      // An answered row's fence lifts when another request claims it, so it
-      // is confirmed against the committed row the same way.
-      if (
-        outcome.outcome === "declined" &&
-        (outcome.reason === "immutable-assignee" || outcome.reason === "awaiting-answer")
-      ) {
+      if (outcome.outcome === "declined" && outcome.reason === "immutable-assignee") {
         const ref = mirror.get(id);
         if (ref !== undefined) {
           await readCommitted(ref, () => undefined);
@@ -1046,41 +1435,85 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       );
     },
 
+    ...(delivery !== undefined ? { filerOf: (row: Task) => delivery.hooks.filerOf(row) } : {}),
+    ...(delivery?.hooks.tellMidwayQuestions !== undefined
+      ? { tellMidwayQuestions: (row: Task) => delivery.hooks.tellMidwayQuestions!(row) }
+      : {}),
+
     async markCancelOwed(id) {
       return patchRef(id, "cancel_owed", (task) =>
-        task.ask != null && !isTerminalStatus(task.status) && task.cancelOwed !== true
+        task.wait != null && !isTerminalStatus(task.status) && task.cancelOwed !== true
           ? { cancelOwed: true }
           : undefined
       );
     },
 
-    async dispatch(id, dispatchOptions) {
-      const write = () =>
-        patchRef(
-          id,
-          "dispatched",
-          (task) => {
-            const decided = dispatchWrite(task as Task, dispatchOptions);
-            if (decided === undefined) return undefined;
-            if ("decline" in decided) throw new WriteDeclined(decided.decline, task.status);
-            return decided.patch as Partial<Task<TInput, TOutput>>;
-          },
-          { declineOnTerminal: true }
-        );
-      const outcome = await write();
-      // A request reads a resource as the snapshot it first took, and a throw
-      // from the updater skips the store's check of that snapshot. A row
-      // another request claimed or dispatched since moves on, so confirm the
-      // decline against the committed row before reporting it, as
-      // `setAssignee` does.
-      if (outcome.outcome === "declined" && outcome.reason !== "terminal") {
-        const ref = mirror.get(id);
-        if (ref !== undefined) {
-          await readCommitted(ref, () => undefined);
-          return write();
-        }
+    async markWait(id, slot) {
+      return confirmedDecline(id, () =>
+        patchRef(id, "wait_changed", (task) => {
+          const decided = markWaitWrite(task as Task, slot);
+          if (decided === undefined) return undefined;
+          if ("decline" in decided) throw new WriteDeclined(decided.decline, task.status);
+          return decided.patch as Partial<Task<TInput, TOutput>>;
+        })
+      );
+    },
+
+    async lapseWait(id, gateId, requestId) {
+      // A lapsed slot is released when its request ends, by the filer's pass
+      // once the request parks (FIX-2170), and by that pass when nothing in
+      // this process will (a crash). The wake first, so a crash between
+      // leaves a wake that pays nothing, never a slot with none.
+      const row = lookupRow(id);
+      if (delivery !== undefined && row?.wait?.gateId === gateId && row.wait.lapsed !== true) {
+        // Read as lapsed: a ledger that owes no notices owes no pass for a lapsed slot either.
+        await delivery.hooks.owePassAt({ ...row, wait: { ...row.wait, lapsed: true } } as Task, now() + LAPSED_SLOT_CHECK_MS);
       }
-      return outcome;
+      const lapsed = await patchRef(id, "wait_changed", (task) => {
+        const decided = lapseWaitWrite(task as Task, gateId, requestId);
+        if (decided === undefined) return undefined;
+        if ("decline" in decided) throw new WriteDeclined(decided.decline, task.status);
+        return decided.patch as Partial<Task<TInput, TOutput>>;
+      });
+      if (lapsed.outcome === "recorded") noteLapsed(lookupRow(id));
+      return lapsed;
+    },
+
+    async releaseWait(id, release) {
+      const dueAt = now() + NOTICE_DUE_MS;
+      // An ending held for the request is owed to the filer once released:
+      // the filer's wake first, so a crash between leaves a wake that pays
+      // nothing, never a debt with none. Read off the mirror, so it errs
+      // toward owing.
+      const row = lookupRow(id);
+      if (!release.read && delivery !== undefined && row?.wait?.lapsed === true && row.wait.requestId === release.requestId) {
+        await delivery.hooks.owePassAt(row, dueAt);
+      }
+      return patchRef(id, "wait_changed", (task) => releaseWaitWrite(task as Task, { ...release, dueAt })?.patch as Partial<Task<TInput, TOutput>> | undefined);
+    },
+
+    async dropNoticeReadByWait(id) {
+      return patchRef(id, "metadata_changed", (task) => noticeReadByWaitWrite(task as Task)?.patch as Partial<Task<TInput, TOutput>> | undefined);
+    },
+
+    async takeNotice(id, notice, take) {
+      const at = now();
+      return patchRef(id, "metadata_changed", (task) => noticeTakeWrite(task as Task, notice, { ...take, at })?.patch as Partial<Task<TInput, TOutput>> | undefined);
+    },
+
+    async refresh(id) {
+      const taskRef = mirror.get(id);
+      if (taskRef !== undefined) await readCommitted(taskRef, () => undefined);
+    },
+
+    async payOwedCascades() {
+      // Another process may have filed rows this mirror has never seen, whose
+      // dependency has since ended: adopt them first, so the sweep can cancel
+      // them. Only unknown rows: a ref the mirror already holds is live, and
+      // replacing it with a listed one could read back what this request has
+      // already moved past.
+      await adoptUnknownRows(mirror, options.collection);
+      return payOwedCascades(cascadeWrites, now());
     },
 
     get(id) {
@@ -1088,6 +1521,16 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       return taskRef === undefined
         ? undefined
         : wrap(readTaskState<TInput, TOutput>(taskRef));
+    },
+
+    async getCommitted(id) {
+      // A request reads a resource as the snapshot it first took; another
+      // request's write (a steer, say) lands in the store, not in that
+      // snapshot. A read that changes nothing brings this one up to date.
+      const taskRef = mirror.get(id);
+      if (taskRef === undefined) return undefined;
+      await readCommitted(taskRef, () => undefined);
+      return wrap(readTaskState<TInput, TOutput>(taskRef));
     },
 
     list(filter?: TaskFilter) {

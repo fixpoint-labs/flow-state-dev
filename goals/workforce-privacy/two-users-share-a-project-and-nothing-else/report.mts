@@ -69,7 +69,7 @@ export function writeReport(scratch: string, r: Report): string {
     for (const t of run.record.turns) {
       out.push(`- Model turn ${t.step}, as ${t.who}: "${t.words}" · session \`${t.sessionId}\` · request \`${t.requestId}\` · ${t.status}${t.providerRetry === undefined ? "" : ` · re-run once after a provider error: ${t.providerRetry}`}`);
       for (const tool of t.tools) out.push(`  - tool \`${tool.name}\` (item \`${tool.itemId}\`): ${tool.args} → ${tool.output}`);
-      out.push(`  - answered (item \`${t.replyItemId}\`): "${t.reply.replace(/\s+/g, " ").slice(0, 400)}"`);
+      out.push(`  - answered${t.answeredBy === undefined ? "" : ` by its delegate \`${t.answeredBy}\`, after the turn's request`} (item \`${t.replyItemId}\`): "${t.reply.replace(/\s+/g, " ").slice(0, 400)}"`);
       if (t.items !== undefined) out.push(`  - no assistant message stored; the request's items: ${t.items.join(", ") || "none"}`);
     }
     if (run.record.screenshots.length > 0) out.push(`- screenshots: ${run.record.screenshots.map((s) => `\`${s.split("/").pop()}\``).join(", ")}`);

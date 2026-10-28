@@ -19,10 +19,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import type { ChildSessionSummary } from "@flow-state-dev/client";
 
-const sessionClientMock = {
-  listChildSessions: vi.fn(),
+const sessionsMock = {
+  children: vi.fn(),
 };
-const devToolState = { sessionClient: sessionClientMock };
+const devToolState = { client: { sessions: sessionsMock } };
 
 vi.mock("../src/react/context/devtool-context", () => ({
   useDevTool: () => devToolState,
@@ -47,7 +47,7 @@ function page(from: number, count: number): ChildSessionSummary[] {
 }
 
 beforeEach(() => {
-  sessionClientMock.listChildSessions.mockReset().mockResolvedValue([]);
+  sessionsMock.children.mockReset().mockResolvedValue([]);
 });
 
 describe("useDispatchRuns — reading one page", () => {
@@ -60,7 +60,7 @@ describe("useDispatchRuns — reading one page", () => {
     //
     // The listing is ordered `created_at DESC`, so the one page IS the newest
     // work. A short page is the whole list and needs nothing further.
-    sessionClientMock.listChildSessions.mockImplementation(
+    sessionsMock.children.mockImplementation(
       async (_id: string, opts?: { offset?: number }) =>
         opts?.offset === undefined ? [row("dsx_1"), row("dsx_2")] : []
     );
@@ -73,29 +73,29 @@ describe("useDispatchRuns — reading one page", () => {
     expect(result.current.truncation).toBe("complete");
     // The page plus its sentinel. Two whatever the session holds — the page
     // size belongs to the deployment, so a short page is not self-evident.
-    expect(sessionClientMock.listChildSessions).toHaveBeenCalledTimes(2);
+    expect(sessionsMock.children).toHaveBeenCalledTimes(2);
   });
 
   it("never sends a limit, because a host may cap it below whatever we'd pick", async () => {
     // The route REJECTS an out-of-range limit with a 400 rather than clamping,
     // and `maxChildSessionListLimit` is an operator's setting.
-    sessionClientMock.listChildSessions.mockResolvedValue([]);
+    sessionsMock.children.mockResolvedValue([]);
     renderHook(() => useDispatchRuns("sess_parent"));
 
-    await waitFor(() => expect(sessionClientMock.listChildSessions).toHaveBeenCalled());
-    const [, options] = sessionClientMock.listChildSessions.mock.calls[0]!;
+    await waitFor(() => expect(sessionsMock.children).toHaveBeenCalled());
+    const [, options] = sessionsMock.children.mock.calls[0]!;
     expect(options ?? {}).not.toHaveProperty("limit");
   });
 
   it("costs one request when the session has no background work", async () => {
-    sessionClientMock.listChildSessions.mockResolvedValue([]);
+    sessionsMock.children.mockResolvedValue([]);
 
     const { result } = renderHook(() => useDispatchRuns("sess_parent"));
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.dispatchRuns).toEqual([]);
     expect(result.current.truncation).toBe("complete");
-    expect(sessionClientMock.listChildSessions).toHaveBeenCalledTimes(1);
+    expect(sessionsMock.children).toHaveBeenCalledTimes(1);
   });
 
   it("says there is more when a full page has a row behind it", async () => {
@@ -103,7 +103,7 @@ describe("useDispatchRuns — reading one page", () => {
     // not evidence — it takes one sentinel read to tell "the whole list" from
     // "the first page of a longer one".
     const first = page(0, 25);
-    sessionClientMock.listChildSessions.mockImplementation(
+    sessionsMock.children.mockImplementation(
       async (_id: string, opts?: { offset?: number }) =>
         opts?.offset === undefined ? first : [row("dsx_beyond")]
     );
@@ -112,11 +112,11 @@ describe("useDispatchRuns — reading one page", () => {
 
     await waitFor(() => expect(result.current.truncation).toBe("more"));
     expect(result.current.dispatchRuns).toHaveLength(25);
-    expect(sessionClientMock.listChildSessions).toHaveBeenCalledWith("sess_parent", {
+    expect(sessionsMock.children).toHaveBeenCalledWith("sess_parent", {
       offset: 25,
     });
     // Two, and only two — the cost stays constant however much work exists.
-    expect(sessionClientMock.listChildSessions).toHaveBeenCalledTimes(2);
+    expect(sessionsMock.children).toHaveBeenCalledTimes(2);
   });
 
   it("reports an unknown index when the read itself fails", async () => {
@@ -128,7 +128,7 @@ describe("useDispatchRuns — reading one page", () => {
     // Driven through a SUCCESSFUL read first, so `truncation` genuinely holds
     // `"complete"` before the failure. A first-load failure would pass against
     // the bug, because nothing had established completeness to begin with.
-    sessionClientMock.listChildSessions.mockImplementation(
+    sessionsMock.children.mockImplementation(
       async (_id: string, opts?: { offset?: number }) =>
         opts?.offset === undefined ? [row("dsx_1")] : []
     );
@@ -136,7 +136,7 @@ describe("useDispatchRuns — reading one page", () => {
     const { result } = renderHook(() => useDispatchRuns("sess_parent"));
     await waitFor(() => expect(result.current.truncation).toBe("complete"));
 
-    sessionClientMock.listChildSessions.mockRejectedValue(new Error("network down"));
+    sessionsMock.children.mockRejectedValue(new Error("network down"));
     await act(async () => {
       await result.current.refresh();
     });
@@ -158,7 +158,7 @@ describe("useDispatchRuns — reading one page", () => {
     // answer, and it is rare. Reporting it as `complete` would assert a
     // completeness nobody checked.
     const first = page(0, 25);
-    sessionClientMock.listChildSessions.mockImplementation(
+    sessionsMock.children.mockImplementation(
       async (_id: string, opts?: { offset?: number }) => {
         if (opts?.offset === undefined) return first;
         throw new Error("network down");
@@ -177,7 +177,7 @@ describe("useDispatchRuns — reading one page", () => {
     // The other direction, and the one a full-page heuristic gets wrong:
     // exactly a page's worth of dispatchRuns and nothing behind it.
     const first = page(0, 25);
-    sessionClientMock.listChildSessions.mockImplementation(
+    sessionsMock.children.mockImplementation(
       async (_id: string, opts?: { offset?: number }) =>
         opts?.offset === undefined ? first : []
     );
@@ -199,7 +199,7 @@ describe("useDispatchRuns — a superseded read stops working", () => {
 
   function armSteppableReads(): PendingRead[] {
     const pending: PendingRead[] = [];
-    sessionClientMock.listChildSessions.mockImplementation(
+    sessionsMock.children.mockImplementation(
       (sessionId: string, opts?: { offset?: number }) =>
         new Promise((resolve) => {
           pending.push({
@@ -263,7 +263,7 @@ describe("useDispatchRuns — a superseded read stops working", () => {
     // ever does more than `setState` would be running it against a workspace
     // that no longer exists.
     const onRetired = vi.fn();
-    sessionClientMock.listChildSessions.mockResolvedValue([]);
+    sessionsMock.children.mockResolvedValue([]);
 
     const { unmount, rerender } = renderHook(
       ({ id }: { id: string }) => useReadFence([id], onRetired),
@@ -337,7 +337,7 @@ describe("useDispatchRuns — a callback outliving its identity", () => {
     // that through: the closure took whatever generation was current at
     // invocation, so it always agreed with itself and wrote the previous
     // session's rows over the workspace now on screen.
-    sessionClientMock.listChildSessions.mockImplementation(onePage([row("dsx_parent")]));
+    sessionsMock.children.mockImplementation(onePage([row("dsx_parent")]));
 
     const { result, rerender } = renderHook(
       ({ sessionId }: { sessionId: string }) => useDispatchRuns(sessionId),
@@ -350,14 +350,14 @@ describe("useDispatchRuns — a callback outliving its identity", () => {
     // Captured while the parent was open.
     const staleRefresh = result.current.refresh;
 
-    sessionClientMock.listChildSessions.mockImplementation(onePage([row("dsx_child")]));
+    sessionsMock.children.mockImplementation(onePage([row("dsx_child")]));
     rerender({ sessionId: "sess_child" });
     await waitFor(() =>
       expect(result.current.dispatchRuns.map((w) => w.id)).toEqual(["dsx_child"])
     );
 
-    const callsBefore = sessionClientMock.listChildSessions.mock.calls.length;
-    sessionClientMock.listChildSessions.mockImplementation(onePage([row("dsx_stale")]));
+    const callsBefore = sessionsMock.children.mock.calls.length;
+    sessionsMock.children.mockImplementation(onePage([row("dsx_stale")]));
     await act(async () => {
       await staleRefresh();
     });
@@ -365,7 +365,7 @@ describe("useDispatchRuns — a callback outliving its identity", () => {
     expect(result.current.dispatchRuns.map((w) => w.id)).toEqual(["dsx_child"]);
     // And it should not have gone to the network at all — a read it may not
     // write is a read worth not making.
-    expect(sessionClientMock.listChildSessions.mock.calls.length).toBe(callsBefore);
+    expect(sessionsMock.children.mock.calls.length).toBe(callsBefore);
   });
 
   it("does not let a stale callback retire the current identity's in-flight read", async () => {
@@ -375,7 +375,7 @@ describe("useDispatchRuns — a callback outliving its identity", () => {
     // wrong write for a silently dropped one.
     let resolveChild!: (rows: ChildSessionSummary[]) => void;
 
-    sessionClientMock.listChildSessions.mockImplementation(onePage([row("dsx_parent")]));
+    sessionsMock.children.mockImplementation(onePage([row("dsx_parent")]));
     const { result, rerender } = renderHook(
       ({ sessionId }: { sessionId: string }) => useDispatchRuns(sessionId),
       { initialProps: { sessionId: "sess_parent" } }
@@ -386,7 +386,7 @@ describe("useDispatchRuns — a callback outliving its identity", () => {
     const staleRefresh = result.current.refresh;
 
     // The child's read is held open.
-    sessionClientMock.listChildSessions.mockImplementationOnce(
+    sessionsMock.children.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
           resolveChild = resolve as (rows: ChildSessionSummary[]) => void;
@@ -401,7 +401,7 @@ describe("useDispatchRuns — a callback outliving its identity", () => {
     });
 
     // The child's read comes back and must still be the one that lands.
-    sessionClientMock.listChildSessions.mockImplementation(
+    sessionsMock.children.mockImplementation(
       async (_id: string, opts: { offset: number }) => (opts.offset === 0 ? [] : [])
     );
     await act(async () => {
@@ -427,7 +427,7 @@ describe("useDispatchRuns — superseded reads", () => {
     // because that path in isolation never sets the flag and would pass either
     // way.
     let resolveInFlight!: (rows: ChildSessionSummary[]) => void;
-    sessionClientMock.listChildSessions.mockReturnValueOnce(
+    sessionsMock.children.mockReturnValueOnce(
       new Promise((resolve) => {
         resolveInFlight = resolve as (rows: ChildSessionSummary[]) => void;
       })
@@ -452,7 +452,7 @@ describe("useDispatchRuns — superseded reads", () => {
   });
 
   it("drops the previous session's rows before the new session's read lands", async () => {
-    sessionClientMock.listChildSessions
+    sessionsMock.children
       .mockResolvedValueOnce([row("dsx_parent")])
       .mockResolvedValueOnce([]);
 
@@ -464,7 +464,7 @@ describe("useDispatchRuns — superseded reads", () => {
 
     // A read that never resolves stands in for the window between the switch
     // and the new session's response.
-    sessionClientMock.listChildSessions.mockReturnValueOnce(new Promise(() => {}));
+    sessionsMock.children.mockReturnValueOnce(new Promise(() => {}));
     rerender({ sessionId: "sess_child" });
 
     expect(result.current.dispatchRuns).toEqual([]);
@@ -478,7 +478,7 @@ describe("useDispatchRuns — superseded reads", () => {
 
   it("ignores a read that resolves after the session moved on", async () => {
     let resolveParent!: (rows: ChildSessionSummary[]) => void;
-    sessionClientMock.listChildSessions.mockReturnValueOnce(
+    sessionsMock.children.mockReturnValueOnce(
       new Promise((resolve) => {
         resolveParent = resolve as (rows: ChildSessionSummary[]) => void;
       })
@@ -489,7 +489,7 @@ describe("useDispatchRuns — superseded reads", () => {
       { initialProps: { sessionId: "sess_parent" } }
     );
 
-    sessionClientMock.listChildSessions.mockResolvedValueOnce([]);
+    sessionsMock.children.mockResolvedValueOnce([]);
     rerender({ sessionId: "sess_child" });
 
     // The parent's read comes back late. Applying it would relabel the parent
@@ -506,7 +506,7 @@ describe("useDispatchRuns — superseded reads", () => {
     // so only ordering within the session tells them apart. The older one
     // carries a row still `active` that the newer one already saw complete.
     let resolveMount!: (rows: ChildSessionSummary[]) => void;
-    sessionClientMock.listChildSessions.mockReturnValueOnce(
+    sessionsMock.children.mockReturnValueOnce(
       new Promise((resolve) => {
         resolveMount = resolve as (rows: ChildSessionSummary[]) => void;
       })
@@ -515,7 +515,7 @@ describe("useDispatchRuns — superseded reads", () => {
     const { result } = renderHook(() => useDispatchRuns("sess_parent"));
 
     // A manual Refresh overlapping the mount read, resolving first.
-    sessionClientMock.listChildSessions
+    sessionsMock.children
       .mockResolvedValueOnce([row("dsx_1", { status: "completed" })])
       .mockResolvedValueOnce([]);
     await act(async () => {
@@ -538,7 +538,7 @@ describe("useDispatchRuns — superseded reads", () => {
     // its way in, so its success writes rows underneath a failure banner that
     // describes a read nobody is waiting for.
     let rejectMount!: (err: Error) => void;
-    sessionClientMock.listChildSessions.mockReturnValueOnce(
+    sessionsMock.children.mockReturnValueOnce(
       new Promise((_resolve, reject) => {
         rejectMount = reject as (err: Error) => void;
       })
@@ -547,7 +547,7 @@ describe("useDispatchRuns — superseded reads", () => {
     const { result } = renderHook(() => useDispatchRuns("sess_parent"));
 
     // A manual Refresh overlaps it and lands FIRST, with real rows.
-    sessionClientMock.listChildSessions
+    sessionsMock.children
       .mockResolvedValueOnce([row("dsx_1")])
       .mockResolvedValueOnce([]);
     await act(async () => {
@@ -570,7 +570,7 @@ describe("useDispatchRuns — superseded reads", () => {
     // The session client is rebuilt when `baseUrl` or the bearer token changes,
     // so a response from the old client is answering for a different server.
     let resolveOld!: (rows: ChildSessionSummary[]) => void;
-    sessionClientMock.listChildSessions.mockReturnValueOnce(
+    sessionsMock.children.mockReturnValueOnce(
       new Promise((resolve) => {
         resolveOld = resolve as (rows: ChildSessionSummary[]) => void;
       })
@@ -578,7 +578,7 @@ describe("useDispatchRuns — superseded reads", () => {
 
     const { result, rerender } = renderHook(() => useDispatchRuns("sess_parent"));
 
-    devToolState.sessionClient = { listChildSessions: vi.fn().mockResolvedValue([]) } as never;
+    devToolState.client = { sessions: { children: vi.fn().mockResolvedValue([]) } } as never;
     rerender();
 
     await act(async () => {
@@ -587,6 +587,6 @@ describe("useDispatchRuns — superseded reads", () => {
 
     expect(result.current.dispatchRuns).toEqual([]);
 
-    devToolState.sessionClient = sessionClientMock;
+    devToolState.client = { sessions: sessionsMock };
   });
 });

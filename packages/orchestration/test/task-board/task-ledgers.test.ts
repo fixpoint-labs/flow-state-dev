@@ -4,7 +4,7 @@
  * dispatch's row is read off the ledger the dispatch names.
  *
  * Two sender boards, over two ledgers the recipient never builds a board for,
- * hand off to the same recipient entry. Both rows run and settle on their own
+ * dispatch to the same recipient entry. Both rows run and settle on their own
  * ledger. A dispatch naming a ledger the resolver does not answer for is
  * refused before any row is read, and a claim that went stale between
  * hand-over and arrival writes nothing, exactly as on a board's own gate.
@@ -28,6 +28,7 @@ import {
 } from "../../src/tasks";
 import { createFakeResourceCollection } from "../helpers";
 import { taskBoard, taskLedgers, taskWorkerInputSchema } from "../../src/task-board";
+import { heard } from "../fixtures/heard";
 
 const USER_ID = "u_task_ledgers";
 const RECIPIENT = "ledgers-recipient";
@@ -58,7 +59,7 @@ async function declaredLedger(ledgerId: string, ctx: BlockContext) {
 }
 
 function recipientFlow(ran: string[], reads: string[]) {
-  return defineFlow({
+  return defineFlow({ internal: { actions: { ...heard } },
     kind: RECIPIENT,
     actions: {},
     resources: { [LEDGER_A.id]: LEDGER_A, [LEDGER_B.id]: LEDGER_B },
@@ -82,12 +83,13 @@ function recipientFlow(ran: string[], reads: string[]) {
 function senderFlow(kind: string, list: ReturnType<typeof ledger>, taskId: string) {
   const board = taskBoard({
     name: `${kind}-board`,
-    // Handed off under the ledger's id: what the recipient resolves.
+    // Dispatched under the ledger's id: what the recipient resolves.
     boardId: list.id,
+    mode: "delegation",
     collection: list,
     workers: {
       work: dispatcher<TaskWorkerInput>({
-        name: `${kind}-hand-off`,
+        name: `${kind}-dispatch`,
         flowKind: RECIPIENT,
         action: "work",
         session: "per-task",
@@ -95,7 +97,7 @@ function senderFlow(kind: string, list: ReturnType<typeof ledger>, taskId: strin
     },
     initialTasks: [{ id: taskId, goal: `do ${taskId}`, assignee: "work", input: {} }],
   });
-  return defineFlow({ kind, actions: { start: { block: board.drain } } })({ id: kind });
+  return defineFlow({ internal: { actions: { ...heard } }, kind, actions: { start: { block: board.drain } } })({ id: kind });
 }
 
 async function durableRow(stores: StoreRegistry, ledgerId: string, taskId: string) {
@@ -140,11 +142,12 @@ describe("a task entry served by many ledgers", () => {
     const board = taskBoard({
       name: "own-board",
       boardId: "own",
+      mode: "delegation",
       collection: LEDGER_A,
-      workers: { work: dispatcher<TaskWorkerInput>({ name: "own-hand-off", action: "work", session: "per-task" }) },
+      workers: { work: dispatcher<TaskWorkerInput>({ name: "own-dispatch", action: "work", session: "per-task" }) },
     });
     expect(() =>
-      defineFlow({
+      defineFlow({ internal: { actions: { ...heard } },
         kind: "both",
         actions: { drain: { block: board.drain } },
         task: {
@@ -157,6 +160,37 @@ describe("a task entry served by many ledgers", () => {
         },
       })
     ).toThrow(/declares where it takes tasks from .*board "own".*One entry runs behind one gate/s);
+  });
+
+  it("takes a plan board's rows filed session: \"new\" through its own gate, not the board's (FIX-2082)", () => {
+    const door = taskLedgers({ name: "door", resolve: async () => undefined });
+    const board = taskBoard({
+      name: "own-plan",
+      boardId: "own-plan",
+      collection: LEDGER_A,
+      workers: workWorker([]),
+      newSession: dispatcher<TaskWorkerInput>({ name: "own-session", action: "work", session: "per-task" }),
+    });
+    const flow = defineFlow({ internal: { actions: { ...heard } },
+      kind: "plan-and-door",
+      actions: { drain: { block: board.drain } },
+      task: { actions: { work: { block: workWorker([]), from: door } } },
+    }) as unknown as { task: { actions: Record<string, { gatedBy?: unknown }> } };
+    // One entry, one gate: its own.
+    expect(flow.task.actions.work!.gatedBy).toBe(door);
+  });
+
+  it("accepts a plan board whose newSession entry its flow doesn't declare: it files no such row", () => {
+    const board = taskBoard({
+      name: "plan-no-entry",
+      boardId: "plan-no-entry",
+      collection: LEDGER_A,
+      workers: workWorker([]),
+      newSession: dispatcher<TaskWorkerInput>({ name: "no-entry-session", action: "work", session: "per-task" }),
+    });
+    expect(() =>
+      defineFlow({ internal: { actions: { ...heard } }, kind: "plan-no-entry", actions: { drain: { block: board.drain } } })
+    ).not.toThrow();
   });
 
   it("takes tasks from two ledgers it never built a board for, each settled on its own ledger", async () => {
@@ -198,7 +232,7 @@ describe("a task entry served by many ledgers", () => {
       const runtime = await state.getRuntime();
       await drain(runtime, x, "s_x");
       // The child refuses in its gate; the row is never written by it, so it
-      // stays as the hand-off left it (in progress, lease lapsing) and nothing ran.
+      // stays as the dispatch left it (in progress, lease lapsing) and nothing ran.
       await new Promise((resolve) => setTimeout(resolve, 200));
       expect(ran).toEqual([]);
       const row = await durableRow(runtime.stores, "list-x", "tx");
@@ -250,7 +284,7 @@ describe("the gate of a task entry served by many ledgers", () => {
       },
     });
     const entry = binding.gate({ block: worker } as unknown as ActionCore, "work");
-    const flow = defineFlow({ kind: "door-gate", actions: { work: entry } } as never)({ id: "door-gate" });
+    const flow = defineFlow({ internal: { actions: { ...heard } }, kind: "door-gate", actions: { work: entry } } as never)({ id: "door-gate" });
     const runStores = createInMemoryStores();
     const run = async (ledgerId: string, attemptOffset = 0, sessionId = `s_${ledgerId}_${attemptOffset}`) => {
       const row = (await ledgerOf(ledgerId === "b" ? "b" : "a")).get("t1") as Task;

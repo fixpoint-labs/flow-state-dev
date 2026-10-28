@@ -1,0 +1,85 @@
+<svg viewBox="0 0 940 360" role="img" aria-label="On the left, Researcher's turn, in its main conversation or a task session, calls messageWorker. The call goes into one new check in Workforce: the recipient is on the user's roster, has a conversation, and the hop count and per-turn count are under their limits. An accepted message is written as one row in the user's message log, then dispatched to the recipient's own conversation, opened if absent, here the Shift Coordinator's. There it shows as a line from Researcher and wakes the coordinator's turn. The coordinator's answer names the message, is written to the log, and goes back to the exact session that sent it. The Messages view in Shift Manager reads the log. Below, dashed and off the path: the task board, delegate lists and the task chain."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .src   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .flow  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .off   { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .arr   { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .back  { stroke:var(--code); stroke-width:1.4; fill:none; stroke-dasharray:6 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13.5px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .c-gone { fill:var(--gone); }
+    .c-code { fill:var(--code); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="360"/>
+
+  <g id="sender">
+    <text class="t-lbl" x="20" y="28">SENDER · ANY WORKER WITH A CONVERSATION</text>
+    <rect class="src" x="16" y="40" width="200" height="104" rx="5"/>
+    <text class="t-h" x="28" y="62">Researcher's turn</text>
+    <text class="t-s" x="28" y="80">main conversation or a task session</text>
+    <text class="t-b" x="28" y="106">messageWorker</text>
+    <text class="t-s" x="28" y="124">to · text · replyTo</text>
+    <path class="arr" d="M216 92 H248"/>
+  </g>
+
+  <g id="check">
+    <rect class="new" x="250" y="40" width="190" height="104" rx="6"/>
+    <text class="t-lbl" x="264" y="60">ONE CHECK · WORKFORCE</text>
+    <text class="t-b" x="264" y="82">on the user's roster</text>
+    <text class="t-b" x="264" y="100">has a conversation · D3</text>
+    <text class="t-b" x="264" y="118">hop and per-turn limits · D2</text>
+    <text class="t-s" x="264" y="136">refused: a reason the model reads</text>
+    <path class="arr" d="M440 92 H472"/>
+  </g>
+
+  <g id="log">
+    <rect class="new" x="474" y="40" width="170" height="104" rx="6"/>
+    <text class="t-lbl" x="488" y="60">MESSAGE LOG · USER</text>
+    <text class="t-b" x="488" y="82">one row per message</text>
+    <text class="t-b" x="488" y="100">from · to · thread</text>
+    <text class="t-b" x="488" y="118">both sessions · hop</text>
+    <text class="t-s" x="488" y="136">survives a restart</text>
+    <path class="arr" d="M644 92 H676"/>
+    <path class="arr" d="M559 144 V214"/>
+  </g>
+
+  <g id="recipient">
+    <text class="t-lbl" x="682" y="28">RECIPIENT · ITS OWN CONVERSATION · D1</text>
+    <rect class="flow" x="678" y="40" width="246" height="104" rx="6"/>
+    <text class="t-h" x="692" y="62">Shift Coordinator</text>
+    <text class="t-s" x="692" y="80">its own conversation, opened if absent</text>
+    <text class="t-b" x="692" y="106">a line: From Researcher</text>
+    <text class="t-b" x="692" y="124">then its turn, woken · D2</text>
+  </g>
+
+  <g id="answer">
+    <path class="back" d="M800 144 V176 H116 V144"/>
+    <text class="t-s c-code" x="330" y="194">the answer names the message and goes back to the session that sent it</text>
+  </g>
+
+  <g id="view">
+    <rect class="new" x="474" y="216" width="170" height="56" rx="6"/>
+    <text class="t-h" x="488" y="238">Messages view</text>
+    <text class="t-s" x="488" y="256">Shift Manager · who talked to whom</text>
+  </g>
+
+  <g id="off-path">
+    <rect class="off" x="16" y="226" width="380" height="56" rx="5"/>
+    <text class="t-h c-gone" x="30" y="248">Task board · delegate lists · task chain</text>
+    <text class="t-s" x="30" y="266">not on the path: a message is not delegation</text>
+  </g>
+
+  <text class="t-s" x="16" y="320">The engine's dispatch seam carries the message to the recipient's session on its flow; its one new option opens that session when absent.</text>
+</svg>

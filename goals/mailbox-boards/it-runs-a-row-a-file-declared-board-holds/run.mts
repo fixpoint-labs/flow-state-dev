@@ -47,7 +47,7 @@ import {
   type WorkerManifest
 } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { goalTmpDir, httpActions, runGoal, silentLogger, untilIdle } from "../../lib/index.mts";
+import { goalTmpDir, actingAs, runGoal, silentLogger, untilIdle } from "../../lib/index.mts";
 
 const TREE = fileURLToPath(new URL("./fixtures/workforce", import.meta.url));
 const USER_ID = "u_mailbox_boards";
@@ -107,7 +107,7 @@ await runGoal(async (failures) => {
     session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
     resources: { ...installation.resources, ...board.resources },
     actions: {
-      run: { inputSchema: doorInput.strict(), block: filerTurn, userMessage: (input: { message: string }) => input.message },
+      respond: { inputSchema: doorInput.strict(), block: filerTurn, userMessage: (input: { message: string }) => input.message },
       ...board.actions
     },
     internal: { actions: board.entries(filerTurn, () => "fixed") }
@@ -128,11 +128,11 @@ await runGoal(async (failures) => {
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: { run: { inputSchema: doorInput, block: delegateTurn, userMessage: (input: { message: string }) => input.message } },
+    actions: { respond: { inputSchema: doorInput, block: delegateTurn, userMessage: (input: { message: string }) => input.message } },
     task: { actions: { work: workerTaskEntry({ name: "row-goal-delegate-task", turn: delegateTurn }) } }
   } as never);
 
-  workerFlows = { [filerKind]: filerFlow, [delegateKind]: delegateFlow };
+  workerFlows = { [filerKind]: { flow: filerFlow, roles: ["manager"] }, [delegateKind]: { flow: delegateFlow, roles: ["contributor"] } };
   const hired = hireWorkforce(installation);
   const state = createFlowState({
     flows: Object.fromEntries(hired.map((copy) => [copy.id, copy])),
@@ -146,7 +146,7 @@ await runGoal(async (failures) => {
 
   try {
     const runtime = await state.getRuntime();
-    const { act, open } = httpActions(await state.getRouter(), USER_ID);
+    const { act, open } = actingAs(await state.getRouter(), USER_ID);
     const conversation = await open(filerKind, { workerId: filer.id });
 
     // ---- b. the conversation lists its delegate as taking a task ------------
@@ -159,7 +159,7 @@ await runGoal(async (failures) => {
 
     // ---- c. the filer files one task, through its own conversation ----------
     const goal = `wire the ${delegate.id} feature end to end`;
-    const filed = await act(filerKind, conversation, "dispatchTask_tasks", { goal, assignee: delegate.id });
+    const filed = await act(filerKind, conversation, "createTask_tasks", { goal, assignee: delegate.id });
     if (filed?.ok !== true) failures.push(`c: ${filer.id}'s conversation could not file a task: ${JSON.stringify(filed)}`);
     await untilIdle(runtime.stores);
 
@@ -200,7 +200,7 @@ await runGoal(async (failures) => {
       evidence:
         `one tree at ${TREE}: ${filer.id} (flow ${filerKind}) names ${delegate.id} (flow ${delegateKind}) as its ` +
         `delegate, and no file declares a board. Its conversation listed ${delegate.id} as taking ${entry?.takes}, ` +
-        `dispatched one task through its own dispatchTask_tasks, and the board handed it to ${delegate.id}'s task entry, ` +
+        `dispatched one task through its own createTask_tasks, and the board handed it to ${delegate.id}'s task entry, ` +
         `which ran it: proved by ${OUTBOX}, a side effect the board could not have produced by reporting. The task ` +
         `reads ${only?.row.status} out of ${USER_ID}'s own store at ${only?.key}, the conversation's partition, ` +
         `which no file names, and nothing of it is at org scope.`

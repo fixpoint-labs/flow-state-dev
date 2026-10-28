@@ -1,14 +1,18 @@
 import type { BlockTraceItem, ItemVisibility, OutputItem } from "@flow-state-dev/core/items";
 import { resolveItemVisibility } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 
 /**
  * Builds item-focused query helpers for deterministic test assertions.
+ * Selectors that don't filter by type (`all`, `sideChain`, `main`, `byAgent`,
+ * `byVisibility`) return every matching row, trace rows included, so they are
+ * typed `RuntimeItem[]`.
  */
-export function testItems(items: OutputItem[]) {
+export function testItems(items: readonly RuntimeItem[]) {
   const allItems = [...items].sort((left, right) => left.itemIndex - right.itemIndex);
 
   return {
-    all(): OutputItem[] {
+    all(): RuntimeItem[] {
       return allItems;
     },
     byType<TType extends OutputItem["type"]>(
@@ -29,15 +33,15 @@ export function testItems(items: OutputItem[]) {
       );
     },
     blockOutputs(blockName?: string): BlockTraceItem[] {
-      return (allItems as Array<OutputItem | BlockTraceItem>).filter(
+      return allItems.filter(
         (item): item is BlockTraceItem => {
-          if ((item as { type: string }).type !== "block_trace") {
+          if (item.type !== "block_trace") {
             return false;
           }
           if (blockName === undefined) {
             return true;
           }
-          return (item as BlockTraceItem).blockName === blockName;
+          return item.blockName === blockName;
         }
       );
     },
@@ -56,16 +60,16 @@ export function testItems(items: OutputItem[]) {
         }
       );
     },
-    sideChain(): OutputItem[] {
+    sideChain(): RuntimeItem[] {
       return allItems.filter((item) => item.provenance.phase === "sideChain");
     },
-    main(): OutputItem[] {
+    main(): RuntimeItem[] {
       return allItems.filter((item) => item.provenance.phase === "main");
     },
-    byAgent(agentName: string): OutputItem[] {
+    byAgent(agentName: string): RuntimeItem[] {
       return allItems.filter((item) => item.agentName === agentName);
     },
-    byVisibility(predicate: Partial<ItemVisibility>): OutputItem[] {
+    byVisibility(predicate: Partial<ItemVisibility>): RuntimeItem[] {
       return allItems.filter((item) => {
         const vis = resolveItemVisibility(item);
         if (predicate.client !== undefined && vis.client !== predicate.client) return false;

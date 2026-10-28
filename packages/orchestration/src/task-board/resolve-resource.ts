@@ -32,7 +32,7 @@ export async function resolveResourceTaskCollection<TInput = unknown, TOutput = 
      * other board bound to the same declaration. Reading the policy off the
      * shared declaration at the moment of resolution is what makes those agree:
      * a boolean captured per call site guards only that call site, and one
-     * captured before the handed-off board was declared would be stale besides.
+     * captured before the dispatched board was declared would be stale besides.
      */
     ledger: DefinedTaskCollection;
     /**

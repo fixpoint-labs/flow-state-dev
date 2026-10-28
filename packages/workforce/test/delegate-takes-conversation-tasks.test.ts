@@ -21,7 +21,8 @@ import { z } from "zod";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import { workerConfigSchema } from "../src/worker-config";
 import type { WorkerInstallation } from "../src/workers/installation";
-import { bootBoardHost, boardWorkers, messageOf, type BoardHost } from "./conversation-board-harness";
+import { bootBoardHost, boardWorkers, messageOf, type BoardHost, hearsMessages } from "./conversation-board-harness";
+import { workerMessagesResources } from "../src/messages/message-log";
 
 const doorInput = z.object({ message: z.string() });
 
@@ -47,8 +48,9 @@ function boardedFlow(installation: WorkerInstallation, flow: string, door: "othe
     kind: flow,
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources },
-    actions: { run: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
+    resources: { ...installation.resources, ...workerMessagesResources },
+    internal: { actions: hearsMessages(installation, flow) },
+    actions: { respond: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
     task: { actions: { work } }
   } as never);
 }
@@ -64,13 +66,13 @@ function boot(): BoardHost {
     ],
     flows: (installation) => ({
       boarded: boardedFlow(installation, "boarded", "other-board"),
-      conversational: boardedFlow(installation, "conversational", "conversation")
+      conversational: { flow: boardedFlow(installation, "conversational", "conversation"), roles: ["contributor"] }
     })
   });
 }
 
 const file = async (host: BoardHost, conv: string, input: Record<string, unknown>) => {
-  const result = await host.act("alice", conv, "dispatchTask_tasks", input);
+  const result = await host.act("alice", conv, "createTask_tasks", input);
   expect(result.error, messageOf(result.error)).toBeUndefined();
   return result.output as { ok: boolean; taskId?: string; error?: string };
 };

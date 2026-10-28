@@ -8,28 +8,58 @@ Long-running flows have two failure modes worth planning for. The first is crash
 
 Durable execution addresses both. The runtime checkpoints sequencer state at every step boundary and stores suspension records when a block explicitly pauses for external input. A resume endpoint re-invokes the original action, restores state from the checkpoint, skips already-completed steps, and runs the suspended step again — this time returning the resume data instead of suspending.
 
-The tradeoff: durability requires a store capable of persistence (not just in-memory), and it requires a `DurabilityProvider` wired into the runtime. Neither is free, and for short-lived flows without approval gates the overhead isn't worth it. Opt out with `durable: false` on a sequencer when you don't need it.
+Durable execution is on by default wherever your stores persist: filesystem, SQLite and Postgres. It isn't free: every sequencer writes a checkpoint at each step, and a sweeper reads the store on a schedule even when nothing waits. For short-lived sequencers without approval gates, opt out per sequencer with `durable: false`, or for the whole app with `durable: false` on `createFlowState`.
 
 ## Enabling durability
 
-Sequencers default to `durable: true`. Checkpoints write automatically at every step boundary as long as a `DurabilityProvider` is configured on the runtime. Without a provider, checkpoint writes are skipped silently and `ctx.suspend()` is unavailable.
-
-Wire a provider at startup:
+There's nothing to enable on stores that persist. An app on SQLite, Postgres or the filesystem store is durable without any setting:
 
 ```ts
-import { createFlowState, inMemoryStores, createCheckpointDurabilityProvider } from "@flow-state-dev/engine";
-
-const stores = inMemoryStores();
+import { createFlowState } from "@flow-state-dev/engine";
+import { sqliteStores } from "@flow-state-dev/store-sqlite";
 
 export const flowstate = createFlowState({
   flows: { contentReview },
-  models: { default: "openai/gpt-5.4-mini" },
-  stores: { default: { primary: stores } },
-  durabilityProvider: createCheckpointDurabilityProvider(stores),
+  models: { default: "openai/gpt-6-luna" },
+  stores: { default: { primary: sqliteStores({ filename: "data/app.db" }) } },
 });
 ```
 
-`createCheckpointDurabilityProvider` is the standard factory. It delegates to the same store adapters the rest of the runtime uses (`checkpoints`, `suspensions`, `leases`). If you're using filesystem, SQLite, or Postgres stores, the suspension and lease tables are created alongside the other tables.
+`createFlowState` builds the checkpoint provider from the active profile's stores (`checkpoints`, `suspensions`, `leases`), so sequencers checkpoint and a request paused by `ctx.suspend()` is held until someone answers it, across a restart. `fsdev dev` and `fsdev run` with no config get the same default over their local SQLite file. See [the CLI reference](/docs/api/cli#when-a-run-waits-for-a-person).
+
+The `durable` option on `createFlowState` is the host setting:
+
+| `durable` | Persisting stores | In-memory stores |
+| --- | --- | --- |
+| not set | on | off |
+| `false` | off | off |
+| `true` | on | on |
+
+In-memory stores are off by default because a suspension held there is lost, without a word, when the process ends. Tests that want suspensions held in memory set `durable: true`.
+
+`durable` on a sequencer decides whether that sequencer checkpoints, and has no effect on a host without durable execution. An action doesn't need `durable: true` to suspend: on a durable host, any block can call `ctx.suspend()`.
+
+On a host without durable execution, `ctx.suspend()` throws an error that names the setting to change, and the request fails. Nothing is held.
+
+### Which hosts sweep
+
+The sweeper (see [Retention and cleanup](#retention-and-cleanup)) runs in a process that serves the routes: `fsdev dev`, `fsdev serve`, a self-hosted server, `createFlowApiRouter`. That is what fires a suspension's deadline. A one-shot command such as `fsdev run` sweeps nothing. It leaves the paused request in the store, exits, and leaves the deadline to whichever server runs on the same store next.
+
+### A router you build yourself
+
+The low-level `createFlowApiRouter` and `runAction` are durable only when you give them a provider, through `runtimeConfig.durabilityProvider`. `resolveDurabilityProvider({ stores, durable })` applies the same rule `createFlowState` does:
+
+```ts
+import { createFlowApiRouter, resolveDurabilityProvider } from "@flow-state-dev/engine";
+
+const router = createFlowApiRouter({
+  registry,
+  stores,
+  runtimeConfig: { durabilityProvider: resolveDurabilityProvider({ stores }) },
+});
+```
+
+Given `runtimeConfig`, the router takes its runtime options (the model resolver, tracing level and the rest) from it alone, so put them there too. `createCheckpointDurabilityProvider(stores)` builds the provider directly, whatever the stores.
 
 To opt a specific sequencer out of checkpointing:
 
@@ -106,7 +136,8 @@ On the React side, `useSuspensions(session)` derives pending and resolved suspen
 | Field | Type | Description |
 |---|---|---|
 | `reason` | `"human_approval" \| "human_input" \| "external_event" \| string` | Machine-readable category for the suspension |
-| `message` | `string` | Human-readable description, emitted in the `SuspensionItem` |
+| `title` | `string` | Optional short heading for the suspension, a few words. A UI that lists or heads pending suspensions can show this and put `message` underneath as the body. Leave it out when `message` is already one short line |
+| `message` | `string` | Human-readable description, emitted in the `SuspensionItem`. With a `title`, it's the body and may be markdown |
 | `data` | `Record<string, unknown>` | Arbitrary metadata attached to the suspension record |
 | `resumeSchema` | `Record<string, unknown>` | JSON Schema describing the expected resume payload shape |
 | `timeoutMs` | `number` | Optional expiry. Once this duration passes unanswered, the sweeper marks the suspension `expired`. If the suspension allows `reject` (an approval), the request then carries on as if it had been rejected: see [Retention and cleanup](#retention-and-cleanup). |
@@ -127,12 +158,11 @@ Request body:
 {
   "suspensionId": "susp_abc123",
   "action": "approve",
-  "data": { "approved": true, "feedback": null },
-  "resumedBy": "user_xyz"
+  "data": { "approved": true, "feedback": null }
 }
 ```
 
-`action` is one of `"approve" | "reject" | "submit" | "skip"`, and must be in the suspension's `allow` set (a `409` otherwise). `submit` carries a typed payload in `data` (a question answer, a form, a selection); `skip` declines an optional step and carries no payload; `approve` / `reject` are the binary outcomes. `data` is the payload that `ctx.suspend()` returns on the resumed step. `resumedBy` is optional — it's stored on the suspension record for audit purposes.
+`action` is one of `"approve" | "reject" | "submit" | "skip"`, and must be in the suspension's `allow` set (a `409` otherwise). `submit` carries a typed payload in `data` (a question answer, a form, a selection); `skip` declines an optional step and carries no payload; `approve` / `reject` are the binary outcomes. `data` is the payload that `ctx.suspend()` returns on the resumed step. The suspension record names who resumed it: the signed-in caller, or the request's owner when the app doesn't authenticate. A `resumedBy` in the body is ignored.
 
 When the inbound action is `submit` (or `approve` with a schema present), the server validates `data` against the suspension's stored `resumeSchema` before any state transition. An invalid payload returns `400` with path-keyed `validationErrors` and the suspension stays pending.
 
@@ -276,7 +306,7 @@ If you need to intercept or extend durability behavior (say, to fan out suspensi
 
 ## Store adapters
 
-The standard store adapters all implement the durability tables:
+The standard store adapters all implement the durability tables, and the `wakes` table [the sweeper fires](#retention-and-cleanup):
 
 | Adapter | Package | Notes |
 |---|---|---|
@@ -289,7 +319,7 @@ For production use with crash recovery as a goal, you want SQLite at minimum and
 
 A suspended run can be stopped as well. `session.abortRequest()` on a request paused at `ctx.suspend()` resolves the gate it waits on and ends the request `aborted`; a later approve for that gate is refused with `409`. The record keeps the gate's status as `stopped`. If the process dies after the stop is recorded and before the request is written `aborted`, the retention sweeper below finishes it.
 
-Aborting a request that is waiting on a dispatched task (see [the task board](/docs/orchestration/task-board#giving-another-worker-work)) also cancels that task. A run already started on it keeps going, and its result is discarded.
+Aborting a request that is waiting on a task (see [the task board](/docs/orchestration/task-board#waiting-on-a-task)) also cancels that task. A run already started on it keeps going, and its result is discarded.
 
 A run started in the background, dispatched to a separate process with no browser attached, can be cancelled from any process. `session.abortRequest()` stops it within one `heartbeatIntervalMs` tick (10s by default), provided the interval is nonzero. It also needs a request store shared across processes, the same SQLite-or-Postgres requirement as above. See [Connection Resilience — stopping a request that runs on another server](/docs/server/connection-resilience#stopping-a-request-that-runs-on-another-server).
 
@@ -297,14 +327,13 @@ A run started in the background, dispatched to a separate process with no browse
 
 Durability writes three kinds of records: checkpoints (sequencer state at step boundaries), suspension records (one per `ctx.suspend()` call), and leases (held briefly during a resume). On a host that runs for weeks, these accumulate. A completed run's checkpoints are dead weight, a resolved approval is only worth keeping for a while, and a process that crashes before it finishes leaves records that nothing comes back to clean up.
 
-Retention is opt-in. With durability on, the runtime runs a sweeper: a periodic in-process job. Pass a `durabilityRetention` config alongside your provider and the sweeper also reclaims records that are provably safe to drop. It runs on `sweepIntervalMs`, or sooner when a request waiting on another agent's answer has an earlier deadline, so that request times out within about a second of it.
+Retention is opt-in. With durability on, a server runs a sweeper: a periodic in-process job. Pass a `durabilityRetention` config and the sweeper also reclaims records that are safe to drop. It runs on `sweepIntervalMs`, or sooner when a [wake](#wakes) or a suspension's deadline falls due. It reads the deadlines in the store when it starts, so a suspension `fsdev run` left behind expires on time once a server runs. A suspension another process writes while the server runs is seen at the next tick.
 
 ```ts
 export const flowstate = createFlowState({
   flows: { contentReview },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: stores } },
-  durabilityProvider: createCheckpointDurabilityProvider(stores),
   durabilityRetention: {
     sweepIntervalMs: 600_000,                 // sweep every 10 minutes
     checkpointMaxAgeMs: 86_400_000,           // backstop: drop terminal-run checkpoints after 24h
@@ -315,12 +344,13 @@ export const flowstate = createFlowState({
 });
 ```
 
-Every field has a default, so `durabilityRetention: {}` is enough to turn pruning on with the values above. Omitting `durabilityRetention` entirely leaves records in place — nothing is deleted without you asking for it. The sweeper still runs every ten minutes, or sooner for an ask's deadline: it times out overdue asks and finishes requests whose answer or stop was recorded but never acted on.
+Every field has a default, so `durabilityRetention: {}` is enough to turn pruning on with the values above. Omitting `durabilityRetention` entirely leaves records in place — nothing is deleted without you asking for it. The sweeper still runs every ten minutes, or sooner for a wake: it finishes requests whose answer or stop was recorded but never acted on, and fires due wakes, which resume waits at their deadline.
 
 What each tick does:
 
-- **Enforces suspension expiry.** A `pending` suspension whose `expiresAt` has passed is flipped to `expired`, so the resume endpoint rejects a stale approval instead of letting it hang forever. The request behind an expired approval doesn't stay paused: the sweeper continues it, in the same tick, as if the approval had been rejected. `ctx.suspend()` throws a `SuspensionRejectedError` with `expired: true`. When the approval guarded a tool call, the tool does not run, and the model gets a tool result saying the approval expired and is no longer valid, then carries on with its turn. The `suspension_resume` item records `expired`. A suspension that allows no `reject` (an input form) is only marked `expired`. A request waiting on another agent's answer is the other exception: past its deadline it is resumed with a timeout error instead, because nothing else may resume it.
+- **Enforces suspension expiry.** A `pending` suspension whose `expiresAt` has passed is flipped to `expired`, so the resume endpoint rejects a stale approval instead of letting it hang forever. The request behind an expired approval doesn't stay paused: the sweeper continues it, in the same tick, as if the approval had been rejected. `ctx.suspend()` throws a `SuspensionRejectedError` with `expired: true`. When the approval guarded a tool call, the tool does not run, and the model gets a tool result saying the approval expired and is no longer valid, then carries on with its turn. The `suspension_resume` item records `expired`. A suspension that allows no `reject` (an input form) is only marked `expired`.
 - **Finishes what a crash interrupted.** A request still `suspended` (or `interrupted`) behind a gate that was already resolved, because the process died between the gate's write and the request moving on, is driven on with the recorded outcome: an answer continues it, an expired approval continues it as no longer valid, a stop ends it `aborted`. It runs under the request's lease, so it never races a resume in progress.
+- **Fires due wakes.** See [Wakes](#wakes) below. A wait's deadline is a wake: past it, the waiting request is resumed with the work as it stands, and nothing is cancelled.
 - **Prunes resolved suspensions** older than `suspensionTerminalMaxAgeMs` (measured from when they were resolved). The window exists so you can still inspect recent approval decisions; after it, they're removed.
 - **Prunes expired leases.**
 - **Prunes orphaned checkpoints.** Checkpoints of completed, failed, or aborted runs are dropped once they pass `checkpointMaxAgeMs`. An interrupted run keeps its checkpoints until `orphanCheckpointThresholdMs` passes, since you might still resume it.
@@ -329,13 +359,48 @@ The one invariant worth internalizing: **checkpoints of an in-progress or suspen
 
 When you run multiple hosts against a shared store, the sweeper takes a single lease each tick so only one host sweeps at a time. Deletes are idempotent regardless, so the lease is an efficiency measure, not a correctness one.
 
+### Wakes
+
+A wake is a time by which some work must run in a session. The engine keeps it in the store, so it survives a crash. When the time comes, the sweeper runs the internal entry the wake names in that session, as the session's owner, the way a dispatched request runs. The task board creates them: each time a task it handed out ends, it sets a wake for the filing session, due about two seconds later. A request that waits on a [task](/docs/orchestration/task-board#waiting-on-a-task) or on a [request it dispatched](/docs/server/background-work#waiting-for-the-answer) is resumed at the wait's deadline, even across a restart, with the work still running. A wake that fell due while the server was down fires as soon as it is running again. If the notice of that ending went out, the run finds nothing to do and clears the wake. If it was lost, the run sends it. See [Hearing how a task ended](/docs/orchestration/task-board#hearing-how-a-task-ended).
+
+A host keeps wakes when it has durable execution and its store has a `wakes` store, which all four built-in adapters do. A host without either logs one line at start, `this host keeps no wakes: debts are paid on their fast paths only`. On such a host, a task's notice is sent once, when the task ends, and a lost one isn't sent again, and nothing can wait: `getTask` isn't offered `wait`, and a waiting dispatcher is refused.
+
+A wait's deadline is five minutes unless the call names one. A host sets the default and the bounds a call may name with `waitDeadlines`:
+
+```ts
+export const flowstate = createFlowState({
+  flows: { issues },
+  stores: { default: { primary: sqliteStores({ filename: "./data.sqlite" }) } },
+  waitDeadlines: { defaultMs: 120_000, minMs: 1_000, maxMs: 3_600_000 },
+});
+```
+
+`minMs` defaults to one second, the sweeper's resolution, and `maxMs` to 24 hours. A deadline outside them is refused, never clamped.
+
+If the run a wake starts dies too, the wake fires again 30 seconds later, until a run clears it. Work still owed long after its due time is given up on, so a wake can't fire forever. `maxDebtAgeMs` sets how long, counted from the due time; the default is 24 hours:
+
+```ts
+import { createFlowState } from "@flow-state-dev/engine";
+import { sqliteStores } from "@flow-state-dev/store-sqlite";
+
+export const flowstate = createFlowState({
+  flows: { issues },
+  stores: { default: { primary: sqliteStores({ filename: "./data.sqlite" }) } },
+  maxDebtAgeMs: 3_600_000,   // give up on a notice still owed an hour past due
+});
+```
+
+A notice given up on is recorded on its task as undeliverable, and logged.
+
+Before it closes the stores, `dispose()` waits up to 10 seconds for any request a wake started to finish, and for any request working a [dispatched task](/docs/orchestration/task-board#when-a-dispatched-task-is-done), until it has recorded that task's outcome (settled, failed, or waiting on something). Past that, it aborts the wake requests still running and logs how many, and logs how many task requests hadn't recorded an outcome; each aborted request's wake stays, and fires again on the next host. On `createFlowApiRouter`, `shutdownDrainMs` sets the limit, and `disposeFlowApiRouter(router, { drainMs })` overrides it for one call. `serve()` from `@flow-state-dev/node` passes in whatever is left of its shutdown grace.
+
 ## Managing suspensions in the DevTool
 
 When a flow suspends for human input, an operator needs to see what's waiting without querying the store by hand. The DevTool has a **Suspensions** tab for this. It lists suspensions for the current session — pending ones at the top, recently resolved and expired ones below — and a detail pane shows each suspension's message, the request it belongs to, and its `resumeSchema` (the shape of the input the flow is waiting for).
 
 From the detail pane you can **approve** or **reject** a pending suspension and supply the resume data. That posts to the same resume endpoint a production client would call, so resolving from the DevTool drives the real flow forward.
 
-The tab reads through the gated debug endpoints, which are disabled by default and loopback-only. It requires a configured `durabilityProvider`; without one, the suspension store is empty and the tab shows nothing to act on.
+The tab reads through the gated debug endpoints, which are disabled by default and loopback-only. It needs a host with durable execution; without it, nothing is held and the tab shows nothing to act on.
 
 The same request panel also lists interrupted runs, not just suspensions — a request that stopped abruptly (a crash, a restart, a mid-execution deploy) but is still resumable. See [DevTool — Interrupted runs and crash recovery](/docs/devtool/overview#interrupted-runs-and-crash-recovery) for spotting one and continuing it.
 

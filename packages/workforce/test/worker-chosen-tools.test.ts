@@ -21,6 +21,9 @@ import { createTestContext } from "@flow-state-dev/testing";
 import { AGENT_FLOW, defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { mintWorkers, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
+import { RULE_TOOLS } from "../src/standing-rules/keys";
+
+const OFFERED_ON_EVERY_USER_TURN = new Set<string>(Object.values(RULE_TOOLS));
 
 /** A named tool that does nothing; the checks read whether it was OFFERED. */
 function tool(name: string) {
@@ -111,7 +114,10 @@ async function offered(worker: FlowInstance, orgId = "test-org"): Promise<string
     modelId: "m",
     async generate(options: { tools?: Array<{ name: string }> }) {
       generateCalls += 1;
-      seen.push(...(options.tools ?? []).map((t) => t.name));
+      // The rule tools ride every user's turn as a control; they have tests of their own (FIX-1945).
+      seen.push(...(options.tools ?? [])
+        .filter((t) => !OFFERED_ON_EVERY_USER_TURN.has(t.name))
+        .map((t) => t.name));
       return { text: "done" };
     }
   })) as unknown as ModelResolver;
@@ -122,13 +128,13 @@ async function offered(worker: FlowInstance, orgId = "test-org"): Promise<string
     orgId,
     org: { state: {} },
     sessionId: `session-${worker.id}`,
-    sequencerName: worker.actions.run!.block.name,
-    declaredResources: worker.actions.run!.block.declaredResources,
+    sequencerName: worker.actions.respond!.block.name,
+    declaredResources: worker.actions.respond!.block.declaredResources,
     modelResolver: recording
   });
 
   const result = await executeBlock({
-    block: worker.actions.run.block,
+    block: worker.actions.respond.block,
     input: { message: "go" },
     ctx: runtime.ctx
   });

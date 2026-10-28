@@ -87,7 +87,7 @@ function suspensionResumeItem(
   path: string,
   suspensionId: string,
   itemIndex: number,
-  extra?: { resolution?: "approved" | "rejected" | "skipped" | "expired"; resumeData?: unknown; resolvedBy?: string },
+  extra?: { resolution?: "approved" | "rejected" | "skipped" | "expired" | "cancelled" | "stopped"; resumeData?: unknown; resolvedBy?: string },
 ): RuntimeItem {
   const blockInstanceId = `${REQ}:${path}:0`;
   return {
@@ -240,7 +240,7 @@ describe("buildReplayLog", () => {
         suspensionItem("root/step[3]", "susp_b", 2),
       ]);
       expect(log.resolvedResumes(`${REQ}:root/step[2]`)).toEqual([
-        { data: { observed: "In Spec Review" }, rejected: false, expired: false, skipped: false, suspensionId: "susp_a", resolvedBy: undefined },
+        { data: { observed: "In Spec Review" }, rejected: false, expired: false, cancelled: false, stopped: false, skipped: false, resolution: "approved", reason: "human_approval", suspensionId: "susp_a", resolvedBy: undefined },
       ]);
       expect(log.resolvedResumes(`${REQ}:root/step[3]`)).toEqual([]);
     });
@@ -265,7 +265,7 @@ describe("buildReplayLog", () => {
         }),
       ]);
       expect(log.resolvedResumes(`${REQ}:root/step[2]`)).toEqual([
-        { data: { note: "no" }, rejected: true, expired: false, skipped: false, suspensionId: "susp_a", resolvedBy: "reviewer" },
+        { data: { note: "no" }, rejected: true, expired: false, cancelled: false, stopped: false, skipped: false, resolution: "rejected", reason: "human_approval", suspensionId: "susp_a", resolvedBy: "reviewer" },
       ]);
     });
 
@@ -280,7 +280,37 @@ describe("buildReplayLog", () => {
         }),
       ]);
       expect(log.resolvedResumes(`${REQ}:root/step[2]`)).toEqual([
-        { data: undefined, rejected: true, expired: true, skipped: false, suspensionId: "susp_a", resolvedBy: "durability-sweeper" },
+        { data: undefined, rejected: true, expired: true, cancelled: false, stopped: false, skipped: false, resolution: "expired", reason: "human_approval", suspensionId: "susp_a", resolvedBy: "durability-sweeper" },
+      ]);
+    });
+
+    it("replays a cancelled stop as a rejection marked cancelled, never as an answer (FIX-2129)", () => {
+      // A block that read `cancelled` and ran on must read it again on a later
+      // replay, not its (empty) data as an answer it never got.
+      const log = buildReplayLog([
+        suspensionItem("root/step[2]", "susp_a", 0),
+        suspensionResumeItem("root/step[2]", "susp_a", 1, { resolution: "cancelled", resolvedBy: "cancel" }),
+      ]);
+      expect(log.resolvedResumes(`${REQ}:root/step[2]`)).toEqual([
+        { data: undefined, rejected: true, expired: false, cancelled: true, stopped: false, skipped: false, resolution: "cancelled", reason: "human_approval", suspensionId: "susp_a", resolvedBy: "cancel" },
+      ]);
+    });
+
+    it("keeps a stop as a stop, never a plain answer, and lists every resolution in the order it was logged (FIX-2129)", () => {
+      // A crash after the stop's resolution was logged replays from here: the
+      // run must end at the stop, not read its (empty) data as an approval.
+      const log = buildReplayLog([
+        suspensionItem("root/step[1]", "susp_a", 0),
+        suspensionResumeItem("root/step[1]", "susp_a", 1, { resumeData: "yes" }),
+        suspensionItem("root/step[2]", "susp_b", 2),
+        suspensionResumeItem("root/step[2]", "susp_b", 3, { resolution: "stopped", resolvedBy: "stop" }),
+      ]);
+      expect(log.resolvedResumes(`${REQ}:root/step[2]`)).toMatchObject([
+        { rejected: false, stopped: true, resolution: "stopped", reason: "human_approval", suspensionId: "susp_b" },
+      ]);
+      expect(log.resolvedInOrder().map((r) => [r.suspensionId, r.resolution])).toEqual([
+        ["susp_a", "approved"],
+        ["susp_b", "stopped"],
       ]);
     });
 
@@ -323,6 +353,27 @@ describe("buildReplayLog", () => {
         routerDecisionItem("root/step[1]", "branchA", 7),
       ]);
       expect(log.recordedRouterDecision(`${REQ}:root/step[1]`)).toEqual({ selectedRoute: "branchA" });
+    });
+  });
+
+  describe("skipLeanTraces", () => {
+    it("ignores lean completion records only when asked", () => {
+      const lean = { ...blockTrace("root/step[0]", "completed", 0, 1), lean: true } as RuntimeItem;
+      const full = blockTrace("root/step[1]", "completed", 1, 2);
+      expect(buildReplayLog([lean, full]).getCompletedOutput(`${REQ}:root/step[0]`)).toBeDefined();
+      const skipping = buildReplayLog([lean, full], { skipLeanTraces: true });
+      expect(skipping.getCompletedOutput(`${REQ}:root/step[0]`)).toBeUndefined();
+      expect(skipping.getCompletedOutput(`${REQ}:root/step[1]`)).toEqual({ kind: "inline", value: 2 });
+    });
+  });
+
+  describe("completedRescued", () => {
+    it("reads the rescued mark from the canonical completed trace", () => {
+      const rescued = { ...blockTrace("root/step[0]", "completed", 0, 1), rescued: true } as RuntimeItem;
+      const log = buildReplayLog([rescued, blockTrace("root/step[1]", "completed", 1, 2)]);
+      expect(log.completedRescued(`${REQ}:root/step[0]`)).toBe(true);
+      expect(log.completedRescued(`${REQ}:root/step[1]`)).toBe(false);
+      expect(log.completedRescued(`${REQ}:root/step[9]`)).toBe(false);
     });
   });
 

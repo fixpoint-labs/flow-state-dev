@@ -20,20 +20,20 @@
  * desk a row is for comes off the row the planner filed, so a check can grade
  * the two against each other without reading any routing.
  *
- * ## The park condition is the one line that is not free
+ * ## The ask condition is the one line that is not free
  *
- * A row parked on its worker's question goes back in the queue with the
- * user's answer on it (`answerTask`), and its next attempt runs in the same
- * task session. The row still says what it asks, so a body that decides to
- * park by looking at *what it was asked* parks again forever. What changed is
- * that the row is **answered** — so the body parks only while it is not.
- * `GOAL_CONTROL=ignore-the-answer` swaps that one decision for the wrong one.
+ * A row held on its worker's question takes one more turn once the user
+ * answers it (`updateTask` naming the question), on the same attempt, in the
+ * same task session. The row still says what it asks, so a body that decides
+ * to ask by looking at *what it was asked* asks again forever. What changed
+ * is that the row carries an **answer** — so the body asks only while it
+ * does not. `GOAL_CONTROL=ignore-the-answer` swaps that one decision for the
+ * wrong one.
  *
- * The park is the conversation board's question park, written the way its
- * `parkOnQuestion` tool writes it: on the conversation's own ledger, under
- * the claim this attempt holds, from a running row, marked as a question, so
- * the row is one `answerTask` answers. The turn is not a model, so it writes
- * the park itself rather than calling the tool.
+ * The ask is written the way the worker's `askQuestion` tool writes it:
+ * `askMidway` on the conversation's own ledger, under the claim this turn
+ * holds, so the row holds on a question the user's Inbox lists. The turn is
+ * not a model, so it asks itself rather than calling the tool.
  *
  * Nothing under `flows/` is read as a convention file — the loader walks
  * `workers/`, `skills/` and `resources/` under a team and ignores the rest,
@@ -42,7 +42,7 @@
 
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
+import { askMidway } from "@flow-state-dev/orchestration/task-board";
 import {
   getOrCreateTaskCollection,
   resolveResourceCollection,
@@ -55,6 +55,9 @@ import {
   workerConfigSchema,
   workerTaskEntry,
   type WorkerInstallation,
+  MESSAGE_RECEIVED_ENTRY,
+  messageReceivedEntry,
+  workerMessagesResources,
 } from "@flow-state-dev/workforce";
 import { appendFileSync } from "node:fs";
 import { z } from "zod";
@@ -67,18 +70,18 @@ export const WORKER_FLOW = "worker";
 /** The task entry a filed row is handed over through. */
 export const WORK_ENTRY = "work";
 
-/** The conversation ledger's resource key, which the task actions are named for (`addTask_tasks`). */
+/** The conversation ledger's resource key, which the task actions are named for (`updateTask_tasks`). */
 const LEDGER_KEY = "tasks";
 
 /**
  * The worker-body perturbations, and only those. The routing controls
  * (`swapped-desks`, `one-worker`) are the filer's, because the assignee is.
  *
- * - `ignore-the-answer` — the body parks on the question the row carries, not
- *   on whether the row has been answered. The answered row parks again and
+ * - `ignore-the-answer` — the body asks the question the row carries, not
+ *   on whether the row has been answered. The answered row asks again and
  *   never finishes.
- * - `silent-park` — the body parks with no question at all. Every headless
- *   leg still passes; only the screen that should show *why* goes red.
+ * - `silent-park` — the body asks a question that says nothing ("?"). Every
+ *   headless leg still passes; only the screen that should show *why* goes red.
  */
 export type WorkerControl = "ignore-the-answer" | "silent-park";
 
@@ -89,7 +92,7 @@ export type WorkerControl = "ignore-the-answer" | "silent-park";
  * proved here instead.
  */
 export const workLineSchema = z.object({
-  event: z.enum(["parked", "finished"]),
+  event: z.enum(["asked", "finished"]),
   /** The worker this task session runs as, resolved from the session by the installation. */
   worker: z.string(),
   /** What that worker's OWN FILE says it answers for — the oracle, from the tree. */
@@ -102,7 +105,7 @@ export const workLineSchema = z.object({
   session: z.string(),
   /** The conversation whose board filed the row, off the session's readonly state. */
   filingSession: z.string(),
-  /** The answer on the row when this attempt ran, if it had been answered. */
+  /** The answer on the row when this turn ran, if its question had been answered. */
   answer: z.string().nullable(),
 });
 
@@ -146,7 +149,7 @@ export function defineWorkerFlow(options: WorkerFlowOptions) {
   };
 
   /**
-   * One attempt at one row. Parks on the row's question while it has not been
+   * One turn at one row. Asks the row's question while it has not been
    * answered; otherwise does the work and returns.
    */
   const turn = handler({
@@ -161,7 +164,8 @@ export function defineWorkerFlow(options: WorkerFlowOptions) {
       const row = ledger.get(taskId);
       if (row === undefined) throw new Error(`row ${taskId} is not on this conversation's board`);
       const piece = pieceInputSchema.parse(row.input ?? {});
-      const answer = row.answered === true ? (row.feedback ?? null) : null;
+      // The answer is the message that closed the row's question.
+      const answer = (row.steers ?? []).find((steer) => steer.answers !== undefined)?.message ?? null;
       const worker = await installation.resolveWorker(ctx as never, WORKER_FLOW);
       const base = {
         worker: worker.id,
@@ -174,23 +178,17 @@ export function defineWorkerFlow(options: WorkerFlowOptions) {
         answer,
       };
 
-      // THE DECISION. Park while nothing has answered the question. The wrong
-      // version — park whenever there is a question — is the control.
+      // THE DECISION. Ask while nothing has answered the question. The wrong
+      // version — ask whenever there is a question — is the control.
       const mustAsk = piece.asks !== undefined && (control === "ignore-the-answer" ? true : answer === null);
       if (mustAsk) {
-        const line: WorkLine = { event: "parked", ...base };
+        const line: WorkLine = { event: "asked", ...base };
         appendFileSync(outbox, `${JSON.stringify(line)}\n`, "utf8");
-        // The worker that holds the row parks it, on its question. Nobody
-        // answers on the user's behalf; the user answers through the
-        // planner's conversation.
-        const parked = await ledger.awaitReview(taskId, control === "silent-park" ? undefined : piece.asks, {
-          claim: currentWorkerClaim(),
-          fromRunning: true,
-          onQuestion: true,
-        });
-        if (parked == null || parked.outcome === "declined") {
-          throw new Error(`row ${taskId} could not park on its question: ${JSON.stringify(parked)}`);
-        }
+        // The worker that holds the row asks, and the row holds on the
+        // question. Nobody answers on the user's behalf; the user answers
+        // through the planner's conversation.
+        const asked = await askMidway(ctx, ledger, [{ prompt: control === "silent-park" ? "?" : piece.asks! }]);
+        if (!asked.ok) throw new Error(`row ${taskId} could not ask its question: ${JSON.stringify(asked)}`);
         return `${worker.id} asked: ${piece.asks}`;
       }
 
@@ -207,8 +205,9 @@ export function defineWorkerFlow(options: WorkerFlowOptions) {
     // the host refuses a worker whose file names no `answersFor`.
     configSchema: workerConfigSchema().extend({ answersFor: z.string().min(1).optional() }),
     session: installation.session(),
-    resources: { ...installation.resources },
+    resources: { ...installation.resources, ...workerMessagesResources },
     actions: { ...hearingDoor },
+    internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: WORKER_FLOW }) } },
     task: { actions: { [WORK_ENTRY]: workerTaskEntry({ name: "worker-task", turn }) } },
   } as never);
 }

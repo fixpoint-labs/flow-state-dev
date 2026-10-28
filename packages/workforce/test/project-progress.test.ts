@@ -195,7 +195,7 @@ describe("readProject", () => {
     });
     // The row holds no workstreams and no totals.
     expect(Object.keys(out.project).sort()).toEqual(
-      ["brief", "id", "members", "ownerUserId", "repository", "status", "title"].sort()
+      ["brief", "id", "mcpServers", "members", "ownerUserId", "repository", "status", "title"].sort()
     );
   });
 

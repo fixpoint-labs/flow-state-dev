@@ -400,6 +400,7 @@ describe("extractTaskItemWindows / collectTaskOwnedItemIds", () => {
     const owned = makeSideChainMessage("owned", "t1");
     const orphan = makeSideChainMessage("orphan"); // no taskId
     const items: OutputItem[] = [
+      makeBoardMeta("c", "active"),
       makeTaskChange("c", t, { kind: "claimed" }),
       owned,
       orphan,
@@ -412,28 +413,45 @@ describe("extractTaskItemWindows / collectTaskOwnedItemIds", () => {
     // Substrate components such as task-change are never owned.
     expect([...ids].some((id) => id.startsWith("item_change"))).toBe(false);
   });
+
+  it("keeps a task's items in the thread when no task plan for its board is shown here", () => {
+    // A delegate's session works a post row filed on its coordinator's board:
+    // the plan for that board renders in the coordinator's conversation, not
+    // here, so hiding the reply would leave the session showing no answer.
+    resetItemCounters();
+    const post = makeTask({ id: "post:1" });
+    const planned = makeTask({ id: "t1" });
+    const reply = makeSideChainMessage("[reply:wake] Heard it.", "post:1");
+    const work = makeSideChainMessage("work", "t1");
+    const items: OutputItem[] = [
+      makeTaskChange("tasks", post, { kind: "claimed" }),
+      reply,
+      makeTaskChange("tasks", post, { kind: "completed" }),
+      makeBoardMeta("other", "active"),
+      makeTaskChange("other", planned, { kind: "claimed" }),
+      work,
+    ];
+
+    const ids = collectTaskOwnedItemIds(items);
+    expect(ids.has(reply.id)).toBe(false);
+    expect(ids.has(work.id)).toBe(true);
+  });
 });
 
 /**
- * FIX-1245 — a trace recorded before the `parked` rename.
- *
- * Item logs are immutable, so an old `task-change` still carries
- * `awaiting_review` on the task and an old `task-board-meta` carries it as a
- * counts key. The fold maps both forward, because every consumer of this state
- * — `isFullyDone`, the section buckets, the counts ribbon — reads only `parked`.
+ * FIX-2080 — a trace recorded before `held` replaced `blocked`. The fold reads
+ * the old status and the old counts key as `held`, so a held section and the
+ * counts ribbon show old traces too.
  */
-describe("extractTaskPlanState, legacy awaiting_review items", () => {
-  it("reads a legacy task status as parked", () => {
+describe("extractTaskPlanState, legacy blocked items", () => {
+  it("reads a legacy blocked task status as held", () => {
     resetItemCounters();
-    const legacy = makeTask({ id: "t1", status: "awaiting_review" as TaskStatus });
-    const state = extractTaskPlanState(
-      [makeTaskChange("board-1", legacy, { kind: "review_requested" })],
-      "board-1"
-    );
-    expect(state.tasks[0]?.task.status).toBe("parked");
+    const legacy = makeTask({ id: "t1", status: "blocked" as TaskStatus });
+    const state = extractTaskPlanState([makeTaskChange("board-1", legacy, { kind: "blocked" })], "board-1");
+    expect(state.tasks[0]?.task.status).toBe("held");
   });
 
-  it("folds a legacy counts key into parked", () => {
+  it("folds a legacy blocked counts key into held", () => {
     resetItemCounters();
     const state = extractTaskPlanState(
       [
@@ -442,34 +460,14 @@ describe("extractTaskPlanState, legacy awaiting_review items", () => {
           completed: 0,
           errored: 0,
           cancelled: 0,
-          blocked: 0,
-          awaiting_review: 1,
+          blocked: 1,
           in_progress: 0,
           pending: 0,
         }),
       ],
       "board-1"
     );
-    expect(state.boardMeta.counts?.parked).toBe(1);
-    expect(state.boardMeta.counts).not.toHaveProperty("awaiting_review");
-  });
-
-  it("leaves a post-rename counts payload untouched", () => {
-    resetItemCounters();
-    const counts = {
-      total: 1,
-      completed: 0,
-      errored: 0,
-      cancelled: 0,
-      blocked: 0,
-      parked: 1,
-      in_progress: 0,
-      pending: 0,
-    };
-    const state = extractTaskPlanState(
-      [makeBoardMeta("board-1", "completed", counts)],
-      "board-1"
-    );
-    expect(state.boardMeta.counts).toEqual(counts);
+    expect(state.boardMeta.counts?.held).toBe(1);
+    expect(state.boardMeta.counts).not.toHaveProperty("blocked");
   });
 });

@@ -65,7 +65,7 @@ Output looks like:
 
   Flows:  my-flow
   API:    http://localhost:4200/api/flows
-  Data:   .fsdev/data/
+  Data:   .fsdev/data/fsdev.db (SQLite)
 ```
 
 The DevTool opens in your browser. Work down the navigator: open your flow, create or open a session under it, then dispatch an action and read the request that comes back. A flow registered as a collection opens into its copies first, and the ID is what tells them apart — see [Flow overview](./overview.md#flow-overview).
@@ -85,7 +85,7 @@ This flag is repeatable. When specified, the default `src/flows/` and `flows/` d
 During development you might want a faster or cheaper model. `--model` overrides the model for every generator that runs in the server's own process:
 
 ```bash
-fsdev dev --model openai/gpt-5.4-mini
+fsdev dev --model openai/gpt-6-luna
 ```
 
 Background work handed to a queue runs in another process, under that process's own model configuration. See [Model overrides](/docs/cli/overview#model-overrides).
@@ -123,7 +123,9 @@ OPENAI_API_KEY=sk-...
 
 ## Data persistence
 
-By default, session data persists to `.fsdev/data/` relative to your working directory. Delete this directory to start fresh. The directory is created automatically on first use.
+By default, session data persists to a SQLite file, `.fsdev/data/fsdev.db`, relative to your working directory. `fsdev run` and `fsdev chat` without a config write to the same file as the same default user, so a run from `fsdev run` that paused for approval shows up here to answer. Delete the directory to start fresh. It is created automatically on first use.
+
+Pass `--store filesystem` to keep the data as JSON files under `.fsdev/data` instead. That store is single-process, so don't run `fsdev run` on it while `fsdev dev` is up.
 
 This is the no-config default. When your project ships an `fsdev.config.ts`, stores come from the app's own wiring instead, whatever profile that config declares. See [App Configuration](/docs/cli/configuration).
 

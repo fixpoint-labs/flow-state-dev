@@ -41,8 +41,10 @@ what the run did."
 > **Where it works.** Codex works in the session's own worktree and branch, the same way Claude
 > Code mode does (see [Claude Code mode](#claude-code-mode)). It runs without asking for approval,
 > inside its own sandbox, which lets it write only in that worktree and not in its git data, so
-> its work waits uncommitted for you. It sees only the environment variables
-> Kitchen Sink passes it, not the server's whole environment.
+> its work waits uncommitted for you. Its commands start with only the environment variables
+> Kitchen Sink passes it, not the server's whole environment. That is not a security boundary:
+> a command runs as the server's user and can still read the server's environment on Linux. A
+> separate user or container is what contains that.
 >
 > **Continuing.** A session is one Codex thread. Stop a turn and the next one continues the
 > same thread. Codex keeps its threads in its own home directory (`~/.codex` unless you set

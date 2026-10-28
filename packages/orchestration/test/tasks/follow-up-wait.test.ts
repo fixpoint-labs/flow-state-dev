@@ -1,9 +1,8 @@
 /**
- * A follow-up dispatched with `wait` keeps the follow-up's own id
- * (FIX-1817 BR-25 with FIX-1816's ask): the id a follow-up takes is what makes
- * "one unfinished task per session" one atomic write, so the ask path must
- * not replace it with one of its own. Two follow-ups of one task filed at
- * once, waiting or not, land one; the other is refused naming it.
+ * A follow-up waited on keeps the follow-up's own id (FIX-1817 BR-25 with the
+ * wait, `getTask` since FIX-2082): the id a follow-up takes is what makes "one
+ * unfinished task per session" one atomic write. Filing and waiting are two
+ * calls now, so the wait takes the row's slot and never files a row of its own.
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
@@ -17,9 +16,10 @@ import {
   ticketForClaim,
   type TaskCollectionRef
 } from "../../src";
-import { act, runtimeFor, stepModel, toolResults, type StepFn } from "./ask-fixture";
+import { act, runtimeFor, stepModel, toolResults, type StepFn } from "./wait-fixture";
+import { heard } from "../fixtures/heard";
 
-const BOARD = "asks";
+const BOARD = "waits";
 
 async function boardOf(ctx: BlockContext): Promise<TaskCollectionRef | undefined> {
   const collection = resolveResourceCollection(ctx, BOARD);
@@ -29,8 +29,8 @@ async function boardOf(ctx: BlockContext): Promise<TaskCollectionRef | undefined
 
 /** A turn holding the task tools over a durable board, and a `seed` that files the finished root task. */
 function flowOf(model: ReturnType<typeof stepModel>["model"]): FlowInstance {
-  // The asks this flow files are its board's to resume, so it opts in.
-  const tools = createTaskToolsCapability(boardOf, undefined, { resumesAsks: true, dispatches: true });
+  // The waits this flow files are its board's to resume, so it opts in.
+  const tools = createTaskToolsCapability(boardOf, undefined, { resumesWaits: true, dispatches: true });
   const seed = handler({
     name: "seed",
     inputSchema: z.object({}).passthrough(),
@@ -49,11 +49,11 @@ function flowOf(model: ReturnType<typeof stepModel>["model"]): FlowInstance {
     name: "list",
     inputSchema: z.object({}).passthrough(),
     outputSchema: z.any(),
-    execute: async (_input, ctx) => (await boardOf(ctx))!.list().map((t) => ({ id: t.id, followUpOf: t.followUpOf, ask: t.ask }))
+    execute: async (_input, ctx) => (await boardOf(ctx))!.list().map((t) => ({ id: t.id, followUpOf: t.followUpOf, wait: t.wait }))
   });
-  return defineFlow({
-    kind: "ask-board",
-    resources: { [BOARD]: defineTaskCollection({ id: BOARD, scope: "session" }) },
+  return defineFlow({ internal: { actions: { ...heard } },
+    kind: "wait-board",
+    resources: { [BOARD]: defineTaskCollection({ id: BOARD, scope: "session", delivery: {} }) },
     actions: {
       run: {
         block: sequencer({ name: "turn" }).step(generator({ name: "agent", model, prompt: "p", uses: [tools] })),
@@ -62,65 +62,33 @@ function flowOf(model: ReturnType<typeof stepModel>["model"]): FlowInstance {
       seed: { block: seed },
       list: { block: list }
     }
-  })({ id: "ask-board" });
+  })({ id: "wait-board" });
 }
 
-const followUp = (id: string, wait: boolean) => ({
-  toolCallId: id,
-  toolName: "dispatchTask",
-  args: { goal: `follow-up ${id}`, followUpOf: "root", ...(wait ? { wait: true } : {}) }
-});
-const calls =
-  (...list: Array<ReturnType<typeof followUp>>): StepFn =>
-  () => ({ toolCalls: list, finishReason: "tool-calls" });
+const call =
+  (toolCallId: string, toolName: string, args: Record<string, unknown>): StepFn =>
+  () => ({ toolCalls: [{ toolCallId, toolName, args }], finishReason: "tool-calls" });
 const finalAnswer: StepFn = (opts) => ({ text: `final: ${toolResults(opts.messages)}`, finishReason: "stop" });
 
-type Row = { id: string; followUpOf?: string; ask?: unknown };
+type Row = { id: string; followUpOf?: string; wait?: { requestId?: string } };
 
-describe("a waiting follow-up keeps its own id", () => {
-  it("files a waiting follow-up under the follow-up's id, asked", async () => {
-    const { model } = stepModel([calls(followUp("w1", true)), finalAnswer]);
+describe("a follow-up waited on keeps its own id", () => {
+  it("files the follow-up under its own id with createTask, and getTask's wait takes that row's slot", async () => {
+    const { model, seen } = stepModel([
+      call("f1", "createTask", { goal: "follow-up", followUpOf: "root" }),
+      call("g1", "getTask", { id: "root-f1", wait: true }),
+      finalAnswer
+    ]);
     const flow = flowOf(model);
     const state = runtimeFor(flow);
     try {
       await act(state, flow, "seed");
-      await act(state, flow, "run");
+      const parked = await act(state, flow, "run");
+      expect(toolResults(seen[1]!.messages)).toContain('"taskId":"root-f1"');
       const rows = (await act(state, flow, "list")).output as Row[];
-      const follow = rows.find((r) => r.followUpOf === "root");
-      expect(follow).toMatchObject({ id: "root-f1" });
-      expect(follow!.ask).toBeDefined();
-    } finally {
-      await state.dispose();
-    }
-  });
-
-  it("of one waiting and one plain follow-up filed in one step, lands one and refuses the other naming it", async () => {
-    const { model, seen } = stepModel([calls(followUp("w1", true), followUp("p1", false)), finalAnswer, finalAnswer]);
-    const flow = flowOf(model);
-    const state = runtimeFor(flow);
-    try {
-      await act(state, flow, "seed");
-      await act(state, flow, "run");
-      const rows = (await act(state, flow, "list")).output as Row[];
-      expect(rows.filter((r) => r.followUpOf === "root")).toHaveLength(1);
-      const results = seen.slice(1).map((s) => toolResults(s.messages)).join(" | ");
-      expect(results).toContain('session_has_unfinished_task: task \\"root-f1\\"');
-    } finally {
-      await state.dispose();
-    }
-  });
-
-  it("of two waiting follow-ups filed by two turns at once, lands one and refuses the other naming it", async () => {
-    const { model, seen } = stepModel([calls(followUp("w1", true)), calls(followUp("w2", true)), finalAnswer, finalAnswer]);
-    const flow = flowOf(model);
-    const state = runtimeFor(flow);
-    try {
-      await act(state, flow, "seed");
-      await Promise.all([act(state, flow, "run"), act(state, flow, "run")]);
-      const rows = (await act(state, flow, "list")).output as Row[];
-      expect(rows.filter((r) => r.followUpOf === "root")).toHaveLength(1);
-      const results = seen.slice(2).map((s) => toolResults(s.messages)).join(" | ");
-      expect(results).toContain('session_has_unfinished_task: task \\"root-f1\\"');
+      const follow = rows.filter((r) => r.followUpOf === "root");
+      expect(follow).toEqual([expect.objectContaining({ id: "root-f1" })]);
+      expect(follow[0]!.wait?.requestId).toBe(parked.requestId);
     } finally {
       await state.dispose();
     }

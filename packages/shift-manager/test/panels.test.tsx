@@ -8,7 +8,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "../src/App";
-import { createLabClients } from "../src/lib/connection";
+import { connect } from "../src/lib/connection";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";
 
@@ -30,14 +30,14 @@ async function openApp(path: string, userId = ASK_LAB_USER_ID) {
   const lab = await serveLab((await openAskLab()).flowState);
   served.push(lab);
   happy().setURL(`${lab.baseUrl}${path}`);
-  const view = render(<App clients={createLabClients({ userId })} />);
+  const view = render(<App connection={{ userId }} />);
   await screen.findByTestId("shell");
   return {
     lab,
     /** Unmount and open the page again, as a reload does: only what the browser kept carries over. */
     reload: async () => {
       view.unmount();
-      render(<App clients={createLabClients({ userId })} />);
+      render(<App connection={{ userId }} />);
       await screen.findByTestId("shell");
     },
   };
@@ -125,6 +125,12 @@ describe("the shortcuts", () => {
     expect(screen.getByTestId("right-panel-rail")).toBeTruthy();
     act(() => void fireEvent.keyDown(document.body, { key: "k", metaKey: true }));
 
+    // Shift+⌘K opens Jump to already in message mode.
+    act(() => void fireEvent.keyDown(document.body, { key: "K", metaKey: true, shiftKey: true }));
+    expect((screen.getByTestId("jump-input") as HTMLInputElement).value).toBe("> ");
+    expect(screen.getByTestId("jump-message")).toBeTruthy();
+    act(() => void fireEvent.keyDown(document.body, { key: "K", metaKey: true, shiftKey: true }));
+
     press("[");
     press("]");
     expect(sidebar.getAttribute("data-collapsed")).toBe("false");
@@ -160,7 +166,7 @@ describe("what the user picked", () => {
     expect(screen.getByTestId("sidebar").getAttribute("data-collapsed")).toBe("true");
 
     cleanup();
-    render(<App clients={createLabClients({ userId: "u_someone_else" })} />);
+    render(<App connection={{ userId: "u_someone_else" }} />);
     await screen.findByTestId("shell");
     expect(screen.getByTestId("sidebar").getAttribute("data-collapsed")).toBe("false");
   });

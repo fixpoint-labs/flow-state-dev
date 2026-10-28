@@ -109,10 +109,6 @@ export {
   buildTaskToolsList,
   taskToolsForTurn,
   type TaskToolsOptions,
-  taskTools,
-  defaultOwnStateResolver,
-  DELEGATION_BOARD_FIELD,
-  delegationBoardSchema,
   type TaskCollectionResolver,
   // Part of `createTaskToolsCapability`'s signature, so a caller supplying a
   // roster can name its type.
@@ -123,10 +119,29 @@ export {
   taskToolActions,
   taskToolSuffix,
   type TaskToolActionsBoard,
-  // A task turn's question park and the rule for offering it (FIX-1817).
-  createParkOnQuestion,
-  type ParkOnQuestionOptions,
+  // A task turn's question and a turn's stop for the user, and the rules for
+  // offering them (FIX-2131).
+  createAskQuestion,
+  createWaitForUserTool,
+  type TaskTurnToolOptions,
+  // A task turn's own progress report and the rule for offering it (FIX-2081).
+  createReportProgress,
+  type ReportProgressOptions,
+  STATUS_NOTE_LIMIT,
 } from "./task-tools-capability";
+
+// How a running request takes a steer, and the words a steer is shown in (FIX-2086).
+export {
+  createSteerContext,
+  renderSteers,
+  runningTaskOf,
+  showTakenSteers,
+  takeRunningSteers,
+  STEERED_WHILE_RUNNING,
+  type ShownSteer,
+  type RunningTask,
+  type SteerContextOptions,
+} from "./steer-context";
 
 export {
   ensureSeeded,

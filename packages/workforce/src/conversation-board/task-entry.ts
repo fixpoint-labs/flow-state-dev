@@ -7,14 +7,27 @@
  *   conversation ledger at the partition the hand-over names, at the running
  *   user's scope only. Every check a board's gate runs (row, attempt, identity,
  *   status, assignee, lease, run link) runs on the ledger the hand-over names.
- *   A task session takes tasks only from the conversation it was opened for.
+ *   A session takes tasks only from the conversation it was opened for, and a
+ *   workstream's session the routed tasks filed for it there (FIX-2083).
+ * - **A routed task** (FIX-2083). Its turn reads the message it hands on, as
+ *   written (`../coordinator/routed-brief`), and its model is shown the
+ *   conversation's recent lines for that turn when the flow's generator reads
+ *   `routedTaskHistory`.
+ * - **Its hop count** (FIX-2106). The turn starts at the worker-message hop
+ *   count and chain its filing recorded on the row, read off the row the gate
+ *   verified, so a message from it counts on in its filer's exchange, in an
+ *   ongoing session as in one of its own. A row filed before rows recorded
+ *   one reads the session's count, as before.
  * - **The message** (FIX-1817). The task as filed is the turn's user item,
  *   so it is part of the session's history; on the attempt an answer to the
  *   worker's question re-queued, the answer is, labelled as one.
  * - **The ending.** The gate settles the row through the ledger, whose ending
  *   recorder marks the notice owed in that same write (orchestration's notice
  *   module).
- * - **The notice.** After the gate, on success or failure, each notice the
+ * - **The notice** (FIX-2078). The gate's ending is delivered by
+ *   orchestration in that write's own pass: the filer's wake first, then the
+ *   notice to the session that filed the task. Before FIX-2078, after the gate,
+ *   on success or failure, each notice the
  *   session's task still owes (the task the hand-over named at the session's
  *   birth, and the follow-ups that run after it in the same session, one at
  *   a time) goes to the session that dispatched
@@ -26,61 +39,36 @@
  *   for the conversation's next touch of its board. A conversation whose
  *   worker was fired accepts the send and then refuses to run it: the notice
  *   stays owed, and this session never hears of that refusal.
- * - **The split** (FIX-1802 S4). A turn that files pieces on the task
- *   session's own board leaves its task parked on them after the turn, and
- *   the task settles from them later (`./split`): the gate records nothing
- *   on a parked row, and no notice goes for the park. A task that comes back
- *   to a session whose board already holds its pieces runs no turn: it parks
- *   on them again. The entry holds the session's reply line while it runs,
- *   so a piece's notice waits for the turn, and the park, to end.
+ * - **Its pieces** (FIX-2077). A turn that files pieces on the task
+ *   session's own board leaves its task running when it ends, with no lease
+ *   (`waitingOn: "filed"`); the turn each piece's ending wakes runs for the
+ *   task (`./task-admission`), and the request after which no piece holds it
+ *   settles it, through the gate's one check. The
+ *   entry holds the session's reply line while it runs, so a piece's notice
+ *   waits for the turn to end.
  */
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
-import type { BlockContext, BlockDefinition, DispatchRefusal, TaskDispatchInput } from "@flow-state-dev/core/types";
-import { taskLedgers, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
+import type { BlockContext, BlockDefinition, TaskDispatchInput } from "@flow-state-dev/core/types";
+import { currentWorkerClaim, taskLedgers, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import {
-  clearNotice,
   type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskWorkerInput
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
-import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
-import { RUN_BOARD_ENTRY } from "./board-entries";
+import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, ROUTED_FROM_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
+import { DISPATCH_ENTRY, FILED_HOP } from "./board-entries";
+import { hopMarkOf, messageTurnStateSchema, startTurnAtHop } from "../messages/hop";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "./ledger";
-import { sendOwedNotices } from "./notice-delivery";
-import { hasPieces, parkOnPieces } from "./split";
+import { PLAN_LEDGER_ID, planLedgerAt } from "./plan";
+import { noteRoutedSession, routedSessionResources } from "./routed-session";
+import { sessionIdOfFiling } from "./filing-session";
+import { conversationEndRules } from "./task-admission";
 import { REPLY_CONCURRENCY } from "./task-settled";
 import { markConversationTaskDoor } from "../worker-task-entry";
+import { noteRoutedLines } from "../coordinator/routed-brief";
+import { taskMessage } from "./task-message";
 
-/**
- * A task as a worker reads it: the title when there is one, the goal, the
- * task's context, and its structured input as JSON when it carries any.
- */
-export function taskMessage(task: TaskWorkerInput): string {
-  const lines = [task.title === undefined ? task.goal : `${task.title}\n\n${task.goal}`];
-  if (task.context !== undefined && task.context.trim().length > 0) lines.push(`Context:\n${task.context}`);
-  if (hasInput(task.input)) lines.push(`Input:\n${JSON.stringify(task.input, null, 2)}`);
-  return lines.join("\n\n");
-}
-
-/**
- * What a task turn says (FIX-1817): the answer to the worker's question on
- * the attempt that answer re-queued, labelled as one, and the task as filed
- * on every other attempt. A retry after a failure is handed the task again,
- * never an answer. Shares its invariant with `packWorkerInput`'s `answer`
- * (orchestration `worker-step.ts`, `answer-envelope.test.ts`).
- */
-export function taskTurnMessage(task: TaskWorkerInput): string {
-  if (task.answer !== undefined) return `Answer to your question:\n\n${task.answer}`;
-  return taskMessage(task);
-}
-
-/** True for a task input worth showing: present, and not an empty object. */
-function hasInput(input: unknown): boolean {
-  if (input === undefined || input === null) return false;
-  if (typeof input === "object" && !Array.isArray(input)) return Object.keys(input).length > 0;
-  return true;
-}
 
 /**
  * The partition a task session's tasks are on: the conversation it was opened
@@ -98,7 +86,7 @@ function filingPartitionOf(ctx: BlockContext): string | undefined {
  * sets it. The session is keyed by this task and its worker, and the gate
  * admits only the row whose run link names this session, so it is one task.
  */
-function sessionTaskOf(ctx: BlockContext): string | undefined {
+export function sessionTaskOf(ctx: BlockContext): string | undefined {
   const taskId = (ctx.session.state as Record<string, unknown>)[TASK_ID_STATE_KEY];
   return typeof taskId === "string" ? taskId : undefined;
 }
@@ -112,13 +100,6 @@ function filingFlowOf(ctx: BlockContext): string | undefined {
   const flow = (ctx.session.state as Record<string, unknown>)[FILING_FLOW_STATE_KEY];
   return typeof flow === "string" ? flow : undefined;
 }
-
-/**
- * The refusals that say the conversation that filed a task can't be told,
- * now or later: its session is gone, or no longer this user's. Every other
- * refusal leaves the notice owed.
- */
-const CONVERSATION_GONE: ReadonlySet<DispatchRefusal> = new Set(["session-not-found", "session-not-addressable"]);
 
 /**
  * The claim the gate verified for the task a `block` entry runs: the ledger
@@ -161,25 +142,84 @@ export type WorkerTaskEntryOptions = {
 /**
  * The ledger resolver a `work` entry's gate uses for a conversation's board,
  * and the one a harness manager takes for boards it resolves per claim: the
- * conversation ledger at `partition`, at the running user's scope, and only
- * for the conversation the running task session was opened for. `undefined`
- * for any other ledger, a missing partition, or another conversation's.
+ * conversation ledger at `partition`, at the running user's scope, for the
+ * conversation the running session was opened for, or, for a worker's step
+ * filed `session: "new"` (FIX-2082 D2), the plan ledger at that same
+ * partition; or, for another conversation's ledger, only when the row it names
+ * was filed for this very session (a routed task for a workstream, whose
+ * filing resolved its session: `Task.targetSessionId`, server-written).
+ * `undefined` for any other ledger, a missing partition, or any other
+ * conversation's row.
  *
  * @param ledgerId The ledger the claim names.
  * @param ctx The running block's context. Its flow must declare the
  *   conversation ledger (`workerTaskEntry` installs it).
  * @param partition The partition the claim names.
+ * @param taskId The row the claim names.
  */
 export async function conversationLedgers(
   ledgerId: string,
   ctx: BlockContext,
-  partition: string | undefined
+  partition: string | undefined,
+  taskId?: string
 ): Promise<TaskCollectionRef | undefined> {
-  if (ledgerId !== CONVERSATION_LEDGER_ID) return undefined;
+  if (ledgerId !== CONVERSATION_LEDGER_ID && ledgerId !== PLAN_LEDGER_ID) return undefined;
+  if (partition === undefined) return undefined;
   // A task session works only the conversation it was opened for.
-  if (partition === undefined || filingPartitionOf(ctx) !== partition) return undefined;
-  return conversationLedgerAt(ctx, partition);
+  if (filingPartitionOf(ctx) === partition) return ledgerId === PLAN_LEDGER_ID ? planLedgerAt(ctx, partition) : conversationLedgerAt(ctx, partition);
+  // A workstream's session works the routed tasks filed for it, and no other row there.
+  if (ledgerId !== CONVERSATION_LEDGER_ID || taskId === undefined) return undefined;
+  const ref = await conversationLedgerAt(ctx, partition);
+  const row = ref?.get(taskId);
+  return row !== undefined && row.targetSessionId === ctx.session.identity.id ? ref : undefined;
 }
+
+/**
+ * In a session no conversation owns (a workstream's), name the conversation
+ * whose task the gate just let in, from the claim it verified, so the
+ * requests that follow find that task on its board (`./board-above`), and
+ * record the task as the one this session works, so no other conversation's
+ * board starts one here while it is open (`./routed-session`). A session
+ * opened for a conversation names it at birth, and writes nothing.
+ */
+const noteRoutedFrom = handler({
+  name: "worker-task-note-routed-from",
+  inputSchema: z.unknown(),
+  outputSchema: z.object({}),
+  resources: { ...routedSessionResources },
+  sessionStateSchema: z.object({ [ROUTED_FROM_STATE_KEY]: z.string().min(1).optional() }),
+  execute: async (_task: unknown, ctx) => {
+    const state = (ctx.session.state ?? {}) as Record<string, unknown>;
+    if (typeof state[FILING_SESSION_STATE_KEY] === "string") return {};
+    const claim = currentWorkerClaim(ctx as never);
+    const partition = claim?.collectionId === CONVERSATION_LEDGER_ID ? claim.partition : undefined;
+    if (partition === undefined) return {};
+    await noteRoutedSession(ctx as never, ctx.session.identity.id, { partition, taskId: claim!.taskId });
+    if (state[ROUTED_FROM_STATE_KEY] !== partition) await ctx.session.patchState({ [ROUTED_FROM_STATE_KEY]: partition });
+    return {};
+  }
+});
+
+/**
+ * Start the task's turn at the hop count and chain its filing recorded on the
+ * row (FIX-2106): read off the row the gate just verified, through the ledger
+ * the claim names, never off the dispatch's payload. A row with none (one
+ * filed before rows recorded it, or a step) leaves the turn at its session's.
+ */
+const startAtFiledHop = handler({
+  name: "worker-task-start-at-filed-hop",
+  inputSchema: z.unknown(),
+  outputSchema: z.object({}),
+  requestStateSchema: messageTurnStateSchema,
+  execute: async (_task: unknown, ctx) => {
+    const claim = currentWorkerClaim(ctx as never);
+    if (claim === undefined) return {};
+    const ledger = await conversationLedgers(claim.collectionId, ctx as never, claim.partition, claim.taskId);
+    const mark = hopMarkOf(ledger?.get(claim.taskId)?.metadata?.[FILED_HOP]);
+    if (mark !== undefined) await startTurnAtHop(ctx as never, mark.hop, mark.chain);
+    return {};
+  }
+});
 
 /**
  * The claim the gate put on its state, as a `block` entry hands it on. The
@@ -205,22 +245,22 @@ function verifiedClaimOf(ctx: BlockContext, entry: string): WorkerTaskClaim {
  * wrote at its birth, never from a request. `undefined` outside a
  * conversation's task session.
  *
- * For a host's message door over a worker's runs
- * (`harnessMessageDoor` in `@flow-state-dev/harness-manager`): the row the
- * session works is on this board, and its next attempt starts when the
- * conversation runs its board.
+ * For a host's door over a worker's runs: the row the session works is on
+ * this board, and `filingSession` is the conversation that filed it.
  *
  * @param ctx The running block's context, in the task session. Its flow must
  *   declare the conversation ledger (`workerTaskEntry` installs it).
  */
 export async function filingConversationBoard(
   ctx: BlockContext
-): Promise<{ tasks: TaskCollectionRef; runEntry: string; filingFlow: string } | undefined> {
+): Promise<{ tasks: TaskCollectionRef; runEntry: string; filingFlow: string; filingSession: string } | undefined> {
   const partition = filingPartitionOf(ctx);
   const filingFlow = filingFlowOf(ctx);
   if (partition === undefined || filingFlow === undefined) return undefined;
   const tasks = await conversationLedgerAt(ctx, partition);
-  return tasks === undefined ? undefined : { tasks, runEntry: RUN_BOARD_ENTRY, filingFlow };
+  return tasks === undefined
+    ? undefined
+    : { tasks, runEntry: DISPATCH_ENTRY, filingFlow, filingSession: sessionIdOfFiling(partition) };
 }
 
 /**
@@ -240,28 +280,30 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
   const from = markConversationTaskDoor(taskLedgers({
     name: `${name}-tasks`,
     resolve: conversationLedgers,
-    uses: [defineCapability({ name: `${name}-ledgers`, resources: { ...conversationLedgerResources } })],
+    // A step's own session reads the plan ledger its flow's planning declares (FIX-2082 D2).
+    uses: [defineCapability({ name: `${name}-ledgers`, resources: { ...conversationLedgerResources, ...routedSessionResources } })],
     // The turn keeps the worker's skill state on the session, the same shape
     // for every task, and each task runs in a session of its own.
-    allowSessionState: true
+    allowSessionState: true,
+    // Its pieces, and a message for this session not yet acted on, hold it open (FIX-2077).
+    endRules: conversationEndRules
   }));
 
-  // A task whose pieces its session already filed (a retry, or a takeover
-  // after a crash) runs no turn: it parks on them again. An answer to the
-  // worker's question always runs the turn (FIX-1817). A `block` is handed
-  // the task and the claim the gate verified; a `turn`, the task's message.
-  const runs = async (task: TaskWorkerInput, ctx: unknown) =>
-    task.answer !== undefined || !(await hasPieces(ctx as never, task.taskId));
-  const base = sequencer({ name, inputSchema: taskWorkerInputSchema });
-  const block = (
+  // A `block` is handed the task and the claim the gate verified; a `turn`,
+  // the task's message. A task that filed pieces stays running when the turn
+  // ends, and the turn their endings wake decides it (FIX-2077): the gate's
+  // check at the end of each request for it.
+  const base = sequencer({ name, inputSchema: taskWorkerInputSchema }).tap(noteRoutedFrom).tap(startAtFiledHop);
+  const block =
     options.block !== undefined
-      ? base.stepIf(
-          runs,
+      ? base.step(
           (task: TaskWorkerInput, ctx): WorkerTaskBlockInput => ({ ...task, claim: verifiedClaimOf(ctx as never, name) }),
           options.block
         )
-      : base.stepIf(runs, (task: TaskWorkerInput) => ({ message: taskTurnMessage(task) }), options.turn!)
-  ).step(parkOnPieces);
+      : base
+          // A routed task's lines, for its model to be shown on this turn only.
+          .tap(noteRoutedLines)
+          .step((task: TaskWorkerInput) => ({ message: taskMessage(task) }), options.turn!);
 
   /**
    * The turn's message as the session's user item, so the task as filed (or
@@ -270,44 +312,7 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
    * through the board's claim gate, so its input is the dispatch envelope and
    * the task is its payload.
    */
-  const userMessage = (dispatch: TaskDispatchInput) => taskTurnMessage(dispatch.payload as TaskWorkerInput);
+  const userMessage = (dispatch: TaskDispatchInput) => taskMessage(dispatch.payload as TaskWorkerInput);
 
-  /** Send what the session's task owes, to the conversation that filed it. */
-  const tell = handler({
-    name: `${name}-tell`,
-    inputSchema: z.unknown(),
-    outputSchema: z.object({ sent: z.number() }),
-    resources: { ...conversationLedgerResources },
-    execute: async (_input, ctx) => ({ sent: await tellFiler(ctx as never) })
-  });
-
-  const tellFiler = async (ctx: BlockContext): Promise<number> => {
-    const taskId = sessionTaskOf(ctx);
-    const partition = filingPartitionOf(ctx);
-    const flowKind = filingFlowOf(ctx);
-    // A session that names no filing conversation owes no notice.
-    if (taskId === undefined || partition === undefined || flowKind === undefined) return 0;
-    const ref = await conversationLedgerAt(ctx, partition);
-    if (ref === undefined) return 0;
-    const address = { session: { from: true }, flowKind, from: `${name}-tell` } as const;
-    // The session's task and its follow-ups (FIX-1817): each runs here, so
-    // each ending this session recorded is told from here.
-    let sent = 0;
-    for (const row of ref.list().filter((task) => (task.followUpOf ?? task.id) === taskId)) {
-      sent += await sendOwedNotices(ctx, row, address, async (notice, refusal) => {
-        // Any other refusal (the host turned it away, the store was down) may
-        // pass: the marker stays for the conversation's next touch.
-        if (!CONVERSATION_GONE.has(refusal.refused)) return;
-        // The conversation can't be told (it was deleted): the notice is
-        // dropped and said here. The task's ending stands.
-        await ref.patchMetadata(row.id, clearNotice(notice));
-        ctx.emit.message(
-          `The conversation that filed task "${row.title ?? row.goal}" couldn't be told it ${notice.ending}: ${refusal.detail}`
-        );
-      });
-    }
-    return sent;
-  };
-
-  return { block, from, userMessage, onCompleted: tell, onErrored: tell, concurrency: REPLY_CONCURRENCY };
+  return { block, from, userMessage, concurrency: REPLY_CONCURRENCY };
 }

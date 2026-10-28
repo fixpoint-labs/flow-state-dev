@@ -171,7 +171,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
         await stores.checkpoints.write(checkpoint);
       },
       latest: stores.checkpoints.latest.bind(stores.checkpoints),
-      delete: stores.checkpoints.delete.bind(stores.checkpoints)
+      delete: stores.checkpoints.delete.bind(stores.checkpoints),
+      deleteForRequest: stores.checkpoints.deleteForRequest.bind(stores.checkpoints)
     };
 
     const flow = buildSimpleFlow();
@@ -209,7 +210,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
         await stores.checkpoints.write(checkpoint);
       },
       latest: stores.checkpoints.latest.bind(stores.checkpoints),
-      delete: stores.checkpoints.delete.bind(stores.checkpoints)
+      delete: stores.checkpoints.delete.bind(stores.checkpoints),
+      deleteForRequest: stores.checkpoints.deleteForRequest.bind(stores.checkpoints)
     };
     const probedStores = { ...stores, checkpoints: probedCheckpoints };
 
@@ -241,7 +243,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
       checkpoints: {
         async write() { writeCount += 1; },
         async latest() { return null; },
-        async delete() { deleteCount += 1; }
+        async delete() { deleteCount += 1; },
+        async deleteForRequest() {}
       } satisfies CheckpointStore
     };
 
@@ -341,7 +344,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
         async delete(requestId: string, blockInstanceId: string) {
           deletes.push(blockInstanceId);
           await stores.checkpoints.delete(requestId, blockInstanceId);
-        }
+        },
+        deleteForRequest: stores.checkpoints.deleteForRequest.bind(stores.checkpoints)
       } satisfies CheckpointStore
     };
 
@@ -389,7 +393,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
         await stores.checkpoints.write(checkpoint);
       },
       latest: stores.checkpoints.latest.bind(stores.checkpoints),
-      delete: stores.checkpoints.delete.bind(stores.checkpoints)
+      delete: stores.checkpoints.delete.bind(stores.checkpoints),
+      deleteForRequest: stores.checkpoints.deleteForRequest.bind(stores.checkpoints)
     };
     const probedStores = { ...stores, checkpoints: probedCheckpoints };
 
@@ -463,7 +468,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
       async delete(requestId: string, blockInstanceId: string) {
         deletes.push(blockInstanceId);
         await stores.checkpoints.delete(requestId, blockInstanceId);
-      }
+      },
+      deleteForRequest: stores.checkpoints.deleteForRequest.bind(stores.checkpoints)
     };
     const probedStores = { ...stores, checkpoints: probedCheckpoints };
 
@@ -533,7 +539,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
       async delete(requestId: string, blockInstanceId: string) {
         deletes.push(blockInstanceId);
         await stores.checkpoints.delete(requestId, blockInstanceId);
-      }
+      },
+      deleteForRequest: stores.checkpoints.deleteForRequest.bind(stores.checkpoints)
     };
     const probedStores = { ...stores, checkpoints: probedCheckpoints };
 

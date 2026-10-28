@@ -21,6 +21,7 @@
  *   enqueued, while a derived child is unaffected.
  */
 import { describe, expect, it } from "vitest";
+import type { FlowInstance } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
@@ -122,7 +123,7 @@ async function boot(kind: string, options: { dispatcher?: FlowDispatcher } = {})
 
 function run(
   runtime: FlowStateRuntime,
-  flow: ReturnType<typeof guardedFlow>["flow"],
+  flow: FlowInstance,
   actionName: string,
   input: unknown,
   sessionId = "s_sender"

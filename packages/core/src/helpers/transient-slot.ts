@@ -20,7 +20,7 @@
  * parent ZodObject's shape.
  */
 import type { ZodTypeAny } from "zod";
-import { getZodObjectShape } from "./zod-introspect";
+import { getZodObjectShape, unwrapToZodObject } from "./zod-introspect";
 
 const TRANSIENT_FLAG = Symbol.for("@flow-state-dev/transient-slot");
 
@@ -41,13 +41,15 @@ export function isTransientSlot(schema: ZodTypeAny | undefined): boolean {
 
 /**
  * Walk a `z.object({...})` schema's top-level shape and collect the keys
- * whose value schema was marked via `transientSlot()`. Non-object schemas
+ * whose value schema was marked via `transientSlot()`. The object is found
+ * under any root wrapper (`.default({})`, effects). Non-object schemas
  * (or `undefined`) yield an empty set.
  */
 export function getTransientKeys(stateSchema: ZodTypeAny | undefined): Set<string> {
   const keys = new Set<string>();
   if (stateSchema === undefined || stateSchema === null) return keys;
-  const shape = getZodObjectShape(stateSchema);
+  const object = unwrapToZodObject(stateSchema);
+  const shape = object === undefined ? undefined : getZodObjectShape(object);
   if (!shape) return keys;
   for (const [key, fieldSchema] of Object.entries(shape)) {
     if (isTransientSlot(fieldSchema)) {

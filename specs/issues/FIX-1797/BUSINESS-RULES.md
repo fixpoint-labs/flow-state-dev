@@ -14,7 +14,7 @@ step or report line that shows the rule held.
 | QR-1 | Any child of FIX-1786 other than FIX-1795 is not merged (every PR of a multi-PR child; FIX-1802, which joined under the epic's [D8](../../epics/FIX-1786/DECISIONS.md#d8), FIX-1866, whose goal check is P3.11, and FIX-1883, which b2, b3 and b5 need, included), or CI is red on `main` | No final run. Each blocks this issue in Linear | Linear · the report lists each merge commit |
 | QR-2 | FIX-1788's last PR merges | The coordinator dispatches the milestone run on that merge commit ([D1](DECISIONS.md#d1)), under the milestone sub-issue it created when this spec merged, related to FIX-1791 and FIX-1795, not blocking them: their builds run in parallel, and neither gets implementation merge authorization while the sub-issue is open. The run uses the milestone's own steps, which use only what that commit has. It and its reruns (QR-15) are the only runs before QR-1 holds | The milestone report names the commit |
 | QR-3 | A child joins FIX-1786 mid-run, a finding included | It blocks this issue ([ER-27](../../epics/FIX-1786/BUSINESS-RULES.md#how-the-set-is-run)); the run in flight opens no closure PR | The epic wake |
-| QR-4 | QR-1 holds | One `main` commit is picked, and every check in parts 1 to 4 runs against it | Every verdict row carries that SHA |
+| QR-4 | QR-1 holds | One `main` commit is picked, and every check in parts 1 to 4 runs against it, or carries forward under QR-19 (*amended after merge*) | Every verdict row carries the SHA it was graded at |
 | QR-5 | Someone wants the check outside a closure | It runs on demand only: at this closure, and at the closure of each later epic that touches workers, coordinators or projects. Not a CI gate, no schedule: it rests on a real model with no retry | `goal.md` |
 | QR-6 | No model key is set, or no Chromium starts | The run is *blocked*, not failed. With no browser, the browser steps go to `fsd-qa` over the mailbox | Report |
 
@@ -39,9 +39,10 @@ step or report line that shows the rule held.
 | QR-16 | An older check is red, or deleted with no line naming what replaced it ([D3](DECISIONS.md#d3)) | A finding against the child whose PR touched what the check asserts | P3.9 |
 | QR-17 | A promised screen is missing or broken | A finding against the child that promised it; an unpromised one is an observation ([D2](DECISIONS.md#d2)) | Report |
 | QR-18 | J1 hits a step the docs don't cover | A failed step, reason *doc silent*: QR-13 | J1 |
-| QR-19 | The run files anything | No PR. The row stays at `NEEDS_IMPLEMENTATION`. When the last fix merges, **the whole plan** runs again on a fresh commit | The epic wake |
+| QR-19 | The run files anything | No PR, unless the owner closes it (QR-22). The row stays at `NEEDS_IMPLEMENTATION`. When the last fix merges, the failed checks and every check the diff since the run touches run again on a fresh commit; the rest carry forward ([re-check failures](DECISIONS.md#re-check-failures), *amended after merge*) | The epic wake |
 | QR-20 | The owner closes a finding with a reason | The report quotes it; whoever records the drop removes the blocks relation | Report |
 | QR-21 | A final run files nothing | The closure PR opens with the goal check and its verdict log; its body is the report | The closure PR |
+| QR-22 | The owner closes the closure without a final run that files nothing | The closure PR records the owner's decision, the last graded commit and each finding's fix; the closure closes on it. QR-22 takes precedence over QR-19's "no PR" and re-run, QR-21 and S6 ([closed by the owner](DECISIONS.md#closed-by-the-owner), *amended after merge*) | The closure PR |
 
 ## Failure taxonomy
 
@@ -55,4 +56,4 @@ The milestone run on FIX-1788's merge commit files nothing, or reruns on each fi
 until it does. Then one
 final run on one `main` commit files nothing: legs a to c pass and each control fails its step,
 J1 passes, part 3 passes with every older check green or retired with its line, and every
-required part-4 row holds (QR-21).
+required part-4 row holds (QR-21). Or the owner closes it without that run (QR-22), as on 2026-10-23.

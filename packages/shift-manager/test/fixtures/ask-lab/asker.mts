@@ -5,9 +5,9 @@
  * Two doors, both durable, both ending in the framework's stock
  * `human_approval` suspension:
  *
- * - `onDelegatedPost` — the internal entry a coordinator delivers a post to
- *   (Workforce's `delegatedPostEntry`), into a session of the delegate's own
- *   that the coordinator's dispatch opens. So an ask raised here lives in a
+ * - `work` — the task entry a coordinator's routed task is handed to
+ *   (Workforce's `workerTaskEntry`), in the delegate's own session for that
+ *   conversation, which the hand-over opens. So an ask raised here lives in a
  *   dispatch-run session, which is what Shift Manager's listing has to ask
  *   for. Its answer, once a user decides, goes back to the coordinator.
  * - `ask` — a public action a test calls directly, in a session a user
@@ -30,19 +30,23 @@
  */
 import { defineFlow, handler, sequencer, SuspensionRejectedError } from "@flow-state-dev/core";
 import {
-  DELEGATED_POST_ENTRY,
   defineProjectBlocks,
   defineWorkerInventoryCollection,
-  delegatedPostEntry,
+  WORKER_TASK_ENTRY,
   workerConfigSchema,
+  workerTaskEntry,
   type WorkerInstallation,
+  MESSAGE_RECEIVED_ENTRY,
+  messageReceivedEntry,
+  workerMessagesResources,
 } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
 /** The worker flow a `WORKER.md` names in its `flow:` line. */
 export const ASKER_FLOW = "asker";
 
-const askSchema = z.object({ what: z.string().min(1) });
+/** `detail`: the ask is titled `Approve: <what>`, with `detail` (markdown) as its body. */
+const askSchema = z.object({ what: z.string().min(1), detail: z.string().optional() });
 
 const decisionSchema = z.object({ what: z.string(), approved: z.boolean() });
 
@@ -99,7 +103,11 @@ const gate = handler({
   outputSchema: decisionSchema,
   execute: async (input, ctx) => {
     try {
-      await ctx.suspend!({ reason: "human_approval", message: `Approve: ${input.what}` });
+      await ctx.suspend!(
+        input.detail === undefined
+          ? { reason: "human_approval", message: `Approve: ${input.what}` }
+          : { reason: "human_approval", title: `Approve: ${input.what}`, message: input.detail },
+      );
       return { what: input.what, approved: true };
     } catch (error) {
       if (error instanceof SuspensionRejectedError) return { what: input.what, approved: false };
@@ -159,21 +167,22 @@ export function defineAskerFlow(
   return defineFlow({
     kind: ASKER_FLOW,
     session: installation.session(),
-    resources: { ...resources, ...inventory, ...installation.resources },
+    resources: { ...resources, ...inventory, ...installation.resources, ...workerMessagesResources },
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     actions: {
       ask: { block: ask, durable: true, description: "Ask a user to approve something." },
-      message: {
+      respond: {
         block: options.projects === true ? hearAndStartProjects() : hear,
         inputSchema: messageSchema,
         userMessage: (input: { message: string }) => input.message,
         description: "A user's line into this worker's session.",
       },
     },
-    internal: {
+    internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: ASKER_FLOW }) } },
+    task: {
       actions: {
-        [DELEGATED_POST_ENTRY]: { ...delegatedPostEntry(onPost), durable: true },
+        [WORKER_TASK_ENTRY]: { ...workerTaskEntry({ name: "asker-task", turn: onPost }), durable: true },
       },
     },
   } as never);

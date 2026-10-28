@@ -90,6 +90,7 @@ const WORKSTREAM_LEAD = "workstream-lead";
 const COORDINATOR_FLOW = "coordinator";
 const AGENT_FLOW = "agent";
 const LIST_TASKS = "listTasks_tasks";
+/** A filing turn's own time, outside its model's calls: over it, the turn stalled on the framework's side. */
 const TURN_BUDGET_MS = 10_000;
 const LINE_BUDGET_MS = 60_000;
 const SETTLED = new Set(["completed", "errored", "cancelled"]);
@@ -187,12 +188,65 @@ function scriptedResolver(): ModelResolver {
 /** What real Jev answered the judge's question, in order. */
 const verdicts: Array<{ choice: unknown; confidence: unknown; state: unknown }> = [];
 
+/** When a generator model was answering, legs d and d2: [start, end] in ms. Jev's evaluations are not in it. */
+const modelSpans: Array<[number, number]> = [];
+
+/** How long, between `from` and `to`, some generator model call was in flight. */
+function modelTimeWithin(from: number, to: number): number {
+  const clipped = modelSpans
+    .map(([start, end]) => [Math.max(start, from), Math.min(end, to)] as const)
+    .filter(([start, end]) => end > start)
+    .sort((x, y) => x[0] - y[0]);
+  let total = 0;
+  let reached = from;
+  for (const [start, end] of clipped) {
+    if (end <= reached) continue;
+    total += end - Math.max(start, reached);
+    reached = end;
+  }
+  return total;
+}
+
+/** `model`, with each of its calls' time kept in `modelSpans`. */
+function timed(model: GeneratorModel): GeneratorModel {
+  const call = <R,>(run: () => Promise<R>) => async (): Promise<R> => {
+    const start = Date.now();
+    try {
+      return await run();
+    } finally {
+      modelSpans.push([start, Date.now()]);
+    }
+  };
+  // Only the waits on the model's next chunk: between pulls the framework handles each chunk, and that time is its own.
+  const streamed = <C,>(run: () => AsyncIterable<C>) =>
+    async function* (): AsyncIterable<C> {
+      const chunks = run()[Symbol.asyncIterator]();
+      try {
+        while (true) {
+          const start = Date.now();
+          const next = await chunks.next().finally(() => modelSpans.push([start, Date.now()]));
+          if (next.done) return;
+          yield next.value;
+        }
+      } finally {
+        await chunks.return?.();
+      }
+    };
+  return {
+    ...model,
+    generate: (options) => call(() => model.generate(options))(),
+    ...(model.generateStep === undefined ? {} : { generateStep: (options) => call(() => model.generateStep!(options))() }),
+    ...(model.stream === undefined ? {} : { stream: (options) => streamed(() => model.stream!(options))() }),
+    ...(model.streamStep === undefined ? {} : { streamStep: (options) => streamed(() => model.streamStep!(options))() }),
+  };
+}
+
 /** A real model for every turn, and the gateway's Jev for every evaluation, legs d and d2. */
 function liveResolver(): ModelResolver {
   // A container's FSDEV_DEFAULT_MODEL / FSDEV_INTENT_* would swap the model under the resolver.
   stripIntentOverrides();
   const base = createModelResolver();
-  return Object.assign((_id: string, block?: string, options?: never) => base(gatewayModel(DEFAULT_MODEL), block, options), {
+  return Object.assign((_id: string, block?: string, options?: never) => timed(base(gatewayModel(DEFAULT_MODEL), block, options)), {
     resolveId: () => gatewayModel(DEFAULT_MODEL),
     resolveEvaluationModel: async (id: string, block?: string) => {
       const model = (await base.resolveEvaluationModel!(id, block)) as unknown as {
@@ -275,11 +329,12 @@ function door(lab: Lab) {
       if (status.body?.status !== "in_progress") break;
       await sleep(10);
     }
-    const ms = Date.now() - started;
+    const ended = Date.now();
+    const ms = ended - started;
     const listed = await lab.door("GET", `sessions/${encodeURIComponent(sessionId)}/requests?include_result_output=true&limit=100`, { as });
     const found = (listed.body?.requests ?? []).find((r: { id: string }) => r.id === requestId);
-    if (found?.result?.error !== undefined) return { error: show(found.result.error), ms };
-    return { output: found?.result?.output as any, ms };
+    if (found?.result?.error !== undefined) return { error: show(found.result.error), ms, started, ended };
+    return { output: found?.result?.output as any, ms, started, ended };
   };
   /** Open a session on `flow` as the owner, with `state`. */
   const open = async (flow: string, state: Record<string, unknown>, as: keyof typeof LAB_USERS = "owner") => {
@@ -321,6 +376,8 @@ async function quiet(lab: Lab): Promise<void> {
 interface Filed {
   /** How long the filing turn took. */
   turnMs: number;
+  /** How much of the turn a generator model was answering (legs d and d2; 0 when scripted). */
+  modelMs: number;
   /** The task as the conversation lists it, once settled, or its last state. */
   task: Record<string, any> | undefined;
   /** The conversation's lines that name the task, with who said them. */
@@ -346,7 +403,7 @@ async function fileFrom(lab: Lab, flow: string, sessionId: string, message: stri
   const runsBefore = stub.runs.length;
   const listTasks = async (): Promise<Array<Record<string, any>>> => (await http.act(flow, sessionId, LIST_TASKS, {})).output?.tasks ?? [];
   const filedBefore = new Set((await listTasks()).map((t) => t.id));
-  const turn = await http.act(flow, sessionId, "run", { message });
+  const turn = await http.act(flow, sessionId, "respond", { message });
   let task: Record<string, any> | undefined;
   const turnEnded = Date.now();
   for (const deadline = turnEnded + LINE_BUDGET_MS; Date.now() < deadline; await sleep(200)) {
@@ -370,6 +427,7 @@ async function fileFrom(lab: Lab, flow: string, sessionId: string, message: stri
   const record = Object.entries(records).find(([key]) => key.includes(`/${task!.id}/`))?.[1] as Record<string, any> | undefined;
   return {
     turnMs: turn.ms,
+    modelMs: turn.started === undefined ? 0 : modelTimeWithin(turn.started, turn.ended),
     task,
     named,
     all,
@@ -389,9 +447,11 @@ async function storedTask(lab: Lab, taskId: string): Promise<Record<string, any>
 /** The checks every leg that should be answered with the marker shares. */
 function gradeAnswered(leg: string, filed: Filed, marker: string, note: (assertion: string, why: string) => void): void {
   if (filed.error !== undefined) note(`${leg}:turn-returns`, `the filing turn was refused: ${filed.error}`);
-  else if (filed.turnMs > TURN_BUDGET_MS) note(`${leg}:turn-returns`, `the filing turn took ${filed.turnMs} ms, over ${TURN_BUDGET_MS} ms`);
+  else if (filed.turnMs - filed.modelMs > TURN_BUDGET_MS) {
+    note(`${leg}:turn-returns`, `the filing turn took ${filed.turnMs} ms, ${filed.turnMs - filed.modelMs} ms of it outside the model's calls, over ${TURN_BUDGET_MS} ms`);
+  }
   // A turn that waits on the task hears its ending as a tool result, not a line.
-  if (filed.row?.ask != null) note(`${leg}:turn-did-not-wait`, `the coordinator dispatched the task with wait, so its turn waited for the run`);
+  if (filed.row?.wait != null) note(`${leg}:turn-did-not-wait`, `the coordinator dispatched the task with wait, so its turn waited for the run`);
   // One line from the worker the row names: a retry or a second delivery would make two.
   const fromWorker = filed.named.filter((line) => line.agentName === filed.task?.assignee);
   if (filed.task?.assignee !== CODER || fromWorker.length !== 1) {
@@ -452,7 +512,7 @@ await runGoal(async (failures) => {
 
       const chief = () => http.open(COORDINATOR_FLOW, { workerId: CHIEF });
       const fileForCoder = (goal: string, input?: Record<string, unknown>): ToolCall => ({
-        toolName: "dispatchTask",
+        toolName: "createTask",
         args: { goal, assignee: CODER, ...(input === undefined ? {} : { input }) },
       });
 
@@ -654,7 +714,8 @@ await runGoal(async (failures) => {
             gradeAnswered("d", d, marker, note);
             if (failures.length === before) {
               evidence.push(
-                `d: "${fixture.ask}" filed a task for ${CODER} naming storefront on the first turn, ` +
+                `d: "${fixture.ask}" filed a task for ${CODER} naming storefront on the first turn ` +
+                  `(${d.turnMs} ms, ${d.turnMs - d.modelMs} ms of it outside the model's calls), ` +
                   `and one completed line carries its marker, judged by Jev (${show(verdicts.at(-1) && { choice: verdicts.at(-1)!.choice, confidence: verdicts.at(-1)!.confidence })})`,
               );
             }
@@ -667,7 +728,7 @@ await runGoal(async (failures) => {
           const judgedBefore = verdicts.length;
           const d2 = await fileLive("d2");
           if (d2 !== undefined) {
-            if (d2.row?.ask != null) note("d2:turn-did-not-wait", "the coordinator dispatched the task with wait, so its turn waited for the run");
+            if (d2.row?.wait != null) note("d2:turn-did-not-wait", "the coordinator dispatched the task with wait, so its turn waited for the run");
             const failed = d2.named.filter((line) => line.agentName === CODER && line.text.includes("failed for good"));
             const jev = show(verdicts.slice(judgedBefore).map(({ choice, confidence }) => ({ choice, confidence })));
             if (d2.task?.status !== "errored" || failed.length !== 1) {

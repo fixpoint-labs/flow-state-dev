@@ -133,43 +133,85 @@ export async function acquireLock(
   const deadline = now() + bounds.waitMs;
 
   for (;;) {
-    const token = randomUUID();
-    try {
-      writeFileSync(path, JSON.stringify({ owner, token, pid: process.pid, at: now() }), { flag: "wx" });
-      if (bounds.heartbeatMs === undefined) return { path, token };
-      const timer = setInterval(() => refresh(path, token), bounds.heartbeatMs);
+    const taken = attempt(path, bounds, owner, now);
+    if (taken === "again") continue;
+    if (taken !== "held") {
+      if (bounds.heartbeatMs === undefined) return taken;
+      const timer = setInterval(() => refresh(path, taken.token), bounds.heartbeatMs);
       timer.unref();
-      return { path, token, timer };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      return { ...taken, timer };
     }
-
-    try {
-      const victim = statSync(path);
-      const held = readFileSync(path, "utf8");
-      if (now() - victim.mtimeMs > bounds.staleAfterMs) {
-        const current = statSync(path);
-        if (current.ino === victim.ino && readFileSync(path, "utf8") === held) rmSync(path, { force: true });
-        continue;
-      }
-    } catch (error) {
-      // Released between the failed create and the read: try again. Anything
-      // else (a directory at the path, no permission) would fail the same way
-      // on every pass, so it is raised rather than spun on.
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      continue;
-    }
-
-    if (now() >= deadline) {
-      throw new Error(
-        `waited ${bounds.waitMs}ms for ${what} and it is still held. Treating that as a ` +
-          `wedged holder rather than ordinary contention; if nothing holds it, remove ${path}.`,
-      );
-    }
+    if (now() >= deadline) throw stillHeld(bounds, what, path);
     // Never past the deadline the caller was given.
     await sleep(Math.min(bounds.pollMs, deadline - now()), signal);
     stopIfCancelled();
   }
+}
+
+/**
+ * Run `operation` holding the lock at `path`, for a caller that can't wait
+ * asynchronously (a host's synchronous startup). The wait blocks the thread,
+ * so it is only for a lock held for milliseconds; `bounds.heartbeatMs` is
+ * ignored, and `staleAfterMs` has to outlast the longest hold. Released on
+ * every exit.
+ */
+export function withLockSync<T>(path: string, bounds: LockBounds, operation: () => T, what = `the lock at ${path}`): T {
+  mkdirSync(dirname(path), { recursive: true });
+  const deadline = Date.now() + bounds.waitMs;
+  const pause = new Int32Array(new SharedArrayBuffer(4));
+  for (;;) {
+    const taken = attempt(path, bounds, undefined, Date.now);
+    if (taken === "again") continue;
+    if (taken !== "held") {
+      try {
+        return operation();
+      } finally {
+        releaseLock(taken);
+      }
+    }
+    if (Date.now() >= deadline) throw stillHeld(bounds, what, path);
+    Atomics.wait(pause, 0, 0, Math.max(1, Math.min(bounds.pollMs, deadline - Date.now())));
+  }
+}
+
+/**
+ * One try at the lock: taken, `"again"` when a stale lock was cleared or the
+ * holder released between the create and the read, or `"held"` by a live
+ * holder.
+ */
+function attempt(path: string, bounds: LockBounds, owner: string | undefined, now: () => number): LockLease | "again" | "held" {
+  const token = randomUUID();
+  try {
+    writeFileSync(path, JSON.stringify({ owner, token, pid: process.pid, at: now() }), { flag: "wx" });
+    return { path, token };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+  }
+
+  try {
+    const victim = statSync(path);
+    const held = readFileSync(path, "utf8");
+    if (now() - victim.mtimeMs > bounds.staleAfterMs) {
+      const current = statSync(path);
+      if (current.ino === victim.ino && readFileSync(path, "utf8") === held) rmSync(path, { force: true });
+      return "again";
+    }
+  } catch (error) {
+    // Released between the failed create and the read: try again. Anything
+    // else (a directory at the path, no permission) would fail the same way
+    // on every pass, so it is raised rather than spun on.
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    return "again";
+  }
+  return "held";
+}
+
+/** The error a waiter gives up with. */
+function stillHeld(bounds: LockBounds, what: string, path: string): Error {
+  return new Error(
+    `waited ${bounds.waitMs}ms for ${what} and it is still held. Treating that as a ` +
+      `wedged holder rather than ordinary contention; if nothing holds it, remove ${path}.`,
+  );
 }
 
 /** Release a lock this acquisition holds. Never removes another taker's. Idempotent. */

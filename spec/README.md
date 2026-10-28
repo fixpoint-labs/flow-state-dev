@@ -2,8 +2,7 @@
 
 New issue and epic specs belong in [`specs/`](../specs/README.md), not here.
 Their canonical [retention and authority policy](../docs/contributing/orchestration.md#spec-retention-and-authority)
-includes approval-time merge, required documentation drafts, conditional evolution,
-and follow-up amendments.
+includes the two-document set, approval-time merge, and follow-up amendments.
 
 ## Project specs stay unchanged
 

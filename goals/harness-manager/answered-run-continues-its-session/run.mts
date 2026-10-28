@@ -2,11 +2,12 @@
  * Goal check — harness-manager › an answered run continues the coding session
  * that asked.
  *
- * Attempt 1 is told one fact, made to ask a question, and parks. The `answer`
- * action answers it. Attempt 2 is told to write the fact to a file — and its
- * prompt does not restate the fact. If the run continued attempt 1's session,
- * the fact is in the conversation; if it started fresh, nothing on the machine
- * can supply it.
+ * The first run is told one fact, made to ask a question, and its task is held
+ * on it. The board's `updateTask` action answers it, as the Inbox does. The
+ * answer's run, on the same attempt, is told to write the fact to a file — and
+ * its prompt does not restate the fact. If the run continued the first run's
+ * session, the fact is in the conversation; if it started fresh, nothing on
+ * the machine can supply it.
  *
  * ## Why this cannot be proved with a scripted SDK
  *
@@ -33,10 +34,10 @@
  * ## The anti-game is checked on the prompt this script built
  *
  * Not reviewed once and trusted. `buildPrompt` is this check's own, so the
- * strings it produces are inspected before the run: attempt 2's prompt must
+ * strings it produces are inspected before the run: the answer's run's prompt must
  * contain neither the fact nor the session id. The manager's prompt-based
  * carry-forward is retired (LAB-154, PR a) — while it existed, a run told the
- * fact in attempt 1 was told it again in attempt 2's answer fold, and "resume
+ * fact in the first run was told it again in the answer's run's answer fold, and "resume
  * worked" was indistinguishable from "the model was told the answer".
  *
  * Run: pnpm tsx goals/harness-manager/answered-run-continues-its-session/run.mts
@@ -89,7 +90,7 @@ type StatusRow = {
     workspacePath: string | null;
     branch: string | null;
   } | null;
-  questions: Array<{ question: string; text: string; attempt: number }>;
+  questions: Array<{ question: string; text: string; askedAt: number }>;
 };
 
 const USER_ID = "harness-manager-goal-user";
@@ -97,14 +98,14 @@ const RUN_TIMEOUT_MS = positiveIntFromEnv("GOAL_RUN_TIMEOUT_MS", 900_000);
 const POLL_INTERVAL_MS = 5_000;
 
 /**
- * Two attempts, and no more.
+ * One attempt, and no more.
  *
- * The proof is exactly "attempt 2 continues attempt 1", so a third attempt would
- * be a retry after the thing under test already failed — and it could still
- * reach a green file, since attempt 3 resumes attempt 2. Bounding at two makes
- * the check assert what it claims.
+ * The proof is exactly "the answer's run continues the run that asked, on the
+ * same attempt", so a second attempt would be a retry after the thing under
+ * test already failed — and it could still reach a green file. Bounding at one
+ * makes the check assert what it claims: an answer spends no attempt.
  */
-const MAX_ATTEMPTS = 2;
+const MAX_ATTEMPTS = 1;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -172,7 +173,7 @@ await runGoal(async (failures) => {
 
   let state: unknown;
   let row: StatusRow | undefined;
-  let parkedSessionId: string | null = null;
+  let askedSessionId: string | null = null;
   let factFile: string | undefined;
 
   try {
@@ -198,8 +199,8 @@ await runGoal(async (failures) => {
       buildPrompt: (run) => {
         const target = join(run.workspacePath, fixture.factFileName);
         factFile = target;
-        // Attempt 1 is told the fact and made to ask. Attempt 2 is told to
-        // write it — and is NOT told what it is.
+        // The first run is told the fact and made to ask. The answer's run is
+        // told to write it — and is NOT told what it is.
         const first = run.answers.length === 0;
         const prompt = [
           `Task ${run.issue}.`,
@@ -228,8 +229,8 @@ await runGoal(async (failures) => {
         prompts.push(prompt);
         return prompt;
       },
-      // Attempt 1 parks before this is ever consulted (the park arm is asked
-      // first), so this only ever grades attempt 2's work.
+      // The first run asks before this is ever consulted (the ask is read
+      // first), so this only ever grades the answer's run.
       isDone: (run) => {
         const target = join(run.workspacePath, fixture.factFileName);
         return existsSync(target) && readFileSync(target, "utf8").includes(fact);
@@ -301,13 +302,13 @@ await runGoal(async (failures) => {
       return rows[0];
     };
 
-    /** Poll the board row until it stops being one this loop should wait on. */
+    /** Poll the board row until it settles, or is held on a question. */
     const settle = async (label: string): Promise<StatusRow | undefined> => {
       const deadline = Date.now() + built.drainBudgetMs;
       for (;;) {
         const current = await readRow();
         if (current === undefined) return undefined;
-        if (current.status !== "in_progress") return current;
+        if (current.status !== "in_progress" || current.questions.length > 0) return current;
         if (Date.now() >= deadline) {
           failures.push(
             `the row was still in_progress ${built.drainBudgetMs}ms into ${label} — ` +
@@ -319,68 +320,70 @@ await runGoal(async (failures) => {
       }
     };
 
-    // ── Attempt 1: told the fact, asks, parks ──────────────────────────────
+    // ── The first run: told the fact, asks, its task is held ───────────────
     await call("seed", { issue: fixture.issue, phase: fixture.phase });
-    row = await settle("attempt 1");
+    row = await settle("the first run");
 
     if (row === undefined) {
       failures.push("the board has no row for this issue-phase — seeding did not file one");
-    } else if (row.status !== "parked") {
+    } else if (row.status !== "in_progress" || row.questions.length === 0) {
       failures.push(
-        `attempt 1 read "${row.status}" rather than "parked" — it did not ask a question. ` +
-          `Reason: ${row.run?.reason ?? row.feedback ?? "none recorded"}`,
+        `the first run left the row "${row.status}" with ${row.questions.length} open question(s), ` +
+          `not held on its question — it did not ask. Reason: ${row.run?.reason ?? row.feedback ?? "none recorded"}`,
       );
-    } else if (row.questions.length === 0) {
-      failures.push("the row parked but `status` lists no open question to answer");
     } else {
-      // 1 — the run named a session, which is the thing attempt 2 will continue.
-      parkedSessionId = row.run?.sessionId ?? null;
-      if (parkedSessionId === null) {
+      // 1 — the run named a session, which is the thing the answer's run will continue.
+      askedSessionId = row.run?.sessionId ?? null;
+      if (askedSessionId === null) {
         failures.push(
-          "attempt 1's run row carries no harness session id, so there is nothing for " +
-            "attempt 2 to continue — the harness never named its session, or the hook " +
+          "the first run's run row carries no harness session id, so there is nothing for " +
+            "the answer's run to continue — the harness never named its session, or the hook " +
             "that records it never fired",
         );
       }
 
-      // **The control this check would be hollow without.** Attempt 2 can Read
-      // the checkout, and attempt 1 worked in the same one. If attempt 1 left
+      // **The control this check would be hollow without.** The answer's run can Read
+      // the checkout, and the first run worked in the same one. If the first run left
       // the fact anywhere on disk — in the ask marker, in a scratch file, in a
-      // commit — then attempt 2 producing it says nothing about the session; it
+      // commit — then the answer's run producing it says nothing about the session; it
       // says the fact was lying around. The instruction not to write it down is
       // not evidence that it was obeyed.
       //
-      // Swept BEFORE the answer, so what is inspected is the tree attempt 2 is
+      // Swept BEFORE the answer, so what is inspected is the tree the answer's run is
       // about to inherit.
       const checkoutBefore = row.run?.workspacePath ?? null;
       if (checkoutBefore !== null) {
         const leaked = filesHolding(checkoutBefore, fact);
         if (leaked.length > 0) {
           failures.push(
-            `attempt 1 left the fact on disk in the shared checkout (${leaked.join(", ")}), ` +
-              `so attempt 2 could read it without remembering anything — this run proves ` +
+            `the first run left the fact on disk in the shared checkout (${leaked.join(", ")}), ` +
+              `so the answer's run could read it without remembering anything — this run proves ` +
               `nothing about resume`,
           );
         }
       }
 
-      // ── The operator answers ────────────────────────────────────────────
+      // ── The person answers, as the Inbox does ──────────────────────────
       //
       // The answer is about the trailing newline and says nothing about the
       // fact. If answering could carry the fact, the whole check would be
       // measuring the prompt fold rather than the session.
-      await call("answer", {
+      await call(built.updateTaskAction, {
+        id: row.taskId,
         question: row.questions[0]!.question,
-        answer: fixture.answerText,
+        message: fixture.answerText,
       });
 
-      // ── Attempt 2: told to write the fact it was never given ────────────
-      row = await settle("attempt 2");
+      // ── The answer's run: told to write the fact it was never given ─────
+      row = await settle("the answer's run");
 
       if (row === undefined) {
         failures.push("the board row vanished after the answer");
       } else {
-        // 4 — the board row is the authority on completion.
+        // 4 — the board row is the authority on completion, on the one attempt.
+        if (row.attempts !== 1) {
+          failures.push(`the task took ${row.attempts} attempts; an answer spends none`);
+        }
         if (row.status !== "completed") {
           failures.push(
             `the board row reads "${row.status}", not "completed" — reason: ` +
@@ -390,10 +393,10 @@ await runGoal(async (failures) => {
 
         // 2 — the same session, which is the claim.
         const resumedSessionId = row.run?.sessionId ?? null;
-        if (parkedSessionId !== null && resumedSessionId !== parkedSessionId) {
+        if (askedSessionId !== null && resumedSessionId !== askedSessionId) {
           failures.push(
-            `attempt 2 ran in session "${resumedSessionId}" while attempt 1 ran in ` +
-              `"${parkedSessionId}" — the answered run started a new conversation ` +
+            `the answer's run ran in session "${resumedSessionId}" while the first run ran in ` +
+              `"${askedSessionId}" — the answered run started a new conversation ` +
               `instead of continuing the one that asked`,
           );
         }
@@ -402,7 +405,7 @@ await runGoal(async (failures) => {
         if (factFile === undefined || !existsSync(factFile)) {
           failures.push(
             `the fact file (${factFile ?? "never derived"}) was not written, so the ` +
-              `resumed run did not produce the value only attempt 1 was told`,
+              `resumed run did not produce the value only the first run was told`,
           );
         } else {
           const written = readFileSync(factFile, "utf8");
@@ -424,13 +427,13 @@ await runGoal(async (failures) => {
     } else {
       if (second.includes(fact)) {
         failures.push(
-          "attempt 2's prompt contains the fact, so a fresh session would satisfy this " +
+          "the answer's run's prompt contains the fact, so a fresh session would satisfy this " +
             "check as easily as a resumed one — the proof is void",
         );
       }
-      if (parkedSessionId !== null && second.includes(parkedSessionId)) {
+      if (askedSessionId !== null && second.includes(askedSessionId)) {
         failures.push(
-          "attempt 2's prompt names the session id, which is the prompt-based " +
+          "the answer's run's prompt names the session id, which is the prompt-based " +
             "carry-forward this issue retired",
         );
       }
@@ -446,8 +449,8 @@ await runGoal(async (failures) => {
   return {
     failures,
     evidence:
-      `board row "${row?.status}" after ${row?.attempts} attempt(s); attempt 1 session ` +
-      `${parkedSessionId}, attempt 2 session ${row?.run?.sessionId}; fact file ` +
+      `board row "${row?.status}" after ${row?.attempts} attempt(s); the first run session ` +
+      `${askedSessionId}, the answer's run session ${row?.run?.sessionId}; fact file ` +
       `${factFile}; prompts built ${prompts.length}`,
   };
 });

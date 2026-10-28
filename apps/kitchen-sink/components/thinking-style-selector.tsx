@@ -47,7 +47,7 @@ export const STYLE_OPTIONS: StyleOption[] = [
     shortLabel: "Default",
     description: "Direct generation with the selected model",
     icon: MessageSquare,
-    color: "text-zinc-500 dark:text-zinc-400",
+    color: "text-muted-foreground",
   },
   {
     value: "background-work",
@@ -56,7 +56,7 @@ export const STYLE_OPTIONS: StyleOption[] = [
     description:
       "Hands the message to a child session and replies without waiting; results arrive on a later turn",
     icon: Hourglass,
-    color: "text-indigo-500 dark:text-indigo-400",
+    color: "text-foreground",
   },
 ];
 

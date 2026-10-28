@@ -15,6 +15,8 @@ import type { ModelResolver } from "@flow-state-dev/core/types";
 export function forceModelResolver(base: ModelResolver, modelId: string): ModelResolver {
   const override = ((_modelId: string, blockName?: string) => base(modelId, blockName)) as ModelResolver;
   override.resolveId = (id: string) => base.resolveId(id);
+  const providerOf = base.providerOf;
+  if (providerOf !== undefined) override.providerOf = (id: string) => providerOf.call(base, id);
   // `--model` names a generator model; evaluators keep resolving their own
   // model strings through the base resolver's evaluation hook, when it has one.
   const resolveEvaluationModel = base.resolveEvaluationModel;

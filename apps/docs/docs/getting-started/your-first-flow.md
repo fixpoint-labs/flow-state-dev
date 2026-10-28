@@ -2,6 +2,9 @@
 sidebar_position: 3
 ---
 
+import Figure from "@site/src/components/Figure";
+import FirstFlowHomesDrawing from "./first-flow-homes.svg";
+
 # Your First Flow
 
 The [Quick Start](/docs/getting-started/quick-start) gets an app running. Stay here if you want the why for each piece.
@@ -49,7 +52,7 @@ export const chat = generator({
 A few things to notice:
 
 - **`name`** is the block's identifier. It shows up in traces and the DevTool.
-- **`model`** is a string. `"intent/chat"` names an *intent* — a role you point at an ordered list of models in your runtime config, rather than a specific model here in the block. The framework takes the first candidate you have a key and an SDK package for, so this same block runs against whichever provider you set up. You can also name a model outright (`"openai/gpt-5.4-mini"`). [Setting Up Models](/docs/getting-started/setting-up-models) covers both.
+- **`model`** is a string. `"intent/chat"` names an *intent* — a role you point at an ordered list of models in your runtime config, rather than a specific model here in the block. The framework takes the first candidate you have a key and an SDK package for, so this same block runs against whichever provider you set up. You can also name a model outright (`"openai/gpt-6-luna"`). [Setting Up Models](/docs/getting-started/setting-up-models) covers both.
 - **`inputSchema`** is a Zod schema. It's what the framework validates incoming data against, and what TypeScript uses to type the `input` parameter in `user`.
 - **`history: true`** tells the generator to read prior conversation turns out of the session and include them in the LLM call. You don't manage messages yourself.
 - **`user`** is a function that builds the user message from the input. The system prompt comes from `prompt`.
@@ -181,11 +184,11 @@ import chatFlow from "@/flows/hello-chat/flow";
 export const flowstate = createFlowState({
   flows: { chatFlow },
   models: {
-    default: "openai/gpt-5.4-mini",
+    default: "openai/gpt-6-luna",
     intents: {
       chat: [
-        "anthropic/claude-sonnet-4-6",
-        "openai/gpt-5.4-mini",
+        "anthropic/claude-sonnet-5-5",
+        "openai/gpt-6-luna",
         "google/gemini-3.1-pro",
       ],
     },
@@ -257,7 +260,7 @@ The counter you bumped in step 2 lives in session state. To surface it in the UI
 
 You wrote four things: a generator, a handler, a sequencer that chains them, and a flow that exposes the sequencer over HTTP. The framework gave you streaming, history, validation, persistence, and a React rendering layer.
 
-![Three places took part in your first flow. Your browser runs page.tsx: FlowProvider names the flow hello-chat and the user, useFlow picks this user's session or creates one, useSession holds its items, the state you exposed and whether it is streaming, and ItemsRenderer draws the items. The browser sees only the items marked for the client and the state you expose. Your server, in lib/flowstate.ts and the route, holds hello-chat registered with its chat action and runs the chat pipeline, the generator then the counter, streaming each item back as it is made. The store holds one session: its state, messageCount, and its items, your messages and replies, which history reads on the next turn. A page reload reads it back from the store. This example's store is in memory, so a server restart loses it; SQLite or Postgres keeps it. The browser holds a view, not the session: your page sends the chat action with the message, the flow registered on the server runs it, and a reload or the next turn reads the session back from the store](./first-flow-homes.svg)
+<Figure svg={FirstFlowHomesDrawing} caption="Three places took part in your first flow" description={"Three places took part in your first flow. Your browser runs page.tsx: FlowProvider names the flow hello-chat and the user, useFlow picks this user's session or creates one, useSession holds its items, the state you exposed and whether it is streaming, and ItemsRenderer draws the items. The browser sees only the items marked for the client and the state you expose. Your server, in lib/flowstate.ts and the route, holds hello-chat registered with its chat action and runs the chat pipeline, the generator then the counter, streaming each item back as it is made. The store holds one session: its state, messageCount, and its items, your messages and replies, which history reads on the next turn. A page reload reads it back from the store. This example's store is in memory, so a server restart loses it; SQLite or Postgres keeps it. The browser holds a view, not the session: your page sends the chat action with the message, the flow registered on the server runs it, and a reload or the next turn reads the session back from the store"} />
 
 Three places took part. Your browser holds a session's items and any state you expose. The server runs the flow you registered. The store keeps the session, so a reload picks up where you were; this example's store is in memory, so restarting the server starts over.
 

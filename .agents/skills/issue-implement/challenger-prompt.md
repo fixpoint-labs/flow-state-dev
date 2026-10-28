@@ -2,7 +2,7 @@
 
 The challenger is the implementation loop's **meta-awareness**. Its one job: catch
 where the spec **misunderstood or didn't realize something that only becomes visible
-in the code** — and surface it — so the implementer neither force-follows a plan the
+in the code** — and surface it — so the implementer neither force-follows a direction the
 code is telling it is wrong nor silently deviates from a reviewed spec.
 
 ## When to run it (LLM-judged, risk-targeted)
@@ -12,8 +12,10 @@ which boundaries are *most likely to expose a spec blind spot* and challenges on
 those. Skip boundaries too basic to need it (mechanical edits, boilerplate, a step
 whose shape the spec nailed). Reach for the challenger when a boundary has any of:
 
-- The code is resisting the spec's plan — the shape the spec assumed doesn't fit
-  what the surrounding code actually does.
+- The code is resisting the spec's direction or a decision — the shape the spec
+  assumed doesn't fit what the surrounding code actually does.
+- The build would add debt the spec's debt table doesn't list — a second way to do
+  a job, a shim, a special case. That is a direction finding, never a silent addition.
 - A spec assumption is now checkable against real code for the first time (an API
   behaves differently than the spec implied; a type/contract doesn't line up).
 - The step sits on a load-bearing decision from the spec's `DECISIONS.md` and the
@@ -28,7 +30,7 @@ whose shape the spec nailed). Reach for the challenger when a boundary has any o
   of scope.
 - **Not** the quality/simplification/philosophy review (that's Step 6's panel).
 - **Not** a scope-expansion license. Finding a blind spot narrows or corrects the
-  plan; it does not invent new features.
+  approach; it does not invent new features.
 
 ## Dispatch
 
@@ -43,9 +45,10 @@ Agent tool (Plan) — keep on the default (Opus) judgment tier; the challenger i
     direction is sound unless the code contradicts it.
 
     ## The spec's relevant reasoning
-    [Paste the relevant decision cards from DECISIONS.md, the rules from BUSINESS-RULES.md,
-     and the PLAN.md surface / step this boundary implements. The challenger judges the
-     CODE against THIS.]
+    [Paste the relevant decision cards and *Decided, not asked* lines from DECISIONS.md,
+     the goal and the debt verdict from SPEC.md, and the step of the build plan this
+     boundary implements. A set retained in the older shape: the matching parts of every
+     document it carries. The challenger judges the CODE against THIS.]
 
     ## What's been built up to this boundary
     [Paste the relevant code/diff so far, and the interfaces the next step depends on.]
@@ -68,7 +71,7 @@ Agent tool (Plan) — keep on the default (Opus) judgment tier; the challenger i
     - If BLIND SPOT:
       - **What the spec assumed** vs **what the code shows** — concrete, with refs.
       - **Severity:** LOCAL (a step-level correction; direction intact) or
-        DIRECTION-CHANGING (a decision in DECISIONS.md no longer holds).
+        DIRECTION-CHANGING (a decision card, the goal, or the debt verdict no longer holds).
       - **Recommended correction** — the smallest change that resolves it, biased
         toward refining an existing primitive over adding surface (tenet 2/3).
     Do not pad. If the spec holds, say so in one line — a challenger that always

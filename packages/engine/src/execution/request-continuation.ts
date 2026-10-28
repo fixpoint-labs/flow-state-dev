@@ -13,9 +13,9 @@
  * starts a fresh run, `continueRequest` resumes an existing one.
  */
 import { requireAttributedOrg } from "../context/org-attribution";
-import type { ResumeContext } from "@flow-state-dev/core/types";
+import type { FlowInstance, ResumeContext } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
-import type { StoreRegistry } from "../stores/types";
+import type { RequestRecord, StoreRegistry } from "../stores/types";
 import type { RuntimeConfig } from "../runtime-config";
 import type { ExecutionResult } from "./types";
 import type { ResponseEmitter } from "../streaming/response-emitter";
@@ -24,6 +24,7 @@ import { runAction } from "./runAction";
 import { stripResumeMetadata } from "./resume-metadata";
 import { hasLiveRequestAttempt } from "./request-attempts";
 import { resolveRecordOwner } from "../context/record-owner";
+import { isTerminalRequestStreamEvent } from "../stores/subscribe-helpers";
 
 export interface ContinueRequestOptions {
   /** The suspended/interrupted request to continue, re-entered under this id. */
@@ -46,6 +47,14 @@ export interface ContinueRequestOptions {
    * emitter's owner controls forwarding). Default `false`.
    */
   includeTrace?: boolean;
+  /**
+   * Gates `start` once the live stream and the active-request entry exist.
+   * `start`'s signal also stops the run. Absent, the run starts at once.
+   */
+  startRun?: (
+    run: { flow: FlowInstance; record: RequestRecord; orgId: string },
+    start: (signal?: AbortSignal) => Promise<ExecutionResult>
+  ) => Promise<ExecutionResult>;
 }
 
 export interface ContinueRequestResult {
@@ -99,7 +108,13 @@ export async function continueRequest(
   // owns the prior id, so sourcing the seed here (not from caller options) is
   // correct.
   const priorEvents = await stores.request.getEvents(requestId);
-  const lastSeq = priorEvents.reduce((m, e) => Math.max(m, e.sequence_number), 0);
+  const priorLast = priorEvents.reduce((m, e) => Math.max(m, e.sequence_number), 0);
+  // A prior log with no terminal event (a run the stale sweep stamped
+  // interrupted) may have been replayed with a synthetic terminal at its last
+  // sequence number plus one (FIX-2077, `streaming.md`). Skip that slot, so
+  // this run's first event never lands on a number a reader already took. A
+  // gap is harmless: resume reads past a cursor with `>`.
+  const lastSeq = priorEvents.some(isTerminalRequestStreamEvent) ? priorLast : priorLast + 1;
 
   // Continue the per-request ITEM index too (FIX-811). The re-entry emitter
   // starts empty, so without a seed its first item (`suspension_resume`) and
@@ -129,14 +144,14 @@ export async function continueRequest(
 
   const responseEmitter = options.responseEmitter ?? liveStream?.emitter;
 
-  // Re-register the heartbeat under the SAME id so the stale-request sweeper
-  // doesn't reap the continued run. Mirrors the field set the external-dispatch
   // A resume is an addressed execution, so the stored record must name its
   // organization before anything runs under it (BR-14). Refused here, above the
   // activeRequests register, so a legacy row is not re-advertised as in-flight
   // on its way to being refused.
   const orgId = requireAttributedOrg(record, "resuming this request");
 
+  // Re-register the heartbeat under the SAME id so the stale-request sweeper
+  // doesn't reap the continued run. Mirrors the field set the external-dispatch
   // branch of `dispatch` uses, sourced from the loaded record.
   const now = Date.now();
   await stores.activeRequests.register({
@@ -155,34 +170,40 @@ export async function continueRequest(
     lastHeartbeatAt: now
   });
 
-  const finished = runAction({
-    flow,
-    actionName: record.actionName as keyof typeof flow.actions & string,
-    input: record.input,
-    userId: record.userId,
-    sessionId: record.sessionId,
-    orgId,
-    tenantId: record.tenantId,
-    requestId,
-    source: record.source,
-    signal: options.signal,
-    stores,
-    responseEmitter,
-    replayMode: true,
-    // Honoured only when runAction creates its own emitter; here a
-    // `responseEmitter` is always supplied (the LiveRequestStream, already
-    // seeded above, or a BYO emitter whose owner controls numbering), so this
-    // is belt-and-suspenders for the seam where runAction owns the emitter.
-    startSequenceNumber: lastSeq,
-    startItemIndex: nextItemIndex,
-    // The resolution travels as the typed option, never as metadata (FIX-1707).
-    // A record persisted before then may still carry `resumeContext` /
-    // `resumeOf` in its metadata; strip them here so they are not mistaken for
-    // a caller's forged keys (runAction would drop them anyway).
-    metadata: stripResumeMetadata(record.metadata),
-    resumeContext,
-    runtimeConfig
-  }) as Promise<ExecutionResult>;
+  const start = (stop?: AbortSignal): Promise<ExecutionResult> =>
+    runAction({
+      flow,
+      actionName: record.actionName as keyof typeof flow.actions & string,
+      input: record.input,
+      userId: record.userId,
+      sessionId: record.sessionId,
+      orgId,
+      tenantId: record.tenantId,
+      requestId,
+      source: record.source,
+      signal:
+        stop === undefined || options.signal === undefined
+          ? (options.signal ?? stop)
+          : AbortSignal.any([options.signal, stop]),
+      stores,
+      responseEmitter,
+      replayMode: true,
+      // Honoured only when runAction creates its own emitter; here a
+      // `responseEmitter` is always supplied (the LiveRequestStream, already
+      // seeded above, or a BYO emitter whose owner controls numbering), so this
+      // is belt-and-suspenders for the seam where runAction owns the emitter.
+      startSequenceNumber: lastSeq,
+      startItemIndex: nextItemIndex,
+      // The resolution travels as the typed option, never as metadata (FIX-1707).
+      // A record persisted before then may still carry `resumeContext` /
+      // `resumeOf` in its metadata; strip them here so they are not mistaken for
+      // a caller's forged keys (runAction would drop them anyway).
+      metadata: stripResumeMetadata(record.metadata),
+      resumeContext,
+      runtimeConfig
+    }) as Promise<ExecutionResult>;
+  const finished =
+    options.startRun === undefined ? start() : options.startRun({ flow, record, orgId }, start);
 
   // Close the live stream once the run settles so the SSE connection ends.
   const settled = finished.finally(() => {

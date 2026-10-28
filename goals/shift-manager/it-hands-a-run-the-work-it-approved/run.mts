@@ -173,7 +173,7 @@ async function approve(lab: Lab): Promise<string | undefined> {
 
 /**
  * The EM's turn, scripted for leg a: a line of the form `slug: goal` it files
- * for the coder with `addTask`, the goal as posted; any other line it answers
+ * for the coder with `createTask`, the goal as posted; any other line it answers
  * without filing. It stands in for the EM's judgment, which is not under test:
  * what is graded is what the run is handed once the task is filed.
  */
@@ -193,7 +193,7 @@ function scriptedEm(): ModelResolver {
         queue =
           line === null
             ? []
-            : [{ toolName: "dispatchTask", args: { goal: line[2]!.trim(), assignee: fixture.assignedSeat, input: { issue: line[1], phase: "implement" } } }];
+            : [{ toolName: "createTask", args: { goal: line[2]!.trim(), assignee: fixture.assignedSeat, input: { issue: line[1], phase: "implement" } } }];
       }
       const call = queue.shift();
       step += 1;
@@ -387,14 +387,14 @@ await runGoal(async (failures) => {
     });
     const { lab, sourceRepo } = await open(
       "handed-b",
-      ({ cwd, resume, onSession }) =>
+      (feeds) =>
         sequencer({
           name: "handed-recorded-harness",
           inputSchema: harnessRunInputSchema,
           outputSchema: harnessRunHandleSchema,
         })
           .tap(recordPrompt)
-          .step(claudeCodeHarness({ cwd, resume, onSession }) as never) as unknown as HarnessBlock,
+          .step(claudeCodeHarness(feeds) as never) as unknown as HarnessBlock,
       fixture.realRun,
       { runTimeoutMs: REAL_RUN_TIMEOUT_MS },
     );

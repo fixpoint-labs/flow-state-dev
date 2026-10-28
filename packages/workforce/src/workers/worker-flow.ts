@@ -21,6 +21,7 @@
  * ```
  */
 import type { WorkerInstallation } from "./installation";
+import type { WorkerRole } from "../worker-roles";
 
 const BUILDER = Symbol.for("flow-state-dev/workforce/worker-flow");
 
@@ -31,6 +32,11 @@ export interface WorkerFlowBuilder {
   readonly build: (installation: WorkerInstallation) => unknown;
   /** Whether the app keeps the flow for the workers its files define. */
   readonly standardOnly: boolean;
+  /**
+   * The roles the flow declares, beside every worker's door; `undefined` when
+   * the builder names none, so a built-in flow it builds keeps its own.
+   */
+  readonly roles: readonly WorkerRole[] | undefined;
 }
 
 /**
@@ -38,14 +44,24 @@ export interface WorkerFlowBuilder {
  *
  * @param build Builds the flow (`defineFlow({ ..., session: installation.session() })`).
  * @param options `standardOnly` keeps the flow for the workers the app's files define.
+ *   `roles` declares what it does beside taking a user's message on `respond`:
+ *   `contributor` (takes tasks on `work`, from `workerTaskEntry`) and
+ *   `manager` (runs its delegation board on `dispatch`, from
+ *   `defineSessionBoard`). The hire checks each role's entries, and refuses a
+ *   role's piece on a flow that doesn't declare it.
  * @returns An entry for `createWorkerInstallation({ workerFlows })`, and for
  *   the `workerFlows` map `fsdev gen` writes.
  */
 export function workerFlow(
   build: (installation: WorkerInstallation) => unknown,
-  options: { standardOnly?: boolean } = {}
+  options: { standardOnly?: boolean; roles?: readonly WorkerRole[] } = {}
 ): WorkerFlowBuilder {
-  return { [BUILDER]: true, build, standardOnly: options.standardOnly === true };
+  return {
+    [BUILDER]: true,
+    build,
+    standardOnly: options.standardOnly === true,
+    roles: options.roles === undefined ? undefined : [...options.roles]
+  };
 }
 
 /** Whether a `workerFlows` entry is a {@link workerFlow} builder. */

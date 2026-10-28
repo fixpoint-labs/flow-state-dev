@@ -1,7 +1,7 @@
 /**
  * The manager — a task row becomes a watched, settled coding run.
  *
- * One handed-off worker on a conductor board:
+ * One dispatched worker on a conductor board:
  *
  *   open the run row → build the prompt & take the checkout → run the harness
  *   → read the verdict → settle or fail
@@ -47,15 +47,31 @@ import type {
   HarnessBlock,
   HarnessResolver,
   HarnessSessionHook,
+  HarnessSteer,
+  HarnessSteerHook,
+  HarnessUsageHook,
 } from "@flow-state-dev/core/types";
-import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
+import { renderSteers, showTakenSteers, STEERED_WHILE_RUNNING } from "@flow-state-dev/orchestration";
+import { TaskEndsForGoodError, currentWorkerClaim, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import {
+  answerOf,
   getOrCreateTaskCollection,
   hasFrozenLedgerAssignee,
+  isRowHold,
+  MAX_STEERS,
+  readCommittedTask,
   resolveResourceCollection,
+  shownSteer,
+  steersTakenIn,
+  taskClaimTicketSchema,
   ticketForClaim,
+  untakenSteers,
   type DefinedTaskCollection,
+  type ShownSteer,
+  type Task,
+  type TaskClaimTicket,
   type TaskCollectionRef,
+  type TaskSteer,
   type TaskWorker,
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
@@ -78,6 +94,7 @@ import {
   heldSchema,
   placeStateSchema,
   openRunRow,
+  readConfirmedSession,
   readRunRow,
   runRecordCollection,
   runTopic,
@@ -96,6 +113,8 @@ import {
   withHoldRetries,
 } from "./held";
 import { askMarkerPath, readAskMarker } from "./ask";
+import { HeldOnQuestion, askStep } from "./ask-step";
+import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
 import { readRunCommits, type RunCommits } from "./commits";
 import {
   HARNESS_RUN_OWNER_KEY,
@@ -108,18 +127,6 @@ import {
 } from "./run-owner";
 
 export type { RequestIdentityContext } from "./run-owner";
-import { TURNS, takeTurns, turnCollection, turnsPromptSection } from "./turns";
-import { createMessageDoor, type MessageDoorAction, type MessageDoorOptions } from "./door";
-import {
-  INBOX,
-  askQuestion,
-  inboxCollection,
-  listQuestions,
-  questionFingerprint,
-  questionTopic,
-  withdrawEarlierQuestions,
-  withdrawQuestion,
-} from "./inbox";
 import {
   assertDerivedIdentity,
   harnessTaskId,
@@ -175,9 +182,9 @@ export interface PhaseRunContext {
 
 /** One answered question, as the prompt fold receives it. */
 export interface AnsweredQuestion {
-  /** What the run asked, in its own words. */
+  /** What was asked: the run's own words, or the question the task was filed with. */
   question: string;
-  /** What the operator said to do. */
+  /** What the person answered. */
   answer: string;
 }
 
@@ -209,14 +216,15 @@ export interface PromptRunContext extends PhaseRunContext {
     "goal" | "title" | "context" | "input" | "deps" | "priorWork"
   >;
   /**
-   * Every ANSWERED question for this issue-phase, oldest first — across all
-   * attempts, deliberately. That is the question history, not a freshness
-   * assumption, and folding it is idempotent, so a replay produces the same
-   * prompt and it is correct whether the coding session resumed or started
-   * cold.
+   * The task's answered questions, read from its row, oldest first: the
+   * questions it was filed with and the ones its runs asked, each paired with
+   * the person's answer. A question closed at a deadline with no answer is not
+   * here; its "no answer came" message reaches the run with the task's other
+   * messages. Read the same on a replay, and correct whether the coding
+   * session resumed or started cold.
    */
   answers: readonly AnsweredQuestion[];
-  /** Where THIS attempt must write a question if it has one. */
+  /** Where THIS run must write a question if it has one: a new path for every run. */
   askMarkerPath: string;
 }
 
@@ -360,7 +368,7 @@ export type HarnessJudgeInput = z.infer<typeof harnessJudgeInputSchema>;
 /**
  * What a {@link HarnessJudge}'s block answers. `done` closes the task;
  * `not-done` fails the attempt with `reason` as the next attempt's feedback;
- * `ask` parks the row with `reason` as its question. A `not-done` or `ask`
+ * `ask` holds the task on `reason` as a question. A `not-done` or `ask`
  * under the judge's floor counts as `done`.
  */
 export const harnessJudgeVerdictSchema = z.object({
@@ -413,9 +421,9 @@ export interface ManagerOptions {
    * The board's ledger declaration.
    *
    * Two things read it: the attempt fence, which resolves it as a plain
-   * resource collection to read the live claim, and the park arm, which
-   * resolves it as a `TaskCollectionRef` so `awaitReview` is the substrate's
-   * own transition rather than a status this lab writes by hand.
+   * resource collection to read the live claim, and the ask step, which
+   * resolves it as a `TaskCollectionRef` so a question holds the task through
+   * the board's own write.
    */
   boardCollection?: DefinedTaskCollection;
   /**
@@ -430,10 +438,9 @@ export interface ManagerOptions {
    *
    * A task whose claim names {@link boardCollectionId} with no partition is
    * that fixed board's row and runs exactly as it does without this option.
-   * On every other board, three things differ: a refused run fails the row for
-   * good instead of cancelling it, a question parks the row through the
-   * board's own question park instead of this manager's inbox, and the
-   * {@link judge} may read the answer.
+   * On every other board, two things differ: a refused run fails the row for
+   * good instead of cancelling it, and the {@link judge} may read the answer.
+   * A question holds its task the same way on both.
    *
    * Called on every fenced read and write, not once per run: a fence must read
    * the row fresh. Keep it cheap.
@@ -474,14 +481,14 @@ export interface ManagerOptions {
   /**
    * **The slot.** How this manager is pointed at a coding harness.
    *
-   * Called ONCE, at construction, with the three feeds the harness contract
-   * declares — and the harness package closes over all three. That is the whole
+   * Called ONCE, at construction, with the five feeds the harness contract
+   * declares — and the harness package closes over the ones it takes. That is the whole
    * coupling: this package imports no harness, names no vendor, and a second
    * harness needs no edit here.
    *
    * ```ts
-   * harness: ({ cwd, resume, onSession }) =>
-   *   claudeCodeAgent({ cwd, resume, onSession, detached: true, recordWork: true }),
+   * harness: ({ cwd, resume, onSession, onUsage, onSteerable }) =>
+   *   cursorAgent({ cwd, resume, onSession, onUsage, onSteerable }),
    * ```
    *
    * **What the host writes inside the factory is the host's**, deliberately.
@@ -499,6 +506,17 @@ export interface ManagerOptions {
    */
   harness: HarnessSlot;
   /**
+   * Stop a running step for a steer only when the harness's abort waits for
+   * its process to exit (FIX-2086). Otherwise two processes could share one
+   * checkout. Off: the steer waits for the step's own end. The row is polled
+   * ({@link STEER_POLL_MS}) while a step runs.
+   *
+   * A run that offers a live steer (`onSteerable`) takes the line into its
+   * turn instead, and is never stopped for one it took; the row is polled
+   * while it offers one, with or without this.
+   */
+  stopsOnAbort?: boolean;
+  /**
    * Capabilities installed on the blocks whose contexts a phase sees — the same
    * `uses` slot any other block takes.
    *
@@ -510,31 +528,21 @@ export interface ManagerOptions {
    * exactly as it does anywhere else.
    *
    * The reserved-accessor guard is unchanged in effect and re-aimed at this:
-   * a capability claiming `runs`, `inbox` or the board's own accessor is
-   * refused at construction with the same message.
+   * a capability claiming `runs`, the usage record or the board's own accessor
+   * is refused at construction with the same message.
    */
   uses?: UsesSlot;
-  /**
-   * Tell the coordinator session a question exists, so it learns without
-   * polling. Defaults to a no-op.
-   *
-   * **The inbox row is the durable carrier; this is only the announcement.**
-   * Relay (FIX-1230) is not in tree, so the seam's default is doing nothing at
-   * all — and what that costs while it is absent is that the operator finds
-   * the question by reading (`status`) rather than being told.
-   */
-  announce?: (event: QuestionAnnouncement) => void | Promise<void>;
   name?: string;
 }
 
 /**
- * The three feeds a manager hands its harness, in one call.
+ * The five feeds a manager hands its harness, in one call.
  *
- * All three are **LAB-152's, declared in `@flow-state-dev/core`** and imported
+ * All five are **declared in `@flow-state-dev/core`** and imported
  * here rather than restated: what this package picks is the slot that bundles
  * them, not the callbacks' names or their signatures.
  *
- * Why three and not two. A harness that throws on the manager's deadline
+ * Why `onSession` and not only `cwd` and `resume`. A harness that throws on the manager's deadline
  * returns no handle at all, and a status item is transient by contract — so
  * neither can carry the session id to the next attempt in exactly the case
  * resume exists for. Unless the harness hands the id to manager-owned durable
@@ -557,6 +565,25 @@ export interface HarnessFeeds {
    * id onto the run row. **The sole writer of that field.**
    */
   onSession: HarnessSessionHook;
+  /**
+   * Called by the harness with each subscription usage window its vendor
+   * reports during the run, writing it into the run owner's usage record
+   * (`harness-usage/**`, through `recordHarnessUsage`). A harness that reports
+   * no usage ignores it.
+   */
+  onUsage: HarnessUsageHook;
+  /**
+   * Called by a harness whose run can take a line into its turn in flight
+   * (FIX-2254), with the steer that does it, and with `null` once it can't.
+   * While a run offers one, the manager hands it each steer as it lands
+   * instead of stopping the step; a line the run refuses takes the step's
+   * end (or the stop, with `stopsOnAbort`). A harness that can't steer
+   * ignores it.
+   *
+   * Optional only so a host that wraps the manager's feeds in a slot of its
+   * own keeps compiling; the manager always hands one.
+   */
+  onSteerable?: HarnessSteerHook;
 }
 
 /**
@@ -566,18 +593,6 @@ export interface HarnessFeeds {
  * alias, and this slot is what makes that alias earn its place.
  */
 export type HarnessSlot = (feeds: HarnessFeeds) => HarnessBlock;
-
-/**
- * What the announcement carries: **the row's key and nothing else.**
- *
- * The key already names the issue, the phase and the attempt, so a wider
- * payload would be a second copy of facts the durable row holds — and the row,
- * not this, is what an answer is written against.
- */
-export interface QuestionAnnouncement {
-  /** The bare inbox topic — the name `answer` takes. */
-  question: string;
-}
 
 /** The typed payload a conductor task carries. Not model-writable — see `./workspace`. */
 export const harnessTaskInputSchema = z.object({
@@ -646,7 +661,7 @@ const decisionSchema = harnessJudgeInputSchema.nullable();
 /**
  * The manager's per-run values.
  *
- * Sequencer state, not session state: `defineFlow` refuses a handed-off worker
+ * Sequencer state, not session state: `defineFlow` refuses a dispatched worker
  * that declares session state, because the entry runs in a child session it
  * may share with other rows, where two blocks choosing one key with different
  * shapes corrupt each other silently.
@@ -665,6 +680,17 @@ const managerStateSchema = z.object({
   topic: z.string().nullable().default(null),
   taskId: z.string().nullable().default(null),
   attempt: z.number().nullable().default(null),
+  /**
+   * The claim this run holds, as the claim gate (or the board's drain) stamped
+   * it when it claimed the turn: the task, its attempt, and its turn
+   * generation (FIX-2133 D3). Every write this run makes to the task presents
+   * it, never a ticket minted from the row as it stands later. Two turns can
+   * share an attempt (an answered question owes one more), so a write is this
+   * run's only while the row is still on the ticket's turn.
+   */
+  ticket: taskClaimTicketSchema.nullable().default(null),
+  /** Which run of the manager's on this issue-phase this is: the ask marker's second number (`./ask`). */
+  run: z.number().nullable().default(null),
   workspacePath: z.string().nullable().default(null),
   branch: z.string().nullable().default(null),
   /**
@@ -675,22 +701,18 @@ const managerStateSchema = z.object({
    * reaches no phase and no prompt.
    */
   previousSessionId: z.string().nullable().default(null),
-  /**
-   * The question the run last parked its row on, read off its run record
-   * when the attempt opened. Only a board read from the claim keeps it there;
-   * it is what the person's answer is paired with in the prompt.
-   */
-  askedQuestion: z.string().nullable().default(null),
   /** The task's goal, as handed to this attempt: what a judge reads the answer against. */
   goal: z.string().nullable().default(null),
+  /** How many more harness steps this request ran for a steer (FIX-2086). Each names that read. */
+  steerSteps: z.number().nullable().default(null),
   /**
    * What `decide` decided, for the step that settles it once a judge (if
-   * any) has read the run: the output to return, and whether the row parked
-   * (nothing left to settle) or passed its check (to complete, or not, on the
-   * judge's verdict).
+   * any) has read the run: the output to return, and whether the task is held
+   * on the run's question (`asked`: nothing left to settle) or passed its
+   * check (to complete, or not, on the judge's verdict).
    */
   decided: z
-    .object({ settle: z.enum(["parked", "complete"]), output: managerOutputSchema })
+    .object({ settle: z.enum(["asked", "complete"]), output: managerOutputSchema })
     .nullable()
     .default(null),
   /**
@@ -716,6 +738,7 @@ const managerStateSchema = z.object({
    */
   remote: z.string().nullable().default(null),
   baseRef: z.string().nullable().default(null),
+  baseCommit: z.string().nullable().default(null),
   /** The run was first provisioned as kept files alone, read off its run record with them. */
   filesOnly: z.boolean().nullable().default(null),
   /**
@@ -750,37 +773,13 @@ export class HarnessAttemptFailed extends Error {
 
 /**
  * The run's workspace refused it: its source answered `refused`, or the host
- * would not provision what the source named.
- *
- * Not a failed attempt. The same source and host give the same answer next
- * time, so a retry would spend every attempt on one refusal. The manager
- * settles the row with this message as its reason, under the attempt's own
- * claim, and the board's recorder then has nothing to re-queue: `cancelled`
- * on the fixed board, `errored` on a board read from the claim, where the
- * conversation that filed the row reports it.
+ * would not provision what the source named. The same answer next time, so
+ * the recorder ends the row on this attempt instead of retrying.
  */
-export class HarnessRunRefused extends Error {
-  constructor(message: string) {
-    super(message);
+export class HarnessRunRefused extends TaskEndsForGoodError {
+  constructor(message: string, options: { taskId: string; ending: "errored" | "cancelled" }) {
+    super(message, options);
     this.name = "HarnessRunRefused";
-  }
-}
-
-/**
- * The run's held work could not be used, so the row was parked for the run's
- * owner before any harness ran (BR-19, BR-29).
- *
- * Not a failed attempt: the row already waits on a person, and the board's
- * recorders leave a parked row alone. Thrown only to stop the chain before
- * the harness; the record's outcome stays `running`, as on any park.
- */
-export class HarnessRunParked extends Error {
-  constructor(readonly field: string) {
-    super(
-      `[harness-manager] the run's held work does not match its record (${field}); ` +
-        `parked for the run's owner before the harness ran.`,
-    );
-    this.name = "HarnessRunParked";
   }
 }
 
@@ -883,6 +882,7 @@ function taskPayload(
       `[harness-manager] task ${input.taskId} names only part of a feature payload: ` +
         `${parsed.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}. ` +
         `Feature work names both an issue and a phase.`,
+      { taskId: input.taskId, ending: "errored" },
     );
   }
   return undefined;
@@ -908,6 +908,7 @@ function identityFrom(
   return {
     taskId: state.taskId,
     attempt: state.attempt,
+    ...(state.ticket != null ? { turn: state.ticket.turn } : {}),
     topic: state.topic,
     boardCollectionId,
   };
@@ -933,6 +934,15 @@ function harnessCtxState(ctx: {
   sequencer?: { state?: unknown } | undefined;
 }): ManagerState | undefined {
   return ctx.sequencer?.state as ManagerState | undefined;
+}
+
+/** This run's refusal of the row it holds. Claim board: `errored` (a cancel there reaches nobody). Fixed board: `cancelled`. */
+function runRefused(ctx: { sequencer?: { state?: unknown } | undefined }, message: string): HarnessRunRefused {
+  const state = harnessCtxState(ctx);
+  return new HarnessRunRefused(message, {
+    taskId: state?.taskId ?? "",
+    ending: state?.claim != null ? "errored" : "cancelled",
+  });
 }
 
 /** Read the manager's state, or throw rather than derive a wrong directory. */
@@ -1199,14 +1209,9 @@ function createManagerCapability(options: {
     name: `harness-manager:${options.name}`,
     resources: {
       [RUNS]: runRecordCollection,
-      // Where a question is posted, withdrawn, and read back as an answer. The
-      // `answer` and `status` actions declare the same definition object, so the
-      // question a child session writes is the one the coordinator session
-      // reads — one registration, not two storage slots that look alike.
-      [INBOX]: inboxCollection,
-      // Where a person's message to a run is kept for the attempt that acts on
-      // it (FIX-1690). The door writes it; the next attempt's prompt takes it.
-      [TURNS]: turnCollection,
+      // Where `onUsage` records the subscription windows a run reports, in the
+      // run owner's row. The usage query declares the same definition object.
+      [HARNESS_USAGE]: harnessUsageCollection,
       // Declared so the fence can read the LIVE claim off the board row. The
       // board declares the same definition object, so this is one registration
       // rather than a second storage slot that looks like the first. A board
@@ -1219,38 +1224,12 @@ function createManagerCapability(options: {
 }
 
 /**
- * The manager: a task worker, plus the door a coding kind declares so a person
- * can talk to its runs.
- */
-export type HarnessManager = TaskWorker & {
-  /**
-   * The public action that takes a person's message into a run's session
-   * (FIX-1690). Declare it on the kind whose rows this manager runs, with an
-   * `internal` entry that runs their board's drain. After a stop the door
-   * dispatches that entry into the session that claimed the row, so the next
-   * attempt runs in the same session:
-   *
-   * ```ts
-   * internal: { actions: { resume: { block: board.drain } } },
-   * actions: { message: manager.messageDoor({ drain: "resume" }) }
-   * ```
-   */
-  messageDoor(options: MessageDoorOptions): MessageDoorAction;
-};
-
-/**
- * Build the manager: one handed-off worker for one phase.
+ * Build the manager: one dispatched worker for one phase.
  *
- * Only a manager with a fixed board has a message door: the door reads that
- * board's rows. A manager given only {@link ManagerOptions.ledgers} is a plain
- * task worker, and its host builds the door with `harnessMessageDoor`, naming
- * the boards a session's run may be on.
+ * A steer on the task is in the attempt's first prompt, and one that arrives
+ * while a step runs is the next step of the same request (FIX-2086).
  */
-export function harnessManager(
-  options: ManagerOptions & { boardCollectionId: string; boardCollection: DefinedTaskCollection },
-): HarnessManager;
-export function harnessManager(options: ManagerOptions): TaskWorker;
-export function harnessManager(options: ManagerOptions): HarnessManager | TaskWorker {
+export function harnessManager(options: ManagerOptions): TaskWorker {
   const {
     boardCollectionId,
     boardCollection,
@@ -1262,16 +1241,25 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
     runTimeoutMs,
     harness,
     uses: hostUses,
-    announce = () => {},
     name = "harness-manager",
   } = options;
+
+  // **A removed option, refused by name** (BP-030). A host that still passes
+  // it expects to be told of each question; dropping it silently would leave
+  // that host waiting on a call that never comes.
+  if ("announce" in (options as object)) {
+    throw new Error(
+      "[harness-manager] `announce` was removed: a run's question now holds its task on the board, " +
+        "where the Inbox lists it. Read held tasks from the board (`openRowHolds`) instead of being told.",
+    );
+  }
 
   // **A board to read, named one way or the other.** A fixed board needs both
   // halves; without one, the resolver is the only way to a board.
   if ((boardCollectionId === undefined) !== (boardCollection === undefined)) {
     throw new Error(
       "[harness-manager] give `boardCollectionId` and `boardCollection` together: the fence " +
-        "reads the board by the id, and the park arm resolves it from the declaration.",
+        "reads the board by the id, and the ask step resolves it from the declaration.",
     );
   }
   if (boardCollectionId === undefined && ledgers === undefined) {
@@ -1349,23 +1337,6 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
     ...(options.ownership !== undefined ? { ownership: options.ownership } : {}),
   });
 
-  // **Two accessors are the manager's and a phase may not claim them.**
-  // Refused rather than silently overridden, and rather than merged last.
-  //
-  // A phase whose `readable` carried `runs` would send this manager's
-  // bookkeeping into a collection `status` never reads — the row would be
-  // written, and every read of it would answer nothing. One carrying the board's
-  // accessor is worse: the live-claim fence would consult unrelated rows,
-  // quietly defeating the whole obligation-A mechanism while every test that
-  // does not stage two attempts still passes.
-  //
-  // Merging the manager's entries LAST would also prevent both, and it is the
-  // wrong fix: the phase author's declaration would simply not work, with
-  // nothing anywhere saying why. This fails at construction, naming the key.
-  // `INBOX` joins the two for the same reason and with a third harm of its own:
-  // a phase re-declaring it would send the ask into a collection `answer` and
-  // `status` never read, so a run would park on a question no operator could
-  // ever see and no answer could ever reach.
   // **Three accessors are the manager's and a capability may not claim them.**
   //
   // A capability whose resources carried `runs` would send this manager's
@@ -1373,14 +1344,13 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
   // would be written, and every read of it would answer nothing. One carrying
   // the board's accessor is worse: the live-claim fence would consult unrelated
   // rows, quietly defeating the whole attempt-fence mechanism while every test
-  // that does not stage two attempts still passes. `inbox` has a third harm of
-  // its own: a run would park on a question no operator could see and no answer
-  // could ever reach.
+  // that does not stage two attempts still passes. The usage record is the
+  // third: a run's usage windows would land where the usage query never reads.
   //
   // Merging the manager's entries LAST would prevent all three, and it is the
   // wrong fix: the host's declaration would simply not work, with nothing
   // anywhere saying why. This fails loudly, naming the key.
-  const RESERVED_ACCESSORS = new Set([RUNS, INBOX, TURNS, ...(boardCollectionId !== undefined ? [boardCollectionId] : [])]);
+  const RESERVED_ACCESSORS = new Set([RUNS, HARNESS_USAGE, ...(boardCollectionId !== undefined ? [boardCollectionId] : [])]);
 
   /** Refuse a capability set that claims one of the manager's accessors. */
   const assertClaimsNothingReserved = (
@@ -1400,8 +1370,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
     throw new Error(
       `[harness-manager] a capability on \`uses\` declares collection(s) ` +
         `${claimed.map((k) => `"${k}"`).join(", ")}, which the manager owns (${when}) — ` +
-        `"${RUNS}" is the run record, "${INBOX}" is the question inbox, "${TURNS}" holds ` +
-        `a person's messages to a run` +
+        `"${RUNS}" is the run record, "${HARNESS_USAGE}" is the usage record` +
         (boardCollectionId !== undefined
           ? `, and "${boardCollectionId}" is the board ledger the attempt fence reads`
           : "") +
@@ -1416,7 +1385,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
   //
   // A dynamic `uses` entry is a function the framework calls per invocation, so
   // its capabilities cannot be inspected at construction. Passing it through
-  // unchecked would let a host override `runs`, `inbox` or the board ledger at
+  // unchecked would let a host override `runs`, the usage record or the board ledger at
   // run time through a documented framework feature — a guard a host bypasses
   // by using the framework normally is not a guard.
   //
@@ -1450,10 +1419,10 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
    * The board's rows as the SUBSTRATE sees them, not as a resource collection.
    *
    * The fence reads the ledger as a plain collection because all it needs is
-   * two fields off the persisted row. The park arm needs a transition, and a
-   * transition has to be the substrate's: status legality, the recorders'
-   * parked-row refusal and the lease's governance all hang off `awaitReview`
-   * rather than off the string it writes.
+   * two fields off the persisted row. The ask step needs a write, and a write
+   * has to be the substrate's: the claim fence, the hold, and the lease it
+   * drops all hang off the board's own ask rather than off fields this
+   * manager writes by hand.
    *
    * Composed from the two exported pieces rather than reached for through
    * `board.capability`, because the capability does not exist yet when this
@@ -1470,8 +1439,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
     if (collection === undefined) {
       throw new Error(
         `[harness-manager] the board ledger "${boardCollectionId}" is not registered on this ` +
-          `worker, so a run cannot be parked on a person — the question it just posted ` +
-          `would sit open with the row still reading as running.`,
+          `worker, so its rows cannot be read or held on a question.`,
       );
     }
     return getOrCreateTaskCollection({
@@ -1495,6 +1463,42 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
     if (resolved === undefined) return undefined;
     if (resolved.collectionId !== claim.collectionId || resolved.partition !== partition) return undefined;
     return resolved;
+  };
+
+  /** The run's row as stored now: a steer is another request's write (FIX-2086). */
+  const committedRow = async (ctx: BlockContext): Promise<Task | undefined> => {
+    const taskId = managerState(harnessCtxState(ctx)).taskId;
+    if (taskId === null) return undefined;
+    const board = await runBoard(ctx);
+    return readCommittedTask(board, taskId);
+  };
+
+  /** Take this attempt's untaken steers in `takenIn`, fenced to the claim, then return what `select` reads. */
+  const takeSteersFor = async (
+    ctx: BlockContext,
+    takenIn: string,
+    select: (row: Task, takenIn: string) => NonNullable<Task["steers"]>,
+  ): Promise<{ steers: ShownSteer[]; taken: TaskSteer[] } | null> => {
+    const board = await runBoard(ctx);
+    const row = await committedRow(ctx);
+    if (row === undefined || row.status !== "in_progress") return { steers: [], taken: [] };
+    let taken: readonly string[] = [];
+    if (board.takeSteers !== undefined && untakenSteers(row).length > 0) {
+      // The claim this run holds, never one minted from the row now: a later
+      // turn of the attempt holds another ticket, and its steers are its own.
+      const claim = harnessCtxState(ctx)?.ticket ?? null;
+      if (claim === null) return null;
+      const outcome = await board.takeSteers(row.id, { claim, takenIn });
+      // Declined: the attempt no longer holds the row (claimed again, finished).
+      if (outcome.outcome === "declined") return null;
+      taken = outcome.taken ?? [];
+    }
+    const now = board.get(row.id) ?? row;
+    return {
+      steers: select(now, takenIn).map((steer) => shownSteer(now, steer)),
+      // What this take wrote, as the write says: a re-run of the read took none.
+      taken: (now.steers ?? []).filter((steer) => taken.includes(steer.id)),
+    };
   };
 
   /** The run's board as the substrate sees it: the one its claim names, or the fixed board. */
@@ -1526,7 +1530,9 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
   ): AttemptIdentity => {
     const claim = state?.claim ?? null;
     const base = identityFrom(state, claim?.collectionId ?? boardCollectionId!);
-    if (claim === null) return base;
+    // The task this run's turn belongs to: a task filed again under the same id is another one.
+    const incarnationId = state?.ticket?.incarnationId;
+    if (claim === null) return incarnationId === undefined ? base : { ...base, incarnationId };
     return {
       ...base,
       readBoardRow: async () => (await claimLedger(ctx as BlockContext, claim))?.get(base.taskId),
@@ -1603,7 +1609,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
   /**
    * Hold the run's repository work, where the host holds it: write the pack,
    * then switch the record to it, then drop the pack the record named before
-   * (BR-6). Beside every save point: turn end, park, failure.
+   * (BR-6). Beside every save point: turn end, a question, failure.
    *
    * Answers `false` when the hold failed, after recording why and keeping the
    * last good hold on the record (BR-7); the caller decides whether that fails
@@ -1675,7 +1681,8 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
    * rebuild never reads as the run's live place.
    *
    * A refusal settles the row as before. Held work that disagrees with the
-   * record parks the row for the run's owner, before any harness runs.
+   * record holds the task on a question for the run's owner, before any
+   * harness runs.
    */
   const provisionPlace = async (
     ctx: BlockContext,
@@ -1701,51 +1708,41 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
         ...(recorded !== undefined ? { recorded } : {}),
         ...(holding ? { progress: (reported: "lost" | "restoring") => recordPlace(ctx, before!, reported) } : {}),
       });
+      // A checkout left on another branch with uncommitted changes is the
+      // run's to sort out; running on it would commit to the wrong branch.
+      if (place.repo?.offBranch !== undefined) {
+        throw new WorkspaceRefusedError("checkout-moved", place.repo.offBranch.message);
+      }
       if (holding) await recordPlace(ctx, host.hostId(), "ready");
       return place;
     } catch (cause) {
       if (cause instanceof WorkspaceRefusedError) {
         if (holding) await recordPlace(ctx, before!, "refused").catch(() => undefined);
-        throw new HarnessRunRefused(refusedMessage("host", cause));
+        throw runRefused(ctx, refusedMessage("host", cause));
       }
-      if (cause instanceof HeldWorkMismatchError) await parkOnMismatch(ctx, cause, before);
+      if (cause instanceof HeldWorkMismatchError) await holdOnMismatch(ctx, cause, before);
       throw cause;
     }
   };
 
   /**
-   * Park the row on a question, on a board read from the claim: the board's
-   * own question park, under this attempt's claim, as a conversation's board
-   * parks any task's question. The conversation tells the person, and their
-   * answer re-queues the row with it (`input.answer` on the next attempt).
-   * The question is kept on the run record first, so the next attempt can
-   * pair the answer with it. No inbox row and no announcement: those are the
-   * fixed board's route.
+   * Hold the run's task on `question`, through the ask step (`./ask-step`):
+   * the manager's one way to stop for a person. Stops the run when its turn
+   * no longer holds the row.
    */
-  const parkOnBoardQuestion = async (ctx: BlockContext, identity: AttemptIdentity, question: string): Promise<void> => {
-    await fenced(writeRunRow(ctx, identity, { question }), "the run's question was recorded");
-    const board = await runBoard(ctx);
-    const row = board.get(identity.taskId);
-    const parked =
-      row === undefined
-        ? undefined
-        : await board.awaitReview(identity.taskId, question, {
-            claim: { ...ticketForClaim(board.collectionId, row, board.partition), attempt: identity.attempt },
-            fromRunning: true,
-            onQuestion: true,
-          });
-    if (parked == null || parked.outcome === "declined") {
-      throw new HarnessAttemptSuperseded("the run parked on its question");
+  const holdOnQuestion = async (ctx: BlockContext, question: string): Promise<void> => {
+    if ((await askStep(ctx, await runBoard(ctx), question)) === "superseded") {
+      throw new HarnessAttemptSuperseded("the run's question held its task");
     }
   };
 
   /**
-   * Park the row for the run's owner: its held work cannot be used here. The
-   * place goes `lost`, the pack is marked so nothing ever drops it, the owner
-   * is asked through the run's own inbox, and the operator's log names the run
-   * and the field, never the work's contents (BR-19, BR-29, D2).
+   * Ask the run's owner: its held work cannot be used here. The place goes
+   * `lost`, the pack is marked so nothing ever drops it, the task is held on
+   * the owner's question through the ask step, and the operator's log names
+   * the run and the field, never the work's contents (BR-19, BR-29, D2).
    */
-  const parkOnMismatch = async (
+  const holdOnMismatch = async (
     ctx: BlockContext,
     mismatch: HeldWorkMismatchError,
     placeHost: string | null,
@@ -1762,21 +1759,12 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
     );
     await ctx.sequencer!.patchState({ held });
 
-    const question = mismatchQuestion(mismatch.field, state.held?.attempt ?? null);
-    if (state.claim !== null) {
-      await parkOnBoardQuestion(ctx, identity, question);
-    } else {
-      const topicKey = questionTopic(state.issue!, state.phase!, identity.attempt, questionFingerprint(question));
-      await askQuestion(ctx, topicKey, { question, askedBy: identity.taskId, askedAt: Date.now() });
-      const board = await boardTasks(ctx);
-      await board.awaitReview(identity.taskId, question);
-      await announce({ question: topicKey });
-    }
+    await holdOnQuestion(ctx, mismatchQuestion(mismatch.field, state.held?.attempt ?? null));
     console.warn(
       `[harness-manager] run ${identity.topic} (task ${identity.taskId}, attempt ${identity.attempt}): ` +
-        `held work does not match its record (${mismatch.field}); parked for the run's owner.`,
+        `held work does not match its record (${mismatch.field}); held on a question for the run's owner.`,
     );
-    throw new HarnessRunParked(mismatch.field);
+    throw new HeldOnQuestion(mismatch.field);
   };
 
   /**
@@ -1804,14 +1792,21 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
       // of the claim's incarnation when it names one; the incarnation found is
       // kept, so every later write is fenced against it too.
       let claim = claimFrom(input);
+      const board = claim === null ? await boardTasks(ctx) : await claimLedger(ctx, claim);
+      if (board === undefined) {
+        throw new Error(
+          `[harness-manager] task ${input.taskId} was claimed on ledger "${claim!.collectionId}", ` +
+            `which this manager's resolver does not answer for at that partition.`,
+        );
+      }
+      // **The claim this run holds: its attempt AND its turn** (FIX-2133 D3).
+      // An answered question owes its task one more turn on the same attempt,
+      // so the attempt alone no longer tells this run from the next. The
+      // ticket is the one the claim gate stamped when it claimed this turn,
+      // and every later write presents it: the opening write below is fenced
+      // on its turn, so a turn that is already over stops there.
+      const ticket = heldTicket(ctx, board, input);
       if (claim !== null) {
-        const board = await claimLedger(ctx, claim);
-        if (board === undefined) {
-          throw new Error(
-            `[harness-manager] task ${input.taskId} was claimed on ledger "${claim.collectionId}", ` +
-              `which this manager's resolver does not answer for at that partition.`,
-          );
-        }
         const row = board.get(input.taskId);
         const sameIncarnation =
           claim.incarnationId === null || row?.incarnationId === undefined || row.incarnationId === claim.incarnationId;
@@ -1824,7 +1819,15 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
       const epic = claim === null ? boardCollectionId! : runBoardSegment(claim.collectionId, claim.partition ?? undefined);
       // On state before anything can refuse, so a refusal settles under this
       // attempt's own claim.
-      await ctx.sequencer!.patchState({ claim, epic, taskId: input.taskId, attempt: input.attempts, goal: input.goal, decided: null });
+      await ctx.sequencer!.patchState({
+        claim,
+        epic,
+        taskId: input.taskId,
+        attempt: input.attempts,
+        ticket,
+        goal: input.goal,
+        decided: null,
+      });
 
       // A row naming no issue and phase (a task a conversation filed) runs as
       // this manager's phase, with its task id standing in for the issue. So
@@ -1916,6 +1919,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
       const pinned = {
         remote: recorded?.remote ?? null,
         baseRef: recorded?.baseRef ?? null,
+        baseCommit: recorded?.baseCommit ?? null,
         filesOnly: recorded?.filesOnly ?? null,
       };
       await ctx.sequencer!.patchState({
@@ -1925,7 +1929,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
         held: recorded?.held ?? null,
       });
       const answer = pinnedAnswer(await host.source(ctx), pinned);
-      if (answer.kind === "refused") throw new HarnessRunRefused(refusedMessage("source", answer));
+      if (answer.kind === "refused") throw runRefused(ctx, refusedMessage("source", answer));
       const workspacePath = host.locate(answer, { place: placeFor(location) }).cwd;
       await ctx.sequencer!.patchState({ workspacePath });
 
@@ -1947,7 +1951,16 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
       // sent one the vendor could not honour — so this attempt starts fresh
       // rather than asking for a dead id again.
       const previousSessionId = recorded?.sessionId ?? null;
-      await ctx.sequencer!.patchState({ previousSessionId, askedQuestion: recorded?.question ?? null });
+      // **Which run this is**, counted on the record and never reset: the
+      // second number of the ask marker, so this run is never pointed at a
+      // question an earlier turn already asked (`./ask`). A replay of this
+      // run counts it once: the same request, on the same turn of the same
+      // task. An inline drain runs the turn an answer owes in the request it
+      // ran the asking turn in, so the request alone would reuse that run's
+      // number, and its marker.
+      const runKey = `${ctx.request.identity.id}:${ticket.turn}:${ticket.incarnationId ?? ""}`;
+      const run = recorded?.runKey === runKey && recorded.runs != null ? recorded.runs : (recorded?.runs ?? 0) + 1;
+      await ctx.sequencer!.patchState({ previousSessionId, run });
 
       // **Refusal stops the attempt.** The row can be reclaimed between the
       // runner's start gate and this call, and a discarded refusal let the
@@ -1958,32 +1971,10 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
         openRunRow(
           ctx,
           identityOf(ctx, harnessCtxState(ctx)),
-          { workspacePath, branch, childSessionId: ctx.session.identity.id },
+          { workspacePath, branch, childSessionId: ctx.session.identity.id, run, runKey },
         ),
         "the run row was opened",
       );
-
-      // **Reconcile before this attempt runs.** The create-only write commits
-      // before the outcome arms are selected, so a process that dies in between
-      // leaves the previous attempt's row `open` with no arm having decided it.
-      // Left alone, that orphan satisfies the answer's proceed guard the moment
-      // THIS attempt parks — and answering it re-queues the run while this
-      // attempt's real question is still open.
-      //
-      // A question from an attempt that is over is moot, which is what arm 3
-      // already says; the gap is only that a crash skips it. Arm 1 is NOT a
-      // second witness to that — it parks, and parking is the one outcome that
-      // deliberately leaves the question open, because the attempt is not over.
-      // After this there is at most ONE `open` row per issue-phase, which is
-      // what both the proceed guard and recovery's nothing-open condition
-      // already assumed.
-      //
-      // After the fenced open, not before: a superseded attempt stops there and
-      // must not reach in and withdraw its replacement's question.
-      //
-      // The inbox serves the fixed board only: a board read from the
-      // claim parks its questions on the row itself.
-      if (claim === null) await withdrawEarlierQuestions(ctx, issue, phaseName, input.attempts);
     },
   });
 
@@ -1994,6 +1985,29 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
    * step can leak a held lock — the harness step's `onSettled` is what releases
    * it, and it only fires once the step has been dispatched.
    */
+  /**
+   * Provision the run's place, the one its record and prompt name, under the
+   * lease the caller holds: asked of the source on this context, refused when
+   * the source moved the run since it opened.
+   */
+  const provisionRunPlace = async (ctx: BlockContext): Promise<WorkspacePlace> => {
+    const state = managerState(harnessCtxState(ctx));
+    const location = locationFor(
+      { principal: runPrincipal(ctx), epic: state.epic!, issue: state.issue!, phase: state.phase! },
+      state.branch,
+    );
+    const answer = pinnedAnswer(await host.source(ctx), state);
+    if (answer.kind === "refused") throw runRefused(ctx, refusedMessage("source", answer));
+    if (host.locate(answer, { place: placeFor(location) }).cwd !== state.workspacePath) {
+      throw new HarnessAttemptFailed(
+        `[harness-manager] the run's workspace source changed between opening the run and ` +
+          `provisioning it, so the place its prompt names is not where it would work. ` +
+          `Stopping before the agent runs.`,
+      );
+    }
+    return provisionPlace(ctx, answer, location);
+  };
+
   const prepare = handler({
     name: "harness-manager-prepare",
     inputSchema: taskWorkerInputSchema,
@@ -2013,29 +2027,17 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
       const state = managerState(harnessCtxState(ctx));
 
       // **Two channels, two meanings, and they never carry each other.** The
-      // board's `feedback` says why the LAST ATTEMPT FAILED; these say what an
-      // operator answered. Handing the answer back through `feedback` is the
+      // board's `feedback` says why the LAST ATTEMPT FAILED; `answers` say what
+      // a person answered. Handing an answer back through `feedback` is the
       // cheapest wiring and the one that already means something else — a run
       // would be told *"your last attempt stopped because: take the second
       // option."*
       //
-      // Read here rather than inside the builder so the ORDER is the manager's:
-      // a fold whose order depends on where a phase happens to sort is a prompt
-      // that changes between replays.
-      //
-      // On a board read from the claim the answer comes back on the row: the
-      // attempt it re-queued is handed it as `answer` (and, by the board's
-      // packing, as `feedback` too, which is dropped here for the reason
-      // above). It is paired with the question the run record kept.
-      const boardAnswer = state.claim !== null ? input.answer : undefined;
-      const answers =
-        state.claim !== null
-          ? boardAnswer === undefined
-            ? []
-            : [{ question: state.askedQuestion ?? "(the question your last attempt asked)", answer: boardAnswer }]
-          : (await listQuestions(ctx, state.issue!, state.phase!))
-              .filter((row) => row.state.status === "answered" && row.state.answer !== null)
-              .map((row) => ({ question: row.state.question, answer: row.state.answer! }));
+      // Read from the task's row, where each answer is kept beside its
+      // question (FIX-2133), and read here rather than inside the builder so
+      // the ORDER is the manager's: a fold whose order depends on where a phase
+      // happens to sort is a prompt that changes between replays.
+      const answers = answeredQuestions(await committedRow(ctx));
 
       const run: PromptRunContext = {
         epic: state.epic!,
@@ -2044,7 +2046,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
         attempt: input.attempts,
         workspacePath: state.workspacePath!,
         branch: state.branch!,
-        ...(input.feedback !== undefined && boardAnswer === undefined ? { feedback: input.feedback } : {}),
+        ...(input.feedback !== undefined ? { feedback: input.feedback } : {}),
         ctx,
         task: {
           goal: input.goal,
@@ -2058,7 +2060,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
         // The prompt is the only place this path is named, which is what makes
         // the ask FORCED rather than spontaneous — the harness offers no seam
         // for a question to leave through (see `./ask`).
-        askMarkerPath: askMarkerPath(state.workspacePath!, input.attempts),
+        askMarkerPath: askMarkerPath(state.workspacePath!, input.attempts, state.run!),
       };
 
       // **Bounded for the same reason the completion check is.** This await
@@ -2117,20 +2119,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
       // attempt stops rather than running the agent somewhere else.
       // The branch the run opened on decides the derivation, so this step
       // derives the place the open step did.
-      const location = locationFor(
-        { principal: runPrincipal(ctx), epic: state.epic!, issue: state.issue!, phase: state.phase! },
-        state.branch,
-      );
-      const answer = pinnedAnswer(await host.source(ctx), state);
-      if (answer.kind === "refused") throw new HarnessRunRefused(refusedMessage("source", answer));
-      if (host.locate(answer, { place: placeFor(location) }).cwd !== state.workspacePath) {
-        throw new HarnessAttemptFailed(
-          `[harness-manager] the run's workspace source changed between opening the run and ` +
-            `provisioning it, so the place its prompt names is not where it would work. ` +
-            `Stopping before the agent runs.`,
-        );
-      }
-      const place = await provisionPlace(ctx, answer, location);
+      const place = await provisionRunPlace(ctx);
       await ctx.sequencer!.patchState({ place });
       // A checkout rebuilt or started over on another machine has no vendor
       // conversation to continue: that lives on the machine it ran on.
@@ -2146,7 +2135,11 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
       if (state.remote == null && state.filesOnly !== true) {
         const pin =
           place.repo !== undefined
-            ? { remote: place.repo.remote, baseRef: place.repo.baseRef ?? null }
+            ? {
+                remote: place.repo.remote,
+                baseRef: place.repo.baseRef ?? null,
+                baseCommit: place.repo.baseCommit ?? null,
+              }
             : { filesOnly: true };
         await fenced(
           writeRunRow(ctx, identityOf(ctx, harnessCtxState(ctx)), pin),
@@ -2155,20 +2148,20 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
         await ctx.sequencer!.patchState(pin);
       }
 
-      // **A person's turns, after the phase's own prompt** (FIX-1690). Kept by
-      // the door for this attempt, oldest first, in a section that says whose
-      // words they are: a third channel beside `feedback` (why the last
-      // attempt failed) and `answers` (what a person answered), for the reason
-      // those two are already apart. Taken last, once the checkout is ready, so
-      // an attempt that could not start leaves them for the next one.
-      // Before the harness starts, and the door depends on it: a turn this
-      // attempt takes is marked taken before any session can be named
-      // (`continueOnceStarted` in `./door`, pinned in `message-door.spec.ts`).
-      const turns = await takeTurns(ctx, state.issue!, state.phase!, input.attempts);
+      // Steers after the phase prompt, once the checkout exists (FIX-2086):
+      // a third channel beside `feedback` and `answers`, so a failure and a
+      // person's answer stay their own sections. An answer is the phase's
+      // (`answers`), so it is not shown here a second time.
+      const steers =
+        (
+          await takeSteersFor(ctx, `brief:${ctx.request.identity.id}`, (row) =>
+            (row.steers ?? []).filter((steer) => steer.takenBy === row.attempts && !isAnswer(row, steer)),
+          )
+        )?.steers ?? [];
       const restored = heldPromptSection(place, state.held);
       const withRestored = restored === undefined ? prompt : `${prompt}\n\n${restored}`;
       return {
-        prompt: turns.length === 0 ? withRestored : `${withRestored}\n\n${turnsPromptSection(turns)}`,
+        prompt: steers.length === 0 ? withRestored : `${withRestored}\n\n${renderSteers(steers, STEERS_IN_BRIEF)}`,
       };
     },
   });
@@ -2177,39 +2170,32 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
    * Read the verdict, then decide. **Three outcomes, in this order, and the
    * order is the design. Every arm is a conjunction.**
    *
-   * 1. **The verdict did NOT fail AND this attempt's marker holds a question →
-   *    park.** `awaitReview`, announce, then return normally. The recorders
-   *    refuse a parked row, so the child session's request ends with the row still
-   *    `parked` and the run costs nothing while a person thinks.
+   * 1. **The verdict did NOT fail AND this run's marker holds a question →
+   *    hold the task on it** (the ask step), then return normally. A held
+   *    row settles only by cancel, so the child session's request ends with
+   *    the task waiting on the question and the run costs nothing while a
+   *    person thinks. The answer owes the task one more turn on this attempt.
    * 2. **The verdict succeeded AND the done-condition holds → return.**
-   * 3. **Anything else → throw**, withdrawing this attempt's question first: the
-   *    attempt failed, so its question is moot, and leaving it open means an
-   *    answer later lands against a row no attempt is waiting on.
+   * 3. **Anything else → throw.** A question a failed run wrote is never
+   *    asked: the attempt is over, so nobody would be waiting on its answer.
    *
-   * **The park is asked FIRST, and the order is the whole guarantee.** The
+   * **The question is asked FIRST, and the order is the whole guarantee.** The
    * done-condition is not attempt-scoped and cannot be: the branch is derived
    * from (epic, issue, phase), so every attempt on a task shares it, and the
    * implement phase's probe reports on the branch. Attempt 1 opens a pull
    * request and fails; attempt 2 asks a question and stops having produced
-   * nothing; the probe still says done. Consulted first, that reading withdraws
+   * nothing; the probe still says done. Consulted first, that reading drops
    * a question a person was about to be shown and records the phase as
    * succeeded — a silent wrong success arriving through the completion check.
    *
    * A question marker is the run stating outright that it needs a decision.
    * That statement is about THIS attempt and nothing else, so it is the one to
    * believe when the two disagree. The cost is a run that asked, unblocked
-   * itself and finished anyway: it now parks for one human round trip instead
+   * itself and finished anyway: it now waits for one human round trip instead
    * of completing. Rejected alternative: keep the old order but scope the probe
    * to this attempt, which needs a pull-request timestamp compared against a
    * locally-stamped attempt start — a clock-skew race guarding a rarer case
    * than the one it opens.
-   *
-   * **Arm 3 withdraws THIS attempt's row and no other, and that is sufficient
-   * rather than narrow.** Start-of-attempt reconciliation already withdrew
-   * every earlier attempt's `open` row, so at most one can exist for the
-   * issue-phase and it is this one's. Written as "withdraw any open row" the
-   * code would range over a set the reconciliation has already emptied — and
-   * the next reader would derive a guarantee from the wrong place.
    *
    * **Completion is a conjunction.** A run can open the pull request and THEN
    * exhaust its turn budget — the SDK reports that as an errored handle rather
@@ -2221,21 +2207,17 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
    * defect from the other side.** A question is only worth holding the board
    * for if the run is still in a position to use the answer, and a run that
    * asked and then failed is not — the SDK reports its most common failures by
-   * *returning*. An arm gated on the marker alone matches that run, parks it,
-   * and waits on a person for an attempt that is already dead: the row never
-   * re-pends, the retry budget is never spent, and nothing reports it. A silent
-   * stall, which is the mirror of the silent success arm 2 exists to kill.
+   * *returning*. An arm gated on the marker alone matches that run, holds its
+   * task, and waits on a person for an attempt that is already dead: the row
+   * never re-pends, the retry budget is never spent, and nothing reports it. A
+   * silent stall, which is the mirror of the silent success arm 2 exists to
+   * kill.
    *
-   * **The row is created BEFORE the arms, not inside the park arm.** Arm 3
-   * WITHDRAWS it, and a marker with an errored verdict never reaches arm 1 at
-   * all — so creating it there means withdrawing a row that was never created,
-   * while the question history a later attempt and a late answer both read
-   * wants it durably `withdrawn`.
-   *
-   * The run record's `outcome` stays `running` across a park, deliberately: the
-   * run is not over, and **the board row is the authority on the job's state**
-   * while this record is conductor's own bookkeeping. A fourth outcome here
-   * would be a second answer to a question the board already answers.
+   * The run record's `outcome` stays `running` while its task waits on the
+   * question, deliberately: the attempt is not over, and **the board row is the
+   * authority on the job's state** while this record is the manager's own
+   * bookkeeping. A fourth outcome here would be a second answer to a question
+   * the board already answers.
    */
   const decide = handler({
     name: "harness-manager-decide",
@@ -2291,7 +2273,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
        * the commits it made. `judged` is the settle step's to set.
        */
       const keep = async (
-        settle: "parked" | "complete",
+        settle: "asked" | "complete",
         commits: RunCommits,
         judgeInput: HarnessJudgeInput | null = null,
       ): Promise<HarnessJudgeInput | null> => {
@@ -2310,7 +2292,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
       const commitsOf = (): Promise<RunCommits> =>
         state.filesOnly === true
           ? Promise.resolve({ count: 0, subjects: [] })
-          : readRunCommits(state.workspacePath!, state.baseRef);
+          : readRunCommits(state.workspacePath!, state.baseRef, state.baseCommit);
 
       // Everything the run reported goes on the row before anything is decided,
       // so a failed attempt's row is as complete as a successful one's.
@@ -2336,67 +2318,27 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
       );
 
       // **The run's kept files, saved at the end of its turn** — before any
-      // arm, so a run that parks on a question, completes, or fails its check
+      // arm, so a run that asks a question, completes, or fails its check
       // has saved what it wrote either way. Its repository work is held first,
       // while the place is still in hand: a save lets the place go.
       const held = await holdWork(ctx);
       const saved = await saveKeptFiles(ctx);
 
-      // **The ask, before any arm.** Reading THIS attempt's marker path — never
-      // a fixed one: the checkout survives a retry, so last attempt's question
-      // file is still on disk, and a fixed path makes an attempt that quietly
-      // did nothing look exactly like an attempt that asked.
-      const question = await readAskMarker(state.workspacePath!, identity.attempt);
-      // The inbox is the fixed board's: a board read from the claim keeps no
-      // inbox row, so there is nothing to create here or to withdraw in arm 3.
-      const questionTopicKey =
-        question === undefined || state.claim !== null
-          ? undefined
-          : questionTopic(
-              state.issue!,
-              state.phase!,
-              identity.attempt,
-              questionFingerprint(question),
-            );
-      if (question !== undefined && questionTopicKey !== undefined) {
-        // Create-only, and the single ask path. The step commits no output, so
-        // it re-executes on recovery: the patch branch has nothing to apply, so
-        // a second execution is a read and a replay cannot erase an answer.
-        await askQuestion(ctx, questionTopicKey, {
-          question,
-          askedBy: identity.taskId,
-          askedAt: Date.now(),
-        });
-      }
+      // **The ask, before any arm.** Reading THIS run's marker path — never
+      // a fixed one: the checkout survives a retry and an answered question's
+      // next turn, so an earlier run's question file is still on disk, and a
+      // fixed path makes a run that quietly did nothing look exactly like a run
+      // that asked.
+      const question = await readAskMarker(state.workspacePath!, identity.attempt, state.run!);
 
-      /** Arm 3 clears this attempt's question: the attempt failed, so it is moot. */
-      const withdrawOwnQuestion = async (): Promise<void> => {
-        if (questionTopicKey === undefined) return;
-        await withdrawQuestion(ctx, questionTopicKey);
-      };
-
-      // ── Arm 1: the verdict did NOT fail AND this attempt asked ─────────────
-      if (succeeded && question !== undefined && state.claim !== null) {
-        await parkOnBoardQuestion(ctx, identity, question);
-        return keep("parked", await commitsOf());
-      }
-      if (succeeded && question !== undefined && questionTopicKey !== undefined) {
-        const board = await boardTasks(ctx);
-        // The substrate's own transition, never a status this lab writes by
-        // hand: the recorders' parked-row refusal, the drain's excusal and the
-        // lease's governance all key off it.
-        await board.awaitReview(identity.taskId, question);
-
-        // **After the park, never before.** What is announced must already be
-        // answerable: a subscriber fast enough to act on an announcement sent
-        // first is refused by the parked-only guard, and then watches the task
-        // park on the question it just tried to answer.
-        await announce({ question: questionTopicKey });
-
-        // Returning normally is the point: the child session's request ends and the
-        // row stays parked, because both recorders decline a row the worker
-        // parked for review.
-        return keep("parked", await commitsOf());
+      // ── Arm 1: the verdict did NOT fail AND this run asked ──────────────────
+      if (succeeded && question !== undefined) {
+        // After the verdict and the saves: the run's work is held and its kept
+        // files saved before the turn ends, and the checkout lease is free.
+        // Returning normally is the point: the request ends with the task held
+        // on the question, which nothing but its answer or a cancel ends.
+        await holdOnQuestion(ctx, question);
+        return keep("asked", await commitsOf());
       }
 
       // ── Arm 2: succeeded AND done ──────────────────────────────────────────
@@ -2449,9 +2391,9 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
                 `so it is not completed on work that exists only on this machine`,
             );
           }
-          // No question to withdraw: arm 1 returned on every attempt that asked
-          // one, so reaching here with a succeeded verdict means the marker was
-          // empty. The row is completed by `settle`, once the judge (when this
+          // Arm 1 returned on every run that asked, so reaching here with a
+          // succeeded verdict means the marker was empty. The row is completed
+          // by `settle`, once the judge (when this
           // run gets one) has read it: only a board read from the claim, and
           // only a task with a goal to read the answer against.
           const commits = await commitsOf();
@@ -2468,7 +2410,6 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
       }
 
       // ── Arm 3: anything else, INCLUDING a failed verdict with a question ───
-      await withdrawOwnQuestion();
       if (!succeeded) {
         // **Named in the framework's vocabulary, plus whatever the run said.**
         // The outcome word is what a reader can act on across harnesses; the
@@ -2526,6 +2467,8 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
     sequencerStateSchema: managerStateSchema,
     uses: [managerCapability],
     execute: async (error: unknown, ctx): Promise<never> => {
+      // A failed attempt's owed lines go with it: the next attempt's brief carries every steer.
+      owedLines.delete(ctx.request.identity.id);
       // **Release the tree on the way out, whatever failed.**
       //
       // The only other release is the agent step's `onSettled`, which never
@@ -2560,10 +2503,10 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
 
       const reason = error instanceof Error ? error.message : String(error);
       const state = ctx.sequencer?.state;
-      // **A run parked on its held work is waiting, not failed.** The row is
-      // already parked for its owner and the board leaves it alone; the
-      // record's outcome stays `running`, as on any park.
-      if (error instanceof HarnessRunParked) throw error;
+      // **A run held on its owner's question is waiting, not failed.** The
+      // task is already held, and a held row settles only by cancel; the
+      // record's outcome stays `running`, as on any question.
+      if (error instanceof HeldOnQuestion) throw error;
       // A failure BEFORE the row was opened has no identity to fence against —
       // and cannot have left stale metadata either, since nothing was written.
       if (state?.topic != null && state.taskId != null && state.attempt != null) {
@@ -2577,27 +2520,8 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
           { outcome: "failed", reason },
         );
       }
-      // **A refused run is settled, not retried** (see `HarnessRunRefused`).
-      // Under this attempt's own claim, so a superseded attempt cannot cancel
-      // a row its replacement holds. Best effort, like the write above: the
-      // error being unwound is what the caller gets either way.
-      //
-      // On a board read from the claim the row fails for good instead: a
-      // cancelled row there reaches nobody, and an `errored` one is what the
-      // conversation that filed it reports. The fixed board keeps the cancel.
-      if (error instanceof HarnessRunRefused && state?.taskId != null && state.attempt != null) {
-        try {
-          const tasks = await runBoard(ctx as BlockContext);
-          const row = tasks.get(state.taskId);
-          if (row !== undefined) {
-            const claim = { ...ticketForClaim(tasks.collectionId, row, tasks.partition), attempt: state.attempt };
-            if (state.claim != null) await tasks.fail(state.taskId, reason, { claim, noRetry: true });
-            else await tasks.cancel(state.taskId, reason, { claim });
-          }
-        } catch {
-          // Left to the board's recorder, which re-queues it as before.
-        }
-      }
+      // A refusal's task row is ended by the recorder, not retried (see
+      // `HarnessRunRefused`); this handler updates only the run record above.
       throw error;
     },
   });
@@ -2634,6 +2558,19 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
         }),
         "the harness named its session",
       );
+    },
+    // **Not fenced, unlike `onSession`.** A replaced attempt's window is still
+    // a true reading of the pool, and it lands in the run owner's own row, not
+    // on the run record a replacement holds. The harness swallows a throw.
+    onUsage: async (report, ctx) => {
+      await recordHarnessUsage(ctx, report);
+    },
+    // Held by the step's watch, which hands it each steer the poll takes.
+    onSteerable: (steer, ctx) => {
+      const watch = steerWatches.get(ctx.request.identity.id);
+      if (watch === undefined) return;
+      watch.steer = steer;
+      if (steer !== null) watch.kick();
     },
   });
 
@@ -2680,11 +2617,11 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
           ]);
 
   /**
-   * Settle what `decide` decided. A park has nothing left to settle. A run
-   * that passed its check completes, unless a judge read it and, at or over
-   * its floor, said `not-done` (the attempt fails with its reason, which is
-   * the next attempt's feedback) or `ask` (the row parks on its reason, the
-   * question path every board-read run takes).
+   * Settle what `decide` decided. A task held on the run's question has
+   * nothing left to settle. A run that passed its check completes, unless a
+   * judge read it and, at or over its floor, said `not-done` (the attempt fails
+   * with its reason, which is the next attempt's feedback) or `ask` (the task
+   * is held on its reason, through the ask step every question takes).
    */
   const settle = handler({
     name: "harness-manager-settle",
@@ -2697,14 +2634,14 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
     execute: async (input: { verdict: HarnessJudgeVerdict | null } | null, ctx: BlockContext) => {
       const state = managerState(harnessCtxState(ctx));
       const decision = state.decided!;
-      if (decision.settle === "parked") return decision.output;
+      if (decision.settle === "asked") return decision.output;
       const read = input?.verdict ?? null;
       const identity = identityOf(ctx, state);
       if (read !== null && read.verdict !== "done" && read.confidence >= judge!.floor) {
         if (read.verdict === "not-done") {
           throw new HarnessAttemptFailed(`the judge found the task not done: ${read.reason}`);
         }
-        await parkOnBoardQuestion(ctx, identity, read.reason);
+        await holdOnQuestion(ctx, read.reason);
         return { ...decision.output, judged: true };
       }
       await fenced(
@@ -2715,6 +2652,302 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
     },
   });
 
+  /**
+   * Poll the row while the step runs. A run that offers a live steer is handed
+   * each untaken steer (taken first, so it is taken once); otherwise, with
+   * `stopsOnAbort`, the step is stopped (not the request) for it. Without
+   * either, nothing is read: the step's own end takes the steer.
+   */
+  const steerWatches = new Map<string, SteerWatch>();
+  const watchForSteers = (ctx: BlockContext): AbortSignal | undefined => {
+    const requestId = ctx.request.identity.id;
+    const controller = new AbortController();
+    const watch: SteerWatch = { stopped: false, timer: undefined, steer: null, handed: 0, polling: false, kick: () => {} };
+    // The step ended while a poll was mid-read: `stopWatching` dropped this
+    // watch, so the poll stops rather than read the row for good.
+    const live = () => steerWatches.get(requestId) === watch;
+    const stop = () => {
+      watch.stopped = true;
+      controller.abort(new Error("[harness-manager] stopped for a steer"));
+    };
+    // Polled only while there is something to do: a stop to make, or a live steer to hand.
+    const wanted = () => options.stopsOnAbort === true || watch.steer !== null;
+    const schedule = () => {
+      if (live() && !controller.signal.aborted && watch.timer === undefined && !watch.polling) {
+        watch.timer = setTimeout(() => void poll(), STEER_POLL_MS);
+      }
+    };
+    const poll = async () => {
+      watch.timer = undefined;
+      watch.polling = true;
+      try {
+        if (!wanted()) return;
+        const state = managerState(harnessCtxState(ctx));
+        const row = await committedRow(ctx);
+        if (!live()) return;
+        const owed =
+          row !== undefined &&
+          row.status === "in_progress" &&
+          row.attempts === state.attempt &&
+          // This turn's own row (FIX-2133 D3): a later turn of the attempt is another run's.
+          (state.ticket == null || (row.turn ?? 0) === state.ticket.turn) &&
+          untakenSteers(row).length > 0;
+        // Stopped only once the harness confirmed a session to resume: a stop
+        // before that would cost the attempt the steer must not use. A line
+        // handed live needs one too, for the step a refusal falls back to.
+        const confirmed = owed && (await readConfirmedSession(ctx, state.topic!, state.attempt!)) !== null;
+        if (!live() || !confirmed) return;
+        const steer = watch.steer;
+        if (steer !== null) {
+          watch.handed += 1;
+          // Named by the step too: a request's later step must not read an earlier step's take as its own.
+          const takenIn = `live:${requestId}:${state.steerSteps ?? 0}:${watch.handed}`;
+          const nextStep = owedFor(requestId);
+          const taking = (async () => {
+            const take = await takeSteersFor(ctx, takenIn, (now, id) => steersTakenIn(now, id));
+            if (take === null || take.steers.length === 0) return;
+            showTakenSteers(ctx, take.taken);
+            // The step ended, or its run withdrew the offer, while the take wrote
+            // the row: these lines are the next step's, never dropped (D2).
+            if (!live() || watch.steer !== steer) {
+              nextStep.lines.set({ steers: take.steers }, "refused");
+              return;
+            }
+            handLive(ctx, steer, take.steers, () => {
+              if (options.stopsOnAbort === true && live() && !controller.signal.aborted) stop();
+            });
+          })();
+          nextStep.taking.add(taking);
+          try {
+            await taking;
+          } finally {
+            nextStep.taking.delete(taking);
+          }
+          return;
+        }
+        stop();
+        return;
+      } catch {
+        // A read that fails stops nothing: the step's own end takes the steer.
+      } finally {
+        watch.polling = false;
+        if (wanted()) schedule();
+      }
+    };
+    watch.kick = schedule;
+    steerWatches.set(requestId, watch);
+    if (wanted()) schedule();
+    return options.stopsOnAbort === true ? controller.signal : undefined;
+  };
+
+  /**
+   * Lines a request took for its run that the run didn't take into its turn
+   * (FIX-2254 D2), owed to its next step. The row has no untake, so these are
+   * kept here, beside the row's taken mark: refused lines, and lines still
+   * waiting on the run's answer when its step ended.
+   */
+  const owedLines = new Map<string, OwedLines>();
+  const owedFor = (requestId: string): OwedLines => {
+    let owed = owedLines.get(requestId);
+    if (owed === undefined) {
+      owed = { lines: new Map(), taking: new Set() };
+      owedLines.set(requestId, owed);
+    }
+    return owed;
+  };
+
+  /**
+   * Hand taken steers to the run as one line. **Every exit hands it on or
+   * counts it refused, never drops it** (D2): `refused` is owed to the next
+   * step; an answer still pending when the step ends is owed too, marked as
+   * one the conversation may already hold.
+   */
+  const handLive = (ctx: BlockContext, steer: HarnessSteer, steers: ShownSteer[], onRefused: () => void): void => {
+    const owed = owedFor(ctx.request.identity.id);
+    const handed: PendingLine = { steers };
+    owed.lines.set(handed, "pending");
+    const refused = () => {
+      // Settled after the next step already counted it: that step has it.
+      if (!owed.lines.has(handed)) return;
+      owed.lines.set(handed, "refused");
+      onRefused();
+    };
+    void steer(renderSteers(steers, STEERED_WHILE_RUNNING)).then(
+      (answer) => {
+        if (answer === "delivered") owed.lines.delete(handed);
+        else refused();
+      },
+      refused,
+    );
+  };
+
+  /** Take what this request owes its run's next step, in the order its lines were taken, clearing it. */
+  const takeOwed = (requestId: string): { steers: ShownSteer[]; maybeHeld: boolean } => {
+    const owed = owedLines.get(requestId);
+    owedLines.delete(requestId);
+    if (owed === undefined) return { steers: [], maybeHeld: false };
+    const lines = [...owed.lines];
+    owed.lines.clear();
+    return {
+      steers: lines.flatMap(([line]) => line.steers),
+      maybeHeld: lines.some(([, state]) => state === "pending"),
+    };
+  };
+
+  // A watch that stopped its step stays until the rescue reads it; any other
+  // goes when its step ends, so the map holds only steps still running.
+  const stopWatching = (ctx: BlockContext): void => {
+    const requestId = ctx.request.identity.id;
+    const watch = steerWatches.get(requestId);
+    if (watch === undefined) return;
+    if (watch.timer !== undefined) clearTimeout(watch.timer);
+    watch.timer = undefined;
+    watch.steer = null;
+    if (!watch.stopped) steerWatches.delete(requestId);
+  };
+
+  // The harness step, with what a steer's stop does to it: a step stopped for
+  // a steer ends with a marker, not an error, so the request goes on.
+  const harnessStep = sequencer({ name: `${name}-harness-step`, inputSchema: z.object({ prompt: z.string() }).passthrough() })
+    .step(harnessBlock, {
+      // The cancellable-under-a-deadline obligation, met by a primitive core
+      // already has: this composes into the block's own signal, which the SDK
+      // path forwards into the query's abort controller. A steer's watch
+      // composes in beside it.
+      abortSignal: (ctx) => {
+        const deadline = AbortSignal.timeout(runTimeoutMs);
+        // Armed for every step: a run may offer a live steer once it starts.
+        const steer = watchForSteers(ctx);
+        return steer === undefined ? deadline : AbortSignal.any([deadline, steer]);
+      },
+      // Fires on every exit from the dispatch — returned, threw, or
+      // suspended. The tree is only written by the agent, so releasing the
+      // moment it stops is tighter than holding through the verdict; a step
+      // the request runs next for a steer takes it again.
+      onSettled: (ctx) => {
+        stopWatching(ctx);
+        releaseLeaseFromState(ctx);
+      },
+    })
+    .rescue([
+      {
+        block: handler({
+          name: `${name}-stopped-for-steer`,
+          inputSchema: z.unknown(),
+          outputSchema: z.unknown(),
+          execute: (error: unknown, ctx) => {
+            const watch = steerWatches.get(ctx.request.identity.id);
+            steerWatches.delete(ctx.request.identity.id);
+            if (watch?.stopped !== true) throw error;
+            return STOPPED_FOR_STEER;
+          },
+        }),
+      },
+    ]);
+
+  /**
+   * One more step for a steer (FIX-2086), when this attempt still has an
+   * untaken steer or the step was stopped for one: it resumes the session
+   * this attempt confirmed, with the checkout taken again. None when a step
+   * that ended on its own took nothing (the gate's check owes the turn), or
+   * no session was confirmed and the step wasn't stopped. Each step takes a
+   * steer or follows a stop, so the steer cap bounds them; past it the
+   * attempt fails.
+   */
+  const stepForSteer = async (ctx: BlockContext, stopped: boolean): Promise<{ prompt: string; again: true } | undefined> => {
+    const state = managerState(harnessCtxState(ctx));
+    const row = await committedRow(ctx);
+    // Only this attempt's own row: a task cancelled, finished or claimed again
+    // since takes no more steps from this request.
+    const ours =
+      row !== undefined &&
+      row.status === "in_progress" &&
+      row.attempts === state.attempt &&
+      // A later turn of the attempt claimed since is another run's (FIX-2133 D3).
+      (state.ticket == null || (row.turn ?? 0) === state.ticket.turn);
+    // What the run didn't take into its turn: counted here with the untaken
+    // steers, so the step's end, a stop and the settle all carry it. A live
+    // take still writing the row lands first, or its lines would miss both.
+    await Promise.allSettled([...(owedLines.get(ctx.request.identity.id)?.taking ?? [])]);
+    const carried = takeOwed(ctx.request.identity.id);
+    if (!ours) {
+      if (!stopped) return undefined;
+      throw new HarnessAttemptFailed(STALE_AFTER_STOP);
+    }
+    const owed = untakenSteers(row).length > 0 || carried.steers.length > 0;
+    if (!owed && !stopped) return undefined;
+    const session = await readConfirmedSession(ctx, state.topic!, state.attempt!);
+    if (session === null) {
+      if (!stopped) return undefined;
+      throw new HarnessAttemptFailed(
+        `[harness-manager] the run was stopped for a steer, and its harness confirmed no coding session to continue.`,
+      );
+    }
+    const loop = (state.steerSteps ?? 0) + 1;
+    if (loop > MAX_STEERS) {
+      throw new HarnessAttemptFailed(
+        `[harness-manager] the run has already taken ${MAX_STEERS} steps for steers, the most a task's steers can ask for.`,
+      );
+    }
+    const take = await takeSteersFor(ctx, `step:${ctx.request.identity.id}:${loop}`, (now, takenIn) => steersTakenIn(now, takenIn));
+    if (take === null) {
+      if (!stopped) return undefined;
+      throw new HarnessAttemptFailed(STALE_AFTER_STOP);
+    }
+    const steers = [...carried.steers, ...take.steers];
+    if (steers.length === 0 && !stopped) return undefined;
+    // The steers this take wrote, as lines in the run's session from their senders.
+    showTakenSteers(ctx, take.taken);
+    const lease = await acquireCheckout(state.workspacePath!, `${state.taskId}#${state.attempt}`, ownership, Date.now, ctx.signal);
+    await ctx.sequencer!.patchState({ lockPath: lease.lockPath, leaseToken: lease.token, previousSessionId: session, steerSteps: loop });
+    // A turn's save points let a place with kept files go (`saveKeptFiles`):
+    // the step a steer that came during the verdict adds works in it again,
+    // provisioned from what was saved, so its own end saves and holds it too.
+    if (state.place == null) await ctx.sequencer!.patchState({ place: await provisionRunPlace(ctx) });
+    const lead = (stopped ? STOPPED_LEAD : ARRIVED_LEAD) + (carried.maybeHeld ? MAYBE_HELD_NOTE : "");
+    return { prompt: steers.length === 0 ? CONTINUE_AFTER_STOP : renderSteers(steers, lead), again: true };
+  };
+
+  /** After a harness step: one more step for a steer, or the step's handle on to the verdict. */
+  const steerNext = handler({
+    name: `${name}-steer-next`,
+    inputSchema: z.unknown(),
+    outputSchema: z.unknown(),
+    sequencerStateSchema: managerStateSchema,
+    uses: [managerCapability],
+    execute: async (value: unknown, ctx: BlockContext) => {
+      // A step that ended on its own after its watch stopped it leaves the watch: it goes here.
+      steerWatches.delete(ctx.request.identity.id);
+      return (await stepForSteer(ctx, value === STOPPED_FOR_STEER)) ?? value;
+    },
+  });
+
+  /**
+   * Before the settle: a steer that landed while the verdict, the judge or
+   * this check ran gets one more step too, resuming the session this attempt
+   * confirmed. A run whose harness confirmed none gets no step here: the steer
+   * stays on the task untaken, and only a board with a late-steer turn of its
+   * own gives it a turn; on any other board the task completes over it. A run
+   * held on a question settles nothing: its answer's turn takes the steer.
+   */
+  const steerBeforeSettle = handler({
+    name: `${name}-steer-before-settle`,
+    inputSchema: z.unknown(),
+    outputSchema: z.unknown(),
+    sequencerStateSchema: managerStateSchema,
+    uses: [managerCapability],
+    execute: async (value: unknown, ctx: BlockContext) => {
+      if (managerState(harnessCtxState(ctx)).decided?.settle !== "complete") return value;
+      return (await stepForSteer(ctx, false)) ?? value;
+    },
+  });
+
+  /** Back to the harness step when a steer step was granted. The steer cap fails the attempt first. */
+  const steerLoop = {
+    when: (value: unknown) => (value as { again?: unknown } | null)?.again === true,
+    maxIterations: MAX_STEERS + 1,
+  };
+
   const chain = sequencer({
     name,
     inputSchema: harnessManagerInputSchema,
@@ -2723,19 +2956,9 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
   })
     .tap(openRun)
     .step(prepare)
-    .step(
-      harnessBlock,
-      {
-        // The cancellable-under-a-deadline obligation, met by a primitive core
-        // already has: this composes into the block's own signal, which the SDK
-        // path forwards into the query's abort controller.
-        abortSignal: () => AbortSignal.timeout(runTimeoutMs),
-        // Fires on every exit from the dispatch — returned, threw, or
-        // suspended. The tree is only written by the agent, so releasing the
-        // moment it stops is tighter than holding through the verdict.
-        onSettled: (ctx) => releaseLeaseFromState(ctx),
-      },
-    )
+    .step(harnessStep)
+    .step(steerNext)
+    .loopBack(harnessStep.name, steerLoop)
     .step(decide);
   const worker = (
     judgeStep === undefined
@@ -2749,21 +2972,13 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
           { abortSignal: () => AbortSignal.timeout(NETWORK_CALL_TIMEOUT_MS) },
         )
   )
+    .step(steerBeforeSettle)
+    .loopBack(harnessStep.name, steerLoop)
     .step(settle)
     .rescue([{ block: recordFailure }]);
 
   worker.validate();
-
-  // This door reads one board's rows, so only a fixed board has one. A host
-  // whose runs come from more than one board builds `harnessMessageDoor`.
-  if (boardCollectionId === undefined || boardCollection === undefined) return worker;
-  const messageDoor = createMessageDoor({
-    name,
-    boardCollection,
-    capability: managerCapability as unknown as DefinedCapability,
-    boardTasks,
-  });
-  return Object.assign(worker, { messageDoor }) as HarnessManager;
+  return worker;
 }
 
 /**
@@ -2832,6 +3047,56 @@ function assertFeatureRowIdentity(
   }
 }
 
+/**
+ * The claim this run holds on `board`'s row: the ticket the claim gate (or the
+ * board's drain) stamped on this request when it claimed the turn.
+ *
+ * Minted from the row only for a manager run with no claim stamped at all,
+ * outside any board's worker: there is no claim to carry, and the open's check
+ * of the row is all the fence there is. A stamp naming another attempt of this
+ * task is a turn that is over.
+ */
+function heldTicket(
+  ctx: BlockContext,
+  board: TaskCollectionRef,
+  input: { taskId: string; attempts: number },
+): TaskClaimTicket {
+  const stamped = currentWorkerClaim(ctx);
+  if (stamped !== undefined && stamped.collectionId === board.collectionId && stamped.taskId === input.taskId) {
+    if (stamped.attempt !== input.attempts) {
+      throw new HarnessAttemptSuperseded("the run was opened (its claim is another attempt's)");
+    }
+    return stamped;
+  }
+  const row = board.get(input.taskId);
+  if (row === undefined) throw new HarnessAttemptSuperseded("the run was opened (its task is gone)");
+  return ticketForClaim(board.collectionId, row, board.partition);
+}
+
+/** Whether `steer` answers one of `row`'s questions for a person: a steer a deadline wrote is a message, not an answer. */
+function isAnswer(row: Pick<Task, "holds">, steer: Pick<TaskSteer, "answers" | "from">): boolean {
+  if (steer.answers === undefined || steer.from === "board") return false;
+  const hold = row.holds?.find((h) => h.id === steer.answers);
+  return hold !== undefined && isRowHold(hold);
+}
+
+/**
+ * The task's answered questions, oldest first, each with its answer: what a
+ * phase's prompt builder is handed as `answers`. Read from the row, the one
+ * place a question and its answer are kept.
+ */
+function answeredQuestions(row: Task | undefined): AnsweredQuestion[] {
+  if (row === undefined) return [];
+  const answered: AnsweredQuestion[] = [];
+  for (const hold of row.holds ?? []) {
+    if (!isRowHold(hold)) continue;
+    const steer = answerOf(row, hold.id);
+    if (steer === undefined || !isAnswer(row, steer)) continue;
+    answered.push({ question: hold.ask.prompt, answer: steer.message });
+  }
+  return answered;
+}
+
 /** Is the `workspace` option a host, rather than a fixed repository's config? */
 function isWorkspaceHost(workspace: WorkspaceConfig | WorkspaceHost): workspace is WorkspaceHost {
   return typeof (workspace as WorkspaceHost).provision === "function";
@@ -2883,6 +3148,69 @@ function pinnedAnswer(
 function refusedMessage(by: "source" | "host", refusal: { reason: string; message: string }): string {
   return `[harness-manager] the workspace ${by} refused this run (${refusal.reason}): ${refusal.message}`;
 }
+
+/** How often a running step's row is read for a steer (FIX-2086). */
+export const STEER_POLL_MS = 1_000;
+
+/** What a harness step stopped for a steer hands on, in place of a handle. */
+const STOPPED_FOR_STEER = "harness-manager:stopped-for-steer";
+
+/** One harness step's watch for a steer. */
+interface SteerWatch {
+  /** Set when the watch stopped the step for a steer. */
+  stopped: boolean;
+  timer: ReturnType<typeof setTimeout> | undefined;
+  /** The run's live steer while it offers one (FIX-2254), else `null`. */
+  steer: HarnessSteer | null;
+  /** How many takes this step handed live: each names its read. */
+  handed: number;
+  /** Set while a poll runs, so a kick never starts a second one beside it. */
+  polling: boolean;
+  /** Schedule a poll now that the run offers a steer, unless one is due or running. */
+  kick: () => void;
+}
+
+/** Lines taken together for a run, owed to its next step until the run takes them. */
+interface PendingLine {
+  readonly steers: ShownSteer[];
+}
+
+/** What a request owes its run's next step (FIX-2254 D2). */
+interface OwedLines {
+  /**
+   * Lines owed, in the order they were taken: refused, or handed over with
+   * no answer yet. A line the run took leaves.
+   */
+  readonly lines: Map<PendingLine, "pending" | "refused">;
+  /** Live takes still writing the row: the next step waits for them before it counts. */
+  readonly taking: Set<Promise<void>>;
+}
+
+/** The lead a run's first prompt shows the task's steers under. */
+const STEERS_IN_BRIEF =
+  "Since this task was filed, you were also sent the messages below about it, oldest first. They are part of the task: follow them.";
+
+/** The lead the step after a stop for a steer opens with. */
+const STOPPED_LEAD =
+  "You were stopped so the messages below could reach you. The checkout keeps everything you wrote before you were " +
+  "stopped. Carry on from where you were, following them.";
+
+/** Added to a step's lead when a line handed live had no answer when its step was stopped. */
+const MAYBE_HELD_NOTE =
+  " Some of them were sent to you while you worked but you were stopped before it was clear they arrived, so your " +
+  "conversation may already hold them: follow each one once.";
+
+/** The lead the step after one that ended while steers arrived opens with. */
+const ARRIVED_LEAD =
+  "These messages about the task arrived while you were working. The checkout is as you left it. Carry on, following them.";
+
+/** Why a step stopped for a steer goes no further: its task left this attempt meanwhile. */
+const STALE_AFTER_STOP =
+  "[harness-manager] the run was stopped for a steer, and its task is no longer this attempt's: it was cancelled, finished or claimed again.";
+
+/** The prompt of a step after a stop whose steers another read took. */
+const CONTINUE_AFTER_STOP =
+  "You were stopped while you were working. The checkout keeps everything you wrote. Carry on from where you were.";
 
 /**
  * **The one convergence point: release the checkout from state alone.**

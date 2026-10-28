@@ -6,7 +6,7 @@
 
 **Input:** `fixtures/workforce/`: one team `lab`. `lead` is the worker that files: its `WORKER.md` names `delegates: [lab.coder, lab.reviewer, lab.auditor]`, and that list is what gives its conversation the task tools and actions. `coder` and `reviewer` take tasks on one flow (`seat`), and `auditor` on a flow of its own (`audit`), each through Workforce's task entry (`workerTaskEntry`). Held out: the filer, its delegates and their flows all come off the tree. Rename the team or a worker, or move another delegate onto a flow of its own, and a correct build still passes.
 
-Six tasks are filed through the conversation's own `dispatchTask_tasks` action, over HTTP as a person's app sends it: one per delegate, a second for a worker on the shared flow, one that fails its first attempt (so it runs again), and one that fails every attempt.
+Six tasks are filed through the conversation's own `createTask_tasks` action, over HTTP as a person's app sends it: one per delegate, a second for a worker on the shared flow, one that fails its first attempt (so it runs again), and one that fails every attempt.
 
 **Signal:** model-free, over a real `createFlowState` host, its HTTP router with a verified caller, the real conversation board, and real task sessions. Every worker writes what it saw from inside its own run (session, request, attempt, a random marker) to a file outside the board. Legs, by name:
 

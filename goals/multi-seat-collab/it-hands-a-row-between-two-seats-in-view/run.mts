@@ -1,6 +1,6 @@
 /**
  * Goal check — a planner files work for its two delegates on its own
- * conversation's board, a person answers a parked row through that
+ * conversation's board, a person answers a held row's question through that
  * conversation, the work changes hands, and a reader can say what happened
  * from the DevTool's own screens.
  *
@@ -17,7 +17,7 @@
  *       file names its delegates
  *   V1  one row per piece, for a delegate; a row for nobody runs nowhere
  *   V2  each row ran on the worker whose OWN FILE answers for its desk
- *   V3  the worker parks on its question and nothing stays running; the
+ *   V3  the worker asks, the row holds on its question and nothing stays running; the
  *       answer lands through the planner's conversation and the same task
  *       session finishes; a second answer is declined
  *   V4  every claim is the planner's board's; an answer sent as a second
@@ -73,13 +73,13 @@ const EXPECTED: Record<string, readonly string[]> = {
  * `TaskStatus`, written out. **Pinned** — a later widening (for *handed-off*,
  * *notified* or *waiting on you*) must fail here rather than pass.
  */
-const TASK_STATUSES = ["pending", "in_progress", "blocked", "parked", "completed", "errored", "cancelled"];
+const TASK_STATUSES = ["pending", "in_progress", "held", "completed", "errored", "cancelled"];
 
 /** How long a second person's delivery gets to land before it is judged not to have. */
 const SECOND_PRINCIPAL_WINDOW_MS = 3_000;
 
 /** The board run's own action on the filing conversation: where every claim is made. */
-const BOARD_RUN_ACTION = "runTaskBoard";
+const BOARD_RUN_ACTION = "dispatch";
 
 const failures: string[] = [];
 const notes: string[] = [];
@@ -312,32 +312,42 @@ async function main() {
       if (row.partition !== first.partition) fail("V1", `row ${row.id} is on board ${row.partition}, not the planner's conversation's ${first.partition}`);
     }
 
-    // ---- V3 (park). the worker parks on its question, and nothing stays running
-    const parkedLines = () => lab.workLines().filter((line) => line.taskId === firstId && line.event === "parked");
-    const parked = await lab.waitForRow((row) => row.id === firstId && row.status === "parked");
-    const parkedLine = parkedLines()[0];
-    if (parkedLine === undefined || parked === undefined) {
+    // ---- V3 (the ask). the worker asks, the row holds on the question, and nothing stays running
+    const askedLines = () => lab.workLines().filter((line) => line.taskId === firstId && line.event === "asked");
+    /** The row's open question: a row hold no steer answers yet. */
+    const openQuestion = (row: BoardRow | undefined) => {
+      const answered = new Set((row?.steers ?? []).flatMap((steer) => (steer.answers === undefined ? [] : [steer.answers])));
+      return row?.status === "in_progress" ? row.holds?.find((hold) => hold.source.kind === "row" && !answered.has(hold.id)) : undefined;
+    };
+    const heldRow = await lab.waitForRow((row) => row.id === firstId && openQuestion(row) !== undefined);
+    const askedLine = askedLines()[0];
+    if (askedLine === undefined || heldRow === undefined) {
       return {
-        failures: [...failures, `[V3] the first row never parked (lines: ${parkedLines().length}, status: ${lab.rows().find((row) => row.id === firstId)?.status})`],
+        failures: [...failures, `[V3] the first row never held on its question (lines: ${askedLines().length}, status: ${lab.rows().find((row) => row.id === firstId)?.status})`],
         evidence: "",
       };
     }
-    const owner = parkedLine.worker;
-    if (parked.parkedOnQuestion !== true) fail("V3", `the parked row is not parked on its worker's question, so no answer can reach it`);
-    if (!(await lab.settled())) fail("V3", `a request was still running with the row parked; a park holds nothing open`);
-    const parkingRequest = (await lab.requests(parkedLine.session)).find((request) => request.id === parked.run?.requestId);
-    if (parkingRequest?.status !== "completed") {
-      fail("V3", `the attempt that parked ended "${parkingRequest?.status}", not completed: a park is the attempt's end, not a wait`);
+    const owner = askedLine.worker;
+    const question = openQuestion(heldRow)!;
+    if (question.ask.kind !== "question") fail("V3", `the row holds on a ${question.ask.kind}, not its worker's question`);
+    if (CONTROL !== "silent-park" && question.ask.prompt !== fixture.piece.asks) {
+      fail("V3", `the row holds on ${JSON.stringify(question.ask.prompt)}, not the question its worker asked`);
     }
-    const stillParked = lab.rows().find((row) => row.id === firstId);
-    if (stillParked?.status !== "parked") fail("V3", `with nothing running the first row is "${stillParked?.status}", not parked`);
+    if (!(await lab.settled())) fail("V3", `a request was still running with the row held; a question holds nothing open`);
+    const askingRequest = (await lab.requests(askedLine.session)).find((request) => request.id === heldRow.run?.requestId);
+    if (askingRequest?.status !== "completed") {
+      fail("V3", `the turn that asked ended "${askingRequest?.status}", not completed: an ask is the turn's end, not a wait`);
+    }
+    const stillHeld = lab.rows().find((row) => row.id === firstId);
+    if (openQuestion(stillHeld) === undefined) fail("V3", `with nothing running the first row is "${stillHeld?.status}", not held on its question`);
 
-    // ---- V5 (the freeze). the parked row's assignee cannot be moved ---------
+    // ---- V5 (the freeze). the held row's assignee cannot be moved -----------
     const otherDelegate = tree.delegates.find((id) => id !== first.assignee) ?? tree.delegates[0]!;
-    const moved = await lab.onConversation("assignTask_tasks", { taskId: firstId, assignee: otherDelegate });
+    const moved = await lab.onConversation("updateTask_tasks", { id: firstId, assignee: otherDelegate });
     const movedError = String(moved.output?.error ?? "");
-    if (moved.output?.ok !== false || !movedError.includes("immutable-assignee")) {
-      fail("V5", `moving the parked row to ${otherDelegate} was not refused as immutable-assignee: ${JSON.stringify(moved.output)}`);
+    // A started task keeps one accountable worker (FIX-2081): the field table refuses the move.
+    if (moved.output?.ok !== false || !movedError.startsWith("field_locked_after_start: assignee")) {
+      fail("V5", `moving the held row to ${otherDelegate} was not refused as field_locked_after_start: ${JSON.stringify(moved.output)}`);
     }
 
     // ---- VB (1). the planner's Tasks tab: the row, as filed ---------------
@@ -365,29 +375,30 @@ async function main() {
     // ---- VB (2a). the session the row names: the reason, nothing expanded --
     // The row names the task session it ran in (`run`); a reader opens that
     // session from the navigator, under the copy of the flow its worker runs on.
-    const runSession = parked.run?.sessionId;
+    const runSession = heldRow.run?.sessionId;
     let childSession: string | undefined;
-    if (runSession !== parkedLine.session) {
-      fail("VB", `screen 2: the row names ${runSession} as its run, not ${parkedLine.session}, where it ran`);
+    if (runSession !== askedLine.session) {
+      fail("VB", `screen 2: the row names ${runSession} as its run, not ${askedLine.session}, where it ran`);
     } else {
       await openCopy(page, tree.workerFlows[owner]!);
       await openSession(page, tree.workerFlows[owner]!, runSession);
       childSession = await openBadgeSession(page);
-      if (childSession !== parkedLine.session) {
-        fail("VB", `screen 2: the navigator opened ${childSession}, not ${parkedLine.session}, where the row ran`);
+      if (childSession !== askedLine.session) {
+        fail("VB", `screen 2: the navigator opened ${childSession}, not ${askedLine.session}, where the row ran`);
       }
-      const screen2 = await taskRow(page, firstId, (cells) => cells.Status === "parked");
-      await page.screenshot({ path: join(SHOTS, "2a-task-session-parked.png") });
+      const screen2 = await taskRow(page, firstId, (cells) => cells.Status === "in_progress");
+      await page.screenshot({ path: join(SHOTS, "2a-task-session-held.png") });
       const expanded = await page.locator("main [data-task-id] button[aria-expanded='true']").count();
       if (expanded !== 0) fail("VB", `screen 2: ${expanded} row(s) open; the reason must be legible without opening one`);
       if (screen2 === undefined) {
-        fail("VB", `screen 2: the task session never showed row ${firstId} parked`);
-      } else if (screen2.cells.Reason === undefined || screen2.cells.Reason.length === 0 || screen2.cells.Reason === "—") {
-        fail("VB", `screen 2: the parked row shows no reason — a reader cannot say what it waits for`);
-      } else if (screen2.cells.Reason !== (parked.feedback ?? "")) {
-        fail("VB", `screen 2: the reason reads ${JSON.stringify(screen2.cells.Reason)}, the row holds ${JSON.stringify(parked.feedback)}`);
+        fail("VB", `screen 2: the task session never showed row ${firstId} running`);
+      } else if (screen2.cells.Reason === undefined || screen2.cells.Reason.trim().length <= 1 || screen2.cells.Reason === "—") {
+        // A question that says nothing ("?", the silent-park control) is no reason a reader can act on.
+        fail("VB", `screen 2: the held row shows no reason — a reader cannot say what it waits for`);
+      } else if (screen2.cells.Reason !== question.ask.prompt) {
+        fail("VB", `screen 2: the reason reads ${JSON.stringify(screen2.cells.Reason)}, the row holds on ${JSON.stringify(question.ask.prompt)}`);
       } else if (screen2.reasonClipped) {
-        if (screen2.reasonTitle !== parked.feedback) {
+        if (screen2.reasonTitle !== question.ask.prompt) {
           fail("VB", `screen 2: the reason is clamped on screen and its title reads ${JSON.stringify(screen2.reasonTitle)}`);
         } else {
           notes.push("the reason is clamped to its slot on screen and whole on hover");
@@ -443,45 +454,49 @@ async function main() {
     const afterAnswer = lab.rows().find((row) => row.id === firstId);
     const finishedFirst = lab.workLines().filter((line) => line.taskId === firstId && line.event === "finished");
     if (afterAnswer?.status !== "completed") fail("V3", `after the answer the first row is "${afterAnswer?.status}", not completed`);
-    if (afterAnswer?.feedback !== fixture.answer) fail("V3", `after the answer the row carries ${JSON.stringify(afterAnswer?.feedback)}, not the answer`);
-    if (parkedLines().length !== 1) fail("V3", `the first row parked ${parkedLines().length} times; the answered attempt must finish, not ask again`);
+    const answerOnRow = (afterAnswer?.steers ?? []).find((steer) => steer.answers === question.id)?.message;
+    if (answerOnRow !== fixture.answer) fail("V3", `after the answer the row's question is answered with ${JSON.stringify(answerOnRow)}, not the answer`);
+    if (askedLines().length !== 1) fail("V3", `the first row asked ${askedLines().length} times; the answered turn must finish, not ask again`);
+    if (afterAnswer !== undefined && heldRow.attempts !== afterAnswer.attempts) {
+      fail("V3", `the answer moved the row from attempt ${heldRow.attempts} to ${afterAnswer.attempts}; an answer owes the same attempt one more turn`);
+    }
     if (finishedFirst.length !== 1) {
       fail("V3", `the first row finished ${finishedFirst.length} times`);
     } else {
       const finished = finishedFirst[0]!;
-      if (finished.worker !== owner) fail("V3", `the row parked on ${owner} and finished on ${finished.worker}`);
-      if (finished.session !== parkedLine.session) {
-        fail("V3", `the row parked in ${parkedLine.session} and finished in ${finished.session}; an answer carries on where the question was asked`);
+      if (finished.worker !== owner) fail("V3", `the row asked on ${owner} and finished on ${finished.worker}`);
+      if (finished.session !== askedLine.session) {
+        fail("V3", `the row asked in ${askedLine.session} and finished in ${finished.session}; an answer carries on where the question was asked`);
       }
-      if (finished.answer !== fixture.answer) fail("V3", `the finishing attempt read ${JSON.stringify(finished.answer)} as its answer`);
+      if (finished.answer !== fixture.answer) fail("V3", `the finishing turn read ${JSON.stringify(finished.answer)} as its answer`);
     }
     // The answer reached the row through the planner's conversation's own
-    // door, as the one person: the row was put back in the queue by an
-    // `answerTask_tasks` request there, not by anything that happened by.
+    // door, as the one person: the question was answered by an
+    // `updateTask_tasks` request there, not by anything that happened by.
     const changesAfterAnswer = await lab.changes();
-    const resumedByAnswer = changesAfterAnswer.some(
+    const answeredByPerson = changesAfterAnswer.some(
       (change) =>
         change.taskId === firstId &&
-        change.kind === "resumed" &&
+        change.kind === "answered" &&
         change.sessionId === lab.conversation &&
-        change.action === "answerTask_tasks" &&
+        change.action === "updateTask_tasks" &&
         change.userId === LAB_USER_ID,
     );
-    if (!resumedByAnswer) fail("V3", `no answerTask_tasks request on ${lab.conversation} put the row back to work`);
+    if (!answeredByPerson) fail("V3", `no updateTask_tasks request on ${lab.conversation} answered the row's question`);
 
-    // ---- V3 (one park, one answer). a second answer is declined -------------
+    // ---- V3 (one ask, one answer). a second answer is declined --------------
     const beforeSecond = JSON.stringify(lab.rows().find((row) => row.id === firstId));
     const firstLines = () => lab.workLines().filter((line) => line.taskId === firstId).length;
     const linesBeforeSecond = firstLines();
     const second = await lab.answer(firstId, fixture.secondAnswer);
     // Completed is the positive record: the delivery ran and found the row.
     if (second.status !== "completed") fail("V3", `the second delivery ended ${second.status ?? second.refusal}, so it never reached the row`);
-    // The answer door's own verdict, not just its silence: one park takes one
-    // answer, so the second must come back declined — the row is settled, so
-    // terminal. An accepted no-op would leave the row and the work file
-    // exactly as a decline does, and only this catches it.
-    if (second.output?.ok !== false || !String(second.output?.error ?? "").startsWith("terminal_task_write_declined")) {
-      fail("V3", `the second delivery was not declined as terminal: ${JSON.stringify(second.output)}`);
+    // The answer door's own verdict, not just its silence: one question takes
+    // one answer, so the second, naming the same question, must come back
+    // declined as already answered. An accepted no-op would leave the row and
+    // the work file exactly as a decline does, and only this catches it.
+    if (second.output?.ok !== false || !String(second.output?.error ?? "").startsWith("question_answered")) {
+      fail("V3", `the second delivery was not declined as already answered: ${JSON.stringify(second.output)}`);
     }
     await lab.settled();
     const afterSecond = JSON.stringify(lab.rows().find((row) => row.id === firstId));
@@ -499,8 +514,10 @@ async function main() {
       await page.screenshot({ path: join(SHOTS, "2b-task-session-answered.png") });
       if (screen2b === undefined) {
         fail("VB", `screen 2: after the answer the task session never showed the row as "${firstNow?.status}"`);
-      } else if ((screen2b.cells.Reason ?? "") !== (firstNow?.feedback ?? "")) {
-        fail("VB", `screen 2: after the answer the row reads ${JSON.stringify(screen2b.cells.Reason)}, the row holds ${JSON.stringify(firstNow?.feedback)}`);
+      } else if (firstNow?.status === "completed" && screen2b.cells.Reason !== undefined && screen2b.cells.Reason === question.ask.prompt) {
+        // Graded on a finished row only: one that asked again is V3's failure,
+        // and on screen it rightly reads the new question.
+        fail("VB", `screen 2: after the answer the row still reads its question ${JSON.stringify(screen2b.cells.Reason)} as what it waits for`);
       }
     }
     // Screen 3: the ledger collection, on the Resources panel of the session
@@ -633,12 +650,12 @@ async function main() {
     evidence:
       `the shipped \`fsdev dev\` served a hire read from ${tree.roster.workers.length} WORKER.md files and no MAILBOX.md; ` +
       `no file declares a board. The planner filed one row for "${fixture.piece.desk}" and one for "${fixture.piece.then.desk}" waiting on it, ` +
-      `on its own conversation's board; the worker whose own file answers for "${fixture.piece.desk}" parked the first on its question ` +
+      `on its own conversation's board; the worker whose own file answers for "${fixture.piece.desk}" held the first on its question ` +
       `and nothing stayed running; moving its assignee was refused; a second person's answer did not land; the person's answer through ` +
-      `the planner's conversation did, and the same task session finished the row; a second answer was declined as terminal; the other ` +
+      `the planner's conversation did, and the same task session finished the row; a second answer was declined as already answered; the other ` +
       `worker then ran the follow-on row in its own task session; a row for nobody waited, handed to no one; every claim was the planner's ` +
       `board run's. In Chromium on the shipped bundle: the planner's Tasks tab showed the row as filed, the task session the row names, opened ` +
-      `from the navigator, showed the reason with nothing expanded and then the answer, and the ledger collection showed both rows ` +
+      `from the navigator, showed the question as its reason with nothing expanded and then the finished row, and the ledger collection showed both rows ` +
       `with their assignees and the task session each ran in. ` +
       (notes.length > 0 ? `Notes: ${notes.join("; ")}. ` : "") +
       `Screenshots: ${SHOTS}`,

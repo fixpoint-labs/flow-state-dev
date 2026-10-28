@@ -8,9 +8,9 @@
  * subprocess. The one spec that runs the real installed SDK is
  * `installed-sdk.spec.ts`.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
-import { harnessRunHandleSchema } from "@flow-state-dev/core";
+import { harnessFailureKind, harnessRunHandleSchema } from "@flow-state-dev/core";
 import { codexAgent, INTERNAL_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
 import { CodexAgentAbortedError, CodexAgentConfigError, CodexAgentRunError } from "../src/errors";
 import {
@@ -250,6 +250,24 @@ describe("codexAgent — the session hook", () => {
     expect(firstConversational).toBeDefined();
   });
 
+  it("ends a run by saying how long it took", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(0);
+      const { resolve } = scripted(() =>
+        (async function* () {
+          vi.setSystemTime((5 * 60 + 24) * 1000);
+          for (const e of OK_STREAM) yield e;
+        })(),
+      );
+      const { items } = await testBlock(codexAgent({ ...GATE_OFF, resolveCodexClient: resolve }), { input: { prompt: "go" } });
+      const statuses = items.filter((i) => i.type === "status").map((i) => String((i as { message: string }).message));
+      expect(statuses).toContain("Codex run completed in 5 mins, 24 seconds.");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("calls the hook exactly once even if the wire names the thread again", async () => {
     let calls = 0;
     const { resolve } = scripted([
@@ -418,6 +436,71 @@ describe("codexAgent — the endings", () => {
     expect(error?.cause).toBeInstanceOf(CodexAgentRunError);
     expect((error as Error).message).toContain("fatal: something");
     expect(items.some((i) => i.type === "error")).toBe(true);
+  });
+
+  it("a failed turn the CLI then exits on fails with the turn's one line, its stderr folded into details", async () => {
+    // Measured at 0.152.1: `turn.failed`, then exit 1, and the SDK throws with
+    // the CLI's whole stderr — every log line of the run, MCP and skill
+    // errors included. That dump is not what a person needs to read first.
+    const stderr =
+      "Reading additional input from stdin...\nERROR rmcp::transport::worker: worker quit with fatal\nERROR failed to load skill x/SKILL.md\n";
+    const { resolve } = scripted(async function* () {
+      yield { type: "thread.started", thread_id: "thr_1" } as CodexThreadEvent;
+      yield { type: "turn.failed", error: { message: '{"detail":"The model is not supported."}' } } as CodexThreadEvent;
+      throw new Error(`Codex Exec exited with code 1: ${stderr}`);
+    });
+    const block = codexAgent({ ...GATE_OFF, resolveCodexClient: resolve });
+    const { error, items } = await testBlock(block, { input: { prompt: "go" } });
+
+    expect(error?.cause).toBeInstanceOf(CodexAgentRunError);
+    expect((error?.cause as Error).message).toBe("Codex run failed: The model is not supported.");
+    const errorItems = items.filter((i) => i.type === "error") as Array<{ message: string; details?: { output?: string } }>;
+    expect(errorItems).toHaveLength(1);
+    expect(errorItems[0]!.message).toBe("Codex run failed: The model is not supported.");
+    expect(errorItems[0]!.details?.output).toContain("worker quit with fatal");
+  });
+
+  it("a stream that errors and ends with no terminal turn event fails with that error, kept as an error item", async () => {
+    // The SDK calls the stream's own `error` unrecoverable: with nothing after
+    // it, it is the only record of what happened, and a transient status would lose it.
+    const { resolve } = scripted([
+      { type: "thread.started", thread_id: "thr_1" },
+      { type: "error", message: "Reconnecting... 2/5 (stream disconnected)" },
+      { type: "error", message: '{"detail":"stream closed for good"}' },
+    ] as CodexThreadEvent[]);
+    const block = codexAgent({ ...GATE_OFF, resolveCodexClient: resolve });
+    const { output, items } = await testBlock(block, { input: { prompt: "go" } });
+
+    expect(output as CodexAgentHandle).toMatchObject({ outcome: null, status: "errored", failureMessage: "stream closed for good" });
+    const errors = items.filter((i) => i.type === "error") as Array<{ message: string }>;
+    expect(errors.map((e) => e.message)).toEqual(["stream closed for good"]);
+  });
+
+  it("a stream error followed by turn.failed stays a status: the turn's failure is the one error", async () => {
+    const { resolve } = scripted([
+      { type: "thread.started", thread_id: "thr_1" },
+      { type: "error", message: '{"detail":"nope"}' },
+      { type: "turn.failed", error: { message: '{"detail":"nope"}' } },
+    ] as CodexThreadEvent[]);
+    const block = codexAgent({ ...GATE_OFF, resolveCodexClient: resolve });
+    const { output, items } = await testBlock(block, { input: { prompt: "go" } });
+
+    expect(output as CodexAgentHandle).toMatchObject({ outcome: "failed", failureMessage: "nope" });
+    expect(items.some((i) => i.type === "error")).toBe(false);
+  });
+
+  it("Codex's warnings are kept notes, never error items", async () => {
+    const { resolve } = scripted([
+      { type: "thread.started", thread_id: "thr_1" },
+      { type: "item.completed", item: { id: "i0", type: "error", message: "Model metadata for `x` not found." } },
+      { type: "turn.completed", usage: { input_tokens: 1, cached_input_tokens: 0, output_tokens: 1 } },
+    ] as CodexThreadEvent[]);
+    const block = codexAgent({ ...GATE_OFF, resolveCodexClient: resolve });
+    const { output, items } = await testBlock(block, { input: { prompt: "go" } });
+
+    expect(output as CodexAgentHandle).toMatchObject({ status: "completed" });
+    expect(items.some((i) => i.type === "error")).toBe(false);
+    expect(items.some((i) => i.type === "status" && (i as { message?: string }).message === "Model metadata for `x` not found.")).toBe(true);
   });
 
   it("a stream that throws mid-run rethrows typed, after the hook already has the id", async () => {
@@ -594,5 +677,93 @@ describe("codexAgent — cancellation", () => {
       block.config.execute?.({ prompt: "go" }, runtime.ctx as never),
     ).rejects.toBeInstanceOf(CodexAgentAbortedError);
     expect(rec.started).toHaveLength(0);
+  });
+});
+
+describe("codexAgent — a thread Codex no longer has", () => {
+  // Codex's own words when it has no record of the thread a resume asked for,
+  // as the SDK throws them once the CLI exits (real CLI, 0.152.1).
+  const refusal = (id: string) =>
+    new Error(
+      `Codex Exec exited with code 1: Reading prompt from stdin...\nError: thread/resume: thread/resume failed: no rollout found for thread id ${id} (code -32600)\n`,
+    );
+
+  async function failureOf(throwOnRun: Error, resume: string | null, events: CodexThreadEvent[] = []) {
+    const { resolve } = scripted(events, { throwOnRun });
+    const block = codexAgent({ ...GATE_OFF, resolveCodexClient: resolve, resume: () => resume });
+    const { error } = await testBlock(block, { input: { prompt: "continue" } });
+    expect(error).toBeDefined();
+    return error;
+  }
+
+  it("is classified as an unknown conversation, naming the thread, so a host can show it refused", async () => {
+    const error = await failureOf(refusal("thr_gone"), "thr_gone");
+    expect(harnessFailureKind(error)).toBe("unknown-conversation");
+    expect((error?.cause as Error).message).toContain("thr_gone");
+  });
+
+  it("is not a refusal when the run asked for no thread", async () => {
+    expect(harnessFailureKind(await failureOf(refusal("thr_gone"), null))).toBeNull();
+  });
+
+  it("is not a refusal when Codex names a thread other than the one asked for", async () => {
+    expect(harnessFailureKind(await failureOf(refusal("thr_other"), "thr_gone"))).toBeNull();
+  });
+
+  it("a sign-in failure before any thread is named is an ordinary error, not a refusal", async () => {
+    const signIn = new Error(
+      "Codex Exec exited with code 1: Error: unexpected status 401 Unauthorized: Missing bearer or basic authentication in header",
+    );
+    expect(harnessFailureKind(await failureOf(signIn, "thr_gone"))).toBeNull();
+  });
+
+  it("a process that never started is an ordinary error, not a refusal", async () => {
+    const spawnFailed = Object.assign(new Error("spawn /nope/codex ENOENT"), { code: "ENOENT" });
+    expect(harnessFailureKind(await failureOf(spawnFailed, "thr_gone"))).toBeNull();
+  });
+});
+
+describe("codexAgent — the model, per run", () => {
+  it("asks the resolver on every run, and hands its answer to a fresh thread and a resumed one alike", async () => {
+    const { resolve, rec } = scripted(OK_STREAM);
+    // Two runs of ONE block, as two sessions of a host share it: the second
+    // continues a thread, and must still name the model its own run picked.
+    const picks = ["model-for-run-1", "model-for-run-2"];
+    const resumes = [null, "thr_saved"];
+    let modelRun = 0;
+    let resumeRun = 0;
+    const block = codexAgent({
+      ...GATE_OFF,
+      resolveCodexClient: resolve,
+      model: () => picks[modelRun++]!,
+      resume: () => resumes[resumeRun++],
+      thread: { approvalPolicy: "never" },
+    });
+    await testBlock(block, { input: { prompt: "one" } });
+    await testBlock(block, { input: { prompt: "two" } });
+
+    expect(rec.started[0]).toMatchObject({ model: "model-for-run-1", approvalPolicy: "never" });
+    expect(rec.resumed[0]).toMatchObject({ id: "thr_saved", options: { model: "model-for-run-2", approvalPolicy: "never" } });
+  });
+
+  it("names no model when the resolver has none, so Codex runs its own default", async () => {
+    for (const none of [null, undefined, ""]) {
+      const { resolve, rec } = scripted(OK_STREAM);
+      const block = codexAgent({ ...GATE_OFF, resolveCodexClient: resolve, model: () => none });
+      await testBlock(block, { input: { prompt: "go" } });
+      expect(rec.started[0]).not.toHaveProperty("model");
+    }
+  });
+
+  it("prices the run against the model it resolved", async () => {
+    const { resolve } = scripted(OK_STREAM);
+    const block = codexAgent({ ...GATE_OFF, resolveCodexClient: resolve, model: async () => "gpt-5.4-codex" });
+    const { output } = await testBlock(block, { input: { prompt: "go" } });
+    expect((output as CodexAgentHandle).cost).not.toBeNull();
+  });
+
+  it("refuses `model` beside `thread.model` when the block is built: one owner per value", () => {
+    expect(() => codexAgent({ ...GATE_OFF, model: "a", thread: { model: "b" } })).toThrow(CodexAgentConfigError);
+    expect(() => codexAgent({ ...GATE_OFF, model: () => "a", thread: { model: "b" } })).toThrow(/cannot be set together/);
   });
 });

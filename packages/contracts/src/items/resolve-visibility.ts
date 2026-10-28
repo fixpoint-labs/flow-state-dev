@@ -18,7 +18,8 @@
  *   keeps handler emits like `ctx.emit.message("hi")` ergonomic.
  * - All other (structural) types resolve to `{ client: true, history: false }`.
  */
-import type { ItemVisibility, OutputItem } from "./types";
+import type { RuntimeItem } from "./internal";
+import type { ItemVisibility } from "./types";
 
 const CONVERSATIONAL_TYPES = new Set<string>([
   "message",
@@ -37,7 +38,7 @@ const CONVERSATIONAL_DEFAULT: ItemVisibility = { client: true, history: true };
 const STRUCTURAL_DEFAULT: ItemVisibility = { client: true, history: false };
 const TRACE_DEFAULT: ItemVisibility = { client: false, history: false };
 
-export function resolveItemVisibility(item: OutputItem): ItemVisibility {
+export function resolveItemVisibility(item: RuntimeItem): ItemVisibility {
   if (TRACE_TYPES.has(item.type)) return TRACE_DEFAULT;
 
   if (CONVERSATIONAL_TYPES.has(item.type)) {

@@ -33,7 +33,6 @@ const flow = rowResultsFlow(answers)();
 export default createFlowState({
   flows: { [ROW_RESULTS_KIND]: flow },
   stores: { default: { primary: sqliteStores({ filename: ".fsdev/data/row-results.db" }) } },
-  durable: true,
   debugEndpointsEnabled: true,
   devtool: { userId: ROW_RESULTS_USER },
 } as never);

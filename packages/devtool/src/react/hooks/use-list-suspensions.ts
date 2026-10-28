@@ -1,7 +1,7 @@
 /**
  * Fetches the privileged debug suspensions list for a session (FIX-141).
  *
- * Wraps `sessionClient.debug.listSuspensions`, the same client-method idiom
+ * Wraps `client.sessions.debug.listSuspensions`, the same client-method idiom
  * the resource-debug hooks use (transport lives in the client, never here).
  * Surfaces the 403 debug-gate case as a dedicated `disabled` flag so the
  * panel can render an explanatory notice rather than a generic error.
@@ -42,7 +42,7 @@ export function useListSuspensions(
   sessionId: string | null,
   status?: SuspensionStatus
 ): UseListSuspensionsResult {
-  const { sessionClient } = useDevTool();
+  const { client } = useDevTool();
   const [suspensions, setSuspensions] = useState<SuspensionRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +60,7 @@ export function useListSuspensions(
     setDisabled(false);
     try {
       const result: DebugSuspensionsResponse =
-        await sessionClient.debug.listSuspensions(sessionId, { status });
+        await client.sessions.debug.listSuspensions(sessionId, { status });
       setSuspensions(result.suspensions);
     } catch (err) {
       if (isDebugDisabledError(err)) {
@@ -72,7 +72,7 @@ export function useListSuspensions(
     } finally {
       setIsLoading(false);
     }
-  }, [sessionClient, sessionId, status]);
+  }, [client, sessionId, status]);
 
   // Fetch on mount and whenever the session id or status filter changes. The
   // refresh callback's identity is stable for a given (sessionId, status).

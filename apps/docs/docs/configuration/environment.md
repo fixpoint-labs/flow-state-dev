@@ -38,7 +38,7 @@ These override `createModelResolver` / `models` at construction. They do not cha
 
 | Variable | What it does |
 |----------|----------------|
-| `FSDEV_INTENT_<NAME>` | Replaces the candidate list for intent `<name>`. `<NAME>` is the intent uppercased with hyphens turned into underscores (`chat` → `FSDEV_INTENT_CHAT`, `my-custom` → `FSDEV_INTENT_MY_CUSTOM`). The value is one `provider/model` or `gateway/provider/model` string; comma-separated lists are not supported. |
+| `FSDEV_INTENT_<NAME>` | Replaces the candidate list for intent `<name>`. `<NAME>` is the intent uppercased with hyphens turned into underscores (`chat` → `FSDEV_INTENT_CHAT`, `my-custom` → `FSDEV_INTENT_MY_CUSTOM`). The value is one `provider/model` or `name:model` string; comma-separated lists are not supported. |
 | `FSDEV_DEFAULT_MODEL` | Replaces `models.default` / `defaultModel`. |
 
 Construction throws when two declared intents normalize to the same env name (`my-custom` and `my_custom`). An `FSDEV_INTENT_*` for an intent this resolver does not declare is warned and ignored. A typo in a declared intent's override is warned and the resolver falls back to `default`.
@@ -46,8 +46,8 @@ Construction throws when two declared intents normalize to the same env name (`m
 `FSDEV_DEFAULT_MODEL` applies whether or not intents are declared. An app that never resolves a model ignores it, so one environment can set it for every app it runs.
 
 ```bash title=".env.local"
-FSDEV_INTENT_CHAT=openai/gpt-5.4-mini
-FSDEV_DEFAULT_MODEL=openai/gpt-5.4-mini
+FSDEV_INTENT_CHAT=openai/gpt-6-luna
+FSDEV_DEFAULT_MODEL=openai/gpt-6-luna
 ```
 
 Full rules: [Models → Environment overrides](/docs/fundamentals/models).
@@ -61,7 +61,7 @@ Full rules: [Models → Environment overrides](/docs/fundamentals/models).
 | `FSDEV_DEBUG_ENDPOINTS` | `1` enables privileged debug routes (same as `debugEndpointsEnabled: true`). |
 | `FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL` | `1` lets debug routes accept requests with no `Origin` header, such as curl, a script, or a same-origin browser GET (same as `debugAllowAnonymousLocal: true`). Unset, or any other value including `true`, and those requests get 403. An explicit `debugAllowAnonymousLocal` option, including `false`, overrides it. Only set it for a server bound to loopback. |
 | `FSDEV_TRACING_LEVEL` | Observability verbosity for the CLI/dev router. `fsdev dev` defaults this to `verbose`. |
-| `FSDEV_TRACE_OBSERVABILITY` | `true` / `false` toggles `block_trace` capture. Defaults to on outside production. |
+| `FSDEV_TRACE_OBSERVABILITY` | `true` / `false` toggles full `block_trace` capture: inputs, prompts and resource loads. Defaults to on outside production. When off, each completed block still records its output, so a resumed request picks up where it stopped instead of running finished steps again. |
 
 `createFlowState({ devtool: { userId, bearerToken } })` is not an env var. Put secrets you want DevTool to send in that object, reading them from the environment yourself.
 

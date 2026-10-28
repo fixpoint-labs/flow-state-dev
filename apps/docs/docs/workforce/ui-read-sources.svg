@@ -1,82 +1,83 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 512" role="img" aria-labelledby="title desc">
-  <title id="title">Where each component reads from, and when it reads</title>
-  <desc id="desc">One session's items feed messages, task plans and approval cards, live and still there after a reload. An organization's standing collection feeds the roster, the board columns and the board list, read once on mount. Your server's flow list feeds the navigator, read once, with a leaf's sessions read when that leaf opens.</desc>
-  <style>
-    :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
-            --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
-            --org-fill:#f0fdf4; --org:#15803d; --card:#ffffff; --card-line:#334155; --box:#f8fafc; }
-    @media (prefers-color-scheme: dark) {
-      :root { --bg:#0e0e14; --ink:#e5e7eb; --ink-2:#cbd5e1; --muted:#94a3b8;
-              --proc-fill:#1d1030; --proc:#c084fc; --sess-fill:#0f1a33; --sess:#60a5fa;
-              --org-fill:#0b2016; --org:#4ade80; --card:#14141c; --card-line:#64748b; --box:#181822; } }
-    .bg { fill:var(--bg); }
-    .wall-proc { fill:var(--proc-fill); stroke:var(--proc); stroke-width:2; }
-    .wall-sess { fill:var(--sess-fill); stroke:var(--sess); stroke-width:2; }
-    .wall-org { fill:var(--org-fill); stroke:var(--org); stroke-width:2; }
-    .wall-file { fill:var(--box); stroke:var(--card-line); stroke-width:2; }
-    .card { fill:var(--card); stroke:var(--card-line); stroke-width:1.5; }
-    .card-sess { fill:var(--card); stroke:var(--sess); stroke-width:1.5; }
-    .box { fill:var(--box); stroke:var(--card-line); stroke-width:1.2; }
-    .title { font:700 20px ui-sans-serif, system-ui, sans-serif; fill:var(--ink); }
-    .h { font:700 14px ui-sans-serif, system-ui, sans-serif; fill:var(--ink); }
-    .p { font:13px ui-sans-serif, system-ui, sans-serif; fill:var(--ink-2); }
-    .muted { font:12px ui-sans-serif, system-ui, sans-serif; fill:var(--muted); }
-    .lbl { font:600 10px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing:.08em; fill:var(--muted); }
-    .code { font:11.5px ui-monospace, SFMono-Regular, Menlo, monospace; fill:var(--ink); }
-  </style>
-
-  <rect class="bg" x="0" y="0" width="940" height="512" rx="16"/>
-  <text class="title" x="24" y="38">Three places a component reads</text>
-  <text class="muted" x="24" y="60">Where it reads decides what it shows and when it changes.</text>
-
-  <g id="session">
-    <rect class="wall-sess" x="24" y="80" width="286" height="300" rx="14"/>
-    <text class="h" x="40" y="104">One session's items</text>
-    <text class="muted" x="40" y="122">What this conversation persisted</text>
-    <rect class="card-sess" x="36" y="138" width="262" height="98" rx="10"/>
-    <text class="lbl" x="50" y="158">READ BY</text>
-    <text class="code" x="50" y="180">messages</text>
-    <text class="code" x="50" y="198">task plans</text>
-    <text class="code" x="50" y="216">approval cards</text>
-    <text class="p" x="40" y="268">Arrive live, as items land.</text>
-    <text class="p" x="40" y="290">Still there after a reload.</text>
-  </g>
-
-  <g id="org">
-    <rect class="wall-org" x="327" y="80" width="286" height="300" rx="14"/>
-    <text class="h" x="343" y="104">An organization's collection</text>
-    <text class="muted" x="343" y="122">Outside any one session</text>
-    <rect class="card" x="339" y="138" width="262" height="98" rx="10"/>
-    <text class="lbl" x="353" y="158">READ BY</text>
-    <text class="code" x="353" y="180">Roster</text>
-    <text class="code" x="353" y="198">BoardColumns</text>
-    <text class="code" x="353" y="216">BoardList</text>
-    <text class="p" x="343" y="268">Everyone in the organization</text>
-    <text class="p" x="343" y="286">sees the same rows.</text>
-    <text class="p" x="343" y="312">Read once, on mount. Not watched.</text>
-    <text class="muted" x="343" y="338">BoardList with live reads again when</text>
-    <text class="muted" x="343" y="356">its session records a board change.</text>
-  </g>
-
-  <g id="server">
-    <rect class="wall-proc" x="630" y="80" width="286" height="300" rx="14"/>
-    <text class="h" x="646" y="104">Your server's flow list</text>
-    <text class="muted" x="646" y="122">The flow kinds and copies it serves</text>
-    <rect class="card" x="642" y="138" width="262" height="98" rx="10"/>
-    <text class="lbl" x="656" y="158">READ BY</text>
-    <text class="code" x="656" y="180">FlowNavigator</text>
-    <text class="muted" x="656" y="206">One read, however many</text>
-    <text class="muted" x="656" y="222">sections it draws.</text>
-    <text class="p" x="646" y="268">Read once, on mount.</text>
-    <text class="p" x="646" y="294">A leaf's sessions are read</text>
-    <text class="p" x="646" y="312">only when that leaf opens.</text>
-  </g>
-
-  <g id="read-again">
-    <rect class="box" x="24" y="396" width="892" height="100" rx="12"/>
-    <text class="h" x="40" y="420">To read again</text>
-    <text class="p" x="40" y="444">Items need nothing: they keep arriving.</text>
-    <text class="p" x="40" y="464">A panel reads again when its React key changes.</text>
-    <text class="p" x="40" y="484">The navigator's leafToolbar slot is handed a refresh function for the open leaf's sessions.</text>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 34 940 691">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect fill="url(#hatch)" x="24" y="56" width="280" height="10"/><line class="thin" x1="24" y1="66.5" x2="304" y2="66.5"/>
+<rect class="solid" x="24" y="56" width="280" height="88"/>
+<text class="lb" x="36" y="88">SOURCE 01</text>
+<text class="nm" x="36" y="110">One session's items</text>
+<text class="sub" x="36" y="128">What this conversation persisted</text>
+<rect class="thin" x="88" y="184" width="180" height="28"/>
+<text class="c" x="100" y="203">messages</text>
+<line class="ln" x1="88" y1="198" x2="64" y2="198"/>
+<rect class="thin" x="88" y="220" width="180" height="28"/>
+<text class="c" x="100" y="239">task plans</text>
+<line class="ln" x1="88" y1="234" x2="64" y2="234"/>
+<rect class="thin" x="88" y="256" width="180" height="28"/>
+<text class="c" x="100" y="275">approval cards</text>
+<line class="ln" x1="88" y1="270" x2="64" y2="270"/>
+<path class="ln" d="M64 270 V146" marker-end="url(#ah)"/>
+<rect class="ground" x="32.8" y="157" width="62.4" height="15"/><text class="plate" x="64" y="168" text-anchor="middle">01 LIVE</text>
+<text class="t" x="36" y="332">Arrive live, as items land.</text>
+<text class="t" x="36" y="348">Still there after a reload.</text>
+<line class="hi" x1="24" y1="436" x2="304" y2="436"/>
+<text class="lb" x="36" y="458">TO READ AGAIN</text>
+<text class="t" x="36" y="478">Nothing: items keep arriving.</text>
+<rect fill="url(#hatch)" x="330" y="56" width="280" height="10"/><line class="thin" x1="330" y1="66.5" x2="610" y2="66.5"/>
+<rect class="solid" x="330" y="56" width="280" height="88"/>
+<text class="lb" x="342" y="88">SOURCE 02</text>
+<text class="nm" x="342" y="110">An organization's collection</text>
+<text class="sub" x="342" y="128">Outside any one session</text>
+<rect class="thin" x="394" y="184" width="180" height="28"/>
+<text class="c" x="406" y="203">Roster</text>
+<line class="ln" x1="394" y1="198" x2="370" y2="198"/>
+<rect class="thin" x="394" y="220" width="180" height="28"/>
+<text class="c" x="406" y="239">BoardColumns</text>
+<line class="ln" x1="394" y1="234" x2="370" y2="234"/>
+<rect class="thin" x="394" y="256" width="180" height="28"/>
+<text class="c" x="406" y="275">BoardList</text>
+<line class="ln" x1="394" y1="270" x2="370" y2="270"/>
+<path class="ln" d="M370 270 V146" marker-end="url(#ah)"/>
+<rect class="ground" x="338.8" y="157" width="62.4" height="15"/><text class="plate" x="370" y="168" text-anchor="middle">02 ONCE</text>
+<text class="t" x="342" y="332">Everyone in the organization</text>
+<text class="t" x="342" y="348">sees the same rows.</text>
+<text class="t" x="342" y="372">Read once, on mount. Not watched.</text>
+<line class="hi" x1="330" y1="436" x2="610" y2="436"/>
+<text class="lb" x="342" y="458">TO READ AGAIN</text>
+<text class="t" x="342" y="478">A panel reads again when its</text>
+<text class="t" x="342" y="494">React key changes.</text>
+<rect class="solid" x="636" y="56" width="280" height="88"/>
+<text class="lb" x="648" y="88">SOURCE 03</text>
+<text class="nm" x="648" y="110">Your server's flow list</text>
+<text class="sub" x="648" y="128">The flow kinds and copies it serves</text>
+<rect class="thin" x="700" y="184" width="180" height="28"/>
+<text class="c" x="712" y="203">FlowNavigator</text>
+<line class="ln" x1="700" y1="198" x2="676" y2="198"/>
+<path class="ln" d="M676 198 V146" marker-end="url(#ah)"/>
+<rect class="ground" x="644.8" y="157" width="62.4" height="15"/><text class="plate" x="676" y="168" text-anchor="middle">03 ONCE</text>
+<text class="t" x="648" y="332">One read, however many</text>
+<text class="t" x="648" y="348">sections it draws.</text>
+<text class="t" x="648" y="372">Read once, on mount.</text>
+<text class="t" x="648" y="396">A leaf's sessions are read</text>
+<text class="t" x="648" y="412">only when that leaf opens.</text>
+<line class="hi" x1="636" y1="436" x2="916" y2="436"/>
+<text class="lb" x="648" y="458">TO READ AGAIN</text>
+<text class="t" x="648" y="478">The leafToolbar slot is handed</text>
+<text class="t" x="648" y="494">a refresh function for the</text>
+<text class="t" x="648" y="510">open leaf's sessions.</text>
+<path class="ln-dash" d="M484 284 V302 H317 V100 H306" marker-end="url(#ah)"/>
+<rect class="ground" x="358.8" y="295" width="98.4" height="15"/><text class="plate" x="408" y="306" text-anchor="middle">04 WITH live</text>
+<line class="hi" x1="0" y1="534" x2="940" y2="534"/>
+<text class="n" x="24" y="560">01</text>
+<text class="t" x="56" y="560">Messages, task plans and approval cards follow one session's items as they arrive.</text>
+<text class="n" x="24" y="585">02</text>
+<text class="t" x="56" y="585">The roster and board panels read a standing collection once, when they mount.</text>
+<text class="n" x="24" y="610">03</text>
+<text class="t" x="56" y="610">The navigator reads the flow list once, and a leaf's sessions only when that leaf opens. A leaf is a singleton</text>
+<text class="t" x="56" y="627">flow kind, or one instance of a collection flow kind.</text>
+<text class="n" x="24" y="652">04</text>
+<text class="t" x="56" y="652">A BoardList with live follows the session you pass, and reads the board again whenever that session records</text>
+<text class="t" x="56" y="669">a change to it.</text>
+<line class="ln" x1="24" y1="697" x2="50" y2="697" marker-end="url(#ah)"/><text class="lb" x="58" y="701">READS</text><line class="ln-dash" x1="131.5" y1="697" x2="157.5" y2="697" marker-end="url(#ah)"/><text class="lb" x="165.5" y="701">FOLLOWS A SESSION, WITH live</text><rect fill="url(#hatch)" x="411.5" y="691" width="26" height="11"/><rect class="thin" x="411.5" y="691" width="26" height="11"/><text class="lb" x="445.5" y="701">OUTLIVES THE REQUEST</text>
 </svg>

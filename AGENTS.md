@@ -27,22 +27,7 @@ Use this protocol when work is wave-based:
 
 ## Release notes
 
-This repo uses Changesets for release coordination. Do not edit a root `changelog.md` — none exists.
-
-**A changeset is not required by default.** Most PRs don't get one.
-
-**Write one when** somebody who has installed a published package needs to know: public API, a capability, block, CLI command, hook, env var, or config key they call has changed, or behavior they can observe from outside the package has shifted.
-
-1. Run `pnpm changeset`. Pick the affected publishable package(s).
-2. Pre-1.0: `patch` for a change no consumer's existing code can trip over (bug fixes, additive API), `minor` for anything that can break them. Never `major`. [`release-notes-workflow.md`](docs/contributing/release-notes-workflow.md#pre-10-discipline-current-state) is the authoritative wording for this choice — defer to it, don't re-derive it from this line.
-3. Write a single user-facing sentence and name the Linear issue in it (e.g. `FIX-123`). CI enforces the issue reference.
-4. Commit the generated `.changeset/<name>.md` file with the PR.
-
-**Skip it otherwise** — internal refactors, tests, infra, docs-site edits, agent skills, and anything scoped to a private package (`labs/*`, `examples/*`, `apps/*`, `packages/ui`, `packages/integration-tests`, `plugins/*`, `goals`). Say "no changeset needed" in the PR description if a reviewer might wonder. `pnpm changeset --empty` still works but is not required, and CI does not gate on `changeset-bot`.
-
-**Never hand-write a fragment naming a private package.** They are skipped by `privatePackages: { version: false }`, and a fragment mixing a skipped package with a publishable one fails the entire release run.
-
-**Reference:** [`docs/contributing/release-notes-workflow.md`](docs/contributing/release-notes-workflow.md) covers when to write what, the multi-package case, common mistakes, and what happens at release time. [BP-022](docs/contributing/best-practices.md#bp-022-release-notes-via-changesets) is the rule.
+**A changeset is not required by default.** Write one (`pnpm changeset`) only when someone who installed a published package needs to know; private packages never get one. [BP-022](docs/contributing/best-practices.md#bp-022-release-notes-via-changesets) is the rule (bump level, issue reference, private-package list), and [`release-notes-workflow.md`](docs/contributing/release-notes-workflow.md) is the how-to.
 
 ## Implementation guardrails
 
@@ -50,32 +35,29 @@ This repo uses Changesets for release coordination. Do not edit a root `changelo
 - Keep exported API surfaces documented with concise, high-signal comments.
 - Preserve canonical package boundaries (`core`, `engine`, `client`, `react`, `testing`, `fsdev`).
 - **Working memory is session-only — never commit it.** Orchestration state (the epic board, per-issue handle caches, coordination scratch) lives in gitignored `.orchestration/`. Do not open status-only PRs. Retained issue/epic specs are reviewed intent, not live status boards; derive current state from Linear and implementation PRs. See [the canonical retention policy](docs/contributing/orchestration.md#spec-retention-and-authority).
+- **A rule without an enforcer is a hope.** Pair each standing rule with what makes it fail — architecture, the compiler, a lint/CI check, a test — before writing it as prose. The living table is [`distill-lessons`](.agents/skills/distill-lessons/SKILL.md) → "Rule → enforcer".
 
-> **Orchestration reference.** How the epic and issue lifecycles compose — roles, gates (the owner merging the spec PR, or `spec approved` / `epic approved`), the epic-spec, the **project-spec** (one altitude up: a Linear project's standing set on a never-merged `project/<slug>` PR, with no lifecycle and no gate), and the spec-review bar and convergence rule — is defined once, with diagrams, in `docs/contributing/orchestration.md`. The orchestration skills and worker agents reference it. Three rules worth knowing without opening it: **parallel issue work always runs under an epic** (`epic-lifecycle`); **a spec is approved when it's directionally correct, not when nothing is left to nitpick** — below-the-bar review feedback goes to the implementer, and spec review converges in two rounds; and **a coordinator dispatches, it never does the work** — including work the user asks it for directly mid-run, which is the case that gets through (a request says *what* should happen, not *who* does it).
+> **Orchestration reference.** How the epic and issue lifecycles compose (roles, gates, the epic-spec and project-spec, the spec-review bar and convergence rule) is defined once in `docs/contributing/orchestration.md`; the orchestration skills and worker agents reference it. Three rules worth knowing without opening it: **parallel issue work always runs under an epic** (`epic-lifecycle`); **a spec is approved when it's directionally correct, not when nothing is left to nitpick** — below-the-bar review feedback goes to the implementer, and spec review converges in two rounds; and **a coordinator dispatches, it never does the work** — including work the user asks it for directly mid-run, which is the case that gets through (a request says *what* should happen, not *who* does it).
 
 > **Retained specs.** Issue and epic spec PRs merge after human direction approval for the reviewed head and required repository checks; implementation waits for confirmed merge. Their original PRs remain historical, with later amendments in follow-up PRs from `main`. See [Gates](docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge) and [Merging and amending a spec](docs/contributing/orchestration.md#merging-and-amending-a-spec). Project specs keep the separate never-merged lifecycle; this does not authorize implementation PR merges.
 
 ## Asking the user for a decision
 
-**You are the engineer; the user is the product owner.** They set the objectives and track the process as a whole. Their attention is the scarce resource, and every paragraph they spend re-deriving a call you already made is attention not spent on the thing only they are tracking. They are technical — that makes handing them the mechanism easy, and it is still the wrong move. Dropping them into the engineer's chair is occasionally necessary and should be **rare**; when it is, say out loud that it's happening and why the business framing doesn't decide it.
-
-So **translate every ask into the decision they are actually making** — priced in customers, promises, timing, and reversibility, not in files and symbols. Six parts: **the fork as a plain-language heading** · **plain terms** (could they explain it back to a customer?) · **the trade-off** · **your recommendation, always** · **what would change your mind** · **what being wrong costs**. Each part, why it exists, and a worked example are canonical in [`docs/contributing/asking-for-decisions.md`](docs/contributing/asking-for-decisions.md) (BP-041) — read it before putting any fork, gate, or sign-off to the user.
-
-This applies in **conversation** as much as in artifacts. Batch a turn's asks under one `Need your sign-off` heading, numbered, hardest first; two to four is normal. And **don't ask when you shouldn't**: the call is the implementer's, the answer is derivable from the spec or a decision they already made, or it's a coin flip with near-zero cost either way — decide it and note it in a line.
+**You are the engineer; the user is the product owner.** Translate every ask, in conversation or an artifact, into the business decision they are making, in the six-part shape, batched under one `Need your sign-off` heading. Don't ask what is the implementer's call, derivable, or near-free either way. [`docs/contributing/asking-for-decisions.md`](docs/contributing/asking-for-decisions.md) (BP-041) is canonical; read it before putting any fork, gate, or sign-off to the user.
 
 ## Model tiering — match the model to where judgment lives
 
-We front-load architectural judgment (spec authoring, the coherence / Philosophy-Skeptic review lens, the challenger). Once the decisions are made, execution and fetching are the token-heavy, low-judgment bulk — run those on cheaper models. The rule:
+Specs settle direction, not a build plan, so implementation is judgment work: the implementer plans its own build against the real code. It runs on Opus. Cheaper models only check decided work and fetch. The rule:
 
-**Opus coordinates and judges · Sonnet executes decided work · Haiku fetches and scouts.**
+**Opus coordinates, judges and implements · Sonnet checks decided work · Haiku fetches and scouts.**
 
 | Tier | Model | Roles |
 |---|---|---|
-| Judgment | **Opus** (default) | the orchestrators (thin, cheap to keep smart), `issue-spec` authoring/research, epic-spec authoring/coordination (`epic-agent`), project-spec authoring (`project-agent`), the **coherence** review lens (`audit-coherence`) + **restraint** (`second-look`) + **alternatives** (`adhd`, both its diverge and focus passes — idea quality is the whole product there, so it is not tiered down), the **challenger**, ambiguous debugging, necessity/refinement calls |
-| Decided execution | **Sonnet** | implementing a task from an approved spec (`spec-implementer`), the **completeness** + **correctness** review lenses, straightforward PR-feedback fixes, tests for a named behaviour, settling one already-framed factual claim with a throwaway POC (`poc-agent`) |
+| Judgment | **Opus** (default) | the orchestrators (thin, cheap to keep smart), `issue-spec` authoring/research, epic-spec authoring/coordination (`epic-agent`), project-spec authoring (`project-agent`), **implementing an approved spec** (`spec-implementer`, including its own build plan, PR-feedback fixes, and tests), the **coherence** review lens (`audit-coherence`) + **restraint** (`second-look`) + **reuse** (`reuse-review`) + **analysis** (`analysis`, and the `adhd` diverge and focus passes it dispatches — idea quality is the whole product there, so it is not tiered down), the **challenger**, ambiguous debugging, necessity/refinement calls |
+| Decided checks | **Sonnet** | the **completeness** + **correctness** review lenses, settling one already-framed factual claim with a throwaway POC (`poc-agent`), filing discovered work (`issue-manager`) |
 | Mechanical | **Haiku** | read-only orientation (`scout` / `zoom-out`), status/handle fetches (coordinator & lifecycle refreshes), simple lookups, boilerplate/formatting |
 
-**The guardrail that makes downgrading safe:** a cheaper-tier worker *escalates a genuine un-decided decision rather than inventing one*. `spec-implementer` (Sonnet) stops and reports a blocker when it hits an architectural fork the spec didn't settle; `scout` (Haiku) returns facts and defers any judgment; `poc-agent` (Sonnet) returns `INCONCLUSIVE` rather than a guessed verdict — the high-judgment half of a settlement (framing the claim and what would falsify it) is done upstream by the Opus triage that requested it, so what's left is decided execution. Downgrade only where the decision is already made — never where the work is still deciding.
+**The guardrail that makes downgrading safe:** a cheaper-tier worker *escalates a genuine un-decided decision rather than inventing one*. `scout` (Haiku) returns facts and defers any judgment; `poc-agent` (Sonnet) returns `INCONCLUSIVE` rather than a guessed verdict — the high-judgment half of a settlement (framing the claim and what would falsify it) is done upstream by the Opus triage that requested it, so what's left is decided execution. Downgrade only where the decision is already made — never where the work is still deciding. `spec-implementer` stops on a *direction* fork for a different reason: the call belongs to the spec gate, whatever model is holding it.
 
 **Upward escalation — first-class, slice-only, and human-gated.** The default judgment tier is Opus, and it does *not* escalate a whole phase to a costlier model. But when Opus hits a *single, bounded* decision it judges genuinely beyond it — one where both horns are defensible on the tenets and being wrong is expensive to reverse — it may escalate **that one decision** to a **Fable** sub-agent, passing only the *slice*: the specific fork, the options, and the context needed to decide. Never the whole task. Fable returns an adjudication; the owning agent still decides and surfaces to the human — Fable advises, it does not decide. Three guards, in order:
 
@@ -85,7 +67,7 @@ We front-load architectural judgment (spec authoring, the coherence / Philosophy
 
 First trial surface: the single hardest conflict in `cross-spec-review` (it flags a `fable-candidate`; the coordinator obtains approval and invokes). Whether Fable earns its premium is *measured* by the cycle-ledger (`distill-lessons`), not assumed.
 
-Set the tier declaratively with `model:` on a worker agent (`.claude/agents/*.md`) or `model:` / `effort:` on a skill; or per-dispatch via the Agent tool's model override. Standing worker agents: **`spec-implementer`** (Sonnet), **`poc-agent`** (Sonnet — settles one disputed factual claim with a throwaway POC when a spec review loops on it; see `orchestration.md` → "Settling a disputed claim"), **`scout`** (Haiku), **`issue-manager`** (Sonnet — files/organizes Linear issues for discovered gaps and blockers; see below).
+Set the tier declaratively with `model:` on a worker agent (`.claude/agents/*.md`) or `model:` / `effort:` on a skill; or per-dispatch via the Agent tool's model override. Standing worker agents: **`spec-implementer`** (Opus), **`poc-agent`** (Sonnet — settles one disputed factual claim with a throwaway POC when a spec review loops on it; see `orchestration.md` → "Settling a disputed claim"), **`scout`** (Haiku), **`issue-manager`** (Sonnet — files/organizes Linear issues for discovered gaps and blockers; see below).
 
 **File discovered work, don't scope-creep it.** When work surfaces a gap, a follow-up, or a blocker that isn't the current task's job, file it through the **`issue-manager`** agent (related to the current issue, in the current project — it duplicate-checks, writes it PM-shaped, wires blocked-by/blocks/relates/parent, and returns a ready/blocked verdict). Under `epic-lifecycle`, a filed issue that belongs under the epic can be pulled into the active set (still gated at its own spec-approval); a blocked-by relation holds only its implementation, never its spec work.
 
@@ -93,7 +75,7 @@ Set the tier declaratively with `model:` on a worker agent (`.claude/agents/*.md
 
 When you change flow logic, the default verification path is `fsdev run`, not `pnpm test` and not opening kitchen-sink in a browser. The CLI runs the full `runAction` engine against the same stores and execution context the production server uses, with structured NDJSON events on stdout and `[flow-state] *` runtime logs on stderr. It is the fastest way to confirm a change works as intended.
 
-When the app under test ships an `fsdev.config.ts` (FIX-784), `fsdev run` uses its wiring — the app's model resolver and store profiles — instead of CLI defaults. Run it from the app directory, since config search is cwd-only (`cd apps/kitchen-sink && pnpm fsdev run ...`). The repo-root invocation stays on directory discovery.
+When the app under test ships an `fsdev.config.ts`, `fsdev run` uses its wiring — the app's model resolver and store profiles — instead of CLI defaults. Run it from the app directory, since config search is cwd-only (`cd apps/kitchen-sink && pnpm fsdev run ...`). The repo-root invocation stays on directory discovery.
 
 **Pick the right tool for the kind of change:**
 
@@ -118,7 +100,7 @@ pnpm fsdev run kitchen-sink chat-agent -i '{"message":"now what?","mode":"ask"}'
 pnpm fsdev run kitchen-sink chat-agent -i '{...}' --seed-session ./fixtures/state.json
 
 # Override the model — useful for cheap iteration or to force a specific path
-pnpm fsdev run kitchen-sink chat-agent -i '{...}' --model openai/gpt-4o-mini
+pnpm fsdev run kitchen-sink chat-agent -i '{...}' --model openai/gpt-6-luna
 
 # Capture the full stream + result to a file you can grep/jq later
 pnpm fsdev run kitchen-sink chat-agent -i '{...}' --capture /tmp/run.json
@@ -145,7 +127,10 @@ pnpm fsdev run hello-chat chat -i '{"message":"hi"}' --quiet
 
 **When the result lives in a resource, not the stream.** `fsdev run`'s NDJSON records items and events, not resource VALUES (only change notifications). When an app's outcome lives in a stored resource rather than the stream, pair `fsdev run` with a zero-model **read action** that projects the resource back out, captured to a file: run the action, then the read action, then inspect the second capture's `result.output`.
 
-**When something breaks**, switch into the `debug-flow` skill — it has the failure-pattern matrix and the `fsdev block` isolation workflow. This section is for confirming a change works; `debug-flow` is for diagnosing why one doesn't.
+**When something breaks**, switch into `diagnose`. For a flow-execution failure it
+calls the `debug-flow` toolkit (NDJSON event types, `fsdev block`, failure-pattern
+table). This section is for confirming a change works; `diagnose` is for why one
+doesn't.
 
 ## Adding test coverage
 
@@ -220,11 +205,7 @@ Update when integration patterns change — server setup, React hooks usage, tes
 
 **Route this prose through the `docs-writer` agent, then `docs-editor`.** Don't write it inline while you're holding the spec and the diff: implementation rationale leaks into published pages in a predictable way (design defense, defect narrative, before/after framing), and knowing the rules doesn't prevent it. The writer runs in a fresh context on a surface brief — the symbols a user touches, what a caller sees including failures, and the limits — and derives the rest from the public API. The standard both agents work to is [`docs/contributing/user-docs.md`](docs/contributing/user-docs.md). The same applies to the API sections of `packages/*/README.md`.
 
-**Artifacts a human reads** (PR descriptions, Linear issues, review comments, specs):
-
-Lead with the **problem** in plain language, then the solution, then what's being asked of the reader. **Nothing precedes the problem** — not a ref, not a label, not a statement of what kind of artifact it is. Everything else goes below the fold, collapsed rather than deleted, except news the reader wouldn't think to look for: a decision, a risk, a known gap, anything hard to reverse, or scope that grew. That goes above the fold, short.
-
-The rule, the per-artifact word budgets, and the density checks are canonical in [`docs/contributing/writing-for-humans.md`](docs/contributing/writing-for-humans.md) (BP-039); the PR-description layout applies them in [`docs/contributing/pr-reviewer-guidance.md`](docs/contributing/pr-reviewer-guidance.md); what the *"what's being asked"* part contains is [`docs/contributing/asking-for-decisions.md`](docs/contributing/asking-for-decisions.md) (BP-041, above). Don't re-derive any of them — a skill or template restating them is how the copies drift.
+**Artifacts a human reads** (PR descriptions, Linear issues, review comments, specs): lead with the **problem** in plain language, then the solution, then what's asked of the reader. The rule and budgets are [`writing-for-humans.md`](docs/contributing/writing-for-humans.md) (BP-039), the PR layout is [`pr-reviewer-guidance.md`](docs/contributing/pr-reviewer-guidance.md), and the ask is [`asking-for-decisions.md`](docs/contributing/asking-for-decisions.md). Don't re-derive any of them in a skill or template.
 
 **Root files**:
 - Update `README.md` when onboarding-relevant facts change (setup, package roles, key concepts).
@@ -239,7 +220,7 @@ This is a pnpm monorepo (pnpm@10.4.1, Node 22). No Docker, databases, or externa
 
 **Key commands** are documented in `CLAUDE.md` and `docs/contributing/development-setup.md`. Summary: `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm --filter <pkg> test`.
 
-**Running reference/example apps** (`apps/kitchen-sink`, `examples/hello-chat`) requires a provider key for the model the flow uses. `hello-chat` is wired to `openai/gpt-5-mini`, so `pnpm fsdev run hello-chat chat -i '{"message":"hi"}'` needs `OPENAI_API_KEY` (or an `AI_GATEWAY_API_KEY` that resolves OpenAI). There is no mock fallback in `createModelResolver` — without a configured provider, generator blocks fail with `No provider available for "<provider>"`. For provider-free smoke tests, use `pnpm test` (mocks every generator) or write a flow that uses no generator blocks and run it through `fsdev run`.
+**Running reference/example apps** (`apps/kitchen-sink`, `examples/hello-chat`) requires a provider key for the model the flow uses. `hello-chat` is wired to `openai/gpt-6-luna`, so `pnpm fsdev run hello-chat chat -i '{"message":"hi"}'` needs `OPENAI_API_KEY` (or an `AI_GATEWAY_API_KEY` that resolves OpenAI). There is no mock fallback in `createModelResolver` — without a configured provider, generator blocks fail with `No provider available for "<provider>"`. For provider-free smoke tests, use `pnpm test` (mocks every generator) or write a flow that uses no generator blocks and run it through `fsdev run`.
 
 **Docs site**: `cd apps/docs && npx docusaurus start --port 3000` (do not use `pnpm docs:dev` with extra `--` flags — argument forwarding breaks).
 

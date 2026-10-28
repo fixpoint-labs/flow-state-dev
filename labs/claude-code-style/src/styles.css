@@ -1,0 +1,43 @@
+/*
+ * The lab's stylesheet. Everything the lab draws references a token by name,
+ * and the lab holds no colour value of its own: the look is the design-system
+ * import, over the registry's `tokens` item.
+ *
+ * `sidebar` and `inspector` are the design's two shell surfaces (the left
+ * pane, and the right one). They fall back to registry tokens in the base
+ * layer, so the design-system import's values win.
+ */
+@import "tailwindcss" source(none);
+@import "@flow-state-dev/design-system/shift-manager.css";
+@import "./components/flow-state/tokens.css";
+@source "./";
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-sidebar: var(--sidebar);
+  --color-inspector: var(--inspector);
+}
+
+@layer base {
+  :root,
+  .dark {
+    --sidebar: var(--muted);
+    --inspector: var(--card);
+  }
+
+  * {
+    @apply border-border;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  html,
+  body,
+  #root {
+    @apply h-full overflow-hidden;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}

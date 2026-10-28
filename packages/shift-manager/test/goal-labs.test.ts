@@ -13,8 +13,9 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadFsdevConfig } from "@flow-state-dev/fsdev";
 import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { createLabClients, type LabClients } from "../src/lib/connection";
-import { collectionOfBoard, createLabReader, STAFF_TEAM, type BoardRow } from "../src/lib/reads";
+import type { Client } from "@flow-state-dev/client";
+import { connect } from "../src/lib/connection";
+import { collectionOfBoard, createLabReader, GENERAL_TEAM, type BoardRow } from "../src/lib/reads";
 import { teamsOf, type LoadedSnapshot } from "../src/lib/derive";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { followRequest, readSessionItems, resolveRunFlow, taskItems } from "../src/lib/run";
@@ -23,7 +24,7 @@ import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
 
-type Opened = { lab: ServedLab; roster: DeclaredRoster; snapshot: LoadedSnapshot; clients: LabClients };
+type Opened = { lab: ServedLab; roster: DeclaredRoster; snapshot: LoadedSnapshot; client: Client };
 
 async function open(configPath: string, treePath: string): Promise<Opened> {
   // DevTeam and fsd keep a store across restarts; each open here gets its own.
@@ -41,22 +42,22 @@ async function open(configPath: string, treePath: string): Promise<Opened> {
   if (loaded === undefined) throw new Error(`no config at ${configPath}`);
   const lab = await serveLab(loaded.flowState);
   const devtool = loaded.flowState.meta.devtool;
-  const clients = createLabClients({
+  const client = connect({
     baseUrl: lab.baseUrl,
     userId: devtool?.userId ?? "devuser",
     ...(devtool?.bearerToken === undefined ? {} : { bearerToken: devtool.bearerToken }),
   });
-  const snapshot = await createLabReader(clients).read();
+  const snapshot = await createLabReader(client).read();
   if (snapshot.refused !== undefined) throw new Error(`refused: ${snapshot.refused.message}`);
   if (snapshot.unreachable !== undefined) throw new Error(`unreachable: ${snapshot.unreachable.message}`);
-  return { lab, roster: await readDeclaredRoster(`${repo}/${treePath}`), snapshot, clients };
+  return { lab, roster: await readDeclaredRoster(`${repo}/${treePath}`), snapshot, client };
 }
 
-/** TEAMS, as the tree declares it: each team's worker ids, an org worker (no team in its id) under Staff. */
+/** TEAMS, as the tree declares it: each team's worker ids, an org worker (no team in its id) under General. */
 function declaredTeams(roster: DeclaredRoster): Record<string, string[]> {
   const teams: Record<string, string[]> = {};
   for (const worker of roster.workers) {
-    (teams[worker.id.includes(".") ? worker.id.split(".")[0]! : STAFF_TEAM] ??= []).push(worker.id);
+    (teams[worker.id.includes(".") ? worker.id.split(".")[0]! : GENERAL_TEAM] ??= []).push(worker.id);
   }
   for (const ids of Object.values(teams)) ids.sort();
   return teams;
@@ -89,24 +90,24 @@ describe.each([
   // conversation's, so its rows reach Shift Manager as that conversation's
   // board, keyed by the conversation.
   it.runIf(name === "multi-seat-collab")("a row filed on a conversation's board is that conversation's board", async () => {
-    const { roster, clients } = opened;
+    const { roster, client } = opened;
     const filer = roster.workers.find((w) => Array.isArray(w.declared.delegates) && w.declared.flow !== "coordinator");
     if (filer === undefined) throw new Error("the tree declares no worker that files for delegates");
     const assignee = (filer.declared.delegates as string[])[0]!;
     const flowKind = String(filer.declared.flow);
     const conversation = (
-      await clients.sessions.createSession({ flowKind, userId: clients.userId, state: { workerId: filer.id } })
+      await client.flow(flowKind).createSession({ state: { workerId: filer.id } })
     ).id;
-    const sent = await clients.actions(flowKind).sendAction("dispatchTask_tasks", { goal: "a row the snapshot must hold", assignee }, { sessionId: conversation });
+    const sent = await client.flow(flowKind).send("createTask_tasks", { goal: "a row the snapshot must hold", assignee }, { sessionId: conversation });
     const taskId = await eventually(async () => {
-      const listed = (await clients.sessions.listSessionRequests(conversation, { includeResultOutput: true, limit: 50 })) as Array<{
+      const listed = (await client.sessions.requests(conversation, { includeResultOutput: true, limit: 50 })) as Array<{
         id: string;
         result?: { output?: { taskId?: string } };
       }>;
-      return listed.find((r) => r.id === sent.request.id)?.result?.output?.taskId;
+      return listed.find((r) => r.id === sent.id)?.result?.output?.taskId;
     }, "the filing's answer");
 
-    const snapshot = await createLabReader(clients).read();
+    const snapshot = await createLabReader(client).read();
     if (snapshot.refused !== undefined || snapshot.unreachable !== undefined) throw new Error("the Lab did not load");
     const boards = snapshot.boards[conversation];
     if (boards === undefined || !boards.ok) throw new Error(`the conversation's board did not load: ${JSON.stringify(boards)}`);
@@ -118,12 +119,12 @@ describe.each([
   // opens no session at start (no ask, no workstream), so a fresh fsd open has
   // none to find yet; the claim is checked on the Labs that open one.
   it.runIf(name !== "fsd")("Jump to finds exactly the declared documents the tree lets a browser read, and each opens with the file's body", async () => {
-    const { snapshot, roster, clients } = opened;
+    const { snapshot, roster, client } = opened;
     if (!snapshot.resources.ok) throw new Error(snapshot.resources.failure.message);
     const readable = roster.documents.filter(declaredBrowserReadable);
     expect(snapshot.resources.value.map((r) => r.ref).sort()).toEqual(readable.map((doc) => doc.ref).sort());
     for (const found of snapshot.resources.value) {
-      const read = await clients.resources.getResourceContent(found.sessionId, found.ref);
+      const read = await client.resources.getResourceContent(found.sessionId, found.ref);
       expect(String(read.content).trim()).toBe(readable.find((doc) => doc.ref === found.ref)!.body.trim());
     }
   });
@@ -170,8 +171,8 @@ describe("devteam: an approved task's run", () => {
   });
 
   it("streams its steps, stamped with the task, and settles the row the Tasks list and the task screen both read", async () => {
-    const { snapshot, clients } = opened;
-    const reader = createLabReader(clients);
+    const { snapshot, client } = opened;
+    const reader = createLabReader(client);
     if (!snapshot.asks.ok) throw new Error(snapshot.asks.failure.message);
     const ask = snapshot.asks.value.find((a) => a.kind === "approval");
     if (ask === undefined) throw new Error("the Lab raised no approval to answer");
@@ -187,9 +188,9 @@ describe("devteam: an approved task's run", () => {
       const row = Object.values(next.boards).flatMap((b) => (b.ok ? b.value.rows : []))[0];
       return row?.status === "in_progress" && row.run !== null ? row : undefined;
     }, "the approved row to start", 30_000);
-    const flowId = await resolveRunFlow(clients, running.run!.sessionId);
+    const flowId = await resolveRunFlow(client, running.run!.sessionId);
     const streamed: OutputItem[] = [];
-    const follower = followRequest(clients, { flowId, requestId: running.run!.requestId }, {
+    const follower = followRequest(client, { flowId, requestId: running.run!.requestId }, {
       onItem: (item) => {
         streamed.push(item);
       },
@@ -209,7 +210,7 @@ describe("devteam: an approved task's run", () => {
     expect(taskItems(streamed, collectionOfBoard(running.boardRef), running.id).items.length).toBeGreaterThan(0);
     expect(settled.status).toBe("completed");
     expect(settled.run).not.toBeNull();
-    const { items } = await readSessionItems(clients, settled.run!.sessionId);
+    const { items } = await readSessionItems(client, settled.run!.sessionId);
     expect(taskItems(items, collectionOfBoard(settled.boardRef), settled.id).items.length).toBeGreaterThan(0);
   }, 90_000);
 });

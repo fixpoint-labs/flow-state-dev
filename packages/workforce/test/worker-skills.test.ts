@@ -82,13 +82,13 @@ async function runTurn(
     orgId: "test-org",
     org: { state: {} },
     sessionId: `session-${worker.id}`,
-    sequencerName: worker.actions.run!.block.name,
-    declaredResources: worker.actions.run!.block.declaredResources,
+    sequencerName: worker.actions.respond!.block.name,
+    declaredResources: worker.actions.respond!.block.declaredResources,
     generators,
   });
 
   const result = await executeBlock({
-    block: worker.actions.run.block,
+    block: worker.actions.respond.block,
     input: { message },
     ctx: runtime.ctx,
   });

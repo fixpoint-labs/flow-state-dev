@@ -20,9 +20,9 @@ function makeFlow(kind: string): FlowInstance {
     actions: {
       run: {
         inputSchema: z.object({ value: z.string() }),
-        block: handler<{ value: string }, { ok: boolean }>({
+        block: handler({
           name: `${kind}-run`,
-          execute: () => ({ ok: true })
+          execute: (_input: { value: string }): { ok: boolean } => ({ ok: true })
         })
       }
     }
@@ -35,9 +35,9 @@ function makeMetadataFlow(kind: string): FlowInstance {
     actions: {
       setTitle: {
         inputSchema: z.object({ title: z.string() }),
-        block: handler<{ title: string }, { ok: boolean }>({
+        block: handler({
           name: `${kind}-setTitle`,
-          async execute(input, ctx) {
+          async execute(input: { title: string }, ctx): Promise<{ ok: boolean }> {
             await ctx.session.setMetadata({ title: input.title });
             return { ok: true };
           }
@@ -49,9 +49,9 @@ function makeMetadataFlow(kind: string): FlowInstance {
           description: z.string(),
           tags: z.array(z.string())
         }),
-        block: handler<{ title: string; description: string; tags: string[] }, { ok: boolean }>({
+        block: handler({
           name: `${kind}-setAll`,
-          async execute(input, ctx) {
+          async execute(input: { title: string; description: string; tags: string[] }, ctx): Promise<{ ok: boolean }> {
             await ctx.session.setMetadata({
               title: input.title,
               description: input.description,

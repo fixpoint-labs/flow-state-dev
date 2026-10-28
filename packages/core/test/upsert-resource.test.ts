@@ -19,12 +19,12 @@ function makeCollectionRef(initial: Record<string, NoteState> = {}): ResourceCol
   return {
     pattern: "notes/*",
     scope: "session",
-    get: (key) => {
+    get: async (key) => {
       const entry = store.get(key as string);
       if (!entry) throw new Error(`not found: ${key}`);
       return makeRef(key as string, entry, store);
     },
-    getOptional: (key) => {
+    getOptional: async (key) => {
       const entry = store.get(key as string);
       return entry ? makeRef(key as string, entry, store) : undefined;
     },
@@ -40,10 +40,13 @@ function makeCollectionRef(initial: Record<string, NoteState> = {}): ResourceCol
       store.set(k, { state: { ...initialState } as NoteState });
       return makeRef(k, store.get(k)!, store);
     },
-    list: () => [...store.entries()].map(([k, entry]) => makeRef(k, entry, store)),
+    list: async () => [...store.entries()].map(([k, entry]) => makeRef(k, entry, store)),
+    upsert: async () => {
+      throw new Error("not used: upsertResource writes through getOrCreate");
+    },
     delete: async (key) => { store.delete(key as string); },
-    count: () => store.size,
-    config: { pattern: "notes/*", stateSchema: z.object({}) },
+    count: async () => store.size,
+    config: { pattern: "notes/*", scope: "session", stateSchema: z.object({}) },
   };
 }
 
@@ -128,7 +131,7 @@ describe("utility.upsertResource", () => {
 
     await runForTest(block, { id: "note-1", title: "Hello", body: "World" }, makeCtx(collection));
 
-    const ref = collection.getOptional("note-1");
+    const ref = await collection.getOptional("note-1");
     expect(ref).toBeDefined();
     expect(ref!.state.title).toBe("Hello");
   });
@@ -146,7 +149,7 @@ describe("utility.upsertResource", () => {
 
     await runForTest(block, { id: "note-1", title: "Updated", body: "" }, makeCtx(collection));
 
-    const ref = collection.getOptional("note-1");
+    const ref = await collection.getOptional("note-1");
     expect(ref!.state.title).toBe("Updated");
     expect(ref!.state.updatedAt).toBe(2000);
   });
@@ -165,7 +168,7 @@ describe("utility.upsertResource", () => {
 
     await runForTest(block, { id: "note-2", title: "My Note", body: "Some content" }, makeCtx(collection));
 
-    const ref = collection.getOptional("note-2");
+    const ref = await collection.getOptional("note-2");
     expect(await ref!.readContent()).toBe("Some content");
   });
 
@@ -181,10 +184,9 @@ describe("utility.upsertResource", () => {
       content: () => undefined,
     });
 
-    const ref = collection.makeCollectionRef ? null : null;
     await runForTest(block, { id: "note-3", title: "No content", body: "" }, makeCtx(collection));
 
-    const created = collection.getOptional("note-3");
+    const created = await collection.getOptional("note-3");
     expect(await created!.readContent()).toBeNull();
   });
 
@@ -239,7 +241,7 @@ describe("utility.upsertResource", () => {
 
     await runForTest(block, { id: "u-note-1", title: "User note", body: "" }, ctx);
 
-    const ref = collection.getOptional("u-note-1");
+    const ref = await collection.getOptional("u-note-1");
     expect(ref).toBeDefined();
     expect(ref!.state.title).toBe("User note");
   });

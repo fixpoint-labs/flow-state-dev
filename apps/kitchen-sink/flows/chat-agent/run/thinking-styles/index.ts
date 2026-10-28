@@ -21,3 +21,6 @@ export const { thinkingStyleRouter, backgroundWorkTasks } = createThinkingStyleR
   modelId: (_input: any, ctx: any) =>
     coalesceKitchenSinkModel(ctx.user?.state.selectedModel),
 });
+
+/** The `onTaskSettled` entry a flow that reaches the background-work board declares. */
+export { backgroundWorkSettled } from "./pipelines/background-work";

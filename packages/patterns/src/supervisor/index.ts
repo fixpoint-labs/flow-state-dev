@@ -10,8 +10,10 @@
  * exhausted, then `labelFailedReviews` tags the terminal task.
  *
  * Pipeline:
- *   captureAndPlan → board.drain → cascadeSkipDependents (.tap)
- *   → labelFailedReviews (.tap) → synthesize
+ *   captureAndPlan → board.drain → labelFailedReviews (.tap) → synthesize
+ *
+ * A failed or cancelled task's dependents are cancelled by the board itself,
+ * labelled `skipped`, on that task's ending (the substrate's cascade).
  */
 import { sequencer, handler, generator, utility } from "@flow-state-dev/core";
 import { flowPolicy } from "@flow-state-dev/orchestration";
@@ -25,7 +27,7 @@ import type {
 } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
-import { taskBoard, createCascadeSkipDependents } from "@flow-state-dev/orchestration/task-board";
+import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import {
   supervisorInputSchema,
   supervisorStateSchema,
@@ -364,9 +366,9 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       itemVisibility: synthesizerVisibility,
     });
 
-  // Relies on the substrate's default `onIdle: "complete-or-blocked"`
-  // (FIX-626) so pendings whose deps `errored` don't deadlock the
-  // drain — they get cascade-skipped after instead.
+  // A pending task whose dep failed or was cancelled is cancelled by the
+  // board on that dep's ending (FIX-2080), labelled `skipped`, so the drain
+  // never waits on it.
   const board = taskBoard({
     name: `${name}-board`,
     collection: { collectionId: name },
@@ -403,7 +405,6 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     name,
     inputSchema: supervisorInputSchema,
   });
-  const cascadeSkipDependents = createCascadeSkipDependents({ name });
   const labelFailedReviews = createLabelFailedReviews({ name });
   const synthesize = createSynthesize({ name, synthesizer: activeSynthesizer });
 
@@ -430,7 +431,6 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     .tap(stampOuterGoal)
     .step(captureAndPlan)
     .step(board.drain)
-    .tap(cascadeSkipDependents)
     .tap(labelFailedReviews)
     .step(synthesize) as SequencerDefinition<any, any>;
 }

@@ -73,9 +73,13 @@ import { heldPackageProblems, resolveHeldPackages } from "./worker-packages";
 import { recordWorkerDescription } from "./worker-description";
 import { workerFlowProblems } from "./worker-flow-contract";
 import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./workers/worker-flow";
+import { builtInRolesOf, type WorkerRole } from "./worker-roles";
 
 /**
  * The keys the factory itself reads. Everything else is the worker's settings.
+ *
+ * `name` is the worker's display name, for people only: views read it off the
+ * worker's rows, and no worker flow is handed it.
  *
  * `resources`, `references` and `packages` join them rather than travelling to
  * the worker flow as settings: each is an instruction to THIS step about what to mint
@@ -86,6 +90,7 @@ import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./workers/worker-fl
 const RESERVED_KEYS = [
   "flow",
   "description",
+  "name",
   WORKER_RESOURCES_KEY,
   WORKER_REFERENCES_KEY,
   PACKAGES_KEY
@@ -101,14 +106,24 @@ const RESERVED_KEYS = [
 const builtInAgentWorkerFlow = defineAgentWorkerFlow() as unknown as AnyFlowType;
 
 /**
- * One entry of {@link HireOptions.workerFlows}: a flow, a flow and whether
- * this app keeps it for declared workers, or a `workerFlow(...)` builder the
- * installation builds on itself.
+ * One entry of {@link HireOptions.workerFlows}: a flow; a flow with whether
+ * this app keeps it for declared workers and the roles it declares; or a
+ * `workerFlow(...)` builder the installation builds on itself.
+ *
+ * `roles` is what the flow does beside taking a user's message on `respond`:
+ * `contributor` (takes tasks on `work`), `manager` (runs its delegation board
+ * on `dispatch`), `coordinator` (routes messages; the built-in coordinator's).
+ * The hire checks each declared role's entries, and refuses a role's piece on
+ * a flow that doesn't declare it. Omitted, a flow has no role beyond every
+ * worker's; a built-in flow declares its own.
  */
-export type WorkerFlowEntry = AnyFlowType | { flow: AnyFlowType; standardOnly?: boolean } | WorkerFlowBuilder;
+export type WorkerFlowEntry =
+  | AnyFlowType
+  | { flow: AnyFlowType; standardOnly?: boolean; roles?: readonly WorkerRole[] }
+  | WorkerFlowBuilder;
 
 /** One worker flow as a hire resolves a `flow:` against it. */
-export type ResolvedWorkerFlow = { flow: AnyFlowType; standardOnly: boolean };
+export type ResolvedWorkerFlow = { flow: AnyFlowType; standardOnly: boolean; roles: readonly WorkerRole[] };
 
 /**
  * The worker flows a hire resolves a `flow:` against: the built-in `agent`
@@ -134,29 +149,31 @@ export function resolveWorkerFlows(
     }
     resolved[name] =
       typeof entry === "function"
-        ? { flow: entry, standardOnly: false }
-        : { flow: entry.flow, standardOnly: entry.standardOnly === true };
+        ? { flow: entry, standardOnly: false, roles: builtInRolesOf(entry) ?? [] }
+        : { flow: entry.flow, standardOnly: entry.standardOnly === true, roles: entry.roles ?? builtInRolesOf(entry.flow) ?? [] };
   }
   return resolved;
 }
 
 /**
- * Each flow's contract problems, by the name it was registered under — kept
- * for the life of the flow definition, so a flow is checked once however many
- * hires, reloads and runtime hires resolve against it.
+ * Each flow's contract problems, by the name and roles it was registered
+ * under — kept for the life of the flow definition, so a flow is checked once
+ * however many hires, reloads and runtime hires resolve against it, and two
+ * registrations with different roles never share a verdict.
  */
 const contractVerdicts = new WeakMap<object, Map<string, readonly string[]>>();
 
-function contractProblemsOf(name: string, flow: AnyFlowType): readonly string[] {
-  let byName = contractVerdicts.get(flow);
-  if (byName === undefined) {
-    byName = new Map();
-    contractVerdicts.set(flow, byName);
+function contractProblemsOf(name: string, { flow, roles }: ResolvedWorkerFlow): readonly string[] {
+  let byRegistration = contractVerdicts.get(flow);
+  if (byRegistration === undefined) {
+    byRegistration = new Map();
+    contractVerdicts.set(flow, byRegistration);
   }
-  let problems = byName.get(name);
+  const key = JSON.stringify([name, roles]);
+  let problems = byRegistration.get(key);
   if (problems === undefined) {
-    problems = workerFlowProblems(name, flow as never);
-    byName.set(name, problems);
+    problems = workerFlowProblems(name, flow as never, roles);
+    byRegistration.set(key, problems);
   }
   return problems;
 }
@@ -170,7 +187,7 @@ export function checkWorkerFlows(flows: Record<string, ResolvedWorkerFlow>): voi
   const refused: string[] = [];
   const problems: string[] = [];
   for (const name of Object.keys(flows).sort()) {
-    const found = contractProblemsOf(name, flows[name]!.flow);
+    const found = contractProblemsOf(name, flows[name]!);
     if (found.length === 0) continue;
     refused.push(name);
     problems.push(...found);

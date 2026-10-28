@@ -11,7 +11,13 @@ This guide builds one approval gate from end to end. The server pauses a flow wi
 
 HITL is built on suspend/resume, which is part of [durable execution](/docs/advanced/durable-execution). That page covers the runtime mechanics in depth (checkpoints, the resume endpoint, retention). Here we focus on building a working approval flow and wiring the UI.
 
-If what you're gating is a board of tasks rather than one step of a flow, the task board has its own way to wait on a person: a worker parks the task, the drain returns, and a later request delivers the answer. See [Waiting on a person](/docs/orchestration/task-board#waiting-on-a-person-onreview).
+If what you're gating is a task on a board rather than one step of a flow, the same stop works from inside the task's run, and the task board adds one more way to wait. Pick by who reads the answer:
+
+- **The code that asked reads it on its next line.** An approval or a review: `ctx.waitForUser({ kind: "approval" | "review", prompt })`, or a model's `waitForUser` tool. The run stops, and the answer resumes it.
+- **The work can go on from the answer later.** A question: the worker's model calls `askQuestion`, or its code calls `askMidway`. The task waits on the question, the turn ends, and the answer starts the task's next turn.
+- **You need a form.** `ctx.suspend()` with your own schema, as this guide builds.
+
+The first two show in the user's [Inbox](/docs/orchestration/task-board#building-an-inbox), and so does a `ctx.suspend()` whose reason is `human_approval` or `human_input`; one with a reason of your own doesn't. See [A task waiting on a user](/docs/orchestration/task-board#a-task-waiting-on-a-user) and [A task held on questions](/docs/orchestration/task-board#a-task-held-on-questions).
 
 ## How a pause works
 
@@ -23,29 +29,25 @@ The whole cycle lives on one request with one continuous item log: the work befo
 
 The resumed step runs on the flow instance recorded as the request's owner, so the approval card never has to know which copy of a flow the work belongs to. See [durable execution](/docs/advanced/durable-execution#resuming-a-suspended-request).
 
-## Prerequisites: a durability provider
+## Prerequisites: durable execution
 
-Suspend/resume needs somewhere to persist the pause. Wire a `DurabilityProvider` into your runtime; without one, `ctx.suspend()` is unavailable.
+Suspend/resume needs somewhere to keep the paused request. That's durable execution, and it's on by default wherever your stores persist: SQLite, Postgres or the filesystem store need no setting. On a host without it, `ctx.suspend()` throws and the request fails.
+
+In-memory stores are the exception. A pause held there would be lost when the process ends, so durable execution is off for them unless you ask for it with `durable: true`:
 
 ```ts title="src/flowstate.ts"
-import {
-  createFlowState,
-  inMemoryStores,
-  createCheckpointDurabilityProvider,
-} from "@flow-state-dev/engine";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { contentReview } from "./flows/content-review/flow";
-
-const stores = inMemoryStores();
 
 export const flowstate = createFlowState({
   flows: { contentReview },
-  models: { default: "openai/gpt-5.4-mini" },
-  stores: { default: { primary: stores } },
-  durabilityProvider: createCheckpointDurabilityProvider(stores),
+  models: { default: "openai/gpt-6-luna" },
+  stores: { default: { primary: inMemoryStores() } },
+  durable: true, // needed with in-memory stores; on by default over persisting stores
 });
 ```
 
-`inMemoryStores()` loses state on restart, which is fine for development. For production, back the provider with SQLite or Postgres so a flow parked on a human gate survives a deploy. See [durable execution](/docs/advanced/durable-execution#store-adapters) for the adapter options.
+`inMemoryStores()` loses state on restart, which is fine for development. For production, use SQLite or Postgres so a flow parked on a human gate survives a deploy, and drop `durable: true`. See [durable execution](/docs/advanced/durable-execution#store-adapters) for the adapter options.
 
 ## Server: define the approval gate
 
@@ -291,7 +293,7 @@ const publishPost = handler({
 
 const writer = generator({
   name: "writer",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "You draft and publish posts. Call publish-post when the draft is ready.",
   inputSchema: z.object({ request: z.string() }),
   user: (input) => input.request,
@@ -433,4 +435,4 @@ POST /:flowKind/requests/:requestId/resume
 - [React client](/docs/client/react#suspensions-and-approvals) — `useSuspensions`, the renderer registry, and inline rendering.
 - [Flow-aware components](/docs/ui/flow-aware-components) — the `Approval` card and the rest of the `chatAssistantRenderers` set.
 - [Block memoization and replay](/docs/advanced/block-memoization-and-replay) — why the suspending block re-runs, and how to guard side effects with `runOnce`.
-- [Task board](/docs/orchestration/task-board#waiting-on-a-person-onreview) — waiting on a person when the unit of work is a task on a board: parking it, letting the drain return, and delivering the answer later.
+- [Task board](/docs/orchestration/task-board#a-task-waiting-on-a-user) — waiting on a person when the unit of work is a task on a board: a stop for an approval or a review, or a question the task holds on.

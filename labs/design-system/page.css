@@ -1,0 +1,222 @@
+/*
+ * The page register — how a Drafting System (Rev A) page is drawn: paper, ink,
+ * hairlines, the 24px grid, sheets, figures and the drawing classes a figure's
+ * inline SVG reads. `shift-manager.css` is the app register; this file is the
+ * page register. A page can load either, or both: no token name is shared
+ * except the two font stacks, which hold the same values.
+ *
+ * Two modes. Paper is `:root`. Night applies under `data-theme="dark"` or
+ * `data-theme="night"` on the root, under `.dark`, and, when the root carries
+ * no `data-theme` at all, under `prefers-color-scheme: dark`. An explicit
+ * `data-theme` therefore always wins over the OS setting.
+ *
+ * Colour marks emphasis, never category. Ink is the default. The highlighter
+ * marks a figure's one focus or thread; red marks an exception (refused,
+ * borrowed, error). Nothing else carries a hue.
+ *
+ * Values only, plus the few rules that draw the register's parts: `.label`,
+ * the grid on `body`, the sheet heading (`.sheet` or `.sheets h2`), the
+ * figure frame and caption (`.figure`), and the drawing classes under
+ * `.drawing`.
+ */
+
+@import "@fontsource/space-grotesk/latin-400.css";
+@import "@fontsource/space-grotesk/latin-500.css";
+@import "@fontsource/space-grotesk/latin-700.css";
+@import "@fontsource/ibm-plex-mono/latin-400.css";
+@import "@fontsource/ibm-plex-mono/latin-500.css";
+@import "@fontsource/ibm-plex-mono/latin-600.css";
+
+/* ── Tokens: Paper ── */
+
+:root {
+  --paper: #f0ece1;
+  --paper-band: #e7e2d5;
+  --paper-card: #fcfbf7;
+  --ink1: #1b1a15;
+  --ink2: #3d3a32;
+  --ink3: #57544a;
+  --ink4: #6e6a5e;
+  --highlighter: #e8f551;
+  --on-highlighter: #1b1a15;
+  --red: #a83e28;
+
+  /* Hairlines and the grid: ink at a fixed opacity. */
+  --hairline-structural: rgba(27, 26, 21, 0.45);
+  --hairline-internal: rgba(27, 26, 21, 0.25);
+  --grid-line: rgba(27, 26, 21, 0.07);
+
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --label-size: 10.5px;
+  --label-tracking: 0.16em;
+}
+
+/* ── Tokens: Night ── */
+
+:root[data-theme="dark"],
+:root[data-theme="night"],
+.dark {
+  --paper: #16150f;
+  --paper-band: #121109;
+  --paper-card: #16150f;
+  --ink1: #ece7da;
+  --ink2: #cbc5b5;
+  --ink3: #a6a08f;
+  --ink4: #8f8a7c;
+  --red: #e27a5f;
+  --hairline-structural: rgba(236, 231, 218, 0.45);
+  --hairline-internal: rgba(236, 231, 218, 0.25);
+  --grid-line: rgba(236, 231, 218, 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --paper: #16150f;
+    --paper-band: #121109;
+    --paper-card: #16150f;
+    --ink1: #ece7da;
+    --ink2: #cbc5b5;
+    --ink3: #a6a08f;
+    --ink4: #8f8a7c;
+    --red: #e27a5f;
+    --hairline-structural: rgba(236, 231, 218, 0.45);
+    --hairline-internal: rgba(236, 231, 218, 0.25);
+    --grid-line: rgba(236, 231, 218, 0.06);
+  }
+}
+
+/* ── The ground: paper with a 24px drafting grid ── */
+
+body {
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* ── Labels: mono caps, the one label style ── */
+
+.label {
+  font-family: var(--font-mono);
+  font-size: var(--label-size);
+  font-weight: 500;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--ink3);
+}
+
+/* ── Sheets: each section heading carries its sheet number and a rule above ── */
+
+.sheets {
+  counter-reset: sheet;
+}
+
+.sheet,
+.sheets h2 {
+  counter-increment: sheet;
+  border-top: 1px solid var(--hairline-structural);
+  padding-top: 1rem;
+  font-weight: 700;
+  font-size: 30px;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  color: var(--ink1);
+}
+
+.sheet::before,
+.sheets h2::before {
+  content: "SHEET " counter(sheet, decimal-leading-zero) " —";
+  display: block;
+  margin-bottom: 10px;
+  font-family: var(--font-mono);
+  font-size: var(--label-size);
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  line-height: 1.4;
+  color: var(--ink3);
+}
+
+/* ── Figures: a framed drawing with a numbered caption band ── */
+
+.figures {
+  counter-reset: figure;
+}
+
+.figure {
+  counter-increment: figure;
+  margin: 1.5rem 0;
+  border: 1px solid var(--hairline-structural);
+  background: var(--paper);
+}
+
+.figure__caption {
+  padding: 8px 12px;
+  background: var(--paper-band);
+  border-bottom: 1px solid var(--hairline-structural);
+  font-family: var(--font-mono);
+  font-size: var(--label-size);
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--ink3);
+}
+
+.figure__caption::before {
+  content: "FIG. " counter(figure) " — ";
+  color: var(--ink1);
+}
+
+/* On a phone the drawing keeps a readable width and scrolls sideways. */
+.figure__body {
+  overflow-x: auto;
+}
+
+.figure__body > svg {
+  display: block;
+  width: 100%;
+  min-width: 640px;
+  height: auto;
+}
+
+/* ── Drawing classes, read by a figure's inline SVG ── */
+
+.drawing text {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  fill: var(--ink2);
+}
+
+/* Lines. Solid 1.4 for things, 1.3 for relations, dashed `5 4` for what does not last. */
+.drawing .solid { fill: none; stroke: var(--ink1); stroke-width: 1.4; }
+.drawing .dash { fill: none; stroke: var(--ink1); stroke-width: 1.4; stroke-dasharray: 5 4; }
+.drawing .ln { fill: none; stroke: var(--ink1); stroke-width: 1.3; }
+.drawing .ln-dash { fill: none; stroke: var(--ink1); stroke-width: 1.3; stroke-dasharray: 5 4; }
+.drawing .thin { fill: none; stroke: var(--ink1); stroke-width: 1; }
+.drawing .hs { fill: none; stroke: var(--hairline-structural); stroke-width: 1; }
+.drawing .hi { fill: none; stroke: var(--hairline-internal); stroke-width: 1; }
+
+/* Fills: the ground (under a plate), the arrowhead, a dot, the hatch's lines. */
+.drawing .ground { fill: var(--paper); }
+.drawing .ink { fill: var(--ink1); }
+.drawing .hatch-line { stroke: var(--hairline-structural); stroke-width: 1; }
+
+/* Text. */
+.drawing .cap { font-size: 10.5px; letter-spacing: 1.7px; fill: var(--ink3); }
+.drawing .lb { font-size: 10px; letter-spacing: 1.5px; fill: var(--ink3); }
+.drawing .nm { font-size: 15px; fill: var(--ink1); }
+.drawing .sub { font-size: 10.5px; fill: var(--ink3); }
+.drawing .c { font-size: 12.5px; fill: var(--ink1); }
+.drawing .t { font-size: 12px; fill: var(--ink2); }
+.drawing .n { font-size: 11px; fill: var(--ink1); }
+.drawing .plate { font-size: 10.5px; letter-spacing: 1px; fill: var(--ink1); }
+
+/* Emphasis. The highlighter marks the figure's one focus; red marks an exception. */
+.drawing .hl { fill: var(--highlighter); }
+.drawing text.on-hl { fill: var(--on-highlighter); }
+.drawing .x:not(text) { stroke: var(--red); }
+.drawing text.x,
+.drawing .x-fill { fill: var(--red); }

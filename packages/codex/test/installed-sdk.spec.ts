@@ -165,8 +165,9 @@ describe("the installed SDK against the pinned wire", () => {
     // CLI is spawned can fire before the fake has said a word on a loaded
     // runner, and the fake writing `thread.started` is not the block reading
     // it. Timed from the abort, which is what "promptly" is measured against.
-    const run = block.config.execute?.({ prompt: "hang" }, runtime.ctx as never);
-    run?.catch(() => {});
+    // `execute` may return synchronously by type; this block's always settles async.
+    const run = Promise.resolve(block.config.execute?.({ prompt: "hang" }, runtime.ctx as never));
+    run.catch(() => {});
     // Raced against the run, so a run that fails before the hold fails here
     // with its own error rather than as a timeout.
     await Promise.race([Promise.all([logged("HOLDING"), session]), run]);

@@ -148,7 +148,7 @@ async function abortThroughRouter(
 describe("a cancel is fenced on the request its caller checked", () => {
   it("(a) stops the owner's run after their own retry re-stamped its record", async () => {
     const stores = createInMemoryStores();
-    const requestId = "req_fence_handoff";
+    const requestId = "req_fence_retry";
     const park = newPark();
     const flow = parkingFlow(park, 3_000);
 
@@ -172,7 +172,7 @@ describe("a cancel is fenced on the request its caller checked", () => {
     await running;
     const record = (await stores.request.get(requestId))!;
 
-    // Precondition: the hand-off really rewrote `createdAt`, and kept the
+    // Precondition: the dispatch really rewrote `createdAt`, and kept the
     // incarnation, so only an identity fence can recognise the request.
     expect(record.createdAt).not.toBe(before.createdAt);
     expect(record.incarnation).toBe(before.incarnation);

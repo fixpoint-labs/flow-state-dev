@@ -48,8 +48,9 @@ export { definePersona, type PersonaResourceConfig, type PersonaCollectionConfig
 export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./workforce-capability";
 export { type HireOptions, type WorkerFlowEntry } from "./hire";
 export { workerFlowProblems } from "./worker-flow-contract";
+export { WORKER_ROLES, type WorkerRole } from "./worker-roles";
 export { sharedResource, writeShared, type SharedWriteContext, type WrittenBy } from "./shared-resource";
-export { DELEGATED_POST_ENTRY, WORKER_TASK_ENTRY } from "./worker-task-entry";
+export { WORKER_TASK_ENTRY } from "./worker-task-entry";
 export {
   conversationLedgers,
   filingConversationBoard,
@@ -59,6 +60,39 @@ export {
   type WorkerTaskEntryOptions
 } from "./conversation-board/task-entry";
 export { sessionIdOfFiling } from "./conversation-board/filing-session";
+// A routed task's recent lines (FIX-2083), for a flow of its own whose `work` turn is a generator.
+export { routedTaskHistory } from "./coordinator/routed-brief";
+// Steering a task a worker runs (FIX-2086): the turn a late steer is owed, on
+// every flow whose `work` entry is a `workerTaskEntry`, and how a write starts it.
+export {
+  STEER_TURN_ENTRY,
+  startOwedSteerTurn,
+  steerTurnEntry,
+  type SteerTurnEntryOptions
+} from "./conversation-board/steer";
+// A user's running turn hears the tasks that finished while it answered
+// (FIX-2159): the take, the pre-built `answerAgain` source, and the cap on
+// answers again in one request.
+export {
+  finishedTaskSchema,
+  finishedTasksAnswerAgain,
+  takeFinishedTasks,
+  type FinishedTask,
+  type FinishedTasksAnswerAgainOptions
+} from "./conversation-board/take-finished";
+export { MAX_ANSWERS_AGAIN } from "./conversation-board/plan";
+export {
+  backfillBoardWakes,
+  type BoardWakeBackfillOptions,
+  type BoardWakeBackfillStores
+} from "./conversation-board/backfill-wakes";
+export {
+  upgradeWorkerEntryNames,
+  type EntryNameFlow,
+  type EntryNameRequest,
+  type EntryNameUpgradeOptions,
+  type EntryNameUpgradeStores
+} from "./workers/upgrade-entry-names";
 export {
   createWorkerLookup,
   type WorkerLookup,
@@ -120,6 +154,10 @@ export * from "./projects";
 export * from "./workers";
 export * from "./coordinator";
 export * from "./delegates";
+export * from "./standing-rules";
+export * from "./messages";
+export * from "./error-reporter";
+export * from "./schedules";
 export {
   defineSessionBoard,
   type SessionBoard,

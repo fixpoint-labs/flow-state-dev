@@ -32,8 +32,8 @@ const messageOf = (error: unknown) => (error instanceof Error ? error.message : 
 
 /** The shipped clients, as the checkout under test exports them. */
 export interface ScriptedClients {
-  client: { createClient(options: Record<string, unknown>): any; createSessionClient(options: Record<string, unknown>): any };
-  workforce: { createWorkforceClient(options: Record<string, unknown>): any };
+  client: { createClient(options: Record<string, unknown>): any };
+  workforce: { createWorkforceClient(client: unknown): any };
 }
 
 /** Load the shipped clients from the checkout at `root`. */
@@ -60,11 +60,13 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
       return fetch(input, { ...init, headers });
     };
     const transport = { baseUrl: o.origin, fetcher };
+    // One client per person: their user, their credential.
+    const client = o.shipped.client.createClient({ userId: person.userId, ...transport });
     return {
       person,
-      sessions: o.shipped.client.createSessionClient(transport),
-      workforce: o.shipped.workforce.createWorkforceClient({ userId: person.userId, ...transport }),
-      flow: (flowKind: string) => o.shipped.client.createClient({ flowKind, userId: person.userId, ...transport }),
+      sessions: client.sessions,
+      workforce: o.shipped.workforce.createWorkforceClient(client),
+      flow: (flowKind: string) => client.flow(flowKind),
       get: (path: string) => fetcher(`${o.origin}/api/flows${path}`),
     };
   };
@@ -75,33 +77,33 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
     const client = who.flow(flowKind);
     let requestId: string;
     try {
-      requestId = (await client.sendAction(action, input, { sessionId })).request.id;
+      requestId = (await client.send(action, input, { sessionId })).id;
     } catch (error) {
       const status = (error as { status?: unknown }).status;
       return { status: `http ${typeof status === "number" ? status : "?"}`, requestId: null, output: undefined, error: messageOf(error), startedAt, endedAt: Date.now() };
     }
     let status = "timed-out";
     for (const until = Date.now() + 60_000; Date.now() < until; await sleep(25)) {
-      const now = (await client.getRequestStatus(requestId).catch(() => undefined))?.status as string | undefined;
+      const now = (await client.request(requestId).status().catch(() => undefined))?.status as string | undefined;
       if (now !== undefined && TERMINAL.has(now)) {
         status = now;
         break;
       }
     }
     const endedAt = Date.now();
-    const listed = (await who.sessions.listSessionRequests(sessionId, { includeResultOutput: true, limit: 200 }).catch(() => [])) as any[];
+    const listed = (await who.sessions.requests(sessionId, { includeResultOutput: true, limit: 200 }).catch(() => [])) as any[];
     const found = listed.find((r) => r.id === requestId);
     return { status, requestId, output: found?.result?.output, error: found?.result?.error?.message, startedAt, endedAt };
   };
 
   /** Open a conversation with `worker` on the coordinator flow, as an app opens one. */
   const conversation = async (who: Connected, worker: string): Promise<string> =>
-    (await who.sessions.createSession({ flowKind: "coordinator", userId: who.person.userId, state: { workerId: worker } })).id as string;
+    (await who.flow("coordinator").createSession({ state: { workerId: worker } })).id as string;
 
   /** The tool outputs one request's turn produced, in order, read through the session's items. */
   const toolOutputs = async (who: Connected, sessionId: string, requestId: string | null): Promise<Array<{ name: string; output: any }>> => {
     if (requestId === null) return [];
-    const state = await who.sessions.getSessionState(sessionId, { includeItems: true, itemTypes: ["tool_output"], limit: 500 });
+    const state = await who.sessions.state(sessionId, { includeItems: true, itemTypes: ["tool_output"], limit: 500 });
     return ((state.items ?? []) as any[])
       .filter((item) => item.requestId === requestId)
       .map((item) => ({ name: String(item.toolCall?.name ?? ""), output: parsed(item.output ?? item.error ?? null) }));
@@ -144,22 +146,22 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
   if (o.legs.has("a")) {
     const conv = await conversation(alice, "desk.lead");
     const w = word();
-    const filing = await act(alice, "coordinator", conv, "run", { message: `[file:desk.alpha] [slow:${HOLD_MS}] Summarize the ${w} notes` });
+    const filing = await act(alice, "coordinator", conv, "respond", { message: `[file:desk.alpha] [slow:${HOLD_MS}] Summarize the ${w} notes` });
     const filed = await toolOutputs(alice, conv, filing.requestId);
-    const taskId = filed.filter((t) => t.name === "dispatchTask").map((t) => taskIdOf(t)).find((id) => id !== null) ?? null;
+    const taskId = filed.filter((t) => t.name === "createTask").map((t) => taskIdOf(t)).find((id) => id !== null) ?? null;
     const quietAt = await quiet();
     const filingSessionId = await filingOf(alice, conv);
     const found = taskId === null ? null : await find(alice, { worker: "desk.alpha", taskId, filingSessionId });
 
     // The split: desk.sub's task session files a piece for its own delegate, by its own tool and by the app.
     const w2 = word();
-    const splitting = await act(alice, "coordinator", conv, "run", { message: `[file:desk.sub] [split:desk.alpha] Plan the ${w2} rollout` });
+    const splitting = await act(alice, "coordinator", conv, "respond", { message: `[file:desk.sub] [split:desk.alpha] Plan the ${w2} rollout` });
     const subFiled = await toolOutputs(alice, conv, splitting.requestId);
-    const subTaskId = subFiled.filter((t) => t.name === "dispatchTask").map((t) => taskIdOf(t)).find((id) => id !== null) ?? null;
+    const subTaskId = subFiled.filter((t) => t.name === "createTask").map((t) => taskIdOf(t)).find((id) => id !== null) ?? null;
     await quiet();
     const subSession = subTaskId === null ? null : await find(alice, { worker: "desk.sub", taskId: subTaskId, filingSessionId });
     const appSplit =
-      subSession?.id == null ? null : await act(alice, "coordinator", subSession.id, "dispatchTask_tasks", { goal: `another piece of the ${w2} rollout`, assignee: "desk.alpha" });
+      subSession?.id == null ? null : await act(alice, "coordinator", subSession.id, "createTask_tasks", { goal: `another piece of the ${w2} rollout`, assignee: "desk.alpha" });
     await quiet();
     out.a = {
       conv,
@@ -180,19 +182,20 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
     const c1 = await conversation(alice, "desk.lead");
     const c2 = await conversation(alice, "desk.lead");
     const words = { t1: word(), t2: word(), t3: word() };
-    // Recorded unassigned, with three delegates that take tasks: it waits to be assigned and dispatched.
-    const t2 = await act(alice, "coordinator", c2, "addTask_tasks", { goal: `[slow:${SLOW_MS}] Draft the ${words.t2} brief` });
-    const t1 = await act(alice, "coordinator", c1, "dispatchTask_tasks", { goal: `Tidy the ${words.t1} list`, assignee: "desk.alpha" });
+    // Recorded unassigned, with three delegates that take tasks: it waits to be assigned and released.
+    const t2 = await act(alice, "coordinator", c2, "createTask_tasks", { held: true, goal: `[slow:${SLOW_MS}] Draft the ${words.t2} brief` });
+    const t1 = await act(alice, "coordinator", c1, "createTask_tasks", { goal: `Tidy the ${words.t1} list`, assignee: "desk.alpha" });
     await quiet();
-    // The first conversation names the second's task by its id.
-    const reach = await act(alice, "coordinator", c1, "assignTask_tasks", { taskId: taskIdOf(t2) ?? "none", assignee: "desk.alpha" });
+    // Assign, then release: an assign only records (FIX-1875).
+    const reach = await act(alice, "coordinator", c1, "updateTask_tasks", { id: taskIdOf(t2) ?? "none", assignee: "desk.alpha" });
+    const reachRun = await act(alice, "coordinator", c1, "updateTask_tasks", { id: taskIdOf(t2) ?? "none", status: "pending" });
     await quiet();
-    // The second assigns its own task and dispatches it, and it runs for a while.
-    const assign = await act(alice, "coordinator", c2, "assignTask_tasks", { taskId: taskIdOf(t2) ?? "none", assignee: "desk.beta" });
-    await act(alice, "coordinator", c2, "dispatchTask_tasks", { taskId: taskIdOf(t2) ?? "none" });
+    // The second assigns its own task and releases it, and it runs for a while.
+    const assign = await act(alice, "coordinator", c2, "updateTask_tasks", { id: taskIdOf(t2) ?? "none", assignee: "desk.beta" });
+    await act(alice, "coordinator", c2, "updateTask_tasks", { id: taskIdOf(t2) ?? "none", status: "pending" });
     await sleep(1_000);
     // While it runs, the first conversation files another.
-    const t3 = await act(alice, "coordinator", c1, "dispatchTask_tasks", { goal: `Check the ${words.t3} links`, assignee: "desk.alpha" });
+    const t3 = await act(alice, "coordinator", c1, "createTask_tasks", { goal: `Check the ${words.t3} links`, assignee: "desk.alpha" });
     const quietAt = await quiet();
     // Each conversation's own read.
     const list1 = await act(alice, "coordinator", c1, "listTasks_tasks", {});
@@ -209,7 +212,7 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
       finds[`${label}@c1`] = await find(alice, { worker, taskId, filingSessionId: filing.c1 });
       finds[`${label}@c2`] = await find(alice, { worker, taskId, filingSessionId: filing.c2 });
     }
-    out.c = { c1, c2, filing, words, ids, filed: { t1, t2, t3 }, reach, assign, quietAt, list1, list2, finds };
+    out.c = { c1, c2, filing, words, ids, filed: { t1, t2, t3 }, reach, reachRun, assign, quietAt, list1, list2, finds };
   }
 
   // d: Bob reaches into Alice's conversation, and names her worker on his own.
@@ -217,26 +220,26 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
     const dA = await conversation(alice, "desk.lead");
     const hers = `alice-${word()}`;
     const roster =
-      ((await alice.sessions.listSessions({ flowKind: ROSTER, userId: PEOPLE.alice.userId })) as Array<{ id: string }>)[0]?.id ??
-      ((await alice.sessions.createSession({ flowKind: ROSTER, userId: PEOPLE.alice.userId })) as { id: string }).id;
+      ((await alice.sessions.list({ flowKind: ROSTER, userId: PEOPLE.alice.userId })) as Array<{ id: string }>)[0]?.id ??
+      ((await alice.flow(ROSTER).createSession()) as { id: string }).id;
     const hired = await act(alice, ROSTER, roster, "hire", { id: hers, flow: "agent", description: "Does Alice's errands." });
     const added = await act(alice, "coordinator", dA, "addDelegate", { worker: hers });
     const w = word();
-    const herTask = await act(alice, "coordinator", dA, "dispatchTask_tasks", { goal: `Sort the ${w} receipts`, assignee: hers });
+    const herTask = await act(alice, "coordinator", dA, "createTask_tasks", { goal: `Sort the ${w} receipts`, assignee: hers });
     await quiet();
     await sleep(50);
     const bobStartedAt = Date.now();
     const opened = await bob.get(`/sessions/${encodeURIComponent(dA)}`);
     const open = { status: opened.status, body: (await opened.text()).slice(0, 300) };
-    const post = await act(bob, "coordinator", dA, "run", { message: `[file:desk.alpha] Sort the ${w} receipts` });
-    const file = await act(bob, "coordinator", dA, "dispatchTask_tasks", { goal: `Sort the ${w} receipts`, assignee: "desk.alpha" });
+    const post = await act(bob, "coordinator", dA, "respond", { message: `[file:desk.alpha] Sort the ${w} receipts` });
+    const file = await act(bob, "coordinator", dA, "createTask_tasks", { goal: `Sort the ${w} receipts`, assignee: "desk.alpha" });
     const dB = await conversation(bob, "desk.lead");
     const missingWorker = `nobody-${word()}`;
-    const nameHers = await act(bob, "coordinator", dB, "dispatchTask_tasks", { goal: `Sort the ${w} receipts`, assignee: hers });
-    const nameMissing = await act(bob, "coordinator", dB, "dispatchTask_tasks", { goal: `Sort the ${w} receipts`, assignee: missingWorker });
+    const nameHers = await act(bob, "coordinator", dB, "createTask_tasks", { goal: `Sort the ${w} receipts`, assignee: hers });
+    const nameMissing = await act(bob, "coordinator", dB, "createTask_tasks", { goal: `Sort the ${w} receipts`, assignee: missingWorker });
     const addHers = await act(bob, "coordinator", dB, "addDelegate", { worker: hers });
     const bw = word();
-    const bobsOwn = await act(bob, "coordinator", dB, "dispatchTask_tasks", { goal: `File the ${bw} invoices`, assignee: "desk.alpha" });
+    const bobsOwn = await act(bob, "coordinator", dB, "createTask_tasks", { goal: `File the ${bw} invoices`, assignee: "desk.alpha" });
     const quietAt = await quiet();
     out.d = { dA, dB, hers, missingWorker, hired, added, herTask, bobStartedAt, open, post, file, nameHers, nameMissing, addHers, bobsOwn, word: w, bobWord: bw, quietAt };
   }

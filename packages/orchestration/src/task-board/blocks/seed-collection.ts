@@ -26,6 +26,36 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { TaskCollectionRef, TaskInit } from "../../tasks";
 
+/**
+ * The drains marked to run over the board as it stands, without its
+ * `initialTasks` seed (FIX-2210), by request id and collection id. For a
+ * consumer that drains again within one pass it already seeded: `goalSeekLoop`
+ * taking a turn an answer earned just as the drain stopped. An id-less initial
+ * task would otherwise be added a second time. Marked by that consumer and
+ * taken by the next seed of that board in that request, never read off the
+ * drain's input: a drain can be mounted as a flow action, and its caller must
+ * not be able to drop the board's configured work (BP-031). Mark only a board
+ * with id-less initial tasks, so its seed is there to take the mark. Keyed on
+ * the request's incarnation too: a request id can name a later request.
+ */
+const unseededDrains = new Set<string>();
+
+function unseededKey(ctx: BlockContext, collectionId: string): string {
+  return `${ctx.request.identity.id}\u0000${ctx.request.incarnation}\u0000${collectionId}`;
+}
+
+/**
+ * Sets whether the next drain of the board on `collectionId`, in this request,
+ * runs without its seed. Clearing it drops a mark a drain that threw before its
+ * seed left behind, which a retry of the request would otherwise inherit.
+ * Package-internal: not exported from the package.
+ */
+export function setNextDrainUnseeded(ctx: BlockContext, collectionId: string, unseeded: boolean): void {
+  const key = unseededKey(ctx, collectionId);
+  if (unseeded) unseededDrains.add(key);
+  else unseededDrains.delete(key);
+}
+
 export interface SeedCollectionOptions<TInput = unknown> {
   name: string;
   collection: (ctx: BlockContext) => Promise<TaskCollectionRef<TInput, unknown>>;
@@ -46,6 +76,7 @@ export function createSeedCollection<TInput = unknown>(
     execute: async (_input, ctx) => {
       if (initialTasks.length === 0) return;
       const collection = await collectionFactory(ctx);
+      if (unseededDrains.delete(unseededKey(ctx, collection.collectionId))) return;
       // ONE atomic `addTasks`, not a per-task loop (FIX-931). A loop that awaits
       // each insert commits tasks up to a creation cap and only then throws — a
       // partial seed. The batch is all-or-nothing, so an oversized seed leaves

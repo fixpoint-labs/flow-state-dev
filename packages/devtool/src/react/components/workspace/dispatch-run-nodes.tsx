@@ -75,8 +75,8 @@ export function DispatchRunNodes({
   if (runs.length === 0 && error === null && !isLoading) return null;
 
   return (
-    <section data-dispatch-run-nodes className="border-t border-slate-800 p-2">
-      <h3 className="px-1 pb-1 text-[10px] uppercase tracking-wide text-slate-500">
+    <section data-dispatch-run-nodes className="border-t border-fs-ink/20 p-2">
+      <h3 className="px-1 pb-1 font-fs-mono text-[10px] font-medium uppercase tracking-[.14em] text-fs-ink3">
         Dispatched runs
       </h3>
 
@@ -85,14 +85,14 @@ export function DispatchRunNodes({
         // fails leaves the previous page on screen, and those rows are still
         // the best information the reader has — they just are not known to be
         // current, which is what this says.
-        <p role="alert" className="px-1 pb-1 text-[10px] text-red-400">
+        <p role="alert" className="px-1 pb-1 font-fs-mono text-[10.5px] text-fs-red">
           {error}
           {runs.length > 0 && " — showing the last rows read, which may be out of date."}
         </p>
       )}
 
       {isLoading && runs.length === 0 && (
-        <p data-testid="dispatch-runs-loading" className="px-1 pb-1 text-[10px] text-slate-500">
+        <p data-testid="dispatch-runs-loading" className="px-1 pb-1 font-fs-mono text-[10.5px] text-fs-ink4">
           Reading this session&apos;s dispatched runs…
         </p>
       )}
@@ -108,7 +108,7 @@ export function DispatchRunNodes({
       {truncation === "more" && (
         <p
           data-testid="dispatch-runs-truncated"
-          className="px-1 pt-1 text-[10px] text-amber-400"
+          className="px-1 pt-1 font-fs-mono text-[10.5px] text-fs-ink3"
         >
           Older runs are not shown. This is the newest page, not the whole history.
         </p>
@@ -149,25 +149,25 @@ function DispatchRunNode({
     <div
       data-dispatch-run-node={run.id}
       data-expanded={expanded ? "true" : "false"}
-      className="rounded border border-slate-800 bg-slate-900/40"
+      className="border border-fs-ink/20 bg-fs-card"
     >
       <div className="flex items-center gap-2 px-2 py-1">
         <button
           type="button"
           onClick={toggle}
           aria-expanded={expanded}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left text-[11px] text-slate-300"
+          className="flex min-w-0 flex-1 items-center gap-2 text-left text-[12px] text-fs-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fs-blue/40"
         >
           {expanded ? (
-            <ChevronDown className="h-3 w-3 shrink-0" aria-hidden />
+            <ChevronDown className="h-3 w-3 shrink-0 text-fs-ink3" aria-hidden />
           ) : (
-            <ChevronRight className="h-3 w-3 shrink-0" aria-hidden />
+            <ChevronRight className="h-3 w-3 shrink-0 text-fs-ink3" aria-hidden />
           )}
-          <span className="truncate">{entry?.action ?? shortSessionId(run.id)}</span>
-          <span className="shrink-0 rounded bg-slate-800 px-1 text-[9px] uppercase tracking-wide text-slate-400">
+          <span className="truncate font-fs-mono font-medium">{entry?.action ?? shortSessionId(run.id)}</span>
+          <span className="shrink-0 border border-fs-ink/45 px-1 font-fs-mono text-[9.5px] font-medium uppercase tracking-[.08em] text-fs-ink3">
             {dispatchRunOrigin(run.topic)}
           </span>
-          <span className="shrink-0 text-[9px] text-slate-500">
+          <span className="shrink-0 font-fs-mono text-[10px] text-fs-ink4">
             separate session · {shortSessionId(run.id)}
           </span>
           {/*
@@ -178,12 +178,12 @@ function DispatchRunNode({
           */}
           <span
             data-testid={`dispatch-run-status-${run.id}`}
-            className="shrink-0 rounded bg-slate-800 px-1 text-[9px] text-slate-400"
+            className="shrink-0 border border-dashed border-fs-ink/45 px-1 font-fs-mono text-[9.5px] font-medium tracking-[.08em] text-fs-ink3"
           >
             {run.status ?? "not started"}
           </span>
           {activity.isLoading && (
-            <Loader2 className="h-3 w-3 shrink-0 animate-spin text-slate-500" aria-hidden />
+            <Loader2 className="h-3 w-3 shrink-0 animate-spin text-fs-blue" aria-hidden />
           )}
         </button>
         <Button
@@ -194,23 +194,23 @@ function DispatchRunNode({
           aria-label={`Open dispatch run ${run.id}`}
           onClick={() => onOpen(run)}
         >
-          <ExternalLink className="h-3 w-3 text-slate-500" />
+          <ExternalLink className="h-3 w-3 text-fs-ink3" />
         </Button>
       </div>
 
       {expanded && (
-        <div className="border-t border-slate-800/70 pl-3">
+        <div className="border-t border-fs-ink/12 pl-3">
           {activity.error !== null ? (
-            <p role="alert" className="p-2 text-[10px] text-red-400">
+            <p role="alert" className="p-2 font-fs-mono text-[10.5px] text-fs-red">
               {activity.error}{" "}
-              <button type="button" className="underline" onClick={() => void activity.load(true)}>
+              <button type="button" className="text-fs-blue underline hover:text-fs-ink" onClick={() => void activity.load(true)}>
                 Retry
               </button>
             </p>
           ) : activity.groups === undefined ? (
-            <p className="p-2 text-[10px] text-slate-500">Loading this run&apos;s activity…</p>
+            <p className="p-2 font-fs-mono text-[10.5px] text-fs-ink4">Loading this run&apos;s activity…</p>
           ) : activity.groups.length === 0 ? (
-            <p className="p-2 text-[10px] text-slate-500">This run has not run anything yet.</p>
+            <p className="p-2 font-fs-mono text-[10.5px] text-fs-ink4">This run has not run anything yet.</p>
           ) : (
             <TraceView requestGroups={activity.groups} />
           )}
@@ -239,7 +239,7 @@ function useDispatchRunActivity(runId: string): {
   error: string | null;
   load: (force?: boolean) => Promise<void>;
 } {
-  const { sessionClient } = useDevTool();
+  const { client } = useDevTool();
   const [groups, setGroups] = useState<RequestGroup[] | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -251,7 +251,7 @@ function useDispatchRunActivity(runId: string): {
       setIsLoading(true);
       setError(null);
       try {
-        const requests = await sessionClient.listSessionRequests(runId, {
+        const requests = await client.sessions.requests(runId, {
           includeItems: true,
         });
         setGroups(
@@ -274,7 +274,7 @@ function useDispatchRunActivity(runId: string): {
         setIsLoading(false);
       }
     },
-    [groups, isLoading, runId, sessionClient]
+    [groups, isLoading, runId, client]
   );
 
   return { groups, isLoading, error, load };

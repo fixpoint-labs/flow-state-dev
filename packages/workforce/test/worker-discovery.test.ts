@@ -22,6 +22,7 @@ import { createTestContext, runForTest } from "@flow-state-dev/testing";
 import { createWorkforceCapability } from "../src/workforce-capability";
 import { defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { mintWorkers } from "../src/hire";
+import { markVerifiedWorker } from "../src/workers/verified-worker";
 import type { WorkerManifest } from "../src/manifest";
 
 /**
@@ -43,13 +44,19 @@ function capabilityWithTwoDomains() {
   });
 }
 
-/** A block ctx whose flow config is what one worker's file parsed to. */
-function ctxForWorker(discover?: string[]): never {
+/**
+ * A block ctx whose flow config is what one worker's file parsed to, or, with
+ * `resolved`, the shared flow's own settings (no `discover:`) while the turn
+ * resolved a worker whose file named `discover`, as on the `coordinator` flow.
+ */
+function ctxForWorker(discover?: string[], resolved = false): never {
+  const session = { state: {} };
+  if (resolved) markVerifiedWorker(session, "project-coordinator", discover === undefined ? {} : { discover });
   return {
-    flow: { config: discover === undefined ? {} : { discover } },
+    flow: { config: discover === undefined || resolved ? {} : { discover } },
     resources: {},
     signal: new AbortController().signal,
-    session: { state: {} },
+    session,
     request: { state: {} },
     user: { state: {} },
     self: { state: {} }
@@ -68,7 +75,8 @@ function ctxForWorker(discover?: string[]): never {
 async function askDoor(
   capability: ReturnType<typeof capabilityWithTwoDomains>,
   discover?: string[],
-  input: { domain?: string | null; detail?: "thin" | "full" } = {}
+  input: { domain?: string | null; detail?: "thin" | "full" } = {},
+  resolved = false
 ): Promise<{ domains: string[]; problem?: string; entries: string[] }> {
   const gen = generator({
     name: "answerer",
@@ -76,7 +84,7 @@ async function askDoor(
     prompt: "p",
     uses: [capability]
   });
-  const ctx = ctxForWorker(discover);
+  const ctx = ctxForWorker(discover, resolved);
   const tools = await (gen.config as { tools: (i: unknown, c: unknown) => Promise<unknown[]> }).tools(
     undefined,
     ctx
@@ -133,6 +141,15 @@ describe("a worker narrows the discovery door with its own file", () => {
   it("sees nothing at all when its file names an empty list", async () => {
     const answer = await askDoor(capabilityWithTwoDomains(), []);
     expect(answer.domains).toEqual([]);
+  });
+
+  it("is narrowed by the file of the worker its turn resolved, on a flow many workers share", async () => {
+    // On `coordinator` the flow's own settings carry no `discover:`; the worker's
+    // file is the one the turn resolved. Reading the flow's settings alone left
+    // every coordinator seeing every worker, the ones that can't lead included.
+    const answer = await askDoor(capabilityWithTwoDomains(), [], {}, true);
+    expect(answer.domains).toEqual([]);
+    expect(answer.entries).toEqual([]);
   });
 
   it("BR-4 · names the known domains rather than throwing on a domain that does not exist", async () => {
@@ -200,8 +217,8 @@ describe("the `discover:` worker-file key", () => {
       orgId: "test-org",
       org: { state: {} },
       sessionId: `session-${worker.id}`,
-      sequencerName: worker.actions.run!.block.name,
-      declaredResources: worker.actions.run!.block.declaredResources,
+      sequencerName: worker.actions.respond!.block.name,
+      declaredResources: worker.actions.respond!.block.declaredResources,
       modelResolver: (modelId: string) => ({
         modelId,
         async generate(options: {
@@ -220,7 +237,7 @@ describe("the `discover:` worker-file key", () => {
     } as never);
 
     const result = await executeBlock({
-      block: worker.actions.run.block,
+      block: worker.actions.respond.block,
       input: { message: "who can do this?" },
       ctx: runtime.ctx,
     });

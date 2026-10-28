@@ -18,7 +18,7 @@ import {
   resourceContentChangeSchema,
 } from "@flow-state-dev/core";
 import type { ResourceChange, ResourceContentChange } from "@flow-state-dev/core";
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import { createExecutionContext, createInMemoryStores } from "../../src";
 import { createInternalResponseEmitter } from "../../src/streaming/response-emitter";
 
@@ -49,7 +49,7 @@ async function createCtx(
   resources: Record<string, ReturnType<typeof defineResource> | ReturnType<typeof defineResourceCollection>>
 ) {
   const stores = createInMemoryStores();
-  const items: OutputItem[] = [];
+  const items: RuntimeItem[] = [];
   const response = createInternalResponseEmitter({ requestId: "req_1", internalSeams: undefined });
   response.subscribeToItems((item) => items.push(item));
 

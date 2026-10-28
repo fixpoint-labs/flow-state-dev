@@ -12,6 +12,7 @@
 import { useEffect, useState } from "react";
 import type { RosterEntry } from "@flow-state-dev/workforce/browser";
 import { addDelegate, readDelegates, removeDelegate, type DelegateList } from "../lib/delegates";
+import { workerLabel } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Worker } from "../lib/reads";
 import { useWorkforce } from "../lib/workforce";
@@ -19,7 +20,7 @@ import { useWorkforce } from "../lib/workforce";
 type Read = { list: DelegateList } | { failure: string } | undefined;
 
 export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionId: string | null }) {
-  const { clients } = useLab();
+  const { client } = useLab();
   const workforce = useWorkforce();
   const [read, setRead] = useState<Read>(undefined);
   const [roster, setRoster] = useState<readonly RosterEntry[]>([]);
@@ -31,7 +32,7 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
     if (sessionId === null || worker.kind === null) return;
     let closed = false;
     setRead(undefined);
-    readDelegates(clients, worker.kind, sessionId)
+    readDelegates(client, worker.kind, sessionId)
       .then((list) => !closed && setRead({ list }))
       .catch((error: unknown) => !closed && setRead({ failure: describeFailure(error).message }));
     workforce
@@ -41,7 +42,7 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
     return () => {
       closed = true;
     };
-  }, [clients, workforce, worker.kind, sessionId]);
+  }, [client, workforce, worker.kind, sessionId]);
 
   if (sessionId === null || worker.kind === null) {
     return (
@@ -92,13 +93,13 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
           {read.list.delegates.map((delegate) => (
             <li key={delegate.worker} className="flex items-center justify-between gap-2 px-1 py-1 text-sm" data-testid="cos-delegate" data-worker={delegate.worker}>
               <span className="min-w-0 truncate" title={delegate.note}>
-                {delegate.worker}
+                {workerLabel(roster.find((entry) => entry.id === delegate.worker)?.name ?? delegate.worker)}
               </span>
               <button
                 type="button"
                 className="shrink-0 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
                 disabled={busy}
-                onClick={() => void change(() => removeDelegate(clients, flow, sessionId, delegate.worker))}
+                onClick={() => void change(() => removeDelegate(client, flow, sessionId, delegate.worker))}
                 data-testid="cos-delegate-remove"
               >
                 remove
@@ -112,7 +113,7 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
           className="mt-1 flex gap-1 px-1"
           onSubmit={(event) => {
             event.preventDefault();
-            if (picked !== "") void change(() => addDelegate(clients, flow, sessionId, picked));
+            if (picked !== "") void change(() => addDelegate(client, flow, sessionId, picked));
           }}
         >
           <select
@@ -125,7 +126,12 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
             <option value="">Add from your roster…</option>
             {candidates.map((entry) => (
               <option key={entry.id} value={entry.id}>
-                {entry.id}
+                {/* Two workers may share a display name; the id tells them apart. */}
+                {entry.name == null
+                  ? workerLabel(entry.id)
+                  : candidates.some((other) => other.id !== entry.id && other.name === entry.name)
+                    ? `${entry.name} (${entry.id})`
+                    : entry.name}
               </option>
             ))}
           </select>

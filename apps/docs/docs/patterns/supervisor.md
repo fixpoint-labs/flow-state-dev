@@ -20,7 +20,6 @@ If you don't need review, use [Parallel Tasks](./parallelTasks) for concurrent e
 goal
   → captureAndPlan            (store goal, run planner, seed taskBoard collection)
   → board.drain               (drain — each worker runs the per-task review chain)
-  → cascadeSkipDependents     (.tap — cancel pendings whose deps errored)
   → labelFailedReviews        (.tap — label terminal errored tasks by failure category)
   → synthesize                (build { goal, results } and run the synthesizer)
 ```
@@ -51,7 +50,7 @@ import { z } from "zod";
 
 const researchWorker = generator({
   name: "research-task",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   inputSchema: z.object({
     taskId: z.string(),
     goal: z.string(),
@@ -160,7 +159,7 @@ The planner can declare dependencies between tasks using `deps`:
 ]}
 ```
 
-Tasks with unmet dependencies are held back. When a task `errored`s, every task that depends on it (transitively) is `cancelled` with the `skipped` label by `cascadeSkipDependents`.
+Tasks with unmet dependencies wait. When a task errors, every task that depends on it (transitively) is `cancelled` with the `skipped` label. The task collection does this itself, so the pattern has no step for it. A plan whose `deps` name a task that isn't in the plan, or loop back on themselves, is refused when the board is seeded, and the run fails.
 
 ## Worker registry
 

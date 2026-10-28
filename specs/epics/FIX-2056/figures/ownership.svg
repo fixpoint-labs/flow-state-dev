@@ -1,0 +1,87 @@
+<svg viewBox="0 0 1060 296" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: six rules by twelve issues and the closure FIX-2087, each rule with one owner. FIX-2076 owns who records an ending. FIX-2077 owns the one answer for done. FIX-2078 owns one ending path and due debts. FIX-2080 owns the filing settings and the one map for retired rows. FIX-2081 owns the five tools. Other cells use the rule or are blank.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; } }
+    .bg    { fill:var(--surface); }
+    .own   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .use   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-col { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-row { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-own { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; letter-spacing:.06em; }
+    .t-use { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="1060" height="296"/>
+  <text class="t-lbl" x="16" y="20">WHO OWNS WHAT &#8212; ONE OWNER PER RULE &#183; COLUMNS ARE FIX- ISSUES</text>
+  <g id="columns">
+    <text class="t-col" x="242" y="46">2076</text>
+    <text class="t-col" x="302" y="46">2077</text>
+    <text class="t-col" x="362" y="46">2078</text>
+    <text class="t-col" x="422" y="46">2080</text>
+    <text class="t-col" x="482" y="46">2081</text>
+    <text class="t-col" x="542" y="46">2082</text>
+    <text class="t-col" x="602" y="46">2083</text>
+    <text class="t-col" x="662" y="46">2084</text>
+    <text class="t-col" x="722" y="46">2085</text>
+    <text class="t-col" x="782" y="46">2086</text>
+    <text class="t-col" x="842" y="46">2088</text>
+    <text class="t-col" x="902" y="46">2090</text>
+    <text class="t-col" x="962" y="46">2087&#183;cl</text>
+  </g>
+  <g id="er1">
+    <text class="t-row" x="16" y="76">ER-1 only gate or drain settles</text>
+    <rect class="own" x="236" y="58" width="54" height="26" rx="3"/><text class="t-own" x="242" y="75">OWNS</text>
+    <rect class="use" x="296" y="58" width="54" height="26" rx="3"/><text class="t-use" x="302" y="75">uses</text>
+    <rect class="use" x="476" y="58" width="54" height="26" rx="3"/><text class="t-use" x="482" y="75">uses</text>
+    <rect class="use" x="536" y="58" width="54" height="26" rx="3"/><text class="t-use" x="542" y="75">uses</text>
+    <rect class="use" x="836" y="58" width="54" height="26" rx="3"/><text class="t-use" x="842" y="75">uses</text>
+    <rect class="use" x="956" y="58" width="54" height="26" rx="3"/><text class="t-use" x="962" y="75">uses</text>
+  </g>
+  <g id="er2">
+    <text class="t-row" x="16" y="108">ER-2 one done answer, at the gate</text>
+    <rect class="own" x="296" y="90" width="54" height="26" rx="3"/><text class="t-own" x="302" y="107">OWNS</text>
+    <rect class="use" x="356" y="90" width="54" height="26" rx="3"/><text class="t-use" x="362" y="107">uses</text>
+    <rect class="use" x="536" y="90" width="54" height="26" rx="3"/><text class="t-use" x="542" y="107">uses</text>
+    <rect class="use" x="596" y="90" width="54" height="26" rx="3"/><text class="t-use" x="602" y="107">uses</text>
+    <rect class="use" x="776" y="90" width="54" height="26" rx="3"/><text class="t-use" x="782" y="107">uses</text>
+    <rect class="use" x="836" y="90" width="54" height="26" rx="3"/><text class="t-use" x="842" y="107">uses</text>
+  </g>
+  <g id="er3">
+    <text class="t-row" x="16" y="140">ER-3 every ending once, debts due</text>
+    <rect class="own" x="356" y="122" width="54" height="26" rx="3"/><text class="t-own" x="362" y="139">OWNS</text>
+    <rect class="use" x="596" y="122" width="54" height="26" rx="3"/><text class="t-use" x="602" y="139">uses</text>
+    <rect class="use" x="656" y="122" width="54" height="26" rx="3"/><text class="t-use" x="662" y="139">uses</text>
+    <rect class="use" x="716" y="122" width="54" height="26" rx="3"/><text class="t-use" x="722" y="139">uses</text>
+    <rect class="use" x="896" y="122" width="54" height="26" rx="3"/><text class="t-use" x="902" y="139">uses</text>
+    <rect class="use" x="956" y="122" width="54" height="26" rx="3"/><text class="t-use" x="962" y="139">uses</text>
+  </g>
+  <g id="er4">
+    <text class="t-row" x="16" y="172">ER-4 four filing settings</text>
+    <rect class="own" x="416" y="154" width="54" height="26" rx="3"/><text class="t-own" x="422" y="171">OWNS</text>
+    <rect class="use" x="476" y="154" width="54" height="26" rx="3"/><text class="t-use" x="482" y="171">uses</text>
+    <rect class="use" x="596" y="154" width="54" height="26" rx="3"/><text class="t-use" x="602" y="171">uses</text>
+    <rect class="use" x="776" y="154" width="54" height="26" rx="3"/><text class="t-use" x="782" y="171">uses</text>
+  </g>
+  <g id="er5">
+    <text class="t-row" x="16" y="204">ER-5 five tools, the only surface</text>
+    <rect class="own" x="476" y="186" width="54" height="26" rx="3"/><text class="t-own" x="482" y="203">OWNS</text>
+    <rect class="use" x="536" y="186" width="54" height="26" rx="3"/><text class="t-use" x="542" y="203">uses</text>
+    <rect class="use" x="596" y="186" width="54" height="26" rx="3"/><text class="t-use" x="602" y="203">uses</text>
+    <rect class="use" x="656" y="186" width="54" height="26" rx="3"/><text class="t-use" x="662" y="203">uses</text>
+    <rect class="use" x="716" y="186" width="54" height="26" rx="3"/><text class="t-use" x="722" y="203">uses</text>
+    <rect class="use" x="776" y="186" width="54" height="26" rx="3"/><text class="t-use" x="782" y="203">uses</text>
+    <rect class="use" x="956" y="186" width="54" height="26" rx="3"/><text class="t-use" x="962" y="203">uses</text>
+  </g>
+  <g id="er6">
+    <text class="t-row" x="16" y="236">ER-6 retired rows, one map</text>
+    <rect class="use" x="296" y="218" width="54" height="26" rx="3"/><text class="t-use" x="302" y="235">uses</text>
+    <rect class="own" x="416" y="218" width="54" height="26" rx="3"/><text class="t-own" x="422" y="235">OWNS</text>
+    <rect class="use" x="596" y="218" width="54" height="26" rx="3"/><text class="t-use" x="602" y="235">uses</text>
+    <rect class="use" x="776" y="218" width="54" height="26" rx="3"/><text class="t-use" x="782" y="235">uses</text>
+  </g>
+  <text class="t-use" x="16" y="280">A blank cell neither decides nor reads the rule. FIX-2079 merged into FIX-2078 in review.</text>
+</svg>

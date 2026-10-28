@@ -4,6 +4,7 @@
  * mirror create/update/delete into a `ScheduleIndex` (via a small
  * in-memory fake).
  */
+import type { JsonObject } from "@flow-state-dev/core/types";
 import { describe, expect, it } from "vitest";
 import { defineScheduleCollection } from "../src/defineScheduleCollection";
 import type { ScheduleIndex, ScheduleIndexRow } from "../src/scheduleIndex";
@@ -56,7 +57,7 @@ function bound(state: {
   kind: string;
   enabled: boolean;
   orgId?: string;
-}): Record<string, unknown> {
+}): JsonObject {
   const { orgId = EXEC_ORG, ...rest } = state;
   return { ...rest, orgId };
 }

@@ -7,7 +7,7 @@
  *
  * `createModelResolver` is built by `createFlowState` from the (omitted)
  * `models` option, which auto-detects providers from env vars
- * (`OPENAI_API_KEY`, etc.) — model strings like "openai/gpt-5-mini" in the flow
+ * (`OPENAI_API_KEY`, etc.) — model strings like "openai/gpt-6-luna" in the flow
  * resolve automatically.
  */
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";

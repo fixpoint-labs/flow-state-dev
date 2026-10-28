@@ -44,6 +44,8 @@ export type {
   ToolOutputItem
 } from "./types";
 
+export type { RuntimeItem } from "./internal";
+
 export { resolveItemVisibility } from "./resolve-visibility";
 
 export { collapseToCanonicalLog } from "./canonical-log";
@@ -59,6 +61,7 @@ export {
 export {
   isSuspensionItem,
   isSuspensionResumeItem,
+  isSuspensionWait,
   whenAnyItem,
   whenResourceChanged,
   whenResourceMatching

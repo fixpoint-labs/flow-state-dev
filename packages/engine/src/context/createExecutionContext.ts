@@ -1,3 +1,4 @@
+import { attachRequestEndRegistry, createRequestEndRegistry } from "../execution/request-end-hooks";
 import { isOrgAttributed, UnattributedOrgError } from "./org-attribution";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type {
@@ -18,7 +19,9 @@ import type {
   SessionScopeHandle,
   StopRequestOutcome,
   UserScopeHandle,
-  TokenCounter
+  TokenCounter,
+  ResumeContext,
+  SuspensionStatus
 } from "@flow-state-dev/core/types";
 import {
   getPatternPrefix,
@@ -38,7 +41,7 @@ import type {
   StateSnapshotItem,
   StatusItem
 } from "@flow-state-dev/core/items";
-import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
+import type { BlockValueInternal, RuntimeItem } from "@flow-state-dev/core/items/internal";
 import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
 import type { BlockContext, BlockOutputHint, BlockResult, ExecutionParent, ProjectedResourceContext, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
@@ -68,6 +71,13 @@ import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, summarizeForLog } from "../exe
 import { createRequestSideChainPool } from "../execution/request-side-chain-pool";
 import { createRequestHost } from "./create-request-host";
 import { readDispatchStamp } from "../execution/dispatch-metadata";
+import { ownRowOf, waitedByOf } from "../durability/wait-chain";
+
+/** The waiter a dispatched request was born with, as an optional field. */
+function waitedByStamp(source: string | undefined, metadata: unknown) {
+  const waitedBy = waitedByOf(source, metadata);
+  return waitedBy === undefined ? {} : { waitedBy };
+}
 import { ensureSessionRecord, refuseReadonlyStateChange } from "./session-birth";
 import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 import { resolveActionCore } from "../execution/resolve-action-core";
@@ -79,11 +89,20 @@ import { normalizeError, displayCause } from "../errors/normalize-error";
 import {
   safeCaptureError,
   toErrorCaptureEvent,
+  toFinalErrorCaptureEvent,
   type ErrorCaptureBlockInfo,
   type ErrorCaptureIdentity
 } from "../errors/error-capture";
-import { SuspensionError, SuspensionRejectedError } from "@flow-state-dev/core";
-import { DISPATCH_SEAM, SUSPENSION_SKIPPED } from "@flow-state-dev/core/types";
+import { SuspensionError, SuspensionRejectedError, SuspensionTimeoutError, resolveAllowedActions, type SuspendOptions } from "@flow-state-dev/core";
+import {
+  DISPATCH_SEAM,
+  REQUEST_RESUME_SEAM,
+  SUSPENSION_SKIPPED,
+  isUserSuspension,
+  waitForUserOn,
+  type RequestResume,
+  type WaitForUser
+} from "@flow-state-dev/core/types";
 import { generateId } from "../utils/generate-id";
 import {
   resolveUserStorageKey,
@@ -144,7 +163,58 @@ import {
 } from "./resource-registry";
 import { isCollectionConfig } from "../resources/is-collection-config";
 import { createReactiveDispatcher, createCascadeController } from "./reactive-dispatch";
+import { DEFAULT_STALE_SWEEP_THRESHOLD_MS } from "../runtime-config";
+import { PAST_TURN_STATUSES, retriedIds } from "../execution/past-turns";
+import { parkedInterruptedIds } from "../durability/stop-suspended";
+import { cancelledWithTask } from "../durability/cancel-user-suspension";
 
+/**
+ * Why `ctx.suspend()` refused, and what to change (FIX-2063): the rule
+ * (durable execution is on wherever stores persist) and the host setting.
+ */
+const SUSPEND_NEEDS_DURABILITY =
+  "stopping for a person needs durable execution, which is on by default wherever stores persist. " +
+  "This host has none: it sets `durable: false`, runs on in-memory stores, or is a router given no " +
+  "durability provider. Remove `durable: false`, or set `durable: true` to hold stops in memory " +
+  "(tests only: they are lost when the process ends). Nothing was held.";
+
+/**
+ * Whether the run's task was cancelled with one of its stops (FIX-2129):
+ * this continuation's own resolution, or, for a crash's continuation that
+ * names none, a user's stop the log records cancelled with its task.
+ */
+function taskCancelledInRun(resumeCtx: ResumeContext | undefined, replayLog: ReplayLog | undefined): boolean {
+  if (resumeCtx?.resolution === "cancelled" && cancelledWithTask(resumeCtx.data)) return true;
+  return (replayLog?.resolvedInOrder() ?? []).some(
+    (entry) => entry.cancelled && cancelledWithTask(entry.data) && isUserSuspension({ reason: entry.reason ?? "" })
+  );
+}
+
+/**
+ * What `ctx.suspend()` throws for a gate resolved without an answer (a
+ * rejection, an expiry or a cancel), on the live continuation and on replay
+ * alike. An expiry of a suspension that is not an approval (one that allows
+ * no `reject`, or a review's or an input's `waitForUser`) throws
+ * `SuspensionTimeoutError` (FIX-2129 D1); an approval's reads as a rejection
+ * marked expired (FIX-1846).
+ */
+function rejectionOf(
+  suspendOpts: SuspendOptions,
+  suspensionId: string,
+  resolvedBy: string | undefined,
+  data: unknown,
+  how: { expired: boolean; cancelled: boolean }
+): Error {
+  if (how.cancelled) return new SuspensionRejectedError(suspensionId, resolvedBy, data, { cancelled: true });
+  if (how.expired) {
+    const approval =
+      suspendOpts.kind === undefined
+        ? resolveAllowedActions(suspendOpts.reason, suspendOpts.allow).includes("reject")
+        : suspendOpts.kind === "approval";
+    if (!approval) return new SuspensionTimeoutError(suspensionId);
+  }
+  return new SuspensionRejectedError(suspensionId, resolvedBy, data, { expired: how.expired });
+}
 
 function ensureJournalDefaults(record: SessionRecord): void {
   if (!Array.isArray(record.journal)) {
@@ -328,6 +398,37 @@ function createEmitComponentAwaited(
     options?: EmitComponentOptions,
   ): Promise<void> {
     const item = buildComponentItem(emCtx, component, data, options);
+    await emCtx.response.emitItemAdded(item);
+    await emCtx.response.emitItemDone(item);
+  };
+}
+
+/**
+ * The awaited message emitter behind `ctx._emitMessageAwaited`: as
+ * {@link createEmitMessage}, but it settles on the emission and rejects if
+ * either step does, as {@link createEmitComponentAwaited} does for components.
+ */
+function createEmitMessageAwaited(
+  emCtx: EmissionContext
+): (text: string, options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }) => Promise<void> {
+  return async function emitMessageAwaited(text, options): Promise<void> {
+    const itemIndex = emCtx.nextItemIndex();
+    const item: MessageItem = {
+      id: `item_message_${itemIndex}_${Math.random().toString(16).slice(2)}`,
+      type: "message",
+      status: "completed",
+      transient: options?.transient === true ? true : undefined,
+      requestId: emCtx.requestId,
+      itemIndex,
+      provenance: emCtx.provenance(),
+      ts: Date.now(),
+      ownedBy: emCtx.ownedBy,
+      taskId: emCtx.taskId,
+      itemVisibility: options?.itemVisibility ?? emCtx.itemVisibility,
+      agentName: options?.agentName ?? emCtx.agentName,
+      role: "assistant",
+      content: [{ type: "output_text", text }]
+    };
     await emCtx.response.emitItemAdded(item);
     await emCtx.response.emitItemDone(item);
   };
@@ -662,10 +763,13 @@ export async function createExecutionContext<
   const [loadedUser, loadedOrg, priorRequests] = await Promise.all([
     userKey !== undefined ? stores.user.get(userKey) : undefined,
     optionsOrgKey !== undefined ? stores.org.get(optionsOrgKey) : undefined,
-    // The N most-recently-started completed requests — `status:"completed"`
-    // excludes the current (in-progress) request and any in-flight siblings;
-    // `orderBy:"startedAtMs"` makes the windowed selection robust to
-    // out-of-order metadata writes. `items` reconstruct cross-turn history.
+    // The N most-recently-started past turns (`PAST_TURN_STATUSES`). The
+    // status filter excludes the current (in-progress) request and any
+    // in-flight siblings; an `interrupted` request is a turn its host died in,
+    // and what it persisted (the message that started it, the calls that ran) is part of the
+    // conversation. `orderBy:"startedAtMs"` makes the windowed selection
+    // robust to out-of-order metadata writes. `items` reconstruct cross-turn
+    // history.
     stores.request.list({
       // The same filter as the session's reads; see `sessionRequestScope`.
       ...sessionRequestScope(
@@ -673,25 +777,43 @@ export async function createExecutionContext<
         loadedSession ?? { userId, orgId: options.orgId, flowKind: flow.kind, flowId: flow.id },
         options.tenantId
       ),
-      status: "completed",
+      status: PAST_TURN_STATUSES,
       limit: historyWindowTurns,
       orderBy: "startedAtMs",
       withItems: true
     })
   ]);
 
-  // The windowed list already filters to completed requests at the store;
-  // exclude only the current request (defends a retry that reuses an id),
-  // then sort ascending for stable history ordering. Reused by all()/client()
-  // (via priorItems) and history() (via loadLLMHistory).
-  const completedPriorRequests = priorRequests
+  // The windowed list already filters by status at the store; exclude the
+  // current request (defends a retry that reuses an id), an interrupted turn
+  // that will run again (parked) or that a retry re-ran (`past-turns.ts`),
+  // keep only the settled items of an interrupted turn (a call the kill cut
+  // off has no result to show), then sort ascending for stable history
+  // ordering. Reused by all()/client() (via priorItems) and history() (via
+  // loadLLMHistory).
+  const retried = retriedIds(priorRequests, options.metadata);
+  // A gate read that fails costs this turn a view that may show a parked
+  // turn, never the turn itself: nothing is treated as parked, and it is logged.
+  let parked = new Set<string>();
+  try {
+    parked = await parkedInterruptedIds(options.effectiveRuntimeConfig?.durabilityProvider, priorRequests);
+  } catch (error) {
+    logRuntimeEvent(options.logger ?? DEFAULT_RUNTIME_LOGGER, "warn", "[flow-state] history could not read the gates of interrupted turns", {
+      requestId,
+      sessionId,
+      error: String(error)
+    });
+  }
+  const settledPriorRequests = priorRequests
     .filter((r) => r.id !== requestId)
+    .filter((r) => r.status !== "interrupted" || (!retried.has(r.id) && !parked.has(r.id)))
+    .map((r) => (r.status === "interrupted" && r.items !== undefined ? { ...r, items: r.items.filter((i) => i.status !== "in_progress") } : r))
     .sort((a, b) => a.startedAtMs - b.startedAtMs);
 
-  // Build prior items from completed request records. This replaces the
+  // Build prior items from the settled prior request records. This replaces the
   // deprecated SessionRecord.items field — items are canonical on request records.
   const priorItems: SessionItem[] = [];
-  for (const req of completedPriorRequests) {
+  for (const req of settledPriorRequests) {
     if (req.items === undefined) {
       continue;
     }
@@ -939,8 +1061,34 @@ export async function createExecutionContext<
           dispatchOperation: options.requestHost.dispatchOperation,
           resolveFlow: options.requestHost.resolveFlow,
           parentTask: options.requestHost.parentTask,
-          askResume: options.requestHost.askResume,
-          askSweeper: options.requestHost.askSweeper,
+          waitResume: options.requestHost.waitResume,
+          waitSweeper: options.requestHost.waitSweeper,
+          dispatchRunsHere: options.requestHost.dispatchRunsHere,
+          userDeadlineMs: options.effectiveRuntimeConfig?.userDeadlineMs,
+          ...(options.requestHost.wakes !== undefined && stores.wakes !== undefined
+            ? {
+                wakes: {
+                  store: stores.wakes,
+                  maxDebtAgeMs: options.requestHost.wakes.maxDebtAgeMs,
+                  // A write this request owes has landed by the time the request
+                  // would count as dead: its lease.
+                  fenceMs: options.requestHost.staleThresholdMs ?? DEFAULT_STALE_SWEEP_THRESHOLD_MS
+                }
+              }
+            : {}),
+          ...(options.requestHost.waits !== undefined
+            ? {
+                waits: {
+                  provider: options.requestHost.waits.provider,
+                  deadlines: options.requestHost.waits.deadlines,
+                  requestId: options.requestId,
+                  // The row a task dispatch started this request for (FIX-2082).
+                  own: ownRowOf(options.source, options.metadata, options.input),
+                  ...waitedByStamp(options.source, options.metadata),
+                  readRequest: (requestId: string) => stores.request.get(requestId)
+                }
+              }
+            : {}),
           effectiveRuntimeConfig: options.effectiveRuntimeConfig,
           dispatchStamp: readDispatchStamp(options.source, options.metadata),
           liveness: {
@@ -2183,10 +2331,25 @@ export async function createExecutionContext<
   // so this reads back exactly that base (0 on a fresh run). Both block-emitted
   // items and runtime items reserved via `_reserveItemIndex` draw from this one
   // counter so their indices stay distinct and monotonic across the resume.
-  let emittedItemCount =
-    typeof options.response?.getItemCount === "function"
-      ? options.response.getItemCount()
-      : 0;
+  // A response that tracks items but has no `getItemCount()` may hold items
+  // that don't start at 0 (a seeded log), so its next free index is the
+  // highest one it holds plus 1; its length only when no item carries one.
+  const responseItemCursor = (): number => {
+    if (options.response?.getItemCount !== undefined) return options.response.getItemCount();
+    const items = options.response?.getItems?.() ?? [];
+    const next = items.reduce((m, i) => (typeof i.itemIndex === "number" ? Math.max(m, i.itemIndex + 1) : m), -1);
+    return next === -1 ? items.length : next;
+  };
+  let emittedItemCount = responseItemCursor();
+  // Every index this context hands out comes from here. A block that emits
+  // straight through `ctx.response` (a generator's message, a tool output)
+  // takes the emitter's cursor without passing through this counter, so the
+  // next reservation starts at whichever of the two is further along.
+  const reserveItemIndex = (): number => {
+    const itemIndex = Math.max(emittedItemCount, responseItemCursor());
+    emittedItemCount = itemIndex + 1;
+    return itemIndex;
+  };
 
   // The request store as the request-state write sees it: a full-record
   // write leaves `items` off, because the record's are the snapshot from when
@@ -2487,6 +2650,10 @@ export async function createExecutionContext<
     return modelResolver(modelId, blockName);
   }) as ModelResolver;
   resolveModel.resolveId = (modelId: string) => modelResolver.resolveId(modelId);
+  const providerOf = modelResolver.providerOf;
+  if (providerOf !== undefined) {
+    resolveModel.providerOf = (modelId: string) => providerOf.call(modelResolver, modelId);
+  }
   // Evaluator strings resolve only through the flow's own resolver. When an
   // app-supplied resolver has no `resolveEvaluationModel`, the hook stays
   // absent and the evaluator refuses the string; the default resolver is
@@ -2497,8 +2664,8 @@ export async function createExecutionContext<
       resolveEvaluationModel.call(modelResolver, modelId, blockName);
   }
 
-  const readLiveItems = (): Array<OutputItem | BlockTraceItem> => {
-    const typedResponse = responseRef.current as { getItems?: () => Array<OutputItem | BlockTraceItem> };
+  const readLiveItems = (): RuntimeItem[] => {
+    const typedResponse = responseRef.current as { getItems?: () => RuntimeItem[] };
     if (typeof typedResponse.getItems === "function") {
       return typedResponse.getItems();
     }
@@ -2569,7 +2736,7 @@ export async function createExecutionContext<
       container,
       getResponse: () => responseRef.current,
       requestId: requestRef.current.id,
-      nextItemIndex: () => emittedItemCount++,
+      nextItemIndex: () => reserveItemIndex(),
       provenance: () => ({
         blockName: "runtime",
         blockInstanceId: "runtime",
@@ -2686,7 +2853,7 @@ export async function createExecutionContext<
           ...(s.tags !== undefined ? { tags: s.tags } : {})
         };
       },
-      items: createSessionItemViews(priorItems, completedPriorRequests, {
+      items: createSessionItemViews(priorItems, settledPriorRequests, {
         tokenCounter,
         readLiveItems,
         resolveModelId: () => {
@@ -2877,6 +3044,21 @@ export async function createExecutionContext<
   // drains the pool exactly once on the success path. Replaces the legacy
   // per-sequencer auto-await scoping.
   const requestSideChainPool = createRequestSideChainPool();
+  // Per-request request-end registry (FIX-2077), attached beside the pool on
+  // every scope so a hook added from any block reaches the one list the
+  // request executor runs after its last drain.
+  const requestEndRegistry = createRequestEndRegistry();
+  // How this request resumed (FIX-2129), read when a block asks: the
+  // resolution is filled in at the checkpoint read, after this context is built.
+  // A crash's continuation names no resolution: the log's latest is how the
+  // request last resumed, so the claim gate still reads a stop or a cancel.
+  const readResume = (): RequestResume | undefined => {
+    const resumed = options.resumeContext;
+    if (resumed?.resolution !== undefined) return { resolution: resumed.resolution, userSuspension: resumed.userSuspension === true };
+    const logged = (rootContext as { _replayLog?: ReplayLog })._replayLog?.resolvedInOrder().at(-1);
+    if (logged?.resolution === undefined) return undefined;
+    return { resolution: logged.resolution as SuspensionStatus, userSuspension: isUserSuspension({ reason: logged.reason ?? "" }) };
+  };
 
   // Request-scoped status slot — shared across every scope's createEmitStatus.
   // Terminates naturally when this context is discarded at request end.
@@ -2908,7 +3090,7 @@ export async function createExecutionContext<
       blockInstanceId: "runtime",
       phase: "main" as const
     }),
-    nextItemIndex: () => emittedItemCount++,
+    nextItemIndex: () => reserveItemIndex(),
   };
 
   // Request-level trace emitters used by `_runtimeHooks` (router decisions,
@@ -2941,10 +3123,14 @@ export async function createExecutionContext<
     orgId: orgRecord?.orgId
   };
   const capturedErrors = new Set<unknown>();
+  // The leaf each captured throw came from, so the request's final-failure
+  // event (FIX-1983) can name it. Keyed like the dedup set, on the raw value.
+  const leafOfError = new Map<unknown, ErrorCaptureBlockInfo>();
   const captureError = (error: unknown, block?: ErrorCaptureBlockInfo): void => {
     if (errorCapture === undefined) return;
     if (capturedErrors.has(error)) return;
     capturedErrors.add(error);
+    if (block !== undefined) leafOfError.set(error, block);
     // `normalizeError` treats `blockName: undefined` as absent, so this is safe
     // whether or not the caller resolved a block name.
     const normalized = normalizeError(error, {
@@ -2956,6 +3142,53 @@ export async function createExecutionContext<
       toErrorCaptureEvent(normalized, captureIdentity, block),
       logger
     );
+  };
+
+  // FIX-1983: the request's one final-failure event, sent by `runAction` once
+  // the failed record is written. It bypasses the dedup set, which already
+  // holds the thrown value from the leaf's own capture. A `FlowError` the
+  // runtime wrapped around the throw is looked up by its `cause` too.
+  const captureFinalError = (error: unknown): void => {
+    if (errorCapture === undefined) return;
+    const cause = error instanceof Error ? (error as { cause?: unknown }).cause : undefined;
+    const leaf = leafOfError.get(error) ?? (cause !== undefined ? leafOfError.get(cause) : undefined);
+    void safeCaptureError(
+      errorCapture,
+      toFinalErrorCaptureEvent(
+        normalizeError(error, { blockName: leaf?.blockName, scope: "request" }),
+        captureIdentity,
+        leaf === undefined ? undefined : { ...leaf, scope: "request" }
+      ),
+      logger
+    );
+  };
+
+  // The identity half of every auto-emitted `block_trace`: what replay keys
+  // on. Both capture branches below build from it, so the lean record stays a
+  // subset of the full one when an identity field is added.
+  const baseBlockTraceFromIdentity = (
+    identity: NonNullable<BlockContext["_blockIdentity"]>,
+    at: { status: BlockTraceItem["status"]; ts: number }
+  ): BlockTraceItem => {
+    const itemIndex = reserveItemIndex();
+    return {
+      id: `item_block_trace_${itemIndex}_${Math.random().toString(16).slice(2)}`,
+      type: "block_trace",
+      status: at.status,
+      requestId: requestRef.current.id,
+      itemIndex,
+      provenance: {
+        blockName: identity.blockName,
+        blockInstanceId: identity.blockInstanceId,
+        parentBlockInstanceId: identity.parentBlockInstanceId,
+        phase: identity.phase ?? "main",
+      },
+      ts: at.ts,
+      ownedBy: identity.ownedBy,
+      blockName: identity.blockName,
+      blockKind: (identity.blockKind ?? "handler") as BlockTraceItem["blockKind"],
+      blockInstanceId: identity.blockInstanceId,
+    };
   };
 
   const _runtimeHooks: ExecutionContext["_runtimeHooks"] = {
@@ -3027,7 +3260,7 @@ export async function createExecutionContext<
       // Emit router_decision trace item. The emit chain is returned so the
       // router can await the decision anchor's durability before dispatching
       // the selected branch (FIX-814).
-      const itemIndex = emittedItemCount++;
+      const itemIndex = reserveItemIndex();
       const decisionItem: RouterDecisionItem = {
         id: `item_router_${itemIndex}_${Math.random().toString(16).slice(2)}`,
         type: "router_decision",
@@ -3050,6 +3283,16 @@ export async function createExecutionContext<
     // in place on `input` / `generator` / `output` phases. Item.added fires
     // immediately at `added`; subsequent phases emit item.updated; the
     // `output` phase additionally emits item.done.
+    //
+    // With observability off the second branch runs instead: one lean record
+    // (identity, output, the rescued mark, `lean: true`) per completed block,
+    // written at its `output` phase, because resume reads it to skip the
+    // block; without it, finished steps run again. It is a separate branch,
+    // not an early return in the first, because the first opens its row at
+    // `added` with the block's input. Here
+    // the index is taken at completion (after the items the block emitted),
+    // and failed, suspended and transient blocks get no record at all, not
+    // even a live one.
     onBlockTraceCapture: isTraceObservabilityEnabled()
       ? (payload, firingCtx) => {
           const identity = firingCtx._blockIdentity;
@@ -3063,7 +3306,6 @@ export async function createExecutionContext<
             // Construct + emit. Store on the per-request trace map so later
             // phases can find and patch the row.
             const startedAt = payload.data.startedAt ?? Date.now();
-            const itemIndex = emittedItemCount++;
             // FIX-586 restores the FIX-478 contract: auto-emitted block_trace
             // items inherit the originating block's `transient` flag. Traces
             // from `transient: true` blocks (e.g. Task Board's `claim-task` /
@@ -3071,23 +3313,11 @@ export async function createExecutionContext<
             // but are not retained in the persisted items log. Non-transient
             // blocks (the default) keep the canonical retained-trace behavior.
             const item: BlockTraceItem = {
-              id: `item_block_trace_${itemIndex}_${Math.random().toString(16).slice(2)}`,
-              type: "block_trace",
-              status: payload.data.status ?? "in_progress",
+              ...baseBlockTraceFromIdentity(identity, {
+                status: payload.data.status ?? "in_progress",
+                ts: startedAt,
+              }),
               transient: identity.transient === true ? true : undefined,
-              requestId: requestRef.current.id,
-              itemIndex,
-              provenance: {
-                blockName: identity.blockName,
-                blockInstanceId: instanceId,
-                parentBlockInstanceId: identity.parentBlockInstanceId,
-                phase: identity.phase ?? "main",
-              },
-              ts: startedAt,
-              ownedBy: identity.ownedBy,
-              blockName: identity.blockName,
-              blockKind: (identity.blockKind ?? "handler") as BlockTraceItem["blockKind"],
-              blockInstanceId: instanceId,
               input: payload.data.input,
               // FIX-701: the block's own declared accessor keys, stamped here
               // so the DevTool can show "declared but not loaded".
@@ -3153,7 +3383,24 @@ export async function createExecutionContext<
             blockTraceMap.delete(instanceId);
           }
         }
-      : undefined,
+      : (payload, firingCtx) => {
+          if (payload.phase !== "output" || payload.data.status !== "completed") return;
+          const identity = firingCtx._blockIdentity;
+          if (identity === undefined || identity.transient === true) return;
+          const completedAt = payload.data.completedAt ?? Date.now();
+          const item: BlockTraceItem = {
+            ...baseBlockTraceFromIdentity(identity, { status: "completed", ts: completedAt }),
+            lean: true,
+            output: payload.data.output,
+            completedAt,
+            duration: payload.data.duration,
+            rescued: payload.data.rescued,
+          };
+          void emissionResponse
+            .emitItemAdded(item)
+            .then(() => emissionResponse.emitItemDone(item))
+            .catch(() => { /* best-effort */ });
+        },
   };
 
   // Per-request trace map. Keyed by blockInstanceId; entries are removed
@@ -3167,8 +3414,9 @@ export async function createExecutionContext<
   // its recorded resolution (in original order) instead of re-suspending —
   // otherwise a multi-gate sequencer resumed at a later gate bounces back to the
   // earlier one forever. Keyed by logical block id; the value counts how many of
-  // that gate's recorded resolutions this replay has consumed. Shared across all
-  // per-scope `suspend` closures.
+  // that gate's recorded resolutions this replay has consumed, plus one once
+  // the continuation's own resolution has answered a call there (FIX-2196).
+  // Shared across all per-scope `suspend` closures.
   const resolvedResumeCursor = new Map<string, number>();
 
   // FIX-402: in-process inflight map for ctx.runOnce. Two concurrent calls
@@ -3285,7 +3533,7 @@ export async function createExecutionContext<
               container,
               getResponse: () => responseRef.current,
               requestId: requestRef.current.id,
-              nextItemIndex: () => emittedItemCount++,
+              nextItemIndex: () => reserveItemIndex(),
               provenance: () => ({
                 blockName: matched.parent.name,
                 blockInstanceId: matched.parent.instanceId,
@@ -3473,7 +3721,7 @@ export async function createExecutionContext<
       // Shares the per-run synchronous item-index counter with block-emitted
       // items so runtime items (e.g. runAction's `suspension_resume`) get a
       // distinct, monotonic index that continues the prior log on resume.
-      _reserveItemIndex: () => emittedItemCount++,
+      _reserveItemIndex: () => reserveItemIndex(),
       suspend: async (suspendOpts) => {
         // The typed resolution `runAction` threads on a same-request
         // continuation — never `options.metadata`, which callers control
@@ -3509,9 +3757,17 @@ export async function createExecutionContext<
           if (consumed < resolved.length) {
             resolvedResumeCursor.set(callerLogicalId, consumed + 1);
             const entry = resolved[consumed];
+            // A user's stop replays as the stop, never as an answer
+            // (FIX-2129): a crash after its resolution was logged must not
+            // read it as approved. The run ends here, as the live stop does.
+            if (entry.stopped && isUserSuspension(suspendOpts)) {
+              await recordRequestStop(stores.request, requestRef.current);
+              throw new DOMException("The request was stopped while it waited for a user.", "AbortError");
+            }
             if (entry.rejected) {
-              throw new SuspensionRejectedError(entry.suspensionId, entry.resolvedBy, entry.data, {
-                expired: entry.expired
+              throw rejectionOf(suspendOpts, entry.suspensionId, entry.resolvedBy, entry.data, {
+                expired: entry.expired,
+                cancelled: entry.cancelled
               });
             }
             // A skipped gate replays as the sentinel, never the persisted data,
@@ -3532,16 +3788,38 @@ export async function createExecutionContext<
           // flows resume one gate at a time without a shared "consumed" flag.
           // A resolution with no `pendingBlockLogicalId` matches no gate: there
           // is no first-reached-gate fallback (FIX-1707).
+          // A block that parks again on a new gate (a wait that waits again
+          // at its deadline, FIX-2082) reaches this from the same path: a
+          // gate that names its own id is resolved only by its own
+          // resolution. Within one block the resolution answers one call,
+          // the first past the gates the log replayed: a later call in the
+          // same block, named or not, suspends on its own stop (FIX-2196).
+          const position = resolvedResumeCursor.get(callerLogicalId) ?? 0;
           const isResolvingGate =
             resumeCtx.pendingBlockLogicalId !== undefined &&
-            resumeCtx.pendingBlockLogicalId === callerLogicalId;
+            resumeCtx.pendingBlockLogicalId === callerLogicalId &&
+            position === (replayLog?.resolvedResumes(callerLogicalId).length ?? 0) &&
+            (suspendOpts.suspensionId === undefined || suspendOpts.suspensionId === resumeCtx.suspensionId);
 
           if (isResolvingGate) {
+            resolvedResumeCursor.set(callerLogicalId, position + 1);
+            // A task's run stopped while it waited for a user ends here
+            // (FIX-2129, `stopsAtItsGate`): the claim gate ahead of it has
+            // read the stop, and no block runs past the gate. The stop is
+            // recorded on the request and its controller fired, so the run
+            // ends `aborted` through its own lifecycle.
+            if (resumeCtx.resolution === "stopped" && isUserSuspension(suspendOpts)) {
+              await recordRequestStop(stores.request, requestRef.current);
+              throw new DOMException("The request was stopped while it waited for a user.", "AbortError");
+            }
             if (resumeCtx.action === "reject") {
               // An approval that expired continues as a rejection marked
-              // expired, so the caller can say it is no longer valid.
-              throw new SuspensionRejectedError(resumeCtx.suspensionId, resumeCtx.resumedBy, resumeCtx.data, {
-                expired: resumeCtx.resolution === "expired"
+              // expired, so the caller can say it is no longer valid; any
+              // other suspension at its deadline throws the timeout (FIX-2129
+              // D1). A cancel reads as a rejection marked cancelled.
+              throw rejectionOf(suspendOpts, resumeCtx.suspensionId, resumeCtx.resumedBy, resumeCtx.data, {
+                expired: resumeCtx.resolution === "expired",
+                cancelled: resumeCtx.resolution === "cancelled"
               });
             }
             // A skip is non-throwing control flow: return the sentinel so the
@@ -3552,14 +3830,36 @@ export async function createExecutionContext<
             return resumeCtx.data;
           }
         }
+        // A run whose task was cancelled asks nobody again (FIX-2129): a
+        // later wait for a user resolves `cancelled` at once and opens no
+        // item. Read off this continuation's resolution, or off the log when
+        // a crash's continuation names none. One stop cancelled while the
+        // task goes on leaves the next wait to suspend as usual.
+        if (isUserSuspension(suspendOpts) && taskCancelledInRun(resumeCtx, replayLog)) {
+          throw new SuspensionRejectedError(suspendOpts.suspensionId ?? generateId("susp"), "cancel", undefined, {
+            cancelled: true
+          });
+        }
+        // The one place a host without durable execution refuses a stop
+        // (FIX-2063): every host reaches it, so none guards on durability
+        // itself. Worded beside the wait refusal, so either teaches the setting.
         if (!options.durabilityEnabled) {
-          throw new Error(
-            "ctx.suspend() requires a DurabilityProvider. Configure one in your server options."
-          );
+          throw new Error(SUSPEND_NEEDS_DURABILITY);
         }
         const suspensionId = suspendOpts.suspensionId ?? generateId("susp");
         throw new SuspensionError({ ...suspendOpts, suspensionId });
       },
+      // FIX-2129: built on this scope's `suspend`, with the host's deadline
+      // for a user's stop: the request host's, else the runtime config's, so
+      // a caller that runs the action with no request host keeps the one it set.
+      waitForUser: ((waitOptions: Parameters<WaitForUser>[0]) =>
+        waitForUserOn(
+          {
+            suspend: context.suspend,
+            requestHost: { userDeadlineMs: context.requestHost?.userDeadlineMs ?? options.effectiveRuntimeConfig?.userDeadlineMs }
+          },
+          waitOptions
+        )) as WaitForUser,
       saveCheckpoint: undefined,
       // Task attribution (FIX-658): mark the nearest enclosing sequencer scope
       // as running `taskId`. The task-board worker body calls this once per
@@ -3587,6 +3887,7 @@ export async function createExecutionContext<
       // FIX-724: root-block / fallback capture entrypoint. `undefined` when no
       // `errorCapture` handler is configured so callers incur zero overhead.
       _captureError: errorCapture !== undefined ? captureError : undefined,
+      _captureFinalError: errorCapture !== undefined ? captureFinalError : undefined,
       _loadDeclaredResources: loadDeclaredResourcesIntoCache,
       // Resume replay (FIX-811): register a completed sibling entry for a block
       // the core executor short-circuited (its output came from the ReplayLog,
@@ -3598,11 +3899,11 @@ export async function createExecutionContext<
       // `getBlockOutput`/`getBlockResult` read only `parent` + `result.output`,
       // and `getTarget` (which would dereference the container) is never used to
       // reach a replayed leaf.
-      _registerReplayedChild: (parent: ExecutionParent, output: unknown): void => {
+      _registerReplayedChild: (parent: ExecutionParent, output: unknown, rescued?: boolean): void => {
         childSiblingRegistry.push({
           parent,
           parentStateContainer: undefined,
-          result: { status: "completed", output }
+          result: { status: "completed", output, rescued: rescued === true }
         });
       },
       _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>, signalOverride?: AbortSignal, sideChainSignalOverride?: AbortSignal) => {
@@ -3647,7 +3948,7 @@ export async function createExecutionContext<
             typeof typed.emitItemAdded === "function" &&
             typeof typed.emitItemDone === "function"
           ) {
-            const itemIndex = emittedItemCount++;
+            const itemIndex = reserveItemIndex();
             containerStartedAt = Date.now();
             containerItem = {
               id: `item_container_${itemIndex}_${Math.random().toString(16).slice(2)}`,
@@ -3719,7 +4020,7 @@ export async function createExecutionContext<
             parentBlockInstanceId: resolvedParent.parentInstanceId,
             phase: childPhase
           }),
-          nextItemIndex: () => emittedItemCount++,
+          nextItemIndex: () => reserveItemIndex(),
           ownedBy: resolvedParent.container !== undefined
             ? resolvedParent.instanceId
             : activeEmCtx.ownedBy,
@@ -3756,6 +4057,8 @@ export async function createExecutionContext<
         // so `.sideChain()` calls in inner sequencers reach the same pool the
         // request executor drains. See `request-side-chain-pool.ts`.
         (childContext as { _requestSideChainPool?: unknown })._requestSideChainPool = requestSideChainPool;
+        attachRequestEndRegistry(childContext, requestEndRegistry);
+        (childContext as { [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined })[REQUEST_RESUME_SEAM] = readResume;
         // FIX-663: re-attach the background signal on every scope so nested
         // `.sideChain()` dispatches can read it (the dispatch site reads
         // `ctx._requestSideChainSignal`, not `ctx.signal`).
@@ -3883,6 +4186,7 @@ export async function createExecutionContext<
                   duration: completedAt - traceStartedAt,
                   modelUsage: generatorModelUsage,
                   model: generatorModelIdentity,
+                  rescued: siblingEntry.result.rescued === true ? true : undefined,
                 },
               },
               childContext
@@ -4038,6 +4342,9 @@ export async function createExecutionContext<
     // — `emit.component` stays `void`, and a caller that needs delivery to be
     // observable asks for it by name.
     context._emitComponentAwaited = createEmitComponentAwaited(activeEmCtx);
+    context._emitMessageAwaited = createEmitMessageAwaited(activeEmCtx);
+    // The barrier after an awaited emission: its item is in the request store.
+    context._flushItems = () => stores.request.flushItems(activeEmCtx.requestId);
 
     Object.defineProperty(context, "sequencer", {
       enumerable: true,
@@ -4120,6 +4427,8 @@ export async function createExecutionContext<
   // explicitly (see the assignment alongside `_blockIdentity` there) — pool
   // identity is preserved across the entire request scope.
   (rootContext as { _requestSideChainPool?: unknown })._requestSideChainPool = requestSideChainPool;
+  attachRequestEndRegistry(rootContext, requestEndRegistry);
+  (rootContext as { [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined })[REQUEST_RESUME_SEAM] = readResume;
   // FIX-751: bind the live context so reactive dispatchers can run blocks
   // in-session via `executeBlock`. Set after construction since the handlers
   // (wired into the registries above) close over `reactiveCtxRef`.

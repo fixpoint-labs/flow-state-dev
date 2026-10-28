@@ -20,6 +20,12 @@ pnpm test
 
 These commands should pass cleanly before starting any work.
 
+`pnpm install` also installs a pre-push git hook (husky, `.husky/pre-push`) that
+runs `pnpm lint`, then the retired-term guard and the one-word-per-thing sweep, and
+blocks the push if any fails. The first lint run takes about a minute. Later runs
+still walk the whole repo, but ESLint's cache skips files that have not changed, so
+they take a few seconds. The two vocabulary checks take a second or two each.
+
 > Run `pnpm packages:build` once after cloning. Workspace packages resolve
 > their `types` condition to `./dist/*.d.ts`, so without it VS Code / `tsserver`
 > reports "Cannot find module '@flow-state-dev/…'" on workspace imports. The
@@ -53,7 +59,7 @@ docs/
 |---------|-------|---------|
 | `pnpm test` | All packages | Run all tests |
 | `pnpm typecheck` | All packages | TypeScript type checking |
-| `pnpm lint` | All packages | Lint (currently stubbed) |
+| `pnpm lint` | Whole repo | ESLint over every JS/TS file, tests and goals included (`eslint.config.mjs`). Also runs as the pre-push hook |
 | `pnpm test:watch` | All packages | Watch mode tests |
 | `pnpm --filter @flow-state-dev/core test` | Single package | Test one package |
 | `pnpm --filter @flow-state-dev/engine typecheck` | Single package | Typecheck one package |
@@ -147,6 +153,29 @@ new package needs no entry. Rebalance the named shards when one job runs much
 longer than the others. `Typecheck & Test` stays the single check to require:
 it passes only when the typecheck and every shard pass.
 
+### Dead code and duplication
+
+The `Fallow` CI job runs [fallow](https://fallow.tools) against
+`.fallowrc.json` in three steps:
+
+- **Every run, whole tree:** `pnpm fallow:ci` fails on an import that doesn't
+  resolve or a package imported without being declared in that workspace's
+  `package.json`.
+- **PRs only:** `pnpm fallow:new-dead-code <PR base>` fails on an unused file,
+  export, type or dependency the PR leaves anywhere in the tree, including an
+  export in a file the PR never touched whose last caller it deleted. What's
+  already on the base doesn't count, so the backlog never blocks a PR.
+- **PRs only:** `pnpm fallow:audit --base <PR base>` lists new duplicated
+  blocks and complexity findings in the changed files, without failing.
+
+Run the dead-code check locally with `pnpm fallow:new-dead-code origin/main` on
+a clean working tree (it checks out the base briefly to analyze it). When it
+fails, remove the dead export or file. If a finding is wrong, suppress that one
+line with a reason (`// fallow-ignore-next-line unused-export -- loaded by path
+from X`). If the tool can't see an entry point at all, add it to `entry` or
+`dynamicallyLoaded` in the config instead. `pnpm fallow` prints the whole
+backlog.
+
 You don't order builds by hand. The one explicit edge in `turbo.json` is
 `@flow-state-dev/engine#build`, pinned to `core` only: `testing` is a dev-only
 dependency of `engine`, so the default graph traversal would otherwise see a
@@ -198,6 +227,10 @@ pnpm test:watch
 pnpm --filter @flow-state-dev/core test:watch
 ```
 
+### Type-level assertions
+
+Type-level assertions (`expectTypeOf`, a `// @ts-expect-error` with its reason, an `Assert<…>` helper) go in whichever test file they belong to: a `.test.ts`, a `.test-d.ts`, or a `src/**/*.type-test.ts`. Vitest strips types, so it never fails them; `pnpm typecheck` compiles every one of those files and fails on a wrong one. When you add an assertion, prove it can fail once: negate it (add or drop `.not`, change the asserted type, or delete the directive), run `pnpm --filter <package> typecheck`, see it fail on that line, then put it back. Workforce's `.test.ts` files are not compiled yet, so a type assertion there goes in a `.test-d.ts` for now. How test files are compiled and guarded (`tsconfig.test.json`, `scripts/validate-test-typecheck.mjs`, its `DEFERRED` list) is under [TypeScript Configuration](#typescript-configuration).
+
 ### Shared module cache
 
 `engine`, `core`, `orchestration` and `integration-tests` run their test files on
@@ -226,6 +259,9 @@ The testing package (`@flow-state-dev/testing`) provides framework-specific harn
 - `tsconfig.base.json` at the repo root defines base settings and path mappings
 - Each package has its own `tsconfig.json` extending the base
 - `scripts/typecheck.mjs` runs `tsc --noEmit` for one package; it requires the root TypeScript install, and fails with a message naming `pnpm install` when that is missing
+- Test files are typechecked too. A package's `tsconfig.json` is its build config and covers `src` only; its `tsconfig.test.json` extends it with `composite: false`, `rootDir: "../.."` and `noEmit: true`, and includes `src` and `test`. `scripts/typecheck.mjs` runs `tsconfig.test.json` after `tsconfig.json` when the file exists; that list is `scripts/typecheck-programs.mjs`, which the guard below reads too. Copy `packages/core/tsconfig.test.json` for a new package
+- `scripts/validate-test-typecheck.mjs`, chained into root `pnpm typecheck`, fails when a tracked test file is outside every program that package's typecheck compiles. Name a package still waiting in its `DEFERRED` list with the issue that wires it, and remove the entry once the package is covered
+- In a test, say a deliberate partial mock with `as unknown as T` or a typed helper, and mark deliberately invalid input with `// @ts-expect-error` and the reason. Don't clear errors with `@ts-nocheck` or `@ts-ignore`
 
 ## Key Files to Know
 

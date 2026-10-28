@@ -15,9 +15,9 @@
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 
-/** One door, under the action name `message`. */
+/** One door, `respond`, the action every worker flow takes a user's message on. */
 export const workerDoor = {
-  message: {
+  respond: {
     inputSchema: z.object({ message: z.string() }),
     userMessage: (input: { message: string }) => input.message,
     block: handler({

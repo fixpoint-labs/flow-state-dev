@@ -126,6 +126,16 @@ The request stream carries these event types:
 | `session.metadata.changed` | Session title/description/tags/metadata updated |
 | `request.completed` / `.incomplete` / `.failed` | Terminal status |
 
+A request that owes request-end hooks (FIX-2077: the claim gate registers one for a dispatched task's run) holds back its terminal status until `onFinished`'s drain and those hooks have run. It then emits the status they leave it with: `request.failed` when a hook hands back a failure (`RequestEndVerdict`), never `request.completed` first. Readers that end on the first terminal event need no change. A request that owes none emits its terminal status where it always has, after its record settles and before `onFinished`.
+
+What a `GET .../stream` reader sees of such a request:
+
+- **While the hooks run**, the record already reads `completed`, `incomplete` or `failed`, but its log has no terminal event. Until the run stamps `finalizedAtMs`, which it does after the held event, the route live-tails the request as a running one. It reads nothing else: no active-request entry and no heartbeat, so heartbeats on or off, and a stale sweep reaping the entry, don't change it. The reader ends on the held event, once.
+- **A terminal log with no terminal event, which no event that says otherwise can follow**, replays with a terminal event synthesized from the record's status, `request.<status>`, not persisted. That is a `completed`, `incomplete` or `failed` record once finalized, by its run or by the stale sweep, and any `interrupted` or `aborted` record. A run's own path for those two also writes the record before its event, so a reader in that gap gets the synthetic and then the real event at the same sequence number with the same type, which says the same thing. Without a run (the sweep or the stop of a parked request wrote it), nothing else comes, except a same-id continuation of an `interrupted` record (DevTool's Continue, the durability re-drive), which starts its events past that number. This also ends the log of a run that died before writing its terminal event.
+- **Known limits.** A run that dies while its hooks run, with heartbeats off, is never stamped by the sweep (its staleness proves nothing), so a reader tails it until the live tail's liveness timeout (30 s by default) ends it with `request.interrupted`. The same happens to a hook that hangs, while the record reads `completed` or `failed`. A hung hook is unbounded on the record already; the stream only makes it visible.
+
+**Sequence numbers of a synthetic terminal event.** The rule: a synthetic terminal event is served only when no event that says otherwise can follow, and takes the log's last sequence number plus one. A client, which dedupes by `stream:requestId:sequence_number`, never drops it as a repeat of an event it saw. A same-id continuation of a log with no terminal event starts its events one further on (`continueRequest`), so none of them takes that number either: sequence numbers then have a gap, which resume tolerates (it reads past a cursor with `>`). One documented exception: the live tail's liveness-timeout `request.interrupted` (`synthesizeRequestInterrupted`) can still be followed by a live writer's real events, so it reuses the last sequence number the reader saw, and a reconnect from it skips none of them. A client that saw that last event currently drops it as a repeat (FIX-2098).
+
 ### Event Envelope
 
 Every event includes:
@@ -209,13 +219,14 @@ GET /stream?starting_after=42
 
 - If both provided, `starting_after` takes precedence
 - Server replays persisted events with `sequence_number > cursor` then continues live
+- A terminal request whose run is still writing its held terminal event is followed live, and one whose log has no terminal event and can get none ends with a synthesized one (see the terminal-status note under the event table)
 - `ping` events and diagnostics are NOT replayed
 - `content.delta` events are NOT replayed (FIX-479). The current item snapshot in `request.items` carries the running text up to the most recent coalesced flush; reconnecting clients pick up live deltas from the new connection forward, and the eventual `item.done` payload supersedes with the authoritative final text. Page-load bootstrap (`/items` synthesis path) shows the latest accumulated text rather than empty content for in-flight messages
 - `content.audio.delta` events are NOT replayed (FIX-523). The durable `OutputAudioContent` snapshot is delivered via `content.added` / `content.done` and survives reconnects; in-flight audio chunks are lost. Clients hear a gap from disconnect to the next live delta. This matches every comparable system (OpenAI Realtime, ElevenLabs WS, Cartesia, LiveKit) — nobody does mid-stream audio resume
 
 ## Session Stream
 
-`GET /sessions/:sessionId/stream` follows a whole session: every finished item any request in it keeps, including requests this client did not send, and the session's unfinished runs. `useSession(id, { live: true })` opens it through `createSessionSSEClient`. Everything above about sequence numbers is the request stream's contract; the session stream's differs.
+`GET /sessions/:sessionId/stream` follows a whole session: every finished item any request in it keeps, including requests this client did not send, and the session's unfinished runs. `useSession(id, { live: true })` opens it through the client's `sessions.stream`. Everything above about sequence numbers is the request stream's contract; the session stream's differs.
 
 | Event | Carries |
 |-------|---------|
@@ -271,7 +282,7 @@ The attach handshake has one shape regardless of where execution runs:
 - **In-process** — the POST returns an inline SSE response (`200`) and streams directly.
 - **External dispatch** — the POST returns `202 Accepted` with `{ requestId }`; the client opens `GET /requests/:id/stream`, which tails via `subscribeToEvents`.
 
-**Enqueue-time discoverability.** For external dispatch, the worker runs in a separate process and would otherwise only register the request when it starts `runAction` — so a GET arriving first would find no record and 404. The transport host closes this gap: before handing off to an external dispatcher, `createInboundTransportHost.dispatch` writes the `activeRequests` entry and an `in_progress` request record at enqueue time. This extends *first-event persistence* — discoverability no longer waits for the worker, only for the enqueue. The GET then resolves the record and waits at sequence 0 for the first event. A shared `createInitialRequestRecord` builder constructs this stub the same way the worker would, so the worker adopts it and skips its own write.
+**Enqueue-time discoverability.** For external dispatch, the worker runs in a separate process and would otherwise only register the request when it starts `runAction` — so a GET arriving first would find no record and 404. The transport host closes this gap: before dispatching to an external dispatcher, `createInboundTransportHost.dispatch` writes the `activeRequests` entry and an `in_progress` request record at enqueue time. This extends *first-event persistence* — discoverability no longer waits for the worker, only for the enqueue. The GET then resolves the record and waits at sequence 0 for the first event. A shared `createInitialRequestRecord` builder constructs this stub the same way the worker would, so the worker adopts it and skips its own write.
 
 Resume rides the same path: `resume-routes` re-dispatches a suspended request through `host.dispatch` with a fresh request id, so the resumed request is pre-registered too. A genuinely unknown request id still returns 404.
 

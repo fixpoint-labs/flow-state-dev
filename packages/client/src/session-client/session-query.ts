@@ -14,7 +14,7 @@
  * already reach.
  */
 import type { FlowListEntry } from "../types";
-import type { ListSessionsOptions } from "./sessions";
+import type { ListSessionsOptions } from "../client";
 
 /**
  * The listing filter for one flow address.

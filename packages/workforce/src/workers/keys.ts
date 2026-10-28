@@ -57,6 +57,18 @@ export const FILING_SESSION_STATE_KEY = "filingSessionId";
 export const WORKSTREAM_STATE_KEY = "workstreamId";
 
 /**
+ * The session-state field that names the conversation whose routed task a
+ * session that conversation doesn't own works (FIX-2083): a workstream's
+ * session, which a project coordinator's routed task targets by id. The
+ * `work` entry writes it from the claim the board's gate verified when it
+ * starts such a task, so the requests that follow (a piece's ending, a
+ * message) find the task on that conversation's board, as a delegate's
+ * session finds its tasks by {@link FILING_SESSION_STATE_KEY}. Server-owned,
+ * never a caller's to seed; absent on a session no routed task has targeted.
+ */
+export const ROUTED_FROM_STATE_KEY = "routedFrom";
+
+/**
  * The session-state field that links a worker session to one project: the
  * project's address, as `projectRef` writes it (`<visibility>/<projectId>`).
  * Set when the session is created, only on a session of the standard
@@ -66,6 +78,23 @@ export const WORKSTREAM_STATE_KEY = "workstreamId";
  * take (FIX-1793).
  */
 export const PROJECT_STATE_KEY = "projectId";
+
+/**
+ * The session-state field that names the project a user's own conversation
+ * with a worker works in (FIX-2161): a new session of the worker, or the
+ * worker's one default conversation. `projectRef` form,
+ * `<visibility>/<projectId>`. Written only by the {@link SET_WORK_PROJECT_ACTION}
+ * action, which checks the user is a member of the project, and declared
+ * server-owned, so no create can seed it. Not readonly: the user can set
+ * another project later, and the tasks already filed keep the one they were
+ * filed in. Never on a project coordinator's, a task's, a delegate's or a
+ * workstream lead's session, which take their project from where they were
+ * created, filed or opened.
+ */
+export const WORK_PROJECT_STATE_KEY = "workProjectId";
+
+/** The action that sets {@link WORK_PROJECT_STATE_KEY} on the session it runs in. Every worker flow declares it. */
+export const SET_WORK_PROJECT_ACTION = "setWorkProject";
 
 /**
  * The session-state field that names the workstream a task session works
@@ -115,6 +144,15 @@ export const ROSTER_FLOW = "workforce-roster";
  * other path that names it.
  */
 export const FILING_FLOW_STATE_KEY = "filingFlow";
+
+/**
+ * Session-state field naming the worker that filed the work a task's or a
+ * delegate's session runs: the filing session's worker, set by the hand-over
+ * beside {@link FILING_SESSION_STATE_KEY}, so a message from here to that
+ * worker lands in the session that filed it (FIX-2238). Readonly, and set
+ * only by the hand-over.
+ */
+export const FILING_WORKER_STATE_KEY = "filingWorkerId";
 
 /** The prefix every derived worker-session id starts with. */
 export const DERIVED_WORKER_SESSION_PREFIX = "wks_";

@@ -50,6 +50,13 @@ describe("transientSlot", () => {
     expect(getTransientKeys(schema).has("flag")).toBe(true);
   });
 
+  it("getTransientKeys finds the marked keys under a wrapped object root", () => {
+    // `z.object(...).default({})` is a common stateSchema; the keys must still
+    // be stripped from snapshots and state_change deltas.
+    const schema = z.object({ scratch: transientSlot(z.string().optional()) }).default({});
+    expect([...getTransientKeys(schema)]).toEqual(["scratch"]);
+  });
+
   it("getTransientKeys on undefined returns an empty set", () => {
     expect(getTransientKeys(undefined).size).toBe(0);
   });

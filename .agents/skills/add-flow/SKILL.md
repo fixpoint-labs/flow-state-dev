@@ -95,7 +95,7 @@ import { chatInputSchema } from "../schemas";
 
 const chatGenerator = generator({
   name: "chat-generator",
-  model: "openai/gpt-5-mini",
+  model: "openai/gpt-6-luna",
   prompt: "You are a helpful assistant.",
   inputSchema: chatInputSchema,
   history: (_input, ctx) => ctx.session.items.history(),
@@ -247,7 +247,7 @@ const memoryCapability = defineCapability({
 const agent = generator({
   name: "agent",
   uses: [memoryCapability],
-  model: "openai/gpt-5-mini",
+  model: "openai/gpt-6-luna",
   prompt: "You are an assistant with memory.",
 });
 ```

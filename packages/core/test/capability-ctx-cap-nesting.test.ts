@@ -49,12 +49,13 @@ describe("ctx.cap on nested blocks", () => {
       name: "shared",
       fns: () => {
         sharedBuilds += 1;
-        return { build: sharedBuilds };
+        const build = sharedBuilds;
+        return { build: () => build };
       },
     });
     const extra = defineCapability({
       name: "extra",
-      fns: () => ({ tag: "from-extra" }),
+      fns: () => ({ tag: () => "from-extra" }),
     });
 
     let innerCap: Record<string, unknown> = {};
@@ -80,9 +81,9 @@ describe("ctx.cap on nested blocks", () => {
     // accessor (skip-by-name) instead of rebuilding it.
     expect(sharedBuilds).toBe(1);
     // The nested block additively built the cap it adds...
-    expect(innerCap.extra).toEqual({ tag: "from-extra" });
+    expect((innerCap.extra as { tag: () => string }).tag()).toBe("from-extra");
     // ...while still seeing the inherited accessor (the ancestor's instance).
-    expect(innerCap.shared).toEqual({ build: 1 });
+    expect((innerCap.shared as { build: () => number }).build()).toBe(1);
   });
 
   it("a sequencer's declared capability survives .connectInput()", async () => {

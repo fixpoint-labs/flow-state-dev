@@ -6,21 +6,19 @@
  * real Lab wakes them, by a user's post to a coordinator, which delivers it
  * to each delegate.
  */
+import type { Client } from "@flow-state-dev/client";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { PUBLIC_REENTRY_SOURCES } from "@flow-state-dev/engine";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createLabClients } from "../src/lib/connection";
+import { connect } from "../src/lib/connection";
 import {
   createLabReader,
-  DISPATCHED_RUN_UNANSWERABLE,
-  REOPENED_SOURCES,
   readerSessionId,
   UNOWNED_SESSION_UNANSWERABLE,
   type LabSnapshot,
 } from "../src/lib/reads";
 import { workerStates, type LoadedSnapshot } from "../src/lib/derive";
 import { withRoster } from "../src/lib/roster";
-import { workforceClientFor } from "../src/lib/workforce";
+import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { ROSTER_FLOW } from "@flow-state-dev/workforce/browser";
 import { COORDINATOR_FLOW } from "@flow-state-dev/workforce";
 import { ASK_LAB_COORDINATORS, ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
@@ -50,8 +48,8 @@ function loaded(snapshot: LabSnapshot): LoadedSnapshot {
 }
 
 /** Post a line into the user's conversation with a coordinator, through the coordinator's own door. */
-async function post(clients: ReturnType<typeof createLabClients>, coordinatorId: string, message: string) {
-  await clients.actions(COORDINATOR_FLOW).sendAction("run", { message }, { sessionId: coordinatorId });
+async function post(client: Client, coordinatorId: string, message: string) {
+  await client.flow(COORDINATOR_FLOW).send("respond", { message }, { sessionId: coordinatorId });
 }
 
 /** What a delegate is handed, and so what it asks about: the post as its coordinator delivers it. */
@@ -62,20 +60,21 @@ const delivered = (coordinatorId: string, message: string) => `${ASK_LAB_USER_ID
  * worker's own session (`s_<worker id>`, the session the Lab's EM ask lives in),
  * opened naming the worker's worker on the asker flow's one copy.
  */
-async function ask(clients: ReturnType<typeof createLabClients>, workerId: string, what: string) {
+async function ask(client: Client, workerId: string, what: string) {
   const sessionId = `s_${workerId.replace(/\./g, "_")}`;
-  await clients.sessions
-    .createSession({ flowKind: ASKER_FLOW, userId: clients.userId, sessionId, state: { workerId: workerId } })
+  await client
+    .flow(ASKER_FLOW)
+    .createSession({ sessionId, state: { workerId: workerId } })
     .catch((error: unknown) => {
       if ((error as { status?: number }).status !== 409) throw error;
     });
-  await clients.actions(ASKER_FLOW).sendAction("ask", { what }, { sessionId });
+  await client.flow(ASKER_FLOW).send("ask", { what }, { sessionId });
 }
 
 /** The user hires a worker of their own on the asker worker flow, through the roster flow's `hire`. */
-async function hire(clients: ReturnType<typeof createLabClients>, id: string) {
-  const roster = await clients.sessions.createSession({ flowKind: ROSTER_FLOW, userId: clients.userId });
-  await clients.actions(ROSTER_FLOW).sendAction("hire", { id, flow: ASKER_FLOW }, { sessionId: roster.id });
+async function hire(client: Client, id: string) {
+  const roster = await client.flow(ROSTER_FLOW).createSession();
+  await client.flow(ROSTER_FLOW).send("hire", { id, flow: ASKER_FLOW }, { sessionId: roster.id });
 }
 
 /**
@@ -110,7 +109,7 @@ describe("the refusal (V2, BR-3)", () => {
   it("stops at the first read when the Lab refuses it for want of a verified organization", async () => {
     const { baseUrl } = await lab({ bearer: "ask-lab-secret" });
     const seen = countRequests();
-    const snapshot = await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read();
+    const snapshot = await createLabReader(connect({ baseUrl, userId: ASK_LAB_USER_ID })).read();
     expect(snapshot.refused?.httpStatus).toBe(401);
     expect(snapshot.refused?.message).toMatch(/verified organization/);
     // The refusal is the only answer: no further read was made.
@@ -120,7 +119,7 @@ describe("the refusal (V2, BR-3)", () => {
   it("reads the Lab when the bearer is presented", async () => {
     const { baseUrl } = await lab({ bearer: "ask-lab-secret" });
     const snapshot = loaded(
-      await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID, bearerToken: "ask-lab-secret" })).read(),
+      await createLabReader(connect({ baseUrl, userId: ASK_LAB_USER_ID, bearerToken: "ask-lab-secret" })).read(),
     );
     expect(snapshot.orgId).toBe("org_ask_lab");
     expect(snapshot.inventory.ok).toBe(true);
@@ -139,7 +138,7 @@ describe("the refusal (V2, BR-3)", () => {
       if (READER_OPENS.includes(url.pathname)) return new Response(JSON.stringify({ error: "no flow" }), { status: 404 });
       return real(input, init);
     });
-    const snapshot = await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read();
+    const snapshot = await createLabReader(connect({ baseUrl, userId: ASK_LAB_USER_ID })).read();
     expect(snapshot.refused?.message).toMatch(/no organization/);
     expect(snapshot.refused?.message).toContain(ASK_LAB_USER_ID);
     expect(seen.slice(0, 1)).toEqual(["GET /api/flows/sessions"]);
@@ -152,9 +151,9 @@ describe("the refusal (V2, BR-3)", () => {
   it("reads the organization off a reading session it opens for a user who holds none", async () => {
     // The Lab opens nothing at boot; its verified principal puts the user in `org_first_visit`.
     const { baseUrl } = await lab({ conversations: false, bearer: "ask-lab-secret", orgId: "org_first_visit" });
-    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID, bearerToken: "ask-lab-secret" });
-    expect(await clients.sessions.listSessions({ userId: ASK_LAB_USER_ID })).toEqual([]);
-    const snapshot = loaded(await createLabReader(clients).read());
+    const client = connect({ baseUrl, userId: ASK_LAB_USER_ID, bearerToken: "ask-lab-secret" });
+    expect(await client.sessions.list({ userId: ASK_LAB_USER_ID })).toEqual([]);
+    const snapshot = loaded(await createLabReader(client).read());
     expect(snapshot.orgId).toBe("org_first_visit");
     // The roster flow's is the one reading session opened.
     expect(snapshot.sessions.map((s) => s.flowKind)).toEqual(["workforce-roster"]);
@@ -164,14 +163,14 @@ describe("the refusal (V2, BR-3)", () => {
   // two tabs. Either way the user ends up with one reading session on each flow, never two.
   it("opens one reading session per flow for overlapping first-visit reads, on one page and across two", async () => {
     const { baseUrl } = await lab({ conversations: false });
-    const page = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
+    const page = connect({ baseUrl, userId: ASK_LAB_USER_ID });
     const [a, b] = await Promise.all([createLabReader(page).read(), createLabReader(page).read()]);
-    // Two tabs: two clients, so nothing in the page is shared between them.
-    const tab = () => createLabClients({ baseUrl, userId: "u_two_tabs" });
+    // Two tabs: two client, so nothing in the page is shared between them.
+    const tab = () => connect({ baseUrl, userId: "u_two_tabs" });
     const [c, d] = await Promise.all([createLabReader(tab()).read(), createLabReader(tab()).read()]);
     for (const snapshot of [a, b, c, d]) expect(loaded(snapshot).orgId).toBe(DEFAULT_ORG_ID);
-    expect((await page.sessions.listSessions({ userId: ASK_LAB_USER_ID })).map((s) => s.flowKind)).toEqual(["workforce-roster"]);
-    expect((await tab().sessions.listSessions({ userId: "u_two_tabs" })).map((s) => s.flowKind)).toEqual(["workforce-roster"]);
+    expect((await page.sessions.list({ userId: ASK_LAB_USER_ID })).map((s) => s.flowKind)).toEqual(["workforce-roster"]);
+    expect((await tab().sessions.list({ userId: "u_two_tabs" })).map((s) => s.flowKind)).toEqual(["workforce-roster"]);
   });
 
   // Session ids aren't scoped by organization. A user whose reading id is already held in
@@ -190,10 +189,10 @@ describe("the refusal (V2, BR-3)", () => {
       }
       return real(input, init);
     });
-    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
-    const snapshot = loaded(await createLabReader(clients).read());
+    const client = connect({ baseUrl, userId: ASK_LAB_USER_ID });
+    const snapshot = loaded(await createLabReader(client).read());
     expect(snapshot.orgId).toBe(DEFAULT_ORG_ID);
-    const readers = (await clients.sessions.listSessions({ userId: ASK_LAB_USER_ID })).filter((s) => s.flowKind === ROSTER_FLOW);
+    const readers = (await client.sessions.list({ userId: ASK_LAB_USER_ID })).filter((s) => s.flowKind === ROSTER_FLOW);
     expect(readers).toHaveLength(1);
     expect(readers[0]!.id).not.toBe(readerSessionId(ASK_LAB_USER_ID, ROSTER_FLOW));
   });
@@ -208,7 +207,7 @@ describe("the refusal (V2, BR-3)", () => {
       if (READER_OPENS.includes(url.pathname)) return new Response(JSON.stringify({ error: "not in this Lab" }), { status: 403 });
       return real(input, init);
     });
-    const snapshot = await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read();
+    const snapshot = await createLabReader(connect({ baseUrl, userId: ASK_LAB_USER_ID })).read();
     expect(snapshot.refused).toMatchObject({ httpStatus: 403, message: "not in this Lab" });
     expect(seen.slice(0, 1)).toEqual(["GET /api/flows/sessions"]);
     expect(seen.slice(1, 2)).toEqual(READER_OPENS.map((path) => `POST ${path}`));
@@ -228,7 +227,7 @@ describe("the refusal (V2, BR-3)", () => {
       const stripped = body.session === undefined ? strip(body) : { ...body, session: strip(body.session) };
       return new Response(JSON.stringify(stripped), { status: 200, headers: { "content-type": "application/json" } });
     });
-    const snapshot = await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read();
+    const snapshot = await createLabReader(connect({ baseUrl, userId: ASK_LAB_USER_ID })).read();
     expect(snapshot.unreachable).toBeUndefined();
     expect(snapshot.refused?.message).toMatch(/no organization/);
   });
@@ -240,7 +239,7 @@ describe("the refusal (V2, BR-3)", () => {
       seen.push(new URL(String(input instanceof Request ? input.url : input)).pathname);
       return Promise.resolve(new Response(JSON.stringify({ error: "store offline" }), { status: 503 }));
     });
-    const snapshot = await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read();
+    const snapshot = await createLabReader(connect({ baseUrl, userId: ASK_LAB_USER_ID })).read();
     expect(snapshot.refused).toBeUndefined();
     expect(snapshot.unreachable).toMatchObject({ httpStatus: 503, message: "store offline" });
     expect(seen).toEqual(["/api/flows/sessions"]);
@@ -249,7 +248,7 @@ describe("the refusal (V2, BR-3)", () => {
   it("a network failure on the first read is unreachable, not a refusal", async () => {
     const { baseUrl } = await lab();
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("fetch failed"));
-    const snapshot = await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read();
+    const snapshot = await createLabReader(connect({ baseUrl, userId: ASK_LAB_USER_ID })).read();
     expect(snapshot.refused).toBeUndefined();
     expect(snapshot.unreachable?.message).toMatch(/fetch failed/);
   });
@@ -258,7 +257,7 @@ describe("the refusal (V2, BR-3)", () => {
 describe("one read per resource (V3, BR-11)", () => {
   it("lists once, reads each flow's manifest once, and the user's conversation boards once per refresh", async () => {
     const { baseUrl } = await lab();
-    const reader = createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID }));
+    const reader = createLabReader(connect({ baseUrl, userId: ASK_LAB_USER_ID }));
     // The first read opens the user's roster session, so its flow's manifest is first read on the second.
     await reader.read();
     await reader.read();
@@ -288,7 +287,7 @@ describe("one read per resource (V3, BR-11)", () => {
       }
       return real(input, init);
     });
-    const snapshot = loaded(await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read());
+    const snapshot = loaded(await createLabReader(connect({ baseUrl, userId: ASK_LAB_USER_ID })).read());
     // Under the conversation it was read through.
     const failed = Object.entries(snapshot.boards);
     expect(failed).toHaveLength(1);
@@ -301,7 +300,7 @@ describe("one read per resource (V3, BR-11)", () => {
   it("reads the worker inventory once, through one of the user's own sessions whose flow declares it", async () => {
     const { baseUrl } = await lab();
     const seen = countRequests();
-    const snapshot = loaded(await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read());
+    const snapshot = loaded(await createLabReader(connect({ baseUrl, userId: ASK_LAB_USER_ID })).read());
     if (!snapshot.inventory.ok) throw new Error(snapshot.inventory.failure.message);
     expect(snapshot.inventory.value.workers.map((worker) => worker.id).sort()).toEqual(
       ["ops.asker", "ops.desk", "ops.helper", "ops.loner", "ops.side"],
@@ -311,8 +310,8 @@ describe("one read per resource (V3, BR-11)", () => {
 
   it("reads it for a user who holds only a worker's session, through a session of theirs that declares it", async () => {
     const { baseUrl } = await lab();
-    const other = createLabClients({ baseUrl, userId: "u_other" });
-    await other.sessions.createSession({ flowKind: ASKER_FLOW, userId: "u_other", sessionId: "s_other_asker", state: { workerId: "ops.asker" } });
+    const other = connect({ baseUrl, userId: "u_other" });
+    await other.flow(ASKER_FLOW).createSession({ sessionId: "s_other_asker", state: { workerId: "ops.asker" } });
     const seen = countRequests();
     const snapshot = loaded(await createLabReader(other).read());
     if (!snapshot.inventory.ok) throw new Error(snapshot.inventory.failure.message);
@@ -323,7 +322,7 @@ describe("one read per resource (V3, BR-11)", () => {
 
   it("a Lab booted without its inventory fails TEAMS by name, and nothing else", async () => {
     const { baseUrl } = await lab({ inventory: false });
-    const snapshot = loaded(await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read());
+    const snapshot = loaded(await createLabReader(connect({ baseUrl, userId: ASK_LAB_USER_ID })).read());
     expect(snapshot.inventory).toMatchObject({ ok: false });
     if (snapshot.inventory.ok) return;
     expect(snapshot.inventory.failure.message).toMatch(/without opening its inventory/);
@@ -335,7 +334,7 @@ describe("one read per resource (V3, BR-11)", () => {
 
   it("a Lab whose flows declare no inventory still reads the organization off the user's sessions", async () => {
     const { baseUrl } = await lab({ inventoryDeclared: false });
-    const snapshot = loaded(await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read());
+    const snapshot = loaded(await createLabReader(connect({ baseUrl, userId: ASK_LAB_USER_ID })).read());
     if (snapshot.inventory.ok) throw new Error("the inventory loaded");
     expect(snapshot.inventory.failure.message).toMatch(/No inventory to read/);
     // A page built before a key rename lands here too; the message says so.
@@ -347,9 +346,9 @@ describe("one read per resource (V3, BR-11)", () => {
 describe("asks through a coordinator's delivery (V7)", () => {
   it("a post reaches each delegate, and each delegate's ask is in Inbox", async () => {
     const { baseUrl, tree } = await lab();
-    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
-    const reader = createLabReader(clients);
-    await post(clients, "ops.desk", "ship it");
+    const client = connect({ baseUrl, userId: ASK_LAB_USER_ID });
+    const reader = createLabReader(client);
+    await post(client, "ops.desk", "ship it");
 
     const snapshot = await eventually(async () => {
       const s = loaded(await reader.read());
@@ -369,108 +368,82 @@ describe("asks through a coordinator's delivery (V7)", () => {
 
   it("without dispatch runs in the listing, the ask is missing (the negative)", async () => {
     const { baseUrl } = await lab();
-    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
-    await post(clients, "ops.desk", "ship it");
-    const reader = createLabReader(clients);
+    const client = connect({ baseUrl, userId: ASK_LAB_USER_ID });
+    await post(client, "ops.desk", "ship it");
+    const reader = createLabReader(client);
     await eventually(async () => {
       const s = loaded(await reader.read());
       return s.asks.ok && s.asks.value.length >= 2 ? s : undefined;
     }, "the asks, with dispatch runs listed");
 
     // The same reader with the listing on its default: the asks are gone.
-    const listSessions = clients.sessions.listSessions;
+    const listSessions = client.sessions.list;
     const narrowed = {
-      ...clients,
-      sessions: { ...clients.sessions, listSessions: (o?: object) => listSessions({ ...o, include: undefined }) },
+      ...client,
+      sessions: { ...client.sessions, list: (o?: object) => listSessions({ ...o, include: undefined }) },
     };
     const snapshot = loaded(await createLabReader(narrowed).read());
     expect(snapshot.asks).toEqual({ ok: true, value: [] });
   });
 
-  it("a delivered post's ask is marked unanswerable, and the Lab does refuse to reopen it", async () => {
+  it("a delivered post's ask, in a run the Lab started itself, is answerable, and the answer resumes it (FIX-2129)", async () => {
     const { baseUrl } = await lab();
-    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
-    const reader = createLabReader(clients);
-    await post(clients, "ops.desk", "ship it");
+    const client = connect({ baseUrl, userId: ASK_LAB_USER_ID });
+    const reader = createLabReader(client);
+    await post(client, "ops.desk", "ship it");
     const asks = await eventually(async () => {
       const s = loaded(await reader.read());
       return s.asks.ok && s.asks.value.length === 2 ? s.asks.value : undefined;
     }, "the asks");
     for (const ask of asks) {
-      expect(ask.unanswerable).toBe(DISPATCHED_RUN_UNANSWERABLE);
-      // The flag is the Lab's rule, not a guess: the resume is refused.
-      await expect(reader.resume(ask, { action: "approve" })).rejects.toMatchObject({ status: 404 });
+      // Before the answer route, a dispatched run's ask had no answer from here.
+      expect(ask.unanswerable).toBeNull();
+      await reader.resume(ask, { action: "approve" });
     }
-  });
-
-  it("offers an answer only on the sources the engine reopens: its own allow-list, pinned here", () => {
-    // Shift Manager can't import the engine in a browser, so it keeps a copy. A
-    // source added to or removed from the engine's list turns this red.
-    expect([...REOPENED_SOURCES].sort()).toEqual([...PUBLIC_REENTRY_SOURCES].sort());
-  });
-
-  it("a user's ask whose request records no source is unanswerable, not offered (fail-closed)", async () => {
-    const { baseUrl } = await lab();
-    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
-    await ask(clients, "ops.loner", "no source");
-    const listRequests = clients.sessions.listSessionRequests;
-    const sourceless = {
-      ...clients,
-      sessions: {
-        ...clients.sessions,
-        listSessionRequests: async (...args: Parameters<typeof listRequests>) =>
-          (await listRequests(...args)).map(({ source: _source, ...request }) => request as typeof request & { source?: string }),
-      },
-    };
-    const asks = await eventually(async () => {
-      const s = loaded(await createLabReader(sourceless as typeof clients).read());
-      return s.asks.ok && s.asks.value.length === 1 ? s.asks.value : undefined;
-    }, "the loner's ask");
-    expect(asks[0]!.unanswerable).toBe(DISPATCHED_RUN_UNANSWERABLE);
-    // The same ask, with its source as recorded, is answerable.
-    const recorded = await eventually(async () => {
-      const s = loaded(await createLabReader(clients).read());
-      return s.asks.ok && s.asks.value.length === 1 ? s.asks.value : undefined;
-    }, "the loner's ask, as recorded");
-    expect(recorded[0]!.unanswerable).toBeNull();
+    // Each ask leaves the list once its answer resumed it, and a second answer is told it is resolved.
+    await eventually(async () => {
+      const s = loaded(await reader.read());
+      return s.asks.ok && s.asks.value.length === 0 ? true : undefined;
+    }, "the answered asks gone");
+    await expect(reader.resume(asks[0]!, { action: "approve" })).rejects.toMatchObject({ status: 409 });
   });
 
   it("an ask in a worker that is no coordinator's delegate is in Inbox", async () => {
     const { baseUrl } = await lab();
-    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
-    await ask(clients, "ops.loner", "alone");
+    const client = connect({ baseUrl, userId: ASK_LAB_USER_ID });
+    await ask(client, "ops.loner", "alone");
     const snapshot = await eventually(async () => {
-      const s = loaded(await createLabReader(clients).read());
+      const s = loaded(await createLabReader(client).read());
       return s.asks.ok && s.asks.value.length === 1 ? s : undefined;
     }, "the loner's ask");
     if (!snapshot.asks.ok || !snapshot.inventory.ok) throw new Error("not loaded");
     expect(snapshot.asks.value[0]!.workerId).toBe("ops.loner");
   });
 
-  it("an ask from the user's own worker is in Inbox, and that worker reads as on call", async () => {
+  it("an ask from the user's own worker is in Inbox, and that worker reads as on shift", async () => {
     const { baseUrl } = await lab();
-    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
+    const client = connect({ baseUrl, userId: ASK_LAB_USER_ID });
     // A worker of the user's own: on their roster, never in the inventory.
-    await hire(clients, "ops.mine");
-    await ask(clients, "ops.mine", "ship it");
+    await hire(client, "ops.mine");
+    await ask(client, "ops.mine", "ship it");
     const snapshot = await eventually(async () => {
-      const s = loaded(await createLabReader(clients).read());
+      const s = loaded(await createLabReader(client).read());
       return s.asks.ok && s.asks.value.length === 1 ? s : undefined;
     }, "the own worker's ask");
     if (!snapshot.asks.ok || !snapshot.inventory.ok) throw new Error("not loaded");
     expect(snapshot.inventory.value.workers.map((s) => s.id)).not.toContain("ops.mine");
     expect(snapshot.asks.value.map((a) => [a.workerId, a.item.message])).toEqual([["ops.mine", "Approve: ship it"]]);
 
-    // Roster and TEAMS join the roster the same way, so the worker is on call there.
-    const entries = await workforceClientFor(clients).roster();
+    // Roster and TEAMS join the roster the same way, so the worker is on shift there.
+    const entries = await createWorkforceClient(client).roster();
     const states = workerStates(withRoster(snapshot, { entries }).snapshot);
-    expect(states.workers.get("ops.mine")?.status).toBe("on call");
+    expect(states.workers.get("ops.mine")?.status).toBe("on shift");
   });
 
   it("a roster that fails to load fails Inbox's asks by name, not by dropping the user's own workers", async () => {
     const { baseUrl } = await lab();
-    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
-    await ask(clients, "ops.asker", "deploy");
+    const client = connect({ baseUrl, userId: ASK_LAB_USER_ID });
+    await ask(client, "ops.asker", "deploy");
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
       const url = String(input instanceof Request ? input.url : input);
@@ -479,18 +452,18 @@ describe("asks through a coordinator's delivery (V7)", () => {
       }
       return real(input, init);
     });
-    const snapshot = loaded(await createLabReader(clients).read());
+    const snapshot = loaded(await createLabReader(client).read());
     expect(snapshot.asks).toMatchObject({ ok: false, failure: { message: expect.stringMatching(/your roster did not load\. roster unavailable$/) } });
     expect(snapshot.inventory.ok).toBe(true);
   });
 
   it("a 404 from the roster's own reads fails Inbox's asks; only a Lab with no roster flow has no own workers", async () => {
     const { baseUrl } = await lab();
-    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
-    await ask(clients, "ops.asker", "deploy");
+    const client = connect({ baseUrl, userId: ASK_LAB_USER_ID });
+    await ask(client, "ops.asker", "deploy");
     // A user who holds only a worker's session, through which the inventory is read.
-    const noRoster = createLabClients({ baseUrl, userId: "u_no_roster" });
-    await noRoster.sessions.createSession({ flowKind: ASKER_FLOW, userId: "u_no_roster", state: { workerId: "ops.asker" } });
+    const noRoster = connect({ baseUrl, userId: "u_no_roster" });
+    await noRoster.flow(ASKER_FLOW).createSession({ state: { workerId: "ops.asker" } });
     const real = globalThis.fetch;
     const spy = vi.spyOn(globalThis, "fetch");
     spy.mockImplementation((input, init) => {
@@ -500,7 +473,7 @@ describe("asks through a coordinator's delivery (V7)", () => {
       }
       return real(input, init);
     });
-    expect(loaded(await createLabReader(clients).read()).asks).toMatchObject({ ok: false });
+    expect(loaded(await createLabReader(client).read()).asks).toMatchObject({ ok: false });
 
     // The Lab refuses the roster flow itself, as one that doesn't serve it does.
     spy.mockImplementation((input, init) => {
@@ -516,12 +489,12 @@ describe("asks through a coordinator's delivery (V7)", () => {
 
   it("a session on another flow that names the user's own worker is not that worker's", async () => {
     const { baseUrl } = await lab();
-    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
-    await hire(clients, "ops.mine");
-    await ask(clients, "ops.mine", "ship it");
+    const client = connect({ baseUrl, userId: ASK_LAB_USER_ID });
+    await hire(client, "ops.mine");
+    await ask(client, "ops.mine", "ship it");
     // The control: on the flow its roster names, the ask is the worker's.
     await eventually(async () => {
-      const s = loaded(await createLabReader(clients).read());
+      const s = loaded(await createLabReader(client).read());
       return s.asks.ok && s.asks.value.length === 1 ? s : undefined;
     }, "the own worker's ask");
     // The roster now says the worker runs elsewhere, so the asker session only names it.
@@ -534,14 +507,14 @@ describe("asks through a coordinator's delivery (V7)", () => {
       for (const item of body.items) item.clientData = { ...item.clientData, flow: "elsewhere" };
       return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
     });
-    const snapshot = loaded(await createLabReader(clients).read());
+    const snapshot = loaded(await createLabReader(client).read());
     expect(snapshot.asks).toEqual({ ok: true, value: [] });
   });
 
   it("another user's own worker's ask is in their Inbox, never in this user's", async () => {
     const { baseUrl } = await lab();
-    const mine = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
-    const theirs = createLabClients({ baseUrl, userId: "u_other" });
+    const mine = connect({ baseUrl, userId: ASK_LAB_USER_ID });
+    const theirs = connect({ baseUrl, userId: "u_other" });
     await hire(theirs, "ops.theirs");
     await ask(theirs, "ops.theirs", "their thing");
     await ask(mine, "ops.asker", "deploy");
@@ -558,11 +531,11 @@ describe("asks through a coordinator's delivery (V7)", () => {
 
   it("Approve and Deny resolve through the resume, and the ask leaves Inbox", async () => {
     const { baseUrl } = await lab();
-    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
-    const reader = createLabReader(clients);
+    const client = connect({ baseUrl, userId: ASK_LAB_USER_ID });
+    const reader = createLabReader(client);
     // Asks in the delegates' own sessions, started by a user.
-    await ask(clients, "ops.asker", "deploy");
-    await ask(clients, "ops.helper", "rollback");
+    await ask(client, "ops.asker", "deploy");
+    await ask(client, "ops.helper", "rollback");
     const before = await eventually(async () => {
       const s = loaded(await reader.read());
       return s.asks.ok && s.asks.value.length === 2 && s.inventory.ok ? s : undefined;
@@ -583,9 +556,9 @@ describe("asks through a coordinator's delivery (V7)", () => {
 
   it("resumes through the session's owning flow; through the board's flow it fails; an unowned session is not offered", async () => {
     const { baseUrl } = await lab();
-    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
-    const reader = createLabReader(clients);
-    await ask(clients, "ops.asker", "deploy");
+    const client = connect({ baseUrl, userId: ASK_LAB_USER_ID });
+    const reader = createLabReader(client);
+    await ask(client, "ops.asker", "deploy");
     const [pending] = await eventually(async () => {
       const s = loaded(await reader.read());
       return s.asks.ok && s.asks.value.length === 1 ? s.asks.value : undefined;
@@ -605,13 +578,13 @@ describe("asks through a coordinator's delivery (V7)", () => {
 describe("declared documents (BR-10)", () => {
   it("lists a document a worker's flow serves, and its content is the file's, read through that worker's session", async () => {
     const { baseUrl } = await lab();
-    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
-    const reader = createLabReader(clients);
+    const client = connect({ baseUrl, userId: ASK_LAB_USER_ID });
+    const reader = createLabReader(client);
     // No worker session yet: no listed flow serves the document, so none is found.
     const before = loaded(await reader.read());
     expect(before.resources).toEqual({ ok: true, value: [] });
 
-    await ask(clients, "ops.asker", "ship it");
+    await ask(client, "ops.asker", "ship it");
     const snapshot = await eventually(async () => {
       const s = loaded(await reader.read());
       return s.resources.ok && s.resources.value.length > 0 ? s : undefined;
@@ -620,14 +593,14 @@ describe("declared documents (BR-10)", () => {
     expect(snapshot.resources.value).toHaveLength(1);
     const [runbook] = snapshot.resources.value;
     expect(runbook!.ref).toMatch(/runbook/);
-    const read = await clients.resources.getResourceContent(runbook!.sessionId, runbook!.ref);
+    const read = await client.resources.getResourceContent(runbook!.sessionId, runbook!.ref);
     expect(String(read.content)).toContain("RUNBOOK-DOC-7F3A1");
   });
 
   it("a failed manifest read fails the Resources group by name, and the listing still draws", async () => {
     const { baseUrl } = await lab();
-    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
-    await ask(clients, "ops.asker", "ship it");
+    const client = connect({ baseUrl, userId: ASK_LAB_USER_ID });
+    await ask(client, "ops.asker", "ship it");
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
       const url = String(input instanceof Request ? input.url : input);
@@ -636,7 +609,7 @@ describe("declared documents (BR-10)", () => {
       }
       return real(input, init);
     });
-    const snapshot = loaded(await createLabReader(clients).read());
+    const snapshot = loaded(await createLabReader(client).read());
     expect(snapshot.resources).toMatchObject({ ok: false, failure: { message: "manifest unavailable" } });
     expect(snapshot.sessions.length).toBeGreaterThan(0);
   });

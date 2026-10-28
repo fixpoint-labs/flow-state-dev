@@ -47,7 +47,7 @@ function flow(kind: string, authenticated: boolean) {
       }
     }
   };
-  if (!authenticated) return defineFlow(base);
+  if (!authenticated) return defineFlow(base)();
   return defineFlow({
     ...base,
     authentication: {
@@ -56,7 +56,7 @@ function flow(kind: string, authenticated: boolean) {
         return user === null || user === undefined ? null : { userId: user, orgId: "org_test" };
       }
     }
-  });
+  })();
 }
 
 function build(): { router: ReturnType<typeof createFlowApiRouter>; stores: StoreRegistry } {

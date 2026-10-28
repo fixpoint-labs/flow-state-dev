@@ -86,7 +86,7 @@ export const research = routedSpecialists({
 | `maxHistory` | `number` | unlimited | Soft cap on the history window the default controller sees. |
 | `initialState` | `object \| (input) => object` | — | Seeds workspace at start. |
 | `instructions` | `string \| (input, ctx) => string` | — | Overall instructions for default controller and synthesizer. |
-| `model` | `string` | `"openai/gpt-5.4-mini"` | Model for default blocks. |
+| `model` | `string` | `"openai/gpt-6-luna"` | Model for default blocks. |
 | `synthesizer` | `BlockDefinition \| false` | LLM default | Final synthesis. Pass `false` to return raw `{ workspace, iterations, history }`. |
 | `outputSchema` | `ZodTypeAny` | — | Output schema for the default synthesizer. |
 | `collectionId` | `string` | `name` | Override for the TaskCollection id. |

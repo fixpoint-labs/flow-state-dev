@@ -11,11 +11,32 @@
  *
  * Assembly (see the factory below):
  *
- *   [seed?] → board.drain → incrementDrainCount → [afterDrain?] →
+ *   [seed?] → drainPass (board.drain → noteWaiting, again while a turn is owed) →
+ *   incrementDrainCount → [afterDrain?] →
  *   stashDrainProjection → judgeStep (judge + validation, judge-scoped rescue) →
  *   coerceAtCap → [replanner?] → applyReplanTasks → normalize →
- *   loopBack(board.drain, when: decision !== "done") →
+ *   loopBack(drainPass, when: decision !== "done") →
  *   emitTermination → projectBoard → [finalize?]
+ *
+ * A task waiting on a person (FIX-2131). A plan board's drain returns
+ * `blocked` while a task waits on a person's answer: nobody is working it,
+ * and only the answer moves it. The loop never judges that board: the judge
+ * would rule on unfinished work, and on every later pass the same open
+ * question, until the cap. So a drain that leaves a task waiting on a person
+ * ends the loop's pass there: no judge, no replan, no finalize, and no
+ * iteration spent, with the termination reason `"waiting-on-a-user"`. The
+ * answer owes the task its next turn; run the loop again once it is answered,
+ * and its drain takes that turn and the loop goes on.
+ *
+ * An answer can land after the drain stops and before the loop reads the
+ * board (FIX-2210). The question is closed then, but the task still owes the
+ * turn the answer earned, and judging would rule on its partial work. So the
+ * pass drains again while a task owes a turn and none waits on a person, at
+ * most `maxIterations` times, and none of those drains counts as an iteration.
+ * If a task still owes a turn when those drains run out, the pass ends as a
+ * wait on a person does: its work is unfinished, so nothing judges it.
+ * Those drains take the board as it stands, without its `initialTasks` seed,
+ * so a one-pass loop over id-less initial tasks still has one row per task.
  *
  * Preconditions (rejected at construction — `goalSeekLoop()` is a new public
  * API, so misuse fails fast rather than at first execution):
@@ -36,9 +57,10 @@ import type {
 } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
-import type { TaskCollectionRef, TaskInit } from "../tasks";
+import { hasOpenHold, owesTurn, type TaskCollectionRef, type TaskInit } from "../tasks";
 import type { TaskBoardHandle } from "./index";
 import { createApplyReplan, type TaskContextSupply } from "./apply-replan";
+import { setNextDrainUnseeded } from "./blocks/seed-collection";
 
 // ---------------------------------------------------------------------------
 // Public contract
@@ -116,8 +138,9 @@ export interface GoalSeekLoopConfig {
    */
   seed?: BlockDefinition<any, any> | SequencerDefinition<any, any>;
   /**
-   * Runs as a `.tap` immediately AFTER each drain, BEFORE the judge — the seam
-   * plan-and-execute uses for `cascadeSkipDependents`.
+   * Runs as a `.tap` immediately AFTER each drain, BEFORE the judge. (A failed
+   * or cancelled row's dependents need no step here: the board cancels them on
+   * that row's ending.)
    */
   afterDrain?: BlockDefinition<any, any>;
   /** Evaluated after `afterDrain` → `Verdict`. MANDATORY. */
@@ -214,7 +237,26 @@ const goalSeekLoopStateSchema = z.object({
   goalSeekLoopDrains: z.number().default(0),
   goalSeekLoopVerdict: z.unknown().nullable().default(null),
   goalSeekLoopDrainResult: z.unknown().nullable().default(null),
+  /** Whether the last drain left a task waiting on a person: the pass ends without a judge. */
+  goalSeekLoopWaiting: z.boolean().default(false),
+  /** Whether the last drain left a task owing a turn, and none waiting on a person: the pass drains again. */
+  goalSeekLoopOwed: z.boolean().default(false),
 });
+
+/** The termination reason of a pass a task waiting on a person ended. */
+const WAITING_ON_A_USER = "waiting-on-a-user";
+
+/** Whether the loop's last drain left a task waiting on a person. */
+const waitingNow = (_input: unknown, ctx: { sequencer?: { state: unknown } }): boolean =>
+  (ctx.sequencer?.state as { goalSeekLoopWaiting?: boolean } | undefined)?.goalSeekLoopWaiting === true;
+
+/** Whether the loop's last drain left a task owing a turn an answer earned, with none waiting on a person. */
+const owedNow = (_input: unknown, ctx: { sequencer?: { state: unknown } }): boolean =>
+  (ctx.sequencer?.state as { goalSeekLoopOwed?: boolean } | undefined)?.goalSeekLoopOwed === true;
+
+/** Whether the pass must not judge: a task waits on a person, or still owes a turn when the owed-turn drains ran out. */
+const unfinishedNow = (input: unknown, ctx: { sequencer?: { state: unknown } }): boolean =>
+  waitingNow(input, ctx) || owedNow(input, ctx);
 
 /** Verdict validation — requires `reason` (mapped sources get a default via
  *  `mapToVerdict`; an inline judge must return a complete `Verdict`). */
@@ -286,6 +328,16 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
         `Use the default request backing or a defineTaskCollection resource.`,
     );
   }
+  // FIX-2076: the judge rules on the board as the drain left it, so every row
+  // must have ended when the drain returns. A delegation board's drain can
+  // return with one still running.
+  if (board.mode === "delegation") {
+    throw new Error(
+      `[goalSeekLoop] "${name}" can't loop over "${board.capability.name}", a delegation board: ` +
+        `its drain returns while the rows it handed to other sessions still run, so the judge ` +
+        `would rule on unfinished work. Loop over a plan board, whose drain waits on every row.`,
+    );
+  }
   if (maxIterations > 1 && board.hasIdlessInitialTasks) {
     throw new Error(
       `[goalSeekLoop] "${name}" cannot loop (maxIterations > 1) over a board whose ` +
@@ -299,11 +351,36 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
 
   // ---- Small state-touching helpers (read/patch the loop-owner container) --
 
+  // After each drain: does a task still wait on a person's answer (the rows
+  // the drain's exit check excuses, an open hold), or, with none waiting,
+  // owe a turn an answer that landed after the drain stopped earned? Read
+  // through the board's own accessor, as the projection below is.
+  const noteWaiting = handler({
+    name: `${name}-gsl-note-waiting`,
+    inputSchema: z.unknown(),
+    uses: [board.capability],
+    sequencerStateSchema: merged,
+    execute: async (_input, ctx) => {
+      const ref = await resolveBoardRef(ctx, boardCapName);
+      const rows = ref.list();
+      const waiting = rows.some((row) => hasOpenHold(row));
+      await ctx.sequencer!.patchState({ goalSeekLoopWaiting: waiting, goalSeekLoopOwed: !waiting && rows.some(owesTurn) } as any);
+    },
+  });
+
+  // A pass a task waiting on a person (or owing a turn) ended judges nothing, so it spends no iteration.
+  const waitingVerdict = handler({
+    name: `${name}-gsl-waiting-verdict`,
+    inputSchema: z.unknown(),
+    execute: (): Verdict => ({ decision: "done", reason: WAITING_ON_A_USER }),
+  });
+
   const incrementDrainCount = handler({
     name: `${name}-gsl-increment-drains`,
     inputSchema: z.unknown(),
     sequencerStateSchema: merged,
     execute: async (_input, ctx) => {
+      if (unfinishedNow(undefined, ctx)) return;
       const next =
         ((ctx.sequencer!.state as { goalSeekLoopDrains?: number }).goalSeekLoopDrains ?? 0) + 1;
       await ctx.sequencer!.patchState({ goalSeekLoopDrains: next } as any);
@@ -483,13 +560,28 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
 
   if (seed !== undefined) pipeline = pipeline.step(seed);
 
+  // One pass's drain: drain, read the board, and drain again while a task owes
+  // a turn and none waits on a person (see the file header). No state schema,
+  // so its blocks read and write the loop's own state, as the judge step's do.
+  // The drain that takes an owed turn does not seed the board again: the pass
+  // already did, and an id-less initial task would be added twice. It is
+  // marked for the board here, never asked for through the drain's input.
+  const drainPass = sequencer({ name: `${name}-gsl-drain-pass`, inputSchema: z.unknown(), uses: [board.capability] })
+    .step((input: unknown, ctx: BlockContext) => {
+      if (board.hasIdlessInitialTasks) setNextDrainUnseeded(ctx, board.collectionId, owedNow(input, ctx));
+      return input;
+    }, board.drain)
+    .tap(noteWaiting)
+    .loopBack(board.drain.name, { when: owedNow, maxIterations });
+
   pipeline = pipeline
-    .step(board.drain)
+    .step(drainPass)
     .tap(incrementDrainCount);
   if (afterDrain !== undefined) pipeline = pipeline.tap(afterDrain);
   pipeline = pipeline
     .tap(stashDrainProjection)
-    .step(judgeStep)
+    .stepIf(unfinishedNow, waitingVerdict)
+    .stepIf((input: unknown, ctx: { sequencer?: { state: unknown } }) => !unfinishedNow(input, ctx), judgeStep)
     .step(coerceAtCap);
   if (wrappedReplanner !== undefined) {
     pipeline = pipeline.stepIf(
@@ -521,14 +613,15 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
     .map((v: unknown) => ({
       decision: (v as { decision?: string }).decision ?? "continue",
     }))
-    .loopBack(board.drain.name, {
+    .loopBack(drainPass.name, {
       when: (v: unknown) => (v as { decision?: string }).decision !== "done",
       maxIterations: maxIterations - 1,
     })
     .tap(emitTermination)
     .step(projectBoard);
 
-  if (finalize !== undefined) pipeline = pipeline.step(finalize);
+  // Nothing is final while a task waits on a person or owes a turn.
+  if (finalize !== undefined) pipeline = pipeline.stepIf((input: unknown, ctx: { sequencer?: { state: unknown } }) => !unfinishedNow(input, ctx), finalize);
 
   return pipeline as SequencerDefinition<any, any>;
 }

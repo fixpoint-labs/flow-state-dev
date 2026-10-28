@@ -1,10 +1,10 @@
 /**
  * The one test of whether a turn is a task turn: a turn the receiving gate
- * serves, working the row a hand-off claimed (FIX-1816 BR-5a, FIX-1817 S1).
+ * serves, working the row a dispatch claimed (FIX-1816 BR-5a, FIX-1817 S1).
  *
- * Defined here once, and imported wherever a rule depends on it: an ask
- * (`dispatchTask({ wait })`) is refused on a task turn, so asks never
- * nest, and FIX-1817's question park is offered only on one.
+ * Defined here once, and imported wherever a rule depends on it: a task
+ * turn's own waits (`getTask({ wait })`) are bounded in depth, and FIX-1817's
+ * question park is offered only on one.
  *
  * Read from server-set state only, never from input (BP-031):
  *
@@ -24,7 +24,7 @@
  * something on a task turn must hold the claim it acts on, not this test
  * alone.
  */
-import { currentWorkerClaim } from "./flow-policy-wiring";
+import { claimServesTaskTurn, type WorkerClaimReader } from "./flow-policy-wiring";
 
 /**
  * The session-state field a task session's hand-over names its task in.
@@ -34,8 +34,8 @@ import { currentWorkerClaim } from "./flow-policy-wiring";
 export const TASK_SESSION_TASK_KEY = "taskId";
 
 /** Whether the running turn is a task turn: a turn the gate serves, on the row it claimed. */
-export function isTaskTurn(ctx: { readonly session?: { readonly state?: unknown } }): boolean {
-  if (currentWorkerClaim() !== undefined) return true;
+export function isTaskTurn(ctx: WorkerClaimReader & { readonly session?: { readonly state?: unknown } }): boolean {
+  if (claimServesTaskTurn(ctx)) return true;
   const state = ctx.session?.state as Record<string, unknown> | undefined;
   return typeof state?.[TASK_SESSION_TASK_KEY] === "string";
 }

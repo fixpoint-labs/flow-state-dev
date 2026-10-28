@@ -1,11 +1,12 @@
 /*
  * Panel stylesheet. Imports Tailwind v4 source so the host's Tailwind
- * compiler picks up the utilities the panel uses.
+ * compiler picks up the utilities the panel uses, plus the Flow State
+ * app-register tokens the panel paints with.
  *
  * The `@source` directives tell Tailwind to scan the panel's compiled
  * components for class usage. Without this, hosts whose Tailwind config
  * scans only the host's own files (the v4 default) won't generate the
- * `bg-slate-*`, `text-slate-*`, etc. utilities the panel renders with.
+ * `bg-fs-*`, `text-fs-*`, etc. utilities the panel renders with.
  *
  * Paths resolve relative to this stylesheet at compile time:
  *  - Standalone (`apps/devtool` via Vite alias): `src/react/styles.css`
@@ -15,17 +16,157 @@
  *    preserved as strings).
  */
 @import "tailwindcss";
+@import "@fontsource/space-grotesk/400.css";
+@import "@fontsource/space-grotesk/500.css";
+@import "@fontsource/space-grotesk/600.css";
+@import "@fontsource/space-grotesk/700.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/600.css";
 @source ".";
 
-:root {
-  color-scheme: dark;
+/*
+ * Flow State app tokens (brand Design System, sheets 07–08). Utilities are
+ * prefixed `fs-` so an embedding host's own `--color-card` / `--font-mono`
+ * never collide with the panel's. Components read these tokens only — never
+ * a literal hex. Hairlines are ink at /12, /20, /30, /45; hover is an ink
+ * wash at /5; selection is a 1px blueprint ring; focus a 2px blueprint halo.
+ *
+ * Meaning is fixed: blueprint (`fs-blue`) = interactive or live, highlighter
+ * (`fs-hl`) = a person needs to act, `fs-red` = failed, `fs-green` = done.
+ */
+@theme inline {
+  --color-fs-paper: var(--fs-paper);
+  --color-fs-surface: var(--fs-surface);
+  --color-fs-sidebar: var(--fs-sidebar);
+  --color-fs-inspector: var(--fs-inspector);
+  --color-fs-card: var(--fs-card);
+  --color-fs-ink: var(--fs-ink);
+  --color-fs-ink2: var(--fs-ink2);
+  --color-fs-ink3: var(--fs-ink3);
+  --color-fs-ink4: var(--fs-ink4);
+  --color-fs-ink5: var(--fs-ink5);
+  --color-fs-blue: var(--fs-blue);
+  --color-fs-red: var(--fs-red);
+  --color-fs-green: var(--fs-green);
+  --color-fs-hl: var(--fs-hl);
+  --color-fs-on-hl: var(--fs-on-hl);
+  --color-fs-fill-input: var(--fs-fill-input);
+  --color-fs-fill-done: var(--fs-fill-done);
+  --color-fs-fill-flight: var(--fs-fill-flight);
+  --color-fs-fill-data: var(--fs-fill-data);
+  --font-fs-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-fs-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 * {
   box-sizing: border-box;
 }
 
-.fsd-devtool-panel {
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+/* Paper — the light app theme. */
+.fsd-devtool-panel[data-fs-theme="light"] {
+  --fs-paper: #f0ece1;
+  --fs-surface: #f8f6f0;
+  --fs-sidebar: #e7e2d5;
+  --fs-inspector: #f3f0e7;
+  --fs-card: #fcfbf7;
+  --fs-ink: #1b1a15;
+  --fs-ink2: #3d3a32;
+  --fs-ink3: #57544a;
+  --fs-ink4: #6e6a5e;
+  --fs-ink5: #c9c4b6;
+  --fs-blue: #2c4f8c;
+  --fs-red: #a83e28;
+  --fs-green: #3d6b45;
+  --fs-hl: #e8f551;
+  --fs-on-hl: #1b1a15;
+  --fs-fill-input: #ffc98a;
+  --fs-fill-done: #aee6a9;
+  --fs-fill-flight: #e8f551;
+  --fs-fill-data: #e6d7ff;
+  color-scheme: light;
+}
+
+/* Draft — Paper's inks on warmer kraft stock; only the grounds and ink5 move. */
+.fsd-devtool-panel[data-fs-theme="draft"] {
+  --fs-paper: #e4dbc2;
+  --fs-surface: #eee8d7;
+  --fs-sidebar: #dbd1b5;
+  --fs-inspector: #e9e2cd;
+  --fs-card: #f5f1e6;
+  --fs-ink: #1b1a15;
+  --fs-ink2: #3d3a32;
+  --fs-ink3: #57544a;
+  --fs-ink4: #6e6a5e;
+  --fs-ink5: #bdb49b;
+  --fs-blue: #2c4f8c;
+  --fs-red: #a83e28;
+  --fs-green: #3d6b45;
+  --fs-hl: #e8f551;
+  --fs-on-hl: #1b1a15;
+  --fs-fill-input: #ffc98a;
+  --fs-fill-done: #aee6a9;
+  --fs-fill-flight: #e8f551;
+  --fs-fill-data: #e6d7ff;
+  color-scheme: light;
+}
+
+/* Night — the same warm neutrals inverted; fills become tints. The default. */
+.fsd-devtool-panel,
+.fsd-devtool-panel[data-fs-theme="dark"] {
+  --fs-paper: #16150f;
+  --fs-surface: #1c1b15;
+  --fs-sidebar: #121109;
+  --fs-inspector: #1a1913;
+  --fs-card: #24231c;
+  --fs-ink: #ece7da;
+  --fs-ink2: #cbc5b5;
+  --fs-ink3: #a6a08f;
+  --fs-ink4: #8d8777;
+  --fs-ink5: #57544a;
+  --fs-blue: #8fabe2;
+  --fs-red: #e27a5f;
+  --fs-green: #8cc39a;
+  --fs-hl: #e8f551;
+  --fs-on-hl: #1b1a15;
+  --fs-fill-input: rgb(255 179 92 / 0.22);
+  --fs-fill-done: rgb(159 227 154 / 0.2);
+  --fs-fill-flight: rgb(232 245 81 / 0.22);
+  --fs-fill-data: rgb(199 164 255 / 0.22);
   color-scheme: dark;
+}
+
+.fsd-devtool-panel {
+  font-family: var(--font-fs-sans);
+  background: var(--fs-surface);
+  color: var(--fs-ink);
+
+  /*
+   * `@flow-state-dev/react`'s navigator and panels publish no class names;
+   * they are themed through these custom properties on an ancestor.
+   */
+  --fsd-nav-bg: transparent;
+  --fsd-nav-fg: var(--fs-ink2);
+  --fsd-nav-muted-fg: var(--fs-ink4);
+  --fsd-nav-selected-bg: color-mix(in oklab, var(--fs-blue) 10%, transparent);
+  --fsd-nav-selected-fg: var(--fs-ink);
+  --fsd-nav-guide: color-mix(in oklab, var(--fs-ink) 20%, transparent);
+  --fsd-panel-fg: var(--fs-ink);
+  --fsd-panel-muted-fg: var(--fs-ink3);
+}
+
+.fsd-devtool-panel ::selection {
+  background: var(--fs-hl);
+  color: var(--fs-on-hl);
+}
+
+.fsd-devtool-panel *::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.fsd-devtool-panel *::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--fs-ink) 18%, transparent);
+}
+.fsd-devtool-panel *::-webkit-scrollbar-track {
+  background: transparent;
 }

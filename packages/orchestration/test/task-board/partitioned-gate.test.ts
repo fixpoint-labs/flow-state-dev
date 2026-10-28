@@ -4,7 +4,7 @@
  *
  * Run as an action root over one in-memory partitioned ledger holding the same
  * task id, claimed, in two partitions, so an envelope can name either. The
- * happy path across two real flows is `hand-off-cross-flow.test.ts`.
+ * happy path across two real flows is `dispatch-cross-flow.test.ts`.
  */
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
@@ -22,6 +22,7 @@ import {
 } from "../../src/tasks";
 import { createTaskGate, taskLedgers, taskWorkerInputSchema } from "../../src/task-board";
 import { createFakeResourceCollection } from "../helpers";
+import { heard } from "../fixtures/heard";
 
 const LEDGER = "gate-ledger";
 const USER_ID = "alice";
@@ -33,6 +34,7 @@ async function harness() {
   }) as ResourceCollectionRef<JsonObject>;
   const ctx = {
     emit: { component: () => undefined },
+    resources: { [`${LEDGER}__ids`]: createFakeResourceCollection<JsonObject>(`${LEDGER}__ids/**`) },
     session: { identity: { type: "session", id: "s_parent", userId: USER_ID } },
     request: { identity: { type: "request", id: "r_parent" } },
   } as unknown as BlockContext;
@@ -64,7 +66,7 @@ async function harness() {
 
   const flowFor = (gate: ReturnType<typeof taskLedgers>["gate"]) => {
     const entry = gate({ block: worker } as unknown as ActionCore, "work");
-    return defineFlow({ kind: "gate-flow", actions: { work: entry } } as never)({ id: "gate-flow" });
+    return defineFlow({ internal: { actions: { ...heard } }, kind: "gate-flow", actions: { work: entry } } as never)({ id: "gate-flow" });
   };
   const runStores = createInMemoryStores();
   /** Dispatch `rowOf`'s claim identity, naming `named` as the partition. */
@@ -154,10 +156,11 @@ describe("a task entry served by a partitioned ledger (taskLedgers)", () => {
 });
 
 describe("settling through a taskLedgers resolver", () => {
-  it("refuses a re-resolution at another partition before the recorders write", async () => {
+  it("settles through the ledger it admitted the row on, never a re-resolution (FIX-2077)", async () => {
     const h = await harness();
-    // Right at admission, then ignores the partition it is handed: the settle
-    // path's re-resolution lands on conv-b's row of the same task id.
+    // Right at admission, then wrong: a second resolution would land on conv-b's
+    // row of the same task id. The settle at the request's end writes through
+    // the ledger the admission verified, so it never asks again.
     let calls = 0;
     const flow = h.flowFor(
       taskLedgers({
@@ -166,10 +169,9 @@ describe("settling through a taskLedgers resolver", () => {
       }).gate
     );
     const result = await h.run(flow, "conv-a", "conv-a");
-    expect(calls).toBeGreaterThan(1);
-    const cause = (result.error as { cause?: { code?: string; message?: string } } | undefined)?.cause;
-    expect(cause?.code).toBe("stale-task-claim");
-    expect(cause?.message).toMatch(/resolver answered with "conv-b"/);
+    expect(result.error).toBeUndefined();
+    expect(calls).toBe(1);
+    expect((await h.row("conv-a")).status).toBe("completed");
     // Nothing was settled on the other conversation's row.
     const other = await h.row("conv-b");
     expect(other.status).toBe("in_progress");

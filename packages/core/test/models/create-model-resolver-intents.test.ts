@@ -135,6 +135,19 @@ describe("createModelResolver — intent resolution", () => {
     expect(result.text).toBe("response:fallback-default");
   });
 
+  it("an intent with nothing to fall back to is a setup error that names the intent and where to set a model", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      // `env: {}` keeps a developer's own FSDEV_DEFAULT_MODEL out of the check.
+      const resolver = createModelResolver({ env: {} });
+      expect(() => resolver("intent/chat")).toThrow(
+        /no model is configured for "intent\/chat".*models\.intents\.chat.*models\.default.*FSDEV_DEFAULT_MODEL/i,
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   it("unknown intent warns once and falls back to defaultModel", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
@@ -226,7 +239,7 @@ describe("createModelResolver — intent resolution", () => {
     // Repros the deployed-kitchen-sink failure: OPENAI_API_KEY is set (for
     // voice STT/TTS), but @ai-sdk/openai is not loadable in the bundled
     // runtime. A configured gateway must still serve a bare `openai/...`
-    // string — without the author having to rewrite it as `vercel/openai/...`.
+    // string — without the author having to rewrite it as `vercel:openai/...`.
     // Here we simulate the unloadable direct path by passing an explicit
     // provider factory that throws when invoked.
     const throwingProvider = () => {

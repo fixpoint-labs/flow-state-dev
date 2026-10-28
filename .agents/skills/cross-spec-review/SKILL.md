@@ -2,7 +2,7 @@
 name: cross-spec-review
 context: fork
 agent: general-purpose
-description: Review a SET of specs against each other for mutual coherence — the coherence lens (audit-coherence) raised from one change to the set of specs an epic produced in parallel. Catches inter-spec conflicts before any of them is implemented: overlapping or duplicated scope, contradictory decisions, colliding API/naming surface, one spec assuming what another removes, and cross-issue dependency or PR-plan collisions. Read-only — returns a ranked conflict report to the caller (normally epic-lifecycle), which walks the user through the decisions and routes the alignment. Runs ONLY on specs the user has already approved as individually good, so it never aligns a good spec to an unvalidated one.
+description: Review a SET of specs against each other for mutual coherence — the coherence lens (audit-coherence) raised from one change to the set of specs an epic produced in parallel. Catches inter-spec conflicts before any of them is implemented: overlapping or duplicated scope, contradictory decisions, colliding API/naming surface, one spec assuming what another removes, and cross-issue dependency collisions. Read-only — returns a ranked conflict report to the caller (normally epic-lifecycle), which walks the user through the decisions and routes the alignment. Runs ONLY on specs the user has already approved as individually good, so it never aligns a good spec to an unvalidated one.
 argument-hint: "<the spec set — issue IDs or spec PR#s, e.g. FIX-1 FIX-2 FIX-3>"
 ---
 
@@ -26,9 +26,10 @@ finds the conflicts and hands them back.
 > with a reduced procedure:
 > 1. **Read the current epic-spec first** at `specs/epics/<EPIC-ISSUE-ID>/`,
 >    using its approved review head before merge or `main` plus merged amendments after.
->    Read the original PR for review history, not a Linear content mirror. Include `DOCS.md`,
->    applicable `EVOLUTION.md`, and exact predecessor anchors; compare intent with current
->    code/docs rather than assuming approved designs shipped.
+>    Read the original PR for review history, not a Linear content mirror. Include its ER-n
+>    rules (`DECISIONS.md` → *Who owns what*), its docs line, and *what's already here* with
+>    exact predecessor anchors; compare intent with current code/docs rather than assuming
+>    approved designs shipped.
 > 2. Check each issue spec **adheres** to the epic's objective, themes, and decisions.
 > 3. Flag **residual inter-spec conflicts** the epic didn't settle.
 >
@@ -42,8 +43,8 @@ finds the conflicts and hands them back.
 Aligning specs to each other only helps if each is already sound; cross-aligning to a spec
 that's still wrong propagates the flaw into its siblings. So the precondition is:
 
-- Every spec has a revision-bound human approval for its five required documents and
-  applicable evolution (whether its original PR is open or merged), **and**
+- Every spec has a revision-bound human approval for its retained set (whether its
+  original PR is open or merged), **and**
 - The user has explicitly approved running the cross-spec pass.
 
 The coordinator enforces this gate (it invokes this skill; see `epic-lifecycle` → "Cross-spec
@@ -52,11 +53,12 @@ coherence"). If invoked standalone, confirm both conditions before reading anyth
 ## What you're given
 
 Read each current retained set at `specs/issues/<ISSUE-ID>/`: approved review head before
-merge, `main` and merged amendments afterward. Include rules, plan, `DOCS.md`, and
-applicable `EVOLUTION.md` as well as scope/decisions. Check shared epic documentation
-ownership, overlapping target operations, conflicting predecessor supersession, and
-compatibility promises. Partial supersession is not whole-spec replacement; dependencies
-are not supersession. Follow actual PR/Linear provenance for designs without repo files.
+merge, `main` and merged amendments afterward. Read `SPEC.md` and `DECISIONS.md` (a set
+retained in the older shape, issue or epic, may also carry `BUSINESS-RULES.md`, `PLAN.md`,
+`DOCS.md` or `EVOLUTION.md`; read those too). Check shared epic documentation ownership
+(the epic's docs line), overlapping docs destinations, conflicting predecessor supersession
+in *what's already here*, and compatibility promises. Partial supersession is not
+whole-spec replacement; dependencies are not supersession. Follow actual PR/Linear provenance for designs without repo files.
 The caller routes post-merge alignment through new amendment PRs from `main`, with
 renewed approval for material changes; never reopen or push an original merged PR.
 
@@ -75,12 +77,16 @@ Sweep every pair (and, where relevant, the whole set) for:
   (divergent naming is incoherence even when nothing literally collides).
 - **Assumption conflicts.** One spec relies on behavior, a field, or a shape that another
   spec in the set removes, renames, or changes. The classic parallel-work break.
-- **Cross-issue dependency / sequencing conflicts.** Spec A's plan assumes Spec B lands
-  first while B assumes the reverse; or two PR plans (`PLAN.md → Sequence`) target the same
-  files in a way that will collide on merge regardless of issue-level independence.
+- **Cross-issue dependency / sequencing conflicts.** Spec A assumes Spec B lands first
+  while B assumes the reverse; or two specs' *what changes* or debt rows touch the same
+  surface in a way that will collide on merge regardless of issue-level independence.
 - **Philosophy drift as a set.** The batch, taken together, pulls the framework in two
   directions at once, or several specs each add a near-duplicate primitive that should be
-  one. Name it — this is the coherence auditor's core job at batch altitude.
+  one. Name it — this is the coherence auditor's core job at batch altitude. Read the debt
+  tables as a set too: two specs each accepting a second way to do the same job is drift,
+  even when each spec's net reads flat.
+- **Glue between siblings** marks a missing shared abstraction
+  ([`orchestration.md`](../../../docs/contributing/orchestration.md#compose-existing-pieces)).
 
 Reuse `audit-coherence`'s judgment for *what counts as* incoherence; the only
 difference here is the unit is a set of specs, not a code slice. Where the docs

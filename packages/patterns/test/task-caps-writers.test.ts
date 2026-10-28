@@ -299,9 +299,7 @@ describe("eventActors re-emission — the workspace is visible before dispatch",
           outputSchema: z.any(),
           resources: { eventedActors: rb.workspace },
           execute: async (_input, ctx) => {
-            const ws = (ctx.resources as Record<string, { state: { entries: unknown[] } }>)
-              .eventedActors;
-            observed[n] = ws.state.entries.length;
+            observed[n] = (ctx.resources.eventedActors.state.entries as unknown[]).length;
             return { done: true };
           },
         }),
@@ -396,7 +394,7 @@ describe("pattern cap options are reachable by callers", () => {
       parallelTasks({ name: "pt-bad", worker: worker as never, maxTotalTasks: 0 }),
     ).toThrow(/maxTotalTasks/);
     expect(() =>
-      planAndExecute({ name: "pae-bad", worker: worker as never, maxEnqueuedTasks: 1.5 }),
+      planAndExecute({ name: "pae-bad", stepExecutor: worker as never, maxEnqueuedTasks: 1.5 }),
     ).toThrow(/maxEnqueuedTasks/);
     expect(() =>
       supervisor({ name: "sup-bad", worker: worker as never, maxTotalTasks: -1 }),
@@ -451,7 +449,7 @@ describe("pattern boards expose the caps their writers need", () => {
     // The assertion that matters is that the value is non-empty and reaches the
     // seed path — proven by the seed tests above using the same shape.
     for (const [label, built] of [
-      ["planAndExecute", planAndExecute({ name: "caps-pae", worker: worker as never })],
+      ["planAndExecute", planAndExecute({ name: "caps-pae", stepExecutor: worker as never })],
       ["supervisor", supervisor({ name: "caps-sup", worker: worker as never })],
       ["parallelTasks", parallelTasks({ name: "caps-pt", worker: worker as never })],
     ] as const) {
@@ -498,7 +496,7 @@ describe("retry budget — reaches the patterns that can retry, refused where it
       supervisor({ name: "rb-sup-bad", worker: capsWorker as never, maxTotalRetries: -1 }),
     ).toThrow(/maxTotalRetries/);
     expect(() =>
-      planAndExecute({ name: "rb-pae-bad", worker: capsWorker as never, maxTotalRetries: 1.5 }),
+      planAndExecute({ name: "rb-pae-bad", stepExecutor: capsWorker as never, maxTotalRetries: 1.5 }),
     ).toThrow(/maxTotalRetries/);
     expect(() =>
       parallelTasks({
@@ -514,7 +512,7 @@ describe("retry budget — reaches the patterns that can retry, refused where it
       (r: number | null) =>
         supervisor({ name: `rb-sup-${r}`, worker: capsWorker as never, maxTotalRetries: r }),
       (r: number | null) =>
-        planAndExecute({ name: `rb-pae-${r}`, worker: capsWorker as never, maxTotalRetries: r }),
+        planAndExecute({ name: `rb-pae-${r}`, stepExecutor: capsWorker as never, maxTotalRetries: r }),
       (r: number | null) =>
         parallelTasks({ name: `rb-pt-${r}`, worker: capsWorker as never, maxTotalRetries: r }),
     ]) {

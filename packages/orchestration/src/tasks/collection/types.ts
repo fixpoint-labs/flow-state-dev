@@ -11,33 +11,66 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import type { TaskClaimTicket } from "../claim-ticket";
 import type { Task, TaskRunLink, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
+import type { TaskSettingsPatch } from "./internal";
+import type { SteerInput } from "../steers";
+import type { HoldAsk, SuspensionHold } from "../schema/hold";
+import type { HoldAnswer } from "./holds";
+import type { NoticeEnding as TaskNoticeEnding } from "../notice/task-notice";
+
+/**
+ * How a cancel was made (FIX-2081), as `Task.cancelledVia` records it:
+ * `"tool"`, a model's `updateTask` inside its filer's turn; `"action"`, a
+ * public `updateTask_<board>` action, a screen's or an app's.
+ */
+export type TaskCancelSource = "tool" | "action";
+
+/** {@link TaskCollectionRef.cancel}'s options: the guards, and how the cancel was made. */
+export type CancelOptions = TaskTransitionOptions & {
+  /**
+   * Written on the row as `cancelledVia`. Set by the `updateTask` block from
+   * how it was built (a tool, or an action), never from input (BP-031).
+   */
+  readonly via?: TaskCancelSource;
+  /**
+   * The cancel is a confirm's No (FIX-2133, owner 2026-10-25): it lands only
+   * while this row hold is open, decided on the committed row in the cancel's
+   * own write, as an answer is. Declines `answered` once the hold has an
+   * answer (a yes first, say), and `no-such-hold` for an id that isn't a
+   * question or a confirm on the row.
+   */
+  readonly whileHoldOpen?: string;
+};
+
+/** What a running task waits on (`Task.waitingOn`, FIX-2077). */
+export type TaskWaitingOn = NonNullable<Task["waitingOn"]>;
+
+/** What a running task's worker reports (FIX-2081, `reportProgress`). */
+export interface TaskProgress {
+  /** A one-line note for task views. Never the task's status. */
+  readonly statusNote?: string;
+  /** A checkpoint of the result so far: the task's output from then on. */
+  readonly output?: unknown;
+}
 import type { TaskWriteToken } from "../write-provenance";
 
 /**
  * Why a write was refused (FIX-976; `not-my-task` added by FIX-981;
- * `immutable-assignee` by FIX-982; `parked` by FIX-1234). Resolved in a **fixed
- * precedence order** — `immutable-assignee` → `terminal` → `not-my-task` →
- * `disallowed` → `parked` → `lost-claim` — so a decline where two conditions
- * hold always reports the same one, and two callers cannot render two different
- * messages for the same refusal.
+ * `immutable-assignee` by FIX-982). Resolved in a **fixed precedence order** —
+ * `immutable-assignee` → `terminal` → `not-my-task` → `disallowed` →
+ * `lost-claim` — so a decline where two conditions hold always reports the
+ * same one, and two callers cannot render two different messages for the same
+ * refusal.
  *
- * - `immutable-assignee` — the board hands off work, and an attempt holds the
- *   task (`in_progress` or `parked`): its dispatch is keyed by the assignee it
- *   was claimed with, and a parked attempt can still settle. A pending or
- *   blocked task can change hands, and a parked one once `unpark` has ended
- *   its attempt (FIX-1780).
+ * - `immutable-assignee` — the board dispatches work, and an attempt holds the
+ *   task (`in_progress`): its dispatch is keyed by the assignee it was claimed
+ *   with. A pending or held task can change hands (FIX-1780).
  * - `terminal` — the task had already reached `completed` / `errored` /
  *   `cancelled`. The majority of the exposure, but not all of it.
  * - `not-my-task` — the presented `claim` names a different board, a different
  *   task, or a task since recreated under the same id. The write targets a row
  *   the caller never held.
  * - `disallowed` — the state machine rejects the move from a **non**-terminal
- *   status (`pending → errored`, `blocked → errored`).
- * - `parked` — the caller passed `refuseWhenParked` and the task is sitting in
- *   `parked`. **Not a lost claim:** nobody took the row, the attempt
- *   still owns it, and a person is deciding what happens to it. The recoveries
- *   are opposite — `lost-claim` says re-claim and redo, `parked` says do
- *   neither, because the work is done.
+ *   status (`pending → errored`, `held → errored`).
  * - `lost-claim` — the presented `claim` names this task but no longer owns it:
  *   it was reclaimed or re-queued while the caller was working, or its lease
  *   ran out while it was still `in_progress`.
@@ -55,18 +88,7 @@ import type { TaskWriteToken } from "../write-provenance";
  * another for the same cross-task write: accidental protection, not a
  * guarantee, and a reason no caller can act on.
  *
- * **Where `parked` sits, and the one case it takes from `lost-claim`.** It is
- * evaluated after the transition arms and before the ownership arms. For the
- * caller it is meant for — a worker reporting the result of its own run — the
- * two never compete: `parked` is an attempt-owned status and the lease
- * does not govern it, so neither ownership arm fires and the order is
- * immaterial. They overlap on one narrow row: a *displaced* attempt writing to
- * a task that was parked, resumed, re-claimed, and parked again reports
- * `parked` where `lost-claim` is the more precise fact. Both tell that caller
- * the same thing — do not redo the work — so the order is left where the guard
- * reads most simply rather than split to chase the rarer reason.
- *
- * **Where `immutable-assignee` sits.** It holds only for `in_progress` and `parked`, and
+ * **Where `immutable-assignee` sits.** It holds only for `in_progress`, and
  * `terminal` only for a settled task, so the two never compete and either order
  * reports the same reason. It reads the status inside the atomic write, like
  * `terminal`, so a claim that lands first is what the decline reports.
@@ -78,31 +100,41 @@ export type TaskWriteDeclineReason =
   | "disallowed"
   | "lost-claim"
   /**
-   * The row is parked for review, and the refused write was a claim-fenced
-   * settlement (FIX-1234). Distinct from `lost-claim` on purpose: nobody took
-   * this row — the attempt still owns it — so the recoveries differ. A caller
-   * that reads `lost-claim` should re-claim and redo the work; a caller that
-   * reads `parked` should do neither, because the work is done and a person is
-   * deciding what happens to it.
-   */
-  | "parked"
-  /**
-   * An assignee change on a task an answer has re-queued and that hasn't run
-   * again yet (FIX-1817): it must run in the session that asked, which its
-   * assignee keys. Lifts once the re-entry is claimed.
-   */
-  | "awaiting-answer"
-  /**
    * An assignee change on a follow-up (FIX-1817): it runs in the session of
    * the task it follows, with that task's worker, so it keeps its assignee.
    */
   | "follow-up"
   /**
-   * A dispatch of a row that is already ready (FIX-1875): it was never
-   * recorded, or another call dispatched it. Only the call that readied it is
-   * answered `unchanged` instead (`Task.dispatchCall`).
+   * An edit of a filing's start or attempts settings on a task that has
+   * already started (FIX-2080, ER-4): a retry's return to `pending` does not
+   * reopen them. A started task takes a cancel.
    */
-  | "already-dispatched";
+  | "started"
+  /**
+   * A completion fenced with `refuseUntakenSteers` on a task holding a steer
+   * no request of its attempt took (FIX-2086 D2): the steer is owed a turn
+   * before the task settles.
+   */
+  | "untaken-steers"
+  /**
+   * A steer past the most a task takes (`MAX_STEERS`, FIX-2086 D1): cancel
+   * it and file it again, or file a follow-up once it ends. Each open question
+   * keeps its answer's place under the cap (FIX-2133), so questions that
+   * would take the row past it are refused this way too.
+   */
+  | "steer-limit"
+  /**
+   * The row is held (FIX-2133, `Task.holds`): a settlement, a lease renewal or
+   * a turn's mirror of its stop, refused while a hold is open. A held row
+   * settles only by cancel; it starts no turn and renews no lease until its
+   * holds close. Its open holds come from one source at a time, so a turn that
+   * waits once can't wait again.
+   */
+  | "held"
+  /** An answer to a question already answered with other words, or by another sender (FIX-2133). */
+  | "answered"
+  /** An answer naming no question or confirm on the row (FIX-2133). */
+  | "no-such-hold";
 
 /**
  * What a write actually did (FIX-976).
@@ -146,17 +178,16 @@ export type TaskWriteOutcome =
       status: TaskStatus;
     };
 
-/** What {@link TaskCollectionRef.dispatch} writes with the ready row (FIX-1875). */
-export interface TaskDispatchOptions {
-  /**
-   * The call dispatching it: a tool call's or action's logical id, the same on
-   * every replay of that call. Stored as `Task.dispatchCall`.
-   */
-  call: string;
-  /** The owner, set in the same write. Omitted, the row keeps its own. */
-  assignee?: string;
-  /** Mark the row waited-on in the same write (see `Task.ask`). */
-  ask?: { gateId: string; deadline: number };
+/** What {@link TaskCollectionRef.markWait} takes the row's wait slot with (FIX-2082; see `Task.wait`). */
+export interface TaskWaitSlot {
+  /** The gate the waiting request parks on: unique within its session. */
+  readonly gateId: string;
+  /** When the wait resumes with the row still running (epoch ms). */
+  readonly deadline: number;
+  /** The waiting request, server-derived (`ctx.request.identity.id`). */
+  readonly requestId: string;
+  /** The waiting request is a plan's drain, on a row it handed over (see `Task.wait.drain`). */
+  readonly drain?: true;
 }
 
 /** Options for `claim` — let the dispatcher narrow eligibility and tweak ordering. */
@@ -185,8 +216,12 @@ export interface ClaimOptions {
    * `in_progress`. Claimability is the substrate's call — `isClaimable` — and
    * composing rather than replacing is what stops the newest invariant being
    * the one most easily switched off by accident.
+   *
+   * `rows` is the board as the claim write reads it (FIX-2080), so a
+   * predicate that depends on other rows (one open task per session) is
+   * decided against the same state as the claim.
    */
-  eligibility?: (task: Task) => boolean;
+  eligibility?: (task: Task, rows: readonly Task[]) => boolean;
   /**
    * Sort comparator over candidates. Default: ascending `createdAt`.
    */
@@ -265,47 +300,25 @@ export interface TaskTransitionOptions {
    *   same id. This is the question a bare attempt number could not ask, which
    *   is why it replaced one.
    * - **Do I still hold it?** Declines `lost-claim` unless `task.attempts`
-   *   equals the ticket's attempt *and* the task is still `in_progress` or
-   *   `parked`. The status half is not belt-and-braces: `reclaim()`
+   *   equals the ticket's attempt *and* the task is still `in_progress`.
+   *   The status half is not belt-and-braces: `reclaim()`
    *   returns a task to `pending` without advancing `attempts`, so between a
    *   reclaim and the next claim a displaced worker matches the counter by
-   *   construction — and since `blocked` is reachable only from `pending`, a
-   *   counter-only guard would let a stale worker silently unblock work a
-   *   coordinator parked.
+   *   construction — and since `held` is reachable only from `pending`, a
+   *   counter-only guard would let a stale worker silently settle work a
+   *   coordinator held.
    *
    * Omit it and no ownership question is asked, which is the correct posture
    * for a coordinator writing to a board it never claimed from.
    */
   claim?: TaskClaimTicket;
   /**
-   * Decline this write if the task is parked for review (FIX-1234).
-   *
-   * For the caller that is reporting the result of its own run — a task board's
-   * result recorders are the ones in tree. A worker that called `awaitReview()`
-   * on the task it was holding has handed that task to a person and owes the
-   * substrate no result, but nothing else refuses its write-back on the way out:
-   * `parked` is a status the attempt still owns, and both
-   * `parked → completed` and `→ errored` are legal. So the settlement
-   * would land and erase the park, and a failure with retries left would go
-   * further and re-queue the row for a sibling worker while the person is still
-   * being asked.
-   *
-   * **Opt-in, because settling a parked task is otherwise legitimate.** A holder
-   * recording a review's rejection as a failure travels the same path, and a
-   * coordinator ending a review with `complete` or `cancel` travels it without a
-   * ticket at all. Neither passes this, and neither changes.
-   *
-   * Applies only to a write that reports a result — `complete`, and `fail` on
-   * both its terminal and its retrying route. `unpark` and `cancel`
-   * keep working on a parked task with this set, which matters because a
-   * retrying failure and a resume both target `pending` and only the change kind
-   * tells them apart.
-   *
-   * Declines with reason `parked`, evaluated inside the same atomic write as
-   * every other guard here — a pre-read cannot carry this, because a park
-   * arriving between the read and the write is exactly the case it has to catch.
+   * Decline a `complete` while the task holds a steer no request of its
+   * attempt took (FIX-2086 D2), reason `untaken-steers`. Decided inside the
+   * write, so a steer that lands after the caller's own read still holds the
+   * task open. Pass it only where something then owes the steer a turn.
    */
-  refuseWhenParked?: boolean;
+  refuseUntakenSteers?: boolean;
   /**
    * Let a **renewal** take back a row whose lease lapsed while the claim it
    * names stayed intact (FIX-1305).
@@ -365,45 +378,22 @@ export interface TaskTransitionOptions {
    * as "your write did not land".
    */
   write?: TaskWriteToken;
-}
-
-/**
- * `awaitReview`'s options: the ordinary transition guards, plus what the park
- * is for.
- */
-export interface AwaitReviewOptions extends TaskTransitionOptions {
   /**
-   * The worker was stopped so a person's message can reach it, rather than
-   * asking a question of its own (FIX-1690). Marks the row `parkedForTurn`; its
-   * `unpark` then counts a turn re-entry, and the claim after it is not
-   * charged against `maxAttempts`.
-   *
-   * Runs only from `in_progress`, whatever `ifAllowed` says: a row that
-   * settled, re-pended or parked first comes back `declined` naming the
-   * status it found.
+   * A cancel made through a model's `updateTask` tool (FIX-2078 D2). Set by
+   * the task tools only, from how the block was built, never from input: the
+   * tools are blocks for a model's turn, and an app's or a person's cancel goes
+   * through `taskToolActions`, which never sets it. When the running
+   * session is the row's filer, the call's result is how it hears the cancel,
+   * so the cancel owes it no notice.
    */
-  forTurn?: boolean;
+  viaTool?: boolean;
   /**
-   * Runs only from `in_progress`, whatever `ifAllowed` says, as `forTurn`
-   * does, without marking the park as a turn's (FIX-1817). A worker parking
-   * on its question passes it, so a row that already parked this attempt (for
-   * a question, or for anything else) comes back `declined` naming `parked`,
-   * rather than having its question overwritten.
+   * @internal Refuse the write `held` while the row is held (FIX-2133):
+   * `"any"` hold (a lease renewal), or an open `"row"` hold (the claim gate's
+   * mirror of its run's stop, one source at a time). Decided on the committed
+   * row inside the write. Set by the backings' own verbs, never by a caller.
    */
-  fromRunning?: boolean;
-  /**
-   * The park is the worker's question (FIX-1817, `parkOnQuestion`): marks the
-   * row `parkedOnQuestion`, the one kind of park `answerTask` answers.
-   */
-  onQuestion?: boolean;
-  /**
-   * The holder parks the row for its own reasons, not to ask anyone anything
-   * (FIX-1794 P2): a task waiting on pieces it handed out, say. A ledger's
-   * ending recorder is told so (`TaskEnding`'s `quiet`), so a composing layer
-   * that tells someone about each park can leave this one out. Changes nothing
-   * else about the park. A park for a person's turn (`forTurn`) is quiet too.
-   */
-  quiet?: boolean;
+  refuseWhenHeld?: "any" | "row";
 }
 
 /**
@@ -420,20 +410,6 @@ export interface FailOptions extends TaskTransitionOptions {
    * like any other.
    */
   noRetry?: boolean;
-}
-
-/**
- * `unpark`'s options: the ordinary transition guards, plus whether the
- * feedback answers the question the row's worker parked on (FIX-1817).
- */
-export interface UnparkOptions extends TaskTransitionOptions {
-  /**
-   * `feedback` is the answer to the row's question (`answerTask`). The row is
-   * marked `answered`, so its next attempt is handed the answer as its
-   * message, and counts one more turn re-entry, so the claim that follows is
-   * not charged against `maxAttempts`. Every other `unpark` caller is unchanged.
-   */
-  answer?: boolean;
 }
 
 /**
@@ -490,7 +466,7 @@ export type TaskHandle<TInput = unknown, TOutput = unknown> = Task<TInput, TOutp
  * the shape the two built-in backings happen to return.
  *
  * If you write one, every worker-callable transition — `complete`, `fail`,
- * `block`, `unblock`, `awaitReview`, `unpark`, `cancel` — should
+ * `cancel` — should
  * accept and honour the optional `TaskTransitionOptions` argument. The type
  * system cannot hold you to this: an implementation taking only `(id, output)`
  * structurally satisfies the interface, and JavaScript discards the extra
@@ -532,7 +508,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    *
    * A ref over a partitioned ledger reaches only its partition's rows, for
    * every operation. Exposed so a claim made through the ref can name the
-   * partition it was made in: a board's hand-off puts it on the dispatch, and
+   * partition it was made in: a board's dispatch puts it on the dispatch, and
    * the receiving gate reads the row there.
    */
   readonly partition?: string;
@@ -623,50 +599,70 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
     error: string,
     options?: FailOptions
   ): Promise<TaskWriteOutcome>;
-  // The four parking/review transitions. Each takes the same optional
-  // `TaskTransitionOptions` the settlement methods take (FIX-981) — a worker
-  // parking or resuming its own task is as much an ownership-dependent write as
-  // completing it, and before the ticket these four had no parameter to carry
-  // one. All four report a {@link TaskWriteOutcome}; discarding it behaves
-  // exactly as the previous `void` return did.
-  block(id: string, reason?: string, options?: TaskTransitionOptions): Promise<TaskWriteOutcome>;
-  unblock(id: string, options?: TaskTransitionOptions): Promise<TaskWriteOutcome>;
   /**
-   * Park the task for a person to review (`→ parked`). `feedback` becomes the
-   * task's note, and omitting it clears any note already there, so an earlier
-   * attempt's failure text is never left standing as the reason for the park.
+   * Hold a task that hasn't started (FIX-2080): `pending → held`, so it
+   * doesn't start until {@link release}. The guarded settings write
+   * ({@link patchSettings}) with `held: true`, under a named entry point.
+   *
+   * Declines `started` on a row that has ever started (a retry's return to
+   * `pending` included), and `terminal` on an ended one. `unchanged` on a row
+   * already held. Publishes `held`.
    */
-  awaitReview(
-    id: string,
-    feedback?: string,
-    options?: AwaitReviewOptions
-  ): Promise<TaskWriteOutcome>;
+  hold(id: string): Promise<TaskWriteOutcome>;
   /**
-   * Hand a parked task its answer and put it back in the queue (FIX-1244).
-   *
-   * Fenced to the one edge it owns: `parked → pending`. A task that is not
-   * waiting on a person — one a worker is running, one already answered and
-   * queued, a blocked one, a settled one — is **refused as a value**: the
-   * returned {@link TaskWriteOutcome} is `declined`, naming the status the
-   * write found (`disallowed` for a live row, `terminal` for a settled one).
-   * Nothing is written on a refusal. One park takes one answer: the first
-   * accepted `feedback` queues the work, and a second delivery declines with
-   * `status: "pending"` rather than overwriting it.
-   *
-   * Advisory by construction, like `cancel`: `options.ifAllowed` is forced on
-   * regardless of what you pass, so a terminal row declines instead of
-   * throwing. `options.claim` and `options.write` are honoured as on every
-   * other transition. The check runs inside the atomic write, so a row that
-   * leaves `parked` between your read and the write is refused, not re-queued.
-   *
-   * Re-queues only. Nothing runs the work until something drains the board;
-   * `TaskBoardHandle.unparkAndDrain` is the one-call form that does both.
+   * Release a held task (FIX-2080): `held → pending`, so it starts once its
+   * `deps` have finished. {@link patchSettings} with `held: false`. Every
+   * release of a held row publishes `released`, whoever releases it.
+   * `unchanged` on a row that isn't held.
    */
-  unpark(
+  release(id: string): Promise<TaskWriteOutcome>;
+  /**
+   * Change a filing's start or attempts settings while the task has never
+   * started (FIX-2080, ER-4): `held`, `deps` (replaced whole), `maxAttempts`.
+   * The one guard every edit of a filing goes through, inside the write.
+   *
+   * Declines `started` on a row that has ever started and `terminal` on an
+   * ended one; `unchanged` when nothing changes. Dependencies are checked as
+   * a filing's are, and a refusal throws `TaskFilingRefusedError` naming the
+   * rule. Publishes `held` or `released` when the status moves, else
+   * `settings_changed`.
+   */
+  patchSettings(id: string, patch: TaskSettingsPatch): Promise<TaskWriteOutcome>;
+  /**
+   * Steer an open task (FIX-2086): keep `steer` on the row (`Task.steers`),
+   * for every later attempt to read. Changes nothing else: no status, no
+   * claim, no lease, no attempt count, and no ending. A row running nothing
+   * while it waits on work it filed (`waitingOn: "filed"`) waits on the steer
+   * instead, in the same write: a turn is owed for it, which its caller
+   * starts.
+   *
+   * Declines `terminal` on a finished row, so a finished task's output never
+   * changes, and `steer-limit` past `MAX_STEERS`. `unchanged` for a `key`
+   * already kept. Publishes `steered`.
+   *
+   * Optional, so a ref written before it keeps compiling (BP-030); a steer
+   * is refused on a board without it.
+   */
+  steer?(id: string, steer: SteerInput): Promise<TaskWriteOutcome>;
+  /**
+   * Take the steers that arrived since the claim (FIX-2086): mark each steer
+   * no request of the claim's attempt has taken as taken by it, in the read
+   * named `takenIn`. Read them back with `steersTakenIn`. A steer this attempt
+   * took already, in any read, stays as it is.
+   *
+   * Fenced like {@link linkRun}: `options.claim` is required, the row must be
+   * `in_progress`, and the write declines `terminal`, `not-my-task` or
+   * `lost-claim` otherwise. `unchanged` when nothing was untaken. A recorded
+   * take names the steers this write took (`taken`, by id): a concurrent read
+   * under the same name, or a re-run of it, took none and names none.
+   * Publishes no `task-change`.
+   *
+   * Optional, so a ref written before it keeps compiling (BP-030).
+   */
+  takeSteers?(
     id: string,
-    feedback?: string,
-    options?: UnparkOptions
-  ): Promise<TaskWriteOutcome>;
+    options: { claim: TaskClaimTicket; takenIn: string }
+  ): Promise<TaskWriteOutcome & { readonly taken?: readonly string[] }>;
   /**
    * Cancel the task (terminal).
    *
@@ -681,7 +677,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * worker cancelling through this method is held to the same ownership check
    * as one completing through `complete` (FIX-981).
    */
-  cancel(id: string, reason?: string, options?: TaskTransitionOptions): Promise<TaskWriteOutcome>;
+  cancel(id: string, reason?: string, options?: CancelOptions): Promise<TaskWriteOutcome>;
   /**
    * Push this task's lease out to `leaseUntil` — the worker saying "still
    * here" about a row it already proved it owns (FIX-1005).
@@ -729,7 +725,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   /**
    * Record which run is working this task — the run naming itself on the row
    * (FIX-1668). The board's claim gate calls it inside the run's own session,
-   * before the worker's first step, on every handed-off attempt.
+   * before the worker's first step, on every dispatched attempt.
    *
    * Writes exactly **one** field, `run`, on an `in_progress` row the caller
    * holds, and publishes one `task-change` of kind `run_linked` — on the
@@ -748,20 +744,144 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * Throws — never declines — on a missing ticket.
    *
    * **If you implement this interface yourself, implement this verb too:** a
-   * board that hands off calls it on every attempt, and a declined or missing
+   * board that dispatches calls it on every attempt, and a declined or missing
    * verdict stops that attempt before the worker runs.
    */
+  /**
+   * Report a running task's progress (FIX-2081): `statusNote`, a one-line
+   * note for task views, and `output`, a checkpoint of the result so far.
+   * The worker's `reportProgress` tool calls it, for the row its request
+   * holds.
+   *
+   * Fenced like {@link linkRun}: `options.claim` is required, the row must be
+   * `in_progress`, and the write declines `terminal` on a finished row,
+   * `not-my-task` on a recreated one, and `lost-claim` once a reclaim moved
+   * the attempt or the lease lapsed. Neither field changes the status.
+   *
+   * A checkpoint is the task's output from then on (`Task.checkpointed`):
+   * {@link complete} keeps it rather than writing the final result, and a
+   * failed attempt keeps it for the next. Publishes `progress_reported`.
+   *
+   * Optional, so a ref written before it keeps compiling (BP-030); the tool
+   * refuses on a board without it.
+   */
+  reportProgress?(
+    id: string,
+    progress: TaskProgress,
+    options: { claim: TaskClaimTicket }
+  ): Promise<TaskWriteOutcome>;
   linkRun(
     id: string,
     run: TaskRunLink,
     options: TaskTransitionOptions & { claim: TaskClaimTicket }
   ): Promise<TaskWriteOutcome>;
   /**
+   * Record what a running task waits on, or that it waits on nothing again
+   * (FIX-2077 D1). The claim gate calls it for the request it admitted: at the
+   * request's end when the task is not done, and at the next request's
+   * admission.
+   *
+   * - `waitingOn` set: the row keeps its claim and drops its lease
+   *   (`leaseUntil`), so no reclaim takes it back, unless `options.leaseUntil`
+   *   is given. `options.answer` is that
+   *   request's result, kept as the output (unless this attempt reported a
+   *   checkpoint, which stays the output), for the settle that follows.
+   * - `null`: the field clears and the row holds a lease again, to
+   *   `options.leaseUntil` (required then). The committed span
+   *   (`leaseDurationMs`) is the claim's, unchanged.
+   *
+   * Fenced like {@link linkRun}: `options.claim` is required, the row must be
+   * `in_progress`, and the write declines `terminal`, `not-my-task` or
+   * `lost-claim` otherwise. A clear does not require the row to be waiting:
+   * the gate clears only a row it read as waiting, and that two requests never
+   * clear one row at once rests on the task session running its notices and
+   * messages one at a time, not on this write. Publishes no `task-change`, as
+   * a renewal doesn't, so a screen showing a running row's kept `output` reads
+   * it stale until the row's next change.
+   *
+   * Optional, so a ref written before it keeps compiling (BP-030); the gate
+   * then keeps the lease as before.
+   */
+  setWaitingOn?(
+    id: string,
+    waitingOn: TaskWaitingOn | null,
+    options: {
+      claim: TaskClaimTicket;
+      leaseUntil?: number;
+      answer?: { output: unknown };
+      /**
+       * With a wait: the task run's stop for a person, mirrored on the row as
+       * a suspension hold in the same write (FIX-2133). Refused `held` while a
+       * row hold is open: the stop arm then cancels the stop.
+       */
+      hold?: SuspensionHold;
+      /**
+       * With `null`: the run's own resume, which closes the mirror. A later
+       * request admitted while the run stays parked passes none and keeps it.
+       */
+      resume?: boolean;
+      /**
+       * With `"steer"`: the turn a steer no request took is owed (FIX-2086
+       * D2), marked on the row (`turnOwed`) so the claim can take it when no
+       * wake starts it (FIX-2133 D3).
+       */
+      owesTurn?: boolean;
+    }
+  ): Promise<TaskWriteOutcome>;
+  /**
+   * Ask questions midway (FIX-2133): the turn holding the task's claim opens
+   * row holds (`Task.holds`), drops the lease and ends its turn unsettled, in
+   * one write. The row stays `in_progress` on its attempt with no lease until
+   * every question is answered (or a deadline the host set passes), then owes
+   * one more turn on that attempt (`turnOwed`), which the claim takes.
+   *
+   * Fenced like {@link linkRun}: `options.claim` is required, and the write
+   * declines `terminal`, `not-my-task` or `lost-claim` (a later turn's claim
+   * included) otherwise. Declines `held` while a stop for a person holds the
+   * row (one wait per turn), and `steer-limit` when the questions' answers
+   * would take the row past `MAX_STEERS` places. A recorded ask names the new
+   * holds' ids (`holds`). Publishes `asked`.
+   *
+   * Optional, so a ref written before it keeps compiling (BP-030); a board
+   * without it can't hold a task midway.
+   */
+  ask?(
+    id: string,
+    asks: readonly HoldAsk[],
+    options: { claim: TaskClaimTicket }
+  ): Promise<TaskWriteOutcome & { readonly holds?: readonly string[] }>;
+  /**
+   * Answer one of the row's questions or confirms (FIX-2133 D1): the answer is
+   * kept as a steer carrying the hold's id, from `answer.from`, and joins the
+   * brief. The last open row hold's answer lets the work go on in the same
+   * write: a task that hasn't started becomes claimable, its first attempt a
+   * start; a running one owes one more turn on its same attempt (`turnOwed`).
+   *
+   * The same words from the same sender again are `unchanged`, even after the
+   * task has finished. Declines `answered` for other words or another sender,
+   * `terminal` on a finished row, and `no-such-hold` for an id that isn't a
+   * question or a confirm on it. Who may answer which hold is the caller's
+   * rule (the board's `updateTask`); this write never checks a caller.
+   * Publishes `answered`.
+   *
+   * Optional, so a ref written before it keeps compiling (BP-030).
+   */
+  answer?(id: string, answer: HoldAnswer): Promise<TaskWriteOutcome>;
+  /**
+   * A touch of the board (FIX-2133): close every open question past the due
+   * time a host set, with the board's "no answer came" steer, which lets the
+   * work go on as an answer would. A question with no due time is never
+   * closed here. Returns the ids of the rows it wrote, so a board wakes only
+   * those.
+   *
+   * Optional: both built-in backings implement it.
+   */
+  payHoldDeadlines?(): Promise<string[]>;
+  /**
    * Reset stale leases. Tasks whose `leaseUntil` has passed are returned
    * to `pending`. Returns the number of tasks reclaimed; emits one
    * `task-change(kind: 'resumed', prevStatus: 'in_progress')` per reset
-   * — the same kind used by `unpark` since the lifecycle UI
-   * cares only that the task is back to pending.
+   * — the lifecycle UI cares only that the task is back to pending.
    *
    * Not the recovery path. Since FIX-1005 an abandoned row is recovered inside
    * `claim`, so nothing has to call this for you; the verb is unchanged and
@@ -775,7 +895,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * re-dispatching it past the bound, and the failure will present as a spent
    * `maxAttempts` instead of an abandonment cap.
    *
-   * That is the same stance `unblock` and `unpark` already take, and
+   * That is the same stance `release` already takes, and
    * for the same reason: a bound exists to make a judgment nobody is present to
    * make, and a caller invoking this verb by hand *is* present. Counting it
    * would settle a task an operator explicitly asked to requeue.
@@ -795,7 +915,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   // one helper.
   //
   // Exactly ONE of them refuses anything: `setAssignee`, which declines on a
-  // terminal task and — on a board that hands off — on a task an attempt holds.
+  // terminal task and — on a board that dispatches — on a task an attempt holds.
   // The other four deliberately keep writing to terminal tasks — labelling,
   // re-prioritizing, or annotating a finished task is a real and used thing (a
   // post-drain failure audit, a cascade's `skipped` marker) — so they can only
@@ -808,16 +928,15 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * Returns `unchanged` when the assignee already matches, `recorded` when it is
    * written.
    *
-   * **Declines on a running task on a board that hands off**
+   * **Declines on a running task on a board that dispatches**
    * (`immutable-assignee`, FIX-982, narrowed by FIX-1780). The assignee is what
-   * a handed-off task's routing key is derived from, and the child session that
+   * a dispatched task's routing key is derived from, and the child session that
    * key addresses is keyed the moment the work is dispatched. Changing it while
    * the attempt runs does not redirect anything: the work in flight keeps
    * running under the old coordinate, and the new one addresses a session
-   * nothing will ever wake. So an `in_progress` task is refused, and so is a
-   * `parked` one, whose attempt can still settle it. A pending or blocked task
-   * has no attempt; its next claim reads the new assignee, so it can change
-   * hands. `unpark` a parked task first to move it.
+   * nothing will ever wake. So an `in_progress` task is refused. A pending or
+   * held task has no attempt; its next claim reads the new assignee, so it can
+   * change hands.
    */
   setAssignee(id: string, assignee: string): Promise<TaskWriteOutcome>;
   setPriority(id: string, priority: number): Promise<TaskWriteOutcome>;
@@ -825,42 +944,129 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   removeLabel(id: string, label: string): Promise<TaskWriteOutcome>;
   patchMetadata(id: string, patch: Record<string, unknown>): Promise<TaskWriteOutcome>;
   /**
-   * Clear the row's resume-owed marker (`Task.resumeOwed`) once its asking
-   * turn has its answer (FIX-1816). `unchanged` when no marker is set.
+   * Clear the row's resume-owed marker (`Task.resumeOwed`) once its waiting
+   * turn has its answer (FIX-1816), and with it the mirror of the stop a
+   * cancelled row kept to pay it (its suspension hold, FIX-2129, FIX-2133).
+   * `unchanged` when no marker is set.
    *
    * Optional: both built-in backings implement it, together with writing the
-   * marker when an asked row ends. A hand-written ref that does neither cannot
-   * host an ask, and the ask path refuses on it.
+   * marker when a waited-on row ends. A hand-written ref that does neither cannot
+   * host a wait, and the wait path refuses on it.
    */
   clearResumeOwed?(id: string): Promise<TaskWriteOutcome>;
   /**
-   * Mark an open asked row as owing its cancel (`Task.cancelOwed`): its ask
-   * is over and the cancel the asking call wrote failed (FIX-1844). The
+   * Mark an open waited-on row as owing its cancel (`Task.cancelOwed`): its wait
+   * is over and the cancel the waiting call wrote failed (FIX-1844). The
    * row's next ending, the touch's cancel among them, clears it. `unchanged`
-   * on a row that has ended, isn't an ask, or is already marked.
+   * on a row that has ended, isn't waited on, or is already marked.
    *
    * Optional, like `clearResumeOwed`: both built-in backings implement it.
    * On a ref without it, a failed cancel leaves the row open, as before.
    */
   markCancelOwed?(id: string): Promise<TaskWriteOutcome>;
   /**
-   * Ready a recorded row (FIX-1875): clear `Task.undispatched` in one
-   * conditional write, recording the call that made it (`Task.dispatchCall`),
-   * and with `assignee` and `ask` set in the same write.
-   *
-   * Declines `terminal` on an ended row, `disallowed` on one that is not
-   * `pending` (claimed, running, parked, blocked), `already-dispatched` on a
-   * row that is ready already, and an assignee `setAssignee` would refuse
-   * (`follow-up`, `awaiting-answer`) for the same reason. The same call
-   * replayed is answered `unchanged`, never `already-dispatched`.
-   *
-   * Optional: both built-in backings implement it. A ref without it has no
-   * recorded rows to ready.
+   * The session that filed `row`, by the ledger's delivery rule (FIX-2078):
+   * `Task.filer`, or, for a row filed before it, the ledger's legacy filer
+   * (BP-030). Present on a ledger a board hands rows out from; absent
+   * elsewhere, where `Task.filer` is the whole answer.
    */
-  dispatch?(id: string, options: TaskDispatchOptions): Promise<TaskWriteOutcome>;
+  filerOf?(row: Task): string | undefined;
+  /**
+   * Tell the filer of `row` its open midway questions (FIX-2241), through the
+   * ledger's declared `onMidwayQuestion`. Present only on a ledger that declares
+   * one; `askMidway` calls it each time a turn asks, a replayed turn included.
+   */
+  tellMidwayQuestions?(row: Task): Promise<void>;
+  /**
+   * Take the row's wait slot for a request about to wait on it (FIX-2082):
+   * one conditional write, so of two requests that read the slot free, one
+   * takes it and the other is refused. A lapsed slot, or a live one this same
+   * request holds (a drain waiting again at its deadline), is taken over; the
+   * same gate replayed is `unchanged`. Publishes `wait_changed`.
+   *
+   * Declines `terminal` on a row that has ended (the waiting call reads its
+   * ending at once instead), and `disallowed` while another request's wait
+   * holds the slot.
+   *
+   * Optional, like the other wait writes: both built-in backings implement
+   * them, and a ref without them can't host a wait, which refuses there.
+   */
+  markWait?(id: string, slot: TaskWaitSlot): Promise<TaskWriteOutcome>;
+  /**
+   * At a wait's deadline (FIX-2082): lapse the slot `gateId` holds for
+   * `requestId`, the waiting request, in one conditional write that loses to
+   * an ending already written. Declines `terminal` on a row that has ended
+   * (the ending reached the waiting request, and it reads that instead);
+   * `unchanged` when the slot is another gate's or already lapsed. An ending
+   * written after this is held for that request, until {@link releaseWait}.
+   */
+  lapseWait?(id: string, gateId: string, requestId: string): Promise<TaskWriteOutcome>;
+  /**
+   * Release a lapsed slot (FIX-2082) for the request it was lapsed for: that
+   * request read the row (`read`), so an ending it held is delivered; or it
+   * ended without reading it, so the held ending is owed to the filer's
+   * notice, its wake owed first. The slot clears either way. `unchanged` when
+   * the slot is not a lapsed one that request holds.
+   */
+  releaseWait?(id: string, release: { readonly requestId: string; readonly read: boolean }): Promise<TaskWriteOutcome>;
+  /**
+   * The filer's wait found the row already ended and returned it (FIX-2112):
+   * drop the notice the ending owes the filer, which that answer delivered.
+   * `unchanged` when the row owes none for its ending, or its notice is taken
+   * ({@link takeNotice}): that notice is the delivery. Server-owned, as the
+   * other wait writes are: a caller's `patchMetadata` can't clear a notice.
+   *
+   * Optional: both built-in backings implement it. On a ref without it the
+   * filer hears the ending again, as `onTaskSettled`.
+   */
+  dropNoticeReadByWait?(id: string): Promise<TaskWriteOutcome>;
+  /**
+   * Take a notice the row owes, for the `onTaskSettled` request `take.by`
+   * that is about to deliver it (FIX-2123), in one conditional write: a wait's
+   * drop ({@link dropNoticeReadByWait}) and a take never both go through.
+   * `unchanged` when the row no longer owes it, or another request holds it,
+   * other than `take.replacing` (a taker the caller found has ended). The
+   * request that took it clears the marker once its block has run.
+   *
+   * Optional: both built-in backings implement it. On a ref without it a
+   * notice is admitted with no take, as before.
+   */
+  takeNotice?(
+    id: string,
+    notice: { readonly attempt: number; readonly ending: TaskNoticeEnding },
+    take: { readonly by: string; readonly replacing?: string }
+  ): Promise<TaskWriteOutcome>;
+  /**
+   * A touch of the board: pay every cascade owed past its due time
+   * (`Task.cascadeOwed`, FIX-2080 D2), so one a crash left owed is paid.
+   * Returns how many were paid. Whatever touches a board calls it: a board's
+   * drain, an action on it.
+   *
+   * Optional: both built-in backings implement it, and pay each ending's
+   * cascade in that ending's own pass besides.
+   */
+  payOwedCascades?(): Promise<number>;
+
+  /**
+   * Bring one row up to its committed state (FIX-2082). A request reads a
+   * durable board as the snapshot it first took, so an ending another request
+   * wrote since is invisible to {@link get} until this runs. Reading a task
+   * whole (`getTask`) calls it first. Writes nothing.
+   *
+   * Optional: the resource-backed board implements it. A board kept in the
+   * request's own state is never behind.
+   */
+  refresh?(id: string): Promise<void>;
 
   // query
   get(id: string): TaskHandle<TInput, TOutput> | undefined;
+  /**
+   * The row as stored now (FIX-2086), where {@link get} reads it as this
+   * request first did: another request's write (a steer sent while this one
+   * runs) is read here. Optional, so a ref written before it keeps compiling
+   * (BP-030); a caller falls back to `get`.
+   */
+  getCommitted?(id: string): Promise<TaskHandle<TInput, TOutput> | undefined>;
   list(filter?: TaskFilter): TaskHandle<TInput, TOutput>[];
   count(filter?: TaskFilter): number;
 }

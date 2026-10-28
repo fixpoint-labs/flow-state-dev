@@ -4,7 +4,7 @@
  * its own board, so the read runs on the conversation's session; a refusal
  * comes back as an `ActionRefused` carrying its reason.
  */
-import type { LabClients } from "./connection";
+import type { Client } from "@flow-state-dev/client";
 import { runAction, ActionRefused } from "./action";
 
 /**
@@ -19,6 +19,8 @@ export const LIST_TASKS_ACTION = "listTasks_tasks";
 export type ConversationTask = {
   id: string;
   goal: string;
+  /** The short label the task was filed under; absent when it was filed with none. */
+  title?: string;
   /** The status as stored: `pending`, `in_progress`, `completed`, `errored` and the rest. */
   status: string;
   /** The delegate it is handed to; absent while it waits to be assigned. */
@@ -27,8 +29,8 @@ export type ConversationTask = {
 };
 
 /** Read the tasks of the coordinator conversation `sessionId` on `flow`. */
-export async function readConversationTasks(clients: LabClients, flow: string, sessionId: string): Promise<ConversationTask[]> {
-  const output = (await runAction(clients, flow, sessionId, LIST_TASKS_ACTION, {})).output as
+export async function readConversationTasks(client: Client, flow: string, sessionId: string): Promise<ConversationTask[]> {
+  const output = (await runAction(client, flow, sessionId, LIST_TASKS_ACTION, {})).output as
     | { ok: true; tasks: ConversationTask[] }
     | { ok: false; error: string };
   if (!output.ok) throw new ActionRefused(output.error);

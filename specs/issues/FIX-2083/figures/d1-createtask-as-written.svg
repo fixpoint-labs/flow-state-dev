@@ -1,0 +1,94 @@
+<svg viewBox="0 0 940 438" role="img" aria-label="D1, how a judgment coordinator hands a message on. Chosen: createTask with the routing settings, the user&#x27;s message attached by the server. Instead of: a post flag on createTask that refuses a goal. It comes down to the tool&#x27;s shape: one shape, against two shapes of one tool. Tie: the delegate reads the user&#x27;s words as written either way. The price: a target field and an attached message on createTask. Locks in target on createTask. Flips if coordinators should brief delegates in their own words."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="438"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">How does a judgment coordinator hand a user&#x27;s message to a delegate?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">createTask, message attached</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">A post flag on createTask</text>
+  </g>
+  <g id="row-0">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHAT THE TOOL</text>
+    <text class="t-lbl" x="32" y="169">LOOKS LIKE</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">One shape: createTask</text>
+    <text class="t-s" x="248" y="179">settings and a goal, as for any task</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Two shapes of one tool</text>
+    <text class="t-s" x="612" y="179">post: true refuses a goal; FIX-2081 just retired that</text>
+  </g>
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="230">WHAT THE DELEGATE</text>
+    <text class="t-lbl" x="32" y="243">READS</text>
+    <text class="mark tie" x="228" y="236">=</text>
+    <text class="t-b" x="248" y="235">Her words, as written</text>
+    <text class="t-s" x="248" y="253">attached by the server, the goal beside them</text>
+    <text class="mark tie" x="592" y="236">=</text>
+    <text class="t-b" x="612" y="235">Her words, as written</text>
+    <text class="t-s" x="612" y="253">the post, as today</text>
+    <line class="row" x1="16" y1="270" x2="924" y2="270"/>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="292">THE PRICE</text>
+    <text class="mark minus" x="228" y="298">−</text>
+    <text class="t-b" x="248" y="297">A field and an attached message</text>
+    <text class="t-s" x="248" y="315">target, and a server rule on routing turns</text>
+    <text class="mark plus" x="592" y="298">+</text>
+    <text class="t-b" x="612" y="297">Nothing new on createTask</text>
+    <text class="t-s" x="612" y="315">beyond the flag itself</text>
+    <line class="row" x1="16" y1="332" x2="924" y2="332"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="348" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="369">LOCKS IN</text>
+    <text class="t-b" x="32" y="389">target on createTask, public</text>
+    <text class="t-s" x="32" y="407">and the message attached on every routing-turn filing</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="348" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="369">FLIPS IF</text>
+    <text class="t-b" x="494" y="389">Coordinators should brief in their own words</text>
+    <text class="t-s" x="494" y="407">then nothing is attached; the goal is the brief</text>
+  </g>
+</svg>

@@ -1,7 +1,33 @@
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
 const PORT = 3010;
 const baseURL = process.env.KITCHEN_SINK_URL ?? `http://127.0.0.1:${PORT}`;
+
+/**
+ * The repository the coding harness modes work on in the suite: a throwaway
+ * one-commit checkout, never this one, so no session's worktree is cut from
+ * the developer's own work. `next start` is a production server, where the
+ * modes are off until `KITCHEN_SINK_HARNESS_WORKSPACE` names a checkout.
+ * Made once, at a fixed path, so every worker that loads this config agrees.
+ */
+function harnessRepository(): { repository: string; stateHome: string } {
+  const base = join(tmpdir(), "kitchen-sink-e2e-harness");
+  const repository = join(base, "repo");
+  if (!existsSync(join(repository, ".git"))) {
+    mkdirSync(repository, { recursive: true });
+    execFileSync("git", ["init", "-q", repository]);
+    writeFileSync(join(repository, "README.md"), "A throwaway repository for the Kitchen Sink e2e suite.\n");
+    execFileSync("git", ["-C", repository, "add", "."]);
+    execFileSync("git", ["-C", repository, "-c", "user.email=e2e@example.com", "-c", "user.name=e2e", "commit", "-qm", "init"]);
+  }
+  return { repository, stateHome: join(base, "state") };
+}
+
+const harness = harnessRepository();
 
 /**
  * Kitchen-sink Tier 2 (Playwright) E2E config.
@@ -10,11 +36,15 @@ const baseURL = process.env.KITCHEN_SINK_URL ?? `http://127.0.0.1:${PORT}`;
  * - `KITCHEN_SINK_URL` lets CI or a developer point at a preview deployment;
  *   when set, Playwright skips spinning up its own server.
  * - `KITCHEN_SINK_TEST_MODE=1` swaps the model resolver for a deterministic
- *   mock and disables CSS animations.
+ *   mock and disables CSS animations, and Claude Code for a scripted one.
  */
 export default defineConfig({
   testDir: "./e2e",
   timeout: 30_000,
+  // The whole run takes ~1.5 minutes. In CI, stop at 5 so a hung run ends
+  // with Playwright's report of the tests still running, well inside the
+  // job's 10-minute limit, instead of the job being cancelled with no report.
+  globalTimeout: process.env.CI ? 5 * 60_000 : undefined,
   expect: { timeout: 10_000 },
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
@@ -53,6 +83,8 @@ export default defineConfig({
         env: {
           KITCHEN_SINK_TEST_MODE: "1",
           STORE_TYPE: "memory",
+          KITCHEN_SINK_HARNESS_WORKSPACE: harness.repository,
+          XDG_STATE_HOME: harness.stateHome,
         },
       },
 });

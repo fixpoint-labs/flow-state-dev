@@ -68,9 +68,9 @@ async function buildHost(options: { maxDeferredPerKey?: number } = {}) {
   const stores = createInMemoryStores();
   const backend = adapterShaped();
   const queue = recordingQueue();
-  const block = handler<{ value: string }, { ok: true }>({
+  const block = handler({
     name: "never-runs-here",
-    execute: async () => ({ ok: true })
+    execute: async (_input: { value: string }): Promise<{ ok: true }> => ({ ok: true })
   });
   const input = z.object({ value: z.string() });
   registry.register(

@@ -9,7 +9,7 @@ import {
   testBlock,
   testRouter
 } from "@flow-state-dev/testing";
-import { backgroundWorkTasks, thinkingStyleRouter } from "../flows/chat-agent/run/thinking-styles";
+import { backgroundWorkSettled, backgroundWorkTasks, thinkingStyleRouter } from "../flows/chat-agent/run/thinking-styles";
 import { artifactsCollection } from "../flows/chat-agent/shared/artifacts";
 import { userStateSchema } from "../flows/chat-agent/shared/schemas";
 
@@ -45,9 +45,10 @@ const emptyMemorySystem = {
 // Minimal flow instance with artifacts collection for testBlock.
 const testFlow = defineFlow({
   kind: "chat-agent-test",
-  // The router reaches the background-work board, whose hand-off worker
+  // The router reaches the background-work board, whose dispatching worker
   // addresses a task entry; a flow that reaches it must declare the entries.
   task: { actions: backgroundWorkTasks },
+  internal: { actions: { onTaskSettled: backgroundWorkSettled } },
   actions: {
     run: {
       inputSchema: z.object({
@@ -152,7 +153,7 @@ describe("chat-agent flow", () => {
       user: {
         state: {
           displayName: "TestUser",
-          selectedModel: "vercel/openai/gpt-5.6-luna",
+          selectedModel: "vercel:openai/gpt-6-luna",
           thinkingEnabled: false,
         }
       },

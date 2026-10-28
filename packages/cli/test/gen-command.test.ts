@@ -20,7 +20,7 @@ import { EXIT_CONFIG_ERROR, EXIT_EXECUTION_ERROR, EXIT_SUCCESS } from "../src/ex
 
 const roots: string[] = [];
 let cwd: string;
-let exitCode: number | string | undefined;
+let exitCode: typeof process.exitCode;
 
 beforeEach(() => {
   cwd = process.cwd();

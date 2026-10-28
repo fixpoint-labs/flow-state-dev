@@ -31,6 +31,10 @@
       "types": "./dist/index.d.ts",
       "default": "./src/index.ts"
     },
+    "./collection": {
+      "types": "./dist/collection.d.ts",
+      "default": "./src/collection.ts"
+    },
     "./testing": {
       "types": "./dist/testing.d.ts",
       "default": "./src/testing.ts"
@@ -50,6 +54,10 @@
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
       },
+      "./collection": {
+        "types": "./dist/collection.d.ts",
+        "default": "./dist/collection.js"
+      },
       "./testing": {
         "types": "./dist/testing.d.ts",
         "default": "./dist/testing.js"
@@ -63,7 +71,7 @@
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/engine": "workspace:*",
-    "cron-parser": "^5.0.0",
+    "cron-parser": "^5.5.0",
     "zod": "^3.25.76"
   },
   "peerDependencies": {
@@ -82,7 +90,6 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && node ../../scripts/add-esm-extensions.mjs dist",
     "typecheck": "node ../../scripts/typecheck.mjs",
-    "lint": "echo 'lint not configured yet'",
     "test": "vitest run --root .",
     "test:watch": "vitest --root ."
   }

@@ -24,8 +24,8 @@
  *   entries  Chromium, as the owner and the member, each in their own page,
  *            on a real model. Each asks their project coordinator for work in
  *            a shared project's Stream; Workstreams draws no form. The store
- *            then holds one entry per asker, led by the tree's one lead (the
- *            EM), with the ask in its session and nothing added to the
+ *            then holds one entry per asker, led by one of the tree's leads
+ *            (the EM or the general lead), with the ask in its session and nothing added to the
  *            asker's roster, and both pages list both entries with progress
  *            counting them; each Board draws only its
  *            viewer's own; each Stream is its viewer's own coordinator; the
@@ -370,11 +370,12 @@ type Entry = {
   updatedAt: string;
 };
 /**
- * The Lab's project setup, as its projects flow answers `projectSetup`, and the
- * one worker the tree declares that can lead a workstream: on a lead flow
- * (`agent` or `em`), listing delegates.
+ * The Lab's project setup, as its projects flow answers `projectSetup`; the
+ * workers the tree declares that can lead a workstream: on a lead flow
+ * (`agent` or `em`), listing delegates; and of them the EM, the lead the boot
+ * opens its workstreams under and the HTTP legs open theirs under.
  */
-type Setup = { projectCoordinator: string; coordinatorFlow: string; lead: string };
+type Setup = { projectCoordinator: string; coordinatorFlow: string; leads: string[]; lead: string };
 
 /** The flow a standard worker runs on, as its file names it. */
 async function flowOf(worker: string): Promise<string> {
@@ -384,17 +385,22 @@ async function flowOf(worker: string): Promise<string> {
   return flow;
 }
 
-/** The one worker the tree declares that can lead a workstream: on `agent` or `em`, listing delegates. */
-async function leadOf(): Promise<string> {
+/**
+ * The workers the tree declares that can lead a workstream (on `agent` or `em`,
+ * listing delegates), and the one of them on `em`: the EM, as the profile's
+ * boot finds it.
+ */
+async function leadsOf(): Promise<{ leads: string[]; lead: string }> {
   const roster = await readDeclaredRoster(TREE);
   const leads = roster.workers.filter(
     (w) => ["agent", "em"].includes(String(w.declared.flow)) && Array.isArray(w.declared.delegates) && w.declared.delegates.length > 0,
   );
-  if (leads.length !== 1) throw new Error(`the tree declares ${leads.length} workers that can lead a workstream (${leads.map((w) => w.id).join(", ")}), not one`);
-  return leads[0]!.id;
+  const ems = leads.filter((w) => w.declared.flow === "em");
+  if (ems.length !== 1) throw new Error(`the tree declares ${ems.length} leads on the em flow (${ems.map((w) => w.id).join(", ")}), not one`);
+  return { leads: leads.map((w) => w.id), lead: ems[0]!.id };
 }
 
-/** The Lab's project setup: the standard worker behind a project, as the Lab names it, and the tree's lead. */
+/** The Lab's project setup: the standard worker behind a project, as the Lab names it, and the tree's leads. */
 async function readSetup(owner: LabApi): Promise<Setup> {
   const session = await owner.createSession(PROJECTS_FLOW);
   const answered = await owner.act(PROJECTS_FLOW, session, "projectSetup", {});
@@ -402,7 +408,7 @@ async function readSetup(owner: LabApi): Promise<Setup> {
   if (answered.status !== "completed" || typeof projectCoordinator !== "string") {
     throw new Error(`the Lab names no project setup: ${answered.status} ${JSON.stringify(answered.output ?? answered.error)}`);
   }
-  return { projectCoordinator, coordinatorFlow: await flowOf(projectCoordinator), lead: await leadOf() };
+  return { projectCoordinator, coordinatorFlow: await flowOf(projectCoordinator), ...(await leadsOf()) };
 }
 
 /** The collection ref a session's manifest publishes for a key pattern at a scope. */
@@ -739,7 +745,7 @@ async function askFromPage(view: View, origin: string, held: Held, title: string
  * What the person's project coordinator did with their ask, read from the
  * Stream's conversation: each request's status, every tool call its turn
  * made with what it answered, and what it said. Said with a miss, so a red
- * names its cause: no `handOff`, a refused one, or a turn that failed.
+ * names its cause: no post handed on, a refused one, or a turn that failed.
  */
 async function whatTheTurnDid(view: View): Promise<string> {
   const sessionId = await view.page
@@ -806,7 +812,8 @@ async function entries(browser: Browser, origin: string, setup: Setup, apis: { o
       owner: { who: "the owner", page: ownerSide.page, api: owner },
       member: { who: "the member", page: memberSide.page, api: member },
     };
-    // The store: one new entry per asker, theirs, led by the tree's lead, with its session, which the ask reached.
+    // The store: one new entry per asker, theirs, led by one of the tree's leads (the coordinator picks which), with its
+    // session, which the ask reached.
     // Nothing is added to the asker's roster.
     const found: Record<"owner" | "member", Entry | undefined> = { owner: undefined, member: undefined };
     for (const who of ["owner", "member"] as const) {
@@ -815,7 +822,7 @@ async function entries(browser: Browser, origin: string, setup: Setup, apis: { o
       const entry = await askFromPage(views[who], origin, held, titles[who], fail, leg);
       if (entry === undefined) continue;
       found[who] = entry;
-      if (entry.lead !== setup.lead) fail(leg, `${who}'s workstream "${entry.id}" is led by ${entry.lead}, not ${setup.lead}`);
+      if (!setup.leads.includes(entry.lead)) fail(leg, `${who}'s workstream "${entry.id}" is led by ${entry.lead}, not one of the tree's leads (${setup.leads.join(", ")})`);
       if (!(await api.sessions()).some((s) => s.id === entry.sessionId)) fail(leg, `${who}'s "${entry.id}" names session ${entry.sessionId}, not one of theirs`);
       else if (!(await sessionHolds(api, entry.sessionId!, RUN_STAMP))) {
         fail(leg, `${who}'s ask never reached the workstream session ${entry.sessionId}; ${await whatTheTurnDid(views[who])}`);
@@ -852,7 +859,7 @@ async function entries(browser: Browser, origin: string, setup: Setup, apis: { o
     await ownerSide.context.close();
     await memberSide.context.close();
   }
-  evidence.push(`entries: in ${held.row.id} the owner and the member each asked their project coordinator in their page's Stream, each got one workstream led by ${setup.lead} with the ask in its session, both read both, each Board and Stream its viewer's own`);
+  evidence.push(`entries: in ${held.row.id} the owner and the member each asked their project coordinator in their page's Stream, each got one workstream led by one of ${setup.leads.join(", ")} with the ask in its session, both read both, each Board and Stream its viewer's own`);
 }
 
 /** The outsider reads a shared project's entries as its members do, and its open is refused. */
@@ -910,7 +917,8 @@ async function race(setup: Setup, apis: { owner: LabApi; member: LabApi; crowd: 
     const sessions = new Set(done.map((o) => String(o.output?.workstream?.sessionId)));
     if (sessions.size > 1) fail(leg, `${who}: the opens answered ${sessions.size} different sessions`);
     const made = done.filter((o) => o.output?.opened === true).length;
-    if (done.length > 0 && made !== 1) fail(leg, `${who}: ${made} of the opens say they made the entry, not one`);
+    // Exactly one open makes the entry; none completing is also the refusal above.
+    if (made !== 1) fail(leg,`${who}: ${made} of the opens say they made the entry, not one`);
     if (done.some((o) => o.output?.workstream?.owner !== who)) fail(leg, `${who}: an open answered another owner's entry`);
     if (sessions.size === 1) answered.set(who, [...sessions][0]!);
   }
@@ -979,7 +987,7 @@ async function cos(apis: { owner: LabApi; member: LabApi }, fail: (leg: string, 
   const session = String(opened.body.session.id);
   const beforePrivate = new Set((await privateRows(person, session))?.map((r) => r.id) ?? []);
   const ask = fixture.cos.ask.replace("{first}", titles[0]!).replace("{second}", titles[1]!).replace("{named}", named);
-  const posted = await person.call("POST", `/${encodeURIComponent(flow)}/${encodeURIComponent(session)}/actions/run`, {
+  const posted = await person.call("POST", `/${encodeURIComponent(flow)}/${encodeURIComponent(session)}/actions/respond`, {
     userId: person.user.userId,
     input: { message: ask },
   });

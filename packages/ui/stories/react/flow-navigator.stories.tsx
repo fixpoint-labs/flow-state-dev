@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { FlowNavigator, type FlowNavigatorSlots } from "@flow-state-dev/react";
+import { FlowNavigator, type FlowNavigatorProps, type FlowNavigatorSlots } from "@flow-state-dev/react";
 import { Copy, Plus, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
@@ -27,6 +27,11 @@ const flows = [
   flowEntry("support.wren", "followup-runner", "collection"),
 ];
 const long = flowEntry("support.escalations-overnight-weekend-queue", "desk-clerk", "collection");
+
+/** The story's client: its flow list, and the session listing every story shares. Built once per story. */
+const navigatorClient = (
+  source: Pick<NonNullable<FlowNavigatorProps["client"]>, "flows">
+): NonNullable<FlowNavigatorProps["client"]> => ({ userId: "story-user", sessions, ...source });
 
 const sessions = sessionsSource({
   "support.iris": [sessionEntry("sess_1790206121611_42636c63df102", "agent")],
@@ -77,8 +82,6 @@ const meta = {
   args: {
     sections: [{ label: "Flows" }],
     onSelectSession: () => {},
-    userId: "story-user",
-    sessionClient: sessions,
   },
   // Selection is the host's to keep, so the story keeps it.
   render: function Render(args, context) {
@@ -103,17 +106,17 @@ type Story = StoryObj<typeof meta>;
 
 /** The flow list has not answered yet. */
 export const Loading: Story = {
-  args: { client: loadingFlowsSource },
+  args: { client: navigatorClient(loadingFlowsSource) },
 };
 
 /** The server registers none of the kinds a section names. */
 export const Empty: Story = {
-  args: { client: flowsSource([]) },
+  args: { client: navigatorClient(flowsSource([])) },
 };
 
 /** The flow list read failed. The line says what failed and offers Retry. */
 export const Failed: Story = {
-  args: { client: failingFlowsSource("Failed to load flows") },
+  args: { client: navigatorClient(failingFlowsSource("Failed to load flows")) },
 };
 
 /**
@@ -122,11 +125,11 @@ export const Failed: Story = {
  * list their sessions; `support.otto` has none yet.
  */
 export const Populated: Story = {
-  args: { client: flowsSource(flows), slots: hostSlots },
+  args: { client: navigatorClient(flowsSource(flows)), slots: hostSlots },
 };
 
 /** A 256px rail with a copy and a session whose labels do not fit: both end in an ellipsis. */
 export const LongLabels: Story = {
-  args: { client: flowsSource([...flows, long]), slots: hostSlots },
+  args: { client: navigatorClient(flowsSource([...flows, long])), slots: hostSlots },
   parameters: { railWidth: 256 },
 };

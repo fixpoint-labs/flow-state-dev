@@ -1,0 +1,506 @@
+{
+ "agent-discovery/an-orchestrator-routes-a-task-by-asking": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "block-as/presents-a-block-under-a-new-name": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "capability-config/resolver-reaches-generator": {
+  "action": "prune",
+  "why": "Build-time only, no runtime and no model: its assertions belong in packages/core/test/capability-config.test.ts, where CI runs them. Move them there; drop the goal."
+ },
+ "cascading-router/fails-closed-on-a-real-evaluation-model": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "chat-agent/answers-a-factual-question": {
+  "action": "prune",
+  "why": "Grades whether the model knows a capital city. The framework half (a kitchen-sink turn through fsdev run on a real model) is proven by every kitchen-sink goal that runs a turn, e.g. cli-principal/runs-in-the-apps-organization."
+ },
+ "chat-harness/holds-a-conversation": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "claude-code-harness/it-keeps-its-own-plan": {
+  "action": "keep",
+  "why": "Flagged loops walk fixture- or constant-derived lists, which are never empty at run time."
+ },
+ "cli-principal/runs-in-the-apps-organization": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "codex-harness/dispatches-and-resumes-through-the-contract": {
+  "action": "keep",
+  "why": "No flagged shape. Never recorded a verdict: needs a first run, with credentials, not removal."
+ },
+ "conductor/implement-phase-opens-a-pr": {
+  "action": "keep",
+  "why": "No flagged shape. Never recorded a verdict: needs a first run, with credentials, not removal."
+ },
+ "context-supply/assembles-the-same-brief-every-pass": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "continue-interrupted-run/continues-not-restarts": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "continue-interrupted-run/two-interrupted-requests-continue-independently": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "coordinators/every-coordinator-is-a-worker-file": {
+  "action": "keep",
+  "why": "Flagged sites read: an earlier set-equality, count or 'nothing to grade' assertion already fails the empty case."
+ },
+ "coordinators/files-tasks-down-the-owners-chain": {
+  "action": "keep",
+  "why": "Flagged sites are report loops (printing notes, control-leg bookkeeping), not assertions."
+ },
+ "coordinators/hands-each-post-to-its-delegates": {
+  "action": "keep",
+  "why": "Flagged sites are report loops (printing notes, control-leg bookkeeping), not assertions."
+ },
+ "coordinators/one-fence-answers-each-post-once": {
+  "action": "keep",
+  "why": "Flagged sites read: an earlier set-equality, count or 'nothing to grade' assertion already fails the empty case."
+ },
+ "coordinators/routes-a-follow-up-by-its-conversation": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "coordinators/task-session-stays-open": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "cursor-harness/keeps-the-servers-environment-from-its-commands": {
+  "action": "keep",
+  "why": "No flagged shape. Never recorded a verdict: needs a first run, with credentials, not removal."
+ },
+ "design-system/skins-reused-components-from-one-token-set": {
+  "action": "fix-goal",
+  "why": "a:neutral and b:themed loop over the colours, fonts and corners the browser sampled, with no floor. Zero samples passes, and the evidence still prints a count. Floor each pass's samples."
+ },
+ "devforce-lab/it-answers-a-conversations-task": {
+  "action": "keep",
+  "why": "Flagged sites assert an absence (no stray, no leak) over a population whose size is asserted or printed elsewhere in the leg."
+ },
+ "devforce-lab/it-answers-what-a-finished-task-found": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "devforce-lab/it-codes-in-the-projects-repository": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "devforce-lab/it-commits-from-the-seats-own-file": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "devforce-lab/it-keeps-its-rows-on-the-mailboxes-board": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "devforce-lab/it-names-the-project-a-coders-task-works-in": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "devforce-lab/it-ships-an-artifact-a-person-can-open": {
+  "action": "keep",
+  "why": "Flagged loops walk fixture- or constant-derived lists, which are never empty at run time."
+ },
+ "devforce-lab/it-tells-a-workstream-lead-its-project": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "devforce-lab/it-waits-for-a-person-before-it-files": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "devforce-lab/it-wakes-the-seat-a-file-declared": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "devtool-workforce-visibility/reads-a-row-actions-result": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "devtool-workforce-visibility/the-checklist-rows": {
+  "action": "fix-goal",
+  "why": "Step 4 compares the tab's worker rows with the store's by count, then walks the store's. Zero and zero passes. Floor: the store holds the planted workers."
+ },
+ "devtool-workforce-visibility/works-a-task-from-its-row": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "dispatching-work/a-recorded-task-waits-for-dispatch": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "durable-claim-safety/two-executions-one-task": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "error-reporter/files-a-reproducible-issue": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "evaluator/answers-on-a-real-evaluation-model": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "evaluator/holds-as-an-assembled-set": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "flow-instances/devtool-shows-the-selected-copy": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "flow-instances/keeps-private-data-with-the-copy": {
+  "action": "keep",
+  "why": "Flagged loops walk fixture- or constant-derived lists, which are never empty at run time."
+ },
+ "flow-instances/owner-continuity": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "flow-instances/settings-travel-with-the-copy": {
+  "action": "fix-goal",
+  "why": "Leg (c) asserts no listing entry carries config. An empty listing passes. Floor: the listing names each minted copy."
+ },
+ "goal-seek-loop/replans-until-done": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "hand-offs/ask-survives-a-restart": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "hand-offs/survives-a-restart-and-runs-once": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "harness-manager/a-persons-turn-continues-its-session": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "harness-manager/answered-run-continues-its-session": {
+  "action": "keep",
+  "why": "No flagged shape. Never recorded a verdict: needs a first run, with credentials, not removal."
+ },
+ "hire-plane/refuses-a-board-drain-onto-a-seat-it-is-outside": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "index-time-facets/found-without-a-model-call": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "kitchen-sink-harness-mode/opens-on-the-picker": {
+  "action": "keep",
+  "why": "Flagged sites read: an earlier set-equality, count or 'nothing to grade' assertion already fails the empty case."
+ },
+ "kitchen-sink-harness/claude-code-continues-its-conversation": {
+  "action": "keep",
+  "why": "Flagged sites are report loops (printing notes, control-leg bookkeeping), not assertions."
+ },
+ "kitchen-sink-harness/codex-continues-its-thread": {
+  "action": "keep",
+  "why": "Flagged sites are report loops (printing notes, control-leg bookkeeping), not assertions."
+ },
+ "kitchen-sink-harness/cursor-continues-its-agent": {
+  "action": "keep",
+  "why": "Flagged sites are report loops (printing notes, control-leg bookkeeping), not assertions."
+ },
+ "kitchen-sink-talk/a-person-talks-to-a-seat-a-mailbox-and-back": {
+  "action": "keep",
+  "why": "Flagged loops walk fixture- or constant-derived lists, which are never empty at run time."
+ },
+ "kitchen-sink-talk/a-post-runs-each-member-agent-once": {
+  "action": "keep",
+  "why": "Flagged sites read: an earlier set-equality, count or 'nothing to grade' assertion already fails the empty case."
+ },
+ "kitchen-sink-talk/agent-replies-in-the-mailbox": {
+  "action": "keep",
+  "why": "Flagged loops walk fixture- or constant-derived lists, which are never empty at run time."
+ },
+ "kitchen-sink-talk/answers-a-clerk-note-or-files-it": {
+  "action": "keep",
+  "why": "Flagged loops walk fixture- or constant-derived lists, which are never empty at run time."
+ },
+ "kitchen-sink-talk/keeps-both-sides-across-a-reload": {
+  "action": "keep",
+  "why": "Flagged sites are report loops (printing notes, control-leg bookkeeping), not assertions."
+ },
+ "kitchen-sink-talk/shows-the-reply-without-a-reload": {
+  "action": "keep",
+  "why": "Flagged sites read: an earlier set-equality, count or 'nothing to grade' assertion already fails the empty case."
+ },
+ "mailbox-boards/it-runs-a-row-a-file-declared-board-holds": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "manager-queue-lab/it-routes-a-queue-to-the-seats-their-files-name": {
+  "action": "keep",
+  "why": "Flagged sites read: an earlier set-equality, count or 'nothing to grade' assertion already fails the empty case."
+ },
+ "manager-queue-lab/it-stands-the-team-and-its-board-up-from-files": {
+  "action": "keep",
+  "why": "Flagged loops walk fixture- or constant-derived lists, which are never empty at run time."
+ },
+ "memory-evaluator-seam/captures-without-an-evaluator": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "memory-evaluator-seam/evaluator-decides-observation": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "model-strings/registry-grammar": {
+  "action": "keep",
+  "why": "Flagged loops walk fixture- or constant-derived lists, which are never empty at run time."
+ },
+ "multi-seat-collab/it-hands-a-row-between-two-seats-in-view": {
+  "action": "keep",
+  "why": "Flagged sites read: an earlier set-equality, count or 'nothing to grade' assertion already fails the empty case."
+ },
+ "oversized-output/stays-out-of-the-record": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "pentest-lab/a-post-reaches-both-declared-seats": {
+  "action": "keep",
+  "why": "Flagged loops walk fixture- or constant-derived lists, which are never empty at run time."
+ },
+ "pentest-lab/a-seat-answers-from-its-own-document": {
+  "action": "keep",
+  "why": "Has the length>0 suppression shape the new check refuses; read: an earlier assertion already fails the empty case. Rewrite the line with the helper when the check lands; no verdict change."
+ },
+ "personal-knowledge-mcp/persists-a-concept-across-stateless-calls": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "plan-and-execute/carries-original-data-to-workers": {
+  "action": "prune",
+  "why": "No run.mts, and none was ever written: the goal has never told anything. The pattern's mocked specs stay in CI."
+ },
+ "projects/a-mapped-project-works-in-your-checkout": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "projects/a-shared-project-has-one-owner-per-workstream": {
+  "action": "keep",
+  "why": "Flagged sites are report loops (printing notes, control-leg bookkeeping), not assertions."
+ },
+ "resource-collections/agent-reads-and-writes-instance-content": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "resource-concurrency/two-contexts-patching-one-resource-both-land": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "response-auditor/emits-audit-annotation": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "shift-manager/a-fresh-open-works-fsd-and-shift-manager": {
+  "action": "keep",
+  "why": "Flagged sites are report loops (printing notes, control-leg bookkeeping), not assertions."
+ },
+ "shift-manager/a-lab-is-worked-through-one-skinned-shell": {
+  "action": "keep",
+  "why": "Flagged sites read: an earlier set-equality, count or 'nothing to grade' assertion already fails the empty case."
+ },
+ "shift-manager/a-projects-coding-run-reads-its-linear": {
+  "action": "keep",
+  "why": "Flagged sites read: an earlier set-equality, count or 'nothing to grade' assertion already fails the empty case."
+ },
+ "shift-manager/it-briefs-and-talks-with-the-chief-of-staff": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "shift-manager/it-draws-v2s-look": {
+  "action": "keep",
+  "why": "Has the length>0 suppression shape the new check refuses; read: an earlier assertion already fails the empty case. Rewrite the line with the helper when the check lands; no verdict change."
+ },
+ "shift-manager/it-groups-workstreams-under-their-projects": {
+  "action": "keep",
+  "why": "Has the length>0 suppression shape the new check refuses; read: an earlier assertion already fails the empty case. Rewrite the line with the helper when the check lands; no verdict change."
+ },
+ "shift-manager/it-hands-a-run-the-work-it-approved": {
+  "action": "keep",
+  "why": "Flagged loops walk fixture- or constant-derived lists, which are never empty at run time."
+ },
+ "shift-manager/it-opens-a-lab": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "shift-manager/it-opens-on-fsd-and-shift-manager": {
+  "action": "keep",
+  "why": "Flagged sites read: an earlier set-equality, count or 'nothing to grade' assertion already fails the empty case."
+ },
+ "shift-manager/it-runs-from-an-install": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "shift-manager/it-sends-a-turn-into-a-seat-session": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "shift-manager/it-shows-and-stops-a-task-run": {
+  "action": "keep",
+  "why": "Flagged loops walk fixture- or constant-derived lists, which are never empty at run time."
+ },
+ "shift-manager/it-shows-who-is-on-shift": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "shift-manager/it-takes-its-look-from-the-design-system": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "shift-manager/one-person-runs-a-labs-projects-and-people": {
+  "action": "keep",
+  "why": "Flagged sites read: an earlier set-equality, count or 'nothing to grade' assertion already fails the empty case."
+ },
+ "shift-manager/workers-message-each-other": {
+  "action": "keep",
+  "why": "Flagged sites are report loops (printing notes, control-leg bookkeeping), not assertions."
+ },
+ "skill-activator/evaluator-picks-a-skill": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "skill-activator/follow-up-uses-recent-turns": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "skills-scoped-binding/no-cross-generator-bleed": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "standing-rules/a-note-outlives-its-session": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "standing-rules/the-rules-page-edits-what-the-worker-follows": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "structured-output/recovers-off-schema-output": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "suspension/completes-via-the-resume-endpoint": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "suspension/generator-resumes-after-tool-approval": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "suspension/resumes-after-a-cold-restart": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "suspension/resumes-and-completes-after-approval": {
+  "action": "prune",
+  "why": "Its whole signal (the approved output carries request and note; the request completes) is leg (b) of suspension/resumes-after-a-cold-restart, which proves it after a restart too."
+ },
+ "task-board/contains-a-worker-outcome-that-lands-on-a-settled-task": {
+  "action": "keep",
+  "why": "Flagged sites read: an earlier set-equality, count or 'nothing to grade' assertion already fails the empty case."
+ },
+ "task-board/hands-a-row-to-a-worker-in-its-own-session": {
+  "action": "fix-goal",
+  "why": "Check 2 (the row ran outside the drain's session) skips a row with no ranIn. If the field moves, the check grades nothing and passes."
+ },
+ "task-run-link/it-names-the-run-working-each-task": {
+  "action": "keep",
+  "why": "Flagged sites read: an earlier set-equality, count or 'nothing to grade' assertion already fails the empty case."
+ },
+ "user-scope/keeps-a-users-data-in-the-org-it-was-saved-in": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "vocabulary/one-word-per-thing": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "webhook-transport/runs-the-bound-handler-on-a-verified-delivery": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "worker-contract/runs-workers-only-on-registered-flows": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "workers-as-resources/keeps-each-users-workers-their-own": {
+  "action": "keep",
+  "why": "Flagged loops walk fixture- or constant-derived lists, which are never empty at run time."
+ },
+ "workers/files-and-splits-down-the-chain": {
+  "action": "keep",
+  "why": "Flagged sites are report loops (printing notes, control-leg bookkeeping), not assertions."
+ },
+ "workforce-conventions/a-team-says-once-what-its-seats-are-told": {
+  "action": "keep",
+  "why": "Flagged loops walk fixture- or constant-derived lists, which are never empty at run time."
+ },
+ "workforce-conventions/capabilities-come-from-files-alone": {
+  "action": "keep",
+  "why": "Flagged loops walk fixture- or constant-derived lists, which are never empty at run time."
+ },
+ "workforce-conventions/code-comes-from-files-alone": {
+  "action": "keep",
+  "why": "Flagged sites read: an earlier set-equality, count or 'nothing to grade' assertion already fails the empty case."
+ },
+ "workforce-conventions/documents-come-from-files-alone": {
+  "action": "prune",
+  "why": "Same shape as files-alone-produce-the-roster, for resources/: a loader call graded on returned data. The workforce package's loader specs cover it in CI."
+ },
+ "workforce-conventions/files-alone-produce-the-roster": {
+  "action": "prune",
+  "why": "Calls the loader and grades the data it returns, model-free. packages/workforce/test/read-workforce-directory.test.ts proves the same reads in CI, on every push."
+ },
+ "workforce-mailboxes/a-fresh-host-wakes-its-member-agents": {
+  "action": "keep",
+  "why": "Flagged loops walk fixture- or constant-derived lists, which are never empty at run time."
+ },
+ "workforce-mailboxes/a-routed-post-gets-one-answer": {
+  "action": "keep",
+  "why": "Flagged loops walk fixture- or constant-derived lists, which are never empty at run time."
+ },
+ "workforce-packages/a-held-package-reaches-one-worker": {
+  "action": "keep",
+  "why": "Flagged sites read: an earlier set-equality, count or 'nothing to grade' assertion already fails the empty case."
+ },
+ "workforce-privacy/two-users-share-a-project-and-nothing-else": {
+  "action": "fix-goal",
+  "why": "Leg b4 skips a filed task whose row is missing (continue), and skips the side-by-side timing check when either end time is missing. Both grade nothing and stay green."
+ },
+ "workforce-seats/a-callers-own-agent-wins-every-seat": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "workforce-seats/a-non-agent-seat-receives-its-skills": {
+  "action": "keep",
+  "why": "No flagged shape."
+ },
+ "workforce-seats/a-seat-reaches-the-documents-its-file-names": {
+  "action": "keep",
+  "why": "Flagged loops walk fixture- or constant-derived lists, which are never empty at run time."
+ },
+ "workforce-seats/the-built-in-kind-answers-from-a-file-alone": {
+  "action": "keep",
+  "why": "Flagged loops walk fixture- or constant-derived lists, which are never empty at run time."
+ },
+ "workforce/split-to-roster": {
+  "action": "keep",
+  "why": "No flagged shape."
+ }
+}

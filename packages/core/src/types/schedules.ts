@@ -78,6 +78,14 @@ export type ScheduleResolutionContext = {
    */
   stores: ScheduleResolutionStores;
   /**
+   * The storage key of `userId`'s cell in `orgId`, for data no flow isolates:
+   * where a user-scoped resource collection that declares no `flowIsolation`
+   * (a schedule collection) keeps its rows. Supplied by the dispatch endpoint,
+   * which owns the engine's key derivation, so a resolver reads a user's row
+   * without depending on the engine.
+   */
+  userStorageKey(userId: string, orgId: string): string;
+  /**
    * The owner pin of the registered instance this dispatch addresses, when
    * that instance is pinned to an owner; absent for every other flow. Taken
    * from the registry, never from the request. It chooses no storage key:
@@ -238,6 +246,29 @@ export type SchedulesConfig = {
 const STATIC_SCHEDULE_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 /**
+ * Whether `cron` is exactly five whitespace-separated fields (minute hour
+ * day-of-month month day-of-week). `cron-parser` reads a sixth field as
+ * seconds and fills missing ones, so parsing alone admits a schedule that
+ * fires every second, or one that means something other than it says.
+ */
+export function isFiveFieldCron(cron: string): boolean {
+  return cron.trim().split(/\s+/).length === 5;
+}
+
+/**
+ * Whether `timezone` is an IANA time zone this runtime knows: the check
+ * `validateScheduleConfig` runs, for a write path to run before it saves one.
+ */
+export function isKnownTimeZone(timezone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone });
+    return timezone.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Per-entry validator. Used at registration time for the static map and
  * at dispatch time by the adapter for resolved dynamic schedules. Throws
  * on malformed input — adapter callers translate the throw into a 400.
@@ -261,8 +292,24 @@ export function validateScheduleConfig(args: {
     );
   }
 
+  if (!isFiveFieldCron(schedule.cron)) {
+    throw new Error(
+      `Flow "${kind}" schedule "${id}" has an invalid cron expression ${JSON.stringify(schedule.cron)}: it is not exactly five fields. ` +
+        `Use POSIX 5-field syntax (minute hour day-of-month month day-of-week): a sixth field would be read as seconds.`
+    );
+  }
+
+  // The zone is validated with the cron: an unknown one would otherwise leave
+  // a schedule that resolves on every fire and never names a scheduled time.
+  if (schedule.timezone !== undefined && !isKnownTimeZone(schedule.timezone)) {
+    throw new Error(
+      `Flow "${kind}" schedule "${id}" has an unknown time zone ${JSON.stringify(schedule.timezone)}. ` +
+        `Use an IANA time zone such as "Europe/London", or omit it for UTC.`
+    );
+  }
+
   try {
-    CronExpressionParser.parse(schedule.cron);
+    CronExpressionParser.parse(schedule.cron, schedule.timezone === undefined ? {} : { tz: schedule.timezone });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(

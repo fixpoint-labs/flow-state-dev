@@ -12,7 +12,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@flow-state-dev/engine";
+import { createFlowApiRouter, createFlowRegistry, type StoreRegistry, createInProcessFetch } from "@flow-state-dev/engine";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
@@ -115,8 +115,7 @@ async function call(
   who: Who,
   body?: unknown,
 ): Promise<{ status: number; json: any }> {
-  const res = await router[method](
-    new Request(`http://goal/api/flows/${path.map(encodeURIComponent).join("/")}`, {
+  const res = await createInProcessFetch(router)(`http://goal/api/flows/${path.map(encodeURIComponent).join("/")}`, {
       method,
       headers: {
         "content-type": "application/json",
@@ -124,9 +123,7 @@ async function call(
         "x-verified-org": who.org,
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    }),
-    { params: { path } },
-  );
+    });
   const text = await res.text();
   return { status: res.status, json: text.length > 0 ? JSON.parse(text) : undefined };
 }

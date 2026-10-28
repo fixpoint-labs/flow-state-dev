@@ -31,6 +31,7 @@ import { LIST_TASKS_ACTION } from "../src/lib/conversation-tasks";
 import { commitScriptedWork } from "../teams/devteam/harness.mts";
 import { harnessStub, type HarnessStub } from "../teams/devteam/harness-stub.mts";
 import { CHECKOUTS } from "../teams/devteam/fsd-checkouts.mts";
+import { CODER_BRIEF, FSD_DOCUMENTS, FSD_SKILLS } from "../teams/devteam/fsd-projects.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
 import { createScratchRepo } from "../teams/devteam/scratch-repo.mts";
 
@@ -100,14 +101,16 @@ function scripted(call: { toolName: string; args: Record<string, unknown> }): Mo
 }
 
 /**
- * The fsd profile's hosts, as `openLab` builds them from its mapping, over
- * `checkout` instead of this repository. `mine` is a shared project of the
+ * The fsd profile's hosts, as `openLab` builds them from its mapping, documents
+ * and skills, over `checkout` instead of this repository. `replaced: null`
+ * opens on the tree's own documents and skills, as DevTeam does. `mine` is a shared project of the
  * Lab's organization on the same remote that the mapping doesn't name.
  */
-async function openMapped(checkout: string, stub: HarnessStub, model?: ModelResolver) {
+async function openMapped(checkout: string, stub: HarnessStub, model?: ModelResolver, replaced: { documents?: Record<string, string>; skills?: Record<string, string> } | null = { documents: FSD_DOCUMENTS, skills: FSD_SKILLS }) {
   const root = mkdtempSync(join(tmpdir(), "sm-fsd-runs-"));
   const lab = await openLab({
     ...(model === undefined ? {} : { modelResolver: model }),
+    ...replaced,
     stores: inMemoryStores(),
     harness: stub.slot,
     runTimeoutMs: 30_000,
@@ -174,6 +177,9 @@ describe("the fsd profile's checkout mapping", () => {
 });
 
 describe("a coding run on the fsd profile's projects", () => {
+  /** DevTeam's brief builds greet() and stamps FEATURE-BRIEF-E61B8; its commit style stamps COMMIT-STYLE-F70C4. */
+  const DEMO_BRIEF = /FEATURE-BRIEF-E61B8|greet\(|COMMIT-STYLE-F70C4/;
+
   it("BR-13: from a board, a run on fsd and one on shift-manager each work in a fresh worktree of the checkout, cut from main", async () => {
     const user = userCheckout();
     const stub = harnessStub({ duringRun: commitScriptedWork });
@@ -184,6 +190,9 @@ describe("a coding run on the fsd profile's projects", () => {
       const row = await fileOnBoard(lab, `on-${project}`, project);
       const run = stub.runs.find((r) => r.prompt.includes(`on-${project}`));
       expect(run, `the ${project} row ended ${row?.status}: ${JSON.stringify(row?.error ?? null)}`).toBeDefined();
+      expect(run!.prompt).toContain(FSD_DOCUMENTS[CODER_BRIEF]!.trim());
+      expect(run!.prompt).toContain(FSD_SKILLS["commit-style"]);
+      expect(run!.prompt).not.toMatch(DEMO_BRIEF);
       const branch = expectWorktreeFromMain(user, run!.cwd);
       // The coder's commit is on the run's branch, in the user's checkout.
       expect(git(user.repo, "show", `${branch}:SCRIPTED-RUN.md`)).toContain("A scripted run");
@@ -196,10 +205,30 @@ describe("a coding run on the fsd profile's projects", () => {
     expect(existsSync(join(root, ".clones")) ? readdirSync(join(root, ".clones")) : []).toEqual([]);
   }, 120_000);
 
+  it("on the tree's own documents and skills, that run is handed both demo markers", async () => {
+    // Red state of the check above: without the replacements, the prompt carries both markers.
+    const stub = harnessStub({ duringRun: commitScriptedWork });
+    const { lab } = await openMapped(userCheckout().repo, stub, undefined, null);
+    await fileOnBoard(lab, "brief-devteam", "fsd");
+    const prompt = stub.runs.find((r) => r.prompt.includes("brief-devteam"))?.prompt;
+    expect(prompt).toContain("FEATURE-BRIEF-E61B8");
+    expect(prompt).toContain("COMMIT-STYLE-F70C4");
+  }, 120_000);
+
+  it("refuses to replace a document or skill the tree does not declare", async () => {
+    const repo = userCheckout().repo;
+    await expect(openMapped(repo, harnessStub(), undefined, { documents: { "teams/eng/no-such-brief": "x" } })).rejects.toThrow(
+      /does not declare/,
+    );
+    await expect(openMapped(repo, harnessStub(), undefined, { skills: { "no-such-skill": "x" } })).rejects.toThrow(
+      /no worker in the tree carries/,
+    );
+  });
+
   it("BR-13: from a conversation, the chief of staff's task for the coder works in a worktree of the checkout, cut from main", async () => {
     const user = userCheckout();
     const stub = harnessStub({ duringRun: commitScriptedWork, finalMessage: "Noted." });
-    const call = { toolName: "dispatchTask", args: { goal: "note the row", assignee: CODER, input: { project: { visibility: "shared", id: "shift-manager" } } } };
+    const call = { toolName: "createTask", args: { goal: "note the row", assignee: CODER, input: { project: { visibility: "shared", id: "shift-manager" } } } };
     const { lab } = await openMapped(user.repo, stub, scripted(call));
     const runtime = await lab.state.getRuntime();
     const sessionId = `s-cos-${globalThis.crypto.randomUUID()}`;
@@ -216,7 +245,7 @@ describe("a coding run on the fsd profile's projects", () => {
         stores: runtime.stores,
         runtimeConfig: runtime.runtimeConfig,
       } as never)) as { output?: any; error?: unknown };
-    expect((await act("run", { message: "on Shift Manager, note the row" })).error).toBeUndefined();
+    expect((await act("respond", { message: "on Shift Manager, note the row" })).error).toBeUndefined();
 
     let task: Record<string, any> | undefined;
     for (const deadline = Date.now() + 30_000; Date.now() < deadline; await new Promise((r) => setTimeout(r, 50))) {

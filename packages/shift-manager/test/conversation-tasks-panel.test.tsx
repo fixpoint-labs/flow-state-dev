@@ -13,14 +13,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TASKS_POLL_MS, TasksPanel } from "../src/components/TasksPanel";
 import { toWorker } from "../src/lib/reads";
 
-type Row = { id: string; goal: string; status: string; assignee?: string; attempts: number };
+type Row = { id: string; goal: string; title?: string; status: string; assignee?: string; attempts: number };
 let rows: Row[] = [];
 let refusal: string | null = null;
 const calls: string[] = [];
 
 const refreshes: number[] = [];
 vi.mock("../src/lib/lab-data", () => {
-  const lab = { clients: { userId: "alice" }, refresh: async () => void refreshes.push(Date.now()) };
+  const lab = { client: { userId: "alice" }, refresh: async () => void refreshes.push(Date.now()) };
   return { useLab: () => lab };
 });
 vi.mock("../src/lib/conversation-tasks", () => ({
@@ -122,6 +122,48 @@ describe("the tasks panel (S11)", () => {
     expect(screen.getByTestId("cos-tasks-failure").textContent).toContain("This conversation keeps no task board.");
   });
 
+  describe("at the Shift Coordinator, whose conversation never ends (activeOnly)", () => {
+    const mixed: Row[] = [
+      { id: "t1", goal: "Audit the licenses", status: "completed", assignee: "licenses", attempts: 1 },
+      { id: "t2", goal: "Write the release notes", status: "in_progress", assignee: "notes", attempts: 1 },
+      { id: "t3", goal: "Rotate the keys", status: "errored", assignee: "keys", attempts: 2 },
+      { id: "t4", goal: "Drop the old flag", status: "cancelled", attempts: 0 },
+      { id: "t5", goal: "Draft the launch post", status: "pending", attempts: 0 },
+      { id: "t6", goal: "Check the docs links", status: "completed", assignee: "docs", attempts: 1 },
+    ];
+    const group = (name: string) => screen.getAllByTestId("cos-task-group").find((el) => el.getAttribute("data-group") === name);
+
+    it("lists only the active tasks, and folds done and errored into counts that open", async () => {
+      rows = mixed;
+      render(<TasksPanel worker={cos} sessionId="s1" readAt={1} activeOnly />);
+      await settle();
+      expect(shown().map((task) => task.id)).toEqual(["t2", "t5"]);
+      expect(group("done")!.textContent).toContain("3 done");
+      expect(group("errored")!.textContent).toContain("1 errored");
+      act(() => group("errored")!.querySelector("button")!.click());
+      expect(shown().map((task) => task.id)).toEqual(["t2", "t5", "t3"]);
+      act(() => group("done")!.querySelector("button")!.click());
+      expect(shown().map((task) => task.id)).toEqual(["t2", "t5", "t1", "t4", "t6", "t3"]);
+    });
+
+    it("says no task is active when every task has ended, and draws no empty group", async () => {
+      rows = [{ id: "t1", goal: "Audit the licenses", status: "completed", assignee: "licenses", attempts: 1 }];
+      render(<TasksPanel worker={cos} sessionId="s1" readAt={1} activeOnly />);
+      await settle();
+      expect(screen.getByTestId("cos-tasks-none-active")).toBeTruthy();
+      expect(shown()).toEqual([]);
+      expect(screen.getAllByTestId("cos-task-group").map((el) => el.getAttribute("data-group"))).toEqual(["done"]);
+    });
+
+    it("leaves a workstream's board whole: there every task is a subtask of the one piece of work", async () => {
+      rows = mixed;
+      render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
+      await settle();
+      expect(shown().map((task) => task.id)).toEqual(["t1", "t2", "t3", "t4", "t5", "t6"]);
+      expect(screen.queryAllByTestId("cos-task-group")).toEqual([]);
+    });
+  });
+
   describe("a task that ends between the user's lines", () => {
     beforeEach(() => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] }));
     afterEach(() => vi.useRealTimers());
@@ -149,5 +191,42 @@ describe("the tasks panel (S11)", () => {
       expect(calls).toEqual(["list coordinator s1"]);
       expect(refreshes).toHaveLength(0);
     });
+  });
+});
+
+describe("opening a task from the panel", () => {
+  it("each task opens its own session on the conversation's board", async () => {
+    rows = [{ id: "t1", goal: "Audit the licenses", status: "in_progress", assignee: "licenses", attempts: 1 }];
+    window.history.pushState(null, "", "/");
+    render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
+    await settle();
+    await act(async () => screen.getByTestId("cos-task-open").click());
+    // The route is the same one the Tasks list and Jump to go to.
+    expect(window.location.pathname).toBe("/tasks/s1.tasks/t1/session");
+  });
+
+  it("opens a failed task from its errored group, so a failure is one click from its session", async () => {
+    rows = [{ id: "t3", goal: "Rotate the keys", status: "errored", assignee: "keys", attempts: 2 }];
+    window.history.pushState(null, "", "/");
+    render(<TasksPanel worker={cos} sessionId="s1" readAt={1} activeOnly />);
+    await settle();
+    act(() => screen.getByTestId("cos-task-group").querySelector("button")!.click());
+    await act(async () => screen.getByTestId("cos-task-open").click());
+    expect(window.location.pathname).toBe("/tasks/s1.tasks/t3/session");
+  });
+});
+
+describe("a task's label in the panel", () => {
+  it("is its title when it has one, and its goal when it has none", async () => {
+    rows = [
+      { id: "t1", goal: "Take a quick look at the flow state code in the repository and report back", title: "Look at flow state", status: "in_progress", attempts: 1 },
+      { id: "t2", goal: "Write the release notes", status: "pending", attempts: 0 },
+    ];
+    render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
+    await settle();
+    const text = shown().map((t) => t.text);
+    expect(text[0]).toContain("Look at flow state");
+    expect(text[0]).not.toContain("Take a quick look");
+    expect(text[1]).toContain("Write the release notes");
   });
 });

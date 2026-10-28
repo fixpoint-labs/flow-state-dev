@@ -8,8 +8,12 @@
  */
 import { z } from "zod";
 import { persistedTaskStatusSchema, type TaskStatus } from "./task-status";
+import { taskSteerSchema } from "./steer";
+import { QUEUED_WAIT } from "./retired-shapes";
+import { taskHoldSchema } from "./hold";
 
 /** The base Task schema. */
+
 export const taskSchema = z.object({
   id: z.string(),
   goal: z.string(),
@@ -50,7 +54,7 @@ export const taskSchema = z.object({
    * `granted` counts AUTHORIZED failure retries — incremented when `fail()`
    * re-pends the task, not when the retry is later observed at claim time. It is
    * therefore not derivable from `attempts`, which also moves for re-claims
-   * after an `unblock`, a `unpark`, or a `reclaim` — none of which are
+   * after an `unblock` or a `reclaim` — none of which are
    * failure retries and none of which touch this field.
    *
    * `deniedByBudget` is what the board's `terminationReason` reads. It exists so
@@ -106,56 +110,14 @@ export const taskSchema = z.object({
   abandonments: z.number().int().nonnegative().optional(),
 
   /**
-   * Whether this row is parked because a person's turn stopped its worker,
-   * rather than because the worker asked a question (FIX-1690). Set by
-   * `awaitReview(id, feedback, { forTurn: true })`, cleared by every other park
-   * and by `unpark`.
-   *
-   * Top level for the reason `abandonments` is (BP-031): it decides whether
-   * the next claim is charged, so no caller-writable surface may reach it.
-   * **Absent reads as false** (BP-030).
+   * Words sent into this task while it was open (FIX-2086): `updateTask`'s
+   * `message`, or a line typed in its session. Server-written by the
+   * collection's `steer`, append-only, at most `MAX_STEERS`; never patched. Each
+   * names its sender and the attempt that took it (`../steers`). Every later
+   * attempt reads every steer, and a finished task takes none. **Absent** on
+   * a task never steered (BP-030).
    */
-  parkedForTurn: z.boolean().optional(),
-
-  /**
-   * How many times this row re-entered after a person's turn stopped its
-   * worker (FIX-1690), or after an answer to the question it parked on
-   * (`unpark(..., { answer: true })`, FIX-1817). Incremented by the `unpark`
-   * of a row parked for a turn, and by an answering one;
-   * the claim that follows advances `attempts` as every claim does, and
-   * `shouldRetryOnFail` discounts this beside `abandonments`, so a person
-   * talking to a run never spends its retries. The board's `maxTotalRetries`
-   * is untouched already: `unpark` is not a failure retry.
-   *
-   * Top level, never in `metadata` (BP-031), for `abandonments`' reason.
-   * **Absent reads as zero** (BP-030).
-   */
-  turnReentries: z.number().int().nonnegative().optional(),
-
-  /**
-   * The row's `feedback` is the answer to the question its worker parked on
-   * (FIX-1817). Set by the answering `unpark` (`{ answer: true }`), so the
-   * next attempt is handed it as its answer rather than the task again.
-   * Cleared by every other write of `feedback`: a park, a plain `unpark`, a
-   * failure that re-pends. It survives the claim, so an attempt recovered
-   * after its worker died is still handed the answer.
-   *
-   * Top level and server-written for `abandonments`' reason (BP-031).
-   * **Absent reads as false** (BP-030).
-   */
-  answered: z.boolean().optional(),
-
-  /**
-   * The row is parked on its worker's question (FIX-1817): set by the park
-   * `parkOnQuestion` writes (`awaitReview(..., { onQuestion: true })`),
-   * cleared by every other park and by `unpark`. Only such a row takes an
-   * answer, so a park for any other reason (a person's turn, a task waiting
-   * on its pieces) can't be answered as a question.
-   *
-   * Top level and server-written for `abandonments`' reason (BP-031): no
-   * caller-writable surface reaches it. **Absent reads as false** (BP-030).
-   */
-  parkedOnQuestion: z.boolean().optional(),
+  steers: z.array(taskSteerSchema).optional(),
 
   /**
    * The finished task this one follows up (FIX-1817): its root, never another
@@ -165,6 +127,49 @@ export const taskSchema = z.object({
    * **Absent** on every task that is not a follow-up (BP-030).
    */
   followUpOf: z.string().optional(),
+
+  /**
+   * The task whose request filed this one (FIX-2081): a piece of that task,
+   * or a step it planned. Server-written at filing from the filer's own
+   * claim or session, never from input, and never patched. `listTasks`
+   * filters by it (`filedByTask`). **Absent** on a task filed by no task: a
+   * conversation's turn, a screen, a schedule (BP-030).
+   */
+  filedByTask: z.string().optional(),
+
+  /**
+   * Where the task runs (FIX-2080, a filing setting): `"new"`, a session of
+   * its own (the default for a delegated task), or `"ongoing"`, the
+   * delegate's session for this conversation. A follow-up runs in its root's
+   * session and takes none. Chosen at filing, refused there by a board that
+   * can't honour it, and never changed. **Absent reads as `"new"`** (BP-030).
+   */
+  session: z.enum(["new", "ongoing"]).optional(),
+
+  /**
+   * Who hears the task's result (FIX-2080, a filing setting): `"filer"`, the
+   * one that filed it (the default), or `"conversation"`, the conversation
+   * it was filed from. A conversation-result task has one attempt. Chosen at
+   * filing and never changed. **Absent reads as `"filer"`** (BP-030).
+   */
+  resultTo: z.enum(["filer", "conversation"]).optional(),
+
+  /**
+   * The workstream record the task goes to (FIX-2083, a filing setting): the
+   * target of a delegate record whose worker leads that workstream. Chosen at
+   * filing, refused there by a filer with no such record, and never changed.
+   * **Absent** on every task filed for a delegate record with no target.
+   */
+  target: z.string().optional(),
+
+  /**
+   * The session `target` resolved to when the task was filed (FIX-2083): the
+   * workstream's session, where a task filed `session: "ongoing"` runs.
+   * Server-written by the filing, top level beside `session` so no
+   * caller-writable surface reaches it (BP-031), and never patched.
+   * **Absent** on a task with no `target` (BP-030).
+   */
+  targetSessionId: z.string().optional(),
 
   assignee: z.string().optional(),
   deps: z.array(z.string()).optional(),
@@ -230,7 +235,7 @@ export const taskSchema = z.object({
 
   /**
    * Which run is working this task, or last worked it (FIX-1668) — the
-   * session a handed-off attempt executes in, that attempt's request there,
+   * session a dispatched attempt executes in, that attempt's request there,
    * and the attempt number.
    *
    * **Written from inside the run.** The board's claim gate writes it in the
@@ -238,7 +243,7 @@ export const taskSchema = z.object({
    * first step. Only the run knows for certain which session it landed in:
    * that depends on the assignee's session policy and on the conversation that
    * drained the board, so nothing outside can rebuild it. Distinct from
-   * `claimedBy`, which on a handed-off row names the *claiming* conversation.
+   * `claimedBy`, which on a dispatched row names the *claiming* conversation.
    *
    * **Lifetime: until the next claim.** `applyClaimToTask` clears it in the
    * same write that advances `attempts`; settlement, retry and abandonment
@@ -249,7 +254,7 @@ export const taskSchema = z.object({
    * **Client-visible**, unlike `claimedBy`: a UI opens the run from it. The
    * ids grant nothing; opening the session still passes the server's owner
    * check. The run's flow is not here: read it off the session (`flowId`),
-   * since an assignee may hand off to another flow than the board's.
+   * since an assignee may dispatch to another flow than the board's.
    *
    * Server-set: absent from `TaskInit` and every patch surface. **Absent on
    * rows stored before this shipped, on inline boards, and between a claim and
@@ -263,11 +268,49 @@ export const taskSchema = z.object({
       requestId: z.string(),
       /** The attempt that started the run — equal to `attempts` while it is the latest. */
       attempt: z.number().int().nonnegative(),
+      /**
+       * When this attempt's first run started, in ms (FIX-2077): what "during
+       * this attempt" is measured from. A resume or a lapsed lease taken back
+       * relinks the same attempt and keeps it. **Absent** on links written
+       * before it was (BP-030).
+       */
+      startedAt: z.number().optional(),
     })
     .optional(),
 
   input: z.unknown().optional(),
   output: z.unknown().optional(),
+  /**
+   * `output` is a checkpoint its worker reported while it ran (FIX-2081,
+   * `reportProgress`), not a result handed back at the end. The latest
+   * checkpoint is the task's output: completing the task keeps it, and the
+   * worker's final result is written only when no checkpoint was made. A
+   * failed attempt or a reclaimed lease keeps it. **Absent** when the worker
+   * never checkpointed (BP-030).
+   */
+  checkpointed: z.literal(true).optional(),
+  /**
+   * The one-line note its worker last reported while it ran (FIX-2081,
+   * `reportProgress`), for task views. Never the task's status: done still
+   * follows the worker's return. **Absent** until one is reported.
+   */
+  statusNote: z.string().optional(),
+  /**
+   * How the cancel that ended this task was made (FIX-2081): `"tool"`, its
+   * filer's model calling `updateTask` in its own turn, or `"action"`, a
+   * public `updateTask_<board>` action. Written by the cancel from how the
+   * caller was built, never from input (BP-031). **Absent** on a cancel that
+   * named no source: a cascade, a substrate write-back, an older row.
+   */
+  cancelledVia: z.enum(["tool", "action"]).optional(),
+  /**
+   * The row was stored `blocked` and read as `held` (FIX-2080, BP-030). Set
+   * only at the read boundary, and persisted with the row when it is next
+   * written; a release clears it. Such a row may have started before it was
+   * blocked, and a release alone is how it runs again; no current path holds
+   * a row that has started (FIX-2081).
+   */
+  heldFromBlocked: z.literal(true).optional(),
   error: z.string().optional(),
   feedback: z.string().optional(),
 
@@ -364,25 +407,47 @@ export const taskSchema = z.object({
   createdBy: z.string().optional(),
 
   /**
-   * Set when this row is an **ask**: a turn filed it and parked until it ends
-   * (FIX-1816). `gateId` names the gate the asking turn parks on, derived from
-   * this row, so it is unique within the conversation; `deadline` is when the
-   * ask times out (epoch ms), the same instant the gate expires.
+   * The row's **wait slot**: a request is waiting on this row's ending
+   * (FIX-1816; one wait per row since FIX-2082). `gateId` names the gate the
+   * waiting request parks on, unique within its session; `deadline` is when
+   * the wait resumes with the row still running (epoch ms); `requestId` is the
+   * waiting request, server-written.
    *
-   * Written once, in the write that files the row, by the ask path only. Never
-   * a model-facing field: the task tools build a row's init field by field.
-   * **Absent** on every row that is not an ask (BP-030).
+   * Taken when a wait starts, in one conditional write that refuses a second
+   * taker (`TaskCollectionRef.markWait`), and never at filing. At the deadline
+   * the slot **lapses** (`lapsed`) rather than clears: an ending written while
+   * the request that waited still runs is held for it, and that request's next
+   * read of the row is its delivery (`releaseWait` hands one it never read to
+   * the filer's notice). Never a model-facing field.
+   *
+   * **Absent** on every row nobody waits on (BP-030). A slot written by a
+   * filing before FIX-2082 has no `requestId` and reads as live, as it did. A
+   * row stored before the rename carries it as `ask`; {@link withMigratedWait}
+   * reads that as this.
    */
-  ask: z
+  wait: z
     .object({
       gateId: z.string(),
       deadline: z.number(),
+      /** The waiting request (FIX-2082). Absent on a slot a filing wrote before it. */
+      requestId: z.string().optional(),
+      /** The deadline passed with the row still open (FIX-2082): nobody is parked on it now. */
+      lapsed: z.literal(true).optional(),
+      /**
+       * The waiting request is a plan's drain, on a row it handed to another
+       * session: written by the drain's own wait, never from
+       * input, and kept while the slot is lapsed, so `getTask`'s wait refuses
+       * the row (`wait_on_plan_step`) rather than take the slot the drain
+       * waits with. **Absent** on every other slot, and on a drain's slot
+       * written before it, which its next round marks (BP-030).
+       */
+      drain: z.literal(true).optional(),
     })
     .optional(),
 
   /**
-   * The asking turn is owed its answer: written in the same write that ends an
-   * asked row (`ask` set), whoever ends it, and cleared once the turn has its
+   * The waiting turn is owed its answer: written in the same write that ends a
+   * waited-on row (`wait` set), whoever ends it, and cleared once the turn has its
    * answer (FIX-1816). A touch of the board replays it by resuming the parked
    * turn, so an ending that lands while nothing is listening, or a resume lost
    * to a restart, is never lost.
@@ -394,7 +459,80 @@ export const taskSchema = z.object({
   resumeOwed: z.boolean().optional(),
 
   /**
-   * The ask on this row is over (its turn was stopped, or it timed out) but
+   * What keeps this running task open while no worker holds it (FIX-2077 D1):
+   * `"wait"`, its own request is suspended (a stop for a person, which the
+   * row's suspension hold in `holds` mirrors, or any other: a webhook, a
+   * call); `"filed"`, work it filed that still holds it. Only on an
+   * `in_progress` row. A waiting row has no lease, so the reclaim leaves it
+   * alone: that task is never run again by a lapse. `"steer"`, a steer no
+   * request has taken (FIX-2086 D2): the turn owed for it is on its way, with
+   * no lease. The request admitted for it next clears it and starts a lease;
+   * every ending, and every claim, clears it.
+   *
+   * Not FIX-2080's `held`, which is a status before a start, nor `holds`,
+   * which says what a person holds the row on. Server-written by the claim
+   * gate (`setWaitingOn`), never by a caller. **Absent, or `null`, reads as
+   * waiting on nothing** (BP-030). `"queued"`, which a row stored while a
+   * queued message held it open carries, reads as `"filed"`: its request had
+   * answered (the retired-shape map's `queued` entry).
+   */
+  // Only the retired-shape read drops a legacy row's lease: a bare parse keeps
+  // it, and every src read of a stored row goes through `withRetiredShapes` first.
+  waitingOn: z
+    .preprocess((value) => (value === QUEUED_WAIT ? "filed" : value), z.enum(["wait", "filed", "steer"]).nullable())
+    .optional(),
+
+  /**
+   * What holds the task on its row (FIX-2133 D2): its questions and confirms
+   * (`source.kind: "row"`), and the mirror of a task run's stop for a person
+   * (`"suspension"`), oldest first. *Open holds* (`openHolds`) is the one
+   * predicate every reader asks: the claim never takes a row with one, the row
+   * settles with one only by cancel, and the Inbox lists a row's open
+   * `actor: "user"` holds. Before its start a held row is `pending`; midway,
+   * `in_progress` with no lease. A cancel closes every hold.
+   *
+   * Server-written by the collection's one hold write (`collection/holds`),
+   * never by a caller. **Absent** on a row nothing has held.
+   */
+  holds: z.array(taskHoldSchema).optional(),
+
+  /**
+   * The row's turn generation (FIX-2133 D3): advanced by every claim of the
+   * row, a same-attempt re-entry's included, and carried on the claim ticket,
+   * so a turn's late write never lands after its successor's claim. **Absent
+   * reads as 0**, a row never claimed.
+   */
+  turn: z.number().int().nonnegative().optional(),
+
+  /**
+   * The last open row hold of a running task closed (FIX-2133 D3): it owes one
+   * more turn on its same attempt, with no lease. The claim takes it, using
+   * no attempt, and clears it in the claim's write; a wake only starts that
+   * sooner. Not FIX-2086's `waitingOn: "steer"`, which keeps its own meaning.
+   * Server-written. **Absent** on every other row.
+   */
+  turnOwed: z.literal(true).optional(),
+
+  /**
+   * The turn generation that asked questions midway (FIX-2133): written by
+   * the midway question, so the request working that turn may not stop for the user and
+   * never settles, whether its questions are answered yet or not, across a
+   * resume too. A later turn's claim leaves it behind (its generation is
+   * newer). Server-written. **Absent** until a turn asks.
+   */
+  askedInTurn: z.number().int().nonnegative().optional(),
+
+  /**
+   * The tenant and organization the filing request ran under, from its
+   * verified identity (FIX-2133 D1), beside the user in `createdBy`. The board's
+   * `updateTask` reaches a row's holds only for a caller in the same user,
+   * tenant and org. Server-only (`SERVER_ONLY_TASK_FIELDS`). **Absent** on a
+   * row filed with neither.
+   */
+  filedUnder: z.object({ tenantId: z.string().optional(), orgId: z.string().optional() }).optional(),
+
+  /**
+   * The wait on this row is over (its turn was stopped, or it timed out) but
    * the cancel that should have ended the row failed (FIX-1844). A touch of
    * the board pays it by cancelling the row. Whatever ends the row pays it,
    * in that ending's write, and owes the turn no resume: nobody waits.
@@ -405,34 +543,89 @@ export const taskSchema = z.object({
   cancelOwed: z.boolean().optional(),
 
   /**
-   * The row is recorded but not dispatched (FIX-1875): written down, with its
-   * owner, and not to start until something dispatches it. The substrate's
-   * claim admission refuses such a row, so no board, dispatcher or row action
-   * claims it, whichever drains the collection. Cleared only by
-   * `TaskCollectionRef.dispatch`.
+   * A cascade is owed for this row's ending (FIX-2080 D2): written in the
+   * same write as the ending, so a crash between the ending and the cascade
+   * leaves it owed, not lost. Covers both cascades: the open dependents of a
+   * failed or cancelled row on this board, and the open tasks a task filed
+   * (its board's `cascadeFiled`, for a failure, a cancel or a retry). `due`
+   * is the write + {@link CASCADE_DUE_MS}: the ending's own pass pays it at
+   * once, and a touch of the board pays it once past due. Cleared by the pass
+   * that paid it.
    *
-   * Present only when true. **Absent means ready** (BP-030), so every row
-   * stored before this mark existed starts as it did. Top level and
-   * server-written for `abandonments`' reason (BP-031): it decides whether a
-   * row starts, so no caller-patchable surface reaches it.
+   * Top level and server-written for `abandonments`' reason (BP-031): it
+   * drives cancels, so no caller-writable surface reaches it. **Absent reads
+   * as not owed** (BP-030).
    */
-  undispatched: z.boolean().optional(),
+  cascadeOwed: z
+    .object({
+      due: z.number(),
+      /**
+       * When the ending that owes it was written. A late payment cancels only
+       * what was filed by then: a retry's next attempt files under the same
+       * parent. **Absent on a debt written before it** (BP-030): read with
+       * `cascadeEndedAt`.
+       */
+      endedAt: z.number().optional(),
+    })
+    .optional(),
 
   /**
-   * The call that dispatched this row: the logical id of the tool call or
-   * action (FIX-1875). Written by `dispatch` in the same write that clears
-   * `undispatched`, or with the row when a dispatch files it ready, so the
-   * same call replayed after a crash finds its own write and answers as the
-   * first call did. **Absent** on every row no dispatch filed or readied
-   * (BP-030).
+   * Who filed this row (FIX-2078): the session whose request filed it, stamped
+   * at filing from the request's server-set identity, never from caller input
+   * (BP-031). A follow-up copies its root's, so the filer is the one that
+   * filed the work, not the session a follow-up was typed in. Where its ending
+   * is delivered. Its flow is read from the session's own record when needed.
+   * **Absent** on a row filed before it (BP-030): a composing layer may name a
+   * fallback, and with none its notice is settled undeliverable.
+   *
+   * `requestId` is the request that filed it, when that request runs in the
+   * filer's session (FIX-2123), from the engine's request identity: the row's
+   * notice waits until that request ends, so a wait in it reads the ending
+   * first. Absent on a row filed before it, and on a follow-up filed outside
+   * the filer's session: its notice is admitted at once, as before.
    */
-  dispatchCall: z.string().optional(),
+  filer: z.object({ sessionId: z.string(), requestId: z.string().optional() }).optional(),
+
+  /**
+   * The task whose ending cancelled this row (FIX-2080): set by a cascade's
+   * cancel, server-written, so whatever reports the cancel names its cause.
+   * **Absent** on every row no cascade cancelled (BP-030).
+   */
+  causedBy: z.string().optional(),
+
+  /**
+   * A payload the code that filed the row wrote with it, for whatever runs the
+   * row: which entry and session it goes to, and what that entry reads. Written
+   * once, in the write that files the row, by a caller filing through the ref.
+   * No task tool and no update reaches it, so a model can neither set nor
+   * change it, the reason `metadata` (model-writable through `updateTask`)
+   * can't carry it (BP-031). Packed to the worker as `TaskWorkerInput.sealed`;
+   * `TaskFilter.sealed` matches on its plain values. **Absent** on every row
+   * filed without one (BP-030).
+   */
+  sealed: z.record(z.unknown()).optional(),
 
   createdAt: z.number(),
   updatedAt: z.number(),
   startedAt: z.number().optional(),
   completedAt: z.number().optional(),
 });
+
+/**
+ * A stored row with its wait mark read under the current name: a row written
+ * before the rename carries `ask` where it now carries `wait`, and reads as
+ * waited on all the same (BP-030). The one reader of that mark: both backings'
+ * read boundaries and the parse paths call it, so no consumer sees the old
+ * name. A row with no old mark is returned as-is, so the common path
+ * allocates nothing.
+ */
+export function withMigratedWait<T>(row: T): T {
+  if (row === null || typeof row !== "object") return row;
+  const stored = row as Record<string, unknown>;
+  if (stored.ask == null) return row; // retired-name-refusal: WR-8, a row stored before the rename
+  const { ask: legacy, ...rest } = stored;
+  return (stored.wait != null ? rest : { ...rest, wait: legacy }) as T;
+}
 
 /**
  * Generic Task type. Pattern code typically narrows `TInput` / `TOutput`
@@ -458,7 +651,7 @@ export type TaskClaimIdentity = NonNullable<
   z.infer<typeof taskSchema>["claimedBy"]
 >;
 
-/** The run link a handed-off attempt writes onto its task (FIX-1668) — see {@link taskSchema}'s `run`. */
+/** The run link a dispatched attempt writes onto its task (FIX-1668) — see {@link taskSchema}'s `run`. */
 export type TaskRunLink = NonNullable<z.infer<typeof taskSchema>["run"]>;
 
 /** One entry in {@link taskSchema}'s `writeLog` — a caller's write id and the revision it committed at. */

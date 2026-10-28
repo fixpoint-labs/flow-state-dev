@@ -50,13 +50,14 @@ import {
   acquireLock,
   localWorkspaceHost,
   releaseLock,
+  WorkspaceRefusedError,
   type IgnoredDirectory,
   type WorkspaceHost,
 } from "@flow-state-dev/workspace";
 import { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE, isAskMarkerPath } from "./ask";
 import { DERIVED_IDENTITY, LOCK_SUFFIX, OWNED_SEGMENT } from "./identity";
 
-export { isStrictlyInside, sleep } from "@flow-state-dev/workspace";
+export { isStrictlyInside } from "@flow-state-dev/workspace";
 
 /** Where checkouts and their lock files live, and what they are cut from. */
 export interface WorkspaceConfig {
@@ -183,15 +184,9 @@ export function assertSafeSegment(label: string, value: string): string {
   return canonicalSegment(value);
 }
 
-/** The bare key prefix covering everything kept about one issue-phase. */
-export function issuePhasePrefix(issue: string, phase: string): string {
-  return `${assertSafeSegment("issue", issue)}/${assertSafeSegment("phase", phase)}/`;
-}
-
 /**
- * Hex characters of a {@link hashKeySegment}: 64 bits. Where a counter is
- * unavailable (the ask step commits no state), the hash is the row's identity,
- * and the width is what keeps two different texts off one row.
+ * Hex characters of a {@link hashKeySegment}: 64 bits, the width that keeps
+ * two different texts off one key.
  */
 const KEY_HASH_LENGTH = 16;
 
@@ -587,7 +582,7 @@ export const ASK_MARKER_IGNORED: IgnoredDirectory = {
   rule: ASK_MARKER_IGNORE_RULE,
   guards: isAskMarkerPath,
   why:
-    "A run writes the question it needs answered to a file named for its attempt inside " +
+    "A run writes the question it needs answered to a file named for its attempt and run inside " +
     "that directory, and the coding agent's `git add -A` would commit it to the branch and " +
     "the pull request.",
 };
@@ -595,8 +590,9 @@ export const ASK_MARKER_IGNORED: IgnoredDirectory = {
 /**
  * The workspace host a fixed repository runs through: `sourceRepo` is a
  * repository on this machine the operator named, so the host cuts worktrees
- * from it directly, keeps every run's branch in it, and reaches no remote.
- * The run source is constant.
+ * from it directly and keeps every run's branch in it. It reaches only the
+ * base's upstream, to cut a new branch from the newer of the two. The run
+ * source is constant.
  */
 export function hostForConfig(config: WorkspaceConfig, now: () => number = Date.now): WorkspaceHost {
   // Absolute, because the host takes only an absolute path as a repository on
@@ -619,8 +615,12 @@ export function hostForConfig(config: WorkspaceConfig, now: () => number = Date.
  * Provisioned through the workspace host (`@flow-state-dev/workspace`), which
  * runs every git command: idempotent, never resets, forces or discards work,
  * one budget for the whole operation (`provisionTimeoutMs`, on `now`'s clock),
- * and a checkout whose branch was deleted, switched, or cut from another
- * repository is refused rather than recreated. The checkout is exactly
+ * and a checkout whose branch was deleted or that was cut from another
+ * repository is refused rather than recreated. A checkout a run switched to
+ * another branch is moved back onto the run's branch, keeping what the run made
+ * on the other, so the attempt commits where the prompt says. One left there
+ * with uncommitted changes is refused (`checkout-moved`): those changes are the
+ * run's to commit, stash or discard. The checkout is exactly
  * {@link checkoutPathFor}'s path and the branch lives in `sourceRepo`.
  */
 export async function provisionCheckout(
@@ -633,6 +633,9 @@ export async function provisionCheckout(
     { kind: "repo", repo: resolve(config.sourceRepo), baseRef: config.baseRef },
     { place: placeFor(location), branch, ignored: ASK_MARKER_IGNORED },
   );
+  if (place.repo?.offBranch !== undefined) {
+    throw new WorkspaceRefusedError("checkout-moved", place.repo.offBranch.message);
+  }
   return { path: place.cwd, branch, created: place.repo?.created ?? false };
 }
 

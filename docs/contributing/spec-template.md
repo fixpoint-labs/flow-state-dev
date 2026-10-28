@@ -1,35 +1,33 @@
-# Spec template — one directory, five required documents, retained artifacts
+# Spec template — one directory, two documents, retained artifacts
 
-A spec has three readers with different needs, so it is not one document. It is a directory,
-`specs/issues/<ISSUE-ID>/`, on branch `spec/<ISSUE-ID>`, holding:
+A spec settles **direction**: the goal, what changes and for whom, the decisions that shape
+it, and what it does to the code that's already there. It does not plan the build. It is a
+directory, `specs/issues/<ISSUE-ID>/`, on branch `spec/<ISSUE-ID>`, holding:
 
 | File | Reader | Reads it to | Budget (prose words, fences excluded) |
 |---|---|---|---|
-| **`SPEC.md`** | The product owner | See the goal and how we'll know it's met, who feels the change, and sign off | ~850 |
-| **`DECISIONS.md`** | Whoever asks *why* — the owner on demand, the reviewer, the implementer when a rule bites | See what was considered, what was chosen, what lost, and what each choice locks in | ~900 |
-| **`BUSINESS-RULES.md`** | A human reviewer, then the implementer | Check the cases: when → then → proved by | ~900 |
-| **`PLAN.md`** | The implementing agent | Build it: surfaces, order, checks, pinned names, guardrails | ~1,000 |
-| **`DOCS.md`** | The reader of the eventual documentation, then the implementer | Review actual proposed prose and examples, with destination operations | Only changed material |
-| **`EVOLUTION.md`** (conditional) | The reviewer and implementer | Trace retained, amended or superseded parts of earlier designs | Only relevant lineage |
+| **`SPEC.md`** | The product owner, then everyone | See the goal and how we'll know it's met, who feels the change, what it does to what's already here and the debt, and sign off | ~1,000 |
+| **`DECISIONS.md`** | Whoever asks *why* — the owner on demand, the reviewer, the implementer when a decision bites | See what was considered, what was chosen, what lost, what each choice locks in, and the review notes left for the implementer | ~900 |
 | **`figures/*.svg`** | Everyone | Look at the pictures where position is the content | — |
 
-The set is longer than the one-file spec it replaces, and that is honest: **no single reader
-reads all of it.** The product owner reads the PR body and `SPEC.md`, and opens `DECISIONS.md`
-when a sign-off line isn't obvious. The implementer reads `BUSINESS-RULES.md` and `PLAN.md`. A
-reviewer reads whichever document the *look here* block points them at. Each document is written
-for its reader alone and points at the others rather than repeating them.
+**The implementer plans the build.** There is no plan document, no list of rules, and no docs
+draft. Implementation runs on Opus, reading the approved spec against the real code, and it
+works out the order, the file-level changes, the tests, the edge cases, the docs prose and the
+PR split itself ([`issue-implement`](../../.agents/skills/issue-implement/SKILL.md)). A plan
+written before the code is read goes stale, and it pulls review down to an altitude the spec
+can't settle. What the spec owes the implementer is a direction it can't misread: the goal, the
+decisions, and the debt verdict it must not quietly break.
 
 **Every document opens on the same nav line**, directly under its H1, with the current document
 bold and unlinked:
 
 ```md
-**Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)
+**Spec** · [Decisions](DECISIONS.md)
 ```
 
-A reader may land on any document from a PR or Linear link. The nav line, on the third
-line of each file, links the siblings; append `[Evolution](EVOLUTION.md)` only when it
-exists. Authored `assets/` and `poc/<experiment>/` stay beside `figures/` under this owner.
-The storage, authority and lifecycle contract is
+A reader may land on either document from a PR or Linear link. Authored `assets/` and
+`poc/<experiment>/` stay beside `figures/` under this owner. The storage, authority and
+lifecycle contract is
 [`orchestration.md` → Spec retention and authority](orchestration.md#spec-retention-and-authority).
 
 **The goal follows the problem, before any solution.** Right after the people table,
@@ -38,20 +36,26 @@ we'll know it's met, and the exact check that proves it, with a control that mus
 body carries the same block in the same place. A reader who stops there knows what done means
 and how it will be proved. See [`SPEC.md` → The goal](#the-goal-and-how-well-know-its-met).
 
-**The pictures carry the meaning; the prose reads them.** The spec, decisions and rules open on
-a table or figure, and every figure has one sentence under it saying what to look at. What a
-figure is, which each document carries, and how one is drawn and checked is canonical in
-[`spec-figures.md`](spec-figures.md). The plan carries no figures, on purpose: it is written for
-an agent, which reads tables and a DAG faster than a picture.
+**The debt is stated, never implied.** `SPEC.md` names what already exists that the change
+touches or overlaps, what it removes, what it adds that someone will later call debt, and the
+net. Every package addition names the existing piece it considered
+([`orchestration.md`](orchestration.md#compose-existing-pieces)). The net is a sign-off line. See
+[`SPEC.md` → What's already here, and the debt](#whats-already-here-and-the-debt).
+
+**The pictures carry the meaning; the prose reads them.** Both documents open on a table or
+figure, and every figure has one sentence under it saying what to look at. What a figure is,
+which each document carries, and how one is drawn and checked is canonical in
+[`spec-figures.md`](spec-figures.md).
 
 **Authored in one pass**, published as one spec PR opened ready for review, one approval gate
 that signs off the whole set. See `issue-spec` Step 6.
 
 **Approval means directionally correct** — the problem is real, the approach will work, the
-decisions are the ones we want. Not a finished design, and never held open until nothing is left
-to nitpick. Below-the-bar feedback goes to `PLAN.md → Notes from review` for the implementer. The
-bar, the dispositions, and the two-round budget are canonical in
-[`orchestration.md`](orchestration.md) → "Spec review: the bar and the convergence rule".
+decisions are the ones we want, and the debt verdict is honest. Not a finished design, and never
+held open until nothing is left to nitpick. Below-the-bar feedback goes to
+`DECISIONS.md → Notes from review` for the implementer. The bar, the dispositions, and the
+two-round budget are canonical in [`orchestration.md`](orchestration.md) → "Spec review: the bar
+and the convergence rule".
 
 Approval precedes merge; required checks and required review-thread policy still apply.
 Implementation starts only after confirmed merge. See
@@ -67,20 +71,21 @@ implementation — see [`orchestration.md`](orchestration.md) → "Which issues 
 that fits on one screen and needs no research uses
 [`agent-brief-template.md`](agent-brief-template.md) instead; that brief *is* the contract.
 
-**Where the old sections went.** Specs written before this shape were one file in two parts.
-Everything they carried still exists; it moved to the document whose reader wants it:
+**Where the older documents went.** Specs retained before this shape carry five documents, and
+sometimes a sixth. Leave them as they are. An implementer reads every document such a set
+carries as input, and an open review PR in that shape is not re-drafted into this one.
 
 | Was | Now |
 |---|---|
-| §1 Problem · §2 Solution · §5 What using it looks like | `SPEC.md` — the people table, the figures, the file-shaped surface as a diff |
-| §6 Decisions · §3 Tradeoffs & alternatives · §12 Open questions & settled claims | `DECISIONS.md` — the cards, *considered and dropped*, *open / settled*, *how it got here*; prior-design lineage goes in conditional `EVOLUTION.md` |
-| §9 Edge cases & error handling · the acceptance criteria | `BUSINESS-RULES.md` |
-| §4 Focus practices | `PLAN.md → Guardrails`, each with a *because* |
-| §7 Technical design · §8 Sequence & PR plan · §10 Testing · §13 Review notes | `PLAN.md`; §11 Docs plan becomes concrete proposed prose in `DOCS.md` |
-| The explainer | Retired. Its panels became the figures in `SPEC.md` and `DECISIONS.md` |
+| `PLAN.md` — surfaces, sequence, checks, the PR plan, the sketch, *at implement time* | The implementer's, worked out against the code. The goal check stays in `SPEC.md` |
+| `PLAN.md` → guardrails, pinned names | A decision card's *Locks in*, or a line in `DECISIONS.md` → *Decided, not asked* — only the ones that hold the direction |
+| `PLAN.md` → notes from review, the POC line, follow-ups | `DECISIONS.md` → *Notes from review* and *Settled*; follow-ups are filed issues named in the debt table |
+| `BUSINESS-RULES.md` — the cases | A case a person sees is a row in the people table. The rest are the implementer's tests |
+| `DOCS.md` — proposed prose | One *docs* line in `SPEC.md` → *What changes*. The prose is written at implementation, against what shipped |
+| `EVOLUTION.md` — predecessor designs | `SPEC.md` → *What's already here*, one row per prior decision the change keeps, amends or supersedes |
 
 **How to read the rest of this file.** Every document below is its instruction followed by a
-worked example. The examples are all the same issue — FIX-775, resuming an SSE stream after a
+worked example. The examples are the same issue — FIX-775, resuming an SSE stream after a
 disconnect — so the template reads end to end as a spec set.
 
 **Copy the shape, not the content.** FIX-775 is a fiction, reconstructed after the fact: resume
@@ -88,8 +93,8 @@ already ships in some form (`docs/architecture/streaming.md` → "Resume Semanti
 shapes in the diff are real, because a surface that doesn't compile teaches the wrong thing; the
 outcomes are *what the spec proposes*, not what the code does today — which is true of every
 spec, since a spec describes behaviour that isn't built yet. Don't verify the example against
-`main`. Everything else it names — helpers, modules, removal steps — is invented so the sections
-read concretely. Check the code before carrying a symbol out of it.
+`main`. Everything else it names — helpers, modules, predecessor specs, follow-up issues — is
+invented so the sections read concretely. Check the code before carrying a symbol out of it.
 
 ---
 
@@ -101,7 +106,7 @@ it says the same thing on every spec PR, which is why it sits **below the fold**
 collapsed markdown normally, a human skips it in one line. The description's visible half is
 authored per PR. Layout and rules: [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md).)*
 
-This is a **direction set**, not an implementation. Reviewing it well means
+This is a **direction set**, not an implementation and not a build plan. Reviewing it well means
 answering one question: **is this the right approach?**
 
 **In scope to challenge:**
@@ -111,27 +116,28 @@ answering one question: **is this the right approach?**
   named check fail if the goal were not met?
 - The approach — will it work, does it fit the architecture and `docs/philosophy.md`?
 - Any numbered **decision** in `DECISIONS.md` — that's the sign-off surface.
-- A case `BUSINESS-RULES.md` misses, or a rule that would **invalidate** the design.
+- **The debt** in `SPEC.md` → *What's already here, and the debt* — an existing primitive,
+  method or prior design the change overlaps and doesn't name; something it adds that is debt
+  and isn't listed; a net verdict the tables don't support.
+- **Builds on / Adds** in that same section — an Adds item that does not name the existing
+  piece it considered, or that is a second mechanism for something we already have
+  ([`orchestration.md`](orchestration.md#compose-existing-pieces)).
+- A case a person would hit that the people table misses, when it would **invalidate** the
+  design.
 - Scope — a deliverable that shouldn't ship, or one that's missing.
-- The reader-facing promises in `DOCS.md` and their fit with the rules; a missing or
-  misleading lineage claim in conditional `EVOLUTION.md`.
 
 **Out of scope — deliberately unsettled here, and owned by the implementing agent:**
 
-- Names, signatures, file paths, and module layout beyond the few `PLAN.md` pins on purpose.
+- **The build plan.** Order, file-level changes, the test list, the PR split. The set has no
+  plan on purpose: the implementer works it out against the real code.
+- Names, signatures, file paths, and module layout, beyond the few a decision locks.
 - Local structure: which helper, how a function is decomposed, error-message wording.
+- Edge cases that don't change the approach. The implementer's tests own them.
+- Documentation wording. It is written at implementation, against what shipped.
 - Micro-optimizations and style preferences.
-- Test names and internal test structure (the *behaviours* are the rules; the tests are not).
-- Anything `PLAN.md` left open on purpose — it is directional by design, and a gap at that
-  altitude is intended, not an omission.
 - **The figures, at the pixel level.** A figure is right when it reads right. A misplaced label
   or a colour you'd have chosen differently is not a finding; a figure that shows a shape the
   decisions don't say is.
-- **The solution sketch, at the line level.** `PLAN.md` may include a rough pseudocode sketch
-  showing the *shape* of the proposed solution. It is knowingly incomplete, is not real code,
-  and is not what will ship. **Review it for directional viability only.** Do **not** report
-  that it lacks error handling, omits edge cases, names things that don't exist in the repo, or
-  wouldn't build: all of that is true on purpose.
 - **POC implementation polish.** Experiments under the owning spec's `poc/` are retained,
   not production code. Read them for directional evidence, not production completeness.
   Their isolation from production/default discovery and absence of secrets or generated
@@ -141,13 +147,14 @@ answering one question: **is this the right approach?**
 between a useful review of this document and a long one. Volume is not signal here — a single
 finding above the line is worth more than twenty below it.
 
-Feedback in the second list is welcome and gets **recorded verbatim in `PLAN.md → Notes from
-review`** for the implementer to weigh against real code. It will not be argued with, and it
-will not be folded into the design prose. Please don't re-raise it: one mention is enough.
+Feedback in the second list is welcome and gets **recorded verbatim in
+`DECISIONS.md → Notes from review`** for the implementer to weigh against real code. It will not
+be argued with, and it will not be folded into the design prose. Please don't re-raise it: one
+mention is enough.
 
-**The one exception is the sketch and the POC.** Line-level feedback on either is *dropped*, not
-recorded — there is nothing for an implementer to weigh about code that isn't shipping. Feedback
-about their **direction** is not line-level and is treated like any other above-the-bar finding.
+**The one exception is the POC.** Line-level feedback on it is *dropped*, not recorded — there
+is nothing for an implementer to weigh about code that isn't shipping. Feedback about its
+**direction** is not line-level and is treated like any other above-the-bar finding.
 
 Direction approval does not waive merge-time required checks, approvals or thread policy.
 Optional comments do not require another design round merely to reach zero comments.
@@ -168,10 +175,11 @@ The people table from `SPEC.md`, cut to five rows. Then **the goal**, in its one
 the *how we'll know* figure (a mermaid fence, pasted as text) with its sentence, and one line
 naming the goal check and the control that must fail. The *what changes* figure, as a pinned raw
 image ([`spec-figures.md`](spec-figures.md) → "In the PR body"), with its one sentence. One line
-on **how**. Then **Sign off**: the decisions, hardest first, each a subheading stating it, its
-trade-off figure pinned ([`spec-figures.md`](spec-figures.md) → "The trade-off"), and one line
-naming the row it came down to and *If wrong:*, with the one to weigh named and a pointer to the
-decisions doc. Then
+on **how**. Then **Sign off**: the goal and the debt, unnumbered, each with *If wrong:*; then the
+decisions, hardest first, each a subheading stating it, its trade-off figure pinned
+([`spec-figures.md`](spec-figures.md) → "The trade-off"), and one line naming the row it came
+down to and *If wrong:*, with the one to weigh named and a pointer to the decisions doc. Then
+one line of **analysis**: the verdict and what it changed. Then
 **Reviewers · look here**: one to three items, each naming where and the question, plus what is
 deliberately not here. Then the links line: the document set, Linear issue, epic, what
 it builds on, and that merge follows approval and required checks. Then the collapsed contract.
@@ -216,6 +224,9 @@ it builds on, and that merge follows approval and required checks. Then the coll
 > **The goal, at that size.** If wrong: we ship a resume the user can't feel, or hold the issue
 > open for a need it was never meant to meet.
 >
+> **The debt: net down.** The client's dedupe helper goes. One parse point for two encodings
+> of the cursor is added. If wrong: a second cursor format someone keeps in step forever.
+>
 > ### The cursor rides both a header and a query param; the query param wins · D1
 >
 > <img src="https://raw.githubusercontent.com/<owner>/<repo>/<sha>/specs/issues/<ISSUE-ID>/figures/d1-cursor.svg" width="940" alt="Header and query param, chosen, beside header only. Decides it: a proxy that strips the header. Price: two entry points. Locks in a public format in two places; flips if no proxy strips the header" />
@@ -239,21 +250,23 @@ it builds on, and that merge follows approval and required checks. Then the coll
 > **If wrong:** the server holds per-client state, and something has to expire it.
 >
 > **Open: none.** D1 is the one to weigh. Reasoning and what lost:
-> [DECISIONS.md](DECISIONS.md). The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
+> [DECISIONS.md](DECISIONS.md).
+>
+> **Analysis:** right approach. Nothing changed. [DECISIONS.md → Analysis](DECISIONS.md#analysis).
 >
 > ## Reviewers · look here
 >
 > - **Decisions → D1.** Is one encoding plus a documented proxy requirement better than two
 >   encodings that must stay in step?
-> - **Plan → where the filter sits.** The serialization seam, or lower in the store's iterator?
->   A wrong answer is a rewrite, not an adjustment.
-> - **Rules → BR-7.** Delivered sequence numbers are increasing, not contiguous. Easy to test
->   wrongly.
+> - **Spec → what's already here.** Removing the client's dedupe helper: does anything outside
+>   the UI rely on it hiding duplicates?
+> - **Decisions → decided, not asked.** The filter sits at the serialization seam, not in the
+>   store's iterator. A wrong answer is a rewrite, not an adjustment.
 >
 > **Not here:** client reconnect *policy* (backoff, retry limits) — a named non-goal.
 >
-> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
-> · Linear FIX-775 · no epic · merges after human approval and required checks
+> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · Linear FIX-775 · no epic · amends FIX-701 D2
+> · merges after human approval and required checks
 >
 > <details>
 > <summary><b>How to review this</b> — altitude, what's in scope, what's deliberately unsettled</summary>
@@ -263,43 +276,43 @@ it builds on, and that merge follows approval and required checks. Then the coll
 > </details>
 > ```
 
-Two things about that body. **The sign-off is the compact form** of
-[`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) → §3: a ratified decision is its heading,
-its trade-off figure, and one line, because the reader is confirming a direction, not weighing a
-fork. The figure shows what the call came down to; the argument stays in `DECISIONS.md`. **A
-live fork is not compact**: it gets its trade-off figure, the recommendation marked, and the full
-six-part shape from [`asking-for-decisions.md`](asking-for-decisions.md), under its own heading,
-above the ratified ones. Zero to two per spec; more than that and the direction isn't ready for
-review.
+The sign-off is the compact form of [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) → §3;
+a live fork is never compact and takes the full shape from
+[`asking-for-decisions.md`](asking-for-decisions.md).
 
 ---
 
-## `SPEC.md` — what changes, for whom
+## `SPEC.md` — what changes, for whom, and what it costs the code
 
 The document the product owner reads. It answers *who feels this, what do they see before and
-after, and what am I signing*, in observable behaviour with no file paths. Sections, in order:
+after, what happens to what we already have, and what am I signing*, in observable behaviour with
+as few file paths as the debt section allows. Sections, in order:
 
 1. **People, before and after** — a table: someone who… · today · after. Three to six rows.
    Each row is a person doing one thing and what they see. This table is the spec's problem
-   statement and its solution statement at once, and the PR body cuts it to five rows. It
-   comes first: nothing sits between the nav line and it.
+   statement and its solution statement at once, and the PR body cuts it to five rows. A case
+   that changes what a person sees — a stale input, a finished request, a missing option — is a
+   row here, not a rule elsewhere. It comes first: nothing sits between the nav line and it.
 2. **The goal, and how we'll know it's met** — the section below this list says what it owes.
    It sits right after the problem because every section after it is judged against it.
 3. **What changes** — the one figure, with its sentence. Then any surface a person edits, **as
    a diff**: a config file, a worker file, a call site. The diff is the highest-density form we
-   have for a file-shaped surface, and it is what a person will actually type.
+   have for a file-shaped surface, and it is what a person will actually type. Then **one docs
+   line**: the reader-facing pages that change (create, update or remove, by destination), or
+   *no documentation impact* with the reason. "Docs later" is not a reason.
 4. **Optionally, one more figure** where a quantity carries the argument — what a turn costs,
    what a request carries — and **one mermaid** for the mechanism as a path through layers.
 5. **What stays as it is** — the neighbours a reader would otherwise assume changed.
-6. **Sign off** — here, one-liners with no figures; the trade-offs stay beside their cards, and
-   only the PR body pins them (see "The PR body"). **The goal first**, unnumbered, with its *If wrong:*: approval certifies the
-   goal's size as much as the approach. Then the numbered decisions as one-liners linking to
-   their cards, each with *If wrong:*, and the one to weigh named. **Open: none**, or the live
-   forks named.
-7. **The facts line** — kind · packages · size · PR count · epic; sibling links stay on the nav line. Last,
-   for the reason a PR body's links line is last: a reader wants it only after deciding to go
-   deeper, and above the problem it is a label they must read past
-   ([`writing-for-humans.md`](writing-for-humans.md) → "The rule").
+6. **What's already here, and the debt** — the section below this list says what it owes.
+7. **Sign off** — here, one-liners with no figures; the trade-offs stay beside their cards, and
+   only the PR body pins them (see "The PR body"). **The goal first**, unnumbered, with its *If
+   wrong:*: approval certifies the goal's size as much as the approach. **The debt second**,
+   unnumbered: the net verdict, what it adds and removes in a clause, and *If wrong:*. Then the
+   numbered decisions as one-liners linking to their cards, each with *If wrong:*, and the one to
+   weigh named. **Open: none**, or the live forks named.
+8. **The facts line** — kind · packages · size · epic. Last, for the reason a PR body's links
+   line is last: a reader wants it only after deciding to go deeper, and above the problem it is
+   a label they must read past ([`writing-for-humans.md`](writing-for-humans.md) → "The rule").
 
 ### The goal, and how we'll know it's met
 
@@ -348,11 +361,50 @@ goal?* still apply. Replace the figure and table with one line on what proves th
 and why no goal check fits, with the same *control that must fail* where one exists. "No goal
 check" is a statement with a reason, never a blank.
 
+### What's already here, and the debt
+
+The section that lets a reader trust the change doesn't quietly make the codebase worse. It
+has four parts, in order. The compose-existing-pieces rule those parts enforce is
+[`orchestration.md`](orchestration.md#compose-existing-pieces) — do not restate it here.
+
+1. **What's already here** — a table: already here · what this does with it. One row for every
+   existing primitive, method, pattern or prior design the change touches or overlaps, and the
+   treatment: **builds on** · **extends** · **replaces** · **removes** · **leaves alone**. Two
+   kinds of row are owed even when they are uncomfortable:
+   - **Whatever already does this job** — the list `issue-spec` Step 3.5's question 7 produces,
+     across packages, with the closest entry named. "None" is a claim like any other (BP-003):
+     the row carries the searches that found nothing.
+   - **Prior designs** — a retained spec decision the change **keeps**, **amends** or
+     **supersedes in part or whole**, cited by its exact anchor, with what replaces it and what
+     changes for callers. Several predecessors is normal; a dependency is not a supersession,
+     and changing one decision does not supersede a whole spec. When the design has no
+     retained file, cite its real PR or Linear source; never invent a local path.
+2. **Builds on / Adds** — a table, one row per item this spec adds to a package (a hook, a
+   cap, a marker, a record, a path, a public method): **Adds** · **Existing piece considered** ·
+   **Why that doesn't fit, or how this is composed from it**. The Adds list is as short as
+   possible. An empty table is allowed when the spec only removes or extends; "none" still
+   carries the searches. A dedicated [`reuse-review`](../../.agents/skills/reuse-review/SKILL.md)
+   checks each row against the code.
+3. **The debt** — a table with three rows, each a list:
+   - **Removes** — what goes: code, a helper, a second way of doing the job, a special case
+     (tenet 3). A spec that removes nothing says so.
+   - **Adds** — everything a later reader would call debt: a second way to do a job, a
+     compatibility shim or a branch kept for old callers, a special case, a workaround for
+     something upstream, a cleanup deferred. Each with why it is accepted now, and — unless it
+     is permanent by design — the filed issue that pays it. A shim with no issue has no owner
+     once the spec merges. **A second way of doing an existing thing counts here**, even when
+     the Builds on / Adds row argues it is composed — the debt line is where the count lives.
+   - **Leaves** — debt already in the area that this change doesn't pay, with its issue when
+     one exists. Naming it is how a reviewer knows it was seen rather than missed.
+4. **Net** — one line: **down**, **flat** or **up**, and the reason in a clause. This is the
+   debt line on the sign-off. *Up* is allowed; it is never quiet. Any second way of doing an
+   existing thing weights the net toward **up** unless a matching Remove pays it.
+
 > # FIX-775 · Resume a stream after a disconnect
 >
-> **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
+> **Spec** · [Decisions](DECISIONS.md)
 >
-> ## Three people, before and after
+> ## Five people, before and after
 >
 > | Someone who… | Today | After |
 > |---|---|---|
@@ -422,6 +474,10 @@ check" is a statement with a reason, never a blank.
 > + GET …/stream?starting_after=41
 > ```
 >
+> **Docs:** update the streaming overview with a *Resuming after a disconnect* section (the
+> cursor, its precedence, the finished-request boundary), and add one line to the engine
+> README. No new page.
+>
 > ## How it reaches the stream
 >
 > ```mermaid
@@ -434,7 +490,7 @@ check" is a statement with a reason, never a blank.
 >
 > The cursor enters at the HTTP boundary and is applied at the one place items are already
 > serialized. Nothing upstream of that seam knows resume exists. Why that seam and not the
-> store's iterator is [D1](DECISIONS.md#d1)'s neighbour, in the plan.
+> store's iterator is under [decided, not asked](DECISIONS.md#decided-not-asked).
 >
 > ## What stays as it is
 >
@@ -444,11 +500,37 @@ check" is a statement with a reason, never a blank.
 > - Serving a finished response to a client that was never attached. That is a history read,
 >   and it stays the store's job.
 >
+> ## What's already here, and the debt
+>
+> | Already here | What this does with it |
+> |---|---|
+> | Sequence numbers on every item | **Builds on.** Resume reads them; nothing new is numbered |
+> | The stream seam, where items are serialized | **Extends.** The one place the cursor is applied |
+> | The client's dedupe helper | **Removes.** It hides the duplicates this change stops sending |
+> | Anything else that delivers missed items | **None for a live stream.** Searched `resume`, `replay`, `since`, `after` across `packages/`. The store's history read serves finished requests to new readers and stays that way |
+> | FIX-701 D2: recover by replaying the whole response | **Amended**, reconnect delivery only, by [D1](DECISIONS.md#d1). Its no-cursor path is kept ([D3](DECISIONS.md#d3)). Cursor clients must persist the last item ID |
+> | FIX-702's rule that a finished request can't be reattached | **Superseded in part** by [D2](DECISIONS.md#d2), for clients that were attached. Never-attached clients are still refused |
+>
+> | Adds | Existing piece considered | Why it doesn't fit / how composed |
+> |---|---|---|
+> | Two encodings of one cursor (header + query param) | Sequence numbers; the stream seam | Composed: resume reads existing sequence numbers at the existing seam. The second encoding is one cursor, two transports ([D1](DECISIONS.md#d1)), not a second resume |
+>
+> | The debt | |
+> |---|---|
+> | **Removes** | The client's dedupe helper and its tests |
+> | **Adds** | Two encodings of one cursor, a header and a query param, parsed at one point ([D1](DECISIONS.md#d1)). Permanent by design: header-only breaks silently behind a proxy |
+> | **Leaves** | The route layer already parses two older cursor formats. Not touched here; FIX-781 |
+>
+> **Net: down.** One helper and its tests go; one parse point is added.
+>
 > ## Sign off
 >
 > **[The goal](#the-goal-and-how-well-know-its-met), at that size:** nothing repeated and nothing
 > missing, measured on what the client assembled. If wrong: we ship a resume the user can't
 > feel, or hold the issue open for heartbeats it was never meant to deliver.
+>
+> **[The debt](#whats-already-here-and-the-debt), net down:** the dedupe helper goes, one parse
+> point is added. If wrong: a second cursor format someone keeps in step forever.
 >
 > 1. **[D1](DECISIONS.md#d1) · The cursor is `{requestId}:{sequence}`, on `Last-Event-ID` and on
 >    `starting_after`; the query param wins.** If wrong: a public string format we don't
@@ -460,22 +542,22 @@ check" is a statement with a reason, never a blank.
 >    the server holds per-client state, and something has to expire it.
 >
 > **Open: none.** Number 1 is the one to weigh. The full reasoning, what was rejected, and what
-> each locks in is in [DECISIONS.md](DECISIONS.md). The cases the code must satisfy are in
-> [BUSINESS-RULES.md](BUSINESS-RULES.md).
+> each locks in is in [DECISIONS.md](DECISIONS.md).
 >
-> Feature · `engine` + `client` · medium · 1 PR · no epic
+> Feature · `engine` + `client` · medium · no epic
 
-**Size is a count, not an adjective.** The facts line's *medium* is read off `PLAN.md` —
-surfaces, checks, doc surfaces, PR count — and written last. A label written before the plan is
-finished is a guess.
+**Size is a count, not an adjective.** The facts line's *medium* is read off *what changes* and
+the debt table — packages touched, public surfaces changed, things removed — and written last.
+A label written before those are finished is a guess.
 
 ---
 
 ## `DECISIONS.md` — what was considered, what was chosen, what it locks in
 
-The document for whoever asks *why*. It opens on the tree, then carries one card per decision,
-then everything decided without being asked, then what was considered and dropped, then what is
-open or settled, then how the document got here. Sections, in order:
+The document for whoever asks *why*, and the implementer's second stop. It opens on the tree,
+then carries one card per decision, then everything decided without being asked, then what was
+considered and dropped, then what is open or settled, then how the document got here, then the
+review notes left for the implementer. Sections, in order:
 
 1. **The tree** — one mermaid: the issue, its decisions as solid edges, what each rejected as a
    dashed edge with the reason on the label. Solid edges are what the reader is signing.
@@ -483,26 +565,39 @@ open or settled, then how the document got here. Sections, in order:
    with three rows — **Instead of** · **Because** · **Locks in** — then its **trade-off figure**,
    `figures/dN-<slug>.svg`, with the sentence naming the row it came down to
    ([`spec-figures.md`](spec-figures.md) → "The trade-off"), unless the filters sent the card to
-   the engineering block. The PR body pins the same file under the decision's sign-off heading. A second figure only when the decision's mechanism is itself
-   positional (a layer boundary, a grid of moments). **At most three decisions**, only the calls that shape the outcome; each is a
-   business decision or it does not belong here (the filters in
+   the engineering block. The PR body pins the same file under the decision's sign-off heading.
+   A second figure only when the decision's mechanism is itself positional (a layer boundary, a
+   grid of moments). **At most three decisions**, only the calls that shape the outcome; each is
+   a business decision or it does not belong here (the filters in
    [`asking-for-decisions.md`](asking-for-decisions.md) → "What reaches them at all").
    **Write *Locks in* as a consequence**: what we can no longer change cheaply, who is affected,
-   when the bill arrives — never which code would have to move.
-3. **Decided, not asked** — calls that were obvious, or the implementer's, recorded in a line
-   each so nobody re-derives them. A restatement of what the solution does is not one.
+   when the bill arrives — never which code would have to move. A public name the decision
+   fixes is named here; every other name is the implementer's.
+3. **Decided, not asked** — calls that were obvious, or the implementer's but load-bearing for
+   the direction, recorded in a line each so nobody re-derives them. When the change introduces
+   or tightens an invariant — a cap, a guard, a uniqueness rule — its **convergence point** goes
+   here, with every writer that must pass through it, legacy helpers included (tenet 5). A
+   restatement of what the solution does is not one.
 4. **Considered and dropped** — the alternatives that lost, one row each with why. The simpler
    approach considered belongs here even when it lost.
 5. **Open / settled** — a live fork gets the full six-part ask; a claim a POC settled gets the
-   verdict and the evidence link, so the next reviewer can't reopen it blind; a claim still in
-   flight is marked `(POC in flight)`. Omit the section when there is nothing in it and say
-   **Open: none** at the bottom instead.
-6. **How it got here** — one line per meaningful turn, newest last: draft, each review round
+   verdict and the evidence link, so the next reviewer can't reopen it blind, **including when
+   the premise held**; a claim still in flight is marked `(POC in flight)`. Omit the section
+   when there is nothing in it and say **Open: none** at the bottom instead.
+6. **Analysis** — what the [`analysis`](../../.agents/skills/analysis/SKILL.md) pass
+   found before the spec went to review: the date, the watermark it read new factors from,
+   the verdict, one line per objective (the reuse line links *Builds on / Adds*, whose
+   verdicts it reads), and each finding's disposition (folded · recorded · open). Always present, including when the verdict is "right approach"; the next analysis
+   reads its date. See [`orchestration.md`](orchestration.md#analysis-and-review).
+7. **How it got here** — one line per meaningful turn, newest last: draft, each review round
    that moved a decision, each settlement. A round that changed only prose earns no line.
+8. **Notes from review** — below-the-bar spec-PR feedback, verbatim, one line each with a
+   thread link. Inputs for the implementer, not instructions. Omit the section when there are
+   none.
 
 > # FIX-775 · Decisions
 >
-> [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
+> [Spec](SPEC.md) · **Decisions**
 >
 > What was considered, what was chosen, why, and what each choice locks in. Three decisions are
 > the sign-off surface. Everything else here is context for them.
@@ -528,7 +623,7 @@ open or settled, then how the document got here. Sections, in order:
 > |---|---|
 > | **Instead of** | Header only |
 > | **Because** | An intermediary that strips `Last-Event-ID` would silently disable resume, which is worse than carrying two encodings of one value. The SSE spec already defines the header, so the common path adds no public option |
-> | **Locks in** | The format is load-bearing for any client, ours or not, and both entry points have to stay in step. Changing it later is a breaking change to a string we don't validate |
+> | **Locks in** | The format and the name `starting_after` are load-bearing for any client, ours or not, and both entry points have to stay in step. Changing either later is a breaking change to a string we don't validate |
 >
 > ![Where a reconnecting client puts its resume cursor: header and query param, chosen, beside header only. Decides it: a proxy that strips the header. Price: two entry points. A browser client is a tie](figures/d1-cursor.svg)
 >
@@ -571,7 +666,12 @@ open or settled, then how the document got here. Sections, in order:
 > ## Decided, not asked
 >
 > - **The filter sits at the serialization seam**, not in the store's iterator. Nothing upstream
->   learns resume exists. The plan names the seam; the exact function is the implementer's.
+>   learns resume exists, and the finished-request path reuses the same loop over the persisted
+>   log.
+> - **Every producer of a sequence number goes through the one allocator.** It is the
+>   convergence point for "increasing, no duplicates"; two allocators and resume silently skips
+>   items. Delivered numbers are increasing but **not contiguous**: replay legitimately omits
+>   non-replayable events.
 > - **A malformed cursor is ignored, never an error.** Caller-controllable input (BP-031).
 >
 > ## Considered and dropped
@@ -588,6 +688,25 @@ open or settled, then how the document got here. Sections, in order:
 >   three forced reconnects came back in emission order every run. ([thread](https://github.com/o/r/pull/1#discussion_1))
 > - **`Last-Event-ID` survives our proxy** — **REFUTED**: the edge strips it on reconnect. D1
 >   carries the query param because of this. ([thread](https://github.com/o/r/pull/1#discussion_2))
+> - **The seam sees every item with its sequence attached** — **CONFIRMED** by
+>   `poc/resume-seam/`: the filter is one predicate. The premise held; nothing changed.
+>
+> ## Analysis
+>
+> 2026-08-14 · watermark 2026-08-02 (issue filed) · **Right approach.**
+>
+> 1. **Reuse** — `reuse-review`: both *Adds* rows extend existing pieces (the persisted item
+>    log, the sequence allocator); none is new. See
+>    [Builds on / Adds](SPEC.md#whats-already-here-and-the-debt).
+> 2. **Prior art** — the SSE spec's own reconnection model resumes by event id with no
+>    per-client state on the server, and so do the two event-streaming libraries checked
+>    (links in the analysis return). Confirms D3.
+> 3. **Other shapes** — client-side dedupe; weaker, recorded in *Considered and dropped*.
+> 4. **New factors** — 6 issues since the watermark; none touches the stream path.
+> 5. **Necessity** — earns its place: the duplicates are billed tokens, not a cosmetic issue.
+> 6. **Ergonomics** — nothing new to learn: a reconnecting client resumes with no extra code,
+>    and the optional query param uses the name the SSE spec already teaches.
+> 7. **Concerns** — none. Recorded, nothing folded.
 >
 > ## How it got here
 >
@@ -598,199 +717,6 @@ open or settled, then how the document got here. Sections, in order:
 > - **POC settlement** — D1 gained the query param, because the run showed our edge strips
 >   `Last-Event-ID` on reconnect.
 >
-> **Open: none.**
-
----
-
-## `BUSINESS-RULES.md` — the cases, as rules
-
-The document a human reviews for missed cases and the implementer turns into checks. Every rule
-is one row: **when** a person or the system does something, **then** what happens, **proved by**
-which kind of check. Grouped under headings that name the area, not the mechanism. The rows are
-the cases the decisions do *not* already answer — the odd, the hostile, the boundary — plus the
-happy path stated once. A figure sits beside a group when a fence or a grid carries it, with the
-mermaid companion when the figure could be misread. Then the **failure taxonomy** in a paragraph
-(what is fatal, what degrades, what retries) and the **acceptance criteria this issue owns**.
-
-> # FIX-775 · Business rules
->
-> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
->
-> The cases, written as rules. Each says what a person or the system does and what happens. The
-> *proved by* column is the check the plan runs. A human reviews this page; the plan turns it
-> into work.
->
-> ## Reconnecting
->
-> | # | When | Then | Proved by |
-> |---|---|---|---|
-> | BR-1 | A client reconnects with a cursor mid-request | Items above the cursor are delivered; nothing below it is | CI · goal check on a real model |
-> | BR-2 | A client reconnects with no cursor | Every item from 1, exactly as today | CI, byte-for-byte against a recorded stream |
-> | BR-3 | A cursor is sent on both the header and the query param | The query param wins | CI |
-> | BR-4 | A cursor is malformed, or names a different request | Ignored; the stream starts from 1. Not an error | CI |
-> | BR-5 | A cursor is ahead of the stream | Nothing to send yet; the connection stays open | CI |
-> | BR-6 | A reconnect arrives during an in-flight tool call | Normal: the item is emitted on completion, above the cursor | CI |
->
-> ## What the client can rely on
->
-> | # | When | Then | Proved by |
-> |---|---|---|---|
-> | BR-7 | Any stream is delivered, resumed or not | Sequence numbers are strictly increasing, with no duplicates and no reset. **Not contiguous**: replay legitimately omits non-replayable events | CI · asserted on the invariant, never on contiguity |
-> | BR-8 | The same request is reattached twice | Both reattaches see the same items above their cursors | CI |
->
-> ## After the request finished
->
-> | # | When | Then | Proved by |
-> |---|---|---|---|
-> | BR-9 | A client reattaches to a finished request with a cursor | The tail from the persisted log, then a clean close | CI |
-> | BR-10 | The cursor is past the end of the log | An empty replay and a clean close. Not an error | CI |
-> | BR-11 | A client that was never attached asks for a finished request | Refused, as today. That is a history read | Existing suite |
->
-> ![A dashed vertical line between the stream path and the store; the reattach path crosses at one gate, the never-attached path is stopped](figures/history-fence.svg)
->
-> Left of the line is what the stream will serve. One path crosses, at the one gate; the
-> never-attached read is stopped, which is BR-11. The mermaid below is the same two paths by name.
->
-> ```mermaid
-> flowchart LR
->   A["reattach with a cursor"] -->|"the one gate"| L["persisted log"]
->   N["never-attached read"] -.->|"refused · a history read"| L
-> ```
->
-> ## Failure taxonomy
->
-> Every cursor problem is non-fatal and degrades to a full stream. The only fatal path is an
-> unreadable request id, which already 404s today. Nothing retries.
->
-> ## Acceptance criteria this issue owns
->
-> [The goal](SPEC.md#the-goal-and-how-well-know-its-met): a client that drops mid-stream and
-> reconnects assembles a transcript equal to the uninterrupted one, item for item, on a real
-> model, and the same run fails under its control. The plan runs it last.
-
-BR-7 is the one row that spells out a rule rather than a case, and only because getting it
-backwards produces a confidently wrong test. The rest name **which** behaviours hold and let the
-decisions say why — one contract, one place.
-
----
-
-## `PLAN.md` — written for the implementing agent
-
-Tables and one DAG. IDs everywhere, so a check can cite a surface and a surface can cite a rule.
-No figures, no prose that restates the spec. Sections, in order:
-
-1. **The header** — the discipline (`tdd` or `diagnose`), the PR count, and the seam if it is
-   two PRs.
-2. **Surfaces** — a table: ID · package · file or role · the change · the rules it serves. Name
-   what is **removed** too (tenet 3). Roles over symbols where the symbol is the implementer's.
-3. **Sequence** — one mermaid DAG over the surface IDs, and the seam. **A PR plan for a Large
-   issue** is a table of sub-PRs with `depends_on`; the lifecycle reads it as executable routing,
-   so a one-PR issue carries none.
-4. **Checks** — a table: ID · runs after which surface · passes when. The goal check is the
-   one `SPEC.md` → *The goal* names, cited by path rather than restated, and its control's FAIL
-   is part of passing it. Or a stated "no goal check applies" with the reason. **One check per decision** at
-   least, and the second path (BP-035) named.
-5. **Pinned names** — the few names the spec fixes, each with why. Everything else is the
-   implementer's.
-6. **Guardrails** — a table: the rule · **because**. The focus practices that this change lives
-   or dies by, each tied to a reason, never a re-list of the global BPs.
-7. **Docs** — link `DOCS.md`; name when its drafts are reconciled and published, not a
-   second prose draft or a list standing in for one.
-8. **The sketch, if any** — pseudocode, roles not function names, illustrative. And the POC
-   line: what was built, what it showed, including when the premise held.
-9. **At implement time** — what to re-check against the repo before building: a sibling that
-   may have landed, a rename in flight.
-10. **Notes from review** — below-the-bar spec-PR feedback, verbatim, one line each with a
-    thread link. Inputs, not instructions. Omit the section when there are none.
-11. **Follow-ups** — filed or flagged, one line each.
-
-> # FIX-775 · Plan
->
-> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan** · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
->
-> Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSINESS-RULES.md)
-> (BR-n) and [DECISIONS.md](DECISIONS.md) (D-n). `tdd`. One PR.
->
-> ## Surfaces
->
-> | ID | Package · role | Change | Rules |
-> |---|---|---|---|
-> | S1 | `engine` · the HTTP route | Parse the cursor from `starting_after`, else `Last-Event-ID`; hand it down, decide nothing (D1) | BR-3 BR-4 |
-> | S2 | `engine` · the stream seam, where items are already serialized | Drop items with `seq ≤ cursor` | BR-1 BR-5 BR-6 BR-7 |
-> | S3 | `engine` · the completed-request path | Same loop over the persisted log, then close (D2). Never-attached stays refused | BR-9 BR-10 BR-11 |
-> | S4 | `client` · the reattach path | Send the last seen sequence. No new public option | BR-1 BR-8 |
-> | S5 | `client` · the dedupe helper | **Remove** it and its tests; it papers over the duplicates this change eliminates | — |
-> | S6 | Docs | `apps/docs/docs/streaming/overview.md` EXTEND · `packages/engine/README.md` one line · one `minor` changeset for both packages | — |
->
-> ## Sequence
->
-> ```mermaid
-> flowchart TD
->   S1["S1 · parse and thread the cursor"] --> S2["S2 · filter at the seam"]
->   S2 --> S3["S3 · the completed-request boundary"]
->   S3 --> S4["S4 · client sends it"]
->   S4 --> S5["S5 · remove the dedupe helper"]
->   S4 --> S6["S6 · docs"]
-> ```
->
-> ## Checks
->
-> | ID | Runs after | Passes when |
-> |---|---|---|
-> | V1 | S1 | Each encoding parses; precedence holds (BR-3); a malformed value is ignored (BR-4) |
-> | V2 | S2 | BR-1, BR-5, BR-6. BR-7 asserted on the invariant: increasing, no duplicates, **not** contiguous |
-> | V3 | S3 | BR-9, BR-10; BR-11 unchanged |
-> | V4 | S4 | BR-8. Reload mid-request end to end |
-> | VG | S4 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): `goals/resume-after-disconnect/reconnect-midstream/run.mts` PASSES on a real model, after the same run FAILED under `GOAL_CONTROL=ignore-cursor` |
-> | V5 | S5 | The helper is gone and nothing imports it |
->
-> ## Pinned names · the only two
->
-> | Where | Name | Why pinned |
-> |---|---|---|
-> | Query param | `starting_after` | Public. A client types it |
-> | Cursor format | `{requestId}:{sequence}` | Public. D1 locks it |
->
-> Everything else is yours to name.
->
-> ## Guardrails
->
-> | Rule | Because |
-> |---|---|
-> | A client that sends no cursor behaves byte for byte as today (BP-030) | It is the common case for the whole first release, and D3 promises it |
-> | Every case is exercised on a *reattach*, not only on a first connection (BP-035) | The reconnect is the second path, and a suite that covers only a clean first connection proves nothing here |
-> | Every producer of a sequence number goes through the one allocator (tenet 5) | Two allocators and resume silently skips items |
-> | The route decides nothing; it parses and hands down | Resume is a property of the seam, not a new subsystem beside it (tenet 2) |
->
-> ## Docs
->
-> Reconcile and publish [DOCS.md](DOCS.md) after the reconnect checks pass. Its destination
-> operations own the changed prose; this plan only sequences publication. No new page.
->
-> ## Sketch · pseudocode, illustrative, react to the shape
->
-> ```
-> at the stream seam, where items are already serialized:
->     for each item about to be written:
->         if cursor is set and item's sequence ≤ cursor:   ← the whole feature
->             skip it
->         otherwise write it
-> at the route:      cursor ← query param, else header      (D1)
-> completed request: same loop, reading the persisted log   (D2)
-> ```
->
-> **POC:** `poc/resume-seam/` inside this spec, cited from the spec PR. It showed the
-> seam already sees every item with its sequence attached, so the filter is one predicate. The
-> premise held; nothing changed.
->
-> ## At implement time
->
-> - The store's iterator may have gained a `from` option since this was written. If so, the
->   filter still sits at the seam (decided, not asked); use the option only if it is strictly
->   cheaper.
-> - Compare [Evolution](EVOLUTION.md)'s predecessor claims with current architecture docs
->   and code; approved intent alone does not establish shipped behavior.
->
 > ## Notes from review
 >
 > - "`resumeFrom` reads better than `cursor` for the parameter name." — bugbot ([thread](https://github.com/o/r/pull/1#discussion_3))
@@ -800,100 +726,21 @@ No figures, no prose that restates the spec. Sections, in order:
 > discarding one. A note that turns out to reveal a design problem is a spec blind spot —
 > surface it and fold it back, per the challenger discipline in `issue-implement`.
 >
-> ## Follow-ups
->
-> - The route layer now parses two cursor encodings for historical reasons. Out of scope;
->   `improve-codebase-architecture`.
-
-**The plan is directional.** It fixes the shape and the sequence, not the finished design.
-Signatures, local structure and line-level choices are the implementer's, settled in the code
-with `tdd` / `diagnose` and the challenger. **Where the code contradicts the plan, that's
-evidence the spec missed something** — surface it, never force-follow a plan the code says is
-wrong, and never silently deviate.
-
-**Prefer a diagram to code.** Architecture and data flow go in the spec's mermaid, not in
-signatures and file trees. A snippet is allowed only when it pins something prose can't, and it is
-labelled illustrative. **Real code belongs on the spec branch** as a POC
-([`spec-poc`](../../.agents/skills/spec-poc/SKILL.md)), never in the document.
+> **Open: none.**
 
 ---
 
-## `DOCS.md` — proposed documentation, not a plan
+## What the implementer brings
 
-Apply the [canonical documentation contract](orchestration.md#spec-retention-and-authority).
-For each operation, identify the destination and section, then write only the changed
-reader-facing material. The following continues the fictional FIX-775 example; its
-destinations and prose are illustrative, not a statement of current behavior.
+The spec stops at direction, so the implementer owns everything below it and is trusted with it.
+**Where the code contradicts the spec, that's evidence the spec missed something** — surface it,
+never force-follow a direction the code says is wrong, and never silently deviate. A change that
+would alter a decision card, the goal, or the debt verdict is a direction change: it goes back
+through an amendment, not into the code.
 
-> # FIX-775 · Documentation draft
->
-> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs** · [Evolution](EVOLUTION.md)
->
-> ## UPDATE · `apps/docs/docs/streaming/overview.md` · after “Sequence numbers”
->
-> ### Resuming after a disconnect
->
-> Save the last item ID you received. To resume, reconnect to the same request with
-> that ID in `starting_after` or `Last-Event-ID`. If both are present, `starting_after`
-> wins. For example, after item `request-a:41`, send `Last-Event-ID: request-a:41`;
-> the response starts with the next available item, not item 41.
->
-> A malformed cursor or one from another request is ignored: the stream starts from
-> the beginning. A cursor beyond the final item produces an empty replay. Sequence
-> numbers increase but need not be contiguous, so a gap in numbering is not evidence
-> that an item was lost.
->
-> A client reconnecting after its request finished receives the remaining persisted
-> items and then a clean close. This does not let a new client read an old response
-> it was never attached to; use the store's history API for that.
->
-> Existing callers that send no cursor keep their current behavior. When adopting
-> resume, stop appending a replay from the beginning as new content: carry the cursor
-> across reconnects instead. Reconnect timing and retry limits remain the app's policy.
->
-> ## UPDATE · `packages/engine/README.md` · stream seam
->
-> The stream seam resumes from a supplied item cursor without changing producers.
-> See the streaming guide for cursor precedence and completed-request boundaries.
->
-> ## Publication ownership
->
-> FIX-775 publishes these changes after checking them against the real reconnect path;
-> it does not duplicate the unchanged sequence-number introduction. If an epic owns the
-> overview's shared introduction, reconcile with that draft before publishing.
-
-For a change with no reader-facing impact, replace the operations with a specific
-justification, for example: “No documentation impact: this changes only the internal
-allocation of the existing cursor parser; syntax, precedence and failure behavior stay
-unchanged.” “Docs later” is not a no-impact statement.
-
-## `EVOLUTION.md` — conditional, precise design lineage
-
-Use the [canonical lineage contract](orchestration.md#spec-retention-and-authority).
-Do not create this file merely to list dependencies. The example below extends the
-fictional FIX-775 story with two **invented predecessor designs**, not actual repository
-artifacts. Link syntax is shown as code to avoid pretending the predecessors exist.
-In a real set, use verified clickable links with precise anchors; when only historical
-PR/Linear material exists, cite its real URL and section instead.
-
-> # FIX-775 · Evolution
->
-> [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · **Evolution**
->
-> | Prior intent and precise source | Treatment | Why / evidence | Replacement | Compatibility |
-> |---|---|---|---|---|
-> | FIX-701 D2: recover by replaying the whole response; source `../FIX-701/DECISIONS.md#d2` | **Amended**, only reconnect delivery; the original no-cursor path is retained | The resume-seam experiment (`poc/resume-seam/`) shows the seam already receives sequenced items | [D1](DECISIONS.md#d1), implemented by BR-1: client supplies the cursor, seam skips earlier items | No-cursor clients unchanged; cursor clients must persist the last delivered ID |
-> | FIX-702 BR-4: a completed request cannot be reattached; source `../FIX-702/BUSINESS-RULES.md#br-4` | **Superseded in part** for previously attached clients; refusal for never-attached clients retained | Existing persisted items make tail replay possible; validate the completed-request boundary in PLAN V3 | [D2](DECISIONS.md#d2) | No history API is added; empty tails close normally |
->
-> Neither predecessor is wholly superseded. The store-history issue is a dependency,
-> not a replaced design. Before implementation, compare these intents against current
-> `docs/architecture/streaming.md` and code; the experiment does not prove the full
-> proposed reconnect contract has shipped.
-
-When a predecessor has no retained file, replace the local-source cell with, for example,
-the **actual** original spec PR's file/section permalink or its Linear document URL plus
-decision ID. Record that provenance gap, not an invented `specs/` path. Keep predecessors
-historical; no registry or mandatory backlink edits.
+**Prefer a diagram to code in the spec.** Architecture and data flow go in mermaid, not in
+signatures and file trees. **Real code belongs on the spec branch** as a POC
+([`spec-poc`](../../.agents/skills/spec-poc/SKILL.md)), never in a document.
 
 ## Publishing and later amendments
 

@@ -71,11 +71,9 @@ export async function GET() {
   );
   const res = await fetch(url, {
     method: "POST",
-    headers: {
-      authorization: auth,
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({ nominalFireTime: new Date().toISOString() })
+    // No body: the fire counts against the latest scheduled time already
+    // due, the one this cron run is for, however late Vercel invokes it.
+    headers: { authorization: auth }
   });
   return new Response(await res.text(), { status: res.status });
 }
@@ -207,7 +205,8 @@ export async function GET(req: Request) {
             authorization: `Bearer ${process.env.CRON_SECRET}`,
             "content-type": "application/json"
           },
-          body: JSON.stringify({ nominalFireTime: new Date(now).toISOString() })
+          // The scheduled time the row was due at, not the tick's clock.
+          body: JSON.stringify({ nominalFireTime: new Date(row.nextFireAt).toISOString() })
         }
       );
       if (res.ok) await advanceIndex(row, now);

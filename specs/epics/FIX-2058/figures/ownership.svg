@@ -1,0 +1,83 @@
+<svg viewBox="0 0 940 326" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: eight rules by six issues and the closure FIX-2134, each rule with one owner. FIX-2129 owns one call to stop for a person with one predicate, the row's open hold that keeps a task's requests apart, a stop ending once, and one answer route the server trusts. FIX-2131 owns no task tool answering a suspension, and no row persisted before this work being read. FIX-2063 owns durable execution by default. FIX-2133 owns one list of holds per task. FIX-2137, a bug, owns no rule and uses durable execution by default. Other cells use the rule or are blank.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; } }
+    .bg    { fill:var(--surface); }
+    .own   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .use   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-col { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-row { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-own { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; letter-spacing:.06em; }
+    .t-use { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="326"/>
+  <text class="t-lbl" x="16" y="20">WHO OWNS WHAT &#8212; ONE OWNER PER RULE &#183; COLUMNS ARE FIX- ISSUES</text>
+  <g id="columns">
+    <text class="t-col" x="352" y="46">2063</text>
+    <text class="t-col" x="432" y="46">2129</text>
+    <text class="t-col" x="512" y="46">2131</text>
+    <text class="t-col" x="592" y="46">2132</text>
+    <text class="t-col" x="672" y="46">2133</text>
+    <text class="t-col" x="752" y="46">2137&#183;bug</text>
+    <text class="t-col" x="832" y="46">2134&#183;closure</text>
+  </g>
+  <g id="er1">
+    <text class="t-row" x="16" y="76">ER-1 one call, one predicate</text>
+    <rect class="own" x="426" y="58" width="66" height="26" rx="3"/><text class="t-own" x="432" y="75">OWNS</text>
+    <rect class="use" x="506" y="58" width="66" height="26" rx="3"/><text class="t-use" x="512" y="75">uses</text>
+    <rect class="use" x="826" y="58" width="66" height="26" rx="3"/><text class="t-use" x="832" y="75">uses</text>
+  </g>
+  <g id="er2">
+    <text class="t-row" x="16" y="108">ER-2 an open hold keeps requests apart</text>
+    <rect class="own" x="426" y="90" width="66" height="26" rx="3"/><text class="t-own" x="432" y="107">OWNS</text>
+    <rect class="use" x="506" y="90" width="66" height="26" rx="3"/><text class="t-use" x="512" y="107">uses</text>
+    <rect class="use" x="826" y="90" width="66" height="26" rx="3"/><text class="t-use" x="832" y="107">uses</text>
+  </g>
+  <g id="er3">
+    <text class="t-row" x="16" y="140">ER-3 a stop ends once</text>
+    <rect class="own" x="426" y="122" width="66" height="26" rx="3"/><text class="t-own" x="432" y="139">OWNS</text>
+    <rect class="use" x="506" y="122" width="66" height="26" rx="3"/><text class="t-use" x="512" y="139">uses</text>
+    <rect class="use" x="586" y="122" width="66" height="26" rx="3"/><text class="t-use" x="592" y="139">uses</text>
+    <rect class="use" x="666" y="122" width="66" height="26" rx="3"/><text class="t-use" x="672" y="139">uses</text>
+    <rect class="use" x="826" y="122" width="66" height="26" rx="3"/><text class="t-use" x="832" y="139">uses</text>
+  </g>
+  <g id="er4">
+    <text class="t-row" x="16" y="172">ER-4 no task tool answers a suspension</text>
+    <rect class="own" x="506" y="154" width="66" height="26" rx="3"/><text class="t-own" x="512" y="171">OWNS</text>
+    <rect class="use" x="586" y="154" width="66" height="26" rx="3"/><text class="t-use" x="592" y="171">uses</text>
+    <rect class="use" x="666" y="154" width="66" height="26" rx="3"/><text class="t-use" x="672" y="171">uses</text>
+    <rect class="use" x="826" y="154" width="66" height="26" rx="3"/><text class="t-use" x="832" y="171">uses</text>
+  </g>
+  <g id="er5">
+    <text class="t-row" x="16" y="204">ER-5 stores reset, no old data read</text>
+    <rect class="own" x="506" y="186" width="66" height="26" rx="3"/><text class="t-own" x="512" y="203">OWNS</text>
+    <rect class="use" x="586" y="186" width="66" height="26" rx="3"/><text class="t-use" x="592" y="203">uses</text>
+  </g>
+  <g id="er6">
+    <text class="t-row" x="16" y="236">ER-6 durable by default, no other path</text>
+    <rect class="own" x="346" y="218" width="66" height="26" rx="3"/><text class="t-own" x="352" y="235">OWNS</text>
+    <rect class="use" x="426" y="218" width="66" height="26" rx="3"/><text class="t-use" x="432" y="235">uses</text>
+    <rect class="use" x="746" y="218" width="66" height="26" rx="3"/><text class="t-use" x="752" y="235">uses</text>
+    <rect class="use" x="826" y="218" width="66" height="26" rx="3"/><text class="t-use" x="832" y="235">uses</text>
+  </g>
+  <g id="er7">
+    <text class="t-row" x="16" y="268">ER-7 one answer route the server trusts</text>
+    <rect class="own" x="426" y="250" width="66" height="26" rx="3"/><text class="t-own" x="432" y="267">OWNS</text>
+    <rect class="use" x="506" y="250" width="66" height="26" rx="3"/><text class="t-use" x="512" y="267">uses</text>
+    <rect class="use" x="586" y="250" width="66" height="26" rx="3"/><text class="t-use" x="592" y="267">uses</text>
+    <rect class="use" x="666" y="250" width="66" height="26" rx="3"/><text class="t-use" x="672" y="267">uses</text>
+    <rect class="use" x="826" y="250" width="66" height="26" rx="3"/><text class="t-use" x="832" y="267">uses</text>
+  </g>
+  <g id="er8">
+    <text class="t-row" x="16" y="300">ER-8 one list of holds per task, open holds read</text>
+    <rect class="use" x="506" y="282" width="66" height="26" rx="3"/><text class="t-use" x="512" y="299">uses</text>
+    <rect class="use" x="586" y="282" width="66" height="26" rx="3"/><text class="t-use" x="592" y="299">uses</text>
+    <rect class="own" x="666" y="282" width="66" height="26" rx="3"/><text class="t-own" x="672" y="299">OWNS</text>
+    <rect class="use" x="826" y="282" width="66" height="26" rx="3"/><text class="t-use" x="832" y="299">uses</text>
+  </g>
+</svg>

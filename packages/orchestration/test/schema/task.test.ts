@@ -50,14 +50,13 @@ describe("task schema", () => {
     expect(parsed.context).toBeUndefined();
   });
 
-  it("status enum locks the seven canonical statuses", () => {
+  it("status enum locks the six canonical statuses", () => {
     const values = taskStatusSchema.options;
     expect(new Set(values)).toEqual(
       new Set([
         "pending",
         "in_progress",
-        "blocked",
-        "parked",
+        "held",
         "completed",
         "errored",
         "cancelled",
@@ -74,14 +73,12 @@ describe("state machine validators", () => {
     expect(isTerminalStatus("cancelled")).toBe(true);
     expect(isTerminalStatus("pending")).toBe(false);
     expect(isTerminalStatus("in_progress")).toBe(false);
-    expect(isTerminalStatus("parked")).toBe(false);
   });
 
-  it("allows pending → in_progress, in_progress → completed/errored/parked/cancelled/pending", () => {
+  it("allows pending → in_progress, in_progress → completed/errored/cancelled/pending", () => {
     expect(isTransitionAllowed("pending", "in_progress")).toBe(true);
     expect(isTransitionAllowed("in_progress", "completed")).toBe(true);
     expect(isTransitionAllowed("in_progress", "errored")).toBe(true);
-    expect(isTransitionAllowed("in_progress", "parked")).toBe(true);
     expect(isTransitionAllowed("in_progress", "pending")).toBe(true);
     expect(isTransitionAllowed("in_progress", "cancelled")).toBe(true);
   });
@@ -92,22 +89,22 @@ describe("state machine validators", () => {
     expect(isTransitionAllowed("cancelled", "pending")).toBe(false);
   });
 
-  it("permits parked → pending (unpark) and → completed (approve)", () => {
-    expect(isTransitionAllowed("parked", "pending")).toBe(true);
-    expect(isTransitionAllowed("parked", "completed")).toBe(true);
-    expect(isTransitionAllowed("parked", "cancelled")).toBe(true);
+  it("has no parked status: a task waiting on a person is running (FIX-2131)", () => {
+    expect(taskStatusSchema.options).not.toContain("parked");
+    expect(taskStatusSchema.safeParse("parked").success).toBe(false);
+    expect(taskStatusSchema.safeParse("awaiting_review").success).toBe(false);
   });
 
-  it("permits blocked → pending and blocked → cancelled only", () => {
-    expect(isTransitionAllowed("blocked", "pending")).toBe(true);
-    expect(isTransitionAllowed("blocked", "cancelled")).toBe(true);
-    expect(isTransitionAllowed("blocked", "in_progress")).toBe(false);
+  it("permits held → pending and held → cancelled only", () => {
+    expect(isTransitionAllowed("held", "pending")).toBe(true);
+    expect(isTransitionAllowed("held", "cancelled")).toBe(true);
+    expect(isTransitionAllowed("held", "in_progress")).toBe(false);
   });
 
   it("returns reachable statuses for a given source", () => {
     const fromPending = allowedTransitionsFrom("pending");
     expect(new Set(fromPending)).toEqual(
-      new Set(["in_progress", "blocked", "cancelled"])
+      new Set(["in_progress", "held", "cancelled"])
     );
   });
 

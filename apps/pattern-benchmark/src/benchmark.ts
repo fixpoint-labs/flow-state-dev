@@ -33,9 +33,9 @@ export default defineBenchmark({
   baseline: true,
   tasks,
   // Cheap-paid executor; free-tier (openrouter/...) is opt-in via `--model`.
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   // Distinct judge model so the grader isn't scoring its own family's output.
-  judgeModel: "anthropic/claude-haiku-4-5",
+  judgeModel: "anthropic/claude-haiku-5-5",
   // k repetitions per (subject, task); deltas below pooled stddev are flagged
   // not-credible in the report.
   runs: 3,

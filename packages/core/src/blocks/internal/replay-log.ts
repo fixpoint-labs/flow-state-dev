@@ -40,6 +40,18 @@ export interface ResolvedResume {
   rejected: boolean;
   /** True when the rejection was an expiry, not a person's answer. */
   expired: boolean;
+  /** True when the suspension was cancelled, not answered (FIX-2129): read as a rejection marked cancelled. */
+  cancelled: boolean;
+  /**
+   * True when the request was stopped at the suspension (FIX-2129). A user's
+   * stop replays as the stop, never as an answer: the run ends there. A wait
+   * gate's stop continues as recorded.
+   */
+  stopped: boolean;
+  /** The resolution as the log recorded it (`approved`, `stopped`, ...), when it named one. */
+  resolution: string | undefined;
+  /** The suspension's reason, from its `suspension` item: whether it waited for a user. */
+  reason: string | undefined;
   /**
    * True when the resolution was a skip — `ctx.suspend()` must return the
    * `SUSPENSION_SKIPPED` sentinel on replay, not the persisted `data`, so a
@@ -86,6 +98,12 @@ export interface ReplayLog {
    */
   resolvedResumes(blockLogicalId: string): readonly ResolvedResume[];
   /**
+   * Every suspension already resolved on a prior continuation, at any path,
+   * in the order their resolutions were logged: what a continuation that
+   * names no resolution of its own (a crash's) reads its ending from.
+   */
+  resolvedInOrder(): readonly ResolvedResume[];
+  /**
    * The durably recorded `router_decision` for a router's logical path, or
    * `undefined` when the router never decided before the interruption. On
    * re-entry the router re-runs its `execute` selector (preserving any
@@ -102,6 +120,12 @@ export interface ReplayLog {
    * fresh `block_trace` into the current response (FIX-814).
    */
   recordedBlockTraceId(blockLogicalId: string): string | undefined;
+  /**
+   * Whether the canonical completed trace for a logical path records that a
+   * `.rescue()` handler produced the output, so a replayed block keeps the
+   * `ctx.wasRescued()` answer it had when it ran. `false` when none exists.
+   */
+  completedRescued(blockLogicalId: string): boolean;
   /**
    * The raw prior item log this ReplayLog was built from. Used by generator
    * resume (FIX-814) to reconstruct the conversation from the durable
@@ -157,28 +181,33 @@ function logicalIdOf(blockInstanceId: string): string | undefined {
  * wins. `ref`-shaped outputs are resolved against the same item set at build
  * time and stored as `inline`, so a replayed output never points at a partial
  * that the canonical view shadows.
+ *
+ * `skipLeanTraces` leaves out the lean completion records the runtime writes
+ * with trace observability off (`lean: true`), so only full traces mark a
+ * block as completed. Every item still resolves refs.
  */
-export function buildReplayLog(items: readonly RuntimeItem[]): ReplayLog {
+export function buildReplayLog(
+  items: readonly RuntimeItem[],
+  options: { skipLeanTraces?: boolean } = {}
+): ReplayLog {
   const lookup = buildItemLookup(items as readonly { id: string; type: string }[]);
 
   const completed = new Map<
     string,
-    { itemIndex: number; output: BlockValueInternal<unknown>; traceId: string }
+    { itemIndex: number; output: BlockValueInternal<unknown>; traceId: string; rescued: boolean }
   >();
   /** Latest recorded `router_decision` per router logical path (FIX-814). */
   const routerDecisions = new Map<string, { itemIndex: number; selectedRoute: string }>();
-  const suspensions: Array<{ logicalId: string; suspensionId: string; itemIndex: number }> = [];
+  const suspensions: Array<{ logicalId: string; suspensionId: string; itemIndex: number; reason: string | undefined }> = [];
   const resumedIds = new Set<string>();
-  /** Resolution payloads keyed by the suspension id they resolved. */
-  const resumeBySuspension = new Map<
-    string,
-    { data: unknown; rejected: boolean; expired: boolean; skipped: boolean; resolvedBy: string | undefined }
-  >();
+  /** Resolution payloads keyed by the suspension id they resolved, in the order they were logged. */
+  const resumeBySuspension = new Map<string, Omit<ResolvedResume, "suspensionId" | "reason">>();
 
   for (const item of items) {
     if (item.type === "block_trace") {
       const trace = item as BlockTraceItem;
       if (trace.status !== "completed") continue;
+      if (options.skipLeanTraces === true && trace.lean === true) continue;
       const logicalId = logicalIdOf(trace.blockInstanceId);
       if (logicalId === undefined) continue;
       const prior = completed.get(logicalId);
@@ -188,7 +217,12 @@ export function buildReplayLog(items: readonly RuntimeItem[]): ReplayLog {
       // refuses it rather than inject `undefined`.
       const omitted = trace.output === undefined ? undefined : findOmitted(trace.output, lookup);
       if (omitted !== undefined) {
-        completed.set(logicalId, { itemIndex: trace.itemIndex, output: omitted, traceId: trace.id });
+        completed.set(logicalId, {
+          itemIndex: trace.itemIndex,
+          output: omitted,
+          traceId: trace.id,
+          rescued: trace.rescued === true,
+        });
         continue;
       }
       const resolved =
@@ -199,6 +233,7 @@ export function buildReplayLog(items: readonly RuntimeItem[]): ReplayLog {
         itemIndex: trace.itemIndex,
         output: { kind: "inline", value: resolved },
         traceId: trace.id,
+        rescued: trace.rescued === true,
       });
     } else if (item.type === "router_decision") {
       // The router's identity is carried on the decision item's provenance
@@ -214,13 +249,13 @@ export function buildReplayLog(items: readonly RuntimeItem[]): ReplayLog {
         selectedRoute: decision.selectedRoute,
       });
     } else if (item.type === "suspension") {
-      const susp = item as RuntimeItem & { suspensionId: string; blockInstanceId?: string };
+      const susp = item as RuntimeItem & { suspensionId: string; blockInstanceId?: string; reason?: string };
       // The suspension item is emitted with runtime provenance, so the
       // suspending block's identity is carried on the item's `blockInstanceId`
       // field; fall back to provenance for older/hand-built records.
       const logicalId = logicalIdOf(susp.blockInstanceId ?? item.provenance.blockInstanceId);
       if (logicalId === undefined) continue;
-      suspensions.push({ logicalId, suspensionId: susp.suspensionId, itemIndex: item.itemIndex });
+      suspensions.push({ logicalId, suspensionId: susp.suspensionId, itemIndex: item.itemIndex, reason: susp.reason });
     } else if (item.type === "suspension_resume") {
       const resume = item as RuntimeItem & {
         suspensionId: string;
@@ -231,9 +266,12 @@ export function buildReplayLog(items: readonly RuntimeItem[]): ReplayLog {
       resumedIds.add(resume.suspensionId);
       resumeBySuspension.set(resume.suspensionId, {
         data: resume.resumeData,
-        rejected: resume.resolution === "rejected" || resume.resolution === "expired",
+        rejected: resume.resolution === "rejected" || resume.resolution === "expired" || resume.resolution === "cancelled",
         expired: resume.resolution === "expired",
+        cancelled: resume.resolution === "cancelled",
+        stopped: resume.resolution === "stopped",
         skipped: resume.resolution === "skipped",
+        resolution: resume.resolution,
         resolvedBy: resume.resolvedBy,
       });
     }
@@ -261,27 +299,28 @@ export function buildReplayLog(items: readonly RuntimeItem[]): ReplayLog {
     const resume = resumeBySuspension.get(s.suspensionId);
     if (resume === undefined) continue; // unresolved (the pending gate) — skip
     const list = resolvedByLogical.get(s.logicalId) ?? [];
-    list.push({
-      data: resume.data,
-      rejected: resume.rejected,
-      expired: resume.expired,
-      skipped: resume.skipped,
-      suspensionId: s.suspensionId,
-      resolvedBy: resume.resolvedBy,
-    });
+    list.push({ ...resume, suspensionId: s.suspensionId, reason: s.reason });
     resolvedByLogical.set(s.logicalId, list);
   }
+  const reasonOf = new Map(suspensions.map((s) => [s.suspensionId, s.reason]));
+  const inOrder: readonly ResolvedResume[] = [...resumeBySuspension].map(([suspensionId, resume]) => ({
+    ...resume,
+    suspensionId,
+    reason: reasonOf.get(suspensionId),
+  }));
 
   const noResolved: readonly ResolvedResume[] = [];
   return {
     getCompletedOutput: (blockLogicalId) => completed.get(blockLogicalId)?.output,
     pendingSuspension: () => pending,
     resolvedResumes: (blockLogicalId) => resolvedByLogical.get(blockLogicalId) ?? noResolved,
+    resolvedInOrder: () => inOrder,
     recordedRouterDecision: (blockLogicalId) => {
       const decision = routerDecisions.get(blockLogicalId);
       return decision === undefined ? undefined : { selectedRoute: decision.selectedRoute };
     },
     recordedBlockTraceId: (blockLogicalId) => completed.get(blockLogicalId)?.traceId,
+    completedRescued: (blockLogicalId) => completed.get(blockLogicalId)?.rescued === true,
     items: () => items,
   };
 }

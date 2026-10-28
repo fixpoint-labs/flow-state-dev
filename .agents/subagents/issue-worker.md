@@ -41,9 +41,8 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
   `specs/issues/<ISSUE-ID>/poc/<experiment>/`, excluded from default production discovery
   ([`spec-poc`](../skills/spec-poc/SKILL.md)). It's part of authoring, not a separate dispatch:
   you already have the branch and the context, and you're the one who knows which premise is
-  load-bearing. Costs **zero** review rounds. Record it on the plan's POC line (and in
-  `DECISIONS.md → Settled` for a premise it settled)
-  and name it in the PR's POC block with the literal command to run it — a POC nobody can run is
+  load-bearing. Costs **zero** review rounds. Record it in `DECISIONS.md → Settled`, including
+  when the premise held, and name it in the PR's POC block with the literal command to run it — a POC nobody can run is
   waste. Report it on the `spec_poc:` line of your status (below); if a load-bearing one is
   unfinished, say so there so the coordinator can disclose it when it surfaces the gate.
   **Unlike a settlement, this disclosure is advisory** — there is no schema field and nothing in
@@ -51,7 +50,7 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
   judgment, not mechanism, and it isn't worth a workflow field until the practice has run.
 - spec PR open, **still awaiting approval**, with unhandled review events → run one
   `issue-spec` Step 6.5 round and stop. Triage against the spec-review bar: fold only what
-  changes the approach, record the rest verbatim in `PLAN.md → Notes from review`, escalate genuine
+  changes the approach, record the rest verbatim in `DECISIONS.md → Notes from review`, escalate genuine
   direction forks. **Report the rounds you spent and whether anything was spec-level** — the
   coordinator budgets rounds off that (two by default; see `issue-lifecycle` → "The
   spec-review round budget"), so report it accurately: a batch that was **only** factual
@@ -83,13 +82,16 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
   changes remain blockers until renewed approval and merge are confirmed.
 - impl PR has unhandled review/CI events → run one PR-feedback round, push, stop.
 - **Ready to merge** means approved, green, and an automated review (Codex or Cursor) has
-  returned on the PR's **current head** — [Gates](../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge).
-  A head you just pushed has not been reviewed. Under `epic-wake`, set `implHeadSha` and
-  `implReviewedHeadSha` alongside `readyToMerge`: `implReviewedHeadSha` is the current head
-  sha if ANY completed automated review (a Codex review's `commit_id` or a Cursor check run's
-  `head_sha`) ran against it, otherwise the most recent reviewed sha, or null. The wake
-  offers the merge only when the two match and are non-null. Leaving the pair out is
-  allowed: it holds the merge gate back, and the next refresh scan decides.
+  returned on the PR — on any of its heads — plus any follow-up review you requested
+  ([Gates](../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge)).
+  Don't request a Codex review after each push: ask again only when a push adds logic
+  complex enough that you have a concern, and while that review is pending the PR is not
+  ready. Under `epic-wake`, set `implHeadSha` and `implReviewedHeadSha` alongside
+  `readyToMerge`: `implReviewedHeadSha` is the current head sha if ANY completed automated
+  review (a Codex review's `commit_id` or a Cursor check run's `head_sha`) ran against it,
+  otherwise the most recent reviewed sha, or null. The wake offers the merge once both are
+  non-null. Leaving the pair out is allowed: it holds the merge gate back, and the next
+  refresh scan decides.
 
 Work on the issue's own branch inside this worktree so your commits never collide
 with sibling workers. Commit and push only as authorized; never merge an implementation PR.

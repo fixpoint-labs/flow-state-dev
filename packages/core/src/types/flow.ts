@@ -223,13 +223,11 @@ export type ActionCore<
     onExceeded?: "error" | "stop" | "warn";
   };
   /**
-   * When true, this action's execution is durable: checkpoints are
-   * written at step boundaries, ctx.suspend() is available, and crash
-   * recovery resumes from the last checkpoint instead of re-executing
-   * from scratch.
-   *
-   * Requires a DurabilityProvider on the runtime. Default: false
-   * (transient — crashes lose request state).
+   * When true, this action is treated as durable at completion: its
+   * suspension records and lease are cleared when it completes. Suspending
+   * and crash recovery don't depend on it: they need a host with durable
+   * execution (on by default wherever stores persist), and sequencers
+   * checkpoint unless they set `durable: false`. Default: false.
    */
   durable?: boolean;
   /**
@@ -242,6 +240,14 @@ export type ActionCore<
    * `"allow"`.
    */
   concurrency?: ConcurrencyConfig;
+  /**
+   * Whether a request on this entry becomes its session's auto-resume target
+   * (`latestRequestId`): the request a client attaching to the session finds
+   * and reattaches to. Set `false` on a control action sent beside a running
+   * request, such as a line handed into it, so a client that reloads still
+   * finds the running request rather than the control. Default: `true`.
+   */
+  autoResume?: boolean;
 };
 
 /**
@@ -300,9 +306,9 @@ export interface McpConfig {
  * When limits are exceeded, entire old request records are evicted (lazy, on write).
  */
 export type RetentionPolicy = {
-  /** Maximum number of items across all completed requests. Oldest requests evicted first. */
+  /** Maximum number of items across the session's past turns (completed or interrupted requests). Oldest requests evicted first. */
   maxItems?: number;
-  /** Maximum age of completed requests. Milliseconds (number) or duration string ('24h', '7d'). */
+  /** Maximum age of past turns (completed or interrupted requests). Milliseconds (number) or duration string ('24h', '7d'). */
   maxAge?: number | string;
 };
 
@@ -333,7 +339,11 @@ export type SessionConfig = {
   retention?: RetentionPolicy;
   /**
    * Bounds the cross-turn history loaded per request to the most recent
-   * `turns` completed requests (default 50). This caps the store read and
+   * `turns` past turns (default 50): completed requests, and requests cut
+   * short when their server died, with only what they had finished. The
+   * window is counted before an interrupted request that a retry re-ran, or
+   * one still parked on a gate, is left out, so those take a slot and a full
+   * window can show fewer than `turns` turns. This caps the store read and
    * the default generator's in-prompt history; the full session stays
    * retrievable via the state endpoint. Per-call `history({ limit })`
    * refines within this window — it cannot widen it. Use a positive
@@ -549,7 +559,7 @@ export type FlowDefinition<
 
   /**
    * The flow's `task` entries — `task: { actions: { implement: { block } } }`
-   * — where a task board hands a claimed row off to run in a session of its
+   * — where a task board dispatches a claimed row to run in a session of its
    * own. Declared like actions and reached only by a `task` dispatch from a
    * `dispatcher({ type: "task", action: "implement" })` in the `workers` of a
    * board the flow reaches. `defineFlow` puts each entry behind that board's

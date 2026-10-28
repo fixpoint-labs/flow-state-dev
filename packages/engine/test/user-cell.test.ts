@@ -13,7 +13,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, defineResourceCollection, dispatcher, handler } from "@flow-state-dev/core";
-import type { FlowInstance, InstanceOwnerPin, ResourceCollectionRef } from "@flow-state-dev/core/types";
+import type { FlowInstance, InstanceOwnerPin, ResourceCollectionRef, JsonObject } from "@flow-state-dev/core/types";
 import { createFlowState, createInMemoryStores, inMemoryStores, runAction } from "../src";
 import { InstancePinMismatchError } from "../src/context/instance-pin";
 import { getPersistedData } from "../src/resources/internal";
@@ -55,7 +55,7 @@ const resources = {
 
 const userConfig = {
   stateSchema: z.object({ marker: z.string().nullable().default(null) }),
-  client: { derived: { mine: (ctx: { state: { marker: string | null } }) => ({ marker: ctx.state.marker }) } },
+  client: { derived: { mine: (ctx: { state: JsonObject }) => ({ marker: ctx.state.marker }) } },
 };
 
 const save = handler({
@@ -210,7 +210,7 @@ async function boot(options: { debug?: boolean } = {}) {
   /** Raw stored `notes/*` markers in one user-scope cell. */
   const cell = async (scopeId: string) =>
     Object.values(await runtime.stores.resourceState.getByPrefix("user", scopeId, "notes/")).map(
-      (row) => (row as { state: { marker: string } }).state.marker
+      (row) => row.state.marker as string
     );
 
   return { state, runtime, call, hire, open, act, readAs, cell };

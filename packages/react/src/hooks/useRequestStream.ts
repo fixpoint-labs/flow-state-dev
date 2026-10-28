@@ -19,7 +19,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   bindStoreToCallbacks,
   createRequestStreamStore,
-  createSSEClient,
   createSSEClientFromResponse,
   type RequestStreamHandle,
   type RequestStreamStore
@@ -32,6 +31,7 @@ import type {
   StatusItem
 } from "@flow-state-dev/core/items";
 import { useFlowContext } from "../context/FlowContext";
+import { useClient } from "../internal/useClient";
 
 /**
  * Type-based filter for request stream items. Items failing the predicate never
@@ -99,8 +99,8 @@ export function useRequestStream(
 ): UseRequestStreamResult {
   const context = useFlowContext();
   const flowKind = options.flowKind ?? context.flowKind;
-  const baseUrl = options.baseUrl ?? context.baseUrl;
-  const apiPath = context.apiPath;
+  // The request stream goes through the provider's transport (its fetcher).
+  const fsd = useClient({ baseUrl: options.baseUrl });
   const {
     source,
     filter,
@@ -200,10 +200,8 @@ export function useRequestStream(
 
     const handle = responseObj
       ? createSSEClientFromResponse({ response: responseObj, ...callbacks })
-      : createSSEClient({
-          url: `/api/flows/${encodeURIComponent(flowKind!)}/requests/${encodeURIComponent(reqId!)}/stream${includeTrace ? "?include=trace" : ""}`,
-          baseUrl,
-          apiPath,
+      : fsd.flow(flowKind!).request(reqId!).stream({
+          includeTrace,
           lastEventId: sourceLastEventId,
           startingAfter,
           ...callbacks
@@ -222,8 +220,7 @@ export function useRequestStream(
   }, [
     enabled,
     flowKind,
-    baseUrl,
-    apiPath,
+    fsd,
     reconnectToken,
     includeTrace,
     filterKey,

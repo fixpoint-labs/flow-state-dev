@@ -298,7 +298,9 @@ async function legB(resolver: ModelResolver, failures: string[], evidence: strin
     return router[method]!(new Request(url, init), { params: { path } });
   };
   const transport = { fetcher };
-  const workforce = createWorkforceClient({ userId: fixture.user, ...transport });
+  // The app's one client, as the fixture's user.
+  const fsd = createClient({ userId: fixture.user, ...transport });
+  const workforce = createWorkforceClient(fsd);
 
   const before = (await workforce.roster()).map((row) => row.id);
   if (before.includes(fixture.hire)) {
@@ -310,20 +312,20 @@ async function legB(resolver: ModelResolver, failures: string[], evidence: strin
   let after: string[] = before;
   for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
     const session = await workforce.ensureWorkerSession({ worker: fixture.worker });
-    const actions = createClient({ flowKind: session.flowKind, userId: fixture.user, ...transport });
-    const started = await actions.sendAction(
+    const actions = fsd.flow(session.flowKind);
+    const started = await actions.send(
       "run",
       { message: `Please hire a new worker with the id "${fixture.hire}" onto my roster.` },
       { sessionId: session.id },
     );
     const until = Date.now() + 120_000;
-    let status = (await actions.getRequestStatus(started.request.id)).status;
+    let status = (await actions.request(started.id).status()).status;
     while (status === "in_progress") {
       if (Date.now() > until) throw new Error("the worker's turn never settled");
       await new Promise((resolve) => setTimeout(resolve, 100));
-      status = (await actions.getRequestStatus(started.request.id)).status;
+      status = (await actions.request(started.id).status()).status;
     }
-    const request = await stores.request.get(started.request.id);
+    const request = await stores.request.get(started.id);
     calledNames = ((request?.items ?? []) as Array<{ type: string; toolCall?: { name: string } }>)
       .filter((item) => item.type === "tool_output")
       .map((item) => item.toolCall!.name);

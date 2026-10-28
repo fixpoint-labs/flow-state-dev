@@ -1,0 +1,79 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="Three harness rows, today against after. Claude Code: today runs Claude Code's unnamed default, set nowhere in Kitchen Sink; after, the person picks from Claude Code's own model list, its default preselected. Codex: today runs Codex's unnamed default; after, the person picks from a short list Kitchen Sink keeps, because Codex's SDK can't list, with a named default. Cursor: today runs composer-2.5, fixed in code; after, the person picks from Cursor's own catalog with composer-2.5 preselected. Under all three, one band for after: a session is born with its model, every turn and resume runs it, the header names it, and a refused model fails the turn in the harness's own words."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .band  { fill:var(--surface-2); }
+    .old   { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .kept  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; }
+    .all   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .arr   { stroke:var(--ink-3); stroke-width:1.3; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .c-gone { fill:var(--gone); }
+    .c-code { fill:var(--code); }
+    .c-prose { fill:var(--prose); }
+    .c-acc { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="headers">
+    <text class="t-lbl" x="24" y="30">HARNESS</text>
+    <text class="t-h" x="172" y="30">Today · the model is in the code</text>
+    <text class="t-h" x="560" y="30">After · the person picks it</text>
+  </g>
+
+  <g id="claude-code">
+    <rect class="band" x="16" y="44" width="908" height="64" rx="4"/>
+    <text class="t-h" x="28" y="80">Claude Code</text>
+    <rect class="old" x="172" y="54" width="320" height="44" rx="5"/>
+    <text class="t-b c-gone" x="184" y="73">Claude Code's default, unnamed</text>
+    <text class="t-s" x="184" y="89">set nowhere in Kitchen Sink</text>
+    <path class="arr" d="M500 76 H540"/>
+    <rect class="new" x="548" y="54" width="364" height="44" rx="5"/>
+    <text class="t-b c-code" x="560" y="73">Claude Code's own list</text>
+    <text class="t-s" x="560" y="89">asked without a turn · its default preselected</text>
+  </g>
+
+  <g id="codex">
+    <rect class="band" x="16" y="118" width="908" height="64" rx="4"/>
+    <text class="t-h" x="28" y="154">Codex</text>
+    <rect class="old" x="172" y="128" width="320" height="44" rx="5"/>
+    <text class="t-b c-gone" x="184" y="147">Codex's default, unnamed</text>
+    <text class="t-s" x="184" y="163">the model constant is left unset</text>
+    <path class="arr" d="M500 150 H540"/>
+    <rect class="kept" x="548" y="128" width="364" height="44" rx="5"/>
+    <text class="t-b c-prose" x="560" y="147">A short list Kitchen Sink keeps</text>
+    <text class="t-s" x="560" y="163">Codex's SDK can't list · the default named · D3</text>
+  </g>
+
+  <g id="cursor">
+    <rect class="band" x="16" y="192" width="908" height="64" rx="4"/>
+    <text class="t-h" x="28" y="228">Cursor</text>
+    <rect class="old" x="172" y="202" width="320" height="44" rx="5"/>
+    <text class="t-b c-gone" x="184" y="221">composer-2.5, fixed</text>
+    <text class="t-s" x="184" y="237">a constant in Cursor mode</text>
+    <path class="arr" d="M500 224 H540"/>
+    <rect class="new" x="548" y="202" width="364" height="44" rx="5"/>
+    <text class="t-b c-code" x="560" y="221">Cursor's own catalog</text>
+    <text class="t-s" x="560" y="237">composer-2.5 preselected</text>
+  </g>
+
+  <g id="every-session">
+    <path class="arr" d="M730 250 V280"/>
+    <rect class="all" x="172" y="282" width="740" height="104" rx="6"/>
+    <text class="t-lbl" x="188" y="304">EVERY SESSION, ALL THREE · AFTER</text>
+    <text class="t-b" x="188" y="326">Born with its model, by name. Every turn and every resume runs it (D1)</text>
+    <text class="t-b" x="188" y="346">The header names it. The block takes it per run, beside directory and conversation (D2)</text>
+    <text class="t-b" x="188" y="366">A model the harness refuses fails the turn in the harness's own words</text>
+  </g>
+</svg>

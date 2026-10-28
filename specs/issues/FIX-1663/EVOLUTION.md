@@ -27,3 +27,14 @@ makes v2's look part of the epic's goal (ER-16) and adds a leg for it.
 | Prior intent and precise source | Treatment | Reason / evidence | Replacement | Compatibility |
 |---|---|---|---|---|
 | The goal check's legs, a to c; source [`PLAN.md#checks`](PLAN.md#checks) and [`PLAN.md#controls`](PLAN.md#controls) | **Amended**, one leg added | No leg read the look against v2; the audit behind FIX-1737 found 51 look and layout gaps no check noticed | Check `d` runs FIX-1737's `it-draws-v2s-look` on the closure commit; controls `drift`, `unclassified` and `missing` each must fail it where they name, and leave a to c green | Legs a to c, their controls and the rules for findings are unchanged. A run already in flight before FIX-1737 merges cannot pass d, since FIX-1737 blocks this issue |
+
+## Amendment · 2026-10-13 · the DevTool's brand
+
+The epic's [2026-10-13 amendment](../../epics/FIX-1649/EVOLUTION.md#amendment--2026-10-13--the-devtools-brand)
+records #3200's call (FIX-1928): the DevTool ships the Flow State brand, which the Shift Manager theme shares.
+FIX-1942 brings this check in line ([#3240](https://github.com/fixpoint-labs/flow-state-dev/pull/3240)).
+
+| Prior intent and precise source | Treatment | Reason / evidence | Replacement | Compatibility |
+|---|---|---|---|---|
+| Leg c: the devtool page graded for zero matches, and FIX-1655's static check over `packages/**` finds none; source [`PLAN.md#checks`](PLAN.md#checks), [`BUSINESS-RULES.md`](BUSINESS-RULES.md) | **Amended** | Closure run 6 on `7ff0d4c0` was red at `c:devtool` (388 per pass) and `c:static` (24 hits, all in `packages/devtool`), which also made three controls read WRONG | The devtool page must render each pass but is not graded; the static half skips `packages/devtool` through the shared `FENCE_EXEMPT` | The registry cards, the value list and every control are unchanged. FIX-1929 removes both exemptions |
+

@@ -25,6 +25,7 @@ export type ParsedFlowRoute =
   | { kind: "continue_request"; flowKind: string; sessionId: string; requestId: string }
   | { kind: "active_requests" }
   | { kind: "check_interrupted_requests"; userId: string }
+  | { kind: "list_interrupted_requests"; userId: string }
   | { kind: "get_resource_content"; sessionId: string; ref: string }
   | { kind: "get_collection_item_content"; sessionId: string; ref: string; topic: string }
   | { kind: "create_collection_item"; sessionId: string; ref: string }
@@ -35,6 +36,7 @@ export type ParsedFlowRoute =
   | { kind: "get_resource_manifest"; sessionId: string }
   | { kind: "abort_request"; flowKind: string; requestId: string }
   | { kind: "resume_suspension"; flowKind: string; requestId: string }
+  | { kind: "answer_suspension"; flowKind: string; requestId: string }
   | { kind: "request_status"; flowKind: string; requestId: string }
   | { kind: "debug_list_resources"; sessionId: string }
   | { kind: "debug_list_suspensions"; sessionId: string }

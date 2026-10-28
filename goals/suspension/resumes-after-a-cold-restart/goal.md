@@ -8,7 +8,7 @@
 **Model:** n/a — `requestApproval` is pure handlers + `ctx.suspend()`, no LLM call. The real path under test is durable **persistence + cross-runtime resume**, not a generator; no model credential needed.
 **Run:** `pnpm tsx goals/suspension/resumes-after-a-cold-restart/run.mts`
 
-> **Why this exists alongside the warm sibling.** `suspension › it resumes-and-completes-after-approval` proves the warm path (dispatch + resume in one in-memory runtime). This goal goes further: it persists to an on-disk filesystem store and resumes in a **separate process** — a true cold restart. (Filesystem store rather than SQLite only because `store-sqlite` is not a kitchen-sink dependency; both give the same cross-process durability.) It is the one that reproduces (or clears) the DevTool "approve, reload/restart, state lost" symptom: if a suspension can't be reloaded and resumed in a fresh runtime, this fails.
+> **Why there is no warm sibling.** `suspension › it resumes-and-completes-after-approval` proved the warm path (dispatch + resume in one in-memory runtime); its whole signal is leg (b) here, so it was retired (see `goals/README.md` → Retired). This goal goes further: it persists to an on-disk filesystem store and resumes in a **separate process** — a true cold restart. (Filesystem store rather than SQLite only because `store-sqlite` is not a kitchen-sink dependency; both give the same cross-process durability.) It is the one that reproduces (or clears) the DevTool "approve, reload/restart, state lost" symptom: if a suspension can't be reloaded and resumed in a fresh runtime, this fails.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

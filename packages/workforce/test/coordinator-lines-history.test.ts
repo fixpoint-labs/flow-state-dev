@@ -84,9 +84,9 @@ describe("the coordinator turn's history", () => {
     ];
     expect(coordinatorHistory(history, items, NAMES)).toEqual([
       history[0],
-      { role: "assistant", content: "Handed this post to eng.em by its routing, with no turn of mine. Its answer lands in this conversation under its name." },
+      { role: "assistant", content: "Handed this message to eng.em by its routing, with no turn of mine. Its answer lands in this conversation under its name." },
       history[1],
-      { role: "assistant", content: "Handed this post to a, b by its routing, with no turn of mine. Their answers land in this conversation under their names." },
+      { role: "assistant", content: "Handed this message to a, b by its routing, with no turn of mine. Their answers land in this conversation under their names." },
       history[2]
     ]);
   });

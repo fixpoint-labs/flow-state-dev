@@ -30,7 +30,7 @@ of one, or a case only Codex has. "CI" is a scripted Codex client through `resol
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-10 | Any turn runs | Codex works in the session's own git worktree from FIX-1915's factory, and its sandbox confines its writes to that worktree, never the repository's `.git` (FIX-1915 BR-13b). This is required: a host where Codex's sandbox can't hold it shows the mode unavailable with the reason. The run edits files and leaves them uncommitted | Codex's own sandbox · FIX-1915's workspace checks · CI, a write to `.git` refused |
-| BR-12 | Codex runs a command | The command sees only the allowlisted environment, never the server's secrets | CI, a planted variable the run must not see |
+| BR-12 | Codex runs a command | The command starts with only the allowlisted environment, never the server's whole environment. Filtering, not a security boundary (FIX-1915 BR-13b) | CI, a planted variable absent from the command's environment |
 
 ## The plan panel
 

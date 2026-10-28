@@ -473,6 +473,7 @@ const FILE_CLASS = {
  * and the goal states the new one. RETIRE: its subject is gone; the reason
  * names what proves the rest. EDIT: a
  * field or a word, no behaviour. FIX-1793: rewritten there first, re-run here.
+ * GUARD: written after the conversion; it names the surface only to keep it gone.
  */
 const GOALS = {
   "goals/README.md": "EDIT · the word, FIX-1796",
@@ -524,6 +525,8 @@ const GOALS = {
   "goals/shift-manager/it-takes-its-look-from-the-design-system": "CONVERT · finds the coordinator whose conversation holds a board",
   "goals/shift-manager/one-person-runs-a-labs-projects-and-people": "CONVERT · after FIX-1793 retires its room legs, its MAILBOX.md key-list seam reads WORKER.md",
   "goals/task-run-link/it-names-the-run-working-each-task": "CONVERT · rows on a conversation's board",
+  "goals/vocabulary/one-word-per-thing": "GUARD · FIX-1876's vocabulary sweep; it names post-to-mailbox only as a retired name it fails on",
+  "goals/workforce-coordination/runs-on-one-task": "GUARD · FIX-2087's closure; it names mailbox-left only as the control of this issue's goal check that it runs",
   "goals/workforce-conventions/a-mailbox-holds-the-work-a-seat-drains": "RETIRE · its subjects are gone (an unattended file board, a kind of its own, two boards on one mailbox); FIX-1791's and FIX-1794's goal checks and kitchen-sink-talk prove the rest",
   "goals/workforce-conventions/capabilities-come-from-files-alone": "EDIT · a generated module's empty mailboxKinds",
   "goals/workforce-conventions/code-comes-from-files-alone": "REWRITE · its flows/mailboxes leg goes with the slot",

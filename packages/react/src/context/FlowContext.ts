@@ -10,6 +10,7 @@ import {
   useMemo,
   type ReactNode
 } from "react";
+import type { ClientFetch } from "@flow-state-dev/client";
 import type { RendererRegistry } from "../registry/block-renderers";
 
 /**
@@ -21,6 +22,7 @@ export type FlowContextValue = {
   userId?: string;
   baseUrl?: string;
   apiPath?: string;
+  fetcher?: ClientFetch;
   renderers?: RendererRegistry;
 };
 
@@ -38,6 +40,13 @@ export type FlowProviderProps = {
    * the Node host's `basePath`. A nested provider inherits its parent's.
    */
   apiPath?: string;
+  /**
+   * The fetch every hook's calls and streams go through, such as the engine's
+   * `createInProcessFetch(flowState)` for an engine in this process, or a
+   * wrapper that adds credentials. Default: the global `fetch`. A nested
+   * provider inherits its parent's.
+   */
+  fetcher?: ClientFetch;
   renderers?: RendererRegistry;
   children: ReactNode;
 };
@@ -91,17 +100,20 @@ export function FlowProvider(props: FlowProviderProps): ReactNode {
       userId: props.userId ?? parent.userId,
       baseUrl: props.baseUrl ?? parent.baseUrl,
       apiPath: props.apiPath ?? parent.apiPath,
+      fetcher: props.fetcher ?? parent.fetcher,
       renderers: mergeRenderers(parent.renderers, props.renderers)
     };
   }, [
     parent.baseUrl,
     parent.apiPath,
+    parent.fetcher,
     parent.renderers,
     parent.flowKind,
     parent.sessionId,
     parent.userId,
     props.baseUrl,
     props.apiPath,
+    props.fetcher,
     props.renderers,
     props.flowKind,
     props.sessionId,

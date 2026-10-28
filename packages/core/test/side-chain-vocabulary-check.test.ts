@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error — root check script, plain .mjs with no type declarations.
-import {
-  analyzeSources,
-  exemptFiles,
-  mayContainRetiredName,
-  retiredNames,
-} from "../../../scripts/validate-side-chain-vocabulary.mjs";
+import { analyzeSources, exemptFiles, mayContainRetiredName, retiredNames } from "../../../scripts/validate-side-chain-vocabulary.mjs";
 
 type Finding = { file: string; line: number; encoding: string; detail: string };
 

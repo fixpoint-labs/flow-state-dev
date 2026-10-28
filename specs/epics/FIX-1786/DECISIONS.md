@@ -571,4 +571,6 @@ engine rule. The closure only checks.
   coordinator, workstream or project, so no export breaks the layer rule. This record comes
   after they merged, not before ([EVOLUTION.md](EVOLUTION.md#amendment-exports)).
 
+- **Amended after merge (2026-10-23, under ER-24):** the product owner closed the closure issue FIX-1797 without a clean final run, because FIX-2056 and FIX-2058 were rewriting the surfaces it grades. ER-28 now accepts that close-out ([FIX-1797 QR-22](../../issues/FIX-1797/BUSINESS-RULES.md)).
+
 **Open: none.**

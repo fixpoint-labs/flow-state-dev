@@ -64,9 +64,9 @@ describe("defineFlow", () => {
 
   // Definition-only instance options (FIX-1048); see `rejectDefinitionOnlyOptions`.
   //
-  // Runtime assertions rather than `@ts-expect-error` on purpose: this package's
-  // `typecheck` compiles `src/**/*` only, so a type-level assertion in a test file
-  // is never verified by anything. The `as any` below reaches the runtime guard.
+  // Runtime assertions, because the guard under test is the runtime one: the
+  // `as any` below gets past the types to reach it. (`pnpm typecheck` compiles
+  // this file, so a type-level assertion here would be checked too.)
   it.each(["webhooks", "schedules", "mcp"])(
     "fails closed when definition-only %s is passed to flow instance options",
     (option) => {
@@ -148,6 +148,7 @@ describe("defineFlow", () => {
         }
       },
       session: {
+        // @ts-expect-error — source gap FIX-2025: `session` is typed as the definition's config, so a `metadata` schema the runtime accepts is refused.
         metadata: z.object({ traceId: z.string() })
       }
     });
@@ -160,6 +161,7 @@ describe("defineFlow", () => {
     expect(custom.requireUser).toBe(true);
     expect(Object.keys(custom.actions).sort()).toEqual(["extra", "run"]);
     expect(custom.session?.stateSchema).toBeDefined();
+    // @ts-expect-error — FIX-2025, the same source gap: the instance type does not carry `metadata`.
     expect(custom.session?.metadata).toBeDefined();
   });
 

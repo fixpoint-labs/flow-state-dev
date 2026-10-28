@@ -266,7 +266,7 @@ function createDefaultGoalSynthesizer<TInput extends { goal: string }>(
     name: `${name}-synthesize-goal`,
     inputSchema,
     outputSchema: z.object({ goal: z.string() }),
-    model: model ?? "openai/gpt-5.4-mini",
+    model: model ?? "openai/gpt-6-luna",
     history: { limit: 8 },
     itemVisibility: { client: false, history: false },
     prompt: [

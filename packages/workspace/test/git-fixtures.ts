@@ -15,6 +15,13 @@ export function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", [...AUTHOR, ...args], { cwd, encoding: "utf8" }).trim();
 }
 
+/** Args from the git subcommand on, past leading `-c <value>` pairs. */
+export function subcommand(args: readonly string[]): readonly string[] {
+  let i = 0;
+  while (args[i] === "-c") i += 2;
+  return args.slice(i);
+}
+
 /** A fresh temporary directory. */
 export function tempDir(label: string): string {
   return mkdtempSync(join(tmpdir(), `fsd-workspace-${label}-`));

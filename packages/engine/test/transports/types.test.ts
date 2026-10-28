@@ -32,7 +32,7 @@ describe("inbound transport contract types", () => {
   });
 
   it("envelope and principal types compose", () => {
-    const principal: ResolvedPrincipal = { userId: "u1" };
+    const principal: ResolvedPrincipal = { userId: "u1", orgId: "org1" };
     const envelope: InboundRequestEnvelope = {
       source: "test",
       flowKind: "demo",

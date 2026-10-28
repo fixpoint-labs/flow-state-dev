@@ -107,7 +107,7 @@ describe("Roster", () => {
   it("lists the organization's workers (BR-19)", async () => {
     const source = fakeSource([worker("support.ada"), worker("eng.bob", "coder")]);
     render(
-      createElement(Roster, { sessionId: "s1", resourceClient: source, collectionRef: "roster" })
+      createElement(Roster, { sessionId: "s1", client: { resources: source }, collectionRef: "roster" })
     );
 
     await waitFor(() => expect(screen.getByText("support.ada")).toBeTruthy());
@@ -123,7 +123,7 @@ describe("Roster", () => {
     render(
       createElement(Roster, {
         sessionId: "s1",
-        resourceClient: source,
+        client: { resources: source },
         problems: [
           'organization "acme", row "workforce/roster/old.zed" — no kind named "retired"'
         ]
@@ -143,7 +143,7 @@ describe("Roster", () => {
 
   it("says an empty roster is empty, not loading", async () => {
     const source = fakeSource([]);
-    render(createElement(Roster, { sessionId: "s1", resourceClient: source }));
+    render(createElement(Roster, { sessionId: "s1", client: { resources: source } }));
     await waitFor(() =>
       expect(document.querySelector('[data-state="empty"]')).toBeTruthy()
     );
@@ -152,7 +152,7 @@ describe("Roster", () => {
 
   it("surfaces a failed read with a retry, and never retries on its own", async () => {
     const source = failingSource("network down");
-    render(createElement(Roster, { sessionId: "s1", resourceClient: source }));
+    render(createElement(Roster, { sessionId: "s1", client: { resources: source } }));
 
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
     expect(screen.getByText(/network down/)).toBeTruthy();
@@ -174,7 +174,7 @@ describe("Roster", () => {
     render(
       createElement(Roster, {
         sessionId: "s1",
-        resourceClient: fakeSource([legacyRow]),
+        client: { resources: fakeSource([legacyRow]) },
         slots: {
           rowTrailing: (row) => {
             seen.push(row.worker.instructions);
@@ -204,7 +204,7 @@ describe("Roster", () => {
     // child) is dropped like any other unreadable row, same as `Roster`
     // already does for a row missing `workerId`/`flow`.
     const badRow = { topic: "bad.row", clientData: { workerId: "bad.row", flow: "agent", instructions: {} } };
-    render(createElement(Roster, { sessionId: "s1", resourceClient: fakeSource([worker("support.ada"), badRow]) }));
+    render(createElement(Roster, { sessionId: "s1", client: { resources: fakeSource([worker("support.ada"), badRow]) } }));
 
     await waitFor(() => expect(screen.getByText("support.ada")).toBeTruthy());
     expect(screen.queryByText("bad.row")).toBeNull();
@@ -217,7 +217,7 @@ describe("Roster", () => {
     // a panel that reads page one and stops truncates the last worker silently.
     const workers = Array.from({ length: 51 }, (_, i) => worker(`worker-${String(i).padStart(3, "0")}`));
     const source = pagedSource(workers);
-    render(createElement(Roster, { sessionId: "s1", resourceClient: source, collectionRef: "roster" }));
+    render(createElement(Roster, { sessionId: "s1", client: { resources: source }, collectionRef: "roster" }));
 
     await waitFor(() => expect(screen.getByText("worker-050")).toBeTruthy());
     expect(document.querySelector("[data-roster-workers]")?.getAttribute("data-roster-workers")).toBe(
@@ -234,7 +234,7 @@ describe("Roster", () => {
     const workers = Array.from({ length: 1001 }, (_, i) => worker(`worker-${String(i).padStart(4, "0")}`));
     const source = pagedSource(workers);
     render(
-      createElement(Roster, { sessionId: "s1", resourceClient: source, collectionRef: "roster", limit: 1 })
+      createElement(Roster, { sessionId: "s1", client: { resources: source }, collectionRef: "roster", limit: 1 })
     );
 
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
@@ -251,7 +251,7 @@ describe("Roster", () => {
     const source = {
       listCollectionItems: vi.fn(async () => ({ items: [worker("worker-0000")], nextCursor: "stuck" }))
     };
-    render(createElement(Roster, { sessionId: "s1", resourceClient: source, collectionRef: "roster" }));
+    render(createElement(Roster, { sessionId: "s1", client: { resources: source }, collectionRef: "roster" }));
 
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
     expect(screen.getByText(/same page cursor twice/)).toBeTruthy();
@@ -265,7 +265,7 @@ describe("Roster", () => {
     const workers = Array.from({ length: 1000 }, (_, i) => worker(`worker-${String(i).padStart(4, "0")}`));
     const source = pagedSource(workers);
     render(
-      createElement(Roster, { sessionId: "s1", resourceClient: source, collectionRef: "roster", limit: 1 })
+      createElement(Roster, { sessionId: "s1", client: { resources: source }, collectionRef: "roster", limit: 1 })
     );
 
     await waitFor(() => expect(screen.getByText("worker-0999")).toBeTruthy());
@@ -288,7 +288,7 @@ describe("BoardColumns", () => {
       card("t2", "in_progress", { title: "second" }),
       card("t3", "pending", { title: "third" })
     ]);
-    render(createElement(BoardColumns, { sessionId: "s1", boardRef: "eng.feature.triage", resourceClient: source }));
+    render(createElement(BoardColumns, { sessionId: "s1", boardRef: "eng.feature.triage", client: { resources: source } }));
 
     await waitFor(() => expect(document.querySelector('[data-column="pending"]')).toBeTruthy());
     // Every column the substrate has, in its order — and no extra.
@@ -299,28 +299,6 @@ describe("BoardColumns", () => {
     expect(
       document.querySelectorAll('[data-column="pending"] [data-task-id]').length
     ).toBe(2);
-  });
-
-  it("lands a pre-rename row in `parked`, not a column of its own (BP-030)", async () => {
-    // `awaiting_review` shipped as `parked`. The substrate maps it forward at
-    // its own read boundary, but a client read does not pass through that one
-    // — verified against the real route, where the legacy word comes back
-    // untouched. Un-normalized, it would read as a status this version does
-    // not know and earn its own column BESIDE `parked`, which is the failure
-    // this asserts away.
-    const source = fakeSource([card("t-legacy", "awaiting_review", { title: "old row" })]);
-    render(createElement(BoardColumns, { sessionId: "s1", boardRef: "b", resourceClient: source }));
-
-    await waitFor(() => expect(document.querySelector('[data-column="parked"]')).toBeTruthy());
-    expect(
-      document.querySelectorAll('[data-column="parked"] [data-task-id]').length,
-      "the legacy row belongs in parked"
-    ).toBe(1);
-    // No stray column, and none marked unknown — either would mean the row
-    // rendered somewhere a person is not looking for it.
-    expect(document.querySelector('[data-column="awaiting_review"]')).toBeNull();
-    expect(document.querySelector("[data-column-unknown]")).toBeNull();
-    expect(document.querySelectorAll("[data-column]").length).toBe(BOARD_STATUS_COLUMNS.length);
   });
 
   it("gives a status it does not know its own column rather than dropping the row", () => {
@@ -340,7 +318,7 @@ describe("BoardColumns", () => {
 
   it("states the likely cause when a board is empty, and does not spin (BR-22)", async () => {
     const source = fakeSource([]);
-    render(createElement(BoardColumns, { sessionId: "s1", boardRef: "b", resourceClient: source }));
+    render(createElement(BoardColumns, { sessionId: "s1", boardRef: "b", client: { resources: source } }));
 
     await waitFor(() => expect(document.querySelector('[data-state="empty"]')).toBeTruthy());
     // The distinction is the assertion. A component that rendered the loading
@@ -351,7 +329,7 @@ describe("BoardColumns", () => {
 
   it("does spin while the read is genuinely outstanding", async () => {
     const source = pendingSource();
-    render(createElement(BoardColumns, { sessionId: "s1", boardRef: "b", resourceClient: source }));
+    render(createElement(BoardColumns, { sessionId: "s1", boardRef: "b", client: { resources: source } }));
 
     // The other half of the same distinction: without this, a component that
     // showed the empty note in BOTH states would pass the test above.
@@ -371,7 +349,7 @@ describe("BoardColumns", () => {
       createElement(BoardColumns, {
         sessionId: "s1",
         boardRef: "b",
-        resourceClient: fakeSource(rows)
+        client: { resources: fakeSource(rows) }
       })
     );
     await waitFor(() => expect(document.querySelectorAll("[data-task-id]").length).toBe(1));
@@ -382,7 +360,7 @@ describe("BoardColumns", () => {
       createElement(BoardColumns, {
         sessionId: "s1",
         boardRef: "b",
-        resourceClient: fakeSource(rows),
+        client: { resources: fakeSource(rows) },
         slots: { card: (row) => createElement("span", null, `custom ${row.card.id}`) }
       })
     );
@@ -420,7 +398,7 @@ describe("BoardColumns", () => {
         })
       );
       const source = pagedSource(rows);
-      render(createElement(BoardColumns, { sessionId: "s1", boardRef: "b", resourceClient: source }));
+      render(createElement(BoardColumns, { sessionId: "s1", boardRef: "b", client: { resources: source } }));
 
       await waitFor(() => expect(screen.getByText("task 50")).toBeTruthy());
       expect(document.querySelectorAll('[data-column="pending"] [data-task-id]').length).toBe(51);
@@ -435,7 +413,7 @@ describe("BoardColumns", () => {
 
   it("errors rather than render a partial board when the cursor never runs out", async () => {
     const source = endlessSource((n) => card(`t-${n}`, "pending", { title: `task ${n}` }));
-    render(createElement(BoardColumns, { sessionId: "s1", boardRef: "b", resourceClient: source }));
+    render(createElement(BoardColumns, { sessionId: "s1", boardRef: "b", client: { resources: source } }));
 
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
     expect(screen.getByText(/more still to read/)).toBeTruthy();

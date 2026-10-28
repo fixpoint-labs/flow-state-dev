@@ -1,16 +1,15 @@
 /**
  * Flow-level hook for session browsing, creation, and auto-creation.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
-  createClient,
-  createSessionClient,
   sessionQueryFor,
   type FlowListEntry,
   type SessionDetail,
   type SessionSummary
 } from "@flow-state-dev/client";
 import { useFlowContext } from "../context/FlowContext";
+import { useClient } from "../internal/useClient";
 
 /**
  * Options for the useFlow hook.
@@ -38,6 +37,7 @@ export type UseFlowResult = {
   readonly flows: FlowListEntry[];
   readonly sessions: SessionSummary[];
   readonly activeSessionId?: string;
+  /** True on the first paint and while the flow/session list is being read. */
   readonly isLoading: boolean;
   createSession: (
     metadata?: Record<string, unknown>
@@ -58,32 +58,15 @@ export type UseFlowResult = {
 export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
   const context = useFlowContext();
   const flowKind = options.flowKind ?? context.flowKind;
-  const userId = options.userId ?? context.userId ?? "devuser";
-  const baseUrl = options.baseUrl ?? context.baseUrl;
-  const apiPath = context.apiPath;
+  const fsd = useClient({ userId: options.userId, baseUrl: options.baseUrl });
+  const userId = fsd.userId;
 
   const [flows, setFlows] = useState<FlowListEntry[]>([]);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<
     string | undefined
   >();
-  const [isLoading, setIsLoading] = useState(false);
-
-  const sessionClient = useMemo(
-    () => createSessionClient({ baseUrl, apiPath }),
-    [baseUrl, apiPath]
-  );
-
-  const client = useMemo(
-    () =>
-      createClient({
-        flowKind: flowKind ?? "unknown-flow",
-        userId,
-        baseUrl,
-        apiPath
-      }),
-    [flowKind, userId, baseUrl, apiPath]
-  );
+  const [isLoading, setIsLoading] = useState(true);
 
   const createSession = useCallback(
     async (
@@ -93,13 +76,9 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
         throw new Error("useFlow.createSession requires flowKind");
       }
 
-      const created = await sessionClient.createSession({
-        flowKind,
-        userId,
-        metadata
-      });
+      const created = await fsd.flow(flowKind).createSession({ metadata });
 
-      const updated = await sessionClient.listSessions({
+      const updated = await fsd.sessions.list({
         ...sessionQueryFor(flowKind, flows),
         userId
       });
@@ -108,7 +87,7 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
 
       return created;
     },
-    [flowKind, flows, userId, sessionClient]
+    [flowKind, flows, userId, fsd]
   );
 
   const ensureSession = useCallback(
@@ -118,12 +97,12 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
       if (sessions.length > 0) {
         const existing = sessions[0]!;
         setActiveSessionId(existing.id);
-        return sessionClient.getSession(existing.id);
+        return fsd.sessions.get(existing.id);
       }
 
       return createSession(metadata);
     },
-    [sessions, sessionClient, createSession]
+    [sessions, fsd, createSession]
   );
 
   const selectSession = useCallback((sessionId: string | undefined) => {
@@ -132,12 +111,12 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
 
   const refreshSessions = useCallback(async () => {
     if (!flowKind?.trim()) return;
-    const updated = await sessionClient.listSessions({
+    const updated = await fsd.sessions.list({
       ...sessionQueryFor(flowKind, flows),
       userId
     });
     setSessions(updated);
-  }, [flowKind, flows, userId, sessionClient]);
+  }, [flowKind, flows, userId, fsd]);
 
   // Fetch flows + sessions on mount, auto-create if requested and none exist.
   useEffect(() => {
@@ -147,9 +126,9 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
     void (async () => {
       try {
         // Flows first: the session filter depends on what the address is.
-        const nextFlows = await client.listFlows();
+        const nextFlows = await fsd.flows();
         const nextSessions: SessionSummary[] = flowKind?.trim()
-          ? await sessionClient.listSessions({
+          ? await fsd.sessions.list({
               ...sessionQueryFor(flowKind, nextFlows),
               userId
             })
@@ -165,15 +144,12 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
             setActiveSessionId((prev) => prev ?? nextSessions[0]!.id);
           }
         } else if (options.autoCreateSession && flowKind?.trim()) {
-          const created = await sessionClient.createSession({
-            flowKind,
-            userId
-          });
+          const created = await fsd.flow(flowKind).createSession();
           if (cancelled) return;
 
           setActiveSessionId(created.id);
 
-          const updated = await sessionClient.listSessions({
+          const updated = await fsd.sessions.list({
             ...sessionQueryFor(flowKind, nextFlows),
             userId
           });
@@ -190,8 +166,7 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
       cancelled = true;
     };
   }, [
-    client,
-    sessionClient,
+    fsd,
     flowKind,
     userId,
     options.autoCreateSession,

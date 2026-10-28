@@ -4,6 +4,8 @@
  * `@flow-state-dev/core/items/internal`). Carries the `ref` BlockValue case
  * and the runtime item union (public `OutputItem` plus the four trace types)
  * used by the executor, persistence layer, and observability surfaces.
+ * `RuntimeItem` alone is also public, re-exported from the items barrel and
+ * the `@flow-state-dev/core` root, because public signatures return it.
  */
 import type {
   BlockTraceItem,

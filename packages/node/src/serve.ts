@@ -228,6 +228,7 @@ export function serve(
   const doClose = async (): Promise<void> => {
     process.off("SIGTERM", onSignal);
     process.off("SIGINT", onSignal);
+    const closing = Date.now();
 
     await new Promise<void>((resolveClose) => {
       let settled = false;
@@ -247,7 +248,8 @@ export function serve(
       timer.unref?.();
     });
 
-    if (disposeOnClose) await dispose();
+    // What is left of the grace bounds the wait for requests due wakes started.
+    if (disposeOnClose) await dispose({ drainMs: Math.max(0, shutdownGraceMs - (Date.now() - closing)) });
   };
 
   const onSignal = () => {

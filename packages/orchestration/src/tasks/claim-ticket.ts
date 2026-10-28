@@ -53,6 +53,14 @@ export interface TaskClaimTicket {
   /** `task.createdAt` as of the claim — task identity across delete/recreate. */
   readonly createdAt: number;
   /**
+   * `task.turn` as of the claim: the row's turn generation (FIX-2133 D3).
+   * Every claim of a row advances it, a same-attempt re-entry's included, so
+   * two turns of one attempt hold different tickets and a turn's late write
+   * never lands after its successor's claim. Checked by every claim-ticket
+   * write, at `transitionDeclineReason`.
+   */
+  readonly turn: number;
+  /**
    * `task.incarnationId` as of the claim — the row's identity nonce, and the
    * only one of these fields that survives a same-millisecond recreate.
    *
@@ -71,7 +79,7 @@ export interface TaskClaimTicket {
   readonly incarnationId?: string;
   /**
    * `task.assignee` as of the claim. Server-derived like the rest: a board
-   * whose fallback hands rows off addresses the hand-over by it, and the
+   * whose fallback dispatches rows addresses the hand-over by it, and the
    * receiving gate checks the row still names it. Not part of the write fence.
    */
   readonly assignee?: string;
@@ -83,7 +91,7 @@ export interface TaskClaimTicket {
   readonly createdBy?: string;
   /**
    * The partition the claim was taken in, on a ledger declared with
-   * `partitionBy`: the claiming ref's own. A board's hand-off puts it on the
+   * `partitionBy`: the claiming ref's own. A board's dispatch puts it on the
    * dispatch so the receiving gate reads the row where it was claimed. Not part
    * of the write fence: the ref a write goes through is already narrowed to it.
    */
@@ -108,6 +116,8 @@ export const taskClaimTicketSchema = z.object({
   taskId: z.string(),
   attempt: z.number(),
   createdAt: z.number(),
+  /** The row's turn generation as of the claim. See {@link TaskClaimTicket.turn}. */
+  turn: z.number().int().nonnegative(),
   // Declared, not merely allowed: a Zod object strips keys it does not name, so
   // an undeclared field would be dropped the moment the board patches the
   // ticket onto its worker-body state. Optional because the row it is copied
@@ -144,6 +154,7 @@ export function ticketForClaim(
     taskId: claimed.id,
     attempt: claimed.attempts,
     createdAt: claimed.createdAt,
+    turn: claimed.turn ?? 0,
     // Spread conditionally so an absent nonce stays an ABSENT KEY. A present
     // key holding `undefined` reads the same to `ticketNamesTask` and does not
     // to a JSON boundary, and this ticket's fields are copied onto a task

@@ -18,9 +18,9 @@
  *
  * - `held`: a task its run is working, narrating a step a second, until it
  *   is aborted;
- * - `parked`: a task its run parks on a question for a person
- *   (`parkOnQuestion`), then ends its turn;
- * - `queued`: a task that waits on another task the spread holds or parks,
+ * - `asked`: a task its run holds on a question for a person
+ *   (`askQuestion`), then ends its turn;
+ * - `queued`: a task that waits on another task the spread holds or asks on,
  *   so nothing ever starts it;
  * - `ask`: a pending approval in a session of its own, on the flow it runs on,
  *   naming it.
@@ -29,7 +29,7 @@
  * `coordinator`), and each of its sessions names it in its state
  * (`workerId`). A task runs in a task session the board opens for it.
  *
- * Every task is filed through the lead's conversation's `dispatchTask_tasks`, over
+ * Every task is filed through the lead's conversation's `createTask_tasks`, over
  * the Lab's own router, assigned by the worker's id. No model: the runs are
  * scripted.
  */
@@ -52,7 +52,7 @@ import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { httpActions, type GoalRouter } from "../../../lib/http-actions.mts";
+import { actingAs } from "../../../lib/client-actions.mts";
 import { workerDoor } from "../../../lib/worker-door.mts";
 import { installWorkers } from "../../../lib/workers.mts";
 
@@ -73,21 +73,21 @@ const INVENTORY_WRITER_FLOW = "inventory-writer";
  * The model best fit's one evaluator call would run on. The desks route to
  * everyone and nothing posts to them, but the flow names no default.
  */
-const ROUTE_MODEL = "vercel/openai/gpt-5.4-mini";
-/** What a parked task's goal says, so its run parks it instead of holding it. */
-const PARK = "park for a person";
-/** The question a parked task waits on. */
+const ROUTE_MODEL = "vercel:openai/gpt-5.4-mini";
+/** What an asked task's goal says, so its run asks instead of holding it. */
+const PARK = "ask a person";
+/** The question an asked task waits on. */
 const QUESTION = "Needs a look before it goes further.";
 /** How often a held run narrates a step. */
 const STEP_MS = 1_000;
 
 /** One state to build for a worker. */
-export type ShiftState = "held" | "parked" | "queued" | "ask";
+export type ShiftState = "held" | "asked" | "queued" | "ask";
 /** Per worker name, the states to build. */
 export type Spread = Record<string, ShiftState[]>;
 
 /** The spread when `SHIFT_LAB_SPREAD` names none: one worker in each state, and one with nothing. */
-export const DEFAULT_SPREAD: Spread = { coder: ["held"], reviewer: ["parked"], asker: ["ask"], waiter: ["queued"] };
+export const DEFAULT_SPREAD: Spread = { coder: ["held"], reviewer: ["asked"], asker: ["ask"], waiter: ["queued"] };
 
 const sleep = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
@@ -119,20 +119,20 @@ function spreadFromEnv(): Spread {
 }
 
 /**
- * The parked task's model, one step at a time: it parks the task it runs on
- * its question, and once the park has answered, ends the turn.
+ * The asked task's model, one step at a time: it asks its question, which
+ * holds the task it runs on, and once the tool has answered, ends the turn.
  */
 const parkingModel: GeneratorModel = {
-  modelId: "shift-lab/parking",
+  modelId: "shift-lab/asking",
   generate: async () => {
-    throw new Error("the shift-lab's parking model runs one step at a time (generateStep)");
+    throw new Error("the shift-lab's asking model runs one step at a time (generateStep)");
   },
   generateStep: async ({ messages, tools }) => {
     if ((messages.at(-1) as { role?: string } | undefined)?.role === "tool") return { text: "Waiting on your answer.", finishReason: "stop" };
-    if (!(tools ?? []).some((tool) => tool.name === "parkOnQuestion")) {
-      throw new Error("the parked task's turn was not offered parkOnQuestion");
+    if (!(tools ?? []).some((tool) => tool.name === "askQuestion")) {
+      throw new Error("the asked task's turn was not offered askQuestion");
     }
-    return { toolCalls: [{ toolCallId: "park", toolName: "parkOnQuestion", args: { question: QUESTION } }], finishReason: "tool-calls" };
+    return { toolCalls: [{ toolCallId: "ask", toolName: "askQuestion", args: { question: QUESTION } }], finishReason: "tool-calls" };
   },
 };
 
@@ -200,7 +200,7 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
       hold: [(input: { message: string }) => input, (input: { message: string }) => !input.message.includes(PARK), holdRun],
     });
     return {
-      [LEAD_KIND]: defineFlow({
+      [LEAD_KIND]: { roles: ["manager"], flow: defineFlow({
         kind: LEAD_KIND,
         cardinality: "collection",
         configSchema: workerConfigSchema(),
@@ -209,8 +209,8 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
         actions: { ...workerDoor, ...leadBoard.actions },
         // A task's notice lands as a line; it wakes no turn.
         internal: { actions: leadBoard.entries(leadTurn, () => "fixed") },
-      } as never),
-      [SEAT_KIND]: defineFlow({
+      } as never) },
+      [SEAT_KIND]: { roles: ["contributor"], flow: defineFlow({
         kind: SEAT_KIND,
         cardinality: "collection",
         configSchema: workerConfigSchema(),
@@ -218,8 +218,8 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
         resources: { ...installation.resources },
         actions: { ...workerDoor, ask: { block: sequencer({ name: "shift-lab-ask", inputSchema: z.object({ what: z.string() }) }).step(gate), durable: true } },
         task: { actions: { work: workerTaskEntry({ name: "shift-lab-task", turn: taskTurn }) } },
-      } as never),
-      [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, delegateFlows: [], routeModel: ROUTE_MODEL }),
+      } as never) },
+      [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL }),
     };
   });
   // The seat write takes caller-supplied rows, so it is internal only.
@@ -265,21 +265,21 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
   if (inventory.problems.length > 0) throw new Error(inventory.problems.join("; "));
 
   // ---- the spread: filed on the lead's conversation's board -----------------
-  const http = httpActions((await flowState.getRouter()) as unknown as GoalRouter, SHIFT_LAB_USER_ID);
+  const http = actingAs((await flowState.getRouter()), SHIFT_LAB_USER_ID);
   const conversation = await http.open(LEAD_KIND, { [WORKER_ID_STATE_KEY]: lead.id });
   const states = (wanted: ShiftState) => Object.entries(spread).flatMap(([name, list]) => list.filter((s) => s === wanted).map(() => name));
   const idOf = (name: string) => seats.find((s) => s.name === name)!.id;
   const file = async (name: string, goal: string, deps?: string[]): Promise<string> => {
-    const filed = await http.act(LEAD_KIND, conversation, "dispatchTask_tasks", { goal, assignee: idOf(name), ...(deps === undefined ? {} : { deps }) });
+    const filed = await http.act(LEAD_KIND, conversation, "createTask_tasks", { goal, assignee: idOf(name), ...(deps === undefined ? {} : { deps }) });
     if (filed?.ok !== true) throw new Error(`filing "${goal}" for ${idOf(name)}: ${JSON.stringify(filed)}`);
     return String(filed.taskId);
   };
 
   const started: string[] = [];
   for (const name of states("held")) started.push(await file(name, `${name}: hold until stopped`));
-  for (const name of states("parked")) started.push(await file(name, `${name}: ${PARK}`));
+  for (const name of states("asked")) started.push(await file(name, `${name}: ${PARK}`));
   // A queued task waits on one that never finishes, so nothing starts it.
-  if (states("queued").length > 0 && started.length === 0) throw new Error("a queued task waits on a held or parked one, and the spread has none");
+  if (states("queued").length > 0 && started.length === 0) throw new Error("a queued task waits on a held or asked one, and the spread has none");
   for (const name of states("queued")) await file(name, `${name}: waits on ${started[0]}`, [started[0]!]);
 
   for (const name of states("ask")) {

@@ -19,6 +19,7 @@ import { createPostgresCheckpointStore } from "./checkpoint-store";
 import { createInMemoryTraceStore } from "@flow-state-dev/engine";
 import { createPostgresSuspensionStore } from "./suspension-store";
 import { createPostgresLeaseStore } from "./lease-store";
+import { createPostgresWakeStore } from "./wake-store";
 import { createPgPoolTx } from "./tx";
 
 const DEFAULT_LIVE_TAIL_POOL_MAX = 10;
@@ -207,6 +208,7 @@ export async function createPostgresStores(
       traces: createInMemoryTraceStore(),
       suspensions: createPostgresSuspensionStore(executor),
       leases: createPostgresLeaseStore(executor),
+      wakes: createPostgresWakeStore(executor),
       async close() {
         await closePool();
       }
@@ -231,6 +233,7 @@ export async function createPostgresStores(
     traces: createInMemoryTraceStore(),
     suspensions: createPostgresSuspensionStore(executor),
     leases: createPostgresLeaseStore(executor),
+    wakes: createPostgresWakeStore(executor),
     async close() {
       await closePool();
     }
@@ -266,7 +269,8 @@ export {
   createPostgresResourceStateStore,
   createPostgresCheckpointStore,
   createPostgresSuspensionStore,
-  createPostgresLeaseStore
+  createPostgresLeaseStore,
+  createPostgresWakeStore
 };
 
 export { initializeSchema } from "./schema";

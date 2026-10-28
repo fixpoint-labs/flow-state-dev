@@ -40,7 +40,7 @@ export type { ScopeName, ScopePrincipal } from "./scope-identity";
 export { localWorkspaceHost, WorkspaceRefusedError } from "./local-host";
 export { fileHeldWorkStore, HeldWorkMismatchError } from "./held-work";
 export type { HeldWork, HeldWorkMismatchField, HeldWorkStore, RecordedHold, SkippedPath } from "./held-work";
-export type { IgnoredDirectory } from "./worktree";
+export type { IgnoredDirectory, MovedBack, OffBranch } from "./worktree";
 export { isStrictlyInside } from "./worktree";
 export { CHECKOUT_CLEANUP_TIMEOUT_MS, GIT_TIMEOUT_MS, run } from "./exec";
 export type { RunOptions } from "./exec";

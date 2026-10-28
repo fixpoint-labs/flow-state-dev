@@ -3,7 +3,8 @@
  *
  * The DevTool changes a task only through the flow's own actions. This strip
  * lists the ones that act on one task (see `lib/task-actions`), opens the
- * picked one's form with the row's `taskId` fixed, and dispatches it through
+ * picked one's form with the row's id fixed (in `id` or `taskId`, the field
+ * the action names its task in), and dispatches it through
  * the panel's own action path, the one the action bar uses. There is no other
  * write here, and no record editor: what a row can do is what the flow exposes.
  *
@@ -23,6 +24,7 @@ import { buildInputFromForm, getDefaults } from "./action-bar";
 import {
   NO_RESULT_RECORDED,
   outcomeOf,
+  taskIdField,
   type RequestOutcomeSource,
   type RowActionOutcome,
 } from "../../lib/task-actions";
@@ -61,10 +63,10 @@ export function TaskRowActions({ taskId, actions, schemas, run, requests }: Prop
 
   if (actions.length === 0) {
     return (
-      <p className="mt-2 text-[11px] text-slate-500">
-        This flow has no actions that take a taskId, so nothing here can change the task.{" "}
+      <p className="mt-2 font-fs-mono text-[11px] text-fs-ink4">
+        This flow has no actions that take a task id, so nothing here can change the task.{" "}
         <a
-          className="text-sky-400 underline hover:text-sky-300"
+          className="text-fs-blue underline underline-offset-2 hover:text-fs-ink"
           href={TASK_ACTIONS_DOCS_URL}
           target="_blank"
           rel="noreferrer"
@@ -80,7 +82,9 @@ export function TaskRowActions({ taskId, actions, schemas, run, requests }: Prop
   // id to that board's ledger.
   const picked = pickedState !== null && actions.includes(pickedState) ? pickedState : null;
   const schema = picked === null ? undefined : schemas?.[picked];
-  const locked = { taskId };
+  // The field the picked action names its task in (`id` or `taskId`).
+  const idField = (picked === null ? undefined : taskIdField(picked, schema, true)) ?? "taskId";
+  const locked = { [idField]: taskId };
 
   const pick = (action: string) => {
     setPicked((was) => (was === action ? null : action));
@@ -90,7 +94,7 @@ export function TaskRowActions({ taskId, actions, schemas, run, requests }: Prop
   const submit = async () => {
     if (picked === null || schema === undefined) return;
     const action = picked;
-    const input = { ...(buildInputFromForm(schema, values) as Record<string, unknown>), taskId };
+    const input = { ...(buildInputFromForm(schema, values) as Record<string, unknown>), [idField]: taskId };
     const key = nextKey.current++;
     setSubmissions((prev) => [{ key, action, sent: "sending" }, ...prev]);
     let sent: Submission["sent"] | undefined;
@@ -116,7 +120,7 @@ export function TaskRowActions({ taskId, actions, schemas, run, requests }: Prop
 
   return (
     <div className="mt-2 min-w-0 space-y-2" role="group" aria-label="Actions">
-      <div className="text-[10px] uppercase tracking-wide text-slate-500">Actions</div>
+      <div className="font-fs-mono text-[10px] font-medium uppercase tracking-[.14em] text-fs-ink3">Actions</div>
       <div className="flex flex-wrap gap-1.5">
         {actions.map((action) => (
           <button
@@ -124,10 +128,10 @@ export function TaskRowActions({ taskId, actions, schemas, run, requests }: Prop
             type="button"
             aria-pressed={picked === action}
             onClick={() => pick(action)}
-            className={`max-w-full truncate rounded border px-1.5 py-0.5 font-mono text-[10px] ${
+            className={`max-w-full truncate border px-2 py-0.5 font-fs-mono text-[11px] outline-none focus-visible:ring-2 focus-visible:ring-fs-blue/40 ${
               picked === action
-                ? "border-sky-600 bg-sky-900/40 text-sky-200"
-                : "border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700"
+                ? "border-fs-ink bg-fs-ink text-fs-paper"
+                : "border-fs-ink/30 text-fs-ink2 hover:border-fs-ink hover:text-fs-ink"
             }`}
           >
             {action}
@@ -135,7 +139,7 @@ export function TaskRowActions({ taskId, actions, schemas, run, requests }: Prop
         ))}
       </div>
       {picked !== null && schema !== undefined && (
-        <div className="min-w-0 rounded border border-slate-800 p-2">
+        <div className="min-w-0 border border-fs-ink/20 bg-fs-inspector p-2.5">
           <SchemaForm
             schema={schema}
             values={values}
@@ -144,7 +148,7 @@ export function TaskRowActions({ taskId, actions, schemas, run, requests }: Prop
             locked={locked}
           />
           <div className="mt-2 flex items-center gap-2">
-            <Button size="sm" variant="outline" className="h-7 px-3 text-xs" onClick={() => void submit()}>
+            <Button size="sm" className="h-7 px-3" onClick={() => void submit()}>
               Run
             </Button>
           </div>
@@ -154,7 +158,7 @@ export function TaskRowActions({ taskId, actions, schemas, run, requests }: Prop
         <ul className="min-w-0 space-y-1">
           {submissions.map((submission) => (
             <li key={submission.key} data-submission={submission.action} className="flex min-w-0 items-baseline gap-2">
-              <span className="shrink-0 font-mono text-[10px] text-slate-500">{submission.action}</span>
+              <span className="shrink-0 font-fs-mono text-[10.5px] text-fs-ink4">{submission.action}</span>
               <Outcome outcome={outcomeOfSubmission(submission)} />
             </li>
           ))}
@@ -168,31 +172,31 @@ function Outcome({ outcome }: { outcome: RowActionOutcome }) {
   switch (outcome.state) {
     case "pending":
       return (
-        <span data-outcome="pending" className="text-[11px] text-slate-400">
+        <span data-outcome="pending" className="font-fs-mono text-[11px] text-fs-blue">
           Running…
         </span>
       );
     case "ok":
       return (
-        <span data-outcome="ok" className="min-w-0 text-[11px] text-emerald-300 [overflow-wrap:anywhere]">
+        <span data-outcome="ok" className="min-w-0 font-fs-mono text-[11px] text-fs-green [overflow-wrap:anywhere]">
           {outcome.output === undefined ? "Done." : `Done: ${describeOutput(outcome.output)}`}
         </span>
       );
     case "refused":
       return (
-        <span data-outcome="refused" className="min-w-0 text-[11px] text-amber-300 [overflow-wrap:anywhere]">
+        <span data-outcome="refused" className="min-w-0 font-fs-mono text-[11px] text-fs-red [overflow-wrap:anywhere]">
           Refused: {outcome.message}
         </span>
       );
     case "failed":
       return (
-        <span data-outcome="failed" className="min-w-0 text-[11px] text-red-300 [overflow-wrap:anywhere]">
+        <span data-outcome="failed" className="min-w-0 font-fs-mono text-[11px] text-fs-red [overflow-wrap:anywhere]">
           Failed: {outcome.message}
         </span>
       );
     case "unknown":
       return (
-        <span data-outcome="unknown" className="text-[11px] text-slate-400">
+        <span data-outcome="unknown" className="font-fs-mono text-[11px] text-fs-ink3">
           {outcome.reason === "not-reported"
             ? NO_RESULT_RECORDED
             : "Finished, but its return value couldn't be recorded."}

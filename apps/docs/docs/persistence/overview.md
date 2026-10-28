@@ -8,7 +8,7 @@ flow-state.dev stores three categories of data: **scope state** (session, user, 
 
 ## Store adapters
 
-You declare stores on `createFlowState` as a map of named profiles. A profile maps capability slots (typed containers for a category of storage) to adapters. Every adapter below backs the required `primary` slot — the catch-all state store for sessions, requests, users, orgs, checkpoints, content, and traces. The `blobs`, `queue`, and `scheduler` slots exist in the type but are forward-compatible: no backing store ships for them in Phase 1, so declaring them is a no-op.
+You declare stores on `createFlowState` as a map of named profiles. A profile maps capability slots (typed containers for a category of storage) to adapters. Every adapter below backs the required `primary` slot — the catch-all state store for sessions, requests, users, orgs, checkpoints, content, traces, and [wakes](../advanced/durable-execution.md#wakes). The `blobs`, `queue`, and `scheduler` slots exist in the type but are forward-compatible: no backing store ships for them in Phase 1, so declaring them is a no-op.
 
 | Adapter | Persistence | When to use |
 |---------|------------|-------------|
@@ -268,9 +268,15 @@ A custom store also has to honor session parentage. A session can belong to anot
 
 Omitting `parentage` narrows to `"top-level"`, which is the reverse of how an omitted `tenantId` behaves in the same object. A store that ignores the field hands back child sessions to a caller that asked for top-level ones, and nothing in the type system catches it — the field is optional. Treat a parent id of `null` the same as an absent one, and conjoin `parentage` with the other filters rather than letting it widen past them.
 
+### Wakes
+
+`StoreRegistry.wakes` is optional. A store without one still loads, and its host logs once at start that it keeps no wakes. A task board on that host sends each notice once, when the task ends, and doesn't send a lost one again. To keep wakes, implement `WakeStore` from `@flow-state-dev/engine` and check it with `createWakeStoreConformanceTests({ name, createStore })` from `@flow-state-dev/engine/testing`. The SQLite and Postgres adapters create their `wakes` table when they open, unless you pass `skipSchemaInit` and run the schema step yourself. A host that passes `skipSchemaInit` and hasn't created the `wakes` table yet logs a one-time warning at start and runs without wakes until the migration has run and the host restarts.
+
 ### Deleting requests
 
 Request ids can be chosen by the caller, so an id freed by a delete (session retention included) can be taken by another request, possibly another user's. `RequestStore.delete(id)` therefore removes everything stored under the id, its items, stream events and runOnce results, before the record itself. Remove the record last: if a child delete fails, the record keeps the id taken and the delete can be retried. Writes still queued for the id must not land after the delete.
+
+Retention deletes through `RequestStore.deleteIfStatus(id, allowedStatuses)`, which every store must implement. It deletes what `delete` deletes, but only while the record's status is one of `allowedStatuses`. Check the status and delete in one atomic step (a transaction, a single statement, or a per-id lock), so a request that starts running again between retention's read and its delete keeps everything stored under its id. It returns `{ applied, status }`, where `status` is the status found in that step. A record outside the predicate gives `{ applied: false, status }`. An absent record gives `{ applied: false, status: undefined }` and is never a match. Wait for writes already in flight for the id to finish, but don't drop them first the way `delete` does: when the predicate fails, they belong to a run that is still going.
 
 Retention only deletes a request once its run has marked the record finished, so a custom store also has to:
 
@@ -325,23 +331,21 @@ The exact interface may evolve. Check the `@flow-state-dev/engine` package sourc
 Some apps don't carry a session id around. The natural identity of a session is whatever combination of inputs the user just chose — a ticker and a date, a project id and a branch, a customer id and a quarter. For those apps, set `title` and `metadata` at create time and resolve sessions by filtering the list.
 
 ```ts
-import { createSessionClient } from "@flow-state-dev/client";
+import { createClient } from "@flow-state-dev/client";
 
-const sessions = createSessionClient({ baseUrl: "" });
+const fsd = createClient({ userId: "user_1", baseUrl: "" });
 
 type RunKey = { ticker: string; date: string };
 
-async function resolveSession(flowKind: string, userId: string, key: RunKey) {
-  const list = await sessions.listSessions({ flowKind, userId });
+async function resolveSession(flowKind: string, key: RunKey) {
+  const list = await fsd.sessions.list({ flowKind }); // this client's user's sessions
   const match = list.find(
     (s) =>
       s.metadata?.ticker === key.ticker && s.metadata?.date === key.date,
   );
   if (match) return match.id;
 
-  const created = await sessions.createSession({
-    flowKind,
-    userId,
+  const created = await fsd.flow(flowKind).createSession({
     title: `${key.ticker} · ${key.date}`,
     metadata: key,
   });
@@ -360,13 +364,9 @@ When the natural identity of a session is something you already have, you can us
 The id has to carry everything that tells one session from another. Session storage keys off the tenant and the session id, nothing else: `userId` and `flowKind` are fields on the record, not part of the key. So inside one tenant, two users deriving the same ticker and date land on the same session, and so do two flows. The second caller gets a `409` for a session that isn't theirs, and reading that session back returns the other user's or the other flow's record, or a `403` in an app that configures authentication. Derive the id from enough to keep them apart:
 
 ```ts
-const sessionId = [flowKind, userId, key.ticker, key.date].join("-");
+const sessionId = [flowKind, fsd.userId, key.ticker, key.date].join("-");
 
-const created = await sessions.createSession({
-  flowKind,
-  userId,
-  sessionId,
-});
+const created = await fsd.flow(flowKind).createSession({ sessionId });
 ```
 
 Pick a separator your components can't contain, or hash them, so that two different component sets can't join into the same string.

@@ -16,6 +16,8 @@
  * - `no-such-worker`: the lead is not a worker on the caller's roster. Another
  *   user's worker gets this too.
  * - `cannot-lead`: the lead's flow can't lead a workstream.
+ * - `lead-doesnt-fit`: the fit check answered that none fits a worker's pick
+ *   of lead: its own description says it does a different sort of work.
  * - `lead-differs`: the workstream is open already, with another lead.
  * - `no-such-workstream`: the caller has no such workstream in the project.
  * - `not-a-workstream-session`: the lead's tool ran on a session that leads no workstream.
@@ -27,6 +29,9 @@
  *   as their project coordinator holds delegates.
  * - `other-project`: an open from a conversation linked to one project
  *   named another.
+ * - `invalid-mcp-server`: an MCP server is not a bare name (lowercase
+ *   letters, digits and hyphens). The refusal never repeats the value.
+ * - `unknown-mcp-server`: the server doesn't offer an MCP server of that name.
  */
 export type ProjectRefusalReason =
   | "not-a-member"
@@ -35,6 +40,7 @@ export type ProjectRefusalReason =
   | "invalid-workstream-id"
   | "no-such-worker"
   | "cannot-lead"
+  | "lead-doesnt-fit"
   | "lead-differs"
   | "no-such-workstream"
   | "not-a-workstream-session"
@@ -42,7 +48,9 @@ export type ProjectRefusalReason =
   | "invalid-project-id"
   | "invalid-repository"
   | "too-many-workstreams"
-  | "other-project";
+  | "other-project"
+  | "invalid-mcp-server"
+  | "unknown-mcp-server";
 
 /** A project or workstream write refused on the project's own terms. */
 export class ProjectRefusedError extends Error {

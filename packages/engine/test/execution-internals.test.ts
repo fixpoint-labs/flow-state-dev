@@ -57,7 +57,7 @@ async function createCtx(requestId: string) {
     requestId,
     sessionId: "sess_ctx",
     userId: "user_ctx",
-    modelResolver: (modelId) => ({
+    modelResolver: Object.assign((modelId: string) => ({
       modelId,
       async generate() {
         if (modelId === "model-fail") {
@@ -68,7 +68,7 @@ async function createCtx(requestId: string) {
           text: "ok"
         };
       }
-    }),
+    }), { resolveId: (id: string) => id }),
     stores,
     response
   });
@@ -103,7 +103,8 @@ describe("execution internals", () => {
     expect(
       applyBlockInputSeam(
         {
-          interceptBlockInput: (input: number) => input + 1
+          // The seam is generic over the block's input; this one is only ever handed a number.
+          interceptBlockInput: <T>(input: T) => ((input as number) + 1) as T
         },
         1,
         metadata
@@ -113,7 +114,7 @@ describe("execution internals", () => {
     expect(
       applyBlockOutputSeam(
         {
-          interceptBlockOutput: (output: number) => output + 2
+          interceptBlockOutput: <T>(output: T) => ((output as number) + 2) as T
         },
         1,
         metadata
@@ -291,7 +292,7 @@ describe("execution internals", () => {
         execute: async () => 1
       },
       run: async () => 1
-    } as unknown as BlockDefinition<number, number>;
+    } as unknown as BlockDefinition;
 
     const unknownResult = await executeBlock({
       block: unknown,

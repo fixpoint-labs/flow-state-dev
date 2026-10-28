@@ -11,6 +11,9 @@ import {
   toBareSessionId
 } from "../src/stores/scope-keys";
 
+/** List options that name a user and say nothing about tenant. */
+const USER_ONLY: Parameters<typeof matchesTenantFilter>[0] & { userId: string } = { userId: "u" };
+
 describe("resolveSessionStorageKey", () => {
   it("returns the bare session id when no tenant is present", () => {
     expect(resolveSessionStorageKey("sess_1", undefined)).toBe("sess_1");
@@ -42,8 +45,8 @@ describe("toBareSessionId", () => {
 
 describe("matchesTenantFilter", () => {
   it("passes every record when the tenantId key is absent", () => {
-    expect(matchesTenantFilter({ userId: "u" }, "acme")).toBe(true);
-    expect(matchesTenantFilter({ userId: "u" }, undefined)).toBe(true);
+    expect(matchesTenantFilter(USER_ONLY, "acme")).toBe(true);
+    expect(matchesTenantFilter(USER_ONLY, undefined)).toBe(true);
     expect(matchesTenantFilter(undefined, "acme")).toBe(true);
   });
 

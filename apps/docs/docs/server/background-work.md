@@ -18,7 +18,7 @@ one, or ask a conversation which runs it started.
 
 Starting one is server-side only. There is no endpoint for it. A job begins
 inside a running request, either from a `dispatcher()` block or from a task
-board handing a claimed row off, which starts one. See [Work that outlives the
+board dispatching a claimed row, which starts one. See [Work that outlives the
 turn](/guides/background-work#dispatch-work-in-its-own-session) for how the two
 relate to the other kinds of background work.
 
@@ -34,7 +34,7 @@ import { z } from "zod";
 
 const summarizeDocument = generator({
   name: "summarize-document",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   inputSchema: z.object({ documentId: z.string() }),
   prompt: "Summarize the document.",
 });
@@ -140,7 +140,7 @@ block.
 A task board worker can start a job the same way: a `dispatcher({ action, session
 })` under `workers` sends each claimed row to one of the flow's `task.actions`
 entries, and that run lands in the same listings. See [Task board →
-Workers that hand off](../orchestration/task-board.md#assignees-that-hand-off).
+Assignees that dispatch](../orchestration/task-board.md#assignees-that-dispatch).
 
 ### Starting a job on another flow
 
@@ -202,33 +202,31 @@ still a disagreement: ownership is by instance, not by kind. A `task` dispatcher
 
 ### Waiting for the answer
 
-A dispatch returns before the work it started has run. That is right for a job that outlives
-the turn, and wrong when the next step needs the result. For that case, a worker dispatches the
-task and waits for it: `dispatchTask` with `wait: true`. The task lands
-on the board the worker's task tools write to (in Workforce, the conversation's own board),
-and the turn parks on it. When the task ends, the turn picks up where it stopped,
-with the task's output as the tool's result. Nothing holds the request open in between. A server
-restart while the turn waits loses nothing: the turn resumes after the restart, and the task is
-filed only once.
+A dispatch returns before the work it started has run. That suits a job that outlives the turn.
+When the next step needs the result instead, wait for it:
 
-Every ask has a time limit: five minutes unless the worker sets its own, anywhere from 30
-seconds to an hour. Asks are timed out by the durability sweeper, a background job the server
-runs whenever durable execution is on (see
-[Retention and cleanup](/docs/advanced/durable-execution#retention-and-cleanup)). If the task
-hasn't ended by the limit, the turn gets a timeout error and the task is cancelled. On a
-long-lived server the timeout arrives within seconds of the limit. Where the sweep runs as an
-external cron job, it arrives at the first run after the limit.
+```ts
+const checkLinks = dispatcher({
+  name: "check-links",
+  action: "check",
+  inputSchema: z.object({ docId: z.string() }),
+  session: { key: (input) => input.docId },
+  wait: true,
+});
+```
 
-Stopping the conversation while it waits cancels the task and ends the turn. A worker that is
-itself working a task can't wait: `dispatchTask` with `wait` is refused there with
-`wait_unavailable`, and nothing is filed.
+With `wait: true` the block's output is how the dispatched request ended:
+`{ status: "completed", output, requestId }`, `{ status: "failed", error, requestId }`, or
+`{ status: "running", requestId }` at the deadline, five minutes by default. Nothing is stopped
+at the deadline; the work runs on. The request parks without holding anything open and
+survives a server restart. Waits nest up to five deep, counting task waits too, and a wait that
+would go deeper is refused before anything is dispatched.
 
-Waiting has a cost you can see in the run. The turn is saved when it parks and loaded again
-when the answer arrives. Steps it already ran aren't run again; the model picks up with the
-answer as the tool's result. Wait when the answer changes what this turn says or does
-next. When it doesn't, dispatch the task without waiting and let the turn end. See
-[the task board](/docs/orchestration/task-board#giving-another-worker-work) for the tool, its
-limits and its errors.
+A worker waits on a task the same way: it files it, then calls `getTask({ id, wait: true })`.
+Both need durable execution, the durability sweeper and a store that keeps wakes (see
+[Retention and cleanup](/docs/advanced/durable-execution#retention-and-cleanup)). The task tool,
+its deadline and its errors are on
+[the task board](/docs/orchestration/task-board#waiting-on-a-task).
 
 ## Finding dispatched runs on a flow
 
@@ -245,7 +243,7 @@ the `topic` and `coordinate` labels described below. Sort a listing on
 `parentSessionId` to group each conversation's runs under it.
 
 ```ts
-const sessions = await sessionClient.listSessions({
+const sessions = await fsd.sessions.list({
   flowKind: "reports",
   include: "dispatch-runs",
 });
@@ -313,7 +311,7 @@ absent on a row that records no owner.
 
 `topic` and `coordinate` are display labels. `coordinate` is the entry the run
 was dispatched to, `<type>:<target>`: `internal:summarize` for an internal entry,
-`task:implement` for a task-board worker that hands off. `topic` is the key the
+`task:implement` for a task-board worker that dispatches. `topic` is the key the
 run's session was derived from — what a `dispatcher()`'s `session: { key }`
 function returned, or the composed key a task worker's `session` policy produced.
 
@@ -432,11 +430,11 @@ That returns the run's own requests, with the item log for each when you ask for
 it (`?include_items=true`). A finished request also carries a `result` with its
 error, if any, and the action's return value when you ask for that too
 (`?include_result_output=true`). See
-[`listSessionRequests`](/docs/api/client#sessionslistsessionrequestssessionid-options)
+[`fsd.sessions.requests`](/docs/api/client#sessionsrequestssessionid-options)
 for the shape.
 
 A run a `dispatcher()` started reads `source: "internal"`, or `source: "task"`
-when a task-board worker handed the work off, and carries a `metadata.dispatch`
+when a task-board worker dispatched the work, and carries a `metadata.dispatch`
 bag:
 
 ```json
@@ -447,7 +445,7 @@ bag:
     "dispatch": {
       "type": "task",
       "action": "implement",
-      "from": { "block": "hand-off-implement", "sessionId": "sess_abc" },
+      "from": { "block": "dispatch-implement", "sessionId": "sess_abc" },
       "key": "task|10:issue-work|3:t42",
       "taskId": "t42"
     }
@@ -457,7 +455,7 @@ bag:
 
 `type` and `action` are the entry the run executes, `from` names the block that
 sent it and the session it was running in, `key` is the session key the run
-was derived from, and `taskId` the board row on a task hand-off. `key` is absent
+was derived from, and `taskId` the board row on a dispatched task. `key` is absent
 when the dispatcher delivered into an existing session by `id`, and `taskId` is
 absent on an internal dispatch.
 

@@ -7,8 +7,8 @@
  * is holding this task, so the claim path can simply hand it out again.
  *
  * **One driver, every seam.** Three ticket-mint sites drive workers — the task
- * board's worker body, the shared `dispatchAndExecute` helper, and the
- * `routedSpecialists` pattern. Three hand-written drivers would each carry a
+ * board's worker body, its dispatched-task entry (`task-board/task-entry.ts`),
+ * and the `routedSpecialists` pattern. Three hand-written drivers would each carry a
  * cadence, a single-flight guard and a decline-to-abort rule, and they would
  * drift. Every rule lives in {@link startLeaseRenewal}.
  *
@@ -26,10 +26,10 @@
  * through lives in `./lease-renewal-scope`, because `node:async_hooks` cannot be
  * bundled for a browser and `@flow-state-dev/orchestration/tasks` is published
  * as browser-safe (`docs/architecture/items.md`). The driver itself is timers
- * and promises — nothing Node-only — so it can stay on that entry alongside
- * `dispatchAndExecute`, which needs it. Keep it that way: an import of
- * `./lease-renewal-scope` from this file, or from anything else the `tasks`
- * entry reaches, silently breaks every browser consumer at *their* bundle step.
+ * and promises — nothing Node-only — so it stays on that entry. Keep it that
+ * way: an import of `./lease-renewal-scope` from this file, or from anything
+ * else the `tasks` entry reaches, silently breaks every browser consumer at
+ * *their* bundle step.
  * `test/tasks-subpath-browser-safe.spec.ts` is what makes that failure ours
  * instead of theirs.
  *
@@ -242,14 +242,14 @@ export function startLeaseRenewal(options: LeaseRenewalOptions): LeaseRenewalDri
       // A decline is the only stop condition — a throw below is the unknown
       // case, not the dead case. But there are two kinds of decline and they
       // mean different things to the worker.
-      if (outcome.reason === "disallowed") {
-        // The task moved to a status the lease does not govern, which today
-        // means the worker parked it for review. It has NOT been displaced:
-        // review is an explicit park, and the substrate's write fence is
-        // scoped to `in_progress` for exactly this reason. So stop asserting
+      if (outcome.reason === "disallowed" || outcome.reason === "held") {
+        // The row no longer takes a lease, but nobody displaced the worker:
+        // it moved to a status the lease does not govern (`disallowed`), or
+        // it waits on a person with an open hold (`held`: the turn asked a
+        // question, which ends its lease, FIX-2131). So stop asserting
         // liveness on a row the lease no longer speaks for, and leave the
-        // worker alone — aborting it here would contradict the same rule one
-        // layer down.
+        // worker alone: aborting it would fail a turn that did what it meant
+        // to.
         stop();
         return;
       }

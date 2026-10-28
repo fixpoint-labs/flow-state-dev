@@ -338,7 +338,7 @@ export function formatForObserveContext(ref: WmRef): string {
  * ```ts
  * const chat = generator({
  *   name: 'chat',
- *   model: 'gpt-5',
+ *   model: 'gpt-6.1-sol',
  *   inputSchema: z.string(),
  *   resources: { workingMemory: workingMemoryResource },
  *   context: [workingMemoryContextFormatter],

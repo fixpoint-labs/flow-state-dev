@@ -264,9 +264,9 @@ describe("attached durable background-work recovery", () => {
  * `continueRequest` WITH a `resumeContext`, exactly as the resume route does;
  * the replay re-runs the sequencer from the top and re-dispatches the fan-out.
  *
- * `FSDEV_TRACE_OBSERVABILITY` is forced on: `block_trace` capture (the
- * ReplayLog's only source) is gated on it, so without this the completed
- * iterations would retain no trace and re-run — proving nothing about replay.
+ * `FSDEV_TRACE_OBSERVABILITY` is forced on so this suite runs against full
+ * `block_trace` capture. Replay with it off (lean completion records only) is
+ * covered by resume-replay-traces-off.test.ts.
  */
 describe("attached durable background-work recovery — mid-drain fan-out", () => {
   const originalEnv = { ...process.env };

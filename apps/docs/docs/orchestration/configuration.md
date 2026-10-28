@@ -30,7 +30,9 @@ const board = taskBoard({
 | Field | Type | Default | What it does |
 |-------|------|---------|--------------|
 | `name` | `string` | required | Outer sequencer name and prefix for internal blocks. Unique inside a flow if you mount more than one board. |
-| `boardId` | `string` | omitted | Stable id. Required when any assignee holds a task dispatcher. Renaming orphans live work keyed on the old value. |
+| `boardId` | `string` | omitted | Stable id. Required when any assignee, or `newSession`, holds a task dispatcher. Renaming orphans live work keyed on the old value. |
+| `mode` | `"plan"` \| `"delegation"` | `"plan"` | Whether the drain waits on its tasks. A plan board waits on each, inline or handed over; a delegation board hands every task to another session through a dispatcher assignee and waits on none. A board whose assignees contradict its mode throws when built. See [Task board](./task-board#plan-boards-and-delegation-boards-mode). |
+| `newSession` | task dispatcher | omitted | Plan boards only. Runs each row filed `session: "new"` in a session of its own, while the drain waits for it. See [A plan board that hands a row over](./task-board#a-plan-board-that-hands-a-row-over). |
 | `dispatch` | dispatch object | omitted (inline) | Dispatch mode for a **uniform** worker (a single block). Do not set this on a registry board; declare it per worker instead. |
 | `collection` | request spec, sequencer spec, `defineTaskCollection`, or factory | request-backed, `collectionId` = `name` | Where the task list lives. Omit it for the request default. |
 | `workers` | one block, or a name → worker map | required | A single worker runs every claimed task. A registry routes by `task.assignee`. |
@@ -38,10 +40,9 @@ const board = taskBoard({
 | `concurrency` | `number` | `4` | How many workers run in parallel. |
 | `maxEnqueuedTasks` | `number \| null` | `100` | Cap on tasks added while others are still `pending`. `null` is unbounded. Only when the board builds its own collection. |
 | `maxTotalTasks` | `number \| null` | `500` | Cap including completed and failed tasks. Those still count after they finish. Same supplied-collection rule as `maxEnqueuedTasks`. |
-| `maxTotalRetries` | `number \| null` | `50` | Cumulative failure retries across every task. `0` means run once, never retry. `unblock` / `unpark` / `reclaim` do not spend this. |
+| `maxTotalRetries` | `number \| null` | `50` | Cumulative failure retries across every task. `0` means run once, never retry. `release` / `reclaim` do not spend this. |
 | `dispatcher` | `"fifo"` \| `"topological"` \| `"priority"` \| instance | `"topological"` | How a ready task is picked. |
 | `onIdle` | `"complete-or-blocked"` \| `"complete"` \| `"wait"` | `"complete-or-blocked"` | When the pool stops. See [Task board](./task-board#termination-onidle-modes). |
-| `onReview` | `"hold"` \| `"exit"` | `"hold"` | Whether a task parked with `awaitReview` keeps the drain open. `"exit"` lets the drain return and leaves the task parked; `board.unparkAndDrain` hands the answer back and drains in the same request. Needs a `defineTaskCollection` collection, the default `onIdle`, and ids on `initialTasks`. See [Task board](./task-board#waiting-on-a-person-onreview). |
 | `initialTasks` | `TaskInit[]` | omitted | Tasks seeded at board start. |
 | `onError` | `"skip"` \| `"fail"` | `"skip"` | `"skip"` records the failure and lets siblings continue. `"fail"` fails the board. |
 | `maxIterations` | `number` | `10000` | Per-worker loop cap. A circuit breaker if enqueue cycles never drain. |

@@ -31,7 +31,7 @@ const waitsForAbort = handler({
   inputSchema: z.unknown(),
   outputSchema: z.object({ ended: z.string() }),
   execute: async (_input, ctx) =>
-    new Promise((resolve) => {
+    new Promise<{ ended: string }>((resolve) => {
       if (ctx.signal?.aborted === true) return resolve({ ended: "already" });
       ctx.signal?.addEventListener("abort", () => resolve({ ended: "aborted" }), {
         once: true,
@@ -226,7 +226,7 @@ describe(".step(block, { onSettled })", () => {
 
   it("reports WHICH exit it is reporting", async () => {
     // The three exits are not interchangeable to a caller releasing a resource.
-    // `returned` and `threw` both hand off to a downstream step that still has
+    // `returned` and `threw` both pass to a downstream step that still has
     // work to do — a recorder, a `.rescue()` handler — and this hook fires
     // before that step runs. Only `suspended` has nothing downstream at all.
     // A caller that cannot tell them apart must either release too early on two
@@ -557,7 +557,7 @@ describe("a REPLAYED step does not settle", () => {
   }
 
   function ctxWithReplay(path: string, value: unknown) {
-    const ctx = createMockContext() as Record<string, unknown>;
+    const ctx = createMockContext() as unknown as Record<string, unknown>;
     ctx._replayLog = replayLogFor(path, value);
     return ctx as unknown as ReturnType<typeof createMockContext>;
   }
@@ -702,7 +702,7 @@ describe("the abortSignal RESOLVER is skipped on replay too", () => {
   // runs again on every re-entry.
 
   function ctxWithReplay(path: string, value: unknown) {
-    const ctx = createMockContext() as Record<string, unknown>;
+    const ctx = createMockContext() as unknown as Record<string, unknown>;
     ctx._replayLog = {
       getCompletedOutput: (key: string) =>
         key.endsWith(`/${path}`) || key.endsWith(`:${path}`)

@@ -11,6 +11,7 @@ function makeEntry(overrides?: Partial<ActiveRequestEntry>): ActiveRequestEntry 
     requestId: "req_test_1",
     flowKind: "chat",
     actionName: "run",
+    source: "http",
     userId: "user_1",
     startedAt: Date.now(),
     lastHeartbeatAt: Date.now(),

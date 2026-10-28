@@ -13,9 +13,10 @@
  * Usage: `node scripts/test-shards.mjs <shard>` prints the `turbo --filter`
  * arguments for shard 1..N, one per line.
  */
-import { globSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { workspaceManifests } from "./workspace-members.mjs";
 
 const NAMED_SHARDS = [
   [
@@ -35,14 +36,8 @@ const NAMED_SHARDS = [
 
 /** Every workspace member's package name, from the globs in pnpm-workspace.yaml. */
 function workspaceNames(root) {
-  const globs = readFileSync(resolve(root, "pnpm-workspace.yaml"), "utf8")
-    .split("\n")
-    .map((line) => /^\s*-\s*["']?([^"'#\s]+)/.exec(line)?.[1])
-    .filter(Boolean);
-  return globs.flatMap((glob) =>
-    globSync(`${glob}/package.json`, { cwd: root }).map(
-      (file) => JSON.parse(readFileSync(resolve(root, file), "utf8")).name
-    )
+  return workspaceManifests(root).map(
+    (file) => JSON.parse(readFileSync(resolve(root, file), "utf8")).name
   );
 }
 

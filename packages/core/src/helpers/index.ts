@@ -19,7 +19,7 @@ export {
   getTransientKeys,
   stripTransientKeys,
 } from "./transient-slot";
-export { resolveClientProjection, hasClientProjection, validateClientProjection } from "./client-projection";
+export { resolveClientProjection, hasClientProjection, validateClientProjection, omitSecretFields, resolveClientData } from "./client-projection";
 export {
   introspectStateKeys,
   getZodTypeName,

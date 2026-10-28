@@ -25,6 +25,19 @@ It sits next to [idempotency](./idempotency.md). Idempotency stops the *same* de
 
 Parallel runs are safe from data corruption. An update computed from current state is refused and retried if another run moved the record first, and an increment or an append is applied to whatever the store holds. What `allow` doesn't prevent is one run overwriting another's value on the same field, or two replies to one session interleaving. If ordering matters, use `queue` or `reject`.
 
+### A control sent beside a running request
+
+Sometimes an `allow` action exists to talk to a request that's already running, such as a line handed into a turn in progress. By default every request becomes the newest on its session, and that's the one a client reattaching to the session (`useSession` with `autoResume`) looks for. A short control request would take that place, so a page reloaded mid-turn would find the control, already finished, and not reconnect to the turn. Set `autoResume: false` on the control's action and the session keeps pointing at the request before it:
+
+```ts
+actions: {
+  turn: { block: turn, concurrency: "queue" },
+  steer: { block: steerRunningTurn, concurrency: "allow", autoResume: false },
+},
+```
+
+The control's own request is still recorded and listed with the session's requests. Only the reattach target stays where it was.
+
 ## Setting a policy
 
 Set `concurrency` on an action, or `request.concurrency` for a flow-wide default every action inherits:
@@ -148,6 +161,18 @@ What the dropped caller sees depends on how it arrived:
 
 `reject` only catches a duplicate that arrives while the first is running. A redelivery minutes later, after the first finished, needs an [idempotency key](./idempotency.md).
 
+## Requests that pause and resume
+
+A request that [suspends](./durable-execution.md) to wait for a person gives up its place on the key, so other requests on the session can run while it waits. When it picks up again, whether from the person's answer, a stop, or [the sweeper](./durable-execution.md#retention-and-cleanup), it takes a new place on the key like a fresh request.
+
+- Under **`queue`**, **`reject`** and **`defer`** it waits for its turn, then runs. Under `reject` it isn't dropped. The wait has the same 30-second limit as `queue`. If the session is still busy after that, the request stays paused with the answer saved, and the sweeper continues it on its next pass, every ten minutes by default.
+- Under **`hold`** it runs at once and marks the key busy, as any `hold` request does.
+- Under **`allow`** it runs at once.
+
+The call that sent the answer doesn't wait for the turn. It gets its usual reply straight away: `202` with `{ requestId }`, or an event stream if it asked for one. The answer is accepted at that point, so a resumed request that runs out of time doesn't fail with the `503` a new `queue` request gets. Its stream closes with no events, and the request stays `suspended` until the sweeper continues it.
+
+While a resumed request waits for its turn, `session.abortRequest()` doesn't stop it. The request no longer waits on its gate, so the stop can't resolve that, and it isn't running yet: the call fails with a `409` that says the request was resumed before the stop reached it. The request's status reads `suspended` until it starts and `in_progress` once it runs. Call `abortRequest()` again then.
+
 ## Across processes
 
 Where the policy holds depends on how your server runs requests.
@@ -155,7 +180,7 @@ Where the policy holds depends on how your server runs requests.
 - **One server, no queue.** The policy is enforced in memory, in the process that runs the request.
 - **A queue-backed deployment**, such as [`bullmqWorker`](/guides/background-jobs-bullmq). The policy holds across every process: the web process and each worker. Details below.
 - **Several web servers, each running requests in process, with no queue between them.** Each server keeps its own keys, so two requests on one session can run at once if they land on different servers. Run that shape as a single instance, or put a queue in front of it.
-- **A dispatcher you pass to `createFlowState` directly**, rather than through a `worker` adapter. It applies no policy to the work it hands off, and a [delivery into an existing session](../server/background-work.md#starting-a-job-from-a-flow) is refused with `external-dispatcher`.
+- **A dispatcher you pass to `createFlowState` directly**, rather than through a `worker` adapter. It applies no policy to the work it dispatches, and a [delivery into an existing session](../server/background-work.md#starting-a-job-from-a-flow) is refused with `external-dispatcher`.
 
 ### On a queue
 

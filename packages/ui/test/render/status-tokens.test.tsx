@@ -22,11 +22,17 @@ import { makeBoardMeta, makeTask, makeTaskChange } from "../../stories/fixtures/
 
 afterEach(cleanup);
 
-/** The colour-token utilities on an element's classes: `text-attention` → `attention`. */
+/**
+ * The colour-token utilities on an element's classes: `text-attention` →
+ * `attention`. `attention` is a fill (`bg-attention`, ink on top), because the
+ * highlighter is unreadable as a stroke on a light ground.
+ */
 function tokensOn(element: Element | null): string[] {
   const classes = element?.getAttribute("class")?.split(/\s+/) ?? [];
-  return classes.filter((c) => /^text-(success|warning|info|attention|destructive|muted-foreground)$/.test(c))
-    .map((c) => c.slice("text-".length));
+  return classes
+    .map((c) => /^(?:text-(success|warning|info|destructive|muted-foreground)|bg-(attention))$/.exec(c))
+    .filter((m): m is RegExpExecArray => m !== null)
+    .map((m) => m[1] ?? m[2]!);
 }
 
 describe("tool card states", () => {
@@ -45,8 +51,7 @@ describe("tool card states", () => {
 
 describe("task plan states", () => {
   const expected: Array<[string, string]> = [
-    ["parked", "attention"],
-    ["blocked", "warning"],
+    ["held", "warning"],
     ["in_progress", "info"],
     ["completed", "success"],
     ["errored", "destructive"],
@@ -95,7 +100,7 @@ describe("task plan states", () => {
           makeBoardMeta({ collectionId: "board" }),
           makeTaskChange({
             collectionId: "board",
-            task: makeTask({ id: "t1", goal: "blocked", status: "blocked", feedback: "needs the schema first" }),
+            task: makeTask({ id: "t1", goal: "held", status: "held", feedback: "needs the schema first" }),
           }),
         ]}
       >

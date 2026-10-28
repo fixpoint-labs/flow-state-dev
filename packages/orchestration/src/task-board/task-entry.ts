@@ -1,17 +1,17 @@
 /**
- * The claim gate a board puts in front of each task entry its assignees hand off
+ * The claim gate a board puts in front of each task entry its assignees dispatch
  * to — what a `task` dispatch actually enters in the child session.
  *
  * The flow declares a task entry as a plain block, `task: { actions: { implement:
  * { block } } }`. The board cannot wrap it itself — the flow owns the entry — so
- * `taskBoard()` builds this gate once and binds it onto the hand-off it
+ * `taskBoard()` builds this gate once and binds it onto the dispatch it
  * installs at each dispatcher assignee (`bindTaskDispatcher`), and `defineFlow`
- * applies it to every entry a reachable hand-off addresses. A `task` dispatch
+ * applies it to every entry a reachable dispatch addresses. A `task` dispatch
  * therefore resolves the *gate around the block* and never the bare block;
  * there is no path from a `task` dispatch to an entry that skips the sequence
  * below.
  *
- * ## The four things that must happen before a handed-off worker runs
+ * ## The four things that must happen before a dispatched worker runs
  *
  * All four are the same read, which is the point — one durable read per
  * dispatched request, doing four jobs:
@@ -53,14 +53,14 @@
  *
  * ## And what a lapsed lease is allowed to mean here
  *
- * Nothing renews a handed-off row's lease between the parent's hand-off and the
+ * Nothing renews a dispatched row's lease between the parent's dispatch and the
  * child's first breath, so a child that waits in the host's queue longer than
  * the lease arrives at a row the substrate already counts as free. Refusing it
  * on that alone is more conservative than this gate's own evidence: with
  * `attempts`, `createdAt`, the incarnation, the status and the assignee all still
  * matching, no reclaim has happened — a lapsed lease only means one *could*
  * have. Under an external dispatcher with a sustained backlog that reading
- * fails every hand-off before it starts, and each re-dispatch spends an
+ * fails every dispatch before it starts, and each re-dispatch spends an
  * attempt, so backlog alone can fail a task (FIX-1305).
  *
  * So the lapse arm asks the substrate instead of the clock: renew the lease
@@ -73,7 +73,7 @@
  */
 import { sequencer } from "@flow-state-dev/core";
 import type { DefinedCapability } from "@flow-state-dev/core";
-import { taskDispatchInputSchema } from "@flow-state-dev/core/types";
+import { requestResumeOf, taskDispatchInputSchema } from "@flow-state-dev/core/types";
 import type {
   ActionCore,
   BlockContext,
@@ -81,17 +81,17 @@ import type {
   TaskDispatchInput,
 } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { assertHandOffBlockSupported } from "./hand-off";
+import { assertDispatchEntrySupported } from "./dispatch-assignee";
 import { ticketForClaim, type TaskClaimTicket } from "../tasks/claim-ticket";
-import { startLeaseRenewal } from "../tasks/lease-renewal";
 import {
   currentLeaseRenewal,
   stampLeaseRenewal,
   withLeaseRenewalScope,
 } from "../tasks/lease-renewal-scope";
-import { stampCurrentClaim } from "./flow-policy-wiring";
-import { createRecordError, createRecordSuccess } from "./blocks/record-result";
+import { openWorkerClaimScope, stampCurrentClaim, stampCurrentTask } from "./flow-policy-wiring";
+import { createRecordError } from "./blocks/record-result";
 import { taskBoardWorkerBodyStateSchema } from "./schemas";
+import { admitClaimedTask, noteTaskAnswer, type TaskEndRules } from "./task-request";
 import {
   committedLeaseSpan,
   leaseLapsed,
@@ -164,11 +164,13 @@ export interface TaskGateOptions {
    * additionally fails that request.
    */
   onError: "skip" | "fail";
+  /** What else holds a task open at a request's end (FIX-2077, rule 6). */
+  endRules?: TaskEndRules;
 }
 
 /**
  * Build this board's claim gate: the function `defineFlow` applies to each task
- * entry a reachable hand-off of this board addresses.
+ * entry a reachable dispatch of this board addresses.
  *
  * The gated entry's `inputSchema` is the dispatch envelope narrowed to THIS
  * board — `runAction` parses the input before the block is entered, so a
@@ -212,11 +214,17 @@ export interface TaskLedgersOptions {
    * the ledger at it (`getOrCreateTaskCollection({ ..., partition })`). It is
    * read at the running user's scope, so it reaches only that user's rows, and
    * a ledger resolved at any other partition is refused before a row is read.
+   *
+   * `taskId` is the row the dispatch (or the claim being settled) names, so a
+   * resolver can answer for a ledger only when that row is one the running
+   * session may take: it is untrusted too, and the row it names is re-read
+   * and checked on the returned ledger.
    */
   resolve: (
     ledgerId: string,
     ctx: BlockContext,
-    partition: string | undefined
+    partition: string | undefined,
+    taskId: string
   ) => Promise<TaskCollectionRef | undefined>;
   /** Declarations the resolved ledgers need in scope (their resources). */
   uses?: readonly DefinedCapability[];
@@ -224,25 +232,27 @@ export interface TaskLedgersOptions {
   onError?: "skip" | "fail";
   /**
    * Accept an entry whose blocks keep session state. Refused by default, as
-   * on a board's entry, because a hand-off under a shared session policy
+   * on a board's entry, because a dispatch under a shared session policy
    * (`per-worker`, a `key`) runs several rows in one child session. Set it
    * when the entry is handed tasks one session per task, or when its session
    * state is the entry's own, the same shape for every task.
    */
   allowSessionState?: boolean;
+  /** What else holds a task open at a request's end (FIX-2077, rule 6). See {@link TaskEndRules}. */
+  endRules?: TaskEndRules;
 }
 
 /**
  * A task entry's own source: take tasks from any ledger `resolve` answers
- * for, read per dispatch, instead of from the one board that hands off to it.
+ * for, read per dispatch, instead of from the one board that dispatches to it.
  *
  * Pass the result as the entry's `from` (`task: { actions: { work: { block,
  * from: taskLedgers({ name, resolve }) } } }`). `defineFlow` then gates the
  * entry with no board in the flow: each dispatch's ledger id is resolved, an
  * id the resolver does not answer for is refused before any row is read, and
  * then every check a board's gate runs (row, attempt, identity, status,
- * assignee, lease, run link) runs on that ledger. A sender's board hands off
- * under its `boardId`, so a board over a shared ledger hands off under the
+ * assignee, lease, run link) runs on that ledger. A sender's board dispatches
+ * under its `boardId`, so a board over a shared ledger dispatches under the
  * ledger's id for a resolver keyed on ledger ids to find it.
  */
 export function taskLedgers(options: TaskLedgersOptions): TaskBinding {
@@ -256,6 +266,7 @@ export function taskLedgers(options: TaskLedgersOptions): TaskBinding {
       ...(options.uses !== undefined ? { uses: options.uses } : {}),
       onError: options.onError ?? "skip",
       allowSessionState: options.allowSessionState === true,
+      ...(options.endRules !== undefined ? { endRules: options.endRules } : {}),
       ledger: { kind: "by-id", resolve },
     }),
   };
@@ -282,6 +293,7 @@ function buildTaskGate(options: {
   uses?: readonly DefinedCapability[];
   onError: "skip" | "fail";
   allowSessionState?: boolean;
+  endRules?: TaskEndRules;
 }): TaskBinding["gate"] {
   const { name, boardId, ledger, uses, onError } = options;
 
@@ -316,14 +328,14 @@ function buildTaskGate(options: {
   // a refusal decided before any row is read.
   const ledgerFor = async (ctx: BlockContext, dispatch: TaskDispatchInput): Promise<TaskCollectionRef> => {
     if (ledger.kind === "board") return boardLedgerAt(ledger, ctx, dispatch.taskId, dispatch.partition);
-    const resolved = await ledger.resolve(dispatch.boardId, ctx, dispatch.partition);
+    const resolved = await ledger.resolve(dispatch.boardId, ctx, dispatch.partition, dispatch.taskId);
     if (resolved === undefined) {
       throw new UnknownTaskLedgerError(name, dispatch.taskId, dispatch.boardId);
     }
     return inPartition(resolved, dispatch.taskId, dispatch.boardId, dispatch.partition);
   };
 
-  // The row read and settled is the one the hand-off named: a resolver that
+  // The row read and settled is the one the dispatch named: a resolver that
   // answered with another partition (or with a whole partitioned ledger) is
   // refused before the read, and again before the recorders write.
   const inPartition = (
@@ -353,7 +365,9 @@ function buildTaskGate(options: {
     }
     const ledgerId = ctx.sequencer!.state.currentLedger as string | undefined;
     const resolved =
-      ledgerId === undefined ? undefined : await ledger.resolve(ledgerId, ctx, claim?.partition);
+      ledgerId === undefined || claim === undefined
+        ? undefined
+        : await ledger.resolve(ledgerId, ctx, claim.partition, claim.taskId);
     if (resolved === undefined) {
       throw new Error(
         `[task-board] "${name}" cannot settle its claim: the ledger it was read from ` +
@@ -363,27 +377,16 @@ function buildTaskGate(options: {
     return inPartition(resolved, claim?.taskId ?? "(no claim)", ledgerId!, claim?.partition);
   };
 
-  // The same recorders the inline drain composes, bound to this board's
-  // collection. Reused rather than reimplemented: they own the ticket-fenced
-  // write-back and the rule for when lease renewal stops.
-  // FIX-963 — the third settlement site, and the one with nowhere to defer to.
-  // There is no batch around this task and no drain tail to report at, so a
-  // recorder that cannot announce a committed write raises where it stands and
-  // fails the child run. Nothing is abandoned by that: there is no sibling here
-  // to protect. `recordError` refuses to let `onError` swallow the raise.
-  //
-  // This is also the recorders' default, so the option is redundant. It is
-  // passed anyway: the gate's raise is a property of the composition — no tail
-  // follows it — and stating it here is what makes that visible next to the
-  // `.rescue()` it travels through, rather than resting on a default one file
-  // away that a later change to the drain could be tempted to flip.
+  // The error recorder the inline drain composes, bound to this board's
+  // collection: a request that throws fails the attempt where it always has.
+  // FIX-963 — the gate is a settlement site with no batch around it and no
+  // drain tail to report at, so a recorder that cannot announce a committed
+  // write raises where it stands and fails the child run. That is also the
+  // recorder's default; it is stated here because it is a property of this
+  // composition. The success settle is no recorder any more (FIX-2077): it is
+  // the check at the request's end, in `./task-request`.
   const recorderFailure = { onRecorderFailure: "raise" as const };
 
-  const recordSuccess = createRecordSuccess({
-    name: `${name}-gate-record-success`,
-    collection: collectionFactory,
-    recorderFailure,
-  });
   const recordError = createRecordError({
     name: `${name}-gate-record-error`,
     collection: collectionFactory,
@@ -393,18 +396,18 @@ function buildTaskGate(options: {
 
   return (entry: ActionCore, target: string): ActionCore => {
     const worker = entry.block as TaskWorker;
-    if (options.allowSessionState !== true) assertHandOffBlockSupported({ name, target, block: worker });
+    if (options.allowSessionState !== true) assertDispatchEntrySupported({ name, target, block: worker });
 
     const block = sequencer({
       name: `${name}-${target}-gate`,
       stateSchema: taskBoardWorkerBodyStateSchema,
       ...(uses !== undefined ? { uses } : {}),
     })
-      .tap(async (dispatch: TaskDispatchInput, ctx) =>
-        // FIRST STATEMENT, before any await: this publishes the slot the lease
-        // driver is installed into; past the first `await` it would land on a
-        // continuation scope that dies with this tap.
-        withLeaseRenewalScope(async () => {
+      .tap(async (dispatch: TaskDispatchInput, ctx) => {
+        // FIRST STATEMENTS, before any await. Opens the claim slot and the lease
+        // scope; past the first `await` both publish to nobody.
+        openWorkerClaimScope();
+        return withLeaseRenewalScope(async () => {
           const board = await ledgerFor(ctx, dispatch);
           const row = board.get(dispatch.taskId) as Task | undefined;
 
@@ -420,6 +423,14 @@ function buildTaskGate(options: {
             throw new StaleTaskClaimError(
               dispatch.taskId,
               `attempt ${dispatch.attempt} was superseded by attempt ${row.attempts}`
+            );
+          }
+          // Two turns can share an attempt (FIX-2133 D3): a dispatch for an
+          // earlier turn of it is stale once a later turn is claimed.
+          if (dispatch.turn !== undefined && dispatch.turn !== (row.turn ?? 0)) {
+            throw new StaleTaskClaimError(
+              dispatch.taskId,
+              `turn ${dispatch.turn} of attempt ${dispatch.attempt} was superseded by turn ${row.turn ?? 0}`
             );
           }
           if (row.createdAt !== dispatch.createdAt) {
@@ -439,15 +450,30 @@ function buildTaskGate(options: {
                 "addressed (its incarnation differs, though its creation stamp does not)"
             );
           }
+          // The task's own run, resumed from its wait for a user without an
+          // answer (FIX-2129). Cancelled with the task: its block reads
+          // `cancelled` and runs to its end. Stopped: the task is cancelled
+          // here, and the run ends at its suspension. Either way it holds no
+          // claim, so nothing it writes to the task, nothing it returns and no
+          // task it files is kept: it is admitted for nothing. It is still
+          // this task's run, so what it files names the task, and the board
+          // refuses that filing under the cancelled task.
+          const resumed = userResumeOf(ctx, row);
+          if (resumed === "stopped" && row.status === "in_progress") await cancelForStop(board, row);
+          if (resumed === "stopped" || (resumed === "cancelled" && row.status === "cancelled")) {
+            stampCurrentTask({ collectionId: board.collectionId, ...(board.partition !== undefined ? { partition: board.partition } : {}), taskId: row.id }, ctx);
+            ctx._markTaskScope?.(row.id);
+            return;
+          }
           if (row.status !== "in_progress") {
             throw new StaleTaskClaimError(
               dispatch.taskId,
               `the row is "${row.status}", so no claim is outstanding on it`
             );
           }
-          // The row must still route to the assignee that handed it off. A hand-off
+          // The row must still route to the assignee that dispatched it. A dispatch
           // board freezes a running task's assignee precisely because it is
-          // the address the hand-off is reached by; a mismatch means that guard
+          // the address the dispatch is reached by; a mismatch means that guard
           // was bypassed, and running would mix two workers' histories under one
           // child.
           //
@@ -475,7 +501,7 @@ function buildTaskGate(options: {
           // second implementation of the fence.
           // On a partitioned ledger it names the partition the row was read
           // in, which is where the recorders below settle it.
-          const ticket = ticketForClaim(board.collectionId, held, board.partition);
+          let ticket = ticketForClaim(board.collectionId, held, board.partition);
 
           // THE RUN LINK (FIX-1668): this run names itself on the row. Only
           // the run knows which session it landed in, so the coordinate comes
@@ -491,17 +517,29 @@ function buildTaskGate(options: {
           });
 
           ctx._markTaskScope?.(held.id);
-          stampCurrentClaim(ticket);
-          stampLeaseRenewal(
-            startLeaseRenewal({
-              collection: board,
-              ticket,
-              claimedTask: held,
-              signal: ctx.signal,
-            })
-          );
-        })
-      )
+          stampCurrentClaim(ticket, ctx);
+          // ADMISSION (FIX-2077): a row waiting on something (a stop, filed
+          // work, a steer's turn) gets a lease again, renewed until this
+          // request ends, and the task is checked at that end. A turn the row
+          // owed, taken here, moves the claim to its turn (FIX-2133 D3).
+          const admitted = await admitClaimedTask(ctx, {
+            ref: board,
+            row: held,
+            ticket,
+            answerCounts: true,
+            own: true,
+            ...(options.endRules !== undefined ? { rules: options.endRules } : {}),
+            onStale: (reason) =>
+              new StaleTaskClaimError(held.id, `it was waiting, and its lease could not be restored (${reason})`),
+          });
+          if (admitted.ticket.turn !== ticket.turn) {
+            ticket = admitted.ticket;
+            await ctx.sequencer!.patchState({ currentClaim: ticket });
+            stampCurrentClaim(ticket, ctx);
+          }
+          if (admitted.renewal !== undefined) stampLeaseRenewal(admitted.renewal);
+        });
+      })
       // The worker receives the payload the parent packed at claim time, not a
       // re-pack: dependency outputs and flow-policy `priorWork` are selected
       // against the parent's live board, which does not exist here.
@@ -511,7 +549,7 @@ function buildTaskGate(options: {
         ),
         {
           // Losing the claim stops the worker paying for work it can no longer
-          // record; the substrate's write fence is what makes the hand-off safe.
+          // record; the substrate's write fence is what makes the dispatch safe.
           abortSignal: () => currentLeaseRenewal()?.signal,
           // Suspension is the one exit neither recorder sees: `SuspensionError`
           // bypasses `.rescue()` and a suspended request never aborts its signal,
@@ -521,9 +559,10 @@ function buildTaskGate(options: {
           },
         }
       )
-      // The child settles its own task through the SAME fenced recorders the
-      // inline drain uses — both read the claim off `currentClaim`.
-      .tap(recordSuccess)
+      // The answer is noted, not recorded: the task is checked once the
+      // request's work is over (FIX-2077), after the engine's last drain. A
+      // throw still fails the attempt here, through the inline drain's recorder.
+      .tap(noteTaskAnswer)
       .rescue([{ block: recordError }]);
 
     return {
@@ -574,6 +613,31 @@ export class UnknownTaskLedgerError extends Error {
  *   code, because what the dispatch must do about them is the same: stop, and
  *   write nothing.
  */
+/** Why a stop cancels a task waiting on a user, on its row. */
+const STOPPED_WHILE_WAITING = "Stopped while it waited for a user.";
+
+/**
+ * How the running request, `row`'s own run, resumed from its wait for a
+ * user without an answer (FIX-2129): `cancelled` (its task was cancelled, or
+ * the board ended that one stop) or `stopped`. `undefined` for any other
+ * request, and for an answered resume.
+ */
+function userResumeOf(ctx: BlockContext, row: Task): "cancelled" | "stopped" | undefined {
+  const resumed = requestResumeOf(ctx as never);
+  if (resumed === undefined || !resumed.userSuspension || row.run?.requestId !== ctx.request.identity.id) return undefined;
+  return resumed.resolution === "cancelled" || resumed.resolution === "stopped" ? resumed.resolution : undefined;
+}
+
+/**
+ * A stop of a task's run while it waits for a user cancels the task, where a
+ * stopped request would otherwise fail its attempt (FIX-2129, rule 12): asked
+ * again, the user would be asked the same thing. Written with the run's own
+ * claim, so a row another attempt took is left alone.
+ */
+async function cancelForStop(board: TaskCollectionRef, row: Task): Promise<void> {
+  await board.cancel(row.id, STOPPED_WHILE_WAITING, { claim: ticketForClaim(board.collectionId, row, board.partition) });
+}
+
 async function adoptLapsedLease(
   board: TaskCollectionRef,
   row: Task
@@ -677,6 +741,10 @@ async function writeRunLink(
       sessionId: ctx.session.identity.id,
       requestId: ctx.request.identity.id,
       attempt: held.attempts,
+      // The attempt's start, kept when this run relinks the same attempt (a
+      // resume, a lapsed lease taken back). A new attempt starts with no link
+      // (the claim clears it).
+      startedAt: held.run?.attempt === held.attempts && held.run.startedAt != null ? held.run.startedAt : board.now(),
     },
     { claim: ticket }
   );

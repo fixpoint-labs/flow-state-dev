@@ -6,7 +6,8 @@ import type {
   ModelResolver,
   RequestStatus,
   ResponseEmitterHandle,
-  ResumeContext
+  ResumeContext,
+  WaitDeadlines
 } from "@flow-state-dev/core/types";
 import type { TracingLevel } from "@flow-state-dev/core";
 import type { RuntimeLogger } from "../execution/logging";
@@ -14,8 +15,9 @@ import type { StoreRegistry } from "../stores/types";
 import type { ErrorCaptureBlockInfo, ErrorCaptureHandler } from "../errors/error-capture";
 import type { ParentTaskBinding } from "./create-request-host";
 import type { DispatchOperation } from "./dispatch-operation";
-import type { AskResumeOperation } from "./ask-resume-operation";
+import type { WaitResumeOperation } from "./wait-resume-operation";
 import type { SuspendedStopDeps } from "../durability/stop-suspended";
+import type { DurabilityProvider } from "../durability/types";
 import type { RuntimeConfig } from "../runtime-config";
 
 export type RequestRuntime = {
@@ -46,6 +48,13 @@ export type ExecutionContext<
    * action block; nested block failures are captured via `_runtimeHooks.onBlockError`.
    */
   _captureError?: (error: unknown, block?: ErrorCaptureBlockInfo) => void;
+  /**
+   * @internal Send the request's one final-failure event (FIX-1983), once its
+   * failed record is written. Not deduped against the block captures: it is a
+   * second, request-scope event naming the leaf that threw `error` when a
+   * block capture saw it. Undefined when no `errorCapture` handler is configured.
+   */
+  _captureFinalError?: (error: unknown) => void;
 };
 
 export type CreateExecutionContextOptions<
@@ -159,6 +168,12 @@ export type RequestHostConstructionInputs = {
    */
   dispatchOperation?: DispatchOperation;
   /**
+   * Whether `dispatchOperation` runs what it starts in this process, read as
+   * each request starts (`RequestHost.dispatchRunsHere`). Absent → no request
+   * is told so.
+   */
+  dispatchRunsHere?: () => boolean;
+  /**
    * Resolves another registered flow instance by its exact address (its id),
    * for a cross-instance dispatch address. Wired from the host's flow
    * registry. Absent → every cross-flow address refuses `flow-not-found`, the
@@ -168,23 +183,36 @@ export type RequestHostConstructionInputs = {
   /** The parent-board row this request was dispatched for, stamped at spawn. */
   parentTask?: ParentTaskBinding;
   /**
-   * Resumes a turn parked on an ask gate (`RequestHost.resumeAsk`). Installed
+   * Resumes a turn parked on a wait gate (`RequestHost.resumeWait`). Installed
    * by the host only when it has a durability provider, on the same terms as
    * `dispatchOperation`. Absent → the verb is absent.
    */
-  askResume?: AskResumeOperation;
+  waitResume?: WaitResumeOperation;
   /**
-   * Whether a durability sweeper that times out asks runs in this process,
-   * read as each request starts (`RequestHost.hasAskSweeper`). Installed
-   * beside `askResume`. Absent → no request is told an ask is bounded.
+   * Whether a durability sweeper that times out waits runs in this process,
+   * read as each request starts (`RequestHost.hasWaitSweeper`). Installed
+   * beside `waitResume`. Absent → no request is told a wait is bounded.
    */
-  askSweeper?: () => boolean;
+  waitSweeper?: () => boolean;
   /**
    * How this host stops a parked (`suspended`) request, for
-   * `ctx.session.stopRequest`. Installed beside `askResume`, only with durable
+   * `ctx.session.stopRequest`. Installed beside `waitResume`, only with durable
    * execution. Absent → a parked request answers `"already-finished"`.
    */
   parkedStop?: SuspendedStopDeps;
+  /**
+   * Debts' due times (FIX-2078 D1, `RequestHost.wakes`). Installed beside
+   * `waitResume`, only when the host has durable execution and its stores keep
+   * wakes. Absent → the verb is absent, and debts are paid on fast paths only.
+   */
+  wakes?: { readonly maxDebtAgeMs: number };
+  /**
+   * Waits (FIX-2082, `RequestHost.waits`): the provider the depth of a chain of
+   * waits is read from, and the deadline bounds. Installed beside `wakes`, only
+   * when the host keeps them, since a wait's deadline is a wake. Absent → the
+   * verb is absent, and no wait is offered.
+   */
+  waits?: { readonly provider: DurabilityProvider; readonly deadlines: WaitDeadlines };
   /** The stale-request sweeper's threshold. */
   staleThresholdMs?: number;
   /** The sweeper's cadence. Undefined or 0 → liveness is refused. */

@@ -14,15 +14,15 @@ Goals accumulate. A goal written for one PR is a **regression check** a year lat
 
 Goals are named like behavioural specs. Two levels, both kebab-case:
 
-- **`describe`** — the feature or subject under test (`plan-and-execute`, `crash-recovery`, `suspension`). The first folder level.
-- **`it`** — the behaviour this goal proves, phrased to complete the sentence "it …" (`carries-original-data-to-workers`, `continues-under-same-request-id`, `does-not-retry-loop`). The second folder level, and the goal itself.
+- **`describe`** — the feature or subject under test (`suspension`, `crash-recovery`, `task-board`). The first folder level.
+- **`it`** — the behaviour this goal proves, phrased to complete the sentence "it …" (`resumes-after-a-cold-restart`, `continues-under-same-request-id`, `does-not-retry-loop`). The second folder level, and the goal itself.
 
 The issue number is **not** in the folder name — it ages out as a discovery key, and the point of the name is that someone looking for a goal to reuse can find it by what it proves. The issue lives in `goal.md`.
 
 ```
 goals/
-  plan-and-execute/                      # describe: the subject
-    carries-original-data-to-workers/    # it: the behaviour — this is the goal
+  suspension/                            # describe: the subject
+    resumes-after-a-cold-restart/        # it: the behaviour — this is the goal
       goal.md            # the spec + verdict log — the contract
       run.mts            # the runnable check (real model)
       fixtures/          # held-out inputs, seed corpora, expected snapshots
@@ -62,7 +62,19 @@ What separates a goal check from a dressed-up unit test:
    - **Take the latest snapshot of each item, not the first.** Streamed assistant text lands in later snapshots (`content.delta` is checkpointed into item snapshots, not the persisted event log), so the first `item_added` is often empty. `readCapture` reduces by `item.id` keeping the last — use it rather than filtering `item_added` yourself, which is the bug it exists to prevent.
    - **Assert on terminal/public output**, not trace internals. The action's final output and success flag are on `result`; worker/block execution items are `type: "block_trace"` with an internal `BlockValueInternal` value — don't unwrap those, prefer `result.output` or the public item that carries the value.
    - For non-flow goals, call the public API directly. Mock only true third-party services (payment, email) you genuinely can't call.
-5. **Print an explicit verdict.** `runGoal` does this: return `{ failures, evidence }` and it prints `PASS — <evidence>` (exit 0) or `FAIL —` with a bulleted list (exit 1), so a later reader (or agent) knows the result without re-deriving the criteria. Push each leg's failures into the list `runGoal` hands your body (`runGoal(async (failures) => { ... })`), not a local one: if a later leg throws, the verdict then lists the legs that already failed before the throw, instead of only the throw.
+5. **Print an explicit verdict, and say when you couldn't look.** `runGoal` does this: return `{ failures, evidence }` and it prints `PASS — <evidence>` (exit 0), `FAIL —` with a bulleted list (exit 1), or `CAN'T TELL —` naming each assertion that read nothing (exit 3), so a later reader (or agent) knows the result without re-deriving the criteria. Push each leg's failures into the list `runGoal` hands your body (`runGoal(async (failures, tell) => { ... })`), not a local one: if a later leg throws, the verdict then lists the legs that already failed before the throw, instead of only the throw.
+
+   **Floor every list an assertion grades with `tell.over(name, list)`**, from the same body. `[].every(...)` is true, a `for` over nothing pushes nothing, and a `xs.length > 0 &&` guard skips its own check, so a renamed field or a missing row otherwise passes as if it were graded. `tell.over` returns the list unchanged; if it is empty, the run reports `CAN'T TELL — <name>: read 0` instead of PASS. A PASS line ends `read: <name>: <count>` for each one, so the evidence names only what was read. FAIL outranks CAN'T TELL: a run with both prints both and exits 1.
+
+   ```ts
+   await runGoal(async (failures, tell) => {
+     const seqs = tell.over("ordering · persisted items' seq", items.map((i) => i.seq).filter(isNumber));
+     if (!nonDecreasing(seqs)) failures.push("ordering: not non-decreasing");
+     return { failures, evidence: "sequence non-decreasing" };
+   });
+   ```
+
+   When nothing is the right answer ("no session leaks"), floor the population you read with its own `tell.over`, and mark the filtered list once, with the reason: `tell.over("leaks · other users' sessions", found, { emptyIs: "the claim: no session leaks" })`. The reason prints in the PASS line, where a reviewer can challenge it. There is no other opt-out: a goal that can't be written to tell is fixed or retired.
 
 ## Proving a check can fail
 
@@ -80,6 +92,8 @@ GOAL_CONTROL=hollow-run pnpm tsx goals/mailbox-boards/it-runs-a-row-a-file-decla
 
 **When no control fits, mutate the code — and snapshot first.** `git restore -- <path>` on the one file you touched, never `git restore .` or `git checkout -- .`. The trap is a fix and a mutation living in the same uncommitted file: the revert looks successful, keeps the tree green, and throws the fix away. A commit is the easiest snapshot, but some workflows hold the first commit until a human approves the change — `git stash create` gives you a dangling snapshot commit without touching the tree or the shared stash stack, and copying the file aside works too. Snapshot, mutate, revert the one file, restore.
 
+**A check that read nothing can't fail either.** That is what `tell.over` is for (technique #5), and CI refuses the commonest way to hide it: `node goals/scripts/check-tell-suppress.mjs` fails on an `if` whose condition guards with `.length > 0 &&` (or `!== 0`, `>= 1`) and whose body opens with a failure. It refuses that one shape only: setup ahead of the failure, a vacuous `every` or a skipped loop gets past it, and `tell.over` catches those at run time. `--control` plants that shape and must see it refused. `goals/goal-verdict/says-when-it-cannot-tell` proves the verdict end to end on a real run.
+
 **Say when a leg has no isolating red state** — when the mutation that fails it also fails a neighbour. Put it in the **Verdict log** notes or **Anti-game**, so the next reader reads the co-failure as a known property rather than a leak.
 
 ## The shared library (`goals/lib`)
@@ -88,24 +102,24 @@ Every goal repeats the same scaffolding around the part that is actually its own
 
 | Module       | What it covers |
 | ------------ | -------------- |
-| `verdict`    | `runGoal` / `pass` / `fail` — the one PASS/FAIL format and exit protocol |
+| `verdict`    | `runGoal` / `pass` / `fail` / `tell.over` — the one PASS / FAIL / CAN'T TELL format and exit protocol (0 / 1 / 3); `pnpm --filter @flow-state-dev/goals check:run-goal-verdict` guards it |
 | `fixture`    | `loadFixture(import.meta.url, "x.json")`, `fixturePath`, `fixtureDir` |
-| `env`        | `intentFreeEnv` / `stripIntentOverrides` / `captureIntentOverrides` — the **prefix** strip of `FSDEV_INTENT_*` + `FSDEV_DEFAULT_MODEL` |
+| `env`        | `intentFreeEnv` / `stripIntentOverrides` — the **prefix** strip of `FSDEV_INTENT_*` + `FSDEV_DEFAULT_MODEL` |
 | `paths`      | `KITCHEN_SINK` / `HELLO_CHAT` (repo-anchored, not `../../../`), `goalTmpDir`, `goalSessionId` |
-| `capture`    | `runFsdev` (input goes by `--input-file`, so quotes, apostrophes and newlines in fixtures are fine; `pnpm --filter @flow-state-dev/goals check:run-fsdev-input` guards it), `readCapture` (latest snapshot per id), `messageText`, `assistantText`, `answerText`, `actualModel` |
+| `capture`    | `runFsdev` (input goes by `--input-file`, so quotes, apostrophes and newlines in fixtures are fine; `pnpm --filter @flow-state-dev/goals check:run-fsdev-input` guards it), `readCapture` (latest snapshot per id), `messageText` |
 | `driver`     | `runHarness` — run a sibling `harness.mts` inside an app |
 | `durable`    | `durableStores`, `registryFor`, `approvePending`, `approvalContext`, `silentLogger` |
 | `model`      | `DEFAULT_MODEL`, `gatewayModel`, `goalModel`, `goalAttempts` |
 | `specs`      | `runSpecs` — delegate to an app's mock-free vitest specs |
 | `server`     | `refuseIfAnswering`, `stopProcessGroup` — for a goal that spawns its own server: refuse when anything already answers on the port, and stop the whole detached process group so no survivor is left for the next run to grade |
 | `module-patch` | `modulePatchEnv`, `describePatches`, `assertPatched` — a named control as scratch patches to source modules, applied as the process under test loads them (`module-patch.mjs` through `NODE_OPTIONS`), never written to the checkout; the run prints the patch and fails when it never reached the code it served |
-| `http-actions` | `httpActions(router, userId)` (`call`, `act`, `open`) — drive an in-process host's router as a verified caller and read an action's answer back from the session's ended request, as an app does; `untilIdle(stores)` — wait until no request is running. The host's `resolvePrincipal` reads the caller from `x-user` |
+| `http-actions` | `actingAs(router, userId)` (`call`, `act`, `open`) — drive an in-process host's router as a verified caller and read an action's answer back from the session's ended request, as an app does; `untilIdle(stores)` — wait until no request is running. The host's `resolvePrincipal` reads the caller from `x-user` |
 | `playwright` | `launchChromium`, `preinstalledChromium` — Chromium for a goal that reads the shipped DevTool. **Not re-exported from `index.mts`**, so a goal that opens no browser does not load Playwright; import `../../lib/playwright.mts` directly |
 | `shift-manager` | `buildShiftManagerCopy` (a patched scratch copy, built with Vite), `startShiftManager` (its command over a Lab, with `NODE_ENV` as it was before any in-process build; optional `root`, `tsx` and `timeoutMs` to serve another checkout, including an older one that has only `bin/start.mts`), `labApi` (the Lab's routes), `pendingSeatAsks` (the person's pending asks on the seats' sessions, picked as Shift Manager picks them), `workerOf` (the worker a listed session names) and `pickShift` (a theme picked with the sidebar's theme mark) — for the Shift Manager goals; and, for a goal that drives Shift Manager as a person in Playwright, `buildShiftManagerPages`, `labRoutes` (`labApi` read as one verified user) and `personPage` (a browser context as a given person). **Not re-exported from `index.mts`**; import `../../lib/shift-manager.mts` directly |
 
 The library covers scaffolding only. **The grading logic is the goal** and belongs in `run.mts`. So does retry *policy* — the corpus has three, and they mean different things (retry-until-first-pass over model flakiness vs. require-k-of-k where the stability number is itself the published result).
 
-**Model ids.** `DEFAULT_MODEL` is the portable id (`openai/gpt-5.4-mini`), for when an app's configured resolver applies its own gateway. `gatewayModel()` qualifies it (`vercel/…`) for a goal that builds its own resolver and must name the gateway. `goalModel()` lets `GOAL_MODEL` override either. A goal pinned to a specific model to reproduce a bug names it literally and says why.
+**Model ids.** `DEFAULT_MODEL` is the portable id (`openai/gpt-5.4-mini`), for when an app's configured resolver applies its own gateway. `gatewayModel()` qualifies it (`vercel:…`) for a goal that builds its own resolver and must name the gateway. `goalModel()` lets `GOAL_MODEL` override either. A goal pinned to a specific model to reproduce a bug names it literally and says why.
 
 ### Harnesses
 
@@ -134,7 +148,7 @@ pnpm goal:all suspension
 pnpm goal:all --list
 ```
 
-`goal:all` reads each `goal.md`'s **Model** field to tell model-free from model-backed, prints a per-goal PASS/FAIL summary, lists any goal that has a `goal.md` but no `run.mts`, and exits non-zero if anything failed.
+`goal:all` reads each `goal.md`'s **Model** field to tell model-free from model-backed, prints a per-goal PASS / FAIL / CAN'T TELL / TIMEOUT summary from each runner's exit code, lists any goal that has a `goal.md` but no `run.mts`, and exits non-zero unless everything passed. CAN'T TELL is not passed: the summary counts it apart, as `N can't tell`.
 
 **Typecheck.** `goals/` is a workspace package with a `typecheck` script, so `pnpm typecheck` at the root covers every `run.mts` and the library.
 
@@ -157,6 +171,15 @@ Reach for a new `goals/lib` helper only when a *third* goal needs the same scaff
 
 A goal is retired when the rule it proved no longer exists, and the line says which rule replaced it. Its history stays in git.
 
+Retired by FIX-1183, when a goal that can't tell stopped counting as a pass. Each proved nothing another check doesn't:
+
+- `plan-and-execute/carries-original-data-to-workers`: it never had a runner, so it never told anything. The pattern's mocked specs stay in CI.
+- `chat-agent/answers-a-factual-question`: it graded whether the model knows a capital. The framework half, a kitchen-sink turn through `fsdev run` on a real model, is proven by every kitchen-sink goal that runs a turn, e.g. `cli-principal/runs-in-the-apps-organization`.
+- `suspension/resumes-and-completes-after-approval`: its whole signal (the approved output carries the request and the note; the request completes) is leg (b) of `suspension/resumes-after-a-cold-restart`, which proves it after a restart too.
+- `workforce-conventions/files-alone-produce-the-roster`: a loader call graded on the data it returns, with no model. `packages/workforce/test/read-workforce-directory.test.ts` proves the same reads in CI.
+- `workforce-conventions/documents-come-from-files-alone`: the same, for `resources/`; `packages/workforce/test/read-resources-directory.test.ts` proves those reads in CI.
+- `capability-config/resolver-reaches-generator`: build-time only. Its assertions moved to `packages/core/test/capability-config.test.ts` ("config reaches a generator's assembled context"), where CI runs them.
+
 Retired by FIX-1788, when workers became data on one copy per worker flow. Hiring writes a row in the hiring user's own scope and registers nothing, so there is no hired seat to pin, reload, repair or list:
 
 - `hire-plane/discover-survives-an-unaddressable-row`: nothing stored becomes a seat. The org's listing is the standard workers the files declare, and a user's roster lists their own workers beside them (FIX-1788 BR-9, BR-26).
@@ -173,7 +196,11 @@ Retired by FIX-1788, when workers became data on one copy per worker flow. Hirin
 
 Retired by FIX-1814, when skills stopped delegating to sub-agents:
 
-- `delegation-floor/runs-an-unassigned-task`: a skill no longer files tasks, so there is no on-demand default worker under a shipped prompt to run them. A task a person or a coordinator files for nobody now follows the conversation's delegates: with exactly one, it goes to that delegate; with none or several, it waits pending and unassigned until `assignTask` hands it out, and runs nowhere (FIX-1794 BR-5, BR-6). The waiting half is proven by `manager-queue-lab/it-stands-the-team-and-its-board-up-from-files` (d) and `manager-queue-lab/it-routes-a-queue-to-the-seats-their-files-name` (f), and both halves by `packages/workforce/test/conversation-board-filing.test.ts`. The task board's own `defaultWorker` option, which runs an unknown or absent assignee on a stand-in worker and records its output, is still shipped and is proven by `packages/orchestration/test/task-board/task-board.test.ts` ("the floor", I1 to I3).
+- `delegation-floor/runs-an-unassigned-task`: a skill no longer files tasks, so there is no on-demand default worker under a shipped prompt to run them. A task a person or a coordinator files for nobody now follows the conversation's delegates: with exactly one, it goes to that delegate; with none or several, it waits pending and unassigned until `updateTask({ assignee })` hands it out, and runs nowhere (FIX-1794 BR-5, BR-6). The waiting half is proven by `manager-queue-lab/it-stands-the-team-and-its-board-up-from-files` (d) and `manager-queue-lab/it-routes-a-queue-to-the-seats-their-files-name` (f), and both halves by `packages/workforce/test/conversation-board-filing.test.ts`. The task board's own `defaultWorker` option, which runs an unknown or absent assignee on a stand-in worker and records its output, is still shipped and is proven by `packages/orchestration/test/task-board/task-board.test.ts` ("the floor", I1 to I3).
+
+Retired by FIX-2086, when a person's words reached a coding run as a steer on its task instead of a park and a re-queue:
+
+- `harness-manager/a-persons-turn-continues-its-session`: its signals were the door's (`continuing`, a second claim with one turn re-entry), and that door is removed. A steer uses no attempt: the same request resumes the coding session its step confirmed, with the steer in its prompt, which `task-tools/steer-and-follow-up` leg c proves on a fake harness that resumes by session id, and `packages/harness-manager/test/steer-a-run.spec.ts` in CI.
 
 Retired by FIX-1792, when a mailbox became a coordinator worker file:
 

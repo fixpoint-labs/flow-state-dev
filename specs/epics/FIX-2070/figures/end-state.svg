@@ -1,0 +1,72 @@
+<svg viewBox="0 0 940 346" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="In the box: one entry, onMessageReceived, with a server-set sender, call flag and budget; one tool, sendMessage, that sends or calls, to a worker, a task or a conversation; delivery once, as a debt the engine&#x27;s wake pays; one budget per typed message; a task&#x27;s midway question to its filer. Composed in by the app: the two limits through hireWorkforce, the host&#x27;s wait deadline, and the Messages view. Replaced in one line: onWorkerMessage, messageWorker, replyTo, the relay, two refusals and the two-try delivery. Not built, below a fence: a session lookup tool, a message running beside a person&#x27;s stop, and an entry for proposing work.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .own    { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .use    { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .box    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .app    { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .gone-r { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .fence  { stroke:var(--ink-3); stroke-width:2; stroke-dasharray:8 5; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-col  { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-row  { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-own  { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; letter-spacing:.06em; }
+    .t-use  { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); } .minus { fill:var(--gone); } .tie { fill:var(--ink-3); }
+    .c-code { fill:var(--code); } .c-mute { fill:var(--ink-3); } .c-lost { fill:var(--ink-2); } .c-acc { fill:var(--accent); } .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="346"/>
+  <text class="t-lbl" x="16" y="22">WHAT&#x27;S IN THE BOX — EVERY WORKER FLOW GETS IT FROM THE SESSION FACTORY</text>
+  <rect class="box" x="16" y="34" width="600" height="250" rx="8"/>
+  <text class="t-tag c-code" x="32" y="54">IN THE BOX</text>
+  <text class="t-b" x="32" y="80">onMessageReceived</text>
+  <text class="t-s" x="290" y="80">one entry; the server sets from, call, budget</text>
+  <text class="t-b" x="32" y="109">sendMessage · send</text>
+  <text class="t-s" x="290" y="109">returns nothing; nothing relayed for you</text>
+  <text class="t-b" x="32" y="138">sendMessage · call</text>
+  <text class="t-s" x="290" y="138">wait: true, deadline?; late result under the call id</text>
+  <text class="t-b" x="32" y="167">to: worker · { task } · { session }</text>
+  <text class="t-s" x="290" y="167">resolved and checked by the server</text>
+  <text class="t-b" x="32" y="196">lands once</text>
+  <text class="t-s" x="290" y="196">a wake resends it; onMessageReceived sees an id once</text>
+  <text class="t-b" x="32" y="225">one budget per typed message</text>
+  <text class="t-s" x="290" y="225">6 in all, 3 per request, fresh after release</text>
+  <text class="t-b" x="32" y="254">a task&#x27;s midway question</text>
+  <text class="t-s" x="290" y="254">reaches its filer&#x27;s onMessageReceived; a steer answers it</text>
+  <rect class="app" x="632" y="34" width="292" height="130" rx="8"/>
+  <text class="t-tag c-acc" x="648" y="54">COMPOSED IN BY THE APP</text>
+  <text class="t-b" x="648" y="82">hopLimit and perTurn, via hireWorkforce</text>
+  <text class="t-b" x="648" y="108">the host&#x27;s wait deadline</text>
+  <text class="t-b" x="648" y="134">the Messages view</text>
+  <rect class="gone-r" x="632" y="176" width="292" height="108" rx="8"/>
+  <text class="t-tag c-gone" x="648" y="196">REPLACED IN ONE LINE</text>
+  <text class="t-s" x="648" y="220">onWorkerMessage, messageWorker, replyTo</text>
+  <text class="t-s" x="648" y="242">the relay (workforceRelayTo)</text>
+  <text class="t-s" x="648" y="264">takes_tasks_only, no_turn, two tries</text>
+  <line class="fence" x1="16" y1="302" x2="924" y2="302"/>
+  <text class="t-lbl" x="16" y="326">NOT BUILT</text>
+  <text class="t-s" x="120" y="326">a session lookup tool</text>
+  <text class="t-s" x="390" y="326">a message running beside a person&#x27;s stop</text>
+  <text class="t-s" x="660" y="326">an entry for proposing work</text>
+</svg>

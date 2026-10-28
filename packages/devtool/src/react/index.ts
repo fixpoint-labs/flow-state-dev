@@ -7,7 +7,7 @@
 export { DevToolPanel, type DevToolPanelProps } from "./DevToolPanel";
 export { FlowStateMark, type FlowStateMarkProps } from "./components/shared/flow-state-mark";
 export { type UserIdControl } from "./context/devtool-context";
-export { type DevToolConfig } from "./lib/client";
+export { type DevToolConfig, withBearerToken } from "./lib/client";
 export {
   readUserId,
   writeUserId,

@@ -31,7 +31,7 @@ a canonical item.
 The SDK is an optional peer dependency, pinned to an exact version:
 
 ```bash
-pnpm add @flow-state-dev/cursor @cursor/sdk@1.0.31
+pnpm add @flow-state-dev/cursor @cursor/sdk@1.0.40
 ```
 
 Cursor ships its local runtime as a platform-specific native binary and its
@@ -59,21 +59,31 @@ import { createCursorAgentCapability } from "@flow-state-dev/cursor";
 const planner = generator({
   name: "planner",
   // The generator's own model, as a flow-state-dev model id.
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   uses: [
     createCursorAgentCapability({
       cwd: async (ctx) => checkoutForThisRun(ctx),
       // Cursor's model, in Cursor's own ids.
-      agent: { model: { id: "composer-2.5" } },
+      model: "composer-2.5",
     }),
   ],
 });
 ```
 
 **Cursor needs a model.** Its SDK refuses to open a local agent without one, so
-`agent.model` is not optional in practice. It takes `{ id }`, plus an optional
-`params` list of `{ id, value }` pairs for whatever that model exposes.
+name one with `model`. It takes an id, a model with its settings
+(`{ id, params: [{ id, value }] }`, Cursor's own parameter list, such as a
+reasoning effort), or a resolver returning either, asked once per run. The result
+goes to the agent on create and on resume alike, so a resolver that reads the
+session can run a different model and settings for each one.
 `Cursor.models.list()` in the SDK enumerates what your account can select.
+
+A resolver that returns `null`, `undefined` or an empty id names no model. With no
+model named from `model` or `agent.model`, Cursor's SDK refuses to open the agent
+and the run fails. `agent.model` also takes `{ id, params }`, is the model when
+`model` is unset, and is one value for every run. `model` beside `agent.model` or `send.model` throws
+when the block is built; `agent` and `send` are Cursor's own option bags, described
+under [As a sequencer step](#as-a-sequencer-step).
 
 ## As a sequencer step
 
@@ -86,10 +96,10 @@ const pipeline = sequencer({ name: "do-the-work" }).step(
     cwd: (ctx) => workspacePathFor(ctx),
     resume: (ctx) => previousAgentIdFor(ctx),
     onSession: (id, ctx) => rememberAgentId(id, ctx),
-    // Options passed straight to Cursor, in Cursor's own vocabulary — `model`
-    // here is a Cursor model id, not a flow-state-dev one.
+    // A Cursor model id, not a flow-state-dev one, read per run. A resumed agent gets it too.
+    model: (ctx) => modelPickedFor(ctx),
+    // Options passed straight to Cursor, in Cursor's own vocabulary.
     agent: {
-      model: { id: "composer-2.5" },
       mode: "agent",
       local: { sandboxOptions: { enabled: true } },
     },
@@ -99,7 +109,7 @@ const pipeline = sequencer({ name: "do-the-work" }).step(
 ```
 
 The block's input is the prompt, and nothing else. Everything that decides where
-a run writes or which conversation it continues is configuration. The same block
+a run writes, which conversation it continues or which model it runs is configuration. The same block
 can be handed to a model as a tool, and a field on the input is a field the model
 could set.
 
@@ -112,6 +122,7 @@ the block is built:
 | `agent.agentId` | `resume` decides which conversation a run continues. |
 | `agent.local.cwd` | `cwd` decides where a run works. The rest of `local` is forwarded. |
 | `agent.cloud`, `send.cloud` | Cursor's cloud agents are not supported here. |
+| `agent.model`, `send.model` beside `model` | Each names the model a run uses; keep one. |
 
 ## What it emits
 
@@ -122,6 +133,7 @@ the block is built:
 | Tool call | `tool_output`, opened when the call starts and settled with its result |
 | A change to Cursor's to-do list | `tool_output`, like any tool call. With `recordPlan`, also rows in the run's plan record ([Recording the run's plan](#recording-the-runs-plan)) |
 | Run and task lifecycle | transient `status` |
+| Run end | `status`, kept in the session's history, saying how long the run took: `Cursor run completed in 5 mins, 24 seconds.` A run that fails ends with a kept status that says it errored and why, `Cursor run errored (<reason>).` |
 | Errors | `error` |
 
 Every item carries provenance, so the devtool shows the full trace of what the
@@ -159,8 +171,16 @@ The record always holds the whole list as Cursor last confirmed it. An update Cu
 change only part of the list, so the block writes nothing until Cursor answers with the list as
 it now stands. An update Cursor rejects changes nothing. You still see every update as a tool
 call in the stream. The block writes through core's `replacePlanList`, the same helper every
-harness whose plan arrives as a whole list uses, so the run's list marker
+harness whose plan arrives as a whole list uses, so the plan's list marker
 (`observed-plan-list`) says whether that list was saved in full.
+
+The plan belongs to the Cursor agent, which is the conversation every turn of a session
+continues. Rows and their marker are keyed under `conversation/<agent id>`, so a later run of
+the same agent updates the list an earlier run recorded, and a run that doesn't touch its list
+leaves the plan as it was. A different agent has its own plan. Each run also writes a pointer
+under its own namespace (`<requestId>/<run>`) when the agent is created or resumed, which is how
+a reader that knows only the request finds the plan
+([reading a request's plan](./coding-agents.md#reading-a-requests-plan)).
 
 Cursor doesn't tell the SDK which item is which, so a row is an item's place in the list. If
 Cursor changes an item's status, its row keeps the old one as `previousStatus`. If Cursor
@@ -168,14 +188,14 @@ rewords the item at a place, the row takes the new wording and `previousStatus` 
 the list gets shorter, the rows past its end are removed. If Cursor reorders its list, rows after
 that point describe different items, so don't follow one item across a reorder.
 
-A run that never updates its list records nothing: no rows and no marker, which a plan panel
-shows as "no plan recorded for this turn". A list Cursor empties is different: the marker says
-the list is complete with nothing in it. If a write fails partway, the marker says the list is
+An agent that has never updated its list has no plan: no rows and no list marker, only the
+runs' pointers. A list Cursor empties is different: the marker says the list is complete with
+nothing in it. If a write fails partway, the marker says the list is
 incomplete, with the error, so a reader never shows a half-written list as the plan. Cursor's
 plan-mode document, the one `mode: "plan"` produces, is not recorded.
 
 `recordPlan` is off by default. Off, the block declares no session state, exactly as before,
-which is what lets a task board hand it off without any further option.
+which is what lets a task board dispatch it without any further option.
 
 ## Where the run works
 
@@ -188,6 +208,23 @@ is rarely what you want.
 
 It is a working directory, not a fence: the run can still address paths outside
 it. `local.sandboxOptions` on `agent` is the fence.
+
+Cursor fails a run whose sandbox can't start rather than running without it.
+`probeCursorSandbox` reports whether the sandbox can start for a run in `cwd`
+with that `env`, without starting a run. It takes about a second, so call it
+once, from a startup or health check.
+
+```ts
+import { probeCursorSandbox } from "@flow-state-dev/cursor";
+
+const result = await probeCursorSandbox({ cwd: repoDir, env });
+// { supported: true } or { supported: false, reason: "<Cursor's message>" }
+```
+
+The sandbox needs a helper binary from Cursor's platform package, which this
+package installs. With `env` set (next section), no extra dependency is needed.
+Without `env`, under pnpm, add `@cursor/sdk-<platform>-<arch>` to your app's
+dependencies, or the sandbox can't start and the run fails.
 
 ## Choosing the environment the run starts with
 
@@ -267,8 +304,33 @@ reads `"unknown-conversation"`. Any other failure reads `null`, including one af
 Cursor has resumed the agent.
 
 Keeping no session state also means the block declares none, which is what lets a
-task board hand it off without any further option. `recordPlan` is the one option
+task board dispatch it without any further option. `recordPlan` is the one option
 that adds some, and it is off by default.
+
+## Steering a running turn
+
+A message can join a turn while it's still running. Pass `onSteerable`, and once
+the prompt is sent the block calls it with a `steer` function. When the turn is
+over, it calls it again with `null`.
+
+```ts
+cursorAgent({
+  // …
+  onSteerable: (steer, ctx) => (steer ? holdSteer(ctx, steer) : dropSteer(ctx)),
+});
+```
+
+`steer(text)` resolves `"delivered"` when Cursor took the line into the turn in
+flight. It resolves `"refused"` when Cursor said the line should wait for the next
+turn, when the call failed, or when the turn had already ended. A refused line
+was not taken, so send it as the next prompt. When the run ends on its own, the
+block waits for every `steer` call still in flight to answer before it returns. A
+run stopped by its deadline doesn't wait.
+
+Only local runs whose SDK offers steering get a `steer`. Otherwise `onSteerable`
+is never called. To steer from a session, hand it `harnessSteering().onSteerable`
+from `@flow-state-dev/core` ([Steering a running turn](./coding-agents.md#steering-a-running-turn)). The [harness manager](../orchestration/harness-manager.md#steering-a-run)
+uses this hook to hand a task's new messages to the running step.
 
 ## How a run ends
 

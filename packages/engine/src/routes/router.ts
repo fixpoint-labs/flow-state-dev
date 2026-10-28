@@ -100,6 +100,12 @@ const ROUTES_BY_KIND: { [K in CoveredKind]: RouteEntry<K>[] } = {
       userId: p.userId
     }))
   ],
+  list_interrupted_requests: [
+    entry("GET", "/users/:userId/interrupted-requests", (p) => ({
+      kind: "list_interrupted_requests",
+      userId: p.userId
+    }))
+  ],
   create_session: [
     entry("POST", "/:flowKind/sessions", (p) => ({
       kind: "create_session",
@@ -136,6 +142,13 @@ const ROUTES_BY_KIND: { [K in CoveredKind]: RouteEntry<K>[] } = {
   resume_suspension: [
     entry("POST", "/:flowKind/requests/:requestId/resume", (p) => ({
       kind: "resume_suspension",
+      flowKind: p.flowKind,
+      requestId: p.requestId
+    }))
+  ],
+  answer_suspension: [
+    entry("POST", "/:flowKind/requests/:requestId/answer", (p) => ({
+      kind: "answer_suspension",
       flowKind: p.flowKind,
       requestId: p.requestId
     }))

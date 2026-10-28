@@ -53,7 +53,7 @@ import { createClaudeCodeAgentCapability } from "@flow-state-dev/claude-code/sdk
 
 const orchestrator = generator({
   name: "orchestrator",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   uses: [createClaudeCodeAgentCapability()],
 });
 ```
@@ -64,9 +64,12 @@ When the host decides to run the agent (rather than letting a model choose), use
 the block directly:
 
 ```ts
+import { harnessEnv } from "@flow-state-dev/core";
 import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 
+const env = harnessEnv({ pass: ["PATH", "HOME", "CLAUDE_CODE_OAUTH_TOKEN"] });
 const agent = claudeCodeAgent({
+  env,
   systemPrompt: {
     type: "preset",
     preset: "claude_code",
@@ -89,11 +92,18 @@ As the agent runs, the block translates the SDK stream into items:
 | SDK output | flow-state-dev item |
 |------------|---------------------|
 | Assistant text | `message` (streamed token by token when partial messages are on) |
-| Extended thinking | `reasoning` |
-| Tool call and its result | `tool_output`, with the tool call's id, name, and arguments |
-| Sub-agent (`Task`/`Agent`) | a `container` grouping the sub-agent's items |
-| System init, history compaction | transient `status` |
+| Extended thinking | `reasoning`, when the SDK returns any text. Thinking with the text withheld emits nothing. |
+| Tool call and its result | `tool_output`, with the tool call's id, name, and arguments. While it runs, a transient `status` carries the call's `description` for Bash, or `Using <tool>…` for any other tool, and it clears when the last open tool finishes. |
+| Sub-agent (`Task`/`Agent`) | a `container` grouping the sub-agent's items. While it works, a transient `status` shows the sub-agent's summary if it has one, otherwise its description followed by the last tool it used, such as `Refactor imports (Edit)`. Status text is cut to 120 characters. A sub-agent with neither a summary nor a description shows no status. |
+| Run start | transient `status`: `Starting Claude Code…`, shown from the moment the run starts. |
+| API retry | transient `status` each time Claude Code retries a failed API call, for example `Claude Code is retrying a failed API call (attempt 2 of 5, in 5 s)…`. The `, in 5 s` part is left out when the SDK reports no delay. |
+| History compaction | transient `status`: `Claude Code agent compacted its context`. Compaction is Claude Code summarizing a long conversation to free up space. |
+| Run end | a `status` kept in the session's history, saying how long the run took: `Claude Code agent run completed in 5 mins, 24 seconds.` A run that fails ends with a kept status that says it errored and why, `Claude Code agent run errored (<reason>).`, besides the `error` item. |
 | Errors | `error` |
+
+The run-start, API retry, and compaction statuses clear on the first output Claude Code produces after them: an assistant message, a streamed token, a tool result, or the run's result. Nothing else clears them. Another status replaces them straight away, such as a tool's `Using <tool>…`.
+
+The run-end duration is rounded to the nearest second and written with units: `1 min, 1 second`. A run of an hour or more shows hours and minutes only (`1 hr, 3 mins`). Under half a second reads `less than a second`.
 
 Every item carries provenance, so the devtool shows the full trace of what the
 agent did.
@@ -136,7 +146,7 @@ reasoning about data retention, or if you plan to resume a run by hand later.
 
 You have to pass it there. A worker that runs in a dispatch run may share that
 session with other rows, so two blocks declaring the same session-state key would
-overwrite each other. The task board refuses to build a hand-off whose block
+overwrite each other. The task board refuses to build a dispatch whose block
 declares session state.
 
 That refusal reads the worker block, the blocks composed inside it, and the
@@ -436,6 +446,10 @@ claudeCodeAgent({
     enabled: true,
     filesystem: { allowWrite: [await checkoutFor(ctx)] },
   }),
+  // Tools this process serves to the run, grouped by server: a value, or a resolver per run.
+  mcpTools: async (ctx) => ({
+    tracker: { tools: await trackerToolsFor(ctx), close: async () => {} },
+  }),
   uses: [myCapability],
   onErrored: async (error, ctx) => {
     await releaseWhateverThisRunHeld(ctx);
@@ -478,6 +492,18 @@ cannot say "sandboxed to this run's workspace."
 replace the default set, and it is not a fence on its own — `enabled` is what
 turns sandboxing on, and `denyWrite` and the permission rules are what narrow
 it.
+
+**`mcpTools`** hands the run tools that run in your own process, presented to it
+as MCP servers. Each entry is a server, named by its key, and each tool is a
+name, a description, a JSON Schema for its input and a `call` function; the run
+calls it as `mcp__<server>__<tool>`. There is no field for an address or
+headers, so the run never learns where a tool's work happens or what credential
+it uses. Set, even to `{}`, it is the run's complete MCP set: no servers from
+settings files, plugins or the account's claude.ai connectors. The tools are
+allowed without asking, and `disallowedTools` still keeps one out. Each
+server's `close` is called when the run ends, however it ends. A coding run on
+a Workforce project gets its project's servers this way; see
+[Tools a project's coding work gets](../workforce/projects.md#tools-a-projects-coding-work-gets).
 
 **`uses`** installs capabilities on the agent block, the same slot every other
 block takes. A capability handed here that declares resources has them
@@ -535,20 +561,28 @@ const agent = claudeCodeAgent({
 });
 ```
 
-It is off by default. Turned on, the agent declares three **resource
+It is off by default. Turned on, the agent declares four **resource
 collections** — a resource collection is a keyed set of small state records the
 framework stores and serves for you — and writes into them as the run goes:
 
 | Collection | One entry per |
 |---|---|
 | `observed-file-ops` | path the run's file-writing and file-editing tools touched: how it was touched, when, and whether the attempt applied |
-| `observed-plan` | item on the run's own to-do list: its wording, its current status, and the status before that |
+| `observed-plan` | item on the conversation's to-do list: its wording, its current status, the status before that, and the request that last changed it |
+| `observed-plan-list` | conversation whose plan could not be written in full, with the reason; and, per run, a pointer to the conversation the run's plan is in |
 | `observed-gaps` | thing the recorder understood and could not record, with the reason and which record it stands in for |
 
-Entries are keyed as `<requestId>/<invocation>`. One session can host several
-runs over its life, and a single request can itself run the agent more than once
-— a generator holding it as a tool can call it repeatedly — so both halves are
-needed to keep one run's answer from becoming somebody else's.
+File and gap entries are keyed as `<requestId>/<invocation>`. One session can
+host several runs over its life, and a single request can itself run the agent
+more than once (a generator holding it as a tool can call it repeatedly), so
+both halves are needed to keep one run's answer from becoming somebody else's.
+
+Plan entries are keyed by conversation instead, as
+`conversation/<session id>/<task id>`, where the session id is the Claude Code
+session the run worked in. A later turn's `TaskUpdate` lands on the row its
+earlier `TaskCreate` wrote, so the item keeps its title. Each run writes its
+pointer in `observed-plan-list`, under `<requestId>/<invocation>`, once Claude
+Code names the session.
 
 ### Reading it back
 
@@ -582,18 +616,29 @@ separate count is worth having: it says how many of a path's touches actually
 landed. Read `0` and `null` differently. `0` means the run touched the path and
 nothing applied. `null` means the row was written before the field existed.
 
-The plan record reads the same way, from `observed-plan`. Its shape is the one
-every harness shares, described in [the run's plan](./coding-agents.md#the-runs-plan);
-importing `observedPlanCollection` from this package or from `@flow-state-dev/core`
-gives the same object. A to-do item's status is the harness's own word for it, and
-stays empty until the harness reports one. Plan entries reach an open page as they
-change, rather than when the request ends.
+The plan record is read from `observed-plan`. Its shape is the one every harness
+shares, and [reading a request's plan](./coding-agents.md#reading-a-requests-plan)
+shows how to get from a request id to its conversation's entries. Importing
+`observedPlanCollection` from this package or from `@flow-state-dev/core` gives
+the same object. A to-do item's status is the harness's own word for it, and
+stays empty until the harness reports one. Plan entries reach an open page as
+they change, rather than when the request ends.
+
+Claude Code reports its plan item by item, so the conversation's list marker
+carries no count and is written only when a plan entry fails to write. It then
+reads `incomplete`, and stays that way for the rest of the conversation. A
+conversation whose earlier turns were recorded per run starts its plan from its
+next write, so a `TaskUpdate` to an item one of those turns created shows as a
+row with no title.
 
 The plan record fills only when the agent keeps a to-do list with Claude Code's to-do tools,
-`TaskCreate` and `TaskUpdate`. That takes two things. The run has to be offered the tools: on
-newer models Claude Code switches them off unless you name them in `allowedTools`. And the agent
-has to choose to use them, which it often doesn't on a short job, whatever prompt the run
-started from. When it doesn't, the record stays empty. That is the honest answer, not a
+`TaskCreate` and `TaskUpdate`. Every run is offered them: on newer models Claude Code switches
+them off unless they're named in `allowedTools`, so the block adds them to whatever list you
+pass. They ask no permission, so this allows nothing else. To keep a run from them, list them in
+`disallowedTools`. A run with `permissionMode: "bypassPermissions"` also gets the search tools
+`Grep` and `Glob`. In other modes you name those yourself, because naming them approves searches
+outside the working directory without asking. The agent still has to choose to use them, which it often doesn't on a short
+job, whatever prompt the run started from. When it doesn't, the record stays empty. That is the honest answer, not a
 recording failure, and nothing appears in `observed-gaps` for it.
 
 ### What the file record is, and what it isn't
@@ -653,7 +698,7 @@ const workspace = createWorkspaceAgentCapability({
 
 generator({
   name: "coder",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "Use the workspace agent to make the change.",
   uses: [workspace],
 });
@@ -711,6 +756,39 @@ This is the interim story. Routing approvals through flow-state-dev's own
 human-in-the-loop suspend and resume is a follow-up; `onToolApproval` is the seam
 that work will plug into.
 
+## Choosing the model
+
+`model` takes a Claude model id, or a resolver asked once per run, like `cwd` and
+`resume`. A resolver is how one block runs a different model for each session:
+read the id from the session's state. A resumed conversation is handed the same
+id. Return `null`, or leave `model` unset, and Claude Code runs its own default.
+
+```ts
+claudeCodeAgent({
+  detached: true,
+  resume: (ctx) => previousSessionIdFor(ctx),
+  model: (ctx) => (ctx.session.state as { model?: string }).model ?? null,
+});
+```
+
+To offer a person a choice, `listClaudeModels` asks Claude Code which models it
+offers, the same way `probeClaudeAccount` below asks about the credential: no
+message, no model turn.
+
+```ts
+import { listClaudeModels } from "@flow-state-dev/claude-code/sdk";
+
+const list = await listClaudeModels({ env });
+if (list.status === "models") {
+  const preselected = list.models.find((m) => m.isDefault) ?? list.models[0];
+}
+```
+
+Each entry carries the concrete id an alias resolves to: the row Claude Code
+calls `sonnet`, or its default, comes back under the model it points at today.
+Store that id, and a session keeps its model after the alias moves on. A failed
+call resolves to `{ status: "failed", reason }` and never throws.
+
 ## Checking for a credential before you start
 
 A run with no credential fails on its first turn, which for a server can be long after it started. `probeClaudeAccount` asks Claude Code up front whether it has something to run on: an API key, or a sign-in under the home folder (the keychain on macOS). It sends no message, so it costs no model turn, and takes about half a second.
@@ -728,11 +806,53 @@ Pass the same `env` you give `claudeCodeAgent`, so the probe sees the credential
 
 | `status` | When | Also carries |
 |----------|------|--------------|
-| `"account"` | Claude Code named where its credential comes from | `apiKeySource` and/or `tokenSource`, as the SDK reports them |
-| `"none"` | No credential, no answer within `timeoutMs` (default 10 000 ms), or Claude Code couldn't be asked | `reason`, a sentence you can show the user |
+| `"account"` | Claude Code named where its credential comes from | `apiKeySource` and/or `tokenSource`, as the SDK reports them; a subscription sign-in names neither and comes back as `email` and `subscriptionType` |
+| `"none"` | No credential, no answer within `timeoutMs` (default 10 000 ms), or Claude Code couldn't be asked | `reason`, a sentence you can show the user, and `unanswered: true` when Claude Code gave no answer |
 | `"sdk-missing"` | `@anthropic-ai/claude-agent-sdk` couldn't be loaded | `reason`, with the load error |
 
 It never throws for any of these. It checks where a credential would come from, not that it works: a key that is set but rejected still reads as `"account"`, and fails on the run's first turn.
+
+## Reading usage left
+
+A Claude subscription limits use per time window, such as five hours or a week, and a run fails once a window is used up. Claude Code reports where those limits stand while it runs, so the numbers come from runs. Pass `onUsage` and the block hands you each one:
+
+```ts
+import { harnessEnv } from "@flow-state-dev/core";
+import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+
+const env = harnessEnv({ pass: ["PATH", "HOME", "CLAUDE_CODE_OAUTH_TOKEN"] });
+const agent = claudeCodeAgent({
+  env,
+  onUsage: ({ window, observedAt }) => {
+    console.log(window.id, window.level, window.usedPercent, window.resetsAt && new Date(window.resetsAt));
+  },
+});
+```
+
+Claude Code sends an update whenever its limits change, and at least once per run on a subscription. Each update becomes one [usage window](./coding-agents.md#subscription-usage), for the limit that binds at that moment:
+
+| Field | Value |
+|---|---|
+| `id` | Claude Code's name for the window: `five_hour`, `seven_day`, or a weekly variant such as `seven_day_opus` |
+| `minutes` | 300 for `five_hour`, 10 080 for the `seven_day` family, `null` for any other id |
+| `level` | `"ok"` (under its warning line), `"warning"` (near the limit) or `"reached"` |
+| `usedPercent` | 0 to 100, only when Claude Code sends one, which it does near a limit. Otherwise `null`, never 0 |
+| `resetsAt` | When the window resets, in epoch ms |
+
+The report around it also carries `harness` (`"claude-code"`, exported as `CLAUDE_CODE_HARNESS`), `observedAt`, `runStartedAt`, and `accountId`, the signed-in email or `null`. A run on an API key reports nothing. `onUsage` is awaited, but a throw from it doesn't fail the run: a warning is logged and the run carries on. It works on in-session and detached blocks alike. `usageWindowOf(info)` maps one raw event payload to a window, or `null`, if you read the SDK stream yourself.
+
+To show who is signed in before any run, `readClaudeUsage({ env })` is a [usage reader](./coding-agents.md#subscription-usage). It never throws:
+
+| `status` | When |
+|---|---|
+| `windows` | Signed in, or running on an OAuth token. Carries `plan` and `accountId`, and **no windows**: those arrive from runs. |
+| `api-key` | Claude Code runs on an API key, which has no subscription limit. |
+| `signed-out` | Nobody is signed in. |
+| `unavailable` | `@anthropic-ai/claude-agent-sdk` isn't installed, or Claude Code couldn't be asked or didn't answer within `timeoutMs` (10 seconds by default) or before `signal` aborted. The usage query keeps the last good reading and shows why the refresh failed. |
+
+Pass the same `env` as your runs. To keep run windows and readings together and serve them to a page or a worker, register `readClaudeUsage` as the `claude-code` reader of the [harness manager's usage query](/docs/orchestration/harness-manager#subscription-usage) and pass `onUsage` through from the manager's harness slot.
+
+**Where the numbers come from.** Only from Claude Code's own run events and its account answer. Nothing here reads a credentials file, calls a usage endpoint, or uses the SDK's experimental usage call.
 
 ## Error handling
 

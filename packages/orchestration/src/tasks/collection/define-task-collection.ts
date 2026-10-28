@@ -25,14 +25,18 @@
 
 import {
   defineResourceCollection,
+  type BlockContext,
   type DefinedResourceCollection,
   type ResourceScope,
 } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
-import { taskSchema } from "../schema/task";
-import type { TaskEndingRecorder } from "./ending";
+import { taskSchema, type Task } from "../schema/task";
+import type { TaskEnding, TaskEndingRecorder } from "./ending";
+import type { TaskSettingsSupport } from "./filing";
 import type { TaskPartitionFn } from "./partition";
 import { assertSafeCollectionId } from "./safe-key";
+import { defineTaskIdIndex, taskIdIndexKey } from "./id-index";
+import type { DeclaredDelivery } from "../notice/delivery";
 
 /**
  * Build the resource-instance schema for a durable task: the whole `Task`
@@ -54,10 +58,44 @@ export type DefinedTaskCollection = DefinedResourceCollection & {
     readonly id: string;
     /** Present when the ledger keeps one set of rows per partition. */
     readonly partitionBy?: TaskPartitionFn;
+    /**
+     * Present with `partitionBy`: the ledger's id index (FIX-2160), which
+     * partitions hold each task id. Installed beside the ledger under `key`
+     * (`taskLedgerResources`), and written by the ledger's own add.
+     */
+    readonly idIndex?: { readonly key: string; readonly collection: DefinedResourceCollection };
     /** Present when every ending written to the ledger goes through a recorder. */
     readonly recordEnding?: TaskEndingRecorder;
+    /** Present when the ledger honours filing settings beyond the defaults. */
+    readonly settings?: TaskSettingsSupport;
+    /** Present when the ledger's tasks file work elsewhere that a cascade cancels. */
+    readonly cascadeFiled?: DeclaredFiledCascade;
+    /**
+     * Present when a board hands the ledger's rows out (FIX-2078): each ending
+     * owes its filer a notice. Declared, or set by a board with a task
+     * dispatcher (`markDelegating`).
+     */
+    delivery?: DeclaredDelivery;
   };
 };
+
+/**
+ * A ledger's payer for the tasks its tasks filed (FIX-2080 D2), as declared:
+ * `pay` takes the running context, bound when the ledger is resolved.
+ */
+export interface DeclaredFiledCascade {
+  /**
+   * Whether this ending owes the filed half: a pure function of the row as
+   * the ending writes it, run inside that write and possibly more than once.
+   */
+  readonly owes: (row: Task, ending: TaskEnding) => boolean;
+  /**
+   * Cancel the open tasks `row` filed, in the running context. `true` once
+   * paid; `false` leaves the cascade owed, for the next touch past its due
+   * time.
+   */
+  readonly pay: (ctx: BlockContext, row: Task) => Promise<boolean>;
+}
 
 export interface DefineTaskCollectionOptions<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
@@ -73,7 +111,7 @@ export interface DefineTaskCollectionOptions<
   scope: ResourceScope;
   /**
    * Give a `session`-scoped board ONE ledger across the session lineage
-   * (FIX-1068), so the child session a handed-off row runs in settles against the
+   * (FIX-1068), so the child session a dispatched row runs in settles against the
    * same rows the dispatching session holds. Without it a session-scoped board
    * hydrates empty inside a child session and the task cannot be settled.
    *
@@ -86,7 +124,7 @@ export interface DefineTaskCollectionOptions<
    * resolved in a running context reads and writes only the partition this
    * function names for it. Use it for a board kept per conversation whose rows
    * a task entry on another flow works: the user scope crosses the flow, and
-   * the partition keeps each conversation's board its own. A board's hand-off
+   * the partition keeps each conversation's board its own. A board's dispatch
    * carries the partition it claimed in, so the receiving entry reads the row
    * there and never calls this function itself. The rows sit in the user's
    * own cell, shared with every flow of theirs, even on a flow that isolates
@@ -99,6 +137,10 @@ export interface DefineTaskCollectionOptions<
    * rows. A partitioned ledger's task ids are one path segment (no `/`). Its
    * rows load a partition at a time, on that partition's first read in a
    * request, never the whole ledger when the request starts.
+   *
+   * A partitioned ledger also keeps an id index, which partitions hold each
+   * task id (`findTaskPartitions`), so a bare id can find its row. Install the
+   * ledger with `taskLedgerResources(ledger)`, which carries both.
    */
   partitionBy?: TaskPartitionFn;
   /**
@@ -115,6 +157,28 @@ export interface DefineTaskCollectionOptions<
    * taken from what it returns; the transition decides every other field.
    */
   recordEnding?: TaskEndingRecorder;
+  /**
+   * The filing settings this ledger honours beyond the defaults (FIX-2080):
+   * `session: ["new", "ongoing"]` when its hand-over can run a task in the
+   * delegate's ongoing session, `resultTo: ["filer", "conversation"]` when it
+   * can send a result to the conversation. A filing with a value it doesn't
+   * list is refused, naming the setting.
+   */
+  settings?: TaskSettingsSupport;
+  /**
+   * The ledger's payer for the tasks a task on it filed elsewhere (FIX-2080
+   * D2). A task that fails, retries or is cancelled owes a cascade, recorded
+   * in its ending's write when `owes` says so, and paid by `pay`: at once by
+   * the ending's own pass, and by a touch of the ledger once past due.
+   */
+  cascadeFiled?: DeclaredFiledCascade;
+  /**
+   * How the ledger's endings reach the sessions that filed them (FIX-2078):
+   * the pass a wake runs, the entry a notice arrives on, how a filer is
+   * reached, and what a notice nobody can take does. A board with a task
+   * dispatcher gives its ledger the defaults when it declares none.
+   */
+  delivery?: DeclaredDelivery;
   /**
    * Schema for each task's `input` payload. Optional; defaults to
    * `z.unknown()`. This is the typed payload a worker receives, not the whole
@@ -174,10 +238,28 @@ export function defineTaskCollection<
   return Object.assign(collection, {
     __taskCollection: {
       id: options.id,
-      ...(options.partitionBy !== undefined ? { partitionBy: options.partitionBy } : {}),
+      ...(options.partitionBy !== undefined
+        ? {
+            partitionBy: options.partitionBy,
+            idIndex: { key: taskIdIndexKey(options.id), collection: defineTaskIdIndex(options.id, options.scope) },
+          }
+        : {}),
       ...(options.recordEnding !== undefined ? { recordEnding: options.recordEnding } : {}),
+      ...(options.settings !== undefined ? { settings: options.settings } : {}),
+      ...(options.cascadeFiled !== undefined ? { cascadeFiled: options.cascadeFiled } : {}),
+      ...(options.delivery !== undefined ? { delivery: options.delivery } : {}),
     },
   }) as unknown as DefinedTaskCollection;
+}
+
+/**
+ * The flow resources that install `ledger`: the ledger under its id, and, for
+ * a partitioned ledger, its id index beside it. A flow that files to a
+ * partitioned ledger without the index is refused at the add.
+ */
+export function taskLedgerResources(ledger: DefinedTaskCollection): Record<string, DefinedResourceCollection> {
+  const { id, idIndex } = ledger.__taskCollection;
+  return { [id]: ledger, ...(idIndex !== undefined ? { [idIndex.key]: idIndex.collection } : {}) };
 }
 
 /**
@@ -209,13 +291,13 @@ function assertPartitionable(options: DefineTaskCollectionOptions): void {
 
 /**
  * Ledgers whose assignee is frozen while an attempt holds a task, keyed by the
- * declaration itself (FIX-982; narrowed to `in_progress` and `parked` by FIX-1780).
+ * declaration itself (FIX-982; narrowed to `in_progress` by FIX-1780).
  *
  * The policy belongs to the **ledger**, not to a ref. `getOrCreateTaskCollection`
  * builds a fresh wrapper per resolution, so an `immutableAssignee` passed as one
  * wrapper's option guards only the caller that passed it — a second board, or any
  * other resolution of the same collection, gets an unguarded wrapper over the
- * same rows and can reassign a task the handed-off board routes by. Marking the
+ * same rows and can reassign a task the dispatched board routes by. Marking the
  * declaration instead means every resolution reads one answer.
  *
  * Keyed by object identity rather than collection id: ids are per-flow strings,
@@ -247,7 +329,7 @@ function assertPartitionable(options: DefineTaskCollectionOptions): void {
  *
  * The behaviour chosen in the meantime fails **closed**: an unnecessary decline
  * is visible immediately and recoverable by giving the second flow its own
- * declaration, where a missed freeze silently strands handed-off work.
+ * declaration, where a missed freeze silently strands dispatched work.
  *
  * A `WeakSet`, so a declaration that falls out of scope is collectable and tests
  * that build collections per-case do not accumulate policy.
@@ -261,13 +343,12 @@ function assertPartitionable(options: DefineTaskCollectionOptions): void {
 const immutableAssigneeLedgers = new WeakSet<DefinedTaskCollection>();
 
 /**
- * Freeze the assignee on every task an attempt holds (`in_progress` or
- * `parked`) in this ledger, for every ref that resolves it. Called by `taskBoard` when a board binding this collection declares
+ * Freeze the assignee on every task an attempt holds (`in_progress`) in this ledger, for every ref that resolves it. Called by `taskBoard` when a board binding this collection declares
  * dispatcher assignees, whose child's routing key is derived from the assignee.
  *
- * Idempotent, and deliberately one-way: two boards on one ledger, one handing
- * off and one not, must not disagree about whether reassignment is allowed, and
- * the handed-off board's invariant is the one that breaks silently.
+ * Idempotent, and deliberately one-way: two boards on one ledger, one dispatching
+ * and one not, must not disagree about whether reassignment is allowed, and
+ * the dispatched board's invariant is the one that breaks silently.
  */
 export function freezeLedgerAssignee(collection: DefinedTaskCollection): void {
   immutableAssigneeLedgers.add(collection);
@@ -276,7 +357,7 @@ export function freezeLedgerAssignee(collection: DefinedTaskCollection): void {
 /**
  * Is this ledger's assignee frozen? Read at resolution time, never captured at
  * construction time — boards are constructed in an arbitrary order and a board
- * built before the handed-off one would otherwise close over a stale `false`.
+ * built before the dispatched one would otherwise close over a stale `false`.
  */
 export function hasFrozenLedgerAssignee(collection: DefinedTaskCollection): boolean {
   return immutableAssigneeLedgers.has(collection);

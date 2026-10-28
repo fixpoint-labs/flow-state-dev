@@ -48,6 +48,7 @@ describe("@flow-state-dev/workforce/browser", () => {
     expect(entry.COORDINATOR_FLOW).toBe("coordinator");
     expect(entry.COORDINATOR_ROUTE).toBe("coordinator-route");
     expect(entry.COORDINATOR_JUDGMENT).toBe("coordinator-judgment");
+    expect(entry.ERROR_REPORTER_FLOW).toBe("error-reporter");
     expect(typeof entry.parseWorkstreamEntry).toBe("function");
     expect(entry.sessionIdOfFiling("sess_1~3f2a")).toBe("sess_1");
   });

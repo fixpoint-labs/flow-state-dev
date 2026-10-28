@@ -35,9 +35,14 @@ import type { BlockDefinition, DefinedCapability } from "@flow-state-dev/core";
 import { z, type ZodTypeAny } from "zod";
 import {
   getOrCreateTaskCollection,
+  SKIPPED_LABEL,
+  TaskFilingRefusedError,
+  type Task,
   type TaskCollectionRef,
   type TaskInit,
 } from "../tasks";
+import { skippedFor } from "../tasks/collection/cascade";
+import { generateId } from "../tasks/generate-id";
 
 /**
  * How each task's `context` is populated when the planner/replanner didn't
@@ -209,10 +214,72 @@ export function createApplyReplan(options: ApplyReplanOptions) {
       });
 
       if (tasks.length > 0) {
-        await collection.addTasks(tasks);
+        await addSkippingDeadDeps(collection, tasks);
       }
 
       return { decision: "continue" as const };
     },
+  });
+}
+
+/**
+ * File a replan's tasks (FIX-2080). A replan comes after a failure, which is
+ * when a planner is most likely to name the failed task: a task whose
+ * dependency has already failed or been cancelled is filed skipped
+ * (`cancelled`, labelled `skipped`), as such a dependent always ended, and so
+ * is each batch task that depends on it. The rest of the replan is filed, and
+ * the evaluator judges again. Every other refusal (a dependency on no task, a
+ * loop) still fails the run.
+ */
+async function addSkippingDeadDeps(collection: TaskCollectionRef, tasks: readonly TaskInit[]): Promise<void> {
+  // Every row needs its id first: a refusal names the row it refused by id.
+  let batch: TaskInit[] = tasks.map((task) => ({ ...task, id: task.id ?? generateId("task") }));
+  for (;;) {
+    try {
+      await collection.addTasks(batch);
+      return;
+    } catch (error) {
+      if (!(error instanceof TaskFilingRefusedError) || error.rule !== "dependency_ended" || error.taskId === undefined) throw error;
+      const skipped = skipWithDependents(batch, error.taskId, (id) => collection.get(id));
+      // A refusal naming no row this batch can skip would repeat: fail as before.
+      if (skipped === batch) throw error;
+      batch = skipped;
+    }
+  }
+}
+
+/**
+ * `batch` with `id` and every batch row that depends on it, transitively,
+ * filed skipped, each with the `error` and `causedBy` a cascade's cancel
+ * writes: the stored dependency that ended, else the batch row skipped first.
+ */
+function skipWithDependents(batch: TaskInit[], id: string, stored: (id: string) => Pick<Task, "id" | "status"> | undefined): TaskInit[] {
+  const skip = new Set<string>([id]);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const row of batch) {
+      if (row.id !== undefined && !skip.has(row.id) && (row.deps ?? []).some((dep) => skip.has(dep))) {
+        skip.add(row.id);
+        grew = true;
+      }
+    }
+  }
+  if (!batch.some((row) => row.id !== undefined && skip.has(row.id) && row.status !== "cancelled")) return batch;
+  const causeOf = (row: TaskInit): Pick<Task, "id" | "status"> | undefined => {
+    const deps = row.deps ?? [];
+    const ended = deps.map(stored).find((dep) => dep?.status === "errored" || dep?.status === "cancelled");
+    if (ended !== undefined) return ended;
+    const skippedDep = deps.find((dep) => dep !== row.id && skip.has(dep));
+    return skippedDep === undefined ? undefined : { id: skippedDep, status: "cancelled" };
+  };
+  return batch.map((row) => {
+    if (row.id === undefined || !skip.has(row.id) || row.status === "cancelled") return row;
+    const cause = causeOf(row);
+    return {
+      ...row,
+      status: "cancelled" as const,
+      labels: [...new Set([...(row.labels ?? []), SKIPPED_LABEL])],
+      ...(cause !== undefined ? skippedFor(cause) : {}),
+    };
   });
 }

@@ -71,17 +71,17 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
 ### BP-037: Retain issue and epic specs as reviewed design history
 
 - Status: Active
-- Date: 2026-06-29 (updated 2026-09-19: repository retention and approval-time merge)
+- Date: 2026-06-29 (updated 2026-09-19: repository retention and approval-time merge; 2026-10-13: two documents)
 - Scope: Process — issue and epic spec authoring, review and implementation.
 - Rule:
   - Follow the canonical [retention and authority policy](../orchestration.md#spec-retention-and-authority)
     and [merge/amendment lifecycle](../orchestration.md#merging-and-amending-a-spec).
     Repository content is canonical; Linear carries links and status.
-  - Use the [issue](../spec-template.md) or [epic](../epic-spec-template.md) template,
-    including concrete `DOCS.md` drafts and conditional `EVOLUTION.md`.
+  - Use the [issue](../spec-template.md) or [epic](../epic-spec-template.md) template:
+    `SPEC.md` and `DECISIONS.md`, including the section on what's already here and the debt.
   - Specs preserve approved intent, not current behavior. Architecture docs remain
-    authoritative for the current system; implementation reconciles and publishes the
-    documentation draft against what ships.
+    authoritative for the current system; implementation writes the documentation the
+    spec's docs line names, against what ships.
   - Valid retained-spec citations may provide provenance. A code comment still states
     its reason rather than making a reader follow a link to understand it.
   - Project specs keep their separate never-merged lifecycle. No historical backfill.
@@ -96,14 +96,10 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
 - Scope: Process — spec-PR review (`issue-spec` Step 6.5, `issue-lifecycle`, `epic-lifecycle`).
 - Rule:
   - **Sign-off certifies directional correctness only** — the problem is real, the approach works, the decisions in `DECISIONS.md` are the ones we want. Not a finished design, and not "nothing left to nitpick" (an unreachable target).
-  - **One test per comment: does acting on it change the approach?** Yes → **fold in** (re-draft, anti-addenda rule). No → **note for the implementer** (record verbatim in `PLAN.md → Notes from review`; reply once; do *not* rewrite the design prose around it). Already answered / out of scope / preference → **drop** with one reply. **Default is note; the burden of proof is on folding.**
+  - **One test per comment: does acting on it change the approach?** Yes → **fold in** (re-draft, anti-addenda rule). No → **note for the implementer** (record verbatim in `DECISIONS.md → Notes from review`; reply once; do *not* rewrite the design prose around it). Already answered / out of scope / preference → **drop** with one reply. **Default is note; the burden of proof is on folding.**
   - **Budget two review rounds**, then declare convergence and go to the approval gate, carrying remaining threads as implementer notes. A third round requires a genuine spec-level finding from round two, stated in one line. Count rounds **actually spent** — a factual-correction-only batch costs zero — and keep the conditional third round reachable rather than stopping on the count alone. The same budget applies to an **epic** PR.
-  - **Do not grind optional comments to zero.** Required repository checks, approvals and
-    review-thread policy still govern merge; direction approval waives none of them.
-    Triage optional feedback into notes or a reasoned reply within the existing budget.
-  - **Below-the-bar comments are implementer input**, not another direction gate.
-    Implementation still waits for confirmed spec merge under BP-037.
-  - The spec PR description leads with the people table, then the goal and how we'll know it's met, the figure, and the sign-off — then a per-PR **"Reviewers · look here"** block. The reviewer contract from `spec-template.md` (what's in scope to challenge, what's deliberately unsettled) is the one lever available on reviewers we can't instruct, and it sits **collapsed below the fold**, where a bot still reads it and a human skips it. Both blocks are required on every PR we open, at the altitude that PR is reviewed at; canonical in [`../pr-reviewer-guidance.md`](../pr-reviewer-guidance.md).
+  - **Do not grind optional comments to zero.** Required checks, approvals and review-thread policy still govern merge; direction approval waives none of them, and implementation still waits for confirmed spec merge (BP-037).
+  - Every spec PR carries the reviewer contract and a per-PR *Reviewers · look here* block; canonical in [`../pr-reviewer-guidance.md`](../pr-reviewer-guidance.md).
 - Why: Spec-PR review comes mostly from automated reviewers tuned for code, pointed at a document that is deliberately not a finished design. Treating every line-level observation as a spec defect turned directionally-sound specs into ten-round grinds, at the altitude where none of that detail can actually be settled. Full rule, with the rationale for why converging is safe: [`../orchestration.md`](../orchestration.md) → "Spec review: the bar and the convergence rule".
 
 ### BP-039: Lead with the problem, fold the rest
@@ -124,9 +120,6 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
 - Scope: Process — anything that asks the user to sign off, choose, or unblock: a conversation turn, a spec's `DECISIONS.md`, a PR's *What's asked of you*, a gate, an escalated blocker.
 - Rule:
   - You are the engineer; the user is the **product owner**. Translate the call into the decision *they* are making — what it costs in customers, promises, timing, and reversibility — not the mechanism that produced it. They are technical, which makes handing them the mechanism easy and still wrong.
-  - Six parts: **the fork as the heading** (a plain-language either/or) · **plain terms** (observable behaviour, no paths, symbols, or framework jargon) · **the trade-off** (in their currency) · **my recommendation** (always — a neutral fork spends a round extracting the view you already have) · **what would change my mind** (the fact you don't have and they might) · **what being wrong costs** (calibration).
-  - **Not every decision is an ask, and most aren't.** A decision reaches the user only if it passes both filters in [`../asking-for-decisions.md`](../asking-for-decisions.md) → "What reaches them at all"; **three is the ceiling, live forks included**. Everything else is decided and recorded where an engineer reads it.
-  - **Filtering is sorting, not hiding.** Where the artifact defines a sign-off surface, everything on it stays in the artifact — the calls the user doesn't own move to a section addressed to the engineer, so nothing is approved unseen and nothing unactionable is put in front of them.
-  - Engineering detail is the ask only when no business framing survives the translation (usually a coherence fork). Rare — say out loud that it's happening, give the minimum vocabulary, and keep the rest of the shape.
+  - Six parts, always with a recommendation; at most three asks per artifact, live forks included; a decision reaches the user only if it passes both filters. Everything else is decided and recorded where an engineer reads it.
   - Canonical: [`../asking-for-decisions.md`](../asking-for-decisions.md), with a worked example. This BP is the index entry, not a second copy.
 - Why: The product owner's job is the objective and the process as a whole, and attention spent re-deriving a call the engineer already made is attention not spent there. An ask written in mechanism gets a clarifying question back, or a rubber stamp — both worse than a decision.

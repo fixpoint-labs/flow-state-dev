@@ -1,0 +1,7 @@
+{
+  "coding": {
+    "goal": "This task has two parts, and you do them in two sittings. Part 1, now: read the file NOTE.txt in your working folder and remember the code written in it. Do not copy the code anywhere, do not write any file except your question, and do not commit. Then ask the user, through the question file named under 'Where and how to work', whether resume-proof.txt should end with a trailing newline, and stop. Part 2, once you have their answer: NOTE.txt will be gone. Write the code you read in it into resume-proof.txt in your working folder, as they said about the newline, commit it with git, and end your last message with the word DONE.",
+    "answer": "No trailing newline, please.",
+    "factFile": "resume-proof.txt"
+  }
+}

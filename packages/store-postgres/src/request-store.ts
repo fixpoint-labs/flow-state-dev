@@ -16,7 +16,8 @@
  * back to polling on the same shape as SQLite.
  */
 
-import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
+import type { RequestStreamEvent } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import {
   abortableSleep,
   endsRequestStream,
@@ -56,9 +57,9 @@ const RECONNECT_BACKOFF_MAX_MS = 1_600;
 const MAX_ITEM_ID_LENGTH = 2600;
 
 /** `node-pg` and PGlite auto-parse JSONB; bypass paths may return strings. */
-function parseItemData(data: unknown): OutputItem {
-  if (typeof data === "string") return JSON.parse(data) as OutputItem;
-  return data as OutputItem;
+function parseItemData(data: unknown): RuntimeItem {
+  if (typeof data === "string") return JSON.parse(data) as RuntimeItem;
+  return data as RuntimeItem;
 }
 
 /**
@@ -73,7 +74,7 @@ const ITEMS_COLUMN =
   "FROM request_items i WHERE i.request_id = requests.id) AS table_items";
 
 /** The items {@link ITEMS_COLUMN} selected for a row. */
-function parseTableItems(value: unknown): OutputItem[] {
+function parseTableItems(value: unknown): RuntimeItem[] {
   const list = typeof value === "string" ? JSON.parse(value) : value;
   return Array.isArray(list) ? list.map(parseItemData) : [];
 }
@@ -86,7 +87,7 @@ function parseTableItems(value: unknown): OutputItem[] {
 function upsertItemsStatement(
   firstParam: number,
   requestId: string,
-  batch: OutputItem[],
+  batch: RuntimeItem[],
   gate?: string
 ): { sql: string; params: unknown[] } {
   const p = firstParam;
@@ -254,7 +255,7 @@ export function createPostgresRequestStore(
    */
   const pendingItemWrites = new Map<string, Promise<void>>();
   /** Holds the most recent items so the queued write always uses the latest data. */
-  const latestItemSnapshots = new Map<string, OutputItem[]>();
+  const latestItemSnapshots = new Map<string, RuntimeItem[]>();
   /**
    * Per-request map of item id → the JSON last persisted to `request_items`.
    * Diffing by serialized content (not object reference) keeps persistence
@@ -304,11 +305,11 @@ export function createPostgresRequestStore(
    */
   function itemDelta(
     requestId: string,
-    snapshot: OutputItem[]
-  ): { batch: OutputItem[]; persisted: Map<string, string> } {
+    snapshot: RuntimeItem[]
+  ): { batch: RuntimeItem[]; persisted: Map<string, string> } {
     const priorById = lastPersistedItems.get(requestId);
     const persisted = new Map<string, string>();
-    const byId = new Map<string, OutputItem>();
+    const byId = new Map<string, RuntimeItem>();
     for (const item of snapshot) {
       if (item.id.length > MAX_ITEM_ID_LENGTH) {
         throw new Error(
@@ -547,6 +548,56 @@ export function createPostgresRequestStore(
       await base.delete(id);
       clearItemMaps(id);
     },
+    async deleteIfStatus(
+      id: string,
+      allowedStatuses: readonly RequestStatus[]
+    ): Promise<ConditionalWriteResult> {
+      // Wait out item and event writes already queued, without dropping the
+      // unwritten batches first as `delete` does: if the predicate fails,
+      // they belong to a run that is still going.
+      const pending = pendingItemWrites.get(id);
+      if (pending) await pending;
+      const pendingEvents = pendingEventWrites.get(id);
+      if (pendingEvents) await pendingEvents;
+      // ONE statement, gated on a LOCKING read of the status, for the reasons
+      // `setFieldsIfStatus` gives. The executor has no transaction, and one
+      // statement is what makes the check, the child deletes and the record
+      // delete land together or not at all: `delete`'s children-first order
+      // is not needed when nothing can fail in between. "Together" covers
+      // the child rows that existed when the statement started: the child
+      // deletes read its snapshot, so a child row committed after that is
+      // not deleted, the same window plain `delete` has.
+      const result = await executor.query(
+        `WITH locked AS (
+           SELECT id, status FROM requests WHERE id = $1 FOR UPDATE
+         ),
+         target AS (
+           SELECT id FROM locked WHERE status = ANY($2::text[])
+         ),
+         items AS (
+           DELETE FROM request_items WHERE request_id IN (SELECT id FROM target)
+         ),
+         events AS (
+           DELETE FROM request_events WHERE request_id IN (SELECT id FROM target)
+         ),
+         runonce AS (
+           DELETE FROM request_runonce WHERE request_id IN (SELECT id FROM target)
+         ),
+         deleted AS (
+           DELETE FROM requests r USING target t WHERE r.id = t.id RETURNING r.id
+         )
+         SELECT l.status AS status, EXISTS (SELECT 1 FROM deleted) AS applied
+           FROM locked l`,
+        [id, [...allowedStatuses]]
+      );
+      // No row means no record: `rows`, not `rowCount` (see `setFieldsIfStatus`).
+      const row = result.rows[0] as { status: RequestStatus; applied: boolean } | undefined;
+      if (row === undefined) return { applied: false, status: undefined };
+      if (row.applied !== true) return { applied: false, status: row.status };
+      pendingNewEvents.delete(id);
+      clearItemMaps(id);
+      return { applied: true, status: row.status };
+    },
     async list(options?: RequestListOptions): Promise<RequestRecord[]> {
       if (options?.withItems === true) {
         // Each row's items in the same statement as the rows (FIX-1619).
@@ -564,7 +615,7 @@ export function createPostgresRequestStore(
       return records.map((r) => withSourceDefault(r) as RequestRecord);
     },
 
-    persistItems(requestId: string, items: OutputItem[]): void {
+    persistItems(requestId: string, items: RuntimeItem[]): void {
       // Always capture the latest snapshot so the queued write picks up
       // the freshest items even when intervening calls are coalesced.
       latestItemSnapshots.set(requestId, [...items]);

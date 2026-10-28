@@ -23,8 +23,9 @@ GET  /api/flows/:flowKind/schedules
 
 `GET` and `DELETE` on the dispatch path return 405. POST on the
 listing path returns 405. POST is required on dispatch so the body
-can carry `nominalFireTime` and `idempotencyKey` and so auth flows
-through `Authorization` rather than query strings.
+can carry `nominalFireTime` and so auth flows through `Authorization`
+rather than query strings. A body carrying `idempotencyKey` is refused
+with 400 `idempotency_key_removed`: the scheduled time is the key.
 
 ## The `schedules` config block
 
@@ -69,8 +70,10 @@ resolver returned.
   `^[a-z0-9][a-z0-9:/_-]{0,127}$`. The dispatch route validates the
   URL pattern before any resolver call.
 - The binding must carry a `block`.
-- Cron parses under `cron-parser` (POSIX 5-field). `timezone` is
-  opaque metadata; the framework does not evaluate it.
+- Cron is exactly five fields (`isFiveFieldCron`; a sixth would be
+  seconds) and parses under `cron-parser` in the schedule's `timezone`.
+  The zone, when set, must be an IANA zone the runtime knows. The
+  endpoint evaluates the cron in that zone to name scheduled times.
 - Static `input` matches the binding's effective input schema.
   Dynamic input is validated at dispatch.
 - `onOverlap` is `"skip"` or `"allow"`. `"queue"` is reserved.
@@ -91,9 +94,7 @@ failures return 400 `invalid_schedule`.
    For dynamic schedules this runs *before* the resolver. A
    `PrincipalResolutionError` returns its own status with
    `{ error: "unauthorized" }`.
-5. Idempotency dedupe. Key is
-   `body.idempotencyKey ?? "${scheduleId}:${nominalFireTime ?? ""}"`.
-   A hit in the window (default 60s) returns 200 `{ status: "duplicate" }`.
+5. A body `idempotencyKey` → 400 `idempotency_key_removed`.
 6. Resolve the schedule: `static[id]`, else `resolve(...)`.
    `null` → 404 `schedule_not_found`. Throw → 500 `resolver_failed`.
 7. `validateScheduleConfig({ origin: "dynamic", … })`.
@@ -103,32 +104,51 @@ failures return 400 `invalid_schedule`.
    `(flowKind, source, metadata.schedule.scheduleId)`. Match → 200
    `{ status: "skipped", reason: "in_flight" }`.
 9. Effective principal: `schedule.principal ?? gatewayPrincipal`.
+9a. The scheduled time (`scheduledTimeOf`). A carried `nominalFireTime`
+    counts against the scheduled time within 5 s of it; none counts
+    against the latest one due by now + 5 s. A carried time near no
+    scheduled time → 400 `not_a_scheduled_time`; one not due yet → 400
+    `not_yet_due`; one more than a period behind the latest due time →
+    200 `{ status: "duplicate", reason: "stale" }` and a warning.
+9b. The claim (`claimScheduledTime`): one record per schedule,
+    `{ lastFiredAt }`, at `scheduled-fires/<flowKind>/<scheduleId>` in
+    the effective principal's non-isolated user cell (the derivation the
+    resolver reads by), written with the resource-state store's
+    compare-and-set. A time at or before `lastFiredAt` → 200
+    `{ status: "duplicate" }`. The record is a floor whatever the cron;
+    an old record that also carries `cron` and `timezone` reads the same.
 10. Resolve input (static value or `schedule.input(ctx)`).
     Function throw → 500 `dispatch_failed`.
-11. `host.dispatch(envelope)`. A `ConcurrencyRejectedError` — thrown
-    when the flow's `request.concurrency` is `"reject"` on a key the
-    scheduled envelope carries (e.g. `user`) and a competing run holds
-    it — returns 200 `{ status: "skipped", reason: "in_flight" }` with
-    the winner's `requestId`, the same shape as the step-8 overlap skip
-    so the scheduler does not retry. Any other host throw → 503
-    `flow_unregistered`.
-12. Record the idempotency key. Return 202 with `requestId`,
-    `scheduleId`, `origin`.
+11. `host.dispatch(envelope)`, then await `handle.accepted`. A
+    `ConcurrencyRejectedError`, which rejects `accepted` when the flow's
+    `request.concurrency` is `"reject"` on a key the scheduled envelope
+    carries (e.g. `user`) and a competing run holds it, returns 200
+    `{ status: "skipped", reason: "in_flight" }` with the winner's
+    `requestId`, the same shape as the step-8 overlap skip so the
+    scheduler does not retry. A throw from `dispatch` itself → 503
+    `flow_unregistered`; any other rejection of `accepted` → 503
+    `dispatch_failed`. Every fire that isn't admitted (these, and an
+    input function that throws) gives its time back, version-checked
+    against its own claim: a later time claimed since keeps its record.
+12. Return 202 with `requestId`, `scheduleId`, `origin`.
 
-**Steps 4 and 5 are in that order deliberately.** Authenticating before
-the dedupe check keeps an unauthenticated caller from probing dispatch
-history: if dedupe ran first, a duplicate key would answer 200
-`{ status: "duplicate" }` while an unseen one answered 401, and that
-difference is a response oracle over which schedules have already fired.
-Adapter authors reimplementing this path must preserve the ordering.
+**Auth runs before the claim.** Authenticating before anything reads the
+fired record keeps an unauthenticated caller from probing dispatch
+history: a duplicate would answer 200 `{ status: "duplicate" }` while an
+unseen time answered 401, and that difference is a response oracle over
+which schedules have already fired. Adapter authors reimplementing this
+path must preserve the ordering.
 
 The envelope sets `responseEmitter: null`. `signal` is omitted —
 the scheduler closes the connection on 202.
 
-Skip and the in-memory idempotency cache are best-effort and
-per-process. Multi-process hosts lean on the scheduler's own
-dedupe, or a shared cache. See the
-[user guide](../../apps/docs/docs/server/scheduled.md#overlap-policy).
+Skip is best-effort. The claim holds across processes on stores with
+compare-and-set across processes (SQLite, Postgres); on the memory
+store and the filesystem store, whose lock is per instance, it holds
+within one process. It can't cover two independent schedulers where
+one is told `duplicate` and the other's claim is then given back on a
+503. See the
+[user guide](../../apps/docs/docs/server/scheduled.md#at-most-once-per-scheduled-time).
 
 ## Two-phase auth
 
@@ -145,7 +165,8 @@ helper. Compose with HTTP auth by branching on `ctx.source`.
 No new store query primitives. The adapter uses
 `host.registry.get`, `activeRequests.listAll` (via
 `findScheduledRequest`), `resourceState.get` inside the resource-collection
-resolver, and `host.dispatch`. It never lists resources across users
+resolver, `resourceState.get`/`set`/`delete` on the one fired record per
+schedule (the only thing the adapter writes), and `host.dispatch`. It never lists resources across users
 — the host scheduler tracks which ids to fire.
 
 `findScheduledRequest` lives in `@flow-state-dev/scheduled`, not on
@@ -219,8 +240,8 @@ and respects `requireUser`.
 | Code | Reason |
 | --- | --- |
 | 202 | Accepted; action dispatched |
-| 200 | `duplicate` (idempotency hit) or `skipped` (overlap, or a concurrency `reject` at dispatch) |
-| 400 | `invalid_schedule_id` (URL pattern) or `invalid_schedule` (resolved data) |
+| 200 | `duplicate` (the time, or a later one, already fired; `reason: "stale"` for a time more than a period old) or `skipped` (overlap, or a concurrency `reject` at dispatch) |
+| 400 | `invalid_schedule_id` (URL pattern), `invalid_schedule` (resolved data, a cron not five fields, an unknown zone), `not_a_scheduled_time`, `not_yet_due`, `invalid_nominal_fire_time`, or `idempotency_key_removed` |
 | 401 | `unauthorized` (gateway-auth failure) |
 | 404 | `flow_not_found` or `schedule_not_found` |
 | 405 | Method not allowed (POST is required on dispatch) |
@@ -233,7 +254,6 @@ and respects `requireUser`.
 - No framework-side scheduler loop.
 - No durable missed-window handling.
 - No `onOverlap: "queue"`.
-- No time-zone-aware cron evaluation.
 - No bundled `node-cron` integration.
 - No per-action authentication overrides for scheduled dispatch.
 - No `ScheduleConfig.maxRuntimeMs`.

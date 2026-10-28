@@ -2,7 +2,7 @@
  * HTTP route handlers for request recovery (retry + active request listing).
  */
 import type { FlowRegistry } from "../registry/flow-registry";
-import { ownsRecord, resolveRecordOwner } from "../context/record-owner";
+import { ownsRecord, resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
 import type { ActiveRequestEntry, StoreRegistry } from "../stores/types";
 import type { InboundTransportHost, ResolvedPrincipal } from "../transports/types";
 import {
@@ -259,7 +259,11 @@ export async function handleContinueRequest(
     // the DevTool's per-row Continue needs `block_trace`/`router_decision`/
     // `state_snapshot` from the resumed portion for its Trace tab.
     const includeTrace = new URL(request.url).searchParams.get("include") === "trace";
-    const handle = await ctx.host.continueRequest({ requestId: route.requestId, includeTrace });
+    const handle = await ctx.host.continueRequest({
+      requestId: route.requestId,
+      includeTrace,
+      leaseId: lease.leaseId
+    });
 
     const accept = request.headers.get("accept") ?? "";
     if (accept.includes("text/event-stream") && handle.liveStream !== null) {
@@ -284,52 +288,66 @@ export async function handleContinueRequest(
   }
 }
 
+type ListingRouteContext = RecoveryRouteContext & {
+  /**
+   * The caller as each instance's own doors resolve it. A row owned by an
+   * instance with a resolver of its own is judged by that resolver, not by
+   * `principal` or `anonymousFlowIds` (see `instance-caller.ts`).
+   */
+  callerFor: InstanceCallerResolver;
+};
+
+/** A listed row: who owns it, in which instance, organization and tenant. */
+type ListedRow = OwnedRecord & {
+  userId: string;
+  orgId?: string | null;
+  tenantId?: string | null;
+};
+
+/**
+ * Whether a request listing shows `row` to the caller. One rule for both
+ * listings, `/active-requests` and `/users/:userId/interrupted-requests`.
+ *
+ * The tenant is checked first and on its own (FIX-682): both verdicts below
+ * judge the caller's identity, and one identity can hold rows in several
+ * tenants. Then a row owned by an instance with a resolver of its own is
+ * judged on that resolver's word, the one its request routes take. Every
+ * other row falls to the host rule: an authenticated caller sees only their
+ * own rows in their own organization; reached anonymously in a mixed app, the
+ * rows of any instance that is not open are withheld.
+ */
+async function listingAdmits(ctx: ListingRouteContext, row: ListedRow): Promise<boolean> {
+  if (!tenantMatches(row.tenantId ?? undefined, ctx.tenantId)) return false;
+  const own = await ownResolverVerdict(ctx.registry, ctx.callerFor, row);
+  if (own !== undefined) return own;
+  const callerId = ctx.principal?.userId;
+  // Both axes, for the reason BR-8 gives on the addressed routes: one person
+  // in two organizations passes the user check while looking at the other
+  // organization's work. A row with no organization at all is a legacy row
+  // and is withheld rather than attributed to the caller (BR-14) —
+  // `row.orgId === callerOrgId` does that by construction, since an
+  // authenticated caller's org is never undefined.
+  if (callerId !== undefined) {
+    return row.userId === callerId && row.orgId === ctx.principal?.orgId;
+  }
+  const allowed = ctx.anonymousFlowIds;
+  if (allowed === undefined) return true;
+  // Each row is judged under its own OWNER, not its kind: an open peer of an
+  // authenticated instance must not make the latter's runs visible.
+  const owner = resolveRecordOwner(ctx.registry, row);
+  return owner.ok && allowed.has(owner.flow.id);
+}
+
 export async function handleListActiveRequests(
   _request: Request,
-  ctx: RecoveryRouteContext & {
-    /**
-     * The caller as each instance's own doors resolve it. An entry owned by
-     * an instance with a resolver of its own is judged by that resolver, not
-     * by `principal` or `anonymousFlowIds` (see `instance-caller.ts`).
-     */
-    callerFor: InstanceCallerResolver;
-  }
+  ctx: ListingRouteContext
 ): Promise<Response> {
+  // This listing spans every flow, user and tenant (`listAll`; nothing
+  // upstream narrows it), so every entry passes the listing rule.
   const all = await ctx.stores.activeRequests.listAll();
-  // This listing spans every flow and user, so an authenticated caller sees
-  // only their own in-flight requests — otherwise it enumerates other users'
-  // request and session ids. Reached anonymously in a mixed app, it withholds
-  // the entries of any instance that is not open instead.
-  const callerId = ctx.principal?.userId;
-  const callerOrgId = ctx.principal?.orgId;
-  const allowed = ctx.anonymousFlowIds;
-  const hostRuleAdmits = (entry: ActiveRequestEntry): boolean => {
-    // Both axes, for the reason BR-8 gives on the addressed routes: one person
-    // in two organizations passes the user check while looking at the other
-    // organization's in-flight work. An entry with no organization at all is a
-    // legacy row and is withheld here rather than attributed to the caller
-    // (BR-14) — `entry.orgId === callerOrgId` does that by construction, since
-    // an authenticated caller's org is never undefined.
-    if (callerId !== undefined) {
-      return entry.userId === callerId && entry.orgId === callerOrgId;
-    }
-    if (allowed === undefined) return true;
-    // Each entry is judged under its own OWNER, not its kind: an open peer of
-    // an authenticated instance must not make the latter's runs visible.
-    const owner = resolveRecordOwner(ctx.registry, entry);
-    return owner.ok && allowed.has(owner.flow.id);
-  };
-  // An entry owned by an instance with a resolver of its own is judged on that
-  // resolver's word instead, the one its request routes take.
-  //
-  // Both verdicts judge the caller's identity, and one identity can hold rows
-  // in several tenants, so the tenant is checked first and on its own
-  // (FIX-682). `listAll` spans every tenant; nothing upstream narrows it.
   const entries: ActiveRequestEntry[] = [];
   for (const entry of all) {
-    if (!tenantMatches(entry.tenantId, ctx.tenantId)) continue;
-    const own = await ownResolverVerdict(ctx.registry, ctx.callerFor, entry);
-    if (own ?? hostRuleAdmits(entry)) entries.push(entry);
+    if (await listingAdmits(ctx, entry)) entries.push(entry);
   }
   const now = Date.now();
 
@@ -485,9 +503,68 @@ export async function handleCheckInterruptedRequests(
       requestId: info.entry.requestId,
       sessionId: info.entry.sessionId,
       flowKind: info.entry.flowKind,
+      // An entry registered before the instance id existed names only its
+      // kind, which is a singleton's address (BP-030).
+      flowId: info.entry.flowId ?? info.entry.flowKind,
       actionName: info.entry.actionName,
       interruptedAt: Date.now()
     }));
+
+  return jsonResponse(200, { interrupted });
+}
+
+/**
+ * GET /users/:userId/interrupted-requests — the user's interrupted request
+ * records.
+ *
+ * `check-interrupted` is the trigger: it sweeps and answers only what that one
+ * call changed, so a request the startup sweep or the periodic sweeper marked
+ * first never appears in it. This is the read: it lists every request record
+ * of the path's user whose status is `interrupted`, whoever marked it, and the
+ * same records on every call until each is continued or removed. It sweeps
+ * nothing.
+ *
+ * Records are filtered at the store by user, status and tenant (BP-033), then
+ * each passes the listing rule `/active-requests` uses (`listingAdmits`): the
+ * organization axis and, in a mixed app, the anonymous allow-list. The route
+ * guard has already checked the path's `userId` against the caller.
+ *
+ * Response: `{ interrupted: [{ requestId, sessionId?, flowKind, flowId,
+ * actionName, interruptedAt }] }`. `flowId` is the instance address the
+ * request's routes take; a record written before the instance id existed
+ * falls back to its `flowKind` (BP-030). `interruptedAt` falls back to the
+ * record's last update for a record that never stamped one.
+ */
+export async function handleListInterruptedRequests(
+  route: Extract<ParsedFlowRoute, { kind: "list_interrupted_requests" }>,
+  ctx: ListingRouteContext
+): Promise<Response> {
+  const userId = route.userId.trim();
+  if (userId.length === 0) {
+    return jsonResponse(400, { error: "userId is required" });
+  }
+
+  const records = await ctx.stores.request.list({
+    userId,
+    status: "interrupted",
+    // Present, even when undefined: an exact, NULL-safe match, so a caller
+    // with no tenant reaches only rows with no tenant.
+    tenantId: ctx.tenantId,
+    orderBy: "startedAtMs"
+  });
+
+  const interrupted = [];
+  for (const record of records) {
+    if (!(await listingAdmits(ctx, record))) continue;
+    interrupted.push({
+      requestId: record.id,
+      ...(record.sessionId != null ? { sessionId: record.sessionId } : {}),
+      flowKind: record.flowKind,
+      flowId: record.flowId ?? record.flowKind,
+      actionName: record.actionName,
+      interruptedAt: record.interruptedAt ?? record.updatedAt
+    });
+  }
 
   return jsonResponse(200, { interrupted });
 }

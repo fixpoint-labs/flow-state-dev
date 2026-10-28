@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error — root check script, plain .mjs with no type declarations.
-import {
-  findPublishable,
-  neverPublish,
-} from "../../../scripts/validate-publish-set.mjs";
+import { findPublishable, neverPublish } from "../../../scripts/validate-publish-set.mjs";
 
 type Offender = { dir: string; name: string | null; reason: string };
 type Manifest = { name?: string; private?: boolean };

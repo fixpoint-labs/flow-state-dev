@@ -37,7 +37,7 @@ const SPEC = {
   action: "runner",
   sessionId: "s_child",
   delivery: "child" as const,
-  input: { note: "hand-off" },
+  input: { note: "dispatch" },
   flowKind: "acceptance",
   userId: "u_1",
   // The sending request's organization, which a child dispatch carries

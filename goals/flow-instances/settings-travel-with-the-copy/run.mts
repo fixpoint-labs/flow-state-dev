@@ -86,7 +86,7 @@ function expected(seat: Seat) {
   };
 }
 
-await runGoal(async (failures) => {
+await runGoal(async (failures, tell) => {
   const evidence: string[] = [];
   const dir = mkdtempSync(join(tmpdir(), "fsd-seat-config-"));
   const dbFile = join(dir, "goal.db");
@@ -171,6 +171,9 @@ await runGoal(async (failures) => {
     const router = host(stores, ...seats.map(mint));
     const { body } = await get(router, []);
     const listing = (body as { flows: Array<Record<string, unknown>> }).flows;
+    // An empty listing carries no config too. Floor it on each minted copy's
+    // own entry, so "no entry carries config" read the copies it is about.
+    for (const seat of seats) tell.over(`c · ${seat.id}'s listing entry`, listing.filter((e) => e.id === seat.id));
     for (const entry of listing) {
       if (Object.hasOwn(entry, "config")) failures.push(`${String(entry.id)}: listing carries config`);
     }

@@ -11,6 +11,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { freshPglite } from "./shared-pglite";
+import type { JsonObject } from "@flow-state-dev/core/types";
 import type { SessionRecord } from "@flow-state-dev/engine";
 import { createPostgresStores, type PostgresStoreRegistry } from "../src";
 import type { QueryExecutor } from "../src";
@@ -30,7 +31,7 @@ function pgliteExecutor(pglite: PGlite): QueryExecutor {
 function makeSession(
   id: string,
   version: number,
-  state: Record<string, unknown> = {}
+  state: JsonObject = {}
 ): SessionRecord {
   const ts = Date.now();
   return {
@@ -63,7 +64,7 @@ describe("Postgres adapter — delta verb contract (FIX-405)", () => {
   async function seed(
     s: PostgresStoreRegistry,
     id: string,
-    state: Record<string, unknown> = {}
+    state: JsonObject = {}
   ): Promise<void> {
     await s.session.set(id, makeSession(id, 0, state), "any");
   }
@@ -260,7 +261,7 @@ describe("Postgres adapter — delta verb contract (FIX-405)", () => {
 
       // Wide state to make the full-record write expensive: a 50-field state
       // makes JSON.stringify and the full-row UPDATE non-trivial.
-      const wideState: Record<string, unknown> = {};
+      const wideState: JsonObject = {};
       for (let i = 0; i < 50; i++) {
         wideState[`field_${i}`] = `value_${i}_with_some_payload_padding`;
       }

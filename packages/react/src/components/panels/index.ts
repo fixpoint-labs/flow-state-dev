@@ -38,4 +38,4 @@ export {
   type BoardListSlots
 } from "./BoardList";
 
-export type { PanelRowSource, PanelItemSource } from "./reads";
+export type { PanelRowSource, PanelItemSource, PanelLiveSource } from "./reads";

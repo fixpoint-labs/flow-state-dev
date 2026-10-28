@@ -72,8 +72,6 @@ interface FixtureOptions {
   fail?: WriteMode;
   /** The row has no claim on it. */
   noClaim?: boolean;
-  /** The worker parked its own row for review before leaving. */
-  parked?: boolean;
   /** The best-effort release write throws too. */
   releaseThrows?: boolean;
   /** How the awaited emission seam behaves. */
@@ -184,7 +182,6 @@ async function fixture(opts: FixtureOptions = {}): Promise<Fixture> {
     },
   } as unknown as TaskCollectionRef;
 
-  if (opts.parked) await inner.awaitReview("t", "needs a human", { claim: ticket });
   if (opts.complete === "declined" || opts.fail === "declined") {
     // Settled out from under the worker: the claim fence declines terminal rows.
     await inner.cancel("t", "cancelled by a coordinator");
@@ -228,8 +225,8 @@ async function fixture(opts: FixtureOptions = {}): Promise<Fixture> {
 const RAISING_SITES: Array<[string, RecorderFailureWiring | undefined]> = [
   // No wiring at all: a consumer composing the exported block by hand.
   ["composed with no wiring", undefined],
-  // The hand-off gate's composition.
-  ["the hand-off gate", { onRecorderFailure: "raise" }],
+  // The dispatch gate's composition.
+  ["the dispatch gate", { onRecorderFailure: "raise" }],
 ];
 const DEFERRING: RecorderFailureWiring = {
   onRecorderFailure: "defer",
@@ -271,18 +268,6 @@ describe("the success recorder", () => {
     expect(fx.seen).toEqual([]);
     expect(fx.pending()).toBe(0);
     expect(fx.status()).toBe("in_progress");
-  });
-
-  it("writes nothing, stops renewal and clears the claim on a row the worker parked (BR-2)", async () => {
-    openLeaseRenewalScope();
-    const fx = await fixture({ parked: true });
-
-    await expect(runForTest(success(fx), { ok: true }, fx.ctx)).resolves.toBeUndefined();
-
-    expect(fx.seen).toEqual([]);
-    expect(fx.pending()).toBe(0);
-    expect(fx.claimSet()).toBe(false);
-    expect(fx.status()).toBe("parked");
   });
 
   it.each<[WriteMode, string]>([
@@ -503,24 +488,6 @@ describe("the error recorder", () => {
     }
   );
 
-  it.each(["skip", "fail"] as const)(
-    "writes nothing on a parked row, clears the claim, stops renewal; `onError: %s` decides (BR-11)",
-    async (onError) => {
-      openLeaseRenewalScope();
-      const fx = await fixture({ parked: true });
-      const worker = new Error("worker blew up");
-
-      const run = runForTest(failure(fx, onError, DEFERRING), worker, fx.ctx);
-      if (onError === "fail") await expect(run).rejects.toBe(worker);
-      else await expect(run).resolves.toEqual({ recorded: "errored", error: "worker blew up" });
-
-      expect(fx.seen).toEqual([]);
-      expect(fx.claimSet()).toBe(false);
-      expect(fx.pending()).toBe(0);
-      expect(fx.status()).toBe("parked");
-    }
-  );
-
   describe("a fail write that succeeds or is declined (BR-12)", () => {
     it.each<[WriteMode, string]>([
       ["ok", "errored"],
@@ -686,7 +653,7 @@ describe("both recorders", () => {
     ).flatMap((row) =>
       [
         ["the drain", DEFERRING, "run-1"],
-        ["the hand-off gate", { onRecorderFailure: "raise" }, undefined],
+        ["the dispatch gate", { onRecorderFailure: "raise" }, undefined],
       ].map(
         ([site, wiring, runId]) =>
           [...row, site as string, wiring as RecorderFailureWiring, runId as string | undefined] as const
@@ -698,14 +665,11 @@ describe("both recorders", () => {
       async (which, mode, verdict, _site, wiring, runId) => {
         openLeaseRenewalScope();
         const fx = await fixture(which === "success" ? { complete: mode } : { fail: mode });
-        const block =
-          which === "success" ? success(fx, wiring) : failure(fx, "skip", wiring);
-
         // Raises at the gate, returns at the drain; the entry is what is pinned.
-        await runForTest(
-          block,
-          which === "success" ? { ok: true } : new Error("worker blew up"),
-          fx.ctx
+        await (
+          which === "success"
+            ? runForTest(success(fx, wiring), { ok: true }, fx.ctx)
+            : runForTest(failure(fx, "skip", wiring), new Error("worker blew up"), fx.ctx)
         ).catch(() => undefined);
 
         expect(fx.emitted).toHaveLength(1);

@@ -25,7 +25,7 @@ export function useDebugResourceContent(
   ref: string | null,
   topic: string | null
 ): UseDebugResourceContentResult {
-  const { sessionClient } = useDevTool();
+  const { client } = useDevTool();
   const [content, setContent] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,15 +37,15 @@ export function useDebugResourceContent(
     try {
       const body =
         topic === null
-          ? await sessionClient.debug.fetchResourceContent(sessionId, ref)
-          : await sessionClient.debug.fetchCollectionItemContent(sessionId, ref, topic);
+          ? await client.sessions.debug.fetchResourceContent(sessionId, ref)
+          : await client.sessions.debug.fetchCollectionItemContent(sessionId, ref, topic);
       setContent(body);
     } catch (err) {
       setError(describeReadError(err, "Failed to fetch content"));
     } finally {
       setIsLoading(false);
     }
-  }, [sessionClient, sessionId, ref, topic]);
+  }, [client, sessionId, ref, topic]);
 
   return { content, isLoading, error, fetch };
 }

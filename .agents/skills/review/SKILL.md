@@ -2,7 +2,7 @@
 name: review
 context: fork
 agent: general-purpose
-description: The single definition of how we review. Composes the review lenses as parallel sub-agents — coherence, restraint (bloat), correctness, and (for a change with a spec) completeness, plus optional depth — over a change (PR / branch / working diff) or a codebase slice, then dedupes and synthesizes ONE ranked report. Run standalone on any PR/branch/area, and invoked by issue-implement at the end of its work so there is one review, not a per-skill panel.
+description: The single definition of how we review — looking for flaws in the work (whether it is the right approach is `analysis`). Composes the review lenses as parallel sub-agents — coherence, restraint (bloat), reuse (compose existing pieces), correctness, and (for a change with a spec) completeness, plus optional depth — over a change (PR / branch / working diff) or a codebase slice, then dedupes and synthesizes ONE ranked report. Run standalone on any PR/branch/area, and invoked by issue-implement at the end of its work so there is one review, not a per-skill panel.
 argument-hint: "<PR# | branch | area | (empty = working diff vs main)>"
 ---
 
@@ -24,47 +24,42 @@ set together and merges the results.
 |---|---|---|---|
 | **Coherence** | Does it cohere with the philosophy and the patterns around it? | `audit-coherence` | change + codebase |
 | **Restraint** | Should this exist? overbuilt / YAGNI / 80-20? | `second-look` | change + codebase |
+| **Reuse** | Does each Adds item compose an existing piece, or add a second mechanism? | `reuse-review` | spec / epic / change (not a codebase slice) |
 | **Correctness** | Bugs, logic errors, and the second-path checklist (BP-035)? | code-reviewer sub-agent (below) | change |
 | **Completeness** | All of the spec built, nothing extra, red shown, goal proven? | spec-compliance sub-agent (below) | change **with a spec** |
 | **Depth** *(optional)* | Shallow modules introduced or nearby? | `improve-codebase-architecture` | change + codebase; **non-blocking follow-ups** |
-| **Alternatives** *(triggered)* | Is this the right *shape*, or did we stop at the first workable one? | `adhd` | change + codebase; **notes only, never must-fix** |
 
-Coherence, Restraint, Depth, and Alternatives are standalone skills — **dispatch them; don't
+Coherence, Restraint, Reuse, and Depth are standalone skills — **dispatch them; don't
 re-derive their criteria here.** Correctness and Completeness have no standalone skill,
 so their prompts live below.
 
-**Restraint and Alternatives are opposite postures on purpose.** Restraint hunts surface to
-remove; Alternatives generates shapes the change could have taken instead. Kept in one lens
-they blunt each other — `second-look` explicitly drops any "could be more flexible" candidate,
-which is most of what divergence produces. They compose; they don't merge.
+**Whether this was the right approach is [`analysis`](../analysis/SKILL.md), not a lens here**
+([`orchestration.md`](../../../docs/contributing/orchestration.md#analysis-and-review)).
+Other shapes (`adhd`) belong there. On a shipped change, run `analysis` directly.
+
+**Reuse is not Restraint.** Restraint asks whether *this* surface earns its keep.
+Reuse asks whether an Adds item is a *duplicate mechanism* — a second cap, marker,
+release path, or a hook where block composition would do. The rule is
+[`orchestration.md`](../../../docs/contributing/orchestration.md#compose-existing-pieces).
 
 ## Resolve target & select lenses
 
-- **A change (PR / branch / working diff):** Coherence + Restraint + Correctness, plus
+- **A change (PR / branch / working diff):** Coherence + Restraint + Reuse + Correctness, plus
   **Completeness when a spec or agent-brief is in scope** (pass it in). Depth optional.
-- **A codebase slice / area:** Coherence + Restraint + Depth. (Correctness and
-  Completeness need a diff / spec — skip.)
+- **A spec or epic PR / retained spec:** Coherence + Restraint + **Reuse** (required). The
+  reuse lens is how every spec and epic gets this pass; do not fold it into Restraint.
+- **A codebase slice / area:** Coherence + Restraint + Depth. (Correctness,
+  Completeness, and Reuse need a diff / spec — skip.)
 
 Give every lens the same target framing, `docs/philosophy.md`, and — for a change — the
 spec.
 
-**Alternatives is triggered, never standing.** It costs 8 sub-agent calls, and once the
-code exists most alternatives are expensive regret — the spec is where they pay for
-themselves. There are two ways in, and they are not the same:
-
-- **An explicit request always runs it.** If the caller asked for the alternatives lens,
-  run it. No exclusion below applies — the caller opted in, which is the same rule as
-  `adhd`'s own pre-flight Step 1.
-- **Automatic triggering** happens only when the change is genuinely shape-open: **new
-  public API surface**, a **new pattern / capability / block kind**, a **schema or scope
-  decision**, or a **spec whose *considered and dropped* weighed no real alternative**.
-
-**The exclusions below govern automatic triggering only.** Don't auto-add the lens to a bug
-fix or a mechanical refactor. And an **approved spec whose `DECISIONS.md` weighed a real alternative**
-suppresses every automatic trigger, including new public API surface: the divergence already
-happened at the altitude where it was cheap and a human signed the result off, so re-running
-it against shipped code pays twice to relitigate a settled decision. If someone asks for it
-anyway, they get it.
+**Every change gets the job check, whether or not its direction is settled.** Tell the Coherence lens:
+a way to do a job that the diff adds and the spec's question-7 line (`issue-spec` Step 3.5)
+doesn't name is a direction finding. It is routed to the ask, never to an implementer note.
+The definition and the ask are in
+[`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md) → "When
+approving adds a way to do a job". A bug-route change has no spec, so everything it adds counts.
 
 ## Run
 
@@ -74,32 +69,42 @@ anyway, they get it.
      whether the solution coheres with the tenets it claims — the "directionally-right
      spec but the design feels off" failure the other lenses can't see. Its verdict is
      the most consequential: a coherence break usually means reshaping the approach, not
-     patching lines.
+     patching lines. Tell it glue between our own mechanisms is a finding against the model
+     ([`orchestration.md`](../../../docs/contributing/orchestration.md#compose-existing-pieces)).
    - **Restraint** → run `second-look` on the target.
+   - **Reuse** → run `reuse-review` on the target (spec, epic, or implementation
+     change). Do not skip it on a spec because Restraint already ran.
    - **Correctness** → the prompt below.
    - **Completeness** (change with a spec) → the prompt below.
    - **Depth** (if selected) → run `improve-codebase-architecture` on the touched
      area; its output is *candidate follow-ups*, non-blocking.
-   - **Alternatives** (if triggered) → run `adhd` in its **review context**, scoped to
-     *other shapes this change could have taken*. Its switch test (materially different ·
-     concretely describable · wins on a named axis · switch cost stated) does the pruning —
-     don't re-derive it here. Its **alternatives rows** are always **notes** and never
-     block. Its **routed findings** are not — those are correctness / restraint / coherence
-     defects that divergence happened to walk into, returned tagged for you to classify;
-     severity them as that lens would, up to and including must-fix. Note-only applies to
-     the shapes, not to everything the lens hands back.
    - **Claude model tiering** (AGENTS.md): dispatch **Correctness** and **Completeness**
-     on **Sonnet** — they check decided work. **Coherence**, **Restraint** and
-     **Alternatives** keep the judgment tier (Opus, including Alternatives' fanout);
-     **Depth** inherits its skill's tier. In **OMP**, use the native dispatch below
+     on **Sonnet** — they check decided work. **Coherence**, **Restraint** and **Reuse** keep
+     the judgment tier (Opus); **Depth** inherits its skill's tier. In **OMP**, use the native dispatch below
      instead; the lens selection and criteria are unchanged.
 2. **Dedupe across lenses.** They overlap at the edges (a redundant capability is both a
    coherence conflict and bloat). Merge duplicate findings into one, attributed to the
-   sharpest framing. Never double-count.
-3. **Rank & categorize:** **must-fix** (bugs, spec gaps, coherence breaks) · **should-fix**
-   (bloat, drift) · **note** (depth follow-ups, observations).
-4. **Synthesize ONE report** — a verdict plus a single ranked table across all lenses,
-   not four separate reports.
+   sharpest framing. Never double-count. Note which lens(es) raised each merged finding.
+3. **Different-family judge (when more than one lens ran).** After the first-pass lenses
+   return, dispatch **one** readonly judge on a **different model family** from the
+   parent (Claude vs Grok vs GPT — pin `model` explicitly). It sees the merged finding
+   list by sanitized label, not by lens name or model, and scores each as
+   act-on / consider / noted / dismissed. Agreement with your ranking confirms it;
+   disagreement means you or the rubric is biased — read both before deciding.
+   Skip the extra judge on a single-lens run; it has nothing to cross-check.
+4. **Agreement map, then rank.** Findings **two or more lenses (or the judge and a
+   lens) raised independently** rank highest. A lone lens's finding is still read;
+   weight it lower. If one lens flags something and another explicitly contradicts
+   it, that disagreement is context for the verdict, not a vote.
+   Bucket each merged finding, then map onto the existing severity:
+   **act-on → must-fix** (bugs, spec gaps, coherence breaks) · **consider → should-fix**
+   (bloat, drift) · **noted → note** (depth follow-ups, observations) ·
+   **dismissed** — dropped, with a one-line reason (wrong, nit, missing context).
+   Dismissed findings do not appear in the ranked table; they appear in the
+   agreement map so a reader can see what was considered and why it died.
+5. **Synthesize ONE report** — a verdict, the agreement map (where lenses/judge
+   agreed and diverged, and what that pattern tells you), plus a single ranked
+   table across all lenses, not four separate reports.
 
 ## OMP native dispatch
 
@@ -112,6 +117,7 @@ only native roles, frozen inputs, leaf fences, and result validation.
 |---|---|---|
 | Coherence | `fsd-coherence` | `@fsd_design_review` |
 | Restraint | `fsd-restraint` | `@fsd_design_review` |
+| Reuse | `fsd-coherence`, explicitly assigned **Reuse only** | `@fsd_design_review` |
 | Correctness | `fsd-correctness` | `@fsd_code_review` |
 | Completeness | `fsd-completeness` | `@fsd_code_review` |
 | Depth | `fsd-coherence`, explicitly assigned **Depth only** | `@fsd_design_review` |
@@ -129,10 +135,12 @@ branch/PR name), the target scope, intent, spec/brief version, and verification 
 Provide readable base/head source snapshots and a diff, including surrounding code
 and callers needed by the lenses; reviewers cannot use shell/git to recover them.
 Capture line counts for Restraint. Snapshot the relevant authority documents too.
-For spec-backed work, snapshot the canonical retained set, including `DOCS.md` and
-applicable `EVOLUTION.md`, exact predecessor anchors, and approved/merged revision
-provenance. Read current code/docs separately: historical intent is not shipped behavior.
-Check documentation publication, partial/multiple-predecessor evolution, and POC isolation
+For spec-backed work, snapshot the canonical retained set, `SPEC.md` and `DECISIONS.md`
+(a set retained in the older shape may also carry `BUSINESS-RULES.md`, `PLAN.md`,
+`DOCS.md` or `EVOLUTION.md`; snapshot those too), with exact predecessor anchors and
+approved/merged revision provenance. Read current code/docs separately: historical intent
+is not shipped behavior. Check documentation publication against the spec's docs line, the
+change against its debt verdict, partial/multiple-predecessor treatment, and POC isolation
 through the existing lenses. Do not substitute a Linear mirror or superseded design.
 
 For a dirty working diff, include both the committed change and the complete
@@ -168,8 +176,7 @@ observed fact supporting the finding; a filename alone is not evidence.
 
 In JavaScript Eval, set `reviewedRevision` to the captured identity and `reviewBrief`
 to the shared scope, bundle paths, spec and evidence references. Set `selectedLenses`
-to the selected ordinary lenses in lower case; Alternatives uses the phase dispatch
-below, not this findings schema. Dispatch one native task batch:
+to the selected lenses in lower case. Dispatch one native task batch:
 
 ```js
 const text = { type: "string", minLength: 1 };
@@ -178,7 +185,7 @@ const reviewSchema = {
   required: ["reviewedRevision", "lens", "verdict", "summary", "findings", "blockers"],
   properties: {
     reviewedRevision: { type: "string", const: reviewedRevision },
-    lens: { enum: ["coherence", "restraint", "correctness", "completeness", "depth"] },
+    lens: { enum: ["coherence", "restraint", "reuse", "correctness", "completeness", "depth"] },
     verdict: { enum: ["clean", "findings", "blocked"] },
     summary: text,
     findings: {
@@ -200,7 +207,7 @@ const reviewSchema = {
 };
 const reviewTasks = selectedLenses.map(lens => ({
   name: `Fsd${lens[0].toUpperCase()}${lens.slice(1)}`,
-  agent: lens === "depth" ? "fsd-coherence" : `fsd-${lens}`,
+  agent: (lens === "depth" || lens === "reuse") ? "fsd-coherence" : `fsd-${lens}`,
   task: `# Target\n${reviewBrief}\nReviewed revision: ${reviewedRevision}
 # Change
 Read only. Apply the ${lens} lens from the shared review skill, not the full loop.
@@ -231,16 +238,11 @@ display(reviewJobs);
 Collect **every** selected job from the returned IDs/artifact handles; completion is
 asynchronous. Do not use oneshot `completion` for a source-reading reviewer.
 
-For selected Alternatives, the coordinator runs `adhd` in review context, retaining
-its orchestration, scoring and clustering. Each frame/focus leaf uses `fsd-coherence`
-with an explicit **Alternatives phase, not coherence critique** assignment and strict
-phase schemas matching `adhd`'s outputs. Preserve its isolation and collect both waves;
-do not coerce generative outputs into ordinary findings or switch the user's session
-model. Shared **Run** governs pruning, routing and severity.
-
 ### Validate the round
 
 The coordinator resolves conflicting claims against frozen evidence, not model vote.
+The different-family judge in **Run** step 3 is a cross-check on the merged list, not
+a vote that overrides evidence.
 Only after all first passes finish may it request targeted clarification or dispatch
 accepted fixes; changed bytes require a new bundle/revision and affected re-review.
 
@@ -277,7 +279,9 @@ Agent tool (superpowers:code-reviewer, model: sonnet):
 Agent tool (general-purpose, model: sonnet):
   Verify the implementation against the spec by reading the code, not the report.
     - Everything the spec requires is implemented; nothing extra that the spec didn't ask for.
-    - Edge cases from the spec are handled; the testing strategy was followed.
+    - Cases the spec names are handled and tested.
+    - The debt verdict holds: what the spec's debt table says goes is gone, and the change
+      adds no debt the table doesn't list (a second way to do a job, a shim, a special case).
     - RED was demonstrated: every new behavioural / regression test has the actual failing
       output captured BEFORE the fix existed, plus the passing output after. "Tests pass"
       with no failing-output evidence is rejected — require re-demonstration. (Exceptions:
@@ -295,17 +299,25 @@ Agent tool (general-purpose, model: sonnet):
 
 ## Report
 
-Verdict + a single ranked table (`finding · lens · severity · where · recommendation`),
-must-fix first. One "considered & clean" line per lens that found nothing. When run by
+Verdict + an **agreement map** (which findings 2+ lenses/judge shared, where they
+diverged, what was dismissed and why) + a single ranked table
+(`finding · lens · severity · where · recommendation · raised-by`), must-fix first.
+One "considered & clean" line per lens that found nothing. When run by
 `issue-implement`, must-fix and should-fix are resolved before it presents; notes flow
 to its summary.
+
+> **Attribution.** The agreement map, the four buckets, and the different-family
+> judge are adapted from the MIT-licensed **pstack** `interrogate` and `arena`
+> skills by Lauren Tan — <https://github.com/cursor/plugins/tree/main/pstack>.
+> They add a merge step; they do not replace the lenses or the
+> must-fix / should-fix / note scale.
 
 ## Guardrails
 
 - **Dispatch the standalone lenses; don't reimplement them.** Coherence = `audit-coherence`,
-  Restraint = `second-look`, Depth = `improve-codebase-architecture`, Alternatives = `adhd`.
-- **Don't run Alternatives by reflex.** It is the one lens with a cost gate on it; a review
-  that adds it to every change has stopped reading the trigger list.
+  Restraint = `second-look`, Reuse = `reuse-review`, Depth = `improve-codebase-architecture`.
 - **Dedupe.** Overlapping lenses produce one merged finding, never repeats.
+- **Weight by agreement, don't average.** Two lenses naming the same defect outrank a
+  singleton. A contradiction is a reason to read both, not to split the difference.
 - **Don't pad.** A lens that finds nothing says so in one line; "appropriately scoped /
   coherent" is a valid, common verdict.

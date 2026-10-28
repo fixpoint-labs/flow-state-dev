@@ -184,11 +184,11 @@ describe("evaluator in the runtime — trace (BR-23, BR-24, BR-27)", () => {
       gateway: "vercel",
     });
 
-    const explicit = await run(triage("vercel/typesafe-ai/jev"), { requestId: "req_eval_gw_explicit", modelResolver });
+    const explicit = await run(triage("vercel:typesafe-ai/jev"), { requestId: "req_eval_gw_explicit", modelResolver });
     expect(explicit.result.error).toBeUndefined();
     expect(explicit.traces.find((t) => t.blockName === "triage")!.model).toEqual({
       actual: "typesafe-ai/jev",
-      requested: "vercel/typesafe-ai/jev",
+      requested: "vercel:typesafe-ai/jev",
       gateway: "vercel",
     });
   });

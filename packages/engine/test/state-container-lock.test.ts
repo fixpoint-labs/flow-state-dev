@@ -238,6 +238,7 @@ describe("applyMutation — persist + serialize (request-scope) branch", () => {
   function versionedPersist<TState extends { count: number }>(): {
     persist: CASPersist<TState>;
     persistCount: () => number;
+    storeVersion: () => number;
   } {
     let store: TState = { count: 0 } as TState;
     let storeVersion = 0;
@@ -255,7 +256,7 @@ describe("applyMutation — persist + serialize (request-scope) branch", () => {
       store = state;
       return { ok: true, version: storeVersion };
     };
-    return { persist, persistCount: () => persistCount };
+    return { persist, persistCount: () => persistCount, storeVersion: () => storeVersion };
   }
 
   it("throws ConcurrentModificationError on a wide persist fan-out without serialize", async () => {
@@ -286,10 +287,10 @@ describe("applyMutation — persist + serialize (request-scope) branch", () => {
   it("commits every write on a wide persist fan-out when serialize is set", async () => {
     type State = { count: number };
     const container = createStateContainer<State>({ count: 0 }, 0);
-    const { persist, persistCount } = versionedPersist<State>();
+    const { persist, persistCount, storeVersion } = versionedPersist<State>();
     const ops = createScopeStateOps<State>(container, {
       persist,
-      reread: async () => ({ state: container.read() as State, version: storeVersion }),
+      reread: async () => ({ state: container.read() as State, version: storeVersion() }),
       serialize: true
     });
 
@@ -391,9 +392,9 @@ describe("scope write-path wiring — createExecutionContext", () => {
   const N = 12;
 
   function fanOutBlock() {
-    return handler<{ value: string }, { ok: boolean }>({
+    return handler({
       name: "fanout-handler",
-      execute: () => ({ ok: true })
+      execute: (_input: { value: string }): { ok: boolean } => ({ ok: true })
     });
   }
 

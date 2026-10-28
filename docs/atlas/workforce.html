@@ -1860,12 +1860,10 @@ const teamDocs = <b>defineResourceCollection</b>({
     <p>MailboxFlow runtime is <strong>one copy, one transcript session</strong>. A post appends there; member wake is the notify policy after the hold &#8212; app-supplied addresses, not <code>dispatcher()</code> &#215; N into N sessions. Reverse <code>{ from: true }</code> exists. Cross-flow exists (<code>dispatcher({ flowKind })</code>). Ordered multi-reply is proposed composition on those pins, not a sequencer. The matrix (which mailbox) is still proposed Layer&nbsp;2. Hire-id and dynamic addresses still wait on INST. Do not invent a peer-edge graph, a route-resolver substrate, or a Layer&nbsp;1 Mailbox / MessageBoard package. Board + N subscriber sessions is the #1627 notify path, not the mailbox model. The L2 mailbox roster &#8212; system mailboxes plus helper-minted mailboxes on that same list &#8212; is Collab later, not this section. See <a href="#collab">&#167;14</a>.</p>
   </div>
 
-  <pre class="code"><i>// EXISTS &#8212; open a DM. createSessionClient, packages/client.</i>
+  <pre class="code"><i>// EXISTS &#8212; open a DM. createClient, packages/client.</i>
 <i>// POST /api/flows/:flowKind/sessions &#8212; session-routes.ts</i>
-const sessions = <b>createSessionClient</b>(); <i>// browser, same origin; from Node pass baseUrl: "http://localhost:3000" (plus any base path); the client adds /api/flows</i>
-const dm = await sessions.<b>createSession</b>({
-  flowKind: <em>"eng-manager"</em>,
-  userId,
+const fsd = <b>createClient</b>({ baseUrl: "", userId }); <i>// browser, same origin; from Node pass baseUrl: "http://localhost:3000" (plus any base path); the client adds /api/flows</i>
+const dm = await fsd.flow(<em>"eng-manager"</em>).<b>createSession</b>({
   title: <em>"talk-to-eng-mgr"</em>,
 });
 
@@ -1933,7 +1931,7 @@ const room = {
         <rect class="n-code" x="32" y="128" width="188" height="72" rx="4"/>
         <text class="t-lbl f-code" x="44" y="150">L1 EXISTS</text>
         <text class="t-xs" x="44" y="172">session-routes.ts</text>
-        <text class="t-xs" x="44" y="190">createSessionClient</text>
+        <text class="t-xs" x="44" y="190">createClient</text>
 
         <rect class="n-prop" x="252" y="16" width="220" height="200" rx="5"/>
         <text class="t-lbl" x="268" y="38">openProjectRoom</text>
@@ -1982,7 +1980,7 @@ const room = {
     <table>
       <thead><tr><th>Helper</th><th>Status</th><th>Wraps, narrowly</th></tr></thead>
       <tbody>
-        <tr><td><code>openDm</code></td><td><span class="tag t-prop">proposed</span></td><td>Takes <code>{ team, seat, userId, title }</code>. Wraps <code>createSessionClient().createSession</code> for that seat&#8217;s flow. The session <em>is</em> the DM. Wake with <code>dispatcher({ session: { id } })</code>. On a queue host with no shared lease backend that wake is <code>external-dispatcher</code> &#8212; see <a href="#gaps">&#167;19</a>. No implicit &#8220;the team.&#8221;</td></tr>
+        <tr><td><code>openDm</code></td><td><span class="tag t-prop">proposed</span></td><td>Takes <code>{ team, seat, userId, title }</code>. Wraps <code>fsd.flow(flowKind).createSession</code> for that seat&#8217;s flow. The session <em>is</em> the DM. Wake with <code>dispatcher({ session: { id } })</code>. On a queue host with no shared lease backend that wake is <code>external-dispatcher</code> &#8212; see <a href="#gaps">&#167;19</a>. No implicit &#8220;the team.&#8221;</td></tr>
         <tr><td><code>openProjectRoom</code> / task room</td><td><span class="tag t-prop">proposed</span></td><td>Takes <code>{ room, subscribers: [{ team, seat }] }</code>. Subscribers may come from more than one team. Wraps <code>create_session</code> or <code>dispatcher({ session: { key } })</code> / <code>TaskSessionPolicy</code>. Not a Layer&nbsp;1 Project type. Not &#8220;this team&#8217;s rooms.&#8221;</td></tr>
         <tr><td><code>fanOutBoardPost</code></td><td><span class="tag t-prop">proposed</span></td><td>#1627 notify wrap &#8212; <strong>not</strong> MailboxFlow. Loops <code>dispatcher()</code> &#215; N over subscriber sessions. MailboxFlow notify is after append, on one transcript session, with app-supplied addresses. Cross-kind still refused at <code>create-request-host</code>. Same <code>external-dispatcher</code> limit on <code>{ id }</code> without a shared lease backend.</td></tr>
         <tr><td><code>fileOrderedReplies</code></td><td><span class="tag t-prop">proposed</span></td><td>Coordinator over existing <code>claim</code> (exclusion) and <code>task.deps</code> (order). Order names seats as <code>{ team, seat }</code>. Who may attempt the claim stays proposed Layer&nbsp;2. Not a board-lock type. Not a multiparty session.</td></tr>
@@ -1996,7 +1994,7 @@ const room = {
 <i>// Multi-team from day one: team is a key, never "the team".</i>
 
 <b>openDm</b>({ team: <em>"engineering"</em>, seat: <em>"eng-manager"</em>, userId, title: <em>"talk-to-eng-mgr"</em> })
-<i>// &#8594; createSessionClient().createSession({ flowKind, userId, title })</i>
+<i>// &#8594; fsd.flow(flowKind).createSession({ title })</i>
 <i>// flowKind comes from that team row. Do not take a bare flowKind and hide the team.</i>
 
 <b>openProjectRoom</b>({
@@ -2343,7 +2341,7 @@ const team = <b>defineResourceCollection</b>({
 
 <b>openTeamInbox</b>({ team: <em>"engineering"</em>, userId })
 <i>// &#8594; openDm({ team, seat: intakeSeat, userId, title: "talk-to-eng" })</i>
-<i>// &#8594; createSessionClient().createSession(...) for that worker flow</i>
+<i>// &#8594; fsd.flow(...).createSession(...) for that worker flow</i>
 <i>// address stays session { id } or a known { key }. No TeamAddress type.</i>
 
 <i>// intake then routes with helpers already named:</i>

@@ -59,21 +59,18 @@ import { dispatchRunOrigin } from "../../lib/dispatch-run-links";
 const SECTIONS: readonly FlowNavigatorSection[] = [{ label: "Flows" }];
 
 /**
- * The tool's palette, as the properties the navigator reads.
+ * The tool's type scale, as the properties the navigator reads.
  *
  * The package publishes no class name to override, which is the point: two
- * hosts that disagree about every colour still render one component.
+ * hosts that disagree about every colour still render one component. The
+ * colour properties come from the panel's brand tokens (`styles.css`, on
+ * `.fsd-devtool-panel`) so they follow the theme; setting them here would pin
+ * one palette over every theme.
  */
 const THEME = {
-  "--fsd-nav-fg": "rgb(226 232 240)",
-  "--fsd-nav-bg": "transparent",
-  "--fsd-nav-muted-fg": "rgb(100 116 139)",
-  "--fsd-nav-selected-bg": "rgb(30 41 59)",
-  "--fsd-nav-selected-fg": "rgb(226 232 240)",
   "--fsd-nav-font-size": "13px",
-  "--fsd-nav-note-font-size": "10px",
+  "--fsd-nav-note-font-size": "11px",
   "--fsd-nav-section-font-size": "10px",
-  "--fsd-nav-guide": "rgb(51 65 85)",
 } as React.CSSProperties;
 
 /**
@@ -126,7 +123,7 @@ export type FlowRailProps = {
 };
 
 export function FlowRail({ sessionRefreshKey = 0, onRefreshActiveSession }: FlowRailProps) {
-  const { client, sessionClient, config, activeSessionId, selectWorkspace } = useDevTool();
+  const { client, activeSessionId, selectWorkspace } = useDevTool();
 
   // The navigator fences its reads on the client it read through, so a rebuilt
   // client discards the previous credential's rows. These come from the
@@ -149,8 +146,6 @@ export function FlowRail({ sessionRefreshKey = 0, onRefreshActiveSession }: Flow
       <FlowNavigator
         sections={SECTIONS}
         client={client}
-        sessionClient={sessionClient}
-        userId={config.userId}
         selectedSessionId={activeSessionId ?? undefined}
         onSelectSession={handleSelect}
         // The tool inspects a running server, so it asks for the sessions
@@ -242,7 +237,7 @@ function DispatchRunProvenance({
   parentInView: boolean;
   leafAddress: string;
 }) {
-  const { selectWorkspace, sessionClient } = useDevTool();
+  const { selectWorkspace, client } = useDevTool();
   const origin = dispatchRunOrigin(topic);
   // Resolving the owner is a read, and a read takes time the operator does not
   // have to spend waiting: they can pick another session before it lands.
@@ -260,7 +255,7 @@ function DispatchRunProvenance({
       return;
     }
     try {
-      const parent = await sessionClient.getSession(parentSessionId);
+      const parent = await client.sessions.get(parentSessionId);
       if (!fence.isCurrent()) return;
       // A record written before owners were stamped carries none; the leaf we
       // are listing under is the only honest guess left, and it is the one the
@@ -273,7 +268,7 @@ function DispatchRunProvenance({
       // eslint-disable-next-line no-console
       console.error("[devtool] could not resolve the parent session's flow", err);
     }
-  }, [fence, parentInView, leafAddress, parentSessionId, selectWorkspace, sessionClient]);
+  }, [fence, parentInView, leafAddress, parentSessionId, selectWorkspace, client]);
 
   return (
     <>
@@ -284,7 +279,7 @@ function DispatchRunProvenance({
             ? "Dispatched work. This session belongs to a worker, re-entered by every row that worker runs."
             : "Dispatched work. A dispatcher started this session rather than a person."
         }
-        className="rounded bg-slate-800 px-1 text-[9px] uppercase tracking-wide text-slate-400"
+        className="border border-dashed border-fs-ink/50 px-1 font-fs-mono text-[9.5px] font-medium uppercase tracking-[.08em] text-fs-ink3"
       >
         {origin}
       </span>
@@ -297,7 +292,7 @@ function DispatchRunProvenance({
         data-open-parent-session={parentSessionId}
         onClick={() => void openParent()}
       >
-        <RailIcon icon="parent" className="text-slate-500" />
+        <RailIcon icon="parent" className="text-fs-ink3" />
       </Button>
     </>
   );
@@ -321,9 +316,9 @@ function CopyInstanceId({ flowId }: { flowId: string }) {
       }}
     >
       {copied ? (
-        <RailIcon icon="copied" className="text-green-400" />
+        <RailIcon icon="copied" className="text-fs-green" />
       ) : (
-        <RailIcon icon="copy" className="text-slate-500" />
+        <RailIcon icon="copy" className="text-fs-ink3" />
       )}
     </Button>
   );
@@ -350,7 +345,7 @@ function LeafToolbar({
   sessionRefreshKey: number;
   onRefreshActiveSession?: () => void;
 }) {
-  const { sessionClient, config, selectWorkspace } = useDevTool();
+  const { client, config, selectWorkspace } = useDevTool();
   const [error, setError] = useState<string | null>(null);
   const errorId = useId();
 
@@ -371,10 +366,7 @@ function LeafToolbar({
     const stillCurrent = fence.begin();
     if (stillCurrent === null) return;
     try {
-      const detail = await sessionClient.createSession({
-        flowKind: address,
-        userId: config.userId,
-      });
+      const detail = await client.flow(address).createSession();
       // The operator may have collapsed this row, or opened another copy,
       // while the create was in flight. The session exists — it just isn't
       // this navigator row's to open, and handing its id back would select it
@@ -388,7 +380,7 @@ function LeafToolbar({
       if (!stillCurrent()) return;
       setError(err instanceof Error ? err.message : "Failed to create session");
     }
-  }, [fence, sessionClient, config.userId, address, selectWorkspace, refresh]);
+  }, [fence, client, config.userId, address, selectWorkspace, refresh]);
 
   return (
     <>
@@ -398,7 +390,7 @@ function LeafToolbar({
         sessionRefreshKey={sessionRefreshKey}
       />
       {error !== null && (
-        <span id={errorId} role="alert" title={error} className="inline-flex text-red-400">
+        <span id={errorId} role="alert" title={error} className="inline-flex text-fs-red">
           <RailIcon icon="failed" />
           <span className="sr-only">{error}</span>
         </span>
@@ -416,7 +408,7 @@ function LeafToolbar({
       >
         <RailIcon
           icon="refresh"
-          className={`text-slate-500 ${leaf.isLoading ? "animate-spin" : ""}`}
+          className={`text-fs-ink3 ${leaf.isLoading ? "animate-spin" : ""}`}
         />
       </Button>
       <Button
@@ -430,7 +422,7 @@ function LeafToolbar({
         aria-describedby={error === null ? undefined : errorId}
         title={error === null ? "New session" : `New session failed: ${error}`}
       >
-        <RailIcon icon="plus" className="text-slate-500" />
+        <RailIcon icon="plus" className="text-fs-ink3" />
       </Button>
     </>
   );

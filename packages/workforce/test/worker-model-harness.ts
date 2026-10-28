@@ -22,9 +22,11 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
   createFlowApiRouter,
   createFlowRegistry,
+  createInProcessFetch,
   runAction,
   type StoreRegistry
 } from "@flow-state-dev/engine";
+import { createClient } from "@flow-state-dev/client";
 import { createWorkforceClient } from "../src/workers/client";
 import { createWorkerHireBlocks } from "../src/workers/hire-blocks";
 import { createWorkerInstallation, type WorkerInstallation } from "../src/workers/installation";
@@ -143,7 +145,7 @@ function workerFlow(flow: string, installation: WorkerInstallation) {
     session: installation.session(),
     resources: { ...installation.resources, handbook, ledger, teamNotes },
     actions: {
-      run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message }
+      respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message }
     },
     // The gate lets every task through: what is under test is the child's
     // birth, which happens before any gate runs.
@@ -217,22 +219,20 @@ export function bootHost(stores: StoreRegistry, options: HostOptions = {}) {
     }
   });
 
+  const inProcess = createInProcessFetch(router);
+
   /** A fetch that hands a request to this host's router as `userId`. */
   const fetcherFor =
     (userId: string, orgId?: string) =>
     async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-      const url = new URL(String(input), "http://localhost");
       const headers = new Headers(init?.headers);
       headers.set("x-user", userId);
       if (orgId !== undefined) headers.set("x-org", orgId);
-      const request = new Request(url, { ...init, headers });
-      const path = url.pathname.replace(/^\/api\/flows\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
-      const method = (init?.method ?? "GET").toUpperCase() as "GET" | "POST" | "PATCH" | "DELETE";
-      return (router as any)[method](request, { params: { path } });
+      return inProcess(input, { ...init, headers });
     };
 
   const client = (userId: string, orgId?: string) =>
-    createWorkforceClient({ userId, fetcher: fetcherFor(userId, orgId) });
+    createWorkforceClient(createClient({ userId, fetcher: fetcherFor(userId, orgId) }));
 
   /** POST a session create as `userId`. */
   const create = async (userId: string, flow: string, body: Record<string, unknown>) => {
@@ -248,7 +248,7 @@ export function bootHost(stores: StoreRegistry, options: HostOptions = {}) {
   const turn = async (userId: string, sessionId: string, message = "hello", flow: string = FIXTURE, orgId = ORG) => {
     const result = await runAction({
       flow: instances[flow as keyof typeof instances],
-      actionName: "run",
+      actionName: "respond",
       input: { message },
       userId,
       orgId,

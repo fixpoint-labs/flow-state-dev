@@ -53,7 +53,7 @@ function openFlow(kind: string) {
         })
       }
     }
-  });
+  })();
 }
 
 /** A flow whose identity comes from a verified header — a real resolver stand-in. */
@@ -77,7 +77,7 @@ function secureFlow(kind: string) {
         return user === null || user === undefined ? null : { userId: user, orgId: "org_test" };
       }
     }
-  });
+  })();
 }
 
 function buildRouter(
@@ -289,10 +289,10 @@ describe("the read", () => {
     await seedSession(stores, "child", {
       parentSessionId: "parent",
       journal: Array.from({ length: 50 }, (_, i) => ({
+        id: `entry_${i}`,
         ts: i,
-        type: "note",
         text: `entry ${i}`
-      })) as SessionRecord["journal"],
+      })),
       state: { secret: "should not ship" },
       resources: { big: { blob: "x".repeat(1000) } }
     });
@@ -1155,11 +1155,9 @@ describe("paging", () => {
     // Passed as an object literal rather than the spread the neighbouring
     // tests use, so this reads the way a host actually writes it.
     //
-    // It does NOT prove the option is *declared* on
-    // `CreateFlowApiRouterOptions`: this package typechecks `src/**/*` only,
-    // so no excess-property check ever runs over this file, and an undeclared
-    // option would reach the runtime here while being unsettable by any host
-    // writing normal TypeScript. That half is guarded by review, not by CI.
+    // `pnpm typecheck` compiles this file, so the literal also proves the
+    // option is *declared* on `CreateFlowApiRouterOptions`: an undeclared one
+    // fails the excess-property check.
     const registry = createFlowRegistry();
     registry.register(openFlow("chat"));
     const stores = createInMemoryStores();
@@ -1266,7 +1264,7 @@ describe("provenance", () => {
    */
   it("a server-stamped source and task id survive to the requests endpoint", async () => {
     const { router, stores } = await withChild();
-    // The shape the seam writes for a task hand-off: the trusted `task`
+    // The shape the seam writes for a task dispatch: the trusted `task`
     // source, and the board's task id beside the address under
     // `metadata.dispatch`.
     const stamp = {

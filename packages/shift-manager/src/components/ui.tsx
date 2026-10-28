@@ -182,16 +182,10 @@ export function StateSquare({ state, className }: { state: TaskState; className?
 }
 
 /**
- * A worker's status mark: solid for on shift, half for on call, an outline
- * for off shift.
+ * A worker's status mark: solid for on shift, an outline for off shift.
  */
 export function ShiftMark({ status, className = "size-2" }: { status: ShiftStatus; className?: string }) {
-  const fill =
-    status === "on shift"
-      ? "border-info bg-info"
-      : status === "on call"
-        ? "border-info bg-[linear-gradient(135deg,var(--color-info)_50%,transparent_50%)]"
-        : "border-muted-foreground";
+  const fill = status === "on shift" ? "border-info bg-info" : "border-muted-foreground";
   return <span className={`inline-block shrink-0 border ${fill} ${className}`} data-mark={status} aria-hidden />;
 }
 

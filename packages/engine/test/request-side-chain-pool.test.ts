@@ -265,3 +265,58 @@ describe("RequestSideChainPool.drainToQuiescence", () => {
     expect(counts.length).toBeGreaterThan(1);
   });
 });
+
+/** A drain that logged a failure must not be the only reader that ever sees it. */
+describe("RequestSideChainPool.failures", () => {
+  it("keeps the failures of every drain, in the order they were drained", async () => {
+    const pool = createRequestSideChainPool();
+    pool.addTask({ promise: Promise.reject(new Error("first")), meta: meta("scope-a", "capture") });
+    await pool.drainToQuiescence();
+    pool.addTask({ promise: Promise.resolve("fine"), meta: meta("scope-a", "ok") });
+    pool.addTask({ promise: Promise.reject(new Error("second")), meta: meta("scope-b", "notify") });
+    await pool.drainToQuiescence();
+
+    expect(pool.failures().map((f) => [f.meta.name, (f.reason as Error).message])).toEqual([
+      ["capture", "first"],
+      ["notify", "second"]
+    ]);
+  });
+
+  it("keeps a failure a scope drain returned, so a default .waitForSideChain() does not hide it", async () => {
+    const pool = createRequestSideChainPool();
+    pool.addTask({ promise: Promise.reject(new Error("waited on")), meta: meta("scope-a", "persist") });
+    const result = await pool.drainScope("scope-a");
+
+    expect(result.failed).toHaveLength(1);
+    expect(pool.failures().map((f) => f.meta.name)).toEqual(["persist"]);
+  });
+
+  it("does not keep a failure a failOnError scope drain threw: that throw is the sequencer's, for a .rescue to catch", async () => {
+    const pool = createRequestSideChainPool();
+    pool.addTask({ promise: Promise.reject(new Error("thrown")), meta: meta("scope-a", "persist") });
+    await expect(pool.drainScope("scope-a", { failOnError: true })).rejects.toThrow("thrown");
+
+    expect(pool.failures()).toEqual([]);
+  });
+
+  it("a quiescence drain waits for a scope drain its caller stopped waiting on, and keeps its failure", async () => {
+    const pool = createRequestSideChainPool();
+    let fail!: (reason: Error) => void;
+    pool.addTask({ promise: new Promise((_resolve, reject) => (fail = reject)), meta: meta("scope-a", "slow-write") });
+    // The caller gives up (a timed-out wait): the entry is out of the pool, still unsettled.
+    void pool.drainScope("scope-a");
+    setTimeout(() => fail(new Error("late boom")), 20);
+
+    await pool.drainToQuiescence();
+
+    expect(pool.failures().map((f) => f.meta.name)).toEqual(["slow-write"]);
+  });
+
+  it("keeps nothing for work that succeeded", async () => {
+    const pool = createRequestSideChainPool();
+    pool.addTask({ promise: Promise.resolve(1), meta: meta("scope-a") });
+    await pool.drainToQuiescence();
+
+    expect(pool.failures()).toEqual([]);
+  });
+});

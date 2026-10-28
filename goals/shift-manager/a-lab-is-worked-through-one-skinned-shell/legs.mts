@@ -19,7 +19,7 @@ import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { hex, near, parseColour, readShiftManagerTheme, type Rgb } from "../../lib/colour.mts";
 import { REPO_ROOT } from "../../lib/index.mts";
 import { pickShift } from "../../lib/shift-manager.mts";
-import { findThemeValues, themeValues } from "../../../labs/design-system/test/theme.ts";
+import { FENCE_EXEMPT, fencedHits, findThemeValues, themeValues } from "../../../labs/design-system/test/theme.ts";
 import {
   SHIFT_MANAGER,
   attr,
@@ -102,6 +102,9 @@ function readableDocuments(root: string): string[] {
 
 // ---- a3 / b's reach: every surface, by clicking from the first screen ---------
 
+/** The name typed into Jump to: the id, or Shift Coordinator for `chief-of-staff`, bare or after a team dot (apps/docs/docs/workforce/shift-coordinator.md). */
+const shownName = (id: string) => (id.slice(id.indexOf(".") + 1) === "chief-of-staff" ? "Shift Coordinator" : id);
+
 /**
  * Walk every surface ER-1 names, by clicking from the first screen, and grade
  * each against the store. `reach` failures go to `signals.reach`, seat-list
@@ -137,7 +140,7 @@ export async function walkSurfaces(
   // Jump to: a worker, a task and a declared document.
   const docs = readableDocuments(tree.root);
   const targets: Array<{ group: string; query: string; lands: string }> = [
-    { group: "Workers", query: store.seats[0] ?? "", lands: "[data-testid=roster]" },
+    { group: "Workers", query: shownName(store.seats[0] ?? ""), lands: "[data-testid=roster]" },
     ...(rows[0] === undefined ? [] : [{ group: "Tasks", query: rows[0].title.slice(0, 24), lands: `[data-testid=task-frame][data-task-id="${rows[0].id}"]` }]),
     ...(docs[0] === undefined ? [] : [{ group: "Resources", query: docs[0].split(/[/\\]/).at(-1)!.replace(/\.md$/, ""), lands: "[data-testid=resource]" }]),
   ];
@@ -193,12 +196,12 @@ export async function walkSurfaces(
 
   // TEAMS: one row per team, a square per seat, and each row opens Roster for it.
   const teamRows = await attr(page, "team", "data-team");
-  const wantTeams = [...new Set(store.seats.map((s) => (s.includes(".") ? s.split(".")[0]! : "Staff")))];
+  const wantTeams = [...new Set(store.seats.map((s) => (s.includes(".") ? s.split(".")[0]! : "_general")))];
   if (!same(teamRows, wantTeams)) teams(`TEAMS rows: ${diff(wantTeams, teamRows)}`);
   const squares = await attr(page, "worker", "data-worker-id");
   if (!same(squares, store.seats)) teams(`TEAMS squares: ${diff(store.seats, squares)}`);
   for (const team of teamRows) {
-    const want = store.seats.filter((s) => (s.includes(".") ? s.split(".")[0] : "Staff") === team);
+    const want = store.seats.filter((s) => (s.includes(".") ? s.split(".")[0] : "_general") === team);
     const under = (await page.locator(`[data-testid=team][data-team="${team}"] [data-testid=worker]`).evaluateAll((els) => els.map((e) => e.getAttribute("data-worker-id") ?? ""))) as string[];
     if (!same(under, want)) teams(`team ${team}'s squares: ${diff(want, under)}`);
     await page.locator(`[data-testid=team][data-team="${team}"]`).click();
@@ -649,8 +652,11 @@ async function expandSession(page: Page): Promise<void> {
  * card in Inbox and in the stream, a run's Session and the devtool page its
  * trace link opens; and the run-lab, whose runs store the reasoning, tool and
  * code block cards DevForce's scripted run never draws. Each swept part must
- * render at least once per pass (QR-13) and carry no Shift Manager value.
- * Then FIX-1655's static fence over `packages/`.
+ * render at least once per pass (QR-13) and carry no Shift Manager value. The
+ * devtool page is reached and must render, but its values aren't graded: it
+ * ships the brand look itself, which Shift Manager's theme shares (FIX-1928;
+ * the fence's own exemption, `FENCE_EXEMPT`). Then FIX-1655's static fence over
+ * `packages/`, with the same exemption.
  */
 export async function legC(ctx: LegCtx): Promise<void> {
   const { report } = ctx;
@@ -728,20 +734,24 @@ export async function legC(ctx: LegCtx): Promise<void> {
     for (const part of parts) {
       const entry = tally.get(part);
       if (entry === undefined || entry.elements === 0) report.fail("c:sweep", `[${shift}] ${part} never rendered in this pass (QR-13)`);
+      // The runtime counterpart of `devtool/` in FENCE_EXEMPT: rendered, not graded.
+      if (part === "devtool") continue;
       for (const hit of (entry?.hits ?? []).slice(0, 4)) report.fail(`c:${part}`, `[${shift}] ${hit.el} ${hit.prop} → ${hit.value} is a Shift Manager value`);
       if ((entry?.hits.length ?? 0) > 4) report.fail(`c:${part}`, `[${shift}] … and ${entry!.hits.length - 4} more on ${part}`);
     }
-    report.note(`c [${shift}]: ${parts.map((p) => `${p} ${tally.get(p)?.elements ?? 0}`).join(", ")} elements; ${parts.reduce((n, p) => n + (tally.get(p)?.hits.length ?? 0), 0)} Shift Manager values`);
+    const graded = parts.filter((p) => p !== "devtool");
+    report.note(`c [${shift}]: ${parts.map((p) => `${p} ${tally.get(p)?.elements ?? 0}`).join(", ")} elements; ${graded.reduce((n, p) => n + (tally.get(p)?.hits.length ?? 0), 0)} Shift Manager values (devtool ungraded: ${tally.get("devtool")?.hits.length ?? 0})`);
   }
   report.note(`c theme values: ${THEME.light.length} light and ${THEME.dark.length} dark colours, families [${THEME.families.join(", ")}], read from labs/design-system/shift-manager.css`);
   staticFence(join(REPO_ROOT, "packages"), "c:static", report);
 }
 
-/** FIX-1655's static fence: no Shift Manager value anywhere under a `packages/` tree. */
+/** FIX-1655's static fence: no Shift Manager value anywhere under a `packages/` tree, `FENCE_EXEMPT` aside. */
 export function staticFence(packages: string, signal: string, report: Report): void {
   const values = themeValues(readFileSync(join(REPO_ROOT, "labs", "design-system", "shift-manager.css"), "utf8"));
-  const { walked, hits } = findThemeValues(packages, values);
+  const { walked, hits: all } = findThemeValues(packages, values);
+  const hits = fencedHits(all);
   if (walked < 500) report.fail(signal, `the fence walked only ${walked} files under ${packages}`);
   if (hits.length > 0) report.fail(signal, `a Shift Manager value sits under packages/: ${hits.slice(0, 5).join("; ")}`);
-  report.note(`${signal}: ${values.length} theme values, ${walked} files under ${relative(REPO_ROOT, packages) || packages}, ${hits.length} hit(s)`);
+  report.note(`${signal}: ${values.length} theme values, ${walked} files under ${relative(REPO_ROOT, packages) || packages}, ${hits.length} hit(s), ${all.length - hits.length} in ${FENCE_EXEMPT.join(", ")} (exempt)`);
 }

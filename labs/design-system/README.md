@@ -9,7 +9,7 @@ already read. It holds values only. There are no components here; the app gets t
 ```
 
 Import it after the stylesheet that holds the registry's `tokens` defaults. Day applies by default.
-Put `data-theme="evening"` on the root element for evening, or `class="dark"` on an ancestor for night. The same stylesheet points
+Put `data-theme="evening"` (or `class="evening"`) on the root element for evening, or `class="dark"` on an ancestor for night. The same stylesheet points
 the navigator's and panels' `--fsd-nav-*` and `--fsd-panel-*` properties at the tokens, so they
 match the cards.
 
@@ -31,3 +31,19 @@ Design hand-back, kept with the epic spec at `specs/epics/FIX-1649/assets/design
 
 The goal check `goals/design-system/skins-reused-components-from-one-token-set/` installs the
 registry into a fresh app, loads this stylesheet and reads what a browser paints.
+
+## The page register
+
+`shift-manager.css` is the app register. `page.css` is the page register, for brand pages
+drawn in the Drafting System: paper and four inks, hairlines at .45 and .25, the 24px grid, a
+`.label` rule, sheet headings (`.sheets h2`), framed and numbered figures (`.figure`), and the
+drawing classes an inline SVG figure reads (`.drawing`). Colour marks emphasis, never category:
+ink by default, the highlighter for a figure's one focus, red for an exception.
+
+```css
+@import "@flow-state-dev/design-system/page.css";
+```
+
+Paper is the default. Night applies under `data-theme="dark"` (or `"night"`) on the root, or
+under the OS dark setting when the root has no `data-theme`. The docs ship Paper and Night;
+other brand pages stay Paper.

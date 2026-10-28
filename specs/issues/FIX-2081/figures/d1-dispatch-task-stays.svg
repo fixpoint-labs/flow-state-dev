@@ -1,0 +1,100 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, when dispatchTask goes. Chosen: keep it until its wait and its post form are replaced. Instead of: removing it here. It comes down to the first row: a release between this issue and FIX-2082 and FIX-2083. Kept, coordinators still route and workers still wait; removed, both break. The price is the second row: two ways to file and start a task, for one to two issues. Third row, a tie: the closure still allows no task tool beyond the five but answerTask. Locks in: the later of FIX-2082 and FIX-2083 removes it. Flips if both land in the same release as this issue."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">When does dispatchTask go?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">When its wait and post form are replaced</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Here, as the epic's migration line says</text>
+  </g>
+
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">A RELEASE</text>
+    <text class="t-lbl" x="32" y="169">IN BETWEEN</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Coordinators route, workers wait</text>
+    <text class="t-s" x="248" y="179">nothing that ships today stops working</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Routing and waiting break</text>
+    <text class="t-s" x="612" y="179">until FIX-2082 and FIX-2083 land</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="222">WAYS TO FILE</text>
+    <text class="mark minus" x="228" y="224">−</text>
+    <text class="t-b" x="248" y="223">Two, for one to two issues</text>
+    <text class="t-s" x="248" y="241">createTask and dispatchTask({ goal })</text>
+    <text class="mark plus" x="592" y="224">+</text>
+    <text class="t-b" x="612" y="223">One, at once</text>
+    <text class="t-s" x="612" y="241">createTask</text>
+    <line class="row" x1="16" y1="256" x2="924" y2="256"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="280">THE CLOSURE</text>
+    <text class="t-lbl" x="32" y="293">SWEEP</text>
+    <text class="mark tie" x="228" y="282">=</text>
+    <text class="t-b" x="248" y="281">Only the five and answerTask</text>
+    <text class="t-s" x="248" y="299">checked once every child has merged</text>
+    <text class="mark tie" x="592" y="282">=</text>
+    <text class="t-b" x="612" y="281">Only the five and answerTask</text>
+    <text class="t-s" x="612" y="299">checked once every child has merged</text>
+    <line class="row" x1="16" y1="314" x2="924" y2="314"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="351">LOCKS IN</text>
+    <text class="t-b" x="32" y="371">The later of FIX-2082 and FIX-2083 removes it</text>
+    <text class="t-s" x="32" y="389">the epic's migration line is amended in this PR</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="351">FLIPS IF</text>
+    <text class="t-b" x="494" y="371">All three land in one release</text>
+    <text class="t-s" x="494" y="389">then it goes here, and they build on its absence</text>
+  </g>
+</svg>

@@ -24,10 +24,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { handler, harnessRunHandleSchema, harnessRunInputSchema, type GeneratorTool } from "@flow-state-dev/core";
 import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
-import { inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { askMarkerPath } from "@flow-state-dev/harness-manager";
+import { inMemoryStores, resolveUserStorageKey, runAction } from "@flow-state-dev/engine";
+import { runBoardSegment } from "@flow-state-dev/harness-manager";
+import { openRowHolds } from "@flow-state-dev/orchestration/tasks";
+import { encodeUserSegment } from "@flow-state-dev/core/types";
 import { createTaskToolsCapability } from "@flow-state-dev/orchestration";
 import { LIST_TASKS_ACTION } from "../src/lib/conversation-tasks";
+import { UPDATE_TASK_ACTION } from "../src/lib/reads";
 import { selectHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
 import { harnessStub, type HarnessStub, type HarnessStubOptions, type StubRun } from "../teams/devteam/harness-stub.mts";
@@ -157,7 +160,7 @@ async function messages(lab: Lab, sessionId: string) {
 
 /** The task-board capability's own tool names, from a fresh instance: never a count. */
 function taskToolNames(): string[] {
-  const capability = createTaskToolsCapability() as unknown as {
+  const capability = createTaskToolsCapability(async () => undefined) as unknown as {
     __presetDefs?: { tools?: { controlTools?: unknown } };
   };
   const names = resolvedControlTools(capability.__presetDefs?.tools?.controlTools).map((tool) => tool.config?.name ?? tool.name);
@@ -178,9 +181,9 @@ describe("the chief of staff files tasks (FIX-1794 S11)", () => {
     // and neither of the DevTeam's defaults takes a conversation's task (FIX-1842).
     const lab = await open(scripted([...hireTaskTaker, END_TURN], seen));
     const id = await conversation(lab);
-    expect((await act(lab, id, "run", { message: "hire someone to audit licenses" })).error).toBeUndefined();
+    expect((await act(lab, id, "respond", { message: "hire someone to audit licenses" })).error).toBeUndefined();
     seen.length = 0;
-    expect((await act(lab, id, "run", { message: "what's on my board?" })).error).toBeUndefined();
+    expect((await act(lab, id, "respond", { message: "what's on my board?" })).error).toBeUndefined();
     expect(seen).toHaveLength(1);
     const [names] = seen as [string[]];
     for (const tool of taskToolNames()) {
@@ -192,10 +195,10 @@ describe("the chief of staff files tasks (FIX-1794 S11)", () => {
   it("files a task for an agent delegate, which runs it in a task session of the user's, and hears it complete once", async () => {
     const goal = `audit the licenses of ${globalThis.crypto.randomUUID().slice(0, 8)}`;
     // The task tools come with a delegate that takes a task, so the filing is the next turn's (FIX-1802 D1).
-    const lab = await open(scripted([...hireTaskTaker, END_TURN, { toolName: "dispatchTask", args: { goal, assignee: "licenses" } }]));
+    const lab = await open(scripted([...hireTaskTaker, END_TURN, { toolName: "createTask", args: { goal, assignee: "licenses" } }]));
     const id = await conversation(lab);
-    expect((await act(lab, id, "run", { message: "hire someone to audit licenses" })).error).toBeUndefined();
-    expect((await act(lab, id, "run", { message: "have our dependencies' licenses audited" })).error).toBeUndefined();
+    expect((await act(lab, id, "respond", { message: "hire someone to audit licenses" })).error).toBeUndefined();
+    expect((await act(lab, id, "respond", { message: "have our dependencies' licenses audited" })).error).toBeUndefined();
 
     // The conversation's own read, the one Shift Manager's TASKS panel makes: the task, completed by its delegate.
     const listed = await until(
@@ -250,7 +253,7 @@ function scriptedCoder(calls: Array<ToolCall | typeof END_TURN>, verdicts: Verdi
     modelId: "test/jev",
     supportedQuestionTypes: ["choice", "score", "boolean"],
     async doEvaluate(call: { questions: Record<string, unknown>; state?: unknown }) {
-      // Best fit's route: no pick, so the chief of staff's judgment takes the post, as without the hook.
+      // Best fit's route: no pick, so the chief of staff's judgment takes the message, as without the hook.
       if (!("verdict" in call.questions)) throw new Error("no route in this test");
       judged.push(call);
       const next = verdicts[verdict] ?? { choice: "done", confidence: 0.95 };
@@ -276,7 +279,7 @@ function scriptedCoder(calls: Array<ToolCall | typeof END_TURN>, verdicts: Verdi
 
 /** File one task for the coder, from the chief of staff's first turn. */
 const fileForCoder = (goal: string, input?: Record<string, unknown>): ToolCall => ({
-  toolName: "dispatchTask",
+  toolName: "createTask",
   args: { goal, assignee: CODER, ...(input === undefined ? {} : { input }) },
 });
 
@@ -314,7 +317,7 @@ const readsMarker = (extra: HarnessStubOptions = {}) =>
 /** File `call` from a new chief-of-staff conversation, and wait for the task to settle. */
 async function fileAndSettle(lab: Lab, message = "the coder should take a look at our repo") {
   const id = await conversation(lab);
-  const filed = await act(lab, id, "run", { message });
+  const filed = await act(lab, id, "respond", { message });
   expect(filed.error).toBeUndefined();
   const listed = await until(
     async () => (await act(lab, id, LIST_TASKS_ACTION, {})).output as { tasks: Array<Record<string, any>> },
@@ -329,6 +332,23 @@ async function fileAndSettle(lab: Lab, message = "the coder should take a look a
 /** The conversation's lines under the coder's name that name the task. */
 async function coderLines(lab: Lab, id: string, taskId: string) {
   return (await messages(lab, id)).filter((m) => m.agentName === CODER && m.text.includes(`(${taskId})`));
+}
+
+/** Wait for the conversation's one task to be held on a question; its id and that open question. */
+async function heldOnQuestion(lab: Lab, id: string): Promise<{ taskId: string; question: Record<string, any> }> {
+  const listed = await until(
+    async () => (await act(lab, id, LIST_TASKS_ACTION, {})).output as { tasks: Array<Record<string, any>> },
+    (out) => out.tasks?.[0]?.id !== undefined,
+    "the filed task",
+  );
+  const taskId = listed.tasks[0]!.id as string;
+  const held = await until(
+    async () => storedTask(lab, taskId),
+    (task) => task?.status === "in_progress" && task.leaseUntil == null && openRowHolds(task as never).length > 0,
+    "the task held on a question",
+  );
+  expect(held).toMatchObject({ attempts: 1 });
+  return { taskId, question: openRowHolds(held as never)[0]! as unknown as Record<string, any> };
 }
 
 /** The task's row as stored on the conversation's board, in the user's scope. */
@@ -488,7 +508,7 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     expect((await storedTask(lab, taskId))?.output?.judged).toBe(false);
   });
 
-  it("parks on the judge's question, and the user's answer reaches the next attempt in the same session", async () => {
+  it("holds the task on the judge's question, and the user's answer continues the same session on the same attempt", async () => {
     const reply = `the checkout flow ${globalThis.crypto.randomUUID().slice(0, 6)}`;
     const stub = readsMarker();
     const { lab } = await openCoderLab(
@@ -496,50 +516,43 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
       stub,
     );
     const id = await conversation(lab);
-    expect((await act(lab, id, "run", { message: "the coder should look at the flow" })).error).toBeUndefined();
-    const parked = await until(
-      async () => (await act(lab, id, LIST_TASKS_ACTION, {})).output as { tasks: Array<Record<string, any>> },
-      (out) => out.tasks?.[0]?.status === "parked",
-      "the parked task",
-    );
-    const taskId = parked.tasks[0]!.id as string;
+    expect((await act(lab, id, "respond", { message: "the coder should look at the flow" })).error).toBeUndefined();
+    const { taskId, question } = await heldOnQuestion(lab, id);
     await quiet(lab);
-    const asked = (await coderLines(lab, id, taskId)).filter((m) => m.text.includes("is waiting on a question"));
-    expect(asked).toHaveLength(1);
-    expect(asked[0]!.text).toContain("look at the flow");
+    expect(stub.runs).toHaveLength(1);
 
-    expect((await act(lab, id, "answerTask_tasks", { taskId, answer: reply })).error).toBeUndefined();
-    await until(async () => (await storedTask(lab, taskId))?.status, (status) => status === "completed", "the answered task");
+    expect((await act(lab, id, UPDATE_TASK_ACTION, { id: taskId, question: question.id, message: reply })).output).toMatchObject({ ok: true });
+    const done = await until(async () => storedTask(lab, taskId), (task) => task?.status === "completed", "the answered task");
     await quiet(lab);
+    expect(done).toMatchObject({ attempts: 1 });
     expect(stub.runs).toHaveLength(2);
     expect(stub.runs[1]!.prompt).toContain(reply);
     expect(stub.runs[1]!.resume).toBe("sess_stub_1");
   });
 
-  it("parks on the run's own question, and the user's answer reaches the next attempt", async () => {
+  it("holds the task on the run's own question, and the user's answer continues the same session on the same attempt", async () => {
     const reply = `use the main branch ${globalThis.crypto.randomUUID().slice(0, 6)}`;
     const stub = readsMarker({
       duringRun: (run) => {
         if (stub.runs.length > 1) return;
-        mkdirSync(dirname(askMarkerPath(run.cwd, 1)), { recursive: true });
-        writeFileSync(askMarkerPath(run.cwd, 1), "Which branch should I read?");
+        const marker = /\S*\.fsdev\/ask\/\d+-\d+\.md/.exec(run.prompt)?.[0];
+        if (marker === undefined) throw new Error("the prompt names no ask marker");
+        mkdirSync(dirname(marker), { recursive: true });
+        writeFileSync(marker, "Which branch should I read?");
       },
     });
     const { lab } = await openCoderLab(scriptedCoder([fileForCoder("look at the repo", { project: STOREFRONT })]), stub);
     const id = await conversation(lab);
-    expect((await act(lab, id, "run", { message: "the coder should take a look at our repo" })).error).toBeUndefined();
-    const parked = await until(
-      async () => (await act(lab, id, LIST_TASKS_ACTION, {})).output as { tasks: Array<Record<string, any>> },
-      (out) => out.tasks?.[0]?.status === "parked",
-      "the parked task",
-    );
-    const taskId = parked.tasks[0]!.id as string;
+    expect((await act(lab, id, "respond", { message: "the coder should take a look at our repo" })).error).toBeUndefined();
+    const { taskId, question } = await heldOnQuestion(lab, id);
+    expect(question.ask.prompt).toBe("Which branch should I read?");
     await quiet(lab);
-    expect((await coderLines(lab, id, taskId)).map((m) => m.text).join("\n")).toContain("Which branch should I read?");
 
-    expect((await act(lab, id, "answerTask_tasks", { taskId, answer: reply })).error).toBeUndefined();
-    await until(async () => (await storedTask(lab, taskId))?.status, (status) => status === "completed", "the answered task");
+    expect((await act(lab, id, UPDATE_TASK_ACTION, { id: taskId, question: question.id, message: reply })).output).toMatchObject({ ok: true });
+    const done = await until(async () => storedTask(lab, taskId), (task) => task?.status === "completed", "the answered task");
+    expect(done).toMatchObject({ attempts: 1 });
     expect(stub.runs[1]!.prompt).toContain(reply);
+    expect(stub.runs[1]!.resume).toBe("sess_stub_1");
   });
 
   it("holds a conversation's feature task to feature work's rules: it runs, and never closes as an answer", async () => {
@@ -594,7 +607,7 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     });
     const { lab } = await openCoderLab(scriptedCoder([fileForCoder("look at the repo", { project: STOREFRONT })], [], judged), stub);
     const id = await conversation(lab);
-    expect((await act(lab, id, "run", { message: "the coder should take a look at our repo" })).error).toBeUndefined();
+    expect((await act(lab, id, "respond", { message: "the coder should take a look at our repo" })).error).toBeUndefined();
     await until(async () => stub.runs.length, (n) => n >= 1, "the conversation's run");
 
     expect(
@@ -648,9 +661,9 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     ).rejects.toThrow(/task entry "work".*sessionStateSchema/);
   });
 
-  it("takes a user's message into a running run, and the next attempt's prompt carries it", async () => {
+  it("takes a user's message into a running run as a steer: the same attempt resumes its session with it", async () => {
     const said = `also check the tests ${globalThis.crypto.randomUUID().slice(0, 6)}`;
-    // The first attempt holds until the test lets it go; the next one answers at once.
+    // The first harness step holds until the test lets it go; the next one answers at once.
     let started: () => void = () => {};
     let release: () => void = () => {};
     const firstStarted = new Promise<void>((resolve) => (started = resolve));
@@ -665,21 +678,76 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     });
     const { lab } = await openCoderLab(scriptedCoder([fileForCoder("look at the repo", { project: STOREFRONT })]), stub);
     const id = await conversation(lab);
-    expect((await act(lab, id, "run", { message: "the coder should take a look at our repo" })).error).toBeUndefined();
+    expect((await act(lab, id, "respond", { message: "the coder should take a look at our repo" })).error).toBeUndefined();
     await firstStarted;
 
     const runtime = await lab.state.getRuntime();
     const taskSession = (await runtime.stores.request.list({})).find((r) => r.actionName === "work")!.sessionId!;
-    // The door stops the attempt and waits for it to end, so let it go once the door has asked.
-    const sending = act(lab, taskSession, "message", { message: said }, "coder");
-    setTimeout(release, 500);
-    const sent = await sending;
+    // The door steers the open task and returns at once; the running step is not ended for it.
+    const sent = await act(lab, taskSession, "respond", { message: said }, "coder");
     expect(sent.error).toBeUndefined();
-    expect(sent.output).toMatchObject({ outcome: "continuing" });
+    const taskId = (sent.output as { steered?: string }).steered;
+    expect(taskId).toBeTypeOf("string");
+    const steered = await storedTask(lab, taskId!);
+    expect(steered?.status).toBe("in_progress");
+    expect(steered?.attempts).toBe(1);
+    release();
 
-    await until(async () => stub.runs.length, (n) => n >= 2, "the next attempt");
+    await until(async () => (await storedTask(lab, taskId!))?.status, (status) => status === "completed", "the steered task");
+    // One attempt: the next step resumed the session the first confirmed, with the user's words.
+    expect(stub.runs).toHaveLength(2);
+    expect(stub.runs[0]!.prompt).not.toContain(said);
     expect(stub.runs[1]!.prompt).toContain(said);
+    expect(stub.runs[1]!.resume).toBe("sess_stub_1");
+    expect((await storedTask(lab, taskId!))?.attempts).toBe(1);
+    expect((await runtime.stores.request.list({})).filter((r) => r.actionName === "work")).toHaveLength(1);
     await quiet(lab);
+  });
+});
+
+describe("a line the coder's door kept before lines became steers (FIX-2086)", () => {
+  it("becomes a steer on its task when the Lab starts, once", async () => {
+    // A Lab that ran before: a conversation, and one of its coder tasks with
+    // a line kept for its next attempt, as the retired door left them.
+    const stores = inMemoryStores();
+    const first = await openLab({
+      modelResolver: scriptedCoder([]),
+      stores,
+      harness: harnessStub().slot,
+      runTimeoutMs: 30_000,
+      workspace: { root: mkdtempSync(join(tmpdir(), "devteam-coder-upgrade-")), remotes: { allow: ["file"] } },
+      coderWorkerId: CODER,
+    });
+    opened = first;
+    const conv = await conversation(first);
+    await first.dispose();
+    opened = undefined;
+    const cell = resolveUserStorageKey(LAB_USER_ID, LAB_ORG_ID, { id: "", isolateUserState: false });
+    const segment = runBoardSegment("tasks", conv);
+    const rowKey = `tasks/${encodeUserSegment(conv)}/task_kept`;
+    // The store the Lab's runtime resolves, the same across both starts.
+    const resourceState = (await stores.resolve(["primary"])).resourceState!;
+    const seed = async (key: string, state: Record<string, unknown>) => resourceState.set("user", cell, key, state as never, "any" as never);
+    await seed(rowKey, { id: "task_kept", goal: "look at the repo", status: "parked", parkedForTurn: true, attempts: 1, assignee: CODER, createdAt: 1, updatedAt: 1, revision: 1 });
+    await seed(`runs/${segment}/task_kept/answer`, { taskId: "task_kept", sessionId: "sess_stub_1" });
+    await seed("turns/task_kept/answer/2/k1", { message: "Check the tests too.", keptAt: 5, forAttempt: 2, deliveredTo: null, withdrawn: false });
+
+    const read = async () => (await resourceState.get("user", cell, rowKey))?.state as { steers?: Array<Record<string, unknown>> };
+    for (let start = 0; start < 2; start += 1) {
+      opened = await openLab({
+        modelResolver: scriptedCoder([]),
+        stores,
+        harness: harnessStub().slot,
+        runTimeoutMs: 30_000,
+        workspace: { root: mkdtempSync(join(tmpdir(), "devteam-coder-upgrade-")), remotes: { allow: ["file"] } },
+        coderWorkerId: CODER,
+      });
+      await opened.dispose();
+      opened = undefined;
+      expect((await read()).steers).toEqual([
+        expect.objectContaining({ id: "turn:turns/task_kept/answer/2/k1", message: "Check the tests too.", from: "user", by: LAB_USER_ID }),
+      ]);
+    }
   });
 });
 

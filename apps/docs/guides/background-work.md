@@ -74,20 +74,20 @@ Read next: **[Background jobs with BullMQ](/guides/background-jobs-bullmq)** for
 A **dispatch** sends one unit of work to an entry the flow declares, and it runs in a session of its own. Its requests don't show up in the starting session's request list. You reach a run two ways: list the flow's sessions with its dispatch runs included, or ask one conversation which runs were started from it.
 
 ```ts
-import { createSessionClient } from "@flow-state-dev/client";
+import { createClient } from "@flow-state-dev/client";
 
-const sessions = createSessionClient();
+const fsd = createClient({ userId: "user_1", baseUrl: "http://localhost:3000" });
 
 // Every dispatch run on the flow, beside the conversations people started.
-const all = await sessions.listSessions({
+const all = await fsd.sessions.list({
   flowKind: "research",
   include: "dispatch-runs",
 });
 
 // Or: the dispatch runs started from one conversation, one row each.
-const started = await sessions.listChildSessions("sess_abc");
+const started = await fsd.sessions.children("sess_abc");
 const first = started[0];
-const runs = first === undefined ? [] : await sessions.listSessionRequests(first.id);
+const runs = first === undefined ? [] : await fsd.sessions.requests(first.id);
 ```
 
 A run's `id` is a session id, so every session read works on it.
@@ -108,7 +108,7 @@ import { z } from "zod";
 
 const investigate = generator({
   name: "investigate",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   inputSchema: z.object({ company: z.string() }),
   prompt: "Research the company and write up what you find.",
 });
@@ -133,26 +133,28 @@ Read next: **[Starting a job from a flow](/docs/server/background-work#starting-
 
 ### From a task board worker
 
-A board is a list of tasks plus a set of named workers that claim them. A worker normally runs its tasks inline, in the request that claimed them. Put a `dispatcher({ action, session })` in the worker's position instead and the board hands each claimed row off to a dispatch run. How many runs that is depends on the worker's session key: `per-task` gives every row a run to itself, while `per-worker` and a shared `{ key }` send several rows into one run, one request each. The worker is declared once on the flow, under `task.actions`, and the worker names it with `action`. Do not set `type` — the stamped address is `type: "task"`:
+A board is a list of tasks plus a set of named workers that claim them. A worker normally runs its tasks inline, in the request that claimed them. Declare the board `mode: "delegation"` and put a `dispatcher({ action, session })` in each worker's position instead, and the board dispatches each claimed row to a dispatch run. How many runs that is depends on the worker's session key: `per-task` gives every row a run to itself, while `per-worker` and a shared `{ key }` send several rows into one run, one request each. The worker is declared once on the flow, under `task.actions`, and the worker names it with `action`. Do not set `type` — the stamped address is `type: "task"`:
 
 ```ts
-import { defineFlow, dispatcher } from "@flow-state-dev/core";
+import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
+import { taskSettledEntry, taskSettledInputSchema } from "@flow-state-dev/orchestration";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
+import { z } from "zod";
 
 const diligenceTasks = defineTaskCollection({ id: "diligence-tasks", scope: "user" });
 
 const board = taskBoard({
   name: "diligence",
   boardId: "diligence",
+  mode: "delegation",             // every row is handed to a run of its own
   collection: diligenceTasks,
   workers: {
     investigate: dispatcher({
-      name: "hand-off-investigate",
+      name: "dispatch-investigate",
       action: "investigate",      // flow.task.actions.investigate
       session: "per-task",        // one session per row
     }),
-    summarize: summarizeBlock,    // a bare block runs inline, in the request that claimed the row
   },
   initialTasks: [
     { id: "filings", goal: "Read the Q3 filings", assignee: "investigate" },
@@ -160,22 +162,31 @@ const board = taskBoard({
   ],
 });
 
+// Runs in this session each time a row ends: completed, failed for good, or cancelled.
+const onEnding = handler({
+  name: "on-diligence-ending",
+  inputSchema: taskSettledInputSchema,
+  outputSchema: z.object({}),
+  execute: async () => ({}),
+});
+
 export default defineFlow({
   kind: "diligence",
   actions: { run: { block: board.drain } },
+  internal: { actions: { onTaskSettled: taskSettledEntry({ block: onEnding }) } },
   task: { actions: { investigate: { block: investigateBlock } } },
 })();
 ```
 
-The drain claims a row, sends it to the `investigate` entry, and moves on. The run executes `investigateBlock` with the same worker input an inline worker would get, and settles the row itself. Which session a row lands in is the worker's `session` policy: `"per-task"`, `"per-worker"`, or `{ key: (task) => string }`.
+The drain claims a row, sends it to the `investigate` entry, and moves on. The run executes `investigateBlock` with the same worker input an inline worker would get, and settles the row itself. When the row ends, this session hears it once, on `onTaskSettled`, which `defineFlow` requires of a flow holding a board like this one; see [Hearing how a task ended](/docs/orchestration/task-board#hearing-how-a-task-ended). Which session a row lands in is the worker's `session` policy: `"per-task"`, `"per-worker"`, or `{ key: (task) => string }`.
 
 Tasks are seeded here to keep the example in one piece. A row added later with `addTask` carries the same `assignee` field.
 
-A board with a worker that hands off needs an explicit `boardId` and a `defineTaskCollection()`. The run settles its row after the request that claimed it is gone, so the ledger it settles against has to outlive that request. Both are checked when the board is built.
+A board with a worker that dispatches needs `mode: "delegation"`, an explicit `boardId` and a `defineTaskCollection()`, and every worker on it dispatches; work that runs inline goes on a board of its own. The run settles its row after the request that claimed it is gone, so the ledger it settles against has to outlive that request. All of these are checked when the board is built.
 
-Read next: **[Workers that hand off](/docs/orchestration/task-board#assignees-that-hand-off)** for the `session` policies, what the board refuses at construction, and what the drain reports.
+Read next: **[Assignees that dispatch](/docs/orchestration/task-board#assignees-that-dispatch)** for the `session` policies, what the board refuses at construction, and what the drain reports.
 
-Handing off comes with bounds:
+Dispatching comes with bounds:
 
 **The board has to be reachable from the run's session.** The run settles its own row, and resource scope resolves against whichever session is running, so a session-scoped board hydrates empty there and has nothing to settle. Give the collection `sharedToLineage: true` and the whole lineage settles against one ledger. `user` and `org` scope need nothing extra.
 
@@ -185,7 +196,7 @@ Handing off comes with bounds:
 
 **A row released to a run stops holding up the drain.** A row a run has in hand is not counted by the board that filed it, so the request that filed it finishes without waiting.
 
-That release lasts only while the run is actually holding the row, not for the rest of the row's life. Handing work over says where it belongs; it does not promise the work is still moving. If the run stops without settling the row — its process dies, its host is shut down — the row goes back to being the board's to deal with, and the next drain of that board waits on it like any other outstanding work. A row parked for a person counts again too, unless the board asked not to wait on reviews with [`onReview: "exit"`](/docs/orchestration/task-board#waiting-on-a-person-onreview).
+That release lasts only while the run is actually holding the row, not for the rest of the row's life. Handing work over says where it belongs; it does not promise the work is still moving. If the run stops without settling the row — its process dies, its host is shut down — the row goes back to being the board's to deal with, and the next drain of that board waits on it like any other outstanding work. A row waiting on a person, on a question or stopped for a review, doesn't count as active work: a board whose other work is done stops `blocked` and leaves it waiting, and the answer starts its next turn.
 
 You can exercise all of it from the terminal by running the flow against an `fsdev.config.*`. Whether the command waits for the background work before exiting depends on whether a queue is configured, and running without a config can't start it at all. See [Background work from the CLI](/docs/cli/overview#background-work).
 
@@ -203,7 +214,7 @@ Read next: **[Dispatched work](/docs/server/background-work)** for the HTTP surf
 
 Whichever path the work takes, the thing you observe is a request — for a side chain, the request it runs inside; for the other two, one of their own. Every run has an id, a lifecycle status, and an item log, and the same tools read all three.
 
-- Attach live with `GET /api/flows/:kind/requests/:requestId/stream`. See [Streaming](/docs/streaming/overview).
-- Read a session's requests with `listSessionRequests`, and the dispatch runs started from it with `listChildSessions`. See [Client API](/docs/api/client).
+- Attach live with a request handle's `stream()`, or `GET /api/flows/:kind/requests/:requestId/stream`. See [Streaming](/docs/streaming/overview).
+- Read a session's requests with `fsd.sessions.requests`, and the dispatch runs started from it with `fsd.sessions.children`. See [Client API](/docs/api/client).
 - Reconnect and resume from a sequence number rather than replaying from zero. See [Connection resilience](/docs/server/connection-resilience).
 - Inspect any of it block by block in the [DevTool](/docs/devtool/overview).

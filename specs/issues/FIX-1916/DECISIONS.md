@@ -62,7 +62,7 @@ list.
 - **Codex runs headless in the session's own git worktree, from FIX-1915's factory,** in its own
   sandbox (`workspace-write`) with no approval prompts, as FIX-1915 runs Claude Code. The
   worktree is a git repository, so Codex's repository check stays on and nothing turns it off.
-- **The run sees an allowlisted environment** (`harnessEnv`), as FIX-1915 passes Claude Code.
+- **The run starts with an allowlisted environment** (`harnessEnv`), as FIX-1915 passes Claude Code.
   Left unset, Codex's process inherits every secret the server holds. The list carries `HOME`
   (or `CODEX_HOME`), because Codex keeps its sign-in and its threads there.
 - **Codex's own check, in FIX-1914's per-mode slot**: the pinned SDK, signed in, a sandbox that
@@ -114,5 +114,9 @@ new run.
   the repository-check option is gone; the `.git` fence is required (FIX-1915 BR-13b); only
   Codex refusing a known thread is a refusal; a lapsed sign-in is an error, not a refusal.
   The Codex package maps that one error to FIX-1915's unknown-conversation classification.
+- **Amended after merge (Oct 13, owner decision)**: the allowlist is environment filtering, not a
+  security boundary (FIX-1915 BR-13b). A command running as the server's user can still read the
+  server's environment through `/proc` on Linux; a separate user or container is a follow-up issue.
+  BR-12, V5 and the README text now claim only what commands start with.
 
 **Open: 1.**

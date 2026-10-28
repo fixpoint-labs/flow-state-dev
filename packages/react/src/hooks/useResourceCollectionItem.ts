@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CollectionItemHandle } from "@flow-state-dev/client";
-import { findCollectionEntry, useResourceCollection } from "./useResourceCollection";
+import { useResourceCollection } from "./useResourceCollection";
 import type { SessionView } from "./useSession";
 
 /**
@@ -31,25 +31,37 @@ export function useResourceCollectionItem<TClient = unknown>(
   ref: string,
   topic: string
 ): UseResourceCollectionItemResult<TClient> {
-  const { get, wrap } = useResourceCollection<TClient>(session, ref);
+  const { get, wrap, live } = useResourceCollection<TClient>(session, ref);
 
-  const [item, setItem] = useState<CollectionItemHandle<TClient> | null>(null);
+  const [read, setRead] = useState<{
+    identity: typeof wrap;
+    item: CollectionItemHandle<TClient> | null;
+    error: Error | undefined;
+  } | null>(null);
+  const holdsCurrent = read !== null && read.identity === wrap;
+  const item = holdsCurrent ? read.item : null;
+  const error = holdsCurrent ? read.error : undefined;
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<Error | undefined>(undefined);
   const [generation, setGeneration] = useState(0);
 
+  // Each run's cleanup cancels the read before it, so the newest read wins.
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
-    setError(undefined);
+    setRead((prev) => (prev === null || prev.error === undefined ? prev : { ...prev, error: undefined }));
     void (async () => {
       try {
         const result = await get(topic);
         if (cancelled) return;
-        setItem(result === null ? null : wrap(result));
+        setRead({ identity: wrap, item: result === null ? null : wrap(result), error: undefined });
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err : new Error(String(err)));
+          const failure = err instanceof Error ? err : new Error(String(err));
+          setRead((prev) =>
+            prev !== null && prev.identity === wrap
+              ? { ...prev, error: failure }
+              : { identity: wrap, item: null, error: failure }
+          );
         }
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -64,10 +76,7 @@ export function useResourceCollectionItem<TClient = unknown>(
 
   // Live overlay (FIX-739): when a `client.live: true` collection mutates this
   // topic mid-stream, the change lands in the snapshot's per-topic `live` map.
-  const liveEntry = useMemo(() => {
-    const entry = findCollectionEntry(session, ref);
-    return entry?.live?.[topic];
-  }, [session.snapshot?.resources, ref, topic]);
+  const liveEntry = live?.[topic];
 
   // Apply the overlay over the fetched baseline so the item reflects mid-stream
   // mutations with no refetch:
@@ -86,5 +95,5 @@ export function useResourceCollectionItem<TClient = unknown>(
     return wrap({ topic, clientData: liveEntry.clientData });
   }, [item, liveEntry, topic, wrap]);
 
-  return { item: itemWithLive, isLoading, error, refetch };
+  return { item: itemWithLive, isLoading: holdsCurrent ? isLoading : true, error, refetch };
 }

@@ -253,6 +253,15 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   llmReadable?: boolean;
   llmWritable?: boolean;
   /**
+   * State fields that never leave the server. Every read the engine serves
+   * omits them: the client snapshot, the list and get-state routes, live
+   * deltas, and the debug routes, which otherwise return full state. A
+   * `client.data` function sees the full state, but a secret field in what it
+   * returns is dropped. Blocks on the server read them through the handle.
+   * A field named here cannot also be named in `client.expose`.
+   */
+  secret?: ReadonlyArray<keyof TState & string>;
+  /**
    * Removed. `dynamic` never had an effect — collections are declared with
    * `defineResourceCollection`. Typed `never` rather than deleted because
    * `defineResource` takes its config as a naked generic parameter, so
@@ -470,11 +479,20 @@ export type AnyResourceRef =
   | ResourceCollectionRef<any>
   | import("./projected-resource-collection").ProjectedResourceCollectionRef<any>;
 
+/**
+ * `ctx.resources`. A declared registry must assign to the open default, whose
+ * `AnyResourceRef` string index covers every key, `get` and `list` included.
+ * So `get` and `list` are also typed as a ref: that is what lets a declared
+ * registry pass with no index signature of its own. Any index signature here
+ * would have to read as a subtype of `AnyResourceRef`, and an undeclared name
+ * would then compile wherever a ref is accepted. Without one, an undeclared
+ * name is a missing-property error.
+ */
 export type ResourceRegistry<
   TResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>
 > = TResources & {
-  get<TKey extends keyof TResources>(name: TKey): TResources[TKey];
-  list(): Array<TResources[keyof TResources]>;
+  get: (<TKey extends keyof TResources>(name: TKey) => TResources[TKey]) & ResourceRef<any>;
+  list: (() => Array<TResources[keyof TResources]>) & ResourceRef<any>;
 };
 
 export type StateOf<T> = T extends { stateSchema: infer S extends ZodTypeAny }
@@ -568,7 +586,8 @@ export function defineResource<
     ref: config.ref ?? "(unnamed)",
     kind: "single",
     stateSchema: config.stateSchema,
-    client: config.client as Parameters<typeof validateClientProjection>[0]["client"]
+    client: config.client as Parameters<typeof validateClientProjection>[0]["client"],
+    secret: config.secret
   });
 
   // Single resources have no create/delete lifecycle — only state and content

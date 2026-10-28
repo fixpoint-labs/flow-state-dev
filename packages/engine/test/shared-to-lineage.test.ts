@@ -41,6 +41,7 @@ import {
   handleListCollectionState
 } from "../src/routes/resource-routes";
 import type { SessionRecord, StoreRegistry } from "../src/stores/types";
+import type { ResourceRef } from "@flow-state-dev/core/types";
 
 /**
  * The lineage a seeded session belongs to. A literal now — the address IS the
@@ -118,11 +119,15 @@ async function seedSession(
   await stores.session.set(id, record, "any");
 }
 
+type LineageContext = Awaited<ReturnType<typeof createExecutionContext>> & {
+  resources: { board: ResourceRef<{ note: string }>; scratch: ResourceRef<{ note: string }> };
+};
+
 /** A context for `sessionId`, with a fresh request id each time. */
 let requestCounter = 0;
-function contextFor(stores: StoreRegistry, sessionId: string) {
+async function contextFor(stores: StoreRegistry, sessionId: string): Promise<LineageContext> {
   requestCounter += 1;
-  return createExecutionContext({
+  return (await createExecutionContext({
     orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
@@ -130,7 +135,7 @@ function contextFor(stores: StoreRegistry, sessionId: string) {
     sessionId,
     userId: "u_1",
     stores
-  });
+  })) as LineageContext;
 }
 
 describe("FIX-1068: sharedToLineage resources across a session lineage", () => {

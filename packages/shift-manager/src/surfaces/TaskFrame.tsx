@@ -12,12 +12,13 @@
  */
 import { useEffect, useState } from "react";
 import { EmptyState, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
-import { columnFor, isDone, readStatus } from "../lib/columns";
-import { asksOfTask, doorOf, rosterOf, workerFor, waited } from "../lib/derive";
+import { columnFor } from "../lib/columns";
+import { asksOfTask, doorOf, rosterOf, workerFor, workerLabel, waited } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { navigate, TASK_TABS, type TaskTab } from "../lib/routes";
 import { sendTurn } from "../lib/send";
 import { useTask } from "../lib/task";
+import { distinctTitle } from "../lib/tasks";
 import { TurnComposer } from "../components/TurnComposer";
 import type { Gaps } from "../gaps";
 import { TaskSession } from "./TaskSession";
@@ -43,7 +44,7 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
   // The same resolver the inspector and Tasks use, so a name two teams share
   // resolves to no worker at all.
   const found = row === undefined || snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined ? undefined : workerFor(rosterOf(snapshot), row);
-  const worker = row?.assignee == null ? null : (found?.id ?? row.assignee);
+  const worker = row?.assignee == null ? null : workerLabel(found?.id ?? row.assignee);
 
   return (
     // Esc interrupts from anywhere in the frame, on every tab and from the
@@ -72,7 +73,7 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
         <p className="text-xs text-muted-foreground" data-testid="task-status">
           {row === undefined ? "Not on this board yet." : `${row.status} · ${columnFor(row.status)}`}
           {worker === null ? "" : ` · ${worker}`}
-          {row !== undefined && readStatus(row.status) === "in_progress" && row.startedAt !== null ? <Elapsed since={row.startedAt} /> : null}
+          {row !== undefined && row.status === "in_progress" && row.startedAt !== null ? <Elapsed since={row.startedAt} /> : null}
           {row?.run == null ? "" : ` · attempt ${row.run.attempt}`}
         </p>
         {task.rowFailure === undefined ? null : (
@@ -208,12 +209,15 @@ function Actions({ gaps }: { gaps: Gaps }) {
 /** Brief (BR-24): the row's fields as stored. */
 function Brief({ gaps }: { gaps: Gaps }) {
   const { row } = useTask();
+  const title = distinctTitle(row);
   return (
     <dl className="mx-auto w-full max-w-3xl space-y-3 px-4 py-4 text-sm" data-testid="task-brief">
-      <div>
-        <dt className="text-[11px] font-semibold tracking-wider text-muted-foreground">TITLE</dt>
-        <dd data-testid="brief-title">{row?.title ?? "—"}</dd>
-      </div>
+      {title === null ? null : (
+        <div>
+          <dt className="text-[11px] font-semibold tracking-wider text-muted-foreground">TITLE</dt>
+          <dd data-testid="brief-title">{title}</dd>
+        </div>
+      )}
       <div>
         <dt className="text-[11px] font-semibold tracking-wider text-muted-foreground">GOAL</dt>
         <dd className="whitespace-pre-wrap" data-testid="brief-goal">
@@ -239,11 +243,12 @@ function Brief({ gaps }: { gaps: Gaps }) {
 /**
  * The composer (BR-18): sends into the session the task's run link names,
  * through the door of the flow that session records as its owner, never the
- * board's. Says why when it can't.
+ * board's. Says why when it can't. A finished task takes a message too; what
+ * it does is the door's call (FIX-1764).
  */
 function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
   const task = useTask();
-  const { clients, snapshot, refresh } = useLab();
+  const { client, snapshot, refresh } = useLab();
   const { row } = task;
   const workers =
     snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined
@@ -256,25 +261,24 @@ function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
       ? "This task isn't on its board yet."
       : row.run === null
         ? gaps.turn.notStarted
-        : isDone(row.status)
-          ? gaps.turn.finished
-          : task.run.kind === "failed"
-            ? task.run.failure.message
-            : flowId === undefined
-              ? "Reading the run…"
-              : door === null
-                ? `${worker ?? "This worker"} ${gaps.turn.noDoor}`
-                : null;
+        : task.run.kind === "failed"
+          ? task.run.failure.message
+          : flowId === undefined
+            ? "Reading the run…"
+            : door === null
+              ? `${worker ?? "This worker"} ${gaps.turn.noDoor}`
+              : null;
   return (
     <TurnComposer
       testId="task-composer"
       label={`Message ${worker ?? "this worker"}`}
       placeholder={`Message ${worker ?? "this worker"}…`}
       blocked={blocked}
-      // No `held`: the Session tab draws only the task's own run, not this line's
-      // request, so the line keeps its draft until delivered.
+      // No `held`: the draft stays until the door turn ends. The Session follows the request from `onStarted`.
       send={async (message) => {
-        const sent = await sendTurn(clients, { sessionId: row!.run!.sessionId, flowId: flowId!, door: door! }, message);
+        const sent = await sendTurn(client, { sessionId: row!.run!.sessionId, flowId: flowId!, door: door! }, message, {
+          onStarted: task.noteSent,
+        });
         // It stopped short, maybe on a new ask: read the Lab again so Inbox lists whatever it raised.
         if (sent.suspended) void refresh();
         return sent;

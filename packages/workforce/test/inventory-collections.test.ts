@@ -168,8 +168,8 @@ describe("a flow that did not write the rows", () => {
 
     expect(rows.workers).toHaveLength(2);
     expect(byId(rows.workers)).toEqual({
-      "eng.lead": { id: "eng.lead", kind: "agent", door: null, hired: null, incarnation: null },
-      "eng.analyst": { id: "eng.analyst", kind: "agent", door: null, hired: null, incarnation: null }
+      "eng.lead": { id: "eng.lead", kind: "agent", door: null, rules: false, hired: null, incarnation: null, name: null, teamName: null },
+      "eng.analyst": { id: "eng.analyst", kind: "agent", door: null, rules: false, hired: null, incarnation: null, name: null, teamName: null }
     });
   });
 
@@ -215,8 +215,8 @@ describe("a flow that did not write the rows", () => {
     // is the point: that change should be deliberate, not discovered.
     expect(other.workers).toHaveLength(2);
     expect(byId(other.workers)).toEqual({
-      "eng.lead": { id: "eng.lead", kind: "agent", door: null, hired: null, incarnation: null },
-      "eng.analyst": { id: "eng.analyst", kind: "agent", door: null, hired: null, incarnation: null }
+      "eng.lead": { id: "eng.lead", kind: "agent", door: null, rules: false, hired: null, incarnation: null, name: null, teamName: null },
+      "eng.analyst": { id: "eng.analyst", kind: "agent", door: null, rules: false, hired: null, incarnation: null, name: null, teamName: null }
     });
   });
 });
@@ -231,7 +231,7 @@ describe("the row schemas", () => {
     expect(parsed).not.toHaveProperty("postCount");
   });
 
-  it("fills door, hired and incarnation on a row written before they existed (BP-030)", () => {
+  it("fills door, rules, hired, incarnation and the display names on a row written before they existed (BP-030)", () => {
     // The tolerance BP-030 asks for, at the schema. Were these required rather
     // than defaulted, the framework's read path would fail the parse and hand
     // back the collection's default — so an older row would lose its `id` too,
@@ -240,8 +240,11 @@ describe("the row schemas", () => {
       id: "eng.lead",
       kind: "agent",
       door: null,
+      rules: false,
       hired: null,
-      incarnation: null
+      incarnation: null,
+      name: null,
+      teamName: null
     });
   });
 });

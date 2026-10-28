@@ -8,6 +8,7 @@
  * no content read at all.
  */
 import { describe, expect, it, vi } from "vitest";
+import type { JsonObject, ResourceRef } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
@@ -50,8 +51,8 @@ describe("content load scoped to declared resources (Slice B)", () => {
     });
 
     // Declared content is still delivered to the block.
-    await expect(ctx.resources.notes.readContent()).resolves.toBe("NOTES BODY");
-    await expect(ctx.resources.profile.readContent()).resolves.toBe("PROFILE BODY");
+    await expect((ctx.resources.notes as ResourceRef<JsonObject>).readContent()).resolves.toBe("NOTES BODY");
+    await expect((ctx.resources.profile as ResourceRef<JsonObject>).readContent()).resolves.toBe("PROFILE BODY");
 
     // The blanket over-fetch is gone — no full-scope read during context build.
     expect(getAllSpy).not.toHaveBeenCalled();

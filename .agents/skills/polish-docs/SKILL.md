@@ -130,7 +130,7 @@ what was cut, and anything you **flagged as possibly inaccurate** rather than ed
 - **Cohesive restructuring is the point** — but every claim survives the move unless flagged. Big
   diff, same facts.
 - **Don't invent features or docs for things that don't exist.** You edit what's there.
-- **Code examples stay correct** and use current model names (`openai/gpt-5.4-mini` for small/fast;
-  no `gpt-4o*`/`gpt-3.5*`).
+- **Code examples stay correct** and use current model names (`openai/gpt-6-luna` for small/fast;
+  no `gpt-5*`/`gpt-4o*`/`gpt-3.5*`).
 - **Changeset (BP-022):** docs-site-only edits are internal → no changeset. Add one only if your
   edits document a package API change a consumer needs to know about.

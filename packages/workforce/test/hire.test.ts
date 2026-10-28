@@ -569,6 +569,12 @@ describe("hireWorkforce", () => {
     const worker = hireOne(lead);
     expect(Object.hasOwn(worker.config, "description")).toBe(false);
   });
+
+  it("keeps a display `name` out of the settings bag, so a closed worker flow schema still hires it", () => {
+    // `custom-agent`'s schema is closed: a `name` handed over as a setting would refuse the hire.
+    const worker = hireOne({ ...lead, declared: { ...lead.declared, name: "Engineering Lead" } });
+    expect(Object.hasOwn(worker.config, "name")).toBe(false);
+  });
 });
 
 /**

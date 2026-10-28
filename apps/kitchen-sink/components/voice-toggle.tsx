@@ -21,10 +21,10 @@ export function VoiceToggle({ voice, disabled, ttsEnabled, onToggleTTS }: VoiceT
         type="button"
         disabled={disabled || voice.isProcessing}
         className={`
-          inline-flex items-center justify-center rounded-full w-9 h-9 text-sm font-medium
+          inline-flex items-center justify-center rounded-md w-9 h-9 text-sm font-medium
           transition-colors focus-visible:outline-none focus-visible:ring-2
           ${voice.isListening
-            ? "bg-red-500 text-white hover:bg-red-600 animate-pulse"
+            ? "bg-destructive text-destructive-foreground hover:bg-destructive/90 animate-pulse"
             : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
           }
           disabled:pointer-events-none disabled:opacity-50
@@ -54,7 +54,7 @@ export function VoiceToggle({ voice, disabled, ttsEnabled, onToggleTTS }: VoiceT
           disabled={disabled}
           onClick={onToggleTTS}
           className={`
-            inline-flex items-center justify-center rounded-full w-9 h-9 text-sm font-medium
+            inline-flex items-center justify-center rounded-md w-9 h-9 text-sm font-medium
             transition-colors focus-visible:outline-none focus-visible:ring-2
             ${ttsEnabled
               ? "bg-primary text-primary-foreground hover:bg-primary/90"
@@ -73,7 +73,7 @@ export function VoiceToggle({ voice, disabled, ttsEnabled, onToggleTTS }: VoiceT
         <button
           type="button"
           onClick={() => voice.stopSpeaking()}
-          className="inline-flex items-center justify-center rounded-full w-7 h-7 text-xs bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          className="inline-flex items-center justify-center rounded-md w-7 h-7 text-xs bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
           title="Stop speaking"
         >
           <StopIcon />

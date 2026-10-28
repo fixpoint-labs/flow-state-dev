@@ -1,5 +1,5 @@
 /**
- * The project writes: `createProject` and `setRepository`.
+ * The project writes: `createProject`, `setRepository`, `setMcpServers` and `setBrief`.
  *
  * **Shared or private.** `createProject` takes a `visibility`, `"shared"` when
  * omitted. A shared project is a row of the organization's `projects`; a
@@ -20,6 +20,11 @@
  *
  * **Re-sending a create.** The same owner sending the same id again gets the
  * existing row back, unchanged.
+ *
+ * **MCP servers.** A project names the MCP servers its coding runs get, by the
+ * bare names the host offers: `defineProjectBlocks({ mcpServers })` is that
+ * list, and with none every name is refused (`mcp-server-name.ts`). The row
+ * holds names only; the address is the host's and the key each user's own.
  */
 
 import { handler } from "@flow-state-dev/core";
@@ -32,6 +37,7 @@ import {
   projectIdProblem,
   projectRowSchema,
   projectVisibilitySchema,
+  type ProjectAddress,
   type ProjectRow,
   type ProjectVisibility
 } from "./collections";
@@ -40,8 +46,10 @@ import { isMember } from "./membership-gate";
 import { isAlreadyExists } from "./store-errors";
 import { readProjectFiles } from "./project-files";
 import { listProjects, readProject } from "./project-read";
+import { projectOfWrite } from "./project-coordinator";
 import { ProjectRefusedError } from "./project-refusal";
 import { repositoryProblem } from "./repository-value";
+import { checkedMcpServers } from "./mcp-server-name";
 
 /** What creating a project takes. Closed: nothing in it names the owner. */
 export const createProjectInputSchema = z
@@ -62,7 +70,12 @@ export const createProjectInputSchema = z
      */
     members: z.array(z.string().min(1)).optional(),
     /** The git remote the project's code lives in. Omitted or `null`: a project with no repository. */
-    repository: z.string().nullable().optional()
+    repository: z.string().nullable().optional(),
+    /**
+     * The MCP servers the project's coding runs get, by the names the host
+     * offers. Omitted: none. Checked like `setMcpServers`.
+     */
+    mcpServers: z.array(z.unknown()).optional()
   })
   .strict();
 
@@ -81,9 +94,9 @@ export const createProjectOutputSchema = z.object({
 /** @see createProjectOutputSchema */
 export type CreateProjectOutput = z.infer<typeof createProjectOutputSchema>;
 
-/** What setting a project's repository takes: the project's address, and the new remote or `null` to clear it. */
+/** What `setRepository` takes: the address and the new remote or `null`. No address: the linked project. */
 export const setRepositoryInputSchema = z
-  .object({ project: projectAddressSchema, repository: z.string().nullable() })
+  .object({ project: projectAddressSchema.optional(), repository: z.string().nullable() })
   .strict();
 
 /** @see setRepositoryInputSchema */
@@ -92,16 +105,57 @@ export type SetRepositoryInput = z.infer<typeof setRepositoryInputSchema>;
 /** What setting a project's repository returns: the row as written. */
 export const setRepositoryOutputSchema = z.object({ project: projectRowSchema });
 
+/**
+ * What `setMcpServers` takes: the address and the whole new list of MCP
+ * server names; `[]` turns them all off. No address: the linked project.
+ * Each item is checked by the write, not here, so a value that isn't a name
+ * is refused as `invalid-mcp-server` without being repeated.
+ */
+export const setMcpServersInputSchema = z
+  .object({ project: projectAddressSchema.optional(), mcpServers: z.array(z.unknown()) })
+  .strict();
+
+/** @see setMcpServersInputSchema */
+export type SetMcpServersInput = z.infer<typeof setMcpServersInputSchema>;
+
+/** What setting a project's MCP servers returns: the row as written. */
+export const setMcpServersOutputSchema = z.object({ project: projectRowSchema });
+
+/** Options for {@link defineProjectBlocks}. */
+export interface ProjectBlocksOptions {
+  /**
+   * The names of the MCP servers this host offers its projects. A project
+   * may name only these. Absent or empty: it offers none, and every name is
+   * refused `unknown-mcp-server`.
+   */
+  mcpServers?: readonly string[];
+}
+
+/** What `setBrief` takes: the address and the new brief or `null`. No address: the linked project. */
+export const setBriefInputSchema = z
+  .object({ project: projectAddressSchema.optional(), brief: z.string().nullable() })
+  .strict();
+
+/** @see setBriefInputSchema */
+export type SetBriefInput = z.infer<typeof setBriefInputSchema>;
+
+/** What setting a project's brief returns: the row as written. */
+export const setBriefOutputSchema = z.object({ project: projectRowSchema });
+
 /** The project writes, the project read and the project files read, and the same blocks as an `actions` map. */
 export type ProjectBlocks = {
-  createProject: typeof writeProject;
+  createProject: ReturnType<typeof defineWriteProject>;
   setRepository: typeof setRepository;
+  setMcpServers: ReturnType<typeof defineSetMcpServers>;
+  setBrief: typeof setBrief;
   readProject: typeof readProject;
   listProjects: typeof listProjects;
   readProjectFiles: typeof readProjectFiles;
   actions: {
     createProject: ActionConfig;
     setRepository: ActionConfig;
+    setMcpServers: ActionConfig;
+    setBrief: ActionConfig;
     readProject: ActionConfig;
     listProjects: ActionConfig;
     readProjectFiles: ActionConfig;
@@ -126,54 +180,58 @@ function assertRepository(repository: string | null | undefined): void {
   if (problem !== undefined) throw new ProjectRefusedError("invalid-repository", `${problem}.`);
 }
 
-const writeProject = handler({
-  name: "project-create",
-  inputSchema: createProjectInputSchema,
-  outputSchema: createProjectOutputSchema,
-  resources: WRITE_RESOURCES,
-  execute: async (input, rawCtx): Promise<CreateProjectOutput> => {
-    const ctx = rawCtx as unknown as BlockContext;
-    const problem = projectIdProblem(input.id);
-    if (problem !== undefined) throw new ProjectRefusedError("invalid-project-id", `${problem}.`);
-    assertRepository(input.repository);
-    const owner = ctx.session.identity.userId;
-    if (owner === undefined || owner.length === 0) {
-      throw new Error("createProject needs a session with an owner: the owner is the session's user.");
+/** `createProject`, refusing an MCP server name outside `offered`. */
+function defineWriteProject(offered: readonly string[]) {
+  return handler({
+    name: "project-create",
+    inputSchema: createProjectInputSchema,
+    outputSchema: createProjectOutputSchema,
+    resources: WRITE_RESOURCES,
+    execute: async (input, ctx): Promise<CreateProjectOutput> => {
+      const problem = projectIdProblem(input.id);
+      if (problem !== undefined) throw new ProjectRefusedError("invalid-project-id", `${problem}.`);
+      assertRepository(input.repository);
+      const mcpServers = checkedMcpServers(input.mcpServers ?? [], offered);
+      const owner = ctx.session.identity.userId;
+      if (owner === undefined || owner.length === 0) {
+        throw new Error("createProject needs a session with an owner: the owner is the session's user.");
+      }
+      const visibility: ProjectVisibility = input.visibility ?? "shared";
+      if (visibility === "private") return writePrivateProject(ctx, input, owner, mcpServers);
+      const { projects } = refsOf(ctx);
+
+      const heldBy = (row: ProjectRow): CreateProjectOutput => {
+        if (row.ownerUserId === owner) return { project: projectRowSchema.parse(row), visibility, created: false };
+        throw new ProjectRefusedError(
+          "project-id-held",
+          `project id "${input.id}" is held by another owner. Choose another id.`
+        );
+      };
+
+      const existing = await projects.getOptional(input.id);
+      if (existing !== undefined) return heldBy(existing.state as ProjectRow);
+
+      const row: ProjectRow = projectRowSchema.parse({
+        id: input.id,
+        title: input.title,
+        brief: input.brief ?? null,
+        ownerUserId: owner,
+        members: unique([owner, ...(input.members ?? [])]),
+        repository: input.repository ?? null,
+        mcpServers
+      });
+      try {
+        await projects.create(input.id, row);
+      } catch (error) {
+        // A duplicate create won the row: hand it back as any held id is.
+        const winner = isAlreadyExists(error) ? (await projects.getOptional(input.id))?.state : undefined;
+        if (winner === undefined) throw error;
+        return heldBy(winner as ProjectRow);
+      }
+      return { project: row, visibility, created: true };
     }
-    const visibility: ProjectVisibility = input.visibility ?? "shared";
-    if (visibility === "private") return writePrivateProject(ctx, input, owner);
-    const { projects } = refsOf(ctx);
-
-    const heldBy = (row: ProjectRow): CreateProjectOutput => {
-      if (row.ownerUserId === owner) return { project: projectRowSchema.parse(row), visibility, created: false };
-      throw new ProjectRefusedError(
-        "project-id-held",
-        `project id "${input.id}" is held by another owner. Choose another id.`
-      );
-    };
-
-    const existing = await projects.getOptional(input.id);
-    if (existing !== undefined) return heldBy(existing.state as ProjectRow);
-
-    const row: ProjectRow = projectRowSchema.parse({
-      id: input.id,
-      title: input.title,
-      brief: input.brief ?? null,
-      ownerUserId: owner,
-      members: unique([owner, ...(input.members ?? [])]),
-      repository: input.repository ?? null
-    });
-    try {
-      await projects.create(input.id, row);
-    } catch (error) {
-      // A duplicate create won the row: hand it back as any held id is.
-      const winner = isAlreadyExists(error) ? (await projects.getOptional(input.id))?.state : undefined;
-      if (winner === undefined) throw error;
-      return heldBy(winner as ProjectRow);
-    }
-    return { project: row, visibility, created: true };
-  }
-});
+  });
+}
 
 /**
  * Create a private project: the row in the owner's own user scope, with the
@@ -182,7 +240,12 @@ const writeProject = handler({
  *
  * @throws `private-has-members` when the input names anyone but the owner.
  */
-async function writePrivateProject(ctx: BlockContext, input: CreateProjectInput, owner: string): Promise<CreateProjectOutput> {
+async function writePrivateProject(
+  ctx: BlockContext,
+  input: CreateProjectInput,
+  owner: string,
+  mcpServers: string[]
+): Promise<CreateProjectOutput> {
   const others = unique(input.members ?? []).filter((member) => member !== owner);
   if (others.length > 0) {
     throw new ProjectRefusedError(
@@ -205,7 +268,8 @@ async function writePrivateProject(ctx: BlockContext, input: CreateProjectInput,
     brief: input.brief ?? null,
     ownerUserId: owner,
     members: [owner],
-    repository: input.repository ?? null
+    repository: input.repository ?? null,
+    mcpServers
   });
   try {
     await projects.create(input.id, row);
@@ -231,15 +295,8 @@ const setRepository = handler({
   inputSchema: setRepositoryInputSchema,
   outputSchema: setRepositoryOutputSchema,
   resources: WRITE_RESOURCES,
-  execute: async (input, rawCtx) => {
-    const ctx = rawCtx as unknown as BlockContext;
-    const row = await projectAt(ctx, input.project);
-    if (!isMember(row.state, ctx.session.identity.userId)) {
-      throw new ProjectRefusedError(
-        "not-a-member",
-        `only project "${input.project.id}"'s members may change its repository.`
-      );
-    }
+  execute: async (input, ctx) => {
+    const row = await projectRowToChange(ctx, input.project, "repository");
     assertRepository(input.repository);
     await retryOnConflict(() => row.updateState((state) => ({ ...state, repository: input.repository })));
     return { project: projectRowSchema.parse(row.state) };
@@ -247,18 +304,67 @@ const setRepository = handler({
 });
 
 /**
+ * `setMcpServers`: replace a project's MCP server names whole; `[]` turns
+ * them off. Members only, each name one `offered`. Rewritten like
+ * `setRepository`, so a concurrent write to another field keeps what it wrote.
+ */
+function defineSetMcpServers(offered: readonly string[]) {
+  return handler({
+    name: "project-set-mcp-servers",
+    inputSchema: setMcpServersInputSchema,
+    outputSchema: setMcpServersOutputSchema,
+    resources: WRITE_RESOURCES,
+    execute: async (input, ctx) => {
+      const row = await projectRowToChange(ctx, input.project, "MCP servers");
+      const mcpServers = checkedMcpServers(input.mcpServers, offered);
+      await retryOnConflict(() => row.updateState((state) => ({ ...state, mcpServers })));
+      return { project: projectRowSchema.parse(row.state) };
+    }
+  });
+}
+
+/** Members only. Rewritten like `setRepository`, so a concurrent write keeps what it wrote. */
+const setBrief = handler({
+  name: "project-set-brief",
+  inputSchema: setBriefInputSchema,
+  outputSchema: setBriefOutputSchema,
+  resources: WRITE_RESOURCES,
+  execute: async (input, ctx) => {
+    const row = await projectRowToChange(ctx, input.project, "brief");
+    await retryOnConflict(() => row.updateState((state) => ({ ...state, brief: input.brief })));
+    return { project: projectRowSchema.parse(row.state) };
+  }
+});
+
+/** The row a later write changes ({@link projectOfWrite}), when the caller is one of its members. */
+async function projectRowToChange(ctx: BlockContext, named: ProjectAddress | undefined, field: string) {
+  const address = projectOfWrite(ctx.session.state, named, `change its ${field}`);
+  const row = await projectAt(ctx, address);
+  if (!isMember(row.state, ctx.session.identity.userId)) {
+    throw new ProjectRefusedError("not-a-member", `only project "${address.id}"'s members may change its ${field}.`);
+  }
+  return row;
+}
+
+/**
  * Build the project writes, the project read, the caller's project list and
  * the project files read.
  *
+ * @param options `mcpServers`: the MCP server names this host offers its
+ *   projects. Absent: none, and a project can name no server.
  * @example
- *   const projects = defineProjectBlocks();
+ *   const projects = defineProjectBlocks({ mcpServers: ["linear"] });
  *   defineFlow({ kind: "lab", actions: { ...projects.actions } });
  */
-export function defineProjectBlocks(): ProjectBlocks {
-  const createProject = writeProject;
+export function defineProjectBlocks(options: ProjectBlocksOptions = {}): ProjectBlocks {
+  const offered = [...(options.mcpServers ?? [])];
+  const createProject = defineWriteProject(offered);
+  const setMcpServers = defineSetMcpServers(offered);
   return {
     createProject,
     setRepository,
+    setMcpServers,
+    setBrief,
     readProject,
     listProjects,
     readProjectFiles,
@@ -271,6 +377,15 @@ export function defineProjectBlocks(): ProjectBlocks {
         block: setRepository,
         description:
           "Set, change or clear (null) the git remote a project's code lives in. Members only; a bare path or a remote carrying a credential is refused."
+      },
+      setMcpServers: {
+        block: setMcpServers,
+        description:
+          "Replace the MCP servers a project's coding runs get, by the names the server offers; [] turns them off. Members only."
+      },
+      setBrief: {
+        block: setBrief,
+        description: "Set, change or clear (null) a project's brief: what the project is for. Members only."
       },
       readProject: {
         block: readProject,

@@ -1,14 +1,16 @@
 /**
  * Which of the viewed flow's actions a Tasks-tab row offers.
  *
- * The signal is the input, not the name: an action whose input requires a
- * string `taskId` acts on one task, so an app's own `answer` qualifies beside
- * the framework's task tools. A board's task tools carry the board in their
- * name, and are offered only on that board's rows.
+ * The signal is the input: an action whose input requires a string `taskId`
+ * acts on one task, so an app's own `answer` qualifies beside the framework's
+ * task tools. `id` counts only for a board's generated `getTask` and
+ * `updateTask` (`updateTask({ id })`), so an app's unrelated `{ id }` action
+ * stays off task rows. A board's task tools carry the board in their name,
+ * and are offered only on that board's rows.
  */
 import { describe, expect, it } from "vitest";
 import type { ActionInputSchema } from "@flow-state-dev/client";
-import { outcomeOf, taskActionsFor, taskToolSuffix, type RequestOutcomeSource } from "../src/react/lib/task-actions";
+import { outcomeOf, taskActionsFor, taskIdField, taskToolSuffix, type RequestOutcomeSource } from "../src/react/lib/task-actions";
 
 const takesTaskId: ActionInputSchema = {
   type: "object",
@@ -23,6 +25,19 @@ const numericTaskId: ActionInputSchema = {
   fields: { taskId: { type: "number", required: true } },
 };
 const noTaskId: ActionInputSchema = { type: "object", fields: { goal: { type: "string", required: true } } };
+const takesId: ActionInputSchema = {
+  type: "object",
+  fields: { id: { type: "string", required: true }, priority: { type: "number", required: false } },
+};
+
+/** The schemas `taskToolActions` generates for one board's family (FIX-2081). */
+const familySchemas = (suffix: string): Record<string, ActionInputSchema> => ({
+  [`createTask_${suffix}`]: noTaskId,
+  [`getTask_${suffix}`]: takesId,
+  [`listTasks_${suffix}`]: { type: "object", fields: {} },
+  [`updateTask_${suffix}`]: takesId,
+  [`answerTask_${suffix}`]: takesTaskId,
+});
 
 describe("taskActionsFor", () => {
   it("offers an action whose input requires a string taskId, and no other", () => {
@@ -30,32 +45,51 @@ describe("taskActionsFor", () => {
     expect(taskActionsFor(Object.keys(schemas), schemas, "issues", ["issues"])).toEqual(["answer"]);
   });
 
-  it("offers a board's generated dispatchTask on its rows, though a new task makes its taskId optional", () => {
-    // `dispatchTask_<suffix>` starts a recorded row by its id, or files a new
-    // one with a goal, so its taskId is optional. On a row it starts that row.
-    const family = ["addTask", "assignTask", "completeTask", "failTask", "blockTask", "cancelTask", "updateTask", "listTasks"];
+  it("keeps an app's unrelated { id } action off task rows, and offers a board's generated getTask and updateTask", () => {
+    // `deleteProject({ id })` names a project, not a task: offered on a row,
+    // it would be sent the task's id.
+    const schemas = { ...familySchemas("issues"), deleteProject: takesId, getTask_other: takesId };
+    const offered = taskActionsFor(Object.keys(schemas), schemas, "issues", ["issues"]);
+    expect(offered).not.toContain("deleteProject");
+    // `getTask_other` has no family behind it, so it is no board's getTask.
+    expect(offered).not.toContain("getTask_other");
+    expect(offered).toEqual(expect.arrayContaining(["getTask_issues", "updateTask_issues", "answerTask_issues"]));
+  });
+
+  it("sends taskId, not id, to an action whose input names both", () => {
+    const both: ActionInputSchema = {
+      type: "object",
+      fields: { id: { type: "string", required: true }, taskId: { type: "string", required: true } },
+    };
+    expect(taskIdField("answer", both)).toBe("taskId");
+    expect(taskIdField("updateTask_issues", both)).toBe("taskId");
+    expect(taskIdField("updateTask_issues", takesId)).toBe("id");
+    expect(taskIdField("deleteProject", takesId)).toBeUndefined();
+  });
+
+  it("offers no action whose taskId is optional on a row, an app's own included", () => {
+    // A board has no generated action that starts a held row by an optional
+    // id any more (dispatchTask is gone, FIX-2083): updateTask releases it.
     const schemas: Record<string, ActionInputSchema> = {
-      ...Object.fromEntries(family.map((tool) => [`${tool}_tasks`, tool === "addTask" || tool === "listTasks" ? noTaskId : takesTaskId])),
-      dispatchTask_tasks: { type: "object", fields: { goal: { type: "string", required: false }, taskId: { type: "string", required: false } } },
-      // An app's own action with an optional taskId is still not a row action.
+      ...familySchemas("tasks"),
       maybe: optionalTaskId,
     };
     const offered = taskActionsFor(Object.keys(schemas), schemas, "tasks", []);
-    expect(offered).toContain("dispatchTask_tasks");
+    expect(offered).toContain("updateTask_tasks");
     expect(offered).not.toContain("maybe");
-    expect(offered).not.toContain("addTask_tasks");
+    expect(offered).not.toContain("createTask_tasks");
   });
 
   it("offers a board's own tools only on that board, and a generic action on every board", () => {
     const schemas = {
       answer: takesTaskId,
-      cancelTask_a_one: takesTaskId,
-      cancelTask_b_two: takesTaskId,
+      updateTask_a_one: takesTaskId,
+      updateTask_b_two: takesTaskId,
     };
     const names = Object.keys(schemas);
     const boards = ["a.one", "b.two"];
-    expect(taskActionsFor(names, schemas, "a.one", boards)).toEqual(["answer", "cancelTask_a_one"]);
-    expect(taskActionsFor(names, schemas, "b.two", boards)).toEqual(["answer", "cancelTask_b_two"]);
+    expect(taskActionsFor(names, schemas, "a.one", boards)).toEqual(["answer", "updateTask_a_one"]);
+    expect(taskActionsFor(names, schemas, "b.two", boards)).toEqual(["answer", "updateTask_b_two"]);
   });
 
   it("scopes an app's own suffixed action the same way", () => {
@@ -64,22 +98,22 @@ describe("taskActionsFor", () => {
   });
 
   it("BR-10 · offers an action matching no listed board's suffix on every board, task-tool name or not", () => {
-    // `cancelTask_now` is an app's own action that happens to share a task
+    // `updateTask_now` is an app's own action that happens to share a task
     // tool's verb. Its ending names no board the tab lists, so it is generic.
-    const schemas = { cancelTask_now: takesTaskId, answer: takesTaskId };
+    const schemas = { updateTask_now: takesTaskId, answer: takesTaskId };
     const names = Object.keys(schemas);
-    expect(taskActionsFor(names, schemas, "issues", ["issues", "bugs"])).toEqual(["cancelTask_now", "answer"]);
-    expect(taskActionsFor(names, schemas, "bugs", ["issues", "bugs"])).toEqual(["cancelTask_now", "answer"]);
+    expect(taskActionsFor(names, schemas, "issues", ["issues", "bugs"])).toEqual(["updateTask_now", "answer"]);
+    expect(taskActionsFor(names, schemas, "bugs", ["issues", "bugs"])).toEqual(["updateTask_now", "answer"]);
   });
 
   it("BR-10 · gives a task tool to the listed board with the longest matching suffix", () => {
-    // `cancelTask_feature_work` ends with `_work` too. With both boards
+    // `updateTask_feature_work` ends with `_work` too. With both boards
     // listed it belongs to `feature.work` alone, not to `work`.
-    const schemas = { cancelTask_work: takesTaskId, cancelTask_feature_work: takesTaskId };
+    const schemas = { updateTask_work: takesTaskId, updateTask_feature_work: takesTaskId };
     const names = Object.keys(schemas);
-    expect(taskActionsFor(names, schemas, "work", ["work", "feature.work"])).toEqual(["cancelTask_work"]);
+    expect(taskActionsFor(names, schemas, "work", ["work", "feature.work"])).toEqual(["updateTask_work"]);
     expect(taskActionsFor(names, schemas, "feature.work", ["work", "feature.work"])).toEqual([
-      "cancelTask_feature_work",
+      "updateTask_feature_work",
     ]);
   });
 
@@ -92,42 +126,41 @@ describe("taskActionsFor", () => {
   });
 
   describe("a board named only by its generated task tools", () => {
-    // `taskToolActions` always generates the whole family of eight for a
+    // `taskToolActions` always generates the whole family for a
     // board. A board this session has no rows on (a sibling session
     // sharing the flow kind, or a board with no tasks yet) is not listed, but
     // its family in the flow's action list still names it, so its tools are
     // that board's and never generic.
-    const family = (suffix: string) =>
-      ["addTask", "assignTask", "completeTask", "failTask", "blockTask", "cancelTask", "updateTask", "listTasks"].map(
-        (tool) => `${tool}_${suffix}`
+    const family = (suffix: string) => Object.keys(familySchemas(suffix));
+    const schemasFor = (names: string[]): Record<string, ActionInputSchema> =>
+      Object.fromEntries(
+        names.map((name) => [
+          name,
+          name.startsWith("createTask") || name.startsWith("listTasks")
+            ? noTaskId
+            : name.startsWith("getTask") || name.startsWith("updateTask_") && name !== "updateTask_now"
+              ? takesId
+              : takesTaskId,
+        ])
       );
-    const schemasFor = (names: string[]) =>
-      Object.fromEntries(names.map((name) => [name, name.startsWith("addTask") || name.startsWith("listTasks") ? noTaskId : takesTaskId]));
 
     it("keeps a sibling board's tools off this board's rows", () => {
       const names = [...family("eng_queue_work"), ...family("eng_other_work")];
       const offered = taskActionsFor(names, schemasFor(names), "eng.queue.work", ["eng.queue.work"]);
-      expect(offered).toEqual([
-        "assignTask_eng_queue_work",
-        "completeTask_eng_queue_work",
-        "failTask_eng_queue_work",
-        "blockTask_eng_queue_work",
-        "cancelTask_eng_queue_work",
-        "updateTask_eng_queue_work",
-      ]);
+      expect(offered).toEqual(["getTask_eng_queue_work", "updateTask_eng_queue_work", "answerTask_eng_queue_work"]);
     });
 
     it("keeps an unlisted board's tools off a listed board that shares its ending", () => {
       const names = [...family("work"), ...family("feature_work")];
       const offered = taskActionsFor(names, schemasFor(names), "work", ["work"]);
       expect(offered.every((name) => name.endsWith("_work") && !name.endsWith("_feature_work"))).toBe(true);
-      expect(offered).toHaveLength(6);
+      expect(offered).toHaveLength(3);
     });
 
     it("still offers an app's own action on every board when no family names its ending", () => {
-      const names = [...family("issues"), "cancelTask_now"];
+      const names = [...family("issues"), "updateTask_now"];
       const schemas = schemasFor(names);
-      expect(taskActionsFor(names, schemas, "bugs", ["issues", "bugs"])).toEqual(["cancelTask_now"]);
+      expect(taskActionsFor(names, schemas, "bugs", ["issues", "bugs"])).toEqual(["updateTask_now"]);
     });
   });
 

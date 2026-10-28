@@ -1,5 +1,5 @@
 /**
- * Jump to (⌘K): find Chief of Staff, a worker, a task or a declared document by
+ * Jump to (⌘K; Shift+⌘K opens it in message mode): find Chief of Staff, a worker, a task or a declared document by
  * name, from the one snapshot, and go there (BR-10). A document opens
  * read-only. A Lab that serves no document to the browser gets a line saying
  * so, and a failed read of them says what the Lab answered. Up and Down move
@@ -12,7 +12,7 @@
  * go to leaves the palette open with the reason and the draft intact.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { allRows, chiefOfStaffOf, type LoadedSnapshot } from "../lib/derive";
+import { allRows, chiefOfStaffOf, workerLabel, type LoadedSnapshot } from "../lib/derive";
 import { handToChiefOfStaff } from "../lib/outbox";
 import { navigate, type Route } from "../lib/routes";
 import type { Gaps } from "../gaps";
@@ -22,11 +22,22 @@ type Entry = { group: "Views" | "Workers" | "Tasks" | "Resources"; label: string
 /** The most results drawn per group. */
 const PER_GROUP = 8;
 
-/** Typing this first turns the palette into a message to the Shift Coordinator. */
-const MESSAGE_PREFIX = "> ";
+/** Typing this first turns the palette into a message to the Shift Coordinator; Shift+⌘K opens the palette with it already typed. */
+export const MESSAGE_PREFIX = "> ";
 
-export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; gaps: Gaps; onClose: () => void }) {
-  const [query, setQuery] = useState("");
+export function JumpTo({
+  snapshot,
+  gaps,
+  initialQuery = "",
+  onClose,
+}: {
+  snapshot: LoadedSnapshot;
+  gaps: Gaps;
+  /** Seeds the query; `"> "` (Shift+⌘K) opens straight into message mode. */
+  initialQuery?: string;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState(initialQuery);
   const [active, setActive] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const [sendFailure, setSendFailure] = useState<string | null>(null);
@@ -37,7 +48,7 @@ export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; 
     const workers = snapshot.inventory.ok ? snapshot.inventory.value.workers : [];
     return [
       { group: "Views", label: "Shift Coordinator", hint: "where Shift Manager opens", to: { level: "cos" } },
-      ...workers.map((s): Entry => ({ group: "Workers", label: s.id, hint: s.kind ?? "", to: { level: "roster", team: null } })),
+      ...workers.map((s): Entry => ({ group: "Workers", label: workerLabel(s.id), hint: s.kind ?? "", to: { level: "roster", team: null } })),
       ...allRows(snapshot).map((r): Entry => ({ group: "Tasks", label: r.title, hint: `${r.status} · ${r.boardRef}`, to: { level: "task", boardRef: r.boardRef, taskId: r.id, tab: "session" } })),
       ...(snapshot.resources.ok ? snapshot.resources.value : []).map((d): Entry => ({ group: "Resources", label: d.ref, hint: "read-only", to: { level: "resource", sessionId: d.sessionId, ref: d.ref } })),
     ];
@@ -61,7 +72,7 @@ export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; 
     if (!snapshot.inventory.ok) return setSendFailure("The Lab's workers didn't load, so there is no one to send this to.");
     const cos = chiefOfStaffOf(snapshot.inventory.value.workers);
     if (cos.kind !== "one") return setSendFailure("There isn't exactly one Shift Coordinator to send this to.");
-    if (cos.worker.door === null) return setSendFailure(`${cos.worker.id} ${gaps.turn.noDoor}`);
+    if (cos.worker.door === null) return setSendFailure(`${workerLabel(cos.worker.id)} ${gaps.turn.noDoor}`);
     handToChiefOfStaff(message);
     navigate({ level: "cos" });
     onClose();
@@ -73,7 +84,7 @@ export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; 
   };
 
   return (
-    <div className="fixed inset-0 z-20 flex items-start justify-center bg-foreground/20 pt-24" onClick={onClose} data-testid="jump-dialog">
+    <div className="fixed inset-0 z-20 flex items-start justify-center bg-background/70 pt-24" onClick={onClose} data-testid="jump-dialog">
       <div role="dialog" aria-label="Jump to" className="w-full max-w-lg border bg-popover text-popover-foreground shadow-lg" onClick={(e) => e.stopPropagation()}>
         <input
           ref={input}

@@ -14,12 +14,12 @@
  *   BR-16  with no fallback, best fit's miss goes to the judgment turn, recorded `by: judgment`;
  *   BR-16a when that turn fails too, the post is unplaced, recorded and said in the conversation;
  *   BR-9   a fired delegate is skipped on the next post, with why; its entry stays;
- *   BR-12  judgment: the coordinator's turn hands off with its tool, or answers itself;
+ *   BR-12  judgment: the coordinator's turn dispatches with its tool, or answers itself;
  *   BR-10  asked who its delegates are, the turn's delegate read equals the conversation's list;
  *   BR-20  an answer lands once, under the delegate's name, carrying its delivery's token;
  *   BR-20a each conversation gets its own session per delegate, linked at create; a later delivery reuses it;
  *          a conversation deleted and created again under the same id opens fresh delegate sessions;
- *   BR-21  an answer sent twice lands once; a second hand-off of one post to one delegate is skipped;
+ *   BR-21  an answer sent twice lands once; a second dispatch of one post to one delegate is skipped;
  *   BR-22  a token no delivery carries is refused, and nothing lands;
  *   BR-23  at `rounds: 0` an answer routes nowhere and wakes no judgment turn;
  *   BR-27  an answer can't name its own round, author or post;
@@ -49,8 +49,11 @@ import { bootHost, messageOf, standardWorkers } from "./coordinator-harness";
 
 const heardBy = (host: ReturnType<typeof bootHost>) => host.heard.map((h) => h.worker);
 
+/** A judgment turn's routed filing: createTask with the routing settings (FIX-2083). */
+const routed = (assignee: string) => ({ goal: "Take this", assignee, session: "ongoing", resultTo: "conversation" });
+
 async function post(host: ReturnType<typeof bootHost>, sessionId: string, message: string, userId = "alice") {
-  const result = await host.act(userId, sessionId, "run", { message });
+  const result = await host.act(userId, sessionId, "respond", { message });
   expect(result.error, messageOf(result.error)).toBeUndefined();
   await host.settled();
   return result;
@@ -99,6 +102,20 @@ describe("best fit (V3)", () => {
     expect(heardBy(host)).toEqual(["eng.coder", "eng.coder", "eng.em"]);
     const bys = (await host.items(id)).records.map((record: any) => record.by);
     expect(bys).toEqual(["evaluated", "held", "evaluated"]);
+  });
+
+  it("keeps the hold, and lands no line, when the holder's turn answers nothing (FIX-2083)", async () => {
+    const host = bootHost();
+    const id = await host.conversation("alice", "desk");
+    // An empty answer is no answer: eng.coder is still on the message.
+    await post(host, id, "the build is red [route:eng.coder] [empty]");
+    await post(host, id, "any news?");
+    expect(host.route.calls).toHaveLength(1);
+    expect(heardBy(host)).toEqual(["eng.coder", "eng.coder"]);
+    expect((await host.items(id)).records.map((record: any) => record.by)).toEqual(["evaluated", "held"]);
+    expect((await host.items(id)).messages.filter((line) => line.agentName === "eng.coder").map((line) => line.text)).toEqual([
+      "eng.coder heard: alice, through desk: any news?"
+    ]);
   });
 
   it("releases the hold once the holder answers", async () => {
@@ -159,7 +176,7 @@ describe("best fit (V3)", () => {
 
   it("with no fallback, hands best fit's miss to the judgment turn, recorded by judgment (BR-16)", async () => {
     const judgment = mockGenerator({
-      script: [{ toolCalls: [{ toolCallId: "h1", toolName: "handOff", args: { worker: "eng.em" } }] }, { text: "Handed to the EM." }]
+      script: [{ toolCalls: [{ toolCallId: "h1", toolName: "createTask", args: routed("eng.em") }] }, { text: "Handed to the EM." }]
     });
     const host = bootHost({ judgment });
     const id = await host.conversation("alice", "desk");
@@ -184,7 +201,7 @@ describe("best fit (V3)", () => {
     expect(records[0].none).toMatch(/best fit couldn't place it, and the coordinator's own turn failed/);
     // Why best fit missed survives the turn failing: the record still says the call failed.
     expect(records[0].fit).toEqual({ reason: "failed" });
-    expect(messages.at(-1)!.text).toMatch(/^Nobody took this post: /);
+    expect(messages.at(-1)!.text).toMatch(/^Nobody took this message: /);
   });
 
   it("skips a delegate fired since it was added, says why, and keeps its entry (BR-9)", async () => {
@@ -382,7 +399,7 @@ describe("best fit's own choice and floor (FIX-1833 V3, V4)", () => {
     expect(at).toBeGreaterThanOrEqual(0);
     expect(messages[at + 1]).toEqual({
       role: "assistant",
-      content: "Handed this post to eng.em by its routing, with no turn of mine. Its answer lands in this conversation under its name."
+      content: "Handed this message to eng.em by its routing, with no turn of mine. Its answer lands in this conversation under its name."
     });
   });
 
@@ -392,7 +409,7 @@ describe("best fit's own choice and floor (FIX-1833 V3, V4)", () => {
     await post(host, id, "who works here? [route:desk]");
     const { records, messages } = await host.items(id);
     expect(records).toEqual([expect.objectContaining({ by: "unplaced", delegates: [] })]);
-    expect(messages.at(-1)!.text).toMatch(/^Nobody took this post: /);
+    expect(messages.at(-1)!.text).toMatch(/^Nobody took this message: /);
   });
 });
 
@@ -438,40 +455,42 @@ describe("delivery and answers (V4)", () => {
     expect(after).not.toBe(before);
   });
 
-  it("lands an answer sent twice once, and refuses a token no delivery carries (BR-21, BR-22, BR-27)", async () => {
+  it("lands a routed task's ending once however often it is sent, and has no answer entry left to reach (BR-10, BR-19)", async () => {
     const host = bootHost();
     const id = await host.conversation("alice", "desk");
     await post(host, id, "fix it [route:eng.coder]");
-    const [delivery] = (await host.sessionState(id)).deliveries;
-    expect(delivery).toMatchObject({ status: "delivered", answered: true, round: 0, delegate: { worker: "eng.coder" } });
-
-    const again = await host.act("alice", id, "delegateAnswer", { token: delivery.token, body: "a second answer" }, "coordinator", "internal");
-    expect(again.output).toEqual({ landed: false });
-    const forged = await host.act("alice", id, "delegateAnswer", { token: "made-up", body: "forged" }, "coordinator", "internal");
-    expect(messageOf(forged.error)).toMatch(/No delivery in this conversation carries that token/);
-    const withRound = await host.act(
-      "alice",
-      id,
-      "delegateAnswer",
-      { token: delivery.token, body: "mine", round: 2, author: "eng.em" },
-      "coordinator",
-      "internal"
-    );
-    expect(withRound.error).toBeDefined();
+    const [row] = await host.routedRows("alice");
+    expect(row).toMatchObject({
+      status: "completed",
+      assignee: "eng.coder",
+      maxAttempts: 1,
+      sealed: { postId: expect.any(String), round: 0, delegate: { worker: "eng.coder" } }
+    });
+    // The conversation keeps no record of the delivery: the row is the record.
+    expect((await host.sessionState(id)).deliveries).toBeUndefined();
+    // The ending, sent again and again: the row no longer owes it, so nothing lands.
+    const notice = { boardId: "tasks", taskId: row.id, attempt: row.attempts, ending: "completed", output: "a second answer" };
+    for (let n = 0; n < 5; n++) {
+      const again = await host.act("alice", id, "onTaskSettled", notice, "coordinator", "internal");
+      expect(again.error).toBeUndefined();
+    }
     const lines = (await host.items(id)).messages.filter((m) => m.agentName !== undefined);
-    expect(lines).toHaveLength(1);
-    // Not reachable by a caller at all.
-    await expect(host.act("alice", id, "delegateAnswer", { token: delivery.token, body: "x" })).rejects.toThrow(
-      /does not define action "delegateAnswer"/
-    );
+    expect(lines).toEqual([{ agentName: "eng.coder", text: expect.stringContaining("fix it") }]);
+    // An answer, or a report of none, for a delivery made before the change has nowhere to land,
+    // and neither has a post's own ending or cancel (FIX-2083).
+    for (const action of ["delegateAnswer", "delegateMissed", "onPostSettled", "postCancelled"]) {
+      const old = await host.act("alice", id, action, { token: "from-before", body: "late" }, "coordinator", "internal").catch((error: unknown) => ({ error }));
+      expect(old.error).toBeDefined();
+    }
+    expect((await host.items(id)).messages.filter((m) => m.agentName !== undefined)).toHaveLength(1);
   });
 
-  it("doesn't deliver to a delegate fired between pick and delivery: its create check refuses (BR-31)", async () => {
+  it("doesn't deliver to a delegate fired between pick and hand-over: the hand-over's check refuses it (BR-31)", async () => {
     const host = bootHost();
     expect((await host.hire("alice", { id: "temp", flow: "helper", description: "Temporary." })).error).toBeUndefined();
     const id = await host.conversation("alice", "desk");
     expect((await host.act("alice", id, "addDelegate", { worker: "temp" })).error).toBeUndefined();
-    // Fire `temp` the moment the pick has checked it, before its delivery.
+    // Fire `temp` the moment the pick has checked it, before its row is handed over.
     const read = host.installation.rosterWorker;
     let fired = false;
     host.installation.rosterWorker = async (ctx, workerId) => {
@@ -483,22 +502,24 @@ describe("delivery and answers (V4)", () => {
       return found;
     };
     await post(host, id, "for temp [route:temp]");
+    await host.settled();
     expect(host.heard).toEqual([]);
-    const [record] = (await host.items(id)).records;
-    expect(record.delegates).toEqual([expect.objectContaining({ worker: "temp", outcome: "failed" })]);
-    expect(record.delegates[0].reason).toMatch(/No worker "temp"/);
+    const [row] = await host.routedRows("alice");
+    expect(row).toMatchObject({ status: "errored", assignee: "temp" });
+    expect(row.error).toMatch(/No worker "temp"/);
+    expect((await host.items(id)).messages.filter((m) => m.agentName !== undefined)).toEqual([]);
   });
 });
 
 describe("judgment (V7)", () => {
-  it("hands the post off with its tool, one delivery per hand-off, recorded once (BR-12, BR-21, BR-28)", async () => {
+  it("files the message with createTask, one routed task per delegate, recorded once (BR-12, BR-21, BR-28)", async () => {
     const judgment = mockGenerator({
       script: [
         {
           toolCalls: [
-            { toolCallId: "h1", toolName: "handOff", args: { worker: "eng.em" } },
-            { toolCallId: "h2", toolName: "handOff", args: { worker: "eng.em" } },
-            { toolCallId: "h3", toolName: "handOff", args: { worker: "eng.coder" } }
+            { toolCallId: "h1", toolName: "createTask", args: routed("eng.em") },
+            { toolCallId: "h2", toolName: "createTask", args: routed("eng.em") },
+            { toolCallId: "h3", toolName: "createTask", args: routed("eng.coder") }
           ]
         },
         { text: "Sent it to the EM." }
@@ -517,18 +538,21 @@ describe("judgment (V7)", () => {
       by: "judgment",
       delegates: [
         { worker: "eng.em", outcome: "delivered" },
-        { worker: "eng.em", outcome: "skipped", reason: "it was already handed this post in this round" },
-        { worker: "eng.coder", outcome: "skipped", reason: '"eng.coder" isn\'t a delegate in this conversation. Add it first.' }
+        { worker: "eng.em", outcome: "skipped", reason: "it was already handed this message in this round" }
       ]
     });
+    // A pick that isn't a delegate here is refused by the filing's own check, and files nothing.
+    const told = (await host.items(id)).all.filter((item: any) => item.type === "tool_output" && item.blockName === "createTask");
+    expect(told.map((item: any) => item.output.ok)).toEqual([true, false, false]);
+    expect(told[2].output.error).toMatch(/^unknown_assignee: "eng\.coder" is not on this board's team/);
   });
 
   it("answers itself, recorded with no delegate, and wakes nothing when an answer lands at rounds 0 (BR-12, BR-23)", async () => {
     const judgment = mockGenerator({
       script: [
         { text: "I can answer that myself." },
-        { toolCalls: [{ toolCallId: "h1", toolName: "handOff", args: { worker: "eng.em" } }] },
-        { text: "Handed off." }
+        { toolCalls: [{ toolCallId: "h1", toolName: "createTask", args: routed("eng.em") }] },
+        { text: "Dispatched." }
       ]
     });
     const host = bootHost({ judgment });
@@ -560,14 +584,18 @@ describe("judgment (V7)", () => {
     expect(read.output.delegates.map(({ takes: _takes, description: _description, ...record }: any) => record)).toEqual(
       (await host.sessionState(id)).delegates
     );
-    // Never in its prompt: the turn's system text names no delegate.
-    const prompt = JSON.stringify(judgment.calls[0]!.input);
+    // Never in its prompt: the turn's system text names no delegate. The
+    // tool list is left out: sendMessage's names every roster worker it
+    // could message, delegate or not.
+    const messages = judgment.calls[0]!.input as Array<{ role: string; content: unknown }>;
+    const prompt = JSON.stringify(messages.filter((m) => !(typeof m.content === "string" && m.content.startsWith("<tools>"))));
+    expect(prompt).toContain("Route the work.");
     expect(prompt).not.toContain("eng.coder");
   });
 
-  it("refuses a hand-off to a delegate whose flow can't take a post", async () => {
+  it("refuses a filing for a worker that isn't a delegate here", async () => {
     const judgment = mockGenerator({
-      script: [{ toolCalls: [{ toolCallId: "h1", toolName: "handOff", args: { worker: "nobody" } }] }, { text: "ok" }]
+      script: [{ toolCalls: [{ toolCallId: "h1", toolName: "createTask", args: routed("nobody") }] }, { text: "ok" }]
     });
     const host = bootHost({ judgment, standard: standardWorkers() });
     const id = await host.conversation("alice", "chief");
@@ -575,60 +603,21 @@ describe("judgment (V7)", () => {
     expect(host.heard).toEqual([]);
   });
 
-  it("tells the model why a hand-off was skipped, and who takes posts instead, each sentence ending once", async () => {
+  it("tells the model why a filing was refused, and who takes a task instead", async () => {
     const judgment = mockGenerator({
-      script: [{ toolCalls: [{ toolCallId: "h1", toolName: "handOff", args: { worker: "notes" } }] }, { text: "ok" }]
+      script: [{ toolCalls: [{ toolCallId: "h1", toolName: "createTask", args: routed("notes") }] }, { text: "ok" }]
     });
-    // `notes` runs on `quiet`, which takes no post: a default the hand-off can't reach.
+    // `notes` runs on `quiet`, which takes no task: a default no routed task can reach.
     const host = bootHost({ judgment, standard: standardWorkers({ chief: { delegates: ["eng.em", "notes"] } }) });
     const id = await host.conversation("alice", "chief");
     await post(host, id, "take notes on the release");
     expect(host.heard).toEqual([]);
-    const told = (await host.items(id)).all.find((item: any) => item.type === "tool_output" && item.blockName === "handOff");
-    expect(told.output.note).toBe(
-      'Not handed to notes: Worker "notes" runs on flow "quiet", which can\'t take a delegated post. Delegates here that take posts: eng.em.'
-    );
-  });
-
-  it("names the delegates here that take posts when it refuses a hand-off, in the tool's answer and the record", async () => {
-    // The turn tries the delegate that takes only tasks first. Its refusal
-    // names the ones a hand-off reaches, so the turn's next pick needn't be a hire.
-    const judgment = mockGenerator({
-      script: [
-        { toolCalls: [{ toolCallId: "h1", toolName: "handOff", args: { worker: "eng.builder" } }] },
-        { toolCalls: [{ toolCallId: "h2", toolName: "handOff", args: { worker: "eng.em" } }] },
-        { text: "Handed to the EM." }
-      ]
-    });
-    const host = bootHost({
-      judgment,
-      standard: standardWorkers({ chief: { delegates: ["eng.builder", "eng.em", "eng.lead"] } })
-    });
-    const id = await host.conversation("alice", "chief");
-    await post(host, id, "get this feature filed");
-    const refusal =
-      'Worker "eng.builder" runs on flow "tasker", which can\'t take a delegated post. ' +
-      "Delegates here that take posts: eng.em, eng.lead.";
-    const told = (await host.items(id)).all.filter((item: any) => item.type === "tool_output" && item.blockName === "handOff");
-    expect(told[0].output.note).toBe(`Not handed to eng.builder: ${refusal}`);
-    expect(heardBy(host)).toEqual(["eng.em"]);
-    const [record] = (await host.items(id)).records;
-    expect(record.delegates).toEqual([
-      { worker: "eng.builder", outcome: "skipped", reason: refusal },
-      { worker: "eng.em", outcome: "delivered" }
-    ]);
-  });
-
-  it("says so in a refused hand-off when no delegate here takes posts", async () => {
-    const judgment = mockGenerator({
-      script: [{ toolCalls: [{ toolCallId: "h1", toolName: "handOff", args: { worker: "eng.builder" } }] }, { text: "ok" }]
-    });
-    const host = bootHost({ judgment, standard: standardWorkers({ chief: { delegates: ["eng.builder", "notes"] } }) });
-    const id = await host.conversation("alice", "chief");
-    await post(host, id, "get this feature filed");
-    const told = (await host.items(id)).all.find((item: any) => item.type === "tool_output" && item.blockName === "handOff");
-    expect(told.output.note).toBe(
-      'Not handed to eng.builder: Worker "eng.builder" runs on flow "tasker", which can\'t take a delegated post. No delegate here takes posts.'
+    const told = (await host.items(id)).all.find((item: any) => item.type === "tool_output" && item.blockName === "createTask");
+    expect(told.output.error).toBe(
+      'unknown_assignee: "notes" is not on this board\'s team. Available: eng.em. Not taking tasks now: notes: ' +
+        'Worker "notes" runs on flow "quiet", which takes no task.. Yourself ("chief"): a step you work next, in this request. ' +
+        "Name one of these exactly, or leave assignee unset " +
+        "to run the task on the default worker."
     );
   });
 });
@@ -677,16 +666,16 @@ describe("judgment is the agent's own turn (S8)", () => {
         {
           toolCalls: [
             { toolCallId: "p1", toolName: "ping", args: {} },
-            { toolCallId: "h1", toolName: "handOff", args: { worker: "eng.em" } }
+            { toolCallId: "h1", toolName: "createTask", args: routed("eng.em") }
           ]
         },
-        { text: "Handed off." }
+        { text: "Dispatched." }
       ]
     });
     const host = bootHost({ judgment, agent: { catalog: { ping } }, standard: standardWorkers({ chief: { tools: [] } }) });
     const id = await host.conversation("alice", "chief");
     await post(host, id, "hand it on");
-    expect(await toolOutputs(host, id)).toEqual(["handOff"]);
+    expect(await toolOutputs(host, id)).toEqual(["createTask"]);
     expect(heardBy(host)).toEqual(["eng.em"]);
   });
 

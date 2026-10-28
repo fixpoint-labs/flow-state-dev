@@ -126,6 +126,16 @@ export type SdkMessageLike =
       type: "system";
       subtype?: "init" | "compact_boundary" | string;
       session_id?: string;
+      /** On `init`: every MCP server the run connected to, or tried to. */
+      mcp_servers?: Array<{ name: string; status?: string }>;
+      /** On `api_retry`: the failed call's retry attempt, its limit and the wait before it. */
+      attempt?: number;
+      max_retries?: number;
+      retry_delay_ms?: number;
+      /** On `task_progress`: what a sub-agent is on. */
+      description?: string;
+      last_tool_name?: string;
+      summary?: string;
     }
   | {
       type: "assistant";
@@ -184,6 +194,12 @@ export type SdkMessageLike =
           partial_json?: string;
         };
       };
+    }
+  | {
+      /** Sent when the subscription's limits change; read by `onUsage` (`./usage`), never translated to an item. */
+      type: "rate_limit_event";
+      session_id?: string;
+      rate_limit_info?: unknown;
     }
   | {
       type: "result";
@@ -388,6 +404,16 @@ export interface ClaudeAgentQueryOptions {
    * fake need the real dependency.
    */
   sandbox?: unknown;
+  /**
+   * MCP servers for the run. Set only from `mcpTools`, so every entry is an
+   * in-process server (`{ type: "sdk", name, instance }`); loosely typed
+   * because the SDK's own type is not imported.
+   */
+  mcpServers?: Record<string, unknown>;
+  /** Use only `mcpServers`: no `.mcp.json`, settings-file or plugin servers. */
+  strictMcpConfig?: boolean;
+  /** Extra settings for the run, forwarded verbatim; set only to keep claude.ai connectors out. */
+  settings?: Record<string, unknown>;
   /** Forwarded to the SDK so an aborted `ctx.signal` stops the run. */
   abortController?: AbortController;
   /**

@@ -22,6 +22,7 @@ import {
 import { createConnectTool, edgeToMemoryItem } from '../../src/tools/index.js'
 import type { RecallToolResult } from '../../src/tools/index.js'
 import { createMemoryCapability } from '../../src/memory-capability.js'
+import { partialRef } from '../partial-ref.js'
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -32,23 +33,12 @@ function createMockSemRef(
   edges?: Edge[],
   relations?: EdgeSlotConfig,
 ): ResourceRef<SemanticMemoryState> {
-  let state: SemanticMemoryState = {
+  const ref = partialRef<SemanticMemoryState>('semanticMemory', 'user', semanticMemoryStateSchema, {
     facts: [],
     totalExtracted: 0,
     totalConsolidations: 0,
     ...(relations ? { edges: edges ?? [] } : {}),
-  } as SemanticMemoryState
-  const ref = {
-    name: 'semanticMemory',
-    scope: 'user',
-    get state() { return state },
-    patchState: async (u: any) => { state = { ...state, ...u } as SemanticMemoryState },
-    setState: async (n: any) => { state = n },
-    updateState: async (fn: any) => { state = await fn(state) },
-    readContent: async () => JSON.stringify(state),
-    writeContent: async () => {},
-    config: { stateSchema: semanticMemoryStateSchema, writable: true },
-  } as unknown as ResourceRef<SemanticMemoryState>
+  } as SemanticMemoryState)
   if (relations) {
     ;(ref as { edges?: unknown }).edges = createResourceEdgeApi(ref as never, relations)
   }

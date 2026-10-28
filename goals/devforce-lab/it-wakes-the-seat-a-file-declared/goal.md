@@ -25,13 +25,15 @@ which the `WORKER.md` files name) and the board's `coder` assignee key.
 0. every held-out token lives in exactly one convention file, in none of `packages/shift-manager/teams/devteam/**/*.mts`, and in no
    part of the row the EM seat files — run **before** anything is built;
 1. one root produces exactly three team seats on the two kinds their files name, plus the org's
-   chief of staff and project coordinator on `coordinator`,
-   the teams' two coordinator workers (`eng.triage`, `ops.oncall`) on `coordinator`, two documents
+   shift coordinator and project coordinator on `coordinator`, its general lead and researcher on `agent`,
+   the eng team's coordinator worker (`eng.triage`) on `coordinator`, two documents
    and no mailbox (the feature and release work are workstreams the EM leads); a tree naming an
    unregistered kind refuses the **whole** roster by name, and its corrected twin hires cleanly
    *(BR-1, BR-2)*;
 2. each seat reports its own instructions, document ref and **exact** skill union from inside a
-   running block, and the coordinator kind declares no task entry at all *(BR-3, BR-4)*;
+   running block, and the coordinator kind declares only its delegated-post task entry, which runs
+   the EM's own turn and dispatches rather than running a harness; its file imports no harness
+   package *(BR-3, BR-4)*;
 3. one row, under the id the EM session's board minted and naming its issue and phase in its
    payload, claimed once, handed to the seat the board's assignee names — graded on the **dispatch
    record**, by the `workerId` each child session names — with the third seat absent from it, and a second drain claiming nothing
@@ -111,3 +113,4 @@ is the sibling goal.
 | 2026-10-11 | `7af86476` (DevTeam off mailboxes, merged with FIX-1866 P3 `f4978593`) | n/a | PASS | Re-run on the merged tree: 8 seats on 2 kinds, no mailbox; the row handed to eng.coder by id; a hand-off naming no delegate errors the row by name. |
 | 2026-10-11 | FIX-1792 P4 on 617aeabb + uncommitted | n/a | PASS | Converted: leg a's "no mailbox" reads the tree's files for a `MAILBOX.md` (the loader has no mailbox list any more), and leg g's loader comparison is over workers and documents. 8 workers on 2 kinds, 2 documents, no mailbox file; the row handed to eng.coder on the dispatch record, eng.reviewer never reached; all 4 held-out tokens in the prompt; the row settled completed; the unminted hand-off errored by name; the no-commit retry and spent budget; the boards/ folder loads as nothing, and the org-less read is refused while the bearer read lands. No control targets the two changed legs, so none was re-run. |
 | 2026-10-11 | FIX-1883 (FIX-1793 P5) on 9a618969 + uncommitted | n/a | PASS | The fixture drops the removed `workstream-coordinator` org worker: 7 on 2 kinds, no mailbox |
+| 2026-10-13 | main `7c9cc1bb` + FIX-1966 | n/a | PASS | Before: FAIL on main, on the hired list (the org's `general-lead` and `researcher` from FIX-1920 were missing) and on "eng.em declares task entries [onDelegatedPost]". FIX-1872 D1 gives the EM a delegated-post task entry that runs its own turn, so leg b now wants exactly that one task entry, and refuses any harness package import in `em.mts`. Both red states checked by hand (no `GOAL_CONTROL` replays them): a `work` entry beside the post entry fails, and an `@flow-state-dev/harness-manager` import fails. All five controls FAIL at their named legs. |

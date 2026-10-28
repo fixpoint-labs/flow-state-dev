@@ -12,7 +12,7 @@
 import { describe, expect, it, afterEach, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { createElement } from "react";
-import type { FlowListEntry, SessionSummary } from "@flow-state-dev/client";
+import type { FlowListEntry, SessionsApi, SessionSummary } from "@flow-state-dev/client";
 import { FlowNavigator } from "../src/components/flow-navigator/FlowNavigator";
 import { arrangeSessionRows } from "../src/components/flow-navigator/dispatch-runs";
 
@@ -83,12 +83,15 @@ describe("arrangeSessionRows", () => {
 });
 
 function server(rows: SessionSummary[]) {
-  const listSessions = vi.fn(async () => rows);
+  const listSessions = vi.fn<SessionsApi["list"]>(async () => rows);
   return {
     listSessions,
-    client: { listFlows: vi.fn(async (): Promise<FlowListEntry[]> => [
-      { id: "reports", kind: "reports", cardinality: "singleton", requireUser: false, actions: [] },
-    ]) },
+    client: {
+      flows: vi.fn(async (): Promise<FlowListEntry[]> => [
+        { id: "reports", kind: "reports", cardinality: "singleton", requireUser: false, actions: [] },
+      ]),
+      sessions: { list: listSessions },
+    },
   };
 }
 
@@ -100,8 +103,6 @@ describe("FlowNavigator — asking for dispatch runs", () => {
       createElement(FlowNavigator, {
         sections: [{ label: "Flows" }],
         client,
-        sessionClient: { listSessions },
-        userId: "u",
         onSelectSession: () => {},
       })
     );
@@ -122,8 +123,6 @@ describe("FlowNavigator — asking for dispatch runs", () => {
       createElement(FlowNavigator, {
         sections: [{ label: "Flows" }],
         client,
-        sessionClient: { listSessions },
-        userId: "u",
         includeDispatchRuns: true,
         onSelectSession: () => {},
       })

@@ -31,7 +31,7 @@ fsdev run market-intel-agent runStrategy \
   --session sess_abc123
 
 # Override the model for generators run in this process
-fsdev run my-agent chat -i '{"message": "hi"}' --model gpt-5
+fsdev run my-agent chat -i '{"message": "hi"}' --model gpt-6.1-sol
 
 # Seed session state before execution
 fsdev run support-triage triageTicket \
@@ -48,21 +48,22 @@ Options:
 | `-m, --model <model>` | Override model for generator blocks run in this process |
 | `-s, --session <id>` | Session ID for reuse across invocations |
 | `--org <id>` | Run in this organization and skip the app's resolver. See [Who a run is](#who-a-run-is) |
-| `-u, --user <id>` | Run as this user. The organization comes from the app's resolver unless you also pass `--org`. Default: the user your app's resolver returns, or `cli-user` if the app has none or you pass `--org` |
+| `-u, --user <id>` | Run as this user. The organization comes from the app's resolver unless you also pass `--org`. Default: the user your app's resolver returns, or `devuser` (the DevTool's default user) if the app has none or you pass `--org` |
 | `--seed-session <json\|path>` | Seed session-level state (JSON or file path) |
 | `--flow-dir <path>` | Override flow discovery root (repeatable) |
 | `--dotenv <path>` | Load a specific `.env` file before the cwd walk-up (repeatable, resolved from cwd) |
 | `--quiet` | Suppress `[flow-state] *` runtime logs and the `[fsdev] running as …` line on stderr |
 | `--log-level <level>` | Stderr log level: `debug \| info \| warn \| error` (default: `info`) |
 | `--capture <path>` | Write the full structured run output to a JSON file (additive with stdout) |
+| `--store <kind>` | Without a config: `sqlite` (default, `.fsdev/data/fsdev.db`, the file `fsdev dev` reads) or `filesystem` (JSON files under `.fsdev/data`; single-process, so not beside a running `fsdev dev`). Errors with a config |
 
 #### Who a run is
 
-Every run executes as a user in an organization, the same as a request to your server. Without `--org`, `fsdev run` asks your app, the same way your server asks for every request: the flow's own `authentication.resolvePrincipal` if it has one, otherwise the one passed to `createFlowState`. The resolver sees `source: "cli"`, no `request`, and the `--user` value (default `cli-user`) as the caller-named user. `cli` is reserved for `fsdev run` and `fsdev chat`; a transport adapter that stamps it is refused before your resolver runs.
+Every run executes as a user in an organization, the same as a request to your server. Without `--org`, `fsdev run` asks your app, the same way your server asks for every request: the flow's own `authentication.resolvePrincipal` if it has one, otherwise the one passed to `createFlowState`. The resolver sees `source: "cli"`, no `request`, and the `--user` value (default `devuser`, the DevTool's default user) as the caller-named user. `cli` is reserved for `fsdev run` and `fsdev chat`; a transport adapter that stamps it is refused before your resolver runs.
 
-- An app with no resolver runs as `cli-user` (or `--user`) in the development organization, `DEFAULT_ORG_ID`.
+- An app with no resolver runs as `devuser` (or `--user`) in the development organization, `DEFAULT_ORG_ID`.
 - A resolver that checks a credential refuses the terminal, which carries none. The run stops before it writes anything, exits `2`, and the message names the flow and `--org`.
-- `--org <id>` skips the resolver and runs as `--user` (default `cli-user`) in that organization. It may not be blank, not well-formed Unicode (a lone UTF-16 surrogate), or `DEFAULT_ORG_ID`. `fsdev serve` and `fsdev dev` have no such flag.
+- `--org <id>` skips the resolver and runs as `--user` (default `devuser`) in that organization. It may not be blank, not well-formed Unicode (a lone UTF-16 surrogate), or `DEFAULT_ORG_ID`. `fsdev serve` and `fsdev dev` have no such flag.
 - `--user` alone keeps the organization the resolver gives and replaces only the user.
 - `--session` / `--seed-session` on a session another user or organization owns is refused before anything is written, including the seed. Sessions keep the identity they were created with. A session stored before organizations were required is refused with the migration message.
 - A worker pinned to an owner refuses any identity outside its pin, before anything is written.
@@ -110,7 +111,12 @@ Event types:
 | `content_delta` | Incremental content chunk for an item |
 | `state_change` | Scope state or resource was modified |
 | `flow_complete` | Action completed successfully |
+| `suspended` | Action paused for a person; exit code 0 |
 | `error` | Action failed |
+
+#### When a run waits for a person
+
+A request that pauses for a person is held, not failed. Without a config, the run writes to `.fsdev/data/fsdev.db` as `devuser`, the same file and user `fsdev dev` uses, so the suspension is listed and answered in the DevTool after the run exits. `fsdev run` exits 0 with a `suspended` event on stdout, `result.suspended` in `--capture`, and a waiting report on stderr naming the suspension's id and where to answer it. A suspension's deadline passes unnoticed until a server runs on the same store.
 
 #### Session reuse
 
@@ -144,7 +150,7 @@ Starts an HTTP server serving both the flow API and the DevTool UI. Discovers fl
 fsdev dev
 
 # Custom port, model override
-fsdev dev --port 3000 --model openai/gpt-5.4-mini
+fsdev dev --port 3000 --model openai/gpt-6-luna
 
 # Specific flow directory, no browser
 fsdev dev --flow-dir ./my-flows --no-open
@@ -169,6 +175,7 @@ Options:
 | `--dotenv <path>` | Load a specific `.env` file before the cwd walk-up (repeatable, resolved from cwd) |
 | `-m, --model <model>` | Override model for generator blocks run in this process |
 | `--no-open` | Don't open the browser automatically |
+| `--store <kind>` | Without a config: `sqlite` (default, `.fsdev/data/fsdev.db`) or `filesystem` (JSON files under `.fsdev/data`, single-process). Errors with a config |
 
 Requires `@flow-state-dev/devtool` to be installed (provides the pre-built UI assets). The CLI lists it as an optional peer dependency. With `--app`, the DevTool is optional: without it, the app's pages are served and get no DevTool address.
 
@@ -220,13 +227,13 @@ Options:
 |------|-------------|
 | `-s, --session <id>` | Resume an engine session for the initially bound flow |
 | `-m, --model <model>` | Override model for generator blocks run in this process |
-| `-u, --user <id>` | Run turns as this user. The organization comes from the app's resolver unless you also pass `--org`. Default: the user your app's resolver returns, or `cli-user` if the app has none or you pass `--org` |
+| `-u, --user <id>` | Run turns as this user. The organization comes from the app's resolver unless you also pass `--org`. Default: the user your app's resolver returns, or `devuser` (the DevTool's default user) if the app has none or you pass `--org` |
 | `--org <id>` | Run turns in this organization and skip the app's resolver. See [Who a run is](#who-a-run-is) |
 | `--flow-dir <path>` | Override flow discovery root (repeatable) |
 | `--dotenv <path>` | Load a specific `.env` file before the cwd walk-up (repeatable, resolved from cwd) |
 | `--quiet` / `--log-level <level>` | Stderr runtime-log discipline (default level `warn`) |
 
-Built-in commands: `/help`, `/targets`, `/use <flow> [action]`, `/status`, `/session [new|<id>]`, `/exit`. A `/name` no built-in claims is sent to the flow as chat text (how skills are invoked). Messages are sent as `{ message: "<text>" }`. Sessions are kept per flow kind and persist in the engine's stores.
+Built-in commands: `/help`, `/targets`, `/use <flow> [action]`, `/status`, `/session [new|<id>]`, `/exit`. A `/name` no built-in claims is sent to the flow as chat text (how skills are invoked). Messages are sent as `{ message: "<text>" }`. Sessions are kept per flow kind and persist in the engine's stores. Without a config, chat uses `.fsdev/data/fsdev.db`, the file `fsdev run` and `fsdev dev` share; a turn that stops for a person is held there, and chat prints one line naming the stop and saying to answer it in `fsdev dev`.
 
 Each turn asks the app who it is for that turn's flow, as [`fsdev run`](#who-a-run-is) does. A turn whose flow refuses the terminal fails on its own and the session carries on; `/status` shows the organization the active target's last turn ran in.
 
@@ -242,7 +249,7 @@ fsdev block ./src/flows/my-app/blocks/counter.ts \
 # Override model for a generator block
 fsdev block ./src/blocks/summarizer.ts \
   -i '{"text": "..."}' \
-  -m gpt-5
+  -m gpt-6.1-sol
 ```
 
 Options:
@@ -359,8 +366,8 @@ fsdev benchmark ./benchmark.ts \
 # Cross-model: run the patterns on Haiku and compare them against pure Haiku
 # AND pure Sonnet ("does a Haiku swarm beat raw Sonnet?")
 fsdev benchmark ./benchmark.ts \
-  --model anthropic/claude-haiku-4-5 \
-  --baseline-model anthropic/claude-sonnet-4-6
+  --model anthropic/claude-haiku-5-5 \
+  --baseline-model anthropic/claude-sonnet-5-5
 ```
 
 `--baseline-model` adds a pure single-generator baseline on that model; the run model is always included as the same-model baseline (the delta reference). The other baselines appear as their own rows, so you read whether the patterns beat them from the absolute scores.
@@ -456,7 +463,7 @@ import chatFlow from "./src/flows/chat/flow";
 
 export default createFlowState({
   flows: { chat: chatFlow },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: inMemoryStores() } },
 });
 ```

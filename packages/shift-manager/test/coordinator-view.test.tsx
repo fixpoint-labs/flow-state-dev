@@ -15,7 +15,7 @@ import type { ComponentItem } from "@flow-state-dev/core/items";
 import { DelegatesPanel } from "../src/components/DelegatesPanel";
 import { CoordinatorRoute } from "../src/components/CoordinatorRoute";
 import { shiftManagerRenderers } from "../src/components/ToolLine";
-import { delegateOf } from "../src/lib/conversation";
+import { knownWorkers, senderOf } from "../src/lib/conversation";
 import { toWorker } from "../src/lib/reads";
 
 let listed: Array<{ worker: string; note?: string }> = [];
@@ -24,15 +24,17 @@ let refuseAdd: string | null = null;
 
 // One connection and one workforce client, as the app memoizes them per Lab.
 vi.mock("../src/lib/lab-data", () => {
-  const lab = { clients: { userId: "alice" } };
+  const lab = { client: { userId: "alice" } };
   return { useLab: () => lab };
 });
 vi.mock("../src/lib/workforce", () => {
   const workforce = {
     roster: async () => [
       { id: "chief-of-staff", flow: "coordinator", standard: true, description: null },
-      { id: "eng.em", flow: "em", standard: true, description: null },
-      { id: "licenses", flow: "agent", standard: false, description: "Audits licenses." },
+      { id: "eng.em", flow: "em", standard: true, description: null, name: "Engineering Manager" },
+      { id: "licenses", flow: "agent", standard: false, description: "Audits licenses.", name: null },
+      { id: "eng.reviewer", flow: "agent", standard: true, description: null, name: "Reviewer" },
+      { id: "ops.reviewer", flow: "agent", standard: true, description: null, name: "Reviewer" },
     ],
   };
   return { useWorkforce: () => workforce };
@@ -84,7 +86,15 @@ describe("the delegates panel (BR-33)", () => {
     expect(calls).toEqual(["list coordinator s1"]);
     expect(screen.getAllByTestId("cos-delegate").map((li) => li.getAttribute("data-worker"))).toEqual(["eng.em"]);
     const options = [...(screen.getByTestId("cos-delegate-pick") as HTMLSelectElement).options].map((o) => o.value);
-    expect(options).toEqual(["", "licenses"]);
+    expect(options).toEqual(["", "licenses", "eng.reviewer", "ops.reviewer"]);
+  });
+
+  it("names delegates and choices by display name, with the id only where two share a name", async () => {
+    render(<DelegatesPanel worker={cos} sessionId="s1" />);
+    await settle();
+    expect(screen.getAllByTestId("cos-delegate").map((li) => li.textContent)).toEqual(["Engineering Managerremove"]);
+    const labels = [...(screen.getByTestId("cos-delegate-pick") as HTMLSelectElement).options].map((o) => o.textContent);
+    expect(labels).toEqual(["Add from your roster…", "licenses", "Reviewer (eng.reviewer)", "Reviewer (ops.reviewer)"]);
   });
 
   it("adds one from the roster and removes one, each through the coordinator's action on this conversation", async () => {
@@ -135,11 +145,25 @@ describe("a routing record (BR-29)", () => {
   });
 });
 
-describe("a delegate's answer, under the delegate's name (BR-20)", () => {
-  it("names the delegate on a coordinator, and nobody for the coordinator's own turn or any other worker", () => {
-    expect(delegateOf(cos, { agentName: "eng.em" })).toBe("eng.em");
-    expect(delegateOf(cos, { agentName: "coordinator-judgment" })).toBeUndefined();
-    expect(delegateOf(cos, {})).toBeUndefined();
-    expect(delegateOf(toWorker({ id: "helper", kind: "agent", door: "run" })!, { agentName: "eng.em" })).toBeUndefined();
+describe("a line from another worker, under that worker's name (BR-20, FIX-1989)", () => {
+  const known = new Set(["desk.chief-of-staff", "eng.em", "helper"]);
+  const helper = toWorker({ id: "helper", kind: "agent", door: "run" })!;
+
+  it("names a delegate's answer on a coordinator, and nobody for the coordinator's own turn", () => {
+    expect(senderOf(cos, { agentName: "eng.em" }, known)).toBe("eng.em");
+    expect(senderOf(cos, { agentName: "coordinator-judgment" }, known)).toBeUndefined();
+    expect(senderOf(cos, {}, known)).toBeUndefined();
+  });
+
+  it("names a message's sender on any worker's conversation, never the worker itself or a generator", () => {
+    // A worker on the agent flow gets messages too, so its lines are labelled as well.
+    expect(senderOf(helper, { agentName: "eng.em" }, known)).toBe("eng.em");
+    expect(senderOf(helper, { agentName: "helper" }, known)).toBeUndefined();
+    expect(senderOf(helper, { agentName: "agent-answer" }, known)).toBeUndefined();
+  });
+
+  it("knows the inventory's workers and every worker a listed session runs", () => {
+    const sessions = [{ id: "s1", state: { workerId: "mine.scribe" } }, { id: "s2" }] as unknown as Parameters<typeof knownWorkers>[1];
+    expect([...knownWorkers([{ id: "eng.em" }], sessions)].sort()).toEqual(["eng.em", "mine.scribe"]);
   });
 });

@@ -45,7 +45,7 @@ One PR. FIX-1915 left Codex a parallel window beside Cursor (epic PLAN), and thi
 | V2 | Browser, scripted: a command shows before the turn completes; a stop leaves the id and the next turn continues it (BR-7, BR-8) | Hold rendering until the run returns |
 | V3 | The panel reads "Codex reports no plan" (BR-13) | Declare the plan collection on the block: the panel reads "no plan recorded for this turn" |
 | V4 | Availability: each reason in BR-15 to BR-18 shows and registers no flow; a mismatched SDK leaves the server up (BR-16) | Build the block at module scope: a planted version crashes the start |
-| V5 | A variable set on the server and left off the allowlist is not visible to a command the scripted run reports (BR-12) | Leave `client.env` unset |
+| V5 | A variable set on the server and left off the allowlist is not in the environment of a command the scripted run reports (BR-12) | Leave `client.env` unset |
 | V6 | S5: an error carrying `no rollout found for thread id` is classified as an unknown conversation; a sign-in error and a failed spawn are not (BR-3, BR-20) | Classify every error before a thread is named: the sign-in case reads refused |
 | VG | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): `goals/kitchen-sink-harness/codex-continues-its-thread/run.mts` PASSES on real Codex after FAILING under `GOAL_CONTROL=no-resume` (**c**, **s**); FIX-1914's gate legs FAIL for Codex under `GOAL_CONTROL=gate-open` | The controls are the red state |
 

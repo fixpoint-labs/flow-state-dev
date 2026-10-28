@@ -157,7 +157,8 @@ const SETTLED = new Set(["completed", "errored", "failed", "cancelled"]);
 await runGoal(async (failures) => {
   const evidence: string[] = [];
   const note = (assertion: string, why: string) => failures.push(`${CONTROL === "" ? "" : `[control ${CONTROL}] `}${assertion} — ${why}`);
-  if (LEGS.has("a") || LEGS.has("c")) pages = await buildShiftManagerPages(join(SCRATCH, "pages"));
+  // Every leg starts the script on the built pages, so build them whichever legs run.
+  pages = await buildShiftManagerPages(join(SCRATCH, "pages"));
 
   // ---- (a) the projects a person sees ------------------------------------
   if (LEGS.has("a")) {
@@ -223,6 +224,18 @@ await runGoal(async (failures) => {
       if (CONTROL === "no-checkout") assertPatched(NO_CHECKOUT, REPO_ROOT, mark);
       const user = await pageUser(started.origin);
       const http = labRoutes(started.origin, { userId: user.userId, bearer: user.bearerToken ?? "" });
+      // The coder's row, never the post: the post completes when the EM says it handed the
+      // work over, before the coder has committed.
+      const filedFor = async (conversation: string): Promise<Record<string, any> | undefined> => {
+        const coders = (tasks: Array<Record<string, any>>) => tasks.find((t) => t.assignee === "eng.coder");
+        const own = coders((await http.act("coordinator", conversation, "listTasks_tasks", {})).output?.tasks ?? []);
+        if (own !== undefined) return own;
+        for (const em of (await http.sessions()).filter((s) => s.flowId === "em" && s.parentSessionId === conversation)) {
+          const row = coders((await http.act("em", em.id, "listTasks_tasks", {})).output?.tasks ?? []);
+          if (row !== undefined) return row;
+        }
+        return undefined;
+      };
       for (const item of ITEMS) {
         const before = new Set(ours().map((w) => w.path));
         // A conversation with the chief of staff, as the page opens one, and the person's ask.
@@ -232,11 +245,11 @@ await runGoal(async (failures) => {
         const ask =
           `On ${item.title} (the shared project "${item.id}"), have the coder create the file ${item.file} ` +
           `containing exactly the line "${item.stamp}", and commit it on its branch. Nothing else.`;
-        const turn = await http.act("coordinator", sessionId, "run", { message: ask });
+        const turn = await http.act("coordinator", sessionId, "respond", { message: ask });
         if (turn.error !== undefined) note(`b:${item.id}:asked`, `the chief of staff's turn failed: ${turn.error}`);
         let task: Record<string, any> | undefined;
         for (const until = Date.now() + ITEM_BUDGET_MS; Date.now() < until; await new Promise((r) => setTimeout(r, 2_000))) {
-          task = ((await http.act("coordinator", sessionId, "listTasks_tasks", {})).output?.tasks ?? [])[0];
+          task = await filedFor(sessionId);
           if (task !== undefined && SETTLED.has(task.status)) break;
         }
         const said = JSON.stringify(task ?? null);
@@ -244,7 +257,10 @@ await runGoal(async (failures) => {
         found.push({ task, places: ours().filter((w) => !before.has(w.path)) });
         if (CONTROL === "no-checkout") {
           // The control's own evidence: refused by name, and nothing fetched.
-          if (!said.includes("remote-not-allowed")) note(`b:${item.id}:refused-by-name`, `under the control the task is ${said.slice(0, 400)}`);
+          // A board's row says it errored, not why: the why is its run's recorded answer.
+          const run = task?.run?.sessionId === undefined ? [] : await http.requests(String(task.run.sessionId));
+          const why = `${said} ${JSON.stringify(run)}`;
+          if (!why.includes("remote-not-allowed")) note(`b:${item.id}:refused-by-name`, `under the control the task is ${why.slice(0, 600)}`);
           const clones = join(runs, ".clones");
           if (existsSync(clones) && readdirSync(clones).length > 0) note(`b:${item.id}:nothing-cloned`, `${clones} holds ${readdirSync(clones).join(", ")}`);
         }

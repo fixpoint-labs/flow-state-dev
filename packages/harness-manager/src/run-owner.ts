@@ -94,10 +94,9 @@ export function foreignRunMessage(taskId: string, owner: RunOwner): string {
  *
  * Typed by what it READS rather than as a whole `BlockContext`, so any caller
  * can pass its own narrower context without a cast. The casts were not free:
- * `as BlockContext` on a handler whose resources are typed fails to compile,
- * and the escape hatch that fixes it (`as unknown as`) would silently accept a
- * context that has no identity at all — on the one derivation where a missing
- * identity means two principals sharing a checkout.
+ * an `as unknown as` escape hatch would silently accept a context that has no
+ * identity at all — on the one derivation where a missing identity means two
+ * principals sharing a checkout.
  */
 export interface RequestIdentityContext {
   user?: { identity?: unknown } | undefined;

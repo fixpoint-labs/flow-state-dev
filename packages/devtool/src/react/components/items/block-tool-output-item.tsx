@@ -28,19 +28,19 @@ export function ToolOutputItemView({ item }: { item: ToolOutputItem }) {
         onClick={toggle}
       >
         {expanded
-          ? <ChevronDown className="h-3 w-3 shrink-0 text-slate-500" />
-          : <ChevronRight className="h-3 w-3 shrink-0 text-slate-500" />
+          ? <ChevronDown className="h-3 w-3 shrink-0 text-fs-ink3" />
+          : <ChevronRight className="h-3 w-3 shrink-0 text-fs-ink3" />
         }
         {isFailed
-          ? <AlertTriangle className="h-3 w-3 shrink-0 text-red-400" />
-          : <Braces className="h-3 w-3 shrink-0 text-purple-400" />
+          ? <AlertTriangle className="h-3 w-3 shrink-0 text-fs-red" />
+          : <Braces className="h-3 w-3 shrink-0 text-fs-ink3" />
         }
-        <span className={`font-mono ${isFailed ? "text-red-300" : "text-purple-300"}`}>{item.toolCall.name}</span>
+        <span className={`font-fs-mono font-medium ${isFailed ? "text-fs-red" : "text-fs-ink"}`}>{item.toolCall.name}</span>
         {isFailed
-          ? <span className="text-red-400/70 font-mono truncate">
+          ? <span className="text-fs-red font-fs-mono truncate">
               failed{failedSummary ? ` · ${failedSummary}` : ""}
             </span>
-          : <span className="text-slate-500 font-mono truncate">({truncatedArgs})</span>
+          : <span className="text-fs-ink4 font-fs-mono truncate">({truncatedArgs})</span>
         }
         {item.cached === true && (
           // FIX-610: cache-hit badge. Hovering surfaces the age and
@@ -48,7 +48,7 @@ export function ToolOutputItemView({ item }: { item: ToolOutputItem }) {
           // run) the originating taskId so reviewers can trace the
           // reuse without expanding the row.
           <span
-            className="px-1 rounded text-[10px] uppercase font-mono text-emerald-300 bg-emerald-900/40 shrink-0"
+            className="px-1 border border-fs-green text-[9.5px] uppercase tracking-[.08em] font-fs-mono text-fs-green shrink-0"
             title={renderCachedTitle(item.cacheAgeMs, item.sourceTask)}
           >
             cached
@@ -56,35 +56,35 @@ export function ToolOutputItemView({ item }: { item: ToolOutputItem }) {
         )}
         {item.sourceTask !== undefined && (
           <span
-            className="text-[10px] font-mono text-slate-400 truncate"
+            className="text-[10.5px] font-fs-mono text-fs-ink4 truncate"
             title={`Inherited from task ${item.sourceTask.taskId}`}
           >
             ← {item.sourceTask.taskId}
           </span>
         )}
-        {isInProgress && <Loader2 className="h-3 w-3 animate-spin text-amber-400 shrink-0" />}
+        {isInProgress && <Loader2 className="h-3 w-3 animate-spin text-fs-blue shrink-0" />}
       </button>
 
       {expanded && (
         <div className="ml-7 mt-1.5 space-y-2">
           {isFailed && item.error && (
             <div>
-              <span className="text-[10px] uppercase text-red-400 font-medium">Error</span>
-              <div className="mt-0.5 text-xs text-red-300/90 bg-red-950/30 rounded px-2 py-1.5 font-mono">
+              <span className="font-fs-mono text-[10px] font-medium uppercase tracking-[.14em] text-fs-red">Error</span>
+              <div className="mt-0.5 text-xs text-fs-red bg-fs-card border border-fs-red px-2 py-1.5 font-fs-mono">
                 {item.error.message}
                 {item.error.code && (
-                  <span className="text-red-400/60 ml-2">[{item.error.code}]</span>
+                  <span className="text-fs-ink4 ml-2">[{item.error.code}]</span>
                 )}
               </div>
             </div>
           )}
           <div>
-            <span className="text-[10px] uppercase text-slate-500 font-medium">Arguments</span>
+            <span className="font-fs-mono text-[10px] font-medium uppercase tracking-[.14em] text-fs-ink3">Arguments</span>
             <JsonViewer data={safeParseJson(item.toolCall.arguments)} className="mt-0.5" />
           </div>
           {!isInProgress && !isFailed && item.output !== undefined && (
             <div>
-              <span className="text-[10px] uppercase text-slate-500 font-medium">Output</span>
+              <span className="font-fs-mono text-[10px] font-medium uppercase tracking-[.14em] text-fs-ink3">Output</span>
               <JsonViewer data={item.output} className="mt-0.5" />
             </div>
           )}

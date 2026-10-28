@@ -3,11 +3,11 @@
  *
  * The panel used to expose a single top-level "Resume" button gated on
  * `latestRequest.status === "interrupted"`, calling the JSON
- * `recoveryClient.continue()` and relying on the shared GET-stream reconnect
+ * the JSON `continue()` and relying on the shared GET-stream reconnect
  * to show progress. That's now redundant with (and a strictly narrower case
  * of) the per-row Continue action on `RequestSeparator` — which works for
  * any interrupted row (not just the latest), is source-gated, and streams
- * inline via `continueStream()`. Rather than keep two affordances for the
+ * inline via `continue({ stream: true })`. Rather than keep two affordances for the
  * same action on two different code paths, the top-level button was removed
  * outright; this test locks that decision in.
  */
@@ -34,10 +34,12 @@ const demoInstance = {
 
 const devToolState = {
   config: { userId: "u1" },
-  client: { listFlows: vi.fn().mockResolvedValue([]) },
-  sessionClient: { listSessions: vi.fn().mockResolvedValue([]) },
-  recoveryClient: { checkInterrupted: vi.fn().mockResolvedValue([]), continueStream: vi.fn() },
-  resourceClient: { getResourceManifest: vi.fn().mockResolvedValue({ flowKind: "demo", resources: [] }) },
+  client: {
+    flows: vi.fn().mockResolvedValue([]),
+    sessions: { list: vi.fn().mockResolvedValue([]) },
+    requests: { interrupted: vi.fn().mockResolvedValue([]) },
+    resources: { getResourceManifest: vi.fn().mockResolvedValue({ flowKind: "demo", resources: [] }) },
+  },
   activeFlowId: "demo",
   activeFlow: demoInstance,
   activeSessionId: "sess_1",
@@ -157,7 +159,7 @@ describe("DevToolPanel — legacy Resume button removed", () => {
 
 describe("DevToolPanel — the Inventory tab is wired into the workspace", () => {
   it("appears for a session whose manifest lists an inventory collection, reading the open session's manifest", async () => {
-    devToolState.resourceClient.getResourceManifest.mockResolvedValue({
+    devToolState.client.resources.getResourceManifest.mockResolvedValue({
       flowKind: "demo",
       resources: [
         {
@@ -175,16 +177,16 @@ describe("DevToolPanel — the Inventory tab is wired into the workspace", () =>
     });
 
     expect(await screen.findByRole("tab", { name: "Inventory" })).toBeInTheDocument();
-    expect(devToolState.resourceClient.getResourceManifest).toHaveBeenCalledWith("sess_1");
+    expect(devToolState.client.resources.getResourceManifest).toHaveBeenCalledWith("sess_1");
   });
 
   it("is absent when the manifest lists none", async () => {
-    devToolState.resourceClient.getResourceManifest.mockResolvedValue({ flowKind: "demo", resources: [] });
+    devToolState.client.resources.getResourceManifest.mockResolvedValue({ flowKind: "demo", resources: [] });
     await act(async () => {
       render(<DevToolPanel userId="u1" />);
     });
 
-    expect(devToolState.resourceClient.getResourceManifest).toHaveBeenCalledWith("sess_1");
+    expect(devToolState.client.resources.getResourceManifest).toHaveBeenCalledWith("sess_1");
     expect(screen.queryByRole("tab", { name: "Inventory" })).toBeNull();
     expect(screen.getByRole("tab", { name: "Tasks" })).toBeInTheDocument();
   });

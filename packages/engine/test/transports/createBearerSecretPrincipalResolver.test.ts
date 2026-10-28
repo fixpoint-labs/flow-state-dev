@@ -10,7 +10,7 @@ import {
 import type { PrincipalResolutionContext } from "../../src";
 
 const SECRET = "scheduler-secret-do-not-share";
-const SYSTEM_PRINCIPAL = { userId: "system" };
+const SYSTEM_PRINCIPAL = { userId: "system", orgId: DEFAULT_ORG_ID };
 
 function buildContext(headerValue?: string | null): PrincipalResolutionContext {
   const headers = new Headers();

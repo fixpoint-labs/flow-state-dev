@@ -20,7 +20,7 @@ import myFlow from "@/flows/my-flow/flow";
 
 export const flowstate = createFlowState({
   flows: { myFlow },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: inMemoryStores() } },
 });
 ```
@@ -54,9 +54,9 @@ import myFlow from "@/flows/my-flow/flow";
 export const flowstate = createFlowState({
   flows: { myFlow },
   models: {
-    default: "openai/gpt-5.4-mini",
+    default: "openai/gpt-6-luna",
     intents: {
-      chat: ["vercel/anthropic/claude-sonnet-4.6", "vercel/openai/gpt-5.5"],
+      chat: ["vercel:anthropic/claude-sonnet-5.5", "vercel:openai/gpt-6.1-sol"],
     },
   },
   voice: { provider: new OpenAIVoiceProvider({ apiKey: process.env.OPENAI_API_KEY }) },

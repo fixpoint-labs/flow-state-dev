@@ -8,8 +8,9 @@ import {
 } from "@flow-state-dev/core";
 import { z } from "zod";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import type { StateChangeItem } from "@flow-state-dev/core/items";
+import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { describe, expect, it } from "vitest";
-import { runForTest } from "@flow-state-dev/testing";
 import {
   FlowError,
   NetworkError,
@@ -27,6 +28,11 @@ import {
 import {
   NOOP_INTERNAL_EXECUTION_SEAMS
 } from "../src/execution/internal/seams";
+
+/** A bare model function as a `ModelResolver`; these tests never resolve an id. */
+function stubResolver(resolve: (modelId: string) => GeneratorModel): ModelResolver {
+  return Object.assign(resolve, { resolveId: (modelId: string) => modelId });
+}
 
 async function createRuntimeContext(requestId: string) {
   const block = handler({
@@ -59,19 +65,19 @@ async function createRuntimeContext(requestId: string) {
     requestId,
     sessionId: "sess_runtime",
     userId: "user_runtime",
-    modelResolver: (modelId) => ({
+    modelResolver: stubResolver((modelId) => ({
       modelId,
       async generate() {
         return {
           text: modelId === "mock-model" ? "generated" : "ok"
         };
       }
-    }),
+    })),
     stores,
     response
   });
 
-  return { ctx, stores };
+  return { ctx, stores, response };
 }
 
 describe("execution runtime", () => {
@@ -465,7 +471,7 @@ describe("execution runtime", () => {
       sessionId: "sess_targets",
       userId: "user_targets",
       stores,
-      modelResolver: (modelId) => ({
+      modelResolver: stubResolver((modelId) => ({
         modelId,
         async generate(options: any) {
           if (Array.isArray(options.tools) && options.tools.length > 0 && typeof options.tools[0]?.execute === "function") {
@@ -473,7 +479,7 @@ describe("execution runtime", () => {
           }
           return { text: "chat-output" };
         }
-      })
+      }))
     });
 
     const snapshots: Array<{ step: string; target?: string }> = [];
@@ -1099,7 +1105,7 @@ describe("execution runtime", () => {
           total: Number((target.state as Record<string, unknown>).total),
           status: String((target.state as Record<string, unknown>).status),
           notes: (target.state as Record<string, unknown>).notes as string[],
-          flags: (target.state as Record<string, boolean>).flags as Record<string, boolean>
+          flags: (target.state as Record<string, unknown>).flags as Record<string, boolean>
         };
       }
     });
@@ -1231,13 +1237,15 @@ describe("execution runtime", () => {
     const stores = createInMemoryStores();
     const flow = defineFlow({
       kind: "scope-state-change",
-      sessionStateSchema: z.object({
-        count: z.number().default(0),
-        total: z.number().default(0),
-        status: z.string().default("idle"),
-        notes: z.array(z.string()).default([]),
-        flags: z.record(z.boolean()).default({})
-      }),
+      session: {
+        stateSchema: z.object({
+          count: z.number().default(0),
+          total: z.number().default(0),
+          status: z.string().default("idle"),
+          notes: z.array(z.string()).default([]),
+          flags: z.record(z.boolean()).default({})
+        })
+      },
       actions: {
         run: {
           inputSchema: z.number(),
@@ -1261,12 +1269,12 @@ describe("execution runtime", () => {
       userId: "user_session_scope",
       stores,
       response,
-      modelResolver: (modelId) => ({
+      modelResolver: stubResolver((modelId) => ({
         modelId,
         async generate() {
           return { text: "ok" };
         }
-      })
+      }))
     });
 
     const session = ctx.session as unknown as {
@@ -1339,10 +1347,10 @@ describe("execution runtime", () => {
     );
     const flow = defineFlow({
       kind: "scope-state-change-multi",
-      requestStateSchema: z.object({ phase: z.string().default("idle") }),
-      sessionStateSchema: z.object({}).passthrough(),
-      userStateSchema: z.object({ role: z.string().default("guest") }),
-      orgStateSchema: z.object({ tier: z.string().default("free") }),
+      request: { stateSchema: z.object({ phase: z.string().default("idle") }) },
+      session: { stateSchema: z.object({}).passthrough() },
+      user: { stateSchema: z.object({ role: z.string().default("guest") }) },
+      org: { stateSchema: z.object({ tier: z.string().default("free") }) },
       actions: {
         run: {
           inputSchema: z.number(),
@@ -1366,12 +1374,12 @@ describe("execution runtime", () => {
       orgId: "org_scope",
       stores,
       response,
-      modelResolver: (modelId) => ({
+      modelResolver: stubResolver((modelId) => ({
         modelId,
         async generate() {
           return { text: "ok" };
         }
-      })
+      }))
     });
 
     await ctx.user.patchState({ role: "admin" });
@@ -1383,7 +1391,7 @@ describe("execution runtime", () => {
     const byScope = (scope: string) =>
       response
         .getItems()
-        .filter((item) => item.type === "state_change" && item.scope === scope);
+        .filter((item): item is StateChangeItem => item.type === "state_change" && item.scope === scope);
 
     const userItems = byScope("user");
     const requestItems = byScope("request");
@@ -1406,7 +1414,7 @@ describe("execution runtime", () => {
     const stores = createInMemoryStores();
     const flow = defineFlow({
       kind: "scope-state-change-noop",
-      sessionStateSchema: z.object({ status: z.string().default("idle") }),
+      session: { stateSchema: z.object({ status: z.string().default("idle") }) },
       actions: {
         run: {
           inputSchema: z.number(),
@@ -1431,12 +1439,12 @@ describe("execution runtime", () => {
       sessionState: { status: "idle" },
       stores,
       response,
-      modelResolver: (modelId) => ({
+      modelResolver: stubResolver((modelId) => ({
         modelId,
         async generate() {
           return { text: "ok" };
         }
-      })
+      }))
     });
 
     // schema default already sets status to "idle" — patch with the same value
@@ -1456,7 +1464,7 @@ describe("execution runtime", () => {
       const stores = createInMemoryStores();
       const flow = defineFlow({
         kind: "scope-state-change-transient",
-        sessionStateSchema: z.object({ status: z.string().default("idle") }),
+        session: { stateSchema: z.object({ status: z.string().default("idle") }) },
         actions: {
           run: {
             inputSchema: z.number(),
@@ -1480,12 +1488,12 @@ describe("execution runtime", () => {
         userId: "user_scope_prod",
         stores,
         response: prodResponse,
-        modelResolver: (modelId) => ({
+        modelResolver: stubResolver((modelId) => ({
           modelId,
           async generate() {
             return { text: "ok" };
           }
-        })
+        }))
       });
       await (prodCtx.session as unknown as { patchState: (u: Record<string, unknown>) => Promise<boolean> }).patchState({ status: "running" });
       const prodItems = prodResponse
@@ -1505,12 +1513,12 @@ describe("execution runtime", () => {
         userId: "user_scope_persist",
         stores,
         response: persistedResponse,
-        modelResolver: (modelId) => ({
+        modelResolver: stubResolver((modelId) => ({
           modelId,
           async generate() {
             return { text: "ok" };
           }
-        })
+        }))
       });
       await (persistedCtx.session as unknown as { patchState: (u: Record<string, unknown>) => Promise<boolean> }).patchState({ status: "running" });
       const persistedItems = persistedResponse
@@ -1565,12 +1573,12 @@ describe("execution runtime", () => {
         userId: "user_transient_prod",
         stores,
         response,
-        modelResolver: (modelId) => ({
+        modelResolver: stubResolver((modelId) => ({
           modelId,
           async generate() {
             return { text: "ok" };
           }
-        })
+        }))
       });
 
       const prodResult = await executeBlock({ block: seq, input: 1, ctx });
@@ -1591,12 +1599,12 @@ describe("execution runtime", () => {
         userId: "user_transient_persist",
         stores,
         response: persistedResponse,
-        modelResolver: (modelId) => ({
+        modelResolver: stubResolver((modelId) => ({
           modelId,
           async generate() {
             return { text: "ok" };
           }
-        })
+        }))
       });
 
       const persistedResult = await executeBlock({ block: seq, input: 2, ctx: persistedCtx });
@@ -1682,12 +1690,12 @@ describe("execution runtime", () => {
         userId: "user_noop_persisted",
         stores,
         response,
-        modelResolver: (modelId) => ({
+        modelResolver: stubResolver((modelId) => ({
           modelId,
           async generate() {
             return { text: "ok" };
           }
-        })
+        }))
       });
 
       const result = await executeBlock({ block: seq, input: 1, ctx });
@@ -1901,7 +1909,7 @@ describe("execution runtime", () => {
       sessionId: "sess_seq_tool",
       userId: "user_seq_tool",
       stores,
-      modelResolver: (modelId) => ({
+      modelResolver: stubResolver((modelId) => ({
         modelId,
         async generate(options: any) {
           if (Array.isArray(options.tools) && options.tools.length > 0 && typeof options.tools[0]?.execute === "function") {
@@ -1909,7 +1917,7 @@ describe("execution runtime", () => {
           }
           return { text: "ok" };
         }
-      })
+      }))
     });
 
     const toolObservations: string[] = [];
@@ -1996,7 +2004,7 @@ describe("execution runtime", () => {
 
     expect(result.error).toBeUndefined();
 
-    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const items = (ctx.response as { getItems: () => readonly any[] }).getItems();
     const container = items.find((item) => item.type === "container");
     expect(container).toBeDefined();
     expect(container).toMatchObject({
@@ -2009,7 +2017,7 @@ describe("execution runtime", () => {
   });
 
   it("emits container lifecycle: in_progress on entry, completed on exit (FIX-574)", async () => {
-    const { ctx } = await createRuntimeContext("req_container_lifecycle");
+    const { ctx, response } = await createRuntimeContext("req_container_lifecycle");
 
     const leaf = handler({
       name: "lifecycle-leaf",
@@ -2026,7 +2034,7 @@ describe("execution runtime", () => {
 
     await executeBlock({ block: flowSeq, input: 1, ctx });
 
-    const events = (ctx.response as { getEvents: () => Array<any> }).getEvents();
+    const events: any[] = response.getEvents();
     const containerEvents = events.filter(
       (e: any) =>
         (e.type === "item.added" && e.item?.type === "container") ||
@@ -2056,7 +2064,7 @@ describe("execution runtime", () => {
     expect(done.item.status).toBe("completed");
 
     // The settled snapshot in itemsById reflects the patched state.
-    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const items = (ctx.response as { getItems: () => readonly any[] }).getItems();
     const container = items.find((item: any) => item.type === "container");
     expect(container.status).toBe("completed");
     expect(container.completedAt).toBeTypeOf("number");
@@ -2064,7 +2072,7 @@ describe("execution runtime", () => {
   });
 
   it("emits container lifecycle with failed status when sequencer throws (FIX-574)", async () => {
-    const { ctx } = await createRuntimeContext("req_container_failure");
+    const { ctx, response } = await createRuntimeContext("req_container_failure");
 
     const failing = handler({
       name: "failing-leaf",
@@ -2084,7 +2092,7 @@ describe("execution runtime", () => {
     const result = await executeBlock({ block: failSeq, input: 1, ctx });
     expect(result.error).toBeDefined();
 
-    const events = (ctx.response as { getEvents: () => Array<any> }).getEvents();
+    const events: any[] = response.getEvents();
     const addedEvent = events.find(
       (e: any) => e.type === "item.added" && e.item?.type === "container"
     );
@@ -2129,7 +2137,7 @@ describe("execution runtime", () => {
 
     await executeBlock({ block: containerSeq, input: 5, ctx });
 
-    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const items = (ctx.response as { getItems: () => readonly any[] }).getItems();
 
     // ContainerItem itself should not have ownedBy (no parent container).
     const containerItem = items.find((item: any) => item.type === "container");
@@ -2173,7 +2181,7 @@ describe("execution runtime", () => {
 
     await executeBlock({ block: outerSeq, input: 1, ctx });
 
-    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const items = (ctx.response as { getItems: () => readonly any[] }).getItems();
 
     const outerContainer = items.find(
       (item: any) => item.type === "container" && item.component === "outer"
@@ -2217,7 +2225,7 @@ describe("execution runtime", () => {
 
     await executeBlock({ block: plainSeq, input: 3, ctx });
 
-    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const items = (ctx.response as { getItems: () => readonly any[] }).getItems();
     const messageItem = items.find((item: any) => item.type === "message");
     expect(messageItem).toBeDefined();
     expect(messageItem.ownedBy).toBeUndefined();
@@ -2554,26 +2562,13 @@ describe("transient block output", () => {
       actions: {
         run: {
           inputSchema: z.object({ value: z.string() }),
+          // A sequencer takes no `execute`: the two blocks run as its steps.
           block: sequencer({
             name: "mixed-sequencer",
-            inputSchema: z.object({ value: z.string() }),
-            outputSchema: z.object({ value: z.string() }),
-            execute: async (input, ctx) => {
-              await ctx._withExecutionScope!(
-                { name: "transient-step", kind: "handler", instanceId: "t1" },
-                async (scopedCtx) => {
-                  return runForTest(transientBlock, input, scopedCtx);
-                }
-              );
-              const result = await ctx._withExecutionScope!(
-                { name: "durable-step", kind: "handler", instanceId: "d1" },
-                async (scopedCtx) => {
-                  return runForTest(durableBlock, "hello", scopedCtx);
-                }
-              );
-              return result;
-            }
+            inputSchema: z.object({ value: z.string() })
           })
+            .step(transientBlock)
+            .step(durableBlock)
         }
       }
     })();
@@ -2604,6 +2599,7 @@ describe("transient block output", () => {
 
     // The sequencer's own block output is durable (sequencer is not transient)
     expect(storedBlockOutputNames).toContain("mixed-sequencer");
+    expect(storedBlockOutputNames).toContain("durable-step");
   });
 
   it("transient block: emit.message produces persisted message; block_trace is canonical retained", async () => {
@@ -3271,12 +3267,12 @@ describe("rescue boundary in nested sequencer", () => {
       userId: "user_test",
       stores,
       runtimeConfig: {
-        modelResolver: (id) => ({
+        modelResolver: stubResolver((id) => ({
           modelId: id,
           async generate() {
             return { text: "mock" };
           }
-        })
+        }))
       }
     });
 
@@ -3313,7 +3309,7 @@ describe("emit.status single-slot semantics (FIX-387)", () => {
 
     await executeBlock({ block, input: 1, ctx });
 
-    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const items = (ctx.response as { getItems: () => readonly any[] }).getItems();
     const statusItems = items.filter((item: any) => item.type === "status");
     expect(statusItems.length).toBe(1);
     expect(statusItems[0].message).toBe("working");
@@ -3335,7 +3331,7 @@ describe("emit.status single-slot semantics (FIX-387)", () => {
 
     await executeBlock({ block, input: 1, ctx });
 
-    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const items = (ctx.response as { getItems: () => readonly any[] }).getItems();
     const statusItems = items.filter((item: any) => item.type === "status");
     expect(statusItems.length).toBe(3);
     // Every emitted item carries the slot message, not undefined.
@@ -3363,7 +3359,7 @@ describe("emit.status single-slot semantics (FIX-387)", () => {
 
     await executeBlock({ block, input: 1, ctx });
 
-    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const items = (ctx.response as { getItems: () => readonly any[] }).getItems();
     const statusItems = items.filter((item: any) => item.type === "status");
     expect(statusItems.map((s: any) => s.message)).toEqual(["analyzing", "", ""]);
     expect(statusItems[2].blocked).toBe(true);
@@ -3383,7 +3379,7 @@ describe("activeStatusMessage declarative config (FIX-387)", () => {
 
     await executeBlock({ block, input: 1, ctx });
 
-    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const items = (ctx.response as { getItems: () => readonly any[] }).getItems();
     const statusItems = items.filter((item: any) => item.type === "status");
     expect(statusItems.length).toBe(1);
     expect(statusItems[0].message).toBe("Crunching numbers...");
@@ -3401,7 +3397,7 @@ describe("activeStatusMessage declarative config (FIX-387)", () => {
 
     await executeBlock({ block, input: { count: 7 }, ctx });
 
-    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const items = (ctx.response as { getItems: () => readonly any[] }).getItems();
     const statusItems = items.filter((item: any) => item.type === "status");
     expect(statusItems.length).toBe(1);
     expect(statusItems[0].message).toBe("Analyzing 7 items...");
@@ -3432,7 +3428,7 @@ describe("activeStatusMessage declarative config (FIX-387)", () => {
 
     await executeBlock({ block: chain, input: 0, ctx });
 
-    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const items = (ctx.response as { getItems: () => readonly any[] }).getItems();
     const statusMessages = items
       .filter((item: any) => item.type === "status")
       .map((item: any) => item.message);
@@ -3488,7 +3484,7 @@ describe("generator/tool status-slot restore (FIX-600)", () => {
       sessionId: "sess_tool_status_restore",
       userId: "user_tool_status_restore",
       stores,
-      modelResolver: (modelId) => ({
+      modelResolver: stubResolver((modelId) => ({
         modelId,
         async generate(options: any) {
           if (Array.isArray(options.tools) && options.tools.length > 0) {
@@ -3496,13 +3492,13 @@ describe("generator/tool status-slot restore (FIX-600)", () => {
           }
           return { text: "ok" };
         }
-      }),
+      })),
       response: createResponseEmitter({ requestId: "req_tool_status_restore", now: () => 1 })
     });
 
     await executeBlock({ block: chat, input: { text: "weather?" }, ctx });
 
-    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const items = (ctx.response as { getItems: () => readonly any[] }).getItems();
     const statusMessages = items
       .filter((item: any) => item.type === "status")
       .map((item: any) => item.message);
@@ -3568,7 +3564,7 @@ describe("generator/tool status-slot restore (FIX-600)", () => {
       sessionId: "sess_parallel_tools",
       userId: "user_parallel_tools",
       stores,
-      modelResolver: (modelId) => ({
+      modelResolver: stubResolver((modelId) => ({
         modelId,
         async generate(options: any) {
           // Kick off both tool executes without awaiting individually;
@@ -3579,13 +3575,13 @@ describe("generator/tool status-slot restore (FIX-600)", () => {
           ]);
           return { text: "ok" };
         }
-      }),
+      })),
       response: createResponseEmitter({ requestId: "req_parallel_tools", now: () => 1 })
     });
 
     await executeBlock({ block: chat, input: { text: "go" }, ctx });
 
-    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const items = (ctx.response as { getItems: () => readonly any[] }).getItems();
     const statusMessages = items
       .filter((item: any) => item.type === "status")
       .map((item: any) => item.message);
@@ -3647,19 +3643,19 @@ describe("generator/tool status-slot restore (FIX-600)", () => {
       sessionId: "sess_silent_tool",
       userId: "user_silent_tool",
       stores,
-      modelResolver: (modelId) => ({
+      modelResolver: stubResolver((modelId) => ({
         modelId,
         async generate(options: any) {
           await options.tools[0].execute({ q: "weather" }, { toolCallId: "tc_1" });
           return { text: "ok" };
         }
-      }),
+      })),
       response: createResponseEmitter({ requestId: "req_silent_tool", now: () => 1 })
     });
 
     await executeBlock({ block: chat, input: { text: "search?" }, ctx });
 
-    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const items = (ctx.response as { getItems: () => readonly any[] }).getItems();
     const statusMessages = items
       .filter((item: any) => item.type === "status")
       .map((item: any) => item.message);

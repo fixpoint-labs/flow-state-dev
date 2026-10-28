@@ -1,0 +1,76 @@
+<svg viewBox="0 0 940 430" role="img" aria-label="What changes. Today, on the left: a session has one board, and every row on it is handed to another session, a step the worker files for itself included; whether the drain waits is decided by the kind of assignee, and a goal-seek loop does not check its board. After, on the right: a session has two boards. Its plan board, mode plan and the default, holds its own steps, worked inline by its own request, and the drain waits on every row. Its delegation board, mode delegation, holds tasks for delegates, handed to their sessions, and the drain never waits. Below a fence, five boards are refused when built: a delegation board with an inline row, a delegation board with no dispatcher, a plan board with a dispatched row until FIX-2082 lifts it, a goal-seek loop over a delegation board, and a goal-seek loop over a board with onReview exit."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .old   { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .plan  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .dele  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.6; }
+    .fence { stroke:var(--gone); stroke-width:2; stroke-dasharray:8 5; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-x   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .c-gone { fill:var(--gone); }
+    .c-code { fill:var(--code); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="430"/>
+
+  <g id="today">
+    <rect class="panel" x="16" y="14" width="300" height="286" rx="6"/>
+    <text class="t-lbl" x="32" y="36">TODAY · ONE BOARD PER SESSION</text>
+    <rect class="old" x="32" y="52" width="268" height="232" rx="5"/>
+    <text class="t-h c-gone" x="48" y="76">The session's board</text>
+    <text class="t-b" x="48" y="102">Every row goes to another session,</text>
+    <text class="t-b" x="48" y="120">a step for itself included</text>
+    <text class="t-s" x="48" y="146">the task parks until its pieces report</text>
+    <text class="t-b" x="48" y="178">Waiting is decided by the assignee:</text>
+    <text class="t-s" x="48" y="196">a dispatcher row is skipped by the drain</text>
+    <text class="t-b" x="48" y="228">goalSeekLoop never checks the board</text>
+    <text class="t-s" x="48" y="246">its judge can rule while rows still run</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="332" y="14" width="592" height="286" rx="6"/>
+    <text class="t-lbl" x="348" y="36">AFTER · TWO BOARDS PER SESSION, TOLD APART BY MODE</text>
+    <rect class="plan" x="348" y="52" width="280" height="232" rx="5"/>
+    <text class="t-lbl" x="364" y="72">mode: "plan" · THE DEFAULT</text>
+    <text class="t-h c-code" x="364" y="94">Plan board</text>
+    <text class="t-b" x="364" y="120">Its own steps</text>
+    <text class="t-s" x="364" y="138">worked inline by its own request</text>
+    <text class="t-b" x="364" y="170">The drain waits on every row</text>
+    <text class="t-s" x="364" y="188">each step sees the one before</text>
+    <text class="t-b" x="364" y="220">Patterns and goal-seek loops</text>
+    <text class="t-s" x="364" y="238">already this; never the open task</text>
+    <rect class="dele" x="628" y="52" width="280" height="232" rx="5"/>
+    <text class="t-lbl" x="644" y="72">mode: "delegation"</text>
+    <text class="t-h c-acc" x="644" y="94">Delegation board</text>
+    <text class="t-b" x="644" y="120">Tasks for delegates</text>
+    <text class="t-s" x="644" y="138">handed to their sessions</text>
+    <text class="t-b" x="644" y="170">The drain never waits</text>
+    <text class="t-s" x="644" y="188">an ending reaches the filer</text>
+    <text class="t-b" x="644" y="220">Today's conversation board</text>
+    <text class="t-s" x="644" y="238">now declared, behaviour unchanged</text>
+  </g>
+
+  <g id="fence">
+    <line class="fence" x1="16" y1="318" x2="924" y2="318"/>
+    <text class="t-lbl" x="32" y="342">REFUSED WHEN BUILT</text>
+    <text class="t-x" x="32" y="366">× a delegation board with an inline row</text>
+    <text class="t-x" x="32" y="388">× a delegation board with no dispatcher</text>
+    <text class="t-x" x="348" y="366">× a plan board with a dispatched row,</text>
+    <text class="t-x" x="348" y="388">   until FIX-2082 lifts it</text>
+    <text class="t-x" x="644" y="366">× goalSeekLoop over a delegation board</text>
+    <text class="t-x" x="644" y="388">× goalSeekLoop over onReview: &quot;exit&quot;</text>
+    <text class="t-s" x="32" y="414">Each refusal names the setting and the change to make.</text>
+  </g>
+</svg>

@@ -1,0 +1,37 @@
+{
+  "name": "@flow-state-dev/teammates",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Private lab: a Grok Bot-style app on the workforce package. A list of workers on the left, each with one long conversation; workers message each other where you can see it. Built from config, React UI and small flows only.",
+  "main": "./cli/index.ts",
+  "exports": {
+    ".": "./cli/index.ts"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "node ../../scripts/typecheck.mjs",
+    "test": "vitest run --root .",
+    "inventory": "node scripts/inventory.mjs",
+    "inventory:write": "node scripts/inventory.mjs --write",
+    "inventory:control": "node scripts/inventory.mjs --control"
+  },
+  "devDependencies": {
+    "@flow-state-dev/design-system": "workspace:*",
+    "@tailwindcss/vite": "^4.2.0",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.0",
+    "clsx": "^2.1.1",
+    "happy-dom": "^20.8.3",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "tailwind-merge": "^3.5.0",
+    "tailwindcss": "^4.1.12",
+    "vite": "^7.1.3",
+    "vitest": "^3.2.4"
+  }
+}

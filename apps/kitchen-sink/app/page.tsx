@@ -11,6 +11,7 @@ import Link from "next/link";
 
 import { modeAvailability, type ModeAvailability } from "@/lib/harness-gate";
 import { MODES, type KitchenSinkMode } from "@/lib/modes";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,10 @@ export default async function PickerPage() {
   return (
     <main className="min-h-[100dvh] bg-background px-4 py-10 sm:px-6">
       <div className="mx-auto max-w-3xl">
-        <h1 className="text-2xl font-semibold">Kitchen Sink</h1>
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-2xl font-semibold">Kitchen Sink</h1>
+          <ThemeToggle />
+        </div>
         <p className="mt-1 text-sm text-muted-foreground">Pick a mode.</p>
         <ul className="mt-6 grid gap-3 sm:grid-cols-2" data-testid="mode-picker">
           {MODES.map((mode) => (
@@ -47,7 +51,7 @@ function ModeCard({ mode, availability }: { mode: KitchenSinkMode; availability:
         <span
           className={
             availability.available
-              ? "rounded bg-emerald-500/15 px-1.5 py-0.5 text-xs text-emerald-700 dark:text-emerald-400"
+              ? "rounded bg-success/15 px-1.5 py-0.5 text-xs text-success"
               : "rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
           }
         >
@@ -58,6 +62,11 @@ function ModeCard({ mode, availability }: { mode: KitchenSinkMode; availability:
       {!availability.available && (
         <span className="mt-2 block break-words text-sm" data-testid="mode-reason">
           {availability.reason}
+        </span>
+      )}
+      {availability.available && availability.note !== undefined && (
+        <span className="mt-2 block break-words text-sm" data-testid="mode-note">
+          {availability.note}
         </span>
       )}
     </>

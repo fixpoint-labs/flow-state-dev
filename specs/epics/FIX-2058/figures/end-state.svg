@@ -1,0 +1,76 @@
+<svg viewBox="0 0 940 448" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="What's in the box. In the box, one way to stop for a person: waitForUser with a kind, approval, review or input, and a deadline only where the call or the host sets one; a task held on questions, asked at filing or midway, each answer a steer, the last picking the work up from its brief; the task's person mark and one list of holds on its row, a suspension or questions, shown by getTask and listTasks; a stop that ends once, answered, deadline or cancelled; one Inbox listing every stop; durable execution by default on file-backed hosts. Composed in by the app: what a block does at its deadline, which kind it asks, and the Inbox screen. Replaced in one line: parkOnQuestion and answerTask become the hold and a steer; awaitReview and unparkAndDrain become waitForUser review; the harness question inbox and answerQuestion become the hold and a steer into the same coding session. Not built, below a fence: telling the filer by message, FIX-2070; the renames, FIX-2071; replay across a deploy; serverless hosts without durability; an Inbox redesign; a hold released by an event, and ctx.waitForEvent.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .held  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .comp  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1; }
+    .repl  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1; }
+    .fence { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:6 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-non { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="448"/>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="24" width="560" height="276" rx="5"/>
+    <text class="t-lbl" x="32" y="44">IN THE BOX &#8212; ONE WAY TO STOP FOR A PERSON</text>
+    <rect class="held" x="32" y="56" width="256" height="104" rx="4"/>
+    <text class="t-b" x="44" y="78">waitForUser</text>
+    <text class="t-s" x="44" y="96">kind &#183; approval, review, input</text>
+    <text class="t-s" x="44" y="112">deadline &#183; none unless set</text>
+    <text class="t-s" x="44" y="128">resumes once &#183; answered, deadline,</text>
+    <text class="t-s" x="44" y="144">or cancelled &#183; same attempt</text>
+    <rect class="held" x="300" y="56" width="260" height="104" rx="4"/>
+    <text class="t-b" x="312" y="78">held on questions</text>
+    <text class="t-s" x="312" y="96">asked at filing, or midway</text>
+    <text class="t-s" x="312" y="112">each answer, a steer, joins the brief</text>
+    <text class="t-s" x="312" y="128">the last picks up from the brief</text>
+    <text class="t-s" x="312" y="144">its dependents wait too</text>
+    <rect class="held" x="32" y="172" width="528" height="52" rx="4"/>
+    <text class="t-b" x="44" y="194">a suspended task holds its claim, marked waiting on a person</text>
+    <text class="t-s" x="44" y="212">the row lists its holds, a stop or its questions &#183; getTask and listTasks show them</text>
+    <rect class="held" x="32" y="236" width="528" height="52" rx="4"/>
+    <text class="t-b" x="44" y="258">one Inbox lists every stop &#183; durable by default</text>
+    <text class="t-s" x="44" y="276">answered there, or by the filer's steer &#183; dev, local and self-hosted</text>
+  </g>
+
+  <g id="composed-in">
+    <rect class="comp" x="592" y="24" width="332" height="116" rx="5"/>
+    <text class="t-lbl" x="608" y="44">COMPOSED IN BY THE APP</text>
+    <text class="t-b" x="608" y="66">what a block does at its deadline</text>
+    <text class="t-s" x="608" y="86">go ahead, end, or check in again</text>
+    <text class="t-s" x="608" y="102">which kind it asks, and when</text>
+    <text class="t-s" x="608" y="118">its Inbox screen</text>
+  </g>
+
+  <g id="replaced">
+    <rect class="repl" x="592" y="152" width="332" height="148" rx="5"/>
+    <text class="t-lbl" x="608" y="172">REPLACED IN ONE LINE</text>
+    <text class="t-s" x="608" y="192">parkOnQuestion &#8594; the hold</text>
+    <text class="t-s" x="608" y="208">answerTask &#8594; a steer, or the Inbox</text>
+    <text class="t-s" x="608" y="224">awaitReview &#8594; waitForUser review</text>
+    <text class="t-s" x="608" y="240">unparkAndDrain &#8594; a resume</text>
+    <text class="t-s" x="608" y="256">harness inbox, answerQuestion()</text>
+    <text class="t-s" x="608" y="272">&#8594; the hold, and a steer</text>
+    <text class="t-s" x="608" y="288">two lists of reasons &#8594; one predicate</text>
+  </g>
+
+  <g id="not-built">
+    <rect class="fence" x="16" y="320" width="908" height="112" rx="5"/>
+    <text class="t-non" x="32" y="340">NOT BUILT HERE &#8212; NOT DOING</text>
+    <text class="t-s" x="32" y="362">telling the filer by a message to its receive &#183; FIX-2070 &#183; the renames &#183; FIX-2071</text>
+    <text class="t-s" x="32" y="380">replaying a request suspended across a deploy &#183; deferred, a known risk</text>
+    <text class="t-s" x="32" y="398">serverless hosts without durable execution &#183; an Inbox redesign beyond listing every stop</text>
+    <text class="t-s" x="32" y="416">a hold released by an event &#183; ctx.waitForEvent &#183; the hold stores its releasers, nothing builds one</text>
+  </g>
+</svg>

@@ -1,0 +1,78 @@
+<svg viewBox="0 0 940 380" role="img" aria-label="Four hosts, today and after. Today: fsdev dev with no config refuses a stop for a person; fsdev run with no config refuses it and writes to its own files; an app config or a self-hosted server holds it only if it sets durable true; a host with durability off fails with a generic error. After: fsdev dev holds the stop, its router's sweeper fires deadlines, and the DevTool answers it; fsdev run holds it in the same SQLite file under the same local user and says to answer it in fsdev dev; an app or self-hosted server on persisting stores holds it with nothing to write; durable false or in-memory stores refuse at the stop, naming the rule and the setting."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .head  { fill:var(--surface-2); }
+    .today { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .after { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-host{ fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; font-weight:600; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; font-weight:600; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .gone  { fill:var(--gone); }
+    .ok    { fill:var(--code); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="380"/>
+
+  <g id="header">
+    <rect class="head" x="16" y="14" width="908" height="30" rx="5"/>
+    <text class="t-lbl" x="32" y="33">A HOST</text>
+    <text class="t-lbl" x="236" y="33">TODAY · A STOP FOR A PERSON</text>
+    <text class="t-lbl" x="586" y="33">AFTER</text>
+  </g>
+
+  <g id="dev">
+    <text class="t-host" x="32" y="78">fsdev dev</text>
+    <text class="t-s" x="32" y="95">no config</text>
+    <rect class="today" x="224" y="56" width="340" height="56" rx="5"/>
+    <text class="t-b gone" x="238" y="78">Refused</text>
+    <text class="t-s" x="238" y="96">no durability provider on its router</text>
+    <rect class="after" x="576" y="56" width="348" height="56" rx="5"/>
+    <text class="t-b ok" x="590" y="78">Held · answered in the DevTool</text>
+    <text class="t-s" x="590" y="96">its router's sweeper fires the deadline</text>
+  </g>
+
+  <g id="run">
+    <text class="t-host" x="32" y="148">fsdev run</text>
+    <text class="t-s" x="32" y="165">no config · one-shot</text>
+    <rect class="today" x="224" y="126" width="340" height="56" rx="5"/>
+    <text class="t-b gone" x="238" y="148">Refused · its own files</text>
+    <text class="t-s" x="238" y="166">a separate store fsdev dev never reads</text>
+    <rect class="after" x="576" y="126" width="348" height="56" rx="5"/>
+    <text class="t-b ok" x="590" y="148">Held in .fsdev/data/fsdev.db, same user · D1</text>
+    <text class="t-s" x="590" y="166">ends saying: answer it in fsdev dev</text>
+  </g>
+
+  <g id="app">
+    <text class="t-host" x="32" y="218">an app config</text>
+    <text class="t-s" x="32" y="235">fsdev dev --app · a server</text>
+    <rect class="today" x="224" y="196" width="340" height="56" rx="5"/>
+    <text class="t-b gone" x="238" y="218">Held only with durable: true</text>
+    <text class="t-s" x="238" y="236">refused when the app says nothing</text>
+    <rect class="after" x="576" y="196" width="348" height="56" rx="5"/>
+    <text class="t-b ok" x="590" y="218">Held · nothing to write · D2</text>
+    <text class="t-s" x="590" y="236">the router sweeps · fsdev run leaves it to it · D3</text>
+  </g>
+
+  <g id="off">
+    <text class="t-host" x="32" y="288">durable: false</text>
+    <text class="t-s" x="32" y="305">in-memory stores · no provider</text>
+    <rect class="today" x="224" y="266" width="340" height="56" rx="5"/>
+    <text class="t-b gone" x="238" y="288">A generic error</text>
+    <text class="t-s" x="238" y="306">"configure one in your server options"</text>
+    <rect class="after" x="576" y="266" width="348" height="56" rx="5"/>
+    <text class="t-b ok" x="590" y="288">Refused at the stop</text>
+    <text class="t-s" x="590" y="306">the error names the rule and the setting</text>
+  </g>
+
+  <g id="foot">
+    <text class="t-s" x="32" y="356">In-memory stores refuse a stop unless durable: true is set, which is how tests opt in.</text>
+  </g>
+</svg>

@@ -32,6 +32,10 @@ docs/internal/design-memos/*
 .tmp/*
 # Turborepo
 .turbo
+
+# Next.js regenerates this on every `next dev` / `next build` / `next typegen`, and
+# dev and build write different imports; Next's docs say to ignore it.
+next-env.d.ts
 graphify-out/*
 
 # Transient goal-check harness copies (goals/lib/driver.mts writes these into an
@@ -44,4 +48,5 @@ graphify-out/*
 .pi/fabric
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).
-/graft/
+graft/
+.omp/

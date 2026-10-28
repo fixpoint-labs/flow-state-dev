@@ -1,0 +1,118 @@
+<svg viewBox="0 0 940 300" role="img" aria-label="Who owns what. Four rules, ER-1 to ER-4, across seven children and the closure FIX-2249. Every child owns each rule for its own rows: a renamed name is gone with no alias, renames come from one committed codemod, the rows go into RETIRED in the same PR, and no behaviour changes. The closure checks all four on one main commit. FIX-2070’s closure, FIX-2242, adds its removed message names to RETIRED."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="300"/>
+  <text class="t-lbl" x="32" y="34">RULE</text>
+  <text class="t-lbl" x="230" y="34">FIX-2243</text>
+  <text class="t-lbl" x="316" y="34">FIX-2244</text>
+  <text class="t-lbl" x="402" y="34">FIX-2245</text>
+  <text class="t-lbl" x="488" y="34">FIX-2246</text>
+  <text class="t-lbl" x="574" y="34">FIX-2248</text>
+  <text class="t-lbl" x="660" y="34">FIX-2183</text>
+  <text class="t-lbl" x="746" y="34">FIX-2151</text>
+  <text class="t-lbl" x="832" y="34">FIX-2249</text>
+  <line class="row" x1="16" y1="46" x2="924" y2="46"/>
+  <text class="t-b" x="32" y="72">ER-1 · gone, no alias</text>
+  <rect class="chosen" x="224" y="56" width="76" height="26" rx="4"/>
+  <text class="t-s" x="230" y="73">owns</text>
+  <rect class="chosen" x="310" y="56" width="76" height="26" rx="4"/>
+  <text class="t-s" x="316" y="73">owns</text>
+  <rect class="chosen" x="396" y="56" width="76" height="26" rx="4"/>
+  <text class="t-s" x="402" y="73">owns</text>
+  <rect class="chosen" x="482" y="56" width="76" height="26" rx="4"/>
+  <text class="t-s" x="488" y="73">owns</text>
+  <rect class="chosen" x="568" y="56" width="76" height="26" rx="4"/>
+  <text class="t-s" x="574" y="73">owns</text>
+  <rect class="chosen" x="654" y="56" width="76" height="26" rx="4"/>
+  <text class="t-s" x="660" y="73">owns</text>
+  <rect class="chosen" x="740" y="56" width="76" height="26" rx="4"/>
+  <text class="t-s" x="746" y="73">owns</text>
+  <rect class="decide" x="826" y="56" width="76" height="26" rx="4"/>
+  <text class="t-s" x="832" y="73">checks</text>
+  <line class="row" x1="16" y1="98" x2="924" y2="98"/>
+  <text class="t-b" x="32" y="124">ER-2 · one codemod</text>
+  <rect class="chosen" x="224" y="108" width="76" height="26" rx="4"/>
+  <text class="t-s" x="230" y="125">owns</text>
+  <rect class="chosen" x="310" y="108" width="76" height="26" rx="4"/>
+  <text class="t-s" x="316" y="125">owns</text>
+  <rect class="chosen" x="396" y="108" width="76" height="26" rx="4"/>
+  <text class="t-s" x="402" y="125">owns</text>
+  <rect class="chosen" x="482" y="108" width="76" height="26" rx="4"/>
+  <text class="t-s" x="488" y="125">owns</text>
+  <rect class="chosen" x="568" y="108" width="76" height="26" rx="4"/>
+  <text class="t-s" x="574" y="125">owns</text>
+  <rect class="chosen" x="654" y="108" width="76" height="26" rx="4"/>
+  <text class="t-s" x="660" y="125">owns</text>
+  <rect class="chosen" x="740" y="108" width="76" height="26" rx="4"/>
+  <text class="t-s" x="746" y="125">owns</text>
+  <rect class="decide" x="826" y="108" width="76" height="26" rx="4"/>
+  <text class="t-s" x="832" y="125">checks</text>
+  <line class="row" x1="16" y1="150" x2="924" y2="150"/>
+  <text class="t-b" x="32" y="176">ER-3 · RETIRED grows</text>
+  <rect class="chosen" x="224" y="160" width="76" height="26" rx="4"/>
+  <text class="t-s" x="230" y="177">owns</text>
+  <rect class="chosen" x="310" y="160" width="76" height="26" rx="4"/>
+  <text class="t-s" x="316" y="177">owns</text>
+  <rect class="chosen" x="396" y="160" width="76" height="26" rx="4"/>
+  <text class="t-s" x="402" y="177">owns</text>
+  <rect class="chosen" x="482" y="160" width="76" height="26" rx="4"/>
+  <text class="t-s" x="488" y="177">owns</text>
+  <rect class="chosen" x="568" y="160" width="76" height="26" rx="4"/>
+  <text class="t-s" x="574" y="177">owns</text>
+  <rect class="chosen" x="654" y="160" width="76" height="26" rx="4"/>
+  <text class="t-s" x="660" y="177">owns</text>
+  <rect class="chosen" x="740" y="160" width="76" height="26" rx="4"/>
+  <text class="t-s" x="746" y="177">owns</text>
+  <rect class="decide" x="826" y="160" width="76" height="26" rx="4"/>
+  <text class="t-s" x="832" y="177">checks</text>
+  <line class="row" x1="16" y1="202" x2="924" y2="202"/>
+  <text class="t-b" x="32" y="228">ER-4 · no behaviour change</text>
+  <rect class="chosen" x="224" y="212" width="76" height="26" rx="4"/>
+  <text class="t-s" x="230" y="229">owns</text>
+  <rect class="chosen" x="310" y="212" width="76" height="26" rx="4"/>
+  <text class="t-s" x="316" y="229">owns</text>
+  <rect class="chosen" x="396" y="212" width="76" height="26" rx="4"/>
+  <text class="t-s" x="402" y="229">owns</text>
+  <rect class="chosen" x="482" y="212" width="76" height="26" rx="4"/>
+  <text class="t-s" x="488" y="229">owns</text>
+  <rect class="chosen" x="568" y="212" width="76" height="26" rx="4"/>
+  <text class="t-s" x="574" y="229">owns</text>
+  <rect class="chosen" x="654" y="212" width="76" height="26" rx="4"/>
+  <text class="t-s" x="660" y="229">owns</text>
+  <rect class="chosen" x="740" y="212" width="76" height="26" rx="4"/>
+  <text class="t-s" x="746" y="229">owns</text>
+  <rect class="decide" x="826" y="212" width="76" height="26" rx="4"/>
+  <text class="t-s" x="832" y="229">checks</text>
+  <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  <text class="t-s" x="32" y="280">Each child owns every rule for its own rows. The closure checks all four on one main commit. FIX-2070’s closure adds its names to RETIRED.</text>
+</svg>

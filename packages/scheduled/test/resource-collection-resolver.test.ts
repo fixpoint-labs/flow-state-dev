@@ -6,6 +6,7 @@ import {
   defaultParseScheduleId
 } from "../src";
 import type { ScheduleResolutionContext } from "@flow-state-dev/core/types";
+import { resolveUserStorageKey } from "@flow-state-dev/engine";
 
 // Handler blocks keyed by the persisted `kind` discriminator. A serialized
 // schedule row can't carry a block, so it stores `kind` and the resolver maps
@@ -32,8 +33,11 @@ function buildCtx(
 ): ScheduleResolutionContext {
   return {
     flowKind: "reminders",
-    gatewayPrincipal: { userId: "system" },
+    gatewayPrincipal: { userId: "system", orgId: "org_sys" },
     request: new Request("https://example.com/dispatch"),
+    // The engine's derivation, as the dispatch endpoint hands it in.
+    userStorageKey: (userId, orgId) =>
+      resolveUserStorageKey(userId, orgId, { id: "reminders", isolateUserState: false }),
     stores: {
       resourceState: {
         async get(scopeType, scopeId, resourceKey) {

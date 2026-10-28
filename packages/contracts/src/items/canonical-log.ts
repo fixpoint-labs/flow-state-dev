@@ -23,7 +23,7 @@
  * so server-side history assembly and client-side `useSession` reconstruction
  * collapse from the same truth.
  */
-import type { OutputItem } from "./types";
+import type { RuntimeItem } from "./internal";
 import { parseBlockInstanceId } from "../block-instance-id";
 
 /**
@@ -40,7 +40,7 @@ function logicalIdOf(blockInstanceId: string | undefined): string | undefined {
 
 /** The leaf logical id a `suspension` item resolves to, preferring its own
  * carried `blockInstanceId` (the suspending leaf) over runtime provenance. */
-function suspensionLogicalId(item: OutputItem): string | undefined {
+function suspensionLogicalId(item: RuntimeItem): string | undefined {
   const carried = (item as { blockInstanceId?: string }).blockInstanceId;
   return logicalIdOf(carried ?? item.provenance?.blockInstanceId);
 }
@@ -92,7 +92,7 @@ function suspensionLogicalId(item: OutputItem): string | undefined {
  * suspended is returned unchanged (no resolved suspensions, no duplicate
  * traces).
  */
-export function collapseToCanonicalLog<T extends OutputItem>(items: readonly T[]): T[] {
+export function collapseToCanonicalLog<T extends RuntimeItem>(items: readonly T[]): T[] {
   // Rule 1: logical path -> highest itemIndex of a RESOLVED suspension on it.
   const resumedSuspensionIds = new Set<string>();
   for (const item of items) {
@@ -114,15 +114,13 @@ export function collapseToCanonicalLog<T extends OutputItem>(items: readonly T[]
     }
   }
 
-  // Rule 2: logical path -> the id of its canonical block_trace. `block_trace`
-  // is an internal (RuntimeItem) type absent from the public `OutputItem`
-  // union, so compare the widened string to avoid narrowing the branch away.
+  // Rule 2: logical path -> the id of its canonical block_trace.
   // `traceCount` tracks how many traces each logical path has, so Rule 3 can
   // tell a re-run (>1) from a single run.
   const canonicalTrace = new Map<string, { id: string; itemIndex: number; completed: boolean }>();
   const traceCount = new Map<string, number>();
   for (const item of items) {
-    if ((item.type as string) !== "block_trace") continue;
+    if (item.type !== "block_trace") continue;
     const logicalId = logicalIdOf(item.provenance?.blockInstanceId);
     if (logicalId === undefined) continue;
     traceCount.set(logicalId, (traceCount.get(logicalId) ?? 0) + 1);
@@ -207,7 +205,7 @@ export function collapseToCanonicalLog<T extends OutputItem>(items: readonly T[]
   }
 
   return items.filter((item) => {
-    if ((item.type as string) === "block_trace") {
+    if (item.type === "block_trace") {
       const logicalId = logicalIdOf(item.provenance?.blockInstanceId);
       if (logicalId === undefined) return true;
       const canonical = canonicalTrace.get(logicalId);
@@ -230,7 +228,7 @@ export function collapseToCanonicalLog<T extends OutputItem>(items: readonly T[]
     // substrate a LATER resume cycle reconstructs from, so they must survive
     // collapse like the audit pair. They are never client/history-visible, so
     // retaining them cannot leak into a `GET`/`useSession` view.
-    if ((item.type as string) === "generator_step") return true;
+    if (item.type === "generator_step") return true;
     const logicalId = logicalIdOf(item.provenance?.blockInstanceId);
     if (logicalId === undefined) return true;
     const boundary = supersededBefore.get(logicalId);

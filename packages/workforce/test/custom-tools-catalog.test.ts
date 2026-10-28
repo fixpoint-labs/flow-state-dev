@@ -50,8 +50,8 @@ async function runWorker(worker: FlowInstance, toolName: string) {
     orgId: "test-org",
     org: { state: {} },
     sessionId: "test-session",
-    sequencerName: worker.actions.run!.block.name,
-    declaredResources: worker.actions.run!.block.declaredResources,
+    sequencerName: worker.actions.respond!.block.name,
+    declaredResources: worker.actions.respond!.block.declaredResources,
     generators: {
       "agent-answer": mockGenerator({
         name: "agent-answer",
@@ -60,7 +60,7 @@ async function runWorker(worker: FlowInstance, toolName: string) {
     },
   });
   return executeBlock({
-    block: worker.actions.run!.block,
+    block: worker.actions.respond!.block,
     input: { message: "use your tools" },
     ctx: runtime.ctx,
   });
@@ -155,7 +155,7 @@ describe("a catalog tool's declared stores are installed on the worker flow", ()
     // The static half: the action block the flow walks now carries the
     // declaration. Before the registration this was `undefined` — the tool was
     // advertised to the model with nothing behind it.
-    expect(worker!.actions.run!.block.declaredResources?.auditLog).toBe(auditLog);
+    expect(worker!.actions.respond!.block.declaredResources?.auditLog).toBe(auditLog);
 
     // The runtime half, which is the one that matters: the tool ran and its
     // store answered. The turn reporting success proves nothing on its own —
@@ -182,7 +182,7 @@ describe("a catalog tool's declared stores are installed on the worker flow", ()
       { [AGENT_FLOW]: flow }
     );
 
-    expect(worker!.actions.run!.block.declaredResources?.auditLog).toBe(auditLog);
+    expect(worker!.actions.respond!.block.declaredResources?.auditLog).toBe(auditLog);
     const result = await runWorker(worker!, "write-audit");
     expect(result.error).toBeUndefined();
     expect(seen.outcome).toBe("handle worked");
@@ -310,12 +310,12 @@ describe("a block renamed with .as() to its catalog key", () => {
       orgId: "test-org",
       org: { state: {} },
       sessionId: "test-session",
-      sequencerName: worker!.actions.run!.block.name,
-      declaredResources: worker!.actions.run!.block.declaredResources,
+      sequencerName: worker!.actions.respond!.block.name,
+      declaredResources: worker!.actions.respond!.block.declaredResources,
       modelResolver: resolver,
     });
     const result = await executeBlock({
-      block: worker!.actions.run!.block,
+      block: worker!.actions.respond!.block,
       input: { message: "hire night-desk" },
       ctx: runtime.ctx,
     });

@@ -187,68 +187,63 @@ The `stateId`s and team id the lifecycles use are inlined in `issue-lifecycle` �
 
 Development task skills live in `.agents/skills/` — the harness-neutral home, since Claude is our main harness but not our only one. `.claude/skills` is a symlink to it so Claude Code's skill discovery keeps working; don't put files under `.claude/skills` directly. Use these when performing common development tasks:
 
-> **Workflow scripts** live alongside them in `.agents/workflows/` (with `.claude/workflows` symlinked the same way). They hold the parts of a lifecycle that are pure mechanism — budgets, caps, dedupe, DAG derivation — as deterministic control flow rather than prose a coordinator re-derives each wake. Two exist today: `epic-wake` (one epic-lifecycle wake) and `issue-multi-pr` (one step of a multi-PR DAG). Both are covered by `node .agents/workflows/verify.mjs`, which runs them with stubbed hooks and spawns no agents — **run it after editing either script.** A workflow script can't prompt, wait, subscribe, or read the filesystem, so gates and state stay with the calling skill; see `docs/contributing/orchestration.md` → "The pieces at a glance".
+> **Workflow scripts** live in `.agents/workflows/` (`.claude/workflows` is symlinked the same way): `epic-wake` and `issue-multi-pr`, the pure-mechanism half of the lifecycles. **Run `node .agents/workflows/verify.mjs` after editing either script.** Their contract is [`orchestration.md`](docs/contributing/orchestration.md) → "The pieces at a glance".
 
 ### Workflow skills
 
+| Skill | Purpose |
+| --- | --- |
+| `issue-spec` | Research and write implementation specs for Linear issues |
+| `issue-implement` | Implement a Linear issue from its spec document |
+| `adhoc-quick-fix` | Log a Linear issue and ship it — fix it now, or the work is already done |
+| `diagnose` | Hard-bug loop (reproduce → hypothesise → fix). Calls `debug-flow` for flow traces |
+| `debug-flow` | `fsdev run` toolkit (`diagnose` calls it): NDJSON traces, `fsdev block`, failure-pattern table |
+| `statechart` | Mermaid statechart from a TLA+ model of Task status, holds, notice records, or the assemble phase. Scratch dir; no runtime change |
+| `fsd-coding` | Drive coding through one FSD flow (`fsdev run` + a host-selected Codex, Cursor, or Claude harness). Local / Grok-box only in v1 |
+| `linear-triage` | Review and prioritize Linear issues |
+| `plan-day` | Identify unblocked tasks and generate a daily work plan |
+| `distill-lessons` | Measure the loop (cycle-ledger) and encode the recurring class — architecture / lint / test before a soft rule. Skill evals in `eval.md` |
+| `audit-coherence` | Sweep the codebase or a change for incoherence; the coherence lens of `review`. Whole-repo debt audits land here too |
+| `review` | The one definition of review (flaws in the work): coherence, restraint, reuse, correctness, completeness, optional depth, as parallel lenses |
+| `reuse-review` | Each Adds item of a spec, epic or change against existing pieces: reuse X, extend X, or genuinely new |
+| `analysis` | Whether this is the right work (seven objectives), on a drafted spec before the gate and at epic wrap |
+| `adhd` | Parallel divergent ideation under cognitive frames, to generate alternative shapes; 8 sub-agent calls, a decision-point instrument. Adapted from the MIT-licensed [UditAkhourii/adhd](https://github.com/UditAkhourii/adhd) |
+| `polish-docs` | Corpus-level docs editing pass; standalone, and as a draft PR at epic wrap |
+| `concept-doc` | Plain-language doc on how one part of the framework works or should work, checked by a cold read |
+| `issue-lifecycle` | Drive ONE issue end-to-end, stopping before merge; a **bug skips the spec** |
+| `epic-lifecycle` | Drive ONE epic: epic-spec, objective gate, child issue lifecycles in parallel worktrees, wrap. Parallel issue work always runs under an epic |
+| `epic-em` | Run an epic as engineering manager: you own engineering calls. A delta over `epic-lifecycle` that **moves no gate** |
+| `epic-pm` | Run an epic as product manager: shape the outcome and cut scope before each gate. A delta over `epic-lifecycle` + `epic-em` that **moves no gate** |
+| `spec-poc` | Experimental POC inside its owning retained spec, to validate direction before the gate |
+| `settle-claim` | Settle ONE disputed factual claim with a throwaway POC when a review loops on it; returns CONFIRMED / REFUTED / INCONCLUSIVE |
+| `cross-spec-review` | Review an epic's set of approved specs against each other for coherence before any is built. Read-only |
+| `agent-mailbox` | Talk to agents this session can't dispatch (Grok, Cursor, Codex, another Claude) over the `fixpoint-labs/agent-mailbox` board |
+| `project-spec` | The standing artifact for one Linear project, on a never-merged PR. **No lifecycle and no gate**; refreshed only on epic-level transitions. Written by `project-agent` |
+| `watch-pr` | Local substitute for cloud-only `subscribe_pr_activity`: a `Monitor` poll loop over PR comments, reviews and CI |
 
-| Skill                     | Purpose                                                    |
-| ------------------------- | ---------------------------------------------------------- |
-| `issue-spec`              | Research and write implementation specs for Linear issues  |
-| `issue-implement`         | Implement a Linear issue from its spec document            |
-| `adhoc-quick-fix`         | Log a bug to Linear and fix it immediately                 |
-| `adhoc-commit-as-new-issue` | Create a Linear issue for work already done, commit and PR |
-| `debug-flow`              | Debug flow execution via CLI traces and NDJSON logs        |
-| `fsd-coding`              | Outer agent drives coding through one FSD flow (`fsdev run` + host-selected Codex, Cursor, or Claude harness). Local / Grok-box only in v1 |
-| `linear-triage`           | Review and prioritize Linear issues                        |
-| `plan-day`                | Identify unblocked tasks and generate a daily work plan    |
-| `distill-lessons`         | Self-improvement engine: measure the loop (auto-derived cycle-ledger) and push the smallest upstream fix for a recurring rework class |
-| `audit-coherence`         | Sweep the codebase (or a change) for incoherence (conflicting patterns, philosophy drift, gaps); the coherence lens of `review` |
-| `review`                  | The single definition of how we review — composes coherence + restraint + correctness + completeness (+ optional depth, + triggered alternatives) as parallel sub-agent lenses over a change or codebase slice; run standalone and by `issue-implement` |
-| `adhd`                    | Parallel divergent ideation — fan out isolated sub-agents under cognitive frames (incl. four FSD ones: subtract-then-add, user-space only, wrong block kind, the trace), score, prune traps, deepen the survivors into concrete alternative approaches. Generates the candidate set; every other review skill judges candidates you already hold. Two entries: `issue-spec` (Step 3.5's *third move* stall, Step 4's design question) and `review`'s **alternatives** lens (triggered, notes only). 8 sub-agent calls (5 diverge + 3 deepen) — a decision-point instrument, not a default step. Adapted from the MIT-licensed [UditAkhourii/adhd](https://github.com/UditAkhourii/adhd) |
-| `polish-docs`             | The docs editor — a corpus-level editorial pass that consolidates, streamlines, simplifies, and re-arranges docs for readability and navigation (unafraid to rewrite/move); run standalone on a section or the whole site, and auto-dispatched at epic wrap as a draft docs-cleanup PR |
-| `concept-doc`             | Write a plain-language doc on how one part of the framework works or should work, held to the worked example in the skill folder and checked by a cold read; its gap table feeds specs |
-| `issue-lifecycle`         | Thin event-driven orchestrator that drives ONE issue end-to-end (spec → approval gate → implement → PR feedback → stop before merge); a **bug skips the spec** and enters at implementation, with its PR as the review surface; every phase runs in a fresh bounded sub-agent so token cost stays small |
-| `epic-lifecycle`          | Drive ONE epic (a set of related issues under a shared objective) end-to-end: epic-spec → objective gate → each sub-issue's `issue-lifecycle` in parallel, each in its own git worktree/branch → epic wrap (lessons + docs polish). Holds only a compact status table. Parallel issue work always runs under an epic |
-| `epic-em`                 | Run an epic with an **engineering-manager posture** — you own the engineering decisions, the user is the product manager who owns the business ones. A delta over `epic-lifecycle` that **moves no gate**; the skill is canonical for what it changes |
-| `epic-pm`                 | Run an epic with a **product-manager posture** — you own the product calls the objective already answers, the user is the senior PM who owns the business ones. A delta over `epic-lifecycle` + `epic-em` that **moves no gate**: it adds the shaping half (what outcome, proved how, whether to build it at all) and a restraint pass that cuts scope before each gate |
-| `spec-poc`                | Build an experimental POC inside its owning retained issue/epic spec to validate a premise, shape or end-state; after merge, use a follow-up PR from `main`. Retained evidence stays outside production/default discovery. Canonical: [`orchestration.md`](docs/contributing/orchestration.md#spec-branch-pocs-learn-before-implementing) |
-| `settle-claim`            | Settle ONE disputed factual claim ("does X actually work that way?") with a quick throwaway POC — a goal-shaped check run on the real path — returning CONFIRMED / REFUTED / INCONCLUSIVE with evidence. Fires when a review **loops** on the same behavioral claim (asserted and counter-asserted twice), not on a single assertion; non-blocking, costs no review rounds, opens a PR only if it found something worth a human's eyes |
-| `cross-spec-review`       | Review an epic's SET of specs against each other for mutual coherence (scope overlap, conflicting decisions, colliding surface) before any is built; the coherence lens at spec-set altitude; gated on the user approving each spec first. Read-only — reports conflicts to the coordinator |
-| `agent-mailbox`           | Talk to agents this session can't dispatch — Grok, Cursor, Codex, a Claude in another repo — over the `fixpoint-labs/agent-mailbox` board, where one open PR is an inbox handle and its conversation comments are messages. Attach with push access, list the open handles to find the ones addressed to your work, subscribe so their comments arrive as live push events. Checked at epic setup and on request |
-| `project-spec`           | The standing artifact for one **Linear project** — one altitude above the epic-spec. Four documents (the outcome · the calls that bind more than one epic · the rules every epic obeys, with owners · the arc against time) on a **never-merged PR that stays open for the life of the project**, mirrored to the Linear project's own content. **No lifecycle and no gate**: it is maintained by whichever `epic-lifecycle` is running, and stays true in between because its status is *derived from Linear* rather than accumulated — so a skipped refresh costs nothing. Refreshed on **epic-level transitions only** (an epic is created, approved, or wraps), never on issue churn. Written by `project-agent` |
-| `watch-pr`                | Local substitute for `subscribe_pr_activity` (cloud-only): arms a `Monitor` poll loop that streams new PR comments, reviews (incl. approvals), and CI conclusions into the session — waking only on real events. Use when working against a PR locally, or as a local epic/issue lifecycle's webhook stand-in |
-
-Issue/epic spec content is canonical in the repository, with Linear status and links.
-The approval-to-merge handoff and post-merge amendments follow
-[`orchestration.md`](docs/contributing/orchestration.md#merging-and-amending-a-spec);
-the project-spec exception above is unchanged.
-
-> **How the orchestration fits together** — epic and issue lifecycles, roles, gates, feature/bug routes, spec-review convergence and the twelve-round PR-feedback cap — is defined in [`docs/contributing/orchestration.md`](docs/contributing/orchestration.md). Skills reference it rather than restating it. [`pr-reviewer-guidance.md`](docs/contributing/pr-reviewer-guidance.md) defines the PR layout and reviewer contracts. **A retained issue/epic spec is a directory, not a file**: five required documents, conditional evolution, and owned artifacts, shaped by the [issue](docs/contributing/spec-template.md) and [epic](docs/contributing/epic-spec-template.md) templates. [`spec-figures.md`](docs/contributing/spec-figures.md) defines figures; [`writing-for-humans.md`](docs/contributing/writing-for-humans.md) defines the fold and word budgets; [`asking-for-decisions.md`](docs/contributing/asking-for-decisions.md) defines what every gate, fork and blocker asks.
+> **How the orchestration fits together** — epic and issue lifecycles, roles, gates, feature/bug routes, spec-review convergence, the twelve-round PR-feedback cap, and spec retention, merge and amendment — is defined in [`docs/contributing/orchestration.md`](docs/contributing/orchestration.md). Skills reference it rather than restating it. Issue/epic spec content is canonical in the repository; Linear carries status and links. [`pr-reviewer-guidance.md`](docs/contributing/pr-reviewer-guidance.md) defines the PR layout and reviewer contracts. **A retained issue/epic spec is a directory, not a file**: `SPEC.md` (direction, what changes, what's already here and the debt) and `DECISIONS.md`, plus owned artifacts — no build plan, since the implementer plans against the code — shaped by the [issue](docs/contributing/spec-template.md) and [epic](docs/contributing/epic-spec-template.md) templates. [`spec-figures.md`](docs/contributing/spec-figures.md) defines figures; [`writing-for-humans.md`](docs/contributing/writing-for-humans.md) defines the fold and word budgets; [`asking-for-decisions.md`](docs/contributing/asking-for-decisions.md) defines what every gate, fork and blocker asks.
 
 
 ### Development skills
-
 
 | Skill               | Purpose                                                                        |
 | ------------------- | ------------------------------------------------------------------------------ |
 | `create-block`      | Create a new block (handler, generator, utility, router) with tests            |
 | `create-pattern`    | Create a multi-block composable pattern with tests and docs                    |
 | `add-flow`          | Create a new flow definition with actions, scopes, resources, and capabilities |
-| `write-block-tests` | Write or update vitest tests for blocks and patterns                           |
+| `tdd`               | Red-green-refactor loop. Conventions live in `write-block-tests`               |
+| `write-block-tests` | Conventions reference for block/pattern vitest tests. The red-green loop is `tdd` |
 | `add-store-adapter` | Create a new persistence store adapter package                                 |
 | `add-docs-page`     | Add a page to the Docusaurus documentation site                                |
 
 
+## Automated PR review is Codex
+
+Never dispatch a Claude agent as a stand-in for a bot review. Make sure Codex has reviewed a PR once (if not, comment `@codex review` naming what you're unsure of); don't re-request after every push, only for a real concern, and name it. Canonical: [`orchestration.md`](docs/contributing/orchestration.md) → "Codex is the automated reviewer".
+
 ## Asking for sign-off
 
-**You are the engineer. The user is the product owner** — they set the objectives and track the process as a whole. They have technical knowledge, but that is a trap, not a licence: every paragraph they spend re-deriving a call you already made is attention not spent on the thing only they are tracking. Dropping them into the engineer's chair is occasionally necessary and should be **rare**; when it is, say out loud that it's happening.
-
-**Translate every ask into the decision they are actually making** — priced in customers, promises, timing, and reversibility, not in files and symbols. Six parts, hardest ask first, batched under one `Need your sign-off` heading: **the fork as a plain-language heading** ("fix it, or document it as best-effort?") · **plain terms** (could they explain it back to a customer?) · **the trade-off** · **my recommendation, always** · **what would change my mind** · **what being wrong costs**.
-
-**Don't ask when you shouldn't:** the call is the implementer's, the answer is derivable from the spec or a decision they already made, or it's a coin flip with near-zero cost either way — decide it and note it in a line. Under-asking hides a call that shapes the product; over-asking trains them to skim.
-
-**Read [`docs/contributing/asking-for-decisions.md`](docs/contributing/asking-for-decisions.md) (BP-041) before putting any fork, gate, or sign-off to the user** — it is canonical for what each part means and carries the worked example. It governs conversation, a spec's `DECISIONS.md`, a PR's *What's asked of you*, a gate, and an escalated blocker alike.
+**You are the engineer; the user is the product owner.** Translate every ask into the business decision they are making, in six parts, batched under one `Need your sign-off` heading, hardest first: the fork as a plain-language heading · plain terms · the trade-off · my recommendation, always · what would change my mind · what being wrong costs. Don't ask what is the implementer's call, derivable, or near-free either way: decide it and note it in a line. **Read [`docs/contributing/asking-for-decisions.md`](docs/contributing/asking-for-decisions.md) (BP-041) before putting any fork, gate, or sign-off to the user.**
 
 ## Capabilities
 
@@ -312,7 +307,7 @@ When writing blog posts, landing copy, or any prose for `apps/docs`, use this vo
 - **No internal issue or PR numbers.** Anything under `apps/docs/` is published documentation. Refer to features by what they are, not by their tracking ID. `FIX-421`, `PR #182`, Linear ticket links — none of these belong in user-facing prose. They go in commits, the `.changeset/*.md` fragments, and internal artifacts under `docs/internal/`.
 - **Warm, not cold.** Reference docs can stay dry, but overviews, guides, and intros should read like a teammate walking you through it. A short framing sentence, an honest "why you'd reach for this," small acknowledgments of the reader's likely context. Engineer-direct still means human.
 - **Sidebar labels never repeat the category name.** A `Memory` category should not contain a page literally labeled `Memory`. Use `sidebar_label: Overview` (or `Getting started`, etc.) in the page's frontmatter so the sidebar reads `Memory > Overview`, not `Memory > Memory`. Same rule for every category.
-- **Use `openai/gpt-5.4-mini` in code examples** when a small/fast model is appropriate. Don't use legacy names like `gpt-4o-mini`, `gpt-4o`, `gpt-3.5-turbo`, etc. — they read as out of date.
+- **Use `openai/gpt-6-luna` in code examples** when a small/fast model is appropriate. Don't use legacy names like `gpt-5.4-mini`, `gpt-4o-mini`, `gpt-4o`, `gpt-3.5-turbo`, etc. — they read as out of date.
 
 The philosophy blog post (`apps/docs/blog/2026-03-06-philosophy.md`) is the reference example for this voice.
 
@@ -346,7 +341,7 @@ Best practices have two altitudes. Full text lives in `docs/contributing/best-pr
 - **BP-030** Tolerate the old shape when you change a persisted/in-flight field — dual-read legacy records; reject removed keys loudly; `== null`-guard new nullable fields.
 - **BP-031** Never make auth/routing decisions from caller-controllable input — derive them from a trusted source (server-set identity, verified token, the framework's transport `source`), not `body`/`metadata`/query/headers.
 - **BP-034** Finish move/rename refactors — update provenance (headers, diagrams, doc anchors) and subpath re-exports, not just imports.
-- **BP-035** Walk the second-path checklist before declaring a change done — legacy / null-boundary / concurrent-409 / cancel-error / multi-tenant / cost-observability / React-derived-state paths; test the off/new state of any new flag.
+- **BP-035** Walk the second-path checklist before declaring a change done — legacy / null-boundary / concurrent-409 / cancel-error / multi-tenant / cost-observability / React-derived-state / event-read-off-state paths; test the off/new state of any new flag.
 
 **Situational — open the category file when working in that area:**
 

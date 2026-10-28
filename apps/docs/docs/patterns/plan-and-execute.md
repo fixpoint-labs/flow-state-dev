@@ -4,7 +4,7 @@ sidebar_position: 6
 
 # Plan and Execute
 
-Plan and Execute is a two-phase agentic architecture. In the planning phase, an LLM decomposes the goal into a dependency-ordered task graph. In the execution phase, it works through tasks one at a time — respecting dependencies, handling failures with cascade-skipping, and optionally replanning remaining tasks after each step.
+Plan and Execute is a two-phase agentic architecture. In the planning phase, an LLM decomposes the goal into a dependency-ordered task graph. In the execution phase, it works through tasks one at a time — respecting dependencies, skipping the tasks that depend on a failure, and optionally replanning remaining tasks after each step.
 
 Use it when:
 - Tasks depend on each other's results (A must complete before B starts)
@@ -19,7 +19,6 @@ If tasks are independent and can run in parallel, use [Parallel Tasks](./paralle
 goal
   → captureAndPlan          (store goal, run planner, seed taskBoard collection)
   → board.drain             (drain — workers process tasks until idle)   ←┐ loopBack target
-  → cascadeSkipDependents   (cancel pendings whose deps errored)            │
   → evaluator               (decide: continue | replan | complete)         │
   → [replanner]             (only when replan + no inline tasks)            │
   → [applyReplan]           (add new tasks to the collection)               │
@@ -85,7 +84,7 @@ Task status in the pattern's output:
 
 Internally tasks are full substrate `Task` records — every transition emits a `task-change` component item on the stream so renderers see live state without polling. The `<TaskPlan />` renderer subscribes to `task-change` per task and `task-board-meta` for board-level progress; both items are emitted by the pattern out of the box.
 
-When a task errors, `cascadeSkipDependents` runs after the drain and cancels any pending task whose deps include the failed one (transitively). This prevents the evaluator from looping indefinitely on permanently blocked tasks.
+When a task errors, the task collection cancels every pending task whose deps include the failed one (transitively), so the evaluator never loops on tasks that can no longer run. A replanned task that depends on a task that has already failed is skipped the same way, along with any replanned task that depends on it, and the rest of the replan runs. A plan or a replan whose `deps` name a task that isn't on the board, or loop back on themselves, is refused when it is added, and the run fails.
 
 These statuses are intentionally different from Supervisor's quality-gate statuses (`needs-revision`, `escalated`) — they model a different lifecycle. Don't conflate them.
 
@@ -221,7 +220,7 @@ planAndExecute({
   outputSchema?: ZodSchema;
 
   // Model ID for default planner, executor, replanner, and synthesizer.
-  // Default: "openai/gpt-5.4-mini"
+  // Default: "openai/gpt-6-luna"
   model?: string;
 
   // Context slot applied to all default blocks.
@@ -294,8 +293,6 @@ import {
   createBuildPlanOutput,        // just the substrate→plan-output translation
   normalizeOutputStatus,        // substrate status → output status helper
 } from "@flow-state-dev/patterns";
-
-import { createCascadeSkipDependents } from "@flow-state-dev/orchestration/task-board";
 ```
 
 Use these when you want the core task-tracking machinery but with custom orchestration around it.
@@ -373,7 +370,7 @@ import { z } from "zod";
 
 const customSynthesizer = generator({
   name: "report-writer",
-  model: "openai/gpt-5.5",
+  model: "openai/gpt-6.1-sol",
   outputSchema: z.object({
     executiveSummary: z.string(),
     sections: z.array(z.object({ title: z.string(), content: z.string() })),

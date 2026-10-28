@@ -32,10 +32,11 @@
  *   answer for {@link SLOW_MS} on a `[slow:<worker>]` mark.
  *
  * Every grade is read back as Alice: the conversation's items (records and
- * lines) through the router, and its session record (its delegates, its
- * fallback and its delivery ledger) from the engine's session store, from the
- * row Alice owns. The session route sends a client only the state a flow
- * exposes, and the coordinator exposes none of those fields. The engine's
+ * lines) through the router, its session record (its delegates and its
+ * fallback) from the engine's session store and its board's routed tasks from the
+ * engine's resource store, from the rows Alice owns. The session route sends a
+ * client only the state a flow exposes, and the coordinator exposes none of
+ * those fields; no route sends a board's rows with their server-written payload. The engine's
  * request store is read only to wait until nothing is running.
  */
 import { randomBytes } from "node:crypto";
@@ -49,6 +50,7 @@ import * as workforce from "@flow-state-dev/workforce";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { z } from "zod";
+import { boardRowPrefix, toRoutedDeliveries } from "../../lib/routed-tasks.mts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const ORG = "goal-org";
@@ -65,7 +67,7 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 type Item = { type?: string; role?: string; component?: string; data?: any; agentName?: string; content?: unknown; text?: string; requestId?: string };
 
 const wf = workforce as unknown as Record<string, any>;
-const missing = ["defineCoordinatorFlow", "delegatedPostEntry", "createWorkerInstallation", "hireWorkforce", "workerConfigSchema"].filter(
+const missing = ["defineCoordinatorFlow", "workerTaskEntry", "createWorkerInstallation", "hireWorkforce", "workerConfigSchema"].filter(
   (name) => typeof wf[name] !== "function",
 );
 if (missing.length > 0) {
@@ -100,8 +102,9 @@ const helper = core.defineFlow({
   configSchema: wf.workerConfigSchema(),
   session: installation.session(),
   resources: { ...installation.resources },
-  actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
-  internal: { actions: { onDelegatedPost: wf.delegatedPostEntry(door) } },
+  actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
+  // A delegate is a worker whose flow takes tasks: a routed task arrives on `work` (FIX-2083).
+  task: { actions: { [wf.WORKER_TASK_ENTRY ?? "work"]: wf.workerTaskEntry({ name: "goal-helper-task", turn: door }) } },
 } as never);
 
 /**
@@ -136,7 +139,9 @@ const judgment = {
     if (handed === 0) judgmentTurns += 1;
     if (asked.includes("[judge-fail]")) throw new Error("the scripted judgment turn failed");
     if (asked.includes("[judge]") && handed < 2) {
-      return { toolCalls: [{ toolCallId: `hand-${handed}`, toolName: "handOff", args: { worker: "desk.alpha" } }], finishReason: "tool-calls" };
+      // A routed task (FIX-2083): `createTask` with the routing settings; the delegate reads the message as written.
+      const args = { goal: "Answer this message", assignee: "desk.alpha", session: "ongoing", resultTo: "conversation" };
+      return { toolCalls: [{ toolCallId: `hand-${handed}`, toolName: "createTask", args }], finishReason: "tool-calls" };
     }
     return { text: handed > 0 ? "Handed on." : "I'll take this one myself.", finishReason: "stop" };
   },
@@ -149,8 +154,8 @@ const modelResolver = Object.assign(
   { resolveId: (id: string) => id },
 );
 
-const coordinator = wf.defineCoordinatorFlow({ installation, delegateFlows: [helper], routeModel: route });
-flows = { helper, coordinator };
+const coordinator = wf.defineCoordinatorFlow({ installation, routeModel: route });
+flows = { helper: { flow: helper, roles: ["contributor"] }, coordinator };
 const copies = wf.hireWorkforce(installation) as Array<{ id: string }>;
 const state = engine.createFlowState({
   flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
@@ -175,7 +180,9 @@ const fetcher =
   };
 
 const transport = { fetcher: fetcher(ALICE) as typeof fetch };
-const people = createWorkforceClient({ userId: ALICE, ...transport });
+// The app's one client, as Alice.
+const fsd = createClient({ userId: ALICE, ...transport });
+const people = createWorkforceClient(fsd);
 
 /** GET a route as Alice. */
 async function get(path: string): Promise<any> {
@@ -200,15 +207,15 @@ async function quiet(): Promise<void> {
 /** One conversation with a coordinator, opened as an app opens one. */
 async function conversation(worker: string) {
   const session = await people.ensureWorkerSession({ worker });
-  const client = createClient({ flowKind: session.flowKind, userId: ALICE, ...transport });
+  const client = fsd.flow(session.flowKind);
   const act = async (action: string, input: unknown): Promise<{ requestId: string; status: string; error?: string }> => {
     try {
-      const sent = await client.sendAction(action, input as never, { sessionId: session.id });
+      const sent = await client.send(action, input as never, { sessionId: session.id });
       let status = "in_progress";
       for (const until = Date.now() + 30_000; Date.now() < until && ["pending", "queued", "in_progress", "running"].includes(status); await sleep(25)) {
-        status = (await client.getRequestStatus(sent.request.id)).status as string;
+        status = (await client.request(sent.id).status()).status as string;
       }
-      return { requestId: sent.request.id, status };
+      return { requestId: sent.id, status };
     } catch (error) {
       return { requestId: "", status: "refused", error: error instanceof Error ? error.message : String(error) };
     }
@@ -222,7 +229,8 @@ async function conversation(worker: string) {
       if (page.pagination?.hasMore !== true) break;
     }
     // The stored record, not the session route's projection of it.
-    const stored = await (await state.getRuntime()).stores.session.get(session.id);
+    const runtime = await state.getRuntime();
+    const stored = await runtime.stores.session.get(session.id);
     const record = stored?.userId === ALICE ? stored : undefined;
     const text = (i: Item) => (typeof i.text === "string" ? i.text : Array.isArray(i.content) ? i.content.map((p: any) => p?.text ?? "").join("") : String(i.content ?? ""));
     return {
@@ -230,7 +238,7 @@ async function conversation(worker: string) {
       lines: items.filter((i) => i.type === "message").map((i) => ({ role: i.role, agentName: i.agentName ?? null, text: text(i) })),
       delegates: record?.state?.delegates ?? null,
       fallback: record?.state?.fallback ?? null,
-      ledger: (record?.state?.deliveries ?? []) as Array<{ postId: string; round: number; delegate: { worker: string }; status: string; answered: boolean }>,
+      ledger: record === undefined ? [] : toRoutedDeliveries(Object.values(await runtime.stores.resourceState.getByPrefix("user", `${ALICE}:~org:${ORG}`, boardRowPrefix(session.id))).map((row) => row.state as Record<string, any>)),
     };
   };
   return { session, act, read };
@@ -248,20 +256,20 @@ try {
   const calls = () => route.calls.length;
   const ladder: Record<string, unknown> = {};
   const c0 = calls();
-  const p1 = await fit.act("run", { message: `[route:desk.alpha] [conf:0.2] [slow:desk.alpha] ${words.p1} what ships in the alpha?` });
+  const p1 = await fit.act("respond", { message: `[route:desk.alpha] [conf:0.2] [slow:desk.alpha] ${words.p1} what ships in the alpha?` });
   const c1 = calls();
   // Sent while desk.alpha is still holding its answer to p1.
-  const p2 = await fit.act("run", { message: `${words.p2} and when does it ship?` });
+  const p2 = await fit.act("respond", { message: `${words.p2} and when does it ship?` });
   const c2 = calls();
   await quiet();
-  const p3 = await fit.act("run", { message: `${words.p3} who can tell me anything at all?` });
+  const p3 = await fit.act("respond", { message: `${words.p3} who can tell me anything at all?` });
   const c3 = calls();
   await quiet();
   const removed = await fit.act("removeDelegate", { worker: "desk.beta" });
   const afterRemove = await fit.read();
-  const p4 = await fit.act("run", { message: `[judge] ${words.p4} nobody's description fits this one.` });
+  const p4 = await fit.act("respond", { message: `[judge] ${words.p4} nobody's description fits this one.` });
   await quiet();
-  const p5 = await fit.act("run", { message: `[judge-fail] ${words.p5} nor this one.` });
+  const p5 = await fit.act("respond", { message: `[judge-fail] ${words.p5} nor this one.` });
   await quiet();
   const fitAfterQuiet = await fit.read();
   await sleep(GRACE_MS);
@@ -287,7 +295,7 @@ try {
     ["above", "[route:desk.alpha] [conf:0.9]", words.f[2]],
     ["self", "[route:desk.floor] [conf:0.3]", words.f[3]],
   ] as const) {
-    floorPosts[name] = await floor.act("run", { message: `${marks} ${w} what does the plan say?` });
+    floorPosts[name] = await floor.act("respond", { message: `${marks} ${w} what does the plan say?` });
     await quiet();
   }
   const floored = { posts: floorPosts, offered: offeredChoices().slice(floorFirstCall), read: await floor.read() };
@@ -296,14 +304,14 @@ try {
   const turns = await conversation("desk.turns");
   const rr: Array<{ requestId: string; status: string }> = [];
   for (const w of words.q) {
-    rr.push(await turns.act("run", { message: `${w} next question, please.` }));
+    rr.push(await turns.act("respond", { message: `${w} next question, please.` }));
     await quiet();
   }
   const roundRobin = { posts: rr, read: await turns.read() };
 
   // Everyone, with a limit of one round.
   const all = await conversation("desk.all");
-  const r1 = await all.act("run", { message: `${words.r} what does everyone think?` });
+  const r1 = await all.act("respond", { message: `${words.r} what does everyone think?` });
   await quiet();
   const allQuiet = await all.read();
   await sleep(GRACE_MS);

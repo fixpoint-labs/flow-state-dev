@@ -24,6 +24,8 @@ const PHASE = "implement";
 const EPIC = "conductor-tasks-test-epic";
 const TOPIC = runTopic(EPIC, ISSUE, PHASE);
 const TASK = "task_1";
+/** What every run here opens with; these tests read the keys and the fence, not these values. */
+const OPENED = { workspacePath: "/w/a", branch: "b", childSessionId: "sess_run" };
 
 /**
  * A collection that keys and merges the way a real one does.
@@ -76,7 +78,7 @@ describe("the run record — the two key vocabularies", () => {
     await board.upsert(TASK, claimed(1));
     const ctx = contextWith(runs, board);
 
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(1), OPENED);
 
     // Written and read by the BARE topic.
     expect(await runs.getOptional(TOPIC)).toBeDefined();
@@ -121,7 +123,7 @@ describe("the run record — obligation A", () => {
 
     // Attempt 1 claims and opens the row.
     await board.upsert(TASK, claimed(1));
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(1), OPENED);
 
     // The lease lapses and attempt 2 is claimed. The board's counter moves; the
     // run row does not, because attempt 2 is still waiting for the checkout.
@@ -152,9 +154,9 @@ describe("the run record — obligation A", () => {
     const ctx = contextWith(runs, board);
 
     await board.upsert(TASK, claimed(1));
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(1), OPENED);
     await board.upsert(TASK, claimed(2));
-    await openRunRow(ctx, identity(2), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(2), OPENED);
     await writeRunRow(ctx, identity(2), { sessionId: "sess_live" });
 
     expect(await writeRunRow(ctx, identity(1), { sessionId: "sess_stale" })).toBe(
@@ -173,7 +175,7 @@ describe("the run record — obligation A", () => {
     const ctx = contextWith(runs, board);
 
     await board.upsert(TASK, claimed(3));
-    expect(await openRunRow(ctx, identity(3), { workspacePath: "/w/a", branch: "b" })).toBe(
+    expect(await openRunRow(ctx, identity(3), OPENED)).toBe(
       "applied",
     );
     expect(await writeRunRow(ctx, identity(3), { sessionId: "s" })).toBe("applied");
@@ -189,28 +191,10 @@ describe("the run record — obligation A", () => {
     const ctx = contextWith(runs, board);
 
     await board.upsert(TASK, claimed(1));
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(1), OPENED);
     await board.upsert(TASK, claimed(1, "pending"));
 
     expect(await writeRunRow(ctx, identity(1), { sessionId: "s" })).toBe("refused");
-  });
-
-  it("applies a write for a row parked before the status was renamed", async () => {
-    // A board row persisted before `awaiting_review` became `parked` still
-    // carries the old word, and the fence reads the board as a plain resource
-    // collection, so no substrate read boundary maps it forward on the way in.
-    // A parked attempt owns its row, whichever spelling the row arrived with;
-    // reading the old one as "not an owning status" would refuse every write
-    // the attempt makes and leave the run record frozen on an active park.
-    const runs = fakeCollection(RUNS);
-    const board = fakeCollection(BOARD);
-    const ctx = contextWith(runs, board);
-
-    await board.upsert(TASK, claimed(1));
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
-    await board.upsert(TASK, claimed(1, "awaiting_review"));
-
-    expect(await writeRunRow(ctx, identity(1), { sessionId: "s" })).toBe("applied");
   });
 
   it("refuses a write once this attempt's lease has lapsed", async () => {
@@ -228,7 +212,7 @@ describe("the run record — obligation A", () => {
     const ctx = contextWith(runs, board);
 
     await board.upsert(TASK, claimed(1));
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(1), OPENED);
     await board.upsert(TASK, { ...claimed(1), leaseUntil: Date.now() - 1_000 });
 
     expect(await writeRunRow(ctx, identity(1), { outcome: "succeeded" })).toBe("refused");
@@ -243,26 +227,24 @@ describe("the run record — obligation A", () => {
     const ctx = contextWith(runs, board);
 
     await board.upsert(TASK, { ...claimed(1), leaseUntil: Date.now() + 60_000 });
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(1), OPENED);
 
     expect(await writeRunRow(ctx, identity(1), { outcome: "succeeded" })).toBe("applied");
   });
 
-  it("still applies a write to a PARKED row whose lease is in the past", async () => {
-    // A row waiting on a person is not waiting on a lease, and the substrate's
-    // own predicate returns false for anything that is not `in_progress`. A
-    // mirror that dropped that guard would refuse every write from an answered
-    // run — the exact surface LAB-139 builds on.
+  it("still applies a write to a running row held on a question, which holds no lease", async () => {
+    // A row waiting on a person is not waiting on a lease: its question
+    // dropped the lease (FIX-2133), and the substrate reads a row with none as
+    // not lapsed. A mirror that read it as lapsed would refuse every write from
+    // the run that asked.
     const runs = fakeCollection(RUNS);
     const board = fakeCollection(BOARD);
     const ctx = contextWith(runs, board);
 
     await board.upsert(TASK, claimed(1));
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
-    await board.upsert(TASK, {
-      ...claimed(1, "parked"),
-      leaseUntil: Date.now() - 1_000,
-    });
+    await openRunRow(ctx, identity(1), OPENED);
+    const { leaseUntil: _lease, ...held } = claimed(1) as Record<string, unknown>;
+    await board.upsert(TASK, held as never);
 
     expect(await writeRunRow(ctx, identity(1), { reason: "asked" })).toBe("applied");
   });
@@ -279,7 +261,7 @@ describe("the run record — the clearing rule", () => {
     const ctx = contextWith(runs, board);
 
     await board.upsert(TASK, claimed(1));
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(1), OPENED);
     await writeRunRow(ctx, identity(1), {
       sessionId: "sess_one",
       finalMessage: "attempt one said this",
@@ -289,7 +271,7 @@ describe("the run record — the clearing rule", () => {
     });
 
     await board.upsert(TASK, claimed(2));
-    await openRunRow(ctx, identity(2), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(2), OPENED);
 
     const row = (await runs.getOptional(TOPIC))!.state as RunRecordState;
     expect(row.sessionId).toBeNull();
@@ -350,5 +332,69 @@ describe("two epics on one issue-phase get different run rows", () => {
     );
 
     expect(await runs.list(runTopicPrefix("conductor-tasks-alpha", ISSUE))).toHaveLength(1);
+  });
+});
+
+describe("two turns of one attempt (FIX-2133 D3)", () => {
+  // An answered question owes its task one more turn on the same attempt, so
+  // the attempt alone no longer tells the asking run from the answer's run.
+  it("refuses the earlier turn's write once a later turn of the attempt has opened the record", async () => {
+    const runs = fakeCollection(RUNS);
+    const board = fakeCollection(BOARD);
+    const ctx = contextWith(runs, board);
+    await board.upsert(TASK, { ...claimed(1), turn: 1 });
+    expect(await openRunRow(ctx, { ...identity(1), turn: 1 }, OPENED)).toBe("applied");
+
+    // The answer's turn claims the row and opens the record on the same attempt.
+    await board.upsert(TASK, { ...claimed(1), turn: 2 });
+    expect(await openRunRow(ctx, { ...identity(1), turn: 2 }, OPENED)).toBe("applied");
+
+    // The board row's turn has moved on, and so has the record's.
+    expect(await writeRunRow(ctx, { ...identity(1), turn: 1 }, { sessionId: "late" })).toBe("refused");
+    // Read against a board row that still shows the earlier turn, the record alone refuses it.
+    await board.upsert(TASK, { ...claimed(1), turn: 1 });
+    expect(await writeRunRow(ctx, { ...identity(1), turn: 1 }, { sessionId: "late" })).toBe("refused");
+    expect(((await runs.getOptional(TOPIC))!.state as RunRecordState).sessionId).toBeNull();
+  });
+
+  it("compares turns within one task: a task filed again under the same id opens its record at turn 1", async () => {
+    const runs = fakeCollection(RUNS);
+    const board = fakeCollection(BOARD);
+    const ctx = contextWith(runs, board);
+    await board.upsert(TASK, { ...claimed(1), turn: 2, incarnationId: "first" });
+    expect(await openRunRow(ctx, { ...identity(1), turn: 2, incarnationId: "first" }, OPENED)).toBe("applied");
+
+    // Deleted and filed again under the same id: a new task, on its first attempt's first turn.
+    await board.upsert(TASK, { ...claimed(1), turn: 1, incarnationId: "second" });
+    expect(await openRunRow(ctx, { ...identity(1), turn: 1, incarnationId: "second" }, OPENED)).toBe("applied");
+    // The old task's late write is refused by the board row, which is the new task's.
+    expect(await writeRunRow(ctx, { ...identity(1), turn: 2, incarnationId: "first" }, { sessionId: "old" })).toBe("refused");
+  });
+
+  it("compares attempts within one task: a task filed again under the same id opens its record at attempt 1", async () => {
+    const runs = fakeCollection(RUNS);
+    const board = fakeCollection(BOARD);
+    const ctx = contextWith(runs, board);
+    await board.upsert(TASK, { ...claimed(3), incarnationId: "first" });
+    expect(await openRunRow(ctx, { ...identity(3), incarnationId: "first" }, OPENED)).toBe("applied");
+
+    // Deleted and filed again under the same id: a new task, on its first attempt.
+    await board.upsert(TASK, { ...claimed(1), incarnationId: "second" });
+    expect(await openRunRow(ctx, { ...identity(1), incarnationId: "second" }, OPENED)).toBe("applied");
+    expect(((await runs.getOptional(TOPIC))!.state as RunRecordState).attempt).toBe(1);
+    // The old task's late write is refused by the board row, which is the new task's.
+    expect(await writeRunRow(ctx, { ...identity(3), incarnationId: "first" }, { sessionId: "old" })).toBe("refused");
+  });
+
+  it("still refuses an earlier attempt of the same task", async () => {
+    const runs = fakeCollection(RUNS);
+    const board = fakeCollection(BOARD);
+    const ctx = contextWith(runs, board);
+    await board.upsert(TASK, { ...claimed(2), incarnationId: "first" });
+    expect(await openRunRow(ctx, { ...identity(2), incarnationId: "first" }, OPENED)).toBe("applied");
+
+    // The board read is stale (the monotonic backstop's window): it still shows attempt 1.
+    await board.upsert(TASK, { ...claimed(1), incarnationId: "first" });
+    expect(await writeRunRow(ctx, { ...identity(1), incarnationId: "first" }, { sessionId: "stale" })).toBe("refused");
   });
 });

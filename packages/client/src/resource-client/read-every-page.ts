@@ -4,7 +4,7 @@
  * repeated-cursor check held here, once.
  */
 import type { CollectionListPage } from "../types";
-import type { ResourceClient } from "./resources";
+import type { ResourcesApi } from "../client";
 
 /**
  * The most pages one collection read follows.
@@ -68,7 +68,7 @@ export type ReadEveryCollectionPageOptions = {
  * already sent. A page that fails rejects with that page's own error.
  */
 export async function readEveryCollectionPage(
-  source: Pick<ResourceClient, "listCollectionItems">,
+  source: Pick<ResourcesApi, "listCollectionItems">,
   sessionId: string,
   ref: string,
   options: ReadEveryCollectionPageOptions = {}

@@ -145,6 +145,37 @@ Pick one. If you need both whitelisting and computed fields, use `data` and writ
 
 Reach for `expose` first; use `exclude` when you have many fields and only need to hide a few; reserve `data` for computed fields that aren't on the state schema.
 
+## Secret fields
+
+A projection decides what the client sees. It doesn't cover the [debug endpoints](/docs/devtool/debug-vs-client-state) the DevTool reads, which return a resource's full stored state. For a field that must never leave the server, such as a stored API key, name it in `secret`. It's a top-level option on `defineResource()` and `defineResourceCollection()`, not part of `client`:
+
+```ts
+const apiKeys = defineResourceCollection({
+  pattern: "api-keys/*",
+  scope: "user",
+  stateSchema: z.object({ value: z.string(), setAt: z.string() }),
+  secret: ["value"],
+  client: { state: { read: true }, expose: ["setAt"] },
+});
+```
+
+A secret field is left out of every state read the server answers: the session snapshot's `clientData` (prefetched collection items included), the collection list and item-state endpoints, `live` deltas, and the debug endpoints. A `client.data` function sees the full state, so it can derive a value from a secret field (`hasKey: s.value !== ""`), but a secret field in what it returns is dropped. Your blocks read and write the field as usual through the resource handle.
+
+A name that isn't on the state schema (here `secret: ["valu"]`), or one that `client.expose` also lists, throws at definition time:
+
+```
+defineResourceCollection() for "api-keys/*": secret names key(s) not on stateSchema: valu. Valid keys: setAt, value.
+defineResourceCollection() for "api-keys/*": client.expose names secret key(s): value. A secret field never leaves the server; remove it from one list.
+```
+
+A user or org collection that several flows share is one stored row per key, so every flow that declares it must name the same secret fields. Registering a flow whose declaration disagrees throws.
+
+What `secret` doesn't do:
+
+- It covers state fields, not content. A `contentTemplate` that interpolates a secret field renders its value into the content body, and content reads return it.
+- It doesn't filter a scope's `client.derived` values. Those functions read resource state in full, the same as `client.data`, and whatever they return is sent under the names they give it. Derive from a secret field there (`hasKey`), don't return it.
+- It doesn't change the derived client type ([`ClientDataOf`](#typing-clientdata)) under the identity or `exclude` projection, which still lists the secret field. Pair `secret` with `expose`, as above, so the type matches what arrives.
+
 ## Collection example
 
 Collections are where client access gets the most use. A typical artifact or file collection exposes metadata for listing and content for viewing:
@@ -397,28 +428,30 @@ Actions that weren't declared in the resource's `client.content` config will ret
 
 ## Non-React usage
 
-The `@flow-state-dev/client` package exports `createResourceClient` for direct HTTP access without React:
+Outside React, the client's `fsd.resources` makes the same calls:
 
 ```ts
-import { createResourceClient } from "@flow-state-dev/client";
+import { createClient } from "@flow-state-dev/client";
 
-const resources = createResourceClient();
+const fsd = createClient({ userId: "user_1", baseUrl: "http://localhost:3000" });
 
 // Fetch content for a single resource
-const { content } = await resources.getResourceContent(sessionId, "soul");
+const soul = await fsd.resources.getResourceContent(sessionId, "soul");
 
 // Fetch content for a collection item
-const { content } = await resources.getCollectionItemContent(sessionId, "artifacts", "artifacts/readme.md");
+const readme = await fsd.resources.getCollectionItemContent(sessionId, "artifacts", "artifacts/readme.md");
 
 // Mutations
-await resources.createCollectionItem(sessionId, "artifacts", { topic: "new.md", content: "..." });
-await resources.updateResourceContent(sessionId, "artifacts", "artifacts/readme.md", { content: "..." });
-await resources.deleteCollectionItem(sessionId, "artifacts", "artifacts/old.md");
+await fsd.resources.createCollectionItem(sessionId, "artifacts", { topic: "new.md", content: "..." });
+await fsd.resources.updateResourceContent(sessionId, "artifacts", "artifacts/readme.md", { content: "..." });
+await fsd.resources.deleteCollectionItem(sessionId, "artifacts", "artifacts/old.md");
 ```
+
+Each read resolves to `{ ref, topic?, content }`. A refused call rejects with `ClientHttpError`, whose `status` is the server's answer (`403` for an action the resource doesn't grant, `404` for a resource with no `client` config). [`fsd.resources`](/docs/api/client#fsdresources) lists every method, including the collection reads.
 
 ## HTTP endpoints
 
-Under the hood, these hooks and clients talk to these endpoints:
+The hooks and the client call these endpoints:
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -592,7 +625,7 @@ The nullable fields follow the resource-schema default convention (`.nullable().
 
 ## Debug and the DevTool
 
-During development, the DevTool's Resources panel reads from a privileged debug endpoint that ignores everything on this page. It shows you the full server-side state, including fields and items that `client.data` deliberately drops. That's the point of an inspector: the DevTool is talking to the runtime directly, not pretending to be a client.
+During development, the DevTool's Resources panel reads from a privileged debug endpoint that ignores everything on this page. It shows you the full server-side state, including fields and items that `client.data` drops. That's the point of an inspector: the DevTool is talking to the runtime directly, not pretending to be a client. It never returns fields named in [`secret`](#secret-fields).
 
 The panel renders each resource with a Raw / Client / Diff toggle. **Raw** is the unfiltered server state. **Client** runs the same `expose`, `exclude`, or `data` projection your production app would receive. **Diff** shows both side by side so you can see which fields survive and which get stripped.
 

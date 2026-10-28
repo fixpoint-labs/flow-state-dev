@@ -83,6 +83,13 @@ export function endsRequestStream(
  * event at `lastSeen + 1`, advancing the synthetic past it would cause
  * the reconnecting subscriber to skip that real event (the synthetic is
  * never persisted, so it can't collide in catch-up).
+ *
+ * This is the one exception to the rule for a synthetic terminal event
+ * (`docs/architecture/streaming.md`): one that nothing can follow takes the
+ * log's last sequence number plus one (the stream route's replay of a log left
+ * without a terminal event). A liveness timeout can still be followed by a
+ * live writer's events, so it keeps the last seen one. A client that already
+ * saw that event drops this synthetic as a repeat (FIX-2098).
  */
 export function synthesizeRequestInterrupted(
   requestId: string,

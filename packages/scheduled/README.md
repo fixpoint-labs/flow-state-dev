@@ -32,6 +32,37 @@ const router = createFlowApiRouter({
 });
 ```
 
+## One firing per scheduled time
+
+Each schedule fires each scheduled time at most once, across retries,
+restarts and hosts that share a store. The dispatch body carries the
+scheduled time the fire is for, or nothing:
+
+```json
+{ "nominalFireTime": "2026-06-01T09:00:00Z" }
+```
+
+- A carried time counts against the scheduled time within five seconds of
+  it. One that is no scheduled time of the cron answers `400
+  not_a_scheduled_time`; one not due yet answers `400 not_yet_due`.
+- No time counts against the latest scheduled time already due, or the one due
+  within five seconds.
+- A carried time more than one period behind the latest due one answers
+  `200 { status: "duplicate", reason: "stale" }` and logs a warning: a
+  scheduler body with a fixed time sends no body instead.
+- A cron must be exactly five fields; a sixth would be seconds.
+- A time that already fired, or an earlier one, answers
+  `200 { status: "duplicate" }` and runs nothing, whatever the schedule's cron
+  is now.
+- A fire that isn't admitted (an overlap skip, a concurrency refusal, a
+  `503`) leaves its time unfired for a retry.
+
+The record is one row per schedule in the host's resource-state store, so
+the guarantee holds across processes on SQLite and Postgres, and within one
+process on the memory and filesystem stores. A body `idempotencyKey` answers
+`400 idempotency_key_removed`, and `idempotencyWindowMs` or
+`idempotencyOptions` on the adapter throws.
+
 ## Static schedules
 
 ```ts
@@ -137,17 +168,27 @@ Every scheduled-driven request carries `source: "scheduled"` and a namespaced
 
 - `metadata.schedule.scheduleId` — the dispatch URL id
 - `metadata.schedule.origin` — `"static"` or `"dynamic"`
-- `metadata.schedule.cron`, `metadata.schedule.nominalFireTime`,
-  `metadata.schedule.dispatchedAt`, `metadata.schedule.timezone`
+- `metadata.schedule.cron`, `metadata.schedule.dispatchedAt`,
+  `metadata.schedule.timezone`
+- `metadata.schedule.nominalFireTime` — the scheduled time the fire counted
+  against, as an ISO string
 
 The dispatched request's `action` field is the handler block's name (provenance
 only — a scheduled handler is never reachable through the action endpoint).
+
+## Without the engine: `@flow-state-dev/scheduled/collection`
+
+A package that defines flows but must not load the engine imports the
+schedule collection, its resolver, `formatScheduleId` and `parseNextFireAt`
+from `@flow-state-dev/scheduled/collection`. The resolver reads a user's row
+through `ScheduleResolutionContext.userStorageKey`, which the dispatch
+endpoint supplies.
 
 ## Schedule index
 
 `ScheduleIndex` is an opt-in adapter interface that lets a polling cron tick find due dynamic schedules in one query, instead of scanning every user's schedule collection. Store packages implement it (`createPostgresScheduleIndex`, `createSQLiteScheduleIndex`); custom backends implement the three-method interface directly. Rows are identified by the schedule's storage cell and key, so one schedule is always one row.
 
-The contract is at-most-once: `claimDue` atomically advances rows before returning them, so a dispatch that fails after advance is dropped, not retried.
+The contract is at-most-once: `claimDue` atomically advances rows before returning them, so a dispatch that fails after advance is dropped, not retried. The index only finds due rows; the dispatch endpoint decides whether a time fires, once per scheduled time on every path.
 
 ### `defineScheduleCollection`
 

@@ -1,96 +1,104 @@
 /**
  * One user's conversation with one worker, read from the worker's session.
  *
- * The session is the newest direct one the snapshot lists on the worker's flow
- * naming the worker's worker, or the one a first line just opened, until the
- * snapshot lists it (BR-14). Its items are read when the view opens and after
- * each line, never on the snapshot's refresh. Nothing is sent into a
- * conversation the screen hasn't read; one a line opened here holds nothing
- * the user hasn't seen.
- *
- * Used by `<Conversation>`; a view that wants a conversation with a worker draws
- * that component, and calls this only to build its own.
+ * The session is the worker's derived address: `ensureWorkerSession({ worker })`
+ * opens it, and another worker's message lands there. A session at any other
+ * id is not this view's. Items are read when the view opens, after each
+ * line, and every {@link MESSAGES_POLL_MS} while it is open (another worker's
+ * message can land at any time), never on the snapshot's refresh. Nothing is
+ * sent until the first read has landed, and a session a line opened here
+ * holds nothing the user hasn't seen. A failed later read keeps the last one
+ * on screen; only a failed first read shows.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ClientHttpError, type SessionSummary } from "@flow-state-dev/client";
-import { COORDINATOR_JUDGMENT, COORDINATOR_FLOW, WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
-import type { LabClients } from "./connection";
-import { newSessionId } from "./ids";
+import { useCallback, useEffect, useState } from "react";
+import type { SessionSummary } from "@flow-state-dev/client";
+import { COORDINATOR_FLOW, deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
 import { useLab } from "./lab-data";
+import { MESSAGES_POLL_MS } from "./messages";
 import { describeFailure, workerOf, type Failure, type Worker } from "./reads";
 import { readSessionItems, RunReadError, type SessionItems } from "./run";
+import { useWorkforce } from "./workforce";
 
 /** The flow a coordinator worker runs on, whose conversations carry its delegates' answers. */
 export { COORDINATOR_FLOW };
 
-/**
- * The delegate a message in a coordinator's conversation came from, by its
- * worker id, or `undefined` when the coordinator wrote it. A delegate's answer
- * lands in the coordinator's conversation under the delegate's name; the
- * coordinator's own turn stamps its messages with its answer generator's
- * name.
- */
-export function delegateOf(worker: Pick<Worker, "kind">, item: { readonly agentName?: string }): string | undefined {
-  if (worker.kind !== COORDINATOR_FLOW) return undefined;
+/** Another worker's id on `agentName`, or `undefined` when this worker wrote it or the name is a generator's. */
+export function senderOf(worker: Pick<Worker, "id">, item: { readonly agentName?: string }, known: ReadonlySet<string>): string | undefined {
   const author = item.agentName;
-  return author === undefined || author.startsWith(COORDINATOR_JUDGMENT) ? undefined : author;
+  return author === undefined || author === worker.id || !known.has(author) ? undefined : author;
 }
 
-/**
- * The id of the user's conversation with `worker`: their newest session on
- * the worker's flow that names the worker's worker and has no parent session, or
- * `null` when they have none. A store that nulls absent keys hands back
- * `null` for a parent, so the guard is `== null`.
- */
-export function conversationSession(sessions: readonly SessionSummary[], worker: Pick<Worker, "id" | "kind">): string | null {
-  let newest: SessionSummary | undefined;
+/** Workers the inventory registers, and every worker a listed session runs. A sender's id is one of those. */
+export function knownWorkers(workers: readonly Pick<Worker, "id">[], sessions: readonly SessionSummary[]): Set<string> {
+  const known = new Set(workers.map((worker) => worker.id));
   for (const session of sessions) {
-    if (session.flowKind !== worker.kind || workerOf(session) !== worker.id || session.parentSessionId != null) continue;
-    if (newest === undefined || session.createdAt > newest.createdAt) newest = session;
+    const id = workerOf(session);
+    if (id !== null) known.add(id);
   }
-  return newest?.id ?? null;
+  return known;
 }
 
-/**
- * The conversation the view is on: `opened`, the session a first line opened
- * here, until the listing holds it; from then on the newest direct session
- * the listing names, which may be one started elsewhere.
- */
-export function currentConversation(
-  sessions: readonly SessionSummary[],
-  worker: Pick<Worker, "id" | "kind">,
-  opened: string | null,
-): string | null {
-  if (opened !== null && !sessions.some((session) => session.id === opened)) return opened;
-  return conversationSession(sessions, worker);
+/** The session a first line opened, else the derived id once the listing holds it. */
+export function conversationAt(sessions: readonly SessionSummary[], derived: string | null, opened: string | null): string | null {
+  if (opened !== null) return opened;
+  if (derived === null) return null;
+  return sessions.some((session) => session.id === derived) ? derived : null;
 }
 
-/**
- * A fresh session id for a new conversation ({@link newSessionId}). A worker's
- * session names its worker from the moment it is created, so a first line goes
- * to an id minted here, opened by {@link openConversation} before the door's
- * request runs in it.
- */
-export function newConversationId(): string {
-  return newSessionId("conv", "_");
-}
+/** Derivations by user, organization, flow and worker, so two views of one conversation hash it once. */
+const derivations = new Map<string, Promise<string>>();
 
-/**
- * Open `sessionId` on the worker's flow, naming the worker's worker in its
- * starting state. A session a failed earlier attempt already opened under that
- * id is the one the line goes to, so a conflict is not an error.
- */
-export async function openConversation(clients: LabClients, worker: { id: string; kind: string }, sessionId: string): Promise<void> {
-  try {
-    await clients.sessions.createSession({
-      flowKind: worker.kind,
-      userId: clients.userId,
-      sessionId,
-      state: { [WORKER_ID_STATE_KEY]: worker.id },
-    });
-  } catch (error) {
-    if (!(error instanceof ClientHttpError && error.status === 409)) throw error;
+function derivedIdOf(key: string, input: Parameters<typeof deriveWorkerSessionId>[0]): Promise<string> {
+  let pending = derivations.get(key);
+  if (pending === undefined) {
+    pending = deriveWorkerSessionId(input);
+    // A failed derivation is not kept, so a later view can try again.
+    pending.catch(() => derivations.delete(key));
+    derivations.set(key, pending);
   }
+  return pending;
+}
+
+/** The derived conversation id, while it is computed, and why it couldn't be. */
+interface Derived {
+  /** `undefined` while it is computed, `null` when it can't be (no worker, no flow, no organization yet, or a failure). */
+  id: string | null | undefined;
+  /** Why it couldn't be computed: on a page served over plain HTTP from a host that isn't this machine, the browser has no Web Crypto to hash it with. */
+  failure: Failure | undefined;
+}
+
+/**
+ * The worker's derived conversation id for the signed-in user.
+ */
+function useDerivedId(worker: Pick<Worker, "id" | "kind"> | undefined): Derived {
+  const { client, snapshot } = useLab();
+  const orgId = snapshot !== undefined && "orgId" in snapshot ? snapshot.orgId : undefined;
+  const flow = worker?.kind ?? null;
+  const id = worker?.id;
+  const [derived, setDerived] = useState<{ key: string; id: string | null; failure?: Failure } | null>(null);
+  const key = orgId === undefined || flow === null || id === undefined ? null : `${client.userId}\n${orgId}\n${flow}\n${id}`;
+  useEffect(() => {
+    if (key === null || orgId === undefined || flow === null || id === undefined) return;
+    let closed = false;
+    derivedIdOf(key, { userId: client.userId, orgId, flow, criteria: { worker: id } }).then(
+      (sessionId) => {
+        if (!closed) setDerived({ key, id: sessionId });
+      },
+      (error: unknown) => {
+        if (!closed) setDerived({ key, id: null, failure: describeFailure(error) });
+      }
+    );
+    return () => {
+      closed = true;
+    };
+  }, [key, client.userId, orgId, flow, id]);
+  if (key === null) return { id: null, failure: undefined };
+  return derived !== null && derived.key === key ? { id: derived.id, failure: derived.failure } : { id: undefined, failure: undefined };
+}
+
+/** The derived session once the snapshot lists it, for a view that reads the session without drawing it. */
+export function useConversationSession(worker: Pick<Worker, "id" | "kind"> | undefined, sessions: readonly SessionSummary[]): string | null {
+  return conversationAt(sessions, useDerivedId(worker).id ?? null, null);
 }
 
 export interface WorkerConversation {
@@ -100,28 +108,24 @@ export interface WorkerConversation {
   opened: string | null;
   /** What the session stores, once read, for the session shown. */
   read: SessionItems | undefined;
-  /** Why the last read failed; cleared by the next that succeeds. */
+  /** Why the first read failed; cleared by the next that succeeds. A failed later read keeps the last one. */
   failure: Failure | undefined;
   /** Read the session again. */
   reread(): void;
-  /** The session a line goes to: the conversation's, or a fresh id kept until a send opens it. */
-  target(): string;
-  /** Make `sessionId` the conversation shown: the session a line was sent into, until the snapshot lists it. */
-  open(sessionId: string): void;
+  /** The conversation's address is still being worked out: nothing is sent until it is. */
+  resolving: boolean;
+  /** The session a line goes to, opening the derived address on the first line. */
+  ensure(): Promise<string>;
 }
 
-/**
- * @param worker The worker the conversation is with.
- * @param sessions The snapshot's sessions.
- * @param pinned The session the conversation is, when the view found it: that one, whatever the snapshot lists.
- */
+/** `pinned` is the session the view found: that one, whatever the snapshot lists. */
 export function useWorkerConversation(worker: Worker, sessions: readonly SessionSummary[], pinned?: string): WorkerConversation {
-  const { clients } = useLab();
+  const { client } = useLab();
+  const workforce = useWorkforce();
+  const { id: derived, failure: underived } = useDerivedId(pinned === undefined ? worker : undefined);
   const [opened, setOpened] = useState<string | null>(null);
-  const sessionId = pinned ?? currentConversation(sessions, worker, opened);
-  // The id a first line goes to, kept across a failed send so a retry lands in
-  // the same session if the Lab already opened it.
-  const fresh = useRef<string | null>(null);
+  const sessionId = pinned ?? conversationAt(sessions, derived ?? null, opened);
+  const resolving = pinned === undefined && opened === null && derived === undefined;
   // The last read that succeeded, and whose session it read. A re-read keeps it
   // on screen until the new one lands.
   const [stored, setStored] = useState<{ sessionId: string; read: SessionItems } | undefined>(undefined);
@@ -131,7 +135,8 @@ export function useWorkerConversation(worker: Worker, sessions: readonly Session
   useEffect(() => {
     if (sessionId === null) return;
     let closed = false;
-    readSessionItems(clients, sessionId)
+    let next: ReturnType<typeof setTimeout> | undefined;
+    readSessionItems(client, sessionId)
       .then((read) => {
         if (closed) return;
         setStored({ sessionId, read });
@@ -139,15 +144,32 @@ export function useWorkerConversation(worker: Worker, sessions: readonly Session
       })
       .catch((error: unknown) => {
         if (!closed) setFailure(error instanceof RunReadError ? error.failure : describeFailure(error));
+      })
+      .finally(() => {
+        if (!closed) next = setTimeout(() => setReads((n) => n + 1), MESSAGES_POLL_MS);
       });
     return () => {
       closed = true;
+      if (next !== undefined) clearTimeout(next);
     };
-  }, [clients, sessionId, reads]);
+  }, [client, sessionId, reads]);
 
   const reread = useCallback(() => setReads((n) => n + 1), []);
-  const open = useCallback((id: string) => setOpened(id), []);
-  const target = useCallback(() => sessionId ?? (fresh.current ??= newConversationId()), [sessionId]);
+  const ensure = useCallback(async () => {
+    if (sessionId !== null) return sessionId;
+    const session = await workforce.ensureWorkerSession({ worker: worker.id });
+    setOpened(session.id);
+    return session.id;
+  }, [sessionId, workforce, worker.id]);
 
-  return { sessionId, opened, read: sessionId !== null && stored?.sessionId === sessionId ? stored.read : undefined, failure, reread, target, open };
+  const read = sessionId !== null && stored?.sessionId === sessionId ? stored.read : undefined;
+  return {
+    sessionId,
+    opened,
+    read,
+    failure: (read === undefined ? failure : undefined) ?? underived,
+    reread,
+    resolving,
+    ensure
+  };
 }

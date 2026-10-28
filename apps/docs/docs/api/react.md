@@ -31,6 +31,8 @@ import { FlowProvider } from "@flow-state-dev/react";
 
 Nested providers merge `renderers` (child keys override parent keys).
 
+The hooks and components under a provider share one client, built from its `userId`, `baseUrl`, `apiPath` and `fetcher`. Pass `fetcher` to add credentials to every call and stream, or pass the engine's `createInProcessFetch(flowState)` to reach an engine in the same process. A nested provider inherits its parent's. Pass a stable reference. [Client options](/docs/configuration/client#flowprovider) lists every prop.
+
 ## Hooks
 
 ### `useFlow(options?)`
@@ -47,7 +49,7 @@ flow.createSession();          // Promise<SessionDetail>
 flow.selectSession(id);        // void; pass undefined to clear the selection
 ```
 
-`createSession` and `autoCreateSession` send no initial state. On a flow whose sessions need some, such as a required readonly field, create the session with the [session client](/docs/api/client) and pass its id to `selectSession`. See [Example: one session per project](/docs/fundamentals/state-and-scopes#example-one-session-per-project).
+`createSession` and `autoCreateSession` send no initial state. On a flow whose sessions need some, such as a required readonly field, create the session with the client's [`fsd.flow(address).createSession`](/docs/api/client#createsessionoptions) and pass its id to `selectSession`. See [Example: one session per project](/docs/fundamentals/state-and-scopes#example-one-session-per-project).
 
 ### `useSession(sessionId, options?)`
 
@@ -379,7 +381,7 @@ function MyApproval({ item }) {
 }
 ```
 
-Returns `{ approve, reject, pendingAction, isResolving, error, resolved, resolvedStatus, outcome, canApprove, canReject }`. Resolution goes through `onApprove`/`onReject` if supplied, else the nearest `<SuspensionResolverProvider>` (streaming), else a self-contained recovery client (needs `flowKind` on `<FlowProvider>`).
+Returns `{ approve, reject, pendingAction, isResolving, error, resolved, resolvedStatus, outcome, canApprove, canReject }`. Resolution goes through `onApprove`/`onReject` if supplied, else the nearest `<SuspensionResolverProvider>` (streaming), else a non-streaming resume through the provider's client (needs `flowKind` on `<FlowProvider>`).
 
 ### `ApprovalRenderer`
 

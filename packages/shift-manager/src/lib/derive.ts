@@ -2,9 +2,10 @@
  * What the screens compute from one snapshot, kept out of the components so
  * every surface computes it the same way.
  */
-import { isDone, readStatus } from "./columns";
+import type { InboxItem } from "@flow-state-dev/orchestration/inbox";
+import { isDone } from "./columns";
 import {
-  STAFF_TEAM,
+  GENERAL_TEAM,
   type Ask,
   type BoardRow,
   type Failure,
@@ -71,17 +72,19 @@ export function workerFor(roster: Roster, row: BoardRow): Worker | undefined {
 }
 
 /** A worker's shift status, the one word Roster and the sidebar draw. */
-export type ShiftStatus = "on shift" | "on call" | "off shift";
+export type ShiftStatus = "on shift" | "off shift";
 
-/** The three statuses, in the order Roster groups them. */
-export const SHIFT_STATUSES: readonly ShiftStatus[] = ["on shift", "on call", "off shift"];
+/** The two statuses, in the order Roster groups them. */
+export const SHIFT_STATUSES: readonly ShiftStatus[] = ["on shift", "off shift"];
 
 /** One worker's state: its status, the tasks it holds, and the asks it waits on you with. */
 export type WorkerState = {
   worker: Worker;
   status: ShiftStatus;
-  /** Its rows that are running or waiting on you, in board order: its slots in use. */
+  /** Its rows that are running, waiting on you included, in board order: its slots in use. */
   held: BoardRow[];
+  /** Of `held`, the rows held on a question or confirm for you (their Inbox item's board holds). */
+  waitsOnYou: BoardRow[];
   /** Its pending asks, in Inbox's order. */
   asks: Ask[];
 };
@@ -100,11 +103,10 @@ const computed = new WeakMap<LoadedSnapshot, WorkerStates>();
  * Every worker's status, worked out once per snapshot from what the Lab records:
  * its rows (each resolved by {@link workerFor}) and its pending asks.
  *
- * - **on shift**: it holds a running row;
- * - **on call**: otherwise, it holds a row waiting on you (the legacy
- *   `awaiting_review` included) or has a pending ask;
- * - **off shift**: neither. Queued, blocked, errored and finished rows hold no
- *   slot.
+ * - **on shift**: it holds a running row (one waiting on you included) or a
+ *   pending ask;
+ * - **off shift**: none of those. Queued, blocked, errored and finished rows
+ *   hold no slot.
  *
  * A row no single worker resolves to, and an ask whose session names no worker in
  * the inventory, count for nobody. Asks that did not load leave every status
@@ -118,23 +120,21 @@ export function workerStates(snapshot: LoadedSnapshot): WorkerStates {
   if (cached !== undefined) return cached;
   const roster = rosterOf(snapshot);
   const workers = new Map<string, WorkerState>(
-    roster.workers.map((worker) => [worker.id, { worker, status: "off shift", held: [], asks: [] }]),
+    roster.workers.map((worker) => [worker.id, { worker, status: "off shift", held: [], waitsOnYou: [], asks: [] }]),
   );
   for (const row of allRows(snapshot)) {
-    const status = readStatus(row.status);
-    if (status !== "in_progress" && status !== "parked") continue;
+    if (row.status !== "in_progress") continue;
     const owner = workerFor(roster, row);
-    if (owner !== undefined) workers.get(owner.id)?.held.push(row);
+    if (owner === undefined) continue;
+    const state = workers.get(owner.id);
+    state?.held.push(row);
+    if (waitsOnYou(snapshot, row)) state?.waitsOnYou.push(row);
   }
   for (const ask of snapshot.asks.ok ? snapshot.asks.value : []) {
     if (ask.workerId !== null) workers.get(ask.workerId)?.asks.push(ask);
   }
   for (const state of workers.values()) {
-    state.status = state.held.some((row) => readStatus(row.status) === "in_progress")
-      ? "on shift"
-      : state.held.length > 0 || state.asks.length > 0
-        ? "on call"
-        : "off shift";
+    state.status = state.held.length > 0 || state.asks.length > 0 ? "on shift" : "off shift";
   }
   const result = { workers, partial: !snapshot.asks.ok };
   computed.set(snapshot, result);
@@ -144,6 +144,40 @@ export function workerStates(snapshot: LoadedSnapshot): WorkerStates {
 /** The workers of a snapshot whose inventory loaded; empty otherwise. */
 export function rosterOf(snapshot: LoadedSnapshot): Roster {
   return snapshot.inventory.ok ? snapshot.inventory.value : { workers: [] };
+}
+
+/**
+ * The Inbox item that shows suspension `suspensionId`: a task's item when its
+ * row holds it, else the ask's own. Its id when the Inbox didn't load or
+ * doesn't list it, so a link still opens the Inbox.
+ */
+export function inboxItemIdOf(snapshot: LoadedSnapshot, suspensionId: string): string {
+  const items = snapshot.inbox.ok ? snapshot.inbox.value : [];
+  return items.find((item) => item.holds.some((hold) => hold.id === suspensionId))?.id ?? suspensionId;
+}
+
+/**
+ * The Inbox item a route names: by its id, else, for a link written when an
+ * item's id was its suspension's (`/inbox/<suspensionId>`), the item one of
+ * whose holds that suspension is. `null` when none.
+ */
+export function inboxItemAt(snapshot: LoadedSnapshot, id: string | null): InboxItem<Ask> | null {
+  if (id === null) return null;
+  const items = snapshot.inbox.ok ? snapshot.inbox.value : [];
+  return items.find((item) => item.id === id) ?? items.find((item) => item.holds.some((hold) => hold.id === id)) ?? null;
+}
+
+/**
+ * Whether a task holds on a question or confirm for you (FIX-2131): its Inbox
+ * item has a hold the board keeps on the row. A task waiting on its run's stop
+ * for you (an approval, a review) shows that stop as an ask instead
+ * ({@link asksOfTask}). `false` while the snapshot or its Inbox isn't read.
+ */
+export function waitsOnYou(snapshot: LabSnapshot | undefined, row: BoardRow | undefined): boolean {
+  if (snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined || row === undefined || !snapshot.inbox.ok) return false;
+  return snapshot.inbox.value.some(
+    (item) => item.task?.board === row.boardRef && item.task.taskId === row.id && item.holds.some((hold) => hold.source.kind === "row"),
+  );
 }
 
 /**
@@ -172,14 +206,18 @@ export function doorOf(workers: readonly Worker[], flowId: string): string | nul
 }
 
 /**
- * The teams in the worker inventory, each with its workers, in first-seen order,
- * with the org workers' Staff group first.
+ * The teams in the worker inventory, each with its display name and its
+ * workers, in first-seen order, with the org workers' General group first.
  */
-export function teamsOf(workers: readonly Worker[]): Array<{ team: string; workers: Worker[] }> {
+export function teamsOf(workers: readonly Worker[]): Array<{ team: string; name: string; workers: Worker[] }> {
   const teams = new Map<string, Worker[]>();
-  for (const worker of workers) teams.set(worker.team, [...(teams.get(worker.team) ?? []), worker]);
-  const all = [...teams].map(([team, workers]) => ({ team, workers }));
-  return [...all.filter((t) => t.team === STAFF_TEAM), ...all.filter((t) => t.team !== STAFF_TEAM)];
+  for (const worker of workers) {
+    const team = teams.get(worker.team);
+    if (team === undefined) teams.set(worker.team, [worker]);
+    else team.push(worker);
+  }
+  const all = [...teams].map(([team, workers]) => ({ team, name: workers[0]!.teamName, workers }));
+  return [...all.filter((t) => t.team === GENERAL_TEAM), ...all.filter((t) => t.team !== GENERAL_TEAM)];
 }
 
 /** PROJECTS: every project the user reads. */
@@ -198,17 +236,17 @@ export function projectsOf(snapshot: LoadedSnapshot): Section<ProjectsView> {
 
 /** How many workers are in each status, and how many waits-on entries they have. */
 export type ShiftCounts = Record<ShiftStatus, number> & {
-  /** Each held task waiting on you plus each pending ask, across the workers counted. */
+  /** Each held task holding on a question for you plus each pending ask, across the workers counted. */
   waiting: number;
 };
 
 /** The counts over every worker in `states`, or over one team's. */
 export function shiftCounts(states: WorkerStates, team?: string): ShiftCounts {
-  const counts: ShiftCounts = { "on shift": 0, "on call": 0, "off shift": 0, waiting: 0 };
-  for (const { worker, status, held, asks } of states.workers.values()) {
+  const counts: ShiftCounts = { "on shift": 0, "off shift": 0, waiting: 0 };
+  for (const { worker, status, waitsOnYou, asks } of states.workers.values()) {
     if (team !== undefined && worker.team !== team) continue;
     counts[status] += 1;
-    counts.waiting += held.filter((row) => readStatus(row.status) === "parked").length + asks.length;
+    counts.waiting += waitsOnYou.length + asks.length;
   }
   return counts;
 }
@@ -224,6 +262,13 @@ export function pickedTeam(workers: readonly Worker[], team: string | null): str
  */
 const CHIEF_OF_STAFF = "chief-of-staff";
 
+const isChiefOfStaff = (idOrName: string) => idOrName.slice(idOrName.indexOf(".") + 1) === CHIEF_OF_STAFF;
+
+/** How the screens name a worker: the chief of staff is the Shift Coordinator; its id stays `chief-of-staff`. */
+export function workerLabel(idOrName: string): string {
+  return isChiefOfStaff(idOrName) ? "Shift Coordinator" : idOrName;
+}
+
 /** Which worker Shift Manager talks to as the chief of staff, if exactly one is. */
 export type ChiefOfStaff = { kind: "one"; worker: Worker } | { kind: "none" } | { kind: "several"; workers: Worker[] };
 
@@ -234,13 +279,13 @@ export type ChiefOfStaff = { kind: "one"; worker: Worker } | { kind: "none" } | 
  * more are a state, never a guess.
  */
 export function chiefOfStaffOf(workers: readonly Worker[]): ChiefOfStaff {
-  const found = workers.filter((worker) => worker.id.slice(worker.id.indexOf(".") + 1) === CHIEF_OF_STAFF);
+  const found = workers.filter((worker) => isChiefOfStaff(worker.id));
   if (found.length === 0) return { kind: "none" };
   return found.length === 1 ? { kind: "one", worker: found[0]! } : { kind: "several", workers: found };
 }
 
 /** Whether a row is running. */
-const isRunning = (row: BoardRow) => readStatus(row.status) === "in_progress";
+const isRunning = (row: BoardRow) => row.status === "in_progress";
 
 /** The first failed board read, if any. */
 function boardFailure(snapshot: LoadedSnapshot): Failure | undefined {
@@ -249,17 +294,22 @@ function boardFailure(snapshot: LoadedSnapshot): Failure | undefined {
 }
 
 /**
- * The shift summary's numbers (D1, BR-4): the asks waiting on the user, as
- * Inbox lists them, and the runs going with how many workstreams they run in,
- * from the rows Tasks reads. Each line fails on its own read (BR-8).
+ * The shift summary's numbers (D1, BR-4): what waits on the user, as Inbox
+ * lists it (one item per task held on a question, a review or an approval,
+ * and per ask no task holds, FIX-2131); the asks the worker sessions hold,
+ * each drawn as a card; and the runs going with how many workstreams they run
+ * in, from the rows Tasks reads. Each line fails on its own read (BR-8).
  */
 export function shiftSummary(snapshot: LoadedSnapshot): {
+  inbox: Section<InboxItem<Ask>[]>;
   asks: Section<Ask[]>;
   running: Section<{ runs: number; workstreams: number }>;
 } {
-  const failed = snapshot.inventory.ok ? boardFailure(snapshot) : snapshot.inventory.failure;
+  const boardsFailed = boardFailure(snapshot);
+  const failed = snapshot.inventory.ok ? boardsFailed : snapshot.inventory.failure;
   const running = openRows(snapshot).filter(isRunning);
   return {
+    inbox: snapshot.inbox,
     asks: snapshot.asks,
     running:
       failed === undefined

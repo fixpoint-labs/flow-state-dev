@@ -1,6 +1,6 @@
 import type { Content } from "./content";
 import type { ModelIdentity } from "../types/model-identity";
-import type { ResumeAction, SuspensionReason, SuspensionStatus } from "../types/suspension";
+import type { ResumeAction, SuspensionReason, SuspensionStatus, WaitForUserKind } from "../types/suspension";
 
 export type { ModelIdentity };
 
@@ -294,6 +294,18 @@ export type BlockTraceItem = OutputItemBase & {
   startedAt?: number;
   completedAt?: number;
   duration?: number;
+  /**
+   * `true` when the block threw and a `.rescue()` handler produced its output.
+   * Recorded whatever the trace-observability setting, so a resume that
+   * replays the block keeps `ctx.wasRescued()` unchanged. Absent otherwise.
+   */
+  rescued?: true;
+  /**
+   * `true` on the lean completion record the runtime writes when trace
+   * observability is off: identity, output and `rescued` only. Absent on full
+   * traces and on records written before lean records existed.
+   */
+  lean?: true;
   error?: {
     message: string;
     code?: string;
@@ -663,6 +675,20 @@ export type SuspensionItem = OutputItemBase & {
   suspensionId: string;
   suspensionStatus: SuspensionStatus;
   reason: SuspensionReason;
+  /**
+   * What a user's suspension asks for, when `ctx.waitForUser` set it
+   * (FIX-2129). Absent on a raw `ctx.suspend`, and on items written before
+   * it: read it with `waitForUserKindOf`, which falls back to the reason.
+   */
+  kind?: WaitForUserKind;
+  /** When the suspension stops waiting (ms epoch). Absent when it has no deadline. */
+  expiresAt?: number;
+  /**
+   * The suspension's short heading, when it gave one; `message` is then
+   * its body, and may be markdown. Absent otherwise, and on items written
+   * before it existed: a renderer heads the suspension with `message` instead.
+   */
+  title?: string;
   message: string;
   data?: Record<string, unknown>;
   resumeSchema?: Record<string, unknown>;

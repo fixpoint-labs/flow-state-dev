@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { defaultMcpFilterTools, mcpRequestStateSchema } from "../../src/mcp/filter";
 import { MCP_TOOL_META, type MCPToolMeta } from "../../src/mcp/types";
-import type { GeneratorTool } from "@flow-state-dev/core";
+import type { CapabilityPresetCtx, GeneratorTool } from "@flow-state-dev/core";
 
 function makeTool(namespacedName: string, server?: string, originalName?: string): GeneratorTool {
   const tool: any = { name: namespacedName, kind: "handler", description: "" };
@@ -12,8 +12,8 @@ function makeTool(namespacedName: string, server?: string, originalName?: string
   return tool as GeneratorTool;
 }
 
-function ctx(state: unknown) {
-  return { request: { state }, session: { state: {} } };
+function ctx(state: unknown): CapabilityPresetCtx {
+  return { request: { state }, session: { state: {}, identity: { id: "s1" } }, resources: {} };
 }
 
 describe("defaultMcpFilterTools", () => {

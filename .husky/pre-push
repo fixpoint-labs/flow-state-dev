@@ -1,0 +1,3 @@
+pnpm lint
+node scripts/check-retired-terms.mjs
+node goals/vocabulary/one-word-per-thing/sweep.mjs

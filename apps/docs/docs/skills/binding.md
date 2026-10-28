@@ -27,7 +27,7 @@ const skills = createSkillsLibrary({
 // A binding — this generator preloads one skill, and nothing else has it.
 const analyst = generator({
   name: "analyst",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "...",
   uses: [skills.with({ active: ["detailed-analysis"] })],
 });
@@ -80,7 +80,7 @@ Sometimes the agent should decide. Turn on `dynamicActivation` and the generator
 ```ts
 const worker = generator({
   name: "worker",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "...",
   uses: [skills.with({ allowed: ["deep-research", "competitor-scan"], dynamicActivation: true })],
 });

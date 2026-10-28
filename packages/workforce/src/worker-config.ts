@@ -44,7 +44,7 @@
 
 import { z } from "zod";
 import type { BlockDefinition } from "@flow-state-dev/core";
-import { MAX_DELEGATES } from "./delegates/delegate-keys";
+import { ALL_DELEGATES, MAX_DELEGATES } from "./delegates/delegate-keys";
 import {
   INSTRUCTIONS_KEY,
   WORKER_ID_KEY,
@@ -200,11 +200,17 @@ export function workerConfigSchema() {
      * One list, read two ways. A flow that routes posts (the coordinator)
      * posts to the ones that take a post; any worker whose flow carries the
      * task tools files tasks for the ones that take a task, and that is the
-     * whole grant: a worker with none that takes a task gets no task tools.
-     * A list nothing uses is accepted. A standard worker may name only
-     * standard workers here.
+     * whole grant (FIX-2081): a task goes to no one else. A list nothing uses
+     * is accepted. A standard worker may name only standard workers here.
+     *
+     * `all` (FIX-2081 D2) is the whole roster, the worker itself included,
+     * read on every call, so a worker hired mid-conversation is reachable at
+     * once. The cap bounds a written list, not `all`. Only the user's worker
+     * file sets it: no tool switches a list to `all`.
      */
-    delegates: z.array(z.string().min(1)).max(MAX_DELEGATES).default([])
+    delegates: z
+      .union([z.literal(ALL_DELEGATES), z.array(z.string().min(1)).max(MAX_DELEGATES)])
+      .default([])
   });
 }
 

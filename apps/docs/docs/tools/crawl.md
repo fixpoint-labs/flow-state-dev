@@ -27,7 +27,7 @@ import { tools } from "@flow-state-dev/tools";
 
 const docsCrawler = generator({
   name: "docs-crawler",
-  model: "anthropic/claude-sonnet-4-6",
+  model: "anthropic/claude-sonnet-5-5",
   prompt: "Crawl documentation sites and build a knowledge summary.",
   tools: [tools.crawl()],
 });
@@ -176,7 +176,7 @@ import { tools } from "@flow-state-dev/tools";
 
 const researcher = generator({
   name: "researcher",
-  model: "anthropic/claude-sonnet-4-6",
+  model: "anthropic/claude-sonnet-5-5",
   prompt: `You are a research assistant. 
 Use search to find relevant sources.
 Use fetch to read individual pages in full.

@@ -1,0 +1,75 @@
+<svg viewBox="0 0 940 430" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="What's in the box. In the box, one task: two boards told apart by mode, a plan board that waits on every row and a delegation board that never waits; one completion rule at the claim gate; four filing settings, start, session, result and attempts. Five task tools: the filer's createTask, getTask with a wait, listTasks and updateTask with one rule per field, also public actions for screens, and the worker's reportProgress on a task turn; delegates are authority. Every ending reaches the filer once and the sweeper pays every debt at its due time. Built on those: routed tasks, steering and follow-ups, schedules that file tasks, and roles checked at hire. Composed in by the app: worker flows from role factories, routing policy and rounds, delegate lists, schedules, the claim order. Replaced in one line: a post becomes a routed task, dispatchTask's wait becomes getTask's, addTask and readTask become createTask and getTask, cancelTask becomes an updateTask status, blockTask becomes held, reopen becomes a follow-up, completeTask and failTask are gone. Not built, below a fence: the Inbox and answering a question, FIX-2058; send, call and receive, FIX-2070; the renames, FIX-2071; the prune leftovers, FIX-2072; default worker instructions, FIX-2073.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .held  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .comp  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1; }
+    .repl  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1; }
+    .fence { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:6 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-non { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="430"/>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="24" width="560" height="276" rx="5"/>
+    <text class="t-lbl" x="32" y="44">IN THE BOX &#8212; ONE TASK, FIVE TOOLS</text>
+    <rect class="held" x="32" y="56" width="256" height="104" rx="4"/>
+    <text class="t-b" x="44" y="78">one task</text>
+    <text class="t-s" x="44" y="96">plan board &#183; waits on every row</text>
+    <text class="t-s" x="44" y="112">delegation board &#183; never waits</text>
+    <text class="t-s" x="44" y="128">one done rule at the claim gate</text>
+    <text class="t-s" x="44" y="144">start &#183; session &#183; result &#183; attempts</text>
+    <rect class="held" x="300" y="56" width="260" height="104" rx="4"/>
+    <text class="t-b" x="312" y="78">five task tools</text>
+    <text class="t-s" x="312" y="96">createTask &#183; getTask({ wait })</text>
+    <text class="t-s" x="312" y="112">listTasks &#183; updateTask, one rule/field</text>
+    <text class="t-s" x="312" y="128">reportProgress, on a task turn</text>
+    <text class="t-s" x="312" y="144">public actions &#183; delegates are authority</text>
+    <rect class="held" x="32" y="172" width="528" height="52" rx="4"/>
+    <text class="t-b" x="44" y="194">every ending reaches the filer once</text>
+    <text class="t-s" x="44" y="212">failures included &#183; every debt has a due time, the sweeper pays it</text>
+    <rect class="held" x="32" y="236" width="528" height="52" rx="4"/>
+    <text class="t-b" x="44" y="258">built on it</text>
+    <text class="t-s" x="44" y="276">routed tasks &#183; steer &#183; follow-ups &#183; schedules file tasks &#183; roles at hire</text>
+  </g>
+
+  <g id="composed-in">
+    <rect class="comp" x="592" y="24" width="332" height="116" rx="5"/>
+    <text class="t-lbl" x="608" y="44">COMPOSED IN BY THE APP</text>
+    <text class="t-b" x="608" y="66">its worker flows, from role factories</text>
+    <text class="t-s" x="608" y="86">routing policy and rounds</text>
+    <text class="t-s" x="608" y="102">each session's delegates</text>
+    <text class="t-s" x="608" y="118">its schedules &#183; the claim order</text>
+  </g>
+
+  <g id="replaced">
+    <rect class="repl" x="592" y="152" width="332" height="148" rx="5"/>
+    <text class="t-lbl" x="608" y="172">REPLACED IN ONE LINE</text>
+    <text class="t-s" x="608" y="192">post &#8594; routed task</text>
+    <text class="t-s" x="608" y="208">dispatchTask({ wait }) &#8594; getTask({ wait })</text>
+    <text class="t-s" x="608" y="224">addTask, readTask &#8594; createTask, getTask</text>
+    <text class="t-s" x="608" y="240">cancelTask &#8594; updateTask status</text>
+    <text class="t-s" x="608" y="256">blockTask &#8594; held &#183; reopen &#8594; follow-up</text>
+    <text class="t-s" x="608" y="272">completeTask, failTask &#8594; gone</text>
+    <text class="t-s" x="608" y="288">the gate or the drain settles</text>
+  </g>
+
+  <g id="not-built">
+    <rect class="fence" x="16" y="320" width="908" height="94" rx="5"/>
+    <text class="t-non" x="32" y="340">NOT BUILT HERE &#8212; THE EPICS AND ISSUES THAT STAND ON THE TASK</text>
+    <text class="t-s" x="32" y="362">the Inbox and answering a question &#183; FIX-2058</text>
+    <text class="t-s" x="32" y="380">send, call and receive &#183; FIX-2070 &#183; one term per thing &#183; FIX-2071</text>
+    <text class="t-s" x="32" y="398">prune leftovers &#183; FIX-2072 &#183; default worker instructions &#183; FIX-2073</text>
+  </g>
+</svg>

@@ -15,7 +15,7 @@
  * could throw. A cancelled run returns no handle, so the hook is the only
  * carrier that survives exactly the deadline it exists for.
  */
-import { handler, harnessRunInputSchema } from "@flow-state-dev/core";
+import { formatRunDuration, handler, harnessRunInputSchema } from "@flow-state-dev/core";
 import type {
   HarnessCallbackContext,
   HarnessResolver,
@@ -29,13 +29,14 @@ import {
   readInstalledCodexSdkVersion,
 } from "./codex-client";
 import { createEmitState, emitTranslatedEvent, finalizeOpenItems } from "./emit";
-import { translateCodexEvent } from "./translate";
+import { readableFailure, translateCodexEvent } from "./translate";
 import { estimateCodexCost } from "./cost";
 import {
   CodexAgentAbortedError,
   CodexAgentConfigError,
   CodexAgentRunError,
   CodexSdkNotInstalledError,
+  isUnknownThreadFailure,
 } from "./errors";
 import {
   CODEX_SOURCE,
@@ -95,13 +96,25 @@ export interface CodexAgentOptions {
    */
   onSession?: HarnessSessionHook;
   /**
+   * Which model the run uses: a fixed id, or a resolver called once per
+   * invocation, like `cwd` and `resume`, so one block can run a different
+   * model for each run. It becomes the thread's `model` on a fresh thread and a
+   * resumed one alike, and it is what the cost estimate is priced against.
+   *
+   * `null`, `""` and `undefined` from the resolver all mean "no model named":
+   * Codex runs its own default. Setting this and `thread.model` together is
+   * refused when the block is built: one owner per value.
+   */
+  model?: string | HarnessResolver<string | null | undefined>;
+  /**
    * The SDK's thread options, forwarded verbatim (model, sandbox mode, approval
    * policy, reasoning effort, network and web-search settings, the git-repo
    * check, additional directories).
    *
-   * `model` here is also what the cost estimate is priced against — Codex's
-   * wire never names the model that ran, so a run left on Codex's default
-   * reports no cost at all.
+   * The model the run used (this group's `model`, or the block's own
+   * {@link CodexAgentOptions.model}) is also what the cost estimate is priced
+   * against — Codex's wire never names the model that ran, so a run left on
+   * Codex's default reports no cost at all.
    *
    * A `workingDirectory` or a `signal` in this bag is refused when the block is
    * built: each has exactly one owner (`cwd`, and the block's own `ctx.signal`).
@@ -179,6 +192,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
     cwd: resolveCwd,
     resume: resolveResume,
     onSession,
+    model,
     thread: threadOptions,
     client: clientOptions,
     resolveCodexClient = createDefaultResolveCodexClient(clientOptions ?? {}),
@@ -198,6 +212,11 @@ export function codexAgent(options: CodexAgentOptions = {}) {
       signal: "the block's own `ctx.signal` owns cancellation",
     },
   );
+  if (model !== undefined && threadOptions?.model !== undefined) {
+    throw new CodexAgentConfigError(
+      "codexAgent: `model` and `thread.model` cannot be set together — each names the model a run uses. Drop one.",
+    );
+  }
   assertNoOwnedKeys(
     clientOptions as Record<string, unknown> | undefined,
     REFUSED_CLIENT_KEYS,
@@ -240,11 +259,14 @@ export function codexAgent(options: CodexAgentOptions = {}) {
       // `""` is treated as `null`: a host reading an unset field out of its own
       // state should get a fresh thread, not a resume of the empty id.
       const resumeId = resumeIdRaw === undefined || resumeIdRaw === "" ? null : resumeIdRaw;
+      // The model, resolved once beside them. Unset, `thread.model` (or Codex's default) stands.
+      const runModel = (typeof model === "function" ? await model(ctx) : model) || threadOptions?.model;
 
       const client = await resolveCodexClient(ctx);
       const dispatchedAt = Date.now();
       const threadArgs = {
         ...threadOptions,
+        ...(runModel !== undefined ? { model: runModel } : {}),
         ...(workingDirectory !== undefined ? { workingDirectory } : {}),
       };
       const thread =
@@ -257,6 +279,8 @@ export function codexAgent(options: CodexAgentOptions = {}) {
       let hookFired = false;
       let usage: CodexRunUsage | null = null;
       let failureMessage: string | null = null;
+      // The stream's last own `error`: the failure when no terminal turn event follows.
+      let streamError: string | null = null;
       // Tracked beside the outcome, never derived from it: a terminal turn
       // event that ARRIVED and one this version does not recognise are
       // different facts, and only `null` may mean "nothing terminal arrived".
@@ -296,7 +320,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
                   hookFired = true;
                   await onSession?.(event.threadId, ctx);
                 }
-                ctx.emit.status(`Codex thread ${event.threadId}.`);
+                ctx.emit.status(`Codex thread ${event.threadId}`);
                 continue;
               }
               if (event.kind === "turn_completed") {
@@ -307,6 +331,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
                 outcome = "failed";
                 failureMessage = event.message;
               }
+              if (event.kind === "stream_error") streamError = event.message;
               await emitTranslatedEvent(event, ctx, emitState, name);
             }
           }
@@ -320,9 +345,21 @@ export function codexAgent(options: CodexAgentOptions = {}) {
         }
       } catch (err) {
         await finalizeOpenItems(ctx, emitState, name);
-        const failure = toRunFailure(err, sessionId);
+        const failure = toRunFailure(
+          err,
+          sessionId,
+          hookFired ? null : resumeId,
+          failureMessage ?? (streamError === null ? null : readableFailure(streamError)),
+        );
+        // One line; what the CLI said on its way out rides along as details.
+        const said = failure instanceof CodexAgentRunError ? failure.detail?.cause : undefined;
         await emitTranslatedEvent(
-          { kind: "error", message: failure.message, code: failure.code },
+          {
+            kind: "error",
+            message: failure.message,
+            code: failure.code,
+            ...(said !== undefined && !failure.message.includes(said) ? { details: { output: said } } : {}),
+          },
           ctx,
           emitState,
           name,
@@ -331,6 +368,13 @@ export function codexAgent(options: CodexAgentOptions = {}) {
       }
 
       await finalizeOpenItems(ctx, emitState, name);
+
+      // A stream that errored and then ended with no terminal turn event: its
+      // error is what happened, kept as the run's one failure line.
+      if (outcome === null && streamError !== null) {
+        failureMessage = readableFailure(streamError);
+        await emitTranslatedEvent({ kind: "error", message: failureMessage }, ctx, emitState, name);
+      }
 
       const handle: CodexAgentHandle = {
         source: CODEX_SOURCE,
@@ -345,14 +389,14 @@ export function codexAgent(options: CodexAgentOptions = {}) {
         finalMessage: emitState.finalMessage,
         usage:
           usage === null ? null : { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens },
-        cost: estimateCodexCost(usage, threadOptions?.model),
+        cost: estimateCodexCost(usage, runModel),
         codexUsage: usage,
         failureMessage,
       };
 
       ctx.emit.status(
         outcome === "finished"
-          ? "Codex run completed."
+          ? `Codex run completed in ${formatRunDuration(Date.now() - dispatchedAt)}.`
           : `Codex run errored (${failureMessage ?? "no terminal turn event"}).`,
         { transient: false },
       );
@@ -374,8 +418,22 @@ export function codexAgent(options: CodexAgentOptions = {}) {
  *
  * So: our own classes pass through, and a foreign throw is wrapped with its
  * original kept on the native `cause` chain rather than flattened to a string.
+ *
+ * `unnamedResume` is the thread the run asked to resume when the stream never
+ * named one, else `null`: only then can the failure be Codex refusing it.
+ *
+ * `turnFailure` is the message of a `turn.failed` the stream already carried
+ * (else of its last own `error`).
+ * The CLI exits non-zero after one, and the SDK's throw then holds the whole
+ * of the CLI's stderr (every log line of the run), so the turn's own message
+ * is the failure and the throw's is kept on `detail.cause`.
  */
-function toRunFailure(err: unknown, sessionId: string | null): CodexAgentError {
+function toRunFailure(
+  err: unknown,
+  sessionId: string | null,
+  unnamedResume: string | null,
+  turnFailure: string | null = null,
+): CodexAgentError {
   // Re-minted rather than passed through: the abort raised inside the race
   // knows no thread id, and the id is the whole point of the error — it is what
   // lets a manager resume the run its own deadline killed.
@@ -385,6 +443,20 @@ function toRunFailure(err: unknown, sessionId: string | null): CodexAgentError {
   if (err instanceof CodexSdkNotInstalledError) return err;
   if (err instanceof CodexAgentRunError) return err;
   const reason = err instanceof Error ? err.message : String(err);
+  // Codex refusing the thread this run asked for, before naming any thread, is
+  // the one failure classified in core's vocabulary: a host shows it refused
+  // and keeps the id. Every other failure, early or late, is an ordinary error.
+  if (unnamedResume !== null && isUnknownThreadFailure(reason, unnamedResume)) {
+    return new CodexAgentRunError(
+      `Codex did not continue thread ${unnamedResume}: ${reason}`,
+      { cause: reason },
+      err,
+      "unknown-conversation",
+    );
+  }
+  if (turnFailure !== null) {
+    return new CodexAgentRunError(`Codex run failed: ${turnFailure}`, { cause: reason }, err);
+  }
   return new CodexAgentRunError(`Codex run failed: ${reason}`, { cause: reason }, err);
 }
 

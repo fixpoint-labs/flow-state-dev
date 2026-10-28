@@ -32,6 +32,7 @@ function makeRequestRecord(id: string): RequestRecord {
     id,
     flowKind: "chat",
     actionName: "run",
+    source: "http",
     userId: "user_1",
     status: "in_progress",
     startedAtMs: ts,

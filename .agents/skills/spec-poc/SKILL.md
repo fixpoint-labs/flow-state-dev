@@ -59,8 +59,8 @@ and "the shape is obvious" is a complete reason to skip (tenet 3 — earn every 
    end state — rough, unshipped, all the issues' surfaces together — and look at it.
 
 **Not a trigger:** wanting to start coding, a reviewer asking for more detail (that's
-depth-pulled prose, or a review note in the plan), or a claim asserted once (answer it in the
-thread).
+depth-pulled prose, or a line in `DECISIONS.md → Notes from review`), or a claim asserted
+once (answer it in the thread).
 
 ## The four kinds
 
@@ -82,9 +82,8 @@ a `goals/` entry — see "Exit".
 ### 2. Shape POC — write the solution out
 
 Sketch source files showing the composition: the real block kinds, the real seams, enough
-wiring to see whether it hangs together. Not the plan's *pseudocode* sketch (which is
-deliberately unrunnable) — this is real files that really run, on a branch where nothing
-ships.
+wiring to see whether it hangs together. Real files that really run, on a branch where
+nothing ships.
 
 Keep the piece that answers the question **portable** — the candidate block, pattern, or
 capability should sit where it could one day become real code, so the implementer starts
@@ -149,8 +148,8 @@ Use **`specs/issues/<ISSUE-ID>/poc/<experiment>/`** or
 stay under that same spec. Do not move unrelated historical root POCs.
 
 These experiments are not workspace packages or production modules. Keep them out of
-production imports, package exports, default builds, test/lint discovery, and knip's
-production scan. Exclusions must target retained `poc/` subtrees, not hide production code.
+production imports, package exports, default builds, test/lint discovery, and fallow's
+scan. Exclusions must target retained `poc/` subtrees, not hide production code.
 Keep generated dependencies and secrets out of git; do not add workspace membership,
 package manifests, or root execution scripts for a POC.
 
@@ -186,14 +185,14 @@ Three requirements:
 3. **Say it is experimental, not production.** Retention does not require production
    polish; direction and the reliability of the claimed evidence remain reviewable.
 
-Then the **spec** gets the durable record: `PLAN.md`'s POC line points at the POC and states
-what it showed; `DECISIONS.md → Settled` records a premise it settled (with the same "resolved,
-don't reopen" force a `settle-claim` verdict has); *How it got here* gets a line **only if the
+Then the **spec** gets the durable record: `DECISIONS.md → Settled` points at the POC, states
+what it showed, and records a premise it settled (with the same "resolved, don't reopen"
+force a `settle-claim` verdict has); *How it got here* gets a line **only if the
 POC moved the design** — `- **POC** — <what changed>, because the run showed <what>.` At epic
 altitude the record is `DECISIONS.md → What the end-state POC showed` instead.
 
 **Report a POC that changed nothing.** "Built it, the premise held, no change" is a real
-result and it belongs on the plan's POC line. Only recording POCs that found problems teaches
+result and it belongs in `DECISIONS.md → Settled`. Only recording POCs that found problems teaches
 the next reader that a quiet POC was a failure.
 
 ## Retention and later experiments
@@ -205,7 +204,7 @@ then preserves review history, while its artifacts remain in the owning spec on 
 ### Building one after approval
 
 Start a new branch from fresh `main` and open a follow-up PR, adding the POC under the
-same owning spec and reconciling its plan/decision/evolution records. Never reopen or
+same owning spec and reconciling its `SPEC.md` and `DECISIONS.md` records. Never reopen or
 push the original approved/merged PR. If approval arrived before the original merge,
 finish that reviewed merge first; do not quietly attach new experiments to its approval.
 Material direction changes require renewed human approval on the new head. A standing
@@ -221,7 +220,7 @@ What crosses the line, and how:
 | Outcome | Where it goes |
 |---|---|
 | **A premise it settled** | `DECISIONS.md → Settled`, as resolved-with-evidence. Costs a later reviewer zero rounds to reopen. |
-| **A characterization test worth keeping** | Named in the plan's checks as a CI spec to write, or graduated into `goals/<describe>/<it>/` properly (`goal.md` with a real anti-game field). Re-written under `tdd` on the impl branch — not copied. |
+| **A characterization test worth keeping** | Left to the implementer as a CI spec to write (named in `SPEC.md`'s *how we verify* when the goal check rests on it), or graduated into `goals/<describe>/<it>/` properly (`goal.md` with a real anti-game field). Re-written under `tdd` on the impl branch — not copied. |
 | **The shape** | Cite the retained POC path and original review/amendment PR. The implementer learns from the experiment without importing it into production. |
 | **A chosen variant** | A decision card in `DECISIONS.md`. |
 | **A refuted premise** | Fold it into the spec **before** the gate. This is the cheapest possible version of that discovery. |

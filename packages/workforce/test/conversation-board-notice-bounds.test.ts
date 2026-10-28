@@ -56,7 +56,7 @@ describe("a notice that has waited out its patience", () => {
   const script = () =>
     mockGenerator({
       script: [
-        { toolCalls: [{ toolCallId: "a1", toolName: "dispatchTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
+        { toolCalls: [{ toolCallId: "a1", toolName: "createTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
         { text: "Filed." },
         { when: (input) => JSON.stringify(input).includes("completed by eng.tasker"), then: { text: "Twelve licenses." } },
         { when: (input) => JSON.stringify(input).includes("and our workers"), then: { text: "Forty workers." } }
@@ -83,10 +83,10 @@ describe("a notice that has waited out its patience", () => {
       }
     });
     conv = await host.conversation("alice", "lead");
-    await host.post("alice", conv, "run", { message: "count our licenses" });
+    await host.post("alice", conv, "respond", { message: "count our licenses" });
     expect(await until(async () => (await noticeRequests(host, conv)).length > 0)).toBe(true);
     await sleep(nextAfterMs);
-    await host.post("alice", conv, "run", { message: "and our workers?" });
+    await host.post("alice", conv, "respond", { message: "and our workers?" });
     expect(await until(() => calls === 2)).toBe(true);
     // The filing reply ends; the user's next reply is still running.
     first.open();
@@ -121,14 +121,14 @@ describe("a notice that has waited out its patience", () => {
 });
 
 describe("more notices than may wait on a conversation", () => {
-  it("are all heard: one refused while the line is full is sent again once it has room", async () => {
+  it("are all heard: one refused while the line is full stays owed, and the conversation's wake sends it again (FIX-2078)", async () => {
     const goals = ["Count A", "Count B", "Count C"];
     const judgment = mockGenerator({
       script: [
         {
           toolCalls: goals.map((goal, n) => ({
             toolCallId: `a${n}`,
-            toolName: "dispatchTask",
+            toolName: "createTask",
             args: { goal, assignee: "eng.tasker" }
           }))
         },
@@ -141,6 +141,7 @@ describe("more notices than may wait on a conversation", () => {
     let waitingWhenHeld = 0;
     const host: BoardHost = bootBoardHost({
       judgment,
+      durable: true,
       // Hold the filing reply until all three tasks have ended and sent their
       // notices: two wait, and the third is refused.
       afterModelCall: async (blockName) => {
@@ -151,12 +152,16 @@ describe("more notices than may wait on a conversation", () => {
       }
     });
     try {
+      await host.state.getRouter();
       conv = await host.conversation("alice", "lead");
-      await host.post("alice", conv, "run", { message: "count them" });
+      await host.post("alice", conv, "respond", { message: "count them" });
       await host.settled();
       expect(waitingWhenHeld).toBe(2);
-      // Nothing touches the board after the reply: whatever reaches the
-      // third notice is the notices' own doing.
+      // Nothing touches the board after the reply: the third notice, refused
+      // while the line was full, stays owed, and the conversation's wake, due
+      // two seconds after its ending, sends it again.
+      expect(await until(async () => (await Promise.all(goals.map((goal) => linesAbout(host, conv, goal)))).every((lines) => lines.length === 1), 8_000)).toBe(true);
+      await host.settled();
       for (const goal of goals) expect(await linesAbout(host, conv, goal)).toHaveLength(1);
       const owed = (await host.rows("alice")).flatMap((row) =>
         Object.entries(row.metadata ?? {}).filter(([key, value]) => key.startsWith("noticeOwed:") && value !== null)

@@ -4,7 +4,7 @@
 
 **Outcome:** A developer runs an action from a task's row in the DevTool and the row shows what that action came to: refused with the action's own words, done with its answer, or failed with the error, even when the answer only ever existed in a transient block, behind completion hooks, by reference inside a sequencer, after a person resumed it, or before a hook failed the request. The row reads it from the result the engine recorded for the request, never from traces or the live stream.
 
-**Input:** The fixture flow (`fixtures/flow.mts`), served by the ordinary `fsdev dev --config fixtures/fsdev.config.mts` on SQLite, durable, with no model. `fixtures/input.json` holds one row goal per leg and the answer each leg's action returns. Both are **held out**: the server gets the answers through `ROW_RESULT_ANSWERS`, and rows are filed through the board's own `addTask_rows` action and found by the ids it returned. Different answers must pass too.
+**Input:** The fixture flow (`fixtures/flow.mts`), served by the ordinary `fsdev dev --config fixtures/fsdev.config.mts` on SQLite, durable, with no model. `fixtures/input.json` holds one row goal per leg and the answer each leg's action returns. Both are **held out**: the server gets the answers through `ROW_RESULT_ANSWERS`, and rows are filed through the board's own `createTask_rows` action and found by the ids it returned. Different answers must pass too.
 
 **Signal:** Chromium on the shipped DevTool bundle, rebuilt at the start of the run, at **1280×800**. The page talks to the server through a pass-through proxy the check runs. Each leg runs its action from the row's own Actions strip, with the task id locked in the form. Every failure line names its leg.
 

@@ -45,6 +45,7 @@ function makeRequestRecord(
     id,
     flowKind,
     actionName,
+    source: "http",
     userId,
     sessionId,
     status: "in_progress",

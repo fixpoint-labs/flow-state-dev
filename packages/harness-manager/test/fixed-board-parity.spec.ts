@@ -29,7 +29,7 @@ function normalized(record: Record<string, unknown>, dir: string): Record<string
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([key, value]) => {
         if (key === "updatedAt") return [key, typeof value];
-        if (key === "childSessionId" || key === "requestId") return [key, typeof value];
+        if (key === "childSessionId" || key === "requestId" || key === "runKey" || key === "incarnationId" || key === "baseCommit") return [key, typeof value];
         if ((key === "workspacePath" || key === "remote") && typeof value === "string") return [key, relative(dir, value)];
         return [key, value];
       }),

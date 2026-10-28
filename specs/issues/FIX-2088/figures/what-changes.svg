@@ -1,0 +1,59 @@
+<svg viewBox="0 0 940 360" role="img" aria-label="Two timelines of one request working a task. Today: the work request returns, its background step throws, the engine only logs the error, and the claim gate settles the task as done. After: the engine keeps the request's background failures and hands them to the claim gate's one check after the last drain. The gate fails the attempt through the same write a throw takes: the task goes back to pending for attempt 2, or, with no attempts left, fails with the step named. In both timelines the request itself reads completed."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .lane  { fill:var(--surface-2); }
+    .req   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .bgw   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .gate  { fill:var(--surface); stroke:var(--ink-3); stroke-width:1.2; }
+    .bad   { stroke:var(--gone); stroke-width:2.4; }
+    .good  { stroke:var(--code); stroke-width:2.4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-x   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:700; font-size:13px; }
+    .t-bad { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
+    .t-ok  { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="360"/>
+
+  <g id="today">
+    <rect class="lane" x="16" y="16" width="908" height="150" rx="6"/>
+    <text class="t-lbl" x="32" y="38">TODAY · THE ERROR IS LOGGED, AND THE GATE SETTLES DONE</text>
+    <rect class="req" x="40" y="56" width="220" height="26" rx="4"/>
+    <text class="t-s" x="50" y="73">work request · reads completed</text>
+    <rect class="bgw" x="220" y="92" width="190" height="22" rx="4"/>
+    <text class="t-s" x="230" y="107">background step</text>
+    <text class="t-x" x="396" y="108">✕</text>
+    <path class="arrow" d="M410 103 L470 103"/>
+    <text class="t-s" x="476" y="107">engine logs it · nothing else reads it</text>
+    <rect class="gate" x="690" y="56" width="110" height="26" rx="4"/>
+    <text class="t-s" x="702" y="73">claim gate</text>
+    <line class="bad" x1="820" y1="50" x2="820" y2="150"/>
+    <text class="t-bad" x="760" y="134" text-anchor="end">task settled as done</text>
+  </g>
+
+  <g id="after">
+    <rect class="lane" x="16" y="180" width="908" height="164" rx="6"/>
+    <text class="t-lbl" x="32" y="202">AFTER · THE FAILURES REACH THE GATE'S ONE CHECK</text>
+    <rect class="req" x="40" y="220" width="220" height="26" rx="4"/>
+    <text class="t-s" x="50" y="237">work request · reads completed</text>
+    <rect class="bgw" x="220" y="256" width="190" height="22" rx="4"/>
+    <text class="t-s" x="230" y="271">background step</text>
+    <text class="t-x" x="396" y="272">✕</text>
+    <path class="arrow" d="M410 267 L690 240"/>
+    <text class="t-s" x="470" y="240">kept for the request · after the last drain</text>
+    <rect class="gate" x="690" y="220" width="110" height="26" rx="4"/>
+    <text class="t-s" x="702" y="237">claim gate</text>
+    <line class="good" x1="820" y1="214" x2="820" y2="330"/>
+    <text class="t-ok" x="810" y="302" text-anchor="end">attempt fails · pending for attempt 2</text>
+    <text class="t-ok" x="810" y="320" text-anchor="end">or, none left · failed, the step named</text>
+  </g>
+</svg>

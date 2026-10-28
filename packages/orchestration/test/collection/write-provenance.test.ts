@@ -26,6 +26,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import type { JsonObject } from "@flow-state-dev/core";
 import {
   beginTaskWrite,
   createResourceBackedTaskCollection,
@@ -393,21 +394,19 @@ const backings: Array<[string, BackingFactory]> = [
 ];
 
 /**
- * One correlated, committed write on a `pending`/`blocked` task.
+ * One correlated, committed write on a task that never settles.
  *
- * `pending → blocked → pending` is the only round trip that can be repeated
- * indefinitely without settling the task, which is what filling and then
- * overflowing the log needs.
+ * A lease renewal by the attempt holding the row can be repeated indefinitely
+ * without settling the task, which is what filling and then overflowing the
+ * log needs. The first claim mints no receipt; each renewal carries the
+ * caller's token.
  */
-function correlatedWrite(
-  collection: TaskCollectionRef,
-  id: string,
-  blocked: boolean,
-  write: TaskWriteToken
-): Promise<unknown> {
-  return blocked
-    ? collection.unblock(id, { write })
-    : collection.block(id, "parked", { write });
+async function correlatedWrite(collection: TaskCollectionRef, id: string, write: TaskWriteToken): Promise<unknown> {
+  const held = collection.get(id)?.status === "in_progress" ? collection.get(id)! : (await collection.claim("w"))!;
+  return collection.renewLease(id, collection.now() + 60_000 + (held.revision ?? 0), {
+    claim: ticketForClaim(collection.collectionId, held),
+    write,
+  });
 }
 
 /** The provenance a task is carrying right now. */
@@ -577,15 +576,10 @@ describe.each(backings)("%s — what the stamp records", (_name, makeBacking) =>
     await step("removeLabel", () => collection.removeLabel("t", "x"), true);
     await step("patchMetadata", () => collection.patchMetadata("t", { k: 1 }), true);
     await step("setAssignee", () => collection.setAssignee("t", "someone"), true);
-    await step("awaitReview", () => collection.awaitReview("t", "look"), true);
-    await step("unpark", () => collection.unpark("t"), true);
-    await step("block", () => collection.block("t", "waiting"), true);
-    await step("unblock", () => collection.unblock("t"), true);
-    await step("claim (2nd)", () => collection.claim("w"), true);
     await step("fail (soft, re-pends)", () => collection.fail("t", "boom"), true);
-    await step("claim (3rd)", () => collection.claim("w"), true);
+    await step("claim (2nd)", () => collection.claim("w"), true);
     await step("reclaim", () => collection.reclaim(999_999), true);
-    await step("claim (4th)", () => collection.claim("w"), true);
+    await step("claim (3rd)", () => collection.claim("w"), true);
     await step("complete", () => collection.complete("t", { ok: true }), true);
     // The one that must NOT move it: declined on a settled task.
     await step("cancel (declined)", () => collection.cancel("t", "too late"), false);
@@ -600,12 +594,13 @@ describe.each(backings)("%s — what the stamp records", (_name, makeBacking) =>
     await collection.claim("w");
 
     // Off-state (BP-035): a call omitting the token still advances the record.
-    await collection.awaitReview("t", "no token");
+    await collection.fail("t", "no token");
     expect(provenanceOf(collection, "t").writeLog).toEqual([]);
+    await collection.claim("w");
     const before = provenanceOf(collection, "t").revision!;
 
     const write = beginTaskWrite(collection.get("t"));
-    await collection.unpark("t", "with a token", { write });
+    await collection.fail("t", "with a token", { write });
     const after = provenanceOf(collection, "t");
     expect(after.revision).toBe(before + 1);
     expect(after.writeLog).toEqual([{ id: write.id, revision: after.revision }]);
@@ -644,7 +639,7 @@ describe.each(backings)("%s — what the stamp records", (_name, makeBacking) =>
     for (let i = 0; i < CAP + 2; i += 1) {
       const write = beginTaskWrite(collection.get("t"));
       tokens.push(write);
-      await correlatedWrite(collection, "t", i % 2 === 1, write);
+      await correlatedWrite(collection, "t", write);
       if (i < CAP - 1) {
         expect(provenanceOf(collection, "t").truncated).toBe(false);
       }
@@ -666,7 +661,7 @@ describe.each(backings)("%s — what the stamp records", (_name, makeBacking) =>
     await collection.addTask({ id: "t", goal: "t" });
     for (let i = 0; i < CAP + 1; i += 1) {
       const write = beginTaskWrite(collection.get("t"));
-      await correlatedWrite(collection, "t", i % 2 === 1, write);
+      await correlatedWrite(collection, "t", write);
     }
     expect(provenanceOf(collection, "t").truncated).toBe(true);
 
@@ -680,12 +675,12 @@ describe.each(backings)("%s — what the stamp records", (_name, makeBacking) =>
     const { collection } = await makeBacking();
     await collection.addTask({ id: "t", goal: "t" });
     const first = beginTaskWrite(collection.get("t"));
-    await correlatedWrite(collection, "t", false, first);
+    await correlatedWrite(collection, "t", first);
 
     // CAP more correlated writes push `first` out of the window.
     for (let i = 0; i < CAP; i += 1) {
       const write = beginTaskWrite(collection.get("t"));
-      await correlatedWrite(collection, "t", i % 2 === 0, write);
+      await correlatedWrite(collection, "t", write);
     }
 
     expect(provenanceOf(collection, "t").writeLog.some((r) => r.id === first.id)).toBe(false);
@@ -850,7 +845,7 @@ describe("a lost CAS round stamps once, off the state that committed", () => {
 
   it("resource-backed", async () => {
     let clock = 1000;
-    const resources = createFakeResourceCollection<Record<string, unknown>>(undefined, {
+    const resources = createFakeResourceCollection<JsonObject>(undefined, {
       onReplay: (state) => concurrent(state as unknown as Task) as unknown as typeof state,
     });
     // `addTask` goes through `create`, not `updateState`, so seeding through

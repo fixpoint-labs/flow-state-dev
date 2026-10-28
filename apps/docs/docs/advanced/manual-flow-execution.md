@@ -96,7 +96,7 @@ hook such as `onCompleted` then throws, the run fails with the hook's error, and
 `output` still holds what the action returned.
 
 The same `output` and `error` are saved to the request's record in your
-`stores`, as `result`, when the run ends. A client can read them later from [`listSessionRequests`](/docs/api/client#sessionslistsessionrequestssessionid-options)
+`stores`, as `result`, when the run ends. A client can read them later from [`fsd.sessions.requests`](/docs/api/client#sessionsrequestssessionid-options)
 without attaching a stream; pass `includeResultOutput: true` to get the output.
 The record keeps a JSON copy of the output, so a `Date` is stored as its ISO
 string. A value that doesn't survive a JSON round trip, such as a `BigInt`,

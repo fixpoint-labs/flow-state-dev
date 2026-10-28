@@ -32,35 +32,54 @@
  * detached: the claim gate refuses an entry that authors session state
  * beneath it, and this flow refuses to build otherwise, naming the entry.
  *
- * **One message door** covers both managers: a user's message into a
- * running coding run, on the run's own session, found on the board of the
- * session its task was filed from.
+ * **One door** covers both managers: a user's line typed in a run's own
+ * session, whose task is found on the board of the session it was filed
+ * from. While the task is open the line steers it, and the run takes it at
+ * its next step; once the task has finished, the line is talk, answered by
+ * one run resuming the task's coding session (FIX-2086). A steer a run's last
+ * step missed is owed one more turn (`STEER_TURN_ENTRY`), which runs the task
+ * again on its attempt.
+ *
+ * **A worker's message** lands in one of its tasks' sessions only, sent to the
+ * task (FIX-2160). Once the task has finished, the message is talk too: the
+ * same talk turn resumes the task's coding session with it, and the reply is
+ * an item there. A message to an open task is refused before it is sent, so
+ * it never reaches the work.
  *
  * Every coder worker runs on this worker flow's one copy. A session names its worker
  * (`installation.session()`), and the phases read that worker's own settings
  * through the installation, never `ctx.flow.config`.
  */
 
-import { defineFlow, router } from "@flow-state-dev/core";
+import { defineFlow, router, sequencer } from "@flow-state-dev/core";
 import type { DeclaredResources } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import {
   harnessManager,
-  harnessMessageDoor,
+  harnessSessionDoor,
+  harnessTalkTurn,
+  type HarnessFeeds,
   type HarnessJudge,
-  type MessageDoorBoard,
   type PhaseSpec,
   type WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
-import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
-import { assertHandOffBlockSupported, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
+import type { HarnessBlock } from "@flow-state-dev/core/types";
+import { assertDispatchEntrySupported, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { Task, TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import {
   conversationLedgers,
   filingConversationBoard,
+  MESSAGE_RECEIVED_ENTRY,
+  messageReceivedEntry,
+  messageReceivedSchema,
   projectWorkspaceCapability,
+  startOwedSteerTurn,
+  STEER_TURN_ENTRY,
+  steerTurnEntry,
   WORKER_TASK_ENTRY,
+  workerMessagesResources,
   workerTaskEntry,
+  type MessageReceived,
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
 import type { WorkspaceHost } from "@flow-state-dev/workspace";
@@ -83,15 +102,11 @@ export interface CoderWorkerFlowOptions {
   /**
    * **The slot.** How this worker flow is pointed at a coding harness.
    *
-   * One expression, handed the three feeds the harness contract declares. The
-   * gate puts a scripted stub here; the honesty check puts a real coding agent
+   * One expression, handed the feeds the harness manager declares. The gate
+   * puts a scripted stub here; the honesty check puts a real coding agent
    * here. Nothing else differs between the two. Called once per manager.
    */
-  harness: (feeds: {
-    cwd: (ctx: HarnessCallbackContext) => string | Promise<string>;
-    resume: (ctx: HarnessCallbackContext) => string | null | Promise<string | null>;
-    onSession: (sessionId: string, ctx: HarnessCallbackContext) => void | Promise<void>;
-  }) => HarnessBlock;
+  harness: (feeds: HarnessFeeds) => HarnessBlock;
   /**
    * Where a feature task works: a fixed repository (`{ root, sourceRepo,
    * baseRef }`), or a workspace host whose source is `projectWorkspace()`, so
@@ -163,7 +178,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
   // `workerTaskEntry` keeps the turn's skill state on the session, which lets
   // a harness through that would. Refused here, at startup, naming the entry.
   for (const manager of [implement, answer]) {
-    assertHandOffBlockSupported({ name: CODER_FLOW, target: WORKER_TASK_ENTRY, block: manager });
+    assertDispatchEntrySupported({ name: CODER_FLOW, target: WORKER_TASK_ENTRY, block: manager });
   }
 
   const byTask = router({
@@ -184,16 +199,16 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
 
   // The board this session's run is on: the one of the session its task was
   // filed from, read from the session's own fields.
-  const message = harnessMessageDoor({
+  const board = async (ctx: Parameters<typeof filingConversationBoard>[0]) => {
+    const filed = await filingConversationBoard(ctx);
+    return filed === undefined ? undefined : { tasks: filed.tasks, runOf };
+  };
+  const message = harnessSessionDoor({
     name: "coder",
-    boards: async (ctx) => {
-      const filed = await filingConversationBoard(ctx);
-      const boards: MessageDoorBoard[] =
-        filed === undefined
-          ? []
-          : [{ tasks: filed.tasks, orgScoped: false, drain: { drain: filed.runEntry, flowKind: filed.filingFlow }, runOf }];
-      return boards;
-    },
+    harness: options.harness,
+    board,
+    // A steer to a task running nothing (waiting on its filed work) starts the turn it is owed.
+    onSteered: (ctx, row) => startOwedSteerTurn(ctx, row),
   });
 
   return defineFlow({
@@ -206,15 +221,37 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     // Installed at flow level. Org-scoped, and organization identity is
     // unconditional, so the org registry is always built for a request that
     // reaches the reading blocks.
-    resources: { ...options.resources, ...installation.resources },
+    resources: { ...options.resources, ...installation.resources, ...workerMessagesResources },
     actions: {
       [INSPECT_ENTRY]: {
         block: readOwnFacts,
         description: "Read what this worker can see of its own configuration. Writes nothing.",
       },
-      // A user's message into one of this worker's running coding runs,
-      // which stops and continues the same coding session with it.
-      message,
+      // A user's line in one of this worker's runs' sessions: a steer while
+      // its task is open, talk once it has finished.
+      respond: message,
+    },
+    internal: {
+      actions: {
+        // The turn a steer the run's last step missed is owed (FIX-2086 D2):
+        // the task once more, on its attempt, with every steer in its prompt.
+        [STEER_TURN_ENTRY]: steerTurnEntry({ name: `${CODER_FLOW}-steer-turn`, block: byTask }),
+        // A message lands in one of its tasks' sessions only: it has no
+        // conversation to answer from, so one sent to it by name is refused
+        // before anything is written (FIX-2238). One sent to a finished task
+        // is answered by the talk turn, from the task's coding session
+        // (FIX-2160); the coding agent has no sendMessage, so its reply stays
+        // an item in that session.
+        [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({
+          installation,
+          flowKind: CODER_FLOW,
+          hears: "task-sessions",
+          turn: sequencer({ name: `${CODER_FLOW}-message-turn`, inputSchema: messageReceivedSchema }).step(
+            (received: MessageReceived) => ({ message: `Message from ${received.from}, another worker: ${received.text}` }),
+            harnessTalkTurn({ name: `${CODER_FLOW}-message`, harness: options.harness, board })
+          ),
+        }),
+      },
     },
     // The one door: any session's tasks, handed over under its board's id.
     task: {

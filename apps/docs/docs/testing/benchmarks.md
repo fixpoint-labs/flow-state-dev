@@ -50,8 +50,8 @@ export default defineBenchmark({
   patterns: ["supervisor", "plan-and-execute"],
   baseline: true,
   tasks,
-  model: "openai/gpt-5.4-mini",
-  judgeModel: "anthropic/claude-haiku-4-5",
+  model: "openai/gpt-6-luna",
+  judgeModel: "anthropic/claude-haiku-5-5",
   runs: 3,
 });
 ```
@@ -73,8 +73,8 @@ const report = await comparePatterns(
   ["supervisor", "parallel-tasks"],
   {
     tasks,
-    model: "openai/gpt-5.4-mini",
-    judgeModel: "anthropic/claude-haiku-4-5",
+    model: "openai/gpt-6-luna",
+    judgeModel: "anthropic/claude-haiku-5-5",
     runs: 3,
   },
 );
@@ -121,7 +121,7 @@ The honest caveat: the defaults wire one shared generator into every pattern. Th
 
 ## Choosing a model
 
-The executor model is the one variable you hold fixed across every subject, so pick it deliberately. The published suite defaults to a cheap-paid model (`openai/gpt-5.4-mini`) with a distinct judge (`anthropic/claude-haiku-4-5`). Real runs make real model calls and need provider credentials in the environment.
+The executor model is the one variable you hold fixed across every subject, so pick it deliberately. The published suite defaults to a cheap-paid model (`openai/gpt-6-luna`) with a distinct judge (`anthropic/claude-haiku-5-5`). Real runs make real model calls and need provider credentials in the environment.
 
 Cost is tracked best-effort across the sweep. Pass `maxCostUsd` (or `--max-cost` on the CLI) to set a ceiling: when the running estimate crosses it, the sweep stops and returns a partial report with `budgetExceeded: true`.
 
@@ -129,7 +129,7 @@ To run on a free-tier model instead, override the executor with an OpenRouter mo
 
 ```bash
 fsdev benchmark ./benchmark.ts \
-  --model openrouter/meta-llama/llama-3.1-70b-instruct
+  --model openrouter:meta-llama/llama-3.1-70b-instruct
 ```
 
 ## Comparing across models
@@ -138,8 +138,8 @@ Holding the model fixed answers "do the patterns beat the naive call on the same
 
 ```bash
 fsdev benchmark ./benchmark.ts \
-  --model anthropic/claude-haiku-4-5 \
-  --baseline-model anthropic/claude-sonnet-4-6
+  --model anthropic/claude-haiku-5-5 \
+  --baseline-model anthropic/claude-sonnet-5-5
 ```
 
 Programmatically, pass `baselineModels` to `comparePatterns` (or build subjects with a per-subject `model` and call `runBenchmark`):
@@ -147,11 +147,11 @@ Programmatically, pass `baselineModels` to `comparePatterns` (or build subjects 
 ```ts
 await comparePatterns(defaultBenchmarkRegistry, ["supervisor", "debate"], {
   tasks,
-  model: "anthropic/claude-haiku-4-5",          // patterns run here
-  judgeModel: "openai/gpt-5.4-mini",
+  model: "anthropic/claude-haiku-5-5",          // patterns run here
+  judgeModel: "openai/gpt-6-luna",
   baselineModels: [
-    "anthropic/claude-haiku-4-5",                // pure Haiku (the delta reference)
-    "anthropic/claude-sonnet-4-6",               // pure Sonnet, as its own row
+    "anthropic/claude-haiku-5-5",                // pure Haiku (the delta reference)
+    "anthropic/claude-sonnet-5-5",               // pure Sonnet, as its own row
   ],
 });
 ```

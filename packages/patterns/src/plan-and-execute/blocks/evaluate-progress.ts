@@ -153,7 +153,7 @@ export function createLLMEvaluator(options: {
   return generator({
     name: `${name}-evaluate-llm`,
     activeStatusMessage: "Reviewing progress",
-    model: model ?? "openai/gpt-5.4-mini",
+    model: model ?? "openai/gpt-6-luna",
     outputSchema: llmEvaluatorOutputSchema,
     sequencerStateSchema: planAndExecuteStateSchema,
     prompt: [
@@ -214,7 +214,7 @@ export interface CreateEvaluateProgressOptions {
  *
  *   The preflight handler increments `iteration`, applies the
  *   iteration cap, and short-circuits with a synthesised `complete`
- *   verdict when the cap is reached. Otherwise it hands off to the
+ *   verdict when the cap is reached. Otherwise it passes to the
  *   LLM evaluator. The trailing `.tap()` patches `status: "replanning"`
  *   and emits the `task-board-meta` extension when the verdict is
  *   `"replan"`.

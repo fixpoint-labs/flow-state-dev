@@ -19,28 +19,6 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import type { DevtoolItem } from "./item-types";
 
 /** Component-item type emitted on every per-task lifecycle event. */
-/**
- * The status `awaiting_review` shipped as `parked` (FIX-1245). Item logs are
- * immutable — a trace recorded before that rename still carries the old word on
- * `task-change.task.status`, and a `counts.awaiting_review` key on
- * `task-board-meta` — and no resource-level migration can reach them. So they
- * are mapped forward here, at the fold every consumer of this state reads
- * through. A trace recorded after the rename allocates nothing.
- */
-const LEGACY_PARKED_STATUS = "awaiting_review";
-
-function migrateTaskStatus<T extends { status?: unknown }>(task: T): T {
-  return task.status === LEGACY_PARKED_STATUS ? { ...task, status: "parked" } : task;
-}
-
-function migrateCounts<T extends { parked?: number }>(counts: T | undefined): T | undefined {
-  if (counts === undefined) return counts;
-  const legacy = (counts as Record<string, unknown>)[LEGACY_PARKED_STATUS];
-  if (typeof legacy !== "number") return counts;
-  const { [LEGACY_PARKED_STATUS]: _legacy, ...rest } = counts as Record<string, unknown>;
-  return { ...rest, parked: (counts.parked ?? 0) + legacy } as unknown as T;
-}
-
 export const TASK_CHANGE_COMPONENT = "task-change";
 
 /** Component-item type emitted at board start / end. */
@@ -53,8 +31,7 @@ export const TASK_BOARD_META_COMPONENT = "task-board-meta";
 export type TaskStatus =
   | "pending"
   | "in_progress"
-  | "blocked"
-  | "parked"
+  | "held"
   | "completed"
   | "errored"
   | "cancelled"
@@ -67,9 +44,9 @@ export type TaskChangeKind =
   | "completed"
   | "errored"
   | "retried"
-  | "blocked"
-  | "unblocked"
-  | "review_requested"
+  | "held"
+  | "released"
+  | "settings_changed"
   | "resumed"
   | "cancelled"
   | "label_changed"
@@ -95,6 +72,10 @@ export type Task = {
   output?: unknown;
   error?: string;
   feedback?: string;
+  /** What the task waits on a person for: its questions and its run's stop. */
+  holds?: TaskHoldWire[];
+  /** Messages on the task; one naming a question (`answers`) closes it. */
+  steers?: { id: string; message: string; answers?: string }[];
   labels?: string[];
   metadata?: Record<string, unknown>;
   revision?: number;
@@ -105,13 +86,33 @@ export type Task = {
   completedAt?: number;
 };
 
+/** One hold on a task, wire-shape: a question (`source.kind: "row"`) or a run's stop (`"suspension"`). */
+export type TaskHoldWire = {
+  id: string;
+  source: { kind: string };
+  ask: { kind: string; prompt: string; title?: string };
+};
+
+const SETTLED: ReadonlySet<string> = new Set(["completed", "errored", "cancelled"]);
+
+/**
+ * What a running task waits on a person for, as the person was asked: the
+ * prompt of its oldest open hold. A question is open while no steer answers
+ * it; a stop is open while it is on the row. `undefined` when nothing holds
+ * the task, or it has settled.
+ */
+export function waitPrompt(task: Pick<Task, "status" | "holds" | "steers">): string | undefined {
+  if (task.holds === undefined || SETTLED.has(task.status)) return undefined;
+  const answered = new Set((task.steers ?? []).flatMap((steer) => (steer.answers === undefined ? [] : [steer.answers])));
+  return task.holds.find((hold) => hold.source.kind !== "row" || !answered.has(hold.id))?.ask.prompt;
+}
+
 /** Counts payload on `task-board-meta` completion. */
 export type BoardCounts = {
   total: number;
   pending: number;
   in_progress: number;
-  blocked: number;
-  parked: number;
+  held: number;
   completed: number;
   errored: number;
   cancelled: number;
@@ -281,7 +282,7 @@ export function groupCollections(
       }
       bucket.tsById.set(change.taskId, ts);
       bucket.tasksById.set(change.taskId, {
-        task: migrateTaskStatus(change.task),
+        task: change.task,
         kind: change.kind,
         prevStatus: change.prevStatus,
         changeCount,
@@ -303,7 +304,7 @@ export function groupCollections(
       bucket.metaTs = ts;
       bucket.boardMeta = {
         status: meta.status,
-        counts: migrateCounts(meta.counts),
+        counts: meta.counts,
       };
     }
   }

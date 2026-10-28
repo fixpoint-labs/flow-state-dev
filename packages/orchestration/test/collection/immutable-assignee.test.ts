@@ -1,15 +1,15 @@
 /**
- * Assignee immutability on a board that hands off (FIX-982 P2), narrowed to
+ * Assignee immutability on a board that dispatches (FIX-982 P2), narrowed to
  * the task an attempt holds (FIX-1780 BR-16b).
  *
- * The assignee is what a handed-off task's routing key derives from, and the
+ * The assignee is what a dispatched task's routing key derives from, and the
  * key is what addresses the child session the work runs in. Once that session
  * is keyed, reassigning the task redirects nothing: the work already dispatched
  * keeps running under the old key, and the new one addresses a session nothing
  * will ever wake.
  *
  * Only a task an attempt holds is frozen: *in progress*, and *parked*, whose
- * attempt can still settle it. A pending or blocked task is claimed afresh
+ * attempt can still settle it. A pending or held task is claimed afresh
  * before it runs again, and that claim reads whatever assignee the row then
  * holds, so moving it strands nothing. A parked task is moved once `unpark`
  * has ended its attempt.
@@ -49,7 +49,7 @@ async function board(options: { immutableAssignee?: boolean } = {}): Promise<Tas
   });
 }
 
-/** An assignee that hands off — what makes a board freeze its assignees. */
+/** An assignee that dispatches — what makes a board freeze its assignees. */
 function assignee(name: string): TaskWorker {
   return dispatcher({
     name,
@@ -67,7 +67,7 @@ async function running(tasks: TaskCollectionRef) {
   return task;
 }
 
-describe("setAssignee on a board that hands off", () => {
+describe("setAssignee on a board that dispatches", () => {
   it("declines the reassignment of a running task and names immutable-assignee", async () => {
     const tasks = await board({ immutableAssignee: true });
     const task = await running(tasks);
@@ -108,7 +108,7 @@ describe("setAssignee on a board that hands off", () => {
   it("moves a pending task: nothing has been dispatched for it yet", async () => {
     // BR-16b. A coordinator moving a waiting task to another worker is the case
     // the freeze used to refuse. The next claim reads the new assignee, so the
-    // hand-off goes to the new worker rather than stranding anything.
+    // dispatch goes to the new worker rather than stranding anything.
     const tasks = await board({ immutableAssignee: true });
     const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
 
@@ -125,42 +125,11 @@ describe("setAssignee on a board that hands off", () => {
     expect(tasks.get(task.id)?.assignee).toBe("review");
   });
 
-  it("declines a parked task: its attempt can still settle it", async () => {
-    // `parked → completed` is legal for the attempt that parked, so moving the
-    // row would let the old worker settle work now addressed to a new one.
-    const tasks = await board({ immutableAssignee: true });
-    const task = await running(tasks);
-    await tasks.awaitReview(task.id, "which colour?");
-    expect(tasks.get(task.id)?.status).toBe("parked");
-
-    expect(await tasks.setAssignee(task.id, "review")).toEqual({
-      outcome: "declined",
-      reason: "immutable-assignee",
-      status: "parked",
-    });
-    expect(tasks.get(task.id)?.assignee).toBe("implement");
-  });
-
-  it("moves a parked task once unpark ends its attempt, and the old claim can no longer settle it", async () => {
+  it("moves a held task", async () => {
     const tasks = await board({ immutableAssignee: true });
     const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
-    const claimed = await tasks.claim("w1");
-    const oldClaim = ticketForClaim(tasks.collectionId, claimed!);
-    await tasks.awaitReview(task.id, "which colour?");
-
-    await tasks.unpark(task.id);
-    expect(await tasks.setAssignee(task.id, "review")).toEqual({ outcome: "recorded" });
-
-    const late = await tasks.complete(task.id, "done", { claim: oldClaim });
-    expect(late).toMatchObject({ outcome: "declined", reason: "lost-claim" });
-    expect(tasks.get(task.id)).toMatchObject({ status: "pending", assignee: "review" });
-  });
-
-  it("moves a blocked task", async () => {
-    const tasks = await board({ immutableAssignee: true });
-    const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
-    await tasks.block(task.id, "waiting on a key");
-    expect(tasks.get(task.id)?.status).toBe("blocked");
+    await tasks.hold(task.id);
+    expect(tasks.get(task.id)?.status).toBe("held");
 
     expect(await tasks.setAssignee(task.id, "review")).toEqual({ outcome: "recorded" });
   });
@@ -208,7 +177,7 @@ describe("setAssignee on a board that hands off", () => {
 
   it("does not restrict the other patch methods on a running task", async () => {
     // Only the routing key is frozen. Labelling and re-prioritizing a
-    // handed-off task are ordinary operations and must keep working.
+    // dispatched task are ordinary operations and must keep working.
     const tasks = await board({ immutableAssignee: true });
     const task = await running(tasks);
 
@@ -291,7 +260,7 @@ describe("setAssignee on an ordinary board — the off state (BP-035)", () => {
  * The wiring, on the real resolution path.
  *
  * The guard above is correct and could still never fire: it engages only if
- * `taskBoard` decides a board hands off and threads that decision down to the
+ * `taskBoard` decides a board dispatches and threads that decision down to the
  * collection. And a board is reachable two ways — the drain's own factory and
  * the `ctx.cap.<name>` accessor — over the *same* ledger. Guarding one of them
  * leaves the other as a way to the same write, so the accessor is what these
@@ -329,12 +298,13 @@ describe("taskBoard wires assignee immutability onto its collection", () => {
     });
   }
 
-  it("declines reassignment through the board capability when an assignee hands off", async () => {
-    const name = "wired-hand-off-board";
+  it("declines reassignment through the board capability when an assignee dispatches", async () => {
+    const name = "wired-dispatch-board";
     const boardHandle = taskBoard({
       name,
-      boardId: "wired-hand-off",
-      collection: defineTaskCollection({ id: "wired-hand-off-coll", scope: "user" }),
+      boardId: "wired-dispatch",
+      mode: "delegation",
+      collection: defineTaskCollection({ id: "wired-dispatch-coll", scope: "user" }),
       workers: { implement: assignee("wired-impl") },
     });
 
@@ -351,7 +321,7 @@ describe("taskBoard wires assignee immutability onto its collection", () => {
 
   it("leaves reassignment working on a durable board with no dispatcher assignee", async () => {
     // Same backing, same resolution path — only the assignee differs. Without
-    // this, a guard keyed on "durable" rather than "hands off"
+    // this, a guard keyed on "durable" rather than "dispatches"
     // would pass the test above and quietly freeze every durable board.
     const name = "wired-inline-board";
     const boardHandle = taskBoard({
@@ -380,15 +350,15 @@ describe("taskBoard wires assignee immutability onto its collection", () => {
  * unbypassable from inside that board. It says nothing about a second board.
  *
  * Two boards may bind the same `defineTaskCollection` value, and only one of them
- * need declare a dispatcher assignee. They then share rows: the handed-off board routes
+ * need declare a dispatcher assignee. They then share rows: the dispatched board routes
  * those rows by assignee, and the sibling holds a ref that was built with no such
- * rule. A `setAssignee` through the sibling succeeds, and the handed-off board
+ * rule. A `setAssignee` through the sibling succeeds, and the dispatched board
  * watches its routing key move underneath it — the exact failure the guard
  * exists to prevent, reached by a ref the guard was never installed on.
  *
  * Construction order must not decide it either. Boards are declared in whatever
  * order a module happens to read, so the sibling is as likely to be built before
- * the handed-off board as after, and a policy captured when a board is constructed
+ * the dispatched board as after, and a policy captured when a board is constructed
  * would be a policy that depends on which line came first.
  */
 describe("assignee immutability is a property of the shared ledger", () => {
@@ -422,8 +392,8 @@ describe("assignee immutability is a property of the shared ledger", () => {
     });
   }
 
-  it("declines through a sibling board that shares the ledger and hands nothing off", async () => {
-    // User-scoped, and every hand-off fixture below matches: a board with a
+  it("declines through a sibling board that shares the ledger and dispatches nothing", async () => {
+    // User-scoped, and every dispatch fixture below matches: a board with a
     // dispatcher assignee is refused at construction on a session-scoped collection,
     // because a child session runs in its own session and would resolve an empty
     // ledger. Scope is incidental to the freeze policy under test here — what
@@ -431,8 +401,9 @@ describe("assignee immutability is a property of the shared ledger", () => {
     const ledger = defineTaskCollection({ id: "shared-ledger-a", scope: "user" });
 
     taskBoard({
-      name: "hand-off-owner-a",
-      boardId: "hand-off-owner-a",
+      name: "dispatch-owner-a",
+      boardId: "dispatch-owner-a",
+      mode: "delegation",
       collection: ledger,
       workers: { implement: assignee("owner-impl-a") },
     });
@@ -454,7 +425,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
     });
   });
 
-  it("declines through a sibling declared BEFORE the handed-off board", async () => {
+  it("declines through a sibling declared BEFORE the dispatched board", async () => {
     // Order reversed. A policy captured at board-construction time passes the
     // case above and fails this one, so the two are not redundant.
     const ledger = defineTaskCollection({ id: "shared-ledger-b", scope: "user" });
@@ -466,8 +437,9 @@ describe("assignee immutability is a property of the shared ledger", () => {
     });
 
     taskBoard({
-      name: "hand-off-owner-b",
-      boardId: "hand-off-owner-b",
+      name: "dispatch-owner-b",
+      boardId: "dispatch-owner-b",
+      mode: "delegation",
       collection: ledger,
       workers: { implement: assignee("owner-impl-b") },
     });
@@ -483,7 +455,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
     });
   });
 
-  it("leaves two boards sharing a ledger alone when neither hands off", async () => {
+  it("leaves two boards sharing a ledger alone when neither dispatches", async () => {
     // The promotion is driven by a dispatcher assignee, not by sharing. Without
     // this, "freeze the ledger" could degrade into "freeze anything shared".
     const ledger = defineTaskCollection({ id: "shared-ledger-c", scope: "session" });
@@ -511,10 +483,10 @@ describe("assignee immutability is a property of the shared ledger", () => {
     });
   });
 
-  it("does not freeze the ledger when the handed-off board failed to construct", async () => {
+  it("does not freeze the ledger when the dispatched board failed to construct", async () => {
     // The freeze is one-way and outlives the call that set it, so it must not
-    // run until every refusal has had its chance. `assertHandOffBoardSupported`
-    // rejects a durable handed-off board with no `boardId` — and a caller that
+    // run until every refusal has had its chance. `assertDispatchBoardSupported`
+    // rejects a durable dispatched board with no `boardId` — and a caller that
     // catches that (a config fallback, a hot reload, a test asserting the
     // refusal) would otherwise be left holding a declaration that declines valid
     // reassignment for a board that never came into existence.
@@ -522,7 +494,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
 
     expect(() =>
       taskBoard({
-        name: "invalid-hand-off-e",
+        name: "invalid-dispatch-e",
         // no boardId — refused
         collection: ledger,
         workers: { implement: assignee("owner-impl-e") },
@@ -546,15 +518,16 @@ describe("assignee immutability is a property of the shared ledger", () => {
     });
   });
 
-  it("does not freeze when a hand-off is refused for its session-scoped ledger", async () => {
+  it("does not freeze when a dispatch is refused for its session-scoped ledger", async () => {
     // The second refusal that fires on a durable board, so the deferral cannot
     // be satisfied by special-casing the missing-boardId check alone.
     const ledger = defineTaskCollection({ id: "shared-ledger-f", scope: "session" });
 
     expect(() =>
       taskBoard({
-        name: "invalid-hand-off-f",
-        boardId: "invalid-hand-off-f",
+        name: "invalid-dispatch-f",
+        boardId: "invalid-dispatch-f",
+        mode: "delegation",
         collection: ledger,
         workers: { implement: assignee("owner-impl-f") },
       })
@@ -579,14 +552,15 @@ describe("assignee immutability is a property of the shared ledger", () => {
 
   it("does not leak the policy to a different ledger", async () => {
     // Identity is the declaration object, not the collection id or the mere fact
-    // that some board somewhere hands off. A second ledger must be untouched.
-    const handOffLedger = defineTaskCollection({ id: "shared-ledger-d", scope: "user" });
+    // that some board somewhere dispatches. A second ledger must be untouched.
+    const dispatchLedger = defineTaskCollection({ id: "shared-ledger-d", scope: "user" });
     const otherLedger = defineTaskCollection({ id: "other-ledger-d", scope: "session" });
 
     taskBoard({
-      name: "hand-off-owner-d",
-      boardId: "hand-off-owner-d",
-      collection: handOffLedger,
+      name: "dispatch-owner-d",
+      boardId: "dispatch-owner-d",
+      mode: "delegation",
+      collection: dispatchLedger,
       workers: { implement: assignee("owner-impl-d") },
     });
 

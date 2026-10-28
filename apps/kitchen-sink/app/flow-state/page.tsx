@@ -16,7 +16,7 @@ import {
   type FlowNavigatorLeafState,
   type FlowNavigatorSection,
 } from "@flow-state-dev/react";
-import { createClient, createSessionClient, type ClientFetch } from "@flow-state-dev/client";
+import { createClient, type ClientFetch } from "@flow-state-dev/client";
 import { Button } from "@/components/ui/button";
 import { Menu, MessageSquareText, Package, Plus, RotateCcw, Users, Wrench, X } from "lucide-react";
 
@@ -35,6 +35,7 @@ import {
 } from "@/components/flow-state/prompt-input";
 import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
 import { RequestGroupRenderer } from "@/components/flow-state/request-group";
+import { SessionConversationLoading } from "@/components/session-conversation-loading";
 import { StuckRequestBanner } from "@/components/flow-state/stuck-request-banner";
 
 import { AgentResponseCard } from "@/components/agent-response-card";
@@ -54,7 +55,7 @@ import { SuggestionRow } from "@/components/suggestion-row";
 import { BackgroundWorkPanel, BackgroundWorkRefresh } from "@/components/background-work-panel";
 import { VoiceToggle } from "@/components/voice-toggle";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { ModeRailHeader } from "@/components/mode-rail-header";
+import { ModeRailHeader, RAIL_THEME } from "@/components/mode-rail-header";
 import { modeById } from "@/lib/modes";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
 import { ChatAgentMessage } from "@/components/chat-agent/message";
@@ -64,6 +65,7 @@ import { COORDINATOR_FLOWS, defaultConversation, isCoordinatorFlow, WORKER_FLOWS
 import { createWorkforceClient, type RosterEntry } from "@flow-state-dev/workforce/browser";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 import { pageGoalControl } from "@/lib/goal-control";
+import { useSessionDraft } from "@/lib/use-session-draft";
 
 import type { RendererRegistry } from "@flow-state-dev/react";
 
@@ -85,8 +87,9 @@ type MobilePanel = "chat" | "artifacts";
 const SHOW_WORKERS_IN_RAIL = true;
 
 /**
- * The `fetch` the roster and the user's conversations with workers are read
- * with. This app sends no credential; a host that does adds it here, once.
+ * The `fetch` the page's own client sends with: the roster, the user's
+ * conversations with workers, the rail and request statuses. This app sends
+ * no credential; a host that does adds it here, once.
  */
 const panelFetch: ClientFetch = (input, init) => fetch(input, init);
 
@@ -104,15 +107,6 @@ const RAIL_SECTIONS: readonly FlowNavigatorSection[] = [
   ...(SHOW_WORKERS_IN_RAIL ? [{ label: "Workers", kinds: WORKER_FLOWS }] : []),
   { label: "Assistant", kinds: [SHELL_FLOW] },
 ];
-
-/** The rail's theme: the navigator's custom properties, set to this app's tokens. */
-const RAIL_THEME = {
-  "--fsd-nav-fg": "var(--color-foreground)",
-  "--fsd-nav-muted-fg": "var(--color-muted-foreground)",
-  "--fsd-nav-selected-bg": "var(--color-accent)",
-  "--fsd-nav-selected-fg": "var(--color-accent-foreground)",
-  "--fsd-nav-guide": "var(--color-border)",
-} as CSSProperties;
 
 /**
  * A session picked in the rail that is not one of the assistant's own.
@@ -166,6 +160,8 @@ function PageInner() {
 }
 
 function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | null; pickedLive: boolean }) {
+  // The page's one client, as the app's user: the rail, the workforce panels and request statuses read through it.
+  const fsd = useMemo(() => createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: "", fetcher: panelFetch }), []);
   // The assistant's own sessions, and which one the stream is on. The rail's
   // navigator reads the flow list once more for itself: one extra read per
   // page, never one per row. A test's own session, when one is named, is the
@@ -199,7 +195,9 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
   }, [e2eSessionId, flow.activeSessionId, flow.sessions, selectSession, createSession]);
   const session = useSession(flow.activeSessionId, { items: true, autoResume: true });
 
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useSessionDraft(flow.activeSessionId);
+  const messageRef = useRef(message);
+  messageRef.current = message;
   const [mode, setMode] = useState<Mode>("ask");
   const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyle>("default");
   const [features, setFeatures] = useState<Features>(DEFAULT_FEATURES);
@@ -254,21 +252,17 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
   const pickedAddress = picked?.address;
   const pickedRequestStatus = useMemo(() => {
     if (pickedAddress === undefined) return async () => "in_progress";
-    const client = createClient({ flowKind: pickedAddress, userId: KITCHEN_SINK_USER_ID, baseUrl: "" });
-    return async (requestId: string) => (await client.getRequestStatus(requestId)).status;
-  }, [pickedAddress]);
+    const pickedFlow = fsd.flow(pickedAddress);
+    return async (requestId: string) => (await pickedFlow.request(requestId).status()).status;
+  }, [fsd, pickedAddress]);
 
   // The user's roster and their conversations with workers.
-  const workforce = useMemo(
-    () => createWorkforceClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: "", fetcher: panelFetch }),
-    [],
-  );
+  const workforce = useMemo(() => createWorkforceClient(fsd), [fsd]);
 
-  const sessionClient = useMemo(() => createSessionClient({ baseUrl: "" }), []);
   // What the rail lists: under the coordinator flow, the user's conversation
   // with each coordinator the tree declares. Stable, so the navigator's reads
   // stay fenced on it.
-  const railSessionSource = useMemo(() => railSessions(sessionClient, workforce), [sessionClient, workforce]);
+  const railSessionSource = useMemo(() => railSessions(fsd, workforce), [fsd, workforce]);
 
   const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
   const { items: artifactItems } = useResourceCollectionList(session, "artifacts", { limit: 50 });
@@ -343,15 +337,19 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
     async (msg: PromptInputMessage) => {
       const text = msg.text.trim();
       if (!flow.activeSessionId || text.length === 0) return;
-      setMessage("");
-      await session.sendAction("run", {
-        message: text,
-        mode,
-        thinkingStyle,
-        features,
-      }, { userMessage: text });
+      try {
+        await session.sendAction("run", {
+          message: text,
+          mode,
+          thinkingStyle,
+          features,
+        }, { userMessage: text });
+        if (messageRef.current.trim() === text) setMessage("");
+      } catch {
+        // Keep the persisted draft so a failed send can be retried.
+      }
     },
-    [flow.activeSessionId, mode, thinkingStyle, features, session]
+    [flow.activeSessionId, mode, thinkingStyle, features, session, setMessage]
   );
 
   const handleNewSession = useCallback(
@@ -459,6 +457,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
   );
 
   const isDisabled = !session.canSendAction || !flow.activeSessionId || flow.isLoading;
+  const conversationLoading = flow.isLoading || session.isLoading;
 
   const chatPanel = (
     <ChatPanel
@@ -469,6 +468,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
       thinkingEnabled={thinkingEnabled}
       features={features}
       isDisabled={isDisabled}
+      conversationLoading={conversationLoading}
       session={session}
       voice={voice}
       ttsEnabled={ttsEnabled}
@@ -548,7 +548,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
       )}
       <aside
         className={cn(
-          "shrink-0 flex-col border-r sm:static sm:z-auto sm:flex sm:w-64 sm:max-w-none sm:bg-muted/30 sm:shadow-none",
+          "shrink-0 flex-col border-r sm:static sm:z-auto sm:flex sm:w-64 sm:max-w-none sm:bg-sidebar sm:[--fsd-nav-bg:var(--sidebar)] sm:shadow-none",
           isRailDrawerOpen
             ? "fixed inset-y-0 left-0 z-50 flex w-[18rem] max-w-[85vw] bg-background shadow-2xl"
             : "hidden",
@@ -651,7 +651,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
       )}
       <aside
         className={cn(
-          "shrink-0 flex-col border-l lg:static lg:z-auto lg:flex lg:w-[var(--team-panel-width)] lg:max-w-none lg:shadow-none",
+          "shrink-0 flex-col border-l lg:static lg:z-auto lg:flex lg:w-[var(--team-panel-width)] lg:max-w-none lg:bg-inspector lg:shadow-none",
           isTeamSheetOpen
             ? "fixed inset-y-0 right-0 z-50 flex w-[28rem] max-w-[90vw] bg-background shadow-2xl"
             : "hidden",
@@ -738,7 +738,7 @@ function Rail({
             included. */}
         <FlowNavigator
           sections={RAIL_SECTIONS}
-          sessionClient={sessionSource}
+          client={sessionSource}
           includeDispatchRuns
           selectedSessionId={selectedSessionId}
           onSelectSession={onSelectSession}
@@ -765,6 +765,7 @@ interface ChatPanelProps {
   thinkingEnabled: boolean;
   features: Features;
   isDisabled: boolean;
+  conversationLoading: boolean;
   session: ReturnType<typeof useSession>;
   voice: ReturnType<typeof useVoice>;
   ttsEnabled: boolean;
@@ -801,13 +802,24 @@ const ConversationBody = memo(function ConversationBody({
 }) {
   return (
     <>
-      <ScrollOnNewRequest items={items} />
       <SessionItemsProvider value={items}>
         <ConversationContent className="mx-auto w-full max-w-3xl px-3 sm:px-4">
-          {items.length === 0 && !isLoading && (
-            <ConversationEmptyState title={emptyTitle} description={emptyDescription} />
+          {isLoading ? (
+            <SessionConversationLoading />
+          ) : (
+            <>
+              <ScrollOnNewRequest items={items} />
+              {items.length === 0 && (
+                <ConversationEmptyState title={emptyTitle} description={emptyDescription} />
+              )}
+              <RequestGroupRenderer
+                items={items}
+                isStreaming={isStreaming}
+                isFinishing={isFinishing}
+                statusMessage={statusMessage}
+              />
+            </>
           )}
-          <RequestGroupRenderer items={items} isStreaming={isStreaming} isFinishing={isFinishing} statusMessage={statusMessage} />
           {error && (
             <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
               <span>{error.message}</span>
@@ -850,8 +862,8 @@ function ResumePrompt({ session }: { session: ReturnType<typeof useSession> }) {
 
   return (
     <div className="mx-auto max-w-3xl px-3 pt-2 sm:px-4">
-      <div className="flex items-center justify-between gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
-        <span className="text-amber-700 dark:text-amber-300">
+      <div className="flex items-center justify-between gap-3 rounded-md border border-attention bg-attention px-3 py-2 text-sm">
+        <span className="text-attention-foreground">
           The previous request was interrupted before it finished.
         </span>
         <Button
@@ -876,6 +888,7 @@ function ChatPanel({
   thinkingEnabled,
   features,
   isDisabled,
+  conversationLoading,
   session,
   voice,
   ttsEnabled,
@@ -901,14 +914,16 @@ function ChatPanel({
           isStreaming={session.isStreaming}
           isFinishing={session.isFinishing}
           statusMessage={session.statusMessage}
-          isLoading={session.isLoading}
+          isLoading={conversationLoading}
           error={session.error}
         />
         <ConversationScrollButton />
       </Conversation>
 
       <div className="border-t">
-        {session.items.length === 0 && <SuggestionRow onSuggestionClick={onSuggestionClick} disabled={isDisabled} />}
+        {!conversationLoading && session.items.length === 0 && (
+          <SuggestionRow onSuggestionClick={onSuggestionClick} disabled={isDisabled} />
+        )}
         <StuckRequestBanner session={session} />
         {/* Outside the conversation, deliberately: a child session's output is not
             part of the transcript and nothing folds it in. */}

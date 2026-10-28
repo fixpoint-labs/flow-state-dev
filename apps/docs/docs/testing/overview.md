@@ -128,7 +128,7 @@ const result = await testFlow({
       },
     },
     user: {
-      state: { preferredModel: "gpt-4o-mini" },
+      state: { preferredModel: "gpt-6-luna" },
     },
   },
   generators: {
@@ -225,7 +225,7 @@ const report = await evalBlock(myGenerator, {
         "Response does not hallucinate facts",
         "Tone is professional and concise",
       ],
-      model: "anthropic/claude-haiku-4-5",   // cheaper model for grading
+      model: "anthropic/claude-haiku-5-5",   // cheaper model for grading
       scoreMapping: "mean",    // average across criteria
     }),
   ],

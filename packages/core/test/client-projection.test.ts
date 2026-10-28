@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
+  omitSecretFields,
   resolveClientProjection,
   validateClientProjection,
 } from "../src/helpers/client-projection";
@@ -57,6 +58,18 @@ describe("resolveClientProjection", () => {
       state
     );
     expect(result).toEqual({ title: "T" });
+  });
+});
+
+describe("omitSecretFields", () => {
+  it("drops the fields a config names secret and keeps the rest", () => {
+    expect(omitSecretFields({ secret: ["value"] }, { value: "k", setAt: "t" })).toEqual({ setAt: "t" });
+  });
+
+  it("returns the same state object when nothing is secret", () => {
+    const state = { value: "k" };
+    expect(omitSecretFields({}, state)).toBe(state);
+    expect(omitSecretFields({ secret: [] }, state)).toBe(state);
   });
 });
 
@@ -201,7 +214,8 @@ describe("validateClientProjection", () => {
 
 describe("defineResource client projection validation", () => {
   it("rejects `expose` + `data`", () => {
-    expect(() =>
+    // Built outside expect(), where an untyped callback still infers.
+    const define = () =>
       defineResource({
         ref: "memo",
         scope: "session",
@@ -210,8 +224,8 @@ describe("defineResource client projection validation", () => {
           expose: ["title"],
           data: (s) => ({ title: s.title }),
         },
-      })
-    ).toThrow(/at most one/);
+      });
+    expect(define).toThrow(/at most one/);
   });
 
   it("rejects an unknown `expose` key", () => {

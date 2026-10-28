@@ -59,10 +59,12 @@
  */
 import { ClientHttpError, readEveryCollectionPage, type ResourceManifest, type SessionSummary } from "@flow-state-dev/client";
 import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
-import type { ResumeAction } from "@flow-state-dev/core/types";
+import { isUserSuspension, waitForUserKindOf, type ResumeAction } from "@flow-state-dev/core/types";
 import { deriveSuspensions, suspensionShape } from "@flow-state-dev/react";
 import { ROSTER_FLOW, sessionIdOfFiling, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "@flow-state-dev/workforce/browser";
-import { workforceClientFor, type LabClients } from "./connection";
+import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
+import type { Client } from "@flow-state-dev/client";
+import { createInboxClient, inboxItems, taskHoldSchema, type InboxAnswer, type InboxHold, type InboxItem, type InboxRow, type TaskHold } from "@flow-state-dev/orchestration/inbox";
 
 /** Why a read did not load. */
 export type Failure = { message: string; httpStatus?: number };
@@ -102,9 +104,20 @@ export type Worker = {
    * written before doors were published.
    */
   door: string | null;
-  /** The team it sits under, or {@link STAFF_TEAM} for an org worker (see {@link toWorker}). */
+  /**
+   * Whether the worker keeps standing rules: its worker flow declares the
+   * rules action, as the hire published it. `false` on a row written before
+   * the field.
+   */
+  rules: boolean;
+  /** The id of the team it sits under, or {@link GENERAL_TEAM} for an org worker (see {@link toWorker}). */
   team: string;
+  /** Its team's display name: the team's own, "General" for {@link GENERAL_TEAM}, else the team id. */
+  teamName: string;
+  /** Its id without the team: what a board may name it by. */
   name: string;
+  /** What a user reads it by: its display name, or its id when it has none. */
+  displayName: string;
 };
 
 /** Where a project lives: the organization's, or the user's own. */
@@ -144,7 +157,7 @@ export type Projects = {
 
 /**
  * The run working a task, or the run that last worked it: the session a
- * handed-off attempt runs in, that attempt's request there, and the attempt
+ * dispatched attempt runs in, that attempt's request there, and the attempt
  * number. The board's claim gate writes it from inside the run; the next claim
  * clears it. It carries no flow: the run's flow is the one its session records
  * as its owner.
@@ -174,6 +187,14 @@ export type BoardRow = {
    */
   run: RunLink | null;
   error: string | null;
+  /**
+   * What holds the row (FIX-2133): its questions and confirms, and its run's
+   * stop for the user. Empty when nothing does. The Inbox lists the task's
+   * item from the open ones.
+   */
+  holds: TaskHold[];
+  /** Its steers as the Inbox reads them: which question each answers. A question is open while none does. */
+  steers: Array<{ id: string; answers?: string }>;
   createdAt: number | null;
   updatedAt: number | null;
   startedAt: number | null;
@@ -183,7 +204,7 @@ export type BoardRow = {
 /** A conversation's board and every row on it. */
 export type ConversationBoards = { refs: string[]; rows: BoardRow[] };
 
-/** A pending approval or question, and the session that holds it. */
+/** A pending approval, review or question, and the session that holds it. */
 export type Ask = {
   /** The worker session the ask waits in. */
   sessionId: string;
@@ -197,35 +218,18 @@ export type Ask = {
   flowId: string | null;
   /** The session that started this run, for a dispatch run. */
   parentSessionId: string | null;
-  kind: "approval" | "question";
+  kind: "approval" | "review" | "question";
   item: SuspensionItem;
   /** When the ask was raised, epoch ms. */
   since: number;
   /**
    * Why this ask can't be answered from Shift Manager, or `null` when it can.
-   * Shown on the card; the card offers no answer when it is set.
+   * Shown on the card; the card offers no answer when it is set. Every ask
+   * answers through the Lab's answer route (FIX-2129), whatever started its
+   * run, a task's included: only one whose session names no flow can't.
    */
   unanswerable: string | null;
 };
-
-/**
- * The request sources the Lab reopens through its public resume route: the
- * engine's own allow-list (`http`, `mcp`, `scheduled`), mirrored here because
- * Shift Manager runs in a browser and can't import the engine. A test pins this set
- * to the engine's exported one, so the two can't drift apart unnoticed.
- *
- * An allow-list, like the engine's: any other source, and a request with no
- * source at all, is shown as unanswerable rather than offered a button the
- * Lab will refuse. A host that adds its own transport to the engine's list
- * (`publicReentrySources`) is shown unanswerable here too, which is the
- * visible failure rather than the silent one; the server saying per request
- * whether it will reopen it is FIX-1671's.
- */
-export const REOPENED_SOURCES: ReadonlySet<string> = new Set(["http", "mcp", "scheduled"]);
-
-/** What an ask's card says when its run can't be reopened from outside the Lab. */
-export const DISPATCHED_RUN_UNANSWERABLE =
-  "This ask can't be answered from Shift Manager. The Lab reopens only runs a user, an MCP caller or a schedule started; a run it started by itself (a dispatch, a webhook) is never reopened from outside it.";
 
 /**
  * Why a Lab that lists the user no session, even after one was asked for on
@@ -274,7 +278,15 @@ export type LabSnapshot =
       projects: Section<Projects>;
       /** Per board holder: the id of a conversation that keeps a board. */
       boards: Record<string, Section<ConversationBoards>>;
+      /** The pending asks in worker sessions: the Inbox's suspension arm, and what a task's screen shows inline. */
       asks: Section<Ask[]>;
+      /**
+       * Everything waiting on the user, as one list of orchestration's one
+       * item type (`@flow-state-dev/orchestration/inbox`): an item per task
+       * row that holds the user, and one per ask no row claims. Inbox, its
+       * counts and every "needs you" total read this, and nothing else.
+       */
+      inbox: Section<InboxItem<Ask>[]>;
       /** The declared documents Jump to finds and opens read-only (BR-10). */
       resources: Section<DeclaredResource[]>;
     };
@@ -312,8 +324,11 @@ const ASK_READ_BATCH = 6;
  */
 const NO_ROSTER_FLOW = `Unknown flow "${ROSTER_FLOW}"`;
 
-/** The suspension reasons that are a user's ask: the only ones Inbox lists. */
-export const PERSON_REASONS: ReadonlySet<string> = new Set(["human_approval", "human_input"]);
+/** What a user's ask asks for: an approval, a review, or a question (an input). */
+function askTypeOf(item: SuspensionItem): Ask["kind"] {
+  const asked = waitForUserKindOf(item) ?? (suspensionShape(item) === "approval" ? "approval" : "input");
+  return asked === "input" ? "question" : asked;
+}
 
 /** One still-pending suspension, as `deriveSuspensions` reduces it. */
 export type PendingSuspension = ReturnType<typeof deriveSuspensions>["pending"][number];
@@ -323,10 +338,10 @@ export type PendingSuspension = ReturnType<typeof deriveSuspensions>["pending"][
  * and resume items, reduced by `react`'s `deriveSuspensions`. Inbox lists its
  * asks from this read.
  */
-export async function readPendingSuspensions(clients: LabClients, sessionId: string): Promise<PendingSuspension[]> {
+export async function readPendingSuspensions(client: Client, sessionId: string): Promise<PendingSuspension[]> {
   const items: OutputItem[] = [];
   for (let offset = 0, page = 0; page < MAX_PAGES; page += 1) {
-    const state = await clients.sessions.getSessionState(sessionId, {
+    const state = await client.sessions.state(sessionId, {
       includeItems: true,
       itemTypes: ["suspension", "suspension_resume"],
       offset,
@@ -365,26 +380,51 @@ function time(value: unknown): number | null {
 }
 
 /**
- * The group an org worker sits in: a worker whose address has no team, such as a
- * chief of staff or Ops. Capitalised, so no team id (lowercase by Workforce's
- * segment rule) can be it.
+ * The id of the group an org worker sits in: a worker whose address has no
+ * team, such as a chief of staff or a researcher. A user reads it as
+ * {@link GENERAL_TEAM_NAME}. The underscore keeps it outside Workforce's team
+ * ids (lowercase letters, digits and hyphens), so a team folder named
+ * `general` stays its own team.
  */
-export const STAFF_TEAM = "Staff";
+export const GENERAL_TEAM = "_general";
+
+/** {@link GENERAL_TEAM}'s display name. */
+export const GENERAL_TEAM_NAME = "General";
 
 /**
- * A worker inventory row, grouped by its worker id:
+ * A worker's team and names, from its id and the display names its row
+ * carries (each `null` when unset):
  *
  * - `<team>.<name>` sits under its team: a team id carries no dot, so the team
  *   is everything before the first one;
- * - an id with no dot is an org worker, and sits in {@link STAFF_TEAM}.
+ * - an id with no dot is an org worker, and sits in {@link GENERAL_TEAM}.
  */
+export function workerNames(
+  id: string,
+  displayName: string | null,
+  teamName: string | null,
+): Pick<Worker, "team" | "teamName" | "name" | "displayName"> {
+  const dot = id.indexOf(".");
+  const team = dot > 0 ? id.slice(0, dot) : GENERAL_TEAM;
+  return {
+    team,
+    teamName: dot > 0 ? (teamName ?? team) : GENERAL_TEAM_NAME,
+    name: dot > 0 ? id.slice(dot + 1) : id,
+    displayName: displayName ?? id,
+  };
+}
+
+/** A worker inventory row, grouped and named by {@link workerNames}. */
 export function toWorker(row: unknown): Worker | undefined {
   const id = text(field(row, "id"));
   if (id === null) return undefined;
-  const dot = id.indexOf(".");
-  const team = dot > 0 ? id.slice(0, dot) : STAFF_TEAM;
-  const name = dot > 0 ? id.slice(dot + 1) : id;
-  return { id, kind: text(field(row, "kind")), door: text(field(row, "door")), team, name };
+  return {
+    id,
+    kind: text(field(row, "kind")),
+    door: text(field(row, "door")),
+    rules: field(row, "rules") === true,
+    ...workerNames(id, text(field(row, "name")), text(field(row, "teamName"))),
+  };
 }
 
 /**
@@ -427,7 +467,35 @@ function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 }
 
-/** A board row, from what the board publishes. */
+/**
+ * The holds a row publishes (FIX-2133), each read against the hold's own
+ * shape: one that doesn't parse is none, never a guess.
+ */
+function toHolds(value: unknown): TaskHold[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((hold) => {
+    const parsed = taskHoldSchema.safeParse(hold);
+    return parsed.success ? [parsed.data] : [];
+  });
+}
+
+/** A row's steers as the Inbox reads them: each one's id, and the question it answers when it answers one. */
+function toSteerAnswers(value: unknown): Array<{ id: string; answers?: string }> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((steer) => {
+    const id = text(field(steer, "id"));
+    const answers = text(field(steer, "answers"));
+    return id === null ? [] : [{ id, ...(answers !== null ? { answers } : {}) }];
+  });
+}
+
+/**
+ * A board row, from what the board publishes.
+ *
+ * `title` is never absent: a row filed with none reads its goal there. The
+ * Brief's `distinctTitle` (`lib/tasks.ts`) is written against that, and shows
+ * a title only when it differs from `goal`.
+ */
 export function toBoardRow(boardRef: string, holderSessionId: string, topic: string, data: unknown): BoardRow {
   return {
     boardRef,
@@ -442,6 +510,8 @@ export function toBoardRow(boardRef: string, holderSessionId: string, topic: str
     deps: strings(field(data, "deps")),
     run: toRunLink(field(data, "run")),
     error: field(data, "error") == null ? null : String(field(data, "error")),
+    holds: toHolds(field(data, "holds")),
+    steers: toSteerAnswers(field(data, "steers")),
     createdAt: time(field(data, "createdAt")),
     updatedAt: time(field(data, "updatedAt")),
     startedAt: time(field(data, "startedAt")),
@@ -483,6 +553,64 @@ export function conversationOfTopic(topic: string): string {
   return sessionIdOfFiling(decodeURIComponent(topic.split("/")[0] ?? ""));
 }
 
+/**
+ * The Inbox section: orchestration's list over every board row and the asks
+ * the worker sessions hold, a task run's ask listing from its row alone. A
+ * list that can't hold one of them is a failure, never a shorter list: a
+ * task held on a board that didn't load would be missing from it.
+ *
+ * `sessions` names the flow that owns each run's session, where a task's
+ * answer goes.
+ */
+export function inboxSection(
+  asks: Section<Ask[]>,
+  boards: Record<string, Section<ConversationBoards>>,
+  sessions: readonly Pick<SessionSummary, "id" | "flowId">[],
+): Section<InboxItem<Ask>[]> {
+  if (!asks.ok) return asks;
+  const rows: BoardRow[] = [];
+  for (const board of Object.values(boards)) {
+    if (!board.ok) return { ok: false, failure: { ...board.failure, message: `Inbox lists what holds each task from its board, and a board did not load. ${board.failure.message}` } };
+    rows.push(...board.value.rows);
+  }
+  const flows = new Map(sessions.map((session) => [session.id, session.flowId ?? null]));
+  return {
+    ok: true,
+    value: inboxItems<Ask>({
+      rows: rows.map((row) => ({ ...row, board: row.boardRef, holder: holderOf(row) })),
+      suspensions: asks.value.map((ask) => ({
+        sessionId: ask.sessionId,
+        flowId: ask.flowId,
+        requestId: ask.item.requestId,
+        suspensionId: ask.item.suspensionId,
+        kind: waitForUserKindOf(ask.item) ?? "input",
+        prompt: ask.item.message,
+        ...(ask.item.title ? { title: ask.item.title } : {}),
+        since: ask.since,
+        detail: ask,
+      })),
+      flowOf: (sessionId) => flows.get(sessionId),
+    }),
+  };
+}
+
+/**
+ * Where a row's questions are answered (FIX-2133): the board's `updateTask`
+ * action on the conversation that holds it, as the signed-in user. A board
+ * that isn't a conversation's has no action Shift Manager names: `null`,
+ * and its questions read as unanswerable here.
+ */
+function holderOf(row: BoardRow): InboxRow["holder"] {
+  return row.boardRef === conversationBoardRef(row.holderSessionId) ? { sessionId: row.holderSessionId, action: UPDATE_TASK_ACTION } : null;
+}
+
+/**
+ * The action a conversation answers a task's question through: the task
+ * tools' `updateTask`, named for the conversation board's id (`tasks`) by the
+ * task tools' action rule.
+ */
+export const UPDATE_TASK_ACTION = "updateTask_tasks";
+
 /** Run `task` over `inputs`, `size` at a time, keeping order. */
 async function inBatches<T, R>(inputs: readonly T[], size: number, task: (input: T) => Promise<R>): Promise<R[]> {
   const out: R[] = [];
@@ -503,6 +631,13 @@ export type LabReader = {
    * names no owner, or when the Lab refuses the answer.
    */
   resume(ask: Ask, answer: { action: ResumeAction; data?: unknown }): Promise<void>;
+  /**
+   * Answer one of an Inbox item's holds through orchestration's one answer
+   * call, routed by its source: a task's question or confirm through its
+   * board's `updateTask`, as the user (FIX-2133). Rejects with the board's
+   * refusal.
+   */
+  answerHold(hold: InboxHold<unknown>, answer: InboxAnswer): Promise<void>;
 };
 
 /**
@@ -517,12 +652,12 @@ export function readerSessionId(userId: string, flow: string): string {
  * Reading-session opens in flight, per client and flow, so reads that overlap
  * on one page (StrictMode replaying the boot) share one open rather than racing it.
  */
-const openingReaders = new WeakMap<LabClients, Map<string, Promise<void>>>();
+const openingReaders = new WeakMap<Client, Map<string, Promise<void>>>();
 
 /** Build the reader for one connection. */
-export function createLabReader(clients: LabClients): LabReader {
+export function createLabReader(client: Client): LabReader {
   const manifests = new Map<string, Promise<ResourceManifest>>();
-  const workforce = workforceClientFor(clients);
+  const workforce = createWorkforceClient(client);
 
   /**
    * The user's own workers, off their roster: each id with the flow it runs
@@ -544,7 +679,7 @@ export function createLabReader(clients: LabClients): LabReader {
   const manifestFor = (flowKind: string, sessionId: string): Promise<ResourceManifest> => {
     let found = manifests.get(flowKind);
     if (found === undefined) {
-      found = clients.resources.getResourceManifest(sessionId);
+      found = client.resources.getResourceManifest(sessionId);
       // A failed read is not cached: Retry reads it again.
       found.catch(() => manifests.delete(flowKind));
       manifests.set(flowKind, found);
@@ -554,7 +689,7 @@ export function createLabReader(clients: LabClients): LabReader {
 
   /** Every page of one collection, through one session. */
   const readCollection = (sessionId: string, ref: string) =>
-    readEveryCollectionPage(clients.resources, sessionId, ref, { limit: PAGE_SIZE });
+    readEveryCollectionPage(client.resources, sessionId, ref, { limit: PAGE_SIZE });
 
   /** A conversation's board: the user's whole ledger, read through the conversation, keeping its own partition's rows. */
   const readBoard = async (sessionId: string): Promise<BoardRow[]> => {
@@ -722,8 +857,8 @@ export function createLabReader(clients: LabClients): LabReader {
     if (sessions.some((s) => s.parentSessionId == null && s.flowKind === flow)) return { sessions, failure: null };
     let failure: Failure | null = null;
     try {
-      let opening = openingReaders.get(clients);
-      if (opening === undefined) openingReaders.set(clients, (opening = new Map()));
+      let opening = openingReaders.get(client);
+      if (opening === undefined) openingReaders.set(client, (opening = new Map()));
       let open = opening.get(flow);
       if (open === undefined) {
         open = openReaderSession(flow).finally(() => opening!.delete(flow));
@@ -736,7 +871,7 @@ export function createLabReader(clients: LabClients): LabReader {
     }
     let listed = sessions;
     try {
-      listed = await clients.sessions.listSessions({ userId: clients.userId, include: "dispatch-runs" });
+      listed = await client.sessions.list({ userId: client.userId, include: "dispatch-runs" });
     } catch {
       // The open landed or failed on its own; the next refresh lists it.
     }
@@ -752,41 +887,28 @@ export function createLabReader(clients: LabClients): LabReader {
    */
   const openReaderSession = async (flow: string): Promise<void> => {
     try {
-      await clients.sessions.createSession({ flowKind: flow, userId: clients.userId, sessionId: readerSessionId(clients.userId, flow) });
+      await client.flow(flow).createSession({ sessionId: readerSessionId(client.userId, flow) });
     } catch (error) {
       if (describeFailure(error).httpStatus !== 409) throw error;
-      const listed = await clients.sessions.listSessions({ userId: clients.userId });
+      const listed = await client.sessions.list({ userId: client.userId });
       if (listed.some((s) => s.parentSessionId == null && s.flowKind === flow)) return;
-      await clients.sessions.createSession({ flowKind: flow, userId: clients.userId });
+      await client.flow(flow).createSession();
     }
   };
 
   /** The pending user-asks in one session. */
   const readAsks = async (session: SessionSummary, workerId: string | null): Promise<Ask[]> => {
-    const pending = (await readPendingSuspensions(clients, session.id)).filter((view) => PERSON_REASONS.has(view.item.reason));
-    if (pending.length === 0) return [];
-    // Which transport each suspended request arrived on: that decides whether
-    // the Lab will reopen it. Read only for a session that holds an ask.
-    const sources = new Map(
-      (await clients.sessions.listSessionRequests(session.id, { status: "suspended" })).map((request) => [
-        request.id,
-        request.source,
-      ]),
-    );
+    // A user's ask, by ER-1's one predicate: the only suspensions Inbox lists.
+    const pending = (await readPendingSuspensions(client, session.id)).filter((view) => isUserSuspension(view.item));
     return pending.map((view) => ({
       sessionId: session.id,
       workerId,
       flowId: session.flowId ?? null,
       parentSessionId: session.parentSessionId ?? null,
-      kind: suspensionShape(view.item) === "approval" ? ("approval" as const) : ("question" as const),
+      kind: askTypeOf(view.item),
       item: view.item,
       since: typeof view.item.ts === "number" ? view.item.ts : session.updatedAt,
-      unanswerable:
-        session.flowId == null
-          ? UNOWNED_SESSION_UNANSWERABLE
-          : !REOPENED_SOURCES.has(sources.get(view.item.requestId) ?? "")
-            ? DISPATCHED_RUN_UNANSWERABLE
-            : null,
+      unanswerable: session.flowId == null ? UNOWNED_SESSION_UNANSWERABLE : null,
     }));
   };
 
@@ -827,7 +949,7 @@ export function createLabReader(clients: LabClients): LabReader {
       failure.httpStatus === 401 || failure.httpStatus === 403 ? { refused: failure } : { unreachable: failure };
     let sessions: SessionSummary[];
     try {
-      sessions = await clients.sessions.listSessions({ userId: clients.userId, include: "dispatch-runs" });
+      sessions = await client.sessions.list({ userId: client.userId, include: "dispatch-runs" });
     } catch (error) {
       return firstFailure(describeFailure(error));
     }
@@ -840,12 +962,12 @@ export function createLabReader(clients: LabClients): LabReader {
     try {
       const first = sessions[0];
       const opened = readers.failure;
-      if (first === undefined) return opened === null ? { refused: { message: noOrganization(clients.userId) } } : firstFailure(opened);
-      orgId = (await clients.sessions.getSession(first.id)).orgId;
+      if (first === undefined) return opened === null ? { refused: { message: noOrganization(client.userId) } } : firstFailure(opened);
+      orgId = (await client.sessions.get(first.id)).orgId;
     } catch (error) {
       return firstFailure(describeFailure(error));
     }
-    if (typeof orgId !== "string" || orgId.length === 0) return { refused: { message: noOrganization(clients.userId, "their session records none") } };
+    if (typeof orgId !== "string" || orgId.length === 0) return { refused: { message: noOrganization(client.userId, "their session records none") } };
 
     const [inventory, ownWorkers] = await Promise.all([readInventory(sessions), readOwnWorkers()]);
 
@@ -885,27 +1007,48 @@ export function createLabReader(clients: LabClients): LabReader {
       readProjects(sessions, readers.failure),
     ]);
 
+    const boards = Object.fromEntries(conversationBoards);
     return {
       readAt: Date.now(),
       sessions,
       orgId,
       inventory,
       projects,
-      boards: Object.fromEntries(conversationBoards),
+      boards,
       asks,
+      inbox: inboxSection(asks, boards, sessions),
       resources,
     };
   };
 
+  // The answer route (FIX-2129): the Lab sets who answered, and checks the
+  // ask is this user's before it reads it.
+  const inbox = createInboxClient(client);
   const resume: LabReader["resume"] = async (ask, answer) => {
     if (ask.flowId === null) throw new Error(UNOWNED_SESSION_UNANSWERABLE);
-    await clients.recovery.resumeSuspension(ask.flowId, ask.item.requestId, {
-      suspensionId: ask.item.suspensionId,
-      action: answer.action,
-      ...(answer.data === undefined ? {} : { data: answer.data }),
-      resumedBy: clients.userId,
-    });
+    // Orchestration's one answer call, as the Inbox makes it for an item's hold:
+    // the card's resolution read as the answer its ask takes.
+    const asks = waitForUserKindOf(ask.item) ?? "input";
+    const typed: InboxAnswer =
+      asks === "approval"
+        ? { approved: answer.action === "approve", ...(answer.data === undefined ? {} : { data: answer.data }) }
+        : answer.action === "skip"
+          ? { skipped: true }
+          : { value: answer.data };
+    await inbox.answerHold(
+      {
+        id: ask.item.suspensionId,
+        source: { kind: "suspension", flowId: ask.flowId, sessionId: ask.sessionId, requestId: ask.item.requestId, suspensionId: ask.item.suspensionId },
+        ask: { kind: asks, prompt: ask.item.message },
+        openedAt: ask.since,
+        answerable: true,
+        unanswerable: null,
+      },
+      typed,
+    );
   };
 
-  return { read, readBoard, resume };
+  const answerHold: LabReader["answerHold"] = (hold, answer) => inbox.answerHold(hold, answer);
+
+  return { read, readBoard, resume, answerHold };
 }

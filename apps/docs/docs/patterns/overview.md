@@ -66,8 +66,6 @@ The first three patterns use `utility.decomposer` internally to plan work. They 
 
 **Reactive Blackboard** — stigmergic multi-agent coordination via write-time fan-out. Actors subscribe to entry topics and react automatically when matching entries are written. No controller, no loop. Use it for event-driven systems, continuous monitoring, and broadcast scenarios where coordination is emergent.
 
-**Drain Pool** — concurrent streaming dispatch over a dynamic, durable queue. N workers continuously pull items from a shared session-resource collection, process them, and loop until drained. Workers can enqueue follow-up items mid-drain. The parent sequencer waits for full completion. Bounded concurrency (exactly N workers, not `N^depth`), at-least-once semantics, durable via session resources.
-
 ## Pattern selection
 
 ```

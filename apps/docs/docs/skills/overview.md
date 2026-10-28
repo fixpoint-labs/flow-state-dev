@@ -96,7 +96,7 @@ import { generator } from "@flow-state-dev/core";
 export const assistant = generator({
   name: "assistant",
   itemVisibility: { client: true, history: true },
-  model: "openai/gpt-5.5",
+  model: "openai/gpt-6.1-sol",
   prompt: "You are a helpful assistant. Active skills override defaults.",
   uses: [skillsCap],
 });

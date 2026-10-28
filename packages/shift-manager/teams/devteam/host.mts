@@ -41,15 +41,25 @@
 import {
   createBearerSecretPrincipalResolver,
   createFlowState,
+  createInProcessFetch,
+  ensureSessionRecord,
   PrincipalResolutionError,
+  resolveRequestIncarnation,
   resolveUserStorageKey,
   runAction,
   type FlowState,
   type PrincipalResolver,
 } from "@flow-state-dev/engine";
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
-import { encodeUserSegment, type BlockContext, type FlowInstance, type ModelResolver } from "@flow-state-dev/core/types";
-import type { WorkspaceConfig } from "@flow-state-dev/harness-manager";
+import {
+  encodeUserSegment,
+  type BlockContext,
+  type FlowInstance,
+  type HarnessBlock,
+  type HarnessUsageReader,
+  type ModelResolver,
+} from "@flow-state-dev/core/types";
+import { harnessUsageAction, upgradeKeptTurns, type WorkspaceConfig } from "@flow-state-dev/harness-manager";
 import { localWorkspaceHost, redactRemote, type WorkspaceHost } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import {
@@ -70,6 +80,7 @@ import {
   listProjectsInputSchema,
   listProjectsOutputSchema,
   defineWorkstreamBlocks,
+  linkedProjectOf,
   projectCoordinatorTools,
   projectWorkspace,
   mergeWorkerFlows,
@@ -85,9 +96,22 @@ import {
   type WorkerInstallation,
   setRepositoryInputSchema,
   setRepositoryOutputSchema,
+  projectMcpTools,
+  type ProjectMcpServers,
   type InventoryActionRequest,
+  createErrorReporter,
+  defineErrorReporterFlow,
+  defineErrorReporterIntakeFlow,
+  ERROR_REPORTER_FLOW,
+  ERROR_REPORTER_INTAKE_FLOW,
+  type ErrorReporter,
+  type ErrorReporterHarnessFeeds,
+  type ErrorReporterHost,
+  type ErrorReporterOptions,
   type ProjectBlocks,
   type WorkstreamBlocks,
+  backfillBoardWakes,
+  upgradeWorkerEntryNames,
 } from "@flow-state-dev/workforce";
 import {
   readDeclaredRoster,
@@ -110,6 +134,7 @@ import {
   featureIssueOf,
 } from "./workforce/flows/workers/em.mts";
 import type { HarnessStub } from "./harness-stub.mts";
+import { mcpCredentialsAdapter, statusOf } from "./mcp-credentials.mts";
 import { coordinatorMemory } from "./memory.mts";
 import { withWriteLatency } from "./write-latency.mts";
 import {
@@ -149,6 +174,9 @@ export const PROJECT_COORDINATOR = "project-coordinator";
 /** Who the lab runs as, and the org every document read is bound to. */
 export const LAB_USER_ID = "u_devforce_lab";
 export const LAB_ORG_ID = "devforce-lab";
+
+/** Fallback when a worker names no model: the tree's model, via `intent/chat` (FIX-2008). */
+export const LAB_DEFAULT_MODEL = "openai/gpt-6-luna";
 
 /** The Lab user's cell in the Lab org, where every flow keeps that user's data. */
 const LAB_USER_CELL = resolveUserStorageKey(LAB_USER_ID, LAB_ORG_ID, { id: "", isolateUserState: false });
@@ -253,6 +281,9 @@ async function loadTree(root: string): Promise<DeclaredRoster> {
  */
 export const PROJECT_SETUP_ACTION = "projectSetup";
 
+/** The projects flow's action that answers how much of each harness's subscription is used. */
+export const HARNESS_USAGE_ACTION = "harnessUsage";
+
 /**
  * The project setup as the projects flow answers it: the installation's
  * project coordinator, or `null` when the tree doesn't declare one.
@@ -274,8 +305,8 @@ function projectSetup(installation: WorkerInstallation) {
  */
 const LEAD_FLOWS = [AGENT_FLOW, EM_FLOW].map((flow) => ({ kind: flow, internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } }));
 
-/** The chief of staff's project tools, by the names its `tools:` line spells. */
-const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setRepository", "openWorkstream", "listProjects"];
+/** The project tools, by the names the chief of staff's and the project coordinator's `tools:` lines spell. */
+const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setRepository", "setBrief", "openWorkstream", "editWorkstream", "listProjects"];
 
 /** The user's projects, with what a coder's task that names no project does next. */
 const listedForCodingSchema = listProjectsOutputSchema.extend({ forCoding: z.string() });
@@ -297,7 +328,7 @@ const forCoding = handler({
     const [only] = coded;
     const next =
       coded.length === 1 && only !== undefined
-        ? `One project has a repository: ${named(only)}. Hand a coder's task that names no project to it now, with dispatchTask, without asking.`
+        ? `One project has a repository: ${named(only)}. Hand a coder's task that names no project to it now, with createTask, without asking.`
         : coded.length === 0
           ? "No project has a repository. Ask which project the user means."
           : `${coded.length} projects have a repository: ${coded.map(named).join(", ")}. File nothing. Ask which one the user means, naming each.`;
@@ -310,16 +341,17 @@ const forCoding = handler({
  * `setRepository` and `openWorkstream`, and its one project read,
  * `listProjects`: the same blocks the Lab's own projects flow runs, under the
  * names its `tools:` line spells. A catalog key must be the tool's own name,
- * so `openWorkstream` is the block under `.as()`; the others are sequencers
- * named for the tool, since each waits for an approval first, or, for
- * `listProjects`, adds `forCoding`.
+ * so `openWorkstream` and `setBrief` are the blocks under `.as()`; the others
+ * are sequencers named for the tool, since each waits for an approval first,
+ * or, for `listProjects`, adds `forCoding`.
  *
  * `listProjects` is how the chief of staff knows which project a coder's task
  * works in: the projects the user is a member of, read when asked, never
  * guessed.
  *
  * `openWorkstream` names its lead: a worker on the user's roster that can
- * lead. The project coordinator opens workstreams through the same block.
+ * lead, and whose description says it does the work. The project coordinator
+ * opens workstreams through the same block.
  *
  * The owner is the session's user, so a project the chief of staff creates
  * belongs to the user talking to it, who is always a project member; `members` adds
@@ -346,7 +378,7 @@ export function chiefOfStaffProjectTools(blocks: ProjectBlocks, workstreams: Wor
     })
       .step(blocks.listProjects)
       .step(forCoding),
-    openWorkstream: workstreams.openWorkstream.as({
+    openWorkstream: workstreams.openWorkstreamTool.as({
       name: "openWorkstream",
       description:
         "Open a workstream for the user you are talking to, in a project, by the project's address " +
@@ -359,7 +391,8 @@ export function chiefOfStaffProjectTools(blocks: ProjectBlocks, workstreams: Wor
         "Create a project for the user you are talking to. They own it and are always a project member. " +
         "`id` is a short lowercase slug; `members` adds the user ids they name; `repository` is the git " +
         "remote its code lives in, if they named one. With a repository, the user approves it first.",
-      inputSchema: createProjectInputSchema,
+      // A project's MCP servers are set on its page, not by the chief of staff.
+      inputSchema: createProjectInputSchema.omit({ mcpServers: true }),
       outputSchema: createProjectOutputSchema,
     })
       .tapIf((input) => input.repository != null, askRepository((input) => input.id))
@@ -367,13 +400,28 @@ export function chiefOfStaffProjectTools(blocks: ProjectBlocks, workstreams: Wor
     setRepository: sequencer({
       name: "setRepository",
       description:
-        "Set, change or clear (null) the git remote a project's code lives in. " +
+        "Set, change or clear (null) the git remote a project's code lives in, by the project's address " +
+        "(`visibility` and `id`); in a project's own conversation, leave `project` out. " +
         "Only project members may, and the user approves it first.",
       inputSchema: setRepositoryInputSchema,
       outputSchema: setRepositoryOutputSchema,
     })
-      .tap(askRepository((input) => input.project?.id))
+      .tap(
+        askRepository((input, ctx) => {
+          // Only a project the write can change is asked about: a linked conversation naming another is refused below.
+          const linked = linkedProjectOf(ctx.session.state);
+          if (linked === undefined) return input.project?.id;
+          const named = input.project as { id: string; visibility?: unknown } | undefined;
+          return named === undefined || (named.id === linked.id && named.visibility === linked.visibility) ? linked.id : undefined;
+        }),
+      )
       .step(blocks.setRepository),
+    setBrief: blocks.setBrief.as({
+      name: "setBrief",
+      description:
+        "Set, change or clear (null) a project's brief, what the project is for, by the project's address " +
+        "(`visibility` and `id`); in a project's own conversation, leave `project` out. Only project members may.",
+    }),
   };
 }
 
@@ -416,13 +464,8 @@ const askFire = handler({
   inputSchema: z.object({ id: z.string() }).passthrough(),
   outputSchema: z.void(),
   execute: async (input: { id: string }, ctx: BlockContext) => {
-    if (ctx.suspend === undefined) {
-      throw new Error(
-        `firing "${input.id}" waits for a user's approval here, and this app can't ask for one: it runs ` +
-          `without durable execution. Nothing was changed.`,
-      );
-    }
-    await ctx.suspend({
+    // A host without durable execution refuses at the stop itself (FIX-2063).
+    await ctx.suspend!({
       reason: "human_approval",
       message: `Fire worker "${input.id}"?`,
       data: { worker: input.id },
@@ -445,21 +488,20 @@ const repositoryAskInputSchema = z
  * the project and the remote, with any user or password left out of what
  * Inbox shows. Returns on Approve; on Deny the runtime throws out of it.
  */
-function askRepository(projectOf: (input: z.infer<typeof repositoryAskInputSchema>) => string | undefined) {
+function askRepository(
+  projectOf: (input: z.infer<typeof repositoryAskInputSchema>, ctx: BlockContext) => string | undefined,
+) {
   return handler({
     name: "devforce-cos-ask-repository",
     inputSchema: repositoryAskInputSchema,
     outputSchema: z.void(),
     execute: async (input: z.infer<typeof repositoryAskInputSchema>, ctx: BlockContext) => {
-      const project = projectOf(input) ?? "";
-      if (ctx.suspend === undefined) {
-        throw new Error(
-          `the repository of project "${project}" waits for a user's approval here, and this app ` +
-            `can't ask for one: it runs without durable execution. Nothing was changed.`,
-        );
-      }
+      const project = projectOf(input, ctx);
+      // No project to name: the write that follows refuses, so there is nothing to approve.
+      if (project === undefined) return;
       const repository = input.repository == null ? null : redactRemote(input.repository);
-      await ctx.suspend({
+      // A host without durable execution refuses at the stop itself (FIX-2063).
+      await ctx.suspend!({
         reason: "human_approval",
         message:
           repository === null
@@ -508,6 +550,16 @@ export interface OpenLabOptions {
   modelResolver?: ModelResolver;
   /** The tree to read. Defaults to the lab's own. */
   root?: string;
+  /**
+   * Replace a declared document's body, by ref, including for a worker hired
+   * onto it. An unknown ref is refused, so a rename cannot leave the old body.
+   */
+  documents?: Record<string, string>;
+  /**
+   * Replace a skill's `SKILL.md` by its name, on every worker the tree gives
+   * it. A name no worker carries is refused, as `documents` refuses a ref.
+   */
+  skills?: Record<string, string>;
   /** Silence the engine's own logging. */
   logger?: unknown;
   /**
@@ -521,10 +573,10 @@ export interface OpenLabOptions {
    * Raise the EM worker's ask on open: one pending approval, in the EM worker's
    * own session, naming this feature (`ask.mts`).
    *
-   * **Absent means absent**: no request and no store write for it (durable
-   * execution stays on when a worker holds a tool that asks first). Present turns durable execution on, because the answer arrives later
-   * through the engine's resume route, and open fails, naming the step, if the
-   * ask could not be raised.
+   * **Absent means absent**: no request and no store write for it. Present,
+   * the answer arrives later through the engine's resume route (a Lab is
+   * always durable), and open fails, naming the step, if the ask could not be
+   * raised.
    */
   ask?: AskFeature;
   /**
@@ -565,6 +617,31 @@ export interface OpenLabOptions {
    * **Absent means absent**: nothing is opened.
    */
   workstreams?: readonly { as: keyof typeof LAB_USERS; input: OpenWorkstreamInput }[];
+  /**
+   * The MCP servers this Lab offers its projects, by name: each one's HTTP
+   * address, and optionally the variable that seeds the Lab user's key. A
+   * project names some of them; a coding run on it gets them relayed with its
+   * owner's key, set on Settings (`projectMcpTools`). Checked at open, which
+   * refuses a malformed entry before anything is served.
+   *
+   * **Absent means absent**: no project can name a server, no key route is
+   * served, and the harness is handed exactly what it was before.
+   */
+  mcpServers?: ProjectMcpServers;
+  /** Where the start line naming the MCP servers goes; stderr by default. */
+  log?: (line: string) => void;
+  /**
+   * The Error Reporter (FIX-1983). Absent leaves its worker off the roster.
+   * A report waits for an answer, which a Lab holds: it is always durable.
+   */
+  errorReporter?: LabErrorReporter;
+  /**
+   * How to read each harness's subscription usage, by harness name, for the
+   * Usage view and any worker that asks (`harnessUsage` on the projects
+   * flow). A reader runs only when someone asks for a fresh number. Absent:
+   * the query lists only what a harness recorded during its runs.
+   */
+  usage?: Readonly<Record<string, HarnessUsageReader>>;
 
   // ---- controls, each the red state of one claim -------------------------
 
@@ -624,6 +701,32 @@ export interface OpenLabOptions {
    * doesn't close as completed".
    */
   withoutJudge?: boolean;
+  /**
+   * More worker flows beside the Lab's own, built on its installation: a
+   * goal's worker that stops for the user in code, on the same Lab and Inbox
+   * as the coder. A flow name the Lab already builds is refused.
+   */
+  workerFlows?: (installation: WorkerInstallation) => NonNullable<HireOptions["workerFlows"]>;
+  /** The host's deadline on a stop for the user that sets none (`createFlowState`'s). Absent: none. */
+  userDeadlineMs?: number;
+  /** How often the durability sweeper runs (`durabilityRetention.sweepIntervalMs`). Absent: the engine's. */
+  sweepIntervalMs?: number;
+}
+
+/** What a Lab's Error Reporter is opened with (`openLab({ errorReporter })`). */
+export interface LabErrorReporter {
+  /** The harness that drafts and files, from its feeds. Claude Code with read-only tools in a real Lab. */
+  harness: (feeds: ErrorReporterHarnessFeeds) => HarnessBlock;
+  /** Where the harness reads the code. Default the process's working directory. */
+  cwd?: string;
+  /** The project whose MCP servers reach the tracker (`shared/fsd`). Absent: reports are kept, not filed. */
+  tracker?: ErrorReporterOptions["tracker"];
+  /** Error kinds that file without a preview, and a timeout. Both off by default. */
+  preview?: ErrorReporterOptions["preview"];
+  /** The intake's limits. */
+  limits?: ErrorReporterOptions["limits"];
+  /** Values no report may hold, beside the environment's keys and the users' MCP keys. */
+  secrets?: ErrorReporterOptions["secrets"];
 }
 
 /** A workspace host for the lab to build: where its places live, and which remotes it may reach. */
@@ -760,10 +863,12 @@ export interface Lab {
    * the other {@link LAB_USERS}' bearers instead.
    */
   door(
-    method: "GET" | "POST",
+    method: "GET" | "POST" | "DELETE",
     path: string,
     options?: { body?: unknown; bearer?: boolean; as?: keyof typeof LAB_USERS },
   ): Promise<{ status: number; body: any }>;
+  /** The Error Reporter, when the lab was opened with one. */
+  errorReporter?: ErrorReporter;
   dispose(): Promise<void>;
 }
 
@@ -795,18 +900,45 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
 
   // The documents, as the L1 resource map a flow installs. Org-scoped, which is
   // what makes the workers' document reads — and BR-17 — matter.
-  const resources = resourcesFromDocs(roster.documents);
+  const replaced = options.documents ?? {};
+  for (const ref of Object.keys(replaced)) {
+    if (!roster.documents.some((doc) => doc.ref === ref)) {
+      throw new Error(`openLab: \`documents\` replaces "${ref}", which the tree does not declare`);
+    }
+  }
+  const resources = resourcesFromDocs(
+    roster.documents.map((doc) => (Object.hasOwn(replaced, doc.ref) ? { ...doc, body: replaced[doc.ref]! } : doc)),
+  );
 
   // The project writes, built once: the flow that creates projects at open runs
   // them as actions, and the chief of staff calls the same ones as tools. The
   // workstream writes are built with the installation, below.
-  const projectBlocks = defineProjectBlocks();
+  const projectBlocks = defineProjectBlocks({ mcpServers: Object.keys(options.mcpServers ?? {}) });
+
+  // A coding run's MCP servers, relayed with its owner's key. Built here so a
+  // malformed entry refuses the open; the Lab user is the one `seedEnv` seeds.
+  const mcpTools = options.mcpServers === undefined ? undefined : projectMcpTools(options.mcpServers, { operator: LAB_USER_ID });
 
   // The controls mutate the RECORD, before the mint, so a perturbed worker
   // genuinely runs on what the control gave it rather than being graded as if
   // it did.
   const overrides = options.documentOverrides ?? {};
-  const workers = roster.workers.map((worker) => {
+  const replacedSkills = options.skills ?? {};
+  for (const name of Object.keys(replacedSkills)) {
+    if (!roster.workers.some((worker) => (worker.skills ?? []).some((skill) => skill.name === name))) {
+      throw new Error(`openLab: \`skills\` replaces "${name}", which no worker in the tree carries`);
+    }
+  }
+  const workers = roster.workers.map((tree) => {
+    const worker =
+      tree.skills === undefined
+        ? tree
+        : {
+            ...tree,
+            skills: tree.skills.map((skill) =>
+              Object.hasOwn(replacedSkills, skill.name) ? { ...skill, skillMd: replacedSkills[skill.name]! } : skill,
+            ),
+          };
     const declared = { ...worker.declared };
     if (Object.hasOwn(overrides, worker.id)) declared.document = overrides[worker.id];
     if (options.withoutProjectTools === true && Array.isArray(declared.tools)) {
@@ -824,12 +956,21 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         };
   });
 
+  // The Error Reporter's worker serves only when the Lab is opened with one;
+  // otherwise it is left off the roster, as if the tree didn't declare it.
+  const reporterRecords = workers.filter((worker) => worker.declared.flow === ERROR_REPORTER_FLOW);
+  if (options.errorReporter !== undefined && reporterRecords.length !== 1) {
+    throw new Error(`openLab: \`errorReporter\` wants one worker on "${ERROR_REPORTER_FLOW}" in the tree, found ${reporterRecords.length}`);
+  }
+  const servingWorkers =
+    options.errorReporter === undefined ? workers.filter((worker) => worker.declared.flow !== ERROR_REPORTER_FLOW) : workers;
+
   // The worker model: the tree's workers are its standard workers, and each
   // runs on one copy of the flow it names. The flows are read when first
   // needed, so the worker flows below can be built on the installation.
   let builtFlows: NonNullable<HireOptions["workerFlows"]> = {};
   const installation = createWorkerInstallation({
-    standardWorkers: workers,
+    standardWorkers: servingWorkers,
     workerFlows: () => builtFlows,
     documents: resources as never,
     // Each user's coordinator for a project, when the tree declares it.
@@ -837,8 +978,14 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   });
   // The workstream writes. A workstream's lead runs on the built-in `agent`
   // flow or the EM's `em` flow, each of which declares the entry that starts
-  // its workstream session.
-  const workstreamBlocks = defineWorkstreamBlocks({ installation, leadFlows: LEAD_FLOWS });
+  // its workstream session. A worker's open is checked against the lead's
+  // description first: told in prose, the small model still opened research
+  // under the EM, the one lead it had.
+  const workstreamBlocks = defineWorkstreamBlocks({
+    installation,
+    leadFlows: LEAD_FLOWS,
+    leadFit: { model: "openai/gpt-6-luna" },
+  });
   const { listProjects, ...projectWrites } = chiefOfStaffProjectTools(projectBlocks, workstreamBlocks);
   const projectTools = options.withoutProjectList === true ? projectWrites : { listProjects, ...projectWrites };
   const flowOf = (workerId: string): string =>
@@ -884,6 +1031,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     harness: (feeds) =>
       options.harness({
         ...feeds,
+        ...(mcpTools === undefined ? {} : { mcpTools }),
         cwd: async (ctx) => {
           const cwd = await feeds.cwd(ctx);
           noteStartingFiles(cwd);
@@ -903,30 +1051,29 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // The built-in `agent` worker flow, which the chief of staff (`org/workers/
   // chief-of-staff/`) runs on. Every worker on it gets the discovery door; a
   // worker holds hire, fire and the project writes only by naming them in
-  // its `tools:`, and in this tree only the chief of staff does. Hire and fire
+  // its `tools:`: in this tree the chief of staff names them, and the project
+  // coordinator names the writes to its own project. Hire and fire
   // write the roster of the user talking to it: a worker of their own, which
   // runs on that user's turns only. A fire, and a project's repository, wait
-  // for a user's Approve in Inbox, which needs durable execution (on
-  // whenever a worker holds a tool that asks first).
+  // for a user's Approve in Inbox, which needs durable execution (asked for
+  // below).
   const rosterTools = chiefOfStaffRosterTools(installation);
-  const asksFirst = new Set(["fire", ...(options.withoutProjectTools === true ? [] : ["createProject", "setRepository"])]);
-  const asksBeforeChanging = workers.some((worker) =>
-    ((worker.declared.tools as string[] | undefined) ?? []).some((tool) => asksFirst.has(tool)),
-  );
   // What the agent's turn is built with. The `agent` flow runs it behind its
   // door, and the `coordinator` flow, which the chief of staff runs on, runs
   // the same turn for its judgment, with memory added (below).
   const agentTurn = {
     // The project tools and the roster writes a worker names in `tools:`.
-    // The worker flow carries them, and only the chief of staff's line names them; a
-    // project coordinator's line names `readProject`, `listLeads` and
-    // `openWorkstream`, and a workstream's lead's `updateWorkstream`.
+    // The worker flow carries them, and only the chief of staff's line names
+    // the roster writes; a project coordinator's line names `readProject`,
+    // `setBrief`, `setRepository`, `listLeads`, `openWorkstream` and
+    // `editWorkstream`, and a workstream's lead's `updateWorkstream`.
     catalog: {
       ...(options.withoutProjectTools === true ? {} : projectTools),
       ...rosterTools,
       ...projectCoordinatorTools,
       listLeads: workstreamBlocks.listLeadsTool,
       updateWorkstream: workstreamBlocks.updateWorkstreamTool,
+      ...(options.withoutProjectTools === true ? {} : { editWorkstream: workstreamBlocks.editWorkstreamTool }),
     },
     uses: [
       // The worker inventory, which the discovery door reads.
@@ -935,31 +1082,63 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         resources: { workerInventory: defineWorkerInventoryCollection() },
       }),
       createWorkforceCapability({
-        roster: { workers: roster.workers },
+        roster: { workers: roster.workers.filter((worker) => servingWorkers.some((serving) => serving.id === worker.id)) },
         inventory: { workers: "workerInventory" },
       }),
     ],
   };
   const agentFlow = defineAgentWorkerFlow({ installation, ...agentTurn });
   builtFlows = {
-    [EM_FLOW]: emFlow as never,
-    [CODER_FLOW]: coderFlow as never,
+    // The EM takes tasks (its coordinator's routed ones) and files the coder's.
+    [EM_FLOW]: { flow: emFlow as never, roles: ["contributor", "manager"] },
+    [CODER_FLOW]: { flow: coderFlow as never, roles: ["contributor"] },
     [AGENT_FLOW]: agentFlow as never,
-    // The chief of staff's flow. A delivery reaches a delegate on a flow that
-    // takes a delegated post: here, `agent` and the EM's `em`, so the chief of
-    // staff can hand feature work to its EM delegate. `coder` takes tasks, not
-    // posts. Best fit's evaluator runs on Jev, through the AI Gateway: it
-    // reports the confidence the chief of staff's `minConfidence:` reads.
+    // The chief of staff's flow. A routed task reaches a delegate on any flow
+    // that takes a conversation's tasks: here the chief of staff hands feature
+    // work to its EM delegate. Best fit's evaluator runs on Jev, through the
+    // AI Gateway: it reports the confidence the chief of staff's
+    // `minConfidence:` reads.
     [COORDINATOR_FLOW]: defineCoordinatorFlow({
       installation,
-      delegateFlows: [agentFlow, emFlow as never],
       routeModel: "typesafe-ai/jev",
       agent: coordinatorMemory(agentTurn, {
-        model: "openai/gpt-5.4-mini",
+        model: "openai/gpt-6-luna",
         capture: options.memoryCapture === true,
       }),
     }) as never,
   };
+
+  if (options.workerFlows !== undefined) {
+    for (const [name, entry] of Object.entries(options.workerFlows(installation))) {
+      if (name in builtFlows) throw new Error(`openLab: \`workerFlows\` names "${name}", a flow the Lab builds`);
+      builtFlows[name] = entry;
+    }
+  }
+
+  // The Error Reporter: its worker flow beside the others, and its intake on a
+  // flow of its own, which a board on any flow reaches by name.
+  const reporter =
+    options.errorReporter === undefined
+      ? undefined
+      : createErrorReporter({
+          worker: reporterRecords[0]!.id,
+          operator: { userId: LAB_USER_ID, orgId: LAB_ORG_ID },
+          ...(options.errorReporter.tracker === undefined ? {} : { tracker: options.errorReporter.tracker }),
+          ...(options.errorReporter.preview === undefined ? {} : { preview: options.errorReporter.preview }),
+          ...(options.errorReporter.limits === undefined ? {} : { limits: options.errorReporter.limits }),
+          ...(options.errorReporter.secrets === undefined ? {} : { secrets: options.errorReporter.secrets }),
+          links: reportLinks,
+          log: options.log ?? ((line: string) => process.stderr.write(`[error-reporter] ${line}\n`)),
+        });
+  if (reporter !== undefined) {
+    builtFlows[ERROR_REPORTER_FLOW] = defineErrorReporterFlow({
+      reporter,
+      installation,
+      harness: options.errorReporter!.harness,
+      ...(options.errorReporter!.cwd === undefined ? {} : { cwd: options.errorReporter!.cwd }),
+      ...(mcpTools === undefined ? {} : { mcpTools }),
+    }) as never;
+  }
 
   // One copy per worker flow, and the roster flow. Refuses the WHOLE tree when
   // a worker would be refused on its first turn, or a worker flow doesn't
@@ -995,6 +1174,10 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         description:
           "Name this Lab's project setup: the worker each user's project coordinator runs as.",
       },
+      // How much of each harness's subscription the caller has used. Here
+      // because Shift Manager reads this flow first, so the Usage view and a
+      // worker call one address.
+      [HARNESS_USAGE_ACTION]: harnessUsageAction({ readers: options.usage ?? {} }),
     },
   } as never)();
 
@@ -1012,6 +1195,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const flows: Record<string, unknown> = mergeWorkerFlows(
     {
       ...(inventoryWriter === undefined ? {} : { [INVENTORY_WRITER_FLOW]: inventoryWriter }),
+      ...(reporter === undefined
+        ? {}
+        : { [ERROR_REPORTER_INTAKE_FLOW]: (defineErrorReporterIntakeFlow({ reporter }) as unknown as () => FlowInstance)() }),
       [PROJECTS_FLOW]: projectsFlow,
     },
     copies,
@@ -1025,26 +1211,114 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // A configured resolver, so the development-organization fallback does
     // not answer an unauthenticated HTTP read (FIX-1515 / BR-17).
     resolvePrincipal: resolveLabPrincipal,
+    // A given resolver (a check's scripted one) replaces this whole.
+    models: { default: LAB_DEFAULT_MODEL },
     ...(options.modelResolver === undefined ? {} : { modelResolver: options.modelResolver }),
     ...(options.logger === undefined ? {} : { runtimeConfig: { logger: options.logger } }),
-    // When something can wait for a user: the EM's ask, or a worker holding
-    // a tool that asks first. Trees with neither run without it.
-    ...(options.ask === undefined && !asksBeforeChanging ? {} : { durable: true }),
+    // Always durable, so a wait for a user (the EM's ask, an ask-first tool on
+    // any worker, a hired one included, or the Error Reporter) is held on the
+    // in-memory stores a Lab may be opened with too. Over persisting stores it
+    // is the default anyway (FIX-2063 D2's opt-in).
+    durable: true,
+    ...(options.userDeadlineMs === undefined ? {} : { userDeadlineMs: options.userDeadlineMs }),
+    ...(options.sweepIntervalMs === undefined ? {} : { durabilityRetention: { sweepIntervalMs: options.sweepIntervalMs } }),
+    // Every request that settles failed, to the Error Reporter's intake.
+    ...(reporter === undefined ? {} : { errorCapture: (event: unknown) => reporter.capture(event as never) }),
     ...(options.devtool === true ? { devtool: { userId: LAB_USER_ID, bearerToken: LAB_PRINCIPAL_SECRET } } : {}),
+    // Each user's MCP keys are written through the Lab's own route, never an
+    // action, whose input its request record keeps.
+    ...(options.mcpServers === undefined ? {} : { adapters: [mcpCredentialsAdapter(Object.keys(options.mcpServers))] }),
   } as never);
+
+  // The Error Reporter's runs write through these stores, and every host stops
+  // the Lab through `state` (the configs export it, and `serve` disposes it),
+  // so stopping it has to settle those runs first. See `drainReporter`.
+  const reporterRuns = new AbortController();
+  if (reporter !== undefined) {
+    const disposeState = state.dispose.bind(state);
+    state.dispose = async () => {
+      await drainReporter(reporter, reporterRuns);
+      await disposeState();
+    };
+  }
 
   const runtime = await state.getRuntime();
 
   // `createFlowState` builds its own `RuntimeConfig` and takes no logger
-  // option, and a hand-off's child request is started from that resolved object
+  // option, and a dispatch's child request is started from that resolved object
   // rather than from anything a caller passes per action. Setting it here is
   // the one place that reaches both.
   if (options.logger !== undefined) {
     (runtime.runtimeConfig as { logger?: unknown }).logger = options.logger;
   }
+  // Before the router is built, which starts the durability sweep, so no wake
+  // fires before it is owed or renamed.
+  // A notice, report or split settle a board owed before its debts had wakes
+  // (FIX-2078) gets one now, so its conversation's pass pays it without a touch.
+  // A no-op on a store that keeps no wakes, and on a Lab that owes nothing.
+  await backfillBoardWakes(runtime.stores, {
+    userCell: (userId, orgId) => resolveUserStorageKey(userId, orgId, { id: "", isolateUserState: false }),
+  });
+  // A reply an older host left unfinished under a worker's old door (`run`,
+  // or this Lab's `message`), and a board pass or its wake under
+  // `runTaskBoard`, resume under `respond` and `dispatch`. A second start finds none.
+  await upgradeWorkerEntryNames(runtime.stores, copies, { incarnationOf: resolveRequestIncarnation });
+
   // After the logger is set, so the router the door probes run through is
   // built with it too.
   const router = await state.getRouter();
+  // Door probes reach the router the way a request from outside would.
+  const inProcess = createInProcessFetch(router);
+  // A user's line the coder's door kept for a run before lines became steers
+  // (FIX-2086) becomes a steer on its task, so the run still takes it. Every
+  // coder run is on a conversation's board (`tasks`). A second start adds nothing.
+  await upgradeKeptTurns(runtime.stores as never, {
+    userCell: (userId, orgId) => resolveUserStorageKey(userId, orgId, { id: "", isolateUserState: false }),
+    ledgers: ["tasks"],
+  });
+
+  // The Error Reporter, bound to this runtime: it runs as the Lab's user, and
+  // restarts whatever report the store says is still owed.
+  if (reporter !== undefined) {
+    try {
+      await reporter.bind(
+        reporterHost(
+          runtime,
+          flows,
+          await openWorkerSession(runtime.stores, {
+            flow: copyOf(ERROR_REPORTER_FLOW),
+            workerId: reporterRecords[0]!.id,
+            principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID },
+          }),
+          reporterRuns.signal,
+        ),
+      );
+    } catch (error) {
+      await state.dispose();
+      throw new Error(`openLab: the Error Reporter did not start: ${messageOf(error)}`);
+    }
+  }
+
+  // One line naming the MCP servers on offer, and whether the Lab user has a
+  // key for each: stored on Settings, seeded from the environment, or not set.
+  // Never the key, never the address.
+  if (options.mcpServers !== undefined) {
+    const offered = options.mcpServers;
+    const stored = await statusOf(runtime as never, LAB_USER_CELL, Object.keys(offered));
+    const each = stored.map(({ name, setAt }) => {
+      const seed = offered[name]?.seedEnv;
+      const key =
+        setAt !== null
+          ? "stored"
+          : seed !== undefined && (process.env[seed] ?? "") !== ""
+            ? `seeded from ${seed}`
+            : "not set";
+      return `${name} (${LAB_USER_ID}'s key: ${key})`;
+    });
+    (options.log ?? ((line: string) => process.stderr.write(`${line}\n`)))(
+      `MCP servers: ${each.length === 0 ? "none" : each.join(", ")}.`,
+    );
+  }
 
   /** The session a worker's actions run in — one per worker, stable across a run. */
   const sessionFor = workerSessionId;
@@ -1211,13 +1485,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   }
 
   const door = async (
-    method: "GET" | "POST",
+    method: "GET" | "POST" | "DELETE",
     path: string,
     doorOptions?: { body?: unknown; bearer?: boolean; as?: keyof typeof LAB_USERS },
   ): Promise<{ status: number; body: any }> => {
-    const url = new URL(`http://lab/api/flows/${path}`);
-    const segments = url.pathname.slice("/api/flows/".length).split("/");
-    const request = new Request(url, {
+    const request = new Request(`http://lab/api/flows/${path}`, {
       method,
       headers: {
         "content-type": "application/json",
@@ -1228,7 +1500,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       },
       ...(doorOptions?.body === undefined ? {} : { body: JSON.stringify(doorOptions.body) }),
     });
-    const response = await (router as any)[method](request, { params: { path: segments } });
+    const response = await inProcess(request);
     const text: string = await response.text();
     let body: unknown = text;
     try {
@@ -1356,7 +1628,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
           },
           body: JSON.stringify({ userId: LAB_USER_ID, input: {} }),
         });
-        const response = await (router as any).POST(request, { params: { path: segments } });
+        const response = await inProcess(request);
         const text: string = await response.text();
         if (response.status >= 400) {
           const json = text.length > 0 ? JSON.parse(text) : undefined;
@@ -1373,7 +1645,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
               },
           );
         // The facts come off the client-visible component the entry emits, by
-        // name, not off any trace item: trace items are not for clients, and
+        // name, not off any trace item: trace items are not for client, and
         // are not captured at all when trace observability is off.
         const facts = events
           .filter(
@@ -1409,6 +1681,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     ...(workspaceHost === undefined ? {} : { workspaceHost }),
     state,
     door,
+    ...(reporter === undefined ? {} : { errorReporter: reporter }),
 
     dispose: () => state.dispose(),
   };
@@ -1452,6 +1725,159 @@ function featureRowOf(rows: Record<string, Task>, issue: string): Task | undefin
 }
 
 /** One wording for whatever a refusal turns out to be. */
+/**
+ * Where a report's ids open in Shift Manager: a task's page, on the board of
+ * the conversation it was filed in (the partition's session, everything
+ * before its last `~`). Relative to wherever the Lab is served.
+ */
+function reportLinks(ids: { taskId?: string; partition?: string }): Record<string, string> {
+  if (ids.taskId === undefined || ids.partition === undefined) return {};
+  const conversation = ids.partition.slice(0, Math.max(0, ids.partition.lastIndexOf("~")));
+  if (conversation === "") return {};
+  return { "Task in Shift Manager": `/tasks/${encodeURIComponent(`${conversation}.tasks`)}/${encodeURIComponent(ids.taskId)}/session` };
+}
+
+/** The newest few things said or failed in a session, as text a report can quote. */
+async function sessionSummary(runtime: Awaited<ReturnType<FlowState["getRuntime"]>>, sessionId: string): Promise<string[]> {
+  const requests = (await runtime.stores.request.list({ sessionId, withItems: true } as never)).sort((a, b) => a.startedAtMs - b.startedAtMs);
+  const lines: string[] = [];
+  for (const request of requests.slice(-3)) {
+    for (const item of (request.items ?? []) as Array<Record<string, any>>) {
+      if (item.type === "message") {
+        const text = Array.isArray(item.content) ? item.content.map((part: { text?: string }) => part.text ?? "").join("") : String(item.text ?? "");
+        lines.push(`${request.actionName} · ${item.role ?? "assistant"}: ${text.slice(0, 400)}`);
+      } else if (item.type === "error") {
+        lines.push(`${request.actionName} · error: ${String(item.message ?? "").slice(0, 400)}`);
+      }
+    }
+  }
+  return lines.slice(-12);
+}
+
+/** How long a closing Lab waits for the Error Reporter's runs to finish before it cancels them. */
+const REPORTER_DRAIN_MS = 10_000;
+
+/** How long a cancelled reporter run gets to write its ending before the stores close. */
+const REPORTER_UNWIND_MS = 2_000;
+
+/** Whether `work` settles within `ms`. The timer never keeps the process alive. */
+async function settlesWithin(work: Promise<unknown>, ms: number): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), ms);
+    (timer as { unref?: () => void }).unref?.();
+  });
+  try {
+    return await Promise.race([work.then(() => true, () => true), expired]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function drainReporter(reporter: ErrorReporter, runs: AbortController): Promise<void> {
+  reporter.dispose();
+  if (await settlesWithin(reporter.idle(), REPORTER_DRAIN_MS)) return;
+  runs.abort(new Error("the Lab is shutting down"));
+  await settlesWithin(reporter.idle(), REPORTER_UNWIND_MS);
+}
+
+/**
+ * The runtime operations the Error Reporter is bound with: run an action as
+ * the Lab's user, open a session, and read what a request or a session holds.
+ * `signal` cancels the runs it starts, when the Lab stops ({@link drainReporter}).
+ */
+function reporterHost(
+  runtime: Awaited<ReturnType<FlowState["getRuntime"]>>,
+  flows: Record<string, unknown>,
+  conversationSessionId: string,
+  signal: AbortSignal,
+): ErrorReporterHost {
+  return {
+    conversationSessionId,
+    run: async (request) => {
+      const result = (await runAction({
+        flow: flows[request.flowKind],
+        actionName: request.action,
+        input: request.input,
+        userId: request.userId,
+        orgId: request.orgId,
+        sessionId: request.sessionId,
+        source: request.source,
+        stores: runtime.stores,
+        runtimeConfig: { ...runtime.runtimeConfig },
+        signal,
+      } as never)) as { output?: unknown; error?: unknown };
+      return result.error === undefined ? { output: result.output } : { error: messageOf(result.error) };
+    },
+    openSession: async (open) => {
+      const flow = flows[open.flowKind] as FlowInstance;
+      const now = Date.now();
+      await ensureSessionRecord(
+        runtime.stores,
+        open.sessionId,
+        {
+          flow: flow as never,
+          sessionId: open.sessionId,
+          principal: { userId: open.userId, orgId: open.orgId },
+          state: { ...open.state },
+          fromCaller: true,
+          via: "create",
+        },
+        () => ({
+          id: open.sessionId,
+          flowKind: flow.kind,
+          flowId: flow.id,
+          userId: open.userId,
+          orgId: open.orgId,
+          version: 0,
+          createdAt: now,
+          updatedAt: now,
+          journal: [],
+        }),
+      );
+    },
+    readSession: async (sessionId) => {
+      const record = await runtime.stores.session.get(sessionId);
+      if (record === undefined) return undefined;
+      return {
+        id: sessionId,
+        flowKind: record.flowKind,
+        userId: record.userId,
+        state: (record as { state?: Record<string, unknown> }).state ?? {},
+        summary: await sessionSummary(runtime, sessionId),
+      };
+    },
+    readSessionState: async (sessionId) =>
+      ((await runtime.stores.session.get(sessionId)) as { state?: Record<string, unknown> } | undefined)?.state,
+    readRequest: async (requestId) => {
+      const record = await runtime.stores.request.get(requestId);
+      if (record === undefined) return undefined;
+      return {
+        id: requestId,
+        flowKind: record.flowKind,
+        actionName: record.actionName,
+        status: record.status,
+        source: record.source,
+        sessionId: record.sessionId,
+        input: record.input,
+        result: record.result,
+      };
+    },
+    recentSessions: async (userId, limit) => {
+      const sessions = (await runtime.stores.session.list({ userId } as never)).sort((a, b) => b.updatedAt - a.updatedAt);
+      return Promise.all(
+        sessions.slice(0, limit).map(async (record) => ({
+          id: record.id,
+          flowKind: record.flowKind,
+          userId: record.userId,
+          state: (record as { state?: Record<string, unknown> }).state ?? {},
+          summary: await sessionSummary(runtime, record.id),
+        })),
+      );
+    },
+  };
+}
+
 function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === "object" && error !== null && "message" in error) {

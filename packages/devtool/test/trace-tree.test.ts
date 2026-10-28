@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { buildTraceTree, type TraceNode } from "../src/react/lib/trace-tree";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { RequestGroup } from "../src/react/components/workspace/stream-view";
+import type { DevtoolItem } from "../src/react/lib/item-types";
 
 // ── Fixtures ──────────────────────────────────────────────────
 
@@ -19,8 +20,8 @@ function makeProvenance(
 }
 
 function makeItem(
-  overrides: Partial<OutputItem> & { id: string; type: string },
-): OutputItem {
+  overrides: Partial<DevtoolItem> & { id: string; type: DevtoolItem["type"] },
+): DevtoolItem {
   return {
     status: "completed",
     requestId: "req-1",
@@ -28,7 +29,7 @@ function makeItem(
     ts: Date.now(),
     provenance: makeProvenance("testBlock", "inst-1"),
     ...overrides,
-  } as OutputItem;
+  } as DevtoolItem;
 }
 
 function makeGroup(overrides: Partial<RequestGroup> = {}): RequestGroup {
@@ -67,7 +68,7 @@ describe("buildTraceTree", () => {
   it("groups items under their block by blockInstanceId", () => {
     const items = [
       makeItem({ id: "i1", type: "message", provenance: makeProvenance("chatBlock", "block-A") }),
-      makeItem({ id: "i2", type: "status", message: "working", provenance: makeProvenance("chatBlock", "block-A") } as Partial<OutputItem> & { id: string; type: string }),
+      makeItem({ id: "i2", type: "status", message: "working", provenance: makeProvenance("chatBlock", "block-A") }),
       makeItem({ id: "i3", type: "message", provenance: makeProvenance("otherBlock", "block-B") }),
     ];
 
@@ -186,7 +187,7 @@ describe("buildTraceTree", () => {
         type: "block_trace",
         provenance: makeProvenance("child-gen", "gen-inst", "rtr-inst"),
         blockKind: "generator",
-      } as Partial<OutputItem> & { id: string; type: string }),
+      }),
       // Child's regular item
       makeItem({
         id: "i3",
@@ -231,7 +232,7 @@ describe("buildTraceTree", () => {
         // FIX-413: BlockTraceItem.output is now a BlockValue<T> union.
         output: { kind: "inline", value: "hello" },
         toolCall: { callId: "tc-1", arguments: "{}", generatorBlock: "gen" },
-      } as Partial<OutputItem> & { id: string; type: string }),
+      }),
     ];
 
     const tree = buildTraceTree([makeGroup({ items })]);
@@ -247,7 +248,7 @@ describe("buildTraceTree", () => {
         type: "error",
         provenance: makeProvenance("failBlock", "fail-inst"),
         message: "boom",
-      } as Partial<OutputItem> & { id: string; type: string }),
+      }),
     ];
 
     const tree = buildTraceTree([makeGroup({ items })]);
@@ -264,14 +265,14 @@ describe("buildTraceTree", () => {
         ts: 1000,
         provenance: makeProvenance("timed", "timed-inst"),
         message: "start",
-      } as Partial<OutputItem> & { id: string; type: string }),
+      }),
       makeItem({
         id: "i2",
         type: "status",
         ts: 3500,
         provenance: makeProvenance("timed", "timed-inst"),
         message: "end",
-      } as Partial<OutputItem> & { id: string; type: string }),
+      }),
     ];
 
     const tree = buildTraceTree([makeGroup({ items })]);
@@ -297,14 +298,14 @@ describe("buildTraceTree", () => {
         state: { progress: 0, phase: "planning" },
         version: 0,
         durable: true,
-      } as Partial<OutputItem> & { id: string; type: string }),
+      }),
       makeItem({
         id: "msg-1",
         type: "message",
         provenance: makeProvenance("research", "seq-inst"),
         role: "assistant",
         content: [{ type: "output_text", text: "hello" }],
-      } as Partial<OutputItem> & { id: string; type: string }),
+      }),
       makeItem({
         id: "snap-step0",
         type: "state_snapshot",
@@ -317,7 +318,7 @@ describe("buildTraceTree", () => {
         state: { progress: 50, phase: "analyzing" },
         version: 1,
         durable: true,
-      } as Partial<OutputItem> & { id: string; type: string }),
+      }),
       makeItem({
         id: "snap-step1",
         type: "state_snapshot",
@@ -330,7 +331,7 @@ describe("buildTraceTree", () => {
         state: { progress: 100, phase: "done" },
         version: 2,
         durable: true,
-      } as Partial<OutputItem> & { id: string; type: string }),
+      }),
     ];
 
     const tree = buildTraceTree([makeGroup({ items })]);
@@ -391,24 +392,22 @@ describe("buildTraceTree", () => {
         id: "parent-snap",
         type: "state_snapshot",
         provenance: makeProvenance("outer", "outer-inst"),
-        sequencerName: "outer",
-        sequencerInstanceId: "outer-inst",
+        key: "outer-inst",
         stepName: "__initial__",
         stepIndex: -1,
         state: { count: 0 },
         version: 0,
-      } as Partial<OutputItem> & { id: string; type: string }),
+      }),
       makeItem({
         id: "child-snap",
         type: "state_snapshot",
         provenance: makeProvenance("inner", "inner-inst", "outer-inst"),
-        sequencerName: "inner",
-        sequencerInstanceId: "inner-inst",
+        key: "inner-inst",
         stepName: "__initial__",
         stepIndex: -1,
         state: { value: "hello" },
         version: 0,
-      } as Partial<OutputItem> & { id: string; type: string }),
+      }),
     ];
 
     const tree = buildTraceTree([makeGroup({ items })]);

@@ -3,7 +3,7 @@
 This is the **canonical reference** for how we drive Linear issues to merged PRs with
 agents — the roles, the artifacts, and the gates. The orchestration skills
 (`epic-lifecycle`, `issue-lifecycle`, `issue-spec`, `issue-implement`,
-`cross-spec-review`, `spec-poc`, `settle-claim`) and the worker sub-agents (`issue-worker`,
+`cross-spec-review`, `spec-poc`, `settle-claim`, `reuse-review`) and the worker sub-agents (`issue-worker`,
 `epic-agent`, `poc-agent`, `scout`, `spec-implementer`, `issue-manager`) **reference this doc**
 instead of each restating the shared concepts. When a concept here changes, it changes here.
 
@@ -52,8 +52,10 @@ the project-spec, deliberately has no lifecycle of its own (see below).
   - `epic-agent` (worktree) — authors/maintains one epic-spec.
   - `poc-agent` (worktree, Sonnet) — settles one disputed factual claim with a throwaway POC.
   - `scout` (Haiku) — read-only status/handle fetches.
-  - `spec-implementer` (Sonnet) — implements one decided task.
+  - `spec-implementer` (Opus) — implements one slice of an approved spec, planning its own build.
   - `issue-manager` (Sonnet) — files discovered work into Linear.
+  - an **analyst** (Opus, a fresh sub-agent running the `analysis` skill) — asks whether a
+    drafted spec, or a wrapped epic, is the right work. See [Analysis and review](#analysis-and-review).
 - **Workflow scripts** — the parts of a lifecycle that are pure mechanism, as deterministic
   control flow instead of prose a coordinator re-derives each wake. Both live in
   `.agents/workflows/` and share one verification harness (`node .agents/workflows/verify.mjs`,
@@ -204,8 +206,8 @@ one-parent rule** — an issue that already has a functional parent is linked wi
 `relates-to` and flagged, never silently detached.
 
 **Contents and shape:** [`epic-spec-template.md`](epic-spec-template.md) applies the
-issue-spec document set at epic altitude, including the shared documentation narrative
-and conditional design lineage. The [retention policy](#spec-retention-and-authority)
+issue-spec's two documents at epic altitude, including the rules every child obeys and
+the set's debt. The [retention policy](#spec-retention-and-authority)
 defines storage and authority; the template defines what each reader is owed.
 
 **Conventions:**
@@ -246,7 +248,8 @@ standard of a release, and the epic cannot wrap while it is open.
   wake that first sees it. The coordinator writes that relation itself, the same one-call Linear
   write it uses for status. Otherwise the closure run could pass before that child lands.
 - **Its spec is the QA plan**, written early: blocked-by gates implementation only, so the plan
-  is reviewed while the children build. It carries, in order:
+  is reviewed while the children build. It is the closure spec's `SPEC.md` → *how we verify*,
+  and carries, in order:
   1. **The epic's goal check** (`SPEC.md` → *how we verify*) as **at least one end-to-end test run
      the way a user would**: a real app, the real path, the surface a user touches (browser,
      CLI, HTTP), asserted on what the user sees, never on a child's own output. Each test has a
@@ -255,7 +258,7 @@ standard of a release, and the epic cannot wrap while it is open.
      already walk.
   3. **Every child's own goal check**, re-run, skipping any that item 1 already walks. They
      catch a later merge breaking an earlier child, which item 1 may not reach.
-  4. **A gap sweep**: each seam in `PLAN.md`'s coordination seams exercised across both sides,
+  4. **A gap sweep**: each seam in the epic `DECISIONS.md`'s coordination seams exercised across both sides,
      the docs the set published followed as written, and every *not done if* state checked
      absent.
 
@@ -264,7 +267,14 @@ standard of a release, and the epic cannot wrap while it is open.
   browser check to `fsd-qa`").
 - **A run is one commit of `main`**, after every other child has merged. Every check in the plan
   runs against that same commit, and the report names it. Checks that passed on different
-  commits prove nothing about the assembled set.
+  commits prove nothing about the assembled set, unless nothing they assert changed in between
+  (see *It stays open* below). **A run finishes on the commit it pinned**, and only a clean
+  verdict closes the closure issue. It never re-pins to chase merges from other epics.
+- **Another epic's merge is sorted, not chased.** When a check fails because another epic's
+  merge changed what it asserts, the run decides which kind of failure it is. A check made stale
+  (a rename, a new lead, a new surface) is updated to the new surface and re-graded in the same
+  run, not filed, and the report notes it. A real regression is still a broken goal, so it is
+  filed and blocks the closure like any finding, naming the merge that caused it.
 - **Every finding becomes a child of the epic.** Each failure is filed through `issue-manager`
   as a **Bug** (or a Feature, when the fix is missing capability), parented under the epic and
   wired to **block the closure issue**. The epic wake discovers it as a new row and runs it on
@@ -278,17 +288,22 @@ standard of a release, and the epic cannot wrap while it is open.
   outside the epic's goal is filed normally, not under the epic.
 - **It stays open until its findings are fixed and retested.** A run that files findings opens
   no PR: the worker leaves the row at `NEEDS_IMPLEMENTATION` with the findings in its status
-  line, and the new blocked-by relations park it. When the last one merges, the wake dispatches
-  implementation again and the **whole plan runs again** on a fresh `main` commit, not only the
-  fixed bugs' repros, because a fix can break a neighbour. This repeats until a run files
-  nothing. This needs no `epic-wake` change: blocked-by, child discovery and `mayWrap`'s
-  every-row-terminal rule already carry it. `verify.mjs` covers those pieces one at a time, but
-  has no scenario yet for a closure run that files findings and is re-dispatched.
+  line, posts its report (the pinned commit, each check with its verdict and evidence, and where
+  the check files it ran are kept) as a comment on the closure issue, and the new blocked-by
+  relations park it. When the last one merges, the wake dispatches implementation again and the
+  next run, on the commit those fixes landed at, re-grades **the failed checks and every check
+  whose code, docs or surface changed since the last run**, whoever changed it, not only the
+  fixed bugs' repros, because a fix can break a neighbour. The rest carry forward from the last
+  report, each with the run it passed in; a check whose file was lost and rebuilt is re-graded,
+  not carried forward. This repeats until a run files nothing. This needs no `epic-wake` change: blocked-by,
+  child discovery and `mayWrap`'s every-row-terminal rule already carry it. `verify.mjs` covers
+  those pieces one at a time, but has no scenario yet for a closure run that files findings and
+  is re-dispatched.
 - **A clean run opens the closure PR.** It commits the end-to-end checks where they can live in
   the repo, so they keep running after the wrap, and its body is the QA report: the `main`
-  commit, each check with its PASS and its control's FAIL, and each finding with its bug and
-  the run that retested it. That PR's merge is the closure issue's Done and the epic's wrap
-  condition.
+  commit, each check with the run it passed in, its PASS and its control's FAIL, and each
+  finding with its bug and the run that retested it. That PR's merge is the closure issue's Done
+  and the epic's wrap condition.
 
 It is the most expensive child and the only one that repeats. That cost is the QA. An epic whose
 goal genuinely has no end-to-end surface (a pure internal refactor) says so in its goal section,
@@ -416,7 +431,10 @@ others are missing:
    research. The spec for a bug is worth writing then, and what it carries is the
    reproduction shape and the regression seam.
 3. **It isn't really a bug** — *the worker decides,* before it builds. The "fix" is a new
-   capability, or it changes a contract other code depends on. Promote it — a feature must
+   capability, a new way to do a job something already does
+   ([`asking-for-decisions.md`](asking-for-decisions.md) → "When approving adds a way to do a
+   job"), or it changes a contract other code depends on.
+   Promote it — a feature must
    not reach `main` through the one route with no gate in front of it. A *routing* call,
    not a reaction to the fix turning out to be interesting.
 
@@ -463,11 +481,43 @@ approval nor merge. Agents still merge a spec only through MERGE-ONLY, after one
 other channels below has approved it, so this channel never lets an agent approve its own
 spec.
 
-**A merge-ready head has been reviewed.** Automated review runs when a PR is opened ready
-or leaves draft, so a PR marked ready in the same breath as its merge merges a head no
+**A merge-ready PR has been reviewed.** Automated review runs when a PR is opened ready
+or leaves draft, so a PR marked ready in the same breath as its merge merges code no
 reviewer saw. Take a PR out of draft when its work is ready for review, not when it is
-ready to merge. Call it ready to merge — or merge it through MERGE-ONLY — only once that
-review and the required checks have returned on its current head.
+ready to merge. Call it ready to merge — or merge it through MERGE-ONLY — only once an
+automated review has returned on the PR, any follow-up review you asked for has returned,
+and the required checks have passed on its current head. Later pushes don't need a fresh
+review of their own (see the next rule). The workflow scripts check only that some review
+returned. A pending follow-up holds a PR back only because whoever reports its readiness
+says not ready, so say it.
+
+**Codex is the automated reviewer; an agent never stands in for it.** Don't dispatch a
+Claude review agent to fill in for a missing bot review: it costs credits and duplicates
+what Codex does. Instead, make sure Codex has reviewed the PR once: the first head that is
+ready for review. Grok usually asks for that review; if you notice a PR with no Codex review,
+comment `@codex review` on the PR yourself. Name what you're unsure of in the request ("pay
+special attention to: …" with the specific seams, races or invariants in doubt) rather than
+posting the bare command.
+
+**Ask Codex again only when you have a concern.** Codex usage is limited, so don't request a
+review after every push. Fixes for review findings, docs, renames, test-only changes and
+small follow-ups ride on the first review. Request a follow-up review when a later push adds
+or reworks logic complex enough that you want another reader on it: new concurrency or
+timing, a changed persisted shape, an auth or routing decision, a rewritten core path. Name
+that concern in the request. Codex also reviews on its own when a draft is marked ready;
+don't request one on top of that.
+
+**Green means CI ran on this head and passed.** Read the `Typecheck & Test` check run on
+the PR's current head, never the combined commit status: Vercel posts `success` there for
+builds its ignored-build step skipped, so a head whose tests failed can read green on that
+surface. A head with **no** `Typecheck & Test` run is untested, not green. GitHub starts no
+`pull_request` workflow while a PR conflicts with its base, so a PR opened on a conflicting
+head shows only third-party checks, all passing, until a push resolves the conflict.
+`Typecheck & Test` gates only typecheck and the test shards, so it is not the whole failure
+signal: CI is failing when **any** check on the current head failed, even while
+`Typecheck & Test` passes. Per check name only its latest completed run counts, so a failed
+or cancelled run that a rerun turned green is not a failure. A failing head is never ready
+to merge. A missing run is untested, not failing.
 
 **In-session approval is a human channel.** Record the user's explicit go-ahead as
 `approvedInSession:<reviewed head>`; it authorizes only that revision and becomes stale
@@ -551,10 +601,38 @@ flowchart LR
 ```
 
 For a **single-PR** issue the goal is proven at implementation completion (before the PR opens),
-so `merge` is completion. For a **multi-PR** issue (a spec's PR plan), the diagram's single
+so `merge` is completion. For a **multi-PR** issue (the implementer's PR plan), the diagram's single
 `merge → done` expands: the per-sub-PR runs only prove their slices, so **after the last sub-PR
 merges the assembled end-to-end goal runs, and only its PASS marks the issue done** — the last
 merge is not itself completion. See `issue-lifecycle` → Multi-PR issues for the exact step.
+
+## Analysis and review
+
+Two different jobs. [`review`](../../.agents/skills/review/SKILL.md) looks for flaws in the
+work, and PR feedback, Codex, and spec-PR review rounds are review too.
+[`analysis`](../../.agents/skills/analysis/SKILL.md) asks whether it is the right work; that
+skill holds the seven objectives and both altitudes. Its reuse objective is answered by
+`reuse-review` ([Compose existing pieces](#compose-existing-pieces)), not by a second search.
+On an implementation, a mechanism the spec doesn't list is a flaw, so `review` keeps its own
+reuse lens.
+
+Analysis runs at two points:
+
+| Point | Dispatched by | What it does with the answer |
+|---|---|---|
+| **A drafted spec, before the direction gate** — issue or epic | `issue-spec` Step 4.5; `epic-agent` on Create | The author folds what changes the approach, records the rest in `DECISIONS.md` → *Analysis*, and puts a fork only the user can decide in *Open*. An epic spec always gets the `adhd` alternatives pass; an issue spec only on trigger |
+| **Epic wrap**, after the lessons worker | `epic-lifecycle` EPIC_WRAP | A comment on the Linear epic, concerns filed as issues. Never gates the wrap |
+
+**The analyst is never the author.** It is a fresh sub-agent, so it judges a direction it
+has no stake in. The author still disposes of each finding, using the bar below; the
+*Analysis* section shows the human what was folded and what was set aside.
+
+**Spec review doesn't redo it.** Reviewers treat `DECISIONS.md` → *Analysis* as settled
+unless a thread brings a new fact the analysis didn't have.
+
+**Analysis costs no review rounds.** It happens during authoring, before the spec PR is put
+to reviewers, so it does not count against the two-round budget below. Each run records its
+date, and the next analysis reads it as the "since when" for new factors.
 
 ## Spec review: the bar and the convergence rule
 
@@ -568,11 +646,11 @@ statement of the bar and how a spec-review round terminates; `issue-spec`,
 
 **Directional correctness, and nothing more.** An approved spec means: the problem is
 real, the approach will work, the decisions in `DECISIONS.md` are the ones we want, and the
-plan's shape and sequence are sound. It does **not** mean the design is finished, the
-names are final, or every question a reader could raise has been answered. `PLAN.md` is
-*directional by construction* (see `spec-template.md`) — the implementer settles
-signatures, local structure, and line-level choices in the code, under `tdd`/`diagnose`
-and the challenger.
+debt verdict in `SPEC.md` is honest. It does **not** mean the design is finished, the
+names are final, or every question a reader could raise has been answered. A spec carries
+no build plan *by construction* (see `spec-template.md`) — the implementer plans the build
+and settles signatures, local structure, and line-level choices in the code, under
+`tdd`/`diagnose` and the challenger.
 
 So a spec is done when it is **directionally correct**, not when it is unimpeachable.
 "Nothing left to nitpick" is not the bar and was never reachable — it's an infinite
@@ -586,9 +664,9 @@ altitude: *does acting on this change the approach?* Then pick exactly one dispo
 
 | Disposition | When | What happens |
 |---|---|---|
-| **Fold in** — spec-level | The approach is wrong, won't work, or solves the wrong problem · a decision is wrong or missing · a missed case invalidates the design · scope is wrong · the spec contradicts itself | Re-draft the affected repository document and figures, reply on the thread; after merge use a follow-up amendment, not the original PR or a Linear prose mirror |
-| **Note for the implementer** *(the default)* | Anything below that line: naming, file layout, local structure, which helper, error-message wording, a micro-optimization, a test-name preference, "have you considered X *here*", a detail `PLAN.md` deliberately left open | Record **verbatim** under `PLAN.md → Notes from review`, reply once saying it's left for implementation, move on. **Do not rewrite the design prose around it.** |
-| **Drop, specifically for the solution sketch** | A spec may carry rough illustrative code showing the *shape* of the proposed solution (`PLAN.md`'s sketch). Feedback that it lacks error handling, has loose types, misses edge cases, misnames things, or wouldn't compile | Reply once: the sketch is illustrative and deliberately incomplete. **Never** fold, and don't even carry it as a review note — a note implies the implementer should weigh it, and there is nothing to weigh about code that isn't shipping. Only feedback on the sketch's *direction* (wrong layer, wrong composition, won't work at all) is real, and that is ordinary **Fold in** |
+| **Fold in** — spec-level | The approach is wrong, won't work, or solves the wrong problem · a decision is wrong or missing · a missed case invalidates the design · the debt section misses an overlap or an added debt · scope is wrong · the spec contradicts itself | Re-draft the affected repository document and figures, reply on the thread; after merge use a follow-up amendment, not the original PR or a Linear prose mirror |
+| **Note for the implementer** *(the default)* | Anything below that line: naming, file layout, local structure, build order, which helper, an edge case that doesn't change the approach, error-message wording, a micro-optimization, a test-name preference, "have you considered X *here*" | Record **verbatim** under `DECISIONS.md → Notes from review`, reply once saying it's left for implementation, move on. **Do not rewrite the design prose around it.** |
+| **Drop, specifically for POC code** | A spec may carry a throwaway POC under `poc/<experiment>/` showing the *shape* of the proposed solution. Feedback that it lacks error handling, has loose types, misses edge cases, misnames things, or isn't production quality | Reply once: the POC is evidence, deliberately incomplete. **Never** fold, and don't even carry it as a review note — a note implies the implementer should weigh it, and there is nothing to weigh about code that isn't shipping. Only feedback on the POC's *direction* (wrong layer, wrong composition, won't work at all) is real, and that is ordinary **Fold in** |
 | **Drop** | Already answered in the spec · out of the issue's scope · a preference with no defect behind it · a factual error about the codebase | Reply once with the pointer or the correction. No spec edit, no note. |
 
 **The default disposition is Note, and the burden of proof is on folding.** If you can't
@@ -702,7 +780,7 @@ So the discipline is ours, not theirs:
 ### How this shows up in the artifacts
 
 - **`spec-template.md`** — the reviewer contract and the *Reviewers · look here* block, and
-  `PLAN.md → Notes from review` as the home for below-the-bar feedback.
+  `DECISIONS.md → Notes from review` as the home for below-the-bar feedback.
 - **`pr-reviewer-guidance.md`** — the two audiences, the PR-description layout, the three PR
   altitudes, and what makes a *Parts worth reviewing closely* block useful rather than
   decorative. Its general half — the fold, the word budgets, the density rules — is
@@ -717,14 +795,64 @@ So the discipline is ours, not theirs:
   (`.agents/workflows/verify.mjs`) is where the rule's edge cases are pinned down.
 - **`issue-implement`** — reads the notes section as input; an unaddressed below-the-bar
   spec comment is **not** a blocker to starting implementation.
+- **Compose existing pieces** (next section) — the Builds on / Adds table, and `reuse-review`
+  on every spec and epic.
+
+## Compose existing pieces
+
+The bar is **powerful yet elegant**: we use the blocks and pieces we already have, and we
+do not add a second way to do the same thing. A new mechanism is allowed only when it is
+**built on** those pieces — composed from the five block kinds, existing primitives, and
+existing records — not invented beside them.
+
+This is the package-mechanism form of tenet 2. The job-level form (a public method, tool,
+action or entry that does a job something already does) stays
+[`asking-for-decisions.md`](asking-for-decisions.md) → "When approving adds a way to do a
+job" and `issue-spec` Step 3.5 question 7. This section is the *how we build* rule those
+do not cover: a second cap, a second marker that means the same reservation, a second
+hold-release path, a hook that reimplements a `sequencer` / `doWhile` / handler
+composition we already wrap.
+
+**Siblings, glue and the next variant.** Inside an epic, sibling specs' Adds count as
+existing: two children that each add the same mechanism get one shared piece, never two
+"genuinely new". Code whose only job is keeping two of our own mechanisms from overlapping (a
+reconciler, a sweep rule, refusals written on both sides) marks a missing shared abstraction,
+not rigor. The **next-variant test** catches both early: name the variant most likely to come
+next (another kind of wait, another source, another provider) and count what adding it would
+copy (a field, a route, a cancel path, a deadline, a check). More than one copied piece means
+the abstraction is missing. This is how tenet 2's "one job, one noun" is checked.
+
+**What a spec or epic owes.** Every item it adds to a package names the existing block,
+primitive or mechanism it considered, and either how it is composed from it or why that
+piece does not fit. The Adds list is as short as possible. The debt line counts any
+second way of doing an existing thing. The table lives in `SPEC.md` → *What's already
+here, and the debt*
+([`spec-template.md`](spec-template.md#whats-already-here-and-the-debt),
+[`epic-spec-template.md`](epic-spec-template.md)).
+
+**What review owes.** Every spec and every epic gets a dedicated
+[`reuse-review`](../../.agents/skills/reuse-review/SKILL.md), kept separate from
+`second-look`. It searches the code for each Adds item and returns **reuse X**, **extend
+X**, or **genuinely new**. A reuse or extend verdict the spec treated as new is
+spec-level (fold). Worked examples live in the skill, not here.
+
+It runs through the plumbing that already reviews specs — not a new lifecycle:
+
+- inside the [analysis](#analysis-and-review) dispatch, before the spec PR opens: `issue-spec`
+  Step 4.5, and `epic-agent` on Create. Analysis's reuse objective reads its verdicts rather
+  than searching again. It runs again at Step 6.5, or in `epic-agent`, after a fold that moves Adds
+- `review`'s reuse lens, on spec/epic targets and on implementation changes
+- `epic-pm`, once per spec at the approval gate, separately from its `second-look` pass
 
 ## Spec retention and authority
 
 Issue specs live at `specs/issues/<ISSUE-ID>/`; epic specs live at
-`specs/epics/<EPIC-ISSUE-ID>/`. Each requires `SPEC.md`, `DECISIONS.md`,
-`BUSINESS-RULES.md`, `PLAN.md`, and `DOCS.md`. Add `EVOLUTION.md` when the design
-retains, amends or supersedes earlier designs. Authored `figures/`, `assets/`, and
-`poc/<experiment>/` belong inside that same owning directory.
+`specs/epics/<EPIC-ISSUE-ID>/`. Each requires `SPEC.md` and `DECISIONS.md`, and nothing
+else: no build plan, no rules list, no docs draft. The implementer plans the build against
+the code. Authored `figures/`, `assets/`, and `poc/<experiment>/` belong inside that same
+owning directory. Sets retained in the older five-document shape (`BUSINESS-RULES.md`,
+`PLAN.md`, `DOCS.md`, sometimes `EVOLUTION.md`) stay as they are; whoever reads one reads
+every document it carries, and an open review PR in that shape is not re-drafted.
 
 **Repository content is canonical.** Before merge, read the reviewed PR head; after
 merge, read the retained set on `main`, citing the original PR for its review history.
@@ -733,24 +861,26 @@ Retained specs are historical intent, not proof of shipped behavior.
 `docs/architecture/*` remains the authority for current system behavior; implementation
 updates architecture and user documentation to reflect what actually ships.
 
-**Research predecessors before choosing a direction.** Search retained designs and
-their evolution records, then compare them against current code and architecture docs.
-Carry relevant findings into review and implementation. `EVOLUTION.md` names precise
-prior decisions, rules or sections, what is retained/amended/superseded, why and with
-what evidence, the replacement decisions, and compatibility or migration consequences.
-It supports multiple predecessors; a dependency is not supersession, and changing one
-decision does not supersede an entire spec. Use real historic PR/Linear provenance when
-no repository artifact exists, never invented local paths. No lineage registry,
-mandatory backlink updates, archive rewrites or historical backfill.
+**Research predecessors before choosing a direction.** Search retained designs (and the
+evolution records older sets carry), then compare them against current code and
+architecture docs. `SPEC.md` → *What's already here* names each precise prior decision,
+rule or section the change keeps, amends or supersedes, what replaces it, and what changes
+for callers. Several predecessors is normal; a dependency is not supersession, and
+changing one decision does not supersede an entire spec. Use real historic PR/Linear
+provenance when no repository artifact exists, never invented local paths. No lineage
+registry, mandatory backlink updates, archive rewrites or historical backfill.
 
-**`DOCS.md` is a draft, not a task list.** Name destination files/sections and
-create/update/remove operations, with actual proposed reader-facing prose and examples,
-including applicable limits, failure behavior and migration. Do not duplicate unchanged
-pages. A justified no-doc-impact statement is valid. Epic drafts own the shared narrative
-and assign issue ownership; issue drafts provide the specifics. Implementation reconciles
-the draft against tested behavior and publishes it to the actual documentation.
-Worked examples live in the [issue](spec-template.md) and [epic](epic-spec-template.md)
-templates, not in another policy copy.
+**The debt is part of the direction.** The same section lists what already does the job,
+what the change removes, what it adds that a later reader would call debt (each with the
+filed issue that pays it, unless permanent by design), what it leaves, and the net. The net
+is a sign-off line, so approving a spec approves its debt.
+
+**Docs are named at spec time and written at implementation.** `SPEC.md` → *What changes*
+names the reader-facing destinations that change, or states why there is no
+documentation impact. Implementation writes the prose against tested behavior (`docs-writer`,
+then `docs-editor`). An epic's docs line names the shared story and the child that
+publishes it. Worked examples live in the [issue](spec-template.md) and
+[epic](epic-spec-template.md) templates, not in another policy copy.
 
 **Projects are the exception, unchanged.** Project specs remain four-document sets at
 `spec/_projects/<slug>/`, on never-merged `project/<slug>` PRs with their existing Linear
@@ -768,7 +898,8 @@ project-content mirror. Do not migrate project lifecycle or historical closed sp
    This is an assignment to an existing worker, not a new workflow action.
 3. **The worker executes only that authorized spec merge.** Re-read human approval,
    the current head, required repository checks/approvals, and required review-thread
-   policy, and confirm an automated review has returned on the current head sha.
+   policy, and confirm an automated review has returned on the PR (any head), plus any
+   follow-up review that was requested.
    If any requirement is unmet, return the specific blocker without merging.
    Merge with an **atomic expected-head precondition** matching the supplied reviewed
    SHA (for example, `gh pr merge <PR> --match-head-commit <SHA>`); a prior head read
@@ -887,24 +1018,13 @@ The skill is [`spec-poc`](../../.agents/skills/spec-poc/SKILL.md).
 
 The artifact merges with its spec, but **retention is not production integration**.
 It remains explicitly experimental: outside production imports, workspace packages,
-default builds, test/lint and knip discovery. Keep authored evidence, not dependencies,
+default builds, test/lint and fallow discovery. Keep authored evidence, not dependencies,
 generated output or secrets. The cost of being wrong is a recorded experiment, not an API.
 
-**Two POC mechanisms, and they are not the same one.** They're neighbours in the lifecycle
-and get confused constantly:
-
-| | **Spec POC** (this section) | **POC settlement** (next section) |
-|---|---|---|
-| Fires on | a *trigger* — an unverified premise, a novel composition, a look, a contested fork, an unclear end-state | a **loop** — the same factual claim asserted and counter-asserted twice |
-| Answers | *is this direction right?* | *who is right?* |
-| For | the reviewers and the human at the gate | the review thread that stopped converging |
-| Verdict shape | a summary + code someone can run | `CONFIRMED` / `REFUTED` / `INCONCLUSIVE` |
-| Lives | on the spec/epic branch, published | a throwaway worktree, deleted |
-| Timing | **before** the gate, usually during authoring | mid-review, after prose failed |
-
-A spec POC is *proactive* — it stops the loop from forming. A settlement is *reactive* — the
-loop already formed. Running a POC while authoring is strictly cheaper than settling a claim
-in round three, so a trigger noticed early is the best case available.
+**Not a POC settlement** (next section). A spec POC fires on a *trigger*, before the gate,
+and answers *is this direction right?*; a settlement fires on a *loop* and answers *who is
+right?*. Running one while authoring is cheaper than settling a claim in round three. The
+three throwaway-code skills are compared in `spec-poc` → "Which POC skill is this?".
 
 ### The two altitudes
 
@@ -920,15 +1040,13 @@ in round three, so a trigger noticed early is the best case available.
   the epic-spec's `DECISIONS.md` → [*What the end-state POC showed*](epic-spec-template.md).
 
 Where a direction fork is genuinely contested, a POC can carry **2–3 radically different
-variants**, compared on one page, and the chosen one becomes a decision card. Equal
-effort on each is the rule that matters — a strawman variant manufactures consent for the
-option the author already preferred and puts a human's approval on it.
+variants** built with equal effort; the rules are `spec-poc` → "Variants".
 
 ```mermaid
 flowchart LR
   A[spec / epic authoring] -->|trigger fires| P[spec-poc<br/>inside owning spec directory]
   P --> S{what it showed}
-  S -->|premise held| R1["record in the plan's POC line<br/>no change"]
+  S -->|premise held| R1["record in DECISIONS → Settled<br/>no change"]
   S -->|premise false| R2[fold before the gate<br/>cheapest version of the discovery]
   S -->|variants| R3["human picks → a decision card"]
   R1 & R2 & R3 --> G([approval gate])
@@ -951,7 +1069,7 @@ flowchart LR
   `origin/main` after confirmed spec merge, not from the spec branch.
 - **Post-merge experiments use follow-up PRs**, never the original merged PR; see
   [Merging and amending a spec](#merging-and-amending-a-spec).
-- **Keep isolation narrow.** Default test/lint/knip discovery excludes retained experimental
+- **Keep isolation narrow.** Default test/lint/fallow discovery excludes retained experimental
   code under `specs/issues/*/poc/**` and `specs/epics/*/poc/**`, not production code.
   Required CI still runs for issue and epic spec branches. See [`specs/README.md`](../../specs/README.md).
 
@@ -969,13 +1087,8 @@ to be independent of both.)
 
 ### Where the record lives
 
-- **The spec** — `PLAN.md`'s POC line (what was built, what it showed), `DECISIONS.md →
-  Settled` for a premise it settled, and a *How it got here* entry **only if it moved the
-  design**. At epic altitude, `DECISIONS.md → What the end-state POC showed` instead.
-- **The PR description** — the POC block: one runnable command per artifact, the question it
-  answers, and that it's throwaway.
-- **A POC that changed nothing still gets its line.** "The premise held" is a real result;
-  recording only the POCs that found problems teaches the next reader that a quiet POC failed.
+`DECISIONS.md → Settled` (or, for an epic, *What the end-state POC showed*) and the PR's POC
+block, as `spec-poc` → "Publishing it" defines. A POC that changed nothing still gets its line.
 
 ## Settling a disputed claim (POC settlement)
 
@@ -1157,12 +1270,8 @@ The settlement has to *replace* debate rounds, not add to them:
 | **REFUTED** | The premise is false; the approach has to change | The same reply, plus the fold (one round, outside the budget) and a *How it got here* line: *"POC settlement — <what changed>, because the run showed <what>."* |
 | **INCONCLUSIVE** | The claim couldn't be reduced to a check, or the run didn't discriminate | Say so plainly, say why, and hand the claim back as a decision the human makes. **Never** a fabricated verdict — false evidence is worse than an unsettled debate, because it ends the debate wrongly. |
 
-A POC opens a **draft PR only when it produced something worth a human's attention**: it
-uncovered a framework bug or genuinely surprising behavior (also file it via
-`issue-manager`), the check is worth keeping as a durable regression **goal** in `goals/`, or
-its code is the seed of the implementation and reviewers should see the shape. The default
-is no PR — a verdict and a link are the deliverable, and throwaway code that gets reviewed
-stopped being throwaway.
+The default is no PR: a verdict and a link are the deliverable. When a POC earns a draft PR
+is `settle-claim` → Step 5.
 
 ### Where the record lives
 
@@ -1213,40 +1322,11 @@ succeeds: no event will ever arrive to wake the session.
 are similarly cloud-only and won't resolve locally. Check for either before relying on
 `subscribe_pr_activity` — don't assume cloud by default.
 
-**Local Claude fallback: poll with `Monitor`, not a scheduler.** Both `Monitor` and `CronCreate`
-are harness-native (not cloud-gated), but they poll very differently, and for PR-watching
-`Monitor` is the better primitive:
-
-- **`Monitor` (preferred).** Arms a shell poll loop that runs in a **subprocess**; each
-  stdout line it emits becomes an event that wakes the session. The loop hits the PR's
-  comment / review / check endpoints on an interval (60s+ for a remote API — GitHub rate
-  limits) and prints only *new* activity. Because the polling itself is a subprocess, the
-  model wakes **only on a real event**, not on every tick — cost is proportional to actual
-  PR activity, and the poll behavior is deterministic (fixed shell, not a model turn that
-  re-decides each fire). This is the closest local analogue to the cloud webhook stream.
-  The **`watch-pr` skill** packages this loop — reach for it rather than re-deriving the
-  endpoints; use it as the *primary* wake signal a local coordinator/lifecycle re-enters on.
-- **`CronCreate` (only when you need a time-based tick).** Fires a *prompt* on a wall-clock
-  schedule, so it costs a full model turn **every** fire whether or not anything changed —
-  a poll-and-compare on every empty tick. Use it only for a genuinely time-driven check
-  (a low-frequency "is the Monitor still alive / anything I missed" backstop), not as the
-  main watch.
-
-**Cover the same signals the cloud path does** (this is where the naive comment-only loop
-fails): the watch must poll **PR comments *and* reviews *and* check-runs *and* PR meta**
-(`state`/`mergedAt`). Two things the comment-only loop gets wrong:
-
-- A `state: APPROVED` review lives at `pulls/{n}/reviews`, *not* at either comment endpoint —
-  omit it and a local orchestrator goes deaf to the exact approval gate above.
-- **Merge/close** is a *quiet* transition — no comment, review, or check accompanies it. A
-  watch that only polls activity endpoints never sees it, so a local lifecycle waiting on the
-  impl PR to merge would hang. `watch-pr` polls the PR-meta each tick so its **continuous 60s
-  cadence *is* the heartbeat for that transition** — which is why, locally, it substitutes for
-  the `send_later` heartbeat too, not just `subscribe_pr_activity`.
-
-Also advance the comment `since` cursor **only after a successful fetch**: a swallowed
-transient `gh` failure that still moved the cursor would drop any comment posted during the
-failed interval outside the next window.
+**Local Claude fallback: the [`watch-pr`](../../.agents/skills/watch-pr/SKILL.md) skill.** It
+arms a `Monitor` poll loop that wakes the session only on new PR comments, reviews (where an
+approval lives), check-runs and PR state, so it also stands in for the `send_later` heartbeat
+on a quiet merge. The loop's mechanics and why `Monitor` beats `CronCreate` are the skill's.
+Use it as the *primary* wake signal a local coordinator/lifecycle re-enters on.
 
 **Arming a Monitor is not idempotent — one per PR.** Unlike `subscribe_pr_activity` (safe to
 re-call every wake), each `watch-pr` arm spawns a *new* poll subprocess. A coordinator that
@@ -1421,14 +1501,6 @@ user, it is a **gate**, a **blocker**, or the **cap**; that gets its own line wi
 question. Everything else is one line and an ended turn. The point of a coordinator is that
 nobody has to read the implementation dialog — narrating it back is the same cost with an extra
 hop.
-
-> **Considered and deferred: a dedicated feedback-router sub-agent.** A standing agent that
-> triages every incoming event and decides routing was weighed and **not** adopted for v1:
-> the coordinator's per-event work is already cheap (PR# → owner → dispatch), content
-> reading already lives in the workers, and cross-over signaling already flows via issues
-> commenting up on the epic PR. The one genuinely heavy read (epic fan-out targeting) is
-> handled by `scout`. Introduce a dedicated router only if event volume and cross-over
-> routing outgrow the scout-assisted approach — not preemptively.
 
 ## The coordinator dispatches; it never does the work
 

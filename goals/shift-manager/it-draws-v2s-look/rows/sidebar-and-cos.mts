@@ -1,7 +1,7 @@
 /**
  * The v2 look table's rows for the sidebar's entries and Shift Coordinator
  * (FIX-1737 slice B): audit rows F12–F16, F18, F20, F22, C1, C2, C3 and C5
- * (the shell around the registry's parts), C7, C8 and C10. Spread into
+ * (the shell around the registry's parts), C7 and C10. Spread into
  * `run.mts`'s table, exceptions and graded regions, so each screen slice adds
  * its rows in a file of its own.
  *
@@ -47,6 +47,10 @@ export const SIDEBAR_AND_COS_ROWS: Row[] = [
   { id: "workstream name", audit: "F18", v2: { line: 88, has: "padding:5px 6px;font-size:13px" }, select: "[data-testid^=nav-workstream-] > [data-look=nav-label]", min: ({ store }) => Object.keys(store.mailboxes).length, want: { family: "sans", size: 13 } },
   { id: "workstream dot, needs you", audit: "F18", v2: { line: 1184, has: "dot: wn ? Y : wr ? A" }, select: "[data-testid^=nav-workstream-] > [data-state-square=needs]", min: ({ store }) => mailboxesWith(store, "needs"), want: { square: "needs", width: 6 } },
   { id: "workstream dot, running", audit: "F18", v2: { line: 1184, has: "dotBd: wn ? INK : wr ? A" }, select: "[data-testid^=nav-workstream-] > [data-state-square=run]", min: ({ store }) => mailboxesWith(store, "run"), want: { square: "run", width: 6 } },
+  // A project under PROJECTS: its caret, and while it is open its workstreams, each a `#` and its title.
+  // Only the project screen is sure to hold one open with a workstream in it: the sweep opened one there.
+  { id: "project caret", audit: "F17", v2: { line: 80, has: "font:500 11px 'IBM Plex Mono',monospace;color:var(--ink3);width:12px" }, select: "[data-testid=project-group] [data-testid$=-toggle] > [data-look=meta-meta]", min: ({ screen }) => (screen === "project" ? 1 : 0), want: { family: "mono", size: 11, width: 12 } },
+  { id: "project workstream #", audit: "F18", v2: { line: 88, has: "font:500 11.5px 'IBM Plex Mono',monospace;color:var(--ink4)\">#" }, select: "[data-testid=nav-workstream] > [data-look=meta-meta]", min: ({ screen }) => (screen === "project" ? 1 : 0), want: { family: "mono", size: 11.5 } },
   { id: "TEAMS heading", audit: "F20", v2: { line: 97, has: "<span>TEAMS</span><span>on shift</span>" }, select: "[data-testid=teams-heading] > [data-look=meta-label]", min: 2, want: { family: "mono", size: 10 } },
   { id: "footer initials", audit: "F22", v2: { line: 110, has: "width:22px;height:22px;box-sizing:border-box;border:1px solid var(--ink)" }, select: "[data-testid=footer-user]", min: 1, want: { family: "mono", size: 10, width: 22, border: { width: 1, colour: "foreground" } } },
 
@@ -64,7 +68,6 @@ export const SIDEBAR_AND_COS_ROWS: Row[] = [
   { id: "ask meta", audit: "C3", v2: { line: 143, has: "font:500 11px 'IBM Plex Mono',monospace;color:var(--ink3)" }, select: "[data-look=ask-meta], [data-look=ask-meta] > button", on: ["cos"], min: ({ store }) => store.asks, want: { family: "mono", size: 11 } },
   { id: "thinking line", audit: "C7", v2: { line: 168, has: "font:500 11.5px 'IBM Plex Mono',monospace;color:var(--ink3)" }, select: "[data-testid=cos-working]", on: ["cos"], min: whileWorking, want: { family: "mono", size: 11.5 } },
   { id: "thinking square", audit: "C7", v2: { line: 168, has: "width:7px;height:7px;background:var(--blue)" }, select: "[data-testid=cos-working] > [data-look=working]", on: ["cos"], min: whileWorking, want: { surface: "info", width: 7 } },
-  { id: "suggestion", audit: "C8", v2: { line: 174, has: "border:1px dashed rgba(var(--inkrgb),.45)" }, select: "[data-look=suggestion]", on: ["cos"], min: ({ store }) => (store.chiefOfStaff ? 1 : 0), want: { family: "mono", size: 11.5, border: { width: 1, colour: "foreground", style: "dashed" } } },
 ];
 
 export const SIDEBAR_AND_COS_EXCEPTIONS: Exception[] = [
@@ -84,7 +87,6 @@ export type SidebarAndCosRead = {
   sub: string | null;
   /** The sub line's store-backed tail, "watching N streams and M workers". */
   watching: string | null;
-  suggestions: string[] | null;
 };
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -112,14 +114,6 @@ export function sidebarAndCosContent(read: SidebarAndCosRead, store: Store, scre
       if (read.sub !== "working…") failures.push(`Shift Coordinator's sub line says "${read.sub ?? ""}" while a line is in flight, v2 says "working…" (v2:1424)`);
     } else if (read.watching !== watching) {
       failures.push(`Shift Coordinator's sub line says "${read.watching ?? ""}", the store gives "${watching}" (v2:1424)`);
-    }
-    if (store.chiefOfStaff) {
-      const mailboxes = Object.entries(store.mailboxes);
-      const stream = mailboxes.find(([, c]) => c.needs) ?? mailboxes.find(([, c]) => c.running > 0);
-      const want = [...(stream === undefined ? [] : [`What's blocking #${stream[0]}?`]), "Who's on call?"];
-      if (JSON.stringify(read.suggestions) !== JSON.stringify(want)) {
-        failures.push(`Shift Coordinator offers [${(read.suggestions ?? []).join(" | ")}], the store gives [${want.join(" | ")}] (v2:1422)`);
-      }
     }
   }
   return failures;

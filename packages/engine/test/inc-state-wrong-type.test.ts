@@ -7,6 +7,7 @@
  * suite.
  */
 import { describe, expect, it, vi } from "vitest";
+import type { JsonObject } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import {
   createInMemorySessionStore,
@@ -17,7 +18,7 @@ import {
 import type { CASPersist } from "../src/stores/cas";
 import { createScopePersist } from "../src/stores/scope-persist";
 
-type State = Record<string, unknown>;
+type State = JsonObject;
 
 describe("incState on a non-numeric target", () => {
   describe("scope with no store", () => {

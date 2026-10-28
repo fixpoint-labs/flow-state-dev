@@ -97,12 +97,12 @@ describe("createModelResolver — resolveEvaluationModel", () => {
     expect(gateway.languageModel).not.toHaveBeenCalled();
   });
 
-  it("routes typesafe-ai/jev and vercel/typesafe-ai/jev through the gateway, never loading Jev's library (BR-8, D2)", async () => {
+  it("routes typesafe-ai/jev and vercel:typesafe-ai/jev through the gateway, never loading Jev's library (BR-8, D2)", async () => {
     const gateway = evaluationGateway();
     const resolver = createModelResolver({ gateways: { vercel: gateway.instance } });
 
     await resolver.resolveEvaluationModel!("typesafe-ai/jev");
-    await resolver.resolveEvaluationModel!("vercel/typesafe-ai/jev");
+    await resolver.resolveEvaluationModel!("vercel:typesafe-ai/jev");
 
     expect(gateway.evaluationModelIds).toEqual(["typesafe-ai/jev", "typesafe-ai/jev"]);
   });
@@ -156,7 +156,7 @@ describe("createModelResolver — resolveEvaluationModel", () => {
     const openrouter = { chat: vi.fn(), languageModel: vi.fn() };
     const resolver = createModelResolver({ gateways: { openrouter } });
 
-    await expect(resolver.resolveEvaluationModel!("openrouter/openai/gpt-5.4-mini")).rejects.toThrow(
+    await expect(resolver.resolveEvaluationModel!("openrouter:openai/gpt-5.4-mini")).rejects.toThrow(
       /Gateway "openrouter" does not support evaluation models/
     );
     await expect(resolver.resolveEvaluationModel!("openai/gpt-5.4-mini")).rejects.toThrow(

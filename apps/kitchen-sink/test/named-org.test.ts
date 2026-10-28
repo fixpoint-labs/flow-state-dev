@@ -24,7 +24,7 @@
  * store holds, and nothing old is refused by name.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { FlowState } from "@flow-state-dev/engine";
+import { createInProcessFetch, type FlowState } from "@flow-state-dev/engine";
 
 type ScriptStep =
   | { toolCalls: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }> }
@@ -97,14 +97,11 @@ async function call(
   body?: unknown,
   headers: Record<string, string> = {},
 ) {
-  const res = await router[method](
-    new Request(`http://localhost/api/flows/${segments.map(encodeURIComponent).join("/")}`, {
+  const res = await createInProcessFetch(router)(`/api/flows/${segments.map(encodeURIComponent).join("/")}`, {
       method,
       headers: { "content-type": "application/json", accept: "text/event-stream", ...headers },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    }),
-    { params: { path: segments } },
-  );
+    });
   return { status: res.status, text: await res.text() };
 }
 
@@ -144,7 +141,7 @@ describe("V18 · one organization, from the host resolver", () => {
     const { router, runtime } = await bootApp();
     const opened = await openSession(router, "coordinator", { orgId: "globex", state: { workerId: "support.help" } });
     expect(opened.status, opened.text).toBe(201);
-    const posted = await act(router, "coordinator", "run", opened.id!, { message: "a post naming nobody" }, { orgId: "globex" });
+    const posted = await act(router, "coordinator", "respond", opened.id!, { message: "a post naming nobody" }, { orgId: "globex" });
     expect(posted.status, posted.text).toBe(200);
     // Best fit cannot place it, so the fallback takes it, in a session the post's conversation started.
     let delegate: { orgId?: string } | undefined;

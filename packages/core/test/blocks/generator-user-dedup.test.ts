@@ -23,7 +23,7 @@ function makeCapturingCtx(captured: { messages?: CapturedMessages }) {
   });
 }
 
-function userMessages(messages: CapturedMessages | undefined): unknown[] {
+function userMessages(messages: CapturedMessages | undefined): { role: "user"; content: unknown }[] {
   return (messages ?? []).filter(
     (m): m is { role: "user"; content: unknown } =>
       typeof m === "object" && m !== null && (m as { role?: unknown }).role === "user"

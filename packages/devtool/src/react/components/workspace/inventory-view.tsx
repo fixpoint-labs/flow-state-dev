@@ -7,7 +7,7 @@
  * does not declare it shows no tab, never an empty table.
  *
  * Every request — the manifest and every page of the collection — goes
- * through the DevTool's shared `resourceClient`, so it carries the bearer
+ * through the DevTool's one client, so it carries the bearer
  * token like every other panel. The read is the production collection route,
  * never the debug one, so the tab works with the debug endpoints off. The
  * organization is the session's, decided by the server; the tab names none
@@ -44,14 +44,15 @@ const InventoryContext = createContext<string | null>(null);
  * the same failure on their own reads.
  */
 export function InventoryProvider({ sessionId, children }: { sessionId: string | null; children: ReactNode }) {
-  const { resourceClient } = useDevTool();
+  const { client } = useDevTool();
+  const resourceReads = client.resources;
   const [ref, setRef] = useState<string | null>(null);
 
   useEffect(() => {
     setRef(null);
     if (sessionId === null) return;
     let cancelled = false;
-    resourceClient
+    resourceReads
       .getResourceManifest(sessionId)
       .then((manifest) => {
         if (!cancelled) setRef(workerInventoryRef(manifest) ?? null);
@@ -62,7 +63,7 @@ export function InventoryProvider({ sessionId, children }: { sessionId: string |
     return () => {
       cancelled = true;
     };
-  }, [resourceClient, sessionId]);
+  }, [resourceReads, sessionId]);
 
   return <InventoryContext.Provider value={ref}>{children}</InventoryContext.Provider>;
 }
@@ -85,34 +86,35 @@ export function InventoryTabContent({ sessionId }: { sessionId: string | null })
 
 /** The worker section, for a session whose inventory ref is already known. */
 function InventoryView({ sessionId, inventoryRef }: { sessionId: string; inventoryRef: string }) {
-  const { resourceClient } = useDevTool();
+  const { client } = useDevTool();
+  const resourceReads = client.resources;
   const [read, setRead] = useState<InventoryRead | null>(null);
 
   useEffect(() => {
     setRead(null);
     let cancelled = false;
-    void readEveryPage(resourceClient, sessionId, inventoryRef).then((next) => {
+    void readEveryPage(resourceReads, sessionId, inventoryRef).then((next) => {
       if (!cancelled) setRead(next);
     });
     return () => {
       cancelled = true;
     };
-  }, [resourceClient, sessionId, inventoryRef]);
+  }, [resourceReads, sessionId, inventoryRef]);
 
   if (read === null) {
-    return <p className="p-3 text-xs text-slate-500">Reading the inventory…</p>;
+    return <p className="px-[18px] py-4 font-fs-mono text-[11.5px] text-fs-ink4">Reading the inventory…</p>;
   }
 
   return (
-    <div className="flex flex-col gap-3 p-3" data-inventory-view="">
-      <p className="text-[11px] text-slate-500">
+    <div className="flex flex-col gap-3.5 px-[18px] pt-4 pb-5" data-inventory-view="">
+      <p className="font-fs-mono text-[11.5px] leading-[1.6] text-fs-ink3">
         Everything registered in this session's organization. A row stays once it is written: a worker
         that was fired is still listed as registered.
       </p>
       {read.status === "loaded" && read.rows.length === 0 && (
-        <p className="rounded-md border border-slate-800 px-3 py-2 text-xs text-slate-300" role="status">
+        <p className="max-w-[560px] border border-dashed border-fs-ink/45 px-4 py-3 text-[13px] text-fs-ink2" role="status">
           Nothing is registered in this organization yet. An app registers its workers by calling{" "}
-          <code>openInventory</code> at boot.
+          <code className="font-fs-mono text-[12px] text-fs-ink">openInventory</code> at boot.
         </p>
       )}
 
@@ -120,16 +122,16 @@ function InventoryView({ sessionId, inventoryRef }: { sessionId: string; invento
         {(rows) => (
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-slate-800 text-left text-[10px] uppercase tracking-wide text-slate-500">
-                <th className="px-3 py-1.5 font-medium">Id</th>
-                <th className="py-1.5 pr-3 font-medium">Kind</th>
+              <tr className="border-b border-fs-ink/20 text-left font-fs-mono text-[10px] uppercase tracking-[.12em] text-fs-ink4">
+                <th className="px-3 py-[7px] font-medium">Id</th>
+                <th className="py-[7px] pr-3 font-medium">Kind</th>
               </tr>
             </thead>
             <tbody>
               {rows.map(toWorkerRow).map((worker) => (
-                <tr key={worker.id} className="border-b border-slate-800/50 align-top">
-                  <td className="px-3 py-1.5 font-mono text-[11px] text-slate-300">{worker.id}</td>
-                  <td className="py-1.5 pr-3 text-slate-300">{worker.kind ?? "unknown"}</td>
+                <tr key={worker.id} className="border-b border-fs-ink/12 align-top last:border-b-0 hover:bg-fs-ink/5">
+                  <td className="px-3 py-2 font-fs-mono text-[11.5px] text-fs-ink">{worker.id}</td>
+                  <td className="py-2 pr-3 font-fs-mono text-[11.5px] text-fs-ink2">{worker.kind ?? "unknown"}</td>
                 </tr>
               ))}
             </tbody>
@@ -159,17 +161,17 @@ function Section({
 }) {
   return (
     <section
-      className="rounded-md border border-slate-800 bg-slate-900/40"
+      className="border border-fs-ink/30 bg-fs-card"
       data-inventory-section={name}
       data-inventory-status={read.status}
     >
-      <h3 className="flex items-center gap-1.5 border-b border-slate-800 px-3 py-2 text-xs font-medium text-slate-200">
-        <Boxes className="h-3.5 w-3.5 text-emerald-400" aria-hidden />
+      <h3 className="flex items-baseline gap-2 border-b border-fs-ink/20 px-3 py-2 font-fs-mono text-[10px] font-medium uppercase tracking-[.14em] text-fs-ink3">
+        <Boxes className="size-3 self-center text-fs-ink3" aria-hidden />
         {title}
-        {read.status === "loaded" && <span className="text-[10px] font-normal text-slate-500">{read.rows.length}</span>}
+        {read.status === "loaded" && <span className="font-normal tracking-normal text-fs-ink4">{read.rows.length}</span>}
       </h3>
       {read.status === "failed" ? (
-        <p className="px-3 py-2 text-xs text-rose-300" role="alert">
+        <p className="px-3 py-2 font-fs-mono text-[11.5px] leading-[1.6] text-fs-red" role="alert">
           {read.httpStatus === 403
             ? `The ${noun} read was refused (403): ${read.message}.`
             : read.httpStatus === 404
@@ -180,7 +182,7 @@ function Section({
           {" "}This is not an empty organization.
         </p>
       ) : read.rows.length === 0 ? (
-        <p className="px-3 py-2 text-xs text-slate-500">No {noun} registered.</p>
+        <p className="px-3 py-2.5 font-fs-mono text-[11.5px] text-fs-ink4">No {noun} registered.</p>
       ) : (
         children(read.rows)
       )}

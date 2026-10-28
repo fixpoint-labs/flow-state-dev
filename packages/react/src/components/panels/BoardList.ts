@@ -16,10 +16,8 @@
  * Loading, empty and a failed read are three different renders.
  */
 import { createElement, useMemo, type ReactNode } from "react";
-import type { ClientFetch } from "@flow-state-dev/client";
-import { useFlowContext } from "../../context/FlowContext";
 import { cardRows, type BoardCard, type BoardCardRow } from "./cards";
-import { usePanelRows, type PanelRowSource } from "./reads";
+import { usePanelRows, type PanelLiveSource, type PanelRowSource } from "./reads";
 import { usePanelSource } from "./usePanelSource";
 import { bareList, labelStyle, note, panelStyle, retryLine, rowStyle } from "./chrome";
 
@@ -55,46 +53,21 @@ type BoardListCommonProps = {
 };
 
 /**
- * What reads the board, and what the live stream is sent with.
+ * What reads the board, and what the live stream is sent with: one client.
  *
- * - `resourceClient`: the host's own resource client, so the read carries the
- *   host's transport and its credential. Pass a STABLE reference.
- * - `fetcher`: the `fetch` the live stream is sent with, and the read too when
- *   no `resourceClient` is passed. Pass the one the `resourceClient` was built
- *   with, so the stream carries the same credential as the read. Stable, too.
- * - `baseUrl`: the origin the live stream is sent to, and the read too when no
- *   `resourceClient` is passed. Defaults to the nearest `FlowProvider`'s. A
- *   host whose `resourceClient` reads another origin passes that origin here,
- *   so the stream follows the session on the server the board is read from.
+ * - `client`: the host's own client, so the read and the live stream carry the
+ *   host's transport and its credential. Pass a STABLE reference. Without
+ *   one, the panel uses the nearest `FlowProvider`'s user, `baseUrl` and
+ *   `fetcher`.
  * - `live`: read the board again whenever the session keeps a change to it.
  *
- * A host that passes its own `resourceClient` and asks for `live` has to pass
- * `fetcher` as well: a stream sent without the read's credential is refused,
- * and a refused stream leaves the list reading once, with no error. Passing
- * neither sends both with the plain `fetch`, to `baseUrl` when it is given and
- * the nearest `FlowProvider`'s otherwise. A `resourceClient` without `live`
- * reads through the client alone, so neither `fetcher` nor `baseUrl` has
- * anything to do there.
+ * A live list's client must be able to stream (`sessions`): the stream goes
+ * through the same client as the read, so it carries the read's credential to
+ * the read's origin. A client that only reads takes no `live`.
  */
 type BoardListTransportProps =
-  | {
-      readonly resourceClient?: undefined;
-      readonly fetcher?: ClientFetch;
-      readonly baseUrl?: string;
-      readonly live?: boolean;
-    }
-  | {
-      readonly resourceClient: PanelRowSource;
-      readonly fetcher: ClientFetch;
-      readonly baseUrl?: string;
-      readonly live?: boolean;
-    }
-  | {
-      readonly resourceClient: PanelRowSource;
-      readonly fetcher?: undefined;
-      readonly baseUrl?: undefined;
-      readonly live?: false;
-    };
+  | { readonly client?: PanelLiveSource; readonly live?: boolean }
+  | { readonly client: PanelRowSource; readonly live?: false };
 
 export type BoardListProps = BoardListCommonProps & BoardListTransportProps;
 
@@ -103,12 +76,10 @@ export type BoardListProps = BoardListCommonProps & BoardListTransportProps;
  * type test beside it, so a new prop cannot go unlisted.
  */
 export const boardListPropNames = [
-  "baseUrl",
   "boardRef",
-  "fetcher",
+  "client",
   "limit",
   "live",
-  "resourceClient",
   "sessionId",
   "slots"
 ] as const;
@@ -149,11 +120,9 @@ function defaultRowBody({ card }: BoardCardRow): ReactNode {
 }
 
 export function BoardList(props: BoardListProps): ReactNode {
-  const { sessionId, boardRef, resourceClient, fetcher, limit, live = false, slots = {} } = props;
+  const { sessionId, boardRef, client, limit, live = false, slots = {} } = props;
 
-  const { baseUrl: providerBaseUrl, apiPath } = useFlowContext();
-  const baseUrl = props.baseUrl ?? providerBaseUrl;
-  const source = usePanelSource(resourceClient, { baseUrl, fetcher });
+  const source = usePanelSource(client);
 
   const state = usePanelRows<unknown>(
     source,
@@ -161,7 +130,7 @@ export function BoardList(props: BoardListProps): ReactNode {
     boardRef,
     limit,
     "Failed to load this board",
-    live ? { baseUrl, apiPath, fetcher } : undefined
+    live ? (source as PanelLiveSource) : undefined
   );
   const rows = useMemo(() => newestFirst(cardRows(state.rows)), [state.rows]);
 

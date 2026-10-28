@@ -153,7 +153,7 @@
       "type": "registry:component",
       "description": "Rich tool invocation display with args, result, status, and Claude-Code-style grouping for consecutive calls.",
       "dependencies": ["@flow-state-dev/core", "lucide-react"],
-      "registryDependencies": ["collapsible", "badge", "code-block", "tokens"],
+      "registryDependencies": ["collapsible", "badge", "code-block", "tool-naming", "tokens"],
       "files": [
         {
           "type": "registry:component",
@@ -164,6 +164,22 @@
           "type": "registry:lib",
           "path": "registry/components/tool-grouping.ts",
           "target": "components/flow-state/tool-grouping.ts"
+        }
+      ],
+      "categories": ["ai", "tools"]
+    },
+    {
+      "name": "tool-naming",
+      "title": "Tool Naming",
+      "type": "registry:component",
+      "description": "Pure helpers that name a tool call in a few words from its name and args: the command a shell ran, the file a read opened, the MCP tool called, or the description the call stated.",
+      "dependencies": [],
+      "registryDependencies": [],
+      "files": [
+        {
+          "type": "registry:lib",
+          "path": "registry/components/tool-naming.ts",
+          "target": "components/flow-state/tool-naming.ts"
         }
       ],
       "categories": ["ai", "tools"]

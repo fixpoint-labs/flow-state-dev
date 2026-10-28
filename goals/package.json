@@ -14,7 +14,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^4.0.75",
     "@anthropic-ai/claude-agent-sdk": "^0.3.234",
-    "@cursor/sdk": "1.0.31",
+    "@cursor/sdk": "1.0.40",
     "@electric-sql/pglite": "^0.5.4",
     "@flow-state-dev/bullmq": "workspace:*",
     "@flow-state-dev/claude-code": "workspace:*",
@@ -27,12 +27,14 @@
     "@flow-state-dev/mcp": "workspace:*",
     "@flow-state-dev/node": "workspace:*",
     "@flow-state-dev/orchestration": "workspace:*",
+    "@flow-state-dev/patterns": "workspace:*",
+    "@flow-state-dev/scheduled": "workspace:*",
     "@flow-state-dev/store-postgres": "workspace:*",
     "@flow-state-dev/store-sqlite": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
     "@flow-state-dev/workforce": "workspace:*",
     "@flow-state-dev/workspace": "workspace:*",
-    "@openai/codex-sdk": "0.152.1",
+    "@openai/codex-sdk": "0.164.0",
     "bullmq": "^5.0.0",
     "zod": "^3.25.76"
   },
@@ -41,6 +43,6 @@
     "esbuild": "0.27.3",
     "playwright": "^1.49.0",
     "tsx": "^4.19.4",
-    "typescript": "^5.7.3"
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
   }
 }

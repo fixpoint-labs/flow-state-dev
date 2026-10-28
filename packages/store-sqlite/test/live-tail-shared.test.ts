@@ -42,9 +42,9 @@ describe("SQLite shared live-tail loop", () => {
     const requestId = "req_fanout";
 
     const drains = Promise.all([
-      drainSequences(store.subscribeToEvents(requestId, {})),
-      drainSequences(store.subscribeToEvents(requestId, {})),
-      drainSequences(store.subscribeToEvents(requestId, {}))
+      drainSequences(store.subscribeToEvents(requestId, { fromSequence: 0 })),
+      drainSequences(store.subscribeToEvents(requestId, { fromSequence: 0 })),
+      drainSequences(store.subscribeToEvents(requestId, { fromSequence: 0 }))
     ]);
 
     // Let the three subscribers register on the shared loop before writing.
@@ -68,7 +68,7 @@ describe("SQLite shared live-tail loop", () => {
     const { db, store } = freshStore();
     const requestId = "req_late";
 
-    const early = drainSequences(store.subscribeToEvents(requestId, {}));
+    const early = drainSequences(store.subscribeToEvents(requestId, { fromSequence: 0 }));
     await flush();
     store.persistEvents(requestId, [
       makeRequestStreamEvent(requestId, 1),
@@ -93,7 +93,7 @@ describe("SQLite shared live-tail loop", () => {
 
     const controller = new AbortController();
     const drained = drainSequences(
-      store.subscribeToEvents(requestId, { signal: controller.signal })
+      store.subscribeToEvents(requestId, { fromSequence: 0, signal: controller.signal })
     );
     await flush();
     store.persistEvents(requestId, [makeRequestStreamEvent(requestId, 1)]);
@@ -106,7 +106,7 @@ describe("SQLite shared live-tail loop", () => {
 
     // Writing after teardown must not throw or hang; a fresh subscriber still works.
     store.persistEvents(requestId, [makeRequestCompletedEvent(requestId, 2)]);
-    const after = await drainSequences(store.subscribeToEvents(requestId, {}));
+    const after = await drainSequences(store.subscribeToEvents(requestId, { fromSequence: 0 }));
     expect(after).toEqual([1, 2]);
     db.close();
   });
@@ -120,10 +120,10 @@ describe("SQLite shared live-tail loop", () => {
     // teardown/rejoin window where a stale tail could otherwise be reused.
     const controller = new AbortController();
     const first = drainSequences(
-      store.subscribeToEvents(requestId, { signal: controller.signal })
+      store.subscribeToEvents(requestId, { fromSequence: 0, signal: controller.signal })
     );
     controller.abort();
-    const second = drainSequences(store.subscribeToEvents(requestId, {}));
+    const second = drainSequences(store.subscribeToEvents(requestId, { fromSequence: 0 }));
 
     await flush();
     store.persistEvents(requestId, [makeRequestStreamEvent(requestId, 1)]);

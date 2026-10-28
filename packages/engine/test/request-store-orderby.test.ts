@@ -20,6 +20,7 @@ function record(id: string, startedAtMs: number, updatedAt: number): RequestReco
     actionName: "run",
     userId: "u1",
     sessionId: "s1",
+    source: "http",
     status: "completed",
     startedAtMs,
     state: {},

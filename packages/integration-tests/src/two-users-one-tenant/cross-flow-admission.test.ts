@@ -4,7 +4,7 @@
  *
  * One flow can start work on another: a `dispatcher()` block in the sender
  * names the recipient flow and entry, and the recipient's entry runs in a
- * child session of its own. That hand-off happens inside the server, so it
+ * child session of its own. That dispatch happens inside the server, so it
  * never passes the HTTP door the recipient's own callers pass. What the
  * recipient's entry sees must still be what the door would have let in: a
  * verified user and a verified organization.

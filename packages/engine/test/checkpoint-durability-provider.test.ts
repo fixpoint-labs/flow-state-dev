@@ -20,6 +20,7 @@ function mockCheckpointStore(): CheckpointStore {
     write: vi.fn<CheckpointStore["write"]>().mockResolvedValue(undefined),
     latest: vi.fn<CheckpointStore["latest"]>().mockResolvedValue(null),
     delete: vi.fn<CheckpointStore["delete"]>().mockResolvedValue(undefined),
+    deleteForRequest: vi.fn<CheckpointStore["deleteForRequest"]>().mockResolvedValue(undefined),
   };
 }
 
@@ -29,6 +30,7 @@ function mockSuspensionStore(): SuspensionStore {
     get: vi.fn<SuspensionStore["get"]>().mockResolvedValue(null),
     list: vi.fn<SuspensionStore["list"]>().mockResolvedValue([]),
     deleteForRequest: vi.fn<SuspensionStore["deleteForRequest"]>().mockResolvedValue(undefined),
+    pruneTerminalBefore: vi.fn<SuspensionStore["pruneTerminalBefore"]>().mockResolvedValue(0),
   };
 }
 

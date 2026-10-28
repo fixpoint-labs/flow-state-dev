@@ -14,7 +14,7 @@ import chatFlow from "./src/flows/hello-chat/flow";
 
 export const flowstate = createFlowState({
   flows: { chat: chatFlow },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: inMemoryStores() } },
 });
 ```
@@ -45,7 +45,7 @@ Narrative: [Engine setup](/docs/server/setup), [App configuration](/docs/cli/con
 | `settings` | object | — | Read in blocks as `ctx.settings`. Type it by declaration-merging `FlowStateSettings`. Process-wide and one shape for every flow; for settings that differ between two registered copies of one flow, use [`config`](/docs/configuration/flow#instance-settings), read as `ctx.flow.config`. |
 | `voice` | `{ provider? }` | — | Runtime voice provider (TTS/STT). Distinct from a flow's `voice` speak defaults. |
 | `onError` | `(error, { method, path }) => void` | — | HTTP-level error sink. |
-| `errorCapture` | handler | off | Block-aware sink: failing block identity plus flow / request / session / user ids. You write the adapter; the framework ships no vendor SDK. |
+| `errorCapture` | handler | off | Block-aware sink: failing block identity plus flow / request / session / user ids, and one extra event marked `final` when a request settles failed. You write the adapter; the framework ships no vendor SDK. |
 | `onBackgroundWork` | `(promise) => void` | — | Keep-alive for work that outlives the response. On Vercel, pass `(p) => after(() => p)`. |
 | `detectInterruptedOnStartup` | `boolean` | `true` | Scan for interrupted requests at boot. Turn off on serverless if the scan contends with the first request. |
 | `dispatchDrainTimeoutMs` | `number` | `30000` | How long `dispose()` waits for dispatch runs still running **in this process**. `0` skips the wait and still reports what was left. The default is sized for a serverless shutdown grace period, so raise it past your longest expected run on a long-lived host doing slow background work. It does not cover the worker shutdown that follows: `dispose()` then closes the worker, and an adapter like BullMQ waits — outside this ceiling — for jobs this process already claimed. Queued work no worker has claimed is not waited on. Size a host's shutdown grace period for both phases, not this value alone. |
@@ -57,8 +57,10 @@ Narrative: [Engine setup](/docs/server/setup), [App configuration](/docs/cli/con
 | `queuedGraceMs` | `number` | `600000` | How long an unclaimed queued request may sit before a sweep treats it as lost. Must be finite. |
 | `publicReentrySources` | `string[]` | built-in caller-addressed sources | Extra inbound `source` values allowed on retry / continue / resume. `webhook`, `internal` and `task` cannot be added. |
 | `maxChildSessionListLimit` | `number` | `100` | Largest `limit` the child-session listing route accepts. The listing is all-time history, so it outgrows any fixed page a client would ask for. |
-| `durable` | `boolean` | `false` | Install the default checkpoint provider so actions with `durable: true` can recover and `ctx.suspend()`. Needs a persistent store to survive a process restart. |
+| `durable` | `boolean` | on wherever stores persist | Durable execution for the whole host: sequencers checkpoint, a crashed request resumes, and a request paused by `ctx.suspend()` is held. On by default over filesystem, SQLite and Postgres stores; off over in-memory stores, where a suspension would be lost with the process. `false` turns it off; `true` turns it on over in-memory stores too (tests). Without it, `ctx.suspend()` throws an error that names the setting to change, and the request fails. See [Enabling durability](/docs/advanced/durable-execution#enabling-durability). |
 | `durabilityRetention` | retention object | — | Sweeper for expired suspensions, leases, and orphaned checkpoints. Only with durability on. |
+| `userDeadlineMs` | `number` | unset | How long a stop that waits for a user waits when it names no deadline of its own: every `ctx.waitForUser` without a `deadline`, and every question a task is [held on](/docs/orchestration/task-board#a-task-held-on-questions). Unset, such a stop waits until someone answers it, stops it or cancels its task, however long that takes. Set it if you'd rather unanswered stops end on their own; at the deadline an approval reads as a no, and a review or input throws `SuspensionTimeoutError`. A held question closes on the board's first touch past its deadline, and the work goes on as if it had been answered. One second to 365 days. A raw `ctx.suspend` ignores it and keeps its own `timeoutMs`. |
+| `maxDebtAgeMs` | `number` | `86400000` (24 h) | How long past its due time work a [wake](/docs/advanced/durable-execution#wakes) guards, such as a task board's notice, may stay owed before it is given up on and logged. Only with durability on and a store that keeps wakes. |
 | `worker` | `WorkerAdapter` | — | Execution backend (for example `bullmqWorker(...)`). Mutually exclusive with `dispatcher`. |
 | `dispatcher` | `FlowDispatcher` | in-process | Low-level "where actions run" hook. Prefer `worker`. |
 | `adapters` | inbound adapters | — | Custom transports forwarded to the router. |

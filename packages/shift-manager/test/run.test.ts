@@ -7,7 +7,8 @@
  * routes or its stores, never against a list written here.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createLabClients, type LabClients } from "../src/lib/connection";
+import type { Client } from "@flow-state-dev/client";
+import { connect } from "../src/lib/connection";
 import { collectionOfBoard, createLabReader, type BoardRow } from "../src/lib/reads";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import {
@@ -28,11 +29,11 @@ import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 type Opened = Awaited<ReturnType<typeof openRunLab>>;
 let lab: Opened;
 let served: ServedLab;
-let clients: LabClients;
+let client: Client;
 
 /** The lead's conversation board's rows, as Shift Manager's own board read returns them. */
 async function rows(): Promise<BoardRow[]> {
-  return createLabReader(clients).readBoard(lab.conversation);
+  return createLabReader(client).readBoard(lab.conversation);
 }
 
 /** The row for a filed task, once its run has linked itself: held on the shared flow, or on a worker's own. */
@@ -45,7 +46,7 @@ async function linked(kind: "held" | "short", workerFlow: "own" | "shared"): Pro
 beforeAll(async () => {
   lab = await openRunLab();
   served = await serveLab(lab.flowState);
-  clients = createLabClients({ baseUrl: served.baseUrl, userId: RUN_LAB_USER_ID });
+  client = connect({ baseUrl: served.baseUrl, userId: RUN_LAB_USER_ID });
 }, 60_000);
 
 afterAll(async () => {
@@ -60,19 +61,19 @@ describe("finding the run (V1, D1)", () => {
     const runtime = await lab.flowState.getRuntime();
     for (const row of [same, own]) {
       const stored = (await runtime.stores.session.get(row.run!.sessionId)) as { flowId?: string } | undefined;
-      expect(await resolveRunFlow(clients, row.run!.sessionId)).toBe(stored?.flowId);
+      expect(await resolveRunFlow(client, row.run!.sessionId)).toBe(stored?.flowId);
     }
     // The worker on a flow of its own runs on that flow, not the shared one.
-    expect(await resolveRunFlow(clients, own.run!.sessionId)).toBe(lab.ownWorker!.flow);
-    expect(await resolveRunFlow(clients, same.run!.sessionId)).toBe(lab.sharedFlow!);
+    expect(await resolveRunFlow(client, own.run!.sessionId)).toBe(lab.ownWorker!.flow);
+    expect(await resolveRunFlow(client, same.run!.sessionId)).toBe(lab.sharedFlow!);
   });
 
   it("opens the cross-flow run through its session's flow, and fails through the lead's", async () => {
     const own = await linked("held", "own");
-    const flowId = await resolveRunFlow(clients, own.run!.sessionId);
-    expect(await readRunStatus(clients, { flowId, requestId: own.run!.requestId })).toBe("in_progress");
+    const flowId = await resolveRunFlow(client, own.run!.sessionId);
+    expect(await readRunStatus(client, { flowId, requestId: own.run!.requestId })).toBe("in_progress");
     // The negative: the flow of the board the task is on does not own this request.
-    await expect(readRunStatus(clients, { flowId: lab.leadFlow, requestId: own.run!.requestId })).rejects.toThrow(/404|not found/i);
+    await expect(readRunStatus(client, { flowId: lab.leadFlow, requestId: own.run!.requestId })).rejects.toThrow(/404|not found/i);
   });
 
   it("a task never claimed names no run", async () => {
@@ -88,15 +89,15 @@ describe("the Session's items (V1, V2; BR-5, BR-8)", () => {
     const row = await linked("held", "shared");
     const collection = collectionOfBoard(row.boardRef);
     // The session read already holds what the running request has finished so far, and only its own.
-    const { items: stored } = await readSessionItems(clients, row.run!.sessionId);
+    const { items: stored } = await readSessionItems(client, row.run!.sessionId);
     const storedShown = taskItems(stored, collection, row.id).items;
     expect(storedShown.length).toBeGreaterThan(0);
     expect(storedShown.every((i) => i.taskId === row.id && i.requestId === row.run!.requestId)).toBe(true);
 
-    const flowId = await resolveRunFlow(clients, row.run!.sessionId);
+    const flowId = await resolveRunFlow(client, row.run!.sessionId);
     const streamed: OutputItem[] = [];
     const statuses: string[] = [];
-    const stream = followRequest(clients, { flowId, requestId: row.run!.requestId }, {
+    const stream = followRequest(client, { flowId, requestId: row.run!.requestId }, {
       onItem: (item) => streamed.push(item),
       onStatus: (status) => statuses.push(status),
       onError: () => undefined,
@@ -110,7 +111,7 @@ describe("the Session's items (V1, V2; BR-5, BR-8)", () => {
       expect(seen.shared).toBe(false);
       expect(seen.items.every((i) => i.taskId === row.id && i.requestId === row.run!.requestId)).toBe(true);
       // A fresh session read of the still-running request now carries its finished steps too.
-      const { items: later } = await readSessionItems(clients, row.run!.sessionId);
+      const { items: later } = await readSessionItems(client, row.run!.sessionId);
       const laterShown = taskItems(later, collection, row.id).items;
       expect(laterShown.filter((i) => i.type === "message").length).toBeGreaterThanOrEqual(3);
       expect(laterShown.every((i) => i.requestId === row.run!.requestId)).toBe(true);
@@ -133,7 +134,7 @@ describe("the Session's items (V1, V2; BR-5, BR-8)", () => {
     }, "both short rows to finish", 20_000);
     expect(both[0]!.run!.sessionId).not.toBe(both[1]!.run!.sessionId);
     for (const row of both) {
-      const { items } = await readSessionItems(clients, row.run!.sessionId);
+      const { items } = await readSessionItems(client, row.run!.sessionId);
       const mine = taskItems(items, collectionOfBoard(row.boardRef), row.id);
       expect(mine.shared).toBe(false);
       expect(mine.items.length).toBeGreaterThan(0);
@@ -146,7 +147,7 @@ describe("what the run recorded (V5; BR-19, BR-20)", () => {
   it("lists the plan and files a recording flow wrote under this request, and says a flow that records none does", async () => {
     const own = await linked("held", "own");
     const recorded = await eventually(async () => {
-      const work = await readRecordedWork(clients, own.run!);
+      const work = await readRecordedWork(client, own.run!);
       return (work.files?.rows.length ?? 0) > 0 ? work : undefined;
     }, "the recorded rows");
     expect(recorded.plan?.rows.map((s) => [s.title, s.status])).toEqual([
@@ -156,56 +157,56 @@ describe("what the run recorded (V5; BR-19, BR-20)", () => {
     expect(recorded.files?.rows).toEqual([{ path: "notes/audit.md", kind: "created" }]);
 
     const same = await linked("held", "shared");
-    expect(await readRecordedWork(clients, same.run!)).toEqual({ plan: null, files: null });
+    expect(await readRecordedWork(client, same.run!)).toEqual({ plan: null, files: null });
   });
 });
 
 describe("Interrupt (V3; BR-11, BR-12, BR-14)", () => {
   it("aborts the linked request through the run's flow, resolves only once the record reads aborted, and writes nothing to the row", async () => {
     const own = await linked("held", "own");
-    const flowId = await resolveRunFlow(clients, own.run!.sessionId);
+    const flowId = await resolveRunFlow(client, own.run!.sessionId);
     const before = (await rows()).find((r) => r.id === own.id)!;
-    const outcome = await interruptRun(clients, { flowId, requestId: own.run!.requestId }, { pollMs: 50 });
+    const outcome = await interruptRun(client, { flowId, requestId: own.run!.requestId }, { pollMs: 50 });
     expect(outcome).toEqual({ kind: "aborted" });
-    expect(await readRunStatus(clients, { flowId, requestId: own.run!.requestId })).toBe("aborted");
+    expect(await readRunStatus(client, { flowId, requestId: own.run!.requestId })).toBe("aborted");
     // The link still names the run that was stopped; whatever the board did next is the board's.
     const after = (await rows()).find((r) => r.id === own.id)!;
     expect(after.run).toEqual(before.run);
 
     // Again, on the finished request: already terminal, so it answers what the record says.
-    expect(await interruptRun(clients, { flowId, requestId: own.run!.requestId })).toEqual({ kind: "aborted" });
+    expect(await interruptRun(client, { flowId, requestId: own.run!.requestId })).toEqual({ kind: "aborted" });
   });
 
   it("an abort of a request that had already finished answers with the record's status (BR-12)", async () => {
     const short = lab.filed.find((f) => f.kind === "short")!;
     const row = await eventually(async () => (await rows()).find((r) => r.id === short.taskId && r.status === "completed"), "a finished row", 20_000);
-    const flowId = await resolveRunFlow(clients, row.run!.sessionId);
-    expect(await interruptRun(clients, { flowId, requestId: row.run!.requestId })).toEqual({ kind: "finished", status: "completed" });
+    const flowId = await resolveRunFlow(client, row.run!.sessionId);
+    expect(await interruptRun(client, { flowId, requestId: row.run!.requestId })).toEqual({ kind: "finished", status: "completed" });
   });
 
   /** Clients whose abort is refused with `refusal`, and whose record reads `status`. */
-  function refusing(refusal: ClientHttpError, status: string): { clients: LabClients; statusReads: () => number } {
+  function refusing(refusal: ClientHttpError, status: string): { client: Client; statusReads: () => number } {
     let reads = 0;
-    const actions = {
-      abortRequest: async () => {
+    const request = {
+      abort: async () => {
         throw refusal;
       },
-      getRequestStatus: async () => {
+      status: async () => {
         reads += 1;
         return { status };
       },
     };
-    return { clients: { actions: () => actions } as unknown as LabClients, statusReads: () => reads };
+    return { client: { flow: () => ({ request: () => request }) } as unknown as Client, statusReads: () => reads };
   }
 
   it("tells an already-finished abort from a refusal by the answer's status, not its wording (BR-12, BR-13)", async () => {
     // Worded without "(409)": the status alone says the request was already terminal.
     const finished = refusing(new ClientHttpError("already terminal", { status: 409, body: "" }), "completed");
-    expect(await interruptRun(finished.clients, { flowId: "f", requestId: "r" })).toEqual({ kind: "finished", status: "completed" });
+    expect(await interruptRun(finished.client, { flowId: "f", requestId: "r" })).toEqual({ kind: "finished", status: "completed" });
 
     // Worded with "(409)" but refused: still a refusal, carrying its status.
     const refused = refusing(new ClientHttpError("not yours (409)", { status: 403, body: "" }), "in_progress");
-    const error = await interruptRun(refused.clients, { flowId: "f", requestId: "r" }).catch((e: unknown) => e);
+    const error = await interruptRun(refused.client, { flowId: "f", requestId: "r" }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(RunReadError);
     expect((error as RunReadError).failure.httpStatus).toBe(403);
     expect(refused.statusReads()).toBe(0);
@@ -214,7 +215,7 @@ describe("Interrupt (V3; BR-11, BR-12, BR-14)", () => {
   it("stops waiting on the record once the screen that asked has closed", async () => {
     const running = refusing(new ClientHttpError("already terminal", { status: 409, body: "" }), "in_progress");
     const closed = new AbortController();
-    const waiting = interruptRun(running.clients, { flowId: "f", requestId: "r" }, { pollMs: 10, timeoutMs: 60_000, signal: closed.signal });
+    const waiting = interruptRun(running.client, { flowId: "f", requestId: "r" }, { pollMs: 10, timeoutMs: 60_000, signal: closed.signal });
     await new Promise((resolve) => setTimeout(resolve, 50));
     closed.abort();
     await expect(waiting).rejects.toBeInstanceOf(RunReadError);

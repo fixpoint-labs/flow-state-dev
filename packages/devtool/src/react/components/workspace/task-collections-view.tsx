@@ -11,15 +11,16 @@
  * `<TaskPlan />` renderer is what apps embed in their chat UI; this panel is
  * for debugging the substrate itself.
  *
- * A task whose worker hands its rows off to a `task` entry is run by a dispatch run
+ * A task whose worker dispatches its rows to a `task` entry is run by a dispatch run
  * rather than by the request you are looking at, so its row carries a link into that
  * dispatch run (FIX-1071). The link is derived, absent for most tasks, and never
  * something the row is gated on — see `lib/dispatch-run-links`.
  *
  * A task also carries a short note about itself on `feedback`, and the row's
- * reason slot renders it so a parked row says why without being opened
- * (FIX-1481). The slot is keyed on the field being present, never on the
- * `parked` status, and the note is rendered exactly as stored — see
+ * reason slot renders it so a retried row says why without being opened
+ * (FIX-1481). A task waiting on a person shows what it was asked there
+ * instead (`waitPrompt`): its open question, or its run's stop. The slot is keyed on the field being present, never on a
+ * status, and the note is rendered exactly as stored — see
  * `showReason` in `CollectionCard` for why both of those are load-bearing.
  *
  * Each task is one row that opens in place, like an accordion (FIX-1629). The
@@ -37,6 +38,7 @@ import {
   type CollectionView,
   type ResolvedTask,
   type TaskStreamItem,
+  waitPrompt,
 } from "../../lib/task-collection-state";
 import {
   decodeDispatchRunEntry,
@@ -45,7 +47,6 @@ import {
 } from "../../lib/dispatch-run-links";
 import type { Truncation } from "../../hooks/use-dispatch-runs";
 import { EmptyState } from "../shared/empty-state";
-import { Badge } from "../ui/badge";
 import { TaskRowBody } from "./task-row-body";
 import { TaskRowActions, type RowDispatch } from "./task-row-actions";
 import { taskActionsFor, type RequestOutcomeSource } from "../../lib/task-actions";
@@ -123,7 +124,7 @@ export function TaskCollectionsView({
   }
 
   return (
-    <div className="flex flex-col gap-3 p-3">
+    <div className="flex flex-col gap-6 px-[18px] pt-4 pb-5">
       {collections.map((collection) => (
         <CollectionCard
           key={collection.id}
@@ -171,10 +172,9 @@ function CollectionCard({
   const counts = collection.boardMeta.counts;
   const total = counts?.total ?? collection.tasks.length;
   // THE PREDICATE IS THE PRESENCE OF THE FIELD, and status is out of it
-  // entirely. Three verbs write `feedback` — parking for review, a failed
-  // attempt heading for a retry, and resuming — and the retry one leaves it on
-  // a row that has gone back to `pending`, so keying this on `parked` would
-  // suppress a true explanation of what the reader is looking at.
+  // entirely. A failed attempt heading for a retry writes `feedback` and
+  // leaves it on a row that has gone back to `pending`, so keying this on a
+  // status would suppress a true explanation of what the reader is looking at.
   //
   // Presence, not truthiness: a stored empty or whitespace note is a note
   // something wrote, and this panel reports what is stored rather than
@@ -183,71 +183,112 @@ function CollectionCard({
   // Per board, so a board where nothing carries a note grows no reason slot —
   // nothing apologising for itself on every row.
   const showReason = collection.tasks.some(
-    (entry) => entry.task.feedback !== undefined
+    (entry) => entry.task.feedback !== undefined || waitPrompt(entry.task) !== undefined
   );
 
+  const columns = rowColumns(showReason);
+
   return (
-    <div
-      className="min-w-0 rounded-md border border-slate-800 bg-slate-900/40"
-      data-collection-id={collection.id}
-    >
-      <div className="flex items-start justify-between gap-3 border-b border-slate-800 px-3 py-2">
-        <div className="flex flex-col gap-0.5 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <ClipboardList className="h-3.5 w-3.5 text-emerald-400" aria-hidden />
-            <span className="font-mono text-xs text-slate-200 truncate">
-              {collection.id}
-            </span>
-            {collection.boardMeta.status && (
-              <BoardStatusBadge status={collection.boardMeta.status} />
-            )}
-          </div>
-          <span className="text-[10px] text-slate-500">
-            {collection.tasks.length} task
-            {collection.tasks.length === 1 ? "" : "s"}
-            {total !== collection.tasks.length && ` · meta total ${total}`}
-          </span>
-        </div>
+    <div className="flex min-w-0 flex-col gap-2.5" data-collection-id={collection.id}>
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="min-w-0 truncate font-fs-mono text-[13px] font-semibold text-fs-ink">
+          {collection.id}
+        </span>
+        {collection.boardMeta.status && (
+          <BoardStatusBadge status={collection.boardMeta.status} />
+        )}
+        <span className="font-fs-mono text-[10.5px] text-fs-ink3">
+          {collection.tasks.length} task
+          {collection.tasks.length === 1 ? "" : "s"}
+          {total !== collection.tasks.length && ` · meta total ${total}`}
+        </span>
         {counts && <CountsRibbon counts={counts} />}
       </div>
 
-      {collection.tasks.length === 0 ? (
-        <p className="px-3 py-3 text-xs italic text-slate-500">
-          Board meta only — no task-change items yet.
-        </p>
-      ) : (
-        <ul className="min-w-0 text-xs">
-          {collection.tasks.map((entry) => {
-            const key = rowKey(collection.id, entry.task.id);
-            return (
-              <RowBoundary key={entry.task.id} taskId={entry.task.id} resetOn={entry.task}>
-                <TaskRow
-                  entry={entry}
-                  open={openRows.has(key)}
-                  onToggle={() => onToggleRow(key)}
-                  showReason={showReason}
-                  dispatchRun={byTask.get(taskLinkKey(collection.id, entry.task.id))}
-                  truncation={truncation}
-                  onOpenDispatchRun={onOpenDispatchRun}
-                  actions={
-                    rowActions === undefined || actionNames === undefined
-                      ? undefined
-                      : (taskId) => (
-                          <TaskRowActions
-                            taskId={taskId}
-                            actions={actionNames}
-                            schemas={rowActions.schemas}
-                            run={rowActions.run}
-                            requests={rowActions.requests}
-                          />
-                        )
-                  }
-                />
-              </RowBoundary>
-            );
-          })}
-        </ul>
-      )}
+      <div className="@container/board min-w-0 border border-fs-ink/30 bg-fs-card">
+        {collection.tasks.length === 0 ? (
+          <p className="px-3 py-3 font-fs-mono text-[11.5px] text-fs-ink4">
+            Board meta only — no task-change items yet.
+          </p>
+        ) : (
+          <>
+            <ColumnHeaders columns={columns} showReason={showReason} />
+            <ul className="min-w-0 text-xs">
+              {collection.tasks.map((entry) => {
+                const key = rowKey(collection.id, entry.task.id);
+                return (
+                  <RowBoundary key={entry.task.id} taskId={entry.task.id} resetOn={entry.task}>
+                    <TaskRow
+                      entry={entry}
+                      open={openRows.has(key)}
+                      onToggle={() => onToggleRow(key)}
+                      showReason={showReason}
+                      dispatchRun={byTask.get(taskLinkKey(collection.id, entry.task.id))}
+                      truncation={truncation}
+                      onOpenDispatchRun={onOpenDispatchRun}
+                      actions={
+                        rowActions === undefined || actionNames === undefined
+                          ? undefined
+                          : (taskId) => (
+                              <TaskRowActions
+                                taskId={taskId}
+                                actions={actionNames}
+                                schemas={rowActions.schemas}
+                                run={rowActions.run}
+                                requests={rowActions.requests}
+                              />
+                            )
+                      }
+                    />
+                  </RowBoundary>
+                );
+              })}
+            </ul>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The collapsed row's grid classes. Status leads; goal and reason share what is
+ * left, each allowed to shrink to nothing (`minmax(0, 1fr)`) so neither pushes
+ * the row past the pane. The fixed tracks are what let the column headers line
+ * up with every row on the board.
+ *
+ * Under 40rem of board (the center pane of a 1280px window) the fixed tracks
+ * alone would take the whole row, so the Change column is dropped there (the
+ * open row still shows it) and the run slot narrows, leaving the space to goal
+ * and reason. Literal strings so Tailwind can see them.
+ */
+function rowColumns(showReason: boolean): string {
+  return showReason
+    ? "grid-cols-[7.5rem_minmax(0,1fr)_minmax(0,1fr)_6rem] @[40rem]/board:grid-cols-[7.5rem_minmax(0,1fr)_minmax(0,1fr)_6rem_7rem]"
+    : "grid-cols-[7.5rem_minmax(0,1fr)_6rem] @[40rem]/board:grid-cols-[7.5rem_minmax(0,1fr)_6rem_7rem]";
+}
+
+/** The Change slot, shown only on a board wide enough for it. */
+const CHANGE_SLOT = "hidden @[40rem]/board:block";
+
+/** The run slot's width, shared by the header and every row. */
+const RUN_SLOT = "w-12 shrink-0 text-right @[40rem]/board:w-24";
+
+/** Mono uppercase headers over the rows, on the rows' own grid. */
+function ColumnHeaders({ columns, showReason }: { columns: string; showReason: boolean }) {
+  return (
+    <div
+      aria-hidden
+      className="flex min-w-0 items-center gap-2 border-b border-fs-ink/20 pr-3 font-fs-mono text-[10px] font-medium uppercase tracking-[.12em] text-fs-ink4"
+    >
+      <div className={`grid min-w-0 flex-1 items-center gap-2 py-[7px] pl-3 ${columns}`}>
+        <span className="min-w-0 truncate">Status</span>
+        <span className="min-w-0 truncate">Goal</span>
+        {showReason && <span className="min-w-0 truncate">Reason</span>}
+        <span className="min-w-0 truncate">Assignee</span>
+        <span className={`min-w-0 truncate ${CHANGE_SLOT}`}>Change</span>
+      </div>
+      <span className={RUN_SLOT}>Run</span>
     </div>
   );
 }
@@ -280,36 +321,35 @@ function TaskRow({
 }) {
   const { task } = entry;
   const bodyId = useId();
-  // Status leads; goal and reason share what is left, each allowed to shrink
-  // to nothing (`minmax(0, 1fr)`) so neither pushes the row past the pane.
-  const columns = showReason
-    ? "auto minmax(0, 1fr) minmax(0, 1fr) auto auto"
-    : "auto minmax(0, 1fr) auto auto";
+  const columns = rowColumns(showReason);
   const runLink = (
     <DispatchRunLink dispatchRun={dispatchRun} truncation={truncation} onOpen={onOpenDispatchRun} />
   );
   return (
-    <li className="min-w-0 border-b border-slate-800/50" data-task-id={task.id}>
-      <div className="flex min-w-0 items-center gap-2 pr-3 hover:bg-slate-900/40">
+    <li className="min-w-0 border-b border-fs-ink/12 last:border-b-0" data-task-id={task.id}>
+      <div
+        className={`flex min-w-0 items-center gap-2 pr-3 ${
+          open ? "bg-fs-blue/8 shadow-[inset_2px_0_0_var(--fs-blue)]" : "hover:bg-fs-ink/5"
+        }`}
+      >
         <button
           type="button"
           aria-expanded={open}
           aria-controls={bodyId}
           onClick={onToggle}
           data-row-grid
-          className="grid min-w-0 flex-1 items-center gap-2 py-1.5 pl-2 text-left"
-          style={{ gridTemplateColumns: columns }}
+          className={`grid min-w-0 flex-1 items-center gap-2 py-[9px] pl-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fs-blue/40 ${columns}`}
         >
-          <span data-slot="status" className="inline-flex items-center gap-1">
+          <span data-slot="status" className="inline-flex min-w-0 items-center gap-1">
             <ChevronRight
-              className={`h-3 w-3 shrink-0 text-slate-500 transition-transform ${open ? "rotate-90" : ""}`}
+              className={`h-3 w-3 shrink-0 text-fs-ink4 transition-transform ${open ? "rotate-90" : ""}`}
               aria-hidden
             />
             <StatusPill status={task.status} />
           </span>
           {/* `title ?? goal`, the substrate's plan-UI contract: a verbose
               goal stays in the open row, and the list stays scannable. */}
-          <span data-slot="goal" className="min-w-0 truncate text-slate-200" title={task.title ?? task.goal}>
+          <span data-slot="goal" className="min-w-0 truncate text-[13.5px] text-fs-ink" title={task.title ?? task.goal}>
             {task.title ?? task.goal}
           </span>
           {showReason && (
@@ -318,24 +358,24 @@ function TaskRow({
             // stored note of spaces is a fact about the row worth seeing.
             // Clamped to one line; the whole string is on the title and in
             // the open row.
-            <span data-slot="reason" className="min-w-0 truncate text-slate-300" title={task.feedback}>
-              {task.feedback ?? <span className="text-slate-600">—</span>}
+            <span data-slot="reason" className="min-w-0 truncate text-[13px] text-fs-ink2" title={waitPrompt(task) ?? task.feedback}>
+              {waitPrompt(task) ?? task.feedback ?? <span className="text-fs-ink5">—</span>}
             </span>
           )}
-          <span data-slot="assignee" className="max-w-[10rem] truncate text-slate-400" title={task.assignee}>
+          <span data-slot="assignee" className="min-w-0 truncate font-fs-mono text-[11.5px] text-fs-ink2" title={task.assignee}>
             {task.assignee ?? "—"}
           </span>
-          <span data-slot="kind" className="whitespace-nowrap text-slate-400">
-            <span className="font-mono text-[10px]">{entry.kind ?? "—"}</span>
+          <span data-slot="kind" className={`min-w-0 truncate whitespace-nowrap font-fs-mono text-[11px] text-fs-ink3 ${CHANGE_SLOT}`}>
+            <span>{entry.kind ?? "—"}</span>
             {entry.changeCount > 1 && (
-              <span className="ml-1 rounded bg-slate-800 px-1 text-[10px] text-slate-400">
+              <span className="ml-1 border border-fs-ink/30 px-1 text-[10px] text-fs-ink4">
                 ×{entry.changeCount}
               </span>
             )}
           </span>
         </button>
         {/* Outside the toggle: a button cannot hold another button. */}
-        <span data-slot="run" className="shrink-0">
+        <span data-slot="run" className={RUN_SLOT}>
           {runLink}
         </span>
       </div>
@@ -376,7 +416,7 @@ function DispatchRunLink({
     if (truncation === "more") {
       return (
         <span
-          className="text-amber-500/70"
+          className="font-fs-mono text-[11px] text-fs-ink3"
           title="No dispatch run among those listed. This session has more background work than the panel reads, so an older one may be running this task."
         >
           —?
@@ -386,14 +426,14 @@ function DispatchRunLink({
     if (truncation === "unknown") {
       return (
         <span
-          className="text-amber-500/70"
+          className="font-fs-mono text-[11px] text-fs-ink3"
           title="No dispatch run among those listed, and checking whether there are more didn't come back — so one may be missing from the list."
         >
           —?
         </span>
       );
     }
-    return <span className="text-slate-600">—</span>;
+    return <span className="font-fs-mono text-[11px] text-fs-ink5">—</span>;
   }
 
   // The entry the run runs (`implement`, from a `task:implement` coordinate).
@@ -421,63 +461,73 @@ function DispatchRunLink({
           ? `Open dispatch run ${dispatchRun.id}. Matched against the dispatch runs listed; others were not read, so this may not be the one running the task.`
           : `Open dispatch run ${dispatchRun.id}`
       }
-      className={`inline-flex items-center gap-1 rounded border bg-slate-900/60 px-1.5 py-0.5 text-[10px] hover:bg-slate-800 ${
-        unverified
-          ? "border-amber-500/40 text-amber-200/90 hover:border-amber-500/60"
-          : "border-slate-800 text-sky-300 hover:border-slate-700"
+      className={`inline-flex max-w-full items-center gap-1 border px-1.5 py-0.5 font-fs-mono text-[10px] outline-none hover:border-fs-ink hover:text-fs-ink focus-visible:ring-2 focus-visible:ring-fs-blue/40 ${
+        unverified ? "border-dashed border-fs-ink3 text-fs-ink2" : "border-fs-ink/30 text-fs-blue"
       }`}
     >
       <Layers className="h-3 w-3" aria-hidden />
-      <span className="max-w-[10rem] truncate">{label}</span>
+      <span className="min-w-0 truncate">{label}</span>
       {unverified && <span aria-hidden>?</span>}
     </button>
   );
 }
 
+/** A 7px square: the brand's status glyph. */
+function Glyph({ tone }: { tone: string }) {
+  return <span aria-hidden className={`inline-block size-[7px] shrink-0 ${tone}`} />;
+}
+
 function StatusPill({ status }: { status: string }) {
-  const tone = STATUS_TONE[status] ?? "bg-slate-800 text-slate-400";
+  const tone = STATUS_TONE[status] ?? FALLBACK_TONE;
   return (
-    <span
-      className={`inline-block rounded px-1.5 py-0.5 font-mono text-[10px] ${tone}`}
-    >
+    <span className={`inline-flex min-w-0 items-center gap-1.5 font-fs-mono text-[11px] font-medium ${tone.text}`}>
+      <Glyph tone={tone.glyph} />
+      <span className="truncate">{status}</span>
+    </span>
+  );
+}
+
+type Tone = { glyph: string; text: string };
+
+const FALLBACK_TONE: Tone = { glyph: "border border-dashed border-fs-ink3", text: "text-fs-ink3" };
+
+/**
+ * By meaning: running is blueprint, done is green, failed is red, not yet
+ * started is a dashed outline. Held and cancelled are notes, not
+ * problems, so they stay in ink.
+ */
+const STATUS_TONE: Record<string, Tone> = {
+  pending: FALLBACK_TONE,
+  in_progress: { glyph: "bg-fs-blue", text: "text-fs-blue" },
+  held: { glyph: "border border-fs-ink2", text: "text-fs-ink2" },
+  completed: { glyph: "bg-fs-green", text: "text-fs-green" },
+  errored: { glyph: "bg-fs-red", text: "text-fs-red" },
+  cancelled: { glyph: "border border-fs-ink4", text: "text-fs-ink4" },
+};
+
+function BoardStatusBadge({ status }: { status: string }) {
+  return (
+    <span className="border border-fs-ink/45 px-1 font-fs-mono text-[9.5px] uppercase tracking-[.08em] text-fs-ink3">
       {status}
     </span>
   );
 }
 
-const STATUS_TONE: Record<string, string> = {
-  pending: "bg-slate-800 text-slate-400",
-  in_progress: "bg-blue-900/40 text-blue-300",
-  blocked: "bg-amber-900/40 text-amber-300",
-  parked: "bg-cyan-900/40 text-cyan-300",
-  completed: "bg-emerald-900/40 text-emerald-300",
-  errored: "bg-red-900/40 text-red-300",
-  cancelled: "bg-slate-800/60 text-slate-500",
-};
-
-function BoardStatusBadge({ status }: { status: string }) {
-  return (
-    <Badge variant="secondary" className="text-[10px]">
-      {status}
-    </Badge>
-  );
-}
-
 function CountsRibbon({ counts }: { counts: NonNullable<BoardMeta["counts"]> }) {
   const ribbon: Array<[string, number, string]> = [
-    ["pending", counts.pending, "text-slate-400"],
-    ["active", counts.in_progress, "text-blue-300"],
-    ["blocked", counts.blocked, "text-amber-300"],
-    ["parked", counts.parked, "text-cyan-300"],
-    ["done", counts.completed, "text-emerald-300"],
-    ["error", counts.errored, "text-red-300"],
-    ["canc", counts.cancelled, "text-slate-500"],
+    ["pending", counts.pending, STATUS_TONE.pending!.glyph],
+    ["active", counts.in_progress, STATUS_TONE.in_progress!.glyph],
+    ["held", counts.held, STATUS_TONE.held!.glyph],
+    ["done", counts.completed, STATUS_TONE.completed!.glyph],
+    ["error", counts.errored, STATUS_TONE.errored!.glyph],
+    ["canc", counts.cancelled, STATUS_TONE.cancelled!.glyph],
   ];
   return (
-    <div className="flex shrink-0 items-center gap-2 text-[10px] tabular-nums">
-      {ribbon.map(([label, value, tone]) =>
+    <div className="ml-auto flex shrink-0 flex-wrap items-center gap-x-3.5 gap-y-1 font-fs-mono text-[11px] tabular-nums text-fs-ink3">
+      {ribbon.map(([label, value, glyph]) =>
         value > 0 ? (
-          <span key={label} className={tone}>
+          <span key={label} className="inline-flex items-center gap-1.5">
+            <Glyph tone={glyph} />
             {label} {value}
           </span>
         ) : null,
@@ -508,8 +558,8 @@ class RowBoundary extends Component<
   render() {
     if (this.state.error === null) return this.props.children;
     return (
-      <li className="min-w-0 border-b border-slate-800/50 px-3 py-1.5 text-red-300" data-task-id={this.props.taskId}>
-        <span className="font-mono">{this.props.taskId}</span> could not be drawn: {this.state.error}
+      <li className="min-w-0 border-b border-fs-ink/12 px-3 py-1.5 text-fs-red" data-task-id={this.props.taskId}>
+        <span className="font-fs-mono">{this.props.taskId}</span> could not be drawn: {this.state.error}
       </li>
     );
   }

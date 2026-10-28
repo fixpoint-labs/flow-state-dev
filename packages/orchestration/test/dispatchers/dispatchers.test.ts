@@ -7,9 +7,7 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import {
-  classifierDispatcher,
   createStateBackedTaskCollection,
-  eventDispatcher,
   fifoDispatcher,
   priorityDispatcher,
   topologicalDispatcher,
@@ -46,11 +44,10 @@ describe("fifoDispatcher", () => {
     expect(claimed?.id).toBe("second");
   });
 
-  it("skips parked tasks", async () => {
+  it("skips a task another worker is running", async () => {
     const c = buildCollection();
     await c.addTask({ id: "review-me", goal: "r" });
     await c.claim("w");
-    await c.awaitReview("review-me");
     await c.addTask({ id: "ready", goal: "ok" });
     const claimed = await fifoDispatcher.claim(c, "w2", fakeCtx);
     expect(claimed?.id).toBe("ready");
@@ -99,11 +96,10 @@ describe("topologicalDispatcher", () => {
     expect(winners[0]?.id).toBe("d");
   });
 
-  it("skips parked tasks", async () => {
+  it("skips a task another worker is running", async () => {
     const c = buildCollection();
     await c.addTask({ id: "a", goal: "a" });
     await c.claim("w");
-    await c.awaitReview("a");
     await c.addTask({ id: "b", goal: "b" });
     const claimed = await topologicalDispatcher.claim(c, "w2", fakeCtx);
     expect(claimed?.id).toBe("b");
@@ -136,126 +132,12 @@ describe("priorityDispatcher", () => {
     expect(claimed?.id).toBe("u");
   });
 
-  it("skips parked tasks", async () => {
+  it("skips a task another worker is running", async () => {
     const c = buildCollection();
     await c.addTask({ id: "hi", goal: "hi", priority: 9 });
     await c.claim("w");
-    await c.awaitReview("hi");
     await c.addTask({ id: "low", goal: "low", priority: 1 });
     const claimed = await priorityDispatcher.claim(c, "w2", fakeCtx);
     expect(claimed?.id).toBe("low");
-  });
-});
-
-describe("classifierDispatcher", () => {
-  it("delegates the choice to the classify callback", async () => {
-    const c = buildCollection();
-    await c.addTask({ id: "a", goal: "a" });
-    await c.addTask({ id: "b", goal: "b" });
-    await c.addTask({ id: "c", goal: "c" });
-
-    const dispatcher = classifierDispatcher({
-      classify: async (candidates) => {
-        const target = candidates.find((t) => t.goal === "c");
-        return target?.id ?? null;
-      },
-    });
-
-    const claimed = await dispatcher.claim(c, "w", fakeCtx);
-    expect(claimed?.id).toBe("c");
-  });
-
-  it("returns null when classify returns null", async () => {
-    const c = buildCollection();
-    await c.addTask({ id: "a", goal: "a" });
-    const dispatcher = classifierDispatcher({ classify: async () => null });
-    const claimed = await dispatcher.claim(c, "w", fakeCtx);
-    expect(claimed).toBeNull();
-  });
-
-  it("filters parked tasks before passing to classify", async () => {
-    const c = buildCollection();
-    await c.addTask({ id: "review-me", goal: "r" });
-    await c.claim("w");
-    await c.awaitReview("review-me");
-    await c.addTask({ id: "ok", goal: "ok" });
-
-    let observedIds: string[] = [];
-    const dispatcher = classifierDispatcher({
-      classify: async (candidates) => {
-        observedIds = candidates.map((t) => t.id);
-        return candidates[0]?.id ?? null;
-      },
-    });
-
-    await dispatcher.claim(c, "w2", fakeCtx);
-    expect(observedIds).toEqual(["ok"]);
-  });
-});
-
-describe("eventDispatcher", () => {
-  it("matches on metadata.topic against the published event", async () => {
-    const c = buildCollection();
-    await c.addTask({
-      id: "user-msg",
-      goal: "handle user",
-      metadata: { topic: "user.message" },
-    });
-    await c.addTask({
-      id: "tool-call",
-      goal: "handle tool",
-      metadata: { topic: "tool.invoked" },
-    });
-
-    const dispatcher = eventDispatcher({
-      topicFor: (task) =>
-        typeof task.metadata?.["topic"] === "string"
-          ? (task.metadata["topic"] as string)
-          : undefined,
-      topic: "tool.invoked",
-    });
-
-    const claimed = await dispatcher.claim(c, "w", fakeCtx);
-    expect(claimed?.id).toBe("tool-call");
-  });
-
-  it("returns null when no task matches the published topic", async () => {
-    const c = buildCollection();
-    await c.addTask({ id: "x", goal: "x", metadata: { topic: "other" } });
-    const dispatcher = eventDispatcher({
-      topicFor: (task) => task.metadata?.["topic"] as string | undefined,
-      topic: "missing",
-    });
-    const claimed = await dispatcher.claim(c, "w", fakeCtx);
-    expect(claimed).toBeNull();
-  });
-
-  it("supports a callback topic for late binding", async () => {
-    const c = buildCollection();
-    await c.addTask({ id: "a", goal: "a", metadata: { topic: "alpha" } });
-
-    let currentTopic = "beta";
-    const dispatcher = eventDispatcher({
-      topicFor: (task) => task.metadata?.["topic"] as string | undefined,
-      topic: () => currentTopic,
-    });
-
-    expect(await dispatcher.claim(c, "w", fakeCtx)).toBeNull();
-    currentTopic = "alpha";
-    expect((await dispatcher.claim(c, "w2", fakeCtx))?.id).toBe("a");
-  });
-
-  it("skips parked tasks", async () => {
-    const c = buildCollection();
-    await c.addTask({ id: "x", goal: "x", metadata: { topic: "t" } });
-    await c.claim("w");
-    await c.awaitReview("x");
-    await c.addTask({ id: "y", goal: "y", metadata: { topic: "t" } });
-    const dispatcher = eventDispatcher({
-      topicFor: (task) => task.metadata?.["topic"] as string | undefined,
-      topic: "t",
-    });
-    const claimed = await dispatcher.claim(c, "w2", fakeCtx);
-    expect(claimed?.id).toBe("y");
   });
 });

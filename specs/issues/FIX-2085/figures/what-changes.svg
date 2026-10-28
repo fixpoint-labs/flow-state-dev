@@ -1,0 +1,76 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="Two panels. Today: a host cron reaches the dispatch endpoint; each process dedupes in its own memory for a minute, so two hosts or a restart fire one time twice; the fire starts a request outside the task model; Alice's list has no next run unless the host keeps a schedule index. After: a host cron, a polling tick and BullMQ all reach the dispatch endpoint, which claims each schedule's last fired time in the shared store; a later time runs the handler, the same or an earlier time is refused; a Workforce fire files an ordinary task on launch's board through the filing a screen uses; Alice's list works out each next run from the cron and time zone."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .src   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1; }
+    .box   { fill:var(--surface-2); }
+    .keep  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .gone  { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .arr   { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .arr-x { stroke:var(--gone); stroke-width:1.2; fill:none; stroke-dasharray:3 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-g   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="today">
+    <rect class="panel" x="16" y="16" width="440" height="368" rx="6"/>
+    <text class="t-lbl" x="32" y="38">TODAY</text>
+    <rect class="src" x="32" y="52" width="120" height="40" rx="4"/>
+    <text class="t-b" x="44" y="76">a host cron</text>
+    <path class="arr" d="M152 72 H182"/>
+    <rect class="gone" x="184" y="52" width="256" height="58" rx="4"/>
+    <text class="t-g" x="196" y="72">dedupe in each process's memory</text>
+    <text class="t-s" x="196" y="88">for one minute · two hosts or a restart</text>
+    <text class="t-s" x="196" y="102">fire one time twice</text>
+    <path class="arr" d="M312 110 V140"/>
+    <rect class="gone" x="184" y="142" width="256" height="50" rx="4"/>
+    <text class="t-g" x="196" y="162">a request outside the task model</text>
+    <text class="t-s" x="196" y="180">no retry, no ending to a filer, no cancel</text>
+    <text class="t-lbl" x="32" y="304">ALICE'S SCHEDULED WORK</text>
+    <rect class="gone" x="32" y="314" width="408" height="50" rx="4"/>
+    <text class="t-g" x="44" y="334">no list · a row has no next run</text>
+    <text class="t-s" x="44" y="352">a next time only if the host keeps a schedule index</text>
+    <text class="t-s" x="32" y="250">Nothing in Workforce depends on the scheduled package.</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="484" y="16" width="440" height="368" rx="6"/>
+    <text class="t-lbl" x="500" y="38">AFTER</text>
+    <rect class="src" x="500" y="52" width="120" height="24" rx="4"/><text class="t-s" x="510" y="68">a host cron</text>
+    <rect class="src" x="500" y="80" width="120" height="24" rx="4"/><text class="t-s" x="510" y="96">a polling tick</text>
+    <rect class="src" x="500" y="108" width="120" height="24" rx="4"/><text class="t-s" x="510" y="124">BullMQ</text>
+    <path class="arr" d="M620 64 L650 88 M620 92 H650 M620 120 L650 96"/>
+    <rect class="keep" x="652" y="52" width="256" height="80" rx="4"/>
+    <text class="t-b" x="664" y="72">the schedule's last fired time</text>
+    <text class="t-s" x="664" y="90">in the shared store · compare-and-set</text>
+    <text class="t-s" x="664" y="106">at the dispatch endpoint, before</text>
+    <text class="t-s" x="664" y="120">any handler runs</text>
+    <path class="arr-x" d="M908 92 H916 V164"/>
+    <text class="t-s" x="916" y="180" text-anchor="end">same or earlier:</text>
+    <text class="t-g" x="916" y="196" text-anchor="end">refused</text>
+    <path class="arr" d="M760 132 V158"/>
+    <rect class="keep" x="652" y="160" width="160" height="56" rx="4"/>
+    <text class="t-b" x="664" y="180">files a task</text>
+    <text class="t-s" x="664" y="196">as Alice · the filing</text>
+    <text class="t-s" x="664" y="210">a screen uses</text>
+    <rect class="box" x="500" y="230" width="408" height="50" rx="4"/>
+    <text class="t-b" x="512" y="250">launch's board · an ordinary task</text>
+    <text class="t-s" x="512" y="268">retries, reports and cancels like any other</text>
+    <path class="arr" d="M732 216 V228"/>
+    <text class="t-lbl" x="500" y="304">ALICE'S SCHEDULED WORK</text>
+    <rect class="keep" x="500" y="314" width="408" height="50" rx="4"/>
+    <text class="t-b" x="512" y="334">each schedule and its next run</text>
+    <text class="t-s" x="512" y="352">worked out from its cron and time zone · on any host</text>
+  </g>
+</svg>

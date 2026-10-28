@@ -5,7 +5,7 @@
  * that conversation. The coordinator checks every add against the user's
  * roster; a refusal comes back as an `ActionRefused` carrying its reason.
  */
-import type { LabClients } from "./connection";
+import type { Client } from "@flow-state-dev/client";
 import { runAction } from "./action";
 
 /** One delegate: a worker on the user's roster, and what it's good at. */
@@ -21,16 +21,16 @@ function asList(output: unknown): DelegateList {
 }
 
 /** Read the delegates of the coordinator conversation `sessionId` on `flow`. */
-export async function readDelegates(clients: LabClients, flow: string, sessionId: string): Promise<DelegateList> {
-  return asList((await runAction(clients, flow, sessionId, "listDelegates", {})).output);
+export async function readDelegates(client: Client, flow: string, sessionId: string): Promise<DelegateList> {
+  return asList((await runAction(client, flow, sessionId, "listDelegates", {})).output);
 }
 
 /** Add `worker` to the conversation's delegates. */
-export async function addDelegate(clients: LabClients, flow: string, sessionId: string, worker: string): Promise<DelegateList> {
-  return asList((await runAction(clients, flow, sessionId, "addDelegate", { worker })).output);
+export async function addDelegate(client: Client, flow: string, sessionId: string, worker: string): Promise<DelegateList> {
+  return asList((await runAction(client, flow, sessionId, "addDelegate", { worker })).output);
 }
 
 /** Remove `worker` from the conversation's delegates. */
-export async function removeDelegate(clients: LabClients, flow: string, sessionId: string, worker: string): Promise<DelegateList> {
-  return asList((await runAction(clients, flow, sessionId, "removeDelegate", { worker })).output);
+export async function removeDelegate(client: Client, flow: string, sessionId: string, worker: string): Promise<DelegateList> {
+  return asList((await runAction(client, flow, sessionId, "removeDelegate", { worker })).output);
 }

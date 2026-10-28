@@ -118,13 +118,12 @@ describe("a fixed board's feature rows", () => {
   }, 60_000);
 });
 
-describe("the message door belongs to a fixed board", () => {
-  it("is absent from a manager with no fixed board, and present on one with a board", () => {
-    // The door reads one board's rows. A manager reading its board from the
-    // claim has none to read, so a host that wires a door onto it must build
-    // its own over the run records, and the type says so before it runs.
+describe("no manager carries a message door (FIX-2086)", () => {
+  it("is absent on a manager with a fixed board and on one that reads its board from the claim", () => {
+    // A person's words reach a run as steers on its task; a coding flow's own
+    // door (`harnessSessionDoor`) writes them. No manager parks or re-queues a row for a line.
     expect("messageDoor" in claimHost({ mode: "claim" }).manager).toBe(false);
-    expect(typeof (claimHost({ mode: "fixed" }).manager as { messageDoor?: unknown }).messageDoor).toBe("function");
+    expect("messageDoor" in claimHost({ mode: "fixed" }).manager).toBe(false);
   });
 });
 

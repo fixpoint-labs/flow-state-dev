@@ -22,8 +22,14 @@
  *   half-written plan from the plan.
  * - {@link replacePlanList} — writes a whole-list plan as rows keyed by place,
  *   and maintains the marker around the write.
- * - {@link harnessRunNamespace} — the per-invocation namespace a harness keys
- *   its rows and marker under.
+ * - {@link harnessRunNamespace} — the per-invocation namespace a run's own
+ *   records go under, and where it leaves a pointer to its conversation.
+ * - {@link harnessConversationNamespace} / {@link planConversationPrefix} — the
+ *   namespace one harness conversation's plan lives under, which every turn of
+ *   that conversation writes, so a plan lasts as long as the conversation.
+ * - {@link readPlanTarget} — where a reader finds a run's plan: its
+ *   conversation's, or, for a run recorded before plans were kept per
+ *   conversation, the run's own rows.
  *
  * It sits beside `./harness` (the run contract) rather than inside it: the
  * handle is what a run reports back, this is what a run records while it
@@ -74,6 +80,8 @@ export const observedPlanItemStateSchema = z.object({
   lastOutcome: observedOutcomeSchema.nullable().default(null),
   /** Epoch millis of the last attempt. */
   lastTouchedAt: z.number().nullable().default(null),
+  /** The request that last wrote this row, so a reader can say which turn changed it. */
+  requestId: z.string().nullable().default(null),
 });
 
 /**
@@ -94,7 +102,7 @@ export const observedPlanCollection = defineResourceCollection({
   stateSchema: observedPlanItemStateSchema,
   client: {
     state: { read: true },
-    expose: ["title", "status", "previousStatus", "lastOutcome", "lastTouchedAt"],
+    expose: ["title", "status", "previousStatus", "lastOutcome", "lastTouchedAt", "requestId"],
     live: true,
   },
 });
@@ -112,9 +120,15 @@ export const observedPlanCollection = defineResourceCollection({
 export type ObservedPlanListStatus = "writing" | "complete" | "incomplete";
 
 /**
- * One marker per run namespace, keyed by the namespace itself. Every field is
+ * One marker per namespace, keyed by the namespace itself. Every field is
  * nullable: a harness that writes rows by id (Claude Code) writes only
  * `incomplete` markers, with no count.
+ *
+ * A marker plays one of two parts. Under a conversation namespace it says where
+ * that conversation's plan write stands (`status`, `count`, `reason`). Under a
+ * run namespace it carries `conversation`, the pointer from one run to the
+ * conversation it worked in, which is how a reader that knows only the run
+ * finds the plan.
  */
 export const observedPlanListStateSchema = z.object({
   /** Where the run's plan write stands. See {@link ObservedPlanListStatus}. */
@@ -123,6 +137,8 @@ export const observedPlanListStateSchema = z.object({
   count: z.number().int().nonnegative().nullable().default(null),
   /** Why the plan is incomplete. */
   reason: z.string().nullable().default(null),
+  /** On a run's marker: the conversation namespace the run wrote its plan to. */
+  conversation: z.string().nullable().default(null),
 });
 
 /** The per-run plan list markers. Same storage notes as {@link observedPlanCollection}. */
@@ -133,10 +149,56 @@ export const observedPlanListCollection = defineResourceCollection({
   stateSchema: observedPlanListStateSchema,
   client: {
     state: { read: true },
-    expose: ["status", "count", "reason"],
+    expose: ["status", "count", "reason", "conversation"],
     live: true,
   },
 });
+
+/**
+ * Escape one value into ONE key segment of the plan record: `/`, `\`, control
+ * characters, and a segment of exactly `..`, the four the resource path
+ * normalizer rejects or splits on, are percent-escaped, and `%` first.
+ *
+ * The escaping is injective, so two distinct values never share a key: a
+ * request id that holds a `/` keys under `%2F` rather than splitting into two
+ * segments or merging with another request's rows. Every other value is
+ * unchanged byte for byte, so a plain request id is its own segment. The one
+ * boundary: injectivity holds among values encoded here, not across rows
+ * written before ids were escaped, when an id that was literally `a%2Fb` keyed
+ * itself raw, which is what `a/b` encodes to now.
+ *
+ * A writer builds a run's namespace from it (`<planKeySegment(requestId)>/<run>`);
+ * a reader finds a request's rows with {@link planRowsPrefix}, which uses it.
+ */
+export function planKeySegment(value: string): string {
+  const escaped = value
+    .replace(/%/g, "%25")
+    .replace(/\//g, "%2F")
+    .replace(/\\/g, "%5C")
+    .replace(/[\x00-\x1f]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`);
+  // Dots survive the escaping above, so `..` needs its own branch. Exactly
+  // `..`: `.` and `...` are accepted keys and stay as they are.
+  return escaped === ".." ? "%2E%2E" : escaped;
+}
+
+/**
+ * The storage-key prefix every run of one request keeps its rows under, in the
+ * plan record (`observed-plan`) or its list markers (`observed-plan-list`).
+ * Pass it as a collection read's `topicPrefix` to select what one request
+ * planned and nothing an earlier request in the same session did.
+ *
+ * Built with {@link planKeySegment}, the escaping writers use, so a reader
+ * never hand-copies it.
+ *
+ * @param requestId The request whose rows to select, as the framework names it.
+ * @param key Which collection: the plan rows (default) or the list markers.
+ */
+export function planRowsPrefix(
+  requestId: string,
+  key: typeof OBSERVED_PLAN | typeof OBSERVED_PLAN_LIST = OBSERVED_PLAN,
+): string {
+  return `${key}/${planKeySegment(requestId)}/`;
+}
 
 /** One item of a whole-list plan, as the harness reported it. */
 export interface PlanListItem {
@@ -193,7 +255,10 @@ function stringOrNull(value: unknown): string | null {
  * returns rather than throws: a plan that cannot be stored in full never fails
  * the run.
  *
- * **One writer per run namespace, per invocation.** The previous count is read
+ * `options.requestId` is stamped on every row it writes, so a reader can say
+ * which turn last changed the plan.
+ *
+ * **One writer per namespace at a time.** The previous count is read
  * from the marker and each place's previous row by its own key; the prefix is
  * never listed. A row past the end left behind by a failed write doesn't show,
  * because a reader shows only places below the marker's count.
@@ -212,9 +277,10 @@ export async function replacePlanList(
   marker: PlanListMarkerCollection,
   namespace: string,
   items: readonly PlanListItem[],
-  options: { now?: () => number } = {},
+  options: { now?: () => number; requestId?: string } = {},
 ): Promise<ReplacePlanListResult> {
   const now = options.now ?? Date.now;
+  const requestId = options.requestId ?? null;
   const count = items.length;
   try {
     const before = await marker.getOptional(namespace);
@@ -233,6 +299,7 @@ export async function replacePlanList(
         status: item.status,
         lastOutcome: "applied",
         lastTouchedAt: now(),
+        requestId,
       };
       if (prior === undefined || stringOrNull(prior.title) !== item.title) {
         // A new or reworded item: its history belongs to a different item.
@@ -268,50 +335,6 @@ export async function replacePlanList(
 }
 
 /**
- * Percent-escape the characters that stop a value being ONE resource-path
- * segment: `/`, `\`, control characters, and a segment of exactly `..` — the
- * four `normalizeResourcePath` rejects or splits on. The request id reaches
- * here straight from the caller (`sendOptions.requestId` rides the action
- * request body into `ctx.request.identity.id`), so all four are reachable
- * input, not hypotheticals.
- *
- * **The escaping is injective, and that is the point.** Stripping the offending
- * characters would satisfy the normalizer just as well and be a worse bug: two
- * distinct request ids would collapse onto ONE namespace and merge two runs'
- * rows under one key — trading a silent empty recorder for silent cross-run
- * mixing, which looks healthy.
- *
- * **What this costs:** injectivity requires escaping `%` first, so an id that
- * already contains one moves (`a%b` keys under `a%25b`). That is the whole
- * exception — every other already-valid id, `[`, `]`, `.` and `...` included,
- * is unchanged byte for byte, so existing rows keep their keys.
- *
- * One boundary, for whoever reads this next: injectivity holds among ids
- * encoded by THIS function, not across rows written before it existed. An id
- * that was literally `a%2Fb` keyed itself raw back then, and `a/b` encodes to
- * that same string now. Segregating the two would need a version segment,
- * which would orphan every row rather than the one shape at risk — so the
- * boundary is documented instead. It is safe to leave documented only while
- * no released version wrote these rows; check before assuming that still holds.
- */
-function encodePathSegment(value: string): string {
-  const escaped = value
-    .replace(/%/g, "%25")
-    .replace(/\//g, "%2F")
-    .replace(/\\/g, "%5C")
-    .replace(
-      /[\x00-\x1f]/g,
-      (c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`,
-    );
-  // Dots survive the escaping above untouched, so `..` — the one segment the
-  // normalizer rejects outright — is still reachable and needs its own branch.
-  // Exactly `..`, not any run of dots: `.` and `...` are accepted keys today,
-  // and widening this would move rows that are keyed fine. A literal `%2E%2E`
-  // escapes to `%252E%252E` above, so it cannot collide with what this emits.
-  return escaped === ".." ? "%2E%2E" : escaped;
-}
-
-/**
  * The key namespace for ONE harness run: `<requestId>/<invocation>`. Every
  * harness that writes the plan record (and Claude Code's other work records)
  * keys its rows under it, so one run is one namespace whichever harness ran.
@@ -337,7 +360,7 @@ function encodePathSegment(value: string): string {
  * impossible to correlate back to the request that caused it.
  *
  * Both parts are escaped into a single segment each — see
- * {@link encodePathSegment} for why that escaping must not be lossy.
+ * {@link planKeySegment} for why that escaping must not be lossy.
  */
 export function harnessRunNamespace(ctx: BlockContext): string {
   const identity = (
@@ -354,7 +377,7 @@ export function harnessRunNamespace(ctx: BlockContext): string {
   // character, both of which this grammar cares about.
   const step =
     typeof path === "string" && path.length > 0
-      ? encodePathSegment(path.replace(/\//g, "."))
+      ? planKeySegment(path.replace(/\//g, "."))
       : "0";
   // …and the ATTEMPT, because a retried block re-enters at the SAME path.
   // `executeBlock`'s retry loop increments an attempt counter and rebuilds the
@@ -364,5 +387,71 @@ export function harnessRunNamespace(ctx: BlockContext): string {
   // namespace: paths overwritten, and gap ordinals (which restart at 1 per
   // recorder) clobbering the earlier attempt's outright.
   const attempt = identity?.attempt ?? (ctx as { attempt?: number }).attempt ?? 0;
-  return `${encodePathSegment(ctx.request.identity.id)}/${step}#${attempt}`;
+  return `${planKeySegment(ctx.request.identity.id)}/${step}#${attempt}`;
+}
+
+/** The leading key segment of every conversation namespace. */
+const CONVERSATION_SEGMENT = "conversation";
+
+/**
+ * The key namespace for ONE harness conversation's plan:
+ * `conversation/<conversation id>`. Every turn of the conversation writes its
+ * plan here, so a later turn updates the plan an earlier one recorded instead
+ * of starting a new one, and a new conversation starts with none.
+ *
+ * The id is the one the harness confirmed (Claude Code's session id, Cursor's
+ * agent id): the conversation's identity, where {@link harnessRunNamespace} is
+ * one invocation's. The plan record is session-scoped and a session binds one
+ * harness, so the vendor's id alone keeps two conversations apart.
+ *
+ * It can't be read as a run namespace: a run namespace's second segment always
+ * ends in `#<attempt>`, and a conversation id is the harness's own, escaped
+ * with {@link planKeySegment} into one segment.
+ */
+export function harnessConversationNamespace(conversationId: string): string {
+  return `${CONVERSATION_SEGMENT}/${planKeySegment(conversationId)}`;
+}
+
+/**
+ * The storage-key prefix one conversation's plan rows are kept under. Pass it
+ * as a collection read's `topicPrefix`. The conversation's list marker is the
+ * one entry whose topic is {@link harnessConversationNamespace} itself.
+ */
+export function planConversationPrefix(conversationId: string): string {
+  return `${OBSERVED_PLAN}/${harnessConversationNamespace(conversationId)}/`;
+}
+
+/** A plan list marker as a collection read lists it, topic under its collection. */
+export interface PlanMarkerRead {
+  readonly topic: string;
+  readonly conversation?: string | null;
+}
+
+/**
+ * Where to read one request's plan, from that request's run markers (the
+ * markers listed under {@link planRowsPrefix}`(requestId, OBSERVED_PLAN_LIST)`).
+ *
+ * - `conversation` — a run of the request left a pointer: the plan is the
+ *   conversation's, its rows under `rowsPrefix` and its marker keyed
+ *   `namespace`.
+ * - `run` — no run left one: the request was recorded before plans were kept
+ *   per conversation (BP-030), or it never confirmed a conversation. Its own
+ *   rows are under `rowsPrefix` and its markers are the ones passed in, as
+ *   before.
+ *
+ * With several pointers (a retried block), the last run's wins, by key order.
+ * The one reader rule both apps share, so the fallback never forks.
+ */
+export function readPlanTarget(
+  requestId: string,
+  markers: readonly PlanMarkerRead[],
+): { readonly kind: "conversation"; readonly namespace: string; readonly rowsPrefix: string } | { readonly kind: "run"; readonly rowsPrefix: string } {
+  const pointer = markers
+    .filter((m) => typeof m.conversation === "string" && m.conversation.length > 0)
+    .sort((a, b) => a.topic.localeCompare(b.topic, "en", { numeric: true }))
+    .at(-1)?.conversation;
+  if (typeof pointer === "string") {
+    return { kind: "conversation", namespace: pointer, rowsPrefix: `${OBSERVED_PLAN}/${pointer}/` };
+  }
+  return { kind: "run", rowsPrefix: planRowsPrefix(requestId) };
 }

@@ -17,6 +17,11 @@ import {
   observedPlanItemStateSchema,
   observedPlanListCollection,
   observedPlanListStateSchema,
+  harnessConversationNamespace,
+  planConversationPrefix,
+  planKeySegment,
+  planRowsPrefix,
+  readPlanTarget,
   replacePlanList,
   type PlanListItem,
 } from "@flow-state-dev/core";
@@ -64,7 +69,10 @@ function fakeCollection(options: { failOnWrite?: number } = {}) {
 function placesOf(plan: ReturnType<typeof fakeCollection>, namespace: string) {
   return [...plan.rows.entries()]
     .filter(([key]) => key.startsWith(`${namespace}/`))
-    .map(([key, state]) => ({ place: Number(key.slice(namespace.length + 1)), ...state }))
+    .map(([key, state]): { place: number; [field: string]: unknown } => ({
+      place: Number(key.slice(namespace.length + 1)),
+      ...state,
+    }))
     .sort((a, b) => a.place - b.place);
 }
 
@@ -81,7 +89,7 @@ describe("the plan record in core", () => {
       lastOutcome: "applied",
       lastTouchedAt: 1_700_000_000_000,
     };
-    expect(observedPlanItemStateSchema.parse(stored)).toEqual(stored);
+    expect(observedPlanItemStateSchema.parse(stored)).toEqual({ ...stored, requestId: null });
     // An older row missing fields still parses, with nulls rather than guesses.
     expect(observedPlanItemStateSchema.parse({ title: "Old row" })).toEqual({
       title: "Old row",
@@ -89,9 +97,19 @@ describe("the plan record in core", () => {
       previousStatus: null,
       lastOutcome: null,
       lastTouchedAt: null,
+      requestId: null,
     });
     expect(OBSERVED_PLAN).toBe("observed-plan");
     expect(observedPlanCollection.pattern).toBe("observed-plan/**");
+    // A row written before rows named their request reads with a null one, not a parse error.
+    expect(observedPlanItemStateSchema.parse(stored).requestId).toBeNull();
+  });
+
+  it("shows a page which request last changed a row, and where a run's plan went", () => {
+    // Without these exposed, the panel can't label the turn that changed the
+    // plan, and Shift Manager can't follow a run to its conversation.
+    expect(observedPlanCollection.client?.expose).toContain("requestId");
+    expect(observedPlanListCollection.client?.expose).toContain("conversation");
   });
 
   it("streams plan rows and list markers to an open page", () => {
@@ -104,6 +122,7 @@ describe("the plan record in core", () => {
       status: null,
       count: null,
       reason: null,
+      conversation: null,
     });
   });
 });
@@ -242,3 +261,93 @@ describe("replacePlanList", () => {
     });
   });
 });
+
+describe("finding one request's rows", () => {
+  // A reader selects a request's rows by prefix. If its prefix is not the
+  // writer's escaping of the request id, a request id holding a `/` reads as
+  // no plan at all, or as another request's plan.
+  it("escapes the request id the way a writer keys it, one segment, injectively", () => {
+    const ids = ["req_1", "a/b", "a%2Fb", "a\\b", "..", ".", "...", "line\nbreak"];
+    const segments = ids.map(planKeySegment);
+    for (const segment of segments) {
+      expect(segment).not.toContain("/");
+      expect(segment).not.toContain("\\");
+      expect(segment).not.toBe("..");
+      expect(segment).not.toMatch(/[\x00-\x1f]/);
+    }
+    expect(new Set(segments).size).toBe(ids.length);
+    // A plain id is its own segment, so rows written before escaping still match.
+    expect(planKeySegment("req_1")).toBe("req_1");
+    expect(planKeySegment(".")).toBe(".");
+  });
+
+  it("prefixes the plan rows by default, and the list markers when asked", () => {
+    expect(planRowsPrefix("a/b")).toBe(`${OBSERVED_PLAN}/a%2Fb/`);
+    expect(planRowsPrefix("a/b", OBSERVED_PLAN_LIST)).toBe(`${OBSERVED_PLAN_LIST}/a%2Fb/`);
+    // A request id that is a prefix of another selects only its own rows.
+    expect(`${OBSERVED_PLAN}/req_10/0#0/1`.startsWith(planRowsPrefix("req_1"))).toBe(false);
+  });
+});
+
+describe("a conversation's plan", () => {
+  it("names one namespace per conversation id, which a run namespace can never be", () => {
+    expect(harnessConversationNamespace("9c1d74d")).toBe("conversation/9c1d74d");
+    // Escaped like every key segment, so an id holding a "/" stays one segment.
+    expect(harnessConversationNamespace("a/b")).toBe("conversation/a%2Fb");
+    expect(harnessConversationNamespace("a")).not.toBe(harnessConversationNamespace("b"));
+    // A request literally named "conversation" still keys its runs by
+    // "<path>#<attempt>", which no conversation segment ends in.
+    expect(planConversationPrefix("9c1d74d")).toBe(`${OBSERVED_PLAN}/conversation/9c1d74d/`);
+  });
+
+  it("is one list across turns: a later turn's whole list replaces the earlier one in place", async () => {
+    const plan = fakeCollection();
+    const marker = fakeCollection();
+    const ns = harnessConversationNamespace("agent-1");
+    await replacePlanList(plan, marker, ns, [item3("a", "pending"), item3("b", "pending"), item3("c", "pending")], {
+      requestId: "req_1",
+    });
+    // Turn 2 updates the same conversation: the plan is still three steps, one done.
+    await replacePlanList(plan, marker, ns, [item3("a", "completed"), item3("b", "pending"), item3("c", "pending")], {
+      requestId: "req_2",
+    });
+    const rows = placesOf(plan, ns);
+    expect(rows.map((r) => [r.title, r.status, r.requestId])).toEqual([
+      ["a", "completed", "req_2"],
+      ["b", "pending", "req_2"],
+      ["c", "pending", "req_2"],
+    ]);
+    expect(rows[0]?.previousStatus).toBe("pending");
+    expect(marker.rows.get(ns)).toMatchObject({ status: "complete", count: 3 });
+  });
+});
+
+describe("readPlanTarget", () => {
+  it("follows a run's pointer to its conversation's plan", () => {
+    const target = readPlanTarget("req_2", [
+      { topic: "req_2/agent#0", conversation: "conversation/agent-1" },
+    ]);
+    expect(target).toEqual({ kind: "conversation", namespace: "conversation/agent-1", rowsPrefix: `${OBSERVED_PLAN}/conversation/agent-1/` });
+  });
+
+  it("takes the last attempt's pointer when a retried block left two", () => {
+    const target = readPlanTarget("req_2", [
+      { topic: "req_2/agent#1", conversation: "conversation/second" },
+      { topic: "req_2/agent#0", conversation: "conversation/first" },
+    ]);
+    expect(target.kind === "conversation" && target.namespace).toBe("conversation/second");
+  });
+
+  it("reads a request recorded before plans were per conversation by its own rows", () => {
+    // BP-030: a run marker with no pointer (an older write, or a status-only marker).
+    expect(readPlanTarget("a/b", [{ topic: "a%2Fb/agent#0", conversation: null }])).toEqual({
+      kind: "run",
+      rowsPrefix: planRowsPrefix("a/b"),
+    });
+    expect(readPlanTarget("req_1", []).kind).toBe("run");
+  });
+});
+
+function item3(title: string, status: string): PlanListItem {
+  return { title, status };
+}

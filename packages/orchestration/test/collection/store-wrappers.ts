@@ -4,9 +4,7 @@
  *
  * Each wraps a real, conforming backing and breaks exactly one thing, so a test
  * that goes green here has exercised the substrate's own write path rather than
- * a mock's idea of it. They live in one module because the seam is tested at two
- * altitudes — the seam directly, and `dispatchAndExecuteBlock` around it — and a
- * fixture that encodes the defect has to mean the same thing in both.
+ * a mock's idea of it.
  */
 import type { TaskCollectionRef } from "../../src/tasks";
 

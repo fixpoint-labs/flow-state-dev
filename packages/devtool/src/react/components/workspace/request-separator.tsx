@@ -1,14 +1,14 @@
 /**
- * Simplified request header.
- * Shows: action name + status pill + duration.
+ * Simplified request header — the stream's run row.
+ * Shows: action name + status square + duration, on a hairline top rule.
  * Request ID and replay/cursor/reconnect controls behind overflow menu.
  */
 import { useState } from "react";
 import { MoreHorizontal, Play, SkipForward, RefreshCw, RotateCcw } from "lucide-react";
-import { StatusBadge } from "../shared/status-badge";
 import { Button } from "../ui/button";
 import { useDebug } from "../../context/debug-context";
 import { formatTokenCount } from "../../lib/token-utils";
+import { cn } from "../../lib/utils";
 
 type RequestSeparatorProps = {
   requestId: string;
@@ -35,11 +35,42 @@ type RequestSeparatorProps = {
   isContinuing?: boolean;
 };
 
+/** Tag treatment shared by the source chip and the origin badge. */
+const TAG_CLASSNAME =
+  "border px-1 font-fs-mono text-[9.5px] font-medium uppercase tracking-[.08em]";
+
 /** Visual styling for the scheduled `origin` badge — small, secondary. */
 const ORIGIN_BADGE_CLASSNAMES: Record<string, string> = {
-  static: "border-slate-600 text-slate-400",
-  dynamic: "border-cyan-700 text-cyan-300"
+  static: "border-dashed border-fs-ink/45 text-fs-ink3",
+  dynamic: "border-fs-ink/45 text-fs-ink2"
 };
+
+/**
+ * Square status glyph class for a request / block / suspension status.
+ * Meaning, not hue: done → green, running → blue, failed → red, waiting on a
+ * person → highlighter, anything else (skipped / pending / unknown) → dashed.
+ * Shared with the trace view so both surfaces read the same legend.
+ */
+export function statusSquareClass(status: string | undefined): string {
+  switch (status) {
+    case "completed":
+    case "approved":
+    case "submitted":
+      return "bg-fs-green";
+    case "in_progress":
+    case "finishing":
+      return "bg-fs-blue";
+    case "failed":
+    case "rejected":
+    case "interrupted":
+    case "timed_out":
+      return "bg-fs-red";
+    case "suspended":
+      return "bg-fs-hl";
+    default:
+      return "border border-dashed border-fs-ink3";
+  }
+}
 
 const SCHEDULE_ID_DISPLAY_LIMIT = 32;
 
@@ -54,11 +85,11 @@ function truncateMiddle(value: string, max: number): string {
  * a generic badge so custom transports still surface — the framework does
  * not police namespacing (FIX-438 §3.5).
  */
-const SOURCE_LABELS: Record<string, { label: string; className: string }> = {
-  mcp: { label: "MCP", className: "border-purple-700 text-purple-300" },
-  webhook: { label: "Webhook", className: "border-amber-700 text-amber-300" },
-  scheduled: { label: "Scheduled", className: "border-cyan-700 text-cyan-300" },
-  notification: { label: "Notification", className: "border-fuchsia-700 text-fuchsia-300" }
+const SOURCE_LABELS: Record<string, { label: string }> = {
+  mcp: { label: "MCP" },
+  webhook: { label: "Webhook" },
+  scheduled: { label: "Scheduled" },
+  notification: { label: "Notification" }
 };
 
 function formatDuration(ms?: number, isActive?: boolean): string {
@@ -132,16 +163,22 @@ export function RequestSeparator({
     source !== undefined && source !== "http" && metadata !== undefined;
 
   return (
-    <div className="sticky top-0 z-10 select-none border-b border-slate-800/40 bg-slate-950/95 backdrop-blur-sm">
-    <div className="flex items-center gap-2 px-4 py-1.5">
-      <span className="text-xs font-medium text-slate-300">{action}</span>
-      <StatusBadge status={status} />
+    <div className="sticky top-0 z-10 select-none border-t border-fs-ink/12 bg-fs-surface">
+    <div className="flex items-center gap-3 px-4 pb-1.5 pt-3">
+      <span className="font-fs-mono text-[12px] font-semibold text-fs-ink">{action}</span>
+      <span
+        className={cn(
+          "inline-flex items-center gap-1.5 font-fs-mono text-[11px] font-medium",
+          status === "failed" ? "text-fs-red" : "text-fs-ink2",
+        )}
+      >
+        <span className={cn("inline-block size-[7px] shrink-0 box-border", statusSquareClass(status))} />
+        {status}
+      </span>
       {source !== undefined && source !== "http" && (
         <button
           type="button"
-          className={`rounded border px-1.5 py-0 text-[10px] font-medium hover:opacity-80 ${
-            SOURCE_LABELS[source]?.className ?? "border-slate-700 text-slate-400"
-          }`}
+          className={cn(TAG_CLASSNAME, "border-fs-ink/45 text-fs-ink3 hover:border-fs-ink hover:text-fs-ink disabled:hover:border-fs-ink/45 disabled:hover:text-fs-ink3")}
           title={
             hasProvenanceDetails
               ? `Source: ${source}${scheduleId !== undefined ? ` · ${scheduleId}` : ""} — click for provenance`
@@ -155,17 +192,17 @@ export function RequestSeparator({
       )}
       {origin !== undefined && (
         <span
-          className={`rounded border px-1.5 py-0 text-[10px] font-medium ${ORIGIN_BADGE_CLASSNAMES[origin]}`}
+          className={cn(TAG_CLASSNAME, ORIGIN_BADGE_CLASSNAMES[origin])}
           title={`Schedule origin: ${origin}`}
         >
           {origin}
         </span>
       )}
       {durationText && (
-        <span className="text-[11px] text-slate-500 font-mono tabular-nums">{durationText}</span>
+        <span className="font-fs-mono text-[11px] font-medium tabular-nums text-fs-ink3">{durationText}</span>
       )}
       {totalTokens !== undefined && totalTokens > 0 && (
-        <span className="text-[10px] text-slate-600 font-mono tabular-nums">
+        <span className="font-fs-mono text-[11px] font-medium tabular-nums text-fs-ink4">
           {formatTokenCount(totalTokens)} tok
         </span>
       )}
@@ -173,7 +210,7 @@ export function RequestSeparator({
       <span className="flex-1" />
 
       {isDebugMode && (
-        <span className="text-[10px] font-mono text-slate-700">{requestId.slice(0, 10)}</span>
+        <span className="font-fs-mono text-[10px] text-fs-ink4">{requestId.slice(0, 10)}</span>
       )}
 
       {hasOverflow && (
@@ -181,7 +218,7 @@ export function RequestSeparator({
           <Button
             variant="ghost"
             size="icon-xs"
-            className="text-slate-600 hover:text-slate-400"
+            className="text-fs-ink4 hover:text-fs-ink"
             onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
             title="More actions"
           >
@@ -192,9 +229,9 @@ export function RequestSeparator({
             <>
               {/* Click-away backdrop */}
               <div className="fixed inset-0 z-20" onClick={() => setMenuOpen(false)} />
-              <div className="absolute right-0 top-full z-30 mt-1 min-w-[140px] rounded-md border border-slate-800 bg-slate-900 py-1 shadow-lg">
+              <div className="absolute right-0 top-full z-30 mt-1 min-w-[140px] border border-fs-ink/20 bg-fs-card py-1">
                 {isDebugMode && (
-                  <div className="px-3 py-1.5 text-[10px] font-mono text-slate-600 select-all border-b border-slate-800/50">
+                  <div className="select-all border-b border-fs-ink/12 px-3 py-1.5 font-fs-mono text-[10px] text-fs-ink4">
                     {requestId}
                   </div>
                 )}
@@ -254,13 +291,13 @@ function ProvenanceDetails({
   }
 
   return (
-    <div className="border-t border-slate-800/40 bg-slate-950/70 px-4 py-2">
-      <div className="text-[10px] font-medium uppercase text-slate-500 mb-1">Provenance</div>
-      <div className="space-y-0.5 text-[11px]">
+    <div className="mx-4 mb-2 border border-fs-ink/20 bg-fs-card px-3 py-2">
+      <div className="mb-1 font-fs-mono text-[10px] font-medium uppercase tracking-[.14em] text-fs-ink3">Provenance</div>
+      <div className="space-y-0.5 font-fs-mono text-[11px]">
         {entries.map(([key, value]) => (
           <div key={key} className="flex items-start justify-between gap-2">
-            <span className="text-slate-500 shrink-0 font-mono">{key}</span>
-            <span className="text-slate-300 text-right break-all font-mono">
+            <span className="shrink-0 text-fs-ink4">{key}</span>
+            <span className="break-all text-right text-fs-ink2">
               {formatProvenanceValue(value)}
             </span>
           </div>
@@ -284,7 +321,7 @@ function formatProvenanceValue(value: unknown): string {
 function OverflowButton({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
   return (
     <button
-      className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+      className="flex w-full items-center gap-2 px-3 py-1.5 font-fs-mono text-[11px] text-fs-ink3 hover:bg-fs-ink/5 hover:text-fs-ink"
       onClick={onClick}
     >
       {icon}

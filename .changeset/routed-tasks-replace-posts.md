@@ -1,0 +1,16 @@
+---
+"@flow-state-dev/workforce": minor
+"@flow-state-dev/orchestration": minor
+"@flow-state-dev/devtool": patch
+---
+
+A coordinator now hands each message to a delegate by filing a routed task: an ordinary task on the conversation's board with `session: "ongoing"`, `resultTo: "conversation"` and one attempt, worked on the delegate flow's `work` entry. Posts are gone. (FIX-2083) What to change or expect:
+
+- A delegate is a worker whose flow takes tasks. Declare `work` with `workerTaskEntry({ name, turn })`; the turn is still handed `{ message }`. Removed: `DELEGATED_POST_ENTRY`, `delegatedPostEntry`, `delegatedPostOnFinished`, `delegatedPostSchema` and `DelegatedPost`. `delegatedPostHistory` is now `routedTaskHistory`: give it as the `work` turn's generator `history` to show the model the conversation's recent lines.
+- Removed: `defineCoordinatorFlow`'s `delegateFlows`, `defineSessionBoard`'s `postFlows` and `posts`, and `posts`/`both` in what `listDelegates` says a delegate `takes` (now `tasks` or `nothing`). A worker on a flow that takes no task can't be added as a delegate.
+- A judgment coordinator hands a message on with `createTask` and the routing settings (`session: "ongoing"`, `resultTo: "conversation"`, and `target` for a workstream's record); the server attaches the message as written. `DispatchPostForm` is removed. On a turn routing a message, `createTask` refuses a `session` other than `"ongoing"` (`routed_session_ongoing`) and `held`, `deps` or `followUpOf` (`routed_task_starts_now`). `createTask` takes `target`, set at filing only; `updateTask` refuses `session`, `resultTo` and `target` (`filing_setting_fixed`). `getTask` shows a task's `session`, `resultTo` and `target`.
+- Removed: the `dispatchTask` tool and its `dispatchTask_<board>` action, which the DevTool's Tasks tab no longer offers on a row. On a board that dispatches, `createTask` starts a task as soon as it is filed; release a held one with `updateTask({ id, status: "pending" })`, with its `assignee` in the same write if it needs one, and wait with `getTask({ id, wait: true })`. Removed with it: `TaskCollectionRef.dispatch`, `TaskDispatchOptions`, `Task.dispatchCall` and `TaskInit.dispatchCall` (a stored row's is dropped when read), and the `already-dispatched` write decline. On a conversation's board, a task filed with no assignee where several delegates take tasks now waits unassigned instead of being refused `assignee_required`; a scheduled fire that names no assignee there is refused, naming why, so unassigned rows don't pile up. Teams outside the repo rewrite their `dispatchTask` calls at upgrade.
+- Removed: `taskLedgers({ taskTurn })`. A routed turn is a task turn, and a `taskLedgers` resolver is handed the claimed task's id as its fourth argument.
+- A delegate that files work for a message answers once that work has ended, and a second message to a busy delegate waits until the first ends; in a workstream's session that holds across conversations. A round's deadline is a wake on the coordinator's session where the host keeps wakes, so it survives a restart.
+- A post row stored before this release reads as a routed task, through the retired-shape map's `post` entry, which is now on.
+- The coordinator's line when nobody takes a message reads `Nobody took this message: …`.

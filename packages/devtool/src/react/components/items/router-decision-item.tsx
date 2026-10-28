@@ -8,10 +8,10 @@ import { GitBranch } from "lucide-react";
 export function RouterDecisionItemView({ item }: { item: RouterDecisionItem }) {
   return (
     <div className="flex items-center gap-1.5 text-xs">
-      <GitBranch className="h-3 w-3 shrink-0 text-orange-400" />
-      <span className="font-mono text-slate-300">{item.routerName}</span>
-      <span className="text-slate-600">→</span>
-      <span className="text-orange-300">{item.selectedRoute}</span>
+      <GitBranch className="h-3 w-3 shrink-0 text-fs-ink3" />
+      <span className="font-fs-mono text-fs-ink2">{item.routerName}</span>
+      <span className="text-fs-ink4">→</span>
+      <span className="font-fs-mono font-medium text-fs-ink">{item.selectedRoute}</span>
     </div>
   );
 }

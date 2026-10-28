@@ -14,10 +14,14 @@
  * knows a tool's name.
  */
 import { useEffect, useRef, useState } from "react";
-import { columnFor } from "../lib/columns";
+import { ChevronRightIcon } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { columnFor, isDone } from "../lib/columns";
+import { workerLabel } from "../lib/derive";
 import { readConversationTasks, type ConversationTask } from "../lib/conversation-tasks";
 import { useLab } from "../lib/lab-data";
-import { describeFailure, type Worker } from "../lib/reads";
+import { conversationBoardRef, describeFailure, type Worker } from "../lib/reads";
+import { navigate } from "../lib/routes";
 import { STATE_OF_COLUMN, StateSquare } from "./ui";
 
 type Read = { tasks: ConversationTask[] } | { failure: string } | undefined;
@@ -28,12 +32,25 @@ export const TASKS_POLL_MS = 3_000;
 const AFTER_A_MOVE_MS = 30_000;
 
 /** Whether a task can still move by itself. */
-const isOpen = (task: ConversationTask) => task.status === "pending" || task.status === "in_progress";
+export const isOpen = (task: ConversationTask) => task.status === "pending" || task.status === "in_progress";
 /** What the panel compares between reads: each task and where it stands. */
 const standing = (tasks: readonly ConversationTask[]) => tasks.map((task) => `${task.id}:${task.status}`).join(",");
 
-export function TasksPanel({ worker, sessionId, readAt }: { worker: Worker; sessionId: string | null; readAt: number }) {
-  const { clients, refresh } = useLab();
+const isErrored = (task: ConversationTask) => task.status === "errored";
+
+export function TasksPanel({
+  worker,
+  sessionId,
+  readAt,
+  activeOnly = false,
+}: {
+  worker: Worker;
+  sessionId: string | null;
+  readAt: number;
+  /** List only the active tasks, with the done and the errored each folded into a closed group. */
+  activeOnly?: boolean;
+}) {
+  const { client, refresh } = useLab();
   const [read, setRead] = useState<Read>(undefined);
   const [polls, setPolls] = useState(0);
   // The last read's standing, and when a task last moved.
@@ -50,7 +67,7 @@ export function TasksPanel({ worker, sessionId, readAt }: { worker: Worker; sess
     if (sessionId === null || worker.kind === null) return;
     let closed = false;
     let next: ReturnType<typeof setTimeout> | undefined;
-    readConversationTasks(clients, worker.kind, sessionId)
+    readConversationTasks(client, worker.kind, sessionId)
       .then((tasks) => {
         if (closed) return;
         setRead({ tasks });
@@ -69,7 +86,7 @@ export function TasksPanel({ worker, sessionId, readAt }: { worker: Worker; sess
       closed = true;
       if (next !== undefined) clearTimeout(next);
     };
-  }, [clients, refresh, worker.kind, sessionId, readAt, polls]);
+  }, [client, refresh, worker.kind, sessionId, readAt, polls]);
 
   if (sessionId === null || worker.kind === null) {
     return (
@@ -99,9 +116,48 @@ export function TasksPanel({ worker, sessionId, readAt }: { worker: Worker; sess
       </p>
     );
   }
+  const boardRef = conversationBoardRef(sessionId);
+  if (!activeOnly) return <TaskList tasks={read.tasks} boardRef={boardRef} />;
+  const done = read.tasks.filter((task) => isDone(task.status));
+  const errored = read.tasks.filter(isErrored);
+  const active = read.tasks.filter((task) => !isDone(task.status) && !isErrored(task));
+  return (
+    <div className="space-y-1">
+      {active.length === 0 ? (
+        <p className="px-1 text-xs text-muted-foreground" data-testid="cos-tasks-none-active">
+          No task is active.
+        </p>
+      ) : (
+        <TaskList tasks={active} boardRef={boardRef} />
+      )}
+      <TaskGroup tasks={done} name="done" boardRef={boardRef} />
+      <TaskGroup tasks={errored} name="errored" boardRef={boardRef} />
+    </div>
+  );
+}
+
+function TaskGroup({ tasks, name, boardRef }: { tasks: readonly ConversationTask[]; name: string; boardRef: string }) {
+  if (tasks.length === 0) return null;
+  return (
+    <Collapsible className="group/tasks px-1" data-testid="cos-task-group" data-group={name}>
+      <CollapsibleTrigger className="inline-flex items-center gap-1 text-left text-xs text-muted-foreground hover:text-foreground">
+        <span className={name === "errored" ? "text-destructive" : undefined}>
+          {tasks.length} {name}
+        </span>
+        <ChevronRightIcon className="size-3.5 shrink-0 transition-transform group-data-[state=open]/tasks:rotate-90" />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="outline-none">
+        <TaskList tasks={tasks} boardRef={boardRef} />
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+/** Each task opens its session on the conversation's board. */
+function TaskList({ tasks, boardRef }: { tasks: readonly ConversationTask[]; boardRef: string }) {
   return (
     <ul className="space-y-0.5" data-testid="cos-tasks">
-      {read.tasks.map((task) => (
+      {tasks.map((task) => (
         <li
           key={task.id}
           className="flex items-start gap-2 px-1 py-1 text-sm"
@@ -110,12 +166,17 @@ export function TasksPanel({ worker, sessionId, readAt }: { worker: Worker; sess
           data-status={task.status}
         >
           <StateSquare state={STATE_OF_COLUMN[columnFor(task.status)]} className="mt-1.5" />
-          <span className="min-w-0">
-            <span className="line-clamp-2">{task.goal}</span>
+          <button
+            type="button"
+            className="min-w-0 text-left hover:underline"
+            data-testid="cos-task-open"
+            onClick={() => navigate({ level: "task", boardRef, taskId: task.id, tab: "session" })}
+          >
+            <span className="line-clamp-2">{task.title || task.goal}</span>
             <span className="block text-xs text-muted-foreground">
-              {task.status} · {task.assignee ?? "unassigned"}
+              {task.status} · {task.assignee == null ? "unassigned" : workerLabel(task.assignee)}
             </span>
-          </span>
+          </button>
         </li>
       ))}
     </ul>

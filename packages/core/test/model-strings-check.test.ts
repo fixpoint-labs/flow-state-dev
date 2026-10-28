@@ -1,13 +1,8 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error — root check script, plain .mjs with no type declarations.
-import {
-  isScannedPath,
-  rejectionImplFiles,
-  resolverWindow,
-  scanSources,
-} from "../../../scripts/validate-model-strings.mjs";
+import { isScannedPath, rejectionImplFiles, resolverWindow, scanSources } from "../../../scripts/validate-model-strings.mjs";
 
-type Hit = { file: string; line: number; text: string; rule: string };
+type Hit = { file: string; line: number; text: string; rule: string; suggestion?: string };
 
 const scan = (text: string, path = "apps/docs/docs/fixture.md"): Hit[] =>
   (scanSources as (s: Array<{ path: string; text: string }>) => Hit[])([{ path, text }]);
@@ -88,7 +83,7 @@ describe("the removed 'presets' resolver option", () => {
 /**
  * The resolver passes a direct model id to the provider untouched. Anthropic
  * spells its ids with hyphens; the Vercel gateway spells the same models with
- * a dot. So the dotted form is correct behind `vercel/` and an unknown model
+ * a dot. So the dotted form is correct behind `vercel:` and an unknown model
  * behind a bare `anthropic/`. The rule has to tell those two apart by the
  * prefix alone, or it either misses the broken example or flags every correct
  * gateway string in the docs.
@@ -109,8 +104,12 @@ describe("direct Anthropic ids — hyphens direct, dots only behind a gateway", 
   });
 
   it("accepts the dotted id behind a gateway prefix, where the dot is correct", () => {
-    expect(rules(`chat: ["vercel/anthropic/claude-sonnet-4.6"],`)).toEqual([]);
-    expect(rules(`model: "openrouter/anthropic/claude-sonnet-4.6",`)).toEqual([]);
+    expect(rules(`chat: ["vercel:anthropic/claude-sonnet-4.6"],`)).toEqual([]);
+    expect(rules(`model: "openrouter:anthropic/claude-sonnet-4.6",`)).toEqual([]);
+  });
+
+  it("flags a dotted id pinned to the Anthropic provider with a colon, which is just as direct", () => {
+    expect(rules(`model: "anthropic:claude-haiku-4.5",`)).toEqual(["dotted-anthropic-id"]);
   });
 
   it("ignores a backticked dotted id, how prose names the gateway spelling", () => {
@@ -119,6 +118,61 @@ describe("direct Anthropic ids — hyphens direct, dots only behind a gateway", 
 
   it("leaves other providers' dotted versions alone", () => {
     expect(rules(`model: "openai/gpt-5.4-mini",`)).toEqual([]);
+  });
+});
+
+/**
+ * Quoted gateway/provider/model, backticks included (a template literal runs).
+ * specs/ and docs/internal/archive/ are exempt from this rule only.
+ */
+describe("slash multi-hop model strings — removed, the colon names the route", () => {
+  it("flags a quoted gateway/provider/model string", () => {
+    expect(rules(`model: "vercel/openai/x",`)).toEqual(["slash-multi-hop"]);
+    expect(rules(`defaultModel: 'openrouter/anthropic/claude-sonnet-5',`)).toEqual(["slash-multi-hop"]);
+  });
+
+  it("flags it in backticks, where TypeScript runs it as a template literal", () => {
+    expect(rules("const model = `vercel/google/gemini-3.1-flash-lite`;")).toEqual(["slash-multi-hop"]);
+  });
+
+  it("names the colon spelling in its fix text", () => {
+    expect(scan(`model: "vercel/openai/x",`)[0]).toMatchObject({ suggestion: "vercel:openai/x" });
+  });
+
+  it("accepts the colon form and the two-part provider/model form", () => {
+    expect(rules(`model: "vercel:openai/gpt-5.4-mini",`)).toEqual([]);
+    expect(rules(`model: "openrouter:openai/gpt-oss-20b:free",`)).toEqual([]);
+    expect(rules(`model: "openai/gpt-5.4-mini",`)).toEqual([]);
+    expect(rules(`model: "typesafe-ai/jev",`)).toEqual([]);
+  });
+
+  it("ignores the removed form written bare, how the rename guide names it", () => {
+    expect(rules("vercel/anthropic/claude-sonnet-5  ->  vercel:anthropic/claude-sonnet-5")).toEqual([]);
+  });
+
+  it("leaves harness model ids alone: they never reach the model resolver", () => {
+    expect(rules(`claudeCode({ model: "claude-sonnet-5" })`)).toEqual([]);
+    expect(rules(`codex({ model: "gpt-5.6-sol" })`)).toEqual([]);
+    expect(rules(`cursor({ model: "composer-2.5" })`)).toEqual([]);
+  });
+
+  it("ignores paths that only start like a gateway name", () => {
+    expect(rules(`root: "/vercel/sandbox/workspace",`)).toEqual([]);
+    expect(rules(`import x from "@vercel/sdk/dist/x";`)).toEqual([]);
+  });
+
+  it.each(["specs/issues/FIX-1443/DECISIONS.md", "docs/internal/archive/changesets/kitchen-sink-kimi-k3.md"])(
+    "exempts retained history (%s), and only from this rule",
+    (path) => {
+      expect(scan(`model: "vercel/openai/x"`, path)).toEqual([]);
+      expect(scan(`model: "preset/fast"`, path).map((h) => h.rule)).toEqual(["preset-string"]);
+    }
+  );
+
+  it("does not exempt a path that merely contains a history folder name", () => {
+    expect(scan(`model: "vercel/openai/x"`, "packages/fixture/specs/models.md").map((h) => h.rule)).toEqual([
+      "slash-multi-hop",
+    ]);
   });
 });
 

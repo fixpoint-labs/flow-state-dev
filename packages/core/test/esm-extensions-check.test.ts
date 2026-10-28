@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error — root build script, plain .mjs with no type declarations.
-import {
-  maskedPositions,
-  publishableDists,
-  rewriteSource,
-  rewriteSpecifier,
-} from "../../../scripts/add-esm-extensions.mjs";
+import { maskedPositions, publishableDists, rewriteSource, rewriteSpecifier } from "../../../scripts/add-esm-extensions.mjs";
 
 type Probe = (p: string) => boolean;
 const rewrite = (

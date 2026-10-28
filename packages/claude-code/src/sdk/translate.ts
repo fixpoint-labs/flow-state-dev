@@ -85,6 +85,11 @@ const PLAN_UPDATE_TOOL = "TaskUpdate";
  * a GAP rather than silently followed.
  */
 
+/** Whether a thinking block or delta carries text worth showing. */
+function hasThinkingText(text: string): boolean {
+  return text.trim() !== "";
+}
+
 /** Read a string field off an untyped tool input/output. `null` when absent. */
 function readString(source: unknown, field: string): string | null {
   if (typeof source !== "object" || source === null) return null;
@@ -199,6 +204,13 @@ export interface TranslateState {
    * and a guess is not something this record is allowed to label as confirmed.
    */
   readonly inputsMayBeRevised: boolean;
+  /**
+   * Whether the live status line describes a quiet stretch (the run starting, a
+   * retry, a compaction) that the next output from Claude Code ends. The
+   * request's status slot holds its latest value for the whole run, so a line
+   * left behind would sit beside the answer that follows.
+   */
+  quietStatus: boolean;
   /** File mutations whose call was seen, awaiting the result that settles them. */
   readonly openFileOps: Map<string, { path: string; op: ObservedFileOpKind }>;
   /**
@@ -230,6 +242,7 @@ export function createTranslateState(options: TranslateStateOptions = {}): Trans
     openSubagents: new Set<string>(),
     partialMessages: options.partialMessages ?? true,
     inputsMayBeRevised: options.inputsMayBeRevised ?? false,
+    quietStatus: false,
     openFileOps: new Map<string, { path: string; op: ObservedFileOpKind }>(),
     openPlanCreates: new Map<string, { title: string | null }>(),
     openPlanUpdates: new Map<
@@ -306,9 +319,20 @@ export function translateSdkMessage(
   msg: SdkMessageLike,
   state: TranslateState,
 ): TranslatedEvent[] {
+  const events = translateByType(msg, state);
+  // The first output after a quiet stretch ends its line. A `system` message is
+  // not output: `init` and the like arrive while the run is still starting.
+  if (state.quietStatus && msg.type !== "system") {
+    state.quietStatus = false;
+    return [{ kind: "status", message: "" }, ...events];
+  }
+  return events;
+}
+
+function translateByType(msg: SdkMessageLike, state: TranslateState): TranslatedEvent[] {
   switch (msg.type) {
     case "system":
-      return translateSystem(msg);
+      return translateSystem(msg, state);
     case "assistant":
       return translateAssistant(msg, state);
     case "user":
@@ -322,13 +346,54 @@ export function translateSdkMessage(
   }
 }
 
-/** `system` init/compact_boundary → a transient status notice. */
-function translateSystem(msg: Extract<SdkMessageLike, { type: "system" }>): TranslatedEvent[] {
-  if (msg.subtype === "init") {
-    return [{ kind: "status", message: "Claude Code agent session started." }];
-  }
+/** The longest live status a tool call can set; a longer one is cut with an ellipsis. */
+const MAX_STATUS_LENGTH = 120;
+
+/**
+ * What a tool call tells the person while it runs: for Bash, the call's own
+ * `description` (its one-line statement of intent), else `Using <tool>…`, the
+ * line the framework's own tool loop emits. `description` is a domain field on
+ * many other tools (an issue body, a page), so it is read by tool name, not by
+ * field name, and the line is bounded either way.
+ */
+function toolStatus(name: string, input: unknown): string {
+  const intent = name === "Bash" ? readString(input, "description")?.trim() : undefined;
+  return clipStatus(intent || `Using ${name}…`);
+}
+
+/** A live status line, cut to {@link MAX_STATUS_LENGTH}. */
+function clipStatus(text: string): string {
+  return text.length > MAX_STATUS_LENGTH ? `${text.slice(0, MAX_STATUS_LENGTH - 1)}…` : text;
+}
+
+/**
+ * `system` messages that tell the person what a quiet stretch is:
+ * - `compact_boundary` → a transient notice.
+ * - `api_retry` → the failed call is being retried, with the attempt and wait.
+ * - `task_progress` → what a sub-agent is on: its own summary, else its
+ *   description and the last tool it used.
+ *
+ * `init` says nothing: the session id reaches the host through `onSession`, and
+ * a "session started" line only read as stale once the run was working.
+ */
+function translateSystem(msg: Extract<SdkMessageLike, { type: "system" }>, state: TranslateState): TranslatedEvent[] {
   if (msg.subtype === "compact_boundary") {
-    return [{ kind: "status", message: "Claude Code agent compacted its context." }];
+    state.quietStatus = true;
+    return [{ kind: "status", message: "Claude Code agent compacted its context" }];
+  }
+  if (msg.subtype === "api_retry") {
+    const { attempt, max_retries: max, retry_delay_ms: delay } = msg;
+    if (typeof attempt !== "number" || typeof max !== "number") return [];
+    const wait = typeof delay === "number" ? `, in ${Math.ceil(delay / 1000)} s` : "";
+    state.quietStatus = true;
+    return [{ kind: "status", message: `Claude Code is retrying a failed API call (attempt ${attempt} of ${max}${wait})…` }];
+  }
+  if (msg.subtype === "task_progress") {
+    const summary = readString(msg, "summary")?.trim();
+    const description = readString(msg, "description")?.trim();
+    const tool = readString(msg, "last_tool_name");
+    if (summary) return [{ kind: "status", message: clipStatus(summary) }];
+    if (description) return [{ kind: "status", message: clipStatus(tool === null ? description : `${description} (${tool})`) }];
   }
   return [];
 }
@@ -360,6 +425,10 @@ function translateAssistant(
       events.push({ kind: "message_complete", text: block.text, ...withParent });
     } else if (block.type === "thinking") {
       if (state.partialMessages) continue;
+      // The SDK can withhold the thinking text. An item with nothing in it is a
+      // chevron with nothing behind it, and it splits the tool calls around it
+      // into separate groups.
+      if (!hasThinkingText(block.thinking)) continue;
       events.push({ kind: "reasoning_complete", text: block.thinking, ...withParent });
     } else if (block.type === "tool_use") {
       if (SUBAGENT_TOOL_NAMES.has(block.name)) {
@@ -374,6 +443,7 @@ function translateAssistant(
           arguments: stringifyArgs(block.input),
           ...withParent,
         });
+        events.push({ kind: "status", message: toolStatus(block.name, block.input) });
         observeToolCall(block, state, events);
       }
     }
@@ -729,6 +799,12 @@ function translateUser(
       }
     }
   }
+  // A tool's status line lasts as long as the tool: once the last open tool or
+  // sub-agent settles, the slot clears, as the framework's own tool loop does.
+  // Without this the line outlives the call through the model's next turn.
+  if (blocks.some((b) => b.type === "tool_result") && state.openTools.size === 0 && state.openSubagents.size === 0) {
+    events.push({ kind: "status", message: "" });
+  }
   // Only when recorded work actually settled from it: a batch of results for
   // tools nobody records discarded nothing that mattered.
   if (discardedConfirmation && settledRecordedWork) {
@@ -763,7 +839,7 @@ function translateStreamEvent(
     return [{ kind: "message_delta", text: delta.text, ...(parentCallId ? { parentCallId } : {}) }];
   }
   // Thinking deltas carry the token on `delta.thinking`, not `delta.text`.
-  if (delta.type === "thinking_delta" && typeof delta.thinking === "string") {
+  if (delta.type === "thinking_delta" && typeof delta.thinking === "string" && hasThinkingText(delta.thinking)) {
     return [{ kind: "reasoning_delta", text: delta.thinking, ...(parentCallId ? { parentCallId } : {}) }];
   }
   return [];

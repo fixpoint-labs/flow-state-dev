@@ -340,7 +340,7 @@ await ctx.session.items.history({ limit: 20 })
 await ctx.session.items.history({ limit: { tokens: 20_000 } })
 ```
 
-The history view converts completed request items with `history: true` into `{ role, content }` message pairs for model context assembly.
+The history view converts the items of completed requests with `history: true` into `{ role, content }` message pairs for model context assembly. A request its host died in (`interrupted`) counts too, with only its settled items: the message that started it and the tool calls that finished are part of the conversation, a call the kill cut off is not. Two interrupted requests are left out: one still parked on a gate that drives it again (pending, or resolved and owed a re-drive), as with a `suspended` one, and one a `/retry` re-ran under a new id (`metadata.retryOf`), since the retry is the turn. Session retention reads the same statuses and the same parked rule (`execution/past-turns.ts`), but not `retryOf`.
 
 ## Session Journal
 
@@ -363,10 +363,8 @@ Sessions carry first-class `title`, `description`, and `tags` fields alongside t
 ### Creating sessions with metadata
 
 ```ts
-// Via the client
-const session = await sessionClient.createSession({
-  flowKind: "my-flow",
-  userId: "user_1",
+// Via the client (`fsd` from createClient; the user is the client's)
+const session = await fsd.flow("my-flow").createSession({
   title: "Planning session",
   description: "Sprint 12 work breakdown",
   tags: ["planning", "sprint-12"]
@@ -416,7 +414,7 @@ import { utility, sequencer } from "@flow-state-dev/core";
 
 const autoTitle = utility.sessionTitleGenerator({
   name: "auto-title",
-  model: "openai/gpt-5.4-mini"
+  model: "openai/gpt-6-luna"
 });
 
 const pipeline = sequencer({ name: "chat", inputSchema })
@@ -466,7 +464,7 @@ The per-execution-scope state container — originally gated to `kind === "seque
 
 **Durability boundary (PR1 scope):** block state is in-memory only. Durable checkpoint + suspend/resume persistence for non-sequencer block state is an explicit follow-up — the checkpoint store keys on `provenance.blockInstanceId` (not `item.key`), and retry-stable durability for an arbitrary block needs a path-based storage key, a new `emitStateSnapshot` call site, and suspension stamping/restore on the block's own path. Sequencer checkpoints are unchanged. `state_change` items for non-sequencer containers reuse the existing `scope: "block_instance"` emit path and are transient-by-default in production (`shouldPersistScopeChange`) — not a client-visible projection.
 
-**Capability-contributed own state (FIX-914 PR2):** a capability can contribute to a block's own-state `stateSchema` — the seam a generator capability needs to give its host generator a working `ctx.self` container without the block author declaring `stateSchema` directly (the skills capability's `activeSkills` field, for example). Declared via `defineCapability({ stateSchema: z.object({...}) })` or the same field on a preset; valid on any block kind, since any block can hold state. Capabilities merge together and then with the block's own `stateSchema` via `mergeCapabilityOwnStateWithBlock` (`capability/merge.ts`), which is the collision-detecting counterpart to `sequencerStateSchema`'s `.extend()`-based merge: a field declared by two sources must be the same schema reference or the build throws — the same reference-equality rule the sibling `mergeTargetsInto`/`mergeResourcesInto` use, and no silent last-wins. (Reference-equality rather than a structural comparison, so a nested-object or parse-mode difference can't slip past a shallow check and diverge from the intersected `ctx.self` type.) `resolveCapabilities`'s `mergedSurface.stateSchema` is wired into the block's effective `config.stateSchema` at each factory (`handler`, `generator`, `router`, `sequencer`); type inference (`InferCapabilityOwnState`) intersects into `TSelfState` for handler/generator/router — sequencer capabilities stay runtime-only, matching `SequencerCtx`'s existing untyped `ctx.cap`. Removing the legacy `targetStateSchemas`/`sequencerStateSchema`/`parentStateSchema` declaration-key fragmentation in favor of one consolidated key is a later audit-then-remove issue — the *runtime* unifies onto one container now; the *config surface* still has four schema keys.
+**Capability-contributed own state (FIX-914 PR2):** a capability can contribute to a block's own-state `stateSchema` — the seam a generator capability needs to give its host generator a working `ctx.self` container without the block author declaring `stateSchema` directly (the skills capability's `activeSkills` field, for example). Declared via `defineCapability({ stateSchema: z.object({...}) })` or the same field on a preset; valid on any block kind, since any block can hold state. Capabilities merge together and then with the block's own `stateSchema` via `mergeCapabilityOwnStateWithBlock` (`capability/merge.ts`), which is stricter than `sequencerStateSchema`'s merge (an `.extend()` that refuses only a field of a different kind): a field declared by two sources must be the same schema reference or the build throws — the same reference-equality rule the sibling `mergeTargetsInto`/`mergeResourcesInto` use, and no silent last-wins. (Reference-equality rather than a structural comparison, so a nested-object or parse-mode difference can't slip past a shallow check and diverge from the intersected `ctx.self` type.) `resolveCapabilities`'s `mergedSurface.stateSchema` is wired into the block's effective `config.stateSchema` at each factory (`handler`, `generator`, `router`, `sequencer`); type inference (`InferCapabilityOwnState`) intersects into `TSelfState` for handler/generator/router — sequencer capabilities stay runtime-only, matching `SequencerCtx`'s existing untyped `ctx.cap`. Removing the legacy `targetStateSchemas`/`sequencerStateSchema`/`parentStateSchema` declaration-key fragmentation in favor of one consolidated key is a later audit-then-remove issue — the *runtime* unifies onto one container now; the *config surface* still has four schema keys.
 
 ## State Schema Bubbling
 
@@ -474,6 +472,8 @@ Block-level state declarations bubble upward for compatibility checking. This en
 - Early detection of schema conflicts in nested compositions
 - Type safety preservation across sequencer steps
 - Recursive shadowing rules for nested sequencers
+
+For sequencer state, see [Sequencer state schema bubbling](./blocks.md#sequencer-state-schema-bubbling).
 
 ## Resource Declaration Bubbling
 
@@ -653,11 +653,11 @@ Tenant follows identity: the child's session storage key is `${tenantId}:dsx_...
 Four channels, and none of them is shared session state:
 
 1. **User and org scope** — live and shared, but keyed to the *principal*, not to the parent session. Two unrelated conversations belonging to the same user read the same cell.
-2. **The payload at dispatch** — a one-shot value handed to the dispatched request, frozen at dispatch. For a task hand-off it is the worker input the drain packed at claim time, inside the `task` envelope.
+2. **The payload at dispatch** — a one-shot value handed to the dispatched request, frozen at dispatch. For a task dispatch it is the worker input the drain packed at claim time, inside the `task` envelope.
 3. **Provenance labels** — `topic` and `coordinate` on the child session record, and `metadata.dispatch` on the child's request record. Server-assembled, frozen, and display-only.
 4. **`parentTask()` / `settleParentTask()`** — one board row, server-stamped at dispatch and closed over. Deliberately not a cross-session browser: one coordinate, one row.
 
-**There is no live read or write of the parent session's STATE from inside a child**, and none is planned. The request host is closed at three verbs and passes behaviour rather than handles — no type on it names a store, a session record or a task row.
+**There is no live read or write of the parent session's STATE from inside a child**, and none is planned. The request host passes behaviour rather than handles — no type on it names a store, a session record or a task row. Its one read of another session, `sessions.read`, answers a session of the same principal with its flow and the state fields its flow declares readonly, never the rest of its state.
 
 ### Resources shared to the lineage (FIX-1068)
 

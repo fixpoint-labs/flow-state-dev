@@ -40,7 +40,7 @@ export function useDebugCollectionItems(
   ref: string | null,
   options: UseDebugCollectionItemsOptions = {}
 ): UseDebugCollectionItemsResult {
-  const { sessionClient } = useDevTool();
+  const { client } = useDevTool();
   const { topicFilter, pageSize } = options;
   const [items, setItems] = useState<DebugCollectionItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -58,7 +58,7 @@ export function useDebugCollectionItems(
       setIsLoading(true);
       setError(null);
       try {
-        const result = await sessionClient.debug.listCollectionItems(sessionId, ref, {
+        const result = await client.sessions.debug.listCollectionItems(sessionId, ref, {
           cursor,
           limit: pageSize,
           topic: topicFilter && topicFilter.length > 0 ? topicFilter : undefined
@@ -80,7 +80,7 @@ export function useDebugCollectionItems(
         setIsLoading(false);
       }
     },
-    [sessionClient, sessionId, ref, pageSize, topicFilter]
+    [client, sessionId, ref, pageSize, topicFilter]
   );
 
   const loadMore = useCallback(async () => {

@@ -29,12 +29,13 @@ The first argument is the flow **instance** id — see [Flows](/docs/fundamental
 | `-m, --model <model>` | Override model for generator blocks that run in this process. See [Model overrides](/docs/cli/overview#model-overrides) |
 | `-s, --session <id>` | Session ID for reuse across invocations |
 | `--org <id>` | Run in this organization and skip the app's resolver. See [Who a run is](/docs/cli/configuration#who-a-run-is) |
-| `-u, --user <id>` | Run as this user. The organization comes from the app's resolver unless you also pass `--org`. Default: the user your app's resolver returns, or `cli-user` if the app has none or you pass `--org` |
+| `-u, --user <id>` | Run as this user. The organization comes from the app's resolver unless you also pass `--org`. Default: the user your app's resolver returns, or `devuser` (the DevTool's default user) if the app has none or you pass `--org` |
 | `--seed-session <json\|path>` | Seed session-level state (JSON or file path). A new session is created with it, through the flow's `stateSchema` and `session.createCheck`. The run fails, and nothing is written, if either refuses it, or if it changes a readonly field of a session that already exists. See [Example: one session per project](/docs/fundamentals/state-and-scopes#example-one-session-per-project) |
 | `--flow-dir <path>` | Override flow discovery root (repeatable). Errors if a config is loaded. |
 | `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd |
 | `--no-config` | Ignore any config and force directory discovery |
 | `--dotenv <path>` | Load a specific `.env` file before the cwd `.env.local` walk-up (repeatable, resolved from cwd) |
+| `--store <kind>` | Without a config: `sqlite` (default) or `filesystem`. See [Where a run keeps its data](#where-a-run-keeps-its-data). Errors if a config is loaded. |
 
 When a config is loaded, `fsdev run` looks up the flow by instance id in the config's registry and uses its stores. `--model <id>` still applies, routed through the config's own resolver (your gateways and providers stay in effect), and it covers the generators that run in this process but not [background work handed to a queue](/docs/cli/overview#model-overrides). `--flow-dir` together with a config is an error; the message suggests `--no-config` if directory discovery is what you want. The config's FlowState is disposed on exit, and disposal waits for any background work the run started in this process. See [App Configuration](/docs/cli/configuration) and [Background work](/docs/cli/overview#background-work).
 
@@ -51,13 +52,41 @@ Each line of stdout is a JSON object with a `type` field:
 {"type":"flow_complete","output":{"reply":"Hello there!"},"durationMs":1234,"items":3}
 ```
 
+A run that ends waiting for a person ends with a `suspended` event instead of `flow_complete`:
+
+```jsonl
+{"type":"suspended","requestId":"req_...","sessionId":"sess_...","suspensionId":"susp_...","reason":"human_approval","message":"Publish \"Q3 notes\"?","answer":"Answer it in fsdev dev, which reads this store: .fsdev/data/fsdev.db (SQLite)."}
+```
+
 | Event type | When it fires |
 |------------|---------------|
 | `item_added` | A new output item (message, reasoning, tool call, etc.) was created |
 | `content_delta` | Incremental content chunk for a streaming item |
 | `state_change` | A scope state or resource was modified |
 | `flow_complete` | The action completed successfully |
+| `suspended` | The action paused for a person and is waiting for an answer. The exit code is 0 |
 | `error` | The action failed |
+
+#### When a run waits for a person
+
+A flow that pauses for a person (`ctx.suspend()`, an approval, a question) doesn't fail the run. The paused request is held in the store, and `fsdev run` exits 0 and prints a waiting report on stderr:
+
+```text
+[fsdev] waiting for a person: Publish "Q3 notes"?
+[fsdev]   suspension susp_... · request req_... · session sess_...
+[fsdev]   Answer it in fsdev dev, which reads this store: .fsdev/data/fsdev.db (SQLite).
+[fsdev]   Its deadline fires only while a server runs on this store.
+```
+
+The same suspension is in `--capture` as `result.suspended`. Answer it from the DevTool's Suspensions tab in `fsdev dev`, started in the same folder, or through the resume route. A suspension's deadline passes unnoticed until a server runs on the same store. A server that starts after a deadline has passed expires that suspension as soon as it is up.
+
+With an app config, the suspension is held in the app's stores and is answered by a server on them, such as `fsdev dev` with the same config.
+
+#### Where a run keeps its data
+
+Without a config, `fsdev run` writes to `.fsdev/data/fsdev.db` in the working directory, the SQLite file `fsdev dev` and `fsdev chat` use, as the user the DevTool lists sessions for. A request a run left paused is listed by the `fsdev dev` you start in the same folder. SQLite lets a run write while `fsdev dev` is running; under heavy load, a run can briefly wait on the dev server's writes. Read a run's state through `fsdev dev`'s routes or from the SQLite file. `--capture` holds the command, its events and its result, not session or resource state.
+
+`--store filesystem` keeps the run's state as JSON files under `.fsdev/data` instead. That store is single-process: don't run `fsdev run` and `fsdev dev` on it at the same time. A suspension held there is answered by a `fsdev dev --store filesystem` started after the run exits. Sessions written to it are not visible to the SQLite default, and the other way round.
 
 **Session reuse:**
 
@@ -93,10 +122,11 @@ fsdev dev
 | `--dotenv <path>` | Load a specific `.env` file before the cwd `.env.local` walk-up (repeatable, resolved from cwd) |
 | `-m, --model <model>` | Override model for generator blocks that run in this process. See [Model overrides](/docs/cli/overview#model-overrides). Errors if a config is loaded. |
 | `--no-open` | Don't open the browser automatically |
+| `--store <kind>` | Without a config: `sqlite` (default, `.fsdev/data/fsdev.db`) or `filesystem` (JSON files under `.fsdev/data`, single-process). Errors if a config is loaded. |
 
 **Requires:** `@flow-state-dev/devtool` installed (provides the pre-built UI assets). With `--app` it's optional.
 
-Without a config, the server discovers flows, registers them in an in-memory flow registry, creates filesystem stores at `.fsdev/data/`, and starts listening. With an `fsdev.config.ts` present, it serves the app's own router (`await flowState.getRouter()`) using the config's registry, resolver, and stores. Because the config builds the router with its own resolver, `--model` together with a config is an error. API routes are served at `/api/flows/*`. The DevTool UI is served for all other paths. See [DevTool Setup](/docs/devtool/setup) and [App Configuration](/docs/cli/configuration) for full details.
+Without a config, the server discovers flows, registers them in an in-memory flow registry, opens the SQLite store at `.fsdev/data/fsdev.db` (the one `fsdev run` writes to), and starts listening. It has durable execution, so a paused request is held and answered from the DevTool, and its sweeper fires suspension deadlines. With an `fsdev.config.ts` present, it serves the app's own router (`await flowState.getRouter()`) using the config's registry, resolver, and stores. Because the config builds the router with its own resolver, `--model` together with a config is an error. API routes are served at `/api/flows/*`. The DevTool UI is served for all other paths. See [DevTool Setup](/docs/devtool/setup) and [App Configuration](/docs/cli/configuration) for full details.
 
 A non-loopback `--host` needs a config, so its flows' authentication can be checked. On such a host the debug surface the DevTool's Resources panel reads stays closed.
 
@@ -183,7 +213,7 @@ fsdev chat hello-chat chat
 |------|-------------|
 | `-s, --session <id>` | Resume an engine session for the initially bound flow. Requires a bound target. |
 | `-m, --model <model>` | Override model for generator blocks that run in this process. See [Model overrides](/docs/cli/overview#model-overrides) |
-| `-u, --user <id>` | Run turns as this user. The organization comes from the app's resolver unless you also pass `--org`. Default: the user your app's resolver returns, or `cli-user` if the app has none or you pass `--org` |
+| `-u, --user <id>` | Run turns as this user. The organization comes from the app's resolver unless you also pass `--org`. Default: the user your app's resolver returns, or `devuser` (the DevTool's default user) if the app has none or you pass `--org` |
 | `--org <id>` | Run turns in this organization and skip the app's resolver. See [Who a run is](/docs/cli/configuration#who-a-run-is) |
 | `--flow-dir <path>` | Override flow discovery root (repeatable). Errors if a config is loaded. |
 | `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd |

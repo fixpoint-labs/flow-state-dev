@@ -30,7 +30,7 @@ function baseItem(overrides: Partial<OutputItem> = {}): OutputItem {
     role: "assistant",
     content: [{ type: "output_text", text: "hi" }]
   } as unknown as OutputItem;
-  return { ...defaults, ...overrides };
+  return { ...defaults, ...overrides } as OutputItem;
 }
 
 describe("resolveItemVisibility — conversational types", () => {

@@ -153,7 +153,7 @@ export function StreamView({
   }
 
   return (
-    <div ref={scrollContainerRef} className="flex flex-col overflow-auto h-full">
+    <div ref={scrollContainerRef} className="flex flex-col overflow-auto h-full bg-fs-surface">
       {filteredGroups.map((group, groupIndex) => {
         const isLast = groupIndex === filteredGroups.length - 1;
         const isActive = isLast && streamStatus === "streaming";
@@ -174,7 +174,7 @@ export function StreamView({
               onContinue={onContinue ? () => onContinue(group.requestId) : undefined}
               isContinuing={isContinuing?.(group.requestId)}
             />
-            <div className="px-4 py-2 space-y-1">
+            <div className="px-4 pb-4 pt-2 space-y-2.5">
               {group.items.map((item) => (
                 <ItemRenderer key={item.id} item={item} />
               ))}

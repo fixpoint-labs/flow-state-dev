@@ -1,7 +1,7 @@
 /**
  * Action-level orchestration runtime for request lifecycle, observers, persistence, and terminal errors.
  */
-import type { ErrorItem, ItemProvenance, MessageItem, OutputItem, StatusItem } from "@flow-state-dev/core/items";
+import type { ErrorItem, ItemProvenance, MessageItem, StatusItem } from "@flow-state-dev/core/items";
 import { checkSessionCreate } from "../context/session-birth";
 import { isEphemeralContent } from "@flow-state-dev/core/items";
 import type {
@@ -16,8 +16,8 @@ import { resolveActionCore } from "./resolve-action-core";
 import { readDispatchStamp } from "./dispatch-metadata";
 import { hasResumeMetadata, stripResumeMetadata } from "./resume-metadata";
 import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
-import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf } from "@flow-state-dev/core";
-import type { TaskEntry } from "@flow-state-dev/core/types";
+import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf, addressEntries } from "@flow-state-dev/core";
+import type { BackgroundFailure, RequestEnding, TaskEntry } from "@flow-state-dev/core/types";
 import type { ReplayLog } from "@flow-state-dev/core";
 import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
@@ -42,6 +42,7 @@ import type { ExecutionContext } from "../context/types";
 import type { FlowError } from "../errors/flow-error";
 import { ValidationError } from "../errors/flow-error";
 import { normalizeError, displayCause } from "../errors/normalize-error";
+import { safeCaptureError, toFinalErrorCaptureEvent } from "../errors/error-capture";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
 import { mergeItemsById } from "../stores/shared";
 import { createInternalResponseEmitter } from "../streaming/response-emitter";
@@ -80,9 +81,11 @@ import { claimRequestRecord, principalOwnsRequest } from "../context/request-pri
 import { createInitialRequestRecord } from "../context/initial-request-record";
 import { foreignRecordRefusal, ownsRecord } from "../context/record-owner";
 import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
-import { noteAskDeadline } from "../durability/ask-deadlines";
+import { ownRowOf, resumeIfChildEnded, resumeRequestWaiters } from "../durability/wait-chain";
 import { stopSuspendedRequest } from "../durability/stop-suspended";
-import { isAskGate, isExpiredApproval } from "@flow-state-dev/core/types";
+import { noteSuspensionDeadline } from "../durability/suspension-deadlines";
+import { requestEndRegistryOf } from "./request-end-hooks";
+import { WAIT_DEADLINE_ENTRY, isUserSuspension, isWaitGate, continuesAtExpiry, waitGateDataOf } from "@flow-state-dev/core/types";
 
 type RunActionInternalOptions<
   TFlow extends FlowInstance = FlowInstance,
@@ -171,6 +174,26 @@ async function drainRequestSideChainPool(ctx: ExecutionContext): Promise<void> {
 }
 
 /**
+ * The pool's kept failures, shaped for `RequestEnding.backgroundFailures`.
+ * Nothing when none failed, or when `cancelled` says the request's cancel
+ * fired. `cancelled` is asked only when there is something to withhold, so a
+ * request with no failure never pays for its store read.
+ */
+async function backgroundFailuresOf(
+  ctx: ExecutionContext,
+  cancelled: () => Promise<boolean>
+): Promise<{ backgroundFailures?: BackgroundFailure[] }> {
+  const failed = getRequestSideChainPool(ctx)?.failures() ?? [];
+  if (failed.length === 0 || (await cancelled())) return {};
+  return {
+    backgroundFailures: failed.map((f) => ({
+      step: f.meta.name,
+      message: f.reason instanceof Error ? f.reason.message : String(f.reason)
+    }))
+  };
+}
+
+/**
  * Refuse a dispatch-time core whose dispatchers this flow cannot route.
  *
  * A carried core is produced after `defineFlow` ran — today by a dynamic
@@ -244,7 +267,7 @@ async function reconcileDroppedDelivery(
 /**
  * Refuse any dispatcher reachable from `roots` whose address the flow does not
  * declare — and, for a task dispatcher, one the entry's own board does not
- * hold. Target existence is not routability for a hand-off: the entry runs
+ * hold. Target existence is not routability for a dispatch: the entry runs
  * behind ONE board's gate, so a dispatcher another board holds would claim a row on
  * its ledger and have the child refuse it at the gate, after the dispatch was
  * accepted, leaving the row `in_progress` until lease recovery. `defineFlow`
@@ -277,31 +300,35 @@ function assertDispatchersRoutable(
     if (address !== undefined) {
       const crossFlow = address.flowKind !== undefined && address.flowKind !== flow.id;
       if (!crossFlow) {
-        const entry = resolveTypedEntry(flow, address.type, address.action);
-        if (entry === undefined) {
-          throw new ValidationError(
-            `Flow "${flow.kind}" cannot run this dispatch's action core: block "${block.name}" ` +
-              `dispatches to ${address.type}:"${address.action}", which the flow does not declare. ` +
-              `The core was produced at dispatch time — a dynamic schedule's resolver — so its ` +
-              `dispatcher never reached the flow definition. Declare the entry on the flow, or ` +
-              `drop the dispatch from the resolver's block.`,
-            { scope: "request" }
-          );
-        }
-        if (address.type === "task") {
-          const binding = taskBindingOf(block);
-          const gatedBy = (entry as TaskEntry).gatedBy;
-          if (binding === undefined || gatedBy === undefined || gatedBy.gate !== binding.gate) {
+        // A task address that chooses its entry per row reaches every name it
+        // lists, so each one must resolve and be gated for this board.
+        for (const action of addressEntries(address)) {
+          const entry = resolveTypedEntry(flow, address.type, action);
+          if (entry === undefined) {
             throw new ValidationError(
               `Flow "${flow.kind}" cannot run this dispatch's action core: block "${block.name}" ` +
-                `hands off to task:"${address.action}", which is gated for board ` +
-                `"${gatedBy?.boardId ?? "<none>"}", but the dispatcher is held by ` +
-                (binding === undefined ? "no board" : `board "${binding.boardId}"`) +
-                `. One entry settles against one ledger; a row claimed on another board's ledger ` +
-                `would be refused at this gate after the dispatch was accepted. Hand off from the ` +
-                `board that declares this entry, or declare an entry for the other board.`,
+                `dispatches to ${address.type}:"${action}", which the flow does not declare. ` +
+                `The core was produced at dispatch time — a dynamic schedule's resolver — so its ` +
+                `dispatcher never reached the flow definition. Declare the entry on the flow, or ` +
+                `drop the dispatch from the resolver's block.`,
               { scope: "request" }
             );
+          }
+          if (address.type === "task") {
+            const binding = taskBindingOf(block);
+            const gatedBy = (entry as TaskEntry).gatedBy;
+            if (binding === undefined || gatedBy === undefined || gatedBy.gate !== binding.gate) {
+              throw new ValidationError(
+                `Flow "${flow.kind}" cannot run this dispatch's action core: block "${block.name}" ` +
+                  `dispatches to task:"${action}", which is gated for board ` +
+                  `"${gatedBy?.boardId ?? "<none>"}", but the dispatcher is held by ` +
+                  (binding === undefined ? "no board" : `board "${binding.boardId}"`) +
+                  `. One entry settles against one ledger; a row claimed on another board's ledger ` +
+                  `would be refused at this gate after the dispatch was accepted. Dispatch from the ` +
+                  `board that declares this entry, or declare an entry for the other board.`,
+                { scope: "request" }
+              );
+            }
           }
         }
       }
@@ -378,7 +405,7 @@ function parseActionInput(action: ActionCore, input: unknown): unknown {
  * over as it is when nothing in it is left out, since a running request calls
  * this per streamed delta.
  */
-function itemsForPersistedRecord(items: OutputItem[]): OutputItem[] {
+function itemsForPersistedRecord(items: RuntimeItem[]): RuntimeItem[] {
   const clean = !items.some(
     (item) =>
       item.transient === true ||
@@ -392,7 +419,7 @@ function itemsForPersistedRecord(items: OutputItem[]): OutputItem[] {
  * persistence. Ephemeral content is streamed to the client in real time
  * but should not be stored, since it may contain large binary payloads.
  */
-function stripEphemeralContent(items: OutputItem[]): OutputItem[] {
+function stripEphemeralContent(items: RuntimeItem[]): RuntimeItem[] {
   return items.map((item) => {
     if (item.type !== "message") {
       return item;
@@ -440,7 +467,7 @@ async function settleFreshRequestSetupFailure(options: {
   source: string;
   metadata?: Record<string, unknown>;
   input: unknown;
-  emittedItems: readonly OutputItem[];
+  emittedItems: readonly RuntimeItem[];
   response: {
     emitItemAdded: (item: ErrorItem) => Promise<unknown>;
     emitItemDone: (item: ErrorItem) => Promise<unknown>;
@@ -986,6 +1013,29 @@ export async function runActionInternal<
 }
 
 /**
+ * A request that ended may be one a `dispatcher({ wait: true })` waits on
+ * (FIX-2082): resume the request parked on it, in the session that dispatched
+ * it. Best-effort, read off the settled record: a resume this misses is caught
+ * by the deadline sweep, which looks at what each waited-on request came to.
+ */
+async function resumeWaitingParent(
+  options: Pick<RunActionInternalOptions, "stores" | "runtimeConfig">,
+  requestId: string,
+  logger: RuntimeLogger
+): Promise<void> {
+  const deps = options.runtimeConfig.requestHost?.parkedStop;
+  if (deps === undefined) return;
+  try {
+    const record = await options.stores.request.get(requestId);
+    if (record !== undefined) await resumeRequestWaiters(deps, record);
+  } catch (err) {
+    logRuntimeEvent(logger, "warn", "[flow-state] the request waiting on this one was not resumed: the deadline sweep looks again", {
+      requestId, error: String(err)
+    });
+  }
+}
+
+/**
  * Stamp and deregister for the last attempt of a request when it ended by
  * throwing. Best-effort: the run's own error is what propagates, and a
  * record left unstamped stays registered for the stale-request sweep.
@@ -998,6 +1048,7 @@ async function finalizeAfterLastAttempt(
   const logger = options.runtimeConfig.logger ?? DEFAULT_RUNTIME_LOGGER;
   try {
     const writesSettled = await settlePendingWrites(options.stores, requestId, logger);
+    await resumeWaitingParent(options, requestId, logger);
     const finalized =
       writesSettled &&
       (await finalizeRequestRecord(options.stores, requestId, incarnation, logger));
@@ -1052,12 +1103,12 @@ async function runActionAttempt<
   // between resume and completion keeps the whole log. Assigned once replay mode
   // is determined below; until then `itemsToPersist()` is the live items as-is.
   let isReplayMode = false;
-  let priorItemsForMerge: readonly OutputItem[] = [];
-  const itemsToPersist = (): OutputItem[] =>
+  let priorItemsForMerge: readonly RuntimeItem[] = [];
+  const itemsToPersist = (): RuntimeItem[] =>
     isReplayMode ? mergeItemsById(priorItemsForMerge, response.getItems()) : response.getItems();
   // What a running request's incremental persists write: the log its record
   // will hold when it settles (FIX-1735).
-  const persistableItems = (): OutputItem[] => itemsForPersistedRecord(itemsToPersist());
+  const persistableItems = (): RuntimeItem[] => itemsForPersistedRecord(itemsToPersist());
 
   if (options.onItem !== undefined) {
     // Fan every item to the caller's listener, transient ones included (they
@@ -1451,6 +1502,10 @@ async function runActionAttempt<
       // another organization — would overwrite latestRequestId (an
       // auto-resume hijack) even though the run then fails.
       //
+      // An entry declared `autoResume: false` never stamps it either: it is a
+      // control sent beside a running request, which a reattaching client must
+      // still find.
+      //
       // A delivery into an EXISTING session does not stamp `latestRequestId` at
       // all. That field serves auto-resume discovery — a client attaching to a
       // session finds the newest request and attaches its stream — and a
@@ -1465,6 +1520,7 @@ async function runActionAttempt<
       // this request's to move. A session that arrived after admission found
       // none is judged here as admission would have judged it.
       if (
+        action.autoResume !== false &&
         stamp?.recipientLineageId === undefined &&
         session !== undefined &&
         (admittedSession === undefined || isSameSession(admittedSession, session)) &&
@@ -1806,7 +1862,7 @@ async function runActionAttempt<
   //
   //   1. Resume only: revert the suspension `approved`/`rejected` → `pending` so
   //      the resume stays re-attemptable (its guard requires `pending`). A
-  //      `stopped` gate, or an answered (`submitted`) ask, is never reverted:
+  //      `stopped` gate, or an answered (`submitted`) wait, is never reverted:
   //      the sweep's re-drive finishes it from the recorded resolution.
   //   2. Both paths: release the continuation lease keyed on this request id —
   //      otherwise it lingers until its 60s TTL and the next resume/continue
@@ -1830,8 +1886,8 @@ async function runActionAttempt<
         // Two resolutions stay resolved, and the sweep's re-drive finishes
         // them (FIX-1816, BR-11a). A stop is terminal (BR-16): whoever stopped
         // the turn was told it stopped, and reopening it would let a later
-        // answer resume it. An ask's answer comes from its task settling, and
-        // nobody sends it again: reopened, it would be lost and the ask would
+        // answer resume it. A wait's answer comes from its task settling, and
+        // nobody sends it again: reopened, it would be lost and the wait would
         // time out. A person's approval is reopened, since they resubmit it.
         // An approval that expired stays expired too (FIX-1846): nobody
         // resubmits an expiry, and the sweep re-drives it. Only when this run
@@ -1841,8 +1897,11 @@ async function runActionAttempt<
         const keepsResolution =
           suspension !== null &&
           (suspension.status === "stopped" ||
-            (isExpiredApproval(suspension) && resumeContextRaw.resolution === "expired") ||
-            (suspension.status === "submitted" && isAskGate(suspension)));
+            // A cancel is terminal too (FIX-2129): nobody resends it, and the
+            // sweep's re-drive finishes it.
+            suspension.status === "cancelled" ||
+            (continuesAtExpiry(suspension) && resumeContextRaw.resolution === "expired") ||
+            (suspension.status === "submitted" && isWaitGate(suspension)));
         if (suspension !== null && !keepsResolution) {
           await provider.suspend({
             ...suspension,
@@ -1878,12 +1937,19 @@ async function runActionAttempt<
   let ctx: ExecutionContext;
   try {
     if (isReplayMode && priorRecord !== undefined) {
-      const priorItems = (priorRecord.items ?? []) as RuntimeItem[];
+      const priorItems = priorRecord.items ?? [];
       // The full prior log (pre-suspension items + the `suspension` item) that
       // every persist must preserve under the merge — assigned before any item
       // is emitted so incremental persists never truncate it.
-      priorItemsForMerge = priorItems as readonly OutputItem[];
-      replayLog = buildReplayLog(priorItems);
+      priorItemsForMerge = priorItems;
+      // Crash recovery with no durability provider restores no sequencer
+      // checkpoint, so it keeps its behaviour from before lean records: it
+      // skips a completed block only from a full trace, whatever the trace
+      // setting is now.
+      replayLog = buildReplayLog(priorItems, {
+        skipLeanTraces:
+          resumeContextRaw === undefined && options.runtimeConfig.durabilityProvider === undefined,
+      });
       // Crash-recovery continuation (FIX-811) replays with NO resumeContext: it
       // re-enters an `interrupted` request, injects its completed blocks from
       // the log, and re-runs the in-flight one — there is no gate to resolve, so
@@ -1995,7 +2061,7 @@ async function runActionAttempt<
       if (provider !== undefined) {
         const suspension = await provider.loadSuspension(requestId, resumeContext.suspensionId);
         // The gate's recorded status names the resolution when the action
-        // can't (a stopped ask continues with a `submit`, FIX-1816). Never a
+        // can't (a stopped wait continues with a `submit`, FIX-1816). Never a
         // raced `expired`: an approve stays recorded `approved`.
         if (
           resumeContext.resolution === undefined &&
@@ -2005,6 +2071,9 @@ async function runActionAttempt<
         ) {
           resumeContext.resolution = suspension.status;
         }
+        // Whether the gate waits for a user (FIX-2129): a framework package
+        // reads it, with the resolution, where it admits the resumed request.
+        resumeContext.userSuspension = suspension !== null && isUserSuspension(suspension);
         if (suspension !== null && suspension.stepIndex >= 0) {
           // The suspension's `blockInstanceId` is the durable sequencer's
           // checkpoint key. In replay mode the request id is unchanged, so the
@@ -2074,6 +2143,22 @@ async function runActionAttempt<
         error: setupError,
         logger
       });
+      // FIX-1983: the final-failure event, only when the failed write landed.
+      const errorCapture = options.runtimeConfig.errorCapture;
+      if (terminalRecordIncarnation !== undefined && errorCapture !== undefined) {
+        void safeCaptureError(
+          errorCapture,
+          toFinalErrorCaptureEvent(normalizeError(setupError, { scope: "request" }), {
+            requestId,
+            flowKind: options.flow.kind,
+            actionName: options.actionName as string,
+            userId: options.userId,
+            sessionId: options.sessionId,
+            orgId: options.orgId
+          }),
+          logger
+        );
+      }
     }
     throw setupError;
   }
@@ -2184,6 +2269,8 @@ async function runActionAttempt<
   // `recorded` is the record's snapshot, taken then too, so a hook that
   // mutates the returned object cannot change the recorded answer.
   let actionAnswer: { output: unknown; recorded: RecordedOutput } | undefined;
+  // A failure a request-end hook handed back, once the record was patched to it (FIX-2077).
+  let endError: ReturnType<typeof applyNormalizedErrorSeam> | undefined;
 
   try {
     // Re-throw deferred parse error now that we have ctx for error handling.
@@ -2216,6 +2303,11 @@ async function runActionAttempt<
         // field with the leaf id would break checkpoint restore.
         const suspendingBlockInstanceId =
           suspendError._blockInstanceId ?? ctx._blockIdentity?.blockInstanceId ?? "unknown";
+        // The deadline of the wait this request parks on, if it parks on one.
+        let parkedWaitDeadline: number | undefined;
+        // When the suspension stops waiting, if it has a deadline: written to
+        // its record and its item alike, so a reader sees one clock.
+        const expiresAt = suspendError.timeoutMs ? Date.now() + suspendError.timeoutMs : undefined;
         if (provider !== undefined) {
           const stepIndex = suspendError._stepIndex ?? -1;
           const record: SuspensionRecord = {
@@ -2231,6 +2323,8 @@ async function runActionAttempt<
             sessionId: options.sessionId,
             userId: options.userId,
             reason: suspendError.reason,
+            ...(suspendError.kind === undefined ? {} : { kind: suspendError.kind }),
+            ...(suspendError.title === undefined ? {} : { title: suspendError.title }),
             message: suspendError.message,
             data: suspendError.data,
             resumeSchema: suspendError.resumeSchema,
@@ -2248,15 +2342,35 @@ async function runActionAttempt<
             stepIndex,
             stepInput: suspendError._currentValue,
             createdAt: Date.now(),
-            expiresAt: suspendError.timeoutMs
-              ? Date.now() + suspendError.timeoutMs
-              : undefined
+            expiresAt
           };
-          await provider.suspend(record);
-          // An ask's deadline can bring this host's sweep forward (FIX-1816).
-          if (isAskGate(record) && record.expiresAt !== undefined) {
-            noteAskDeadline(provider, record.expiresAt);
+          // A wait's deadline is a wake on this session (FIX-2082 D1), owed
+          // before the gate is written: a crash between the two leaves a wake
+          // that resumes nothing, never a gate with no deadline.
+          // A wait gate names the row its request works, so the depth count
+          // finds what waits above it: a caller that can't name it (a
+          // dispatcher's wait) gets the row the engine reads off this
+          // request's own task dispatch (FIX-2082).
+          if (isWaitGate(record) && record.data != null && record.data.own === undefined) {
+            const own = ownRowOf(options.source, options.metadata, options.input);
+            if (own !== undefined) record.data = { ...record.data, own };
           }
+          const waitDeadline = isWaitGate(record) ? waitGateDataOf(record)?.deadline : undefined;
+          parkedWaitDeadline = waitDeadline;
+          if (waitDeadline !== undefined) {
+            const wakes = ctx.requestHost?.wakes;
+            if (wakes === undefined) {
+              logRuntimeEvent(logger, "warn", "[flow-state] a wait parked on a host that keeps no wakes: nothing resumes it at its deadline", {
+                requestId,
+                suspensionId: record.suspensionId
+              });
+            } else {
+              await wakes.owe({ entry: WAIT_DEADLINE_ENTRY, dueAt: waitDeadline });
+            }
+          }
+          await provider.suspend(record);
+          // A sweeper on this provider brings its tick forward to the deadline.
+          if (record.expiresAt !== undefined) noteSuspensionDeadline(provider, record.expiresAt);
         }
 
         const suspItem: SuspensionItem = {
@@ -2266,6 +2380,9 @@ async function runActionAttempt<
           suspensionId: suspendError.suspensionId,
           suspensionStatus: "pending",
           reason: suspendError.reason,
+          ...(suspendError.kind === undefined ? {} : { kind: suspendError.kind }),
+          ...(expiresAt === undefined ? {} : { expiresAt }),
+          ...(suspendError.title === undefined ? {} : { title: suspendError.title }),
           message: suspendError.message,
           data: suspendError.data,
           resumeSchema: suspendError.resumeSchema,
@@ -2288,11 +2405,39 @@ async function runActionAttempt<
         await response.emitItemAdded(suspItem);
         await response.emitItemDone(suspItem);
 
-        if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
         await options.stores.request.flushItems(requestId);
         await options.stores.request.flushEvents(requestId);
         await flushCheckpoints();
         await flushTraces();
+
+        // A suspended request's work is over for now; the hooks registered
+        // for its end are told why it stopped (FIX-2077). Before the record
+        // says `suspended`: until then no resume can start, so a hook's write
+        // (what the task waits on) never lands on a resume already running.
+        // The heartbeat runs on until they end: the record still reads
+        // `in_progress`, and a request with no heartbeat reads as a crashed run.
+        const endFailure = await requestEndRegistryOf(ctx)?.run(
+          {
+            status: "suspended",
+            suspension: {
+              reason: String(suspendError.reason),
+              suspensionId: suspendError.suspensionId,
+              ...(suspendError.kind === undefined ? {} : { kind: suspendError.kind }),
+              ...(suspendError.title === undefined ? {} : { title: suspendError.title }),
+              message: suspendError.message,
+              ...(expiresAt === undefined ? {} : { expiresAt })
+            }
+          },
+          { requestId, logger }
+        );
+        if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
+        if (endFailure !== undefined) {
+          logRuntimeEvent(logger, "warn", "[flow-state] a request-end hook failed", {
+            requestId,
+            status: "suspended",
+            error: endFailure.message
+          });
+        }
 
         await settleRequestRecord(options.stores, requestId, { status: "suspended" }, {
           items: itemsToPersist()
@@ -2335,11 +2480,40 @@ async function runActionAttempt<
           }
         }
 
+        // A wait's deadline that passed while the request parked found it
+        // still `in_progress`, and the sweep put it off as busy for a retry
+        // interval (FIX-2150). Owed again now that it is parked and its resume
+        // lease is released (a re-park holds it until just above), so the
+        // sweep delivers it at its next tick. A failure leaves it to that retry.
+        if (parkedWaitDeadline !== undefined && parkedWaitDeadline <= Date.now()) {
+          try {
+            await ctx.requestHost?.wakes?.owe({ entry: WAIT_DEADLINE_ENTRY, dueAt: Date.now() });
+          } catch (err) {
+            logRuntimeEvent(logger, "warn", "[flow-state] a wait's deadline that passed during its park wasn't owed again: the sweep retries it later", {
+              requestId,
+              error: err instanceof Error ? err.message : String(err)
+            });
+          }
+        }
+
+        const parkedStop = options.runtimeConfig.requestHost?.parkedStop;
+        // A request this turn waits on that ended while the turn was being
+        // written parked found no gate to resume (FIX-2082): resume it now.
+        if (parkedStop !== undefined && provider !== undefined && isWaitGate({ reason: suspendError.reason })) {
+          try {
+            const gate = await provider.loadSuspension(requestId, suspendError.suspensionId);
+            if (gate !== null) await resumeIfChildEnded(parkedStop, gate);
+          } catch (err) {
+            logRuntimeEvent(logger, "warn", "[flow-state] a wait on a request that already ended was not resumed as it parked", {
+              requestId, error: String(err)
+            });
+          }
+        }
+
         // A stop accepted while this turn was being written parked found it
         // still running, so it only recorded its intent, and nothing runs now
         // to read it (FIX-1816). Carry it onto the gate, as a stop of a parked
         // turn does. After the lease release, which the stop takes.
-        const parkedStop = options.runtimeConfig.requestHost?.parkedStop;
         if (parkedStop !== undefined) {
           try {
             const parked = await options.stores.request.get(requestId);
@@ -2529,18 +2703,24 @@ async function runActionAttempt<
     ctx.requestRuntime.status = terminalStatus;
     ctx.requestRuntime.completedAtMs = completedAt;
 
-    await response.emitRequestStatus(terminalStatus);
-
-    // Persist the final event list (includes terminal status event)
-    await options.stores.request.flushEvents(requestId);
+    // A request that owes request-end hooks (FIX-2077: a dispatched task's
+    // run) holds back its terminal status until they have run, and then emits
+    // the status they leave it with: a stream ends once, matching the record.
+    // Every other request emits it here, as before.
+    const holdsTerminalStatus = requestEndRegistryOf(ctx)?.owes() === true;
+    if (!holdsTerminalStatus) {
+      await response.emitRequestStatus(terminalStatus);
+      // Persist the final event list (includes terminal status event)
+      await options.stores.request.flushEvents(requestId);
+    }
 
     // Durable completion: clean up THIS request's own durability artifacts
     // (suspension records + lease) when it completes.
     //
     // "Durable" here means the request actually exercised durability:
-    // `action.durable` is the documented action-level opt-in (it's what makes
-    // ctx.suspend() / crash recovery available and is the reliable signal even
-    // for this in-process path). `sawDurableFrame` additionally covers the
+    // `action.durable` is the documented action-level flag, a reliable signal
+    // even for this in-process path (suspending and crash recovery need only
+    // the host's durability provider). `sawDurableFrame` additionally covers the
     // route/streaming path where a `sequencer({ durable: true })` emits durable
     // state_snapshot frames through the checkpoint hook. Gating on real durable
     // activity avoids touching the stores for purely transient requests, where
@@ -2588,7 +2768,8 @@ async function runActionAttempt<
             requestId,
             resolvedRetention,
             completedAt,
-            options.tenantId
+            options.tenantId,
+            options.runtimeConfig.durabilityProvider
           );
         } catch (err) {
           logRuntimeEvent(logger, "warn", "[flow-state] retention eviction failed", {
@@ -2616,7 +2797,55 @@ async function runActionAttempt<
     // under the id; wait for it, as for `onCompleted`'s above, and for any
     // item or event writes it and `onFinished` left pending.
     await drainRequestSideChainPool(ctx);
+    // The request's work is over: the hooks framework packages registered for
+    // its end run now, before the pending writes settle, so what they write
+    // is flushed with the rest (FIX-2077). A failure a hook hands back is the
+    // request's own: the record already reads `completed`, so it is patched to
+    // `failed` with that error, and the run returns it (FIX-963's guarantee
+    // that a run whose result the board could not record never reads as
+    // success).
+    // Held, the request stays owed until its terminal status is flushed below:
+    // a shutdown that closed the stores first would leave its log without one.
+    // A cancel accepted after the abort check above changes nothing else
+    // here, but it still keeps what its steps did after it from failing a task.
+    const endFailure = await requestEndRegistryOf(ctx)?.run(
+      {
+        status: terminalStatus,
+        // The error path's predicate. The abort poll is closed by now, so a
+        // cancel another instance recorded since is read from the record.
+        ...(await backgroundFailuresOf(
+          ctx,
+          async () =>
+            abortController.signal.aborted || deliveredAbort || (await abortRecordedForThisRun().catch(() => false))
+        ))
+      },
+      { requestId, logger, keepOwed: holdsTerminalStatus }
+    );
+    if (endFailure !== undefined) {
+      const normalized = applyNormalizedErrorSeam(
+        internalSeams,
+        normalizeError(endFailure, { scope: "request", blockName: action.block.name }),
+        metadata
+      );
+      terminalRecordIncarnation = await settleRequestRecord(
+        options.stores,
+        requestId,
+        { status: "failed", error: normalized, answered: actionAnswer.recorded },
+        { failedAtMs: Date.now(), items: itemsToPersist(), heartbeatsUntilFinalized: heartbeatIntervalMs > 0 }
+      );
+      ctx.requestRuntime.status = "failed";
+      endError = normalized;
+    }
+    if (holdsTerminalStatus) {
+      try {
+        await response.emitRequestStatus(endError !== undefined ? "failed" : terminalStatus);
+        await options.stores.request.flushEvents(requestId);
+      } finally {
+        requestEndRegistryOf(ctx)?.release();
+      }
+    }
     const writesSettled = await settlePendingWrites(options.stores, requestId, logger);
+    await resumeWaitingParent(options, requestId, logger);
 
     // The run has nothing left to write under this id.
     stopHeartbeatTimer();
@@ -2648,7 +2877,8 @@ async function runActionAttempt<
       // `response.getItems()` on a normal run.
       items: itemsToPersist(),
       durationMs: Date.now() - startedAt,
-      requestId
+      requestId,
+      ...(endError !== undefined ? { error: endError } : {})
     };
   } catch (error) {
     // The heartbeat is deliberately NOT cleared here. It has to outlive the
@@ -2872,6 +3102,11 @@ async function runActionAttempt<
       ctx.requestRuntime.status = "failed";
       ctx.requestRuntime.failedAtMs = failedAt;
 
+      // FIX-1983: the request's one final-failure event, as soon as the failed
+      // record is written, so a status event that throws can't lose it. Only a
+      // request this run settled sends it.
+      if (terminalRecordIncarnation !== undefined) ctx._captureFinalError?.(error);
+
       await response.emitRequestStatus("failed");
 
       await runObserverSafely(action.onErrored, {
@@ -2906,7 +3141,25 @@ async function runActionAttempt<
     // run writing under the id, as are the item and event writes they left
     // pending.
     await drainRequestSideChainPool(ctx);
+    // As on the success path (FIX-2077). The request has already ended, so a
+    // failure a hook hands back changes nothing; it is logged, as a hook's throw is.
+    // The cancel is this flag, not the error's name. A disconnect is `interrupted` and still hands its failures on.
+    const handedOn = await backgroundFailuresOf(ctx, async () => wasIntentionalAbort || abortController.signal.aborted);
+    const ending: RequestEnding = wasIntentionalAbort
+      ? { status: "aborted" }
+      : signalAborted
+        ? { status: "interrupted", ...handedOn }
+        : { status: "failed", error: { message: normalizedError?.message ?? String(error) }, ...handedOn };
+    const endFailure = await requestEndRegistryOf(ctx)?.run(ending, { requestId, logger });
+    if (endFailure !== undefined) {
+      logRuntimeEvent(logger, "warn", "[flow-state] a request-end hook failed", {
+        requestId,
+        status: ending.status,
+        error: endFailure.message
+      });
+    }
     const writesSettled = await settlePendingWrites(options.stores, requestId, logger);
+    await resumeWaitingParent(options, requestId, logger);
 
     // As on the success path: only the last live attempt stamps.
     const lastAttempt = attempt.end();

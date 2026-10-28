@@ -46,7 +46,7 @@ function twoAxisFlow(kind = "secure") {
         };
       }
     }
-  });
+  })();
 }
 
 function openFlow(kind = "open") {
@@ -63,7 +63,7 @@ function openFlow(kind = "open") {
         })
       }
     }
-  });
+  })();
 }
 
 function buildRouter(flows: ReturnType<typeof twoAxisFlow>[]) {
@@ -255,7 +255,10 @@ describe("C4 · the organization boundary on the management surface", () => {
       expect(await response.text()).not.toContain("journal");
     });
 
-    it("refuses a request-addressed route across the organization boundary", async () => {
+    it("answers another organization's request as an unused id, so its existence does not leak", async () => {
+      // A request id travels in headers, bodies and URLs. A 403 here and a 404
+      // for an id nobody used would let another organization probe which ids
+      // are real, so both must read the same, as they do for another user.
       const { router, stores } = buildRouter([twoAxisFlow()]);
       await seedRequest(stores, {
         id: "r1",
@@ -265,12 +268,24 @@ describe("C4 · the organization boundary on the management surface", () => {
         sessionId: "s1"
       });
 
-      const response = await call(router, "GET", ["secure", "requests", "r1", "status"], {
+      const other = await call(router, "GET", ["secure", "requests", "r1", "status"], {
         user: "dana",
         org: "globex"
       });
+      const unused = await call(router, "GET", ["secure", "requests", "unused", "status"], {
+        user: "dana",
+        org: "globex"
+      });
+      expect(other.status).toBe(404);
+      expect(await other.json()).toEqual({ error: 'Request "r1" not found' });
+      expect(unused.status).toBe(404);
+      expect(await unused.json()).toEqual({ error: 'Request "unused" not found' });
 
-      expect(response.status).toBe(403);
+      const owner = await call(router, "GET", ["secure", "requests", "r1", "status"], {
+        user: "dana",
+        org: "acme"
+      });
+      expect(owner.status).not.toBe(404);
     });
   });
 

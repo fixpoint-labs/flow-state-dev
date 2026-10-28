@@ -1,13 +1,22 @@
 /**
  * Dispatch + listing handlers for the scheduled transport. Order of
  * operations in `handleDispatch` is load-bearing: id check → flow →
- * body → idempotency → gateway auth → static-then-dynamic resolve →
- * dispatch-time validation → overlap → effective principal → input →
- * dispatch, acked once the host has accepted it.
+ * body → gateway auth → static-then-dynamic resolve → dispatch-time
+ * validation → overlap → effective principal → the scheduled time and
+ * its claim → input → dispatch, acked once the host has accepted it.
+ *
+ * The claim is the one guarantee that a scheduled time fires at most once
+ * (FIX-2085 D2): one stored record per schedule, its last fired time,
+ * compare-and-set in the host's store, made after the schedule resolves
+ * and before its handler runs. Every cron path POSTs here, so no index or
+ * worker keeps a check of its own; an index's claim only finds due rows.
+ * A fire that is not admitted gives its time back, unless a later time was
+ * claimed in between. A body `idempotencyKey` is refused with 400.
  */
 import {
   ConcurrencyRejectedError,
   PrincipalResolutionError,
+  resolveUserStorageKey,
   type InboundRequestEnvelope,
   type InboundTransportHost,
   type ResolvedPrincipal
@@ -20,7 +29,7 @@ import {
 } from "@flow-state-dev/core/types";
 import { SCHEDULED_TRANSPORT_SOURCE } from "./createScheduledTransportAdapter";
 import { findScheduledRequest } from "./findScheduledRequest";
-import type { IdempotencyCache } from "./idempotency";
+import { claimScheduledTime, firedRecordAddress, scheduledTimeOf } from "./scheduledTime";
 
 // Wider than the static-id pattern in core. A dynamic id is
 // `<orgId>/<userId>/<key>` with each part URL-encoded (`formatScheduleId`),
@@ -34,14 +43,14 @@ const DYNAMIC_SCHEDULE_ID_RE = /^[A-Za-z0-9\-_.!~*'()%:/]+$/;
 
 interface DispatchBody {
   nominalFireTime?: string;
-  idempotencyKey?: string;
+  /** Set when the caller sent the removed key: refused, never read. */
+  idempotencyKey?: unknown;
 }
 
 export async function handleDispatch(
   req: Request,
   ctx: { params: Record<string, string> },
-  host: InboundTransportHost,
-  idempotency: IdempotencyCache
+  host: InboundTransportHost
 ): Promise<Response> {
   const flowKind = ctx.params.flowKind ?? "";
   const scheduleId = ctx.params.scheduleId ?? "";
@@ -58,8 +67,8 @@ export async function handleDispatch(
   const rawBody = new Uint8Array(await req.arrayBuffer());
   const body = parseDispatchBody(rawBody);
 
-  // Auth before idempotency so an unauthenticated caller can't probe
-  // dispatch history via the duplicate-vs-401 response oracle.
+  // Auth before anything reads the fire record, so an unauthenticated caller
+  // can't probe dispatch history via the duplicate-vs-401 response oracle.
   let gatewayPrincipal: ResolvedPrincipal;
   try {
     gatewayPrincipal = await host.resolvePrincipal({
@@ -88,10 +97,23 @@ export async function handleDispatch(
     throw err;
   }
 
-  const dedupeKey = body.idempotencyKey ?? `${scheduleId}:${body.nominalFireTime ?? ""}`;
-  if (idempotency.seen(flowKind, dedupeKey)) {
-    return jsonResponse(200, { status: "duplicate", scheduleId });
+  // Refused, not ignored (BP-030): a host that relied on its own key learns
+  // at upgrade that the scheduled time is the key now.
+  if (body.idempotencyKey !== undefined) {
+    return jsonResponse(400, {
+      error: "idempotency_key_removed",
+      message:
+        "The dispatch body no longer takes `idempotencyKey`: each scheduled time fires at most once, " +
+        "recorded in the host's store. Send `nominalFireTime`, or nothing for the latest scheduled time already due."
+    });
   }
+
+  // The cell a collection that isolates nothing keeps a user's rows in,
+  // derived the way every other user-scoped read derives it. One derivation
+  // for the resolver's read and the fired record, so the record sits beside
+  // the row it guards.
+  const userStorageKey = (userId: string, orgId: string) =>
+    resolveUserStorageKey(userId, orgId, { id: flowKind, isolateUserState: false });
 
   const schedules = (flow as { schedules?: SchedulesConfig }).schedules;
   let schedule: ScheduleConfig | null = schedules?.static?.[scheduleId] ?? null;
@@ -104,6 +126,7 @@ export async function handleDispatch(
         gatewayPrincipal,
         request: req,
         stores: host.stores as ScheduleResolutionStores,
+        userStorageKey,
         // The registered instance's pin, so a hired worker resolves only
         // schedules in its own org, and a private one only its user's. From
         // the registry, never the request.
@@ -139,7 +162,7 @@ export async function handleDispatch(
 
   // Best-effort overlap skip — TOCTOU race is documented; two near-
   // simultaneous ticks may both pass before either calls dispatch. The
-  // idempotency cache catches the duplicate when nominalFireTime matches.
+  // scheduled-time claim below catches two fires of one time.
   if (schedule.onOverlap !== "allow") {
     const inFlight = await findScheduledRequest(
       host.stores.activeRequests,
@@ -179,7 +202,39 @@ export async function handleDispatch(
           orgId: schedule.principal.orgId ?? gatewayPrincipal.orgId
         };
 
-  const nominalFireTime = body.nominalFireTime ?? new Date().toISOString();
+  // The scheduled time this fire counts against, claimed once in the store.
+  const timezone = schedule.timezone ?? "UTC";
+  const time = scheduledTimeOf(schedule.cron, timezone, body.nominalFireTime, Date.now());
+  if (!time.ok) {
+    return jsonResponse(400, { error: time.error, message: time.message });
+  }
+  const nominalFireTime = new Date(time.at).toISOString();
+  // More than one period behind the latest due time: a fixed time in the
+  // scheduler's body, or a host that stalled. Nothing runs, and the host's
+  // log says why, so a schedule that stopped firing can be found.
+  if (time.stale) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[flow-state/scheduled] ${flowKind} schedule ${scheduleId}: nominalFireTime ${body.nominalFireTime} is more than one ` +
+        `period behind its latest due time, so nothing runs. A scheduler that sends a fixed time should send no body.`
+    );
+    return jsonResponse(200, { status: "duplicate", reason: "stale", scheduleId, nominalFireTime });
+  }
+  const claim = await claimScheduledTime(
+    host.stores.resourceState,
+    firedRecordAddress(flowKind, scheduleId, effectivePrincipal, userStorageKey),
+    { at: time.at }
+  );
+  if (claim.outcome === "duplicate") {
+    return jsonResponse(200, { status: "duplicate", scheduleId, nominalFireTime });
+  }
+  // Not admitted: nothing ran, so the time is given back and a retry of it
+  // still runs.
+  const notAdmitted = async (status: number, payload: unknown): Promise<Response> => {
+    await claim.release();
+    return jsonResponse(status, payload);
+  };
+
   let input: unknown;
   try {
     input =
@@ -194,7 +249,7 @@ export async function handleDispatch(
           })
         : (schedule.input ?? {});
   } catch (err) {
-    return jsonResponse(500, {
+    return notAdmitted(500, {
       error: "dispatch_failed",
       message: err instanceof Error ? err.message : String(err)
     });
@@ -216,7 +271,7 @@ export async function handleDispatch(
         cron: schedule.cron,
         nominalFireTime,
         dispatchedAt: new Date().toISOString(),
-        timezone: schedule.timezone ?? "UTC"
+        timezone
       }
     },
     // A dynamic schedule's core is produced by the resolver at dispatch time
@@ -237,38 +292,35 @@ export async function handleDispatch(
     // have no session): a competing run holds the key. Ack 200 skipped, the same
     // shape as the schedule's own overlap skip, so the caller does not retry.
     if (err instanceof ConcurrencyRejectedError) {
-      return jsonResponse(200, {
+      return notAdmitted(200, {
         status: "skipped",
         reason: "in_flight",
         requestId: err.inFlightRequestId
       });
     }
-    return jsonResponse(503, {
+    return notAdmitted(503, {
       error: "flow_unregistered",
       message: err instanceof Error ? err.message : String(err)
     });
   }
 
-  // A host whose arbiter spans processes refuses a `reject` here, through
-  // `accepted`, rather than from `dispatch`. Either way the fire was not
-  // admitted, so it is not recorded: a retry of it must still run.
+  // A `reject` refusal arrives here, through `accepted`. The fire was not
+  // admitted, so its time is given back: a retry of it must still run.
   try {
     await handle.accepted;
   } catch (err) {
     if (err instanceof ConcurrencyRejectedError) {
-      return jsonResponse(200, {
+      return notAdmitted(200, {
         status: "skipped",
         reason: "in_flight",
         requestId: err.inFlightRequestId
       });
     }
-    return jsonResponse(503, {
+    return notAdmitted(503, {
       error: "dispatch_failed",
       message: err instanceof Error ? err.message : String(err)
     });
   }
-
-  idempotency.record(flowKind, dedupeKey);
 
   return jsonResponse(202, {
     status: "accepted",
@@ -361,7 +413,7 @@ function parseDispatchBody(raw: Uint8Array): DispatchBody {
     if (typeof parsed.nominalFireTime === "string") {
       body.nominalFireTime = parsed.nominalFireTime;
     }
-    if (typeof parsed.idempotencyKey === "string") {
+    if (parsed.idempotencyKey !== undefined) {
       body.idempotencyKey = parsed.idempotencyKey;
     }
     return body;

@@ -18,8 +18,9 @@
  * `openWorkstream` names it as the lead over HTTP, as any app may.
  */
 import { randomBytes } from "node:crypto";
-import { DatabaseSync } from "node:sqlite";
+import { createClient } from "@flow-state-dev/client";
 import { createWorkforceClient, projectProgress } from "@flow-state-dev/workforce/browser";
+import { routedDeliveries, type RoutedDelivery } from "../../lib/routed-tasks.mts";
 import { labRoutes, type LabRoutes, type StoredItem } from "../../lib/shift-manager.mts";
 import { ENTRY_WRITER_KIND } from "./controls/patches.mts";
 import { ENTRY_WRITER_ACTION } from "./flows/entry-writer.mts";
@@ -40,7 +41,7 @@ export interface Inputs {
   statusWords: string[];
   tamperWords: string[];
   workWords: string[];
-  asks: { status: string; work: string; tool: string };
+  asks: { status: string; work: string; workAgain: string; tool: string };
 }
 type WorkstreamInput = { id: string; title: string; objectives: string[]; due: string };
 
@@ -91,7 +92,7 @@ function connect(origin: string, person: Person): Connected {
   return {
     person,
     routes: labRoutes(origin, { userId: person.userId, bearer: person.bearer }),
-    workforce: createWorkforceClient({ userId: person.userId, baseUrl: origin, fetcher }),
+    workforce: createWorkforceClient(createClient({ userId: person.userId, baseUrl: origin, fetcher })),
   };
 }
 
@@ -109,7 +110,7 @@ async function act(who: Connected, kind: string, sessionId: string, action: stri
   if (posted.status !== 202) return { status: `http ${posted.status}`, requestId: null, output: undefined, error: show(posted.body) };
   const requestId = String(posted.body?.request?.id);
   const status = await who.routes.settle(kind, requestId, timeoutMs);
-  const found = (await who.routes.requests(sessionId).catch(() => [])).find((r) => r.id === requestId);
+  const found = (await who.routes.requests(sessionId).catch((): Array<Record<string, any>> => [])).find((r) => r.id === requestId);
   return { status, requestId, output: found?.result?.output, error: found?.result?.error?.message };
 }
 
@@ -121,7 +122,7 @@ const leadIdFor = (project: string, workstream: string) => `lead-${project}-${wo
 /** What a hired lead is told: lead one workstream, and keep its entry current with `updateWorkstream`. */
 const LEAD_INSTRUCTIONS =
   "You lead one workstream of a project, for the person who owns it. When asked for work, file it as a task " +
-  "for eng.coder with dispatchTask, so it starts now. When its status changes, or there is something to report, call updateWorkstream " +
+  "for eng.coder with createTask. When its status changes, or there is something to report, call updateWorkstream " +
   "with a short status in your own words and your latest report. Mark it done only when the owner says it is finished.";
 
 /** The person's own session on a flow, at the id Shift Manager reads under (`readerSessionId`). */
@@ -202,7 +203,7 @@ const providerError = (text: string) => /rate.?limit|429|5\d\d |overloaded|timed
 /** Say `words` in `sessionId` (on `kind`); a provider error re-runs it once. */
 async function talk(who: Connected, kind: string, sessionId: string, words: string): Promise<Turn> {
   const once = async (): Promise<Turn> => {
-    const acted = await act(who, kind, sessionId, "run", { message: words }, 240_000);
+    const acted = await act(who, kind, sessionId, "respond", { message: words }, 240_000);
     const turn: Turn = { status: acted.status, requestId: acted.requestId, tools: [], reply: "" };
     if (acted.requestId === null) {
       turn.reply = `refused: ${acted.error ?? ""}`;
@@ -227,24 +228,14 @@ async function talk(who: Connected, kind: string, sessionId: string, words: stri
 
 const calls = (name: string, tool: string) => name === tool || [`/${tool}`, `.${tool}`, `_${tool}`].some((s) => name.endsWith(s));
 
-type Delivery = { postId: string; round: number; delegate: { worker: string; target?: string }; status: string; sessionId?: string; reason?: string };
+type Delivery = RoutedDelivery;
 
 /**
- * A coordinator session's delivery ledger, from the store file, from the row
- * `who` owns. No route exposes it: the coordinator keeps it server-written.
+ * A coordinator session's routed tasks, from the store file, from the rows `who`
+ * owns. No route exposes them with their server-written payload.
  */
 function ledgerOf(store: string, who: Connected, sessionId: string): Delivery[] {
-  const db = new DatabaseSync(store, { readOnly: true });
-  try {
-    db.exec("PRAGMA busy_timeout = 5000");
-    const row = db
-      .prepare("SELECT data FROM sessions WHERE (id = ? OR id = tenant_id || ':' || ?) AND user_id = ?")
-      .get(sessionId, sessionId, who.person.userId) as { data: string } | undefined;
-    const state = row === undefined ? undefined : (JSON.parse(row.data) as { state?: Record<string, any> }).state;
-    return (state?.deliveries ?? []) as Delivery[];
-  } finally {
-    db.close();
-  }
+  return routedDeliveries(store, who.person.userId, sessionId);
 }
 
 /** What each leg found: failures by assertion name, and notes. */
@@ -514,9 +505,16 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
   if (bobsInRead?.status !== d.statusWord) c.failures.push(`c:read-holds-status — Alice's coordinator's readProject output (${reads.length} call(s)) holds Bob's workstream as ${show(bobsInRead)}, not with status "${d.statusWord}"`);
   if (!t1.reply.toLowerCase().includes(d.statusWord.toLowerCase())) c.failures.push(`c:names-status — Alice's coordinator's answer doesn't name Bob's status "${d.statusWord}": ${t1.reply.slice(0, 300)}`);
 
-  const workAsk = fill(d.asks.work, { word: d.workWord });
-  const t2 = await talk(alice, coordinator.flowKind, coordinator.id, workAsk);
-  c.notes.push(`work turn ${t2.status}: tools ${t2.tools.map((t) => `${t.name}(${t.args})`).join(", ") || "none"}; reply: ${t2.reply.slice(0, 300).replace(/\n/g, " ")}${t2.providerRetry === undefined ? "" : ` (after a provider error: ${t2.providerRetry})`}`);
+  const workTurns: Turn[] = [await talk(alice, coordinator.flowKind, coordinator.id, fill(d.asks.work, { word: d.workWord }))];
+  const first = workTurns[0]!;
+  if (first.status === "completed" && !first.tools.some((t) => calls(t.name, "createTask"))) {
+    workTurns.push(await talk(alice, coordinator.flowKind, coordinator.id, fill(d.asks.workAgain, { word: d.workWord })));
+  }
+  for (const turn of workTurns) {
+    c.notes.push(`work turn ${turn.status}: tools ${turn.tools.map((t) => `${t.name}(${t.args})`).join(", ") || "none"}; reply: ${turn.reply.slice(0, 300).replace(/\n/g, " ")}${turn.providerRetry === undefined ? "" : ` (after a provider error: ${turn.providerRetry})`}`);
+  }
+  if (!workTurns.at(-1)!.tools.some((t) => calls(t.name, "createTask"))) c.notes.push("the coordinator called createTask on no work ask");
+  const postIds = new Set(workTurns.map((t) => t.requestId).filter((id): id is string => id !== null));
   const aliceTarget = `shared/${S.id}/${d.aliceWs.id}`;
   const bobTarget = `shared/${S.id}/${d.bobWs.id}`;
   const holdsWord = (items: StoredItem[]) => items.filter((i) => i.role === "user" && textOf(i).includes(d.workWord));
@@ -524,7 +522,7 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
   let mineItems: StoredItem[] = [];
   const sent = Date.now();
   for (let settledAt: number | undefined; Date.now() - sent < 150_000; await sleep(1_500)) {
-    ledger = t2.requestId === null ? [] : ledgerOf(o.store, alice, coordinator.id).filter((x) => x.postId === t2.requestId);
+    ledger = ledgerOf(o.store, alice, coordinator.id).filter((x) => postIds.has(x.postId));
     mineItems = holdsWord(await alice.routes.items(aliceWs.view.sessionId, "message"));
     if (ledger.length > 0 && ledger.every((x) => x.status !== "pending") && mineItems.length > 0) {
       settledAt ??= Date.now();
@@ -536,7 +534,7 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
   const routing = (await alice.routes.items(coordinator.id, "component"))
     .filter((i) => (i as { component?: string }).component === "coordinator-route")
     .map((i) => i.data as Record<string, any>)
-    .filter((x) => x?.postId === t2.requestId);
+    .filter((x) => postIds.has(x?.postId));
   const bobsItems = holdsWord(await bob.routes.items(bobWs.view.sessionId, "message"));
   c.notes.push(`the post's ledger: ${show(ledger)}; routing: ${show(routing.map((x) => ({ by: x.by, delegates: x.delegates })))}`);
 

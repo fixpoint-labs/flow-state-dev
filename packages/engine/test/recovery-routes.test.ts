@@ -96,9 +96,9 @@ describe("check-interrupted: a caller's staleThresholdMs cannot tighten the host
         actions: {
           run: {
             inputSchema: z.object({}),
-            block: handler<Record<string, never>, { ok: true }>({
+            block: handler({
               name: "open-run",
-              execute: () => ({ ok: true } as const)
+              execute: (_input: Record<string, never>): { ok: true } => ({ ok: true } as const)
             })
           }
         }
@@ -242,5 +242,185 @@ describe("check-interrupted: a caller's staleThresholdMs cannot tighten the host
 
     expect(res.status).toBe(400);
     expect((await stores.request.get("r-dead"))?.status).toBe("in_progress");
+  });
+});
+
+/**
+ * `check-interrupted` answers only what that one call swept, so a request the
+ * startup sweep or the periodic sweeper marked first never appears in it. A
+ * caller recovering after a crash needs the records themselves: the read lists
+ * the user's interrupted requests every time it is asked, whoever marked them.
+ *
+ * The flow is registered under an instance id that differs from its kind, the
+ * way a collection flow's instance is, so `flowId` is told apart from
+ * `flowKind`.
+ */
+describe("GET /users/:userId/interrupted-requests", () => {
+  const USER_ID = "alice";
+
+  it("parses list_interrupted_requests", () => {
+    expect(parseFlowRoute("GET", ["users", "alice", "interrupted-requests"])).toEqual({
+      kind: "list_interrupted_requests",
+      userId: "alice"
+    });
+  });
+
+  function buildApp() {
+    const registry = createFlowRegistry();
+    registry.register(
+      defineFlow({
+        kind: "chat",
+        cardinality: "collection",
+        actions: {
+          run: {
+            inputSchema: z.object({}),
+            block: handler({
+              name: "chat-run",
+              execute: (_input: Record<string, never>): { ok: true } => ({ ok: true } as const)
+            })
+          }
+        }
+      })({ id: "chat-a" })
+    );
+    const stores = createInMemoryStores();
+    const router = createFlowApiRouter({
+      registry,
+      stores,
+      detectInterruptedOnStartup: false,
+      staleSweepIntervalMs: 0,
+      staleSweepThresholdMs: 1_000
+    });
+    return { router, stores };
+  }
+
+  async function seedRecord(
+    stores: StoreRegistry,
+    id: string,
+    overrides: { status?: "interrupted" | "in_progress" | "completed"; userId?: string; flowId?: string | null } = {}
+  ): Promise<void> {
+    const at = Date.now() - 60_000;
+    const flowId = overrides.flowId === undefined ? "chat-a" : overrides.flowId;
+    await stores.request.set(
+      id,
+      {
+        id,
+        orgId: DEFAULT_ORG_ID,
+        flowKind: "chat",
+        ...(flowId === null ? {} : { flowId }),
+        actionName: "run",
+        sessionId: `s-${id}`,
+        userId: overrides.userId ?? USER_ID,
+        source: "http",
+        status: overrides.status ?? "interrupted",
+        startedAtMs: at,
+        state: {},
+        version: 0,
+        createdAt: at,
+        updatedAt: at
+      },
+      "any"
+    );
+  }
+
+  type Entry = {
+    requestId: string;
+    sessionId?: string;
+    flowKind: string;
+    flowId: string;
+    actionName: string;
+    interruptedAt: number;
+  };
+
+  async function read(router: ReturnType<typeof buildApp>["router"]): Promise<Entry[]> {
+    const res = await router.GET(
+      new Request(`http://localhost/api/flows/users/${USER_ID}/interrupted-requests`),
+      { params: { path: ["users", USER_ID, "interrupted-requests"] } }
+    );
+    expect(res.status).toBe(200);
+    return ((await res.json()) as { interrupted: Entry[] }).interrupted;
+  }
+
+  it("lists a request a sweep already marked, on every read", async () => {
+    const { router, stores } = buildApp();
+    await seedRecord(stores, "r-run", { status: "in_progress" });
+    const stale = Date.now() - 60_000;
+    await stores.activeRequests.register({
+      requestId: "r-run",
+      orgId: DEFAULT_ORG_ID,
+      flowKind: "chat",
+      flowId: "chat-a",
+      actionName: "run",
+      sessionId: "s-r-run",
+      userId: USER_ID,
+      source: "http",
+      startedAt: stale,
+      lastHeartbeatAt: stale
+    });
+
+    // The sweep marks it, and answers it once.
+    const poke = () =>
+      router.POST(
+        new Request(`http://localhost/api/flows/users/${USER_ID}/check-interrupted`, { method: "POST" }),
+        { params: { path: ["users", USER_ID, "check-interrupted"] } }
+      );
+    expect(((await (await poke()).json()) as { interrupted: unknown[] }).interrupted).toHaveLength(1);
+    expect(((await (await poke()).json()) as { interrupted: unknown[] }).interrupted).toHaveLength(0);
+
+    // The read still lists it, the second time too.
+    for (let i = 0; i < 2; i += 1) {
+      const entries = await read(router);
+      expect(entries).toEqual([
+        {
+          requestId: "r-run",
+          sessionId: "s-r-run",
+          flowKind: "chat",
+          flowId: "chat-a",
+          actionName: "run",
+          interruptedAt: expect.any(Number)
+        }
+      ]);
+    }
+  });
+
+  it("lists only this user's interrupted requests", async () => {
+    const { router, stores } = buildApp();
+    await seedRecord(stores, "r-mine");
+    await seedRecord(stores, "r-running", { status: "in_progress" });
+    await seedRecord(stores, "r-done", { status: "completed" });
+    await seedRecord(stores, "r-theirs", { userId: "bob" });
+
+    expect((await read(router)).map((e) => e.requestId)).toEqual(["r-mine"]);
+  });
+
+  it("falls back to the flow kind for a record written before the instance id", async () => {
+    const { router, stores } = buildApp();
+    await seedRecord(stores, "r-legacy", { flowId: null });
+
+    const [entry] = await read(router);
+    expect(entry).toMatchObject({ requestId: "r-legacy", flowKind: "chat", flowId: "chat" });
+  });
+
+  it("check-interrupted's own list names the instance id too", async () => {
+    const { router, stores } = buildApp();
+    await seedRecord(stores, "r-run", { status: "in_progress" });
+    const stale = Date.now() - 60_000;
+    await stores.activeRequests.register({
+      requestId: "r-run",
+      orgId: DEFAULT_ORG_ID,
+      flowKind: "chat",
+      flowId: "chat-a",
+      actionName: "run",
+      sessionId: "s-r-run",
+      userId: USER_ID,
+      source: "http",
+      startedAt: stale,
+      lastHeartbeatAt: stale
+    });
+    const res = await router.POST(
+      new Request(`http://localhost/api/flows/users/${USER_ID}/check-interrupted`, { method: "POST" }),
+      { params: { path: ["users", USER_ID, "check-interrupted"] } }
+    );
+    const body = (await res.json()) as { interrupted: Array<{ flowId: string }> };
+    expect(body.interrupted).toEqual([expect.objectContaining({ requestId: "r-run", flowId: "chat-a" })]);
   });
 });

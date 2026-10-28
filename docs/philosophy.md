@@ -107,6 +107,10 @@ new case — rather than pile on another concept. A rare, high-cost edge case is
 worth a framework change; a genuine gap in the primitives is an opportunity to
 improve how the framework operates. **Refine, don't accrete.**
 
+**One job, one noun.** When a decision accepts a second way to do a job that users see as
+one thing, it names the one type both ways write, and the next variant likely to come. A
+split that names neither is a sorting rule, not a model, and it is not ready for a gate.
+
 *Derives:* BP-029 (compose over reimplement), the pattern and capability libraries,
 the necessity gate's refinement lens ("does this friction reveal a way to sharpen a
 primitive?").
@@ -156,6 +160,8 @@ gate's single-vendor-leakage signals.
 When a failure forces a workaround at the call site, the bug usually lives one layer
 down. Push the fix to the layer that owns the behavior so it's cured for every
 caller, not repeated at each. A workaround every caller must copy is a smell.
+A prompt is a call site too: when the instruction is right and a model still does
+the wrong thing, fix what it was handed rather than adding instructions.
 
 **Depth is only half of it.** The owning layer is where the paths *converge*: an
 invariant with five writers is not enforced until the guard sits where all five pass

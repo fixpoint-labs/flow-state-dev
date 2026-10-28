@@ -388,7 +388,7 @@ defineFlow({
       derived: {
         preferences: (ctx) => ({
           displayName: ctx.state.displayName ?? "User",
-          preferredModel: ctx.state.preferredModel ?? "openai/gpt-5.4-mini",
+          preferredModel: ctx.state.preferredModel ?? "openai/gpt-6-luna",
         }),
       },
     },
@@ -420,7 +420,7 @@ const myContext = contextFn(
 
 const chatGenerator = generator({
   name: "chat",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "You are a helpful assistant.",
   context: [myContext],
   history: true,

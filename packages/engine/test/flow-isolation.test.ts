@@ -84,9 +84,9 @@ function makeFlowFactory(options: {
   resources?: Record<string, ResourceSpec>;
   rawResources?: Record<string, unknown>;
 }) {
-  const block = handler<{ value: string }, { ok: boolean }>({
+  const block = handler({
     name: "iso-handler",
-    execute: () => ({ ok: true }),
+    execute: (_input: { value: string }): { ok: boolean } => ({ ok: true }),
   });
 
   // FIX-435: per-scope `resources` field is gone — keep `user.stateSchema`
@@ -130,7 +130,8 @@ function makeFlow(
   const { unvalidatedResources, ...rest } = options;
   const flow = makeFlowFactory(rest)();
   if (unvalidatedResources === undefined) return flow;
-  return { ...flow, resources: { ...flow.resources, ...unvalidatedResources } } as typeof flow;
+  // Assembled outside defineFlow on purpose (see above), so the cast is the point.
+  return { ...flow, resources: { ...(flow.resources ?? {}), ...unvalidatedResources } } as unknown as typeof flow;
 }
 
 function captureConflict(fn: () => void): CrossFlowSchemaConflictError {

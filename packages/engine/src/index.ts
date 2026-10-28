@@ -37,6 +37,8 @@ export {
   createInMemoryUserStore,
   createInMemorySuspensionStore,
   createInMemoryLeaseStore,
+  createInMemoryWakeStore,
+  createFilesystemWakeStore,
   createScopeStateOps,
   createStateContainer,
   filesystemStores,
@@ -77,6 +79,10 @@ export type {
   StorageScopeType,
   ContentStore,
   LeaseStore,
+  WakeInput,
+  WakeKey,
+  WakeRecord,
+  WakeStore,
   ResourceStateStore,
   VersionedResourceState,
   ExpectedVersion,
@@ -210,6 +216,7 @@ export {
 } from "./voice";
 
 export { createCheckpointDurabilityProvider } from "./durability/checkpoint-durability-provider";
+export { resolveDurabilityProvider } from "./durability/default-durability";
 export type { DurabilityProvider, Lease, LeaseOptions } from "./durability/types";
 export {
   createDurabilitySweeper

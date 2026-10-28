@@ -13,8 +13,9 @@
 // the item taxonomy, so their declarations live in the zero-dependency
 // `@flow-state-dev/contracts` layer. Re-exported here to preserve this path's
 // surface; the record/filter machinery below still references them locally.
-import type { ResumeAction, SuspensionReason, SuspensionStatus } from "@flow-state-dev/contracts";
-export type { ResumeAction, SuspensionReason, SuspensionStatus };
+import type { ResumeAction, SuspensionReason, SuspensionStatus, WaitForUserKind } from "@flow-state-dev/contracts";
+export type { ResumeAction, SuspensionReason, SuspensionStatus, WaitForUserKind };
+export { isUserSuspension, waitForUserKindOf } from "@flow-state-dev/contracts";
 
 /**
  * Returned by `ctx.suspend()` when a human skips an optional suspension (resumed
@@ -47,6 +48,19 @@ export interface SuspensionRecord {
   userId: string;
 
   reason: SuspensionReason;
+  /**
+   * What a user's suspension asks for, when `ctx.waitForUser` set it
+   * (FIX-2129). Absent on a raw `ctx.suspend` and on every other
+   * suspension: read it with `waitForUserKindOf`, which falls back to the
+   * reason.
+   */
+  kind?: WaitForUserKind;
+  /**
+   * The suspension's short heading; `message` is then its body. Absent when the
+   * suspension gave none, including every record persisted before it existed:
+   * a reader falls back to `message` (BP-030).
+   */
+  title?: string;
   message: string;
   data?: Record<string, unknown>;
   /**
@@ -92,7 +106,8 @@ export const TERMINAL_SUSPENSION_STATUSES: readonly SuspensionStatus[] = [
   "skipped",
   "timed_out",
   "expired",
-  "stopped"
+  "stopped",
+  "cancelled"
 ];
 
 /** True when `status` is a resolved/aged-out (non-pending) suspension status. */
@@ -163,9 +178,16 @@ export interface ResumeContext {
    * durability sweep's re-drive, or a stop of a turn behind one). Only that
    * continuation can name an expiry, never the gate's status, which an expiry
    * write can race. With `expired`, `ctx.suspend()` throws a
-   * `SuspensionRejectedError` marked `expired`.
+   * `SuspensionRejectedError` marked `expired`. `cancelled` (FIX-2129) is
+   * read from the gate's recorded status: `ctx.suspend()` throws a
+   * `SuspensionRejectedError` marked `cancelled`.
    */
   resolution?: SuspensionStatus;
+  /**
+   * Set by the server at re-entry, overwriting any supplied value: whether the
+   * suspension being resolved waits for a user (`isUserSuspension`).
+   */
+  userSuspension?: boolean;
 }
 
 export interface SuspensionFilter {

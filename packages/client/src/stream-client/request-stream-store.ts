@@ -17,6 +17,7 @@ import {
   ITEM_UPDATE_INVARIANT_KEYS
 } from "@flow-state-dev/contracts/items";
 import { looseDeepEqual } from "@flow-state-dev/contracts/helpers";
+import type { RuntimeItem } from "@flow-state-dev/contracts/items/internal";
 import type {
   Content,
   MessageItem,
@@ -34,20 +35,25 @@ export type ContentDeltaAccumulator = {
 };
 
 /**
- * Imperative request-stream store. Maintains a `Map<id, OutputItem>` in sync
+ * Imperative request-stream store. Maintains a `Map<id, T>` in sync
  * with a binary-insert-maintained sorted id list, an ownership index, and a
  * content-delta queue, plus the request's status, sequence cursor, and
  * status-event log. All methods are synchronous; no React state is touched.
  * An "id" a method takes is the item's key: its id, unless the store was
  * created with `keyOf`.
+ *
+ * `T` is the row type the store holds, and every read returns exactly the rows
+ * written, so reads are typed `T`. It defaults to `OutputItem`. A store seeded
+ * with trace rows (`block_trace` and the rest) is created as
+ * `createRequestStreamStore<RuntimeItem>()`.
  */
-export type RequestStreamStore = {
+export type RequestStreamStore<T extends RuntimeItem = OutputItem> = {
   /** Replace all items with a pre-sorted snapshot. Rebuilds the ownership index. Leaves status/sequence/status-events untouched. */
-  loadSnapshot(items: OutputItem[]): void;
+  loadSnapshot(items: readonly T[]): void;
   /** Drop all items, sorted ids, ownership, pending deltas, and reset the status/sequence/status-event layer to a fresh stream. */
   clear(): void;
   /** Insert or update an item. Returns true if sorted order changed (insert or reorder), false if value-only update. */
-  upsert(item: OutputItem): boolean;
+  upsert(item: T): boolean;
   /** Apply a shallow `item.updated` patch (invariant keys stripped) to an existing item. Returns false (no-op) if the id is unknown. */
   applyItemPatch(itemId: string, patch: Record<string, unknown>): boolean;
   /** Remove an item from the map, sorted ids, and ownership index. Returns true if found. */
@@ -63,7 +69,7 @@ export type RequestStreamStore = {
   /** Replace a content part with its authoritative final value at an index (inserting if no prior part exists). Returns true if the item was updated. */
   applyContentDone(itemId: string, contentIndex: number, content: Content): boolean;
   /** Return all items in canonical (collapsed) chronological order. New array each call. */
-  getSorted(): OutputItem[];
+  getSorted(): T[];
   /**
    * Return all items in chronological order WITHOUT the canonical collapse —
    * every superseded partial/in-progress row `getSorted()` strips (Rule 3,
@@ -71,11 +77,11 @@ export type RequestStreamStore = {
    * render the pre-/post-recovery boundary itself (rather than just the
    * merged live view) read this instead of `getSorted()`. New array each call.
    */
-  getRaw(): OutputItem[];
+  getRaw(): T[];
   /** Look up a single item by id. */
-  getById(id: string): OutputItem | undefined;
+  getById(id: string): T | undefined;
   /** Return items whose `ownedBy` matches the given value, sorted chronologically. */
-  getOwnedBy(ownedBy: string): OutputItem[];
+  getOwnedBy(ownedBy: string): T[];
   /** Current item count. */
   size(): number;
   /** The request's current status (default `"in_progress"`). */
@@ -259,7 +265,7 @@ function trackOwnership(
 // ---------------------------------------------------------------------------
 
 /** Options for {@link createRequestStreamStore}. */
-export type RequestStreamStoreOptions = {
+export type RequestStreamStoreOptions<T extends RuntimeItem = OutputItem> = {
   /**
    * The key an item is held under. Defaults to `item.id`, which is unique
    * within one request. A store that holds a whole session's items keys by
@@ -267,14 +273,21 @@ export type RequestStreamStoreOptions = {
    * (a keyed item's id comes from its key). Every method that takes an item id
    * then takes this key instead. It must not change over an item's life.
    */
-  keyOf?: (item: OutputItem) => string;
+  keyOf?: (item: T) => string;
 };
 
-/** Create a new imperative request-stream store. */
-export function createRequestStreamStore(
-  options: RequestStreamStoreOptions = {}
-): RequestStreamStore {
-  const keyOf = options.keyOf ?? ((item: OutputItem) => item.id);
+/**
+ * Create a new imperative request-stream store. Pass `RuntimeItem` as `T` for
+ * a store that holds trace rows; see {@link RequestStreamStore}.
+ */
+export function createRequestStreamStore<T extends RuntimeItem = OutputItem>(
+  options: RequestStreamStoreOptions<T> = {}
+): RequestStreamStore<T> {
+  // The body below is typed `OutputItem`: it reads only the fields every
+  // runtime row shares (id, ts, itemIndex, requestId, ownedBy) and narrows on
+  // `type` before touching content. Every row it returns is one it was given,
+  // or a patch of one, so the public type is `T`.
+  const keyOf = (options.keyOf ?? ((item: T) => item.id)) as (item: OutputItem) => string;
   let itemsById = new Map<string, OutputItem>();
   let sortedIds: string[] = [];
   let ownershipIndex = new Map<string, Set<string>>();
@@ -346,7 +359,7 @@ export function createRequestStreamStore(
   };
 
   const store: RequestStreamStore = {
-    loadSnapshot(items: OutputItem[]): void {
+    loadSnapshot(items: readonly OutputItem[]): void {
       invalidateCanonical();
       itemsById = new Map<string, OutputItem>();
       sortedIds = [];
@@ -580,5 +593,5 @@ export function createRequestStreamStore(
     }
   };
 
-  return store;
+  return store as unknown as RequestStreamStore<T>;
 }

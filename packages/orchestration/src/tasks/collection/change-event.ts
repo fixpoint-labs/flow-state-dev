@@ -19,9 +19,12 @@ export type TaskChangeKind =
   | "completed"
   | "errored"
   | "retried"
-  | "blocked"
-  | "unblocked"
-  | "review_requested"
+  /** A task that hadn't started was held: it won't start until released (FIX-2080). */
+  | "held"
+  /** A held task was released: it starts once its dependencies have finished (FIX-2080). */
+  | "released"
+  /** A task's start or attempts settings changed before it started (FIX-2080). */
+  | "settings_changed"
   | "resumed"
   | "cancelled"
   | "label_changed"
@@ -29,18 +32,26 @@ export type TaskChangeKind =
   | "priority_changed"
   | "assignee_changed"
   /**
-   * A handed-off run wrote itself onto its task (FIX-1668) — the row's `run`
+   * A dispatched run wrote itself onto its task (FIX-1668) — the row's `run`
    * now names that run. Published on the run's own session, like every write
    * the run makes; a view following another session sees the link on its next
    * read of the row.
    */
   | "run_linked"
-  /** An asked row's resume-owed marker was cleared: its asking turn has its answer (FIX-1816). */
+  /** A running task's worker reported its progress: a status note, a checkpoint of its output, or both (FIX-2081). */
+  | "progress_reported"
+  /** A waited-on row's resume-owed marker was cleared: its waiting turn has its answer (FIX-1816). */
   | "resume_settled"
-  /** An asked row's ask is over and its cancel failed: the row owes that cancel (FIX-1844). */
+  /** Words were sent into an open task: a steer, kept on the row for every later attempt (FIX-2086). */
+  | "steered"
+  /** A waited-on row's wait is over and its cancel failed: the row owes that cancel (FIX-1844). */
   | "cancel_owed"
-  /** A recorded row was dispatched: it is ready to start now (FIX-1875). */
-  | "dispatched";
+  /** A request took the row's wait slot, the slot lapsed at its deadline, or it was released (FIX-2082). */
+  | "wait_changed"
+  /** A running task's turn asked questions: the row is held on them, with no lease (FIX-2133). */
+  | "asked"
+  /** A question or a confirm was answered, or its deadline closed it: the last one lets the work go on (FIX-2133). */
+  | "answered";
 
 /**
  * Substrate-internal event published on every task mutation. Carries the
@@ -101,7 +112,7 @@ export function createTaskChangeEmitter<TInput, TOutput>(
  * which is the right answer: a required field cannot be omitted from the
  * payload without breaking the shape consumers parse.
  */
-export const SERVER_ONLY_TASK_FIELDS = ["claimedBy", "createdBy"] as const satisfies ReadonlyArray<
+export const SERVER_ONLY_TASK_FIELDS = ["claimedBy", "createdBy", "filer", "filedUnder"] as const satisfies ReadonlyArray<
   keyof Task
 >;
 

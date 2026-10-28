@@ -51,7 +51,7 @@ aws scheduler create-schedule \
         "Content-Type": "application/json"
       }
     },
-    "Input": "{\"nominalFireTime\":\"2026-06-01T00:00:00Z\"}",
+    "Input": "{\"nominalFireTime\":\"<aws.scheduler.scheduled-time>\"}",
     "RetryPolicy": {
       "MaximumRetryAttempts": 3,
       "MaximumEventAgeInSeconds": 3600
@@ -70,10 +70,11 @@ there).
 ## DLQ and retries
 
 EventBridge Scheduler retries non-2xx responses according to the
-`RetryPolicy`. A request that retries within the framework's
-idempotency window (default 60s, configurable) returns
-`200 { status: "duplicate" }` on the retry — the action does not run
-twice. Failures past the retry budget land in the configured
+`RetryPolicy`. The input carries the scheduled time
+(`<aws.scheduler.scheduled-time>`), so a retry of a run that already
+dispatched returns `200 { status: "duplicate" }` and the action does not
+run twice. A retry that arrives after a later scheduled time has fired is a
+duplicate too. Failures past the retry budget land in the configured
 `DeadLetterConfig` SQS queue with the original event payload, so the
 host can alert or replay.
 

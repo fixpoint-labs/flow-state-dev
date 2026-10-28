@@ -21,6 +21,7 @@ export type {
 } from "./types/scope";
 export type { ScopeStateOps } from "./types/state";
 export type { ItemVisibility } from "./items/types";
+export type { RuntimeItem } from "./items";
 export {
   whenAnyItem,
   whenResourceChanged,
@@ -45,7 +46,7 @@ export type {
   SchemaOutput
 } from "./schema/common";
 
-export { DEFAULT_ORG_ID, isValidOrgId } from "./types/auth";
+export { DEFAULT_LOCAL_USER_ID, DEFAULT_ORG_ID, isValidOrgId } from "./types/auth";
 export { applyGetOrPatchState, defineResource, resource } from "./types/resource";
 export { canonicalize as canonicalizeToolArgs } from "./blocks/internal/cache-tool-call";
 export {
@@ -133,31 +134,43 @@ export type {
   LivenessAnswers,
   ParentTaskOutcome,
   RequestHost,
-  ResumeAskInput,
-  ResumeAskResult,
+  ResumeWaitInput,
+  ResumeWaitResult,
+  RequestWaits,
+  RequestSessions,
+  SessionView,
+  RequestWakes,
   SettleParentTaskInput,
-  SettleParentTaskResult
+  SettleParentTaskResult,
+  WaitDeadlines,
+  WakeSettleResult,
+  WakeView
 } from "./types/request-host";
 
 /**
- * The ask gate — what a turn parks on while a colleague answers, and how the
- * answer comes back as the result of the call that parked.
+ * The wait gate — what a request parks on while work it started runs
+ * elsewhere, and how the wait ends: the work's ending, its deadline, or a stop.
  */
 export {
-  ASK_GATE_REASON,
-  WaitEndedError,
-  WaitStoppedError,
-  isAskGate,
-  parkOnAsk,
-  parseAskOutcome,
-  recordedAskOutcome
-} from "./types/ask-gate";
+  MAX_WAIT_DEPTH,
+  WAIT_DEADLINE_ENTRY,
+  WAIT_DEADLINE_OUTCOME,
+  WAIT_GATE_REASON,
+  isWaitGate,
+  parkOnWait,
+  canHoldWait,
+  parseWaitOutcome,
+  recordedWaitOutcome,
+  waitGateDataOf
+} from "./types/wait-gate";
 export type {
-  AskEndingErrorCode,
-  AskGateBinding,
-  AskOutcome,
-  ParkOnAskInput
-} from "./types/ask-gate";
+  WaitEndingErrorCode,
+  WaitGateBinding,
+  WaitGateData,
+  WaitOutcome,
+  WaitRow,
+  ParkOnWaitInput
+} from "./types/wait-gate";
 
 /**
  * One dispatch protocol — typed entries addressed `(type, name)`, the
@@ -174,7 +187,11 @@ export {
   taskBindingOf,
   framed,
   readFramed,
+  addressEntries,
+  describeAction,
+  resolveTaskAction,
   resolveTaskFlowKind,
+  resolveTaskSessionTarget,
   resolveTaskState,
   taskDispatchInputSchema,
   taskSessionKeyFor
@@ -192,8 +209,11 @@ export type {
   TaskBinding,
   TaskDispatchInput,
   TaskEntry,
+  TaskEntryChoice,
   TaskFlowTarget,
   TaskStateTarget,
+  KeyedTaskSessionPolicy,
+  TaskSessionChoice,
   TaskSessionPolicy,
   TaskTargetQuery
 } from "./types/dispatch";
@@ -237,6 +257,7 @@ export {
   blockPathTool,
   extendBlockPath,
   parseBlockInstanceId,
+  logicalBlockIdOf,
   ROOT_BLOCK_PATH
 } from "./blocks/internal/block-instance-id";
 export { resolveActiveStatusMessage } from "./blocks/internal/resolve-active-status-message";
@@ -251,6 +272,7 @@ export { collapseToCanonicalLog } from "./items/canonical-log";
 export {
   dispatcher,
   dispatchHandleSchema,
+  dispatchWaitResultSchema,
   assertEvaluatorBlock,
   boolean,
   choice,
@@ -267,6 +289,7 @@ export {
   router,
   sequencer,
   type DispatchHandle,
+  type DispatchWaitResult,
   type DispatcherConfig,
   type DispatcherSession,
   type InternalDispatcherConfig,
@@ -276,10 +299,9 @@ export {
 // `executeBlock` can honor `config.rescue` on a bare action-root block; in-flow
 // children are rescued by the core `executeBlock` seam.
 export { runRescue } from "./blocks/sequencer";
-// Exported for the one first-party seam that dispatches a worker WITHOUT going
-// through the sequencer kernel (`dispatchAndExecuteBlock`'s substrate cast), so
-// it composes a subtree's background signal by the same rule the kernel uses
-// rather than a second copy of it.
+// Exported for a seam that dispatches a worker WITHOUT going through the
+// sequencer kernel, so it composes a subtree's background signal by the same
+// rule the kernel uses rather than a second copy of it.
 export { composeSideChainSignal } from "./blocks/sequencer";
 export {
   defineFlow,
@@ -376,6 +398,8 @@ export type {
 
 export {
   defineScheduleBinding,
+  isFiveFieldCron,
+  isKnownTimeZone,
   validateScheduleConfig,
   validateSchedulesConfig
 } from "./types/schedules";
@@ -534,6 +558,7 @@ export {
   SuspensionError,
   SuspensionRejectedError,
   SuspensionTimeoutError,
+  resolveAllowedActions,
   RouteUnavailableError,
   RecordedValueOmittedError,
   RECORDED_VALUE_OMITTED,
@@ -556,7 +581,8 @@ export type {
 // The skip sentinel returned by ctx.suspend() lives alongside SuspensionError on
 // the top-level surface so flow authors import both from one place.
 export { SUSPENSION_SKIPPED } from "./types/suspension";
-export type { ResumeAction, SuspensionSkipped } from "./types/suspension";
+export type { ResumeAction, SuspensionSkipped, WaitForUserKind } from "./types/suspension";
+export type { ApprovalAnswer, UserAnswer, WaitForUserOptions } from "./types/wait-for-user";
 
 /**
  * The coding-harness contract's runtime schemas (LAB-152). A harness block
@@ -568,6 +594,7 @@ export {
   harnessRunEnvelopeSchema,
   harnessRunHandleSchema,
   harnessRunInputSchema,
+  harnessUsageWindowSchema,
 } from "./types/harness";
 
 /**
@@ -583,6 +610,11 @@ export {
   observedPlanItemStateSchema,
   observedPlanListCollection,
   observedPlanListStateSchema,
+  harnessConversationNamespace,
+  planConversationPrefix,
+  planKeySegment,
+  planRowsPrefix,
+  readPlanTarget,
   replacePlanList,
 } from "./types/harness-plan";
 export type {
@@ -591,9 +623,14 @@ export type {
   PlanListCollection,
   PlanListItem,
   PlanListMarkerCollection,
+  PlanMarkerRead,
   ReplacePlanListResult,
 } from "./types/harness-plan";
 
 /** The allowlisted environment for a harness's child process. */
 export { harnessEnv } from "./helpers/harness-env";
 export type { HarnessEnvOptions } from "./helpers/harness-env";
+/** One flow's live steering: the hook its harness is handed, and the action that hands a line in. */
+export { harnessSteering } from "./helpers/harness-steering";
+export type { HarnessSteerActionOptions, HarnessSteerAnswer, HarnessSteering } from "./helpers/harness-steering";
+export { formatRunDuration } from "./helpers/run-duration";

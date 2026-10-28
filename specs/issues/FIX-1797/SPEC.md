@@ -2,6 +2,8 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)
 
+> **Amended after merge.** Two later rules take precedence over any statement below that every check runs on one commit, or that a closure PR needs a clean run. [QR-19](BUSINESS-RULES.md) lets a re-run carry forward each check its fix didn't touch. [QR-22](BUSINESS-RULES.md) lets the owner close without a clean run, which the owner did on 2026-10-23 ([closed by the owner](DECISIONS.md#closed-by-the-owner)).
+
 ## Five people, before and after
 
 | Someone who… | Today | After this closes |
@@ -28,7 +30,7 @@ retired on purpose.**
 | **The real need** | The [epic's goal](../../epics/FIX-1786/SPEC.md#the-goal-and-how-well-know-its-met) on the assembled set, as [ER-28 to ER-30](../../epics/FIX-1786/BUSINESS-RULES.md#the-closure) and the [closure rule](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa) ask: one rule set a person can rely on, in the app they use |
 | **Smaller, and rejected** | "Re-run each child's check on one commit." Each child proves its piece on its own setup, several on Shift Manager over HTTP; none walks a fork, a coordinator and a shared project together, in the screens a person uses. Also rejected: running leg c only at the end, which ER-30 was written to stop |
 | **Bigger, and not this issue's** | Product work of any kind · the worker library (FIX-1795, after the MVP) · removing flow instances from the engine (FIX-1798) · channels and user-to-user messages · docs polish (the epic's wrap) |
-| **Not done if** | Checks ran on different commits · the EM added no task on the DevTeam, or a task's result never came back up · a worker with no task-taking delegate was offered a task tool · a run used one user, or sent Bob's request under Alice's identity · a worker, project or delegate was seeded by a fixture or a store write · a model step was retried until it passed · the milestone run skipped or ran on another commit · a control never failed, or failed at setup · Bob opens, names or writes anything of Alice's · a task in Alice's chain ran as anyone else · Alice's two boards share a row · leg b made no private project · anything under `packages/` still reads a `MAILBOX.md` · Workforce sets an owner pin or registers a flow per worker · a retired term is left in an export or a published page · an older check is red, or gone without a line naming what replaced it · a finding was fixed in the closure PR, or deferred |
+| **Not done if** | Checks ran on different commits, other than a check carried forward under QR-19 (*amended after merge*) · the EM added no task on the DevTeam, or a task's result never came back up · a worker with no task-taking delegate was offered a task tool · a run used one user, or sent Bob's request under Alice's identity · a worker, project or delegate was seeded by a fixture or a store write · a model step was retried until it passed · the milestone run skipped or ran on another commit · a control never failed, or failed at setup · Bob opens, names or writes anything of Alice's · a task in Alice's chain ran as anyone else · Alice's two boards share a row · leg b made no private project · anything under `packages/` still reads a `MAILBOX.md` · Workforce sets an owner pin or registers a flow per worker · a retired term is left in an export or a published page · an older check is red, or gone without a line naming what replaced it · a finding was fixed in the closure PR, or deferred |
 
 ```mermaid
 flowchart LR
@@ -99,5 +101,5 @@ wrong: the epic wraps on checks that never met each other, or waits on a bar nob
 The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
 
 Improvement · closure (QA) · `goals/` only · large, repeats per finding · a milestone run, then 1
-PR after a clean run · epic [FIX-1786](../../epics/FIX-1786/SPEC.md), closure · required · runs
+PR after a clean run, or on the owner's close (QR-22) · epic [FIX-1786](../../epics/FIX-1786/SPEC.md), closure · required · runs
 after every child except FIX-1795 merges · Linear [FIX-1797](https://linear.app/fixpoint-labs/issue/FIX-1797)

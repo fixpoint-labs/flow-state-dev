@@ -76,7 +76,8 @@ in the package release that pins the new SDK. Rows from earlier runs keep their 
 - **Cursor's sandbox fences writes to the session's worktree only**: not the main checkout,
   another session's worktree, or the repository's `.git` (FIX-1915 BR-13, BR-13b). The run edits
   files and leaves them uncommitted. A sandbox that can't hold that fence makes the mode unavailable.
-- **The run's environment is fenced by the Cursor package** (FIX-1915 BR-13b, BR-23 here). The
+- **The run's environment is filtered by the Cursor package** (FIX-1915 BR-13b, BR-23 here), not
+  bounded: the child runs as the server's user (amended Oct 13, below). The
   block gains `env`, the allowlisted environment the runtime sees; set, the package runs Cursor's
   local runtime in a child process whose environment is exactly that. It is the only lever: every
   local shell Cursor's SDK spawns copies the process's environment, its sandbox changes only file
@@ -141,5 +142,9 @@ plan?" to D1, and from "key by item id" to D2.
 - **Amended again (Codex review of the cross-spec PR)**: the environment fence moved from Kitchen
   Sink into the Cursor package, as the block's `env` option (PLAN S9, in PR-A); the changeset
   becomes a minor.
+- **Amended after merge (Oct 13, owner decision)**: `env` filters what commands start with; it is
+  not a security boundary (FIX-1915 BR-13b). The child process runs as the server's user, and on
+  Linux a command can read the server's environment through `/proc/<pid>/environ`. A separate user
+  or container is a follow-up issue. BR-23, V8 and the docs text now claim only that.
 
 **Open: none.**

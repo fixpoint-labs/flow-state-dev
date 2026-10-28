@@ -36,6 +36,17 @@
  *   files in `project/` beside the checkout; Sandbox names none, so a run there
  *   works on the project's files alone. No folder is named for any of it.
  *
+ * - **The Error Reporter.** A request that stays failed, or a task that ends
+ *   errored, becomes one report in Inbox, drafted by Claude Code from this
+ *   checkout's code. This team names no tracker, so reports are kept, not
+ *   filed; a draft needs a Claude Code account, and waits for one otherwise.
+ *
+ * - **Usage left.** Usage shows how much of each Codex window this machine's
+ *   Codex sign-in has used, read from the Codex CLI when someone looks, at
+ *   most once a minute. Nothing is read until then. For Claude Code, a look
+ *   reads who is signed in, and each window comes from a coding run, as
+ *   Claude Code reports it.
+ *
  * - **A store that survives a restart.** SQLite, at `DEVTEAM_STORE` or
  *   `packages/shift-manager/.fsdev/devteam.sqlite` by default. Workers the chief of
  *   staff hired are read back and serve again at the next start, a fire it
@@ -49,10 +60,14 @@
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readClaudeUsage } from "@flow-state-dev/claude-code/sdk";
+import { readCodexUsage } from "@flow-state-dev/codex";
+import { harnessEnv } from "@flow-state-dev/core";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import type { AskFeature } from "./ask.mts";
-import { startHarness } from "./harness.mts";
+import { claudeCodeEnv, errorReporterHarness, startHarness } from "./harness.mts";
+import { CHECKOUT } from "./fsd-checkouts.mts";
 import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab } from "./host.mts";
 import { createBareRemote } from "./scratch-repo.mts";
 import { CODER_FLOW } from "./workforce/flows/workers/coder.mts";
@@ -135,6 +150,31 @@ await setAsideLegacyOrgStore(STORE);
 
 const harness = await startHarness("stub");
 
+/**
+ * What the Codex usage read is handed: what a Codex run gets, so the read sees
+ * the account the runs use (`CODEX_HOME`'s sign-in, or `CODEX_API_KEY`) over
+ * the same proxy and CA settings.
+ */
+const CODEX_USAGE_PASS = [
+  "PATH",
+  "HOME",
+  "CODEX_HOME",
+  "USER",
+  "SHELL",
+  "TMPDIR",
+  "CODEX_API_KEY",
+  "HTTPS_PROXY",
+  "https_proxy",
+  "HTTP_PROXY",
+  "http_proxy",
+  "ALL_PROXY",
+  "all_proxy",
+  "NO_PROXY",
+  "no_proxy",
+  "CODEX_CA_CERTIFICATE",
+  "SSL_CERT_FILE",
+] as const;
+
 const lab = await openLab({
   stores: sqliteStores({ filename: STORE }),
   harness: harness.slot,
@@ -149,6 +189,16 @@ const lab = await openLab({
   workstreams: DEFAULT_WORKSTREAMS,
   // The shift coordinator records each conversation into its memory only when asked.
   memoryCapture: process.env.DEVTEAM_MEMORY_CAPTURE === "1",
+  // The Error Reporter reads this checkout's code with Claude Code and keeps
+  // its reports in Inbox: this team names no tracker, so nothing is filed.
+  errorReporter: { harness: errorReporterHarness, cwd: CHECKOUT },
+  // Read when someone opens Usage. Local only: OpenAI does not permit
+  // app-server sign-in in a hosted service.
+  usage: {
+    codex: ({ signal } = {}) =>
+      readCodexUsage({ env: harnessEnv({ pass: CODEX_USAGE_PASS }), ...(signal === undefined ? {} : { signal }) }),
+    "claude-code": ({ signal } = {}) => readClaudeUsage({ env: claudeCodeEnv(), ...(signal === undefined ? {} : { signal }) }),
+  },
 });
 
 export default lab.state;

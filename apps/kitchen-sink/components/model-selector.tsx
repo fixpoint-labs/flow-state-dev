@@ -67,7 +67,7 @@ export function ModelSelector({
             "hover:border-foreground/20",
           )}
         >
-          <Sparkles className="size-3.5 text-violet-500 dark:text-violet-400" />
+          <Sparkles className="size-3.5 text-foreground" />
           <span className="hidden sm:inline">{activeLabel}</span>
           <ChevronDownIcon className="size-3 opacity-50" />
         </Button>
@@ -97,7 +97,7 @@ export function ModelSelector({
                   className={cn(
                     "mt-0.5 size-4 shrink-0",
                     isActive
-                      ? "text-violet-500 dark:text-violet-400"
+                      ? "text-foreground"
                       : "text-muted-foreground",
                   )}
                 />

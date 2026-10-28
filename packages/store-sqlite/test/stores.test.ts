@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { MessageItem, OutputItem } from "@flow-state-dev/core/items";
 import type {
   OrgRecord,
   RequestListOptions,
@@ -53,6 +53,7 @@ function makeRequestRecord(
     id,
     flowKind,
     actionName,
+    source: "http",
     userId,
     sessionId,
     status: "in_progress",
@@ -380,7 +381,7 @@ describe("SQLite store adapter", () => {
       const result = await s.request.get("req_1");
       expect(result!.items).toBeDefined();
       expect(result!.items).toHaveLength(1);
-      expect((result!.items![0]!.content as Array<{ text: string }>)[0]!.text).toBe(
+      expect(((result!.items![0] as MessageItem).content as Array<{ text: string }>)[0]!.text).toBe(
         "hello"
       );
     });
@@ -489,7 +490,7 @@ describe("SQLite store adapter", () => {
 
       expect(itemCount("req_ref")).toBe(1);
       const got = await store.get("req_ref");
-      expect((got!.items![0]!.content as Array<{ text: string }>)[0]!.text).toBe(
+      expect(((got!.items![0] as MessageItem).content as Array<{ text: string }>)[0]!.text).toBe(
         "v2"
       );
       const seq = (
@@ -845,6 +846,7 @@ describe("SQLite store adapter", () => {
         requestId: "req_1",
         flowKind: "flow-a",
         actionName: "run",
+        source: "http",
         userId: "user_1",
         startedAt: Date.now(),
         lastHeartbeatAt: Date.now()
@@ -869,6 +871,7 @@ describe("SQLite store adapter", () => {
         requestId: "req_1",
         flowKind: "flow-a",
         actionName: "run",
+        source: "http",
         userId: "user_1",
         startedAt: startTime,
         lastHeartbeatAt: startTime
@@ -895,6 +898,7 @@ describe("SQLite store adapter", () => {
         requestId: "req_queued",
         flowKind: "flow-a",
         actionName: "run",
+        source: "http",
         userId: "user_1",
         startedAt: ts,
         lastHeartbeatAt: ts,
@@ -915,6 +919,7 @@ describe("SQLite store adapter", () => {
         requestId: "req_plain",
         flowKind: "flow-a",
         actionName: "run",
+        source: "http",
         userId: "user_1",
         startedAt: ts,
         lastHeartbeatAt: ts
@@ -933,6 +938,7 @@ describe("SQLite store adapter", () => {
         requestId: "req_claimed",
         flowKind: "flow-a",
         actionName: "run",
+        source: "http",
         userId: "user_1",
         startedAt: ts,
         lastHeartbeatAt: ts,
@@ -948,6 +954,7 @@ describe("SQLite store adapter", () => {
         requestId: "req_claimed",
         flowKind: "flow-a",
         actionName: "run",
+        source: "http",
         userId: "user_1",
         startedAt: ts,
         lastHeartbeatAt: ts
@@ -962,6 +969,7 @@ describe("SQLite store adapter", () => {
         requestId: "req_1",
         flowKind: "flow-a",
         actionName: "run",
+        source: "http",
         userId: "user_1",
         startedAt: Date.now(),
         lastHeartbeatAt: Date.now()
@@ -980,6 +988,7 @@ describe("SQLite store adapter", () => {
         requestId: "stale_1",
         flowKind: "flow-a",
         actionName: "run",
+        source: "http",
         userId: "user_1",
         startedAt: oldTime,
         lastHeartbeatAt: oldTime
@@ -988,6 +997,7 @@ describe("SQLite store adapter", () => {
         requestId: "fresh_1",
         flowKind: "flow-a",
         actionName: "run",
+        source: "http",
         userId: "user_1",
         startedAt: recentTime,
         lastHeartbeatAt: recentTime
@@ -1004,6 +1014,7 @@ describe("SQLite store adapter", () => {
         requestId: "req_1",
         flowKind: "flow-a",
         actionName: "run",
+        source: "http",
         userId: "user_1",
         startedAt: Date.now(),
         lastHeartbeatAt: Date.now()
@@ -1012,6 +1023,7 @@ describe("SQLite store adapter", () => {
         requestId: "req_2",
         flowKind: "flow-b",
         actionName: "act",
+        source: "http",
         userId: "user_2",
         startedAt: Date.now(),
         lastHeartbeatAt: Date.now()
@@ -1027,6 +1039,7 @@ describe("SQLite store adapter", () => {
         requestId: "req_1",
         flowKind: "flow-a",
         actionName: "run",
+        source: "http",
         sessionId: "sess_1",
         userId: "user_1",
         orgId: "proj_1",
@@ -1049,8 +1062,8 @@ describe("SQLite store adapter", () => {
   it("complex nested JSON round-trips correctly", async () => {
     const s = freshStores();
     const record = makeSessionRecord("sess_complex", "flow-a", "user_1", {
-      state: { nested: { deep: { value: 42 } }, arr: [1, 2, 3] } as Record<string, unknown>,
-      resources: { "res-1": { name: "test", data: { x: 1 } } as Record<string, unknown> },
+      state: { nested: { deep: { value: 42 } }, arr: [1, 2, 3] },
+      resources: { "res-1": { name: "test", data: { x: 1 } } },
       metadata: { tags: ["a", "b"], config: { key: "val" } }
     });
 

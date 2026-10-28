@@ -14,7 +14,7 @@ import researchTeamFlow from "./src/flow";
 export default createFlowState({
   flows: { "research-team": researchTeamFlow },
   models: {
-    default: "openai/gpt-5.4-mini",
+    default: "openai/gpt-6-luna",
   },
   // In-memory stores — the example keeps no state across restarts.
   stores: { default: { primary: inMemoryStores() } },

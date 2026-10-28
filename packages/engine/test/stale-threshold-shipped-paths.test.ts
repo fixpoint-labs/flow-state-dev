@@ -57,9 +57,9 @@ function buildRegistry(): FlowRegistry {
       actions: {
         run: {
           inputSchema: z.object({}),
-          block: handler<Record<string, never>, { ok: true }>({
+          block: handler({
             name: "stale-threshold-run",
-            execute: async () => ({ ok: true } as const)
+            execute: async (_input: Record<string, never>): Promise<{ ok: true }> => ({ ok: true } as const)
           })
         }
       }

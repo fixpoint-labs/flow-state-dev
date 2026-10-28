@@ -9,6 +9,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
+import type { JsonObject } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import {
   createScopeStateOps,
@@ -31,7 +32,7 @@ type SpyStore = {
 };
 
 function makeRecord(
-  state: Record<string, unknown> = {}
+  state: JsonObject = {}
 ): SessionRecord {
   const ts = Date.now();
   return {
@@ -63,7 +64,7 @@ function setup(
     "pushToArray",
     "deleteField"
   ],
-  initialState: Record<string, unknown> = {}
+  initialState: JsonObject = {}
 ) {
   let nextVersion = 1;
   const initial = makeRecord(initialState);
@@ -85,16 +86,16 @@ function setup(
   } = { set };
 
   if (methods.includes("patchField")) {
-    spy.patchField = vi.fn(async () => ({ ok: true, version: nextVersion++ }));
+    spy.patchField = vi.fn(async () => ({ ok: true as const, version: nextVersion++ }));
   }
   if (methods.includes("incField")) {
-    spy.incField = vi.fn(async () => ({ ok: true, version: nextVersion++ }));
+    spy.incField = vi.fn(async () => ({ ok: true as const, version: nextVersion++ }));
   }
   if (methods.includes("pushToArray")) {
-    spy.pushToArray = vi.fn(async () => ({ ok: true, version: nextVersion++ }));
+    spy.pushToArray = vi.fn(async () => ({ ok: true as const, version: nextVersion++ }));
   }
   if (methods.includes("deleteField")) {
-    spy.deleteField = vi.fn(async () => ({ ok: true, version: nextVersion++ }));
+    spy.deleteField = vi.fn(async () => ({ ok: true as const, version: nextVersion++ }));
   }
 
   const container = createStateContainer<Record<string, unknown>>(
@@ -112,7 +113,7 @@ function setup(
     },
     (expectedVersion, state) => ({
       ...ref.current,
-      state: state as Record<string, unknown>,
+      state: state as JsonObject,
       version: expectedVersion + 1,
       updatedAt: Date.now()
     })

@@ -1,4 +1,4 @@
-/* The `@theme` form of the `tokens` item. Storybook and kitchen-sink import this. */
+/* The `@theme` form of the `tokens` item. Storybook imports this. */
 @theme {
   --color-background: hsl(0 0% 100%);
   --color-foreground: hsl(240 10% 3.9%);

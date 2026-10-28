@@ -21,6 +21,7 @@
  * deletes the row of the hired worker it removes, which it knows exactly.
  */
 
+import { STANDING_RULES_ACTION } from "../standing-rules/keys";
 import { workerDoorOf } from "../worker-door";
 import { INVENTORY_REGISTER_WORKERS } from "./worker-writer";
 
@@ -44,6 +45,10 @@ export interface InventoryWorker {
    * by forgetting them: pass `{}` to say the worker has no door.
    */
   actions: Readonly<Record<string, unknown>>;
+  /** The worker's display name; absent or `null` when it has none, and a view shows its id. */
+  name?: string | null;
+  /** Its team's display name; absent or `null` when the team has none, or the worker has no team. */
+  teamName?: string | null;
 }
 
 /** What the binder registers: the workers that were hired. */
@@ -110,8 +115,9 @@ export interface OpenInventoryOptions {
    *
    * ```ts
    * const run = (req) =>
-   *   createClient({ flowKind: req.flowKind, userId: req.userId })
-   *     .sendAction(req.action, req.input, { sessionId: req.sessionId, orgId: req.orgId });
+   *   createClient({ baseUrl, userId: req.userId })
+   *     .flow(req.flowKind)
+   *     .send(req.action, req.input, { sessionId: req.sessionId });
    * ```
    *
    * **It must reject when the action fails.** A door that hands back a failed
@@ -251,7 +257,7 @@ export async function openInventory(
     try {
       const ran = await options.run({
         action: INVENTORY_REGISTER_WORKERS,
-        // Id, kind, door, origin and incarnation only. A worker's row is the whole of what the
+        // Id, kind, door, rules, display names, origin and incarnation only. A worker's row is the whole of what the
         // inventory knows about it, and everything else on a record is the
         // declared layer's to answer.
         input: {
@@ -259,6 +265,9 @@ export async function openInventory(
             id: worker.id,
             kind: worker.kind,
             door: workerDoorOf(worker).door,
+            rules: Object.hasOwn(worker.actions, STANDING_RULES_ACTION),
+            name: worker.name ?? null,
+            teamName: worker.teamName ?? null,
             hired: false,
             incarnation: null,
           })),

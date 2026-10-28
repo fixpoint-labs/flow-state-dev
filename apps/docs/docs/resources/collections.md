@@ -415,7 +415,7 @@ const notes = defineResourceCollection({
 
 const editor = generator({
   name: "notes-editor",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "Edit notes on request. Read the current body before rewriting it.",
   tools: [readResourceContentTool(), writeResourceContentTool()],
   resources: { notes },

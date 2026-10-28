@@ -6,6 +6,7 @@
  * session row. Opened read-only and closed after each read; never written.
  */
 import { DatabaseSync } from "node:sqlite";
+import { routedDeliveries, type RoutedDelivery } from "../../lib/routed-tasks.mts";
 
 export type StoredTask = {
   partition: string;
@@ -21,6 +22,10 @@ export type StoredTask = {
   createdAt?: number;
   completedAt?: number;
   run?: { sessionId: string; requestId: string; attempt: number };
+  /** The session a routed task is worked in, when the coordinator named one (server-written, FIX-2083). */
+  targetSessionId?: string;
+  /** Server-written; a routed task's brief (see `isRoutedTask`). A row stored before FIX-2083 as a post carries `session`, where the delegate worked it. */
+  sealed?: { postId?: string; delegate?: unknown; session?: { id?: string } };
 };
 
 export type StoredSession = {
@@ -66,14 +71,14 @@ export function sessionRows(file: string): StoredSession[] {
   );
 }
 
-export type Delivery = { postId: string; delegate: { worker: string }; status: string; sessionId?: string; round?: number };
+export type Delivery = RoutedDelivery;
 
-/** A coordinator conversation's record, from the row `userId` owns: its delegates, its ledger and best fit's hold. */
+/** A coordinator conversation's record, from the rows `userId` owns: its delegates, its routed tasks and best fit's hold. */
 export function conversationRecord(file: string, userId: string, sessionId: string): { delegates: Array<{ worker: string }> | null; ledger: Delivery[]; hold: unknown } {
   return open(file, (db) => {
     const row = db.prepare("SELECT data FROM sessions WHERE (id = ? OR id = tenant_id || ':' || ?) AND user_id = ?").get(sessionId, sessionId, userId) as { data: string } | undefined;
     const state = row === undefined ? undefined : (JSON.parse(row.data) as { state?: Record<string, any> }).state;
-    return { delegates: state?.delegates ?? null, ledger: (state?.deliveries ?? []) as Delivery[], hold: state?.bestFitHold ?? null };
+    return { delegates: state?.delegates ?? null, ledger: routedDeliveries(file, userId, sessionId), hold: state?.bestFitHold ?? null };
   });
 }
 

@@ -77,9 +77,7 @@ function mount(server: ReturnType<typeof fakeServer>, props: Record<string, unkn
     createElement(FlowNavigator, {
       sections,
       onSelectSession: () => {},
-      client: { listFlows: server.listFlows } as never,
-      sessionClient: { listSessions: server.listSessions } as never,
-      userId: "u",
+      client: { flows: server.listFlows, sessions: { list: server.listSessions } } as never,
       ...props,
     })
   );
@@ -136,7 +134,7 @@ describe("FlowNavigator · what a click costs the server", () => {
     await click(instanceRow("worker-7"));
 
     await waitFor(() => expect(server.listSessions).toHaveBeenCalledTimes(1));
-    expect(server.calls[0]).toEqual({ flowId: "worker-7", userId: "u" });
+    expect(server.calls[0]).toEqual({ flowId: "worker-7" });
   });
 
   it("treats a singleton kind row as the leaf — one request, no instance level", async () => {
@@ -147,7 +145,7 @@ describe("FlowNavigator · what a click costs the server", () => {
     await click(kindRow("chat"));
 
     await waitFor(() => expect(server.listSessions).toHaveBeenCalledTimes(1));
-    expect(server.calls[0]).toEqual({ flowKind: "chat", userId: "u" });
+    expect(server.calls[0]).toEqual({ flowKind: "chat" });
     expect(document.querySelectorAll('[data-leaf="chat"]')).toHaveLength(1);
   });
 
@@ -270,9 +268,7 @@ describe("FlowNavigator · the published props are an allow-list (V5, BR-3, BR-2
       "onSelectSession",
       "sections",
       "selectedSessionId",
-      "sessionClient",
       "slots",
-      "userId",
     ]);
   });
 

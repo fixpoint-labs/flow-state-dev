@@ -25,7 +25,7 @@ async function routeVia(
       return new Response(null, { status: 204 });
     }
   });
-  const [route] = adapter.createBindings({} as never).routes;
+  const [route] = adapter.createBindings({} as never).routes ?? [];
   await route!.handler(new Request(url), { params } as never);
   return parsed!;
 }

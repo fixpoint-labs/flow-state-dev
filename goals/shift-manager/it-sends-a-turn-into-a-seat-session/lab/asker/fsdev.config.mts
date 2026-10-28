@@ -6,7 +6,7 @@
  * itself, through the Lab's own action route.
  *
  * The coordinator, `desk.front`, is a worker file on Workforce's `coordinator`
- * flow. The asker's flow takes no delegated posts, so a post to `desk.front`
+ * flow. The asker's flow takes no task, so a message to `desk.front`
  * reaches nobody, as the mailbox it replaced woke nobody.
  */
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
@@ -33,7 +33,7 @@ const USER_ID = "u_turn_goal";
  * The model best fit's one evaluator call would run on. `desk.front` routes
  * to everyone and never makes that call, but the flow names no default.
  */
-const ROUTE_MODEL = "vercel/openai/gpt-5.4-mini";
+const ROUTE_MODEL = "vercel:openai/gpt-5.4-mini";
 
 /** The flow the inventory's seat rows are written from: the Lab's own, carrying the writer. */
 const INVENTORY_WRITER_FLOW = "inventory-writer";
@@ -43,7 +43,7 @@ if (tree.problems.length > 0) throw new Error(`the asker tree did not load: ${tr
 
 const { installation, copies } = installWorkers(tree.workers, (installation) => ({
   [ASKER_FLOW]: defineAskerFlow(installation),
-  [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, delegateFlows: [], routeModel: ROUTE_MODEL }),
+  [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL }),
 }));
 // The seat write takes caller-supplied rows, so it is internal only.
 const writer = defineFlow({

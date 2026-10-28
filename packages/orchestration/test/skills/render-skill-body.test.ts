@@ -47,7 +47,7 @@ async function seed(
     { ...state, name, contextMode: state.contextMode ?? "inline" } as never,
     { replace: true },
   );
-  const ref = collection.getOptional(`${name}/SKILL.md`);
+  const ref = await collection.getOptional(`${name}/SKILL.md`);
   await ref!.writeContent(skillMd);
 }
 

@@ -18,10 +18,10 @@
  *   2. self-contained recovery client (non-streaming fallback)
  */
 import { useCallback, useMemo, useState } from "react";
-import { createRecoveryClient } from "@flow-state-dev/client";
 import type { SuspensionItem } from "@flow-state-dev/core/items";
 import type { ResumeAction, SuspensionStatus } from "@flow-state-dev/core/types";
 import { useFlowContext } from "../context/FlowContext";
+import { useClient } from "../internal/useClient";
 import { useSuspensionResolver } from "../context/SuspensionResolver";
 import { resolveApprovalOutcome, type ApprovalOutcome } from "./useApproval";
 
@@ -301,7 +301,8 @@ export function useSuspensionForm(
   options: UseSuspensionFormOptions = {}
 ): UseSuspensionFormResult {
   const { isResolved = false, resolution } = options;
-  const { flowKind, baseUrl, apiPath, userId } = useFlowContext();
+  const { flowKind, userId } = useFlowContext();
+  const fsd = useClient();
   const streamingResolve = useSuspensionResolver();
 
   const analysis = useMemo(
@@ -314,10 +315,6 @@ export function useSuspensionForm(
   const [error, setError] = useState<string | null>(null);
   const [localResolution, setLocalResolution] = useState<SuspensionStatus | null>(null);
 
-  const recoveryClient = useMemo(
-    () => createRecoveryClient({ baseUrl, apiPath }),
-    [baseUrl, apiPath]
-  );
 
   const allow = item.allow ?? ["approve", "reject"];
   const canSkip = allow.includes("skip");
@@ -371,7 +368,7 @@ export function useSuspensionForm(
               "Cannot resume without flowKind on <FlowProvider> or a SuspensionResolverProvider."
             );
           }
-          await recoveryClient.resumeSuspension(flowKind, item.requestId, {
+          await fsd.flow(flowKind).request(item.requestId).resume({
             suspensionId: item.suspensionId,
             action,
             data,
@@ -385,7 +382,7 @@ export function useSuspensionForm(
         setPending(null);
       }
     },
-    [isResolving, resolved, streamingResolve, flowKind, recoveryClient, userId, item.suspensionId, item.requestId]
+    [isResolving, resolved, streamingResolve, flowKind, fsd, userId, item.suspensionId, item.requestId]
   );
 
   const submit = useCallback(async () => {

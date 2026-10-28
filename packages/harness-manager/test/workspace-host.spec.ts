@@ -2,7 +2,7 @@
  * A run provisioned through a workspace host (FIX-1762).
  *
  * Driven end to end, in process, like `message-door.spec.ts`: a real
- * `createFlowState`, a real board and hand-off, and a real
+ * `createFlowState`, a real board and dispatch, and a real
  * `localWorkspaceHost`. Only the harness is a stub, and each attempt does one
  * scripted thing in the directory the manager hands it.
  *
@@ -22,13 +22,20 @@ import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
 import type { HarnessBlock } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { defineTaskCollection, type Task } from "@flow-state-dev/orchestration/tasks";
+import {
+  defineTaskCollection,
+  getOrCreateTaskCollection,
+  openRowHolds,
+  resolveResourceCollection,
+  type Task,
+} from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { localWorkspaceHost, type RunSourceAnswer } from "@flow-state-dev/workspace";
 import { harnessManager, harnessTaskInputSchema, runOwnerDispatcher, type HarnessFeeds } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 import { createFakeCollection, type FakeCollection } from "../../workspace/test/fake-collection";
+import { heard } from "./heard";
 
 const BOARD_ID = "eng.feature.work";
 const ORG_ID = "org_host";
@@ -49,10 +56,14 @@ afterAll(() => {
  * - `write-ask` — writes `notes.md` and a question to its ask marker, then finishes.
  * - `write-throw` — writes `notes.md`, then the harness itself throws.
  * - `switch-throw` — moves the run source to another repository, then throws.
+ * - `dirty-side-throw` — commits, checks out a side branch that lacks the
+ *   commit, leaves an uncommitted file there, then throws.
  * - `read` — reads `which.txt` from its checkout, then finishes.
  * - `where` — records the name of the directory it was handed, then finishes.
+ * - `write-step` — confirms a coding session, writes `step-<n>.md` (n counts the
+ *   steps), then finishes: what a steer's extra step leaves behind.
  */
-type Step = "write" | "write-ask" | "write-throw" | "switch-throw" | "read" | "where";
+type Step = "write" | "write-ask" | "write-throw" | "switch-throw" | "dirty-side-throw" | "read" | "where" | "write-step";
 
 function stubHarness(script: Step[], seen: string[], switchSource: () => void) {
   return (feeds: HarnessFeeds): HarnessBlock =>
@@ -61,7 +72,7 @@ function stubHarness(script: Step[], seen: string[], switchSource: () => void) {
       inputSchema: harnessRunInputSchema,
       outputSchema: harnessRunHandleSchema,
       execute: async (input, ctx) => {
-        const cwd = feeds.cwd(ctx as never);
+        const cwd = await feeds.cwd(ctx as never);
         const step = script[seen.length] ?? "write";
         seen.push(
           step === "read"
@@ -70,7 +81,10 @@ function stubHarness(script: Step[], seen: string[], switchSource: () => void) {
               ? basename(cwd)
               : step,
         );
-        if (step.startsWith("write")) writeFileSync(join(cwd, "notes.md"), "what the run wrote");
+        if (step === "write-step") {
+          await feeds.onSession("sess_steps", ctx as never);
+          writeFileSync(join(cwd, `step-${seen.length}.md`), `step ${seen.length}`);
+        } else if (step.startsWith("write")) writeFileSync(join(cwd, "notes.md"), "what the run wrote");
         if (step === "write-ask") {
           const marker = /write it as the entire contents of this file:\n {2}(\S+)/.exec(input.prompt)?.[1];
           if (marker === undefined) throw new Error("the prompt named no ask marker");
@@ -78,7 +92,14 @@ function stubHarness(script: Step[], seen: string[], switchSource: () => void) {
           writeFileSync(marker, "Which option?");
         }
         if (step === "switch-throw") switchSource();
-        if (step === "write-throw" || step === "switch-throw") throw new Error("the harness crashed");
+        if (step === "dirty-side-throw") {
+          const g = (...args: string[]) =>
+            execFileSync("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", ...args], { cwd, stdio: "pipe" });
+          g("commit", "--allow-empty", "-m", "the run's own");
+          g("checkout", "-b", "side", "HEAD~1");
+          writeFileSync(join(cwd, "half-done.txt"), "not committed");
+        }
+        if (step === "write-throw" || step === "switch-throw" || step === "dirty-side-throw") throw new Error("the harness crashed");
         return {
           source: "stub/test",
           status: "completed" as const,
@@ -167,6 +188,8 @@ function lab(options: {
     stateSchema: harnessTaskInputSchema,
   });
   const seen: string[] = [];
+  // Run inside the phase's done-condition, one per call: what lands while the verdict is read.
+  const duringVerdict: Array<() => Promise<void>> = [];
   const manager = harnessManager({
     boardCollectionId: BOARD_ID,
     boardCollection: ledger,
@@ -179,7 +202,10 @@ function lab(options: {
           "To ask, write it as the entire contents of this file:",
           `  ${run.askMarkerPath}`,
         ].join("\n"),
-      isDone: () => true,
+      isDone: async () => {
+        await duringVerdict.shift()?.();
+        return true;
+      },
     },
     workspace,
     runTimeoutMs: 20_000,
@@ -192,12 +218,12 @@ function lab(options: {
   const board = taskBoard({
     name: "host-board",
     boardId: "host-board",
+    mode: "delegation",
     collection: ledger,
     concurrency: 1,
-    onReview: "exit",
     dispatcher: runOwnerDispatcher(),
     workers: {
-      coder: dispatcher({ name: "host-board-hand-off", action: "work", session: "per-task" }),
+      coder: dispatcher({ name: "host-board-dispatch", action: "work", session: "per-task" }),
     },
   });
   const seed = handler({
@@ -217,9 +243,41 @@ function lab(options: {
       return { id: TASK_ID };
     },
   });
-  const flow = defineFlow({
+  // A steer from the person, as `updateTask({ message })` writes one.
+  const steer = handler({
+    name: "host-steer",
+    inputSchema: z.object({}),
+    outputSchema: z.unknown(),
+    uses: [board.capability],
+    execute: async (_input, ctx) => {
+      const tasks = await getOrCreateTaskCollection({
+        ctx: ctx as never,
+        backing: "resource",
+        collectionId: BOARD_ID,
+        collection: resolveResourceCollection(ctx as never, BOARD_ID)!,
+      });
+      return tasks.steer!(TASK_ID, { message: "Write one more step.", from: "user", by: ALICE });
+    },
+  });
+  // The person cancels the task, as `updateTask({ cancel })` does.
+  const cancel = handler({
+    name: "host-cancel",
+    inputSchema: z.object({}),
+    outputSchema: z.unknown(),
+    uses: [board.capability],
+    execute: async (_input, ctx) => {
+      const tasks = await getOrCreateTaskCollection({
+        ctx: ctx as never,
+        backing: "resource",
+        collectionId: BOARD_ID,
+        collection: resolveResourceCollection(ctx as never, BOARD_ID)!,
+      });
+      return tasks.cancel(TASK_ID, "cancelled while it waited");
+    },
+  });
+  const flow = defineFlow({ internal: { actions: { ...heard } },
     kind: "host-flow",
-    actions: { seed: { block: seed }, drain: { block: board.drain } },
+    actions: { seed: { block: seed }, drain: { block: board.drain }, steer: { block: steer }, cancel: { block: cancel } },
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "host-flow" } as never);
   const state = createFlowState({
@@ -260,6 +318,20 @@ function lab(options: {
     }
   };
 
+  /** Wait until the task is held on a question: still running, with no lease. */
+  const held = async (): Promise<Task> => {
+    const deadline = Date.now() + 30_000;
+    for (;;) {
+      const rt = await runtime();
+      const row = (await rt.stores.resourceState.get("org", ORG_ID, `${BOARD_ID}/${TASK_ID}`))?.state as
+        | Task
+        | undefined;
+      if (row !== undefined && row.status === "in_progress" && row.leaseUntil == null && openRowHolds(row).length > 0) return row;
+      if (Date.now() > deadline) throw new Error(`timed out waiting for a held task; row is ${JSON.stringify(row)}`);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  };
+
   /** The run record, as stored now. */
   const record = async (): Promise<Record<string, any>> => {
     const rt = await runtime();
@@ -267,7 +339,7 @@ function lab(options: {
     return (Object.values(rows)[0] as { state: Record<string, any> }).state;
   };
 
-  return { act, settled, record, seen, collection, remoteA, asked: () => asked };
+  return { act, settled, held, record, seen, collection, remoteA, duringVerdict, asked: () => asked };
 }
 
 describe("a run's kept files are saved wherever the run stops", () => {
@@ -281,18 +353,40 @@ describe("a run's kept files are saved wherever the run stops", () => {
     expect((await run.record()).lastSave).toMatchObject({ conflicts: [], error: null });
   }, 60_000);
 
-  it("when the run parks on a question, before anyone answers it", async () => {
-    // A parked run can wait for days. What it wrote is in the collection the
-    // moment it parks, not when the answer comes back.
+  it("and a step a late steer adds saves what it wrote too", async () => {
+    // The steer lands while the verdict is read: after the turn's save let
+    // the place go. The extra step works in a place provisioned again, and
+    // its own end saves it.
+    const run = lab({ script: ["write-step", "write-step"], source: "files" });
+    run.duringVerdict.push(() => run.act("steer"));
+    await run.act("seed");
+    await run.act("drain");
+    const done = await run.settled("completed");
+
+    expect(run.seen).toEqual(["write-step", "write-step"]);
+    expect(done.steers).toEqual([expect.objectContaining({ takenBy: 1 })]);
+    expect(Object.keys(run.collection.contents()).sort()).toEqual(["sandbox/step-1.md", "sandbox/step-2.md"]);
+  }, 60_000);
+
+  it("when the run's question holds its task, before anyone answers it", async () => {
+    // A held task can wait for days. What its run wrote is in the collection
+    // the moment the question holds it, not when the answer comes back.
     const run = lab({ script: ["write-ask"], source: "files" });
     await run.act("seed");
     await run.act("drain");
-    await run.settled("parked");
+    await run.held();
 
     expect(run.collection.contents()["sandbox/notes.md"]).toBe("what the run wrote");
     // The question is the manager's own file, not the project's: it is never
     // saved with the run's work.
     expect(Object.keys(run.collection.contents())).toEqual(["sandbox/notes.md"]);
+
+    // Cancelled while it waits: no further run starts, and the work it saved stays.
+    await run.act("cancel");
+    await run.settled("cancelled");
+    await run.act("drain");
+    expect(run.seen).toEqual(["write-ask"]);
+    expect(run.collection.contents()).toEqual({ "sandbox/notes.md": "what the run wrote" });
   }, 60_000);
 
   it("and a run is not completed on files it could not save, so the retry saves them", async () => {
@@ -397,4 +491,23 @@ describe("a run its workspace refuses", () => {
       expect(run.asked()).toBe(source === "refused" ? 1 : 2);
     }, 60_000);
   }
+});
+
+describe("a run that left its checkout on a side branch with uncommitted changes", () => {
+  // Moving back would move the changes, and committing them for the run would
+  // decide for it. The retry would commit to the side branch, not the one its
+  // verdict reads, so the row is refused with what clears it, and the
+  // checkout is left as the run left it.
+  it("is refused on the retry, without running, saying what to do", async () => {
+    const run = lab({ script: ["dirty-side-throw"], source: "repo", maxAttempts: 2 });
+    await run.act("seed");
+    await run.act("drain");
+    await run.settled("pending");
+    await run.act("drain");
+    const row = await run.settled("cancelled");
+
+    expect(run.seen).toEqual(["dirty-side-throw"]);
+    expect(row.attempts).toBe(2);
+    expect(JSON.stringify(row)).toContain("uncommitted changes, so it was left as it is");
+  }, 60_000);
 });

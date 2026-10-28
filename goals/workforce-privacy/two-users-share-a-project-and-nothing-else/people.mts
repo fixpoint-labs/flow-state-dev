@@ -13,7 +13,7 @@
  */
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { Client, ResourceClient, SessionClient, SessionSummary } from "@flow-state-dev/client";
+import type { Client, FlowHandle, SessionSummary } from "@flow-state-dev/client";
 import { labRoutes, type LabRoutes, type StoredItem } from "../../lib/shift-manager.mts";
 import { messageOf, type RunRecord, type Turn } from "./record.mts";
 
@@ -38,7 +38,7 @@ interface WorkforceClient {
 export interface Shipped {
   client: typeof import("@flow-state-dev/client");
   workforce: {
-    createWorkforceClient(options: { userId: string; baseUrl?: string; fetcher?: typeof fetch }): WorkforceClient;
+    createWorkforceClient(client: Client): WorkforceClient;
     deriveWorkerSessionId(input: { userId: string; orgId: string; flow: string; criteria: { worker: string } }): Promise<string>;
   };
 }
@@ -70,10 +70,12 @@ export async function loadShipped(root: string, options: { tolerateMissing?: boo
 export interface Connected {
   person: Person;
   workforce: WorkforceClient;
-  sessions: SessionClient;
-  resources: ResourceClient;
-  /** An action client on `flowKind`, as this person. `bodyUserId` forges the body's user id (the bearer stays theirs). */
-  flow(flowKind: string, bodyUserId?: string): Client;
+  /** The flows the install hosts, as this person reads them. */
+  flows: Client["flows"];
+  sessions: Client["sessions"];
+  resources: Client["resources"];
+  /** `flowKind`'s actions, as this person. `bodyUserId` forges the body's user id (the bearer stays theirs). */
+  flow(flowKind: string, bodyUserId?: string): FlowHandle;
   /** The oracle: the install's routes, read as this person. */
   routes: LabRoutes;
 }
@@ -86,12 +88,17 @@ export function connect(shipped: Shipped, origin: string, person: Person): Conne
     return fetch(input, { ...init, headers });
   };
   const transport = { baseUrl: origin, fetcher };
+  // One client per person: their user, their credential.
+  const client = shipped.client.createClient({ userId: person.userId, ...transport });
   return {
     person,
-    workforce: shipped.workforce.createWorkforceClient({ userId: person.userId, ...transport }),
-    sessions: shipped.client.createSessionClient(transport),
-    resources: shipped.client.createResourceClient(transport),
-    flow: (flowKind, bodyUserId) => shipped.client.createClient({ flowKind, userId: bodyUserId ?? person.userId, ...transport }),
+    workforce: shipped.workforce.createWorkforceClient(client),
+    flows: () => client.flows(),
+    sessions: client.sessions,
+    resources: client.resources,
+    // A forged body user is another client over the same credential: the probe a person's own client never sends.
+    flow: (flowKind, bodyUserId) =>
+      (bodyUserId === undefined ? client : shipped.client.createClient({ userId: bodyUserId, ...transport })).flow(flowKind),
     routes: labRoutes(origin, { userId: person.userId, bearer: person.bearer }),
   };
 }
@@ -126,21 +133,57 @@ export async function act(who: Connected, flowKind: string, sessionId: string, a
   const client = who.flow(flowKind);
   let requestId: string;
   try {
-    requestId = (await client.sendAction(action, input, { sessionId })).request.id;
+    requestId = (await client.send(action, input, { sessionId })).id;
   } catch (error) {
     const status = (error as { status?: unknown }).status;
     return { status: `http ${typeof status === "number" ? status : "?"}`, requestId: null, output: undefined, error: messageOf(error) };
   }
   let status = "timed-out";
   for (const until = Date.now() + timeoutMs; Date.now() < until; await sleep(400)) {
-    const now = (await client.getRequestStatus(requestId).catch(() => undefined))?.status as string | undefined;
+    const now = (await client.request(requestId).status().catch(() => undefined))?.status as string | undefined;
     if (now !== undefined && !RUNNING.has(now)) {
       status = now;
       break;
     }
   }
-  const found = (await who.routes.requests(sessionId).catch(() => [])).find((r) => r.id === requestId);
+  const found = (await who.routes.requests(sessionId).catch((): Array<Record<string, any>> => [])).find((r) => r.id === requestId);
   return { status, requestId, output: found?.result?.output, error: found?.result?.error?.message };
+}
+
+/** The delegates a coordinator's routing record for post `postId` delivered it to, among a request's items. */
+function routedDelegates(items: readonly StoredItem[], postId: string): string[] {
+  return items
+    .filter((i) => i.type === "component" && (i as { component?: unknown }).component === "coordinator-route")
+    .map((i) => i.data as { postId?: unknown; delegates?: Array<{ worker?: unknown; outcome?: unknown }> } | undefined)
+    .filter((d) => d?.postId === postId)
+    .flatMap((d) => (d?.delegates ?? []).filter((x) => x.outcome === "delivered").map((x) => String(x.worker)));
+}
+
+/**
+ * The answer one of `delegates` gave post `postId` in `sessionId`: the first
+ * assistant message after the post's own that names one of them as its
+ * `agentName` (a delegate's first message is the one graded), read once
+ * nothing runs in the session and its items stopped changing.
+ *
+ * At the `timeoutMs` cap it returns the answer it found even if the session
+ * never settled, and `undefined` when none landed. With `act`'s own 240 s
+ * wait before it, a routed turn can take up to about twice that. "Quiet" is
+ * not "the board is done": a board pass due later can still write items
+ * after this returns, which m2's exception for her board's own passes covers.
+ */
+async function delegateAnswer(who: Connected, sessionId: string, postId: string, delegates: readonly string[], timeoutMs: number): Promise<StoredItem | undefined> {
+  let answer: StoredItem | undefined;
+  let seen = -1;
+  for (const until = Date.now() + timeoutMs; Date.now() < until; await sleep(500)) {
+    const items = await who.routes.items(sessionId, "");
+    const from = items.findIndex((i) => i.type === "message" && i.role === "user" && i.requestId === postId);
+    if (from < 0) continue;
+    answer = items.slice(from + 1).find((i) => i.type === "message" && i.role === "assistant" && delegates.includes(String((i as { agentName?: unknown }).agentName)));
+    const running = (await who.routes.requests(sessionId)).some((r) => RUNNING.has(String(r.status)));
+    if (answer !== undefined && !running && items.length === seen) return answer;
+    seen = running ? -1 : items.length;
+  }
+  return answer;
 }
 
 /** The text of a stored message item. */
@@ -157,9 +200,9 @@ function providerError(text: string): boolean {
   return /rate.?limit|429|5\d\d |overloaded|timed? ?out|ECONNRESET|fetch failed|provider|gateway|unavailable|AI SDK stream failed/i.test(text);
 }
 
-/** The talk action a worker flow takes a person's message through: `run` on `agent`, else `message`. */
+/** The talk action a worker flow takes a person's message through: `respond`, on every worker flow. */
 export function talkAction(actions: readonly string[]): string | undefined {
-  return ["run", "message"].find((a) => actions.includes(a));
+  return actions.includes("respond") ? "respond" : undefined;
 }
 
 /**
@@ -179,7 +222,15 @@ export async function talk(record: RunRecord, step: string, who: Connected, sess
     turn.tools = mine
       .filter((i) => i.type === "tool_output")
       .map((i) => ({ itemId: i.id, name: String(i.toolCall?.name ?? ""), args: String(i.toolCall?.arguments ?? "").slice(0, 300), output: JSON.stringify(i.output ?? i.error ?? null).slice(0, 300) }));
-    const reply = mine.filter((i) => i.type === "message" && i.role === "assistant").at(-1);
+    let reply = mine.filter((i) => i.type === "message" && i.role === "assistant").at(-1);
+    // A coordinator that routed the post answers through its delegate, in a
+    // request of its own once the delegate's turn ends (the coordinator
+    // contract): the turn is graded on that answer, read once the session is quiet.
+    const delegates = routedDelegates(mine, acted.requestId);
+    if (reply === undefined && delegates.length > 0) {
+      reply = await delegateAnswer(who, session.id, acted.requestId, delegates, 240_000);
+      if (reply !== undefined) turn.answeredBy = String((reply as { agentName?: unknown }).agentName);
+    }
     const error = mine.find((i) => i.type === "error");
     turn.reply = reply !== undefined ? textOf(reply) : error !== undefined ? `error: ${JSON.stringify(error.error ?? error).slice(0, 300)}` : (acted.error ?? "");
     if (reply === undefined) turn.items = mine.map((i) => `${i.type}${i.role === undefined ? "" : `/${i.role}`}#${i.id}`);

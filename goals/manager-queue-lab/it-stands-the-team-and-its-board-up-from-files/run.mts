@@ -38,25 +38,13 @@ import { QUEUE_COLUMNS, queueView } from "../lab/queue.mts";
  * The task status set as FIX-443 §2 fixed it, written out — asserted on the
  * enum against this list, not against a reading of itself.
  */
-const STATUS_SET = ["pending", "in_progress", "blocked", "parked", "completed", "errored", "cancelled"];
+const STATUS_SET = ["pending", "in_progress", "held", "completed", "errored", "cancelled"];
 
 /**
  * Orchestration's task tools, written out: what the manager's turn must hold,
- * each once. Nine since FIX-1817 added `answerTask` to the eight, and ten on a
- * conversation's board since FIX-1875 added `dispatchTask`.
+ * each once: the filer's four since FIX-2081 (`answerTask` left with FIX-2131).
  */
-const TASK_TOOLS = [
-  "addTask",
-  "assignTask",
-  "completeTask",
-  "failTask",
-  "blockTask",
-  "cancelTask",
-  "updateTask",
-  "listTasks",
-  "answerTask",
-  "dispatchTask",
-];
+const TASK_TOOLS = ["createTask", "getTask", "listTasks", "updateTask"];
 
 /** Frontmatter keys that would declare a board or grant the task tools. None may appear. */
 const BOARD_KEYS = /^(boards|boardActions|filing|mailboxes|members)\s*:/m;
@@ -79,14 +67,22 @@ async function withLab<T>(options: OpenLabOptions, body: (lab: Lab) => Promise<T
   }
 }
 
-/** The tools the manager's turn is handed on one turn, from a fresh lab built with `options`. */
-async function turnTools(options: OpenLabOptions): Promise<{ tools: string[]; filing: unknown }> {
+/** What the twin's turn files with `createTask` for a builder that takes no task. */
+const PROBE_GOAL = "probe";
+
+/** One manager turn on a fresh lab: the tools it was handed, and what the filings answered. */
+async function turnTools(
+  options: OpenLabOptions,
+): Promise<{ tools: string[]; turnFiling: unknown; filing: unknown; stored: boolean }> {
   return withLab(options, async (lab) => {
     const said = await lab.say("Anything new?");
     if (said.error !== undefined) throw new Error(said.error);
     await lab.settled();
-    const filing = await lab.act("dispatchTask_tasks", { goal: "probe", assignee: lab.builderIds[0] });
-    return { tools: lab.judgmentCalls[0]?.tools ?? [], filing: filing.output ?? filing.error };
+    const turnFiling = lab.judgmentCalls.find((call) => "probed" in call)?.probed;
+    const filing = await lab.act("createTask_tasks", { goal: PROBE_GOAL, assignee: lab.builderIds[0] });
+    await lab.settled();
+    const stored = (await lab.rows()).some((row) => row.goal === PROBE_GOAL);
+    return { tools: lab.judgmentCalls[0]?.tools ?? [], turnFiling, filing: filing.output ?? filing.error, stored };
   });
 }
 
@@ -145,7 +141,11 @@ await runGoal(async (failures) => {
     }
     const own = await turnTools(base("own"));
     const withNote = await turnTools({ ...base("note"), managerTools: [NOTE_TOOL] });
-    const twin = await turnTools({ ...base("twin"), builderTakesTasks: false });
+    const twin = await turnTools({
+      ...base("twin"),
+      builderTakesTasks: false,
+      probe: { tool: "createTask", input: (builders) => ({ goal: PROBE_GOAL, assignee: builders[0] }) },
+    });
     const taskTools = (names: string[]) => names.filter((name) => TASK_TOOLS.includes(name));
     for (const tool of TASK_TOOLS) {
       const count = own.tools.filter((name) => name === tool).length;
@@ -156,43 +156,50 @@ await runGoal(async (failures) => {
     if (taskTools(withNote.tools).sort().join() !== taskTools(own.tools).sort().join()) {
       note(`the task tools changed when the manager's \`tools:\` changed; no \`tools:\` line may add or remove one`);
     }
-    if (taskTools(twin.tools).length !== 0) {
-      note(`with builders that take no task the manager still holds ${taskTools(twin.tools).join(", ")}`);
+    // FIX-2076 D1: a turn that works steps for itself holds the task tools
+    // whoever its delegates are, so the twin holds the same ones. No post form
+    // is left (FIX-2083). What a builder that takes no task changes is the
+    // filing: the turn's createTask for one is refused, naming why.
+    if (taskTools(twin.tools).sort().join() !== taskTools(own.tools).sort().join()) {
+      note(`with builders that take no task the manager's task tools changed: ${taskTools(twin.tools).join(", ")}`);
+    }
+    const twinTurnError = String((twin.turnFiling as { error?: unknown } | undefined)?.error ?? "");
+    if (!twinTurnError.startsWith("unknown_assignee") || !twinTurnError.includes("takes no task")) {
+      note(
+        `with builders that take no task, the turn's createTask for one was not refused as taking no task: it answered ` +
+          `${JSON.stringify(twin.turnFiling)}`,
+      );
     }
     if ((twin.filing as { error?: string } | undefined)?.error !== "no_delegation_board") {
       note(`with builders that take no task, a filing answered ${JSON.stringify(twin.filing)}, not no_delegation_board`);
     }
+    if (twin.stored) note(`with builders that take no task, a filing was stored`);
 
     // ---- d. the board's filing check, both arms ------------------------------
     const stranger = "eng.nobody";
-    const refused = await lab.act("dispatchTask_tasks", { goal: "filed for a stranger", assignee: stranger });
+    const refused = await lab.act("createTask_tasks", { goal: "filed for a stranger", assignee: stranger });
     const refusal = String(refused.output?.error ?? refused.error ?? "");
     if (refused.output?.ok !== false || !refusal.startsWith("unknown_assignee") || !refusal.includes(stranger)) {
       note(`a filing for ${stranger} was not refused unknown_assignee naming it: ${JSON.stringify(refused)}`);
     }
-    const noOne = await lab.act("addTask_tasks", { goal: "filed for no one in particular" });
+    const noOne = await lab.act("createTask_tasks", { held: true, goal: "filed for no one in particular" });
     const noOneId = String(noOne.output?.taskId ?? "");
     await lab.settled();
     const afterD = await lab.rows();
     if (afterD.some((row) => row.goal === "filed for a stranger")) note(`the refused filing was stored`);
     const noOneRow = afterD.find((row) => row.id === noOneId);
-    if (noOneRow?.status !== "pending" || noOneRow.assignee !== undefined) {
-      note(`a filing with no assignee is ${noOneRow?.status ?? "missing"}; with three delegates it waits, pending and unassigned`);
+    if (noOneRow?.status !== "held" || noOneRow.assignee !== undefined) {
+      note(`a filing with no assignee is ${noOneRow?.status ?? "missing"}; with three delegates it waits, held and unassigned`);
     }
     if (lab.workLines().length !== 0) note(`${lab.workLines().length} task(s) ran; neither arm's row may run`);
 
     // ---- e. the queue is a READ ---------------------------------------------
-    // Stage each column on the real path: a held task running, a blocked row
-    // carrying its reason, the pending row above, and a finished task.
-    const blockedReason = "waiting on the customer to confirm the date";
-    const blockedRow = await lab.act("addTask_tasks", { goal: "needs a decision from a person" });
-    const blockedId = String(blockedRow.output?.taskId ?? "");
-    const blocked = await lab.act("blockTask_tasks", { taskId: blockedId, reason: blockedReason });
-    if (blocked.output?.ok !== true) note(`could not block a row: ${JSON.stringify(blocked)}`);
-    await lab.act("dispatchTask_tasks", { goal: "a piece that finishes", assignee: lab.builderIds[2] });
+    // Stage each column on the real path: a held task running, the held row
+    // above (filed, and waiting on a person to release it), and a finished task.
+    await lab.act("createTask_tasks", { goal: "a piece that finishes", assignee: lab.builderIds[2] });
     await lab.settled();
     lab.hold();
-    const running = await lab.act("dispatchTask_tasks", { goal: "a piece still running", assignee: lab.builderIds[0] });
+    const running = await lab.act("createTask_tasks", { goal: "a piece still running", assignee: lab.builderIds[0] });
     const runningId = String(running.output?.taskId ?? "");
     for (let i = 0; i < 250 && lab.heldTurns() < 1; i += 1) await new Promise((resolve) => setTimeout(resolve, 20));
 
@@ -212,25 +219,22 @@ await runGoal(async (failures) => {
     if (duplicated.length > 0) note(`row(s) in more than one column: ${duplicated.join(", ")}`);
     if (counted.length !== rows.length) note(`the columns hold ${counted.length} rows, the store holds ${rows.length}`);
     if (!view.running.some((row) => row.id === runningId)) note(`a task its worker is running did not read as running`);
-    if (!view.queued.some((row) => row.id === noOneId)) note(`the unassigned pending row did not read as queued`);
+    if (view.queued.some((row) => row.id === noOneId)) note(`the unassigned held row read as queued; nothing starts it but a release`);
     if (view.done.length !== 1) note(`${view.done.length} row(s) read as done, not the one that finished`);
-    const waiting = view.waitingOnYou.find((row) => row.id === blockedId);
-    if (waiting === undefined) note(`the blocked row is not under "waiting on you"`);
-    else if (waiting.reason !== blockedReason) note(`the waiting row's reason is ${JSON.stringify(waiting.reason)}, not the row's own`);
+    if (!view.waitingOnYou.some((row) => row.id === noOneId)) note(`the held row is not under "waiting on you"`);
 
-    // ---- f. the manager settles a task its worker is still running -----------
-    // Recorded as observed behaviour, not defended as a design: the task tools
-    // let the filer settle a row a worker holds, and the worker's late result
-    // is then declined.
-    const settled = await lab.act("completeTask_tasks", { taskId: runningId, output: "settled by the manager" });
+    // ---- f. the manager cancels a task its worker is still running -----------
+    // No action settles a task (FIX-2081): the filer may cancel a row a worker
+    // holds, and the worker's late result is then declined.
+    const settled = await lab.act("updateTask_tasks", { id: runningId, status: "cancelled" });
     lab.release();
     await lab.settled();
     const settledRow = (await lab.rows()).find((row) => row.id === runningId);
     const ran = lab.workLines().some((line) => line.taskId === runningId);
     const unclaimedSettle = settled.output?.ok === true ? "allowed" : `refused: ${JSON.stringify(settled)}`;
-    if (settled.output?.ok !== true) note(`the manager could not settle a task its worker was running: ${unclaimedSettle}`);
-    else if (settledRow?.status !== "completed" || settledRow.output !== "settled by the manager") {
-      note(`after the manager's settle the row reads ${settledRow?.status} with ${JSON.stringify(settledRow?.output)}`);
+    if (settled.output?.ok !== true) note(`the manager could not cancel a task its worker was running: ${unclaimedSettle}`);
+    else if (settledRow?.status !== "cancelled" || settledRow.output !== undefined) {
+      note(`after the manager's cancel the row reads ${settledRow?.status} with ${JSON.stringify(settledRow?.output)}`);
     }
 
     // ---- g. the task status set ----------------------------------------------
@@ -245,10 +249,12 @@ await runGoal(async (failures) => {
       `unregistered flow refused the whole roster naming it. The manager's file says \`tools: []\`, and its live ` +
       `turn was handed ${taskTools(own.tools).length} task tools, each once (${taskTools(own.tools).join(", ")}), ` +
       `and no catalog tool; with \`tools: ["${NOTE_TOOL}"]\` the same task tools plus ${NOTE_TOOL}; with builders ` +
-      `whose work entry takes no conversation's task, none, and its filing answered no_delegation_board. A filing ` +
-      `for ${stranger} answered "${refusal.split(":")[0]}" and stored nothing; one for nobody waits, pending and ` +
+      `whose work entry takes no conversation's task, the same task tools (it works steps for itself), and the ` +
+      `turn's own createTask for a builder answered ${JSON.stringify(twinTurnError.split(":")[0])}, naming it as taking no task, ` +
+      `and the public filing answered no_delegation_board, storing nothing. A filing ` +
+      `for ${stranger} answered "${refusal.split(":")[0]}" and stored nothing; one for nobody waits, held and ` +
       `unassigned. The manager's listTasks left the stored rows byte-identical; each of ${rows.length} rows ` +
-      `landed in one column (queued, running, waiting on you with its own reason, done). The manager settling a ` +
+      `landed in one column (queued, running, waiting on you, done). The manager settling a ` +
       `task its worker was running: ${unclaimedSettle}; the worker's turn ${ran ? "still ran and its result was declined" : "did not run"}. ` +
       `The status set is unchanged at ${statuses.length} members.`;
   } finally {

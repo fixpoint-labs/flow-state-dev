@@ -24,7 +24,8 @@ is marked `Superseded` and links its replacement; it is never deleted.
 the lasting layer. A BP that merely restates a tenet is **folded** into that tenet
 (marked Superseded, pointing to it) rather than kept as always-loaded duplication.
 Best practices are the *situational, specific* layer — kept few, and mostly worked
-out per spec (the plan's guardrails, each with a *because*). Sharpen or prune before you
+out per spec (its *decided, not asked* lines and the implementer's own calls, each with a
+*because*). Sharpen or prune before you
 add; a BP that traces to no tenet is a smell.
 
 Update policy:
@@ -170,6 +171,7 @@ Update policy:
     - Second tenant / account — keys scoped to the full tuple, derived from the authenticated identity (BP-031).
     - Cost / observability — any new model/tool call is counted in usage/cost and threads `ctx.signal`, matching the call beside it.
     - React derived state — flags derived from the *complete* input set; change-signals fire only on a *real* change (BP-010).
+    - An event read off a state — a rule asking "did X happen?" reads a mark written where X happens, never a state other causes also produce (tenet 5).
   - When a flag toggles behavior (`enabled: false`, a new mode), add the test for the off / new state in the same PR.
 - Why: The happy path is the part you thought about; the bugs hide in the paths the change implicitly touched but didn't add code for.
 

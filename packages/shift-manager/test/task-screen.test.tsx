@@ -11,7 +11,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
-import { createLabClients } from "../src/lib/connection";
+import { connect } from "../src/lib/connection";
 import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef, toBoardRow, type BoardRow } from "../src/lib/reads";
 import { openRunLab, RUN_LAB_ASK, RUN_LAB_USER_ID } from "./fixtures/run-lab/lab.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
@@ -35,7 +35,7 @@ async function openLab(options: Parameters<typeof openRunLab>[0] = {}) {
   const lab = await openRunLab(options);
   const s = await serveLab(lab.flowState);
   served.push({ lab, served: s });
-  const clients = createLabClients({ baseUrl: s.baseUrl, userId: RUN_LAB_USER_ID });
+  const client = connect({ baseUrl: s.baseUrl, userId: RUN_LAB_USER_ID });
   const boardRef = conversationBoardRef(lab.conversation);
   // The oracle reads the store directly: the page's `fetch` is the DOM's, and
   // is not this test's to share.
@@ -43,7 +43,7 @@ async function openLab(options: Parameters<typeof openRunLab>[0] = {}) {
     const stored = new Map((await lab.storedRows()).map((row) => [row.id, row]));
     return lab.filed.map((f) => toBoardRow(boardRef, lab.conversation, f.taskId, stored.get(f.taskId)));
   };
-  return { lab, served: s, clients, rows, boardRef };
+  return { lab, served: s, client, rows, boardRef };
 }
 
 /** Whether `url` is a read of the user's conversation boards: the snapshot's, or one task screen's. */
@@ -51,8 +51,9 @@ const isBoardRead = (url: string) => new URL(url, "http://lab.local").pathname.e
 
 async function renderAt(baseUrl: string, path: string, devtoolUrl?: string) {
   (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${baseUrl}${path}`);
-  const clients = createLabClients({ userId: RUN_LAB_USER_ID });
-  render(<App clients={clients} {...(devtoolUrl === undefined ? {} : { devtoolUrl })} />);
+  const connection = { userId: RUN_LAB_USER_ID };
+  const client = connect(connection);
+  render(<App connection={connection} {...(devtoolUrl === undefined ? {} : { devtoolUrl })} />);
   await screen.findByTestId("shell");
 }
 
@@ -116,7 +117,8 @@ describe("Interrupt (BR-11, BR-13, BR-14)", () => {
     const button = await screen.findByTestId("task-interrupt");
     await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false), { timeout: 10_000 });
     fireEvent.click(button);
-    expect((await screen.findByTestId("interrupt-error")).textContent).toMatch(/403/);
+    // The Lab's reason, as every other refusal is shown.
+    expect((await screen.findByTestId("interrupt-error")).textContent).toMatch(/not yours/);
     expect(screen.getByTestId("run-state").getAttribute("data-state")).toBe("in_progress");
   }, 30_000);
 });
@@ -381,6 +383,73 @@ describe("the disabled acts and empty tabs carry their gap lines (BR-15 to BR-17
   }, 30_000);
 });
 
+describe("a finished task's composer (FIX-1764)", () => {
+  it("takes a message", async () => {
+    const opened = await openLab();
+    const row = await finishedRow(opened);
+    await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}`);
+    const input = (await screen.findByTestId("task-composer-input")) as HTMLTextAreaElement;
+    await waitFor(() => expect(input.disabled).toBe(false));
+    expect(screen.queryByTestId("task-composer-blocked")).toBeNull();
+  }, 30_000);
+});
+
+// FIX-2009.
+describe("a line sent from a task's composer", () => {
+  it("shows in the task's Session with the worker's reply, though neither carries the task's stamp", async () => {
+    const opened = await openLab();
+    const row = await finishedRow(opened);
+    await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
+    await screen.findByTestId("session", {}, { timeout: 10_000 });
+    const input = (await screen.findByTestId("task-composer-input")) as HTMLInputElement;
+    await waitFor(() => expect(input.disabled).toBe(false));
+    const line = `where are we on this? ${globalThis.crypto.randomUUID().slice(0, 6)}`;
+    fireEvent.change(input, { target: { value: line } });
+    fireEvent.click(screen.getByTestId("task-composer-send"));
+    await waitFor(() => expect(screen.getByTestId("task-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 15_000 });
+    // Shown because this view sent it: the door turn stores no task stamp.
+    const session = screen.getByTestId("session-items");
+    await waitFor(() => {
+      expect(session.textContent).toContain(line);
+      expect(session.textContent).toContain(`Heard: ${line}`);
+    }, { timeout: 10_000 });
+  }, 40_000);
+
+  it("still shows the line and the reply when the send ends before the Session's first read lands", async () => {
+    const opened = await openLab();
+    const row = await finishedRow(opened);
+    // The Session's first read of the session is taken at once and answered
+    // late: it holds nothing of the line sent meanwhile.
+    const real = globalThis.fetch;
+    let held = 0;
+    let release: () => void = () => {};
+    const released = new Promise<void>((resolve) => (release = resolve));
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      const answer = real(input, init);
+      if (held === 0 && url.includes(`/sessions/${encodeURIComponent(row.run!.sessionId)}/state`) && url.includes("include_items") && !url.includes("item_types")) {
+        held += 1;
+        return released.then(() => answer);
+      }
+      return answer;
+    });
+    await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
+    const input = (await screen.findByTestId("task-composer-input")) as HTMLInputElement;
+    await waitFor(() => expect(input.disabled).toBe(false));
+    await waitFor(() => expect(held).toBe(1), { timeout: 10_000 });
+    const line = `late read ${globalThis.crypto.randomUUID().slice(0, 6)}`;
+    fireEvent.change(input, { target: { value: line } });
+    fireEvent.click(screen.getByTestId("task-composer-send"));
+    await waitFor(() => expect(screen.getByTestId("task-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 15_000 });
+    release();
+    const session = await screen.findByTestId("session-items", {}, { timeout: 10_000 });
+    await waitFor(() => {
+      expect(session.textContent).toContain(line);
+      expect(session.textContent).toContain(`Heard: ${line}`);
+    }, { timeout: 10_000 });
+  }, 40_000);
+});
+
 describe("the inspector (BR-18 to BR-23)", () => {
   it("shows the worker, started, the harness gap, what a recording run recorded, and the trace link with the session beside it", async () => {
     const opened = await openLab();
@@ -439,7 +508,7 @@ describe("a task whose run waits on a user (BR-17)", () => {
     // Render once the run has stopped to ask, so the first read holds the ask.
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(opened.served.baseUrl);
     await eventually(async () => {
-      const state = await opened.clients.sessions.getSessionState(row.run!.sessionId, { includeItems: true, itemTypes: ["suspension"] });
+      const state = await opened.client.sessions.state(row.run!.sessionId, { includeItems: true, itemTypes: ["suspension"] });
       return (state.items ?? []).length > 0 ? true : undefined;
     }, "the run's ask");
     await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);

@@ -17,13 +17,16 @@
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { StateRef } from "@flow-state-dev/core/types";
 import { withOutcome } from "@flow-state-dev/core/helpers";
-import type { Task, TaskClaimIdentity, TaskStatus } from "../schema/task";
+import { withMigratedWait, type Task, type TaskClaimIdentity, type TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import {
   assertTransitionAllowed,
   isTerminalStatus,
-  withMigratedStatus,
 } from "../schema/task-status";
+import { withRetiredShapes } from "../schema/retired-shapes";
+import type { FilingStamp, TaskSettingsPatch } from "./internal";
+import { assertAskable, hasOpenHold, holdWrite, holdsDue, newRowHolds, type HoldChange } from "./holds";
+import { NOTICE_DUE_MS } from "../notice/task-notice";
 import type {
   TaskCollectionRef,
   TaskTransitionOptions,
@@ -36,6 +39,11 @@ import {
   applyTransition,
   assertValidLeaseDeadline,
   linkRunGuards,
+  waitingOnPatch,
+  completionPatch,
+  cancelPatch,
+  progressPatch,
+  reportsProgress,
   RENEW_LEASE_TICKET_DETAIL,
   requireClaimTicket,
   runLinkPatch,
@@ -53,16 +61,31 @@ import {
   retryBudgetExhaustedError,
   routeFailure,
   sumGrantedRetries,
-  assertTransitionFrom,
   transitionDeclineReason,
   assigneeChangeDecline,
-  dispatchWrite,
-  parkPatch,
-  unparkPatch,
+  lapseWaitWrite,
+  markWaitWrite,
+  releaseWaitWrite,
+  noticeReadByWaitWrite,
+  noticeTakeWrite,
+  settingsWrite,
+  settingsChangeKind,
+  type EndingRecording,
 } from "./internal";
 import { stampWrite } from "../write-provenance";
+import { generateId } from "../generate-id";
+import { steerWrite, takeSteersPatch, untakenSteers } from "../steers";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 import { createTaskChangeEmitter } from "./change-event";
+import { assertDepsFileable, assertFilingSettings, assertParentsOpen, withFollowUpPlacement, type TaskSettingsSupport } from "./filing";
+import {
+  cascadeCancelPatch,
+  endsDependents,
+  openDependentsOf,
+  payCascadeAfterWrite,
+  payOwedCascades,
+  type CascadeWrites,
+} from "./cascade";
 import {
   TaskCapExceededError,
   validateTaskCaps,
@@ -105,13 +128,20 @@ export interface StateBackedOptions extends TaskCapOptions {
    * no filer.
    */
   createdBy?: string;
+  /**
+   * The filing settings this board honours (FIX-2080). Omitted, only the
+   * defaults: a filing with any other `session` or `resultTo` is refused.
+   */
+  settings?: TaskSettingsSupport;
+  /** What every row this collection files is stamped with beside its filer (FIX-2133). */
+  filing?: FilingStamp;
 }
 
 /**
  * Own-property task lookup (FIX-965). `id` is model-supplied (task tool
  * calls declare `taskId: z.string()`), so BP-031 applies — indexing directly
  * could resolve an inherited `Object.prototype` member instead of missing.
- * Same guard as `keyedRouter` and `dispatch-and-execute.ts` (FIX-943).
+ * Same guard as `keyedRouter` (FIX-943).
  */
 function ownTask<T>(tasks: Record<string, T>, id: string): T | undefined {
   return Object.hasOwn(tasks, id) ? tasks[id] : undefined;
@@ -141,8 +171,9 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
   /**
    * The read boundary for this backing — same job as the resource backing's
    * `readTaskState`. Atomic state is stored, not parsed, so a row written
-   * before the `parked` rename arrives carrying the legacy status and is
-   * mapped forward here, before any filter or the transition guard sees it.
+   * before the wait rename arrives carrying its legacy wait mark, and one in
+   * a shape the retired-shape map reads (`withRetiredShapes`, FIX-2080); both
+   * are mapped forward here, before any filter or the transition guard sees it.
    *
    * The map is rebuilt only when a legacy row is actually present, so the
    * common path returns the stored object itself.
@@ -152,7 +183,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     const stored = slot as Record<string, Task<TInput, TOutput>>;
     let migrated: Record<string, Task<TInput, TOutput>> | undefined;
     for (const [id, task] of Object.entries(stored)) {
-      const next = withMigratedStatus(task);
+      const next = withRetiredShapes(withMigratedWait(task));
       if (next === task) continue;
       migrated ??= { ...stored };
       migrated[id] = next;
@@ -169,6 +200,19 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     options.collectionId,
     onChange
   );
+
+  /**
+   * What an ending write records besides the ending (FIX-2080 D2): a cascade
+   * is owed when a failed or cancelled row has an open dependent on this
+   * board, read from the committed map the write runs against. A state-held
+   * board files no task elsewhere, so it owes no filed half.
+   */
+  function recordingFor(tasks: Readonly<Record<string, Task<TInput, TOutput>>>): EndingRecording {
+    return {
+      owesCascade: (row, ending) =>
+        endsDependents(ending) && openDependentsOf(Object.values(tasks) as Task[], row.id).length > 0,
+    };
+  }
 
   /** The tasks map `casWrite` hands to its mutator and expects back. */
   type TasksMap<I, O> = Record<string, Task<I, O>>;
@@ -259,10 +303,9 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     targetStatus: TaskStatus,
     kind: TaskChangeKind | null,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
-    guards?: TaskTransitionOptions,
-    requireFrom?: TaskStatus
+    guards?: TaskTransitionOptions
   ): Promise<TaskWriteOutcome> {
-    return transitionDerived(id, () => ({ targetStatus, kind, patch, requireFrom }), guards);
+    return transitionDerived(id, () => ({ targetStatus, kind, patch }), guards);
   }
 
   /**
@@ -276,8 +319,6 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     targetStatus: TaskStatus;
     kind: TaskChangeKind | null;
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>;
-    /** The one source status this verb may run from — see `assertTransitionFrom`. */
-    requireFrom?: TaskStatus;
   }
 
   /**
@@ -327,14 +368,13 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
         // failure spend another task's retry allowance, or mark the board
         // "retry-budget-exhausted" when nothing was ever refused. Both are
         // invisible to a test that only checks the task's status.
-        const { targetStatus, kind, patch, requireFrom } = derive(task, tasks);
+        const { targetStatus, kind, patch } = derive(task, tasks);
         const reason = transitionDeclineReason(
           task as Task,
           targetStatus,
           guards,
           collectionId,
           now(),
-          requireFrom,
           kind ?? undefined
         );
         if (reason !== undefined) {
@@ -346,14 +386,13 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
             },
           };
         }
-        assertTransitionFrom(task as Task, requireFrom, targetStatus, id);
         assertTransitionAllowed(task.status, targetStatus, id);
         // Provenance is stamped here, inside the CAS, off the `task` this
         // invocation read — so a replay against a fresher map stamps off that
         // map and there is nothing to reset (FIX-989).
         const next = stampWrite(
           task,
-          applyTransition(task, { ...patch(task), status: targetStatus }, now()),
+          applyTransition(task, { ...patch(task), status: targetStatus }, now(), recordingFor(tasks)),
           guards?.write
         );
         return {
@@ -368,37 +407,44 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     if (outcome.changeKind !== null) {
       emit(outcome.changeKind, outcome.task, outcome.prevStatus);
     }
+    // The ending's own pass pays the cascade it owes (FIX-2080 D2).
+    await payCascadeAfterWrite(cascadeWrites, outcome.task as Task);
     return { outcome: "recorded" };
   }
 
   /**
    * Patch a task's fields inside the CAS, returning what it did (FIX-976).
    *
-   * `declineOnTerminal` is the **assignment-only** terminal guard (epic
-   * constraint A1). It is keyed by operation and passed by `setAssignee` alone —
-   * the four sibling patch methods pass nothing and keep writing to terminal
-   * tasks, which two first-party blocks depend on (the supervisor's
-   * failure-category audit and `cascadeSkipDependents`' `skipped` label). Making
-   * this helper-wide would break both.
+   * `declineOnTerminal` is the terminal guard for the writes that change a
+   * task's future (epic constraint A1): `setAssignee` and the settings write
+   * pass it. The four sibling patch methods pass nothing and keep
+   * writing to terminal tasks, which a first-party block depends on (the
+   * supervisor's failure-category audit). Making this helper-wide would break it.
    *
    * Evaluated against the freshest committed task from inside the mutator, so
    * the decision is race-free rather than a caller-side pre-check.
    */
   async function patchOne(
     id: string,
-    kind: TaskChangeKind,
-    patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>> | undefined,
+    kind: TaskChangeKind | null | ((prev: Task<TInput, TOutput>, next: Task<TInput, TOutput>) => TaskChangeKind),
+    patch: (
+      task: Task<TInput, TOutput>,
+      tasks: Readonly<Record<string, Task<TInput, TOutput>>>
+    ) => Partial<Task<TInput, TOutput>> | undefined,
     options?: {
       declineOnTerminal?: boolean;
       /** A refusal decided on the freshest committed task, inside the write. */
-      decline?: (task: Task<TInput, TOutput>) => TaskWriteDeclineReason | undefined;
+      decline?: (
+        task: Task<TInput, TOutput>,
+        tasks: Readonly<Record<string, Task<TInput, TOutput>>>
+      ) => TaskWriteDeclineReason | undefined;
     }
   ): Promise<TaskWriteOutcome> {
     /** What one `patchOne` invocation did — returned, never captured outward. */
     type PatchResult =
       | { kind: "declined"; verdict: TaskWriteOutcome }
       | { kind: "unchanged" }
-      | { kind: "recorded"; task: Task<TInput, TOutput> };
+      | { kind: "recorded"; task: Task<TInput, TOutput>; prev: Task<TInput, TOutput> };
 
     const outcome = await withOutcome(
       casWrite,
@@ -416,30 +462,108 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
             },
           };
         }
-        const refused = options?.decline?.(task);
+        const refused = options?.decline?.(task, tasks);
         if (refused !== undefined) {
           return {
             state: undefined,
             result: { kind: "declined", verdict: { outcome: "declined", reason: refused, status: task.status } },
           };
         }
-        const update = patch(task);
+        const update = patch(task, tasks);
         if (update === undefined) return { state: undefined, result: { kind: "unchanged" } };
         // No token: these five methods take no options object, so they bump the
         // revision and mint no receipt (FIX-989).
         const next = stampWrite(task, applyTransition(task, update, now()));
         return {
           state: { ...tasks, [id]: next },
-          result: { kind: "recorded", task: next },
+          result: { kind: "recorded", task: next, prev: task },
         };
       }
     );
 
     if (outcome === undefined || outcome.kind === "unchanged") return { outcome: "unchanged" };
     if (outcome.kind === "declined") return outcome.verdict;
-    emit(kind, outcome.task);
+    const changeKind = typeof kind === "function" ? kind(outcome.prev, outcome.task) : kind;
+    if (changeKind !== null) {
+      emit(changeKind, outcome.task, outcome.prev.status !== outcome.task.status ? outcome.prev.status : undefined);
+    }
     return { outcome: "recorded" };
   }
+
+  /**
+   * The guarded settings write (FIX-2080, ER-4): `patchSettings`, and `hold`
+   * and `release` under their own names. Decided on the committed row inside
+   * the write, dependencies against the committed map.
+   */
+  function writeSettings(id: string, settings: TaskSettingsPatch): Promise<TaskWriteOutcome> {
+    return patchOne(
+      id,
+      (prev, next) => settingsChangeKind(prev.status, next.status),
+      (task, tasks) => {
+        const decided = settingsWrite(task as Task, settings, (other) => ownTask(tasks, other) as Task | undefined);
+        return decided === undefined || "decline" in decided ? undefined : (decided.patch as Partial<Task<TInput, TOutput>>);
+      },
+      {
+        declineOnTerminal: true,
+        // The field table's refusal, decided on the same committed row the patch reads.
+        decline: (task, tasks) => {
+          const decided = settingsWrite(task as Task, settings, (other) => ownTask(tasks, other) as Task | undefined);
+          return decided !== undefined && "decline" in decided ? decided.decline : undefined;
+        },
+      }
+    );
+  }
+
+  /**
+   * The one hold write (FIX-2133), decided on the committed row inside the
+   * CAS: `decline` first (a claim fence), then the hold rule itself.
+   */
+  function writeHolds(
+    id: string,
+    kind: TaskChangeKind,
+    change: HoldChange,
+    decline?: (task: Task<TInput, TOutput>) => TaskWriteDeclineReason | undefined
+  ): Promise<TaskWriteOutcome> {
+    return patchOne(
+      id,
+      kind,
+      (task) => {
+        const decided = holdWrite(task as Task, change);
+        return typeof decided === "object" && "patch" in decided ? (decided.patch as Partial<Task<TInput, TOutput>>) : undefined;
+      },
+      {
+        decline: (task) => {
+          const fenced = decline?.(task);
+          if (fenced !== undefined) return fenced;
+          const decided = holdWrite(task as Task, change);
+          return typeof decided === "object" && "decline" in decided ? decided.decline : undefined;
+        },
+      }
+    );
+  }
+
+  /** The board's row by id, as stored now. */
+  const committedRow = (id: string): Task | undefined => ownTask(readTasks(), id) as Task | undefined;
+
+  /** The reads and writes a cascade is paid with on this board (FIX-2080 D2). */
+  const cascadeWrites: CascadeWrites = {
+    get: (id) => ownTask(readTasks(), id) as Task | undefined,
+    list: () => Object.values(readTasks()) as Task[],
+    cancelDependent: async (id, cause) => {
+      await transitionTo(
+        id,
+        "cancelled",
+        "cancelled",
+        (dependent) => cascadeCancelPatch(dependent as Task, cause, now()) as Partial<Task<TInput, TOutput>>,
+        { ifAllowed: true }
+      );
+    },
+    settle: async (id, due) => {
+      await patchOne(id, null, (task) =>
+        task.cascadeOwed != null && task.cascadeOwed.due === due ? { cascadeOwed: undefined } : undefined
+      );
+    },
+  };
 
   const ref: TaskCollectionRef<TInput, TOutput> = {
     collectionId: options.collectionId,
@@ -451,13 +575,17 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     maxTotalRetries: maxTotalRetries ?? null,
 
     async addTask(init) {
+      assertFilingSettings(init, options.settings, collectionId);
       // Build the task once — id and createdAt are stable across CAS retries
       // so the emitted item matches what's in state on a successful write.
-      const task = buildInitialTask<TInput, TOutput>(init, now(), options.createdBy);
+      const task = buildInitialTask<TInput, TOutput>(withFollowUpPlacement(init, committedRow), now(), options.createdBy, undefined, options.filing);
       await casWrite((tasks) => {
         if (ownTask(tasks, task.id) !== undefined) {
           throw new Error(`[tasks] task with id "${task.id}" already exists`);
         }
+        // Against the committed map, inside the write (FIX-2080).
+        assertDepsFileable([task as Task], (id) => ownTask(tasks, id) as Task | undefined);
+        assertParentsOpen([task as Task], (id) => ownTask(tasks, id) as Task | undefined);
         const next = { ...tasks, [task.id]: task };
         assertWithinCaps(next);
         return next;
@@ -467,9 +595,13 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     },
 
     async addTasks(inits) {
-      const built = inits.map((init) => buildInitialTask<TInput, TOutput>(init, now(), options.createdBy));
+      for (const init of inits) assertFilingSettings(init, options.settings, collectionId);
+      const built = inits.map((init) => buildInitialTask<TInput, TOutput>(withFollowUpPlacement(init, committedRow), now(), options.createdBy, undefined, options.filing));
       if (built.length === 0) return [];
       await casWrite((tasks) => {
+        // Ids filed in the same batch count (FIX-2080).
+        assertDepsFileable(built as Task[], (id) => ownTask(tasks, id) as Task | undefined);
+        assertParentsOpen(built as Task[], (id) => ownTask(tasks, id) as Task | undefined);
         const next = { ...tasks };
         for (const task of built) {
           if (ownTask(next, task.id) !== undefined) {
@@ -518,8 +650,9 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
           // for why replacement made recovery opt-out-by-accident.
           const narrow = claimOptions?.eligibility;
           const at = now();
+          const rows = Object.values(tasks) as Task[];
           const admits = (task: Task): boolean =>
-            isClaimable(task, lookup, at) && (narrow === undefined || narrow(task));
+            isClaimable(task, lookup, at) && (narrow === undefined || narrow(task, rows));
           const order = claimOptions?.order ?? defaultOrder;
 
           const candidates = Object.values(tasks)
@@ -554,7 +687,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
             // advances the record the same way (FIX-989).
             const settled = stampWrite(
               candidate,
-              applyAbandonmentSettlement(candidate, at, DEFAULT_MAX_ABANDONMENTS)
+              applyAbandonmentSettlement(candidate, at, DEFAULT_MAX_ABANDONMENTS, recordingFor(tasks))
             );
             next[settled.id] = settled;
             pass.settled.push({ task: settled, prevStatus: candidate.status });
@@ -573,6 +706,9 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       for (const settled of captured.settled) {
         emit("errored", settled.task, settled.prevStatus);
       }
+      for (const settled of captured.settled) {
+        await payCascadeAfterWrite(cascadeWrites, settled.task as Task);
+      }
       if (captured.claimed === undefined) return null;
       emit("claimed", captured.claimed.task, captured.claimed.prevStatus);
       return captured.claimed.task;
@@ -584,12 +720,13 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       // Same-status, so this rides the ordinary transition path and picks up
       // all four decline arms — the lease fence among them. See the resource
       // backing's `renewLease` for why `updatedAt` moving is the right answer.
+      // A held row renews no lease (FIX-2133): a renewal racing a midway question loses.
       return transitionTo(
         id,
         "in_progress",
         null,
         () => ({ leaseUntil }),
-        { ...renewOptions, ifAllowed: true }
+        { ...renewOptions, ifAllowed: true, refuseWhenHeld: "any" }
       );
     },
 
@@ -600,19 +737,78 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       return transitionTo(id, "in_progress", "run_linked", () => runLinkPatch(run), linkRunGuards(linkOptions));
     },
 
+    async setWaitingOn(id, waitingOn, waitOptions) {
+      requireClaimTicket(
+        waitOptions?.claim,
+        "setWaitingOn",
+        "of the attempt that waits. Only the request holding a task's claim records what it waits on."
+      );
+      // Same-status, fenced like a run link: a finished, recreated or reclaimed
+      // row declines. No `task-change`, as a renewal publishes none.
+      return transitionTo(
+        id,
+        "in_progress",
+        null,
+        (task) => waitingOnPatch(task as Task, waitingOn, waitOptions) as Partial<Task<TInput, TOutput>>,
+        // A mirror of a run's stop is refused on a row a question holds (FIX-2133).
+        { ...linkRunGuards({ claim: waitOptions.claim }), ...(waitOptions.hold !== undefined ? { refuseWhenHeld: "row" as const } : {}) }
+      );
+    },
+
+    async ask(id, asks, askOptions) {
+      requireClaimTicket(askOptions?.claim, "ask", "of the turn that asks. Only the request holding a task's claim asks midway.");
+      assertAskable(asks);
+      const guards = linkRunGuards({ claim: askOptions.claim });
+      // Minted once, outside the write, so a CAS replay opens the same holds.
+      const holds = newRowHolds(asks, now(), { ...(options.filing?.holdDueMs !== undefined ? { dueMs: options.filing.holdDueMs } : {}), midway: true });
+      const outcome = await writeHolds(id, "asked", { op: "ask", holds }, (task) =>
+        transitionDeclineReason(task as Task, "in_progress", guards, collectionId, now())
+      );
+      return outcome.outcome === "recorded" ? { ...outcome, holds: holds.map((hold) => hold.id) } : outcome;
+    },
+
+    async answer(id, answer) {
+      // Minted once, outside the write, so a CAS replay keeps one steer.
+      const change: HoldChange = { op: "answer", answer, steerId: generateId("steer"), at: now() };
+      return writeHolds(id, "answered", change);
+    },
+
+    async payHoldDeadlines() {
+      const at = now();
+      const paid: string[] = [];
+      for (const row of Object.values(readTasks()) as Task[]) {
+        if (holdsDue(row, at).length === 0) continue;
+        const outcome = await writeHolds(row.id, "answered", { op: "deadline", at });
+        if (outcome.outcome === "recorded") paid.push(row.id);
+      }
+      return paid;
+    },
+
     async complete(id, output, options) {
+      // A checkpoint the worker reported stays the output (FIX-2081).
       return transitionTo(
         id,
         "completed",
         "completed",
-        () => ({
-          output,
-          completedAt: now(),
-          leaseUntil: undefined,
-          claimedBy: undefined,
-          error: undefined,
-        }),
+        (task) => completionPatch(task as Task, output, now()) as Partial<Task<TInput, TOutput>>,
         options
+      );
+    },
+
+    async reportProgress(id, progress, progressOptions) {
+      requireClaimTicket(
+        progressOptions?.claim,
+        "reportProgress",
+        "of the attempt it reports on. Only the request holding a task's claim reports its progress."
+      );
+      if (!reportsProgress(progress)) return { outcome: "unchanged" };
+      // Same-status, fenced like a run link: a finished, recreated or reclaimed row declines.
+      return transitionTo(
+        id,
+        "in_progress",
+        "progress_reported",
+        () => progressPatch(progress) as Partial<Task<TInput, TOutput>>,
+        linkRunGuards(progressOptions)
       );
     },
 
@@ -650,7 +846,6 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
               kind: "retried" as const,
               patch: (current: Task<TInput, TOutput>) => ({
                 feedback: error,
-                answered: undefined,
                 leaseUntil: undefined,
                 claimedBy: undefined,
                 error: undefined,
@@ -678,68 +873,68 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       );
     },
 
-    async block(id, reason, options) {
-      return transitionTo(
+    async hold(id) {
+      return writeSettings(id, { held: true });
+    },
+
+    async release(id) {
+      return writeSettings(id, { held: false });
+    },
+
+    async patchSettings(id, settings) {
+      return writeSettings(id, settings);
+    },
+
+    async steer(id, input) {
+      // Minted once, outside the write, so a CAS replay keeps one id and one time.
+      const steerId = generateId("steer");
+      const at = now();
+      // Decided once per row read: the decline and the patch see the same row.
+      let decidedFor: { task: unknown; decided: ReturnType<typeof steerWrite> } | undefined;
+      const decide = (task: unknown) => {
+        if (decidedFor === undefined || decidedFor.task !== task) {
+          decidedFor = { task, decided: steerWrite(task as Task, input, steerId, at) };
+        }
+        return decidedFor.decided;
+      };
+      return patchOne(
         id,
-        "blocked",
-        "blocked",
-        () => (reason !== undefined ? { error: reason } : {}),
-        options
+        "steered",
+        (task) => {
+          const decided = decide(task);
+          return typeof decided === "string" ? undefined : (decided.patch as Partial<Task<TInput, TOutput>>);
+        },
+        {
+          // A finished task takes no steer: its output never changes (FIX-2086).
+          declineOnTerminal: true,
+          decline: (task) => (decide(task) === "limit" ? "steer-limit" : undefined),
+        }
       );
     },
 
-    async unblock(id, options) {
-      return transitionTo(
-        id,
-        "pending",
-        "unblocked",
-        () => ({ error: undefined }),
-        options,
-        // `blocked` is the ONLY status this may run from. The other two paths
-        // to `pending` have their own verbs (`reclaim`, and `unpark` with its
-        // own fence), and those clear the lease and the claim coordinate; this
-        // one has nothing to clear because `blocked` is reachable only from
-        // `pending`.
-        "blocked"
+    async takeSteers(id, takeOptions) {
+      requireClaimTicket(
+        takeOptions?.claim,
+        "takeSteers",
+        "of the attempt that reads them. Only the request holding a task's claim takes its steers."
       );
-    },
-
-    async awaitReview(id, feedback, options) {
-      // Writes `feedback` unconditionally, the way `unpark` does: a park with
-      // no reason clears the note, so a failed attempt's text never reads as
-      // why the task is waiting on a person.
-      // A park for a person's turn is fenced to a running attempt: a row that
-      // settled or re-pended first declines naming what it found, instead of
-      // being parked behind the attempt that already ended it. `ifAllowed` is
-      // forced on that path only, the way `unpark` forces its own fence.
-      const forTurn = options?.forTurn === true;
-      const fenced = forTurn || options?.fromRunning === true;
-      return transitionTo(
+      const guards = linkRunGuards({ claim: takeOptions.claim });
+      // The steers the committed row had untaken, as the write that lands read them.
+      let taken: string[] = [];
+      const outcome = await patchOne(
         id,
-        "parked",
-        "review_requested",
-        () => parkPatch(feedback, forTurn, options?.onQuestion) as Partial<Task<TInput, TOutput>>,
-        fenced ? { ...options, ifAllowed: true } : options,
-        fenced ? "in_progress" : undefined
+        null,
+        (task) => {
+          taken = untakenSteers(task as Task).map((steer) => steer.id);
+          return takeSteersPatch(task as Task, takeOptions.takenIn) as Partial<Task<TInput, TOutput>> | undefined;
+        },
+        {
+          // Fenced like a run link, on the committed row: a finished, recreated
+          // or reclaimed row declines.
+          decline: (task) => transitionDeclineReason(task as Task, "in_progress", guards, collectionId, now()),
+        }
       );
-    },
-
-    async unpark(id, feedback, options) {
-      // Fenced to the one edge it owns (FIX-1244): `parked` is the ONLY status
-      // this may run from, and the check runs inside the atomic write, so a
-      // row a worker is holding, or one somebody already answered, comes back
-      // `declined` naming the status it found — never re-queued. `ifAllowed` is
-      // forced AFTER the spread, the way `cancel` forces it: the fence is the
-      // verb's contract, not an option a caller can switch off, and a terminal
-      // row declines `terminal` instead of throwing.
-      return transitionTo(
-        id,
-        "pending",
-        "resumed",
-        (task) => unparkPatch(task as Task, feedback, options?.answer === true) as Partial<Task<TInput, TOutput>>,
-        { ...options, ifAllowed: true },
-        "parked"
-      );
+      return { ...outcome, taken: outcome.outcome === "recorded" ? taken : [] };
     },
 
     async cancel(id, reason, options) {
@@ -750,19 +945,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
         id,
         "cancelled",
         "cancelled",
-        () =>
-          reason !== undefined
-            ? {
-                error: reason,
-                completedAt: now(),
-                leaseUntil: undefined,
-                claimedBy: undefined,
-              }
-            : {
-                completedAt: now(),
-                leaseUntil: undefined,
-                claimedBy: undefined,
-              },
+        () => cancelPatch(reason, options?.via, now()) as Partial<Task<TInput, TOutput>>,
         // `ifAllowed` is forced AFTER the spread, not merged into it (FIX-981):
         // a caller's ticket must reach the guard, but "advisory by
         // construction" is this method's contract and a caller cannot switch it
@@ -785,7 +968,9 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
           if (
             task.status === "in_progress" &&
             task.leaseUntil !== undefined &&
-            task.leaseUntil < at
+            task.leaseUntil < at &&
+            // A held row is never taken back (FIX-2133): it holds no lease, and a renewal racing a midway question is refused.
+            !hasOpenHold(task as Task)
           ) {
             // Preserve `assignee` — it's the user-set worker-registry
             // routing key, not the runtime worker identity. Clearing it
@@ -863,33 +1048,68 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
 
     async markCancelOwed(id) {
       return patchOne(id, "cancel_owed", (task) =>
-        task.ask != null && !isTerminalStatus(task.status) && task.cancelOwed !== true
+        task.wait != null && !isTerminalStatus(task.status) && task.cancelOwed !== true
           ? { cancelOwed: true }
           : undefined
       );
     },
 
-    async dispatch(id, dispatchOptions) {
-      // The decision and the write are one CAS write: a claim or another
-      // dispatch that lands first is read here, never raced.
+    async markWait(id, slot) {
+      // One CAS write: of two requests that read the slot free, one takes it.
       return patchOne(
         id,
-        "dispatched",
+        "wait_changed",
         (task) => {
-          const decided = dispatchWrite(task as Task, dispatchOptions);
+          const decided = markWaitWrite(task as Task, slot);
           return decided === undefined || "decline" in decided ? undefined : (decided.patch as Partial<Task<TInput, TOutput>>);
         },
         {
-          declineOnTerminal: true,
           decline: (task) => {
-            const decided = dispatchWrite(task as Task, dispatchOptions);
+            const decided = markWaitWrite(task as Task, slot);
             return decided !== undefined && "decline" in decided ? decided.decline : undefined;
           },
         }
       );
     },
 
+    async lapseWait(id, gateId, requestId) {
+      return patchOne(
+        id,
+        "wait_changed",
+        (task) => {
+          const decided = lapseWaitWrite(task as Task, gateId, requestId);
+          return decided === undefined || "decline" in decided ? undefined : (decided.patch as Partial<Task<TInput, TOutput>>);
+        },
+        { declineOnTerminal: true }
+      );
+    },
+
+    async releaseWait(id, release) {
+      const dueAt = now() + NOTICE_DUE_MS;
+      return patchOne(id, "wait_changed", (task) => releaseWaitWrite(task as Task, { ...release, dueAt })?.patch as Partial<Task<TInput, TOutput>> | undefined);
+    },
+
+    async dropNoticeReadByWait(id) {
+      return patchOne(id, "metadata_changed", (task) => noticeReadByWaitWrite(task as Task)?.patch as Partial<Task<TInput, TOutput>> | undefined);
+    },
+
+    async takeNotice(id, notice, take) {
+      const at = now();
+      return patchOne(id, "metadata_changed", (task) => noticeTakeWrite(task as Task, notice, { ...take, at })?.patch as Partial<Task<TInput, TOutput>> | undefined);
+    },
+
+    async payOwedCascades() {
+      return payOwedCascades(cascadeWrites, now());
+    },
+
     get(id) {
+      const task = ownTask(readTasks(), id);
+      return task === undefined ? undefined : wrap(task);
+    },
+
+    // Request or sequencer state: every write of this ledger is this run's, so
+    // the committed row is the one `get` reads.
+    async getCommitted(id) {
       const task = ownTask(readTasks(), id);
       return task === undefined ? undefined : wrap(task);
     },

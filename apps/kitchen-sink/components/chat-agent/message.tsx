@@ -23,7 +23,7 @@ export function ChatAgentMessage({ item }: { item: MessageItem }) {
           <ModelBadge
             model={item.model}
             className={cn(
-              "mb-2 inline-flex items-center gap-1 rounded-full",
+              "mb-2 inline-flex items-center gap-1 rounded-md",
               "border border-border/50 bg-muted/50 px-2 py-0.5",
               "text-[10px] font-medium leading-none text-muted-foreground",
             )}

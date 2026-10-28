@@ -132,9 +132,10 @@ export interface BoardRunFlowState {
  * Per-worker **claim ticket**, scoped via Node's `AsyncLocalStorage`. Each
  * forEach iteration runs in its own async context tree (Node propagates
  * the store through `await` boundaries automatically). The worker
- * body's leading tap calls `enterWith(ticket)` so every subsequent
- * step in that worker — including any cacheable tool call inside a
- * generator — reads its own claim, not a sibling's.
+ * body's leading tap opens a slot before its first `await` and fills it
+ * with the ticket once minted, so every subsequent step in that worker —
+ * including any cacheable tool call inside a generator — reads its own
+ * claim, not a sibling's.
  *
  * It carried a bare task id until FIX-981. Widening it to the whole ticket
  * gives the model-facing task tools an ownership token to present without
@@ -142,7 +143,44 @@ export interface BoardRunFlowState {
  * seam already won: a shared field races under `concurrency > 1`, and the
  * default concurrency is 4.
  */
-const workerClaimStore = new AsyncLocalStorage<TaskClaimTicket>();
+const workerClaimStore = new AsyncLocalStorage<ClaimSlot>();
+
+/** Opened before the ticket exists, same as the lease-renewal slot. */
+type ClaimSlot = { ticket?: TaskClaimTicket; task?: WorkerTask; request?: string };
+
+/**
+ * Which task the running worker's request works (FIX-2129): its filing
+ * identity, apart from the claim that is its authority to write the task's
+ * result. A claim always carries one. A run admitted holding no claim (a task
+ * cancelled while its run waited for a user, resumed to run to its end) still
+ * has one, so a task it files names it as its filer, and the board refuses
+ * that filing under the cancelled task.
+ */
+export type WorkerTask = { readonly collectionId: string; readonly partition?: string; readonly taskId: string };
+
+/**
+ * The part of a block context a claim is bound to: the request it runs in.
+ * `BlockContext` satisfies it; so does a bare object in a unit harness.
+ */
+export interface WorkerClaimReader {
+  readonly request?: {
+    readonly identity?: { readonly id?: string };
+    readonly incarnation?: string;
+  };
+}
+
+/** Id plus incarnation, so a reused request id is still a different request. */
+function claimRequestKey(ctx: WorkerClaimReader): string | undefined {
+  const request = ctx.request;
+  if (request?.identity?.id === undefined) return undefined;
+  return `${request.identity.id}\u0000${request.incarnation ?? ""}`;
+}
+
+/** This async chain's claim slot, if a ticket was stamped in it in `requestKey`'s request. */
+function slotInRequest(requestKey: string | undefined): ClaimSlot | undefined {
+  const slot = workerClaimStore.getStore();
+  return slot?.ticket !== undefined && slot.request === requestKey ? slot : undefined;
+}
 
 /** Resolve a user-supplied `flowPolicy` value to a concrete `TaskFlowPolicy`. */
 export function resolveFlowPolicyValue(
@@ -215,6 +253,10 @@ export function createInstallBoardFlowState(
       // avoid `ctx.request.state` because that gets structured-cloned
       // for state snapshots, and functions can't be cloned.
       const state = getRequestResolverBag(ctx);
+      // The worker iterations this drain runs share its request, so their
+      // claims are read against it. A request a worker starts in-process
+      // inherits the async chain but not the claim.
+      const drainRequest = claimRequestKey(ctx);
       const runState: BoardRunFlowState = {
         collectionId,
         runId: generateId("boardrun"),
@@ -250,7 +292,7 @@ export function createInstallBoardFlowState(
         // Read taskId from the AsyncLocalStorage scope of the calling
         // worker — never from a shared bag field, which would race under
         // concurrency > 1.
-        const taskId = workerClaimStore.getStore()?.taskId;
+        const taskId = slotInRequest(drainRequest)?.ticket?.taskId;
         ledger.append({
           collectionId,
           ...(taskId !== undefined ? { taskId } : {}),
@@ -267,7 +309,7 @@ export function createInstallBoardFlowState(
       // the in-progress task id so later cross-task hits can attribute
       // back via `sourceTask`. Same per-worker isolation via ALS.
       state[SLOT_CACHE_SOURCE_TASK_RESOLVER] = () => {
-        const taskId = workerClaimStore.getStore()?.taskId;
+        const taskId = slotInRequest(drainRequest)?.ticket?.taskId;
         return taskId !== undefined ? { collectionId, taskId } : undefined;
       };
     },
@@ -333,22 +375,76 @@ export function createFlowPolicyResolver(name: string) {
 }
 
 /**
- * Helper for the worker body's leading `.tap()` — enters the
- * AsyncLocalStorage scope with this worker's claim ticket so every
- * subsequent step in the same async chain (cache writes, observation
- * appends, task-tool calls) reads the right claim. `enterWith` mutates the
- * *current* async resource so all downstream `await` chains in this worker
- * iteration inherit the value; sibling worker iterations have their
- * own resource and never see it.
+ * Open this worker iteration's claim slot before the first `await` in the
+ * claiming block. After an await the call publishes to nobody.
+ * `openLeaseRenewalScope` has the rule.
+ */
+export function openWorkerClaimScope(): void {
+  workerClaimStore.enterWith({});
+}
+
+/**
+ * Publish `ticket` into the slot {@link openWorkerClaimScope} opened.
+ *
+ * Throws when no slot is open. A ticket nobody can read turns the worker's
+ * task-tool writes into unguarded coordinator writes, and nothing else would say so.
  *
  * **The one stamp site.** This is the only place a claim enters the seam, which
  * is what makes the tool surface's posture a rule rather than a choice: inside
  * a claimed-worker scope there is always a ticket, and outside one there is
  * never a stamp to read. "No ticket presented" and "not a claimed worker" are
  * the same condition and cannot drift apart.
+ *
+ * Readable only in `ctx`'s request. A dispatch or a resumed wait keeps the
+ * async chain and does not hold this claim.
  */
-export function stampCurrentClaim(ticket: TaskClaimTicket): void {
-  workerClaimStore.enterWith(ticket);
+export function stampCurrentClaim(
+  ticket: TaskClaimTicket,
+  ctx: WorkerClaimReader
+): void {
+  const slot = workerClaimStore.getStore();
+  if (slot === undefined) {
+    throw new Error(
+      `[task-board] stampCurrentClaim() was called with no claim scope open. ` +
+        `Call openWorkerClaimScope() before the first await in the block that ` +
+        `claims the task — after an await the scope is published to nobody.`
+    );
+  }
+  slot.ticket = ticket;
+  slot.task = { collectionId: ticket.collectionId, ...(ticket.partition !== undefined ? { partition: ticket.partition } : {}), taskId: ticket.taskId };
+  slot.request = claimRequestKey(ctx);
+}
+
+/**
+ * Publish the task a request works without a claim (see {@link WorkerTask}),
+ * into the slot {@link openWorkerClaimScope} opened. Only the claim gate
+ * calls it, for a task's own run it admits holding no claim.
+ *
+ * @throws When no slot is open, as {@link stampCurrentClaim} does.
+ */
+export function stampCurrentTask(task: WorkerTask, ctx: WorkerClaimReader): void {
+  const slot = workerClaimStore.getStore();
+  if (slot === undefined) {
+    throw new Error("[task-board] stampCurrentTask() was called with no claim scope open. Call openWorkerClaimScope() first.");
+  }
+  slot.task = task;
+  slot.request = claimRequestKey(ctx);
+}
+
+/**
+ * The task the worker whose async chain this call runs in works, claimed or
+ * not, or `undefined` outside one. What a task it files names as its filer
+ * (`filedByTask`); never an authority to write the task (that is
+ * {@link currentWorkerClaim}'s). Bound to `ctx`'s request, as the claim is.
+ */
+export function currentWorkerTask(ctx: WorkerClaimReader): WorkerTask | undefined {
+  const slot = workerClaimStore.getStore();
+  return slot?.task !== undefined && slot.request === claimRequestKey(ctx) ? slot.task : undefined;
+}
+
+/** A claim stamped in this request: every claimed turn is a task turn. */
+export function claimServesTaskTurn(ctx: WorkerClaimReader): boolean {
+  return slotInRequest(claimRequestKey(ctx)) !== undefined;
 }
 
 /**
@@ -356,14 +452,17 @@ export function stampCurrentClaim(ticket: TaskClaimTicket): void {
  * `undefined` outside a claimed-worker scope — a coordinator, a directly-wired
  * consumer, a board resolved by hand.
  *
+ * `ctx` is the reader's own context. A ticket stamped in another request reads
+ * as `undefined`: a turn a worker resumed or handed work to is not that worker.
+ *
  * Read by `taskTools` so a model-facing write presents ownership without the
  * model ever seeing a token: the model still names a task id, and the substrate
  * refuses when that id is not the one the caller holds. `undefined` means no
  * ownership question is asked, which is the correct posture for a coordinator
  * settling a task it never claimed.
  */
-export function currentWorkerClaim(): TaskClaimTicket | undefined {
-  return workerClaimStore.getStore();
+export function currentWorkerClaim(ctx: WorkerClaimReader): TaskClaimTicket | undefined {
+  return slotInRequest(claimRequestKey(ctx))?.ticket;
 }
 
 /**

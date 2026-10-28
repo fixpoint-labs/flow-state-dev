@@ -24,6 +24,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { bindTaskDispatcher, defineFlow, handler, markDispatcher } from "@flow-state-dev/core";
+import type { FlowInstance } from "@flow-state-dev/core/types";
 import { resolveEntry } from "../../src/execution/resolve-entry";
 import {
   INTERNAL_SOURCE,
@@ -53,14 +54,14 @@ const internalBlock = handler({
 });
 
 /**
- * A board's hand-off at a dispatcher assignee, as `taskBoard()` installs it: a
+ * A board's dispatch at a dispatcher assignee, as `taskBoard()` installs it: a
  * block carrying a `task` address and the board's binding. The gate is the
  * identity here so the entry's block stays observable as the one declared —
  * this file is about which MAP resolves, not what the gate wraps.
  */
-function boundHandOff(target: string) {
+function boundDispatch(target: string) {
   const block = markDispatcher(
-    handler({ name: `hand-off-${target}`, inputSchema: z.unknown(), execute: () => undefined }),
+    handler({ name: `dispatch-${target}`, inputSchema: z.unknown(), execute: () => undefined }),
     { type: "task", action: target, session: "per-task" }
   );
   bindTaskDispatcher(block, { boardId: "b", gate: (entry) => entry });
@@ -80,12 +81,12 @@ const otherBlock = handler({
  * the public action declares a `reject` concurrency policy, so an arbiter
  * that fell through would be caught inheriting it.
  */
-function flowWithCollidingNames() {
+function flowWithCollidingNames(): FlowInstance {
   return defineFlow({
     kind: "board",
     actions: {
       drain: { block: publicBlock, concurrency: { policy: "reject", key: "session" } },
-      handOff: { block: boundHandOff("drain") }
+      dispatch: { block: boundDispatch("drain") }
     },
     internal: { actions: { drain: { block: internalBlock } } },
     task: { actions: { drain: { block: taskBlock } } }
@@ -109,9 +110,9 @@ describe("resolveEntry — task and internal never fall through to flow.actions"
   });
 
   it("returns undefined when the type's own map lacks the name — even though it has OTHER entries and flow.actions has this one", () => {
-    const partial = defineFlow({
+    const partial: FlowInstance = defineFlow({
       kind: "partial-maps",
-      actions: { drain: { block: publicBlock }, handOff: { block: boundHandOff("other") } },
+      actions: { drain: { block: publicBlock }, dispatch: { block: boundDispatch("other") } },
       internal: { actions: { other: { block: otherBlock } } },
       task: { actions: { other: { block: otherBlock } } }
     })({ id: "partial-maps" });
@@ -121,7 +122,7 @@ describe("resolveEntry — task and internal never fall through to flow.actions"
   });
 
   it("returns undefined when the type's map does not exist at all", () => {
-    const noMaps = defineFlow({
+    const noMaps: FlowInstance = defineFlow({
       kind: "no-maps",
       actions: { drain: { block: publicBlock } }
     })({ id: "no-maps" });
@@ -132,7 +133,7 @@ describe("resolveEntry — task and internal never fall through to flow.actions"
 });
 
 describe("resolveEntry — webhook/scheduled need their own coordinate, never a name fallback", () => {
-  const flow = defineFlow({
+  const flow: FlowInstance = defineFlow({
     kind: "coordinated",
     actions: { run: { block: publicBlock } },
     webhooks: { github: { on: { push: { block: taskBlock, input: () => ({}) } } } },
@@ -187,7 +188,7 @@ describe("resolveEntry — webhook/scheduled need their own coordinate, never a 
   it("resolves nothing on a flow that declares no webhooks/schedules at all", () => {
     // The dynamic-schedule case too: no static coordinate to resolve, and the
     // carried core (not this lookup) is what handles it upstream.
-    const bare = defineFlow({ kind: "bare", actions: { run: { block: publicBlock } } })();
+    const bare: FlowInstance = defineFlow({ kind: "bare", actions: { run: { block: publicBlock } } })();
     expect(
       resolveEntry(bare, "run", WEBHOOK_SOURCE, { webhook: { provider: "github", eventType: "push" } })
     ).toBeUndefined();

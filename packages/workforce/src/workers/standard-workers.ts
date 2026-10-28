@@ -14,10 +14,16 @@ import type { WorkerManifest } from "../manifest";
 import { readDeclaredFlow } from "../declared-flow";
 import { STANDARD_WORKERS_PATTERN } from "./keys";
 
-/** What a standard worker's projected row says: which flow it runs on, and what it's for. */
+/**
+ * What a standard worker's projected row says: which flow it runs on, what it's
+ * for, and the names a user reads it and its team by (its file's `name:` and
+ * its team's `TEAM.md` `name:`, each `null` when unset).
+ */
 export const standardWorkerRowSchema = z.object({
   flow: z.string().min(1),
-  description: z.string().nullable()
+  description: z.string().nullable(),
+  name: z.string().nullable(),
+  teamName: z.string().nullable()
 });
 
 /** One standard worker as the projection shows it. */
@@ -33,12 +39,20 @@ export function standardWorkerFlow(manifest: WorkerManifest, defaultFlow: string
   return "kind" in declared ? declared.kind : undefined;
 }
 
+/** A worker's display name, its file's `name:`, or `null` when it names none. */
+export function workerDisplayName(manifest: WorkerManifest): string | null {
+  const name = manifest.declared.name;
+  return typeof name === "string" ? name : null;
+}
+
 /** A standard worker's projected row. */
 export function standardWorkerRow(manifest: WorkerManifest, defaultFlow: string): StandardWorkerRow {
   const description = manifest.declared.description;
   return {
     flow: standardWorkerFlow(manifest, defaultFlow) ?? defaultFlow,
-    description: typeof description === "string" ? description : null
+    description: typeof description === "string" ? description : null,
+    name: workerDisplayName(manifest),
+    teamName: manifest.teamName ?? null
   };
 }
 

@@ -1,0 +1,94 @@
+<svg viewBox="0 0 940 470" role="img" aria-label="D2, what a review nobody answers does at the person-stop deadline. Chosen: the run completes, and its output says review deadline. Instead of: fail the try, or fail the task for good. It comes down to the first row, what a forgotten review costs: a mark on finished work, against running the coding run again and asking again up to three times, or an error over a change nobody rejected. Second row: on the lab&#x27;s board it lands in Resolved like other threads, not back in Working or Errored. Third row, the price: work is marked done with nobody looking, though nothing merges on completion. Locks in: the output gains review accepted, deadline or null, and the host&#x27;s person-stop default is the only clock. Flips if: done triggers something irreversible like a merge."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; --gone-soft:#F4E2E0; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; --gone-soft:#3A2220; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .bad    { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.2; }
+    .good   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="470"/>
+  <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+  <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+  <text class="t-q" x="32" y="52">What does a review nobody answers do at the person-stop deadline?</text>
+  <rect class="chosen" x="196" y="76" width="232" height="46" rx="5"/>
+  <text class="t-tag c-code" x="210" y="93">CHOSEN</text>
+  <text class="t-h c-code" x="210" y="112">Complete, marked so</text>
+  <rect class="lost" x="440" y="76" width="232" height="46" rx="5"/>
+  <text class="t-tag c-mute" x="454" y="93">INSTEAD OF</text>
+  <text class="t-h c-lost" x="454" y="112">Fail the try</text>
+  <rect class="lost" x="684" y="76" width="232" height="46" rx="5"/>
+  <text class="t-tag c-mute" x="698" y="93">INSTEAD OF</text>
+  <text class="t-h c-lost" x="698" y="112">Fail the task for good</text>
+  <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+  <rect class="bar" x="16" y="134" width="4" height="62"/>
+  <text class="t-lbl" x="32" y="154">WHAT A FORGOTTEN</text>
+  <text class="t-lbl" x="32" y="167">REVIEW COSTS</text>
+  <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+  <text class="mark plus" x="200" y="162">+</text>
+  <text class="t-b" x="218" y="161">A mark on finished work</text>
+  <text class="t-s" x="218" y="179">review: deadline on the output</text>
+  <text class="mark minus" x="444" y="162">−</text>
+  <text class="t-b" x="462" y="161">The coding run again</text>
+  <text class="t-s" x="462" y="179">then the same review, up to 3 times</text>
+  <text class="mark minus" x="688" y="162">−</text>
+  <text class="t-b" x="706" y="161">The finished change</text>
+  <text class="t-s" x="706" y="179">an error over work nobody rejected</text>
+  <line class="row" x1="16" y1="196" x2="924" y2="196"/>
+  <text class="t-lbl" x="32" y="216">THE LAB&#x27;S BOARD</text>
+  <text class="mark plus" x="200" y="224">+</text>
+  <text class="t-b" x="218" y="223">Resolved, like other threads</text>
+  <text class="t-s" x="218" y="241">FIX-2157 D2&#x27;s deadline</text>
+  <text class="mark minus" x="444" y="224">−</text>
+  <text class="t-b" x="462" y="223">Back to Working</text>
+  <text class="t-s" x="462" y="241">then Ready for review again</text>
+  <text class="mark minus" x="688" y="224">−</text>
+  <text class="t-b" x="706" y="223">Errored</text>
+  <text class="t-s" x="706" y="241">under Waiting on you</text>
+  <line class="row" x1="16" y1="258" x2="924" y2="258"/>
+  <text class="t-lbl" x="32" y="278">WHAT IT RISKS</text>
+  <text class="mark minus" x="200" y="286">−</text>
+  <text class="t-b" x="218" y="285">Done with nobody looking</text>
+  <text class="t-s" x="218" y="303">nothing merges on completion</text>
+  <text class="mark plus" x="444" y="286">+</text>
+  <text class="t-b" x="462" y="285">Nothing done unseen</text>
+  <text class="t-s" x="462" y="303">at the price of reruns</text>
+  <text class="mark plus" x="688" y="286">+</text>
+  <text class="t-b" x="706" y="285">Nothing done unseen</text>
+  <text class="t-s" x="706" y="303">at the price of the work</text>
+  <line class="row" x1="16" y1="320" x2="924" y2="320"/>
+  <rect class="foot" x="16" y="336" width="446" height="74" rx="5"/>
+  <text class="t-lbl" x="32" y="357">LOCKS IN</text>
+  <text class="t-b" x="32" y="377">review: &quot;accepted&quot; | &quot;deadline&quot; | null on the output</text>
+  <text class="t-s" x="32" y="395">the host&#x27;s person-stop default is the only clock</text>
+  <rect class="foot" x="478" y="336" width="446" height="74" rx="5"/>
+  <text class="t-lbl" x="494" y="357">FLIPS IF</text>
+  <text class="t-b" x="494" y="377">Done triggers something irreversible</text>
+  <text class="t-s" x="494" y="395">like a merge; then the task fails for good</text>
+</svg>

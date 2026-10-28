@@ -8,17 +8,17 @@ How to configure AI model resolution for your generators.
 
 ## How Model Resolution Works
 
-Generator blocks specify a `model` string (e.g., `"openai/gpt-5.4-mini"`). At runtime, the server resolves this string to an actual AI SDK model instance via a **model resolver**.
+Generator blocks specify a `model` string (e.g., `"openai/gpt-6-luna"`). At runtime, the server resolves this string to an actual AI SDK model instance via a **model resolver**.
 
 ```ts
 const chatGen = generator({
   name: "chat",
-  model: "openai/gpt-5.4-mini",  // Resolved at runtime
+  model: "openai/gpt-6-luna",  // Resolved at runtime
   // ...
 });
 ```
 
-Model strings use slash format: `"provider/model"`. For gateway routing, use three segments: `"vercel/openai/gpt-5.4"`.
+Model strings look like `"openai/gpt-6.1-sol"`. To name the gateway that serves a model, put it before a colon: `"vercel:openai/gpt-6.1-sol"`.
 
 ## Zero-Config Resolver
 
@@ -52,9 +52,9 @@ const resolver = createModelResolver({
     openai: process.env.MY_OPENAI_KEY,
     anthropic: process.env.MY_ANTHROPIC_KEY,
   },
-  defaultModel: "anthropic/claude-sonnet-4-6",
+  defaultModel: "anthropic/claude-sonnet-5-5",
   intents: {
-    utility: ["anthropic/claude-haiku-4-5", "openai/gpt-5.4-nano"],
+    utility: ["anthropic/claude-haiku-5-5", "openai/gpt-6-luna"],
   },
   retryPolicy: {
     maxAttemptsPerModel: 3,
@@ -68,19 +68,19 @@ Intents are named routing groups configured on the resolver. Generators referenc
 
 ```ts
 const resolver = createModelResolver({
-  defaultModel: "anthropic/claude-sonnet-4-6",
+  defaultModel: "anthropic/claude-sonnet-5-5",
   intents: {
-    utility:   ["anthropic/claude-haiku-4-5", "openai/gpt-5.4-nano"],
-    chat:      ["anthropic/claude-sonnet-4-6", "openai/gpt-5.5"],
-    plan:      ["anthropic/claude-opus-4-7"],
-    synthesize:["anthropic/claude-sonnet-4-6", "openai/gpt-5.5"],
-    code:      ["anthropic/claude-sonnet-4-6", "openai/gpt-5.5"],
-    reason:    ["anthropic/claude-opus-4-7"],
+    utility:   ["anthropic/claude-haiku-5-5", "openai/gpt-6-luna"],
+    chat:      ["anthropic/claude-sonnet-5-5", "openai/gpt-6.1-sol"],
+    plan:      ["anthropic/claude-opus-5-5"],
+    synthesize:["anthropic/claude-sonnet-5-5", "openai/gpt-6.1-sol"],
+    code:      ["anthropic/claude-sonnet-5-5", "openai/gpt-6.1-sol"],
+    reason:    ["anthropic/claude-opus-5-5"],
   },
 });
 ```
 
-`defaultModel` is required when `intents` is non-empty. It must parse as `provider/model` or `gateway/provider/model` — never another `intent/*`. The resolver validates these constraints at construction; misconfigured intents throw immediately rather than at first generator call.
+`defaultModel` is required when `intents` is non-empty. It must parse as `provider/model` or `name:model` — never another `intent/*`. The resolver validates these constraints at construction; misconfigured intents throw immediately rather than at first generator call.
 
 Framework canonical intent names are documented in [Models](/docs/fundamentals/models#canonical-intent-names). Apps can add more — names match `^[a-zA-Z][a-zA-Z0-9_-]*$`.
 
@@ -98,7 +98,7 @@ Env vars overlay `intents` and `defaultModel` at construction. The `env` option 
 
 | Variable | Effect | Value shape |
 | --- | --- | --- |
-| `FSDEV_INTENT_<NAME>` | Replaces `intents[name]` with a one-element candidate list. | `provider/model` or `gateway/provider/model`. |
+| `FSDEV_INTENT_<NAME>` | Replaces `intents[name]` with a one-element candidate list. | `provider/model` or `name:model`. |
 | `FSDEV_DEFAULT_MODEL` | Replaces `defaultModel`. | Same as above. |
 
 `<NAME>` is `intentName.toUpperCase().replace(/-/g, "_")`. Disallowed values: `intent/*`, empty / whitespace-only strings, and anything `parseModelString` rejects.
@@ -115,7 +115,7 @@ Each env-var value passes through the same `parseModelString` parser used for in
 
 ```
 createModelResolver: FSDEV_INTENT_CHAT: Invalid model format: "garbage". ...
-createModelResolver: FSDEV_INTENT_CHAT must be a 'provider/model' or 'gateway/provider/model' string; received "intent/foo".
+createModelResolver: FSDEV_INTENT_CHAT must be a 'provider/model' or 'name:model' string; received "intent/foo".
 ```
 
 An `FSDEV_INTENT_*` for an intent that isn't declared warns and is skipped rather than throwing:
@@ -130,9 +130,9 @@ Tests and library callers can pass an explicit env source:
 
 ```ts
 const resolver = createModelResolver({
-  defaultModel: "anthropic/claude-sonnet-4-6",
-  intents: { chat: ["anthropic/claude-sonnet-4-6"] },
-  env: { FSDEV_INTENT_CHAT: "openai/gpt-5.4-mini" },
+  defaultModel: "anthropic/claude-sonnet-5-5",
+  intents: { chat: ["anthropic/claude-sonnet-5-5"] },
+  env: { FSDEV_INTENT_CHAT: "openai/gpt-6-luna" },
 });
 ```
 
@@ -140,7 +140,7 @@ When `env` is passed, the resolver does not read `process.env` for intent overri
 
 ### Precedence
 
-1. A hard-coded `provider/model` or `gateway/provider/model` string passed to a generator (no env-var hook at this layer).
+1. A hard-coded `provider/model` or `name:model` string passed to a generator (no env-var hook at this layer).
 2. An intent's env override (`FSDEV_INTENT_<NAME>`).
 3. The intent's in-code candidate list.
 4. The `FSDEV_DEFAULT_MODEL` override.
@@ -190,10 +190,10 @@ When an intent has no available candidate and falls through to `defaultModel`, n
 
 ```ts
 const resolver = createModelResolver({
-  defaultModel: "openai/gpt-5.4",
+  defaultModel: "openai/gpt-6.1-sol",
   intents: {
-    plan: ["anthropic/claude-opus-4-7", "openai/gpt-5.5"],
-    utility: ["openai/gpt-5.4-mini"],
+    plan: ["anthropic/claude-opus-5-5", "openai/gpt-6.1-sol"],
+    utility: ["openai/gpt-6-luna"],
   },
   intentDefaults: {
     plan: {
@@ -234,7 +234,7 @@ Generators support array fallback directly. The resolver tries models in order:
 ```ts
 const chat = generator({
   name: "chat",
-  model: ["openai/gpt-5.4", "anthropic/claude-sonnet-4-6"],
+  model: ["openai/gpt-6.1-sol", "anthropic/claude-sonnet-5-5"],
   prompt: "You are a helpful assistant.",
 });
 ```
@@ -246,8 +246,8 @@ When generators use `search: true`, the framework needs access to the provider's
 For multi-provider setups, search tools are resolved based on the provider prefix in the model string:
 
 ```ts
-// "anthropic/claude-sonnet-4-6" → Anthropic search tools
-// "openai/gpt-5.4" → OpenAI search tools
+// "anthropic/claude-sonnet-5-5" → Anthropic search tools
+// "openai/gpt-6.1-sol" → OpenAI search tools
 ```
 
 When a provider doesn't support search, `search: true` on generators will be silently ignored — the model just won't have search available. No error is thrown.
@@ -263,7 +263,7 @@ import { createMockModelResolver } from "@flow-state-dev/testing";
 
 const mockResolver = createMockModelResolver({
   models: {
-    "openai/gpt-5.4-mini": { output: "Mocked response" },
+    "openai/gpt-6-luna": { output: "Mocked response" },
   },
 });
 ```

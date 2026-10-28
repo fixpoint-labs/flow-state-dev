@@ -17,10 +17,10 @@
  *
  * Every grade reads the store file the run wrote (the coordinators goal's `store.mts`), except what an
  * action answered, which is what the person saw. Leg c's tool lists are what
- * each turn was handed, as the turn said it, never the prompt.
+ * each turn was handed, as the turn said it, never the prompt: noted, not graded.
  *
  * Run:      pnpm tsx goals/workers/files-and-splits-down-the-chain/run.mts
- * Controls: GOAL_CONTROL=no-delegate-check | no-parent-settle (each runs the leg it must fail)
+ * Controls: GOAL_CONTROL=hands-to-a-non-delegate | no-parent-settle (each runs the leg it must fail)
  * Before:   GOAL_COMMIT=<sha> serves that commit, from its own tree and install
  * Legs:     GOAL_LEGS=a,b,c,d,e (default: all)
  * Attempts: GOAL_ATTEMPTS=<n> fresh Labs for leg e, until it first passes (default 3; 1 under a control)
@@ -44,8 +44,6 @@ const ALL_LEGS = ["a", "b", "c", "d", "e"] as const;
 const SCRIPTED_LEGS = new Set(["a", "b", "c", "d"]);
 /** The app's own chain cap on leg d's second Lab. */
 const APP_CAP = 3;
-/** The task tools (the pinned eight, and `answerTask`): none may be on the turn of a worker with no task-taking delegate. */
-const TASK_TOOLS = ["addTask", "assignTask", "completeTask", "failTask", "blockTask", "cancelTask", "updateTask", "listTasks", "answerTask"];
 const say = (s: string) => console.error(`[split ${new Date().toISOString().slice(11, 19)}] ${s}`);
 const show = (value: unknown) => JSON.stringify(value)?.slice(0, 500);
 
@@ -62,18 +60,18 @@ interface Control {
 }
 
 const CONTROLS: Record<string, Control> = {
-  "no-delegate-check": {
-    name: "no-delegate-check",
+  "hands-to-a-non-delegate": {
+    name: "hands-to-a-non-delegate",
     legs: ["c"],
-    assertions: ["c:files-nothing"],
+    assertions: ["c:reaches-no-delegate"],
     patches: [
       {
         module: "packages/workforce/src/conversation-board/board.ts",
-        from: String.raw`\(await options\.delegates\(ctx\)\)\.available\.size > 0;`,
-        to: "true;",
+        from: String.raw`if \(delegates\.available\.size === 1\) assignee = \[\.\.\.delegates\.available\.keys\(\)\]\[0\]!;`,
+        to: "if (delegates.available.size + delegates.unavailable.size === 1) assignee = [...delegates.available.keys(), ...delegates.unavailable.keys()][0]!;",
       },
     ],
-    does: "the grant always says yes: every session's turn gets the task tools and the app's task actions get a board, whatever its delegates take",
+    does: "an unassigned filing goes to the conversation's only delegate even when that delegate takes no task: desk.router's goes to desk.poster",
   },
   "no-parent-settle": {
     name: "no-parent-settle",
@@ -81,12 +79,12 @@ const CONTROLS: Record<string, Control> = {
     assertions: ["a:completes-after-pieces"],
     patches: [
       {
-        module: "packages/workforce/src/conversation-board/split.ts",
-        from: String.raw`export async function settleParent\(ctx(?:: BlockContext)?\)(?:: Promise<boolean>)? \{`,
-        to: "$& return false;",
+        module: "packages/workforce/src/conversation-board/task-settled.ts",
+        from: String.raw`\.tap\(admitOwnTask\("conversation-task-settled-admission", true\)\)`,
+        to: "",
       },
     ],
-    does: "a split task never settles from its pieces: it stays parked on the board above after they end",
+    does: "a piece's notice never runs for the task that filed it, so the task is never checked after its first turn: it stays running on the board above after its pieces end",
   },
 };
 
@@ -171,8 +169,8 @@ function chainUnder(all: StoredSession[], root: string): StoredSession[] {
   return all.filter((s) => ids.has(s.id));
 }
 
-/** The `tool` calls a session's turns made, each one's answer; only one request's when `requestId` is given. Each leg reads exactly the tool it proves: `dispatchTask` starts work, `addTask` records it. */
-function addTasks(tool: "addTask" | "dispatchTask", store: string, sessionId: string | null | undefined, requestId?: string | null): any[] {
+/** The `tool` calls a session's turns made, each one's answer; only one request's when `requestId` is given. `createTask` starts work, and with `held` holds it. */
+function addTasks(tool: "createTask", store: string, sessionId: string | null | undefined, requestId?: string | null): any[] {
   if (sessionId == null) return [];
   return items(store, sessionId, "tool_output")
     .filter((i) => i.toolCall?.name === tool && (requestId === undefined || i.requestId === requestId))
@@ -189,6 +187,12 @@ const onBoardOf = (rows: StoredTask[], sessionId: string) => rows.filter((r) => 
 const completedLines = (store: string, conv: string, taskId: string, worker: string) =>
   items(store, conv, "message").filter((m) => m.agentName === worker && textOf(m).includes(`(${taskId}) completed`));
 
+/** Whether a split task's output is its worker's woken answer (`Noted.`), never a list of its pieces (FIX-2077 D3). */
+function isWokenAnswer(output: unknown): boolean {
+  if (output === undefined || (output as { pieces?: unknown } | null)?.pieces !== undefined) return false;
+  return JSON.stringify(output).includes("Noted.");
+}
+
 /** Leg a: Alice's `agent` worker files for its delegate, which splits; Bob's worker of the same name stays his. */
 function gradeA(o: any, store: string): LegResult {
   const r: LegResult = { failures: [], notes: [] };
@@ -197,21 +201,23 @@ function gradeA(o: any, store: string): LegResult {
   const bob = o.people.bob.userId as string;
   const rows = taskRows(store, alice, o.org);
   const all = sessions(store);
-  const filed = addTasks("dispatchTask", store, A.conv, A.turn.requestId);
+  const filed = addTasks("createTask", store, A.conv, A.turn.requestId);
   const topId = (filed.find((x) => x?.ok === true)?.taskId as string | undefined) ?? null;
   const top = rows.find((x) => x.id === topId);
 
   if (refusalOf(A.hired.alice) !== undefined || top === undefined || top.assignee !== "crew.planner" || !top.partition.startsWith(`${A.conv}~`)) {
-    r.failures.push(`a:filed — wanted Alice's worker's own addTask to store a task for crew.planner on her conversation's board; hired ${show(A.hired.alice.output ?? A.hired.alice.error)}, the turn ${A.turn.status}, its addTask answered ${show(filed)}, row ${show(top)}`);
+    r.failures.push(`a:filed — wanted Alice's worker's own createTask to store a task for crew.planner on her conversation's board; hired ${show(A.hired.alice.output ?? A.hired.alice.error)}, the turn ${A.turn.status}, its createTask answered ${show(filed)}, row ${show(top)}`);
   }
   const plannerSessions = all.filter((s) => topId !== null && s.state.taskId === topId);
   const planner = plannerSessions[0];
-  const pieceCalls = addTasks("dispatchTask", store, planner?.id);
+  const pieceCalls = addTasks("createTask", store, planner?.id);
   const pieces = planner === undefined ? [] : onBoardOf(rows, planner.id);
   if (plannerSessions.length !== 1 || pieceCalls.filter((x) => x?.ok === true).length !== 2 || pieces.length !== 2 || show(pieces.map((p) => p.assignee).sort()) !== show(["crew.one", "crew.two"])) {
-    r.failures.push(`a:split — wanted crew.planner's task session to file two pieces, one for crew.one and one for crew.two, on its own board by its own addTask; sessions ${plannerSessions.length}, its addTask answered ${show(pieceCalls)}, pieces on its board ${show(pieces.map((p) => [p.assignee, p.status]))}`);
+    r.failures.push(`a:split — wanted crew.planner's task session to file two pieces, one for crew.one and one for crew.two, on its own board by its own createTask; sessions ${plannerSessions.length}, its createTask answered ${show(pieceCalls)}, pieces on its board ${show(pieces.map((p) => [p.assignee, p.status]))}`);
   }
   const chain = chainUnder(all, A.conv);
+  /** Where a session in the chain sits: under the conversation, under the planner, or its parent's id. */
+  const parentOf = (s: (typeof chain)[number]) => (s.parentSessionId === A.conv ? "conv" : s.parentSessionId === planner?.id ? "planner" : s.parentSessionId);
   const pieceSessions = pieces.map((p) => all.filter((s) => s.state.taskId === p.id));
   if (
     chain.length !== 4 ||
@@ -222,10 +228,10 @@ function gradeA(o: any, store: string): LegResult {
     !top.partition.startsWith(`${A.conv}~`)
   ) {
     r.failures.push(
-      `a:four-sessions — wanted four sessions, all Alice's: her conversation, the task's session under it, and one per piece under that, each row on its own session's board; the chain ${show(chain.map((s) => [s.state.workerId, s.userId === alice ? "alice" : s.userId, s.parentSessionId === A.conv ? "conv" : s.parentSessionId === planner?.id ? "planner" : s.parentSessionId]))}`,
+      `a:four-sessions — wanted four sessions, all Alice's: her conversation, the task's session under it, and one per piece under that, each row on its own session's board; the chain ${show(chain.map((s) => [s.state.workerId, s.userId === alice ? "alice" : s.userId, parentOf(s)]))}`,
     );
   }
-  const outputPieces = ((top?.output as { pieces?: Array<{ taskId?: string }> } | undefined)?.pieces ?? []).map((p) => p.taskId).sort();
+  const answered = isWokenAnswer(top?.output);
   const lastPiece = Math.max(...pieces.map((p) => p.completedAt ?? Infinity));
   if (
     top?.status !== "completed" ||
@@ -234,10 +240,10 @@ function gradeA(o: any, store: string): LegResult {
     pieces.length !== 2 ||
     pieces.some((p) => p.status !== "completed") ||
     !(lastPiece <= top.completedAt) ||
-    show(outputPieces) !== show(pieces.map((p) => p.id).sort())
+    !answered
   ) {
     r.failures.push(
-      `a:completes-after-pieces — wanted the top task completed within 120 s of the filing, after both pieces, from them; it is ${top?.status ?? "missing"}${top?.completedAt === undefined ? "" : ` ${top.completedAt - A.turn.startedAt} ms after the filing`}, pieces ${show(pieces.map((p) => [p.status, p.completedAt]))}, its output names ${show(outputPieces)}`,
+      `a:completes-after-pieces — wanted the top task completed within 120 s of the filing, after both pieces, from them; it is ${top?.status ?? "missing"}${top?.completedAt === undefined ? "" : ` ${top.completedAt - A.turn.startedAt} ms after the filing`}, pieces ${show(pieces.map((p) => [p.status, p.completedAt]))}, its output ${show(top?.output)}`,
     );
   }
   const conv = all.find((s) => s.id === A.conv);
@@ -248,8 +254,8 @@ function gradeA(o: any, store: string): LegResult {
   }
   // Bob's worker of the same name: his own row, so it lists only his delegate.
   const bobRows = taskRows(store, bob, o.org);
-  const bobTried = addTasks("dispatchTask", store, A.bobConv, A.bobTurn.requestId);
-  const bobOwnId = addTasks("dispatchTask", store, A.bobConv, A.bobOwn.requestId).find((x) => x?.ok === true)?.taskId as string | undefined;
+  const bobTried = addTasks("createTask", store, A.bobConv, A.bobTurn.requestId);
+  const bobOwnId = addTasks("createTask", store, A.bobConv, A.bobOwn.requestId).find((x) => x?.ok === true)?.taskId as string | undefined;
   const bobOwn = bobRows.find((x) => x.id === bobOwnId);
   const bobOwnSessions = all.filter((s) => bobOwnId !== undefined && s.state.taskId === bobOwnId);
   const herRowsNamingIt = rows.filter((x) => x.assignee === A.lead);
@@ -281,11 +287,11 @@ function gradeB(o: any, store: string): LegResult {
   const rows = taskRows(store, alice, o.org);
   const all = sessions(store);
   const conv = all.find((s) => s.id === B.conv);
-  const filed = addTasks("dispatchTask", store, B.conv, B.turn.requestId);
+  const filed = addTasks("createTask", store, B.conv, B.turn.requestId);
   const id = (filed.find((x) => x?.ok === true)?.taskId as string | undefined) ?? null;
   const row = rows.find((x) => x.id === id);
   if (conv?.flowKind !== "foreman" || conv.state.workerId !== "shop.foreman" || row === undefined || row.assignee !== "crew.one" || !row.partition.startsWith(`${B.conv}~`)) {
-    r.failures.push(`b:filed — wanted shop.foreman, on its own flow, to store a task for crew.one on its session's board by its own addTask; session ${show(conv && [conv.flowKind, conv.state.workerId])}, the turn ${B.turn.status} ${B.turn.error ?? ""}, its addTask answered ${show(filed)}, row ${show(row)}`);
+    r.failures.push(`b:filed — wanted shop.foreman, on its own flow, to store a task for crew.one on its session's board by its own createTask; session ${show(conv && [conv.flowKind, conv.state.workerId])}, the turn ${B.turn.status} ${B.turn.error ?? ""}, its createTask answered ${show(filed)}, row ${show(row)}`);
   }
   const ran = all.filter((s) => id !== null && s.state.taskId === id);
   const lines = id === null ? [] : completedLines(store, B.conv, id, "crew.one");
@@ -296,12 +302,17 @@ function gradeB(o: any, store: string): LegResult {
   return r;
 }
 
-/** Leg c: no task-taking delegate, no task tool, and nothing files. */
+/**
+ * Leg c: no task-taking delegate, so nothing reaches a delegate (FIX-2076's
+ * rule: the turn has the task tools, and an unassigned filing stays on its own
+ * board as a step).
+ */
 function gradeC(o: any, store: string): LegResult {
   const r: LegResult = { failures: [], notes: [] };
   const C = o.c;
   const alice = o.people.alice.userId as string;
   const rows = taskRows(store, alice, o.org);
+  const all = sessions(store);
   for (const label of ["router", "solo"] as const) {
     const X = C[label];
     const said = items(store, X.conv, "message")
@@ -310,16 +321,16 @@ function gradeC(o: any, store: string): LegResult {
       .join("\n");
     const listed = /tools=(\[[^\]]*\])/.exec(said);
     const tools = listed === null ? null : (JSON.parse(listed[1]!) as string[]);
-    const onTurn = tools === null ? [] : tools.filter((name) => TASK_TOOLS.includes(name));
-    if (tools === null || onTurn.length > 0) {
-      r.failures.push(`c:no-task-tool — wanted ${X.worker}'s turn handed none of the task tools; ${tools === null ? `it said no tool list (the turn ${X.turn.status}: ${show(said || X.turn.error)})` : `it was handed ${show(onTurn)}`}`);
-    }
-    const tried = addTasks("addTask", store, X.conv, X.turn.requestId);
+    const tried = addTasks("createTask", store, X.conv, X.turn.requestId);
     const stored = onBoardOf(rows, X.conv);
-    if (tried.some((x) => x?.ok === true) || !refusedWith(X.app.output ?? X.app.error, "no_delegation_board") || stored.length > 0) {
-      r.failures.push(`c:files-nothing — wanted ${X.worker}, with no task-taking delegate, to file nothing: its turn's addTask answered ${show(tried)}, the app's addTask ${show(X.app.output ?? X.app.error ?? X.app.status)}, rows on its board ${stored.length}`);
+    const assigned = stored.filter((row) => row.assignee != null);
+    const taskSessions = all.filter((s) => s.parentSessionId === X.conv && s.state.taskId !== undefined);
+    if (!tried.some((x) => x?.ok === true) || stored.length === 0 || assigned.length > 0 || taskSessions.length > 0 || stored.some((row) => row.status !== "held")) {
+      r.failures.push(
+        `c:reaches-no-delegate — wanted ${X.worker}, with no task-taking delegate, to keep its filing on its own board as a held step: no row with an assignee and no task session; its turn's createTask answered ${show(tried)}, rows on its board ${show(stored.map((row) => [row.status, row.assignee ?? null]))}, task sessions under it ${taskSessions.length}`,
+      );
     }
-    r.notes.push(`${X.worker}: tools ${show(tools)}; its addTask ${show(tried)}; the app's ${show(X.app.output ?? X.app.status)}`);
+    r.notes.push(`${X.worker}: tools ${show(tools)}; its createTask ${show(tried)}; the app's ${show(X.app.output ?? X.app.status)}; rows ${show(stored.map((row) => [row.status, row.assignee ?? null]))}`);
   }
   return r;
 }
@@ -332,7 +343,7 @@ function gradeD(o: any, store: string, cap: any, capStore: string | undefined): 
   const rows = taskRows(store, alice, o.org);
   const all = sessions(store);
   const chain = chainUnder(all, D.conv);
-  const deepTried = addTasks("dispatchTask", store, D.d5);
+  const deepTried = addTasks("createTask", store, D.d5);
   const boards = chain.filter((s) => onBoardOf(rows, s.id).length > 0);
   const toD6 = allTaskRows(store).filter((x) => x.assignee === "deep.d6");
   if (
@@ -345,24 +356,24 @@ function gradeD(o: any, store: string, cap: any, capStore: string | undefined): 
     boards.some((s) => onBoardOf(rows, s.id).length !== 1)
   ) {
     r.failures.push(
-      `d:depth — wanted the filing onto the sixth board refused, by deep.d5's own addTask and by the app, total_task_cap_exceeded, and five boards holding one row each; deep.d5's session ${D.d5 ?? "missing"}, its addTask answered ${show(deepTried)}, the app's ${show(D.deepApp?.output ?? D.deepApp?.error)}, rows for deep.d6 ${toD6.length}, boards ${show(boards.map((s) => [s.state.workerId, onBoardOf(rows, s.id).length]))}`,
+      `d:depth — wanted the filing onto the sixth board refused, by deep.d5's own createTask and by the app, total_task_cap_exceeded, and five boards holding one row each; deep.d5's session ${D.d5 ?? "missing"}, its createTask answered ${show(deepTried)}, the app's ${show(D.deepApp?.output ?? D.deepApp?.error)}, rows for deep.d6 ${toD6.length}, boards ${show(boards.map((s) => [s.state.workerId, onBoardOf(rows, s.id).length]))}`,
     );
   }
-  const fanCalls = addTasks("addTask", store, D.fan);
+  const fanCalls = addTasks("createTask", store, D.fan);
   const fanOk = fanCalls.filter((x) => x?.ok === true).length;
   const fanRefused = fanCalls.filter((x) => refusedWith(x, "total_task_cap_exceeded")).length;
   const fanRows = D.fan === null ? [] : onBoardOf(rows, D.fan);
   if (D.fan === null || fanOk !== 100 || fanRefused !== 1 || fanCalls.length !== 101 || fanRows.length !== 100 || !refusedWith(D.fanApp?.output ?? D.fanApp?.error, "total_task_cap_exceeded")) {
-    r.failures.push(`d:fan-at-101 — wanted 100 pieces accepted and the 101st refused, total_task_cap_exceeded, by the fan's addTask and by the app; ${fanCalls.length} calls, ${fanOk} accepted, ${fanRefused} refused, ${fanRows.length} rows, the app's ${show(D.fanApp?.output ?? D.fanApp?.error)}`);
+    r.failures.push(`d:fan-at-101 — wanted 100 pieces accepted and the 101st refused, total_task_cap_exceeded, by the fan's createTask and by the app; ${fanCalls.length} calls, ${fanOk} accepted, ${fanRefused} refused, ${fanRows.length} rows, the app's ${show(D.fanApp?.output ?? D.fanApp?.error)}`);
   }
-  r.notes.push(`depth: boards ${boards.length}, deep.d5's addTask ${show(deepTried)}, app ${show(D.deepApp?.output)}; fan: ${fanOk} ok, ${fanRefused} refused, app ${show(D.fanApp?.output)}`);
+  r.notes.push(`depth: boards ${boards.length}, deep.d5's createTask ${show(deepTried)}, app ${show(D.deepApp?.output)}; fan: ${fanOk} ok, ${fanRefused} refused, app ${show(D.fanApp?.output)}`);
   if (cap !== undefined && capStore !== undefined) {
     const capRows = cap.fan === null ? [] : onBoardOf(taskRows(capStore, alice, cap.org), cap.fan);
-    const capCalls = addTasks("addTask", capStore, cap.fan);
+    const capCalls = addTasks("createTask", capStore, cap.fan);
     const capOk = capCalls.filter((x) => x?.ok === true).length;
     const capRefused = capCalls.filter((x) => refusedWith(x, "total_task_cap_exceeded")).length;
     if (cap.fan === null || capOk !== APP_CAP || capRefused !== 1 || capRows.length !== APP_CAP || !refusedWith(cap.fanApp?.output ?? cap.fanApp?.error, "total_task_cap_exceeded")) {
-      r.failures.push(`d:app-cap — wanted, with the app's cap at ${APP_CAP}, ${APP_CAP} pieces accepted and the ${APP_CAP + 1}th refused, total_task_cap_exceeded, by the fan's addTask and by the app; ${capOk} accepted, ${capRefused} refused, ${capRows.length} rows, the app's ${show(cap.fanApp?.output ?? cap.fanApp?.error)}`);
+      r.failures.push(`d:app-cap — wanted, with the app's cap at ${APP_CAP}, ${APP_CAP} pieces accepted and the ${APP_CAP + 1}th refused, total_task_cap_exceeded, by the fan's createTask and by the app; ${capOk} accepted, ${capRefused} refused, ${capRows.length} rows, the app's ${show(cap.fanApp?.output ?? cap.fanApp?.error)}`);
     }
     r.notes.push(`app cap ${APP_CAP}: ${capOk} ok, ${capRefused} refused, app ${show(cap.fanApp?.output)}`);
   }
@@ -374,11 +385,11 @@ function gradeE(E: LegE, store: string, alice: string, org: string): LegResult {
   const r: LegResult = { failures: [], notes: [] };
   const rows = taskRows(store, alice, org);
   const tools = items(store, E.conv, "tool_output");
-  const calls = tools.filter((i) => i.requestId === E.turn.requestId && i.toolCall?.name === "dispatchTask");
+  const calls = tools.filter((i) => i.requestId === E.turn.requestId && i.toolCall?.name === "createTask");
   const ids = calls.map(toolOutput).filter((x) => x?.ok === true).map((x) => x.taskId as string);
   const filed = rows.filter((x) => ids.includes(x.id) && (x.assignee === "crew.one" || x.assignee === "crew.two") && x.partition.startsWith(`${E.conv}~`));
   if (filed.length === 0) {
-    r.failures.push(`e:filed — wanted real.lead's turn to file at least one piece for crew.one or crew.two with dispatchTask; the turn ${E.turn.status} ${E.turn.error ?? ""}, its dispatchTask answered ${show(calls.map(toolOutput))}; tools it called ${show(tools.filter((i) => i.requestId === E.turn.requestId).map((i) => i.toolCall?.name))}`);
+    r.failures.push(`e:filed — wanted real.lead's turn to file at least one piece for crew.one or crew.two with createTask; the turn ${E.turn.status} ${E.turn.error ?? ""}, its createTask answered ${show(calls.map(toolOutput))}; tools it called ${show(tools.filter((i) => i.requestId === E.turn.requestId).map((i) => i.toolCall?.name))}`);
     return r;
   }
   // A filing that waited for its answer hears the ending as the tool's result; any other hears it as one notice.

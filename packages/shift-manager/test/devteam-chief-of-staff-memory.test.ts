@@ -104,7 +104,7 @@ async function say(lab: Lab, sessionId: string, message: string): Promise<void> 
   const result = (await runAction({
     orgId: LAB_ORG_ID,
     flow: runtime.registry.get("coordinator") as FlowInstance,
-    actionName: "run",
+    actionName: "respond",
     input: { message },
     userId: LAB_USER_ID,
     sessionId,

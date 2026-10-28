@@ -10,8 +10,8 @@
  * ships them (BR-16).
  */
 import { useEffect, useState } from "react";
-import { COLUMNS, columnFor, readStatus } from "../lib/columns";
-import { holderOf, openRows, rosterOf, workerFor, type LoadedSnapshot } from "../lib/derive";
+import { COLUMNS, columnFor } from "../lib/columns";
+import { holderOf, openRows, rosterOf, workerFor, workerLabel, type LoadedSnapshot } from "../lib/derive";
 import type { BoardRow } from "../lib/reads";
 import { navigate, TASK_GROUPINGS, type TaskGrouping } from "../lib/routes";
 import { elapsed, isQueued, tasksSummary } from "../lib/tasks";
@@ -49,7 +49,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
   const all = openRows(snapshot);
   const queued = all.filter(isQueued).length;
   const rows = showQueued ? all : all.filter((row) => !isQueued(row));
-  const now = useNow(rows.some((row) => readStatus(row.status) === "in_progress"));
+  const now = useNow(rows.some((row) => row.status === "in_progress"));
   const failed = Object.entries(snapshot.boards).filter(([, b]) => !b.ok);
 
   const keyOf = (row: BoardRow): string =>
@@ -150,7 +150,8 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
               <tbody key={key} data-testid="tasks-group" data-group={key}>
                 <tr>
                   <th colSpan={8} className="pt-4 pb-1 text-left text-xs font-semibold">
-                    {key} <span className="font-normal text-muted-foreground">{groupRows.length}</span>
+                    {by === "worker" ? workerLabel(roster.workers.find((worker) => worker.id === key)?.displayName ?? key) : key}{" "}
+                    <span className="font-normal text-muted-foreground">{groupRows.length}</span>
                     {by === "state" && key === "IN REVIEW" ? (
                       <span className="ml-2 font-normal text-muted-foreground" data-testid="tasks-in-review-gap">
                         {gaps.inReview}
@@ -187,7 +188,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                         {streamLabel(holderOf(snapshot, row))}
                       </td>
                       <td className="truncate py-2 pr-3 text-[13px]" title={worker?.id ?? row.assignee ?? undefined} data-testid="task-row-worker">
-                        {worker?.name ?? row.assignee ?? "—"}
+                        {workerLabel(worker?.displayName ?? row.assignee ?? "—")}
                       </td>
                       <td className={cn(MONO_CELL, "text-muted-foreground")} data-testid="task-row-time">
                         {time ?? "—"}

@@ -7,7 +7,8 @@
  *  - alias the shadcn `@/components/ui/*` and `@/lib/utils` paths used by
  *    registry components to the preview-only stub directory under
  *    `.storybook/shadcn/`. The registry source remains untouched; the alias
- *    only resolves while Storybook is building.
+ *    only resolves while Storybook is building. `vitest.config.ts` and
+ *    `tsconfig.test.json` map the same stubs; change all three together.
  */
 import type { StorybookConfig } from "@storybook/react-vite";
 import { dirname, resolve } from "node:path";

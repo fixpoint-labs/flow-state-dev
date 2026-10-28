@@ -12,7 +12,6 @@ function flows(isolateUserState?: boolean) {
   const agentFlow = defineAgentWorkerFlow({ installation });
   const coordinatorFlow = defineCoordinatorFlow({
     installation,
-    delegateFlows: [agentFlow],
     routeModel: "typesafe-ai/jev",
     ...(isolateUserState === undefined ? {} : { agent: { isolateUserState } }),
   });

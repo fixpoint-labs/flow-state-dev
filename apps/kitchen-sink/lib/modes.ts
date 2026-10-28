@@ -34,9 +34,9 @@ export interface KitchenSinkMode {
 /** The four modes, in the order the picker shows them. */
 export const MODES: readonly KitchenSinkMode[] = [
   { id: "flow-state", label: "Flow State", href: "/flow-state" },
-  { id: "claude-code", label: "Claude Code", href: "/claude-code" },
-  { id: "codex", label: "Codex", href: "/codex" },
-  { id: "cursor", label: "Cursor", href: "/cursor" },
+  { id: "claude-code", label: "Claude Code", href: "/claude-code", flowKind: "claude-code-session" },
+  { id: "codex", label: "Codex", href: "/codex", flowKind: "codex-session" },
+  { id: "cursor", label: "Cursor", href: "/cursor", flowKind: "cursor-session" },
 ];
 
 /** The mode with this id. */
@@ -49,4 +49,14 @@ export function modeById(id: ModeId): KitchenSinkMode {
 /** Whether a mode is a coding harness mode. */
 export function isHarnessMode(id: ModeId): id is HarnessModeId {
   return id !== "flow-state";
+}
+
+/**
+ * A built harness mode's flow kind. Throws for a mode with none: the gate
+ * makes a harness mode available only once it has one, so a caller holding an
+ * available mode trusts that rather than falling back to "not built yet".
+ */
+export function flowKindOf(mode: KitchenSinkMode): string {
+  if (mode.flowKind === undefined) throw new Error(`Kitchen Sink mode ${mode.id} has no flow kind: it is not built.`);
+  return mode.flowKind;
 }

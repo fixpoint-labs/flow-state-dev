@@ -12,9 +12,9 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { SESSION_ADDRESS_PARAM } from "@flow-state-dev/devtool/react";
 import { SectionFailure } from "../components/ui";
-import { asksOfTask, rosterOf, workerFor, waited, type LoadedSnapshot } from "../lib/derive";
+import { asksOfTask, inboxItemIdOf, rosterOf, workerFor, workerLabel, waited, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
-import { describeFailure, STAFF_TEAM, type Failure } from "../lib/reads";
+import { describeFailure, GENERAL_TEAM, type Failure } from "../lib/reads";
 import { navigate } from "../lib/routes";
 import { readRecordedWork, RunReadError, type OpenRun, type RecordedWork } from "../lib/run";
 import { useTask } from "../lib/task";
@@ -53,10 +53,10 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
       <div data-testid="task-inspector">
         <Section title="WORKER" testId="inspector-worker">
           <p className="text-sm" data-testid="inspector-worker-id" data-worker-id={worker?.id ?? ""}>
-            {worker?.id ?? row?.assignee ?? "No worker named"}
+            {workerLabel(worker?.displayName ?? row?.assignee ?? "No worker named")}
           </p>
           <p className="text-xs text-muted-foreground" data-testid="inspector-team">
-            {worker === undefined ? "" : worker.team === STAFF_TEAM ? STAFF_TEAM : `team ${worker.team}`}
+            {worker === undefined ? "" : worker.team === GENERAL_TEAM ? worker.teamName : `team ${worker.teamName}`}
           </p>
         </Section>
         <Section title="STARTED" testId="inspector-started">
@@ -68,7 +68,7 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
           <div className="px-4 pt-3.5">
             <button
               type="button"
-              onClick={() => navigate({ level: "inbox", suspensionId: ask.item.suspensionId })}
+              onClick={() => navigate({ level: "inbox", item: inboxItemIdOf(snapshot, ask.item.suspensionId) })}
               className="flex w-full justify-between border border-foreground bg-attention px-2.5 py-2 text-left font-mono text-[11.5px] font-medium text-attention-foreground"
               data-testid="inspector-needs"
               data-suspension-id={ask.item.suspensionId}
@@ -135,14 +135,14 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
 
 /** The plan and files the run recorded, read once per open (BR-19, BR-20). */
 function Recorded({ run, gaps }: { run: OpenRun; gaps: Gaps }) {
-  const { clients } = useLab();
+  const { client } = useLab();
   const [work, setWork] = useState<RecordedWork | undefined>(undefined);
   const [failure, setFailure] = useState<Failure | undefined>(undefined);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let live = true;
     setFailure(undefined);
-    readRecordedWork(clients, run)
+    readRecordedWork(client, run)
       .then((read) => {
         if (live) setWork(read);
       })
@@ -152,7 +152,7 @@ function Recorded({ run, gaps }: { run: OpenRun; gaps: Gaps }) {
     return () => {
       live = false;
     };
-  }, [clients, run, attempt]);
+  }, [client, run, attempt]);
 
   if (failure !== undefined) {
     return (

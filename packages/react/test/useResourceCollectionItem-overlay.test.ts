@@ -66,11 +66,11 @@ describe("useResourceCollectionItem live overlay (FIX-739)", () => {
 
     // A live mutation arrives; the reducer folds it into the snapshot.
     const merged = mergeResourceChangeIntoSnapshot(baseSnapshot, liveChange("memos/m1", { status: "writing" }))!;
-    expect(readItem(merged, "memos", "m1", baseline).clientData).toEqual({ status: "writing" });
+    expect(readItem(merged, "memos", "m1", baseline)?.clientData).toEqual({ status: "writing" });
 
     // A second mutation updates the overlay again — still no new baseline fetch.
     const merged2 = mergeResourceChangeIntoSnapshot(merged, liveChange("memos/m1", { status: "published" }))!;
-    expect(readItem(merged2, "memos", "m1", baseline).clientData).toEqual({ status: "published" });
+    expect(readItem(merged2, "memos", "m1", baseline)?.clientData).toEqual({ status: "published" });
   });
 
   it("leaves a different topic's baseline untouched", () => {

@@ -1,0 +1,75 @@
+<svg viewBox="0 0 940 440" role="img" aria-label="Two panels. Today: four ways words reach a task. Reopen puts a finished task back to pending and overwrites its output; the coding door stops the attempt, parks and re-queues the row; answerTask answers a question; a line in an open task's session runs as a separate reply. After: one write, updateTask's message, kept on the task and read by every attempt. Before a start it joins the brief; a running request takes it before its next model call; a steer no request took gets one more turn; a coding run ends and the same request continues the coding session. It uses no attempt and is no ending. answerTask stays until FIX-2058. A strip below: a finished task. Today reopen overwrites its output. After, a steer is refused, a follow-up runs in the same session, the original output stays, and the task view shows the follow-up's output as current."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .tool  { fill:var(--surface-2); }
+    .keep  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .stay  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1; stroke-dasharray:4 3; }
+    .band  { fill:var(--accent-soft); }
+    .strike{ stroke:var(--gone); stroke-width:1.4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-m   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; }
+    .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="440"/>
+
+  <g id="today">
+    <rect class="panel" x="16" y="16" width="440" height="270" rx="6"/>
+    <text class="t-lbl" x="32" y="38">TODAY · FOUR WAYS IN</text>
+    <rect class="tool" x="32" y="52" width="408" height="38" rx="3"/>
+    <text class="t-g" x="42" y="68">reopen</text><line class="strike" x1="40" y1="64" x2="88" y2="64"/>
+    <text class="t-s" x="42" y="83">a finished task back to pending · its output overwritten</text>
+    <rect class="tool" x="32" y="98" width="408" height="38" rx="3"/>
+    <text class="t-g" x="42" y="114">messageDoor · harnessMessageDoor</text><line class="strike" x1="40" y1="110" x2="268" y2="110"/>
+    <text class="t-s" x="42" y="129">coding runs only · stop the attempt, park, re-queue</text>
+    <rect class="tool" x="32" y="144" width="408" height="38" rx="3"/>
+    <text class="t-g" x="42" y="160">a reply beside the open task</text><line class="strike" x1="40" y1="156" x2="250" y2="156"/>
+    <text class="t-s" x="42" y="175">a line in its session · not part of the task</text>
+    <rect class="stay" x="32" y="190" width="408" height="38" rx="3"/>
+    <text class="t-m" x="42" y="206">answerTask</text>
+    <text class="t-s" x="42" y="221">answers a question · stays until FIX-2058</text>
+    <text class="t-s" x="32" y="254">struck: removed here · dashed: stays for now</text>
+    <text class="t-s" x="32" y="270">a filer model has no way to steer at all</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="484" y="16" width="440" height="270" rx="6"/>
+    <text class="t-lbl" x="500" y="38">AFTER · ONE STEER, KEPT ON THE TASK</text>
+    <rect class="keep" x="500" y="52" width="408" height="26" rx="3"/>
+    <text class="t-m" x="510" y="69">updateTask({ id, message })</text>
+    <text class="t-s" x="740" y="69">until it finishes</text>
+    <rect class="band" x="500" y="88" width="408" height="30" rx="4"/>
+    <text class="t-b" x="512" y="108">Not started</text><text class="t-s" x="640" y="108">joins the brief</text>
+    <rect class="band" x="500" y="124" width="408" height="30" rx="4"/>
+    <text class="t-b" x="512" y="144">Running</text><text class="t-s" x="640" y="144">taken before the next model call</text>
+    <rect class="band" x="500" y="160" width="408" height="30" rx="4"/>
+    <text class="t-b" x="512" y="180">Untaken</text><text class="t-s" x="640" y="180">one more turn before it settles (D2)</text>
+    <rect class="band" x="500" y="196" width="408" height="30" rx="4"/>
+    <text class="t-b" x="512" y="216">Coding run</text><text class="t-s" x="640" y="216">run ends · same request continues</text>
+    <text class="t-s" x="500" y="254">no attempt used · no ending · never a cancel</text>
+    <text class="t-s" x="500" y="270">every later attempt reads it (D1)</text>
+  </g>
+
+  <g id="finished">
+    <rect class="panel" x="16" y="302" width="908" height="122" rx="6"/>
+    <text class="t-lbl" x="32" y="324">A FINISHED TASK</text>
+    <text class="t-b" x="32" y="350">Today</text>
+    <text class="t-s" x="32" y="368">a message reopens it under the same id</text>
+    <text class="t-s" x="32" y="382">its next attempt overwrites the output</text>
+    <text class="t-s" x="32" y="396">its filer and dependents already used</text>
+    <text class="t-b" x="484" y="350">After</text>
+    <text class="t-s" x="484" y="368">a steer is refused, naming the rule</text>
+    <text class="t-s" x="484" y="382">a follow-up runs in the same session · the original stays</text>
+    <text class="t-s" x="484" y="396">the task view shows the follow-up's output as current (D3)</text>
+  </g>
+</svg>

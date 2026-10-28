@@ -47,8 +47,7 @@ import {
 export const BOARD_STATUS_COLUMNS = [
   "pending",
   "in_progress",
-  "blocked",
-  "parked",
+  "held",
   "completed",
   "errored",
   "cancelled"
@@ -90,10 +89,10 @@ export type BoardColumnsProps = {
    */
   readonly boardRef: string;
   /**
-   * The host's own resource client, so the read carries the host's transport
+   * The host's own client, so the read carries the host's transport
    * and its credential (BR-29). Pass a STABLE reference — see `Roster`.
    */
-  readonly resourceClient?: PanelRowSource;
+  readonly client?: PanelRowSource;
   /**
    * Rows to request per page: the size of each fetch, not a cap on what
    * renders. The panel follows the cursor for up to 1,000 pages; a collection
@@ -113,8 +112,8 @@ export type BoardColumnsProps = {
  */
 export const boardColumnsPropNames = [
   "boardRef",
+  "client",
   "limit",
-  "resourceClient",
   "sessionId",
   "slots"
 ] as const;
@@ -172,9 +171,9 @@ function defaultCardBody(row: BoardCardRow): ReactNode {
 }
 
 export function BoardColumns(props: BoardColumnsProps): ReactNode {
-  const { sessionId, boardRef, resourceClient, limit, slots = {} } = props;
+  const { sessionId, boardRef, client, limit, slots = {} } = props;
 
-  const source = usePanelSource(resourceClient);
+  const source = usePanelSource(client);
 
   const state = usePanelRows<unknown>(
     source,

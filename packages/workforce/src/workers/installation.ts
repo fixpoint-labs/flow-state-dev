@@ -42,21 +42,24 @@ import {
 import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./worker-flow";
 import type { PackageManifest, WorkerManifest } from "../manifest";
 import { taskChainSchema } from "../conversation-board/chain";
-import { SESSION_BOARD_SERVER_OWNED } from "../conversation-board/session-board";
+import { SESSION_BOARD_SERVER_OWNED, workerMessageStateShape } from "../conversation-board/session-board";
 import { criteriaOfState, deriveWorkerSessionId, isDerivedWorkerSessionId } from "./derive-session-id";
 import {
   FILING_FLOW_STATE_KEY,
+  FILING_WORKER_STATE_KEY,
   FILING_PROJECT_STATE_KEY,
   FILING_SESSION_STATE_KEY,
   FILING_WORKSTREAM_STATE_KEY,
   PROJECT_STATE_KEY,
+  ROUTED_FROM_STATE_KEY,
   STANDARD_WORKERS_RESOURCE,
   TASK_CHAIN_STATE_KEY,
   TASK_FLOW_STATE_KEY,
   TASK_ID_STATE_KEY,
   WORKERS_RESOURCE,
   WORKER_ID_STATE_KEY,
-  WORKSTREAM_STATE_KEY
+  WORKSTREAM_STATE_KEY,
+  WORK_PROJECT_STATE_KEY
 } from "./keys";
 import { COORDINATOR_FLOW } from "../coordinator/coordinator-keys";
 import { PRIVATE_PROJECTS_RESOURCE, PROJECTS_RESOURCE } from "../projects/collections";
@@ -71,6 +74,7 @@ import { parseProjectRef, parseWorkstreamRef } from "../projects/workstream-ref"
 import { defineStandardWorkerCollection, standardWorkerFlow } from "./standard-workers";
 import { defineWorkerCollection, parseWorkerRow, type WorkerRow } from "./worker-row";
 import { grantedAccessOf, markVerifiedWorker, type GrantedAccess } from "./verified-worker";
+import { ALL_DELEGATES } from "../delegates/delegate-keys";
 
 export { verifiedWorkerOf } from "./verified-worker";
 
@@ -182,8 +186,12 @@ export interface RosterWorker {
   flow: string;
   /** Its description, or `null`. */
   description: string | null;
-  /** The delegates its configuration lists (`delegates:`), by worker id; empty when it lists none. */
-  delegates: readonly string[];
+  /**
+   * The delegates its configuration lists (`delegates:`), by worker id; empty
+   * when it lists none. `"all"` when its file says `delegates: all`: the
+   * whole roster, read when it is used (FIX-2081 D2).
+   */
+  delegates: readonly string[] | typeof ALL_DELEGATES;
   /** Why it can't run, when its row can't be read or names a flow kept for standard workers. */
   problem?: string;
 }
@@ -206,18 +214,21 @@ export class WorkerTurnRefusedError extends Error {
   }
 }
 
-/** The readonly session-state fields every worker flow declares. */
+/** The session-state fields every worker flow declares: readonly birth fields, and the server-owned routed-from. */
 export type WorkerSessionStateShape = {
   readonly [WORKER_ID_STATE_KEY]: z.ZodReadonly<z.ZodString>;
   readonly [FILING_SESSION_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [WORKSTREAM_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
+  readonly [ROUTED_FROM_STATE_KEY]: z.ZodOptional<z.ZodString>;
   readonly [TASK_ID_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [FILING_FLOW_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
+  readonly [FILING_WORKER_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [TASK_CHAIN_STATE_KEY]: z.ZodOptional<z.ZodReadonly<typeof taskChainSchema>>;
   readonly [TASK_FLOW_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [FILING_WORKSTREAM_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [FILING_PROJECT_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [PROJECT_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
+  readonly [WORK_PROJECT_STATE_KEY]: z.ZodOptional<z.ZodString>;
 };
 
 /** The installation's worker model. Build it once, at boot. */
@@ -244,16 +255,19 @@ export interface WorkerInstallation extends WorkerGrants {
    * session leads; `taskId`, when a conversation's board handed a task over,
    * names the task the session works, `filingWorkstreamId` the workstream
    * it was filed from, and `filingProjectId` the project; `projectId`, on a
-   * project coordinator's session, names its project.
+   * project coordinator's session, names its project; `workProjectId`, on a
+   * user's own conversation, names the project they set it to work in
+   * (not readonly: the work-project action writes and replaces it).
    */
   readonly sessionStateShape: WorkerSessionStateShape;
   /** The create check a worker flow declares as `session.createCheck`. */
   readonly createCheck: SessionCreateCheck;
   /**
-   * A worker flow's `session` declaration: {@link sessionStateShape} plus
-   * `extraShape` as its `stateSchema`, {@link createCheck}, and as
+   * A worker flow's `session` declaration: {@link sessionStateShape}, the
+   * state every worker's `onMessageReceived` keeps, and `extraShape` as its
+   * `stateSchema`, {@link createCheck}, and as
    * `serverOwned` the delegate and board fields only the server writes
-   * ({@link SESSION_BOARD_SERVER_OWNED}). A flow without those fields still refuses a
+   * ({@link SESSION_BOARD_SERVER_OWNED}, which carries `workProjectId` too). A flow without those fields still refuses a
    * create that seeds one, by name, rather than dropping it.
    */
   session<TShape extends z.ZodRawShape = Record<never, never>>(
@@ -326,9 +340,10 @@ export interface WorkerInstallation extends WorkerGrants {
   standardWorkerProblems(): string[];
 }
 
-/** The worker ids a configuration's `delegates:` lists, or none. */
-function declaredDelegates(declared: Readonly<Record<string, unknown>>): string[] {
+/** The worker ids a configuration's `delegates:` lists, `"all"` for the whole roster, or none. */
+function declaredDelegates(declared: Readonly<Record<string, unknown>>): string[] | typeof ALL_DELEGATES {
   const listed = declared.delegates;
+  if (listed === ALL_DELEGATES) return ALL_DELEGATES;
   return Array.isArray(listed) ? listed.filter((name): name is string => typeof name === "string") : [];
 }
 
@@ -401,7 +416,11 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     if (!isWorkerFlowBuilder(entry)) return entry;
     let flow = built.get(entry);
     if (flow === undefined) {
-      flow = { flow: entry.build(installation) as never, standardOnly: entry.standardOnly };
+      flow = {
+        flow: entry.build(installation) as never,
+        standardOnly: entry.standardOnly,
+        ...(entry.roles === undefined ? {} : { roles: entry.roles })
+      };
       built.set(entry, flow);
     }
     return flow;
@@ -439,13 +458,18 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     [WORKER_ID_STATE_KEY]: z.string().min(1).readonly(),
     [FILING_SESSION_STATE_KEY]: z.string().min(1).readonly().optional(),
     [WORKSTREAM_STATE_KEY]: z.string().min(1).readonly().optional(),
+    // Written by the `work` entry when it starts a routed task here (FIX-2083): server-owned.
+    [ROUTED_FROM_STATE_KEY]: z.string().min(1).optional(),
     [TASK_ID_STATE_KEY]: z.string().min(1).readonly().optional(),
     [FILING_FLOW_STATE_KEY]: z.string().min(1).readonly().optional(),
+    [FILING_WORKER_STATE_KEY]: z.string().min(1).readonly().optional(),
     [TASK_CHAIN_STATE_KEY]: taskChainSchema.readonly().optional(),
     [TASK_FLOW_STATE_KEY]: z.string().min(1).readonly().optional(),
     [FILING_WORKSTREAM_STATE_KEY]: z.string().min(1).readonly().optional(),
     [FILING_PROJECT_STATE_KEY]: z.string().min(1).readonly().optional(),
-    [PROJECT_STATE_KEY]: z.string().min(1).readonly().optional()
+    [PROJECT_STATE_KEY]: z.string().min(1).readonly().optional(),
+    // Written only by the work-project action (FIX-2161): server-owned, and changeable.
+    [WORK_PROJECT_STATE_KEY]: z.string().min(1).optional()
   } as const;
 
   /** Every resource a worker may be granted: the documents and the references. */
@@ -551,6 +575,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     return minted.ok ? [] : minted.problems;
   };
 
+  // A standard worker with `delegates: all` passes here, and reaches the
+  // user's own workers too: `all` is the user's whole roster, not the files'.
   const standardWorkerProblems = (): string[] =>
     [...standard.values()].flatMap((manifest) => {
       const minted = mint(manifest);
@@ -576,6 +602,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     for (const key of [
       TASK_ID_STATE_KEY,
       FILING_FLOW_STATE_KEY,
+      FILING_WORKER_STATE_KEY,
       TASK_CHAIN_STATE_KEY,
       TASK_FLOW_STATE_KEY,
       FILING_WORKSTREAM_STATE_KEY,
@@ -874,7 +901,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     roster,
     session(extraShape) {
       return {
-        stateSchema: z.object({ ...sessionStateShape, ...(extraShape ?? {}) }) as never,
+        stateSchema: z.object({ ...sessionStateShape, ...workerMessageStateShape, ...(extraShape ?? {}) }) as never,
         createCheck,
         serverOwned: SESSION_BOARD_SERVER_OWNED
       };

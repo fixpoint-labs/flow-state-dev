@@ -28,7 +28,7 @@ function workerFlow(flow: string, over: Record<string, unknown> = {}) {
     kind: flow,
     cardinality: "collection",
     configSchema: workerConfigSchema(),
-    actions: { run: door },
+    actions: { respond: door },
     ...over
   } as never) as unknown as NonNullable<HireOptions["workerFlows"]>[string];
 }
@@ -124,7 +124,7 @@ describe("a block requirement the registration check can't reach", () => {
   });
   const desk = workerFlow("desk", {
     configSchema: workerConfigSchema().extend({ desk: z.string() }),
-    actions: { run: { ...door, block: needsNumericWorker } }
+    actions: { respond: { ...door, block: needsNumericWorker } }
   });
 
   it("is refused when a worker is hired on the flow, naming the block, and nothing is hired", () => {

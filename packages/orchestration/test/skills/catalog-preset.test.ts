@@ -56,7 +56,8 @@ function ctxWith(collection: ReturnType<typeof createMockSkillsCollection>) {
  */
 async function loaderDescription(gen: ReturnType<typeof generator>, ctx: unknown): Promise<string> {
   const tools = await (
-    gen.config as { tools: (i: unknown, c: unknown) => Promise<Array<{ name?: string }>> }
+    // A probe: the resolved tools function, which BlockConfig types as optional and loose.
+    gen.config as unknown as { tools: (i: unknown, c: unknown) => Promise<Array<{ name?: string }>> }
   ).tools(undefined, ctx);
   const loader = tools.find((tool) => tool.name === "loadSkill") as
     | { description?: string; config?: { description?: string } }

@@ -30,7 +30,14 @@ import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { claudeCodeAgent, probeClaudeAccount, type ClaudeAccountProbe } from "@flow-state-dev/claude-code/sdk";
 import { harnessEnv } from "@flow-state-dev/core";
-import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
+import {
+  mcpCredentialsCapability,
+  projectWorkspaceCapability,
+  type ErrorReporterHarnessFeeds,
+  type ProjectMcpToolsResolver,
+} from "@flow-state-dev/workforce";
+import type { HarnessBlock } from "@flow-state-dev/core/types";
+import type { HarnessFeeds as ManagerHarnessFeeds } from "@flow-state-dev/harness-manager";
 import { harnessStub, type StubRun } from "./harness-stub.mts";
 import { commitAll, hasChanges } from "./scratch-repo.mts";
 
@@ -41,11 +48,15 @@ export const HARNESS_ENV = "DEVFORCE_LAB_HARNESS";
 export const HARNESS_CHOICES = ["stub", "claude-code"] as const;
 export type HarnessChoice = (typeof HARNESS_CHOICES)[number];
 
-/** The three feeds the harness contract hands a slot. */
-export interface HarnessFeeds {
-  cwd: (ctx: HarnessCallbackContext) => string | Promise<string>;
-  resume: (ctx: HarnessCallbackContext) => string | null | Promise<string | null>;
-  onSession: (sessionId: string, ctx: HarnessCallbackContext) => void | Promise<void>;
+/**
+ * The feeds the harness manager hands a slot, and the Lab's own: the run's
+ * MCP servers, relayed through the Lab's own connection, when the Lab offers
+ * any (`openLab({ mcpServers })`). A harness that takes relayed tools hands
+ * them to its run; one that doesn't says so in the run's session. Claude Code
+ * hands `onUsage` the usage windows its runs report; the stub reports none.
+ */
+export interface HarnessFeeds extends ManagerHarnessFeeds {
+  mcpTools?: ProjectMcpToolsResolver;
 }
 
 /** A chosen harness: its name, the slot, and how long one run may take. */
@@ -90,7 +101,7 @@ const CLAUDE_CODE_PASS = [
 ] as const;
 
 /** The environment a Claude Code run gets, and the one its account is probed with. */
-function claudeCodeEnv(): Record<string, string> {
+export function claudeCodeEnv(): Record<string, string> {
   return harnessEnv({ pass: CLAUDE_CODE_PASS });
 }
 
@@ -101,21 +112,53 @@ function claudeCodeEnv(): Record<string, string> {
  * task entry, and the claim gate refuses an entry that authors session state
  * beneath it. `recordWork: true` keys the index of what the run touched to the
  * run's own checkout, which is what the task inspector's plan and files read.
- * `env` passes only {@link CLAUDE_CODE_PASS}.
+ * `env` passes only {@link CLAUDE_CODE_PASS}: a server's `seedEnv` is never on
+ * it, since the key reaches the run's tools through the Lab's connection, not
+ * the run.
+ *
+ * No `maxTurns`: the SDK's default is no cap, and a real coding run takes
+ * many turns, so a small cap ends it mid-task as `error_max_turns`. The run is
+ * bounded by the harness manager's run timeout instead.
+ *
+ * With `mcpTools`, the run is handed its project's MCP servers and nothing
+ * else, and the block holds the project and key collections the resolver
+ * reads. Without, the options are exactly what they were.
  */
-export function claudeCodeHarness(feeds: HarnessFeeds): HarnessBlock {
+export function claudeCodeHarness({ mcpTools, ...feeds }: HarnessFeeds): HarnessBlock {
   return claudeCodeAgent({
     ...feeds,
+    ...(mcpTools === undefined ? {} : { mcpTools, uses: [projectWorkspaceCapability, mcpCredentialsCapability] }),
     env: claudeCodeEnv(),
     detached: true,
     recordWork: true,
     allowedTools: ["Read", "Write", "Edit", "Bash"],
     permissionMode: "acceptEdits",
-    maxTurns: 30,
     systemPrompt:
       "You are a coding agent working in the directory you have been placed in. " +
       "Do what your instructions and your brief say, then commit your work with git. " +
       "Do nothing else.",
+  } as never) as unknown as HarnessBlock;
+}
+
+/**
+ * Claude Code as the Error Reporter's harness (FIX-1983): read and search
+ * only. `env` passes only {@link CLAUDE_CODE_PASS}, as the coder's does: the
+ * tracker's key reaches the run through the Lab's connection, never the run.
+ */
+export function errorReporterHarness({ cwd, mcpTools }: ErrorReporterHarnessFeeds): HarnessBlock {
+  return claudeCodeAgent({
+    cwd,
+    ...(mcpTools === undefined ? {} : { mcpTools, uses: [projectWorkspaceCapability, mcpCredentialsCapability] }),
+    env: claudeCodeEnv(),
+    detached: true,
+    allowedTools: ["Read", "Grep", "Glob"],
+    disallowedTools: ["Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"],
+    permissionMode: "default",
+    // Kept: this harness is called straight from the Error Reporter flow, with no manager run timeout above it.
+    maxTurns: 40,
+    systemPrompt:
+      "You investigate failures in the code in your working directory and write bug reports about them. " +
+      "Read and search the code; never change a file. Do what the prompt asks, then answer as it says.",
   } as never) as unknown as HarnessBlock;
 }
 
@@ -252,8 +295,19 @@ export async function startHarness(defaultChoice: HarnessChoice, options: StartH
   }
   const account = await (options.probe ?? (() => probeClaudeAccount({ env: claudeCodeEnv() })))();
   if (account.status !== "account") throw new Error(refusalOf(account));
-  log(`Coder: Claude Code, on the credential from ${account.apiKeySource ?? account.tokenSource}.`);
+  log(`Coder: Claude Code, on the credential from ${credentialOf(account)}.`);
   return harness;
+}
+
+/**
+ * Where an account's credential comes from, for the start line: the key or
+ * token source the SDK names, else the plan of a subscription sign-in, which
+ * names neither.
+ */
+function credentialOf(account: Extract<ClaudeAccountProbe, { status: "account" }>): string {
+  if (account.apiKeySource !== undefined) return account.apiKeySource;
+  if (account.tokenSource !== undefined) return account.tokenSource;
+  return account.subscriptionType === undefined ? "a Claude sign-in" : `a ${account.subscriptionType} sign-in`;
 }
 
 /** Why a Lab on Claude Code won't start, and what to set to start it. */

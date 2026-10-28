@@ -2,7 +2,7 @@
  * The manager on an organization-scoped ledger whose id carries dots.
  *
  * Driven end to end, in process: a real `createFlowState`, a real task board
- * and its same-flow hand-off, the real fenced settlement and a real git
+ * and its same-flow dispatch, the real fenced settlement and a real git
  * checkout. Only the harness is a fake, and it records what the manager fed it
  * so the checkout, the branch and the resumed session can be compared across
  * attempts.
@@ -39,6 +39,7 @@ import {
 } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
+import { heard } from "./heard";
 
 /** A board id with dots in it, on a board kept per organization. */
 const DOTTED_BOARD_ID = "eng.feature.work";
@@ -102,7 +103,7 @@ function scriptedHarness(script: Array<"finished" | "failed">, seen: SeenRun[]) 
 
 /**
  * One flow: a `seed` action, a `drain` action, and the manager behind the
- * board's same-flow hand-off — the conductor lab's shape, on an org ledger.
+ * board's same-flow dispatch — the conductor lab's shape, on an org ledger.
  */
 function host(options: { script: Array<"finished" | "failed">; gate: boolean }) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-dotted-board-"));
@@ -138,11 +139,12 @@ function host(options: { script: Array<"finished" | "failed">; gate: boolean }) 
   const board = taskBoard({
     name: "dotted-board",
     boardId: "dotted-board",
+    mode: "delegation",
     collection: ledger,
     concurrency: 1,
     ...(options.gate ? { dispatcher: runOwnerDispatcher() } : {}),
     workers: {
-      coder: dispatcher({ name: "dotted-board-hand-off", action: "work", session: "per-task" }),
+      coder: dispatcher({ name: "dotted-board-dispatch", action: "work", session: "per-task" }),
     },
   });
   const seed = handler({
@@ -164,7 +166,7 @@ function host(options: { script: Array<"finished" | "failed">; gate: boolean }) 
       return { id: TASK_ID };
     },
   });
-  const flow = defineFlow({
+  const flow = defineFlow({ internal: { actions: { ...heard } },
     kind: "dotted-board-host",
     actions: { seed: { block: seed }, drain: { block: board.drain } },
     task: { actions: { work: { block: manager } } },
@@ -206,7 +208,7 @@ function host(options: { script: Array<"finished" | "failed">; gate: boolean }) 
   };
 
   /**
-   * The row once nothing is working it. The hand-off is fire-and-forget, so a
+   * The row once nothing is working it. The dispatch is fire-and-forget, so a
    * drain returns while the child run is still going; `pending` counts as
    * settled, since a re-pended row is a result in its own right.
    */

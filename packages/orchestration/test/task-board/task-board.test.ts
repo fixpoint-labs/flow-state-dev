@@ -62,7 +62,7 @@ function makeEchoWorker(name: string, traceTo?: string[]): TaskWorker {
     name,
     inputSchema: echoWorkerInputSchema,
     outputSchema: echoWorkerOutputSchema,
-    execute: (input) => {
+    execute: (input: z.infer<typeof echoWorkerInputSchema>) => {
       const tag = `${name}:${input.input?.topic ?? input.goal}`;
       traceTo?.push(tag);
       return { findings: tag };
@@ -893,66 +893,6 @@ describe("taskBoard - failure handling", () => {
 });
 
 // ---------------------------------------------------------------------------
-// parked semantics
-// ---------------------------------------------------------------------------
-
-describe("taskBoard - parked", () => {
-  it("dispatcher skips parked; resume wakes the loop in onIdle: 'complete'", async () => {
-    // "park" is seeded directly in `parked` — the FIFO
-    // dispatcher must skip it. While "trigger" runs, it schedules a
-    // `unpark` that flips "park" back to `pending`. The
-    // `complete`-mode loop counts the parked task as
-    // in-flight so it doesn't exit before the resume lands.
-    let scheduled = false;
-    const reviewWorker = handler({
-      name: "review-worker",
-      inputSchema: taskWorkerInputSchema,
-      outputSchema: z.object({ handled: z.string() }),
-      execute: async (input, ctx) => {
-        if (input.goal === "trigger" && !scheduled) {
-          scheduled = true;
-          const collection = await getOrCreateTaskCollection({
-            ctx,
-            backing: "state",
-            collectionId: "review",
-            state: ctx.getTarget("hitl")!,
-          });
-          setTimeout(() => {
-            collection.unpark("park").catch(() => undefined);
-          }, 60);
-        }
-        return { handled: input.goal };
-      },
-    }) as TaskWorker;
-
-    const board = taskBoard({
-      name: "hitl",
-      collection: { backing: "sequencer", collectionId: "review" },
-      concurrency: 1,
-      dispatcher: "fifo",
-      workers: reviewWorker,
-      initialTasks: [
-        { id: "park", goal: "park", status: "parked" },
-        { id: "trigger", goal: "trigger" },
-      ],
-      onIdle: "complete",
-      // FIX-621: prove event-driven wake. With a 50s idle-poll baseline,
-      // the test can only finish in time if `unpark` fans out
-      // a `task-change` item that wakes `.waitForCondition` directly
-      // rather than waiting for the next tick.
-      idlePollMs: 50_000,
-      maxIterations: 500,
-    });
-
-    const result = await testBlock(board.drain, { input: undefined });
-    expect(result.error).toBeNull();
-    const final = lastTaskState(result.items);
-    expect(final.get("park")).toBe("completed");
-    expect(final.get("trigger")).toBe("completed");
-  });
-});
-
-// ---------------------------------------------------------------------------
 // onIdle modes
 // ---------------------------------------------------------------------------
 
@@ -1049,10 +989,9 @@ describe("taskBoard - onIdle modes", () => {
     expect(result.error).toBeNull();
     const final = lastTaskState(result.items);
     expect(final.get("u")).toBe("errored");
-    // `d` stays `pending` — the substrate exits without mutating it;
-    // cascade-skip (which lives one layer up in P&E / supervisor)
-    // would transition it to `cancelled` post-drain.
-    expect(final.get("d")).toBe("pending");
+    // `d` is cancelled by the board on `u`'s ending (FIX-2080): nothing is
+    // left waiting on work that will never finish, with no step to wire.
+    expect(final.get("d")).toBe("cancelled");
   });
 
   it("onIdle: 'complete-or-blocked' exits cleanly on a successful drain", async () => {
@@ -1806,7 +1745,7 @@ describe("taskBoard - board-meta emission", () => {
     ).toBe("all-completed");
   });
 
-  it("emits terminationReason='blocked-by-failures' when a pending task can't be claimed (FIX-626)", async () => {
+  it("emits terminationReason='blocked-by-failures' when a dependency failed, with its dependent cancelled (FIX-626, FIX-2080)", async () => {
     const failingWorker = handler({
       name: "fail-up-meta",
       inputSchema: taskWorkerInputSchema,
@@ -1853,7 +1792,8 @@ describe("taskBoard - board-meta emission", () => {
     expect(completed?.data?.terminationReason).toBe("blocked-by-failures");
     expect(completed?.data?.counts?.completed).toBe(0);
     expect(completed?.data?.counts?.errored).toBe(1);
-    expect(completed?.data?.counts?.pending).toBe(1);
+    expect(completed?.data?.counts?.pending).toBe(0);
+    expect(completed?.data?.counts?.cancelled).toBe(1);
   });
 
   it("counts errored tasks on completion", async () => {

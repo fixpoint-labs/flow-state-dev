@@ -34,7 +34,7 @@
  *                 its owner, or saying it is not planned in the first cut; the
  *                 composer takes a message, since every worker flow has a door
  *   no run        the unclaimed row says no run has started and can't be stopped
- *   reach         the page throws nothing
+ *   reach         each row opens by clicking, and the page throws nothing
  *
  * Controls rebuild Shift Manager with `src/lib/run.ts` swapped for a module under
  * `controls/` (a Vite `resolveId` plugin; the build fails if the swap never
@@ -58,7 +58,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Page } from "playwright";
-import { compareItemOrder, createSSEClient } from "@flow-state-dev/client";
+import { compareItemOrder, createClient } from "@flow-state-dev/client";
 import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
@@ -265,10 +265,8 @@ type LabApi = ReturnType<typeof labApi>;
  * what it stores live. Finished, non-transient items only.
  */
 function follow(origin: string, flowId: string, requestId: string, onItem: (item: OutputItem) => void) {
-  return createSSEClient({
-    baseUrl: origin,
-    url: `/api/flows/${encodeURIComponent(flowId)}/requests/${encodeURIComponent(requestId)}/stream`,
-    fetcher: fetch,
+  // A request stream reads no user: the reader's id is only the client's own.
+  return createClient({ userId: "goal-reader", baseUrl: origin }).flow(flowId).request(requestId).stream({
     onItemDone: (event) => {
       const item = event.item as OutputItem & { transient?: boolean };
       if (item.transient !== true) onItem(item);
@@ -330,6 +328,31 @@ async function reach(page: Page, origin: string, row: Row) {
     await page.locator(`[data-testid=task-row][data-task-id="${row.id}"]`).click();
   }
   await page.locator(`[data-testid=task-frame][data-task-id="${row.id}"]`).waitFor({ timeout: 10_000 });
+}
+
+/**
+ * {@link reach} as a graded step: a row the page can't reach fails `reach`,
+ * naming what Tasks drew and what the store holds for the row now, and its
+ * other legs are skipped, since they would grade some other screen.
+ */
+async function reached({ page, origin, api, fail }: Ctx, board: Board, row: Row): Promise<boolean> {
+  try {
+    await reach(page, origin, row);
+    return true;
+  } catch (error) {
+    // A done row is reached from Jump to, an open one from Tasks: say what the path it took drew.
+    const done = row.status === "completed" || row.status === "cancelled";
+    const drawnRows = await (done ? page.locator("[data-testid=jump-result]") : page.getByTestId("task-row"))
+      .evaluateAll((els, attr) => els.map((e) => (attr === "" ? e.textContent : e.getAttribute(attr)) ?? ""), done ? "" : "data-task-id")
+      .catch(() => [] as string[]);
+    const now = (await api.rows(board).catch(() => [] as Row[])).find((r) => r.id === row.id);
+    fail(
+      "reach",
+      `${row.id} could not be opened by clicking (${String((error as Error).message ?? error).split("\n")[0]}); ` +
+        `${done ? "Jump to listed" : "Tasks drew"} [${drawnRows.join(", ")}]; the store has it ${now === undefined ? "nowhere" : now.status}`,
+    );
+    return false;
+  }
 }
 
 // ---- one row -----------------------------------------------------------------
@@ -474,15 +497,10 @@ async function checkGaps({ page, fail }: Ctx, running: boolean): Promise<void> {
   await owned("task-disabled-action", true);
   if ((await page.getByTestId("task-disabled-action").count()) !== 3) fail("gaps", "Hand off, reassign and Open PR are not all there");
   // Every worker flow has a door, so the composer takes a message on a running
-  // task, and says why not on a finished one.
-  if (running) {
-    if (await page.getByTestId("task-composer-input").isDisabled()) fail("gaps", "the composer is disabled on a running task whose worker has a door");
-    if ((await page.getByTestId("task-composer-blocked").count()) > 0) fail("gaps", "the composer says it is blocked on a running task whose worker has a door");
-  } else {
-    if (!(await page.getByTestId("task-composer-input").isDisabled())) fail("gaps", "the composer is enabled on a finished task");
-    const blocked = (await page.getByTestId("task-composer-blocked").textContent().catch(() => null)) ?? "";
-    if (!blocked.includes("finished task takes no message")) fail("gaps", `the composer doesn't say a finished task takes no message: "${blocked}"`);
-  }
+  // task, and on a finished one, which the message picks up again (FIX-1764).
+  const state = running ? "running" : "finished";
+  if (await page.getByTestId("task-composer-input").isDisabled()) fail("gaps", `the composer is disabled on a ${state} task whose worker has a door`);
+  if ((await page.getByTestId("task-composer-blocked").count()) > 0) fail("gaps", `the composer says it is blocked on a ${state} task whose worker has a door`);
   await owned("task-also-post", true);
   await owned("inspector-harness-gap", false);
   await owned("inspector-acceptance-gap", false);
@@ -513,13 +531,18 @@ await runGoal(async (failures) => {
   const browser = await launchChromium();
   try {
     const api = labApi(served.origin);
-    // The held runs are linked once the board has handed them over.
+    // The held runs are linked once the board has handed them over. Both short
+    // tasks must have finished too: one still running reads as a held run, and
+    // picked as one it finishes under the screen and leaves Tasks.
     const board = await api.board(tree);
     let rows: Row[] = [];
-    for (let waited = 0; waited < 30_000; waited += 250) {
+    const settled = (rs: Row[]) => rs.filter((r) => r.status === "in_progress" && r.run !== null).length >= 2 && rs.filter((r) => r.status === "completed").length >= 2;
+    for (let waited = 0; waited < 30_000 && !settled(rows); waited += 250) {
       rows = await api.rows(board);
-      if (rows.filter((r) => r.status === "in_progress" && r.run !== null).length >= 2 && rows.some((r) => r.status === "completed")) break;
-      await sleep(250);
+      if (!settled(rows)) await sleep(250);
+    }
+    if (!settled(rows)) {
+      throw new Error(`store: within 30 s the board never held two held runs and both short runs finished: ${rows.map((r) => `${r.id} ${r.status}`).join("; ")}`);
     }
     const owners = new Map<string, string>();
     for (const row of rows) if (row.run !== null) owners.set(row.id, await api.ownerOf(row.run.sessionId));
@@ -554,7 +577,7 @@ await runGoal(async (failures) => {
     for (const { name, row, running } of cases) {
       const fail = (leg: string, why: string) => failures.push(`[${name}] ${leg}: ${why}`);
       const ctx: Ctx = { page, origin: served.origin, devtool: served.devtool, api, tree, fail, evidence };
-      await reach(page, served.origin, row);
+      if (!(await reached(ctx, board, row))) continue;
       await leg(fail, "items equal the run session's", () => checkItems(ctx, row, running));
       await leg(fail, "inspector", () => checkInspector(ctx, row));
       await leg(fail, "gaps", () => checkGaps(ctx, running));
@@ -569,12 +592,13 @@ await runGoal(async (failures) => {
     }
 
     // The row no run has claimed.
-    await reach(page, served.origin, unclaimed);
     const unclaimedFail = (name: string, why: string) => failures.push(`[unclaimed] ${name}: ${why}`);
-    await leg(unclaimedFail, "no run", async () => {
-      if (!(await visible(page, "session-no-run", 5_000))) unclaimedFail("no run", "the Session doesn't say no run has started");
-      if (!(await page.getByTestId("task-interrupt").isDisabled())) unclaimedFail("no run", "Interrupt is enabled with nothing running");
-    });
+    if (await reached({ page, origin: served.origin, devtool: served.devtool, api, tree, fail: unclaimedFail, evidence }, board, unclaimed)) {
+      await leg(unclaimedFail, "no run", async () => {
+        if (!(await visible(page, "session-no-run", 5_000))) unclaimedFail("no run", "the Session doesn't say no run has started");
+        if (!(await page.getByTestId("task-interrupt").isDisabled())) unclaimedFail("no run", "Interrupt is enabled with nothing running");
+      });
+    }
 
     if (pageErrors.length > 0) failures.push(`[page] reach: the page threw: ${pageErrors.join(" | ")}`);
   } finally {

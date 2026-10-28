@@ -29,6 +29,13 @@
  *   host feeds per-run configuration through.
  * - {@link HarnessFailureKind} / {@link harnessFailureKind} — the neutral
  *   classification a harness puts on the error it fails with.
+ * - {@link HarnessUsageWindow} / {@link harnessUsageWindowSchema},
+ *   {@link HarnessUsageReading}, {@link HarnessUsageReader},
+ *   {@link HarnessUsageReport} and {@link HarnessUsageHook} — a
+ *   subscription's usage windows as a vendor reports them, and the on-demand
+ *   read a host registers per harness.
+ * - {@link HarnessSteer} and {@link HarnessSteerHook} — how a run that can take
+ *   a line into its turn in flight offers that to the host.
  *
  * Nothing in core imports a harness package, and nothing here names a vendor
  * notion. A harness's own extras (an SDK's result enum, the tools it observed)
@@ -336,3 +343,129 @@ export function harnessFailureKind(error: unknown): HarnessFailureKind | null {
   }
   return null;
 }
+
+/**
+ * One window of a harness's subscription limit, as its vendor reported it: how
+ * much of it is used, how close to its limit it is, and when it resets.
+ *
+ * A vendor names a window by its length (Codex: 300 minutes, 10 080 minutes),
+ * by its own word for it (Claude Code: `five_hour`), or both. `minutes` and
+ * `id` carry what was said. `usedPercent` is 0 to 100; a vendor that sends a
+ * fraction has it scaled by 100, and nothing else is derived. A vendor that
+ * sends no percent leaves it `null`, never 0, and says how close the window
+ * is through `level` instead.
+ */
+export interface HarnessUsageWindow {
+  /** The vendor's id for this window, unique within one reading. */
+  id: string;
+  /** The vendor's name for the limit this window belongs to, or `null` when it gave none. */
+  label: string | null;
+  /** The window's length in minutes, or `null` when the vendor didn't say. */
+  minutes: number | null;
+  /** How much of the window is used, 0 to 100, or `null` when the vendor sent no percent. */
+  usedPercent: number | null;
+  /**
+   * How close the window is to its limit, as the vendor said: `ok` (under its
+   * warning line), `warning` (near the limit) or `reached`. `null` when the
+   * vendor sends a percent and no level (Codex).
+   */
+  level: HarnessUsageLevel | null;
+  /** When the window resets, in epoch ms, or `null` when the vendor didn't say. */
+  resetsAt: number | null;
+}
+
+/** How close a {@link HarnessUsageWindow} is to its limit. */
+export type HarnessUsageLevel = "ok" | "warning" | "reached";
+
+/** Runtime validator for {@link HarnessUsageWindow}. `level` defaults to `null`, so a window stored before it existed still parses. */
+export const harnessUsageWindowSchema = z.object({
+  id: z.string(),
+  label: z.string().nullable().default(null),
+  minutes: z.number().nullable().default(null),
+  usedPercent: z.number().finite().min(0).max(100).nullable(),
+  level: z.enum(["ok", "warning", "reached"]).nullable().default(null),
+  resetsAt: z.number().nullable().default(null),
+});
+
+/**
+ * What one read of a harness's subscription usage found.
+ *
+ * Only `windows` carries a number. The other three say why there is none, in
+ * words a person can be shown: the harness runs on an API key (no
+ * subscription limit), nobody is signed in, or the read could not be made.
+ * None of them is ever read as zero.
+ */
+export type HarnessUsageReading =
+  | {
+      status: "windows";
+      /** The vendor's account id, when it named one. Never shown; a store keeps a hash of it. */
+      accountId: string | null;
+      /** The subscription plan, as the vendor names it, or `null`. */
+      plan: string | null;
+      windows: HarnessUsageWindow[];
+    }
+  | { status: "api-key"; reason: string }
+  | { status: "signed-out"; reason: string }
+  | { status: "unavailable"; reason: string };
+
+/**
+ * Read one harness's subscription usage on demand, with no run.
+ *
+ * A host hands one per harness to whatever holds the usage record, which
+ * calls it when someone asks for a fresh number. A reader never throws for an
+ * expected no-number state; it returns that state with its reason. `signal`
+ * aborts a read the caller stopped waiting for.
+ */
+export type HarnessUsageReader = (options?: { signal?: AbortSignal }) => Promise<HarnessUsageReading>;
+
+/**
+ * One window a harness heard about during a run: what a {@link HarnessUsageHook}
+ * is handed.
+ *
+ * A run reports the pool it draws from, not its own share, and only the
+ * window its vendor named. The account and the run's start let a host keep
+ * one account's windows apart from another's: a run that started before a
+ * look found no subscription belongs to the old sign-in.
+ */
+export interface HarnessUsageReport {
+  /** The harness that heard it, by the name a usage record is kept under (`claude-code`). */
+  harness: string;
+  window: HarnessUsageWindow;
+  /** When the vendor said it, in epoch ms. */
+  observedAt: number;
+  /** When the run started, in epoch ms. */
+  runStartedAt: number;
+  /** The vendor's id for the account the run is signed in as, or `null` when it named none. Never shown. */
+  accountId: string | null;
+}
+
+/**
+ * Called by a harness when its vendor reports a usage window during a run, so
+ * the host can record it. The twin of {@link HarnessSessionHook}.
+ *
+ * A harness awaits it, so a write can't land after the run ends, but a throw
+ * never fails the run: usage is a reading, not part of the work.
+ */
+export type HarnessUsageHook = (report: HarnessUsageReport, ctx: HarnessCallbackContext) => void | Promise<void>;
+
+/**
+ * Hands one line to a run's turn in flight. Resolves `"delivered"` only when
+ * the turn has the words; anything less (the run refused, the turn ended, the
+ * call threw) is `"refused"`, and the caller sends the line some other way.
+ *
+ * It never rejects. It waits for the vendor's own answer rather than a timer:
+ * a timeout cannot tell a refusal from a delivery, and guessing would send the
+ * line twice.
+ */
+export type HarnessSteer = (text: string) => Promise<"delivered" | "refused">;
+
+/**
+ * Called by a harness while its run can take a line in flight, with the
+ * {@link HarnessSteer} that does it, and again with `null` once it no longer
+ * can, before the block returns, on every exit.
+ *
+ * A fact about one run, not about the harness: a harness that can steer still
+ * has runs that can't (a cloud run, a turn not yet started). A harness that
+ * never steers simply never calls it. The twin of {@link HarnessSessionHook}.
+ */
+export type HarnessSteerHook = (steer: HarnessSteer | null, ctx: HarnessCallbackContext) => void;

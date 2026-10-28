@@ -118,3 +118,32 @@ export function composeToolGroupLabel(toolNames: string[]): string {
 
   return capitalizeFirst(joinClauses(clauses));
 }
+
+/** One call, as the label composer sees it. */
+export type ToolCallLabelInput = { name: string; intent?: string };
+
+/** Phrases kept before the rest are counted as "+N more". */
+export const TOOL_GROUP_INTENT_CAP = 3;
+
+/** Intents in order. Calls with none fold into the name-based phrase. */
+export function composeToolCallsLabel(calls: ToolCallLabelInput[]): string {
+  const phrases: string[] = [];
+  let unnamed: string[] = [];
+  const flush = () => {
+    if (unnamed.length === 0) return;
+    phrases.push(composeToolGroupLabel(unnamed));
+    unnamed = [];
+  };
+  for (const call of calls) {
+    if (call.intent === undefined) unnamed.push(call.name);
+    else {
+      flush();
+      phrases.push(call.intent);
+    }
+  }
+  flush();
+
+  if (phrases.length <= TOOL_GROUP_INTENT_CAP) return phrases.join(" · ");
+  const shown = phrases.slice(0, TOOL_GROUP_INTENT_CAP).join(" · ");
+  return `${shown} · +${phrases.length - TOOL_GROUP_INTENT_CAP} more`;
+}

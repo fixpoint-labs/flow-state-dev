@@ -7,16 +7,19 @@
  * components into the main conversation.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import type {
   ToolOutputItem,
   ComponentItem,
   ContainerItem,
   MessageItem,
-  OutputItem
+  OutputItem,
+  ReasoningItem
 } from "@flow-state-dev/core/items";
-import { buildItemRenderStream, type RendererRegistry } from "../src";
+import { buildItemRenderStream, ItemsRenderer, type RendererRegistry } from "../src";
+
+vi.mock("../src/context/FlowContext", () => ({ useFlowContext: () => ({ renderers: {} }) }));
 
 function toolItem(id: string, toolName: string, overrides: Partial<ToolOutputItem> = {}): ToolOutputItem {
   return {
@@ -49,6 +52,20 @@ function messageItem(id: string, overrides: Partial<MessageItem> = {}): MessageI
   };
 }
 
+function reasoningItem(id: string, overrides: Partial<ReasoningItem> = {}): ReasoningItem {
+  return {
+    id,
+    type: "reasoning",
+    status: "completed",
+    requestId: "req",
+    itemIndex: 0,
+    ts: 0,
+    provenance: { blockName: "gen", blockInstanceId: "b1", phase: "main" },
+    summary: [{ type: "reasoning_text", text: "hm" }],
+    ...overrides,
+  };
+}
+
 function componentItem(id: string, component: string, overrides: Partial<ComponentItem> = {}): ComponentItem {
   return {
     id,
@@ -68,6 +85,7 @@ function containerItem(id: string, blockInstanceId: string, component: string): 
   return {
     id,
     type: "container",
+    blockName: "container",
     status: "in_progress",
     requestId: "req",
     itemIndex: 0,
@@ -118,6 +136,55 @@ describe("buildItemRenderStream — tool grouping", () => {
     const stream = buildItemRenderStream(items, undefined);
     expect(stream).toHaveLength(2);
     expect(stream.every((s) => s.kind === "item")).toBe(true);
+  });
+});
+
+// An agent's working (what it thought, what it called) is one stretch of
+// activity between the things it says. Reasoning is part of that stretch, so a
+// thought between two calls doesn't split the group in two.
+describe("buildItemRenderStream — activity grouping", () => {
+  it("keeps reasoning and tool calls between messages in one group, in order", () => {
+    const items: OutputItem[] = [
+      reasoningItem("r1"),
+      toolItem("t1", "shell"),
+      reasoningItem("r2"),
+      toolItem("t2", "read"),
+      messageItem("m1"),
+    ];
+    const stream = buildItemRenderStream(items, undefined, { groupToolCalls: true });
+    expect(stream.map((s) => s.kind)).toEqual(["group", "item"]);
+    const group = stream[0];
+    if (group.kind === "group") expect(group.items.map((i) => i.id)).toEqual(["r1", "t1", "r2", "t2"]);
+  });
+
+  it("splits activity around what the agent says", () => {
+    const items: OutputItem[] = [
+      reasoningItem("r1"),
+      messageItem("m1"),
+      toolItem("t1", "shell"),
+      reasoningItem("r2"),
+      messageItem("m2"),
+    ];
+    const stream = buildItemRenderStream(items, undefined, { groupToolCalls: true });
+    expect(stream.map((s) => s.kind)).toEqual(["group", "item", "group", "item"]);
+  });
+
+  it("groups thinking that has no tool call with it, so it doesn't stand alone", () => {
+    const stream = buildItemRenderStream([reasoningItem("r1"), reasoningItem("r2")], undefined, { groupToolCalls: true });
+    expect(stream).toHaveLength(1);
+    expect(stream[0].kind).toBe("group");
+  });
+
+  it("leaves reasoning as its own item when grouping is off", () => {
+    const stream = buildItemRenderStream([reasoningItem("r1"), toolItem("t1", "shell")], undefined);
+    expect(stream.every((s) => s.kind === "item")).toBe(true);
+  });
+
+  it("still hides reasoning the history excludes, before grouping", () => {
+    const hidden = reasoningItem("r1", { itemVisibility: { client: true, history: false } });
+    const stream = buildItemRenderStream([hidden, toolItem("t1", "shell")], undefined, { groupToolCalls: true });
+    const group = stream[0];
+    if (group.kind === "group") expect(group.items.map((i) => i.id)).toEqual(["t1"]);
   });
 });
 
@@ -225,5 +292,25 @@ describe("buildItemRenderStream — filters apply before grouping (regression fo
     if (stream[0].kind === "group") {
       expect(stream[0].items.map((i) => i.id)).toEqual(["t1", "t2"]);
     }
+  });
+});
+
+describe("ItemsRenderer live", () => {
+  const groupProps = (live: boolean | undefined) => {
+    const items = [toolItem("a", "read"), messageItem("m"), toolItem("b", "grep")];
+    const nodes = ItemsRenderer({ items, toolGroupRenderer: () => null, live }) as any[];
+    // Each group is a Fragment wrapping the renderer element.
+    return nodes.filter((n) => n.props?.children?.props?.items).map((n) => n.props.children.props.live);
+  };
+
+  // A message ends one stretch of work; only the stretch still open at the end
+  // of a live stream is the one the agent is working in.
+  it("tells only the trailing group the stream is live", () => {
+    expect(groupProps(true)).toEqual([false, true]);
+  });
+
+  it("tells no group it is live when the stream is over", () => {
+    expect(groupProps(false)).toEqual([false, false]);
+    expect(groupProps(undefined)).toEqual([false, false]);
   });
 });

@@ -8,9 +8,10 @@
  * runtime and no network. The one spec that loads the real installed SDK is
  * `installed-sdk.spec.ts`.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
 import { harnessFailureKind, harnessRunHandleSchema } from "@flow-state-dev/core";
+import type { HarnessSteer } from "@flow-state-dev/core/types";
 import { cursorAgent, INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
 import {
   CursorAgentAbortedError,
@@ -42,6 +43,7 @@ interface Recorder {
   cancelled: number;
   closed: number;
   waited: number;
+  steered: string[];
 }
 
 type MessageSource =
@@ -55,6 +57,9 @@ interface ScriptedOpts {
   throwOnSend?: unknown;
   waitResult?: CursorRunResult | (() => Promise<CursorRunResult>);
   supportsWait?: boolean;
+  /** Gives the run a `steer`, answering each line with what this returns. */
+  steer?: (text: string) => Promise<string>;
+  supportsSteer?: boolean;
 }
 
 const DEFAULT_WAIT: CursorRunResult = {
@@ -77,7 +82,7 @@ const DEFAULT_WAIT: CursorRunResult = {
  * refusing create/resume/send, which is how it reports those.
  */
 function scripted(messages: MessageSource, opts: ScriptedOpts = {}) {
-  const rec: Recorder = { created: [], resumed: [], sent: [], cancelled: 0, closed: 0, waited: 0 };
+  const rec: Recorder = { created: [], resumed: [], sent: [], cancelled: 0, closed: 0, waited: 0, steered: [] };
 
   const makeRun = (): CursorRunLike => ({
     id: "run_1",
@@ -97,8 +102,17 @@ function scripted(messages: MessageSource, opts: ScriptedOpts = {}) {
     },
     supports(operation: string) {
       if (operation === "wait") return opts.supportsWait !== false;
+      if (operation === "steer") return opts.supportsSteer !== false;
       return true;
     },
+    ...(opts.steer !== undefined
+      ? {
+          steer: (text: string) => {
+            rec.steered.push(text);
+            return opts.steer!(text);
+          },
+        }
+      : {}),
   });
 
   const makeAgent = (id: string): CursorAgentLike => ({
@@ -244,6 +258,24 @@ describe("cursorAgent — what it hands the SDK", () => {
     });
     await testBlock(block, { input: { prompt: "go" } });
     expect(calls).toBe(1);
+  });
+
+  it("ends a run by saying how long it took", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(0);
+      const { resolve } = scripted(() =>
+        (async function* () {
+          vi.setSystemTime((5 * 60 + 24) * 1000);
+          for (const m of OK_STREAM) yield m;
+        })(),
+      );
+      const { items } = await testBlock(cursorAgent({ ...GATE_OFF, resolveCursorClient: resolve }), { input: { prompt: "go" } });
+      const statuses = items.filter((i) => i.type === "status").map((i) => String((i as { message: string }).message));
+      expect(statuses).toContain("Cursor run completed in 5 mins, 24 seconds.");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("closes the agent on the way out of a successful run", async () => {
@@ -900,4 +932,241 @@ describe("cursorAgent — the env fence, refusals when the block is built", () =
   it("accepts the same function with env unset, as before", () => {
     expect(() => cursorAgent({ ...GATE_OFF, send: { onStep: () => {} } })).not.toThrow();
   });
+
+  it("accepts a model resolver with env set: it is asked here, and only its answer crosses", () => {
+    expect(() => cursorAgent({ ...GATE_OFF, env: { PATH: "/usr/bin" }, model: () => "composer-2.5" })).not.toThrow();
+  });
+});
+
+describe("cursorAgent — the model, per run", () => {
+  it("asks the resolver on every run, and hands its answer to create and to resume alike", async () => {
+    const { resolve, rec } = scripted(OK_STREAM);
+    // Two runs of ONE block, as two sessions of a host share it: the second
+    // resumes an agent, and must still name the model its own run picked.
+    const picks = ["model-for-run-1", "model-for-run-2"];
+    const resumes = [null, "agent_saved"];
+    let modelRun = 0;
+    let resumeRun = 0;
+    const block = cursorAgent({
+      ...GATE_OFF,
+      resolveCursorClient: resolve,
+      model: () => picks[modelRun++]!,
+      resume: () => resumes[resumeRun++],
+      agent: { mode: "agent" },
+    });
+    await testBlock(block, { input: { prompt: "one" } });
+    await testBlock(block, { input: { prompt: "two" } });
+
+    expect(rec.created[0]).toMatchObject({ model: { id: "model-for-run-1" }, mode: "agent" });
+    expect(rec.resumed[0]).toMatchObject({ id: "agent_saved", options: { model: { id: "model-for-run-2" }, mode: "agent" } });
+  });
+
+  // A model's settings (a Grok's effort) are chosen per run like its id, so a
+  // resolver names both; `agent.model` is one value for every run.
+  it("hands a resolved model's parameters to create and to resume", async () => {
+    const { resolve, rec } = scripted(OK_STREAM);
+    const high = { id: "grok-4.7", params: [{ id: "reasoning_effort", value: "high" }] };
+    const resumes = [null, "agent_saved"];
+    let resumeRun = 0;
+    const block = cursorAgent({
+      ...GATE_OFF,
+      resolveCursorClient: resolve,
+      model: () => high,
+      resume: () => resumes[resumeRun++],
+    });
+    await testBlock(block, { input: { prompt: "one" } });
+    await testBlock(block, { input: { prompt: "two" } });
+
+    expect(rec.created[0]).toMatchObject({ model: high });
+    expect(rec.resumed[0]).toMatchObject({ id: "agent_saved", options: { model: high } });
+  });
+
+  it("leaves `agent.model` in charge when the resolver has none", async () => {
+    for (const none of [null, undefined, ""]) {
+      const { resolve, rec } = scripted(OK_STREAM);
+      const block = cursorAgent({ ...GATE_OFF, resolveCursorClient: resolve, model: () => none });
+      await testBlock(block, { input: { prompt: "go" } });
+      expect(rec.created[0]).not.toHaveProperty("model");
+    }
+  });
+
+  it("refuses `model` beside `agent.model` or `send.model` when the block is built: one owner per value", () => {
+    expect(() => cursorAgent({ ...GATE_OFF, model: "a", agent: { model: { id: "b" } } })).toThrow(/agent\.model/);
+    expect(() => cursorAgent({ ...GATE_OFF, model: () => "a", send: { model: { id: "b" } } })).toThrow(/send\.model/);
+    expect(() => cursorAgent({ ...GATE_OFF, model: "a", agent: { model: { id: "b" } } })).toThrow(CursorAgentConfigError);
+  });
+});
+
+describe("cursorAgent — steering the turn in flight (onSteerable)", () => {
+  /** A stream that stays open until `release` is called, so a test can steer mid-turn. */
+  function heldStream() {
+    let release!: () => void;
+    const released = new Promise<void>((r) => {
+      release = r;
+    });
+    const source = async function* () {
+      yield { type: "thinking", text: "working" } as CursorSdkMessage;
+      await released;
+      yield* OK_STREAM;
+    };
+    return { source, release };
+  }
+
+  /** Records every offer, and runs `during` with the live steer once one is offered. */
+  function recordOffers(during: (steer: HarnessSteer) => void | Promise<void>) {
+    const offers: Array<HarnessSteer | null> = [];
+    const onSteerable = (steer: HarnessSteer | null) => {
+      offers.push(steer);
+      if (steer !== null) void during(steer);
+    };
+    return { offers, onSteerable };
+  }
+
+  it("hands the line to the running turn and answers delivered, then withdraws the offer before returning", async () => {
+    const held = heldStream();
+    let answer: string | undefined;
+    const { resolve, rec } = scripted(held.source, { steer: async () => "complete_delivered" });
+    const { offers, onSteerable } = recordOffers(async (steer) => {
+      answer = await steer("also add a README");
+      held.release();
+    });
+    const block = cursorAgent({ ...GATE_OFF, resolveCursorClient: resolve, onSteerable });
+    const { error } = await testBlock(block, { input: { prompt: "go" } });
+
+    expect(error).toBeNull();
+    expect(rec.steered).toEqual(["also add a README"]);
+    expect(answer).toBe("delivered");
+    // Offered once, withdrawn once, and the withdrawal is the last word.
+    expect(offers.map((o) => (o === null ? "null" : "steer"))).toEqual(["steer", "null"]);
+    // One run: the line went into the turn, not into a second send.
+    expect(rec.sent).toHaveLength(1);
+  });
+
+  it.each([
+    ["Cursor says send it as a follow-up", async () => "revert_to_followup"],
+    ["the steer throws", async () => {
+      throw new Error("runtime gone");
+    }],
+  ])("answers refused when %s", async (_label, steerImpl) => {
+    const held = heldStream();
+    let answer: string | undefined;
+    const { resolve } = scripted(held.source, { steer: steerImpl as (t: string) => Promise<string> });
+    const { onSteerable } = recordOffers(async (steer) => {
+      answer = await steer("x");
+      held.release();
+    });
+    const block = cursorAgent({ ...GATE_OFF, resolveCursorClient: resolve, onSteerable });
+    const { error } = await testBlock(block, { input: { prompt: "go" } });
+
+    expect(error).toBeNull();
+    expect(answer).toBe("refused");
+  });
+
+  it("offers the steer even though the SDK's probe answers false for it", async () => {
+    // 1.0.40's `supports` knows only stream, wait, cancel and conversation.
+    const offers: Array<HarnessSteer | null> = [];
+    const { resolve } = scripted(OK_STREAM, { steer: async () => "complete_delivered", supportsSteer: false });
+    const block = cursorAgent({
+      ...GATE_OFF,
+      resolveCursorClient: resolve,
+      onSteerable: (s) => {
+        offers.push(s);
+      },
+    });
+    await testBlock(block, { input: { prompt: "go" } });
+
+    expect(offers.filter((o) => o !== null)).toHaveLength(1);
+  });
+
+  it.each([["has no steer", {}]])("never offers a steer when the run %s", async (_label, opts) => {
+    const offers: Array<HarnessSteer | null> = [];
+    const { resolve } = scripted(OK_STREAM, opts as ScriptedOpts);
+    const block = cursorAgent({
+      ...GATE_OFF,
+      resolveCursorClient: resolve,
+      onSteerable: (s) => {
+        offers.push(s);
+      },
+    });
+    const { error } = await testBlock(block, { input: { prompt: "go" } });
+
+    expect(error).toBeNull();
+    expect(offers.filter((o) => o !== null)).toHaveLength(0);
+  });
+
+  it("waits for a pending steer's own answer before returning, with no timer", async () => {
+    // The turn ends while Cursor still owes its answer. Guessing `refused`
+    // would send a line the turn may already hold a second time.
+    let answerSteer!: (v: string) => void;
+    let answer: string | undefined;
+    const { resolve } = scripted(OK_STREAM.slice(0, 1).concat(OK_STREAM.slice(1)), {
+      steer: () =>
+        new Promise<string>((r) => {
+          answerSteer = r;
+        }),
+    });
+    const { onSteerable } = recordOffers(async (steer) => {
+      answer = await steer("late line");
+    });
+    const block = cursorAgent({ ...GATE_OFF, resolveCursorClient: resolve, onSteerable });
+    const runtime = await createTestContext({});
+    let returned = false;
+    const done = Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never)).then(() => {
+      returned = true;
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(returned).toBe(false);
+
+    answerSteer("complete_delivered");
+    await done;
+    expect(returned).toBe(true);
+    expect(answer).toBe("delivered");
+  });
+
+  it("answers refused without asking Cursor once the offer is withdrawn", async () => {
+    let kept: HarnessSteer | null = null;
+    const { resolve, rec } = scripted(OK_STREAM, { steer: async () => "complete_delivered" });
+    const block = cursorAgent({
+      ...GATE_OFF,
+      resolveCursorClient: resolve,
+      onSteerable: (s) => {
+        if (s !== null) kept = s;
+      },
+    });
+    await testBlock(block, { input: { prompt: "go" } });
+
+    expect(kept).not.toBeNull();
+    await expect(kept!("too late")).resolves.toBe("refused");
+    expect(rec.steered).toEqual([]);
+  });
+
+  it("withdraws the offer on a deadline without waiting for a pending steer", async () => {
+    const offers: Array<HarnessSteer | null> = [];
+    const { resolve } = scripted(
+      async function* () {
+        yield { type: "thinking", text: "started" } as CursorSdkMessage;
+        await new Promise((r) => setTimeout(r, 10_000));
+      },
+      { steer: () => new Promise<string>(() => {}) },
+    );
+    const block = cursorAgent({
+      ...GATE_OFF,
+      resolveCursorClient: resolve,
+      onSteerable: (s) => {
+        offers.push(s);
+        if (s !== null) void s("never answered");
+      },
+    });
+    const runtime = await createTestContext({});
+    const ac = new AbortController();
+    (runtime.ctx as { signal?: AbortSignal }).signal = ac.signal;
+    setTimeout(() => ac.abort(), 20);
+
+    const startedAt = Date.now();
+    await expect(block.config.execute?.({ prompt: "go" }, runtime.ctx as never)).rejects.toBeInstanceOf(
+      CursorAgentAbortedError,
+    );
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+    expect(offers.at(-1)).toBeNull();
+  }, 15_000);
 });

@@ -157,7 +157,7 @@ function buildRouter(): { router: Router; stores: StoreRegistry } {
     defineFlow({
       kind: "chat",
       actions: { say: { block: handler({ name: "say", execute: () => ({}) }) } }
-    })
+    })()
   );
   const stores = createInMemoryStores();
   return { router: createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 }), stores };
@@ -716,7 +716,7 @@ describe("a run waiting to start", () => {
         internal: {
           actions: { work: { concurrency: queued, block: handler({ name: "work", execute: () => ({}) }) } }
         }
-      })
+      })()
     );
     const stores = createInMemoryStores();
     router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
@@ -787,7 +787,7 @@ describe("a run waiting to start", () => {
             block: handler({ name: "ping", execute: () => ({}) })
           }
         }
-      })
+      })()
     );
     const stores = createInMemoryStores();
     router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
@@ -833,7 +833,7 @@ describe("a run waiting to start", () => {
             orgId: context.request?.headers.get("x-org") ?? DEFAULT_ORG_ID
           })
         }
-      })
+      })()
     );
     const stores = createInMemoryStores();
     router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
@@ -895,9 +895,9 @@ describe("a run waiting to start", () => {
           },
           ping: { concurrency: queued, block: handler({ name: "ping", execute: () => ({}) }) }
         }
-      })
+      })()
     );
-    registry.register(defineFlow({ kind: "notes", actions: { ping: { block: handler({ name: "ping", execute: () => ({}) }) } } }));
+    registry.register(defineFlow({ kind: "notes", actions: { ping: { block: handler({ name: "ping", execute: () => ({}) }) } } })());
     const stores = createInMemoryStores();
     router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
     await seedSession(stores, Date.now() - 600_000);
@@ -1004,7 +1004,7 @@ describe("the session a stream or a snapshot opens on", () => {
               return user == null ? null : { userId: user, orgId: "org_test" };
             }
           }
-        })
+        })()
       );
     }
     const stores = createInMemoryStores();
@@ -1118,7 +1118,7 @@ describe("a request the list found, read again by its id", () => {
     vi.spyOn(stores.request, "list").mockImplementation(async (options) => {
       const rows = await list(options);
       // As the SQL adapters answer a list read without `withItems`.
-      return options?.withItems === true ? rows : rows.map((row) => ({ ...row, items: undefined }));
+      return options?.withItems === true ? rows : rows.map((row: RequestRecord) => ({ ...row, items: undefined }));
     });
     const get = stores.request.get.bind(stores.request);
     let reads = 0;

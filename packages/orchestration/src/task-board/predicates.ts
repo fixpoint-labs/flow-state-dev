@@ -21,12 +21,11 @@ import { hasClaimableTask, type RunsElsewhere } from "./shared";
  *   task (a worker should re-attempt `claim`) OR has fully drained
  *   (the worker should wake up, observe the drain, and exit via
  *   `checkBoard`). Stays asleep while the only remaining work is
- *   `in_progress` on a sibling — or parked in `parked`, unless
- *   the board declared `onReview: "exit"`, in which case a parked row
- *   is excused from the counts and the board reads as drained.
+ *   `in_progress` on a sibling.
  *
  * - `"complete-or-blocked"`: same as `"complete"` plus wake when no
- *   active worker is in `in_progress`/`parked` — if there's
+ *   active worker is in `in_progress` (a row waiting on a person is
+ *   none, FIX-2131) — if there's
  *   no claimable pending in that snapshot either, `checkBoard` exits
  *   with reason `blocked`. The extra wake-up means a dep-blocked board
  *   no longer requires a timeout to notice it can't progress.
@@ -49,20 +48,12 @@ import { hasClaimableTask, type RunsElsewhere } from "./shared";
  * alone would leave a worker asleep on claimable work until its timeout —
  * exactly the promptness defect this issue set out to fix.
  *
- * A board with dispatcher assignees passes `runsElsewhere` (FIX-982), and it
+ * A delegation board passes `runsElsewhere` (FIX-982, FIX-2076), and it
  * reaches the verdict half only. The claimable disjunct needs no adjustment for
  * it: `hasClaimableTask` judges rows by the substrate's lease, and a row a
  * child session holds has a live lease renewed from the child, so it is already
  * not claimable here. Once that lease does lapse the row is genuinely
  * recoverable and waking on it is correct.
- *
- * A board in park-exit mode passes `excuseParked` (FIX-1234) the same way, and
- * that it reaches this predicate at all is the point: the wake test and the
- * exit check have to agree, or a worker already asleep when the board becomes
- * exit-eligible sits there until its timeout and the exit is late rather than
- * absent — the shape of defect a passing test would miss (BP-035). The
- * claimable disjunct needs no adjustment here either: a `parked` row
- * is not in the status set `hasClaimableTask` scans.
  */
 export function whenBoardClaimable(
   collection: TaskCollectionRef,
@@ -75,12 +66,6 @@ export function whenBoardClaimable(
      * wake test and the exit check keep answering out of one definition.
      */
     runsElsewhere?: RunsElsewhere;
-    /**
-     * The board declared `onReview: "exit"` (FIX-1234). Forwarded verbatim on
-     * the same terms as `runsElsewhere`, and by the same board that hands it
-     * to the exit check.
-     */
-    excuseParked?: boolean;
   }
 ): (items: readonly OutputItem[]) => boolean {
   return () =>

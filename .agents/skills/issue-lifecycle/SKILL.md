@@ -117,10 +117,10 @@ generic approval request. Implementation PR merge remains the user's separate ga
 
 | Phase (derived) | Next bounded action | Then |
 |---|---|---|
-| **NEEDS_SPEC** — spec route, no spec yet | Dispatch `issue-spec`: author `SPEC.md`, `DECISIONS.md`, `BUSINESS-RULES.md`, `PLAN.md`, `DOCS.md`, conditional `EVOLUTION.md`, and owned artifacts under `specs/issues/<ISSUE-ID>/`; open ready for review. | Surface the direction ask and PR; record handles → AWAITING_SPEC_APPROVAL. |
+| **NEEDS_SPEC** — spec route, no spec yet | Dispatch `issue-spec`: author `SPEC.md`, `DECISIONS.md`, and owned artifacts under `specs/issues/<ISSUE-ID>/`; open ready for review. | Surface the direction ask and PR; record handles → AWAITING_SPEC_APPROVAL. |
 | **AWAITING_SPEC_APPROVAL** — spec PR not yet merged | On review events within the existing budget, dispatch Step 6.5 and preserve its reported counters. Human approval binds to the reviewed head. After approval, dispatch `issue-worker` **MERGE-ONLY** under the canonical merge contract with the PR and reviewed head. Observe merge; never infer it from approval or closure. If the owner merged the spec PR themselves, that merge is the approval: skip MERGE-ONLY and go straight to implementation. | If blocked, report the actual approval/check/merge wait, not another approval ask. Resume implementation on the next wake after observed merge; an authorized implement backstop may continue in the same wake. |
-| **NEEDS_IMPLEMENTATION** — spec confirmed merged, or direct-route bug | Dispatch `issue-implement` on a base containing the merged spec. Direct-route `specRequired` re-routes to NEEDS_SPEC. Multi-PR plans advance via `issue-multi-pr` only after the same spec merge gate. | Record implementation PRs; subscribe → PR_FEEDBACK. |
-| **PR_FEEDBACK** — impl PR(s) open | On each **PR event** (new review comments / CI) on any open impl / sub-PR, *and only while the round cap allows* (see below): dispatch a fresh bounded sub-agent to run `issue-implement` Step 10 for that batch — react, fix, reply, push — exit; add the rounds it reports spent to `prFeedbackRounds`. | End turn between events. When a PR is approved + green **and an automated review (Codex or Cursor) has returned on its current head** (some completed automated review ran against the PR's head sha: a Codex review's `commit_id` from `get_reviews`, or a Cursor check run's `head_sha`, equals it): surface **"ready to merge"** and stop (merge is the user's) — **except a stacked PR whose GitHub `baseRefName` is not `main`**, which is not ready even if approved and green. Multi-PR: a merged dependency unblocks its dependents (they return to NEEDS_IMPLEMENTATION); after the **last** sub-PR merges the issue is **not** yet DONE — run the assembled end-to-end goal first (see [Multi-PR issues](#multi-pr-issues-pr-plan) §4). |
+| **NEEDS_IMPLEMENTATION** — spec confirmed merged, or direct-route bug | Dispatch `issue-implement` on a base containing the merged spec. Direct-route `specRequired` re-routes to NEEDS_SPEC. A PR plan (the implementer's, or an older spec's) seeds `subPrs` and advances via `issue-multi-pr`, behind the same spec merge gate. | Record implementation PRs; subscribe → PR_FEEDBACK. |
+| **PR_FEEDBACK** — impl PR(s) open | On each **PR event** (new review comments / CI) on any open impl / sub-PR, *and only while the round cap allows* (see below): dispatch a fresh bounded sub-agent to run `issue-implement` Step 10 for that batch — react, fix, reply, push — exit; add the rounds it reports spent to `prFeedbackRounds`. | End turn between events. When a PR is approved + green **and an automated review (Codex or Cursor) has returned on the PR** (on any of its heads), with any follow-up review you requested also returned — a later push doesn't need its own review unless you asked for one ([Gates](../../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge)): surface **"ready to merge"** and stop (merge is the user's) — **except a stacked PR whose GitHub `baseRefName` is not `main`**, which is not ready even if approved and green. Multi-PR: a merged dependency unblocks its dependents (they return to NEEDS_IMPLEMENTATION); after the **last** sub-PR merges the issue is **not** yet DONE — run the assembled end-to-end goal first (see [Multi-PR issues](#multi-pr-issues-pr-plan) §4). |
 | **DONE** — impl PR merged **and** (multi-PR) the assembled goal passed | none | Update the cache to DONE; report completion. |
 
 ## Surfacing to the user (every "surface" above means this)
@@ -144,57 +144,30 @@ Two failure modes are specific to this lifecycle, because they come from what a 
 
 ## The spec-review round budget (why AWAITING_SPEC_APPROVAL terminates)
 
-A spec PR draws review from bots we don't control, which produce line-level feedback
-without limit. Dispatching a Step 6.5 round for every event that arrives is an unbounded
-loop — and it's the loop that used to grind a directionally-correct spec through ten
-rounds. So this phase is **budgeted, not open-ended.**
+**Canonical: [`orchestration.md`](../../../docs/contributing/orchestration.md) → "The
+convergence rule"** (two rounds, count rounds spent, the conditional third round). Standalone,
+*you* apply it; under `epic-lifecycle`, `epic-wake`'s `atReviewBudget()` does. **Change that
+doc first, then both.** The standalone mechanics:
 
-**Default: two rounds.** Track the count in the handle cache (`specReviewRounds`; the older
-`spec_review_rounds` spelling is still read, so an epic resumed from an earlier record keeps its spent
-budget instead of silently starting a fresh two).
-
-> **Two implementations, one rule.** Running standalone, *you* apply the budget as written
-> below. Running under `epic-lifecycle`, the `epic-wake` workflow's `atReviewBudget()` applies
-> it — the same rule as executable code, covering issue specs and the epic PR alike. Both
-> derive from [`orchestration.md`](../../../docs/contributing/orchestration.md) → "The
-> convergence rule", which stays canonical. **Change that doc first, then both.** A change to
-> one alone is the drift this note exists to catch.
-
-**Count rounds spent, not events dispatched.** The Step 6.5 sub-agent reports the rounds it
-actually spent, and **a batch that was only factual corrections or broken references costs
-zero** — those get fixed inline by rule precisely because they don't move the design. So add
-what the worker reports; never increment blindly per event. Charging typo batches to the
-budget would exhaust it on noise and then suppress the substantive feedback the budget exists
-to make room for — the opposite of the point. Then:
-
+- **The counter** is `specReviewRounds` in the handle cache (the older `spec_review_rounds`
+  spelling is still read, so a resumed record keeps its spent budget). Add the rounds the Step
+  6.5 worker reports spent; a batch of only factual corrections or broken references costs
+  zero. Never increment per event.
 - **Rounds 1–2** — dispatch Step 6.5 on the event batch as normal.
-- **Round 2 returns** — the spec has **converged**. Surface it to the user for the approval
-  gate, stating that it's converged and that remaining open threads are carried as
-  implementer notes in the plan. Then **stop dispatching review rounds**; further spec-PR review events
-  are logged in the cache and ignored until the gate resolves. The only event that still
-  acts is a **human** one — a gate signal from
+- **Round 2 returns** — the spec has **converged**. Surface it for the approval gate, saying
+  remaining threads are carried as implementer notes in `DECISIONS.md → Notes from review`.
+  Then **stop dispatching review rounds**: log further spec-PR review events in the cache and
+  ignore them until the gate resolves. Only a **human** event still acts — a gate signal from
   [Gates](../../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge)
-  (in-session go-ahead, a non-owner human review with no agent header, or an owner label),
-  or the user asking for a specific change. An owner-login review is not that signal.
-- **A third round is allowed only when round two surfaced a genuine spec-level finding** —
-  a new approach question, not more notes. The Step 6.5 sub-agent reports whether anything
-  was spec-level; that flag is what authorizes the extra round. Say so in one line when you
-  spend it, so the extra round is a visible decision rather than drift.
+  (an owner-login review is not one), or the user asking for a specific change.
+- **A third round** only when the worker's spec-level flag says round two found a genuine
+  spec-level finding. Say so in one line when you spend it.
+- **Reset** only when the *user* asks for a spec-level change after convergence.
 
-Stopping design rounds preserves the canonical convergence budget; it never waives
-required branch checks or review-thread policy for spec merge. Below-the-bar feedback
-remains implementer input, and implementation reviews the design against real code.
-A bot review neither grants human direction approval nor extends the design budget.
-
-The counter resets only if the *user* asks for a spec-level change after convergence — that
-starts a fresh direction question, not another polishing pass.
+Stopping design rounds never waives required checks or review-thread policy for spec merge,
+and a bot review neither grants approval nor extends the budget.
 
 ## The PR-feedback round cap (why PR_FEEDBACK terminates)
-
-The spec side is bounded by the budget above. The **implementation** PR is the other
-unbounded loop, and the worse one: several reviewers comment on a diff, a worker fixes and
-replies, the fixes draw fresh comments, and every round looks individually reasonable. Round
-nine re-litigating round three is invisible from inside any single round.
 
 **Default cap: twelve auto-handled rounds** (`prFeedbackRounds` in the handle cache). The
 rule is canonical in [`orchestration.md`](../../../docs/contributing/orchestration.md) →
@@ -224,11 +197,9 @@ round is charged one. Then:
   acknowledgements only, report `0` and post **no** pause comment; no round was spent and the
   loop continues.
 
-Skip this and the cap degrades in both directions at once: an unprompted worker omits the
-count, so every acknowledgement batch is charged one, and the batch that reaches twelve parks
-the issue with **no** pause comment on the PR and no assessment to give the user — the two
-things the cap exists to produce. (`epic-wake` builds exactly this into the `pr-feedback`
-prompt; standalone, it is yours to build.)
+Skip this and the cap fails both ways ([`orchestration.md`](../../../docs/contributing/orchestration.md#pr-feedback-the-round-cap)
+→ "PR feedback: the round cap" says how). `epic-wake` builds it into
+the `pr-feedback` prompt; standalone, it is yours to build.
 
 **The user's answer is the release.** Record it, carry it verbatim into the next dispatch's
 prompt (the escalating worker is gone — same handoff rule as any other blocker), and **reset
@@ -319,10 +290,11 @@ assembled goal has passed** (a spec PR never counts). If these IDs ever stop res
 
 ## Multi-PR issues (PR plan)
 
-When the spec declares a **PR plan** (a DAG of sub-PRs — `issue-spec` Large
-issues, `PLAN.md → Sequence`), the `NEEDS_IMPLEMENTATION` and `PR_FEEDBACK` phases generalize
-from one PR to the plan. The single spec-approval up front covers the whole plan; you
-still stop before merge on each sub-PR.
+When the issue has a **PR plan** (a DAG of sub-PRs — written by `issue-implement` at
+implementation start when the change needs more than one PR, or carried by an older spec's
+`PLAN.md → Sequence`), seed `subPrs` from it; the `NEEDS_IMPLEMENTATION` and `PR_FEEDBACK`
+phases generalize from one PR to the plan. The single spec-approval up front covers every
+slice; you still stop before merge on each sub-PR.
 
 Each invocation advances the plan by one bounded step, and **the step is a workflow**:
 `issue-multi-pr` (`.agents/workflows/issue-multi-pr.js`). The DAG's mechanics are pure
@@ -336,7 +308,7 @@ Workflow tool:
   args: {
     issueId: "<ISSUE>",
     cap: <a few — one worktree per sub-PR>,
-    subPrs: [ { id, dependsOn: [], branch, pr, status, stackedOn } ],
+    subPrs: [ { id, deliverables, dependsOn: [], branch, pr, status, stackedOn } ],
     assembledGoal: <persist VERBATIM — see below>
   }
 ```
@@ -421,9 +393,10 @@ What the script decides, so you don't:
    out of DONE until that lands.
 
 `subPrs` comes from the handle cache and goes back to it: the `.orchestration/<ISSUE>.md` record
-adds one row per sub-PR — `id · dependsOn · branch · PR# · stackedOn · status (pending / open /
-merged)` — alongside the issue-level fields. (`issue-multi-pr` also accepts the `depends_on` spelling
-the spec's PR-plan table uses, so a row copied straight out of the spec still carries its edges; write
+adds one row per sub-PR — `id · deliverables · dependsOn · branch · PR# · stackedOn · status (pending /
+open / merged)` — alongside the issue-level fields. Carry `deliverables` verbatim from the PR plan: it is
+the only record of a slice's scope, and each slice worker is told it. (`issue-multi-pr` also accepts the `depends_on` spelling
+a PR-plan table uses, so a row copied straight out of the table still carries its edges; write
 `dependsOn` in new records. Getting this wrong used to read as *no dependencies*, which builds a
 dependent onto `origin/main` beside the prerequisite it declared.) There is deliberately no `building`: a wake is
 synchronous, so a sub-PR either has a PR (`open`) or doesn't (`pending`), and a status the script
@@ -564,7 +537,8 @@ cloud vs. local" for how to detect the environment and the full fallback design.
 - **Model tiering** (AGENTS.md): the orchestrator itself is thin — keep it on the
   default (Opus) for its routing judgment. Read-only status/handle fetches use the
   **`scout`** agent (Haiku); phase work runs through `issue-spec` /
-  `issue-implement`, which tier their own sub-agents (Sonnet for decided execution).
+  `issue-implement`, which tier their own sub-agents (`issue-implement` implements on Opus;
+  Sonnet only for the correctness and completeness review lenses).
 
 ## Boundaries
 

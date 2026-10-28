@@ -10,8 +10,14 @@
  * The operator's allowlist names hosts, reached over `https` or `ssh`, and
  * optionally the word `"file"` to permit `file://` remotes. Nothing else is
  * reachable: no `http`, no `git://`, no transport helper, no bare path.
+ *
+ * The shape rules and the allowlist are two steps. `checkRemote` asks both;
+ * `checkRemoteShape` asks only the first, for the upstream of a repository
+ * the operator listed on this machine, which listing it already admits.
  */
 import { createHash } from "node:crypto";
+import { isAbsolute } from "node:path";
+import { pathToFileURL } from "node:url";
 
 /** A remote that passed: what git is handed, and what the host keys its clone by. */
 export interface AllowedRemote {
@@ -60,17 +66,72 @@ export function redactRemote(remote: string): string {
   return remote.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/?#]*@/i, "$1");
 }
 
-/** Judge `remote` against `allow`. Pure: starts nothing, reads nothing. */
+/**
+ * The remote with any credential in it removed, so it can be written down:
+ * userinfo that holds a password, or any userinfo in an `http(s)://` URL,
+ * where a token is spelled as the user. Other userinfo (`ssh://git@`) names an
+ * account, not a secret, and is kept. Unchanged when it holds none. Every
+ * remote this changes fails `checkRemoteShape`, so nothing fetched loses
+ * anything here.
+ */
+export function withoutCredential(remote: string): string {
+  const userinfo = /^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)@/i.exec(remote);
+  if (userinfo === null) return remote;
+  return userinfo[2]!.includes(":") || /^https?$/i.test(userinfo[1]!) ? redactRemote(remote) : remote;
+}
+
+/**
+ * A remote that passed the shape rules, before any allowlist is asked: what
+ * git would be handed, and the host it names (`null` for `file://`). A
+ * `scheme` this host never speaks carries no clone key.
+ */
+type ShapedRemote =
+  | { remote: AllowedRemote; host: string | null }
+  | { unspoken: string };
+
+/**
+ * Judge `remote` against `allow`. Pure: starts nothing, reads nothing.
+ * An unspoken scheme is `remote-not-allowed` here; `checkRemoteShape` calls it `invalid-remote`.
+ */
 export function checkRemote(remote: string, allow: readonly string[]): AllowedRemote | RefusedRemote {
-  const shown = redactRemote(remote);
-  const invalid = (why: string): RefusedRemote => ({
-    reason: "invalid-remote",
-    message: `the remote "${shown}" is not a usable git remote: ${why}.`,
-  });
+  const shaped = shapeOf(remote);
+  if ("reason" in shaped) return shaped;
   const notAllowed = (what: string): RefusedRemote => ({
     reason: "remote-not-allowed",
-    message: `the remote "${shown}" is not allowed on this host: ${what}.`,
+    message: `the remote "${redactRemote(remote)}" is not allowed on this host: ${what}.`,
   });
+  if ("unspoken" in shaped) return notAllowed(`the host reaches remotes over https or ssh, not ${shaped.unspoken}`);
+  if (shaped.host === null) {
+    return allow.includes("file") ? shaped.remote : notAllowed("file:// remotes are off unless the host lists \"file\"");
+  }
+  const host = shaped.host;
+  return allow.some((entry) => entry.toLowerCase() === host) ? shaped.remote : notAllowed(`"${host}" is not a listed host`);
+}
+
+/**
+ * Judge a remote by its shape alone, for a URL the operator's own repository
+ * configuration names rather than one a run asked for: the same rules as
+ * `checkRemote`, with no allowlist asked. An absolute path is read as the
+ * `file://` URL it means, and that URL is what the result hands git.
+ * An unspoken scheme is `invalid-remote` here; `checkRemote` calls it `remote-not-allowed`.
+ */
+export function checkRemoteShape(remote: string): AllowedRemote | RefusedRemote {
+  const spelled = isAbsolute(remote) ? pathToFileURL(remote).href : remote;
+  const shaped = shapeOf(spelled);
+  if ("reason" in shaped) return shaped;
+  if ("unspoken" in shaped) {
+    return invalidRemote(spelled, `the host reaches remotes over https, ssh or file, not ${shaped.unspoken}`);
+  }
+  return shaped.remote;
+}
+
+function invalidRemote(remote: string, why: string): RefusedRemote {
+  return { reason: "invalid-remote", message: `the remote "${redactRemote(remote)}" is not a usable git remote: ${why}.` };
+}
+
+/** The shape rules every remote is held to, whoever admits it. Pure. */
+function shapeOf(remote: string): ShapedRemote | RefusedRemote {
+  const invalid = (why: string): RefusedRemote => invalidRemote(remote, why);
 
   if (remote.startsWith("-")) return invalid("it starts with \"-\", which git reads as an option");
   // Whitespace and control characters have no place in a remote and every
@@ -92,7 +153,6 @@ export function checkRemote(remote: string, allow: readonly string[]): AllowedRe
     if (url.password !== "") return invalid("it carries a password");
 
     if (scheme === "file") {
-      if (!allow.includes("file")) return notAllowed("file:// remotes are off unless the host lists \"file\"");
       if (url.hostname !== "" && url.hostname !== "localhost") return invalid("a file:// remote names no host");
       let path: string;
       try {
@@ -100,22 +160,19 @@ export function checkRemote(remote: string, allow: readonly string[]): AllowedRe
       } catch {
         return invalid("its path holds a malformed %-escape");
       }
-      return { url: remote, scheme: "file", cloneKey: cloneKeyFor("file", path) };
+      return { remote: { url: remote, scheme: "file", cloneKey: cloneKeyFor("file", path) }, host: null };
     }
-    if (scheme !== "https" && scheme !== "ssh") {
-      return notAllowed(`the host reaches remotes over https or ssh, not ${scheme}`);
-    }
+    if (scheme !== "https" && scheme !== "ssh") return { unspoken: scheme };
     if (scheme === "https" && url.username !== "") return invalid("it carries a credential");
     const host = url.hostname.toLowerCase();
     if (host === "" || host.startsWith("-")) return invalid("its host is missing or starts with \"-\"");
-    if (!allow.some((entry) => entry.toLowerCase() === host)) return notAllowed(`"${host}" is not a listed host`);
     // A non-default port is another server, which can hold an unrelated
     // repository at the same path. The URL parser already drops `:443` from
     // https; `:22` is ssh's default and is dropped here, so both spellings of
     // the default stay one clone with the scp-like form.
     const port = scheme === "ssh" && url.port === "22" ? "" : url.port;
     const authority = port === "" ? host : `${host}:${port}`;
-    return { url: remote, scheme, cloneKey: cloneKeyFor(authority, repositoryPath(url.pathname)) };
+    return { remote: { url: remote, scheme, cloneKey: cloneKeyFor(authority, repositoryPath(url.pathname)) }, host };
   }
 
   // Git's scp-like form, `[user@]host:path`, is ssh — but only when the colon
@@ -124,8 +181,7 @@ export function checkRemote(remote: string, allow: readonly string[]): AllowedRe
   if (scp !== null) {
     const host = scp[2]!.toLowerCase();
     if (host.startsWith("-")) return invalid("its host starts with \"-\"");
-    if (!allow.some((entry) => entry.toLowerCase() === host)) return notAllowed(`"${host}" is not a listed host`);
-    return { url: remote, scheme: "ssh", cloneKey: cloneKeyFor(host, repositoryPath(scp[3]!)) };
+    return { remote: { url: remote, scheme: "ssh", cloneKey: cloneKeyFor(host, repositoryPath(scp[3]!)) }, host };
   }
 
   return invalid("a bare path is not a remote — spell a local repository as a file:// URL");

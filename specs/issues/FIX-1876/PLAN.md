@@ -111,7 +111,7 @@ P2 fix any page that names a symbol they rename (S10); P3 publishes the rest.
 
 ## POC
 
-[`poc/vocabulary-sweep/`](poc/vocabulary-sweep/sweep.mjs): the inventory checker. **Showed:** on
+[`poc/vocabulary-sweep/`](../../../goals/vocabulary/one-word-per-thing/goal.md): the inventory checker. **Showed:** on
 `main` at `da8f63fd7` it scans 3,749 of 4,100 tracked files, excludes 351 by named rules, leaves
 none unruled, and finds 2,156 open lines in 289 files; the planted control fails as it should.
 Premise it settled: the issue's list is a small part of the job ([DECISIONS → Settled](DECISIONS.md#settled)).

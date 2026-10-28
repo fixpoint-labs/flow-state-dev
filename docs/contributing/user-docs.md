@@ -21,8 +21,9 @@ have to skip to get there.
 
 So the fix is structural, not stylistic. **Published user-facing prose is reconciled by
 an agent without the implementation rationale** — see [Who writes them](#who-writes-them).
-The spec's required `DOCS.md` proposes reader-facing prose for direction review; it is
-input to that publication pass, not permission to copy unverified promises into live docs.
+A spec names only the pages that change (`SPEC.md`'s docs line); the prose is written at
+implementation, against what shipped. An older spec set's `DOCS.md` draft is input to that
+pass, not permission to copy unverified promises into live docs.
 
 ### Two tests for every sentence
 
@@ -85,7 +86,7 @@ Engineers, writing to engineers. Warm, not chatty. A teammate walking you throug
 - Be direct about tradeoffs: "this works for demos, not production" is better than hedging.
 - Introduce a term the first time you use it, in plain words.
 - No internal issue or PR numbers, ever. Those live in commits, changesets, and `docs/internal/`.
-- Code examples use current model names (`openai/gpt-5.4-mini` for small and fast).
+- Code examples use current model names (`openai/gpt-6-luna` for small and fast).
 - `sidebar_label` never repeats its category. `Memory > Overview`, not `Memory > Memory`.
 
 The reference example for this voice is `apps/docs/blog/2026-03-06-philosophy.md`.
@@ -95,12 +96,12 @@ The reference example for this voice is `apps/docs/blog/2026-03-06-philosophy.md
 Writing and checking need different blind spots, so they're separate agents.
 
 **[`docs-writer`](../../.agents/subagents/docs-writer.md)** writes and updates the pages. It runs
-in a fresh context with a surface brief. For a spec-backed change, it may additionally
-receive **only `DOCS.md`'s reader-facing draft and destination operations**, not the other
-spec documents, design rationale, PR, issue or diff. It checks the draft against the public
-API and behavioral evidence, corrects unsupported promises, and publishes reconciled prose
-to the named destinations. A spec merge alone is not evidence the behavior ships.
-The [retention policy](orchestration.md#spec-retention-and-authority) defines draft ownership.
+in a fresh context with a surface brief. For a spec-backed change, the brief also carries
+**only the spec's docs line**, the destinations that change (for an older spec set, its
+`DOCS.md` draft), not the other spec content, design rationale, PR, issue or diff. It
+checks every claim against the public API and behavioral evidence, corrects unsupported
+promises, and publishes to the named destinations. A spec merge alone is not evidence the
+behavior ships.
 
 **[`docs-editor`](../../.agents/subagents/docs-editor.md)** reviews the prose against this document
 and returns findings. It is kept as ignorant of the implementation as the reader is, which is what

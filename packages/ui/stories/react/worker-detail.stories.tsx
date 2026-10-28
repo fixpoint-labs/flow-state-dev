@@ -25,7 +25,7 @@ type Story = StoryObj<typeof meta>;
 export const Instructions: Story = {
   args: {
     workerId: "support.ada",
-    resourceClient: itemSource({
+    client: itemSource({
       workerId: "support.ada",
       flow: "support-agent",
       instructions: "Answer billing questions. Hand refunds over $500 to a person.",
@@ -37,7 +37,7 @@ export const Instructions: Story = {
 export const NoneGiven: Story = {
   args: {
     workerId: "support.grace",
-    resourceClient: itemSource({ workerId: "support.grace", flow: "support-agent", instructions: null }),
+    client: itemSource({ workerId: "support.grace", flow: "support-agent", instructions: null }),
   },
 };
 
@@ -48,13 +48,13 @@ export const NotPublished: Story = {
 
 /** The instructions read has not answered yet. */
 export const Loading: Story = {
-  args: { workerId: "support.ada", resourceClient: loadingItemSource },
+  args: { workerId: "support.ada", client: loadingItemSource },
 };
 
 /** The read failed. The line says what failed and offers Retry. */
 export const Failed: Story = {
   args: {
     workerId: "support.ada",
-    resourceClient: failingItemSource("Failed to load this worker's instructions"),
+    client: failingItemSource("Failed to load this worker's instructions"),
   },
 };

@@ -4,7 +4,7 @@
  *
  * `by` says how the delegates were found:
  *
- * - `judgment`: the coordinator's own turn decided, handing off with its tool
+ * - `judgment`: the coordinator's own turn decided, dispatching with its tool
  *   or answering itself.
  * - `held`: best fit, and the user's last post went to a delegate that
  *   hasn't answered since. No model call.
@@ -30,7 +30,7 @@
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { deliveryDelegateSchema } from "../delivery-ledger";
+import { delegateRefSchema } from "../delegates/delegate-list";
 import { COORDINATOR_ROUTE } from "./coordinator-keys";
 
 /** How a decision found its delegates. */
@@ -68,7 +68,7 @@ export const bestFitWhySchema = z.object({
 export type BestFitWhy = z.infer<typeof bestFitWhySchema>;
 
 /** What became of one delegate in a decision. */
-export const routedDelegateSchema = deliveryDelegateSchema.extend({
+export const routedDelegateSchema = delegateRefSchema.extend({
   outcome: z.enum(["delivered", "skipped", "failed"]),
   reason: z.string().optional()
 });

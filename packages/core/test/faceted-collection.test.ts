@@ -58,7 +58,7 @@ describe("VB: a valid config", () => {
     const model = countingModel();
     const tickets = build({ evaluator: evaluator({ name: "triage", model, questions }) });
     expect(tickets.collection.pattern).toBe("tickets/*");
-    expect(Object.keys(tickets.collection.stateSchema.shape).sort()).toEqual(["facets", "indexedAs", "title"]);
+    expect(Object.keys((tickets.collection.stateSchema as z.AnyZodObject).shape).sort()).toEqual(["facets", "indexedAs", "title"]);
     expect(tickets.collection.reactTo?.contentUpdated).toBeDefined();
     expect(tickets.search.name).toBe("search-tickets");
     expect(tickets.reindex.name).toBe("reindex-tickets");

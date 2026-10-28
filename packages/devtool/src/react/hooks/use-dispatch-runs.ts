@@ -1,7 +1,7 @@
 /**
  * Lists the dispatch runs hanging off one session (FIX-1071).
  *
- * Wraps `sessionClient.listChildSessions`, the same client-method idiom the other
+ * Wraps `client.sessions.children`, the same client-method idiom the other
  * listing hooks use — transport lives in the client, never here.
  *
  * Deliberately **not** polled. The listing is a read of all-time history whose
@@ -23,7 +23,7 @@
  * See `fetchDispatchRunPage` for why the budget is one read per turn.
  */
 import { useCallback, useEffect, useState } from "react";
-import type { SessionClient, ChildSessionSummary } from "@flow-state-dev/client";
+import type { ChildSessionSummary, Client } from "@flow-state-dev/client";
 import { useDevTool } from "../context/devtool-context";
 import { describeReadError } from "../lib/instance-ownership";
 import { useWorkspaceFence } from "./use-workspace-fence";
@@ -81,7 +81,7 @@ const EMPTY_ROWS: ChildSessionSummary[] = [];
  * to report, so it returns no page at all rather than a misleading one.
  */
 async function fetchDispatchRunPage(
-  sessionClient: SessionClient,
+  client: Pick<Client, "sessions">,
   sessionId: string,
   stillWanted: () => boolean
 ): Promise<{ rows: ChildSessionSummary[]; truncation: Truncation } | undefined> {
@@ -89,7 +89,7 @@ async function fetchDispatchRunPage(
   // size this side would pick, and the route REJECTS an out-of-range limit with
   // a 400 rather than clamping it. Omitting it takes the deployment's own
   // default.
-  const rows = await sessionClient.listChildSessions(sessionId);
+  const rows = await client.sessions.children(sessionId);
   if (rows.length === 0) return { rows, truncation: "complete" };
 
   if (!stillWanted()) return undefined;
@@ -104,7 +104,7 @@ async function fetchDispatchRunPage(
   // the reader to ignore it; one shown after a network blip tells them
   // something true.
   try {
-    const beyond = await sessionClient.listChildSessions(sessionId, {
+    const beyond = await client.sessions.children(sessionId, {
       offset: rows.length,
     });
     return { rows, truncation: beyond.length > 0 ? "more" : "complete" };
@@ -126,7 +126,7 @@ export type UseDispatchRunsResult = {
 };
 
 export function useDispatchRuns(sessionId: string | null): UseDispatchRunsResult {
-  const { sessionClient } = useDevTool();
+  const { client } = useDevTool();
   const [dispatchRuns, setDispatchRuns] = useState<ChildSessionSummary[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -195,7 +195,7 @@ export function useDispatchRuns(sessionId: string | null): UseDispatchRunsResult
     setError(null);
     setHeldIdentity(fence.identity);
     try {
-      const page = await fetchDispatchRunPage(sessionClient, sessionId, stillCurrent);
+      const page = await fetchDispatchRunPage(client, sessionId, stillCurrent);
       // `undefined` is a walk that stopped because it was retired, not a page.
       // It holds a partial list and no meaningful `truncated`, so there is
       // nothing here to write — and the fence below would refuse it anyway.
@@ -224,7 +224,7 @@ export function useDispatchRuns(sessionId: string | null): UseDispatchRunsResult
       // older read resolving late cannot clear it while a newer one is running.
       if (stillCurrent()) setIsLoading(false);
     }
-  }, [fence, sessionClient, sessionId]);
+  }, [fence, client, sessionId]);
 
   // Fetch on mount and whenever the read identity changes. `refresh`'s identity
   // is stable for a given session id and client.

@@ -12,11 +12,12 @@ import { LAB_ORG_ID } from "./host.mts";
 export const REPOSITORY = "https://github.com/fixpoint-labs/flow-state-dev.git";
 
 /** The root of the checkout this file sits in: `packages/shift-manager/teams/devteam/` is four levels down. */
-const CHECKOUT = resolve(fileURLToPath(new URL("../../../..", import.meta.url)));
+export const CHECKOUT = resolve(fileURLToPath(new URL("../../../..", import.meta.url)));
 
 /**
  * Where the two projects' runs work: worktrees of {@link CHECKOUT}, each on a
- * branch cut from local `main`, never fetched. Only the two shared projects
+ * branch cut from the newer of local `main` and its freshly fetched upstream
+ * (the workspace host's rule for a listed checkout). Only the two shared projects
  * of the Lab's organization are named, so a project a user makes on the same
  * remote is not mapped, and is refused.
  */

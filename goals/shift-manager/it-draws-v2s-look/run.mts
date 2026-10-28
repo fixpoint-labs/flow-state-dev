@@ -467,7 +467,6 @@ function sweep(args: {
       })),
       sub: document.querySelector("[data-testid=cos-sub]")?.textContent ?? null,
       watching: document.querySelector("[data-testid=cos-watching]")?.textContent ?? null,
-      suggestions: document.querySelector("[data-testid=cos]") === null ? null : Array.from(document.querySelectorAll("[data-look=suggestion]")).map((el) => el.textContent ?? ""),
     },
     texts,
     now: Date.now(),
@@ -688,7 +687,7 @@ async function readStore(api: LabApi, userId: string, boards: readonly string[] 
     running += rows.filter((r) => r.status === "in_progress").length;
   }
   return {
-    teams: new Set(seats.map((s) => (s.id.includes(".") ? s.id.split(".")[0] : "Staff"))).size,
+    teams: new Set(seats.map((s) => (s.id.includes(".") ? s.id.split(".")[0] : "_general"))).size,
     seats: seats.length,
     running,
     chiefOfStaff: seats.some((s) => s.name === "chief-of-staff"),

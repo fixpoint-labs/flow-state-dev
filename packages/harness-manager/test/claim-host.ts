@@ -25,7 +25,9 @@ import type { BlockContext, BlockDefinition, HarnessBlock } from "@flow-state-de
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
   defineTaskCollection,
+  taskLedgerResources,
   getOrCreateTaskCollection,
+  openRowHolds,
   resolveResourceCollection,
   type Task,
   type TaskCollectionRef,
@@ -36,7 +38,9 @@ import {
   harnessTaskInputSchema,
   readRunRow,
   runRecordCollection,
+  type CompletionRunContext,
   type HarnessFeeds,
+  type PromptRunContext,
   type RunRecordState,
 } from "../src";
 import { RUNS, collectionRef } from "../src/run-record";
@@ -143,6 +147,8 @@ export interface HostOptions {
   isDone?: (run: { answer?: string | null }) => boolean;
   /** Extra manager options (a judge, say). */
   manager?: Record<string, unknown>;
+  /** Run inside the phase's prompt builder, on its context, before the prompt is built. */
+  beforePrompt?: (ctx: BlockContext) => Promise<unknown>;
   /** The resolver a `claim` host's manager is given. Default: the conversations ledger, at the claim's partition. */
   ledgers?: (ledgerId: string, ctx: BlockContext, partition: string | undefined) => Promise<TaskCollectionRef | undefined>;
 }
@@ -190,14 +196,16 @@ export function claimHost(options: HostOptions) {
     tenant: undefined,
     phase: {
       phase: PHASE,
-      buildPrompt: (run) =>
-        [
+      buildPrompt: async (run: PromptRunContext) => {
+        await options.beforePrompt?.(run.ctx);
+        return [
           `Work on ${run.issue}, attempt ${run.attempt}: ${run.task.goal}`,
           ...(run.feedback !== undefined ? [`FEEDBACK: ${run.feedback}`] : []),
           ...run.answers.map((a) => `ANSWERED: ${a.question} => ${a.answer}`),
           `ASK: ${run.askMarkerPath}`,
-        ].join("\n"),
-      isDone: (run) => {
+        ].join("\n");
+      },
+      isDone: (run: CompletionRunContext) => {
         const answer = (run as { answer?: string | null }).answer;
         answersSeen.push(answer);
         return options.isDone?.({ answer }) ?? true;
@@ -212,10 +220,10 @@ export function claimHost(options: HostOptions) {
 
   const ledgerResources = defineCapability({
     name: "claim-host-ledgers",
-    resources: { [FIXED_BOARD]: fixedLedger, [CONVERSATIONS]: conversations },
+    resources: { [FIXED_BOARD]: fixedLedger, ...taskLedgerResources(conversations) },
   });
 
-  // File a row and claim it, as a board's drain would before handing it off.
+  // File a row and claim it, as a board's drain would before dispatching it.
   const seed = handler({
     name: "claim-host-seed",
     inputSchema: z.object({
@@ -225,10 +233,12 @@ export function claimHost(options: HostOptions) {
       goal: z.string(),
       input: z.unknown().optional(),
       maxAttempts: z.number().optional(),
+      deps: z.array(z.string()).optional(),
     }),
     outputSchema: z.unknown(),
     uses: [ledgerResources],
     execute: async (input, ctx) => {
+      // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
       const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
       if (ref.get(input.id) === undefined) {
         await ref.addTask({
@@ -236,6 +246,7 @@ export function claimHost(options: HostOptions) {
           goal: input.goal,
           assignee: ASSIGNEE,
           ...(input.input !== undefined ? { input: input.input } : {}),
+          ...(input.deps !== undefined ? { deps: input.deps } : {}),
           maxAttempts: input.maxAttempts ?? 2,
         });
       }
@@ -248,6 +259,7 @@ export function claimHost(options: HostOptions) {
     outputSchema: z.unknown(),
     uses: [ledgerResources],
     execute: async (input, ctx) => {
+      // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
       const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
       const claimed = await ref.claim("drain", { leaseDurationMs: 120_000, eligibility: (t) => t.id === input.id });
       return claimed === null ? null : (JSON.parse(JSON.stringify(claimed)) as unknown);
@@ -260,19 +272,25 @@ export function claimHost(options: HostOptions) {
     outputSchema: z.unknown(),
     uses: [ledgerResources],
     execute: async (input, ctx) => {
+      // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
       const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
       const found = ref.get(input.id);
       return found === undefined ? null : (JSON.parse(JSON.stringify(found)) as unknown);
     },
   });
+  // Answer the row's oldest open question as its user, through the board's one hold write.
   const answer = handler({
     name: "claim-host-answer",
     inputSchema: z.object({ ledgerId: z.string(), partition: z.string().optional(), id: z.string(), answer: z.string() }),
     outputSchema: z.unknown(),
     uses: [ledgerResources],
     execute: async (input, ctx) => {
+      // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
       const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
-      return ref.unpark(input.id, input.answer, { answer: true });
+      const row = ref.get(input.id);
+      const hold = row === undefined ? undefined : openRowHolds(row)[0];
+      if (hold === undefined) return { outcome: "declined", reason: "no-open-question" };
+      return ref.answer!(input.id, { hold: hold.id, message: input.answer, from: "user", by: ALICE });
     },
   });
   const cancel = handler({
@@ -281,6 +299,7 @@ export function claimHost(options: HostOptions) {
     outputSchema: z.unknown(),
     uses: [ledgerResources],
     execute: async (input, ctx) => {
+      // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
       const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
       return ref.cancel(input.id, "cancelled by the test");
     },
@@ -343,7 +362,7 @@ export function claimHost(options: HostOptions) {
   let sessions = 0;
   // Every action runs in this organization; `inOrg` moves the host's person to another.
   let orgId = ORG_ID;
-  const act = async (action: string, input: unknown, sessionId = `s_${++sessions}`, source?: string) => {
+  const act = async (action: string, input: unknown, sessionId = `s_${++sessions}`, source?: string, requestId?: string) => {
     const runtime = await (state as unknown as {
       getRuntime(): Promise<{ stores: any; runtimeConfig: object }>;
     }).getRuntime();
@@ -355,6 +374,7 @@ export function claimHost(options: HostOptions) {
       orgId,
       sessionId,
       ...(source !== undefined ? { source } : {}),
+      ...(requestId !== undefined ? { requestId } : {}),
       stores: runtime.stores,
       runtimeConfig: { ...runtime.runtimeConfig },
     } as never)) as { output?: unknown; error?: unknown };
@@ -368,7 +388,7 @@ export function claimHost(options: HostOptions) {
 
   /**
    * Claim the row and dispatch one attempt into the gated entry, as a
-   * board's hand-off would. `claimOnInput` is what the test's adapter puts on
+   * board's dispatch would. `claimOnInput` is what the test's adapter puts on
    * the manager's input: the gate's ledger and partition by default, on a
    * `claim` host; nothing on a `fixed` one.
    */
@@ -377,6 +397,8 @@ export function claimHost(options: HostOptions) {
     id: string,
     partition?: string,
     claimOnInput?: InputClaim | null,
+    /** Run the attempt under this request id: as an inline drain runs every turn it takes in its own request. */
+    requestId?: string,
   ) => {
     const claimed = (await act("claim", { ...at(ledgerId, partition), id })).output as Task | null;
     if (claimed === null) throw new Error(`row ${id} was not claimable`);
@@ -402,12 +424,12 @@ export function claimHost(options: HostOptions) {
           attempts: claimed.attempts,
           ...(claimed.input !== undefined ? { input: claimed.input } : {}),
           ...(claimed.feedback !== undefined ? { feedback: claimed.feedback } : {}),
-          ...(claimed.answered === true && claimed.feedback !== undefined ? { answer: claimed.feedback } : {}),
           ...(onInput !== null ? { claim: onInput } : {}),
         },
       },
       `s_task_${orgId === ORG_ID ? "" : `${orgId}_`}${ledgerId}_${partition ?? "none"}_${id}`,
       "task",
+      requestId,
     );
     return { claimed, result };
   };

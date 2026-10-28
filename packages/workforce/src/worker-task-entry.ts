@@ -1,7 +1,8 @@
 /**
- * The entries every worker flow takes work through: tasks, and delegated
- * posts. A leaf module, so a flow that declares an entry and the lookup that
- * checks for it share the name without either importing the other.
+ * The entry every worker flow takes work through: tasks, a coordinator's
+ * routed messages among them (FIX-2083). A leaf module, so a flow that
+ * declares the entry and the lookup that checks for it share the name without
+ * either importing the other.
  */
 
 /**
@@ -9,12 +10,6 @@
  * fallback hands over to it, and so does the wake.
  */
 export const WORKER_TASK_ENTRY = "work";
-
-/**
- * The internal entry a worker flow declares to take a delegated post. A
- * worker whose flow declares it can be a delegate that takes posts.
- */
-export const DELEGATED_POST_ENTRY = "onDelegatedPost";
 
 /**
  * The mark on a task-ledger binding that takes a conversation's tasks: the

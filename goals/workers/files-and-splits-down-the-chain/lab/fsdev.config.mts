@@ -8,12 +8,12 @@
  * flow and the coordinator, and two goal-local ones. `foreman` is an app's own
  * worker flow carrying the filing kit (`defineSessionBoard`): the task tools
  * on its model block, their actions, and the board's entries. `poster` takes
- * a delegated post and no task.
+ * no task: its workers answer a person, and none can be a delegate.
  *
  * - `crew.planner` (`agent`) splits for `crew.one` and `crew.two`; `crew.solo`
  *   has no delegates.
  * - `desk.router`, a coordinator routing by judgment, whose one delegate,
- *   `desk.poster`, takes only posts.
+ *   `desk.poster`, takes no task.
  * - `shop.foreman`, on `foreman`, files for `crew.one`.
  * - `deep.d0` to `deep.d6`, each handing on to the next.
  * - `wide.top` hands to `wide.fan`, which fans out for two delegates.
@@ -96,7 +96,7 @@ const plain = (asked: string) => asked.replace(/\[(?:file|split|fan):[^\]]*\]|\[
  * - `[try-file]` files the ask with no assignee;
  * - `[tools]` says which tools the turn was handed.
  *
- * Every filing is a call of the turn's own task tools: `dispatchTask` for a piece with an owner, `addTask` for an unassigned one, which stays recorded. After the calls,
+ * Every filing is a call of the turn's own task tools: `createTask` for a piece with an owner, `createTask` with `held` for an unassigned one, which stays held. After the calls,
  * the turn says what they answered.
  */
 const scripted = {
@@ -118,13 +118,13 @@ const scripted = {
     const split = /\[split:([a-z0-9.,-]+)\]/.exec(asked);
     const fan = /\[fan:(\d+)\]/.exec(asked);
     if (file !== null) {
-      calls.push({ toolCallId: "file-0", toolName: "dispatchTask", args: { goal: asked.replace(file[0], "").replace(/\s+/g, " ").trim(), assignee: file[1]! } });
+      calls.push({ toolCallId: "file-0", toolName: "createTask", args: { goal: asked.replace(file[0], "").replace(/\s+/g, " ").trim(), assignee: file[1]! } });
     } else if (split !== null) {
-      split[1]!.split(",").forEach((assignee, i) => calls.push({ toolCallId: `split-${i}`, toolName: "dispatchTask", args: { goal: `part ${i + 1} of: ${plain(asked)}`, assignee } }));
+      split[1]!.split(",").forEach((assignee, i) => calls.push({ toolCallId: `split-${i}`, toolName: "createTask", args: { goal: `part ${i + 1} of: ${plain(asked)}`, assignee } }));
     } else if (fan !== null) {
-      for (let i = 0; i < Number(fan[1]); i += 1) calls.push({ toolCallId: `fan-${i}`, toolName: "addTask", args: { goal: `piece ${i + 1} of: ${plain(asked)}` } });
+      for (let i = 0; i < Number(fan[1]); i += 1) calls.push({ toolCallId: `fan-${i}`, toolName: "createTask", args: { held: true, goal: `piece ${i + 1} of: ${plain(asked)}` } });
     } else if (asked.includes("[try-file]")) {
-      calls.push({ toolCallId: "try-0", toolName: "addTask", args: { goal: plain(asked) } });
+      calls.push({ toolCallId: "try-0", toolName: "createTask", args: { held: true, goal: plain(asked) } });
     }
     if (calls.length > 0) return { toolCalls: calls, finishReason: "tool-calls" };
     return { text: `Done: ${plain(asked).slice(0, 200)}${toolsLine}`, finishReason: "stop" };
@@ -148,7 +148,11 @@ const modelResolver = Object.assign(
 
 const doorInput = z.object({ message: z.string() });
 
-/** `poster`: a worker flow that takes a delegated post and no task. */
+/**
+ * `poster`: a worker flow that takes no task. Before FIX-2083 it took a
+ * delegated post; a delegate is now a worker whose flow takes tasks, so a
+ * worker on it is listed by `desk.router` and reaches no work.
+ */
 function posterFlow(installation: any) {
   const door = core.handler({
     name: "poster-run",
@@ -161,8 +165,7 @@ function posterFlow(installation: any) {
     configSchema: wf.workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
-    internal: { actions: { [wf.DELEGATED_POST_ENTRY]: { inputSchema: z.unknown(), block: door } } },
+    actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
   } as never);
 }
 
@@ -194,7 +197,7 @@ function foremanFlow(installation: any) {
     resources: { ...installation.resources, ...(board?.resources ?? {}) },
     request: { onStarted: resolveWorker },
     actions: {
-      run: { inputSchema: doorInput.strict(), block: answer, userMessage: (input: { message: string }) => input.message },
+      respond: { inputSchema: doorInput.strict(), block: answer, userMessage: (input: { message: string }) => input.message },
       ...(board?.actions ?? {}),
     },
     internal: { actions: board === undefined ? {} : board.entries(answer) },
@@ -207,8 +210,9 @@ function hire(workers: unknown[]): Array<{ id: string }> {
   const installation = wf.createWorkerInstallation({ standardWorkers: workers, workerFlows: () => flows });
   const agent = wf.defineAgentWorkerFlow({ installation });
   const poster = posterFlow(installation);
-  const coordinator = wf.defineCoordinatorFlow({ installation, delegateFlows: [poster, agent], routeModel: "scripted/route" });
-  flows = { agent, coordinator, poster, foreman: foremanFlow(installation) };
+  const coordinator = wf.defineCoordinatorFlow({ installation, routeModel: "scripted/route" });
+  // The foreman files its delegates' tasks.
+  flows = { agent, coordinator, poster, foreman: { flow: foremanFlow(installation), roles: ["manager"] } };
   return wf.hireWorkforce(installation, CHAIN_LIMIT === undefined ? {} : { taskChainLimit: CHAIN_LIMIT }) as Array<{ id: string }>;
 }
 

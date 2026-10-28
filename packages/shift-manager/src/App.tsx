@@ -15,7 +15,7 @@
 import { useEffect, useState } from "react";
 import { GAPS, type Gaps } from "./gaps";
 import type { ThemeLook } from "./lib/theme";
-import type { LabClients } from "./lib/connection";
+import type { Connection } from "./lib/connection";
 import type { LoadedSnapshot } from "./lib/derive";
 import { LabProvider, useLab } from "./lib/lab-data";
 import type { Failure } from "./lib/reads";
@@ -23,14 +23,20 @@ import { ResourceView } from "./surfaces/Resource";
 import { useRoute, type Route } from "./lib/routes";
 import { ChiefOfStaffPanel, ChiefOfStaffView } from "./surfaces/ChiefOfStaff";
 import { Inbox } from "./surfaces/Inbox";
-import { JumpTo } from "./surfaces/JumpTo";
+import { JumpTo, MESSAGE_PREFIX } from "./surfaces/JumpTo";
 import { ProjectView } from "./surfaces/Project";
 import { RosterView } from "./surfaces/Roster";
+import { WorkerSettingsView } from "./surfaces/WorkerSettings";
+import { SettingsView } from "./surfaces/Settings";
 import { Sidebar } from "./surfaces/Sidebar";
 import { TaskProvider } from "./lib/task";
 import { TaskFrame } from "./surfaces/TaskFrame";
 import { TaskInspector } from "./surfaces/TaskInspector";
 import { Tasks } from "./surfaces/Tasks";
+import { Messages } from "./surfaces/Messages";
+import { Schedules } from "./surfaces/Schedules";
+import { Usage } from "./surfaces/Usage";
+import { SessionView } from "./surfaces/SessionView";
 import { isTyping, usePanels } from "./lib/panels";
 
 /**
@@ -39,9 +45,9 @@ import { isTyping, usePanels } from "./lib/panels";
  * @param look The page's theme, which the mark in the sidebar changes. Absent:
  *   the sidebar draws no mark.
  */
-export function App({ clients, gaps = GAPS, devtoolUrl, look }: { clients: LabClients; gaps?: Gaps; devtoolUrl?: string; look?: ThemeLook }) {
+export function App({ connection, gaps = GAPS, devtoolUrl, look }: { connection: Connection; gaps?: Gaps; devtoolUrl?: string; look?: ThemeLook }) {
   return (
-    <LabProvider clients={clients}>
+    <LabProvider connection={connection}>
       <Shell gaps={gaps} devtoolUrl={devtoolUrl} look={look} />
     </LabProvider>
   );
@@ -91,10 +97,11 @@ function Unreachable({ failure, onRetry }: { failure: Failure; onRetry: () => vo
 }
 
 function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | undefined; look: ThemeLook | undefined }) {
-  const { snapshot, refresh, clients } = useLab();
+  const { snapshot, refresh, client } = useLab();
   const route = useRoute();
-  const [jumping, setJumping] = useState(false);
-  const panels = usePanels(clients.userId);
+  // Null is closed; "" opens Jump to, MESSAGE_PREFIX opens it already in message mode.
+  const [jumping, setJumping] = useState<string | null>(null);
+  const panels = usePanels(client.userId);
   const { toggleNav, togglePanel } = panels;
   const hasPanel = PANEL_NAMES[route.level] !== undefined;
 
@@ -102,7 +109,8 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        setJumping((j) => !j);
+        // Shift+⌘K goes straight to messaging the Shift Coordinator. Either chord closes an open palette; neither re-seeds it.
+        setJumping((j) => (j === null ? (e.shiftKey ? MESSAGE_PREFIX : "") : null));
         return;
       }
       // `[` and `]` toggle the sidebar and the right panel, except while typing,
@@ -126,14 +134,14 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
   const levels = (
     <>
       <main className="min-w-0 flex-1 overflow-hidden" data-testid="centre" data-level={route.level}>
-        <Centre snapshot={snapshot} route={route} gaps={gaps} look={look} />
+        <Centre snapshot={snapshot} route={route} gaps={gaps} look={look} devtoolUrl={devtoolUrl} />
       </main>
       <Panel snapshot={snapshot} route={route} gaps={gaps} open={panels.panelOpen} overlay={panels.overlay} onToggle={togglePanel} />
     </>
   );
   return (
-    <div className="flex h-screen min-h-0 min-w-[900px]" data-testid="shell">
-      <Sidebar route={route} gaps={gaps} onJump={() => setJumping(true)} look={look} collapsed={panels.navCollapsed} onToggle={toggleNav} />
+    <div className="flex h-dvh min-h-0 min-w-[900px]" data-testid="shell">
+      <Sidebar route={route} gaps={gaps} onJump={() => setJumping("")} look={look} collapsed={panels.navCollapsed} onToggle={toggleNav} />
       {route.level === "task" ? (
         // The task screen and its inspector read one row and one run.
         <TaskProvider
@@ -148,34 +156,46 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
       ) : (
         levels
       )}
-      {jumping ? <JumpTo snapshot={snapshot} gaps={gaps} onClose={() => setJumping(false)} /> : null}
+      {jumping !== null ? <JumpTo snapshot={snapshot} gaps={gaps} initialQuery={jumping} onClose={() => setJumping(null)} /> : null}
     </div>
   );
 }
 
-function Centre({ snapshot, route, gaps, look }: { snapshot: LoadedSnapshot; route: Route; gaps: Gaps; look: ThemeLook | undefined }) {
+function Centre({ snapshot, route, gaps, look, devtoolUrl }: { snapshot: LoadedSnapshot; route: Route; gaps: Gaps; look: ThemeLook | undefined; devtoolUrl: string | undefined }) {
   switch (route.level) {
     case "cos":
       return <ChiefOfStaffView snapshot={snapshot} gaps={gaps} />;
     case "roster":
       return <RosterView snapshot={snapshot} team={route.team} gaps={gaps} look={look} />;
     case "inbox":
-      return <Inbox snapshot={snapshot} suspensionId={route.suspensionId} gaps={gaps} />;
+      return <Inbox snapshot={snapshot} itemId={route.item} gaps={gaps} />;
     case "tasks":
       return <Tasks snapshot={snapshot} by={route.by} gaps={gaps} />;
     case "task":
       return <TaskFrame tab={route.tab} gaps={gaps} />;
+    case "messages":
+      return <Messages snapshot={snapshot} />;
+    case "schedules":
+      return <Schedules snapshot={snapshot} />;
+    case "usage":
+      return <Usage snapshot={snapshot} />;
+    case "session":
+      return <SessionView snapshot={snapshot} sessionId={route.sessionId} gaps={gaps} />;
     case "resource":
       return <ResourceView sessionId={route.sessionId} resourceRef={route.ref} />;
     case "project":
       return <ProjectView snapshot={snapshot} route={route} gaps={gaps} />;
+    case "worker-settings":
+      return <WorkerSettingsView snapshot={snapshot} workerId={route.worker} devtoolUrl={devtoolUrl} />;
+    case "settings":
+      return <SettingsView />;
   }
 }
 
 const reducedMotion = () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /** What the collapsed right panel's strip names, per level that has a panel. */
-const PANEL_NAMES: Partial<Record<Route["level"], string>> = { cos: "ON CALL", task: "TASK DETAIL" };
+const PANEL_NAMES: Partial<Record<Route["level"], string>> = { cos: "DELEGATES", task: "TASK DETAIL" };
 
 /**
  * The right panel's slot, per level: Chief of Staff's rail, the task's slot,
@@ -206,7 +226,7 @@ function Panel({
 }) {
   let content = null;
   if (route.level === "cos") {
-    content = <ChiefOfStaffPanel snapshot={snapshot} gaps={gaps} />;
+    content = <ChiefOfStaffPanel snapshot={snapshot} />;
   } else if (route.level === "task") {
     content = <TaskInspector snapshot={snapshot} gaps={gaps} />;
   }

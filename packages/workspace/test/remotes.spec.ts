@@ -2,7 +2,7 @@
  * Judging a remote, as data, before git ever sees it.
  */
 import { describe, expect, it } from "vitest";
-import { allowedProtocols, checkRemote, redactRemote } from "../src/remotes";
+import { allowedProtocols, checkRemote, checkRemoteShape, redactRemote } from "../src/remotes";
 
 const allow = ["github.com", "file"];
 const key = (remote: string) => {
@@ -85,6 +85,41 @@ describe("a credential is never shown", () => {
   it("a refusal never prints a credential that holds an @", () => {
     const judged = checkRemote("https://user:@hunter2@github.com/x", allow);
     expect(judged).toHaveProperty("reason");
+    expect((judged as { message: string }).message).not.toContain("hunter2");
+  });
+});
+
+describe("a remote judged by its shape alone", () => {
+  // The upstream of a repository the operator listed: no allowlist is asked,
+  // but every rule that keeps a smuggled argument from git still is.
+  it("admits a remote on any host, over a scheme the host speaks", () => {
+    expect(checkRemoteShape("https://gitlab.example/acme/x.git")).toMatchObject({ scheme: "https" });
+    expect(checkRemoteShape("git@github.com:acme/x.git")).toMatchObject({ scheme: "ssh" });
+    expect(checkRemoteShape("file:///srv/x.git")).toMatchObject({ scheme: "file" });
+  });
+
+  it("reads an absolute path as the file:// URL it means, and hands git that URL", () => {
+    expect(checkRemoteShape("/srv/x.git")).toMatchObject({ url: "file:///srv/x.git", scheme: "file" });
+  });
+
+  it("refuses what checkRemote refuses for its shape", () => {
+    for (const remote of [
+      "ext::sh -c touch% /tmp/x",
+      "fd::3",
+      "-uhttps://github.com/x",
+      "https://user@github.com/x",
+      "ssh://git:pw@github.com/x",
+      "https://github.com/x y",
+      "http://github.com/x",
+      "git://github.com/x",
+      "relative/path.git",
+    ]) {
+      expect(checkRemoteShape(remote)).toMatchObject({ reason: "invalid-remote" });
+    }
+  });
+
+  it("never shows a credential", () => {
+    const judged = checkRemoteShape("https://user:hunter2@github.com/x");
     expect((judged as { message: string }).message).not.toContain("hunter2");
   });
 });

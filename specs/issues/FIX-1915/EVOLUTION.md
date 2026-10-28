@@ -13,4 +13,6 @@ Aligned with FIX-1917's merged spec: `cursor-session` is now settled there, and 
 
 Amended by the cross-spec check (2026-10-12); see [the epic's Evolution](../../epics/FIX-1907/EVOLUTION.md).
 
+Amended after merge (2026-10-13, owner decision): BR-13b's allowlist is environment filtering, not a security boundary; see [How it got here](DECISIONS.md#how-it-got-here).
+
 Re-check each source against current code before PR-A moves the record.

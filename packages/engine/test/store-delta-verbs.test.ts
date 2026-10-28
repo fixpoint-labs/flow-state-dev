@@ -12,6 +12,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import type { JsonObject } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import {
   createInMemorySessionStore,
@@ -22,7 +23,7 @@ import {
 function makeSession(
   id: string,
   version: number,
-  state: Record<string, unknown> = {}
+  state: JsonObject = {}
 ): SessionRecord {
   const ts = Date.now();
   return {
@@ -41,7 +42,7 @@ function makeSession(
 async function seed(
   store: SessionStore,
   id: string,
-  state: Record<string, unknown> = {}
+  state: JsonObject = {}
 ): Promise<SessionRecord> {
   const record = makeSession(id, 0, state);
   await store.set(id, record, "any");

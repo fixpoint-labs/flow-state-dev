@@ -85,6 +85,6 @@ describe("the plan record on the response stream", () => {
       lastOutcome: "applied",
     });
     const marker = changes.filter((c) => c.resourcePath === "observed-plan-list/req_plan/agent#0");
-    expect(marker.at(-1)?.delta).toEqual({ status: "complete", count: 1, reason: null });
+    expect(marker.at(-1)?.delta).toEqual({ status: "complete", count: 1, reason: null, conversation: null });
   });
 });

@@ -605,11 +605,12 @@ describe("configuration", () => {
     expect(() => skillEvaluator(textModel as never)).toThrow(/can generate but not evaluate/);
   });
 
-  it("orchestration depends on core only, and names no evaluation library, lab or model (BR-19)", () => {
+  it("orchestration depends on the framework only, and names no evaluation library, lab or model (BR-19)", () => {
     const pkg = JSON.parse(readFileSync(join(__dirname, "../../package.json"), "utf8")) as {
       dependencies: Record<string, string>;
     };
-    expect(Object.keys(pkg.dependencies).sort()).toEqual(["@flow-state-dev/core", "zod"]);
+    // The isomorphic client is the Inbox's browser client (FIX-2133): a framework package, not an evaluation library.
+    expect(Object.keys(pkg.dependencies).sort()).toEqual(["@flow-state-dev/client", "@flow-state-dev/core", "zod"]);
 
     const dir = join(__dirname, "../../src/skills");
     for (const file of ["skill-evaluator.ts", "skill-evaluator-tier.ts", "skill-activator.ts", "skill-catalog.ts"]) {

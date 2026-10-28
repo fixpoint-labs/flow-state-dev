@@ -172,7 +172,7 @@ async function harness(
         name: 'whisper',
         inputSchema: z.string(),
         execute: (text, ctx) => {
-          ctx.emit.message(text, { itemVisibility: { client: false } })
+          ctx.emit.message(text, { itemVisibility: { client: false, history: false } })
         },
       }),
     )

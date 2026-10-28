@@ -5,6 +5,9 @@ sidebar_label: The built-in worker
 description: "The agent worker flow the framework ships: a worker that talks, steered by its own file, with tools, skills, and memory you add when you want them."
 ---
 
+import Figure from "@site/src/components/Figure";
+import BuiltInWorkerMemoryDrawing from "./built-in-worker-memory.svg";
+
 # The built-in worker
 
 Write a description and some instructions in a `WORKER.md`, name no `flow:`, and you have a worker that talks. It runs on a worker flow the framework ships, called `agent`.
@@ -46,6 +49,8 @@ A worker's own settings can still put a **control** on it. A control is a piece 
 - **The skill loader**, when the worker sets [`skills.activateTool`](#using-them). It lets the model pull a skill the worker holds into the turn as it runs.
 - **The controls a capability preset declares**, when the worker selects that preset in its [`capabilities:`](./capabilities-on-disk.md#a-preset-carrying-a-tool) key. A preset's `controlTools` reach the worker even with `tools: []`.
 
+The four [standing rules](./standing-rules.md) tools, `rules/read`, `rules/add`, `rules/change` and `rules/remove`, sit outside `tools:` too. Every worker on `agent` gets them on a turn a user's own message started, and no worker gets them on any other turn.
+
 A skill cannot widen the catalog. Declaring a tool under a skill's `allowed-tools` does not grant it. Holding a package gives a worker with no `tools:` line that package's blocks; they are not added to the catalog. See [Packages on disk](./packages-on-disk.md#its-tools).
 
 Checking `tools:` against a catalog is the built-in worker flow's rule, not a rule of `hireWorkforce`. A worker flow you write yourself declares its own settings, so what a `tools:` name is checked against is that flow's business. So is whether it declares `tools` at all.
@@ -85,7 +90,7 @@ const flows = hireWorkforce(installation);
 | `classifierModel` | The model behind `skills.enableLlmClassifier`, an optional per-turn check that decides whether a skill applies. [Using them](#using-them) covers what it costs. |
 | `confidenceThreshold` | How sure that check must be before it counts a skill as matching. Defaults to `0.65`. |
 | `uses` | Capabilities every worker on this flow carries, attached to the generator that answers. |
-| `afterAnswer` | A block that runs after the worker answers, without changing the reply. |
+| `afterAnswer` | A block that runs after the worker answers, without changing the reply. In a conversation its failure is only logged; in a task it fails the attempt, unless the task was filed with its [result going to the conversation](./delegating-work.md#where-a-task-runs-and-where-its-result-goes). |
 | `isolateUserState` | Keep this flow's user-scoped storage apart from other flows'. Every worker on `agent` shares one copy, so a user's workers on it still share the same user-scoped storage. |
 
 `classifierModel` and `confidenceThreshold` belong to the worker flow: nothing reads either until a worker turns `skills.enableLlmClassifier` on, and a `WORKER.md` that names one is refused at the hire, by name, along with any other setting the flow does not declare. `uses` and `afterAnswer` are what [Giving workers memory](#giving-workers-memory) uses.
@@ -102,7 +107,9 @@ A task goes only to a worker on the filing user's roster, one your files declare
 
 A conversation keeps its recent turns, each worker keeps its own skills for each user, and long-term memory, once you add it, is kept per user and shared by that user's workers.
 
-![A conversation holds recent turns, a worker's skills are kept per user, and memory is kept per user](./built-in-worker-memory.svg)
+Standing rules, the notes you've asked a worker to keep, are kept per worker and per user, and read on every turn. See [Standing rules](./standing-rules.md).
+
+<Figure svg={BuiltInWorkerMemoryDrawing} caption="What a built-in worker keeps, and who shares it" description={"A conversation holds recent turns, a worker's skills are kept per user, and memory is kept per user"} />
 
 ## Skills
 
@@ -188,7 +195,7 @@ import { system } from "@flow-state-dev/memory";
 import { boardTool, searchTool } from "./tools";
 
 const mem = system({
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   working: { capacity: 7 },
   episodic: true,
   semantic: true,
@@ -229,6 +236,8 @@ Tell a worker something in one conversation and it knows it in the next. Memory 
 **Reach for `system()`, not `createMemoryCapability`.** The latter builds the read side only. Attach it and you get a worker that recites facts someone else stored and records nothing from its own conversations — a worker that looks like it remembers.
 
 **`afterAnswer` is the write side.** Leave it out and the durable stores stay empty. It runs beside the answer rather than in front of it, so it cannot change what the worker said, and a capture that fails is not a failed conversation.
+
+In a task, a capture that fails does fail the attempt, the same as any other background step, so the task runs again while it has attempts left. The exception is a task filed with `resultTo: "conversation"`, whose result [belongs to the conversation](./delegating-work.md#where-a-task-runs-and-where-its-result-goes) rather than to whoever filed it. It gets one attempt, so there the failed capture is logged and the task keeps its answer. To make the capture best-effort everywhere, give `afterAnswer` a block that catches its own errors.
 
 **Turn `semantic` and `episodic` on.** They are off by default. Skip them and the durable stores fill up and are never read back, which is the failure that looks fine until someone starts a second conversation.
 
@@ -294,3 +303,4 @@ flows while sharing semantic facts with them. Per-tier isolation doesn't separat
 - [Skills](../skills/overview.md) — what a `SKILL.md` is and what goes in one.
 - [Activation paths](../skills/activation.md) — the ways a skill becomes active, and what each costs.
 - [Memory](../memory/overview.md) — the tiers, and everything `system()` takes.
+- [Standing rules](./standing-rules.md) — notes a worker keeps for you, and how to edit them.

@@ -21,13 +21,14 @@ This repo accumulates bloat because AI-generated code gets reviewed hard for cor
 | Line-level cleanup, dedup, dead lines | `/simplify` |
 | Whole-codebase depth refactors | `improve-codebase-architecture` |
 | Pattern conflicts / redundancy / philosophy drift | `audit-coherence` |
+| **A second mechanism beside an existing block or piece** — cap, marker, hook, release path | `reuse-review` |
 | **Other shapes this could have taken** — generating alternative approaches | `adhd` |
 
 Second-look operates **above** line level: the approach, the requirements that drove it, and the API/abstraction surface. It does not chase individual lines.
 
 **Its lane vs. coherence.** Second-look asks whether *this change's* surface earns its keep against *its own* requirement — overbuilt? YAGNI? what's the 80/20? Whether the change *duplicates or conflicts with a pattern elsewhere* is a coherence question, not this skill's — route that to `audit-coherence`. (Second-look is `review`'s **restraint** lens; audit-coherence is its **coherence** lens. They compose; they don't overlap.)
 
-**Its lane vs. alternatives.** This skill only ever argues *down* — its calibration gate drops any candidate that adds surface, and its red-flag list kills "could be more flexible / generic" on sight. Proposing a *different* shape, including one that trades surface here for less of it elsewhere, is `review`'s **alternatives** lens ([`adhd`](../adhd/SKILL.md)). Do not soften this skill's bias to make room for that — the two postures are separate lenses precisely so neither has to hedge.
+**Its lane vs. alternatives.** This skill only ever argues *down* — its calibration gate drops any candidate that adds surface, and its red-flag list kills "could be more flexible / generic" on sight. Proposing a *different* shape, including one that trades surface here for less of it elsewhere, is [`analysis`](../analysis/SKILL.md)'s *other shapes* objective (via [`adhd`](../adhd/SKILL.md)). Do not soften this skill's bias to make room for that — the two postures are separate lenses precisely so neither has to hedge.
 
 ## Resolve the target
 
@@ -37,10 +38,10 @@ The target names one of three review objects. Resolve it first — the object an
 |--------|---------------|---------------|---------------|
 | `<PR#>` | the PR diff | `gh pr view <PR#>` | actual diff — `gh pr diff <PR#>` / `--patch` for `numstat` |
 | no arg | current branch diff vs `main` | PR/commit messages | actual diff — `git diff --numstat main...HEAD` |
-| `FIX-XXX` (Linear) | the **retained spec** and applicable evolution — planned approach | issue outcome plus canonical repo set | **forward estimate** — lines the spec would generate |
+| `FIX-XXX` (Linear) | the **retained spec** — planned approach | issue outcome plus canonical repo set | **forward estimate** — lines the spec would generate |
 | `<name>` (feature/area) | the current code implementing it | the issue/PR/wave it came from | current LOC of the isolated surface |
 
-- **`FIX-XXX`** → use Linear for the issue outcome and spec links. Read `specs/issues/<ISSUE-ID>/` from the approved review head before merge, or `main` and merged amendments afterward. Include `DOCS.md`, applicable `EVOLUTION.md`, and predecessor anchors; compare prior intent with current code/docs. Historical PR/Linear provenance is valid when no retained file exists, not a reason to invent a path. Recommend cuts against the current direction, not a superseded predecessor; post-merge changes would need a new amendment PR.
+- **`FIX-XXX`** → use Linear for the issue outcome and spec links. Read `specs/issues/<ISSUE-ID>/` from the approved review head before merge, or `main` and merged amendments afterward. Read `SPEC.md` and `DECISIONS.md` (a set retained in the older shape may also carry `BUSINESS-RULES.md`, `PLAN.md`, `DOCS.md` or `EVOLUTION.md`; read those too), including *what's already here*, its predecessor anchors, and the debt table, whose *Adds* rows are surface the spec must justify. Compare prior intent with current code/docs. Historical PR/Linear provenance is valid when no retained file exists, not a reason to invent a path. Recommend cuts against the current direction, not a superseded predecessor; post-merge changes would need a new amendment PR.
 - **`<name>`** → use the `Explore` agent to **isolate the surface first** (which blocks/patterns/capabilities/files implement it), then review what's there. Pull the wave plan + journal under `docs/internal/waves/` or the originating PR for intent.
 
 For diff and feature targets, pull the **real line counts** before estimating. Every Δlines number is anchored to that real size (or, for a spec, a stated forward estimate) — report the size in the verdict.

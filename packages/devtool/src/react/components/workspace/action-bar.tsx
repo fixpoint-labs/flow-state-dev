@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Send, Loader2, Bug } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import type { ActionInputSchema } from "@flow-state-dev/client";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -30,7 +30,11 @@ export function getDefaults(schema: ActionInputSchema | undefined): Record<strin
   for (const [key, field] of Object.entries(schema.fields)) {
     if (field.default !== undefined) {
       defaults[key] = field.default;
-    } else if (field.type === "enum" && field.enumValues?.length) {
+    } else if (field.type === "enum" && field.required && field.enumValues?.length) {
+      // Only a required choice starts on its first value. An optional one
+      // starts on the form's "—" and is left out unless picked: an action that
+      // refuses a field alongside another (an answer sent with a status) must
+      // not be sent one nobody chose.
       defaults[key] = field.enumValues[0];
     }
   }
@@ -182,11 +186,16 @@ export function ActionBar({
   const disabled = !flowId || !sessionId || isSending;
 
   return (
-    <div className="space-y-2 rounded-md border border-slate-800 bg-slate-900/40 p-2">
-      {/* Row 1: Action selector + Form/JSON toggle + Send + Debug */}
-      <div className="flex items-center gap-2">
+    // The panel frames the composer (top hairline, inspector ground, padding),
+    // so this root adds none of its own.
+    <div className="flex flex-col gap-2.5">
+      {/* Row 1: Action selector + Form/JSON toggle + Debug + Send */}
+      <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+        <span className="font-fs-mono text-[10px] font-medium uppercase tracking-[.14em] whitespace-nowrap text-fs-ink3">
+          Action
+        </span>
         <select
-          className="h-8 rounded border border-slate-800 bg-slate-950 px-2 text-xs text-slate-300 outline-none"
+          className="h-7 min-w-[120px] px-2 rounded-none border border-fs-ink/35 bg-fs-card text-fs-ink font-fs-mono text-xs focus:border-fs-blue focus:ring-2 focus:ring-fs-blue/20 outline-none disabled:opacity-50"
           value={selectedAction}
           onChange={(e) => handleActionChange(e.target.value)}
           disabled={disabled}
@@ -199,35 +208,38 @@ export function ActionBar({
 
         {hasForm && (
           <Tabs value={inputMode} onValueChange={handleModeChange} className="flex-none">
-            <TabsList className="h-7">
-              <TabsTrigger value="form" className="px-2 text-xs h-6">Form</TabsTrigger>
-              <TabsTrigger value="json" className="px-2 text-xs h-6">JSON</TabsTrigger>
+            <TabsList className="items-stretch gap-0 border border-fs-ink/45">
+              <TabsTrigger value="form" className={SEGMENT}>Form</TabsTrigger>
+              <TabsTrigger value="json" className={`${SEGMENT} border-l border-l-fs-ink/45`}>JSON</TabsTrigger>
             </TabsList>
           </Tabs>
         )}
 
         <div className="flex-1" />
 
+        {/* The form and the JSON field both send on Enter (Shift+Enter does not). */}
+        <span className="font-fs-mono text-[10.5px] whitespace-nowrap text-fs-ink4">↵ send</span>
+
+        <button
+          type="button"
+          onClick={toggleDebugMode}
+          title="Debug Mode"
+          aria-pressed={isDebugMode}
+          className={`h-7 flex-none border px-2.5 font-fs-mono text-[11.5px] font-medium whitespace-nowrap outline-none hover:border-fs-ink focus-visible:ring-2 focus-visible:ring-fs-blue/40 ${
+            isDebugMode ? "border-fs-blue text-fs-blue" : "border-fs-ink/35 text-fs-ink2"
+          }`}
+        >
+          debug {isDebugMode ? "on" : "off"}
+        </button>
+
         <Button
-          size="sm"
-          variant="outline"
-          className="h-8 gap-1.5 px-3"
+          className="h-7 flex-none px-3.5"
           onClick={handleSend}
           disabled={disabled}
           aria-label="Send action"
         >
-          {isSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-          <span className="text-xs">Send Action</span>
-        </Button>
-
-        <Button
-          size="icon"
-          variant={isDebugMode ? "default" : "ghost"}
-          className="h-8 w-8"
-          onClick={toggleDebugMode}
-          title="Debug Mode"
-        >
-          <Bug className="h-4 w-4" />
+          {isSending && <Loader2 className="size-3.5 animate-spin" aria-hidden />}
+          <span>Send action →</span>
         </Button>
       </div>
 
@@ -235,7 +247,7 @@ export function ActionBar({
       {inputMode === "json" ? (
         <div className="relative">
           <Input
-            className={`h-8 font-mono text-xs ${jsonError ? "border-red-500" : ""}`}
+            className={`h-8 ${jsonError ? "border-fs-red" : ""}`}
             value={jsonInput}
             onChange={(e) => { setJsonInput(e.target.value); setJsonError(null); }}
             onKeyDown={handleKeyDown}
@@ -243,7 +255,7 @@ export function ActionBar({
             disabled={disabled}
           />
           {jsonError && (
-            <div className="absolute left-0 top-full mt-1 rounded bg-red-950 border border-red-800 px-2 py-1 text-[10px] text-red-400 z-20">
+            <div className="absolute left-0 top-full z-20 mt-1 border border-fs-red bg-fs-card px-2 py-1 font-fs-mono text-[10.5px] text-fs-red">
               {jsonError}
             </div>
           )}
@@ -260,3 +272,7 @@ export function ActionBar({
     </div>
   );
 }
+
+/** One half of the Form/JSON switch; the active half is ink-filled. */
+const SEGMENT =
+  "border-b-0 px-2.5 pt-[5px] pb-[5px] text-[11px] text-fs-ink data-[state=active]:border-fs-ink/45 data-[state=active]:bg-fs-ink data-[state=active]:text-fs-paper data-[state=active]:hover:text-fs-paper";

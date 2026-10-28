@@ -54,7 +54,7 @@ export const ItemRenderer = memo(function ItemRenderer({ item }: ItemRendererPro
         className={cn(
           "relative cursor-pointer",
           isMessage ? "py-1" : "py-0.5",
-          isSelected && "ring-1 ring-inset ring-green-500/40 rounded",
+          isSelected && "ring-1 ring-inset ring-fs-blue bg-fs-blue/8",
         )}
         onClick={handleClick}
       >
@@ -70,7 +70,7 @@ export const ItemRenderer = memo(function ItemRenderer({ item }: ItemRendererPro
       <div
         className={cn(
           "relative cursor-pointer py-0.5 opacity-40 hover:opacity-70",
-          isSelected && "ring-1 ring-inset ring-green-500/40 opacity-70",
+          isSelected && "ring-1 ring-inset ring-fs-blue opacity-70",
         )}
         onClick={handleClick}
       >
@@ -85,7 +85,7 @@ export const ItemRenderer = memo(function ItemRenderer({ item }: ItemRendererPro
     <div
       className={cn(
         "relative cursor-pointer py-0.5",
-        isSelected && "bg-slate-800/30 ring-1 ring-inset ring-green-500/40 rounded",
+        isSelected && "bg-fs-blue/8 shadow-[inset_2px_0_0_var(--fs-blue)]",
       )}
       onClick={handleClick}
     >
@@ -136,11 +136,11 @@ function ItemContent({ item }: { item: DevtoolItem }) {
 
 function StateSnapshotItemView({ item }: { item: DevtoolItem & { type: "state_snapshot" } }) {
   return (
-    <div className="flex items-center gap-1.5 text-[11px] text-slate-600 font-mono">
-      <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500/60 shrink-0" />
-      <span className="text-amber-600/80">state</span>
-      <span className="text-slate-500">{item.provenance.blockName}</span>
-      <span className="text-slate-700">{item.stepName === "__initial__" ? "init" : item.stepName}</span>
+    <div className="flex items-center gap-1.5 text-[11px] text-fs-ink4 font-fs-mono">
+      <span className="inline-block size-1.5 bg-fs-ink3 shrink-0" />
+      <span className="text-fs-ink3">state</span>
+      <span className="text-fs-ink3">{item.provenance.blockName}</span>
+      <span className="text-fs-ink4">{item.stepName === "__initial__" ? "init" : item.stepName}</span>
     </div>
   );
 }

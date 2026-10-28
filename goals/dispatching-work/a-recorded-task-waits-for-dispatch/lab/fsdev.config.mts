@@ -5,10 +5,10 @@
  * two delegates, so the delegate a task is for is picked at run time.
  *
  * - `desk.lead`, the coordinator, files nothing itself: the check records and
- *   dispatches through the app's `addTask_tasks` and `dispatchTask_tasks`.
+ *   releases through the app's `createTask_tasks` and `updateTask_tasks`.
  *   Its judgment turn, which a task's notice wakes, is scripted to note the
  *   notice and do nothing.
- * - `desk.ops` and `desk.dev` run on `vercel/openai/gpt-5.4-mini` through the
+ * - `desk.ops` and `desk.dev` run on `vercel:openai/gpt-5.4-mini` through the
  *   AI Gateway, with no tools.
  *
  * The store is the file `GOAL_STORE` names. Nothing here writes a row, a
@@ -61,7 +61,7 @@ const modelResolver = Object.assign(
 let flows: Record<string, unknown> = {};
 const installation = wf.createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => flows });
 const agent = wf.defineAgentWorkerFlow({ installation, catalog: {} });
-const coordinator = wf.defineCoordinatorFlow({ installation, delegateFlows: [agent], routeModel: "scripted/route" });
+const coordinator = wf.defineCoordinatorFlow({ installation, routeModel: "scripted/route" });
 flows = { agent, coordinator };
 const copies = wf.hireWorkforce(installation) as Array<{ id: string }>;
 

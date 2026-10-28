@@ -2,6 +2,9 @@
 sidebar_position: 1
 ---
 
+import Figure from "@site/src/components/Figure";
+import StateVsResourcesDrawing from "./state-vs-resources.svg";
+
 # Overview
 
 Think of resources as files your AI can work with. Each resource has content — a document, a plan, a code snippet, a template — alongside structured metadata about that content: title, status, tags, timestamps. Both live in one typed container with atomic operations.
@@ -47,7 +50,7 @@ Config options:
 
 ## Resources vs scope state
 
-![Session state is flat fields on the session record; a resource is its own record in the resource store](./state-vs-resources.svg)
+<Figure svg={StateVsResourcesDrawing} caption="Scope state and resources: different records" description={"Session state is flat fields on the session record; a resource is its own record in the resource store"} />
 
 Scope state is one flat set of fields that every block in the flow shares, so two blocks can collide on a field name. A resource is its own named record, with a content body and typed state, so it can't collide with anything.
 

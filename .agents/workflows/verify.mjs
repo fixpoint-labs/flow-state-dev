@@ -3591,35 +3591,39 @@ check('a ready-to-merge issue surfaces its implementation merge gate', async () 
   assert.deepEqual(result.gates, [{ kind: 'merge', issueId: 'FIX-2', pr: 9 }])
 })
 
-check('INVARIANT: no merge gate for a head the automated review has not returned on', async () => {
-  // orchestration.md → Gates, "A merge-ready head has been reviewed". Approved, green and mergeable is
-  // not enough: automated review runs on open / ready-for-review, so a head pushed after it (or a PR
-  // marked ready in the same breath as its merge) merges code no reviewer saw. Every producer of a
-  // merge gate — the scan, a worker, a sub-PR, the repair PR — is held to it, and a missing sha reads as
-  // "not reviewed", never the reverse.
+check('INVARIANT: no merge gate for a PR the automated review has not returned on', async () => {
+  // orchestration.md → Gates, "A merge-ready PR has been reviewed". Approved, green and mergeable is
+  // not enough: a PR marked ready in the same breath as its merge merges code no reviewer saw. Every
+  // producer of a merge gate — the scan, a worker, a sub-PR, the repair PR — is held to it, and a
+  // missing sha reads as "not reviewed", never the reverse. A later push rides on an earlier review:
+  // Codex usage is limited, so the reporter asks for a follow-up only when it has a concern, and
+  // reports not ready while that review is pending.
   const mergeGates = async (issue, respond) =>
     (await run('epic-wake.js', { args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', ...issue })] }), respond: epicResponder(respond) }))
       .result.gates.filter((g) => g.kind === 'merge')
   const single = { implPr: 9 }
   const scan = (shas) => ({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true, ...shas } } })
-  assert.deepEqual(await mergeGates(single, scan({ implHeadSha: 'new', implReviewedHeadSha: 'old' })), [], 'reviewed an older head')
+  assert.deepEqual(await mergeGates(single, scan({ implHeadSha: 'new', implReviewedHeadSha: 'old' })), [{ kind: 'merge', issueId: 'FIX-2', pr: 9 }], 'a push after the review rides on it')
   assert.deepEqual(await mergeGates(single, scan({ implHeadSha: 'new', implReviewedHeadSha: null })), [], 'no review has returned')
   assert.deepEqual(await mergeGates(single, scan({ implHeadSha: null, implReviewedHeadSha: null })), [], 'no head observed')
   assert.deepEqual(await mergeGates(single, scan({ implHeadSha: 'new', implReviewedHeadSha: 'new' })), [{ kind: 'merge', issueId: 'FIX-2', pr: 9 }])
 
-  // A worker's readiness: it may have just pushed, so an unstated review is an unreviewed head.
+  // A worker's readiness: an unstated review is no review. A push after a review rides on it; the
+  // worker itself reports not ready while a follow-up it requested is pending.
   const worker = (shas) => ({
     fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', newPrEvents: true, implPr: 9 } },
     worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true, ...shas } },
   })
   assert.deepEqual(await mergeGates(single, worker({ implHeadSha: undefined, implReviewedHeadSha: undefined })), [], 'a worker that names no reviewed head (the old shape)')
-  assert.deepEqual(await mergeGates(single, worker({ implHeadSha: 'pushed', implReviewedHeadSha: 'before' })), [], 'a worker that pushed past the review')
+  assert.deepEqual(await mergeGates(single, worker({ implHeadSha: 'pushed', implReviewedHeadSha: null })), [], 'a worker whose PR no review has returned on')
+  assert.deepEqual(await mergeGates(single, worker({ implHeadSha: 'pushed', implReviewedHeadSha: 'before' })), [{ kind: 'merge', issueId: 'FIX-2', pr: 9 }], 'a worker that pushed past the review rides on it')
   assert.deepEqual(await mergeGates(single, worker({ implHeadSha: 'h', implReviewedHeadSha: 'h' })), [{ kind: 'merge', issueId: 'FIX-2', pr: 9 }])
 
   // A sub-PR slice, per handle.
   const slice = { subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }] }
   const sub = (shas) => ({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: false, readyToMerge: true, ...shas }] } } })
-  assert.deepEqual(await mergeGates(slice, sub({ headSha: 'new', reviewedHeadSha: 'old' })), [], 'sub-PR reviewed an older head')
+  assert.deepEqual(await mergeGates(slice, sub({ headSha: 'new', reviewedHeadSha: null })), [], 'sub-PR no review has returned on')
+  assert.deepEqual(await mergeGates(slice, sub({ headSha: 'new', reviewedHeadSha: 'old' })), [{ kind: 'merge', issueId: 'FIX-2', pr: 41, subPr: 'a' }], 'sub-PR pushed past the review rides on it')
   assert.deepEqual(await mergeGates(slice, sub({ headSha: 'new', reviewedHeadSha: 'new' })), [{ kind: 'merge', issueId: 'FIX-2', pr: 41, subPr: 'a' }])
 
   // The assembled-goal repair PR, whose sha fields are optional like the rest of its fields.
@@ -3630,7 +3634,46 @@ check('INVARIANT: no merge gate for a head the automated review has not returned
   const fix = (shas) => ({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', repairReadyToMerge: true, ...shas } } })
   assert.deepEqual(await mergeGates(repair, fix({ repairHeadSha: undefined, repairReviewedHeadSha: undefined })), [], 'repair PR with no review evidence')
   assert.deepEqual(await mergeGates(repair, fix({ repairHeadSha: 'r', repairReviewedHeadSha: null })), [], 'repair PR no review has returned on')
+  assert.deepEqual(await mergeGates(repair, fix({ repairHeadSha: 'r2', repairReviewedHeadSha: 'r' })), [{ kind: 'merge', issueId: 'FIX-2', pr: 77, repair: true }], 'repair PR pushed past the review rides on it')
   assert.deepEqual(await mergeGates(repair, fix({ repairHeadSha: 'r', repairReviewedHeadSha: 'r' })), [{ kind: 'merge', issueId: 'FIX-2', pr: 77, repair: true }])
+})
+
+check('INVARIANT: no merge gate for a head with a failing CI check run', async () => {
+  // orchestration.md → Gates, "Green means CI ran on this head and passed". `Typecheck & Test` passing is
+  // not the whole signal: a scout can report readyToMerge AND ciFailed when another check run on the
+  // head failed. The wake then dispatches pr-feedback for the failure, and must not ALSO offer the merge.
+  // Enforced in the wake, not left to the scout's reading of the prompt — per handle.
+  const mergeGates = async (issue, respond) =>
+    (await run('epic-wake.js', { args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', ...issue })] }), respond: epicResponder(respond) }))
+      .result.gates.filter((g) => g.kind === 'merge')
+  const reviewed = { implHeadSha: 'h', implReviewedHeadSha: 'h' }
+  assert.deepEqual(
+    await mergeGates({ implPr: 9 }, { fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true, ciFailed: true, ...reviewed } } }),
+    [],
+    'single PR: ready and failing is failing',
+  )
+  assert.deepEqual(
+    await mergeGates({ implPr: 9 }, { fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true, ciFailed: false, ...reviewed } } }),
+    [{ kind: 'merge', issueId: 'FIX-2', pr: 9 }],
+    'the control: the same PR with CI passing is offered',
+  )
+
+  const slice = { subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }] }
+  const sub = (ciFailed) => ({
+    fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: false, readyToMerge: true, ciFailed, headSha: 's', reviewedHeadSha: 's' }] } },
+  })
+  assert.deepEqual(await mergeGates(slice, sub(true)), [], 'sub-PR: ready and failing is failing')
+  assert.deepEqual(await mergeGates(slice, sub(false)), [{ kind: 'merge', issueId: 'FIX-2', pr: 41, subPr: 'a' }])
+
+  const repair = {
+    subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+    assembledGoal: { passed: false, failure: 'f', fixIssue: 'FIX-50', fixPr: 77, fixMerged: false },
+  }
+  const fix = (repairCiFailed) => ({
+    fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', repairReadyToMerge: true, repairCiFailed, repairHeadSha: 'r', repairReviewedHeadSha: 'r' } },
+  })
+  assert.deepEqual(await mergeGates(repair, fix(true)), [], 'repair PR: ready and failing is failing')
+  assert.deepEqual(await mergeGates(repair, fix(false)), [{ kind: 'merge', issueId: 'FIX-2', pr: 77, repair: true }])
 })
 
 check('a refresh scan echoing a sibling id is discarded, not bound to the wrong row', async () => {
@@ -5922,6 +5965,21 @@ const multiResponder =
     const id = label.split(':')[1]
     return { id, status: 'open', pr: 1, branch: `fix/FIX-9-${id}`, ...(build[id] || {}) }
   }
+
+check('a slice worker is told its deliverables, verbatim', async () => {
+  // A spec no longer carries a plan document, so the implementer's PR-plan table is the only record
+  // of what each slice owns. A build prompt that names only the id leaves a fresh worker guessing
+  // its scope — it builds the whole issue, or overlaps a sibling slice.
+  const { calls } = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [node('a', { deliverables: 'the cursor parser at the route' }), node('b', { dependsOn: ['a'] })],
+    }),
+    respond: multiResponder(),
+  })
+  const build = calls.find((c) => c.label === 'build:a')
+  assert.ok(build, 'the ready slice is dispatched')
+  assert.match(build.prompt, /Deliverables: the cursor parser at the route/)
+})
 
 check('an answered blocker on an already-OPEN slice gets a worker to apply it', async () => {
   // Clearing the blocker was not enough, and was worse than the stall it replaced: `classify` has no

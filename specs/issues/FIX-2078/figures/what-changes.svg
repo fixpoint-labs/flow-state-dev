@@ -1,0 +1,78 @@
+<svg viewBox="0 0 940 440" role="img" aria-label="Two panels. Today: a task's ending marks a notice and, for a failure, a report on the row; the task session sends both; every touch of the board and every notice run resends everything owed; a dependent made ready waits for a touch; two board runs can overlap; a crash leaves the debt until someone touches the board. After: a wake for the filer's session is written first, then the ending; the task session delivers it once, to the waiting request or to onTaskSettled, and the error report rides that delivery; the delivery runs the filer's dispatch, one at a time, whose last ready check comes last and which clears the wake; the durability sweeper fires any wake still due."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .old   { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .dash  { stroke:var(--accent); stroke-width:1.4; fill:none; stroke-dasharray:5 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-gone{ fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-acc { fill:var(--accent); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="440"/>
+
+  <g id="today">
+    <rect class="panel" x="16" y="14" width="908" height="190" rx="6"/>
+    <text class="t-lbl" x="32" y="34">TODAY</text>
+    <rect class="box" x="32" y="48" width="190" height="56" rx="4"/>
+    <text class="t-h" x="44" y="70">The ending's write</text>
+    <text class="t-s" x="44" y="88">marks a notice and a report</text>
+    <rect class="box" x="262" y="48" width="190" height="56" rx="4"/>
+    <text class="t-h" x="274" y="70">The task session sends</text>
+    <text class="t-s" x="274" y="88">a cancel only if a request waits</text>
+    <rect class="old" x="492" y="48" width="200" height="56" rx="4"/>
+    <text class="t-h" x="504" y="70">Every touch resends all</text>
+    <text class="t-gone" x="504" y="88">and the report every 5 minutes</text>
+    <rect class="old" x="722" y="48" width="186" height="56" rx="4"/>
+    <text class="t-h" x="734" y="70">A crash</text>
+    <text class="t-gone" x="734" y="88">waits for the next touch</text>
+    <path class="arrow" d="M222 76 H262"/>
+    <path class="arrow" d="M452 76 H492"/>
+    <path class="arrow" d="M692 76 H722"/>
+    <rect class="old" x="32" y="122" width="420" height="62" rx="4"/>
+    <text class="t-h" x="44" y="146">A dependent made ready waits for a touch</text>
+    <text class="t-gone" x="44" y="166">only a retry runs the board</text>
+    <rect class="old" x="492" y="122" width="416" height="62" rx="4"/>
+    <text class="t-h" x="504" y="146">Two board runs can overlap; repairs after the drain</text>
+    <text class="t-gone" x="504" y="166">a row made ready by a repair waits</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="16" y="220" width="908" height="206" rx="6"/>
+    <text class="t-lbl" x="32" y="240">AFTER</text>
+    <rect class="new" x="32" y="254" width="150" height="56" rx="4"/>
+    <text class="t-h" x="44" y="276">Wake the filer</text>
+    <text class="t-s" x="44" y="294">due in seconds, first</text>
+    <rect class="box" x="212" y="254" width="150" height="56" rx="4"/>
+    <text class="t-h" x="224" y="276">The ending's write</text>
+    <text class="t-s" x="224" y="294">marks the notice</text>
+    <rect class="new" x="392" y="254" width="250" height="56" rx="4"/>
+    <text class="t-h" x="404" y="276">Delivered once</text>
+    <text class="t-s" x="404" y="294">waiter or onTaskSettled · report rides it</text>
+    <rect class="new" x="672" y="254" width="236" height="56" rx="4"/>
+    <text class="t-h" x="684" y="276">Filer's dispatch, one at a time</text>
+    <text class="t-s" x="684" y="294">repairs, drain, last check, clear wake</text>
+    <path class="arrow" d="M182 282 H212"/>
+    <path class="arrow" d="M362 282 H392"/>
+    <path class="arrow" d="M642 282 H672"/>
+    <rect class="new" x="392" y="340" width="516" height="62" rx="4"/>
+    <text class="t-h" x="404" y="364">The durability sweeper fires any wake still due</text>
+    <text class="t-acc" x="404" y="384">after a crash, a lost send, or a pass that died</text>
+    <path class="dash" d="M107 310 V371 H392"/>
+    <path class="dash" d="M790 340 V310"/>
+    <text class="t-s" x="122" y="342">a wake with no debt</text>
+    <text class="t-s" x="122" y="358">pays nothing</text>
+  </g>
+</svg>

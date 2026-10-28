@@ -42,7 +42,7 @@ const messageInput = workerConfigSchema().pick({}).extend({ message: workerConfi
 
 /** Every worker flow has one door: this fixture's answers by saying what it heard. */
 const workerDoor = {
-  message: {
+  respond: {
     inputSchema: messageInput,
     userMessage: (input: { message: string }) => input.message,
     block: handler({
@@ -70,7 +70,7 @@ export const REPLY_MARKER = "[reply:fresh-host]";
  * coordinator routes to everyone and never makes that call, but the flow
  * names no default, so the app names one.
  */
-const ROUTE_MODEL = "vercel/typesafe-ai/jev";
+const ROUTE_MODEL = "vercel:typesafe-ai/jev";
 
 /** This app's own worker flow: takes a note when asked directly, and takes no posts. */
 const defineNote = (installation: WorkerInstallation) =>
@@ -87,8 +87,8 @@ const defineNote = (installation: WorkerInstallation) =>
 export interface HostSeams {
   /** The worker files as the host reads them, before anything is built. */
   adaptWorkers?: (workers: WorkerManifest[]) => WorkerManifest[];
-  /** The flows a delegate takes a post on, given the ones the app names. */
-  adaptDelegateFlows?: (flows: { kind: string }[]) => { kind: string }[];
+  /** The `agent` flow the app registers, given the one it builds. */
+  adaptAgentFlow?: <T extends object>(agent: T) => T;
   /** Leave the app's `resolvePrincipal` out, so nothing names its org. */
   omitPrincipal?: boolean;
 }
@@ -117,11 +117,11 @@ export async function startFreshHost(tree: string, seams: HostSeams = {}): Promi
   // The flows are handed to the installation lazily, so each can be built on it.
   let flows: Record<string, unknown> = {};
   const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: () => flows as never });
-  const agent = defineAgentWorkerFlow({ installation });
-  const delegateFlows = seams.adaptDelegateFlows?.([agent]) ?? [agent];
+  const built = defineAgentWorkerFlow({ installation });
+  const agent = seams.adaptAgentFlow?.(built) ?? built;
   flows = {
     agent,
-    coordinator: defineCoordinatorFlow({ installation, delegateFlows: delegateFlows as never, routeModel: ROUTE_MODEL }),
+    coordinator: defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL }),
     note: defineNote(installation)
   };
   const copies = hireWorkforce(installation);

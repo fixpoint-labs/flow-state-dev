@@ -21,7 +21,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { createModelResolver } from "@flow-state-dev/core";
 import type { EvaluationModel, FlowInstance, ModelResolver } from "@flow-state-dev/core/types";
-import { createFlowState, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
+import { createFlowState, createInProcessFetch, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
 import {
   createWorkerInstallation,
   defineAgentWorkerFlow,
@@ -55,7 +55,7 @@ const OWNER = "u_followup";
 const ORG = "org_followup";
 
 /** Best fit's evaluation model, named the way the app names it. */
-const ROUTE_MODEL = "vercel/typesafe-ai/jev";
+const ROUTE_MODEL = "vercel:typesafe-ai/jev";
 
 /** One thread: an opener the `on` specialist answers, and a follow-up whose words point elsewhere. */
 type Thread = { on: string; opener: string; followUp: string };
@@ -110,7 +110,7 @@ async function startApp(resolver: ModelResolver) {
   const agent = defineAgentWorkerFlow({ installation });
   flows = {
     agent,
-    coordinator: defineCoordinatorFlow({ installation, delegateFlows: [agent], routeModel: await routeModelFor(resolver) })
+    coordinator: defineCoordinatorFlow({ installation, routeModel: await routeModelFor(resolver) })
   };
   const copies = hireWorkforce(installation) as FlowInstance[];
   const state: FlowState = createFlowState({
@@ -129,13 +129,13 @@ type App = Awaited<ReturnType<typeof startApp>>;
 /** Reads and writes through the app's own router, as the person. */
 function reader(app: App) {
   const call = async (method: "GET" | "POST", segments: string[], body?: unknown, query = "") => {
-    const res = await (app.router as any)[method](
-      new Request(`http://followup.local/api/flows/${segments.map(encodeURIComponent).join("/")}${query}`, {
+    const res = await createInProcessFetch(app.router as never)(
+      `/api/flows/${segments.map(encodeURIComponent).join("/")}${query}`,
+      {
         method,
         headers: { "content-type": "application/json", accept: "text/event-stream" },
         ...(body === undefined ? {} : { body: JSON.stringify(body) })
-      }),
-      { params: { path: segments } }
+      }
     );
     return { status: res.status as number, text: (await res.text()) as string };
   };
@@ -151,7 +151,7 @@ function reader(app: App) {
       return (JSON.parse(res.text) as { session: { id: string } }).session.id;
     },
     post: async (conversation: string, message: string) => {
-      const res = await call("POST", ["coordinator", "actions", "run"], { userId: OWNER, sessionId: conversation, input: { message } });
+      const res = await call("POST", ["coordinator", "actions", "respond"], { userId: OWNER, sessionId: conversation, input: { message } });
       if (res.status !== 200) throw new Error(`post "${message}" refused: ${res.status} ${res.text.slice(0, 300)}`);
     },
     /** The delegates' answers that landed in the conversation, oldest first. */

@@ -19,7 +19,7 @@ const resolvedControlTools = (list: unknown): GeneratorTool[] =>
   (typeof list === "function" ? list({}) : (list ?? [])) as GeneratorTool[];
 
 const TASK_TOOLS = (() => {
-  const capability = createTaskToolsCapability() as unknown as {
+  const capability = createTaskToolsCapability(async () => undefined) as unknown as {
     __presetDefs?: { tools?: { controlTools?: unknown } };
   };
   return resolvedControlTools(capability.__presetDefs?.tools?.controlTools).map((tool) => tool.config?.name ?? tool.name);
@@ -51,7 +51,7 @@ function emFlow(installation: WorkerInstallation) {
     resources: { ...installation.resources, ...board.resources },
     request: { onStarted: resolveWorker },
     actions: {
-      run: { inputSchema: doorInput.strict(), block: answer, userMessage: (input: { message: string }) => input.message },
+      respond: { inputSchema: doorInput.strict(), block: answer, userMessage: (input: { message: string }) => input.message },
       ...board.actions
     },
     internal: { actions: board.entries(answer) }
@@ -75,7 +75,7 @@ function host(script = [{ when: () => true, then: { text: "OK." } }] as never[])
       worker("lone.em", { flow: "em" }, "Works alone.")
     ],
     agentAnswer: mockGenerator({ script: [{ when: () => true, then: { text: "otto did it." } }] }),
-    flows: (installation) => ({ em: emFlow(installation) }),
+    flows: (installation) => ({ em: { flow: emFlow(installation), roles: ["manager"] } }),
     generators: { "em-answer": emAnswer },
     observeTools: (block, names, input) => {
       if (block === "em-answer") seen.push({ names, input: JSON.stringify(input) });
@@ -91,7 +91,7 @@ async function emSession(h: BoardHost, userId: string, workerId: string): Promis
 }
 
 const file = async (h: BoardHost, userId: string, sessionId: string, input: Record<string, unknown>) => {
-  const result = await h.act(userId, sessionId, "dispatchTask_tasks", input, "em");
+  const result = await h.act(userId, sessionId, "createTask_tasks", input, "em");
   expect(result.error, messageOf(result.error)).toBeUndefined();
   return result.output as { ok: boolean; taskId?: string; error?: string };
 };
@@ -126,13 +126,13 @@ describe("a worker on an app's own flow files for its delegates (S1, the goal's 
           called = true;
           return true;
         },
-        then: { toolCalls: [{ toolCallId: "em-1", toolName: "dispatchTask", args: { goal: "Ship the build", assignee: "otto" } }] }
+        then: { toolCalls: [{ toolCallId: "em-1", toolName: "createTask", args: { goal: "Ship the build", assignee: "otto" } }] }
       },
       { when: () => true, then: { text: "OK." } }
     ] as never[]);
     try {
       const talk = await emSession(h, "alice", "lead.em");
-      const turn = await h.act("alice", talk, "run", { message: "ship it" }, "em");
+      const turn = await h.act("alice", talk, "respond", { message: "ship it" }, "em");
       expect(turn.error, messageOf(turn.error)).toBeUndefined();
       await h.settled();
       const [first] = h.seen;
@@ -147,7 +147,7 @@ describe("a worker on an app's own flow files for its delegates (S1, the goal's 
     const h = host();
     try {
       const talk = await emSession(h, "alice", "lone.em");
-      expect((await h.act("alice", talk, "run", { message: "anything?" }, "em")).error).toBeUndefined();
+      expect((await h.act("alice", talk, "respond", { message: "anything?" }, "em")).error).toBeUndefined();
       expect(h.seen[0]!.names.filter((name) => TASK_TOOLS.includes(name))).toEqual([]);
       expect(await file(h, "alice", talk, { goal: "x", assignee: "otto" })).toMatchObject({
         ok: false,

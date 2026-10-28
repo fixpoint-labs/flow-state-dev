@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { run } from "../src/exec";
 import { localWorkspaceHost, WorkspaceRefusedError } from "../src/local-host";
 import { createFakeCollection } from "./fake-collection";
-import { createRemote, git, tempDir, type Remote } from "./git-fixtures";
+import { createRemote, git, subcommand, tempDir, type Remote } from "./git-fixtures";
 
 vi.mock("../src/exec", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/exec")>();
@@ -28,7 +28,7 @@ vi.setConfig({ testTimeout: 30_000 });
 const spawned = vi.mocked(run);
 const { run: realRun } = await vi.importActual<typeof import("../src/exec")>("../src/exec");
 /** The git subcommand of every process the host started. */
-const gitCommands = () => spawned.mock.calls.map(([, args]) => args[0]);
+const gitCommands = () => spawned.mock.calls.map(([, args]) => subcommand(args)[0]);
 /** The error `attempt` rejected with; fails the test if it provisioned. */
 const refusalOf = (attempt: Promise<unknown>) =>
   attempt.then(
@@ -243,7 +243,7 @@ describe("a retry keeps its checkout and never fetches", () => {
     rmSync(first.cwd, { recursive: true, force: true });
     spawned.mockClear();
     spawned.mockImplementation(async (file, args, options) => {
-      if (args[0] === "show-ref") throw Object.assign(new Error("fatal: the clone is unreadable"), { code: 128 });
+      if (subcommand(args)[0] === "show-ref") throw Object.assign(new Error("fatal: the clone is unreadable"), { code: 128 });
       return realRun(file, args, options);
     });
 
@@ -273,7 +273,7 @@ describe("a retry keeps its checkout and never fetches", () => {
     const paused = new Promise<void>((resolve) => (reached = resolve));
     let held = false;
     spawned.mockImplementation(async (file, args, options) => {
-      if (!held && args[0] === "worktree" && args[1] === "add") {
+      if (!held && subcommand(args).slice(0, 2).join(" ") === "worktree add") {
         held = true;
         reached();
         await gate;
@@ -303,16 +303,225 @@ describe("a retry keeps its checkout and never fetches", () => {
     ).rejects.toThrow(/not a worktree of the clone/);
     expect(readFileSync(join(first.cwd, "marker.txt"), "utf8")).toBe("marker A");
   });
+});
 
-  it("refuses a checkout that is on another branch rather than resetting it", async () => {
+describe("a run that switched its checkout's branch is moved back, not stranded", () => {
+  // A coding agent branching its own checkout (to prepare a pull request, say)
+  // is ordinary. Refusing the checkout on the next turn left the session dead
+  // until a person repaired git by hand, so the host folds the switch back:
+  // the run's branch takes the commits, and the tree is never touched.
+  const provision = (h: ReturnType<typeof host>) =>
+    h.provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1" });
+
+  it("fast-forwards the run's branch to the one the run switched to, keeping every change", async () => {
     const h = host();
-    const first = await h.provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1" });
-    git(first.cwd, "checkout", "-q", "-b", "elsewhere");
+    const first = await provision(h);
+    git(first.cwd, "checkout", "-q", "-b", "fix/elsewhere");
+    writeFileSync(join(first.cwd, "done.txt"), "committed on the run's own branch");
+    git(first.cwd, "add", "done.txt");
+    git(first.cwd, "commit", "-q", "-m", "work on fix/elsewhere");
+    const committed = git(first.cwd, "rev-parse", "HEAD");
+    writeFileSync(join(first.cwd, "marker.txt"), "uncommitted edit");
+    writeFileSync(join(first.cwd, "wip.txt"), "untracked");
 
-    await expect(
-      h.provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1" }),
-    ).rejects.toThrow(/elsewhere/);
+    const again = await provision(h);
+
+    // The run's branch now holds the work, so the verdict and pull request that
+    // key on it see what the run did.
+    expect(git(again.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("fsd/run-1");
+    expect(git(again.cwd, "rev-parse", "fsd/run-1")).toBe(committed);
+    expect(again.repo?.movedBack).toEqual({ from: "fix/elsewhere", commit: committed, how: "fast-forward" });
+    // Nothing in the tree moved: a move-back is never a reset.
+    expect(readFileSync(join(again.cwd, "marker.txt"), "utf8")).toBe("uncommitted edit");
+    expect(readFileSync(join(again.cwd, "wip.txt"), "utf8")).toBe("untracked");
+    expect(git(again.cwd, "status", "--porcelain")).toBe("M marker.txt\n?? wip.txt");
+    // The branch the run made is the run's: left where it is.
+    expect(git(again.cwd, "rev-parse", "fix/elsewhere")).toBe(committed);
+  });
+
+  it("re-points a detached HEAD that is ahead of the run's branch", async () => {
+    const h = host();
+    const first = await provision(h);
+    git(first.cwd, "checkout", "-q", "--detach");
+    git(first.cwd, "commit", "-q", "--allow-empty", "-m", "detached work");
+    const committed = git(first.cwd, "rev-parse", "HEAD");
+
+    const again = await provision(h);
+
+    expect(git(again.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("fsd/run-1");
+    expect(again.repo?.movedBack).toEqual({ from: null, commit: committed, how: "fast-forward" });
+  });
+
+  it("does not report a move-back for a checkout that never left its branch", async () => {
+    const h = host();
+    await provision(h);
+
+    const again = await provision(h);
+
+    expect(again.repo?.movedBack).toBeUndefined();
+  });
+
+  it("switches back from a side branch that lacks the run's commits, leaving that branch as the run made it", async () => {
+    // A run splitting its work into several pull requests cuts a branch from
+    // the base and cherry-picks onto it. The run's branch is still its root,
+    // and the side branch is work too: both survive.
+    const h = host();
+    const first = await provision(h);
+    writeFileSync(join(first.cwd, "a.txt"), "part a");
+    git(first.cwd, "add", "a.txt");
+    git(first.cwd, "commit", "-q", "-m", "a");
+    writeFileSync(join(first.cwd, "b.txt"), "part b");
+    git(first.cwd, "add", "b.txt");
+    git(first.cwd, "commit", "-q", "-m", "b");
+    const tip = git(first.cwd, "rev-parse", "HEAD");
+    git(first.cwd, "checkout", "-q", "-b", "split/b", "HEAD~2");
+    git(first.cwd, "cherry-pick", "fsd/run-1");
+    const split = git(first.cwd, "rev-parse", "HEAD");
+
+    const again = await provision(h);
+
+    expect(again.repo?.movedBack).toEqual({ from: "split/b", commit: tip, how: "switched" });
+    expect(git(again.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("fsd/run-1");
+    expect(git(again.cwd, "rev-parse", "HEAD")).toBe(tip);
+    expect(git(again.cwd, "status", "--porcelain")).toBe("");
+    expect(git(again.cwd, "rev-parse", "split/b")).toBe(split);
+  });
+
+  it("hands back, unchanged, a side branch with uncommitted changes, reporting it off the run's branch", async () => {
+    // Switching would move or lose the changes. Committing them for the run
+    // would decide for it; what to do with them is the run's call.
+    const h = host();
+    const first = await provision(h);
+    git(first.cwd, "commit", "-q", "--allow-empty", "-m", "the run's own commit");
+    const tip = git(first.cwd, "rev-parse", "HEAD");
+    git(first.cwd, "checkout", "-q", "-b", "split/a", "HEAD~1");
+    const side = git(first.cwd, "rev-parse", "HEAD");
+    writeFileSync(join(first.cwd, "marker.txt"), "half-done edit");
+    writeFileSync(join(first.cwd, "new.txt"), "untracked");
+
+    const again = await provision(h);
+
+    expect(again.repo?.movedBack).toBeUndefined();
+    expect(again.repo?.offBranch?.on).toBe("split/a");
+    expect(again.repo?.offBranch?.message).toMatch(/uncommitted changes, so it was left as it is/);
+    expect(again.repo?.offBranch?.message).toContain("git switch fsd/run-1");
+    expect(git(again.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("split/a");
+    expect(git(again.cwd, "rev-parse", "split/a")).toBe(side);
+    expect(git(again.cwd, "rev-parse", "fsd/run-1")).toBe(tip);
+    expect(git(again.cwd, "status", "--porcelain")).toBe("M marker.txt\n?? new.txt");
+  });
+
+  it("moves the checkout back once the run has committed what it left", async () => {
+    const h = host();
+    const first = await provision(h);
+    git(first.cwd, "commit", "-q", "--allow-empty", "-m", "the run's own commit");
+    const tip = git(first.cwd, "rev-parse", "HEAD");
+    git(first.cwd, "checkout", "-q", "-b", "split/a", "HEAD~1");
+    writeFileSync(join(first.cwd, "marker.txt"), "half-done edit");
+    expect((await provision(h)).repo?.offBranch).toBeDefined();
+    git(first.cwd, "commit", "-q", "-am", "the run decided to commit");
+
+    const again = await provision(h);
+
+    expect(again.repo?.offBranch).toBeUndefined();
+    expect(again.repo?.movedBack).toEqual({ from: "split/a", commit: tip, how: "switched" });
+    expect(git(again.cwd, "show", "split/a:marker.txt")).toBe("half-done edit");
+  });
+
+  it("names a branch for a detached HEAD's commits before switching away from them", async () => {
+    // A commit no branch holds would be reachable only from the reflog once
+    // the checkout moves.
+    const h = host();
+    const first = await provision(h);
+    git(first.cwd, "commit", "-q", "--allow-empty", "-m", "the run's own commit");
+    git(first.cwd, "checkout", "-q", "--detach", "HEAD~1");
+    git(first.cwd, "commit", "-q", "--allow-empty", "-m", "detached work");
+    const detached = git(first.cwd, "rev-parse", "HEAD");
+
+    const again = await provision(h);
+
+    const kept = `fsd/run-1-detached-${detached.slice(0, 12)}`;
+    expect(again.repo?.movedBack).toMatchObject({ from: null, how: "switched", kept });
+    expect(git(again.cwd, "rev-parse", kept)).toBe(detached);
+    expect(git(again.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("fsd/run-1");
+  });
+
+  it("refuses, unchanged, a switch that would overwrite a file ignored on the side branch", async () => {
+    // Git's default overwrites an ignored file that the target branch tracks.
+    const h = host();
+    const first = await provision(h);
+    writeFileSync(join(first.cwd, "notes.txt"), "committed on the run's branch");
+    git(first.cwd, "add", "notes.txt");
+    git(first.cwd, "commit", "-q", "-m", "notes");
+    git(first.cwd, "checkout", "-q", "-b", "side", "HEAD~1");
+    writeFileSync(join(first.cwd, ".gitignore"), "notes.txt\n");
+    git(first.cwd, "add", ".gitignore");
+    git(first.cwd, "commit", "-q", "-m", "ignore notes");
+    writeFileSync(join(first.cwd, "notes.txt"), "precious local notes");
+
+    const refusal = await refusalOf(provision(h));
+
+    expect(refusal.reason).toBe("checkout-moved");
+    expect(refusal.message).toMatch(/overwrite files that are ignored here/);
+    expect(readFileSync(join(first.cwd, "notes.txt"), "utf8")).toBe("precious local notes");
+    expect(git(first.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("side");
+  });
+
+  it("never reuses a kept-branch name that is taken, keeping what holds it", async () => {
+    const h = host();
+    const first = await provision(h);
+    git(first.cwd, "commit", "-q", "--allow-empty", "-m", "the run's own commit");
+    git(first.cwd, "checkout", "-q", "--detach", "HEAD~1");
+    git(first.cwd, "commit", "-q", "--allow-empty", "-m", "detached work");
+    const detached = git(first.cwd, "rev-parse", "HEAD");
+    const kept = `fsd/run-1-detached-${detached.slice(0, 12)}`;
+    // The name is taken by a branch that does not hold the detached commit.
+    git(first.cwd, "branch", kept, "fsd/run-1");
+    const taken = git(first.cwd, "rev-parse", kept);
+
+    const again = await provision(h);
+
+    expect(again.repo?.movedBack?.kept).toBe(`${kept}-2`);
+    expect(git(again.cwd, "rev-parse", `${kept}-2`)).toBe(detached);
+    expect(git(again.cwd, "rev-parse", kept)).toBe(taken);
+  });
+
+  it("refuses a checkout in the middle of a merge, even on a branch it could fast-forward to", async () => {
+    // Mid-merge, HEAD is git's scratch state, not a branch the run chose.
+    const h = host();
+    const first = await provision(h);
+    git(first.cwd, "checkout", "-q", "-b", "side");
+    writeFileSync(join(first.cwd, "marker.txt"), "side");
+    git(first.cwd, "commit", "-q", "-am", "side");
+    git(first.cwd, "checkout", "-q", "-b", "elsewhere", "fsd/run-1");
+    writeFileSync(join(first.cwd, "marker.txt"), "elsewhere");
+    git(first.cwd, "commit", "-q", "-am", "elsewhere");
+    expect(() => git(first.cwd, "merge", "-q", "side")).toThrow();
+    const tip = git(first.cwd, "rev-parse", "fsd/run-1");
+
+    const refusal = await refusalOf(provision(h));
+
+    expect(refusal.reason).toBe("checkout-moved");
+    expect(refusal.message).toContain("git merge --abort");
     expect(git(first.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("elsewhere");
+    expect(git(first.cwd, "rev-parse", "fsd/run-1")).toBe(tip);
+  });
+
+  it("refuses to move a branch another worktree now has checked out", async () => {
+    const h = host();
+    const first = await provision(h);
+    git(first.cwd, "checkout", "-q", "-b", "elsewhere");
+    git(first.cwd, "commit", "-q", "--allow-empty", "-m", "ahead");
+    const tip = git(first.cwd, "rev-parse", "fsd/run-1");
+    const other = join(tempDir("other"), "tree");
+    git(first.repo!.clone, "worktree", "add", "-q", other, "fsd/run-1");
+
+    const refusal = await refusalOf(provision(h));
+
+    expect(refusal.reason).toBe("checkout-moved");
+    expect(refusal.message).toMatch(/checked out in another worktree/);
+    expect(git(first.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("elsewhere");
+    expect(git(other, "rev-parse", "HEAD")).toBe(tip);
   });
 });
 
@@ -323,7 +532,7 @@ describe("a retry keeps its checkout and never fetches", () => {
 function killWorktreeAdd(leave: (checkout: string) => void): void {
   spawned.mockImplementation(async (file, args, options) => {
     const result = await realRun(file, args, options);
-    if (args[0] === "worktree" && args[1] === "add") {
+    if (subcommand(args).slice(0, 2).join(" ") === "worktree add") {
       spawned.mockImplementation(realRun);
       leave(join(root, "run-1", "checkout"));
       throw Object.assign(new Error("git worktree add: killed"), { killed: true, signal: "SIGTERM" });

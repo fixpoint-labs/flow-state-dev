@@ -16,6 +16,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createFilesystemSessionStore } from "../../../src/stores/filesystem/session-store";
 import type { SessionRecord, SessionStore } from "../../../src/stores/types";
+import type { JsonObject } from "@flow-state-dev/core/types";
 
 let rootDir: string;
 
@@ -30,7 +31,7 @@ afterEach(async () => {
 function makeSession(
   id: string,
   version: number,
-  state: Record<string, unknown> = {}
+  state: JsonObject = {}
 ): SessionRecord {
   const ts = Date.now();
   return {
@@ -49,7 +50,7 @@ function makeSession(
 async function seed(
   store: SessionStore,
   id: string,
-  state: Record<string, unknown> = {}
+  state: JsonObject = {}
 ): Promise<void> {
   await store.set(id, makeSession(id, 0, state), "any");
 }

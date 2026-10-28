@@ -291,7 +291,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
     expect(failingTrace!.error?.details?.cause).toBeUndefined();
   });
 
-  it("trace observability disabled: no block_trace items emitted", async () => {
+  it("trace observability disabled: a completed block keeps only its replay record", async () => {
     process.env.FSDEV_TRACE_OBSERVABILITY = "false";
     const block = handler({
       name: "h-gated",
@@ -319,7 +319,10 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
     });
 
     const traces = getTraces(response.getItems());
-    expect(traces.length).toBe(0);
+    expect(traces.length).toBe(1);
+    expect(traces[0]!.status).toBe("completed");
+    expect(traces[0]!.output).toEqual({ kind: "inline", value: { y: 1 } });
+    expect(traces[0]!.input).toBeUndefined();
   });
 
   it("non-generator block: trace.generator is undefined", async () => {

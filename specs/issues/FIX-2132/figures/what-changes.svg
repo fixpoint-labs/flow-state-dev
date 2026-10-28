@@ -1,0 +1,90 @@
+<svg viewBox="0 0 940 300" role="img" aria-label="A grid of five moments of a coding run that asks a question, today and after. The run asks: today the task parks and the question is a harness inbox row or a board park; after, the run ends and the task holds on its question, with no request waiting. The person answers: today through answerQuestion, which has no screen, or the conversation's park; after, in the Inbox, as a question. The next run: today a new try that resumes the coding session; after, a new turn on the same try, resuming the same coding session with the answer. A line while it waits: today it waits for the next try and never answers; after, it answers the question, the next run takes it in the same session, and no run starts beside the held task. A cancel while it waits: today the row cancels and the harness inbox row stays open; after, the item closes and no further run starts."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .lane  { fill:var(--surface-2); }
+    .cell  { fill:var(--surface); stroke:var(--rule); stroke-width:1; }
+    .good  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.08em; }
+    .t-row { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; letter-spacing:.1em; font-weight:600; }
+    .t-bad { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-ok  { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="300"/>
+
+  <g id="headers">
+    <text class="t-lbl" x="144" y="30">THE RUN ASKS</text>
+    <text class="t-lbl" x="300" y="30">A PERSON ANSWERS</text>
+    <text class="t-lbl" x="456" y="30">THE NEXT RUN</text>
+    <text class="t-lbl" x="612" y="30">A LINE MEANWHILE</text>
+    <text class="t-lbl" x="768" y="30">A CANCEL MEANWHILE</text>
+  </g>
+
+  <g id="today">
+    <rect class="lane" x="16" y="42" width="908" height="116" rx="6"/>
+    <text class="t-row" x="28" y="104">TODAY</text>
+    <rect class="cell" x="140" y="50" width="150" height="100" rx="4"/>
+    <text class="t-bad" x="150" y="72">The task parks</text>
+    <text class="t-s" x="150" y="92">a harness inbox row,</text>
+    <text class="t-s" x="150" y="108">or the conversation</text>
+    <text class="t-s" x="150" y="124">board's question park</text>
+    <rect class="cell" x="296" y="50" width="150" height="100" rx="4"/>
+    <text class="t-bad" x="306" y="72">No screen</text>
+    <text class="t-s" x="306" y="92">answerQuestion, or</text>
+    <text class="t-s" x="306" y="108">an unpark; never</text>
+    <text class="t-s" x="306" y="124">the Inbox</text>
+    <rect class="cell" x="452" y="50" width="150" height="100" rx="4"/>
+    <text class="t-bad" x="462" y="72">A new try</text>
+    <text class="t-s" x="462" y="92">resumes the coding</text>
+    <text class="t-s" x="462" y="108">session, and spends</text>
+    <text class="t-s" x="462" y="124">one of the retries</text>
+    <rect class="cell" x="608" y="50" width="150" height="100" rx="4"/>
+    <text class="t-bad" x="618" y="72">Never an answer</text>
+    <text class="t-s" x="618" y="92">kept for the next try;</text>
+    <text class="t-s" x="618" y="108">the question still</text>
+    <text class="t-s" x="618" y="124">waits</text>
+    <rect class="cell" x="764" y="50" width="150" height="100" rx="4"/>
+    <text class="t-bad" x="774" y="72">A row left open</text>
+    <text class="t-s" x="774" y="92">the task cancels; its</text>
+    <text class="t-s" x="774" y="108">harness inbox row</text>
+    <text class="t-s" x="774" y="124">stays open</text>
+  </g>
+
+  <g id="after">
+    <rect class="lane" x="16" y="170" width="908" height="116" rx="6"/>
+    <text class="t-row" x="28" y="232">AFTER</text>
+    <rect class="good" x="140" y="178" width="150" height="100" rx="4"/>
+    <text class="t-ok" x="150" y="200">The task holds</text>
+    <text class="t-s" x="150" y="220">the run ends; the</text>
+    <text class="t-s" x="150" y="236">task holds on its</text>
+    <text class="t-s" x="150" y="252">question; nothing waits</text>
+    <rect class="good" x="296" y="178" width="150" height="100" rx="4"/>
+    <text class="t-ok" x="306" y="200">In the Inbox</text>
+    <text class="t-s" x="306" y="220">one question item,</text>
+    <text class="t-s" x="306" y="236">answered there, as</text>
+    <text class="t-s" x="306" y="252">any other question</text>
+    <rect class="good" x="452" y="178" width="150" height="100" rx="4"/>
+    <text class="t-ok" x="462" y="200">The same try</text>
+    <text class="t-s" x="462" y="220">a new turn, same</text>
+    <text class="t-s" x="462" y="236">coding session, the</text>
+    <text class="t-s" x="462" y="252">answer in its prompt</text>
+    <rect class="good" x="608" y="178" width="150" height="100" rx="4"/>
+    <text class="t-ok" x="618" y="200">It answers</text>
+    <text class="t-s" x="618" y="220">the line is the</text>
+    <text class="t-s" x="618" y="236">answer; the next run</text>
+    <text class="t-s" x="618" y="252">takes it, none beside</text>
+    <rect class="good" x="764" y="178" width="150" height="100" rx="4"/>
+    <text class="t-ok" x="774" y="200">The item closes</text>
+    <text class="t-s" x="774" y="220">no further run; the</text>
+    <text class="t-s" x="774" y="236">kept work stays on</text>
+    <text class="t-s" x="774" y="252">its branch</text>
+  </g>
+</svg>

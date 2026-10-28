@@ -4,7 +4,7 @@
  * which declarations and resolutions are refused.
  *
  * The end-to-end proof, two conversations and two users across two flows, is
- * `test/task-board/hand-off-cross-flow.test.ts`. These pin the layer under it.
+ * `test/task-board/dispatch-cross-flow.test.ts`. These pin the layer under it.
  */
 import { describe, expect, it } from "vitest";
 import type { JsonObject } from "@flow-state-dev/core";
@@ -24,10 +24,14 @@ import { createFakeResourceCollection } from "../helpers";
 
 const LEDGER = "convo-tasks";
 
-/** Minimal block context: the factory reads only `emit` and identity. */
+/** The ledger's id index, installed beside it as a flow's resources would. */
+const idIndex = createFakeResourceCollection<JsonObject>(`${LEDGER}__ids/**`);
+
+/** Minimal block context: the factory reads only `emit`, identity, and the id index. */
 function ctxFor(userId = "alice"): BlockContext {
   return {
     emit: { component: () => undefined },
+    resources: { [`${LEDGER}__ids`]: idIndex },
     session: { identity: { type: "session", id: "s_1", userId } },
     request: { identity: { type: "request", id: "r_1" } },
   } as unknown as BlockContext;

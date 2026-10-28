@@ -17,6 +17,7 @@ import type {
   ResolvableProviderOptions,
 } from "../blocks/generator";
 import type { BlockContext } from "../types/block";
+import { mergeSequencerStateRequirements } from "../blocks/internal/sequencer-state";
 import type {
   CapabilityConfigDef,
   CapabilityRef,
@@ -391,10 +392,9 @@ function mergeTargetsInto(
  * Merge two own-state schemas field-by-field. A field declared by both sides
  * must be the SAME schema reference, or this throws — the same reference-
  * equality collision detection the sibling `mergeTargetsInto` /
- * `mergeResourcesInto` already use for their axes. This is the "collision
- * detection" `sequencerStateSchema`'s silent-last-wins `.extend()` never had:
- * two sources contributing the same `ctx.self` field fail loud instead of one
- * silently overwriting the other.
+ * `mergeResourcesInto` already use for their axes, and stricter than the
+ * kind-only check `sequencerStateSchema` gets: two sources contributing the
+ * same `ctx.self` field fail loud instead of one silently overwriting the other.
  *
  * Reference-equality (rather than a structural comparison) is deliberate — a
  * shallow structural check admits nested-object / parse-mode divergence that
@@ -477,6 +477,9 @@ export function mergeCapabilityOwnStateWithBlock(
 /**
  * Merge a single surface (required or preset) into the accumulator.
  * Validates block-kind compatibility and throws clear errors.
+ *
+ * @param blockName The consuming block, named when two capabilities'
+ *   `sequencerStateSchema` disagree on a field's kind.
  */
 export function mergeSurfaceInto(
   acc: MergedCapabilitySurface,
@@ -484,7 +487,8 @@ export function mergeSurfaceInto(
   blockKind: BlockKind,
   capName: string,
   presetName: string,
-  sourceKind: "preset" | "config" = "preset"
+  sourceKind: "preset" | "config" = "preset",
+  blockName = "sequencer"
 ): void {
   // How this surface is named in error messages: config surfaces report
   // "config" rather than a preset name (FIX-915); presets keep their name.
@@ -520,7 +524,16 @@ export function mergeSurfaceInto(
         `but the consuming block is a ${blockKind}. sequencerStateSchema is only valid on sequencer blocks.`
       );
     }
-    acc.sequencerStateSchema = extendSchema(acc.sequencerStateSchema, surface.sequencerStateSchema);
+    // Kind-checked: last-wins here would hand the earlier capability a field
+    // of the wrong kind.
+    acc.sequencerStateSchema = acc.sequencerStateSchema === undefined
+      ? surface.sequencerStateSchema
+      : mergeSequencerStateRequirements(
+          acc.sequencerStateSchema,
+          surface.sequencerStateSchema,
+          blockName,
+          `capability "${capName}"`
+        );
   }
 
   // Own state — valid on all block kinds (FIX-914 PR2: any block can hold
@@ -679,10 +692,13 @@ export function resolveConfigSurface(
  * Merge all flattened capabilities (required + active presets + open config)
  * into a MergedCapabilitySurface. The caller is responsible for flattening
  * first.
+ *
+ * @param blockName The consuming block, for the sequencer-state conflict error.
  */
 export function mergeCapabilities(
   caps: readonly CapabilityRef[],
-  blockKind: BlockKind
+  blockKind: BlockKind,
+  blockName?: string
 ): MergedCapabilitySurface {
   const acc = createEmptyMergedSurface();
 
@@ -690,12 +706,12 @@ export function mergeCapabilities(
     const base = getBaseCapability(cap);
 
     // 1. Merge required surface
-    mergeSurfaceInto(acc, base, blockKind, base.name, "<required>");
+    mergeSurfaceInto(acc, base, blockKind, base.name, "<required>", "preset", blockName);
 
     // 2. Merge active preset surfaces
     const activePresets = resolveActivePresets(cap);
     for (const { name: presetName, preset } of activePresets) {
-      mergeSurfaceInto(acc, preset, blockKind, base.name, presetName);
+      mergeSurfaceInto(acc, preset, blockKind, base.name, presetName, "preset", blockName);
     }
 
     // 3. Merge the open-config surface (after presets, so an explicit config
@@ -706,7 +722,7 @@ export function mergeCapabilities(
       blockKind,
     });
     if (configSurface) {
-      mergeSurfaceInto(acc, configSurface, blockKind, base.name, "<config>", "config");
+      mergeSurfaceInto(acc, configSurface, blockKind, base.name, "<config>", "config", blockName);
     }
   }
 

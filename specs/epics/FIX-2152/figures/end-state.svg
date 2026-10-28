@@ -1,0 +1,72 @@
+<svg viewBox="0 0 940 450" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="What's in the box. Composed in by each lab: the Claude Code-style lab's three panes, its main manager worker with delegates, its skills and a few small flows, and a threads mode where a coordinator hands out all work and the right pane is a status board; the Grok Bot-style lab's list of workers with one long conversation each, who may message whom, memory and a few small flows. In the box, from the packages, for both labs: workers, tasks, messages and sessions, plus two entries this epic's gaps add: a list of a person's sessions of one worker, and a result taken before the next model call. Not built, below a fence: file diffs, permissions, a harness picker, landing copy, anything beyond messaging and session management, a new kind of worker or role, or code shared between labs.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .held  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .comp  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1; }
+    .repl  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1; }
+    .fence { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:6 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-non { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="450"/>
+
+  <g id="labs">
+    <rect class="comp" x="16" y="24" width="440" height="130" rx="5"/>
+    <text class="t-lbl" x="32" y="44">COMPOSED IN BY THE LAB &#8212; CLAUDE CODE-STYLE &#183; FIX-2153</text>
+    <text class="t-b" x="32" y="66">sessions left &#183; main thread &#183; tasks right</text>
+    <text class="t-s" x="32" y="86">config &#183; one main worker, a manager, and its delegates</text>
+    <text class="t-s" x="32" y="102">React UI &#183; the three panes, the theme, registry parts</text>
+    <text class="t-s" x="32" y="118">small flows &#183; at most a few, each under 200 lines</text>
+    <text class="t-s" x="32" y="134">threads mode &#183; FIX-2157 &#183; a coordinator, a status board</text>
+
+    <rect class="comp" x="484" y="24" width="440" height="130" rx="5"/>
+    <text class="t-lbl" x="500" y="44">COMPOSED IN BY THE LAB &#8212; GROK BOT-STYLE &#183; FIX-2154</text>
+    <text class="t-b" x="500" y="66">a list of workers &#183; one long conversation each</text>
+    <text class="t-s" x="500" y="86">config &#183; the workers, and who may message whom</text>
+    <text class="t-s" x="500" y="102">React UI &#183; the list, the conversation, worker talk</text>
+    <text class="t-s" x="500" y="118">small flows &#183; at most a few, each under 200 lines</text>
+    <text class="t-s" x="500" y="134">memory &#183; composed in, for a long conversation</text>
+  </g>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="172" width="908" height="160" rx="5"/>
+    <text class="t-lbl" x="32" y="192">IN THE BOX &#8212; THE SAME PIECES, FROM THE PACKAGES, FOR BOTH LABS</text>
+    <rect class="held" x="32" y="204" width="210" height="78" rx="4"/>
+    <text class="t-b" x="44" y="226">workers</text>
+    <text class="t-s" x="44" y="244">WORKER.md &#183; hireWorkforce</text>
+    <text class="t-s" x="44" y="260">roles &#183; delegates &#183; roster</text>
+    <rect class="held" x="254" y="204" width="210" height="78" rx="4"/>
+    <text class="t-b" x="266" y="226">tasks</text>
+    <text class="t-s" x="266" y="244">createTask &#183; getTask &#183; updateTask</text>
+    <text class="t-s" x="266" y="260">steer &#183; cancel &#183; onTaskSettled</text>
+    <rect class="held" x="476" y="204" width="210" height="78" rx="4"/>
+    <text class="t-b" x="488" y="226">messages</text>
+    <text class="t-s" x="488" y="244">sendMessage &#183; receive</text>
+    <text class="t-s" x="488" y="260">the durable messages log</text>
+    <rect class="held" x="698" y="204" width="210" height="78" rx="4"/>
+    <text class="t-b" x="710" y="226">sessions</text>
+    <text class="t-s" x="710" y="244">conversations &#183; streams</text>
+    <text class="t-s" x="710" y="260">the theme &#183; registry parts</text>
+    <rect class="repl" x="32" y="292" width="876" height="30" rx="4"/>
+    <text class="t-s" x="44" y="311">ADDED BY THIS EPIC'S GAPS &#183; a person's sessions of one worker listed, FIX-2158 &#183; a result taken in at turn end, FIX-2159</text>
+  </g>
+
+  <g id="not-built">
+    <rect class="fence" x="16" y="350" width="908" height="86" rx="5"/>
+    <text class="t-non" x="32" y="370">NOT BUILT HERE &#8212; NOT DOING</text>
+    <text class="t-s" x="32" y="392">file diffs and a changes view &#183; permission prompts &#183; a harness picker &#8212; Kitchen Sink covers them</text>
+    <text class="t-s" x="32" y="408">landing page copy &#8212; GTM &#183; anything beyond core messaging and session management</text>
+    <text class="t-s" x="32" y="424">a new kind of worker or role, or code shared between the two labs</text>
+  </g>
+</svg>

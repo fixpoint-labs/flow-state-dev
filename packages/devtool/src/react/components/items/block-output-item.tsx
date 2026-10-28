@@ -31,29 +31,29 @@ export function BlockTraceItemView({ item }: { item: BlockTraceItem }) {
           onClick={toggle}
         >
           {expanded
-            ? <ChevronDown className="h-3 w-3 shrink-0 text-slate-500" />
-            : <ChevronRight className="h-3 w-3 shrink-0 text-slate-500" />
+            ? <ChevronDown className="h-3 w-3 shrink-0 text-fs-ink3" />
+            : <ChevronRight className="h-3 w-3 shrink-0 text-fs-ink3" />
           }
-          <Braces className="h-3 w-3 shrink-0 text-purple-400" />
-          <span className="font-mono text-purple-300">{item.blockName}</span>
-          <span className="text-slate-500 font-mono truncate">({truncatedArgs})</span>
-          {isInProgress && <Loader2 className="h-3 w-3 animate-spin text-amber-400 shrink-0" />}
+          <Braces className="h-3 w-3 shrink-0 text-fs-ink3" />
+          <span className="font-fs-mono font-medium text-fs-ink">{item.blockName}</span>
+          <span className="text-fs-ink4 font-fs-mono truncate">({truncatedArgs})</span>
+          {isInProgress && <Loader2 className="h-3 w-3 animate-spin text-fs-blue shrink-0" />}
         </button>
 
         {expanded && (
           <div className="ml-7 mt-1.5 space-y-2">
             <div>
-              <span className="text-[10px] uppercase text-slate-500 font-medium">Arguments</span>
+              <span className="font-fs-mono text-[10px] font-medium uppercase tracking-[.14em] text-fs-ink3">Arguments</span>
               <JsonViewer data={safeParseJson(item.toolCall!.arguments)} className="mt-0.5" />
             </div>
             {!isInProgress && item.output !== undefined && (
               <div>
-                <span className="text-[10px] uppercase text-slate-500 font-medium">Output</span>
+                <span className="font-fs-mono text-[10px] font-medium uppercase tracking-[.14em] text-fs-ink3">Output</span>
                 <BlockValueView value={item.output} />
               </div>
             )}
             {item.modelUsage && (
-              <div className="flex items-center gap-3 text-[10px] text-slate-500 font-mono">
+              <div className="flex items-center gap-3 text-[10.5px] text-fs-ink4 font-fs-mono">
                 {item.modelUsage.model && <span>{item.modelUsage.model}</span>}
                 {item.modelUsage.promptTokens !== undefined && <span>{item.modelUsage.promptTokens} in</span>}
                 {item.modelUsage.completionTokens !== undefined && <span>{item.modelUsage.completionTokens} out</span>}
@@ -76,45 +76,45 @@ export function BlockTraceItemView({ item }: { item: BlockTraceItem }) {
         onClick={toggle}
       >
         {expanded
-          ? <ChevronDown className="h-3 w-3 shrink-0 text-slate-500" />
-          : <ChevronRight className="h-3 w-3 shrink-0 text-slate-500" />
+          ? <ChevronDown className="h-3 w-3 shrink-0 text-fs-ink3" />
+          : <ChevronRight className="h-3 w-3 shrink-0 text-fs-ink3" />
         }
-        <Braces className="h-3 w-3 shrink-0 text-green-400" />
-        <span className="font-mono text-slate-300">{item.blockName}</span>
-        <span className="text-slate-600">→</span>
-        <span className="text-slate-500">{statusLabel}</span>
+        <Braces className="h-3 w-3 shrink-0 text-fs-ink3" />
+        <span className="font-fs-mono font-medium text-fs-ink">{item.blockName}</span>
+        <span className="text-fs-ink4">→</span>
+        <span className={`font-fs-mono ${item.status === "failed" ? "text-fs-red" : "text-fs-ink3"}`}>{statusLabel}</span>
         {failedSummary && (
-          <span className="text-[10px] font-mono px-1 py-0 rounded border border-red-700/60 text-red-300 shrink-0">
+          <span className="text-[9.5px] font-fs-mono px-1 py-0 border border-fs-red text-fs-red shrink-0">
             {failedSummary}
           </span>
         )}
         {failedMessage && (
-          <span className="text-red-400/80 truncate max-w-[20rem]" title={failedMessage}>
+          <span className="text-fs-red truncate max-w-[20rem]" title={failedMessage}>
             {failedMessage}
           </span>
         )}
-        {isInProgress && <Loader2 className="h-3 w-3 animate-spin text-amber-400 shrink-0" />}
+        {isInProgress && <Loader2 className="h-3 w-3 animate-spin text-fs-blue shrink-0" />}
       </button>
 
       {expanded && (
         <div className="ml-7 mt-1.5 space-y-2">
           {item.status === "failed" && item.error && (
             <div>
-              <span className="text-[10px] uppercase text-red-500 font-medium">Error</span>
-              <p className="text-xs text-red-300 font-mono mt-0.5">{item.error.message}</p>
+              <span className="font-fs-mono text-[10px] font-medium uppercase tracking-[.14em] text-fs-red">Error</span>
+              <p className="text-xs text-fs-red font-fs-mono mt-0.5">{item.error.message}</p>
               {item.error.code && (
-                <p className="text-[10px] text-red-400/60 font-mono mt-0.5">{item.error.code}</p>
+                <p className="text-[10px] text-fs-ink4 font-fs-mono mt-0.5">{item.error.code}</p>
               )}
             </div>
           )}
           {item.output !== undefined && (
             <div>
-              <span className="text-[10px] uppercase text-slate-500 font-medium">Output</span>
+              <span className="font-fs-mono text-[10px] font-medium uppercase tracking-[.14em] text-fs-ink3">Output</span>
               <BlockValueView value={item.output} />
             </div>
           )}
           {item.modelUsage && (
-            <div className="flex items-center gap-3 text-[10px] text-slate-500 font-mono">
+            <div className="flex items-center gap-3 text-[10.5px] text-fs-ink4 font-fs-mono">
               {item.modelUsage.model && <span>{item.modelUsage.model}</span>}
               {item.modelUsage.promptTokens !== undefined && <span>{item.modelUsage.promptTokens} in</span>}
               {item.modelUsage.completionTokens !== undefined && <span>{item.modelUsage.completionTokens} out</span>}

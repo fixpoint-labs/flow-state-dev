@@ -44,7 +44,7 @@ export const Mixed: Story = {
         { id: "t1", goal: "Audit existing routes", status: "completed" },
         { id: "t2", goal: "Draft new routing layer", status: "in_progress" },
         { id: "t3", goal: "Migrate auth middleware", status: "pending" },
-        { id: "t4", goal: "Update integration tests", status: "blocked" },
+        { id: "t4", goal: "Update integration tests", status: "held" },
       ]),
     ),
 };

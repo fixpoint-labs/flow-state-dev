@@ -26,9 +26,9 @@ function makeFlow(kind: string): FlowInstance {
     actions: {
       run: {
         inputSchema: z.object({ value: z.string() }),
-        block: handler<{ value: string }, { ok: boolean }>({
+        block: handler({
           name: `${kind}-run`,
-          execute: () => ({ ok: true })
+          execute: (_input: { value: string }): { ok: boolean } => ({ ok: true })
         })
       }
     }

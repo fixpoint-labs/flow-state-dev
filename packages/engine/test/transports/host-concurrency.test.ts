@@ -1,8 +1,8 @@
 /**
  * Host-level concurrency policy tests (FIX-837). Exercises the policy through
  * the real `host.dispatch` seam (no HTTP server): `allow` overlaps, `reject`
- * throws `ConcurrencyRejectedError` synchronously from `dispatch` while a
- * request holds the key and releases it on terminal, and `queue` serializes two
+ * refuses with `ConcurrencyRejectedError` (through `accepted` / `finished`)
+ * while a request holds the key and releases it on terminal, and `queue` serializes two
  * dispatches on one key without temporal overlap. Also asserts the dispatch
  * handle (requestId + liveStream) still returns synchronously while a queued run
  * waits.
@@ -40,9 +40,9 @@ function buildHost(concurrency: ConcurrencyConfig) {
         run: {
           concurrency,
           inputSchema: z.object({ value: z.string() }),
-          block: handler<{ value: string }, { ok: true }>({
+          block: handler({
             name: "concur-run",
-            execute: async (input) => {
+            execute: async (input: { value: string }): Promise<{ ok: true }> => {
               const id = input.value;
               live.push(id);
               startOrder.push(id);
@@ -117,15 +117,18 @@ describe("host concurrency — reject", () => {
     const r1 = h.host.dispatch(env1);
     await tick();
 
-    // The gate throws synchronously from `dispatch` — before any record exists.
+    // Through `accepted`, before any record exists.
     const env2 = envelope("b");
-    expect(() => h.host.dispatch(env2)).toThrow(ConcurrencyRejectedError);
-    try {
-      h.host.dispatch(env2);
-    } catch (e) {
-      expect((e as ConcurrencyRejectedError).inFlightRequestId).toBe(r1.requestId);
-      expect((e as ConcurrencyRejectedError).status).toBe(409);
-    }
+    const r2 = h.host.dispatch(env2);
+    const refusal = await r2.accepted!.then(
+      () => undefined,
+      (e: unknown) => e
+    );
+    expect(refusal).toBeInstanceOf(ConcurrencyRejectedError);
+    expect((refusal as ConcurrencyRejectedError).inFlightRequestId).toBe(r1.requestId);
+    expect((refusal as ConcurrencyRejectedError).status).toBe(409);
+    await expect(r2.finished).rejects.toBeInstanceOf(ConcurrencyRejectedError);
+    expect(await h.host.stores.request.get(r2.requestId)).toBeUndefined();
 
     // Only the admitted request is executing.
     expect(h.liveCount).toBe(1);

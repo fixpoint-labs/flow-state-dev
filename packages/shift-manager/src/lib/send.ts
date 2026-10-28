@@ -39,9 +39,10 @@
  * module's own reading is thrown as it is.
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
-import type { LabClients } from "./connection";
+import type { Client, FlowHandle } from "@flow-state-dev/client";
+import { isUserSuspension } from "@flow-state-dev/core/types";
 import { deriveSuspensions } from "@flow-state-dev/react";
-import { describeFailure, PERSON_REASONS } from "./reads";
+import { describeFailure } from "./reads";
 
 /**
  * Why a delivered line's request stopped short of finishing: on a user's ask
@@ -105,9 +106,9 @@ async function call<T>(op: () => Promise<T>): Promise<T> {
  * Whether the session holds the user's line from `requestId`, read from the
  * newest page back. `undefined` when the page budget ran out first.
  */
-async function sessionHoldsLine(clients: LabClients, sessionId: string, requestId: string): Promise<boolean | undefined> {
+async function sessionHoldsLine(client: Client, sessionId: string, requestId: string): Promise<boolean | undefined> {
   const read = (offset: number, limit: number) =>
-    call(() => clients.sessions.getSessionState(sessionId, { includeItems: true, itemTypes: ["message"], offset, limit }));
+    call(() => client.sessions.state(sessionId, { includeItems: true, itemTypes: ["message"], offset, limit }));
   const holds = (items: unknown) => (items as Array<OutputItem & { role?: string }>).some((item) => item.requestId === requestId && item.role === "user");
 
   const first = await read(0, ITEM_PAGE);
@@ -141,20 +142,20 @@ async function sessionHoldsLine(clients: LabClients, sessionId: string, requestI
  * again on the send's `suspended`, whatever this says.
  */
 async function stopOf(
-  clients: LabClients,
-  actions: ReturnType<LabClients["actions"]>,
+  client: Client,
+  actions: FlowHandle,
   sessionId: string,
   requestId: string,
 ): Promise<TurnStop> {
   // The candidate, from the listing; a listing that fails is a `wait` candidate.
   let candidate: TurnStop = "wait";
   try {
-    const request = (await clients.sessions.listSessionRequests(sessionId, { status: "suspended", includeItems: true })).find(
+    const request = (await client.sessions.requests(sessionId, { status: "suspended", includeItems: true })).find(
       (r) => r.id === requestId,
     ) as { items?: unknown } | undefined;
     if (request === undefined) return null;
     const pending = deriveSuspensions((Array.isArray(request.items) ? request.items : []) as OutputItem[]).pending;
-    candidate = pending.some((view) => PERSON_REASONS.has(view.item.reason)) ? "ask" : pending.length > 0 ? "wait" : null;
+    candidate = pending.some((view) => isUserSuspension(view.item)) ? "ask" : pending.length > 0 ? "wait" : null;
   } catch {
     // Fall through to the recheck with `wait`.
   }
@@ -164,7 +165,7 @@ async function stopOf(
   // item, so a stale row and a stale ask can pair up: the stop holds only while
   // the request is still suspended. A recheck that fails keeps the candidate.
   try {
-    return (await actions.getRequestStatus(requestId)).status === "suspended" ? candidate : null;
+    return (await actions.request(requestId).status()).status === "suspended" ? candidate : null;
   } catch {
     return candidate;
   }
@@ -185,8 +186,8 @@ async function stopWithin(until: number, stop: Promise<TurnStop>): Promise<TurnS
 }
 
 /** The door's own reason for a failed request, in its words. */
-async function refusalOf(clients: LabClients, sessionId: string, requestId: string): Promise<string> {
-  const failed = await call(() => clients.sessions.listSessionRequests(sessionId, { status: "failed" }));
+async function refusalOf(client: Client, sessionId: string, requestId: string): Promise<string> {
+  const failed = await call(() => client.sessions.requests(sessionId, { status: "failed" }));
   const said = failed.find((request) => request.id === requestId)?.result?.error?.message;
   return said ?? "The worker refused the message and gave no reason.";
 }
@@ -198,24 +199,26 @@ async function refusalOf(clients: LabClients, sessionId: string, requestId: stri
  * @param options.onHeld called once, while the request is still running, when
  * the session first holds the line. A request that ends before a poll sees it
  * running never calls it: the send's own resolve says the same thing then.
+ * @param options.onStarted called once with the request id as soon as the Lab started it.
  * @returns the door's request; `suspended`, whether the poll saw it suspended,
  * which is when a caller reads the Lab again; and what it `stopped` on
  * ({@link TurnStop}), for the words only.
  */
 export async function sendTurn(
-  clients: LabClients,
+  client: Client,
   target: TurnTarget,
   message: string,
-  options: { timeoutMs?: number; pollMs?: number; onHeld?: () => void } = {},
+  options: { timeoutMs?: number; pollMs?: number; onHeld?: () => void; onStarted?: (requestId: string) => void } = {},
 ): Promise<{ requestId: string; suspended: boolean; stopped: TurnStop }> {
-  const actions = clients.actions(target.flowId);
+  const actions = client.flow(target.flowId);
   let requestId: string;
   try {
-    requestId = (await call(() => actions.sendAction(target.door, { message }, { sessionId: target.sessionId }))).request.id;
+    requestId = (await call(() => actions.send(target.door, { message }, { sessionId: target.sessionId }))).id;
   } catch (error) {
     if (error instanceof ClientCallFailed) throw new TurnNotDelivered("not-sent", error.message);
     throw error;
   }
+  options.onStarted?.(requestId);
 
   const until = Date.now() + (options.timeoutMs ?? SEND_TIMEOUT_MS);
   let suspended = false;
@@ -224,31 +227,31 @@ export async function sendTurn(
   const unconfirmed = (why: string) => new TurnNotDelivered("unconfirmed", `${why} Check the worker's session before sending it again.`);
   try {
     for (;;) {
-      const { status } = await call(() => actions.getRequestStatus(requestId));
+      const { status } = await call(() => actions.request(requestId).status());
       if (status === "completed" || status === "suspended") {
         suspended = status === "suspended";
         break;
       }
-      if (status === "failed") throw new TurnNotDelivered("refused", await refusalOf(clients, target.sessionId, requestId));
+      if (status === "failed") throw new TurnNotDelivered("refused", await refusalOf(client, target.sessionId, requestId));
       if (status !== "in_progress") throw new TurnNotDelivered("not-sent", `The message's request ended ${status}.`);
       if (Date.now() > until) throw unconfirmed("The worker did not answer in time; the message may still arrive.");
       // Still running: say so once the session holds the line. A read that
       // fails here only means "not yet"; the read after the request ends decides.
       if (!held && options.onHeld !== undefined && Date.now() >= nextHeldLook) {
         nextHeldLook = Date.now() + HELD_POLL_MS;
-        if (await sessionHoldsLine(clients, target.sessionId, requestId).catch(() => false)) {
+        if (await sessionHoldsLine(client, target.sessionId, requestId).catch(() => false)) {
           held = true;
           options.onHeld();
         }
       }
       await new Promise((resolve) => setTimeout(resolve, options.pollMs ?? SEND_POLL_MS));
     }
-    const holds = held || (await sessionHoldsLine(clients, target.sessionId, requestId));
+    const holds = held || (await sessionHoldsLine(client, target.sessionId, requestId));
     if (holds === false) throw unconfirmed("The worker answered, but its session doesn't hold your message.");
     if (holds === undefined) throw unconfirmed("The worker answered, but its session is too long to find your message in.");
   } catch (error) {
     if (error instanceof ClientCallFailed) throw unconfirmed(`Couldn't read back whether the message arrived: ${error.message}.`);
     throw error;
   }
-  return { requestId, suspended, stopped: suspended ? await stopWithin(until, stopOf(clients, actions, target.sessionId, requestId)) : null };
+  return { requestId, suspended, stopped: suspended ? await stopWithin(until, stopOf(client, actions, target.sessionId, requestId)) : null };
 }

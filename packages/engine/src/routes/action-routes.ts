@@ -198,10 +198,10 @@ export async function handleExecuteAction(
   try {
     handle = ctx.host.dispatch(dispatchEnvelope);
   } catch (error) {
-    // Concurrency `reject`: another request holds this action's key. The
-    // in-memory arbiter throws synchronously from `dispatch` before any record
-    // is created; one over a shared backend refuses through `accepted` below.
-    // Both answer the same way — see `concurrencyRefusalResponse`.
+    // A concurrency `reject` refusal arrives through `accepted` below on every
+    // backend (the place is taken after the ownership check, FIX-1837). It is
+    // still mapped here, the same way, so a refusal thrown from `dispatch`
+    // could not fall through to a 500 — see `concurrencyRefusalResponse`.
     const refused = concurrencyRefusalResponse(error, "action");
     if (refused !== undefined) return refused;
     const message = error instanceof Error ? error.message : String(error);
@@ -224,8 +224,8 @@ export async function handleExecuteAction(
     try {
       await handle.accepted;
     } catch (error) {
-      // Concurrency `reject` over a shared backend: refused at admission with
-      // nothing written, answered as the synchronous refusal above is.
+      // Concurrency `reject`, on any backend: refused at admission with
+      // nothing written — see `concurrencyRefusalResponse`.
       const refused = concurrencyRefusalResponse(error, "action");
       if (refused !== undefined) return refused;
       // A session another user or organization owns: refused at admission

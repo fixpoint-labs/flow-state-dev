@@ -12,7 +12,7 @@
  * as their owner, in two organizations. Each row's task session is filed from
  * its project, as a project conversation's hand-over files it. The harness is
  * scripted: attempt 1 installs, builds, keeps a note in `project/`, leaves
- * uncommitted work and asks a question, so the row parks; answering it is
+ * uncommitted work and asks a question, so the task is held on it; answering it is
  * the second turn.
  *
  * Every grade reads the checkout itself (`git worktree list`, `git branch`),
@@ -27,6 +27,7 @@
  *           `pnpm --filter @flow-state-dev/workspace... build`)
  */
 import { execFile, execFileSync, spawnSync } from "node:child_process";
+import { taskSettledEntry } from "@flow-state-dev/orchestration";
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -35,18 +36,9 @@ import { z } from "zod";
 import { defineFlow, dispatcher, handler, harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
 import type { HarnessBlock } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { defineTaskCollection, type Task } from "@flow-state-dev/orchestration/tasks";
+import { defineTaskCollection, openRowHolds, type Task } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import {
-  answerQuestion,
-  harnessManager,
-  harnessTaskInputSchema,
-  inboxCollection,
-  INBOX,
-  listQuestions,
-  runOwnerDispatcher,
-  type HarnessFeeds,
-} from "@flow-state-dev/harness-manager";
+import { harnessManager, harnessTaskInputSchema, runOwnerDispatcher, type HarnessFeeds } from "@flow-state-dev/harness-manager";
 import { defineProjectBlocks, projectWorkspace, projectWorkspaceCapability, type ProjectCheckout } from "@flow-state-dev/workforce";
 import { hashContent, localWorkspaceHost } from "@flow-state-dev/workspace";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, silentLogger, type ModulePatch } from "../../lib/index.mts";
@@ -162,7 +154,8 @@ function scriptedHarness(feeds: HarnessFeeds): HarnessBlock {
       };
       attempts.push(seen);
       const project = join(dirname(cwd), "project");
-      if (seen.issue.startsWith("goal-a-") && seen.attempt === 1) {
+      // The row's first run asks; the answer's run, on the same attempt, reads what it left.
+      if (seen.issue.startsWith("goal-a-") && attempts.filter((t) => t.issue === seen.issue).length === 1) {
         seen.install = await runIn(cwd, ["pnpm", "install", "--frozen-lockfile", "--offline"]);
         if (seen.install.code === 0) seen.build = await runIn(cwd, BUILD);
         mkdirSync(dirname(join(project, NOTE.path)), { recursive: true });
@@ -231,9 +224,9 @@ await runGoal(async (failures) => {
   const board = taskBoard({
     name: "goal-board",
     boardId: "goal-board",
+    mode: "delegation",
     collection: ledger,
     concurrency: 1,
-    onReview: "exit",
     dispatcher: runOwnerDispatcher(),
     workers: { shared: filedFrom(`shared/${PROJECT}`), private: filedFrom(`private/${PROJECT}`) },
   });
@@ -249,28 +242,30 @@ await runGoal(async (failures) => {
       return { id };
     },
   });
-  // The person's answer: the question answered, the row re-queued. The drain is the next action.
+  // The person's answer to each question the task is held on: it owes the task its next turn. The drain is the next action.
   const answer = handler({
     name: "goal-answer",
     inputSchema: z.object({ issue: z.string() }),
     outputSchema: z.object({ answered: z.number() }),
     uses: [board.capability],
-    resources: { [INBOX]: inboxCollection },
     execute: async (input, ctx) => {
+      const tasks = await (ctx as { cap: Record<string, any> }).cap["goal-board"].tasks();
+      const id = `${input.issue}--${PHASE}`;
+      const row = tasks.get(id) as Task | undefined;
       let answered = 0;
-      for (const question of await listQuestions(ctx as never, input.issue, PHASE)) {
-        if (question.state.status !== "open") continue;
-        await answerQuestion(ctx as never, question.topic, "Yes, carry on.");
+      for (const hold of row === undefined ? [] : openRowHolds(row)) {
+        await tasks.answer(id, { hold: hold.id, message: "Yes, carry on.", from: "user", by: OWNER });
         answered += 1;
       }
-      const tasks = await (ctx as { cap: Record<string, any> }).cap["goal-board"].tasks();
-      await tasks.unpark(`${input.issue}--${PHASE}`);
       return { answered };
     },
   });
   const projects = defineProjectBlocks();
+  // The board hands rows out, so the flow hears each ending (FIX-2078); this goal grades something else.
+  const heard = taskSettledEntry({ block: handler({ name: "goal-heard", inputSchema: z.unknown(), outputSchema: z.unknown(), execute: () => ({}) }) });
   const flow = defineFlow({
     kind: "goal-mapped",
+    internal: { actions: { onTaskSettled: heard } },
     actions: { ...projects.actions, seed: { block: seed }, drain: { block: board.drain }, answer: { block: answer } },
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "goal-mapped" } as never);
@@ -310,12 +305,14 @@ await runGoal(async (failures) => {
     while (Date.now() < deadline) {
       const rt = await runtime();
       row = (await rt.stores.resourceState.get("org", orgId, `${BOARD_ID}/${issue}--${PHASE}`))?.state as Task | undefined;
-      if (row !== undefined && row.attempts >= minAttempts && statuses.includes(row.status)) return row;
+      if (row !== undefined && row.attempts >= minAttempts && statuses.includes(stateOf(row))) return row;
       await new Promise((r) => setTimeout(r, 100));
     }
     return row;
   };
-  const SETTLED = ["parked", "completed", "errored", "failed", "cancelled"] as const;
+  /** A row's status, with a running row held on a question read as `held`. */
+  const stateOf = (row: Task): string => (row.status === "in_progress" && openRowHolds(row).length > 0 ? "held" : row.status);
+  const SETTLED = ["held", "completed", "errored", "failed", "cancelled"] as const;
   /** File `issue` for `assignee` in `orgId`, drain, and wait until it settles. */
   const runRow = async (orgId: string, issue: string, assignee: "shared" | "private") => {
     await mustAct(orgId, "seed", { issue, assignee });
@@ -359,7 +356,7 @@ await runGoal(async (failures) => {
     if (stored !== hashContent(NOTE.body) || status.includes(NOTE.path)) {
       note("a:note-saved", `project-files/${PROJECT}/${NOTE.path} holds ${JSON.stringify(stored)}${status.includes(NOTE.path) ? ", and git status shows the note" : ""}`);
     }
-    if (a?.status !== "parked") say(`a: the row ended ${a?.status ?? "unfiled"}, not parked on its question`);
+    if (a === undefined || stateOf(a) !== "held") say(`a: the row ended ${a?.status ?? "unfiled"}, not held on its question`);
     if (!failures.some((f) => f.startsWith("a:"))) {
       evidence.push(
         `a: the run worked in ${a1!.cwd} (listed by git worktree list in the checkout) on ${a1!.branch}, installed and built there, and its note is saved, absent from git status`,
@@ -384,15 +381,15 @@ await runGoal(async (failures) => {
     }
 
     // ---- (c) the settled run continues in place --------------------------
-    if (a1 === undefined || a?.status !== "parked") {
+    if (a1 === undefined || a === undefined || stateOf(a) !== "held") {
       note("c:continues", `leg a's run never settled on its question (row ${a?.status ?? "unfiled"}), so there is no turn to continue`);
     } else {
       if (control === "detach") git(a1.cwd, "switch", "--quiet", "--detach");
       await mustAct(ORG_A, "answer", { issue: issueA });
       await act(ORG_A, "drain", {});
-      // Settled again, or back to pending for a retry the second turn's failure earned.
-      const c = await rowWhen(ORG_A, issueA, [...SETTLED, "pending"], (a.attempts ?? 1) + 1);
-      const a2 = attempts.find((t) => t.issue === issueA && t.attempt > 1);
+      // Settled, or back to pending for a retry the second turn's failure earned.
+      const c = await rowWhen(ORG_A, issueA, ["completed", "errored", "failed", "cancelled", "pending"]);
+      const a2 = attempts.filter((t) => t.issue === issueA)[1];
       const wrong: string[] = [];
       const why = c?.error ?? c?.feedback;
       if (a2 === undefined) wrong.push(`the second turn never ran (row ${c?.status ?? "?"}${why ? `: ${String(why).slice(0, 300)}` : ""})`);

@@ -35,7 +35,7 @@ import {
   type ResolveClaudeAgent,
   type SdkAgentHandle,
 } from "@flow-state-dev/claude-code/sdk";
-import { httpActions, loadFixture, runGoal, silentLogger } from "../../lib/index.mts";
+import { actingAs, loadFixture, runGoal, silentLogger } from "../../lib/index.mts";
 
 type Job = { name: string; files: Record<string, string>; prompt: string };
 
@@ -165,7 +165,7 @@ async function attempt(arm: Arm, job: Job) {
     const runtime = await state.getRuntime();
     // The runtime's own narration, off, so the runs and the verdict are what prints.
     runtime.runtimeConfig.logger = silentLogger as never;
-    const { call, open } = httpActions((await state.getRouter()) as never, USER_ID);
+    const { call, open } = actingAs((await state.getRouter()) as never, USER_ID);
     const sessionId = await open(KIND, {});
     const prompt = arm === "planning" ? job.prompt + PLAN_ASK : job.prompt;
     const sent = await call("POST", [KIND, sessionId, "actions", "work"], { userId: USER_ID, input: { prompt } });

@@ -8,7 +8,12 @@
  *   one row per piece, and records any refusal by its error's name;
  * - on a notice, it throws when the worker is in `failNoticeTurn`, and files
  *   the worker's `onErrored` piece once when the notice is a failure for good,
- *   and its `onCompleted` piece once when the notice is a completion.
+ *   and its `onCompleted` piece once when the notice is a completion;
+ * - after filing, it waits `holdAfterFiling[worker]` ms, then throws when the
+ *   worker is in `failAfterFiling` (FIX-2080: the work a failed task filed);
+ * - before filing, a worker in `waitForUserBeforeFiling` (by its id, or as
+ *   `<worker>:<message>` for one turn) waits for the user, and records what
+ *   came back in `answered` (FIX-2129; needs a durable host).
  *
  * Every turn is recorded (worker, session, message).
  */
@@ -21,17 +26,48 @@ import type { WorkerInstallation } from "../src/workers/installation";
 import type { ChainRecord } from "../src/conversation-board/chain";
 import { ORG, boardWorkers, bootBoardHost, messageOf, type BoardHostOptions } from "./conversation-board-harness";
 
-/** A piece a turn files. */
-export type Piece = { goal: string; assignee?: string; id?: string };
+/** A piece a turn files, with the filing settings it is filed with (FIX-2080). */
+export type Piece = {
+  goal: string;
+  assignee?: string;
+  id?: string;
+  session?: "new" | "ongoing";
+  resultTo?: "filer" | "conversation";
+  maxAttempts?: number;
+  held?: boolean;
+  followUpOf?: string;
+  deps?: string[];
+};
 
 /** What the splitter's turns do, by worker id: the test sets and changes these. */
 export type SplitControls = {
   plans: Record<string, Piece[]>;
   failNoticeTurn: Set<string>;
   onErrored: Record<string, Piece>;
-  onCompleted: Record<string, Piece>;
-  refusals: Array<{ worker: string; error: string }>;
+  /** The piece (or pieces, filed together) a worker files once on a completion notice. */
+  onCompleted: Record<string, Piece | Piece[]>;
+  /** What a worker's turn on a notice answers, in place of what it heard. */
+  noticeAnswer: Record<string, unknown>;
+  refusals: Array<{ worker: string; error: string; message?: string }>;
   turns: Array<{ worker: string; sessionId: string; message: string }>;
+  /** Workers whose turn throws after filing its pieces (not on a notice). */
+  failAfterFiling: Set<string>;
+  /** How long a worker's turn waits after filing its pieces, in ms. */
+  holdAfterFiling: Record<string, number>;
+  /** Workers whose turn files its pieces as one batch (`addTasks`), not one by one. */
+  batch: Set<string>;
+  /** What a worker's turn waits on before it files its pieces (not on a notice). */
+  holdBeforeFiling: Record<string, Promise<void>>;
+  /**
+   * Once, the next time a worker's turn files: after it has read its board
+   * (the request's snapshot) and before it files, call `reached`, then wait on
+   * `release` (FIX-2114: a dependency another request ends meanwhile).
+   */
+  holdAfterResolve: Record<string, { reached: () => void; release: Promise<void> }>;
+  /** Workers whose turn waits for the user before it files (not on a notice), or `<worker>:<message>` for one turn. */
+  waitForUserBeforeFiling: Set<string>;
+  /** What each such wait came back with, by worker. */
+  answered: Array<{ worker: string; answer: unknown }>;
 };
 
 const doorInput = z.object({ message: z.string() });
@@ -41,7 +77,7 @@ function splitterFlow(installation: WorkerInstallation, controls: SplitControls)
   const turn = handler({
     name: "splitter-turn",
     inputSchema: doorInput,
-    outputSchema: z.string(),
+    outputSchema: z.unknown(),
     resources: { ...installation.resources, ...board.resources },
     execute: async (input, rawCtx) => {
       const ctx = rawCtx as unknown as BlockContext;
@@ -56,22 +92,45 @@ function splitterFlow(installation: WorkerInstallation, controls: SplitControls)
         delete controls.onErrored[worker];
       }
       if (notice && input.message.includes(" completed by ") && controls.onCompleted[worker] !== undefined) {
-        pieces.push(controls.onCompleted[worker]!);
+        pieces.push(...[controls.onCompleted[worker]!].flat());
         delete controls.onCompleted[worker];
       }
-      if (pieces.length === 0) return `${worker} heard: ${input.message}`;
+      if (pieces.length === 0) return notice && Object.hasOwn(controls.noticeAnswer, worker) ? controls.noticeAnswer[worker] : `${worker} heard: ${input.message}`;
+      const before = notice ? undefined : controls.holdBeforeFiling[worker];
+      if (before !== undefined) await before;
+      if (!notice && (controls.waitForUserBeforeFiling.has(worker) || controls.waitForUserBeforeFiling.has(`${worker}:${input.message}`))) {
+        const answer = await (ctx as unknown as { waitForUser(options: unknown): Promise<unknown> }).waitForUser({ kind: "input", prompt: "Go ahead?" });
+        controls.answered.push({ worker, answer });
+      }
       const ref = await board.board.resolver(ctx as never);
       if (ref === undefined) {
         controls.refusals.push({ worker, error: "no_delegation_board" });
         return `${worker} has no board`;
       }
-      for (const piece of pieces) {
-        try {
-          await ref.addTask({ goal: piece.goal, ...(piece.assignee ? { assignee: piece.assignee } : {}), ...(piece.id ? { id: piece.id } : {}) });
-        } catch (error) {
-          controls.refusals.push({ worker, error: error instanceof Error ? error.name : String(error) });
-        }
+      const afterResolve = controls.holdAfterResolve[worker];
+      if (afterResolve !== undefined) {
+        delete controls.holdAfterResolve[worker];
+        // Read the board, as a turn's tools do before they file: the snapshot this request keeps.
+        ref.list();
+        afterResolve.reached();
+        await afterResolve.release;
       }
+      const initOf = ({ goal, assignee, id, ...settings }: Piece) => ({ goal, ...(assignee ? { assignee } : {}), ...(id ? { id } : {}), ...settings });
+      const refused = (error: unknown) =>
+        controls.refusals.push({
+          worker,
+          error: error instanceof Error ? error.name : String(error),
+          // A filing refused by its settings names the rule (FIX-2080).
+          ...(error instanceof Error && error.name === "TaskFilingRefusedError" ? { message: error.message } : {})
+        });
+      if (controls.batch.has(worker)) {
+        await ref.addTasks(pieces.map(initOf)).catch(refused);
+      } else {
+        for (const piece of pieces) await ref.addTask(initOf(piece)).catch(refused);
+      }
+      const hold = notice ? undefined : controls.holdAfterFiling[worker];
+      if (hold !== undefined) await new Promise((resolve) => setTimeout(resolve, hold));
+      if (!notice && controls.failAfterFiling.has(worker)) throw new Error(`${worker}'s turn failed after filing`);
       return `${worker} filed ${pieces.map((piece) => piece.goal).join(", ")}`;
     }
   });
@@ -89,7 +148,7 @@ function splitterFlow(installation: WorkerInstallation, controls: SplitControls)
     resources: { ...installation.resources, ...board.resources },
     request: { onStarted: resolveWorker },
     actions: {
-      run: { inputSchema: doorInput.strict(), block: turn, userMessage: (input: { message: string }) => input.message },
+      respond: { inputSchema: doorInput.strict(), block: turn, userMessage: (input: { message: string }) => input.message },
       ...board.actions
     },
     internal: { actions: board.entries(turn) },
@@ -118,10 +177,25 @@ export function splitWorkers(): WorkerManifest[] {
 
 /** A board host with the splitter flow registered, and its controls. */
 export function bootSplitHost(options: BoardHostOptions = {}) {
-  const controls: SplitControls = { plans: {}, failNoticeTurn: new Set(), onErrored: {}, onCompleted: {}, refusals: [], turns: [] };
+  const controls: SplitControls = {
+    plans: {},
+    failNoticeTurn: new Set(),
+    onErrored: {},
+    onCompleted: {},
+    noticeAnswer: {},
+    refusals: [],
+    turns: [],
+    failAfterFiling: new Set(),
+    holdAfterFiling: {},
+    batch: new Set(),
+    holdBeforeFiling: {},
+    holdAfterResolve: {},
+    waitForUserBeforeFiling: new Set(),
+    answered: []
+  };
   const host = bootBoardHost({
     standard: splitWorkers(),
-    flows: (installation) => ({ splitter: splitterFlow(installation, controls) }),
+    flows: (installation) => ({ splitter: { flow: splitterFlow(installation, controls), roles: ["contributor", "manager"] } }),
     ...options
   });
 
@@ -134,7 +208,7 @@ export function bootSplitHost(options: BoardHostOptions = {}) {
 
   /** Run a turn of `sessionId` that files its worker's plan. */
   const turn = async (userId: string, sessionId: string, message = "file the plan") => {
-    const result = await host.act(userId, sessionId, "run", { message }, "splitter");
+    const result = await host.act(userId, sessionId, "respond", { message }, "splitter");
     if (result.error !== undefined) throw new Error(`the turn failed: ${messageOf(result.error)}`);
     return result.output as string;
   };

@@ -12,38 +12,6 @@ pnpm add @flow-state-dev/patterns
 
 ## Patterns
 
-### RLM (Recursive Language Model)
-
-Implements the Recursive Language Model architecture ([Gao et al. 2025](https://alexzhang13.github.io/blog/2025/rlm/)). An LM that never sees the full context directly — instead using tools to explore, search, and recursively sub-query over large contexts.
-
-**What it validates:**
-- Generator-as-tool composition (generator listed in another generator's `tools` array)
-- Handler blocks as LLM-callable tools (peek, grep, chunk)
-- Session resources for large context storage
-- Depth control via tool set restriction (leaf generators omit the recursive tool)
-
-**Zero framework changes required.**
-
-```typescript
-import { rlmPipeline, rlmQueryInputSchema } from "@flow-state-dev/patterns";
-
-// Wire into your flow as an action
-const myFlow = defineFlow({
-  actions: {
-    rlm: {
-      inputSchema: rlmQueryInputSchema,
-      block: rlmPipeline
-    }
-  }
-  // No `resources` entry needed: the pipeline's blocks declare
-  // `resources: { context: contextResource }`, and `defineFlow` collects
-  // them into the flow's flat `resources` map. A flow-level `context` entry
-  // must be that same `contextResource`; a different definition throws.
-});
-```
-
-See `apps/kitchen-sink` for a full integration example.
-
 ### parallelTasks
 
 Single-pass fan-out/fan-in orchestration backed by `taskBoard`. Decomposes a goal into sub-tasks, dispatches a worker concurrently for each, and synthesizes the completed results. No feedback loop.
@@ -148,13 +116,11 @@ Concurrent drain over a `TaskCollection` with dependency gating and per-task wor
 
 **Termination modes (`onIdle`)**:
 
-- `"complete-or-blocked"` (default): exit on full drain OR when no `in_progress`/`parked` task is active and no `pending` task has all deps `completed`. Handles the DAG case where an upstream task errors and downstream pendings can never run.
-- `"complete"`: exit only when no `pending`, `in_progress`, or `parked` tasks remain. Use when a pending task with a non-completed dep is a transient state an external pump will resolve.
+- `"complete-or-blocked"` (default): exit on full drain OR when no `in_progress` task is active and no `pending` task has all deps `completed`. A running task waiting on a person (an open hold: a question, or a stop for a review or an approval) is not active, so a board whose open tasks only wait on a person exits and leaves them waiting. Handles the DAG case where an upstream task errors and downstream pendings can never run.
+- `"complete"`: exit only when no `pending` or `in_progress` tasks remain. Use when a pending task with a non-completed dep is a transient state an external pump will resolve.
 - `"wait"`: never auto-exit; defer to a user-supplied `shouldExit` predicate. For long-running session-scoped boards.
 
-**Waiting on a person (`onReview`)**: `"hold"` (default) keeps a task parked with `awaitReview` in the in-flight counts, so the drain stays open until someone moves it out. `"exit"` excuses parked tasks from those counts: the drain returns while the task stays parked and durable. `board.unparkAndDrain` delivers the answer, re-queues the task, and drains in the same request. `"exit"` needs a `defineTaskCollection` collection, the default `onIdle`, and an explicit `id` on every `initialTasks` entry; anything else is refused when the board is built.
-
-The final `task-board-meta` item carries a `terminationReason: "all-completed" | "blocked-by-failures" | "retry-budget-exhausted" | "handed-off" | "parked-for-review"` field so callers can tell a clean drain from a dep-blocked exit, from one the board's retry budget stopped, from one whose remaining work is running in a child session, and from one whose remaining work is waiting on a person — without inspecting `counts`.
+The final `task-board-meta` item carries a `terminationReason: "all-completed" | "blocked-by-failures" | "retry-budget-exhausted" | "dispatched" | "waiting-on-a-user"` field so callers can tell a clean drain from a dep-blocked exit, from one the board's retry budget stopped, from one whose remaining work is running in a child session, and from one whose remaining work waits on a person — without inspecting `counts`.
 
 ```typescript
 import { taskBoard, taskBoardStateSchema } from "@flow-state-dev/orchestration/task-board";
@@ -195,13 +161,11 @@ const board = taskBoard({
 
 The board API is identical across backings — request-state exposes the same atomic-state surface — so the mutation calls, retries, and `task-change` emission all work the same. Contention safety is the same too. Both are compare-and-swap with retry, the resource backing writing at the version its execution context read, so a task write built on a stale read is refused and re-applied rather than overwriting the writer that won. The filesystem store is the one exception — it compares within a single process, so a board fanned across replicas wants SQLite or Postgres underneath. For single-invocation, per-call storage, opt into `{ backing: "sequencer", collectionId }`. For a board whose tasks outlive the request, declare a durable collection with `defineTaskCollection({ id, scope, stateSchema })` and pass it as `collection`.
 
-`parked` is fully supported: standard dispatchers skip it, the loop counts it as in-flight, and a resume from `parked` wakes the loop on the next idle poll. `onReview: "exit"` counts it the other way — see the termination modes above for the option and its requirements, and [Waiting on a person](https://flow-state.dev/docs/orchestration/task-board#waiting-on-a-person-onreview) for the full contract.
-
 Workers are first-class block compositions, not callbacks. The pattern composes them via `.step(workerStep)` inside the worker's sequencer, with `.tap(recordSuccess)` and `.rescue([{ block: recordError }])` handling write-back — no handler wrapping the worker (BP-011). For registries, an internal `utility.keyedRouter` selects per `task.assignee`; each worker is pre-connected with the `Task → TaskWorkerInput` adapter so the router stays a pure key-keyed dispatch (BP-013).
 
-`createCascadeSkipDependents` is a substrate building block consumers `.tap()` after `board.drain`: it transitively cancels any pending task whose deps include an `errored` task (stamping a `"skipped"` label), so dep-blocked pendings reach a terminal status instead of lingering. `planAndExecute` and `supervisor` both wire it this way.
+The task collection cancels the open dependents of a task that fails for good or is cancelled, transitively, stamping a `"skipped"` label, so no pending task lingers behind a dependency that will never complete. Neither `planAndExecute` nor `supervisor` adds a step for it. A plan whose `deps` name a task not on the board, or loop, is refused when it is seeded, and the run fails.
 
-**Key exports:** `taskBoard`, `taskBoardStateSchema`, `taskBoardWorkerStateSchema`, `taskBoardWorkerBodyStateSchema`, `claimResultSchema`, `taskWorkerInputSchema`, `checkBoardOutputSchema`, `createSeedCollection`, `createSelectNextReadyTask`, `createClaimTask`, `buildWorkerStep`, `packWorkerInput`, `createRecordSuccess`, `createRecordError`, `createCheckBoard`, `createCascadeSkipDependents`
+**Key exports:** `taskBoard`, `taskBoardStateSchema`, `taskBoardWorkerStateSchema`, `taskBoardWorkerBodyStateSchema`, `claimResultSchema`, `taskWorkerInputSchema`, `checkBoardOutputSchema`, `createSeedCollection`, `createSelectNextReadyTask`, `createClaimTask`, `buildWorkerStep`, `packWorkerInput`, `createRecordSuccess`, `createRecordError`, `createCheckBoard`
 
 ### Round Robin
 
@@ -370,7 +334,7 @@ import { defaultBenchmarkRegistry } from "@flow-state-dev/patterns";
 Some patterns are intentionally left out of the roster:
 
 - **`task-board`** — the substrate primitive the others compose. `parallel-tasks` is task-board plus a planner and a synthesizer, so benchmarking the board alongside its consumers would double-count the same coordination work. It also returns a `TaskBoardHandle` rather than a synthesized answer.
-- **`event-actors`, `rlm`, `response-auditor`** — not `goal → answer` shaped. They don't map cleanly onto a single generic benchmark task and would need bespoke per-task glue (event-actors is event-driven, rlm is context-exploration scaffolding, response-auditor is a post-hoc sidechain over an existing response).
+- **`event-actors`, `response-auditor`** — not `goal → answer` shaped. They don't map cleanly onto a single generic benchmark task and would need bespoke per-task glue (event-actors is event-driven, response-auditor is a post-hoc sidechain over an existing response).
 
 Adding a pattern to the benchmark is one entry. Define its adapter, add it to `defaultBenchmarkRegistry`, and add its name to the `patterns` list in the benchmark definition (`apps/pattern-benchmark/src/benchmark.ts`). No per-pattern harness wiring.
 

@@ -13,8 +13,13 @@
  * must never reach the request record's provenance, whatever keys it carries.
  * That is what lets a reader treat everything under `metadata.dispatch` as
  * server-assembled.
+ *
+ * And `provenance` itself, though server-derived, never outranks the keys the
+ * seam writes: those decide where a reply routes and which incarnation a
+ * delivery may run on, so the stamp holds them whatever a producer emits.
  */
 import { describe, it, expect } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createRequestHost } from "../../src/context/create-request-host";
 import type { SessionRecord } from "../../src/stores/types";
 import { CHILD_ENTRY, dispatchableFlow } from "./seam-harness";
@@ -22,7 +27,7 @@ import { CHILD_ENTRY, dispatchableFlow } from "./seam-harness";
 const IDENTITY = {
   userId: "u_alice",
   tenantId: undefined,
-  orgId: undefined,
+  orgId: DEFAULT_ORG_ID,
   sessionId: "s_parent",
   lineageId: "lin_parent"
 };
@@ -44,13 +49,34 @@ function emptyStores() {
   } as never;
 }
 
+/** One existing session, `s_r`, reachable from the parent — the `id` delivery path. */
+function storesWithRecipient() {
+  const recipient = {
+    id: "s_r",
+    userId: IDENTITY.userId,
+    flowKind: FLOW.kind,
+    flowId: FLOW.id,
+    orgId: DEFAULT_ORG_ID,
+    lineageId: "lin_recipient"
+  } as unknown as SessionRecord;
+  return {
+    session: {
+      get: async (key: string): Promise<SessionRecord | undefined> => (key === "s_r" ? recipient : undefined),
+      set: async () => ({ ok: true as const })
+    },
+    resourceState: { purgeTombstones: async () => {} },
+    activeRequests: {}
+  } as never;
+}
+
 /** Run one dispatch and hand back the metadata the seam assembled for it. */
 async function metadataFor(
-  spec: Partial<Parameters<ReturnType<typeof createRequestHost>["seam"]>[0]>
+  spec: Partial<Parameters<ReturnType<typeof createRequestHost>["seam"]>[0]>,
+  stores: ReturnType<typeof emptyStores> = emptyStores()
 ): Promise<Record<string, unknown> | undefined> {
   let metadata: Record<string, unknown> | undefined;
   const { seam } = createRequestHost({
-    stores: emptyStores(),
+    stores,
     flow: FLOW,
     identity: IDENTITY,
     dispatchOperation: async (started) => {
@@ -128,5 +154,62 @@ describe("the provenance a dispatch stamps on the request record", () => {
         key: "review"
       }
     });
+  });
+
+  it("keeps the server's routing keys when a provenance carries keys of the same name", async () => {
+    // `from` is where a reply routes and whose request a waiter resumes;
+    // `type`/`action`/`key` are the address. A producer that happens to emit
+    // one of these names must not move the dispatch.
+    const metadata = await metadataFor({
+      provenance: {
+        taskId: "task_7f3",
+        type: "task",
+        action: "forged",
+        from: { block: "forged", sessionId: "s_victim", lineageId: "lin_victim" },
+        key: "forged"
+      }
+    });
+
+    expect(metadata).toEqual({
+      dispatch: {
+        type: "internal",
+        action: "work",
+        from: { block: "board-drain", sessionId: "s_parent", lineageId: "lin_parent" },
+        key: "review",
+        taskId: "task_7f3"
+      }
+    });
+  });
+
+  it("stamps none of the seam's conditional keys from a provenance when the seam writes none", async () => {
+    // A `key` child is no existing-session delivery and this dispatch crosses
+    // no instance, so the seam writes no `recipientLineageId`, `flowKind` or
+    // `flowId`. A provenance one would read as server truth: an incarnation
+    // guard on a session nobody approved, or a cross-instance arrival that
+    // never crossed.
+    const metadata = await metadataFor({
+      provenance: { taskId: "task_7f3", recipientLineageId: "lin_forged", flowKind: "elsewhere", flowId: "elsewhere" }
+    });
+
+    expect(metadata).toEqual({
+      dispatch: {
+        type: "internal",
+        action: "work",
+        from: { block: "board-drain", sessionId: "s_parent", lineageId: "lin_parent" },
+        key: "review",
+        taskId: "task_7f3"
+      }
+    });
+  });
+
+  it("keeps the approved recipient lineage when a provenance carries one", async () => {
+    // The incarnation guard compares the run against this lineage; a stray one
+    // would either run a delivery on a replaced recipient or drop a sound one.
+    const metadata = await metadataFor(
+      { session: { id: "s_r" }, provenance: { recipientLineageId: "lin_forged" } },
+      storesWithRecipient()
+    );
+
+    expect((metadata!.dispatch as Record<string, unknown>).recipientLineageId).toBe("lin_recipient");
   });
 });

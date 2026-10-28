@@ -1,0 +1,71 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="Today against after. Today: a coordinator files a post row with a post kind, handed to onDelegatedPost in the delegate's session; its answer comes back on onPostSettled, a cancel on postCancelled, a deadline timer runs in the delegate's run, and best fit and the lead vet are two model calls. After: routing files a task with three settings, session ongoing, result to the conversation, one attempt, on the conversation's delegation board, handed to work in the delegate's ongoing session; its ending reaches onTaskSettled through the one ending path and lands under the delegate's name; a round's deadline is a wake on the coordinator's session; one fit check."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .gone  { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .keep  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.3; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-x   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="today">
+    <rect class="panel" x="16" y="14" width="446" height="372" rx="6"/>
+    <text class="t-lbl" x="32" y="36">TODAY · A POST</text>
+    <rect class="keep" x="32" y="50" width="414" height="40" rx="4"/>
+    <text class="t-b" x="44" y="67">Coordinator routes Alice's message</text>
+    <text class="t-s" x="44" y="82">judgment: dispatchTask post: true</text>
+    <rect class="gone" x="32" y="102" width="414" height="40" rx="4"/>
+    <text class="t-x" x="44" y="119">A post row · kind post · one attempt</text>
+    <text class="t-s" x="44" y="134">assign refused, complete refused, cancel sends postCancelled</text>
+    <rect class="gone" x="32" y="154" width="414" height="40" rx="4"/>
+    <text class="t-x" x="44" y="171">onDelegatedPost · taskTurn false</text>
+    <text class="t-s" x="44" y="186">its own entry in the delegate's session, beside other posts</text>
+    <rect class="gone" x="32" y="206" width="414" height="40" rx="4"/>
+    <text class="t-x" x="44" y="223">A deadline timer in the delegate's run</text>
+    <text class="t-s" x="44" y="238">lost on a restart</text>
+    <rect class="gone" x="32" y="258" width="414" height="40" rx="4"/>
+    <text class="t-x" x="44" y="275">onPostSettled · a second ending entry</text>
+    <text class="t-s" x="44" y="290">a line under the delegate's name, rounds by post id</text>
+    <rect class="gone" x="32" y="310" width="414" height="58" rx="4"/>
+    <text class="t-x" x="44" y="327">Two fit calls</text>
+    <text class="t-s" x="44" y="342">best fit picks with a confidence</text>
+    <text class="t-s" x="44" y="357">lead fit answers says and fits apart</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="478" y="14" width="446" height="372" rx="6"/>
+    <text class="t-lbl" x="494" y="36">AFTER · A ROUTED TASK</text>
+    <rect class="keep" x="494" y="50" width="414" height="40" rx="4"/>
+    <text class="t-b" x="506" y="67">Coordinator routes Alice's message</text>
+    <text class="t-s" x="506" y="82">judgment: createTask, her words attached</text>
+    <rect class="new" x="494" y="102" width="414" height="40" rx="4"/>
+    <text class="t-b" x="506" y="119">A task · ongoing · conversation · 1 attempt</text>
+    <text class="t-s" x="506" y="134">in Alice's list; cancel and assign as any task</text>
+    <rect class="new" x="494" y="154" width="414" height="40" rx="4"/>
+    <text class="t-b" x="506" y="171">work · the delegate's ongoing session</text>
+    <text class="t-s" x="506" y="186">a task turn; one open task at a time</text>
+    <rect class="new" x="494" y="206" width="414" height="40" rx="4"/>
+    <text class="t-b" x="506" y="223">A wake on the coordinator's session</text>
+    <text class="t-s" x="506" y="238">closes the round on time, after a restart too</text>
+    <rect class="new" x="494" y="258" width="414" height="40" rx="4"/>
+    <text class="t-b" x="506" y="275">onTaskSettled · the one ending path</text>
+    <text class="t-s" x="506" y="290">a line under the delegate's name, rounds by task id</text>
+    <rect class="new" x="494" y="310" width="414" height="58" rx="4"/>
+    <text class="t-b" x="506" y="327">One fit check</text>
+    <text class="t-s" x="506" y="342">best fit reads its pick</text>
+    <text class="t-s" x="506" y="357">a lead is refused only on none fits</text>
+  </g>
+</svg>

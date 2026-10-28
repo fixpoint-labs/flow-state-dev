@@ -20,6 +20,7 @@ import {
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { FlowActionTarget } from "./targets";
 import type { ChatRenderer } from "./render";
+import { heldStop } from "../commands/run";
 
 /** Retry cadence for the abort record-patch and controller lookup. */
 const ABORT_RETRY_MS = 25;
@@ -42,6 +43,8 @@ export interface ExecuteTurnParams {
   stores: StoreRegistry;
   /** Base runtime config with the CLI logger + model resolver already applied. */
   runtimeConfig: RuntimeConfig;
+  /** Where a turn held on a stop is answered, as one sentence a person reads. */
+  answerAt: string;
   renderer: ChatRenderer;
 }
 
@@ -81,7 +84,7 @@ function isInputValidationError(err: unknown): boolean {
  * loop's SIGINT handler calls.
  */
 export function executeTurn(params: ExecuteTurnParams): RunningTurn {
-  const { flow, target, text, sessionId, userId, orgId, stores, runtimeConfig, renderer } = params;
+  const { flow, target, text, sessionId, userId, orgId, stores, runtimeConfig, answerAt, renderer } = params;
   const requestId = `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 
   let settled = false;
@@ -150,6 +153,15 @@ export function executeTurn(params: ExecuteTurnParams): RunningTurn {
         // The engine already emitted an error item (rendered via onEvent); add
         // the chat-shape hint when the action's schema rejected { message }.
         if (isInputValidationError(result.error)) renderer.onSystem(NOT_CHAT_SHAPED_HINT);
+      } else {
+        // A turn that ended on a stop is held, not done: say what waits and
+        // where to answer it, as `fsdev run` does.
+        const stop = await heldStop(result, stores, sessionId, answerAt);
+        if (stop !== undefined) {
+          renderer.onSystem(
+            `Waiting for a person: ${stop.message ?? stop.title ?? stop.reason} (suspension ${stop.suspensionId}). ${stop.answer}`,
+          );
+        }
       }
     } catch (err) {
       errored = true;

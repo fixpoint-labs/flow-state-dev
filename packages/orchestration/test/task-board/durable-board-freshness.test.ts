@@ -73,8 +73,8 @@ function countingDispatcher(attempts: { total: number }): TaskDispatcher {
 /**
  * Build the scenario.
  *
- * The board starts with one task whose dep will never exist, so it is
- * `pending` but never claimable: the single worker's first claim comes back
+ * The board starts with one task whose dep is held and never released, so it
+ * is `pending` but never claimable: the single worker's first claim comes back
  * empty and it parks in the wait, taking its view of the task set right then.
  * `onIdle: "complete"` is the mode that keeps such a board alive — the
  * default `complete-or-blocked` would (correctly) exit `blocked` on a board
@@ -130,7 +130,10 @@ function buildScenario() {
     dispatcher: countingDispatcher(attempts),
     workers: worker,
     initialTasks: [
-      { id: "unreachable", goal: "unreachable", deps: ["ghost"], input: { topic: "u" } },
+      // Its dep is held and never released, so it is `pending` but no claim
+      // takes it: an outstanding, unclaimable task.
+      { id: "gate", goal: "gate", held: true, input: { topic: "g" } },
+      { id: "unreachable", goal: "unreachable", deps: ["gate"], input: { topic: "u" } },
     ],
     onIdle: "complete",
     idlePollMs: IDLE_POLL_MS,
@@ -152,15 +155,15 @@ function buildScenario() {
         eligibility: (task) => task.id === "parked",
       });
       observed.claimedByActor = claimed === null ? null : claimed.id;
-      await tasks.awaitReview("parked", "needs a human");
 
-      await tasks.cancel("unreachable", "dep will never exist");
+      await tasks.cancel("unreachable", "its dep is never released");
 
       // Long enough for a spinning worker to exhaust its budget and retire.
       // A correctly sleeping worker is still parked when this elapses.
       await delay(150);
       observed.drainDoneBeforeResume = drain.done;
-      await tasks.unpark("parked");
+      // Taken back from the actor, as a lapsed lease would be: back in the queue.
+      await tasks.reclaim(Date.now() + 10 * 60_000);
     },
   });
 

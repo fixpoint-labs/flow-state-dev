@@ -42,7 +42,7 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { createFlowState, createInProcessFetch, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { defineWorkerInventoryCollection, inventoryWriterActions, openInventory } from "../src/index";
 
@@ -125,6 +125,7 @@ function verifiedHeaderPrincipal(userId: (org: string) => string) {
 
 /** A `Harness` over one router. */
 function harnessOver(router: any): Harness {
+  const inProcess = createInProcessFetch(router);
   const call = async (
     method: "GET" | "POST",
     path: string[],
@@ -132,14 +133,11 @@ function harnessOver(router: any): Harness {
     body: unknown,
     headers: Record<string, string>
   ): Promise<Answer> => {
-    const response = await router[method](
-      new Request(`http://test/api/flows/${path.join("/")}${query}`, {
-        method,
-        headers: { "content-type": "application/json", ...headers },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) })
-      }),
-      { params: { path } }
-    );
+    const response = await inProcess(`/api/flows/${path.join("/")}${query}`, {
+      method,
+      headers: { "content-type": "application/json", ...headers },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) })
+    });
     const text = await response.text();
     return { status: response.status, json: text.length > 0 ? JSON.parse(text) : undefined };
   };

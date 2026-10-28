@@ -22,9 +22,9 @@ function makeFlow(kind: string): FlowInstance {
     actions: {
       run: {
         inputSchema: z.object({ value: z.string() }),
-        block: handler<{ value: string }, { ok: boolean }>({
+        block: handler({
           name: `${kind}-run`,
-          execute: () => ({ ok: true })
+          execute: (_input: { value: string }): { ok: boolean } => ({ ok: true })
         })
       }
     }
@@ -234,6 +234,66 @@ describe("tenant route isolation (FIX-682)", () => {
         { params: { path: ["demo", "sessions", "s", "requests", "req_1", "continue"] } }
       );
       expect(res.status).toBe(404);
+    });
+  });
+
+  // The status read is request-addressed like retry/continue/abort, and a
+  // request id is an address a caller may learn from someone else. It answers
+  // the request's session id, so another tenant's request must read as
+  // missing rather than hand over that tenant's session id.
+  describe("request status rejects a cross-tenant requestId", () => {
+    async function seedRequest(stores: ReturnType<typeof createRouter>["stores"], tenantId: string) {
+      const now = Date.now();
+      await stores.request.set(
+        "req_1",
+        {
+          orgId: DEFAULT_ORG_ID,
+          id: "req_1",
+          flowKind: "demo",
+          flowId: "demo",
+          actionName: "run",
+          sessionId: "s",
+          tenantId,
+          userId: "u",
+          source: "http",
+          status: "interrupted",
+          startedAtMs: now,
+          state: {},
+          version: 0,
+          createdAt: now,
+          updatedAt: now
+        },
+        "any"
+      );
+    }
+
+    function getStatus(router: ReturnType<typeof createRouter>["router"], tenantId?: string) {
+      const headers: Record<string, string> = {};
+      if (tenantId !== undefined) headers["x-tenant-id"] = tenantId;
+      return router.GET(
+        new Request("http://localhost/api/flows/demo/requests/req_1/status", { headers }),
+        { params: { path: ["demo", "requests", "req_1", "status"] } }
+      );
+    }
+
+    it("serves the owner's tenant, with the session id", async () => {
+      const { router, stores } = createRouter();
+      await seedRequest(stores, "acme");
+      const res = await getStatus(router, "acme");
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ id: "req_1", sessionId: "s" });
+    });
+
+    it("404s another tenant's request", async () => {
+      const { router, stores } = createRouter();
+      await seedRequest(stores, "acme");
+      expect((await getStatus(router, "globex")).status).toBe(404);
+    });
+
+    it("404s a tenanted request read with no tenant header", async () => {
+      const { router, stores } = createRouter();
+      await seedRequest(stores, "acme");
+      expect((await getStatus(router)).status).toBe(404);
     });
   });
 

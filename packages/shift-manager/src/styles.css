@@ -45,6 +45,12 @@
     scrollbar-color: var(--border) transparent;
   }
 
+  /* The shell is exactly the viewport and scrolls inside its panes; the page itself never scrolls vertically. */
+  html,
+  body {
+    @apply h-full overflow-y-hidden;
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
   }

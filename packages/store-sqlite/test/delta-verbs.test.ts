@@ -12,6 +12,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
+import type { JsonObject } from "@flow-state-dev/core/types";
 import type { SessionRecord } from "@flow-state-dev/engine";
 import { initializeSchema } from "../src/schema";
 import { createSQLiteSessionStore } from "../src/session-store";
@@ -19,7 +20,7 @@ import { createSQLiteSessionStore } from "../src/session-store";
 function makeSession(
   id: string,
   version: number,
-  state: Record<string, unknown> = {}
+  state: JsonObject = {}
 ): SessionRecord {
   const ts = Date.now();
   return {
@@ -50,7 +51,7 @@ describe("SQLite adapter — delta verb contract (FIX-405)", () => {
   async function seed(
     store: ReturnType<typeof createSQLiteSessionStore>,
     id: string,
-    state: Record<string, unknown> = {}
+    state: JsonObject = {}
   ): Promise<void> {
     await store.set(id, makeSession(id, 0, state), "any");
   }

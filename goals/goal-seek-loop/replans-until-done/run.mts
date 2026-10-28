@@ -35,19 +35,13 @@ import {
   type Verdict,
 } from "@flow-state-dev/orchestration/task-board";
 import type { TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
+import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
 import { z } from "zod";
-import { join } from "node:path";
 import {
   DEFAULT_MODEL,
-  KITCHEN_SINK,
-  answerText,
-  captureIntentOverrides,
   goalAttempts,
   goalSessionId,
-  goalTmpDir,
   loadFixture,
-  readCapture,
-  runFsdev,
   runGoal,
   silentLogger,
   stripIntentOverrides,
@@ -70,13 +64,6 @@ const fx = loadFixture<{
 
 // A bare `createModelResolver()` (no declared intents) rejects a pinned intent
 // ladder; clear it so the resolver auto-wires the gateway from the env.
-//
-// But `stripIntentOverrides()` mutates the PARENT env, and the second arm
-// below shells out to kitchen-sink deliberately WITHOUT `--model` so it runs on
-// the app's configured ladder. Left alone, that child would inherit the
-// stripped env and silently resolve a different model than the caller pinned.
-// So snapshot the ladder first and hand it back to that child explicitly.
-const CALLER_LADDER = captureIntentOverrides();
 stripIntentOverrides();
 
 /** The loop's terminal observability signal — the graded surface. */
@@ -292,8 +279,8 @@ async function runLoopOnce(attempt: number): Promise<Observation> {
 
 /**
  * Second arm (goal.md → Signal): drive the RE-EXPRESSED `planAndExecute` — the
- * shipped pattern that now runs on `goalSeekLoop` — through `fsdev run` against
- * a real model, and confirm a multi-step plan completes and synthesizes.
+ * shipped pattern that runs on `goalSeekLoop` — against a real model, and
+ * confirm a multi-step plan completes and synthesizes.
  *
  * The primitive arm above proves the loop converges in isolation; this proves
  * the re-expression did not break the pattern built on it. Asserts the run
@@ -301,39 +288,40 @@ async function runLoopOnce(attempt: number): Promise<Observation> {
  * `task-change` / `task-board-meta` components only that substrate emits), and
  * that a substantive answer came back.
  *
- * No `--model`: the app's own intent ladder decides, which is the realistic
- * path. (`structured-output` deliberately pins GLM 5.2 to reproduce a
- * model-specific coercion bug — a different claim, not this one.)
+ * The pattern is built from its public subpath with the defaults a consumer
+ * gets, plus `enableReplanning: true` so its LLM evaluator, the judge
+ * `goalSeekLoop` gates on, is live. No app ships a plan-and-execute surface any
+ * more (kitchen-sink's chat agent dropped its thinking style), so the pattern
+ * runs directly through `runAction`, the way the primitive arm does.
  */
-function runPlanAndExecuteArm(): string[] {
-  const capture = join(goalTmpDir("gsl-pae"), "pae.json");
-  const exit = runFsdev({
-    app: KITCHEN_SINK,
-    flow: "chat-agent",
-    action: "run",
-    input: {
-      message: `Write a short briefing on ${fx.subject} covering ${fx.coveredAspect} and ${fx.missingAspect}.`,
-      mode: "ask",
-      thinkingStyle: "plan-and-execute",
-    },
-    capture,
-    quiet: true,
-    silent: true,
-    // Restore the caller's intent ladder, which the in-process strip above
-    // removed from the parent env. This arm must run on the app's own ladder.
-    env: CALLER_LADDER,
+async function runPlanAndExecuteArm(): Promise<string[]> {
+  const pae = planAndExecute({
+    name: "gsl-pae",
+    model: MODEL,
+    enableReplanning: true,
   });
-  if (exit !== 0) return [`plan-and-execute arm: fsdev run exited ${exit}`];
+  const flow = defineFlow({
+    kind: "gsl-pae",
+    actions: { run: { block: pae as never, inputSchema: z.object({ goal: z.string() }) } },
+  })({ id: "gsl-pae" });
 
-  const parsed = readCapture(capture);
+  const res = await runAction({
+    orgId: DEFAULT_ORG_ID,
+    flow,
+    actionName: "run",
+    input: {
+      goal: `Write a short briefing on ${fx.subject} covering ${fx.coveredAspect} and ${fx.missingAspect}.`,
+    },
+    userId: "goal-user",
+    sessionId: goalSessionId("gsl-pae"),
+    stores: createInMemoryStores(),
+    runtimeConfig: { modelResolver: createModelResolver(), logger: silentLogger } as never,
+  });
+
+  if (res.error) return [`plan-and-execute arm: run did not complete: ${res.error.message}`];
+
   const failures: string[] = [];
-  if (parsed.result.success !== true) {
-    failures.push(
-      `plan-and-execute arm: run did not complete: ` +
-        `${JSON.stringify(parsed.result.error ?? "unknown")}`,
-    );
-  }
-  const planItems = parsed.items.filter(
+  const planItems = (res.items as { type?: string; component?: string }[]).filter(
     (i) =>
       i.type === "component" &&
       (i.component === "task-change" || i.component === "task-board-meta"),
@@ -344,7 +332,7 @@ function runPlanAndExecuteArm(): string[] {
         "re-expressed pattern did not run on the task-board substrate",
     );
   }
-  const answer = answerText(parsed);
+  const answer = typeof res.output === "string" ? res.output : "";
   if (answer.length < 200) {
     failures.push(
       `plan-and-execute arm: answer too short (${answer.length} chars) — the plan did not synthesize`,
@@ -402,7 +390,7 @@ await runGoal(async (failures) => {
     if (term.reason === "converged" && term.iterations >= 2 && last.finalTaskCount > SEEDED_TASK_COUNT) {
       // The primitive converged. Now the second arm goal.md prescribes: the
       // re-expressed planAndExecute built on this loop still completes.
-      const paeFailures = runPlanAndExecuteArm();
+      const paeFailures = await runPlanAndExecuteArm();
       if (paeFailures.length > 0) return { failures: paeFailures, evidence: "" };
       return {
         failures: [],

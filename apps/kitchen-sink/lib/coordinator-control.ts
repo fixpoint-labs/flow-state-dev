@@ -7,12 +7,13 @@
  * - `answers-go-on` reads every coordinator with `rounds: 1`, so each answer
  *   goes back out to the other delegates. A check that an answer wakes nobody
  *   must FAIL under it.
- * - `no-delivery` registers the coordinator flow with no flow a delegate takes
- *   a post on, so a post reaches nobody. A check that the routed specialist
- *   runs must FAIL under it.
+ * - `no-delivery` registers the `agent` flow as one whose workers take no
+ *   task, so the delegate check refuses every specialist and a message
+ *   reaches nobody. A check that the routed specialist runs must FAIL under
+ *   it.
  *
  * Each changes what the app hands the package, never the package: a worker's
- * settings as the files are read, or the flows the coordinator is built with.
+ * settings as the files are read, or the flows it registers.
  *
  * Honoured only under `KITCHEN_SINK_TEST_MODE=1` (`goalControl`), so a control
  * can never reach a deployed build.
@@ -34,7 +35,13 @@ export function coordinatorWorkersUnderControl(workers: WorkerManifest[]): Worke
   });
 }
 
-/** The flows a delegate takes a post on, or none under `no-delivery`. */
-export function delegateFlowsUnderControl<T>(flows: T[]): T[] {
-  return goalControl() === "no-delivery" ? [] : flows;
+/**
+ * The `agent` flow as registered: itself, or, under `no-delivery`, the same
+ * flow with no task entry, registered as a manager only, so no worker on it
+ * is a delegate (FIX-2083: a delegate is a worker whose flow takes tasks).
+ */
+export function agentFlowUnderControl<T extends object>(agent: T): T | { flow: T; roles: ["manager"] } {
+  if (goalControl() !== "no-delivery") return agent;
+  const mint = (...args: unknown[]) => (agent as unknown as (...a: unknown[]) => unknown)(...args);
+  return { flow: Object.assign(mint, agent, { task: { actions: {} } }) as unknown as T, roles: ["manager"] };
 }

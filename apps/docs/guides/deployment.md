@@ -64,7 +64,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 GOOGLE_API_KEY=AIza...
 ```
 
-Set whichever keys match the models your flows use. If a flow references `"openai/gpt-5-mini"`, the server needs `OPENAI_API_KEY`. That's it.
+Set whichever keys match the models your flows use. If a flow references `"openai/gpt-6-luna"`, the server needs `OPENAI_API_KEY`. That's it.
 
 Never commit API keys. Use your platform's secrets management: `.env.local` for development, environment variable settings in your platform's dashboard for production.
 
@@ -80,7 +80,7 @@ import myFlow from "./flows/my-flow/flow";
 
 export const flowstate = createFlowState({
   flows: { myFlow },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: inMemoryStores() } },
 });
 ```

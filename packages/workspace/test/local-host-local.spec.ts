@@ -3,9 +3,11 @@
  * names.
  *
  * Such a repository is used as it stands: the run's branch is cut in it and
- * stays there, with no clone and no fetch. That is what lets a host that has
- * always pointed runs at one working repository keep its branches where they
- * were. Every git process is counted, as in the remote suite.
+ * stays there, with no clone. That is what lets a host that has always
+ * pointed runs at one working repository keep its branches where they were.
+ * These repositories are clones of a bare path, so a new branch's base has an
+ * upstream, and one fetch of it (`local-host-upstream.spec.ts`); a retry
+ * fetches nothing. Every git process is counted, as in the remote suite.
  */
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -21,7 +23,9 @@ vi.mock("../src/exec", async (importOriginal) => {
 });
 
 const spawned = vi.mocked(run);
-const gitCommands = () => spawned.mock.calls.map(([, args]) => args[0]);
+/** The git subcommand, past any leading `-c <key>=<value>` pairs. */
+const gitCommands = () =>
+  spawned.mock.calls.map(([, args]) => args.find((arg, i) => arg !== "-c" && args[i - 1] !== "-c"));
 const noSource = () => ({ kind: "refused" as const, reason: "unused", message: "unused" });
 
 let root: string;
@@ -66,7 +70,8 @@ describe("a repository the operator names on this machine", () => {
     expect(git(place.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("fsd/run-1");
     expect(existsSync(join(root, ".clones"))).toBe(false);
     expect(gitCommands()).not.toContain("clone");
-    expect(gitCommands()).not.toContain("fetch");
+    // One fetch: the base's own upstream, before the new branch is cut.
+    expect(gitCommands().filter((command) => command === "fetch")).toHaveLength(1);
     expect(place.repo).toMatchObject({ remote: repo, clone: repo, created: true, baseRef: "main" });
   });
 

@@ -41,7 +41,7 @@ import { generator } from "@flow-state-dev/core";
 
 const assistant = generator({
   name: "assistant",
-  model: "openai/gpt-5.5",
+  model: "openai/gpt-6.1-sol",
   prompt: "You can run bash commands to read and write files.",
   uses: [artifactsCap, skillsCap, bashCap],
 });

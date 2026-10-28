@@ -13,6 +13,9 @@ import type { ModelResolver } from "./model";
 import type { RequestHost } from "./request-host";
 import type { DispatchAddress, DispatchSeam } from "./dispatch";
 import { DISPATCH_SEAM } from "./dispatch";
+import type { RequestEndSeam } from "./request-end";
+import { REQUEST_END_SEAM } from "./request-end";
+import { REQUEST_RESUME_SEAM, type RequestResume } from "./request-resume";
 import type { TracingLevel } from "../helpers/tracing-level";
 import type { Content } from "../items/content";
 import type {
@@ -24,6 +27,7 @@ import type {
   RouterDecisionItem,
   StateSnapshotItem
 } from "../items/types";
+import type { RuntimeItem } from "../items/internal";
 import type { JsonObject } from "../schema/common";
 import type { GeneratorModelResult, GeneratorModelUsage, ModelIdentity } from "./model";
 
@@ -82,6 +86,8 @@ export type BlockTraceCapturePayload = {
     startedAt?: number;
     completedAt?: number;
     duration?: number;
+    /** `output` phase: the block's output came from a `.rescue()` handler. */
+    rescued?: true;
     error?: { message: string; code?: string };
   };
 };
@@ -121,7 +127,7 @@ export interface ResponseEmitterHandle {
    * Used by sequencer ops (e.g. `.waitForCondition`) to evaluate predicates
    * over already-flushed items before subscribing for future ones.
    */
-  getItems(): readonly OutputItem[];
+  getItems(): readonly RuntimeItem[];
   /**
    * O(1) count of items currently tracked by this response. Equivalent to
    * `getItems().length` but without materializing or ordering the snapshot —
@@ -148,9 +154,9 @@ export interface ResponseEmitterHandle {
    * `.waitForCondition` timeout. Filters MUST be cheap and SHOULD NOT throw.
    */
   subscribeToItems(
-    listener: (item: OutputItem, kind: "added" | "updated" | "done") => void,
+    listener: (item: RuntimeItem, kind: "added" | "updated" | "done") => void,
     options?: {
-      filter?: (item: OutputItem, kind: "added" | "updated" | "done") => boolean;
+      filter?: (item: RuntimeItem, kind: "added" | "updated" | "done") => boolean;
     }
   ): () => void;
 }
@@ -521,6 +527,17 @@ export interface BlockContext<
   suspend?(options: import("../errors/suspension-error").SuspendOptions): Promise<unknown>;
 
   /**
+   * Stop the request until the user answers: an approval, a review or an
+   * input (FIX-2129). Returns the answer, or `{ cancelled: true }` when the
+   * task was cancelled while it waited; at a review's or an input's deadline
+   * it throws `SuspensionTimeoutError`, and an approval reads as a no. A stop
+   * with no `deadline` takes the host's setting for a user's stop, else waits
+   * until answered, stopped or cancelled. Needs durable execution, as
+   * `suspend` does. See `types/wait-for-user.ts`.
+   */
+  waitForUser: import("./wait-for-user").WaitForUser;
+
+  /**
    * Manually save a checkpoint at the current execution point. Normally
    * checkpoints are automatic at sequencer step boundaries; this is for
    * blocks that perform expensive work within a single step and want
@@ -554,10 +571,23 @@ export interface BlockContext<
   /**
    * @internal The runtime's dispatch operation, attached under a symbol key so
    * it is not a named member any handler body reaches. Read only by
-   * `dispatchThroughSeam`, which `dispatcher()` and the task board's hand-off
+   * `dispatchThroughSeam`, which `dispatcher()` and the task board's dispatch
    * call — the blocks that carry a `DispatchAddress`. See `types/dispatch.ts`.
    */
   [DISPATCH_SEAM]?: DispatchSeam;
+
+  /**
+   * @internal The running request's request-end registry (FIX-2077), under a
+   * symbol key. Read only by `onRequestEnded`, which a framework package calls
+   * to run after the request's last drain. See `types/request-end.ts`.
+   */
+  [REQUEST_END_SEAM]?: RequestEndSeam;
+
+  /**
+   * @internal How the running request resumed (FIX-2129), under a symbol key.
+   * Read only by `requestResumeOf`. See `types/request-resume.ts`.
+   */
+  [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined;
 
   /** @internal Server-side instrumentation hooks. Not part of the public API. */
   _runtimeHooks?: {
@@ -653,10 +683,11 @@ export interface BlockContext<
    * core `executeBlock` replay short-circuit calls this before returning the
    * cached output so a later sibling's `ctx.getBlockOutput(replayedBlock)`
    * resolves. Trace-free and scope-free: it neither runs the body nor emits a
-   * trace (the prior run's trace is canonical). No-op in unit contexts that
-   * don't provide it.
+   * trace (the prior run's trace is canonical). `rescued` carries the recorded
+   * `.rescue()` outcome so `ctx.wasRescued()` reads the same after a resume.
+   * No-op in unit contexts that don't provide it.
    */
-  _registerReplayedChild?(parent: ExecutionParent, output: unknown): void;
+  _registerReplayedChild?(parent: ExecutionParent, output: unknown, rescued?: boolean): void;
 
   /**
    * @internal Reserve the next synchronous `itemIndex` for a runtime-emitted
@@ -699,6 +730,26 @@ export interface BlockContext<
       transient?: boolean;
     }
   ): Promise<void>;
+
+  /**
+   * @internal Emit a message item and AWAIT its delivery: the message twin of
+   * {@link _emitComponentAwaited}, settling once the item has been added and
+   * completed and rejecting rather than swallowing. Absent in a hand-built
+   * context; a caller that depends on it treats absence as a failure.
+   */
+  _emitMessageAwaited?(
+    text: string,
+    options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }
+  ): Promise<void>;
+
+  /**
+   * @internal Resolve once every item this request has completed so far is
+   * written to the request store (`flushItems` on the request's id). An item
+   * emitted with an awaited emitter is completed when that emitter settles, so
+   * awaiting the emitter, then this, is the barrier for "the item is stored"
+   * before a write that says it was. Absent in a hand-built context.
+   */
+  _flushItems?(): Promise<void>;
 
   /**
    * @internal Top up the per-scope resource caches with an action's or block's
@@ -827,21 +878,11 @@ export interface BlockContext<
 }
 
 /**
- * A permissive, variance-friendly alias for `BlockContext` — typed where it
- * matters (the session scope) and permissive everywhere else.
- *
- * Use this for helper functions that take a block's `ctx` as a parameter:
- * the full `BlockContext`'s `TResources` generic is invariant on
- * `ResourceRegistry`, so a handler whose `ctx.resources` is inferred as
- * `ResourceRegistry<{ memos: ... }>` can't be assigned to a parameter typed
- * `BlockContext<unknown, MyState>` (the default `ResourceRegistry<Record<...>>`
- * isn't a supertype of the narrow inferred form). `LooseBlockContext` sidesteps
- * the variance trap by leaving `resources` permissive — the helper accepts any
- * block's ctx, and the call site retains its narrower typing internally.
- *
- * When the helper actually needs typed resources, narrow per call site or
- * declare a stricter ctx shape inline. `LooseBlockContext` is for the
- * common case where the helper only touches `ctx.session`.
+ * Permissive alias for `BlockContext`: session state stays typed, every other
+ * slot does not. A resource-declaring ctx is already a plain `BlockContext`.
+ * Use this when a helper only reads `ctx.session` and the rest of the
+ * context's type arguments would still reject the call. Narrow at the call
+ * when the helper needs typed resources.
  */
 export type LooseBlockContext<
   TSessionState extends object = Record<string, unknown>,
@@ -1092,10 +1133,10 @@ export interface BlockDefinition<
   /**
    * The address this block dispatches to, when it is a dispatcher.
    *
-   * Stamped by `dispatcher()` (and by the task board on its hand-off block)
+   * Stamped by `dispatcher()` (and by the task board on its dispatch block)
    * and carried across every rebuild path, so `defineFlow` can walk the graph
    * and refuse an address that resolves no entry, and a board can read which
-   * of its assignees hand off without running anything. `undefined` on every block
+   * of its assignees dispatch without running anything. `undefined` on every block
    * that dispatches nothing, which is every block that computes.
    */
   dispatch?: DispatchAddress;

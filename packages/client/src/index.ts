@@ -1,38 +1,58 @@
 /**
- * Public API surface for framework transport clients and stream utilities.
+ * Public API surface: the one client (`createClient`) and the pure stream
+ * helpers that read a stream it returned.
  */
 export {
   createClient,
-  createTypedClient,
+  type ActionInputOf,
+  type ActionNameOf,
   type Client,
   type CreateClientOptions,
-  type CreateTypedClientOptions
-} from "./action-client/executeAction";
-
-export {
-  createSessionClient,
-  type CreateSessionClientOptions,
+  type CreateCollectionItemOptions,
   type CreateSessionOptions,
+  type FlowHandle,
   type GetSessionStateOptions,
+  type InterruptedRequest,
+  type ListChildSessionsOptions,
+  type ListCollectionItemsOptions,
   type ListSessionRequestsOptions,
   type ListSessionsOptions,
-  type ListChildSessionsOptions,
-  type SessionClient,
-  type UpdateSessionMetadataOptions
-} from "./session-client/sessions";
+  type RequestHandle,
+  type RequestStreamOptions,
+  type ResourceContentResponse,
+  type ResourcesApi,
+  type ResumeSuspensionBody,
+  type AnswerSuspensionBody,
+  type SendOptions,
+  type SentRequest,
+  type SessionsApi,
+  type StreamOption,
+  type TranscribeRequest,
+  type TranscribeResponse,
+  type TypedFlow,
+  type UntypedFlow,
+  type UpdateResourceContentOptions,
+  type UpdateSessionMetadataOptions,
+  type UserStreamOptions
+} from "./client";
 
 export { sessionQueryFor } from "./session-client/session-query";
+export {
+  harnessLines,
+  sendHarnessLine,
+  steerRunningTurn,
+  type HarnessLines,
+  type HarnessLineOutcome,
+  type HarnessLineSender,
+  type SteerRunningTurnOptions
+} from "./harness-line";
 
 export {
-  createSSEClient,
   createSSEClientFromResponse,
-  createSessionSSEClient,
-  createUserSSEClient,
-  type CreateSSEClientOptions,
   type CreateSSEClientFromResponseOptions,
-  type CreateSessionSSEClientOptions,
-  type CreateUserSSEClientOptions
-} from "./stream-client/createSSEClient";
+  type SessionStreamOptions,
+  type StreamResumeOptions
+} from "./stream-client/streams";
 
 export {
   createRequestStreamStore,
@@ -48,15 +68,6 @@ export {
 } from "./stream-client/bind-store-to-callbacks";
 
 export {
-  createResourceClient,
-  type CreateResourceClientOptions,
-  type ResourceClient,
-  type ResourceContentResponse,
-  type CreateCollectionItemOptions,
-  type UpdateResourceContentOptions
-} from "./resource-client/resources";
-
-export {
   readEveryCollectionPage,
   CollectionReadStoppedError,
   COLLECTION_READ_MAX_PAGES,
@@ -64,23 +75,8 @@ export {
   type ReadEveryCollectionPageOptions
 } from "./resource-client/read-every-page";
 
-export {
-  createRecoveryClient,
-  type CreateRecoveryClientOptions,
-  type CheckInterruptedOptions,
-  type InterruptedRequestSummary,
-  type RetryRequestOptions,
-  type RetryRequestResult,
-  type ContinueRequestOptions,
-  type ContinueRequestResult,
-  type ResumeSuspensionBody,
-  type ResumeSuspensionResult,
-  type RecoveryClient
-} from "./recovery-client/recovery";
-
 export type {
   ClientFetch,
-  ClientTransportOptions,
   CollectionSnapshotEntry,
   DebugClientView,
   DebugCollectionItem,
@@ -102,8 +98,6 @@ export type {
   ExecuteActionRequestBody,
   ExecuteActionResponse,
   FlowCapabilities,
-  FlowClient,
-  FlowLike,
   FlowListEntry,
   ActionInputSchema,
   ActionFieldSchema,
@@ -112,7 +106,6 @@ export type {
   RequestSSECallbacks,
   RequestStreamHandle,
   ResourceSnapshotEntry,
-  SendActionOptions,
   SessionDetail,
   SessionRequestResult,
   SessionRequestSummary,
@@ -120,7 +113,6 @@ export type {
   SessionStreamHandle,
   SessionStateSnapshotResponse,
   SessionSummary,
-  TypedActionMethods,
   UserSSECallbacks,
   UserStreamHandle,
   ChildSessionStatus,
@@ -128,12 +120,5 @@ export type {
 } from "./types";
 
 export { ClientHttpError } from "./types";
-
-export {
-  transcribe,
-  type TranscribeOptions,
-  type TranscribeRequest,
-  type TranscribeResponse
-} from "./transcription/transcribe";
 
 export const clientPackageMarker = "@flow-state-dev/client";

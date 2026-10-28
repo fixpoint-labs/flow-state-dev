@@ -61,7 +61,7 @@ must fail, which is what makes its pass mean something.
 
 ## What's in the box
 
-![In the box: the dev profile with two shared projects, FSD and Shift Manager, a real coding agent and Linear on both; the host mapping a project's remote to this machine's checkout, worktrees cut from it; MCP servers as a project setting, read when a coding run starts. Unchanged beside it: the DevTeam profile, served by --config, a project's repository as a remote, dispatchTask and the hand-over tools. Replaced in one line: the default config of shift-manager:dev, and the scripted coder in the dev profile. Not built, below a fence: an issue picker, push and pull request, per-person Linear sign-in, MCP for workers that don't code, a migration](figures/end-state.svg)
+![In the box: the dev profile with two shared projects, FSD and Shift Manager, a real coding agent and Linear on both; the host mapping a project's remote to this machine's checkout, worktrees cut from it; MCP servers as a project setting, read when a coding run starts and connected by FSD with the key each person sets on Settings. Unchanged beside it: the DevTeam profile, served by --config, a project's repository as a remote, dispatchTask and the hand-over tools. Replaced in one line: the default config of shift-manager:dev, and the scripted coder in the dev profile. Not built, below a fence: an issue picker, push and pull request, Linear sign-in by OAuth, MCP for workers that don't code, a migration](figures/end-state.svg)
 
 The box is one profile and two settings a host can act on. The fence keeps this a dev setup, not
 a new integration product ([ER-9](BUSINESS-RULES.md#what-no-child-may-do)).

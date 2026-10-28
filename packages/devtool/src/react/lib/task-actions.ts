@@ -3,10 +3,11 @@
  *
  * The DevTool changes a task only through the flow's own actions, so a row
  * offers exactly what the flow exposes. The signal is the input: an action
- * whose input requires a string `taskId` acts on one task. That covers the
- * framework's task tools and an app's own actions (an `answer` for a parked
- * row) alike. A board's generated `dispatchTask`, whose `taskId` is optional,
- * is offered too: on a row it starts that row.
+ * whose input requires a string `taskId` acts on one task, and so does a
+ * board's generated `getTask_<board>` or `updateTask_<board>`, which names it
+ * `id` ({@link taskIdField}). That covers the framework's task tools and an
+ * app's own actions alike, and leaves an app's
+ * unrelated `{ id }` action, such as a `deleteProject`, off task rows.
  *
  * A board's task tools carry the board in their name, `<tool>_<suffix>`, and
  * are offered only on that board's rows; so is any action whose name ends with
@@ -26,41 +27,56 @@ export function taskToolSuffix(collectionId: string): string {
   return collectionId.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
-function takesTaskId(schema: ActionInputSchema | undefined, optional = false): boolean {
-  if (schema === undefined || schema.type !== "object") return false;
-  const field = schema.fields.taskId;
-  return field !== undefined && field.type === "string" && (field.required || optional);
+/** The generated task tools that name their task `id` (FIX-2081): `getTask_<board>`, `updateTask_<board>`. */
+const ID_TOOLS = ["getTask", "updateTask"] as const;
+
+/**
+ * Whether `action` is a board's generated `getTask` or `updateTask`: one of
+ * {@link ID_TOOLS} on a board in `generated` when given, else on any suffix.
+ */
+function isIdTool(action: string, generated?: ReadonlySet<string>): boolean {
+  const tool = ID_TOOLS.find((name) => action.startsWith(`${name}_`));
+  if (tool === undefined) return false;
+  return generated === undefined || generated.has(action.slice(tool.length + 1));
 }
 
 /**
- * The generated tool that starts a recorded row, `dispatchTask_<suffix>`. Its
- * `taskId` is optional, since a goal files a new task instead, so the required
- * `taskId` rule alone would never offer it; on a row it starts that row.
+ * The field `action` names its task in: `taskId` (an app's own action's),
+ * which wins when both are present; else
+ * `id`, only for a board's generated `getTask` or `updateTask`. `undefined`
+ * when it names none, required unless `optional`.
+ *
+ * @param generated The board suffixes the flow's generated families name;
+ *   omitted, any `getTask_` or `updateTask_` action counts.
  */
-const DISPATCH_PREFIX = "dispatchTask_";
+export function taskIdField(
+  action: string,
+  schema: ActionInputSchema | undefined,
+  optional = false,
+  generated?: ReadonlySet<string>
+): "id" | "taskId" | undefined {
+  if (schema === undefined || schema.type !== "object") return undefined;
+  const takes = (name: "id" | "taskId"): boolean => {
+    const field = schema.fields[name];
+    return field !== undefined && field.type === "string" && (field.required || optional);
+  };
+  if (takes("taskId")) return "taskId";
+  if (takes("id") && isIdTool(action, generated)) return "id";
+  return undefined;
+}
 
 /**
- * Eight of the task tools `taskToolActions` generates for a board, always
- * together. It also generates `answerTask`; these eight are enough to find a
- * board's family.
+ * The filer's four task tools `taskToolActions` generates for a board, always
+ * together (FIX-2081): enough to find a board's family.
  */
-const TASK_TOOLS = [
-  "addTask",
-  "assignTask",
-  "completeTask",
-  "failTask",
-  "blockTask",
-  "cancelTask",
-  "updateTask",
-  "listTasks",
-] as const;
+const TASK_TOOLS = ["createTask", "getTask", "listTasks", "updateTask"] as const;
 
 /**
  * The board suffixes the flow's own action list names: every `<suffix>` for
- * which all eight `<tool>_<suffix>` above are actions. `taskToolActions` generates
+ * which all four `<tool>_<suffix>` above are actions. `taskToolActions` generates
  * them together, so a whole family is a board's tools even when this
  * session has no rows on that board (a sibling session sharing the flow
- * kind, or a board with no tasks yet). An app's own `cancelTask_now`
+ * kind, or a board with no tasks yet). An app's own `updateTask_now`
  * comes with no family, so it names no board.
  */
 function generatedSuffixes(actions: readonly string[]): string[] {
@@ -79,10 +95,10 @@ function generatedSuffixes(actions: readonly string[]): string[] {
  * The boards an action can belong to are the ones the tab lists, plus every
  * board the flow's generated task tools name (see `generatedSuffixes`). An
  * action whose name ends with `_<suffix>` of one of them belongs to that board
- * alone; when several match (`cancelTask_feature_work` ends with `_work` too),
+ * alone; when several match (`updateTask_feature_work` ends with `_work` too),
  * the longest wins. One whose name ends with no known board's suffix is
  * generic and offered on every board, whatever its name starts with: an app
- * may name its own action `cancelTask_now`.
+ * may name its own action `updateTask_now`.
  *
  * @param actions The flow's public action names.
  * @param schemas Their input schemas, as the flow list reports them.
@@ -100,8 +116,7 @@ export function taskActionsFor(
   const suffixes = [...new Set([...[collectionId, ...boardIds].map(taskToolSuffix), ...generatedSuffixes(actions)])];
   const generated = new Set(generatedSuffixes(actions));
   return actions.filter((name) => {
-    const dispatches = name.startsWith(DISPATCH_PREFIX) && generated.has(name.slice(DISPATCH_PREFIX.length));
-    if (!takesTaskId(schemas?.[name], dispatches)) return false;
+    if (taskIdField(name, schemas?.[name], false, generated) === undefined) return false;
     const owner = suffixes
       .filter((suffix) => name.endsWith(`_${suffix}`))
       .reduce<string | undefined>((best, suffix) => (best === undefined || suffix.length > best.length ? suffix : best), undefined);

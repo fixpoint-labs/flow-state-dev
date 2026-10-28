@@ -38,7 +38,6 @@ import {
   ChevronRightIcon,
   CircleIcon,
   CircleSlashIcon,
-  EyeIcon,
   HelpCircleIcon,
   Loader2Icon,
   PauseCircleIcon,
@@ -89,15 +88,10 @@ const DEFAULT_STATUS_CONFIG: Record<string, StatusConfig> = {
     iconClassName: "text-info animate-spin",
     label: "In progress",
   },
-  blocked: {
+  held: {
     icon: PauseCircleIcon,
     iconClassName: "text-warning",
-    label: "Blocked",
-  },
-  parked: {
-    icon: EyeIcon,
-    iconClassName: "text-attention",
-    label: "Parked",
+    label: "Held",
   },
   completed: {
     icon: CheckCircle2Icon,
@@ -175,6 +169,12 @@ export type TaskPlanProps = {
    */
   statusConfig?: Record<string, StatusConfig>;
   /**
+   * Draws an app's own control on a task's row, beside its badges: a link
+   * into the task's session, say. The row's summary toggles it open, so a
+   * clickable control stops its event from reaching the summary.
+   */
+  renderTaskAction?: (task: Task) => React.ReactNode;
+  /**
    * Statuses to hide entirely. Defaults to `["cancelled"]` — most surfaces
    * don't need cancelled tasks in the chat-stream view.
    */
@@ -204,6 +204,7 @@ export function TaskPlan({
   items: itemsProp,
   groupByAssignee = false,
   statusConfig,
+  renderTaskAction,
   hiddenStatuses,
   title,
   hideEmpty,
@@ -273,8 +274,7 @@ export function TaskPlan({
       (entry) =>
         entry.task.status !== "pending" &&
         entry.task.status !== "in_progress" &&
-        entry.task.status !== "blocked" &&
-        entry.task.status !== "parked"
+        entry.task.status !== "held"
     );
   }, [state.boardMeta.status, state.tasks]);
 
@@ -361,6 +361,7 @@ export function TaskPlan({
               group={group}
               groupByAssignee={groupByAssignee}
               statusConfig={statusConfig}
+              renderTaskAction={renderTaskAction}
               taskWindows={taskWindows}
               onTaskOpenChange={handleTaskOpenChange}
             />
@@ -456,12 +457,14 @@ function TaskPlanSection({
   group,
   groupByAssignee,
   statusConfig,
+  renderTaskAction,
   taskWindows,
   onTaskOpenChange,
 }: {
   group: StatusGroup;
   groupByAssignee: boolean;
   statusConfig?: Record<string, StatusConfig>;
+  renderTaskAction?: (task: Task) => React.ReactNode;
   taskWindows: Map<string, OutputItem[]>;
   onTaskOpenChange: (taskId: string, open: boolean) => void;
 }) {
@@ -505,6 +508,7 @@ function TaskPlanSection({
                     key={entry.task.id}
                     entry={entry}
                     statusConfig={statusConfig}
+                    renderTaskAction={renderTaskAction}
                     windowItems={taskWindows.get(entry.task.id)}
                     onOpenChange={onTaskOpenChange}
                   />
@@ -520,6 +524,7 @@ function TaskPlanSection({
               key={entry.task.id}
               entry={entry}
               statusConfig={statusConfig}
+              renderTaskAction={renderTaskAction}
               windowItems={taskWindows.get(entry.task.id)}
               onOpenChange={onTaskOpenChange}
             />
@@ -537,11 +542,13 @@ function TaskPlanSection({
 function TaskPlanRow({
   entry,
   statusConfig,
+  renderTaskAction,
   windowItems,
   onOpenChange,
 }: {
   entry: TaskEntry;
   statusConfig?: Record<string, StatusConfig>;
+  renderTaskAction?: (task: Task) => React.ReactNode;
   windowItems?: OutputItem[];
   onOpenChange?: (taskId: string, open: boolean) => void;
 }) {
@@ -568,9 +575,7 @@ function TaskPlanRow({
   const showError = task.status === "errored" && task.error !== undefined;
   const showFeedback =
     task.feedback !== undefined &&
-    (task.status === "blocked" ||
-      task.status === "parked" ||
-      entry.kind === "retried");
+    (task.status === "held" || entry.kind === "retried");
   const deps = formatDeps(task);
 
   const isActive = task.status === "in_progress";
@@ -610,6 +615,7 @@ function TaskPlanRow({
       </span>
       {assigneeBadge}
       {retryBadge}
+      {renderTaskAction?.(task)}
       {deps !== null && (
         <span className="text-[10px] text-muted-foreground/60">
           ← {deps}

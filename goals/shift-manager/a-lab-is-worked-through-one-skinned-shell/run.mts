@@ -25,9 +25,11 @@
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/a-lab-is-worked-through-one-skinned-shell/run.mts
  * Parts:    GOAL_PART=a,b0,b,c,d,controls,part2,part3,part4 (default: all, in that order; an unknown part, or a run with no verdict, fails)
  * Controls: GOAL_CONTROLS=hardcoded-accent,… (default: all of them; an unknown name fails)
- * Needs:    a model key (leg a, and the real-model child checks), a signed-in
- *           Claude Code (a4's harness, and b0's writer through the `claude`
- *           CLI), Chromium, and `pnpm build:assets` for the devtool pages.
+ * Needs:    a model key (leg a, and the real-model child checks); a Claude
+ *           Code account for a4's harness (a sign-in, `ANTHROPIC_API_KEY` or
+ *           `CLAUDE_CODE_OAUTH_TOKEN`, as the Lab's start check reads; without
+ *           one leg a reads BLOCKED); a signed-in `claude` CLI for b0's writer;
+ *           Chromium; and `pnpm build:assets` for the devtool pages.
  */
 import { execFileSync, spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -36,6 +38,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { REPO_ROOT, goalTmpDir, runGoal } from "../../lib/index.mts";
 import { readShiftManagerTheme } from "../../lib/colour.mts";
+import { probeClaudeAccount } from "@flow-state-dev/claude-code/sdk";
+import { claudeCodeEnv } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { PENTEST_CONFIG, TREES, legA, legB, legC, staticFence, type LegCtx, type Report } from "./legs.mts";
 import { j3, j4, part4 } from "./parts.mts";
@@ -80,6 +84,22 @@ function legVerdict(id: string, prefix: string[], report: ReturnType<typeof coll
   const mine = report.failures.filter((f) => prefix.some((p) => f.signal === p || f.signal.startsWith(`${p}:`)));
   const notes = report.notes.filter((n) => prefix.some((p) => n.startsWith(`${p}:`) || n.startsWith(`${p} `)));
   verdict(id, mine.length === 0, mine.length === 0 ? "PASS" : `FAIL (${mine.length})`, [...mine.map((f) => `✗ [${f.signal}] ${f.why}`), ...notes]);
+}
+
+/**
+ * Why leg a can't run here, or null when it can. Leg a serves DevTeam on
+ * Claude Code, and the Lab asks Claude Code for an account before it listens
+ * (FIX-1904's check), so this asks the same probe over the same environment.
+ * Leg a's server gets this process's environment plus the harness choice and
+ * scratch paths (`startDevTeam`), none of them a credential, so the two agree.
+ * No account is this environment, not a finding: leg a and the control signals
+ * on it read BLOCKED. A missing Agent SDK is a broken checkout, so it throws.
+ */
+async function claudeCodeBlocked(): Promise<string | null> {
+  const account = await probeClaudeAccount({ env: claudeCodeEnv() });
+  if (account.status === "account") return null;
+  if (account.status === "sdk-missing") throw new Error(`leg a: ${account.reason}`);
+  return `${account.reason}; sign in to Claude Code, or set ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN`;
 }
 
 // ---- builds --------------------------------------------------------------------
@@ -311,7 +331,7 @@ const CONTROLS: Control[] = [
 /** Every name GOAL_CONTROLS may select: today's main, then each control. */
 const CONTROL_NAMES = ["todays-main", ...CONTROLS.map((c) => c.name)];
 
-async function controls(only: string[] | null): Promise<void> {
+async function controls(only: string[] | null, blockedA: string | null): Promise<void> {
   // Today's main: Shift Manager is absent, so legs a and b can't start; c's static half stays green.
   if (only === null || only.includes("todays-main")) {
     const absent = ["packages/shift-manager/package.json", "labs/app-lab/package.json"].every((p) => {
@@ -340,8 +360,14 @@ async function controls(only: string[] | null): Promise<void> {
   for (const control of CONTROLS) {
     if (only !== null && !only.includes(control.name)) continue;
     // GOAL_CONTROL_LEGS narrows a rerun to some legs; only their signals are expected red (a signal's first letter is its leg).
-    const legs = control.legs.filter((l) => process.env.GOAL_CONTROL_LEGS === undefined || process.env.GOAL_CONTROL_LEGS.split(",").map((s) => s.trim()).includes(l));
+    const asked = control.legs.filter((l) => process.env.GOAL_CONTROL_LEGS === undefined || process.env.GOAL_CONTROL_LEGS.split(",").map((s) => s.trim()).includes(l));
+    // Leg a can't start without a Claude Code account; the control runs the rest, graded on their signals.
+    const legs = blockedA === null ? asked : asked.filter((l) => l !== "a");
     const must = control.must.filter((s) => legs.includes(s[0] as "a" | "b" | "c"));
+    if (must.length === 0 && blockedA !== null && asked.includes("a")) {
+      verdict(`control ${control.name}`, false, `BLOCKED: its signals ${control.must.join(", ")} sit on leg a, which can't start here: ${blockedA}`);
+      continue;
+    }
     if (must.length === 0) {
       verdict(`control ${control.name}`, false, `WRONG: GOAL_CONTROL_LEGS=${process.env.GOAL_CONTROL_LEGS} selects none of the legs its signals ${control.must.join(", ")} sit on`);
       continue;
@@ -377,7 +403,7 @@ async function controls(only: string[] | null): Promise<void> {
     verdict(
       `control ${control.name}`,
       ok,
-      ok ? `FAIL (expected) at ${must.join(" + ")} only${legs.length < control.legs.length ? ` (legs ${legs.join(", ")})` : ""}` : `WRONG: ${missing.length > 0 ? `stayed green at ${missing.join(", ")}` : ""}${missing.length > 0 && stray.length > 0 ? "; " : ""}${stray.length > 0 ? `also red at ${stray.join(", ")}` : ""}`,
+      ok ? `FAIL (expected) at ${must.join(" + ")} only${legs.length < control.legs.length ? ` (legs ${legs.join(", ")})` : ""}${legs.length < asked.length ? `; leg a BLOCKED: ${blockedA}` : ""}` : `WRONG: ${missing.length > 0 ? `stayed green at ${missing.join(", ")}` : ""}${missing.length > 0 && stray.length > 0 ? "; " : ""}${stray.length > 0 ? `also red at ${stray.join(", ")}` : ""}`,
       [
         ...report.failures.map((f) => `✗ [${f.signal}] ${f.why}`),
         ...[built.themed.diff, built.noTheme.diff].filter(Boolean).map((d) => `patch:\n${d}`),
@@ -398,8 +424,8 @@ const CHILDREN: Child[] = [
   { id: "P3.1 design-system", run: "goals/design-system/skins-reused-components-from-one-token-set/run.mts", control: "hardcoded-accent", must: /b:themed[^\n]*tool:awaiting/, allowed: /tool:awaiting|b:themed summary — 1 components: tool\.tsx/ },
   // P3.2: each child's merged goal check, with its controls.
   { id: "P3.2 FIX-1662 it-opens-a-lab", run: SM("it-opens-a-lab") },
-  // Written-in seats leave multi-seat-collab's parked row with no seat, so its empty Inbox counts no worker
-  // on call and its task composer finds no door: both follow from the names, as the goal records.
+  // Written-in seats leave multi-seat-collab's parked row with no seat, so its task composer finds no
+  // door: that follows from the names, as the goal records.
   { id: "P3.2 FIX-1662 it-opens-a-lab", run: SM("it-opens-a-lab"), control: "static-names", must: /\[multi-seat-collab\] TEAMS equals the store's seats/, allowed: /\[multi-seat-collab\] (TEAMS equals the store's seats|Inbox equals the store's pending asks|the post appears on screen)/ },
   { id: "P3.2 FIX-1662 it-opens-a-lab", run: SM("it-opens-a-lab"), control: "optimistic-post", must: /the post is in the stored transcript/, allowed: /the post is in the stored transcript/ },
   { id: "P3.2 FIX-1662 it-opens-a-lab", run: SM("it-opens-a-lab"), control: "unanswerable-asks", must: /an answer lands in the store/, allowed: /an answer lands in the store/ },
@@ -551,6 +577,7 @@ await runGoal(async () => {
   const noTheme = want("c") ? await buildPages(SCRATCH, "no-theme", { patches: [NO_THEME] }) : undefined;
   if (noTheme !== undefined) console.log(`leg c's no-theme build, the whole patch:\n${noTheme.diff}`);
 
+  const blockedA = want("a") || want("controls") ? await claudeCodeBlocked() : null;
   const report = collector();
   const browser = await launchChromium();
   try {
@@ -563,7 +590,8 @@ await runGoal(async () => {
       }
       legVerdict(id, prefixes, report);
     };
-    if (want("a")) await leg("leg a (a1-a4)", ["a1", "a2", "a3", "a4", "a"], () => legA(ctx(PAGES!.pages)));
+    if (want("a") && blockedA !== null) verdict("leg a (a1-a4)", false, `BLOCKED: ${blockedA}`);
+    else if (want("a")) await leg("leg a (a1-a4)", ["a1", "a2", "a3", "a4", "a"], () => legA(ctx(PAGES!.pages)));
     if (want("b0")) await leg("b0", ["b0"], () => b0(report));
     if (want("b")) await leg("leg b", ["b"], () => legB(ctx(PAGES!.pages)));
     if (want("c")) await leg("leg c", ["c"], () => legC(ctx(noTheme!.pages)));
@@ -575,7 +603,7 @@ await runGoal(async () => {
   } finally {
     await browser.close();
   }
-  if (want("controls")) await controls(only);
+  if (want("controls")) await controls(only, blockedA);
   if (want("part3")) await part3();
   if (want("part4")) {
     const p4 = collector();

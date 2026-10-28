@@ -1,13 +1,6 @@
 import { cn } from "../../lib/utils";
 
-const kindColors: Record<string, string> = {
-  generator: "bg-green-500",
-  evaluator: "bg-amber-500",
-  handler: "bg-green-500",
-  sequencer: "bg-blue-500",
-  router: "bg-purple-500",
-};
-
+// Block kinds are told apart by their mono label, not by hue.
 const kindLabels: Record<string, string> = {
   generator: "GEN",
   evaluator: "EVL",
@@ -19,8 +12,7 @@ const kindLabels: Record<string, string> = {
 export function KindIndicator({ kind, className }: { kind: string; className?: string }) {
   return (
     <span className={cn("inline-flex items-center gap-1", className)}>
-      <span className={cn("inline-block h-2 w-2 rounded-full", kindColors[kind] ?? "bg-slate-500")} />
-      <span className="text-[10px] font-medium uppercase text-slate-500">
+      <span className="font-fs-mono text-[10px] font-medium uppercase tracking-[.08em] text-fs-ink">
         {kindLabels[kind] ?? kind}
       </span>
     </span>

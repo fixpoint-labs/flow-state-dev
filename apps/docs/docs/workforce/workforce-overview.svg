@@ -1,97 +1,74 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 560" role="img" aria-labelledby="title desc">
-  <title id="title">Worker file, worker and session: where each lives</title>
-  <desc id="desc">A WORKER.md file in your repository is the description. readWorkforce turns files into plain records, hireWorkforce turns each record into a worker, a configured copy of a worker flow with its own id, and your app registers the workers. Sessions, state and resources a worker writes live in your store. A worker hired while the app runs is also written to the store as a roster row. A task's assignee can name any worker that takes tasks: the board runs the list, and Workforce finds the worker.</desc>
-  <defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-      <path d="M0 0 L10 5 L0 10 z" style="fill:var(--card-line)"/>
-    </marker>
-    <style>
-      :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
-              --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
-              --org-fill:#f0fdf4; --org:#15803d; --card:#ffffff; --card-line:#334155; --box:#f8fafc;
-              --faint:#94a3b8; --no:#b91c1c; }
-      @media (prefers-color-scheme: dark) {
-        :root { --bg:#0e0e14; --ink:#e5e7eb; --ink-2:#cbd5e1; --muted:#94a3b8;
-                --proc-fill:#1d1030; --proc:#c084fc; --sess-fill:#0f1a33; --sess:#60a5fa;
-                --org-fill:#0b2016; --org:#4ade80; --card:#14141c; --card-line:#64748b; --box:#181822;
-                --faint:#64748b; --no:#f87171; } }
-      .bg { fill: var(--bg); }
-      .wall-sess { fill: var(--sess-fill); stroke: var(--sess); stroke-width: 2; }
-      .wall-org { fill: var(--org-fill); stroke: var(--org); stroke-width: 2; }
-      .wall-file { fill: var(--box); stroke: var(--card-line); stroke-width: 2; }
-      .card { fill: var(--card); stroke: var(--card-line); stroke-width: 1.5; }
-      .card-sess { fill: var(--card); stroke: var(--sess); stroke-width: 1.5; }
-      .box { fill: var(--box); stroke: var(--card-line); stroke-width: 1.5; }
-      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
-      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
-      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: var(--ink-2); }
-      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: var(--muted); }
-      .code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: var(--ink); }
-      .edge { stroke: var(--card-line); stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
-    </style>
-  </defs>
-
-  <rect x="0" y="0" width="920" height="560" rx="16" class="bg"/>
-
-  <text x="28" y="36" class="title">Worker file, worker, session: where each lives</text>
-  <text x="28" y="58" class="muted">A worker file describes a worker; one shared copy of its flow runs it.</text>
-
-  <!-- Repo -->
-  <rect x="28" y="84" width="248" height="300" rx="14" class="wall-file"/>
-  <text x="44" y="108" class="h">Your repository</text>
-  <text x="44" y="126" class="muted">Files you write and commit</text>
-
-  <rect x="44" y="142" width="216" height="104" rx="10" class="card"/>
-  <text x="58" y="166" class="h">WORKER.md</text>
-  <text x="58" y="186" class="code">teams/engineering/</text>
-  <text x="58" y="202" class="code">  workers/lead/</text>
-  <text x="58" y="228" class="muted">Settings and instructions</text>
-
-  <!-- Process -->
-  <rect x="296" y="84" width="320" height="300" rx="14" class="wall-sess"/>
-  <text x="312" y="108" class="h">Your app's process</text>
-  <text x="312" y="126" class="muted">Rebuilt at every start</text>
-
-  <rect x="312" y="142" width="288" height="56" rx="10" class="card"/>
-  <text x="326" y="164" class="h">Record</text>
-  <text x="326" y="184" class="muted">readWorkforce: reads the files</text>
-
-  <rect x="312" y="218" width="288" height="78" rx="10" class="card-sess"/>
-  <text x="326" y="240" class="h">One copy per flow</text>
-  <text x="326" y="260" class="muted">hireWorkforce: agent, once, for every</text>
-  <text x="326" y="276" class="muted">worker on it. Reads no files.</text>
-
-  <rect x="312" y="316" width="288" height="52" rx="10" class="card"/>
-  <text x="326" y="338" class="h">Registry</text>
-  <text x="326" y="356" class="muted">registerMany: now it answers requests</text>
-
-  <path d="M456 198 L456 216" class="edge"/>
-  <path d="M456 296 L456 314" class="edge"/>
-  <path d="M260 194 L310 170" class="edge"/>
-
-  <!-- Store -->
-  <rect x="636" y="84" width="256" height="300" rx="14" class="wall-org"/>
-  <text x="652" y="108" class="h">Your store</text>
-  <text x="652" y="126" class="muted">Kept across restarts when persistent</text>
-
-  <rect x="652" y="142" width="224" height="104" rx="10" class="card"/>
-  <text x="666" y="166" class="h">Sessions naming a worker</text>
-  <text x="666" y="188" class="p">Each user's conversation,</text>
-  <text x="666" y="206" class="p">its state and resources</text>
-  <text x="666" y="230" class="muted">Never written into the file</text>
-
-  <rect x="652" y="258" width="224" height="110" rx="10" class="card"/>
-  <text x="666" y="282" class="h">A user's own worker</text>
-  <text x="666" y="302" class="muted">A row in their own data,</text>
-  <text x="666" y="318" class="muted">hired or forked while the</text>
-  <text x="666" y="334" class="muted">app runs. Nobody else's.</text>
-  <text x="666" y="356" class="muted">See Hiring and forking</text>
-
-  <!-- Not a copy -->
-  <rect x="28" y="404" width="864" height="136" rx="12" class="box"/>
-  <text x="44" y="428" class="h">One copy, many workers</text>
-  <text x="44" y="452" class="p">A worker is an id and settings. Every worker on a flow shares its one registered copy.</text>
-  <text x="44" y="472" class="p">A session names its worker when it is created, and nothing changes it. It runs on the worker's flow.</text>
-  <text x="44" y="492" class="p">A coordinator is a worker too: its WORKER.md names flow: coordinator and the workers it hands work to.</text>
-  <text x="44" y="520" class="muted">A task's assignee can name a standard worker that takes tasks. The board runs the list; Workforce finds the worker.</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 34 920 724">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="solid" x="28" y="56" width="240" height="438"/>
+<text class="lb" x="40" y="80">PLACE 01</text>
+<text class="nm" x="40" y="102">Your repository</text>
+<text class="sub" x="40" y="120">files you write and commit</text>
+<line class="hi" x1="28" y1="146" x2="268" y2="146"/>
+<rect class="solid" x="318" y="56" width="280" height="438"/>
+<text class="lb" x="330" y="80">PLACE 02</text>
+<text class="nm" x="330" y="102">Your app's process</text>
+<text class="sub" x="330" y="120">rebuilt at every start</text>
+<line class="hi" x1="318" y1="146" x2="598" y2="146"/>
+<rect class="solid" x="648" y="56" width="244" height="438"/>
+<text class="lb" x="660" y="80">PLACE 03</text>
+<text class="nm" x="660" y="102">Your store</text>
+<text class="sub" x="660" y="120">kept across restarts when</text>
+<text class="sub" x="660" y="134">persistent</text>
+<line class="hi" x1="648" y1="146" x2="892" y2="146"/>
+<rect class="thin" x="40" y="160" width="216" height="100"/>
+<text class="c" x="50" y="182">WORKER.md</text>
+<text class="c" x="50" y="204">teams/engineering/</text>
+<text class="c" x="65" y="220">workers/lead/</text>
+<text class="t" x="50" y="244">settings and instructions</text>
+<text class="t" x="40" y="290">A worker file describes a</text>
+<text class="t" x="40" y="306">worker; one shared copy</text>
+<text class="t" x="40" y="322">of its flow runs it.</text>
+<rect class="thin" x="330" y="160" width="256" height="70"/>
+<text class="lb" x="340" y="180">RECORD</text>
+<text class="c" x="340" y="200">readWorkforce</text>
+<text class="t" x="340" y="218">reads the files</text>
+<rect class="thin" x="330" y="272" width="256" height="90"/>
+<text class="lb" x="340" y="292">ONE COPY PER FLOW</text>
+<text class="c" x="340" y="312">hireWorkforce</text>
+<text class="t" x="340" y="330">agent, once, for every</text>
+<text class="t" x="340" y="346">worker on it. Reads no files.</text>
+<rect class="thin" x="330" y="404" width="256" height="70"/>
+<text class="lb" x="340" y="424">REGISTRY</text>
+<text class="c" x="340" y="444">registerMany</text>
+<text class="t" x="340" y="462">now it answers requests</text>
+<rect fill="url(#hatch)" x="660" y="160" width="220" height="10"/><line class="thin" x1="660" y1="170.5" x2="880" y2="170.5"/><rect class="thin" x="660" y="160" width="220" height="102"/>
+<text class="lb" x="670" y="192">SESSIONS NAMING A WORKER</text>
+<text class="t" x="670" y="212">Each user's conversation,</text>
+<text class="t" x="670" y="228">its state and resources</text>
+<text class="t" x="670" y="250">Never written into the file</text>
+<rect fill="url(#hatch)" x="660" y="300" width="220" height="10"/><line class="thin" x1="660" y1="310.5" x2="880" y2="310.5"/><rect class="thin" x="660" y="300" width="220" height="98"/>
+<text class="lb" x="670" y="332">A USER'S OWN WORKER</text>
+<text class="t" x="670" y="352">A row in their own data,</text>
+<text class="t" x="670" y="368">hired or forked while the</text>
+<text class="t" x="670" y="384">app runs. Nobody else's.</text>
+<line class="ln" x1="257" y1="195" x2="328" y2="195" marker-end="url(#ah)"/><rect class="ground" x="280.7" y="188" width="24.6" height="15"/><text class="plate" x="293" y="199" text-anchor="middle">01</text>
+<line class="ln" x1="458" y1="231" x2="458" y2="270" marker-end="url(#ah)"/><rect class="ground" x="445.7" y="244" width="24.6" height="15"/><text class="plate" x="458" y="255" text-anchor="middle">02</text>
+<line class="ln" x1="458" y1="363" x2="458" y2="402" marker-end="url(#ah)"/><rect class="ground" x="445.7" y="376" width="24.6" height="15"/><text class="plate" x="458" y="387" text-anchor="middle">03</text>
+<path class="ln" d="M587 439 H623 V211 H658" marker-end="url(#ah)"/><rect class="ground" x="610.7" y="314" width="24.6" height="15"/><text class="plate" x="623" y="325" text-anchor="middle">04</text>
+<line class="hi" x1="0" y1="518" x2="920" y2="518"/>
+<text class="n" x="28" y="544">01</text>
+<text class="t" x="60" y="544">readWorkforce turns each WORKER.md into a plain record: the worker's settings and instructions.</text>
+<text class="n" x="28" y="569">02</text>
+<text class="t" x="60" y="569">hireWorkforce gives back one copy of each flow a worker runs on. Every worker on that flow shares the copy.</text>
+<text class="n" x="28" y="594">03</text>
+<text class="t" x="60" y="594">Your app registers each copy with registerMany, and now it answers requests.</text>
+<text class="n" x="28" y="619">04</text>
+<text class="t" x="60" y="619">A session names its worker when it is created, and nothing changes it. It runs on the worker's flow; its state</text>
+<text class="t" x="60" y="636">and resources live in your store.</text>
+<text class="n" x="28" y="661">05</text>
+<text class="t" x="60" y="661">A coordinator is a worker too: its WORKER.md names flow: coordinator and the workers it hands work to.</text>
+<text class="n" x="28" y="686">06</text>
+<text class="t" x="60" y="686">A task's assignee can name a standard worker that takes tasks. The board runs the list; Workforce finds the</text>
+<text class="t" x="60" y="703">worker.</text>
+<line class="ln" x1="28" y1="730" x2="54" y2="730" marker-end="url(#ah)"/><text class="lb" x="62" y="734">TURNS INTO · RUNS</text>
+<rect fill="url(#hatch)" x="240" y="724" width="26" height="11"/><rect class="thin" x="240" y="724" width="26" height="11"/><text class="lb" x="274" y="734">OUTLIVES THE REQUEST</text>
 </svg>

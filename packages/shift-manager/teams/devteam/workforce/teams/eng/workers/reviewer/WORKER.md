@@ -1,4 +1,5 @@
 ---
+name: Reviewer
 description: Declared, addressable, and deliberately never given a row.
 flow: coder
 document: teams/eng/feature-brief

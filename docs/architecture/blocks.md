@@ -77,11 +77,15 @@ If multiple ancestors match and precedence cannot resolve, runtime throws `Ambig
 
 ### Sequencer state schema bubbling
 
-Handler, generator, and router blocks can declare `sequencerStateSchema`. This follows the same bubbling contract as request/session/user/org schemas:
+Handler, generator, evaluator, and router blocks can declare `sequencerStateSchema`. It is applied when the flow is built (`blocks/internal/sequencer-state.ts`):
 
-- block-level `sequencerStateSchema` declares what state shape a block requires
-- when composed inside a sequencer, that schema bubbles up to the enclosing sequencer's instance-state contract
-- sequencer-level `stateSchema` may be declared directly; when both are present they must be structurally compatible
+- block-level `sequencerStateSchema` declares what state shape a block requires from the sequencer `ctx.sequencer` resolves to — the nearest enclosing sequencer that has a `stateSchema`
+- when composed inside a sequencer (`.step()`, `.tap()`, branch and fan-out arms, chain-level and block-level `.rescue()` handlers, and through a router's routes), that schema bubbles up to that sequencer's instance-state contract: a field the sequencer does not declare is added with its default, so it is in the initial state; a field with no default that does not accept `undefined` is added as optional. A wrapper around the sequencer's `z.object()` (`.default({})`, `.optional()`, a refinement) is kept around the extended object
+- a sequencer with no `stateSchema` stays transparent to `ctx.sequencer`: it holds no state and passes its children's requirements up as its own `sequencerStateSchema`, to the next sequencer that has one. When no enclosing sequencer has a `stateSchema`, the requirement has nowhere to land and `ctx.sequencer` is `undefined`
+- sequencer-level `stateSchema` may be declared directly; when both declare a field they must be structurally compatible — the same kind under `.default()` / `.optional()` / `.nullable()` / a refinement, and the same element kind for an array (`z.any()` / `z.unknown()` match anything; nested shapes are not compared). A `.transform()` on either side is refused, since its output kind is not in the schema, unless both sides use the same schema. An incompatible pair throws `SequencerSchemaMismatchError` while the chain is composed, before `defineFlow` and before any run. Two children that disagree on a field are refused the same way
+- a capability's `sequencerStateSchema` (valid only on a sequencer's `uses`) lands on that sequencer's state under the same rules, including on a sequencer that declares no `stateSchema` of its own. Two capabilities that require different kinds of one field are refused; when they agree, the later one's declaration is kept
+- a generator's tools do not bubble: a tool is not composition, so a tool that needs sequencer state relies on the sequencer declaring it
+- on resume, a restored checkpoint is laid over the schema defaults, so a field added since the checkpoint was written starts at its default
 
 ```ts
 const updateProgress = handler({
@@ -95,7 +99,6 @@ const updateProgress = handler({
 const research = sequencer({
   name: "research",
   stateSchema: z.object({ progress: z.number().default(0) }),
-  defaultState: { progress: 0 },
 }).tap(updateProgress);
 ```
 
@@ -183,7 +186,7 @@ import { z } from "zod";
 
 const chatGenerator = generator({
   name: "chat-generator",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "You are a helpful, concise assistant.",
   inputSchema: z.object({ message: z.string().min(1) }),
   // Default outputSchema is z.string() — enables text streaming
@@ -312,6 +315,7 @@ const triage = evaluator({
 ```
 
 - **Model fence.** An evaluation model instance is used as given. A language model or FSD generator model is refused when the block is built; intents, fallback arrays and `selectModel` are refused too. A model string resolves at first execution through `ctx.resolveModel.resolveEvaluationModel`, the optional hook on `ModelResolver`. `createModelResolver` implements it with the generator precedence (explicit provider, installed-and-keyed package, gateway) against each source's `evaluationModel(id)`, and refuses a source without one before any provider call. When an app's own resolver has no hook, the string is refused naming it; the framework never substitutes its default resolver.
+- **When a malformed model string fails.** A string in the removed `gateway/provider/model` form fails at one of three points: a config string (`defaultModel`, an intent list, an `FSDEV_*` override) when `createModelResolver` is built, so the app won't start; an evaluator's string when the block is built, since the model fence parses it; and any other block's string, or one read from stored data, on its first resolve. A `name:model` whose name is neither a provider nor a gateway fails at startup in config and on first resolve everywhere else, since only the resolver holds the maps.
 - **The seam.** `packages/core/src/models/evaluate.ts` is the only importer of the SDK's evaluation types. It calls `experimental_evaluate` with `maxRetries: 0` and the request's abort signal, and maps the result into FSD's answer types (`types/evaluation.ts`). `confidence` is lifted from `providerMetadata.typesafe.confidence[id]` when present and is otherwise absent; a boolean's `probability` is never copied into it.
 - **No policy inside.** No retry, no fallback, no gating. Branching on answers belongs to routers and sequencer steps; recovery to `.rescue`.
 - **Trace.** The `block_trace` row carries `blockKind: "evaluator"`, `evaluator: { model, questions }`, the answers as `output`, and `model` / `modelUsage` reported through the same runtime hook a generator uses, top-level and nested.
@@ -458,7 +462,7 @@ const researcher = generator({
   itemVisibility: { client: true, history: false },  // visible to the user for observability,
   agentName: "researcher",                            // not inherited by the orchestrator's history.
   prompt: "Analyze and summarize.",
-  model: "anthropic/claude-sonnet-4-6",
+  model: "anthropic/claude-sonnet-5-5",
 });
 ```
 

@@ -12,7 +12,7 @@ import type { FlowRegistry } from "../registry/flow-registry";
 import type { RuntimeConfig } from "../runtime-config";
 import { createInMemoryStores } from "../stores";
 import type { StoreRegistry } from "../stores/types";
-import { detectInterruptedRequests } from "../execution/request-recovery";
+import { detectInterruptedRequests, internalEntriesFrom } from "../execution/request-recovery";
 import {
   parseFlowRoute,
   type ParsedFlowRoute
@@ -23,11 +23,13 @@ import {
   jsonResponse
 } from "./route-utils";
 import { handleAbortRequest } from "./abort-routes";
+import { handleAnswerSuspension } from "./answer-routes";
 import { handleResumeSuspension } from "./resume-routes";
 import { handleGetRequestStatus } from "./request-status-routes";
 import { handleExecuteAction } from "./action-routes";
 import {
   handleCheckInterruptedRequests,
+  handleListInterruptedRequests,
   handleContinueRequest,
   handleListActiveRequests,
   handleRetryRequest
@@ -73,8 +75,11 @@ import { pinRejectsCaller } from "../context/instance-pin";
 import { createInstanceCallerResolver, type InstanceCallerResolver } from "./instance-caller";
 import type { FlowDispatcher } from "../transports/dispatcher";
 import type { ConcurrencyArbiter } from "../transports/concurrency/arbiter";
-import { createAskResumeOperation } from "../context/ask-resume-operation";
-import { installAskSweeperFact } from "../durability/ask-deadlines";
+import { createWaitResumeOperation } from "../context/wait-resume-operation";
+import { installWaitSweeperFact } from "../durability/wait-deadlines";
+import { installWakes } from "../durability/request-wakes";
+import { installWaits } from "../durability/wait-chain";
+import { DEFAULT_RUNTIME_LOGGER } from "../execution/logging";
 import { createParkedStopDeps } from "../durability/stop-suspended";
 
 export type RequestContext = {
@@ -209,7 +214,12 @@ export function resolveStores(partial: Partial<StoreRegistry> | undefined): Stor
     checkpoints: partial?.checkpoints ?? fallback.checkpoints,
     traces: partial?.traces ?? fallback.traces,
     suspensions: partial?.suspensions ?? fallback.suspensions,
-    leases: partial?.leases ?? fallback.leases
+    leases: partial?.leases ?? fallback.leases,
+    // Optional (FIX-2078 D1), and never filled in for stores that were given:
+    // an in-memory stand-in beside a durable store would claim debts survive
+    // a crash when they don't. Only a host given no stores at all keeps them
+    // in memory, with everything else.
+    ...(partial === undefined ? { wakes: fallback.wakes } : partial.wakes !== undefined ? { wakes: partial.wakes } : {})
   };
 }
 
@@ -266,7 +276,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   // (`{ ...base.requestHost, staleThresholdMs, staleSweepIntervalMs }`), and
   // that spread is a fork — so anything stamped here lands on a copy nobody
   // else holds. The object `createFlowState` gives `worker.startWorker` never
-  // saw it, so a colocated queue worker running a board that hands off met
+  // saw it, so a colocated queue worker running a board that dispatches met
   // `no-dispatch-operation`; and because this operation carries no child tracking,
   // an HTTP-started child session was invisible to the shutdown drain.
   //
@@ -287,7 +297,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   // deployment, which is every deployment you are likely to be reading this
   // from. Removing it silently drops detached work for anyone mounting this
   // router in their own server without a `FlowState` — a supported embedding —
-  // and `integration-tests`' `task-board-detached-handoff` scenario, which
+  // and `integration-tests`' `task-board-dispatch-detached` scenario, which
   // drives `createFlowApiRouter` directly, is the thing that will tell you.
   // The dispatch seam's operation, installed on the same last-resort terms and
   // over the same host, so a direct router caller can dispatch too.
@@ -298,22 +308,33 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     runtimeConfig.requestHost.dispatchOperation = createDispatchOperation({ host });
   }
 
-  // Same last-resort terms for the ask resume, and only with durable execution:
-  // a router mounted without a `FlowState` can still serve asks.
+  // Same last-resort terms for the wait resume, and only with durable execution:
+  // a router mounted without a `FlowState` can still serve waits.
   if (
     runtimeConfig.requestHost !== undefined &&
-    runtimeConfig.requestHost.askResume === undefined &&
+    runtimeConfig.requestHost.waitResume === undefined &&
     runtimeConfig.durabilityProvider !== undefined
   ) {
-    runtimeConfig.requestHost.askResume = createAskResumeOperation({
+    runtimeConfig.requestHost.waitResume = createWaitResumeOperation({
       provider: runtimeConfig.durabilityProvider,
       stores,
       continueRequest: (opts) => host.continueRequest(opts)
     });
   }
-  // And whether a sweeper bounds an ask here, so the turn is offered one.
+  // And whether a sweeper bounds a wait here, so the turn is offered one.
   if (runtimeConfig.requestHost !== undefined && runtimeConfig.durabilityProvider !== undefined) {
-    installAskSweeperFact(runtimeConfig.requestHost, runtimeConfig.durabilityProvider);
+    installWaitSweeperFact(runtimeConfig.requestHost, runtimeConfig.durabilityProvider);
+  }
+  // Debts' due times (FIX-2078 D1), on the same last-resort terms.
+  if (runtimeConfig.requestHost !== undefined) {
+    installWakes(runtimeConfig.requestHost, {
+      stores,
+      durable: runtimeConfig.durabilityProvider !== undefined,
+      ...(runtimeConfig.maxDebtAgeMs !== undefined ? { maxDebtAgeMs: runtimeConfig.maxDebtAgeMs } : {}),
+      logger: runtimeConfig.logger ?? DEFAULT_RUNTIME_LOGGER
+    });
+    // Waits (FIX-2082), where the wakes are: a wait's deadline is one.
+    installWaits(runtimeConfig.requestHost, runtimeConfig.durabilityProvider, runtimeConfig.waitDeadlines);
   }
   // How this router stops a parked request (FIX-1816), with durable
   // execution only: for the abort route, and, on the same last-resort terms,
@@ -365,7 +386,9 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         options.staleThresholdMs ?? runtimeConfig.requestHost?.staleThresholdMs,
       // Same grace the periodic sweeper runs with, so a restart cannot reap a
       // queued row the running server would have left alone.
-      queuedGraceMs: runtimeConfig.queuedGraceMs
+      queuedGraceMs: runtimeConfig.queuedGraceMs,
+      // A request reaped here owes its session's passes now (FIX-2166).
+      wakeEntriesOf: internalEntriesFrom(options.registry)
     }).then((interrupted) => {
       if (interrupted.length > 0) {
         console.warn(
@@ -500,7 +523,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleGetSession(request, route, {
           registry: options.registry,
           stores,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 
@@ -626,15 +650,40 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         });
       }
 
+      if (route.kind === "answer_suspension") {
+        return await handleAnswerSuspension(request, route, {
+          host,
+          registry: options.registry,
+          stores,
+          durabilityProvider: runtimeConfig.durabilityProvider,
+          tenantId,
+          principal
+        });
+      }
+
       if (route.kind === "request_status") {
         return await handleGetRequestStatus(request, route, {
           registry: options.registry,
-          stores
+          stores,
+          tenantId,
+          principal
         });
       }
 
       if (route.kind === "active_requests") {
         return await handleListActiveRequests(request, {
+          registry: options.registry,
+          stores,
+          runtimeConfig,
+          tenantId,
+          principal,
+          anonymousFlowIds,
+          callerFor
+        });
+      }
+
+      if (route.kind === "list_interrupted_requests") {
+        return await handleListInterruptedRequests(route, {
           registry: options.registry,
           stores,
           runtimeConfig,
@@ -705,7 +754,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleListCollectionState(request, route, {
           registry: options.registry,
           stores,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 
@@ -713,7 +763,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleGetCollectionItemState(request, route, {
           registry: options.registry,
           stores,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 
@@ -721,7 +772,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleGetResourceManifest(request, route, {
           registry: options.registry,
           stores,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 
@@ -730,7 +782,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           debug: debugConfig,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 
@@ -739,7 +792,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           debug: debugConfig,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 
@@ -748,7 +802,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           debug: debugConfig,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 
@@ -757,7 +812,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           debug: debugConfig,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 
@@ -766,7 +822,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           debug: debugConfig,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 

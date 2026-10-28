@@ -335,11 +335,19 @@ When multiple capabilities (or a capability and a block) declare the same surfac
 |---------|---------------|---------------------|
 | Resource | Deduplicated silently | Error: resource conflict |
 | Target | Deduplicated silently | Error: target conflict |
-| State schema | Merged via Zod `.extend()` | Last-wins for matching keys |
+| Session, request, user, org state schema | Merged via Zod `.extend()` | Last-wins for matching keys |
+| Own state (`stateSchema`) | Deduplicated silently | Error: own-state conflict |
+| Sequencer state (`sequencerStateSchema`) | Deduplicated silently | Field types must match, or `SequencerSchemaMismatchError` |
 | Context entries | Concatenated | N/A |
 | Tools | Both included | N/A |
 
 Resource deduplication uses reference equality. If two capabilities pass the same `defineResource()` reference, there's no conflict. If they create different resource objects for the same name, the framework throws at factory time.
+
+A `sequencerStateSchema` field can be declared by two capabilities on one sequencer, by a capability and the sequencer's own `stateSchema`, or by a capability and a block inside the sequencer. Each pair must agree on the field's type, ignoring `.default()`, `.optional()` and `.nullable()` wrappers: `z.number()` and `z.number().default(0)` agree, `z.number()` and `z.string()` don't. A mismatch throws `SequencerSchemaMismatchError` when the sequencer is built or the block is added to it, and the message names the sequencer and the field. If either side uses `.transform()`, both must reference the same schema, or the same error is thrown.
+
+When two capabilities agree on a field's type, the field takes the schema of the one later in `uses`, default included. A capability's dependencies, the capabilities in its own `uses`, count as coming before it. When a capability and the sequencer's own `stateSchema` agree, the sequencer's field is kept.
+
+On a sequencer, a capability's `stateSchema` and its `sequencerStateSchema` both land in the sequencer's state, under different rules. A `stateSchema` field the sequencer also declares must be the same schema object, or the build throws an own-state conflict. A `sequencerStateSchema` field only needs a matching type.
 
 ## When to extract a capability
 

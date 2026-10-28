@@ -7,7 +7,6 @@
  * listed. The goal must fail at "status equals the store's" on the asking
  * worker.
  */
-import { readStatus } from "../../../../packages/shift-manager/src/lib/columns.ts";
 import { workerStates as asWritten, type LoadedSnapshot, type WorkerStates } from "../../../../packages/shift-manager/src/lib/derive.ts";
 
 export * from "../../../../packages/shift-manager/src/lib/derive.ts";
@@ -23,11 +22,7 @@ export function workerStates(snapshot: LoadedSnapshot): WorkerStates {
       id,
       {
         ...state,
-        status: state.held.some((row) => readStatus(row.status) === "in_progress")
-          ? ("on shift" as const)
-          : state.held.length > 0
-            ? ("on call" as const)
-            : ("off shift" as const),
+        status: state.held.length > 0 ? ("on shift" as const) : ("off shift" as const),
       },
     ]),
   );

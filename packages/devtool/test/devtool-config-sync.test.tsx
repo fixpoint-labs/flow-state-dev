@@ -9,11 +9,9 @@ import { describe, it, expect, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import React from "react";
 
-vi.mock("../src/react/lib/client", () => ({
-  createDevToolClient: () => ({ listFlows: async () => [] }),
-  createDevToolSessionClient: () => ({}),
-  createDevToolRecoveryClient: () => ({}),
-  createDevToolResourceClient: () => ({}),
+vi.mock("@flow-state-dev/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@flow-state-dev/client")>()),
+  createClient: () => ({ flows: async () => [], sessions: {}, requests: {}, resources: {} }),
 }));
 
 const { DevToolProvider, useDevTool } = await import("../src/react/context/devtool-context");

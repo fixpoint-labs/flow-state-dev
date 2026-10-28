@@ -125,6 +125,7 @@ export {
   ItemsRenderer,
   buildItemRenderStream,
   type BuildItemRenderStreamOptions,
+  type ActivityItem,
   type ItemRenderSegment,
   type ItemsRendererProps
 } from "./components/ItemsRenderer";
@@ -159,6 +160,7 @@ export {
   type BoardStatus,
   type PanelRowSource,
   type PanelItemSource,
+  type PanelLiveSource,
   type RosterProps,
   type RosterWorker,
   type RosterWorkerRow,

@@ -2,6 +2,9 @@
 sidebar_position: 5
 ---
 
+import Figure from "@site/src/components/Figure";
+import StateScopesDrawing from "./state-scopes.svg";
+
 # State & Scopes
 
 State in AI applications is messy. Conversation history, user preferences, shared configuration, intermediate processing data — all at different lifetimes, all needing different isolation guarantees. flow-state.dev gives you four scoped levels with typed operations.
@@ -19,7 +22,7 @@ State is organized into four scopes, each its own record with its own key:
 | **User** | What does this user need across their conversations in one organization? | Across sessions for a user, per organization |
 | **Org** | What does the team need to share? | Across sessions in an org |
 
-![Request, session, user and org state are four separate records, none inside another. Request state belongs to one action run and the next request cannot see it. Session state belongs to one conversation: its state, items, metadata and journal, and the resources an action declares, keyed by the session id and by the tenant when one is sent. User state follows one user across conversations and flows inside one organization, keyed by the user and the organization; with isolateUserState it is one record per flow copy instead. Org state is shared by everyone in the organization, keyed by the org id, or one record per flow copy with isolateOrgState. A session is bound to one organization when it is created; it names its user and org but holds neither one's state. A tenant id splits sessions only. Blocks read and write all four; the browser sees only the fields a scope's client config exposes](./state-scopes.svg)
+<Figure svg={StateScopesDrawing} caption="The four state scopes" description={"Request, session, user and org state are four separate records, none inside another. Request state belongs to one action run and the next request cannot see it. Session state belongs to one conversation: its state, items, metadata and journal, and the resources an action declares, keyed by the session id and by the tenant when one is sent. User state follows one user across conversations and flows inside one organization, keyed by the user and the organization; with isolateUserState it is one record per flow copy instead. Org state is shared by everyone in the organization, keyed by the org id, or one record per flow copy with isolateOrgState. A session is bound to one organization when it is created; it names its user and org but holds neither one's state. A tenant id splits sessions only. Blocks read and write all four; the browser sees only the fields a scope's client config exposes"} />
 
 A session names the user and organization it belongs to. It doesn't contain their state: each scope is read and written on its own record.
 
@@ -176,7 +179,7 @@ const recent = await ctx.session.getJournal({ limit: 10 });
 
 ### Creating sessions
 
-A new session typically starts via `sessions.createSession({...})` on the client, which returns a stable `sess_<id>` you reuse on every subsequent action call. See [Client Overview](/docs/client/overview).
+A new session typically starts via `fsd.flow(address).createSession({...})` on the client, which returns a stable `sess_<id>` you reuse on every subsequent action call. See [Client Overview](/docs/client/overview).
 
 If you call an action without a `sessionId`, the framework generates a fallback ID (prefix `ephemeral_<ts>_<rand>`) and persists the session record like any other. The action route doesn't return that generated ID to the client, so the session is effectively orphaned — useful for one-shot internal callers and tests, but not a way to start "real" conversations. For production conversational flows, always create the session first and pass the ID through.
 
@@ -318,13 +321,11 @@ Register both flows with your server as usual (see [Engine setup](/docs/server/s
 **4. Create a session for a project.** Pass the project's slug in the session's initial `state`:
 
 ```ts
-import { createSessionClient } from "@flow-state-dev/client";
+import { createClient } from "@flow-state-dev/client";
 
-const sessions = createSessionClient();
+const fsd = createClient({ userId: "user_2", baseUrl: "http://localhost:3000" });
 
-const session = await sessions.createSession({
-  flowKind: "project-assistant",
-  userId: "user_2",
+const session = await fsd.flow("project-assistant").createSession({
   state: { projectId: "q3-launch" },
 });
 ```
@@ -340,7 +341,7 @@ Content-Type: application/json
 
 It answers `201` with `{ "session": { "id": "sess_...", ... } }`.
 
-In React, `useFlow`'s `createSession` and `autoCreateSession` send no initial state, so this flow refuses them. Create the session with the session client as above, then make it the hook's active session with `flow.selectSession(session.id)`.
+In React, `useFlow`'s `createSession` and `autoCreateSession` send no initial state, so this flow refuses them. Create the session with the client as above, then make it the hook's active session with `flow.selectSession(session.id)`.
 
 **5. Read the field in a block.**
 
@@ -368,9 +369,8 @@ Run `loadProject` in the session from step 4 and it returns `{ projectId: "q3-la
 **6. List a project's sessions.**
 
 ```ts
-const forProject = await sessions.listSessions({
+const forProject = await fsd.sessions.list({
   flowKind: "project-assistant",
-  userId: "user_2",
   state: { projectId: "q3-launch" },
 });
 ```
@@ -382,12 +382,12 @@ A `state` filter needs `flowKind` (or `flowId`), takes string values matched exa
 **7. Handle a refusal.** When the create is refused, no session is written. The create answers with the status and a body with `error`, plus `field` when the schema refused it, and the client throws `ClientHttpError`:
 
 ```ts
-import { ClientHttpError } from "@flow-state-dev/client";
+import { ClientHttpError, createClient } from "@flow-state-dev/client";
+
+const asUser3 = createClient({ userId: "user_3", baseUrl: "http://localhost:3000" });
 
 try {
-  await sessions.createSession({
-    flowKind: "project-assistant",
-    userId: "user_3",
+  await asUser3.flow("project-assistant").createSession({
     state: { projectId: "q3-launch" },
   });
 } catch (error) {

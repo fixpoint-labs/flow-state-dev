@@ -10,12 +10,16 @@
  *   2. Enforce suspension expiry: any `pending` suspension past its
  *      `expiresAt` is re-set to `expired` (closes the FIX-140 gap where
  *      expiry was recorded but never enforced, so the resume endpoint can
- *      reject stale gates). An **ask gate** is the exception: it is resumed
- *      with `wait_timed_out` instead (FIX-1816), because an `expired` ask gate
- *      would strand its turn: nothing else may resume it.
+ *      reject stale gates). A **wait gate** parked before FIX-2082, whose
+ *      deadline was its expiry, is the exception: it is resumed with
+ *      `wait_timed_out` instead (FIX-1816), because an `expired` wait gate
+ *      would strand its turn: nothing else may resume it. This branch goes
+ *      once no gate parked before FIX-2082 is left: a wait's deadline is now a
+ *      wake (2c).
  *   2b. Re-drive a request left `suspended` or `interrupted` behind a gate that
- *      is already resolved (an ask's answer, failure, timeout or stop, any
- *      gate stopped, or an approval that expired), under the request's lease,
+ *      is already resolved (a wait's answer, failure, timeout or stop, any
+ *      gate stopped, an approval that expired, or a gate a person approved,
+ *      rejected, submitted or skipped), under the request's lease,
  *      with the recorded outcome; and stop a parked request whose stop was
  *      recorded while it was still running (`abortRequested`), as a stop of a
  *      parked turn does. An approval step 2 just expired is continued here in
@@ -23,6 +27,15 @@
  *      result saying the approval is no longer valid, and the turn carries on.
  *      The `expired` record is the obligation, so a crash before the
  *      continuation runs is finished by the next sweep.
+ *   2c. Fire every due wake (FIX-2078 D1): a debt's due time, kept by the
+ *      engine until a pass in its session clears it. Each is moved one
+ *      {@link WAKE_RETRY_MS} out FIRST, then dispatched as the owner it names
+ *      (`fireWake`, the host's dispatch of the internal entry it names), so a
+ *      fire that dies, or a pass that dies, leaves the wake to fire again.
+ *      The pass it runs clears it, or moves it to its next due time. A
+ *      `waitDeadline` wake (FIX-2082 D1) is the sweep's own: it resumes every
+ *      wait in that session past its deadline, cancelling nothing, and moves
+ *      the wake to the next one (`resumeDueWaits`).
  *   3. Prune resolved (terminal) suspensions older than the retention window.
  *   4. Prune expired leases (finally wiring `LeaseStore.pruneExpired`).
  *   5. Prune orphaned checkpoints for terminal/interrupted requests whose
@@ -38,19 +51,11 @@
  * skip the others, and a tick failure is logged but NEVER thrown (it would
  * surface as an unhandled rejection from the interval callback).
  *
- * Scheduling is deadline-aware, and derived from the store. After every tick,
- * whatever it came to, the timer is re-armed from the pending ask gates: those
- * step 2 read and left pending when the tick ran, or a fresh read when it did
- * not (the sweep lease held by another host, or a failure). It is re-armed for
- * the earlier of `sweepIntervalMs` and the earliest deadline among them, never
- * sooner than `MIN_TICK_DELAY_MS`. An ask still pending past its deadline (its
- * turn was busy, still being written parked, or the resume failed) is retried
- * after `OVERDUE_ASK_RETRY_MS`, for up to one interval past its deadline; an
- * idle host keeps its interval. A turn that parks on an ask in this process
- * also notes its deadline (`ask-deadlines.ts`, keyed on the durability
- * provider), and the `onAskDeadline` listener brings the armed tick forward:
- * an optimization the re-arm does not depend on. One timer per host, never one
- * per ask.
+ * Scheduling is deadline-aware: one timer per host, re-armed after each tick
+ * by `nextDelay` (the interval, the earliest wake, or the earliest pending
+ * `expiresAt`), never sooner than `MIN_TICK_DELAY_MS`. A wake owed here, or a
+ * suspension parked here, brings that tick forward. A host that starts with
+ * either already in the store reads it at once.
  *
  * Otherwise mirrors `execution/stale-request-sweeper.ts`: `unref()` on the
  * timer, an `inFlight` re-entrancy guard (a tick due while one runs is pushed
@@ -58,18 +63,21 @@
  * a no-op handle when the interval is disabled.
  */
 
-import type { RequestRecord, StoreRegistry } from "../stores/types";
-import type { RequestStatus, SuspensionRecord } from "@flow-state-dev/core/types";
+import type { RequestRecord, StoreRegistry, WakeRecord } from "../stores/types";
+import type { RequestStatus, SuspensionRecord, WaitOutcome } from "@flow-state-dev/core/types";
 import {
   DEFAULT_RUNTIME_LOGGER,
   logRuntimeEvent,
   type RuntimeLogger
 } from "../execution/logging";
 import type { DurabilityProvider } from "./types";
-import { isAskGate, isExpiredApproval } from "@flow-state-dev/core/types";
-import { resumeAskGate } from "./resume-ask-gate";
-import { onAskDeadline } from "./ask-deadlines";
-import { PARKED, redriveResolvedGate, stopSuspendedRequest } from "./stop-suspended";
+import { WAIT_DEADLINE_ENTRY, WAIT_DEADLINE_OUTCOME, isWaitGate, waitGateDataOf } from "@flow-state-dev/core/types";
+import { resumeWaitGate } from "./resume-wait-gate";
+import { registerWaitSweeper } from "./wait-deadlines";
+import { outcomeOfRequest } from "./wait-chain";
+import { onWakeOwed } from "./request-wakes";
+import { onSuspensionDeadline } from "./suspension-deadlines";
+import { owesRedrive, PARKED, redriveResolvedGate, stopSuspendedRequest } from "./stop-suspended";
 import { expireUnderLease, latestGateIdOf } from "./resume-under-lease";
 import type { ResumeDeps } from "./resume-under-lease";
 
@@ -109,9 +117,9 @@ export type CreateDurabilitySweeperOptions = {
   holder?: string;
   logger?: RuntimeLogger;
   /**
-   * Continues a suspended request, so an overdue ask can be resumed with
+   * Continues a suspended request, so an overdue wait can be resumed with
    * `wait_timed_out`, and the turn of an expired approval carries on.
-   * Absent → overdue ask gates are left pending (never marked expired, which
+   * Absent → overdue wait gates are left pending (never marked expired, which
    * would strand the turn), and expired approvals wait for a sweeper that has
    * one.
    */
@@ -119,10 +127,16 @@ export type CreateDurabilitySweeperOptions = {
   /**
    * Whether the retention steps (3 to 5: pruning) run. Default true. A host
    * with durable execution but no retention policy sweeps with this off: its
-   * gates are still kept (expiry, ask timeouts, re-drive, stop carry), and
+   * gates are still kept (expiry, wait timeouts, re-drive, stop carry), and
    * nothing is pruned.
    */
   prune?: boolean;
+  /**
+   * Fire a due wake (FIX-2078 D1): dispatch the internal entry it names, in
+   * its session, as its owner. Resolves once the host accepted the dispatch.
+   * Absent, or with stores that keep no wakes, the wake step is off.
+   */
+  fireWake?: (wake: WakeRecord) => Promise<void>;
 };
 
 /** Handle returned by {@link createDurabilitySweeper}. */
@@ -130,11 +144,11 @@ export type DurabilitySweeper = {
   /** Stop the periodic sweep. Idempotent. */
   dispose(): void;
   /**
-   * Whether this sweeper times out overdue asks now: it runs (a positive
+   * Whether this sweeper times out overdue waits now: it runs (a positive
    * interval, not disposed) and can resume a turn (`continueRequest`). A host
-   * that built it reads this as `RequestHost.hasAskSweeper`.
+   * that built it reads this as `RequestHost.hasWaitSweeper`.
    */
-  timesOutAsks(): boolean;
+  timesOutWaits(): boolean;
 };
 
 const DEFAULT_SWEEP_INTERVAL_MS = 600_000;
@@ -183,8 +197,12 @@ export function createDurabilitySweeper(
     holder = defaultHolder(),
     logger = DEFAULT_RUNTIME_LOGGER,
     continueRequest,
-    prune = true
+    prune = true,
+    fireWake
   } = options;
+  // The wake step runs with a store that keeps wakes and something to do
+  // with one: fire its entry, or resume the waits whose deadline it carries.
+  const wakes = fireWake !== undefined || continueRequest !== undefined ? stores.wakes : undefined;
 
   const sweepIntervalMs = retention.sweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS;
   const checkpointMaxAgeMs = retention.checkpointMaxAgeMs ?? DEFAULT_CHECKPOINT_MAX_AGE_MS;
@@ -195,7 +213,7 @@ export function createDurabilitySweeper(
   const batchLimit = retention.batchLimit ?? DEFAULT_BATCH_LIMIT;
 
   if (!Number.isFinite(sweepIntervalMs) || sweepIntervalMs <= 0) {
-    return { dispose: () => {}, timesOutAsks: () => false };
+    return { dispose: () => {}, timesOutWaits: () => false };
   }
 
   let disposed = false;
@@ -204,8 +222,8 @@ export function createDurabilitySweeper(
   /** When the armed timer fires (epoch ms); infinite while none is armed. */
   let nextAt = Number.POSITIVE_INFINITY;
 
-  // The next tick is the earlier of the interval and the earliest pending ask
-  // deadline, so an ask times out within about a second of its deadline on a
+  // The next tick is the earlier of the interval and the earliest pending wait
+  // deadline, so a wait times out within about a second of its deadline on a
   // long-lived host rather than up to an interval late. Floored, never a busy
   // loop; an idle host keeps its interval.
   const arm = (delayMs: number): void => {
@@ -222,19 +240,27 @@ export function createDurabilitySweeper(
     }
   };
 
-  // When the next tick is due, from the pending ask gates (the tick's own, or
-  // read here when it has none): the earliest deadline, an overdue one retried
-  // shortly, else the interval.
+  // When the next tick is due, from the pending gates with a deadline (the
+  // tick's own, or read here when it has none): the earliest deadline, an
+  // overdue one retried shortly, else the interval. A person's stop counts as
+  // a wait's does (FIX-2063 D3): its `expiresAt` is the deadline this host's
+  // sweeper fires, with no second loop.
   const nextDelay = async (tickPending: SuspensionRecord[] | undefined): Promise<number> => {
-    if (continueRequest === undefined) return sweepIntervalMs;
+    if (continueRequest === undefined && wakes === undefined) return sweepIntervalMs;
     try {
-      const pending = tickPending ?? (await provider.listSuspended({ status: "pending" }));
       const now = Date.now();
       let due = Number.POSITIVE_INFINITY;
+      // The earliest wake: one already due is fired at the floor.
+      if (wakes !== undefined) {
+        const wakeDue = await wakes.earliestDueAt();
+        if (wakeDue !== null) due = Math.min(due, Math.max(wakeDue, now));
+      }
+      if (continueRequest === undefined) return due === Number.POSITIVE_INFINITY ? sweepIntervalMs : due - now;
+      const pending = tickPending ?? (await provider.listSuspended({ status: "pending" }));
       for (const gate of pending) {
-        if (!isAskGate(gate) || gate.expiresAt == null) continue;
+        if (gate.expiresAt == null) continue;
         if (gate.expiresAt > now) due = Math.min(due, gate.expiresAt);
-        else if (now - gate.expiresAt < sweepIntervalMs) due = Math.min(due, now + OVERDUE_ASK_RETRY_MS);
+        else if (now - gate.expiresAt < sweepIntervalMs) due = Math.min(due, now + OVERDUE_WAIT_RETRY_MS);
       }
       return due === Number.POSITIVE_INFINITY ? sweepIntervalMs : due - now;
     } catch (err) {
@@ -265,7 +291,8 @@ export function createDurabilitySweeper(
       orphanCheckpointThresholdMs,
       batchLimit,
       continueRequest,
-      prune
+      prune,
+      ...(fireWake !== undefined ? { fireWake } : {})
     })
       .catch((err): undefined => {
         // A failure that escapes the per-step guards is still never thrown
@@ -286,23 +313,34 @@ export function createDurabilitySweeper(
   };
 
   arm(sweepIntervalMs);
+  // A host that starts with a debt or a deadline already in the store (a crash
+  // left it, or a one-shot `fsdev run` parked a person's stop) is armed for it
+  // now, not an interval later.
+  if (wakes !== undefined || continueRequest !== undefined) void nextDelay(undefined).then(arm);
 
-  // An ask parked in this process brings the armed tick forward. Only a
-  // sweeper that can resume an overdue ask listens: listening is also how the
-  // host tells a turn an ask is bounded here (`hasAskSweeper`).
+  // Only a sweeper that can resume a wait at its deadline registers: that is
+  // how the host tells a request a wait is bounded here (`hasWaitSweeper`). A
+  // wait's deadline is a wake (FIX-2082 D1), so owing it brings the armed tick
+  // forward through the wake listener below.
   const stopListening =
-    continueRequest === undefined
-      ? () => {}
-      : onAskDeadline(provider, (deadline) => {
-          arm(deadline - Date.now());
-        });
+    continueRequest === undefined || stores.wakes === undefined ? () => {} : registerWaitSweeper(provider);
+
+  // A wake owed in this process brings the armed tick forward to its due time.
+  const stopHearingWakes =
+    wakes === undefined ? () => {} : onWakeOwed(wakes, (dueAt) => arm(dueAt - Date.now()));
+  // So does a suspension's deadline parked in this process, which only a
+  // sweeper that can continue a request acts on (as `nextDelay` reads them).
+  const stopHearingDeadlines =
+    continueRequest === undefined ? () => {} : onSuspensionDeadline(provider, (expiresAt) => arm(expiresAt - Date.now()));
 
   return {
-    timesOutAsks: () => !disposed && continueRequest !== undefined,
+    timesOutWaits: () => !disposed && continueRequest !== undefined && stores.wakes !== undefined,
     dispose(): void {
       if (disposed) return;
       disposed = true;
       stopListening();
+      stopHearingWakes();
+      stopHearingDeadlines();
       if (timer !== undefined) clearTimeout(timer);
     }
   };
@@ -311,8 +349,15 @@ export function createDurabilitySweeper(
 /** The soonest a tick runs after the last one, or after a deadline is noted. */
 const MIN_TICK_DELAY_MS = 1_000;
 
-/** How soon an ask still pending past its deadline is tried again. */
-const OVERDUE_ASK_RETRY_MS = 5_000;
+/** How soon a wait still pending past its deadline is tried again. */
+const OVERDUE_WAIT_RETRY_MS = 5_000;
+
+/**
+ * How far a wake is moved out as it is fired (FIX-2078 D1): the pass it runs
+ * settles it within that time, so it fires again only when the fire or the
+ * pass died.
+ */
+export const WAKE_RETRY_MS = 30_000;
 
 type RunTickArgs = {
   provider: DurabilityProvider;
@@ -329,6 +374,8 @@ type RunTickArgs = {
   continueRequest?: ResumeDeps["continueRequest"];
   /** See {@link CreateDurabilitySweeperOptions.prune}. Default true. */
   prune?: boolean;
+  /** See {@link CreateDurabilitySweeperOptions.fireWake}. */
+  fireWake?: (wake: WakeRecord) => Promise<void>;
 };
 
 /** {@link RunTickArgs} with the logger resolved to a concrete sink. */
@@ -361,6 +408,7 @@ export async function runTick(rawArgs: RunTickArgs): Promise<SuspensionRecord[] 
   try {
     const pending = await enforceSuspensionExpiry(args, now);
     await redriveResolvedGates(args);
+    await fireDueWakes(args, now);
     if (args.prune !== false) {
       await pruneTerminalSuspensions(args, now);
       await pruneExpiredLeases(args);
@@ -398,42 +446,43 @@ async function enforceSuspensionExpiry(
     // of them each tick is cheap. (A store-level `expiresBefore` predicate could
     // make this bounded-and-correct if pending volume ever grows.)
     const pending = await provider.listSuspended({ status: "pending" });
-    // The ask gates still pending after this step, which the next tick is
+    // The wait gates still pending after this step, which the next tick is
     // scheduled from: those not yet due, and any overdue one its resume left
     // pending (re-read, so a resumed gate does not count).
     const stillPending: SuspensionRecord[] = [];
-    let askGatesSkipped = 0;
+    let waitGatesSkipped = 0;
     for (const record of pending) {
       if (record.expiresAt == null) continue;
       if (record.expiresAt > now) {
-        if (isAskGate(record)) stillPending.push(record);
+        stillPending.push(record);
         continue;
       }
-      if (isAskGate(record)) {
-        // Never `expired`: nothing else may resume an ask gate, so that would
+      if (isWaitGate(record)) {
+        // Never `expired`: nothing else may resume a wait gate, so that would
         // strand its turn. Without a way to continue a request, leave it
         // pending for a sweeper that has one.
         if (args.continueRequest === undefined) {
-          askGatesSkipped += 1;
+          waitGatesSkipped += 1;
           continue;
         }
-        await resumeOverdueAsk(args, record);
+        await resumeOverdueWait(args, record);
         const after = await provider.loadSuspension(record.requestId, record.suspensionId);
         if (after?.status === "pending") stillPending.push(after);
         continue;
       }
       // Fenced: the gate is re-read under its request's lease, so a resume that
       // resolved it after the list above is never overwritten; a lease held
-      // elsewhere leaves it for the next tick. Step 2b continues the turn of an
-      // approval expired here (FIX-1846).
-      await expireUnderLease(provider, record, "durability-sweeper");
+      // elsewhere leaves it pending and on the schedule, so the next tick
+      // retries it shortly rather than an interval later. Step 2b continues
+      // the turn of an approval expired here (FIX-1846).
+      if ((await expireUnderLease(provider, record, "durability-sweeper")) === "busy") stillPending.push(record);
     }
-    if (askGatesSkipped > 0) {
+    if (waitGatesSkipped > 0) {
       logRuntimeEvent(
         logger,
         "warn",
-        "[flow-state] durability sweeper: overdue ask gates left pending, no way to continue a request",
-        { count: askGatesSkipped }
+        "[flow-state] durability sweeper: overdue wait gates left pending, no way to continue a request",
+        { count: waitGatesSkipped }
       );
     }
     return stillPending;
@@ -447,8 +496,9 @@ async function enforceSuspensionExpiry(
 
 /**
  * Step 2b: re-drive a request left parked behind a gate that is already
- * resolved (FIX-1816, BR-11a, BR-16c). An ask gate answered, failed, timed out
- * or stopped, or any gate stopped, whose request is still `suspended` or
+ * resolved (FIX-1816, BR-11a, BR-16c). A wait gate answered, failed, timed out
+ * or stopped, any gate stopped, an approval that expired, or any other gate a
+ * person resolved (FIX-1850), whose request is still `suspended` or
  * `interrupted`: the process died after the gate's write and before the turn
  * moved on. It is driven on under its lease with the recorded outcome, never a
  * new one. A live resume holds that lease, so it is never raced.
@@ -468,12 +518,7 @@ async function redriveResolvedGates(args: ResolvedTickArgs): Promise<void> {
   const redriveOne = async (requestId: string, suspensionId: string): Promise<void> => {
     try {
       const gate = await provider.loadSuspension(requestId, suspensionId);
-      // Owed a re-drive: an ask's answer or ending, any gate stopped, or an
-      // approval that expired.
-      if (gate === null) return;
-      const owed =
-        gate.status === "stopped" || (gate.status === "submitted" && isAskGate(gate)) || isExpiredApproval(gate);
-      if (!owed) return;
+      if (gate === null || !owesRedrive(gate)) return;
       const result = await redriveResolvedGate({ provider, stores, continueRequest }, gate);
       if (result === "redriven") {
         logRuntimeEvent(logger, "info", "[flow-state] durability sweeper: re-drove a parked request", {
@@ -541,33 +586,112 @@ async function redriveResolvedGates(args: ResolvedTickArgs): Promise<void> {
 }
 
 /**
- * The ask branch of step 2: resume an overdue ask gate with `wait_timed_out`,
- * through the same resume every ask takes (fenced on the gate still being
- * pending, under the request's lease). The resumed call ends the asked task.
- * Per-gate failures are logged and the sweep moves on. A gate this leaves
- * pending (the turn busy, not yet written parked, or the resume failed) is
- * retried by the next tick, which is scheduled from the pending gates.
+ * Step 2c (FIX-2078 D1): fire every due wake. Each is moved one
+ * {@link WAKE_RETRY_MS} out, conditional on the version listed, and only then
+ * dispatched: a wake written since (an earlier debt) is left as written, and
+ * a fire or a pass that dies leaves the wake to fire again. A fire that throws
+ * is logged and the step moves on.
  */
-async function resumeOverdueAsk(args: ResolvedTickArgs, record: SuspensionRecord): Promise<void> {
+async function fireDueWakes(args: ResolvedTickArgs, now: number): Promise<void> {
+  const { stores, logger, fireWake, continueRequest, batchLimit } = args;
+  const wakes = stores.wakes;
+  if ((fireWake === undefined && continueRequest === undefined) || wakes === undefined) return;
+  let due: WakeRecord[];
+  try {
+    due = await wakes.listDue(now, batchLimit);
+  } catch (err) {
+    logRuntimeEvent(logger, "error", "[flow-state] durability sweeper: due wakes read failed", {
+      error: err instanceof Error ? err.message : String(err)
+    });
+    return;
+  }
+  for (const wake of due) {
+    try {
+      // A wait's deadline (FIX-2082 D1): the sweep resumes the waits itself.
+      if (wake.entry === WAIT_DEADLINE_ENTRY) {
+        await resumeDueWaits(args, wake, now);
+        continue;
+      }
+      if (fireWake === undefined) continue;
+      if (!(await wakes.move(wake, wake.version, now + WAKE_RETRY_MS))) continue;
+      await fireWake(wake);
+    } catch (err) {
+      logRuntimeEvent(logger, "warn", "[flow-state] durability sweeper: a due wake was not fired", {
+        sessionId: wake.sessionId,
+        entry: wake.entry,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  }
+}
+
+/**
+ * Step 2c's wait branch (FIX-2082 D1): a session's `waitDeadline` wake is due.
+ * Every wait gate pending in that session past its deadline is resumed with
+ * the deadline outcome, nothing cancelled (a gate bound to a request that has
+ * already ended is resumed with that request's result instead). Then the wake
+ * is moved to the next pending deadline there, or cleared when none is left,
+ * conditional on the version listed: a wait that parked meanwhile owed it
+ * again and keeps it. A wait still being written (before the wake's `landBy`)
+ * holds it there. A resume left pending is tried again shortly.
+ */
+async function resumeDueWaits(args: ResolvedTickArgs, wake: WakeRecord, now: number): Promise<void> {
+  const { provider, stores, continueRequest } = args;
+  const wakes = stores.wakes;
+  // Left due for a sweeper that can continue a request.
+  if (continueRequest === undefined || wakes === undefined) return;
+  let next = Number.POSITIVE_INFINITY;
+  const gates = await provider.listSuspended({ userId: wake.userId, sessionId: wake.sessionId, status: "pending" });
+  for (const gate of gates) {
+    if (!isWaitGate(gate)) continue;
+    const data = waitGateDataOf(gate);
+    // A gate parked before FIX-2082 keeps its deadline on its expiry (step 2).
+    if (data?.deadline === undefined) continue;
+    if (data.deadline > now) {
+      next = Math.min(next, data.deadline);
+      continue;
+    }
+    let outcome: WaitOutcome = WAIT_DEADLINE_OUTCOME;
+    if ("requestId" in data.binding) {
+      const child = await stores.request.get(data.binding.requestId);
+      outcome = (child === undefined ? undefined : outcomeOfRequest(child)) ?? WAIT_DEADLINE_OUTCOME;
+    }
+    await resumeOverdueWait(args, gate, outcome);
+    // Re-read, so a gate its resume left pending (the request busy, or still
+    // being written parked) is tried again shortly.
+    const after = await provider.loadSuspension(gate.requestId, gate.suspensionId);
+    if (after?.status === "pending") next = Math.min(next, now + OVERDUE_WAIT_RETRY_MS);
+  }
+  const dueAt = next !== Number.POSITIVE_INFINITY ? next : now < wake.landBy ? wake.landBy : null;
+  if (dueAt === null) await wakes.clear(wake, wake.version);
+  else await wakes.move(wake, wake.version, dueAt);
+}
+
+/**
+ * Resume one overdue wait gate, through the same resume every wait takes
+ * (fenced on the gate still being pending, under the request's lease): with
+ * the deadline outcome at a wait's deadline (step 2c), or with
+ * `wait_timed_out` for a gate parked before FIX-2082 past its expiry (step 2,
+ * which goes once no such gate is left). Per-gate failures are logged and the
+ * sweep moves on, and the caller re-reads the gate: one left pending (the
+ * request busy, or not yet written parked) is tried again shortly.
+ */
+async function resumeOverdueWait(
+  args: ResolvedTickArgs,
+  record: SuspensionRecord,
+  outcome: WaitOutcome = {
+    answered: false,
+    error: { code: "wait_timed_out", message: "The wait was still open at its deadline, so it timed out." }
+  }
+): Promise<void> {
   const { provider, stores, logger, continueRequest } = args;
   if (continueRequest === undefined) return;
   try {
-    const result = await resumeAskGate(
-      { provider, stores, continueRequest },
-      record,
-      {
-        answered: false,
-        error: {
-          code: "wait_timed_out",
-          message: "The ask was still open at its deadline, so it timed out."
-        }
-      },
-      "durability-sweeper"
-    );
+    const result = await resumeWaitGate({ provider, stores, continueRequest }, record, outcome, "durability-sweeper");
     if (result.ok) return;
     if (result.refused === "already-resolved") {
       // Its turn has ended (a stop that ended it before its replay reached
-      // the ask): nothing waits on the gate, so it is expired rather than
+      // the wait): nothing waits on the gate, so it is expired rather than
       // retried every tick.
       const request = await stores.request.get(record.requestId);
       if (request !== undefined && ENDED_STATUSES.includes(request.status)) {
@@ -580,20 +704,20 @@ async function resumeOverdueAsk(args: ResolvedTickArgs, record: SuspensionRecord
       // The gate was listed pending this tick, yet the resume found it (or its
       // turn) already past waiting: the answer won the race, or the record and
       // its request disagree. Nothing to change; worth seeing if it recurs.
-      logRuntimeEvent(logger, "warn", "[flow-state] durability sweeper: overdue ask gate already resolved", {
+      logRuntimeEvent(logger, "warn", "[flow-state] durability sweeper: overdue wait gate already resolved", {
         requestId: record.requestId,
         suspensionId: record.suspensionId,
         detail: result.detail
       });
       return;
     }
-    logRuntimeEvent(logger, "info", "[flow-state] durability sweeper: overdue ask not resumed", {
+    logRuntimeEvent(logger, "info", "[flow-state] durability sweeper: overdue wait not resumed", {
       requestId: record.requestId,
       suspensionId: record.suspensionId,
       refused: result.refused
     });
   } catch (err) {
-    logRuntimeEvent(logger, "error", "[flow-state] durability sweeper: overdue ask resume failed", {
+    logRuntimeEvent(logger, "error", "[flow-state] durability sweeper: overdue wait resume failed", {
       requestId: record.requestId,
       suspensionId: record.suspensionId,
       error: err instanceof Error ? err.message : String(err)

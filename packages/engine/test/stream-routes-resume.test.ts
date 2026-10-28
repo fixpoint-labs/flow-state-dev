@@ -40,6 +40,7 @@ function completedRecord(requestId: string, items: MessageItem[]): RequestRecord
     id: requestId,
     flowKind: FLOW_KIND,
     actionName: "run",
+    source: "http",
     userId: "user_1",
     sessionId: "sess_1",
     status: "completed",

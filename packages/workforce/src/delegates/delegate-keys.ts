@@ -13,6 +13,12 @@ export const REMOVE_DELEGATE = "removeDelegate";
 export const SET_FALLBACK = "setFallback";
 export const LIST_DELEGATES = "listDelegates";
 
+/**
+ * A worker file's `delegates: all` (FIX-2081 D2): the whole roster, read on
+ * every call, rather than a written list.
+ */
+export const ALL_DELEGATES = "all";
+
 /** The most delegate records one session holds, and the most a worker's `delegates:` lists. */
 export const MAX_DELEGATES = 25;
 

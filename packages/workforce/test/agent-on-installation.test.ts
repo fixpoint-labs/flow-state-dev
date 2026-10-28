@@ -71,7 +71,7 @@ async function boot() {
     return runAction({
       orgId: DEFAULT_ORG_ID,
       flow: copy,
-      actionName: "run",
+      actionName: "respond",
       input,
       userId: "alice",
       sessionId,

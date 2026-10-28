@@ -7,7 +7,7 @@
  *
  * This used to be stated as a contrast with the session-list sweep, which was
  * unconditional (FIX-467). There is no longer a session-list sweep to contrast
- * with: the rail's list moved into `FlowNavigator` and `checkInterrupted` did
+ * with: the rail's list moved into `FlowNavigator` and the interrupted sweep did
  * not go with it, deliberately — a sweep on every leaf expand is a second
  * round trip a rail should not pay for. The accepted cost is that a request
  * abandoned by a dead process reads `in_progress` in the rail until the
@@ -17,15 +17,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 
-const sessionClientMock = {
-  listSessionRequests: vi.fn(),
+const sessionsMock = {
+  requests: vi.fn(),
 };
-const recoveryClientMock = {
-  checkInterrupted: vi.fn(),
-};
+const interruptedMock = vi.fn();
+/** The DevTool's one client, faked: its session reads and the interrupted sweep. */
+const clientOf = (sessions: { requests: unknown }) => ({ sessions, requests: { interrupted: interruptedMock } });
 const devToolState = {
-  sessionClient: sessionClientMock,
-  recoveryClient: recoveryClientMock,
+  client: clientOf(sessionsMock),
   config: { userId: "devuser" },
   autoRecoverInterrupted: false,
 };
@@ -38,22 +37,22 @@ import { useSessionRequests } from "../src/react/hooks/use-session-requests";
 
 describe("useSessionRequests — interrupted-sweep gating", () => {
   beforeEach(() => {
-    sessionClientMock.listSessionRequests.mockReset().mockResolvedValue([]);
-    recoveryClientMock.checkInterrupted.mockReset().mockResolvedValue(undefined);
+    sessionsMock.requests.mockReset().mockResolvedValue([]);
+    interruptedMock.mockReset().mockResolvedValue(undefined);
     devToolState.config = { userId: "devuser" };
     devToolState.autoRecoverInterrupted = false;
     // Restored here rather than at the end of the one test that swaps it, so a
     // failing assertion cannot leak the replacement client into its neighbours.
-    devToolState.sessionClient = sessionClientMock;
+    devToolState.client = clientOf(sessionsMock);
   });
 
   it("does not sweep interrupted requests when autoRecoverInterrupted is false", async () => {
     renderHook(() => useSessionRequests("sess_1"));
 
     await waitFor(() => {
-      expect(sessionClientMock.listSessionRequests).toHaveBeenCalled();
+      expect(sessionsMock.requests).toHaveBeenCalled();
     });
-    expect(recoveryClientMock.checkInterrupted).not.toHaveBeenCalled();
+    expect(interruptedMock).not.toHaveBeenCalled();
   });
 
   it("sweeps interrupted requests before listing when autoRecoverInterrupted is true", async () => {
@@ -61,9 +60,9 @@ describe("useSessionRequests — interrupted-sweep gating", () => {
     renderHook(() => useSessionRequests("sess_1"));
 
     await waitFor(() => {
-      expect(recoveryClientMock.checkInterrupted).toHaveBeenCalledWith({ userId: "devuser" });
+      expect(interruptedMock).toHaveBeenCalledTimes(1);
     });
-    expect(sessionClientMock.listSessionRequests).toHaveBeenCalledWith("sess_1", { includeItems: true, includeResultOutput: true });
+    expect(sessionsMock.requests).toHaveBeenCalledWith("sess_1", { includeItems: true, includeResultOutput: true });
   });
 
   it("does not sweep when there is no session, regardless of the flag", async () => {
@@ -71,8 +70,8 @@ describe("useSessionRequests — interrupted-sweep gating", () => {
     renderHook(() => useSessionRequests(null));
 
     await Promise.resolve();
-    expect(recoveryClientMock.checkInterrupted).not.toHaveBeenCalled();
-    expect(sessionClientMock.listSessionRequests).not.toHaveBeenCalled();
+    expect(interruptedMock).not.toHaveBeenCalled();
+    expect(sessionsMock.requests).not.toHaveBeenCalled();
   });
 });
 
@@ -88,18 +87,18 @@ describe("useSessionRequests — interrupted-sweep gating", () => {
  */
 describe("useSessionRequests — switching sessions", () => {
   beforeEach(() => {
-    sessionClientMock.listSessionRequests.mockReset().mockResolvedValue([]);
-    recoveryClientMock.checkInterrupted.mockReset().mockResolvedValue(undefined);
+    sessionsMock.requests.mockReset().mockResolvedValue([]);
+    interruptedMock.mockReset().mockResolvedValue(undefined);
     devToolState.config = { userId: "devuser" };
     devToolState.autoRecoverInterrupted = false;
     // Restored here rather than at the end of the one test that swaps it, so a
     // failing assertion cannot leak the replacement client into its neighbours.
-    devToolState.sessionClient = sessionClientMock;
+    devToolState.client = clientOf(sessionsMock);
   });
 
   it("drops the previous session's rows before the new session's read lands", async () => {
     const parentRow = { id: "req_parent", status: "in_progress" };
-    sessionClientMock.listSessionRequests.mockResolvedValueOnce([parentRow]);
+    sessionsMock.requests.mockResolvedValueOnce([parentRow]);
 
     const { result, rerender } = renderHook(
       ({ sessionId }: { sessionId: string }) => useSessionRequests(sessionId),
@@ -109,20 +108,20 @@ describe("useSessionRequests — switching sessions", () => {
 
     // A read that never resolves stands in for the window between the switch
     // and the new session's response — the whole window the leak lived in.
-    sessionClientMock.listSessionRequests.mockReturnValueOnce(new Promise(() => {}));
+    sessionsMock.requests.mockReturnValueOnce(new Promise(() => {}));
     rerender({ sessionId: "sess_child" });
 
     expect(result.current.requests).toEqual([]);
   });
 
   it("drops the previous backend's rows when the client is rebuilt under the same session", async () => {
-    // `DevToolProvider` rebuilds `sessionClient` when `baseUrl` or the bearer
+    // `DevToolProvider` rebuilds its client when `baseUrl` or the bearer
     // token changes. The session id can stay exactly the same across that, so a
     // reset keyed on the session id alone never runs and the previous backend's
     // rows stay on screen — rows live mode will pick an in-progress request out
     // of and try to stream through the new client.
     const parentRow = { id: "req_old_backend", status: "in_progress" };
-    sessionClientMock.listSessionRequests.mockResolvedValue([parentRow]);
+    sessionsMock.requests.mockResolvedValue([parentRow]);
 
     const { result, rerender } = renderHook(() => useSessionRequests("sess_1"));
     await waitFor(() => expect(result.current.requests).toEqual([parentRow]));
@@ -130,9 +129,9 @@ describe("useSessionRequests — switching sessions", () => {
     // Same session, different backend. The replacement read is held open so the
     // window between the swap and its response is the whole of the assertion.
     const replacementClient = {
-      listSessionRequests: vi.fn().mockReturnValue(new Promise(() => {})),
+      requests: vi.fn().mockReturnValue(new Promise(() => {})),
     };
-    devToolState.sessionClient = replacementClient as never;
+    devToolState.client = clientOf(replacementClient);
     rerender();
 
     expect(result.current.requests).toEqual([]);
@@ -147,7 +146,7 @@ describe("useSessionRequests — switching sessions", () => {
     // Observed per-render rather than from `result.current`, which only ever
     // shows the state after effects have flushed and so cannot see this.
     const parentRow = { id: "req_parent", status: "in_progress" };
-    sessionClientMock.listSessionRequests.mockResolvedValue([parentRow]);
+    sessionsMock.requests.mockResolvedValue([parentRow]);
 
     const seen: Array<{ sessionId: string; ids: string[] }> = [];
     const { rerender } = renderHook(
@@ -164,7 +163,7 @@ describe("useSessionRequests — switching sessions", () => {
 
     // The replacement read never lands, so every render below is inside the
     // window this is about.
-    sessionClientMock.listSessionRequests.mockReturnValue(new Promise(() => {}));
+    sessionsMock.requests.mockReturnValue(new Promise(() => {}));
     seen.length = 0;
     rerender({ sessionId: "sess_child" });
 
@@ -184,14 +183,14 @@ describe("useSessionRequests — switching sessions", () => {
     // BORROWED the current identity, here it REDEFINES it — `requestedRef` is
     // assigned inside `refresh`, so a stale call rewrites the shared cell and
     // corrupts the guard for every read, not just its own.
-    sessionClientMock.listSessionRequests.mockResolvedValue([]);
+    sessionsMock.requests.mockResolvedValue([]);
 
     const { result, rerender } = renderHook(
       ({ sessionId }: { sessionId: string }) => useSessionRequests(sessionId),
       { initialProps: { sessionId: "sess_parent" } }
     );
     await waitFor(() =>
-      expect(sessionClientMock.listSessionRequests).toHaveBeenCalledWith(
+      expect(sessionsMock.requests).toHaveBeenCalledWith(
         "sess_parent",
         { includeItems: true, includeResultOutput: true }
       )
@@ -199,7 +198,7 @@ describe("useSessionRequests — switching sessions", () => {
 
     const staleRefresh = result.current.refresh;
 
-    sessionClientMock.listSessionRequests.mockResolvedValue([
+    sessionsMock.requests.mockResolvedValue([
       { id: "req_child", status: "completed" },
     ]);
     rerender({ sessionId: "sess_child" });
@@ -207,8 +206,8 @@ describe("useSessionRequests — switching sessions", () => {
       expect(result.current.requests).toEqual([{ id: "req_child", status: "completed" }])
     );
 
-    const callsBefore = sessionClientMock.listSessionRequests.mock.calls.length;
-    sessionClientMock.listSessionRequests.mockResolvedValue([
+    const callsBefore = sessionsMock.requests.mock.calls.length;
+    sessionsMock.requests.mockResolvedValue([
       { id: "req_parent_stale", status: "in_progress" },
     ]);
     await act(async () => {
@@ -217,7 +216,7 @@ describe("useSessionRequests — switching sessions", () => {
 
     expect(result.current.requests).toEqual([{ id: "req_child", status: "completed" }]);
     // A read it may not write is a read worth not making.
-    expect(sessionClientMock.listSessionRequests.mock.calls.length).toBe(callsBefore);
+    expect(sessionsMock.requests.mock.calls.length).toBe(callsBefore);
   });
 
   it("does not let a stale callback discard the current session's in-flight read", async () => {
@@ -225,18 +224,18 @@ describe("useSessionRequests — switching sessions", () => {
     // legitimate read for the session ON SCREEN fail its own guard on arrival,
     // so live mode is left with no rows at all rather than the wrong ones.
     let resolveChild!: (rows: unknown[]) => void;
-    sessionClientMock.listSessionRequests.mockResolvedValue([]);
+    sessionsMock.requests.mockResolvedValue([]);
 
     const { result, rerender } = renderHook(
       ({ sessionId }: { sessionId: string }) => useSessionRequests(sessionId),
       { initialProps: { sessionId: "sess_parent" } }
     );
     await waitFor(() =>
-      expect(sessionClientMock.listSessionRequests).toHaveBeenCalled()
+      expect(sessionsMock.requests).toHaveBeenCalled()
     );
     const staleRefresh = result.current.refresh;
 
-    sessionClientMock.listSessionRequests.mockReturnValueOnce(
+    sessionsMock.requests.mockReturnValueOnce(
       new Promise((resolve) => {
         resolveChild = resolve as (rows: unknown[]) => void;
       })
@@ -244,7 +243,7 @@ describe("useSessionRequests — switching sessions", () => {
     rerender({ sessionId: "sess_child" });
     await waitFor(() => expect(resolveChild).toBeDefined());
 
-    sessionClientMock.listSessionRequests.mockResolvedValue([
+    sessionsMock.requests.mockResolvedValue([
       { id: "req_parent_stale", status: "in_progress" },
     ]);
     await act(async () => {
@@ -261,7 +260,7 @@ describe("useSessionRequests — switching sessions", () => {
 
   it("ignores a read that resolves after the session moved on", async () => {
     let resolveParent!: (rows: unknown[]) => void;
-    sessionClientMock.listSessionRequests.mockReturnValueOnce(
+    sessionsMock.requests.mockReturnValueOnce(
       new Promise((resolve) => {
         resolveParent = resolve as (rows: unknown[]) => void;
       })
@@ -272,14 +271,14 @@ describe("useSessionRequests — switching sessions", () => {
       { initialProps: { sessionId: "sess_parent" } }
     );
 
-    sessionClientMock.listSessionRequests.mockResolvedValueOnce([]);
+    sessionsMock.requests.mockResolvedValueOnce([]);
     rerender({ sessionId: "sess_child" });
 
     // The parent's read comes back late. Applying it would put the previous
     // session's in-progress request back in front of live mode.
     resolveParent([{ id: "req_parent", status: "in_progress" }]);
     await waitFor(() =>
-      expect(sessionClientMock.listSessionRequests).toHaveBeenCalledTimes(2)
+      expect(sessionsMock.requests).toHaveBeenCalledTimes(2)
     );
 
     expect(result.current.requests).toEqual([]);
@@ -298,17 +297,17 @@ describe("useSessionRequests — switching sessions", () => {
  */
 describe("useSessionRequests — single-flight refresh", () => {
   beforeEach(() => {
-    sessionClientMock.listSessionRequests.mockReset();
-    recoveryClientMock.checkInterrupted.mockReset().mockResolvedValue(undefined);
+    sessionsMock.requests.mockReset();
+    interruptedMock.mockReset().mockResolvedValue(undefined);
     devToolState.config = { userId: "devuser" };
     devToolState.autoRecoverInterrupted = false;
-    devToolState.sessionClient = sessionClientMock;
+    devToolState.client = clientOf(sessionsMock);
   });
 
   /** Queue slow reads the test resolves by hand, in order of issue. */
   function slowReads() {
     const pending: Array<(rows: unknown[]) => void> = [];
-    sessionClientMock.listSessionRequests.mockImplementation(
+    sessionsMock.requests.mockImplementation(
       () => new Promise((resolve) => pending.push(resolve as (rows: unknown[]) => void))
     );
     return pending;
@@ -324,7 +323,7 @@ describe("useSessionRequests — single-flight refresh", () => {
     act(() => {
       second = result.current.refresh();
     });
-    expect(sessionClientMock.listSessionRequests).toHaveBeenCalledTimes(1);
+    expect(sessionsMock.requests).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       pending[0]!([{ id: "req_a", status: "completed" }]);
@@ -359,7 +358,7 @@ describe("useSessionRequests — single-flight refresh", () => {
       await Promise.all(waits);
     });
 
-    expect(sessionClientMock.listSessionRequests).toHaveBeenCalledTimes(2);
+    expect(sessionsMock.requests).toHaveBeenCalledTimes(2);
     expect(result.current.requests).toEqual([{ id: "req_a", status: "completed" }]);
   });
 });
@@ -375,23 +374,23 @@ describe("useSessionRequests — single-flight refresh", () => {
  */
 describe("useSessionRequests — a stalled read", () => {
   beforeEach(() => {
-    sessionClientMock.listSessionRequests.mockReset();
-    recoveryClientMock.checkInterrupted.mockReset().mockResolvedValue(undefined);
+    sessionsMock.requests.mockReset();
+    interruptedMock.mockReset().mockResolvedValue(undefined);
     devToolState.config = { userId: "devuser" };
     devToolState.autoRecoverInterrupted = false;
-    devToolState.sessionClient = sessionClientMock;
+    devToolState.client = clientOf(sessionsMock);
   });
 
   it("lets go of a read that never settles, and a later refresh reads again", async () => {
     let resolveHung!: (rows: unknown[]) => void;
-    sessionClientMock.listSessionRequests.mockReturnValueOnce(
+    sessionsMock.requests.mockReturnValueOnce(
       new Promise((resolve) => (resolveHung = resolve as (rows: unknown[]) => void))
     );
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
       const { result } = renderHook(() => useSessionRequests("sess_1"));
       await act(async () => {});
-      expect(sessionClientMock.listSessionRequests).toHaveBeenCalledTimes(1);
+      expect(sessionsMock.requests).toHaveBeenCalledTimes(1);
 
       // A caller that joined the hung read is released once the bound passes,
       // so a poller awaiting it ticks again.
@@ -399,12 +398,12 @@ describe("useSessionRequests — a stalled read", () => {
       act(() => {
         void result.current.refresh().then(() => (joinedSettled = true));
       });
-      sessionClientMock.listSessionRequests.mockResolvedValue([{ id: "req_fresh", status: "completed" }]);
+      sessionsMock.requests.mockResolvedValue([{ id: "req_fresh", status: "completed" }]);
       await act(async () => {
         await vi.advanceTimersByTimeAsync(20_000);
       });
       expect(joinedSettled).toBe(true);
-      expect(sessionClientMock.listSessionRequests).toHaveBeenCalledTimes(2);
+      expect(sessionsMock.requests).toHaveBeenCalledTimes(2);
       expect(result.current.requests).toEqual([{ id: "req_fresh", status: "completed" }]);
 
       // The hung read's answer, arriving late, does not overwrite the fresh one.

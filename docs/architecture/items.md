@@ -79,7 +79,7 @@ Structural items ignore `itemVisibility` for visibility resolution. `itemVisibil
 
 ### Devtool-only items — what the devtool sees
 
-**`block_trace`** is emitted for every block execution. The same row is added at block start, patched in place as more becomes known, and finalized when the block returns. It carries the block name, kind, input source, output, timing, model usage (for generators), and on failure the error. This is how the devtool builds its execution trace tree.
+**`block_trace`** is emitted for every block execution. The same row is added at block start, patched in place as more becomes known, and finalized when the block returns. It carries the block name, kind, input source, output, timing, model usage (for generators), `rescued: true` when a `.rescue()` handler produced the output, and on failure the error. With trace observability off, a completed block gets a lean record instead, marked `lean: true`, carrying only its identity, output and `rescued`. This is how the devtool builds its execution trace tree.
 
 `block_trace.error` (and `tool_output.error`, and the terminal `error` item) is `{ message: string; code?: string; details?: Record<string, unknown> }`. The runtime auto-populates `details` for known cases:
 
@@ -96,7 +96,7 @@ Because that row is mutated in place — one object reference, fields changed be
 `block_trace.output` is a `BlockValue<T>` discriminated union with four cases:
 
 - **`inline`** — the block produced novel content. Leaves (generators, handlers) and explicit transforms (`.map`, non-identity `connectOutput`) emit this kind. The payload rides on `output.value`.
-- **`ref`** — the block's output is reference-identical to another item's content. Pass-through composers (`.step`, `.sideChain`, `.tap`, routers, `.rescue`) emit this kind, with `output.sourceItemId` pointing at the content-bearing item. The invariant is **flatten-at-emit**: every ref points one hop to a content-bearing item, never to another ref. Streaming-text generators (`outputSchema: z.string()`, `itemVisibility` set) emit a `ref` pointing at their just-emitted `MessageItem` instead of inlining a duplicate copy of the streamed text. Tool-call paths emit a `ref` pointing at the produced `tool_output` item. `resolveBlockValue` resolves message-targeting refs to the joined `output_text` content.
+- **`ref`** — the block's output is reference-identical to another item's content. Pass-through composers (`.step`, `.sideChain`, `.tap`, routers, `.rescue`) emit this kind, with `output.sourceItemId` pointing at the content-bearing item. The invariant is **flatten-at-emit**: every ref points one hop to a content-bearing item, never to another ref. Streaming-text generators (`outputSchema: z.string()`, `itemVisibility` set) emit a `ref` pointing at their just-emitted `MessageItem` instead of inlining a duplicate copy of the streamed text. Tool-call paths emit a `ref` pointing at the produced `tool_output` item. `resolveBlockValue` resolves message-targeting refs to the joined `output_text` content, and `tool_output`-targeting refs to the item's `output`.
 - **`structure`** — the block produced a novel container of existing content. Aggregators (`.stepAll`, `.parallel`, `.forEach`) emit this kind, with `output.shape` describing the array or object of nested BlockValues.
 - **`omitted`** — the value was over `maxRecordedValueBytes` (default 256 KiB) or could not be serialized (FIX-1772). Carries `bytes` (or `null`) and `preview`, the first 512 characters. The response emitter writes it on a copy; the live value is never replaced. Resume never hands it on: a replay that would inject it fails with `RECORDED_VALUE_OMITTED`. `resolveBlockValue` returns `undefined` for it.
 
@@ -168,7 +168,7 @@ Pattern aggregators (synthesizer prompt builders, reviewer input builders, repla
 
 Attribution is by **execution scope** — which worker/turn produced the item — captured at emit time, not by a timestamp range. A worker scope marks itself with the task it claimed (`ctx._markTaskScope`), and every item that scope and its descendants emit is stamped with that task id (`OutputItem.taskId`) as it is produced. The earlier timestamp-window approach could not separate concurrent producers — while a worker was still looping, its window stayed open, so a sibling worker that ran inside that interval was wrongly absorbed into it. Stamping the origin at emit time removes the ambiguity.
 
-The attribution guarantee: each item belongs to **at most one** task. Concurrent sibling workers and sequential turns of one worker are separated by execution scope, not by time, so neither overlaps the other. A re-claim — a retry, or resuming after `parked` — runs in a fresh scope but marks the same task id, so all attempts union under that task. Synthesizers iterating completed tasks never see an item twice. Items emitted outside any task scope (seed-time events, board scaffolding) carry no task id and are excluded.
+The attribution guarantee: each item belongs to **at most one** task. Concurrent sibling workers and sequential turns of one worker are separated by execution scope, not by time, so neither overlaps the other. A re-claim — a retry, or the turn after a person answers — runs in a fresh scope but marks the same task id, so all attempts union under that task. Synthesizers iterating completed tasks never see an item twice. Items emitted outside any task scope (seed-time events, board scaffolding) carry no task id and are excluded.
 
 **Substrate components are excluded even though they carry a task id.** Three types are on that list:
 
@@ -238,7 +238,7 @@ handler({
 generator({
   name: "analyze",
   activeStatusMessage: (input) => `Analyzing ${input.items.length} items...`,
-  model: "openai/gpt-5.5",
+  model: "openai/gpt-6.1-sol",
   prompt: "...",
 });
 ```

@@ -35,6 +35,7 @@ import type { Browser, Page } from "playwright";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import { LAB_DB_PATH, LAB_ORG_ID, LAB_USER_ID, routesFor, type LabTree } from "../../../packages/shift-manager/test/fixtures/multi-worker-collab/host.mts";
 import { Scenario, serveLab, type ServedLab } from "../../multi-seat-collab/run-scenario.mts";
+import type { Tell } from "../../lib/verdict.mts";
 
 /** The published key pattern, by the tab's section name: the inventory's one collection, its workers. */
 const PATTERNS = {
@@ -221,6 +222,8 @@ export async function gradeRow5(options: {
   control: string;
   workDir: string;
   shots: string;
+  /** The run's evidence floor: step 4 compares counts, and zero and zero would pass. */
+  tell: Tell;
 }): Promise<Row5Result> {
   const { tree } = options;
   const failures: string[] = [];
@@ -311,7 +314,7 @@ export async function gradeRow5(options: {
       Object.entries(stored)
         .filter(([key]) => key.startsWith(prefix))
         .map(([, row]) => row);
-    const storedSeats = under("inventory/workers/");
+    const storedSeats = options.tell.over("row 5 step 4 · the store's workers", under("inventory/workers/"));
 
     // Who works with whom: the coordinator's conversation lists exactly the
     // delegates its own file names, through its own production action, and

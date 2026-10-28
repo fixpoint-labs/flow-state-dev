@@ -9,20 +9,20 @@ import { useLab } from "../lib/lab-data";
 import { describeFailure, type Failure } from "../lib/reads";
 
 export function ResourceView({ sessionId, resourceRef }: { sessionId: string; resourceRef: string }) {
-  const { clients } = useLab();
+  const { client } = useLab();
   const [content, setContent] = useState<{ text: string } | { failure: Failure } | undefined>(undefined);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let live = true;
     setContent(undefined);
-    clients.resources
+    client.resources
       .getResourceContent(sessionId, resourceRef)
       .then((read) => live && setContent({ text: read.content }))
       .catch((error: unknown) => live && setContent({ failure: describeFailure(error) }));
     return () => {
       live = false;
     };
-  }, [clients, sessionId, resourceRef, attempt]);
+  }, [client, sessionId, resourceRef, attempt]);
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="resource" data-resource-ref={resourceRef}>

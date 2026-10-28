@@ -1,96 +1,75 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 548" role="img" aria-labelledby="title desc">
-  <title id="title">references and resources: where the text lives and who reaches it</title>
-  <desc id="desc">A document in references is the file itself, re-read on each request; nothing running in the product can write it, and the folder is the boundary: the worker ada reaches the organization's references, its own team's, and its own folder's, but not a teammate's folder, another team's, or the folder of an org worker such as build, which reaches only the organization's references and its own. A document in resources is seeded from the file at first boot and is then a stored org-scoped row the product writes; its folder is only a namespace, so to keep a team's documents to that team you filter the records before installing them.</desc>
-  <defs>
-    <style>
-      :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
-              --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
-              --org-fill:#f0fdf4; --org:#15803d; --card:#ffffff; --card-line:#334155; --box:#f8fafc;
-              --faint:#94a3b8; --no:#b91c1c; }
-      @media (prefers-color-scheme: dark) {
-        :root { --bg:#0e0e14; --ink:#e5e7eb; --ink-2:#cbd5e1; --muted:#94a3b8;
-                --proc-fill:#1d1030; --proc:#c084fc; --sess-fill:#0f1a33; --sess:#60a5fa;
-                --org-fill:#0b2016; --org:#4ade80; --card:#14141c; --card-line:#64748b; --box:#181822;
-                --faint:#64748b; --no:#f87171; } }
-      .bg { fill: var(--bg); }
-      .wall-org { fill: var(--org-fill); stroke: var(--org); stroke-width: 2; }
-      .wall-sess { fill: var(--sess-fill); stroke: var(--sess); stroke-width: 2; }
-      .wall-file { fill: var(--box); stroke: var(--card-line); stroke-width: 2; }
-      .card { fill: var(--card); stroke: var(--card-line); stroke-width: 1.5; }
-      .reach { fill: var(--card); stroke: var(--org); stroke-width: 1.75; }
-      .no { fill: var(--box); stroke: var(--faint); stroke-width: 1.5; stroke-dasharray: 5 4; }
-      .box { fill: var(--box); stroke: var(--card-line); stroke-width: 1.5; }
-      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
-      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
-      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: var(--ink-2); }
-      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: var(--muted); }
-      .code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: var(--ink); }
-      .yes { font: 700 12px ui-sans-serif, system-ui, sans-serif; fill: var(--org); }
-      .nope { font: 700 12px ui-sans-serif, system-ui, sans-serif; fill: var(--faint); }
-    </style>
-  </defs>
-
-  <rect x="0" y="0" width="920" height="548" rx="16" class="bg"/>
-
-  <text x="28" y="36" class="title">references/ and resources/: where the text lives, who reaches it</text>
-  <text x="28" y="58" class="muted">Same tree, same refs. Different owner of the text, and a different boundary.</text>
-
-  <!-- references -->
-  <rect x="28" y="84" width="476" height="324" rx="14" class="wall-file"/>
-  <text x="44" y="108" class="h">references/: the file is the text</text>
-  <text x="44" y="126" class="muted">Re-read on each request. The product cannot write it.</text>
-
-  <rect x="44" y="142" width="444" height="250" rx="12" class="reach"/>
-  <text x="58" y="164" class="h">org/references/</text>
-  <text x="400" y="164" class="yes">ada reads</text>
-
-  <rect x="58" y="176" width="270" height="202" rx="10" class="reach"/>
-  <text x="72" y="198" class="h">teams/engineering/references/</text>
-  <text x="250" y="216" class="yes">ada reads</text>
-
-  <rect x="72" y="228" width="242" height="64" rx="8" class="reach"/>
-  <text x="84" y="250" class="code">workers/ada/references/</text>
-  <text x="84" y="276" class="yes">ada reads: its own folder</text>
-
-  <rect x="72" y="302" width="242" height="62" rx="8" class="no"/>
-  <text x="84" y="324" class="code">workers/ivan/references/</text>
-  <text x="84" y="348" class="nope">ada cannot: a teammate</text>
-
-  <rect x="342" y="176" width="132" height="96" rx="10" class="no"/>
-  <text x="354" y="198" class="code">teams/support/</text>
-  <text x="354" y="214" class="code">  references/</text>
-  <text x="354" y="242" class="nope">ada cannot:</text>
-  <text x="354" y="258" class="nope">another team</text>
-
-  <rect x="342" y="282" width="132" height="96" rx="10" class="no"/>
-  <text x="354" y="304" class="code">workers/build/</text>
-  <text x="354" y="320" class="code">  references/</text>
-  <text x="354" y="348" class="nope">ada cannot:</text>
-  <text x="354" y="364" class="nope">an org worker</text>
-
-  <!-- resources -->
-  <rect x="524" y="84" width="368" height="324" rx="14" class="wall-org"/>
-  <text x="540" y="108" class="h">resources/: a stored row</text>
-  <text x="540" y="126" class="muted">The file seeds it at first boot. Then it is data.</text>
-
-  <rect x="540" y="142" width="336" height="116" rx="10" class="card"/>
-  <text x="554" y="166" class="h">teams/engineering/scratch</text>
-  <text x="554" y="188" class="p">Organization scope. The product,</text>
-  <text x="554" y="206" class="p">a block or the agent can write it.</text>
-  <text x="554" y="232" class="muted">Editing the file later does not</text>
-  <text x="554" y="248" class="muted">change a row that was written.</text>
-
-  <rect x="540" y="270" width="336" height="122" rx="10" class="box"/>
-  <text x="554" y="294" class="h">The folder is a namespace only</text>
-  <text x="554" y="316" class="p">Every worker on a flow that installed it</text>
-  <text x="554" y="334" class="p">reaches it, any team included.</text>
-  <text x="554" y="360" class="muted">To keep it to a team, filter the records</text>
-  <text x="554" y="376" class="muted">before you install them.</text>
-
-  <!-- Not a copy -->
-  <rect x="28" y="428" width="864" height="104" rx="12" class="box"/>
-  <text x="44" y="452" class="h">Not a copy</text>
-  <text x="44" y="476" class="p">A reference is never stored: the file in your repository is the only copy. Change it by editing and deploying.</text>
-  <text x="44" y="496" class="p">A resource row is not the file. After its first write, the row is the text and the file is only where it started.</text>
-  <text x="44" y="516" class="p">Each organization gets its own row. flowIsolation: true gives each worker its own row instead of one shared.</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 34 920 712">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="solid" x="28" y="56" width="480" height="434"/>
+<text class="lb" x="40" y="80">REFERENCES/</text>
+<text class="nm" x="40" y="102">The file is the text</text>
+<text class="sub" x="40" y="120">re-read on each request · the product cannot write it</text>
+<line class="hi" x1="28" y1="136" x2="508" y2="136"/>
+<rect class="thin" x="40" y="152" width="290" height="324"/>
+<text class="c" x="52" y="174">org/references/</text>
+<rect class="thin" x="54" y="186" width="262" height="160"/>
+<text class="c" x="66" y="208">teams/engineering/references/</text>
+<rect class="thin" x="68" y="222" width="218" height="50"/>
+<text class="c" x="80" y="244">workers/ada/references/</text>
+<text class="t" x="80" y="262">its own folder</text>
+<rect class="thin" x="68" y="284" width="218" height="50"/>
+<text class="c" x="80" y="306">workers/ivan/references/</text>
+<text class="t" x="80" y="324">a teammate</text>
+<rect class="thin" x="54" y="358" width="246" height="50"/>
+<text class="c" x="66" y="380">teams/support/references/</text>
+<text class="t" x="66" y="398">another team</text>
+<rect class="thin" x="54" y="418" width="246" height="48"/>
+<text class="c" x="66" y="440">workers/build/references/</text>
+<text class="t" x="66" y="457">an org worker</text>
+<rect class="thin" x="434" y="254" width="62" height="44"/>
+<text class="lb" x="444" y="270">WORKER</text>
+<text class="c" x="444" y="289">ada</text>
+<path class="ln" d="M434 276 H420 V170"/><circle cx="420" cy="276" r="2.6" class="ink"/>
+<line class="ln" x1="420" y1="170" x2="332" y2="170" marker-end="url(#ah)"/>
+<line class="ln" x1="420" y1="204" x2="318" y2="204" marker-end="url(#ah)"/>
+<line class="ln" x1="420" y1="246" x2="288" y2="246" marker-end="url(#ah)"/>
+<rect class="ground" x="407.7" y="218" width="24.6" height="15"/><text class="plate" x="420" y="229" text-anchor="middle">01</text>
+<path class="ln x" d="M420 276 V442"/>
+<line class="ln x" x1="420" y1="308" x2="298" y2="308"/><line class="ln x" x1="298" y1="298" x2="298" y2="318"/>
+<line class="ln x" x1="420" y1="382" x2="312" y2="382"/><line class="ln x" x1="312" y1="372" x2="312" y2="392"/>
+<line class="ln x" x1="420" y1="442" x2="312" y2="442"/><line class="ln x" x1="312" y1="432" x2="312" y2="452"/>
+<rect class="ground" x="407.7" y="338" width="24.6" height="15"/><text class="plate x" x="420" y="349" text-anchor="middle">02</text>
+<rect class="solid" x="528" y="56" width="364" height="434"/>
+<text class="lb" x="540" y="80">RESOURCES/</text>
+<text class="nm" x="540" y="102">A stored row</text>
+<text class="sub" x="540" y="120">the file seeds it at first boot; then it is data</text>
+<line class="hi" x1="528" y1="136" x2="892" y2="136"/>
+<rect fill="url(#hatch)" x="540" y="152" width="340" height="10"/><line class="thin" x1="540" y1="162.5" x2="880" y2="162.5"/><rect class="thin" x="540" y="152" width="340" height="122"/>
+<text class="c" x="550" y="186">teams/engineering/scratch</text>
+<text class="t" x="550" y="206">Organization scope. The product,</text>
+<text class="t" x="550" y="222">a block or the agent can write it.</text>
+<text class="t" x="550" y="246">Editing the file later does not</text>
+<text class="t" x="550" y="262">change a row that was written.</text>
+<rect class="thin" x="540" y="334" width="340" height="72"/>
+<text class="lb" x="550" y="356">THE FOLDER IS A NAMESPACE ONLY</text>
+<text class="t" x="550" y="376">Every worker on a flow that installed it</text>
+<text class="t" x="550" y="392">reaches it, any team included.</text>
+<line class="ln" x1="710" y1="333" x2="710" y2="276" marker-end="url(#ah)"/><rect class="ground" x="697.7" y="297" width="24.6" height="15"/><text class="plate" x="710" y="308" text-anchor="middle">03</text>
+<text class="t" x="540" y="436">To keep it to a team, filter the</text>
+<text class="t" x="540" y="452">records before you install them.</text>
+<line class="hi" x1="0" y1="514" x2="920" y2="514"/>
+<text class="n" x="28" y="540">01</text>
+<text class="t" x="60" y="540">ada reads the references of its organization, its team and its own folder. The folder is the wall: to let a</text>
+<text class="t" x="60" y="557">reference reach more people, move the file up the tree.</text>
+<text class="n" x="28" y="582">02</text>
+<text class="t" x="60" y="582">It cannot reach a teammate's folder, another team's, or an org worker's. The accessor is not on its map at all,</text>
+<text class="t" x="60" y="599">so reading one throws is not registered.</text>
+<text class="n" x="28" y="624">03</text>
+<text class="t" x="60" y="624">Every worker on a flow that installed a resource reaches it, any team included. Its folder is only part of the name.</text>
+<text class="n" x="28" y="649">04</text>
+<text class="t" x="60" y="649">A reference is never stored: the file in your repository is the only copy. Change it by editing and deploying.</text>
+<text class="n" x="28" y="674">05</text>
+<text class="t" x="60" y="674">A resource row is not the file. After its first write, the row is the text and the file is only where it started.</text>
+<text class="t" x="60" y="691">Each organization gets its own row. flowIsolation: true gives each worker its own row instead of one shared.</text>
+<line class="ln" x1="28" y1="718" x2="54" y2="718" marker-end="url(#ah)"/><text class="lb" x="62" y="722">READS · REACHES</text>
+<line class="ln x" x1="200" y1="718" x2="222" y2="718"/><line class="ln x" x1="223" y1="711" x2="223" y2="725"/><text class="lb" x="234" y="722">CANNOT READ</text>
+<rect fill="url(#hatch)" x="350" y="712" width="26" height="11"/><rect class="thin" x="350" y="712" width="26" height="11"/><text class="lb" x="384" y="722">OUTLIVES THE REQUEST</text>
 </svg>

@@ -41,7 +41,7 @@ import { generator } from "@flow-state-dev/core";
 
 const myGenerator = generator({
   name: "my-gen",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "You are a helpful assistant.",
   inputSchema: z.object({ message: z.string() }),
   outputSchema: z.object({ response: z.string() }),
@@ -195,6 +195,7 @@ Resource options:
 - `render?: (content, state) => string | Promise<string>` — optional renderer for `readContent()`
 - `llmReadable?: boolean` — allows read access when `readResourceContentTool()` is installed
 - `llmWritable?: boolean` — allows write access when `writeResourceContentTool()` is installed
+- `secret?: Array<keyof State>` — state fields left out of client snapshots, state endpoints, `live` deltas and the debug endpoints (content is not covered). See [Secret fields](/docs/resources/client-access#secret-fields)
 
 Runtime resource state methods (`ResourceRef`). The mutators resolve to `void` — read the result back off the synchronous `ref.state` getter:
 
@@ -224,7 +225,7 @@ import {
 
 const agent = generator({
   name: "agent",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "You can inspect and edit approved resource files.",
   tools: [readResourceContentTool(), writeResourceContentTool()],
 });
@@ -257,6 +258,7 @@ Config options:
 - `llmReadable?: boolean` — exposes every instance's content to `readResourceContentTool()` and content search (`grepResourceContent` / `searchResources`). Default `false`
 - `llmWritable?: boolean` — lets `writeResourceContentTool()` overwrite an instance body. Default `false`; independent of `llmReadable` and of `writable`
 - `stampOrgId?: boolean` — when `true`, creating an instance whose initial state has no `orgId` writes the organization the run belongs to into it. Creating an instance with an `orgId` other than the run's organization throws. On any write to an existing instance (including `upsert` and `create(..., { replace: true })`), the stored `orgId` stands: leaving it out keeps it, and naming a different one throws without writing. An instance with no stored `orgId` keeps none unless the write names the run's own organization; naming any other throws. The `stateSchema` must declare `orgId`, or `defineResourceCollection` throws. Default `false`
+- `secret?: Array<keyof State>` — state fields left out of client snapshots, state endpoints, `live` deltas and the debug endpoints (content is not covered). See [Secret fields](/docs/resources/client-access#secret-fields)
 - `onInstanceCreated?: (key, state, ctx) => void` — lifecycle hook
 - `onInstanceUpdated?: (key, state, prevState, ctx) => void` — lifecycle hook
 - `onInstanceDeleted?: (key, ctx) => void` — lifecycle hook

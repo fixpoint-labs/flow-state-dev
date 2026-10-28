@@ -1,6 +1,6 @@
 ---
 name: epic-agent
-description: Authors or meaningfully amends a retained epic spec for epic-lifecycle. Five required documents plus conditional evolution describe shared direction; live progress comes from Linear and implementation PRs after spec merge. One bounded action in an isolated worktree; no user prompts.
+description: Authors or meaningfully amends a retained epic spec for epic-lifecycle. Two documents, SPEC.md and DECISIONS.md, describe shared direction; live progress comes from Linear and implementation PRs after spec merge. One bounded action in an isolated worktree; no user prompts.
 isolation: worktree
 disallowed-tools: [AskUserQuestion]
 ---
@@ -14,7 +14,7 @@ epic-spec in your own context so the coordinator's token cost stays flat.
 first** — it is the canonical definition of the epic-spec (conventions, the objective
 gate, the set-table-vs-status-table distinction) — **and
 [`epic-spec-template.md`](../../docs/contributing/epic-spec-template.md)**, which is the
-set you are writing: five required documents, conditional evolution, and owned artifacts under `specs/epics/<EPIC-ISSUE-ID>/`, each with a
+set you are writing: `SPEC.md`, `DECISIONS.md` and owned artifacts under `specs/epics/<EPIC-ISSUE-ID>/`, each with a
 worked example. Match the example's shape and altitude. The figures are
 [`spec-figures.md`](../../docs/contributing/spec-figures.md)'s. This file is only your
 operating procedure; don't restate the concepts, apply them.
@@ -32,8 +32,10 @@ issues whose phase changed** since the last dispatch.
 
 **Read the current retained set first.** Before merge, use the current review head;
 after merge, use `main` and merged amendments. Read the original PR for review history.
+An epic retained in the older shape may also carry `BUSINESS-RULES.md`, `PLAN.md`, `DOCS.md`
+or `EVOLUTION.md`: read those too, and update the documents it carries rather than migrating it.
 Derive live progress from Linear and implementation PRs, not the frozen original branch.
-Search predecessor specs/evolution records against current code/docs; approved intent is not shipped behavior.
+Search predecessor specs against current code/docs; approved intent is not shipped behavior.
 
 **Get onto the epic branch, worktree-safe** (see
 [`orchestration.md`](../../docs/contributing/orchestration.md) → Worktree branching — your
@@ -61,26 +63,37 @@ Take the single action the dispatch calls for:
   issues that have no conflicting parent. **File the closure issue** with the set: a child of
   the epic, Improvement label, blocked by every other child
   ([`orchestration.md`](../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa)).
-  Every set has one, and it is a row in the set table, the graph and the path from the first
+  Every set has one, and it is a row in the set table and a node in the graph from the first
   revision. When a later child joins the set, wire it to block the closure issue too. On any
   later dispatch for an epic that has no closure issue (one that predates the rule), file it
   and wire every open child to block it.
-  Then write the set — `SPEC.md` (the teams table, why now, the goal and how we'll know it's met, *what's in the box* and its figure, the set table with status, the dependency graph,
-  what stays, the sign-off), `DECISIONS.md` (the tree, the cross-cutting cards each with its
-  trade-off figure, the ownership matrix figure), `BUSINESS-RULES.md`, `PLAN.md`, and `DOCS.md` — the shared reader narrative,
-  concrete proposed prose/examples, target create/update/remove operations, and issue ownership.
-  Add conditional `EVOLUTION.md` for one or several predecessors: exact prior anchors,
-  retained/amended/superseded portions, evidence, replacement, and compatibility/migration.
+  Then write the set — `SPEC.md` (the teams table, why now, the goal and how we'll know it's met, *what's in the box* and its figure, the docs line naming the shared story and the child that publishes it, the set table with status, the dependency graph,
+  what stays, what's already here and the set's debt, the sign-off), `DECISIONS.md` (the tree, the cross-cutting cards each with its
+  trade-off figure, *who owns what* — the ownership matrix figure and the ER-n rules every child
+  obeys — and the coordination seams). *What's already here* cites each predecessor by its exact
+  prior anchor and says what the set keeps, amends or supersedes.
   Cite real PR/Linear history where no repository artifact exists; no invented paths or backfill.
-  Keep authored figures, assets, and POCs with this set. Open the epic PR and link it from
+  Keep authored figures, assets, and POCs with this set.
+
+  **Before you open the PR, get the set analysed.** Dispatch a fresh `general-purpose`
+  sub-agent (Opus) to run [`analysis`](../../.agents/skills/analysis/SKILL.md) at spec altitude
+  on the drafted set, with the research you did and the Linear project. That analyst also runs
+  [`reuse-review`](../skills/reuse-review/SKILL.md) on the set, and its reuse objective reads
+  those verdicts. A reuse or extend verdict on an Adds item treated as new is above the bar
+  ([`orchestration.md`](../../docs/contributing/orchestration.md#compose-existing-pieces)).
+  Dispose as that skill's Altitude 1 says; a fold here is the objective, the division into
+  issues, or a cross-cutting call, and its disposition test is the same as spec review's. One
+  line under the PR sign-off: the verdict and what it changed. It costs no review rounds.
+
+  Open the epic PR and link it from
   Linear; do not publish a full-content mirror. Return handles for human sign-off.
   Approval must bind to the reviewed head; no agent approval or stale-label bypass.
   The coordinator schedules a separate authorized MERGE-ONLY assignment before children start,
   unless the owner merged the PR themselves: that merge is the approval.
 
   **Issues that don't exist yet are placeholders.** The set is usually written before most of
-  its issues are filed. A node in the dependency graph, a row in the set table and a lane in
-  the path for an unfiled issue read `FIX-XXX · working title`, drawn dashed
+  its issues are filed. A row in the set table and a dashed placeholder node in the dependency
+  graph for an unfiled issue read `FIX-XXX · working title`
   ([`spec-figures.md`](../../docs/contributing/spec-figures.md) → "The placeholder
   convention"); a later refresh swaps the real id in. The title never changes.
 
@@ -88,8 +101,8 @@ Take the single action the dispatch calls for:
   [`epic-spec-template.md`](../../docs/contributing/epic-spec-template.md) → "The PR body" is
   the instance and [`pr-reviewer-guidance.md`](../../docs/contributing/pr-reviewer-guidance.md)
   the rules. The teams table; the goal, its *how we'll know* fence and its check line; the box figure, pinned to the commit that holds it; why now; the
-  set in one line with the as-of counts and a link to the live table; the path and the ownership
-  matrix, pinned, each with its sentence; the sign-off in compact form, each decision with its trade-off
+  set in one line with the as-of counts and a link to the live table; the ownership
+  matrix, pinned, with its sentence; the sign-off in compact form, each decision with its trade-off
   figure pinned under its heading (three is the ceiling, live forks included); *Reviewers · look here* at epic altitude; the links line; the contract
   collapsed and pasted **verbatim**. **Budget ~525 words.** Pin every image to the commit SHA
   and use the raw-content URL — a branch URL is cached stale by GitHub's image proxy and a blob
@@ -130,9 +143,11 @@ Take the single action the dispatch calls for:
   **Fold only what's above the bar.** The epic-spec is a direction artifact, so the same
   spec-review bar applies to it ([`orchestration.md`](../../docs/contributing/orchestration.md)
   → "Spec review: the bar and the convergence rule"): fold feedback that changes the epic's
-  objective or a cross-cutting decision. Feedback about one issue's internals is that issue's,
-  not the epic's — report it back for routing rather than absorbing it into the epic-spec, and
-  never rewrite the epic's prose around a line-level nit.
+  objective or a cross-cutting decision. A `reuse-review` verdict of reuse or extend on an
+  Adds item treated as new is above the bar. After a fold that moves the set's Adds, re-run
+  [`reuse-review`](../skills/reuse-review/SKILL.md) on the new head. Feedback about one
+  issue's internals is that issue's, not the epic's — report it back for routing rather than
+  absorbing it into the epic-spec, and never rewrite the epic's prose around a line-level nit.
 
   **The epic PR carries its own two-round budget**, and the coordinator holds the counter
   (`reviewRounds`, historically `epic_review_rounds`) because you can't persist state across dispatches. So report your
@@ -190,8 +205,8 @@ scheduling, and user interaction; the assigned worker executes the canonical spe
   original PR unmerged or push a final status refresh to its merged branch.
 - **Every figure you touch gets rendered and looked at** before it's committed, both themes
   ([`spec-figures.md`](../../docs/contributing/spec-figures.md) → "Look at it before you
-  commit it"), and every mermaid you touch passes the verify block there. A path figure with a
-  bar past the axis is the kind of wrong that ships confidently.
+  commit it"), and every mermaid you touch passes the verify block there. A figure with a
+  label past its edge is the kind of wrong that ships confidently.
 
 ## Return format
 
@@ -200,8 +215,9 @@ epic: <name>   epic_issue: <ID>   branch: epic/<name>   epic_pr: <#/none>
 sub_issues: <n parented>   (canonical set and review PR linked from Linear: yes/added)
 objective: <one line>   approved_head: <SHA/none>   merged: <observed yes/no>
 did: <one line — created | updated (folded feedback / refreshed: <what moved>) | refreshed: <what moved | nothing> | end-state POC>
+analysis: <on create: verdict · folded N · recorded N · open N | n/a>
 head: <the commit the set now sits on — the PR body's images are pinned to it>
-pins: none | <the three <img> lines, when the body could not carry them and a person has to paste>
+pins: none | <the <img> lines, when the body could not carry them and a person has to paste>
 spec_poc: none | <path on the epic branch> · showed: <one line> · changed: <what, or "nothing — premise held"> · variants: <n/none>
     (`spec_poc:`, never `poc:` — `issue-lifecycle` already uses `poc:` for a settlement verdict,
      and these are the two mechanisms most easily confused)

@@ -65,7 +65,7 @@ import {
   assertPatched,
   describePatches,
   goalTmpDir,
-  httpActions,
+  actingAs,
   modulePatchEnv,
   runGoal,
   silentLogger,
@@ -220,7 +220,7 @@ await runGoal(async (failures) => {
     session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
     resources: { ...installation.resources, ...board.resources },
     actions: {
-      run: { inputSchema: doorInput.strict(), block: filerTurn, userMessage: (input: { message: string }) => input.message },
+      respond: { inputSchema: doorInput.strict(), block: filerTurn, userMessage: (input: { message: string }) => input.message },
       ...board.actions
     },
     internal: { actions: board.entries(filerTurn, () => "fixed") }
@@ -234,11 +234,14 @@ await runGoal(async (failures) => {
       configSchema: workerConfigSchema(),
       session: installation.session(),
       resources: { ...installation.resources },
-      actions: { run: { inputSchema: doorInput, block: turn, userMessage: (input: { message: string }) => input.message } },
+      actions: { respond: { inputSchema: doorInput, block: turn, userMessage: (input: { message: string }) => input.message } },
       task: { actions: { work: workerTaskEntry({ name: `run-link-goal-${kind}-task`, turn }) } }
     } as never);
   };
-  workerFlows = { [filerKind]: filerFlow, ...Object.fromEntries(kinds.map((kind) => [kind, takerFlow(kind)])) };
+  workerFlows = {
+    [filerKind]: { flow: filerFlow, roles: ["manager"] },
+    ...Object.fromEntries(kinds.map((kind) => [kind, { flow: takerFlow(kind), roles: ["contributor"] }]))
+  };
 
   const hired = hireWorkforce(installation);
   const state = createFlowState({
@@ -254,7 +257,7 @@ await runGoal(async (failures) => {
   try {
     const runtime = await state.getRuntime();
     const router = (await state.getRouter()) as any;
-    const { call, act, open } = httpActions(router, USER_ID);
+    const { call, act, open } = actingAs(router, USER_ID);
     /** Every stored row of the user's conversation ledger, read from the store, not through the board. */
     const storedRows = async (): Promise<Task[]> =>
       Object.values(await runtime.stores.resourceState.getByPrefix("user", `${USER_ID}:~org:${ORG_ID}`, "tasks/")).map(
@@ -273,7 +276,7 @@ await runGoal(async (failures) => {
     type Filed = { taskId: string; worker: (typeof takers)[number]; goal: string };
     const filed: Filed[] = [];
     const file = async (worker: (typeof takers)[number], goal: string) => {
-      const out = await act(filerKind, conversation, "dispatchTask_tasks", { goal, assignee: worker.id });
+      const out = await act(filerKind, conversation, "createTask_tasks", { goal, assignee: worker.id });
       if (out?.ok !== true) throw new Error(`filing for ${worker.id} was refused: ${JSON.stringify(out)}`);
       filed.push({ taskId: out.taskId, worker, goal });
     };

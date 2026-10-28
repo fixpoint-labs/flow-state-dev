@@ -1,0 +1,89 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="Before and after. Today a Claude Code run's rate_limit_event reaches the harness and is dropped, so Usage has no Claude row. After: the Claude Code harness hands each event to an onUsage hook as one window. Harness-manager's onUsage feed writes that one window, through recordHarnessUsage, into the run owner's row only. When someone refreshes Usage, readClaudeUsage asks probeClaudeAccount whether Claude Code is signed in, on an API key or signed out, and writes that through the same writer. The harness-usage collection and harnessUsage query from FIX-2141 stay as they are, except that a window may now have no percent, and the Usage view reads only the query. The Error Reporter's Claude runs are not recorded."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .lane  { fill:var(--surface-2); }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .src   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .head  { fill:var(--ink-3); }
+    .heada { fill:var(--accent); }
+    .later { fill:var(--surface); stroke:var(--accent); stroke-width:1.2; stroke-dasharray:5 4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.3; fill:none; }
+    .dash  { stroke:var(--accent); stroke-width:1.3; fill:none; stroke-dasharray:5 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-bad { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="today">
+    <rect class="lane" x="16" y="16" width="908" height="80" rx="6"/>
+    <text class="t-lbl" x="32" y="38">TODAY · CLAUDE CODE REPORTS ITS LIMITS AND NOTHING KEEPS THEM</text>
+    <rect class="src" x="40" y="48" width="180" height="38" rx="4"/>
+    <text class="t-b" x="52" y="65">Claude Code run</text>
+    <text class="t-s" x="52" y="79">rate_limit_event</text>
+    <path class="arrow" d="M220 67 L300 67"/>
+    <text class="t-bad" x="310" y="71">the harness drops the event · Usage has no Claude row</text>
+  </g>
+
+  <g id="after">
+    <rect class="lane" x="16" y="110" width="908" height="274" rx="6"/>
+    <text class="t-lbl" x="32" y="132">AFTER · A RUN WRITES ONE WINDOW, A LOOK WRITES THE ACCOUNT, ONE WRITER FOR BOTH</text>
+
+    <rect class="src" x="40" y="150" width="180" height="48" rx="4"/>
+    <text class="t-b" x="52" y="170">Claude Code run</text>
+    <text class="t-s" x="52" y="186">rate_limit_event · sparse</text>
+
+    <rect class="new" x="40" y="222" width="180" height="48" rx="4"/>
+    <text class="t-b" x="52" y="242">claudeCodeAgent</text>
+    <text class="t-s" x="52" y="258">onUsage · one window</text>
+    <path class="arrow" d="M130 198 L130 222"/>
+
+    <rect class="new" x="250" y="222" width="190" height="48" rx="4"/>
+    <text class="t-b" x="262" y="242">manager's onUsage feed</text>
+    <text class="t-s" x="262" y="258">the run owner's row only</text>
+    <path class="arrow" d="M220 246 L250 246"/>
+
+    <rect class="new" x="470" y="222" width="190" height="48" rx="4"/>
+    <text class="t-b" x="482" y="242">recordHarnessUsage</text>
+    <text class="t-s" x="482" y="258">+ one-window write · origin run</text>
+    <path class="arrow" d="M440 246 L470 246"/>
+
+    <rect class="new" x="250" y="296" width="190" height="48" rx="4"/>
+    <text class="t-b" x="262" y="316">readClaudeUsage</text>
+    <text class="t-s" x="262" y="332">probeClaudeAccount · on refresh</text>
+    <path class="arrow" d="M440 320 L565 320 L565 270"/>
+
+    <rect class="box" x="690" y="222" width="210" height="48" rx="4"/>
+    <text class="t-b" x="702" y="242">harness-usage/** · FIX-2141</text>
+    <text class="t-s" x="702" y="258">same store · percent may be absent</text>
+    <path class="arrow" d="M660 246 L690 246"/>
+
+    <rect class="box" x="690" y="150" width="210" height="48" rx="4"/>
+    <text class="t-b" x="702" y="170">harnessUsage query → Usage</text>
+    <text class="t-s" x="702" y="186">percent when Claude sends one</text>
+    <path class="arrow" d="M795 222 L795 198"/>
+
+    <rect class="later" x="690" y="296" width="210" height="48" rx="4"/>
+    <text class="t-b" x="702" y="316">Error Reporter's Claude runs</text>
+    <text class="t-s" x="702" y="332">not recorded · D1</text>
+  </g>
+  <g id="arrowheads">
+    <path class="head" d="M300 67 L293 63 L293 71 z"/>
+    <path class="head" d="M130 222 L126 215 L134 215 z"/>
+    <path class="head" d="M250 246 L243 242 L243 250 z"/>
+    <path class="head" d="M470 246 L463 242 L463 250 z"/>
+    <path class="head" d="M565 270 L561 277 L569 277 z"/>
+    <path class="head" d="M690 246 L683 242 L683 250 z"/>
+    <path class="head" d="M795 198 L791 205 L799 205 z"/>
+  </g>
+</svg>

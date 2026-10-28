@@ -31,25 +31,43 @@ export type {
   LivenessAnswers,
   ParentTaskOutcome,
   RequestHost,
-  ResumeAskInput,
-  ResumeAskResult,
+  ResumeWaitInput,
+  ResumeWaitResult,
+  RequestWaits,
+  RequestSessions,
+  SessionView,
+  RequestWakes,
   SettleParentTaskInput,
-  SettleParentTaskResult
+  SettleParentTaskResult,
+  SuspensionAddress,
+  WaitDeadlines,
+  WakeSettleResult,
+  WakeView
 } from "./request-host";
 
 export { NoRequestHostError, requireRequestHost } from "./request-host";
 
-export type { AskEndingErrorCode, AskGateBinding, AskOutcome, ParkOnAskInput } from "./ask-gate";
+export type {
+  WaitEndingErrorCode,
+  WaitGateBinding,
+  WaitGateData,
+  WaitOutcome,
+  WaitRow,
+  ParkOnWaitInput
+} from "./wait-gate";
 export {
-  ASK_GATE_REASON,
-  WaitEndedError,
-  WaitStoppedError,
-  isAskGate,
-  isExpiredApproval,
-  parkOnAsk,
-  parseAskOutcome,
-  recordedAskOutcome
-} from "./ask-gate";
+  MAX_WAIT_DEPTH,
+  WAIT_DEADLINE_ENTRY,
+  WAIT_DEADLINE_OUTCOME,
+  WAIT_GATE_REASON,
+  isWaitGate,
+  continuesAtExpiry,
+  parkOnWait,
+  canHoldWait,
+  parseWaitOutcome,
+  recordedWaitOutcome,
+  waitGateDataOf
+} from "./wait-gate";
 
 export type {
   SessionCreateCheck,
@@ -72,11 +90,26 @@ export type {
   TaskBinding,
   TaskDispatchInput,
   TaskEntry,
+  TaskEntryChoice,
   TaskFlowTarget,
   TaskStateTarget,
+  KeyedTaskSessionPolicy,
+  TaskSessionChoice,
   TaskSessionPolicy,
   TaskTargetQuery
 } from "./dispatch";
+
+/** How the running request resumed (FIX-2129): read where a resumed request is admitted. */
+export { REQUEST_RESUME_SEAM, requestResumeOf } from "./request-resume";
+export type { RequestResume } from "./request-resume";
+
+/** Waiting for a user (FIX-2129): `ctx.waitForUser`, its options and what it returns. */
+export { waitForUserOn } from "./wait-for-user";
+export type { ApprovalAnswer, UserAnswer, WaitForUser, WaitForUserCancelled, WaitForUserContext, WaitForUserOptions } from "./wait-for-user";
+
+/** The request-end seam (FIX-2077): a framework package's hook after a request's last drain. */
+export { REQUEST_END_SEAM, onRequestEnded } from "./request-end";
+export type { BackgroundFailure, RequestEndHook, RequestEndSeam, RequestEndStatus, RequestEndVerdict, RequestEnding } from "./request-end";
 
 export {
   DISPATCH_SEAM,
@@ -89,7 +122,11 @@ export {
   taskBindingOf,
   framed,
   readFramed,
+  addressEntries,
+  describeAction,
+  resolveTaskAction,
   resolveTaskFlowKind,
+  resolveTaskSessionTarget,
   resolveTaskState,
   taskDispatchInputSchema,
   taskSessionKeyFor
@@ -138,7 +175,7 @@ export type {
   ResolvedPrincipal
 } from "./auth";
 
-export { DEFAULT_ORG_ID, isValidOrgId } from "./auth";
+export { DEFAULT_LOCAL_USER_ID, DEFAULT_ORG_ID, isValidOrgId } from "./auth";
 
 export type {
   ScheduleConfig,
@@ -151,6 +188,8 @@ export type {
 
 export {
   defineScheduleBinding,
+  isFiveFieldCron,
+  isKnownTimeZone,
   validateScheduleConfig,
   validateSchedulesConfig
 } from "./schedules";
@@ -353,10 +392,13 @@ export type {
   SuspensionReason,
   SuspensionRecord,
   SuspensionSkipped,
-  SuspensionStatus
+  SuspensionStatus,
+  WaitForUserKind
 } from "./suspension";
 export {
   RESUME_ACTION_STATUS,
+  isUserSuspension,
+  waitForUserKindOf,
   SUSPENSION_SKIPPED,
   TERMINAL_SUSPENSION_STATUSES,
   isTerminalSuspensionStatus,
@@ -413,8 +455,13 @@ export {
   observedPlanItemStateSchema,
   observedPlanListCollection,
   observedPlanListStateSchema,
+  harnessConversationNamespace,
+  planConversationPrefix,
+  planKeySegment,
+  planRowsPrefix,
+  readPlanTarget,
 } from "./harness-plan";
-export type { ObservedOutcome, ObservedPlanListStatus, PlanListItem } from "./harness-plan";
+export type { ObservedOutcome, ObservedPlanListStatus, PlanListItem, PlanMarkerRead } from "./harness-plan";
 
 /**
  * The coding-harness contract (LAB-152) — what a harness block is handed and
@@ -437,4 +484,12 @@ export type {
   HarnessRunUsage,
   HarnessSessionHook,
   HarnessSource,
+  HarnessSteer,
+  HarnessSteerHook,
+  HarnessUsageHook,
+  HarnessUsageLevel,
+  HarnessUsageReader,
+  HarnessUsageReading,
+  HarnessUsageReport,
+  HarnessUsageWindow,
 } from "./harness";

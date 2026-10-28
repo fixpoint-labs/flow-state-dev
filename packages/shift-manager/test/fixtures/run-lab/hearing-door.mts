@@ -29,9 +29,9 @@ const hear = handler({
   },
 });
 
-/** One door, under the action name `message`. Spread into a fixture's `actions`. */
+/** One door, `respond`. Spread into a fixture's `actions`. */
 export const hearingDoor = {
-  message: {
+  respond: {
     block: hear,
     inputSchema: messageInput,
     userMessage: (input: { message: string }) => input.message,

@@ -43,6 +43,7 @@ import { inMemoryStores } from "@flow-state-dev/engine";
 import { runBoardSegment } from "@flow-state-dev/harness-manager";
 import { checkoutPathFor } from "@flow-state-dev/harness-manager/checkout";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
+import { WORKER_TASK_ENTRY } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import {
@@ -112,6 +113,14 @@ if (CONTROL === "list") {
 }
 
 const LAB_ROOT = fileURLToPath(new URL("../../../packages/shift-manager/teams/devteam", import.meta.url));
+
+/** The packages a flow imports to run a coding harness; the em kind imports none. */
+const HARNESS_PACKAGES = [
+  "@flow-state-dev/harness-manager",
+  "@flow-state-dev/claude-code",
+  "@flow-state-dev/codex",
+  "@flow-state-dev/cursor",
+] as const;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -387,7 +396,7 @@ await runGoal(async (failures) => {
       );
     }
 
-    // ---- (b) BR-3, BR-4 — each seat's own view; the EM kind has no entry ---
+    // ---- (b) BR-3, BR-4 — each seat's own view; the EM kind only takes posts
     {
       for (const [seatId, expected] of Object.entries(fixture.seats)) {
         const read = await lab.inspect(seatId);
@@ -421,31 +430,42 @@ await runGoal(async (failures) => {
       }
 
       // BR-4, on the KIND rather than on behaviour. "It did not run a harness"
-      // is a fact about one run; "it declares no task entry" is a fact about
-      // what the seat can ever do.
+      // is a fact about one run; "its only task entry is `work`, on its own
+      // turn" is a fact about what the seat can ever do. That entry runs the
+      // EM's own turn on a coordinator's routed task (FIX-2083), which files
+      // rows for others to work: dispatching, not running a harness. Any other
+      // task entry is a route to one.
       const entriesOf = (seatId: string): string[] =>
         Object.keys((lab.workers[seatId] as { task?: { actions?: object } } | undefined)?.task?.actions ?? {});
       const emEntries = entriesOf(fixture.coordinatorSeat);
-      if (emEntries.length > 0) {
+      if (!sameSet(emEntries, [WORKER_TASK_ENTRY])) {
         note(
-          `${fixture.coordinatorSeat} declares task entries ${JSON.stringify(emEntries)} — the ` +
-            `coordinator seat must have no route to a harness at all`,
+          `${fixture.coordinatorSeat} declares task entries ${JSON.stringify(emEntries)}, wanted only ` +
+            `${WORKER_TASK_ENTRY} — the coordinator seat must have no route to a harness at all`,
         );
       }
       if (entriesOf(fixture.assignedSeat).length === 0) {
         note(`${fixture.assignedSeat} declares no task entry, so nothing could be handed to it`);
       }
       // And in the source, so the claim survives a refactor that moves the
-      // slot somewhere the flow shape does not show.
+      // slot somewhere the flow shape does not show, or runs a harness from
+      // inside the task entry's turn.
       const emSource = readFileSync(join(LAB_ROOT, "workforce/flows/workers/em.mts"), "utf8");
       if (emSource.includes("harnessManager")) {
         note(`the em kind's own file names harnessManager`);
+      }
+      const harnessImports = HARNESS_PACKAGES.filter((pkg) =>
+        [`"${pkg}`, `'${pkg}`].some((needle) => emSource.includes(needle)),
+      );
+      if (harnessImports.length > 0) {
+        note(`the em kind's own file imports ${JSON.stringify(harnessImports)}`);
       }
 
       evidence.push(
         `each of the ${Object.keys(fixture.seats).length} seats reported its own instructions, ` +
           `document ref and exact skill union from inside a running block; the coordinator kind ` +
-          `declares no task entry and its file never names the manager`,
+          `declares only its own-turn task entry, and its file never names the manager ` +
+          `or imports a harness`,
       );
     }
 

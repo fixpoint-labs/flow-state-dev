@@ -47,7 +47,7 @@ export interface MemorySystemBlocksConfig {
    * Model override for the consolidation generator. Defaults to `model`.
    * Consolidation has heavier structured-output demands than the observer,
    * so a stronger primary with a cheap fallback (e.g.
-   * `['gpt-5', 'gpt-5-mini']`) is a common configuration.
+   * `['gpt-6.1-sol', 'gpt-6-luna']`) is a common configuration.
    */
   consolidationModel?: string | string[]
   /**

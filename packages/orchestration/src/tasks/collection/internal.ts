@@ -14,18 +14,23 @@ import type { TaskClaimTicket } from "../claim-ticket";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import { matchesFilter } from "../schema/task-init";
 import {
-  IllegalTaskTransitionError,
   isTerminalStatus,
   isTransitionAllowed,
 } from "../schema/task-status";
 import { extractTaskItems } from "../items/extract-window";
-import { applyEndingRecorder, endingOf, type TaskEndingRecorder } from "./ending";
+import { applyEndingRecorder, endingOf, type TaskEnding, type TaskEndingRecorder } from "./ending";
+import { deliveredByWait, droppedHeldNotices, recordEnding as recordNoticeOwed, releasedHeldNotices, takenNoticePatch, withoutNoticeMarkers, type TaskNotice } from "../notice/task-notice";
+import { assertDepsEditable, TaskFilingRefusedError } from "./filing";
+import { hasStarted, lockedFields, type TaskEditField } from "./field-rules";
+import { steersForAttempt, untakenSteers } from "../steers";
+import type { SuspensionHold } from "../schema/hold";
+import { answerOf, askedOnTicket, droppedMirror, hasOpenHold, holdWrite, isRowHold, keptOnEnding, newRowHolds, openRowHolds, owesTurn } from "./holds";
 import type { TaskChangeKind } from "./change-event";
 import type {
   ClaimOptions,
-  TaskDispatchOptions,
   TaskHandle,
   TaskTransitionOptions,
+  TaskWaitSlot,
   TaskWriteDeclineReason,
 } from "./types";
 
@@ -81,8 +86,18 @@ export function createTaskHandleWrapper<TInput, TOutput>(
 export function buildInitialTask<TInput, TOutput>(
   init: TaskInit<TInput>,
   now: number,
-  createdBy?: string
+  createdBy?: string,
+  filer?: Task["filer"],
+  filing: FilingStamp = {}
 ): Task<TInput, TOutput> {
+  const status = init.held === true ? "held" : (init.status ?? "pending");
+  // The filer's questions and confirms, each a row hold that keeps the task
+  // from starting until it is answered (FIX-2133), due when the host sets a deadline.
+  const holds =
+    init.questions !== undefined && init.questions.length > 0
+      ? newRowHolds(init.questions, now, filing.holdDueMs !== undefined ? { dueMs: filing.holdDueMs } : {})
+      : undefined;
+  const filedUnder = filing.filedUnder;
   return {
     ...initialWriteProvenance(),
     incarnationId: crypto.randomUUID(),
@@ -90,23 +105,56 @@ export function buildInitialTask<TInput, TOutput>(
     goal: init.goal,
     title: init.title,
     context: init.context,
-    status: init.status ?? "pending",
+    status,
     attempts: 0,
-    maxAttempts: init.maxAttempts,
+    // A conversation-result task has one attempt: unset reads as 1. Any other
+    // value was refused at filing (`assertFilingSettings`).
+    maxAttempts: init.resultTo === "conversation" ? (init.maxAttempts ?? 1) : init.maxAttempts,
     assignee: init.assignee,
     deps: init.deps,
     priority: init.priority,
     input: init.input,
     labels: init.labels,
-    metadata: init.metadata,
+    // A filing can't forge, clear or settle a notice (BP-031).
+    metadata: withoutNoticeMarkers(init.metadata),
     ...(init.followUpOf !== undefined ? { followUpOf: init.followUpOf } : {}),
-    ...(init.ask !== undefined ? { ask: { gateId: init.ask.gateId, deadline: init.ask.deadline } } : {}),
-    ...(init.undispatched === true ? { undispatched: true } : {}),
-    ...(init.dispatchCall !== undefined ? { dispatchCall: init.dispatchCall } : {}),
+    ...(init.filedByTask !== undefined ? { filedByTask: init.filedByTask } : {}),
+    ...(init.session !== undefined ? { session: init.session } : {}),
+    ...(init.resultTo !== undefined ? { resultTo: init.resultTo } : {}),
+    ...(init.target !== undefined ? { target: init.target } : {}),
+    ...(init.targetSessionId !== undefined ? { targetSessionId: init.targetSessionId } : {}),
+    ...(init.sealed !== undefined ? { sealed: init.sealed } : {}),
+    // Only a row stored cancelled (a replan's skip) names a cause: `held` wins
+    // over `status`, so a held row keeps neither.
+    ...(status === "cancelled" && init.error !== undefined ? { error: init.error } : {}),
+    ...(status === "cancelled" && init.causedBy !== undefined ? { causedBy: init.causedBy } : {}),
     ...(createdBy !== undefined ? { createdBy } : {}),
+    ...(filedUnder !== undefined && (filedUnder.tenantId !== undefined || filedUnder.orgId !== undefined)
+      ? {
+          filedUnder: {
+            ...(filedUnder.tenantId !== undefined ? { tenantId: filedUnder.tenantId } : {}),
+            ...(filedUnder.orgId !== undefined ? { orgId: filedUnder.orgId } : {}),
+          },
+        }
+      : {}),
+    ...(holds !== undefined ? { holds } : {}),
+    // Server-written by the backing (FIX-2078), never from `init`.
+    ...(filer !== undefined ? { filer: { sessionId: filer.sessionId, ...(filer.requestId !== undefined ? { requestId: filer.requestId } : {}) } } : {}),
     createdAt: now,
     updatedAt: now,
   };
+}
+
+/**
+ * What a backing stamps on every row it files beside the filer (FIX-2133):
+ * the tenant and org the filing request ran under, from its verified
+ * identity, and how long a row hold waits before it goes ahead unanswered,
+ * when the host sets that (`RequestHost.userDeadlineMs`). Server-set, never
+ * from `TaskInit`.
+ */
+export interface FilingStamp {
+  readonly filedUnder?: { readonly tenantId?: string; readonly orgId?: string };
+  readonly holdDueMs?: number;
 }
 
 /**
@@ -126,102 +174,264 @@ export function readAbandonments(task: Task): number {
 }
 
 /**
- * How many times this row re-entered after a person's turn stopped its worker
- * (FIX-1690), or after an answer to its question (FIX-1817). **Absent reads as zero** (BP-030), as {@link readAbandonments}.
- */
-export function readTurnReentries(task: Task): number {
-  return task.turnReentries ?? 0;
-}
-
-/**
- * The fields `awaitReview` writes besides the status. `feedback` is written
- * unconditionally (a park with no reason clears the note); the turn mark is
- * set only for a park a person's turn caused, and the question mark only for
- * a worker's question (FIX-1817), so no park inherits an earlier one's.
- */
-export function parkPatch(
-  feedback: string | undefined,
-  forTurn: boolean | undefined,
-  onQuestion?: boolean
-): Partial<Task> {
-  return {
-    feedback,
-    parkedForTurn: forTurn === true ? true : undefined,
-    parkedOnQuestion: onQuestion === true ? true : undefined,
-    answered: undefined,
-  };
-}
-
-/**
- * The fields `unpark` writes besides the status. Clears the lease, the claim
- * coordinate and the turn mark. A row that was parked for a turn (FIX-1690),
- * or one re-queued by an answer to its question (`answer`, FIX-1817), counts
- * one more turn re-entry, so the claim that follows is not charged; an answer
- * also marks `feedback` as the answer (`answered`) for the next attempt.
- */
-export function unparkPatch(task: Task, feedback: string | undefined, answer = false): Partial<Task> {
-  return {
-    feedback: feedback ?? undefined,
-    leaseUntil: undefined,
-    claimedBy: undefined,
-    parkedForTurn: undefined,
-    parkedOnQuestion: undefined,
-    answered: answer ? true : undefined,
-    ...(task.parkedForTurn === true || answer ? { turnReentries: readTurnReentries(task) + 1 } : {}),
-  };
-}
-
-/**
  * Why an assignee change to `assignee` is refused on `task`, beyond the
  * terminal and attempt-held rules each backing applies (FIX-1817), or
- * `undefined` when it isn't. Decided inside the atomic write, so an answer or
- * a claim landing between a caller's read and the write is honoured.
+ * `undefined` when it isn't. Decided inside the atomic write, so a claim
+ * landing between a caller's read and the write is honoured.
  *
- * - `awaiting-answer`: an answer re-queued the row and it hasn't run again
- *   (pending, or blocked since); it must run in the session that asked,
- *   which its assignee keys.
  * - `follow-up`: a follow-up keeps the worker of the task it follows, whose
  *   session it runs in.
  */
 export function assigneeChangeDecline(task: Task, assignee: string): TaskWriteDeclineReason | undefined {
   if (task.assignee === assignee) return undefined;
-  // The answer is unconsumed until its re-entry is claimed: pending, or
-  // blocked on the way there. Terminal rows are refused before this.
-  if (task.answered === true && task.status !== "in_progress") return "awaiting-answer";
   if (task.followUpOf !== undefined) return "follow-up";
   return undefined;
 }
 
 /**
- * The one rule for readying a recorded row (`TaskCollectionRef.dispatch`,
- * FIX-1875), decided on the freshest committed row, inside the write. Both
- * backings run it, so they refuse identically. Terminal rows are refused by
- * the caller's `declineOnTerminal` before this runs.
+ * The one rule for taking a row's wait slot (`TaskCollectionRef.markWait`,
+ * FIX-2082), decided on the freshest committed row, inside the write, so two
+ * requests that read the slot free can't both take it. Both backings run it.
  *
- * @returns The patch to write, `undefined` for the same call replayed (its
- *   own write already landed), or the reason it is refused.
+ * A request takes a free slot, a lapsed one (the request that waited before
+ * is no longer parked on it), or one it already holds: the same gate (a
+ * replay of the call that took it) or the same request (a drain waiting again
+ * at its deadline). Any other live slot is another request's wait.
+ *
+ * @returns The patch to write, `undefined` when the slot is already this gate's,
+ *   or the reason it is refused: `terminal` for a row that has ended (the
+ *   caller reads its ending at once), `disallowed` for another request's wait.
  */
-export function dispatchWrite(
+export function markWaitWrite(
   task: Task,
-  options: TaskDispatchOptions,
+  slot: TaskWaitSlot,
 ): { patch: Partial<Task> } | { decline: TaskWriteDeclineReason } | undefined {
-  if (task.undispatched !== true) {
-    return task.dispatchCall === options.call ? undefined : { decline: "already-dispatched" };
-  }
-  if (task.status !== "pending") return { decline: "disallowed" };
-  if (options.ask !== undefined && task.ask != null) return { decline: "disallowed" };
-  if (options.assignee !== undefined) {
-    const refused = assigneeChangeDecline(task, options.assignee);
-    if (refused !== undefined) return { decline: refused };
-  }
+  if (isTerminalStatus(task.status)) return { decline: "terminal" };
+  const held = task.wait;
+  if (held != null && held.gateId === slot.gateId && held.lapsed !== true) return undefined;
+  if (held != null && held.lapsed !== true && held.requestId !== slot.requestId) return { decline: "disallowed" };
   return {
     patch: {
-      undispatched: undefined,
-      dispatchCall: options.call,
-      ...(options.assignee !== undefined && options.assignee !== task.assignee ? { assignee: options.assignee } : {}),
-      ...(options.ask !== undefined ? { ask: { gateId: options.ask.gateId, deadline: options.ask.deadline } } : {}),
+      wait: { gateId: slot.gateId, deadline: slot.deadline, requestId: slot.requestId, ...(slot.drain === true ? { drain: true } : {}) },
     },
   };
+}
+
+/**
+ * The one rule for lapsing a wait slot at its deadline
+ * (`TaskCollectionRef.lapseWait`, FIX-2082), inside the write that loses to an
+ * ending already written: a row that has ended is refused `terminal`, and its
+ * caller reads the ending instead. The slot names the request that lapsed it,
+ * the one an ending is then held for: a slot a filing wrote before FIX-2082
+ * named none.
+ *
+ * @returns The patch to write, `undefined` when the slot is another gate's or
+ *   already lapsed, or the `terminal` refusal.
+ */
+export function lapseWaitWrite(
+  task: Task,
+  gateId: string,
+  requestId: string,
+): { patch: Partial<Task> } | { decline: TaskWriteDeclineReason } | undefined {
+  if (isTerminalStatus(task.status)) return { decline: "terminal" };
+  if (task.wait == null || task.wait.gateId !== gateId || task.wait.lapsed === true) return undefined;
+  return { patch: { wait: { ...task.wait, requestId, lapsed: true } } };
+}
+
+/**
+ * The one rule for releasing a lapsed wait slot (`TaskCollectionRef.releaseWait`,
+ * FIX-2082): the request it was lapsed for read the row (`read`), so an ending
+ * it held is delivered and owes nothing; or that request ended without reading
+ * it, so the held ending goes to the filer's notice, due `dueAt`. Either way the
+ * slot clears, and a later ending owes the filer's notice as any other does.
+ *
+ * @returns The patch to write, or `undefined` when the slot is not a lapsed one
+ *   that request holds.
+ */
+export function releaseWaitWrite(
+  task: Task,
+  release: { readonly requestId: string; readonly read: boolean; readonly dueAt: number },
+): { patch: Partial<Task> } | undefined {
+  const held = task.wait;
+  if (held == null || held.lapsed !== true || held.requestId !== release.requestId) return undefined;
+  const notices = release.read ? droppedHeldNotices(task) : releasedHeldNotices(task, release.dueAt);
+  return {
+    patch: {
+      wait: undefined,
+      ...(Object.keys(notices).length > 0 ? { metadata: { ...(task.metadata ?? {}), ...notices } } : {}),
+    },
+  };
+}
+
+/**
+ * The one rule for a wait that found its row already ended
+ * (`TaskCollectionRef.dropNoticeReadByWait`, FIX-2112): the wait's answer
+ * delivered the ending, so the notice the ending owes the filer is dropped.
+ *
+ * A notice already taken is left: its notice is the delivery (FIX-2123).
+ *
+ * @returns The patch to write, or `undefined` when the row owes no notice for its ending.
+ */
+export function noticeReadByWaitWrite(task: Task): { patch: Partial<Task> } | undefined {
+  const dropped = deliveredByWait(task);
+  if (Object.keys(dropped).length === 0) return undefined;
+  return { patch: { metadata: { ...(task.metadata ?? {}), ...dropped } } };
+}
+
+/**
+ * The one rule for taking a notice to deliver it
+ * (`TaskCollectionRef.takeNotice`, FIX-2123): decided on the row as stored, so
+ * a wait's drop and a take can't both go through.
+ *
+ * @returns The patch to write, or `undefined` when the row doesn't owe the
+ *   notice, or another request holds it.
+ */
+export function noticeTakeWrite(
+  task: Task,
+  notice: Pick<TaskNotice, "attempt" | "ending">,
+  take: { readonly by: string; readonly at: number; readonly replacing?: string }
+): { patch: Partial<Task> } | undefined {
+  const taken = takenNoticePatch(task, notice, take);
+  if (Object.keys(taken).length === 0) return undefined;
+  return { patch: { metadata: { ...(task.metadata ?? {}), ...taken } } };
+}
+
+/**
+ * The fields a filing may change until the task first starts (FIX-2080,
+ * ER-4; the brief's fields and the assignee since FIX-2081). Each field's rule
+ * is the field table's (`./field-rules`), read inside the write.
+ */
+export interface TaskSettingsPatch {
+  /** Hold the task (`true`) or release it (`false`). */
+  held?: boolean;
+  /** Its dependencies, replaced whole. Checked as a filing's are. */
+  deps?: string[];
+  /** Its attempts. */
+  maxAttempts?: number;
+  /** What it is for. */
+  goal?: string;
+  /** Its short label. */
+  title?: string;
+  /** What its worker is told beside the goal. */
+  context?: string;
+  /** Its structured input. */
+  input?: unknown;
+  /** Its priority. */
+  priority?: number;
+  /** Its labels, replaced whole. */
+  labels?: string[];
+  /** Metadata keys merged over its own. */
+  metadata?: Record<string, unknown>;
+  /** Who works it. A follow-up keeps its root's worker. */
+  assignee?: string;
+}
+
+export { hasStarted };
+
+/**
+ * A release and nothing else, of a row stored `blocked` before FIX-2080
+ * (`heldFromBlocked`, set only at the read boundary). Such a row may have
+ * started before it was blocked, and a release is how it runs again
+ * (BP-030). No current path holds a started row, so any other started held
+ * row keeps the field table's rule: no release. Field edits stay locked.
+ */
+function legacyReleaseOnly(task: Task, patch: TaskSettingsPatch): boolean {
+  return task.status === "held" && task.heldFromBlocked === true && patch.held === false && patchFields(patch).length === 1;
+}
+
+/**
+ * The status check the field table leaves: a settings edit lands only on a
+ * pending or held row. Which fields a started row still takes is the
+ * table's call (`lockedFields`), not this one's.
+ */
+function settingsDecline(task: Task): TaskWriteDeclineReason | undefined {
+  return task.status !== "pending" && task.status !== "held" ? "started" : undefined;
+}
+
+/** The fields a patch names, in the field table's words. */
+function patchFields(patch: TaskSettingsPatch): TaskEditField[] {
+  return (Object.keys(patch) as Array<keyof TaskSettingsPatch>).filter(
+    (field) => patch[field] !== undefined,
+  ) as TaskEditField[];
+}
+
+/**
+ * The one guard on editing a filing (FIX-2080, ER-4; every field since
+ * FIX-2081), decided on the freshest committed row, inside the write: each
+ * field the patch names changes only while the field table allows it
+ * (`TASK_FIELD_RULES`), which for every field here is until the row first
+ * starts. Both backings run it. Terminal rows are refused by the caller's
+ * `declineOnTerminal` before this runs.
+ *
+ * A conversation-result task's attempts are refused first, in every state:
+ * it has one, whenever it is asked.
+ *
+ * @param lookup The board's committed row by id, for the dependency check.
+ * @returns The patch to write, `undefined` when nothing changes, or the
+ *   reason it is refused.
+ * @throws {TaskFilingRefusedError} for dependencies a filing couldn't name,
+ *   or an attempts value the task's result setting refuses.
+ */
+export function settingsWrite(
+  task: Task,
+  patch: TaskSettingsPatch,
+  lookup: (id: string) => Task | undefined,
+): { patch: Partial<Task> } | { decline: TaskWriteDeclineReason } | undefined {
+  if (patch.maxAttempts !== undefined && task.resultTo === "conversation" && patch.maxAttempts !== 1) {
+    throw new TaskFilingRefusedError({
+      rule: "conversation_result_one_attempt",
+      taskId: task.id,
+      detail: `task "${task.id}" sends its result to the conversation, so it has one attempt. Nothing was written.`,
+    });
+  }
+  const locked = legacyReleaseOnly(task, patch) ? [] : lockedFields(task, patchFields(patch));
+  if (locked.length > 0) return { decline: "started" };
+  const declined = settingsDecline(task);
+  if (declined !== undefined) return { decline: declined };
+  const update: Partial<Task> = {};
+  if (patch.held === true && task.status === "pending") update.status = "held";
+  if (patch.held === false && task.status === "held") {
+    update.status = "pending";
+    // The legacy mark serves one release; a later hold is an ordinary one.
+    if (task.heldFromBlocked === true) update.heldFromBlocked = undefined;
+  }
+  if (patch.deps !== undefined && !sameIds(patch.deps, task.deps)) {
+    assertDepsEditable(task.id, patch.deps, lookup);
+    update.deps = [...patch.deps];
+  }
+  if (patch.maxAttempts !== undefined && patch.maxAttempts !== task.maxAttempts) {
+    if (!Number.isInteger(patch.maxAttempts) || patch.maxAttempts < 1) {
+      throw new Error(`[tasks] maxAttempts must be a positive integer, got ${String(patch.maxAttempts)}.`);
+    }
+    update.maxAttempts = patch.maxAttempts;
+  }
+  if (patch.assignee !== undefined && patch.assignee !== task.assignee) {
+    const assigneeDeclined = assigneeChangeDecline(task, patch.assignee);
+    if (assigneeDeclined !== undefined) return { decline: assigneeDeclined };
+    update.assignee = patch.assignee;
+  }
+  if (patch.goal !== undefined && patch.goal !== task.goal) update.goal = patch.goal;
+  if (patch.title !== undefined && patch.title !== task.title) update.title = patch.title;
+  if (patch.context !== undefined && patch.context !== task.context) update.context = patch.context;
+  if (patch.input !== undefined) update.input = patch.input;
+  if (patch.priority !== undefined && patch.priority !== task.priority) update.priority = patch.priority;
+  if (patch.labels !== undefined && !sameIds(patch.labels, task.labels)) update.labels = [...patch.labels];
+  if (patch.metadata !== undefined && Object.keys(patch.metadata).length > 0) {
+    update.metadata = { ...(task.metadata ?? {}), ...patch.metadata };
+  }
+  return Object.keys(update).length === 0 ? undefined : { patch: update };
+}
+
+/** The change kind a settings write publishes: a hold or a release, else a settings change. */
+export function settingsChangeKind(prev: TaskStatus, next: TaskStatus): TaskChangeKind {
+  if (prev === "pending" && next === "held") return "held";
+  if (prev === "held" && next === "pending") return "released";
+  return "settings_changed";
+}
+
+function sameIds(a: readonly string[], b: readonly string[] | undefined): boolean {
+  const other = b ?? [];
+  return a.length === other.length && a.every((id, i) => id === other[i]);
 }
 
 /**
@@ -258,38 +468,34 @@ export const DEFAULT_MAX_ABANDONMENTS = 3;
  * configured for real failures. `attempts - abandonments` is the count of
  * attempts this task actually got to run out of its own budget.
  *
- * **So are re-entries after a person's turn (FIX-1690)**, for the same
- * reason: the claim after a turn advances `attempts`, and the budget prices
- * failures, not conversation.
+ * An answer to a question (FIX-2133) and a steer (FIX-2086) take a turn on
+ * the same attempt, so neither uses one.
  */
-export function shouldRetryOnFail(task: Task): boolean {
+function shouldRetryOnFail(task: Task): boolean {
   if (task.maxAttempts === undefined) return false;
-  return task.attempts - readAbandonments(task) - readTurnReentries(task) < task.maxAttempts;
+  return task.attempts - readAbandonments(task) < task.maxAttempts;
 }
 
 /**
- * The two statuses an in-flight attempt can be said to *hold*.
+ * The status an in-flight attempt can be said to *hold*.
  *
- * Everything else means the attempt was displaced (reclaimed, re-queued,
- * parked) or the task was settled by someone else.
+ * Everything else means the attempt was displaced (reclaimed, re-queued) or
+ * the task was settled by someone else.
  *
  * Exported because the retry budget (FIX-948) is scoped to exactly this set, and
  * that reuse is exact rather than coincidental — see {@link routeFailure}.
  */
-export const ATTEMPT_OWNED_STATUSES = new Set<TaskStatus>([
-  "in_progress",
-  "parked",
-]);
+export const ATTEMPT_OWNED_STATUSES = new Set<TaskStatus>(["in_progress"]);
 
 /**
  * The change kinds that mean "this attempt is reporting its result" (FIX-1234).
  *
  * Named because {@link transitionDeclineReason} refuses exactly these on a row
- * that is parked for review, and the set is not guessable from the target
+ * that is held (FIX-2133), and the set is not guessable from the target
  * status: a failure with retries left targets `pending`, which is also where a
- * `unpark` lands. The kind separates them; the status cannot.
+ * reclaim lands. The kind separates them; the status cannot.
  */
-export const SETTLEMENT_CHANGE_KINDS = new Set<TaskChangeKind>([
+const SETTLEMENT_CHANGE_KINDS = new Set<TaskChangeKind>([
   "completed",
   "errored",
   "retried",
@@ -303,7 +509,7 @@ export const SETTLEMENT_CHANGE_KINDS = new Set<TaskChangeKind>([
  * history" — a task persisted before FIX-948, or one that has never failed.
  * Never let an absent ledger become `undefined` arithmetic in the sum.
  */
-export function readRetryLedger(task: Task): { granted: number; deniedByBudget: boolean } {
+function readRetryLedger(task: Task): { granted: number; deniedByBudget: boolean } {
   const ledger = task.retryLedger;
   if (ledger == null) return { granted: 0, deniedByBudget: false };
   return {
@@ -388,9 +594,9 @@ export type FailRouting =
  *    only ever refuse a retry that would otherwise have happened, and it can
  *    never refuse a first attempt.
  * 2. **The budget applies only to attempt-owned failures.** `errored` is
- *    reachable from `in_progress` and `parked` and from NEITHER
- *    `pending` nor `blocked`, while this routing is status-blind on the
- *    `maxAttempts` half — so a `fail()` on a pending or blocked task carrying
+ *    reachable from `in_progress` and from NEITHER
+ *    `pending` nor `held`, while this routing is status-blind on the
+ *    `maxAttempts` half — so a `fail()` on a pending task carrying
  *    `maxAttempts` legally re-pends today, and rerouting it to `errored` at the
  *    bound would attempt an illegal transition and THROW instead of settling, on
  *    a reachable path. So both the accounting and the denial are gated on
@@ -411,6 +617,10 @@ export function routeFailure(
   grantedTotal: () => number,
   maxTotalRetries: number | undefined
 ): FailRouting {
+  // A held task hasn't started, so it has no failure to retry: re-pending it
+  // would be a release in disguise (FIX-2080). Routed terminal, which the
+  // status table refuses from `held`, so the failure is refused.
+  if (task.status === "held") return { action: "terminal", deniedByBudget: false };
   if (!shouldRetryOnFail(task)) return { action: "terminal", deniedByBudget: false };
   if (!ATTEMPT_OWNED_STATUSES.has(task.status)) {
     return { action: "retry", countsAgainstBudget: false };
@@ -461,6 +671,24 @@ export function retryBudgetExhaustedError(
  */
 function attemptOwnsTask(task: Task, attempt: number): boolean {
   return task.attempts === attempt && ATTEMPT_OWNED_STATUSES.has(task.status);
+}
+
+/**
+ * Whether the turn `ticket` was minted for still runs `task` (FIX-2133 D3):
+ * the same row, `in_progress`, on the ticket's attempt AND its turn
+ * generation. The read-side twin of {@link transitionDeclineReason}'s fence,
+ * for a holder that checks before it writes (the request-end check, a
+ * dispatch's gate, an advisory write-back): two turns can share an attempt,
+ * so an attempt-only check passes a stale turn.
+ */
+export function ticketHoldsRow(ticket: TaskClaimTicket, collectionId: string, task: Task | undefined): task is Task {
+  return (
+    task !== undefined &&
+    ticketNamesTask(ticket, collectionId, task) &&
+    task.status === "in_progress" &&
+    task.attempts === ticket.attempt &&
+    (task.turn ?? 0) === ticket.turn
+  );
 }
 
 /**
@@ -560,13 +788,6 @@ function assertNoRemovedGuards(options: TaskTransitionOptions): void {
  * @param now The clock the write is running against. Both backings already
  *   have one in scope at the call site; taking it as a parameter rather than
  *   capturing `Date.now` is what keeps this testable with an injected clock.
- * @param requireFrom The one status this verb may run from, when the verb owns a
- *   single edge rather than every legal path to its target. Two verbs do:
- *   `unblock` (`blocked → pending`) and `unpark` (`parked → pending`, FIX-1244).
- *   The status table cannot express this — it maps status to status, not verb
- *   to edge, and `in_progress → pending` is legal for `reclaim`, so without the
- *   fence `unpark` would re-queue a row a worker is holding.
- *   Checked ahead of the general legality arm so the more specific refusal wins.
  */
 export function transitionDeclineReason(
   task: Task,
@@ -574,54 +795,51 @@ export function transitionDeclineReason(
   options: TaskTransitionOptions | undefined,
   collectionId: string,
   now: number,
-  requireFrom?: TaskStatus,
   changeKind?: TaskChangeKind
 ): TaskWriteDeclineReason | undefined {
+  // FIX-2133: a held row settles only by cancel, whoever writes, guarded or
+  // not. Its holds close first: an answer, a deadline, or the cancel itself.
+  if (
+    changeKind !== undefined &&
+    SETTLEMENT_CHANGE_KINDS.has(changeKind) &&
+    !isTerminalStatus(task.status) &&
+    hasOpenHold(task)
+  ) {
+    return "held";
+  }
   if (options === undefined) return undefined;
   assertNoRemovedGuards(options);
   const claim = options.claim;
   if (options.ifAllowed === true && isTerminalStatus(task.status)) return "terminal";
+  // FIX-2133: a confirm's No cancels only while its confirm is open, on the committed row.
+  const whileHoldOpen = (options as { whileHoldOpen?: string }).whileHoldOpen;
+  if (whileHoldOpen !== undefined) {
+    const hold = task.holds?.find((h) => h.id === whileHoldOpen);
+    if (hold === undefined || !isRowHold(hold)) return "no-such-hold";
+    if (answerOf(task, whileHoldOpen) !== undefined) return "answered";
+  }
   if (claim !== undefined && !ticketNamesTask(claim, collectionId, task)) return "not-my-task";
+  // FIX-2133, at the settle (FIX-2132): a turn that asked midway settles nothing on its own
+  // claim, answered or not. An answer closes the hold but leaves the asking turn's ticket valid
+  // until the next claim, and the turn it owes is the one that settles.
   if (
-    options.ifAllowed === true &&
-    requireFrom !== undefined &&
-    task.status !== requireFrom
+    claim !== undefined &&
+    changeKind !== undefined &&
+    SETTLEMENT_CHANGE_KINDS.has(changeKind) &&
+    !isTerminalStatus(task.status) &&
+    askedOnTicket(task, claim) &&
+    (task.turn ?? 0) === claim.turn
   ) {
-    return "disallowed";
+    return "held";
   }
   if (options.ifAllowed === true && !isTransitionAllowed(task.status, targetStatus)) {
     return "disallowed";
   }
-  // FIX-1234: the caller asked not to settle a row somebody parked for review.
-  //
-  // Nothing above refuses this on its own, and that is deliberate rather than an
-  // oversight: `parked` is in ATTEMPT_OWNED_STATUSES, `terminal` does
-  // not fire on a parked row, `isTransitionAllowed` permits both
-  // `parked → completed` and `→ errored`, and `leaseLapsed`
-  // short-circuits to `false` for any status other than `in_progress`. A holder
-  // recording a review's REJECTION as a failure is a supported write, and it
-  // travels exactly this path.
-  //
-  // So this is opt-in. What it exists for is the write-back that follows a
-  // worker's own run: a worker that parked its task and then returned or threw
-  // owes the substrate no result, and letting its settlement land would erase
-  // the park — or, with retries left, re-queue the row in front of a sibling
-  // while a human is still being asked. Those callers pass
-  // `refuseWhenParked` and get a decline; every other caller sees the contract
-  // it always had.
-  //
-  // Scoped to settlement kinds so the flag cannot refuse the verbs that legally
-  // move a parked row: `unpark` targets `pending`, which a retrying
-  // failure also targets, and only the kind separates them.
-  if (
-    options.refuseWhenParked === true &&
-    task.status === "parked" &&
-    changeKind !== undefined &&
-    SETTLEMENT_CHANGE_KINDS.has(changeKind)
-  ) {
-    return "parked";
-  }
   if (claim !== undefined && !attemptOwnsTask(task, claim.attempt)) return "lost-claim";
+  // FIX-2133 D3: two turns can share an attempt, so the ticket's turn
+  // generation must be the row's too. A turn's late write after its
+  // successor's claim is refused as a lost claim, as a reclaimed attempt's is.
+  if (claim !== undefined && claim.turn !== (task.turn ?? 0)) return "lost-claim";
   // FIX-1305: a renewal may be the ticket-holder taking the row BACK, rather
   // than a late write against a row it has lost. The two are the same evidence
   // — everything above passed, so the identity the ticket names is still the
@@ -637,33 +855,16 @@ export function transitionDeclineReason(
   // makes the takeover decided by the race instead of by the clock.
   const adopting = options.adoptLapsedLease === true && targetStatus === "in_progress";
   if (claim !== undefined && !adopting && leaseLapsed(task, now)) return "lost-claim";
-  return undefined;
-}
-
-/**
- * Refuse a verb that owns ONE edge when the task is not sitting on that edge's
- * source status.
- *
- * The non-advisory half of `requireFrom` — see {@link transitionDeclineReason}
- * for why the status table cannot carry this. Throws the same error type as
- * {@link assertTransitionAllowed}, because to a caller this *is* an illegal
- * transition: `unblock` on an `in_progress` task is not a legal write that
- * happens to skip a field, it is a `reclaim` spelled wrong.
- *
- * Runs after the decline check, so an advisory write still reports
- * `disallowed` instead of throwing.
- *
- * @throws {IllegalTaskTransitionError} when `task.status !== requireFrom`.
- */
-export function assertTransitionFrom(
-  task: Task,
-  requireFrom: TaskStatus | undefined,
-  targetStatus: TaskStatus,
-  taskId: string
-): void {
-  if (requireFrom !== undefined && task.status !== requireFrom) {
-    throw new IllegalTaskTransitionError({ taskId, from: task.status, to: targetStatus });
+  // FIX-2133: a renewal (any open hold), or a mirror of a run's stop (an open
+  // row hold: one source at a time), refused on the committed row.
+  if (options.refuseWhenHeld === "any" && hasOpenHold(task)) return "held";
+  if (options.refuseWhenHeld === "row" && openRowHolds(task).length > 0) return "held";
+  // Last: a write from an attempt that lost the row is refused as that, never
+  // as owing a steer the row's next attempt holds (FIX-2086).
+  if (options.refuseUntakenSteers === true && targetStatus === "completed" && untakenSteers(task).length > 0) {
+    return "untaken-steers";
   }
+  return undefined;
 }
 
 /**
@@ -675,7 +876,7 @@ export function assertTransitionFrom(
  * collection.get(id)` for the dispatcher case so dep status reflects
  * the latest committed state, not a scan-time snapshot.
  */
-export function depsSatisfied(
+function depsSatisfied(
   task: Task,
   lookup: (id: string) => Task | undefined
 ): boolean {
@@ -697,11 +898,8 @@ export function depsSatisfied(
  * the same committed row, so nothing has to be scheduled and nothing has to
  * agree with anything — there is no window between them to get wrong.
  *
- * **Scoped to `in_progress` on purpose.** {@link ATTEMPT_OWNED_STATUSES} also
- * contains `parked`, and `awaitReview` deliberately does *not* clear
- * `leaseUntil` — so an unscoped reading would take back (and refuse writes on)
- * any task a human took longer than a lease to review. A review park is an
- * explicit park; the lease governs `in_progress` and nothing else.
+ * **Scoped to `in_progress` on purpose:** the lease governs a running row and
+ * nothing else.
  *
  * `!= null` rather than truthiness: a row persisted without a lease is not a
  * lapsed one (BP-030).
@@ -760,7 +958,7 @@ export function isReady(
   task: Task,
   lookup: (id: string) => Task | undefined
 ): boolean {
-  if (task.status !== "pending") return false;
+  if (task.status !== "pending" || hasOpenHold(task)) return false;
   return depsSatisfied(task, lookup);
 }
 
@@ -786,11 +984,12 @@ export function isReady(
  * would make an ordinary task unrecoverable after its first attempt — the
  * feature off by default unless every caller opted into retries.
  *
- * A row recorded but not dispatched (`Task.undispatched`, FIX-1875) is never
- * admitted, whichever board or dispatcher drains the collection: the mark
- * decides whether a row may start, so it is read here, where every claimer
- * reads, and not only on the board that writes it. Absent on every row filed
- * before the mark existed, so those rows are admitted as before (BP-030).
+ * A held row (FIX-2080) is never admitted, whichever board or dispatcher
+ * drains the collection: `held` is not `pending`, so it starts only once
+ * something releases it. Nor is a row with an open hold (FIX-2133): a
+ * question, a confirm, or a task run's stop for a person. A running row that
+ * owes a turn on its same attempt (`owesTurn`: its last question answered,
+ * or a steer no request took) is: the claim is that turn's start.
  *
  * `now` is a parameter rather than a captured clock because the wake probe has
  * none of its own.
@@ -800,8 +999,10 @@ export function isClaimable(
   lookup: (id: string) => Task | undefined,
   now: number
 ): boolean {
-  if (task.undispatched === true) return false;
-  if (task.status !== "pending" && !leaseLapsed(task, now)) return false;
+  // FIX-2133: a row with an open hold is never admitted, before its start or
+  // midway; a running row that owes a turn on its same attempt is (D3).
+  if (hasOpenHold(task)) return false;
+  if (task.status !== "pending" && !leaseLapsed(task, now) && !owesTurn(task)) return false;
   return depsSatisfied(task, lookup);
 }
 
@@ -827,7 +1028,7 @@ export function claimDisposition(
 }
 
 /** The error recorded on a row the substrate stopped recovering (FIX-1005). */
-export function abandonmentExhaustedError(
+function abandonmentExhaustedError(
   taskId: string,
   maxAbandonments: number
 ): string {
@@ -978,9 +1179,115 @@ export function requireClaimTicket(
   }
 }
 
+/**
+ * The patch `setWaitingOn` writes (FIX-2077): set, with the request's answer
+ * kept by {@link completionPatch}'s output rule and no lease unless one is
+ * given; or cleared, with the lease the admission starts.
+ *
+ * FIX-2133: with `hold`, a task run's stop for a person is mirrored on the
+ * row as a suspension hold, in the same write (the caller's guard refuses it
+ * on a row with an open row hold). Cleared with `resume`, the run's own
+ * resume closes that mirror; a later request admitted while the run stays
+ * parked leaves it. A clear that takes a turn the row owes (`turnOwed`: its
+ * last question answered, or a steer no request took) is that turn's claim: it
+ * advances the turn generation and clears the mark. Set with `owesTurn`, the
+ * wait is a turn owed (FIX-2086's steer turn), which the claim may take.
+ *
+ * @throws when clearing without a finite `leaseUntil`: a programming error.
+ */
+export function waitingOnPatch(
+  task: Task,
+  waitingOn: Task["waitingOn"],
+  options: { leaseUntil?: number; answer?: { output: unknown }; hold?: SuspensionHold; resume?: boolean; owesTurn?: boolean }
+): Partial<Task> {
+  if (waitingOn == null) {
+    assertValidLeaseDeadline(options.leaseUntil ?? Number.NaN);
+    const resumed = options.resume === true ? holdWrite(task, { op: "resume" }) : "unchanged";
+    const takesTurn = task.turnOwed === true;
+    return {
+      waitingOn: undefined,
+      leaseUntil: options.leaseUntil,
+      ...(typeof resumed === "object" && "patch" in resumed ? resumed.patch : {}),
+      ...(takesTurn ? { turn: (task.turn ?? 0) + 1, turnOwed: undefined } : {}),
+    };
+  }
+  // The output a completion would write now, and only that (D3): a
+  // checkpoint stays the output, and the answer is kept only where the
+  // completion would write it. One rule, read from `completionPatch`.
+  const kept: Partial<Task> = {};
+  if (options.answer !== undefined) {
+    const done = completionPatch(task, options.answer.output, task.updatedAt) as Record<string, unknown>;
+    for (const key of ["output", "checkpointed", "checkpointAttempt"] as const) {
+      if (key in done) (kept as Record<string, unknown>)[key] = done[key];
+    }
+  }
+  // A stop for a person, mirrored in the same write (FIX-2133); any other wait mirrors nothing.
+  const mirrored = options.hold === undefined ? "unchanged" : holdWrite(task, { op: "mirror", hold: options.hold });
+  return {
+    waitingOn,
+    leaseUntil: options.leaseUntil,
+    ...kept,
+    ...(typeof mirrored === "object" && "patch" in mirrored ? mirrored.patch : {}),
+    ...(options.owesTurn === true ? { turnOwed: true as const } : {}),
+  };
+}
+
+/** Whether a progress report names anything to write. */
+export function reportsProgress(progress: { statusNote?: string; output?: unknown }): boolean {
+  return progress.statusNote !== undefined || progress.output !== undefined;
+}
+
+/** The patch a progress report writes (FIX-2081): the note, and the output marked a checkpoint. */
+export function progressPatch(progress: { statusNote?: string; output?: unknown }): Partial<Task> {
+  return {
+    ...(progress.statusNote !== undefined ? { statusNote: progress.statusNote } : {}),
+    ...(progress.output !== undefined ? { output: progress.output, checkpointed: true as const } : {}),
+  };
+}
+
+/**
+ * The patch a completion writes (FIX-2081, D3): the latest checkpoint is the
+ * output, so the final result is written only when no checkpoint was ever
+ * made. A failed attempt or a reclaim keeps the checkpoint.
+ */
+export function completionPatch(task: Task, output: unknown, completedAt: number): Partial<Task> {
+  return {
+    ...(task.checkpointed === true ? {} : { output }),
+    completedAt,
+    leaseUntil: undefined,
+    claimedBy: undefined,
+    error: undefined,
+  };
+}
+
+/**
+ * The patch a cancel writes. `via` is how it was made, when the caller says
+ * (FIX-2081): server-set, never input.
+ */
+export function cancelPatch(
+  reason: string | undefined,
+  via: Task["cancelledVia"],
+  completedAt: number,
+): Partial<Task> {
+  return {
+    ...(reason !== undefined ? { error: reason } : {}),
+    completedAt,
+    leaseUntil: undefined,
+    claimedBy: undefined,
+    ...(via !== undefined ? { cancelledVia: via } : {}),
+  };
+}
+
 /** Copy a run link field by field, so no extra key a caller passed rides into the row. */
 export function runLinkPatch(run: TaskRunLink): { run: TaskRunLink } {
-  return { run: { sessionId: run.sessionId, requestId: run.requestId, attempt: run.attempt } };
+  return {
+    run: {
+      sessionId: run.sessionId,
+      requestId: run.requestId,
+      attempt: run.attempt,
+      ...(run.startedAt !== undefined ? { startedAt: run.startedAt } : {}),
+    },
+  };
 }
 
 /**
@@ -1025,14 +1332,22 @@ export function applyClaimToTask<TInput, TOutput>(
 ): Task<TInput, TOutput> {
   // A claim that takes back a lapsed row is a RECOVERY, and it is counted
   // (FIX-1005). Counting it here rather than at a separate seam is what keeps
-  // the count atomic with the hand-off: the same write that advances
+  // the count atomic with the dispatch: the same write that advances
   // `attempts` advances this, so there is no window in which a row has been
   // re-dispatched but not yet charged for it.
   const recovering = leaseLapsed(task as Task, now);
+  // A running row that owes a turn (FIX-2133 D3) is taken on its SAME
+  // attempt, uncharged: the turn goes on with the work, it doesn't retry it,
+  // and its run link stays the attempt's.
+  const turnOnly = !recovering && owesTurn(task as Task);
+  const attempt = turnOnly ? task.attempts : task.attempts + 1;
   return {
     ...task,
     status: "in_progress",
-    attempts: task.attempts + 1,
+    attempts: attempt,
+    // Every claim advances the turn generation the claim ticket carries (D3).
+    turn: (task.turn ?? 0) + 1,
+    turnOwed: undefined,
     ...(recovering ? { abandonments: readAbandonments(task as Task) + 1 } : {}),
     startedAt: task.startedAt ?? now,
     leaseUntil: now + leaseDurationMs,
@@ -1049,8 +1364,16 @@ export function applyClaimToTask<TInput, TOutput>(
     // retry and abandonment deliberately leave it: a finished task keeps
     // naming the run that worked it. Cleared unconditionally, for the reason
     // `claimedBy` is: a spread that added nothing would carry the previous
-    // attempt's run onto this one.
-    run: undefined,
+    // attempt's run onto this one. A turn's claim keeps its attempt's.
+    ...(turnOnly ? {} : { run: undefined }),
+    // A claim starts a turn that waits on nothing yet (FIX-2077): a row
+    // taken back from a lapsed lease must not carry a wait onto the new
+    // attempt, and an owed turn's mark is its claim's to clear.
+    waitingOn: undefined,
+    // The attempt's brief carries every steer (FIX-2086 D1), so the claim
+    // marks them all taken by it; one that arrives later is untaken until a
+    // request of this attempt reads it. A turn's claim takes its answers so.
+    ...(task.steers !== undefined ? { steers: steersForAttempt(task.steers, attempt) } : {}),
     updatedAt: now,
   };
 }
@@ -1094,10 +1417,52 @@ export interface EndingRecording {
    */
   readonly recordEnding?: TaskEndingRecorder;
   /**
-   * The park asks nobody anything (`awaitReview(..., { quiet: true })`). A park
-   * for a person's turn is quiet on its own, read off the row.
+   * Whether this ending owes a cascade (FIX-2080 D2), answered by the backing
+   * from the committed board inside the write: a failed or cancelled row with
+   * an open dependent, or a task whose board pays the tasks it filed
+   * (`cascadeFiled`). Omitted, no ending owes one.
    */
-  readonly quiet?: boolean;
+  readonly owesCascade?: (row: Task, ending: TaskEnding) => boolean;
+  /**
+   * The board hands rows out (FIX-2078): orchestration records the notice an
+   * ending owes its filer in the same write (`../notice/task-notice`).
+   */
+  readonly delivers?: boolean;
+  /** The filer made this cancel through its own model's task tool (D2): it owes no notice. */
+  readonly ownCancel?: boolean;
+  /** For a cascaded cancel: whether the row that caused it shares this row's filer (D2). */
+  readonly causeSharesFiler?: (row: Task) => boolean;
+}
+
+/**
+ * How long after its ending a cascade falls due (FIX-2080 D2): the ending's
+ * own pass pays it at once, and a touch of the board pays it once this has
+ * passed, so a touch never races the pass that is still paying it.
+ */
+export const CASCADE_DUE_MS = 2_000;
+
+/**
+ * When the ending that owes `owed` was written (FIX-2080 D2): its own stamp,
+ * or, on a debt that recorded only its due time, that time less
+ * {@link CASCADE_DUE_MS} (BP-030).
+ */
+export function cascadeEndedAt(owed: NonNullable<Task["cascadeOwed"]>): number {
+  return owed.endedAt ?? owed.due - CASCADE_DUE_MS;
+}
+
+/**
+ * Orchestration's cascade recorder (FIX-2080 D2): stamp the cascade owed,
+ * due {@link CASCADE_DUE_MS} after the write, on an ending that owes one.
+ * Recorded in the ending's own write, so a crash between the ending and the
+ * cascade leaves it owed, not lost.
+ */
+function recordCascadeOwed<TInput, TOutput>(
+  row: Task<TInput, TOutput>,
+  ending: TaskEnding,
+  recording: EndingRecording | undefined
+): Task<TInput, TOutput> {
+  if (recording?.owesCascade?.(row as Task, ending) !== true) return row;
+  return { ...row, cascadeOwed: { due: row.updatedAt + CASCADE_DUE_MS, endedAt: row.updatedAt } };
 }
 
 /**
@@ -1107,7 +1472,9 @@ export interface EndingRecording {
  * every recorder runs, in that same write:
  *
  * 1. Orchestration's own: {@link recordResumeOwed}, which writes the typed
- *    `Task.resumeOwed` on an asked row's ending.
+ *    `Task.resumeOwed` on a waited-on row's ending, and
+ *    {@link recordCascadeOwed}, which writes `Task.cascadeOwed` on one that
+ *    owes a cascade.
  * 2. The ledger's declared `recordEnding`, handed the {@link endingOf} this
  *    write, metadata only.
  *
@@ -1119,31 +1486,50 @@ function recordEnding<TInput, TOutput>(
   recording: EndingRecording | undefined
 ): Task<TInput, TOutput> {
   const resumed = recordResumeOwed(prev, next);
-  const ending = endingOf(prev as Task, next as Task, recording?.quiet);
-  return ending === undefined ? resumed : applyEndingRecorder(recording?.recordEnding, resumed, ending);
+  const ending = endingOf(prev as Task, next as Task);
+  if (ending === undefined) return resumed;
+  const owed = recordCascadeOwed(resumed, ending, recording);
+  const noticed =
+    recording?.delivers === true
+      ? (recordNoticeOwed(owed as Task, ending, {
+          ...(recording.ownCancel === true ? { ownCancel: true } : {}),
+          ...(recording.causeSharesFiler !== undefined
+            ? { causeSharesFiler: recording.causeSharesFiler(owed as Task) }
+            : {}),
+        }) as Task<TInput, TOutput>)
+      : owed;
+  return applyEndingRecorder(recording?.recordEnding, noticed, ending);
 }
 
 /**
  * Orchestration's resume recorder (FIX-1816): stamp the resume-owed marker
- * when this write ends an asked row.
+ * when this write ends a waited-on row.
  *
- * Every way an asked row can end (its worker's result, a failure past its
- * retries, a cancel, the cancel its ask's timeout writes, the board's
+ * Every way a waited-on row can end (its worker's result, a failure past its
+ * retries, a cancel, the cancel its wait's timeout writes, the board's
  * abandonment settle) reaches it in the same write as the ending. A retried
  * failure re-pends the row, which is not an ending, and writes nothing.
  *
- * A row that owes its cancel (`Task.cancelOwed`, FIX-1844) has an ask that is
+ * A row that owes its cancel (`Task.cancelOwed`, FIX-1844) has a wait that is
  * already over: its ending pays that debt and owes no resume, as no turn waits.
  */
 function recordResumeOwed<TInput, TOutput>(
   prev: Task<TInput, TOutput>,
   next: Task<TInput, TOutput>
 ): Task<TInput, TOutput> {
-  if (prev.ask == null || isTerminalStatus(prev.status) || !isTerminalStatus(next.status)) {
-    return next;
-  }
-  if (prev.cancelOwed === true) return { ...next, cancelOwed: undefined };
-  return { ...next, resumeOwed: true };
+  if (isTerminalStatus(prev.status) || !isTerminalStatus(next.status)) return next;
+  // The row's own run is parked on a stop for a person (FIX-2129): its ending
+  // (a cancel, a cascade) owes that run its `cancelled` resume, paid to the
+  // stop the row's mirror names, which stays until it is (FIX-2133). The
+  // mirror stays while a later request runs for the task (a notice), with
+  // `waitingOn` cleared, and so does what its ending owes.
+  const kept = keptOnEnding(prev as Task, next as Task);
+  const owed = kept === undefined ? next : ({ ...next, ...kept } as Task<TInput, TOutput>);
+  // A lapsed slot has nobody parked on it (FIX-2082): its ending is held for
+  // the request that waited instead (`recordNoticeOwed`).
+  if (prev.wait == null || prev.wait.lapsed === true) return owed;
+  if (prev.cancelOwed === true) return { ...owed, cancelOwed: undefined };
+  return { ...owed, resumeOwed: true };
 }
 
 /**
@@ -1158,15 +1544,17 @@ export function applyTransition<TInput, TOutput>(
   now: number,
   recording?: EndingRecording
 ): Task<TInput, TOutput> {
-  return recordEnding(
-    task,
-    {
-      ...task,
-      ...patch,
-      updatedAt: now,
-    },
-    recording
-  );
+  const next = { ...task, ...patch, updatedAt: now };
+  // A row waits on something only while it runs (FIX-2077): every write that
+  // moves it off `in_progress` clears the field.
+  if (next.waitingOn != null && next.status !== "in_progress") next.waitingOn = undefined;
+  // So is a turn owed on the same attempt (FIX-2133): only a running row owes one.
+  if (next.turnOwed === true && next.status !== "in_progress") next.turnOwed = undefined;
+  const recorded = recordEnding(task, next, recording);
+  // A task run's mirror stays only while the row runs, or while the cancel's
+  // resume is owed (FIX-2129): that debt is paid to the stop it names.
+  const dropped = droppedMirror(recorded as Task);
+  return dropped === undefined ? recorded : ({ ...recorded, ...dropped } as Task<TInput, TOutput>);
 }
 
 /** Filter and clone tasks for query results — keeps consumers from mutating internal state. */

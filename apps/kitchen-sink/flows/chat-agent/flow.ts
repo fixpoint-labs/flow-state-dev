@@ -21,7 +21,7 @@
 import { defineFlow } from "@flow-state-dev/core";
 
 import { runSequencer } from "./run/run";
-import { backgroundWorkTasks } from "./run/thinking-styles";
+import { backgroundWorkSettled, backgroundWorkTasks } from "./run/thinking-styles";
 import { updateArtifact } from "./shared/artifacts";
 import { setSelectedModelHandler, setThinkingEnabledHandler } from "./settings";
 import { taskQueueDemo } from "./task-queue-demo";
@@ -41,9 +41,11 @@ const chatAgentFlow = defineFlow({
   requireUser: true,
 
   // The background-work board's task entries. The `background-work` thinking
-  // style hands each filed row off to a child session, and this is where the
+  // style dispatches each filed row to a child session, and this is where the
   // `task` dispatch it sends lands — the board's claim gate around the worker.
   task: { actions: backgroundWorkTasks },
+  // Each ending of a background row is sent to the conversation that filed it.
+  internal: { actions: { onTaskSettled: backgroundWorkSettled } },
 
   voice: {
     tts: {

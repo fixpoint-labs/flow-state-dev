@@ -1,7 +1,7 @@
 ---
 title: Keeping a flow running
 sidebar_label: Keeping a flow running
-description: "How a flow starts without a person typing, and keeps working after the request that started it returns: webhooks, schedules, hand-offs, and what a queue-backed host refuses."
+description: "How a flow starts without a person typing, and keeps working after the request that started it returns: webhooks, schedules, dispatched work, and what a queue-backed host refuses."
 ---
 
 # Keeping a flow running
@@ -78,7 +78,7 @@ makes the provider retry.
 That holds on a server that stays up. A serverless host such as Vercel freezes the function
 once the response is sent, so give `createFlowState` a keep-alive:
 `onBackgroundWork: (p) => after(() => p)`, with `after` from `next/server`. The same option
-keeps schedule ticks and hand-offs running there. See
+keeps schedule ticks and dispatched work running there. See
 [Deploying to Vercel](/guides/deploying-to-vercel#4-choose-a-persistence-store).
 
 `sessionId` is optional. Leave it out and every event runs in a fresh session. Derive it from
@@ -226,11 +226,11 @@ your host runs dispatched work:
 
 Webhook deliveries (with or without a `sessionId`) and schedule ticks run normally on every host.
 
-To get a hand-off's result back into the conversation that started it on any host, with
+To get the result of dispatched work back into the conversation that started it on any host, with
 retries, start the work with a `{ key }`, have it write what it found somewhere both sides can
 read, such as a user- or org-scoped resource or a task board, and read it from the
-conversation. From your app, the client SDK's `listChildSessions` lists the sessions a
-conversation's hand-offs started. If the flow has to deliver into an existing session behind a
+conversation. From your app, the client's `fsd.sessions.children` lists the sessions a
+conversation's dispatches started. If the flow has to deliver into an existing session behind a
 custom dispatcher, serve it from a host with no queue worker, and accept that its runs aren't
 retried.
 

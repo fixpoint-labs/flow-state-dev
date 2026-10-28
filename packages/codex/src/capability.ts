@@ -10,7 +10,7 @@
  * omission.** The thread a run continues belongs to the host, reached through
  * the `resume` resolver and written back through `onSession`, so this package
  * keeps none. A capability contributes its `sessionStateSchema` through a
- * channel a hand-off refusal's walk cannot see, so declaring one here would put
+ * channel a dispatch refusal's walk cannot see, so declaring one here would put
  * state nobody owns back into a flow through the one door that check is blind
  * to — the asymmetry the Claude Code capability documents at length.
  */

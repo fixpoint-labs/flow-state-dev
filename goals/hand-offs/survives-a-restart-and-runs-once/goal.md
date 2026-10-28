@@ -2,26 +2,28 @@
 
 **Issue:** FIX-1820, the closure of epic FIX-1815. Its spec's goal: `specs/issues/FIX-1820/SPEC.md` → "The goal, and how we'll know it's met"; the epic's: `specs/epics/FIX-1815/SPEC.md`.
 
-**Outcome:** on one `main` commit, with every other child of FIX-1815 merged, a worker can ask a colleague and continue the same turn with its real answer, or assign a task whose own session parks on a question, carries on when answered, and still answers and takes a follow-up once finished. A server restart during either wait loses nothing, and the work runs once.
+**Outcome:** on one `main` commit, with every other child of FIX-1815 merged, a worker can ask a colleague and continue the same turn with its real answer, or assign a task whose own session holds on a question (a park before FIX-2131), carries on when answered, and once finished is picked up again by a question in its session and takes a follow-up. A server restart during either wait loses nothing, and the work runs once.
+
+**Not proved by a control:** for the ask (P1.a), "runs once" is graded only on the plain run, by `one-row` and `b:once`. Since FIX-2082 retired `no-run-once`, no control shows that those two can go red, so a P1.a PASS shows the work ran once on that run, not that the check would catch it running twice.
 
 **Input:** one clean checkout. The runner composes checks it does not own, each run unchanged as its own process, plus one journey of its own:
 
 - **P1.a**, leg a: `goals/hand-offs/ask-survives-a-restart/` (Shift Manager's DevTeam install, SQLite, SIGKILL while the asker waits).
-- **P1.b**, leg b: `goals/coordinators/task-session-stays-open/` (its goal-local Lab, SQLite, a task that parks, is answered, asked again, followed up).
+- **P1.b**, leg b: `goals/coordinators/task-session-stays-open/` (its goal-local Lab, SQLite, a task held on a question, answered, asked again, followed up).
 - **P1.c**: `goals/coordinators/files-tasks-down-the-owners-chain/`. **P1.d**: `goals/coordinators/hands-each-post-to-its-delegates/` and `goals/coordinators/routes-a-follow-up-by-its-conversation/`. The neighbouring checks on the same board.
-- **J4** (`legs/parked.mts`): leg b's Lab and brief, read from leg b's own files, on a fresh SQLite store. Alice files the brief for `desk.ops`; while the task reads `parked`, the server and every process under it get SIGKILL; a new process starts on the same store. Held out, picked at run time: the region (one of leg b's six) and the ticket, which `drawTicket` draws.
+- **J4** (`legs/parked.mts`): leg b's Lab and brief, read from leg b's own files, on a fresh SQLite store. Alice files the brief for `desk.ops`; while the task is held on its question, the server and every process under it get SIGKILL; a new process starts on the same store. Held out, picked at run time: the region (one of leg b's six) and the ticket, which `drawTicket` draws.
 
 **Signal:** P1.a to P1.d: each check's own `goal.md` signals, its plain run PASS. J4, each failure tagged:
 
-- `kill:parked` the task read `parked`, with one `parked` notice, in the store the dead server left. A task that never parks within 120 s, or a store holding no one `drawTicket` output at the kill, is a **setup** failure of that attempt, never a grade: there was no wait, or no draw, to survive.
-- `j:answered` after the restart, `answerTask_tasks` answers `{ ok: true }`.
+- `kill:parked` the task was held on its open question in the store the dead server left (the tag keeps its name; FIX-2131 retired the `parked` status and its notice). A task that never asks within 120 s, or a store holding no one `drawTicket` output at the kill, is a **setup** failure of that attempt, never a grade: there was no wait, or no draw, to survive.
+- `j:answered` after the restart, `updateTask_tasks` naming the question answers `{ ok: true }`.
 - `j:completed` the task is `completed` within 90 s of the answer.
-- `j:same-session` it completed in the session that parked.
+- `j:same-session` it completed in the session that asked.
 - `j:names-ticket` · `j:names-region` its output names the ticket the store held at the kill, and the answered region.
-- `j:one-draw` · `j:one-completed` at the end of the run the store holds exactly one `drawTicket` output, and it is the same record (session, item and ticket) the store held at the kill; one `completed` notice.
-- `j:second-answer` a second `answerTask_tasks` is declined (`ok: false`), and every task row is byte-for-byte as before it.
-- `j:still-answers` the session `findWorkerSession({ worker, taskId, filingSessionId })` returns is the one that parked, and its `run` request ends `completed` and answers "Which ticket did you draw?" with the ticket.
-- `j:row-unchanged` after that, the row is still `completed` with the same output.
+- `j:one-draw` · `j:one-completed` at the end of the run the store holds exactly one `drawTicket` output, and it is the same record (session, item and ticket) the store held at the kill; one `completed` notice for the answered attempt.
+- `j:second-answer` a second answer to the same question is declined (`ok: false`), and every task row is byte-for-byte as before it.
+- `j:still-answers` the session `findWorkerSession({ worker, taskId, filingSessionId })` returns is the one that asked; "Which ticket did you draw?" through its `run` door ends `completed` with a reply naming the ticket (a line in a finished task's session is talk, FIX-2086).
+- `j:unchanged` after that, the row's status, attempts, output and session are as the task ended.
 
 The runner prints one verdict per check, each with the commit's SHA. It exits non-zero when a plain check fails, or when a control's red tags are not exactly its expected set (see **Controls**).
 
@@ -35,11 +37,12 @@ The runner prints one verdict per check, each with the commit's SHA. It exits no
 
 | Control | Must fail | Must go red with it |
 |---|---|---|
-| P1.a `no-run-once` | `one-row` | `b:once` |
 | P1.a `no-waker` | `a:completed` | `a:word` |
 | P1.b `new-session` | `a:names-ticket`, `c:names-ticket` | `a:same-session`, `b:names-ticket`, `c:same-session`, `c:one-draw` |
 | P1.b `drop-answer` | `a:names-region` | nothing |
 | J4 `fresh-store` | `j:answered` | every `j:*` after the answer; never `kill:parked` |
+
+The runner names only controls its children define. P1.a's `no-run-once` is retired (FIX-2082, see its `goal.md`), so P1.a runs under `no-waker` alone (FIX-2121).
 
 J4's own:
 
@@ -58,3 +61,9 @@ J4's own:
 | 2026-10-11 | 2e940454d (`main` 5613e8546, with FIX-1844 and FIX-1867 merged, + this goal) | openai/gpt-5.4-mini (vercel gateway); P1.c and P1.d on their own models | PASS | Every check on one clean commit, every control red on exactly its expected set. P1.a PASS on attempt 2 of 3 (attempt 1 red at `a:word`: the keeper declined to give the word; attempt 2 killed 4494 ms after the ask, while suspended; one turn, one row, one completed run); `no-run-once` exactly `one-row`, `b:once`; `no-waker` exactly `a:completed`, `a:word`. P1.b PASS (ca-central, TCK-715A65, completed 1005 ms after the answer in the session that parked); `new-session` exactly its six; `drop-answer` exactly `a:names-region` (answered ap-south, the task said me-central; one draw, completed). P1.c PASS, P1.d PASS (both). J4 PASS on attempt 1 of 3 (below) |
 | 2026-10-11 | 2e940454d | openai/gpt-5.4-mini (vercel gateway) | PASS (J4) | Killed 8589 ms after the filing: the row `parked` with one notice, and the store already held the one draw, `TCK-907850` (item `item_tool_output_1791734610526_99f1…`). After the restart the answer `{ ok: true }`, `completed` 5027 ms later in the session that parked: "Ticket TCK-907850, region eu-north."; the same draw record alone; one `completed` notice; the second answer `terminal_task_write_declined`, rows unchanged; the session's request `completed`, answering "TCK-907850"; the row still `completed` |
 | 2026-10-11 | 2e940454d | openai/gpt-5.4-mini (vercel gateway) | FAIL (control `fresh-store`, expected) | Killed 2958 ms after the filing, the row `parked` and the draw `TCK-2C5D55` held (`kill:parked` green); restarted on a new file, `400 Bad Request` (`j:answered`); red exactly `j:answered` and the nine `j:*` after it |
+| 2026-10-14 | 7739ad25 + FIX-1981 | openai/gpt-5.4-mini (vercel gateway) | PASS (J4) | Killed 3184 ms after the filing, the row `parked` with one notice and the one draw held. After the restart the answer `{ ok: true }`, `completed` 5036 ms later in the session that parked: "Ticket TCK-D0BF93 will deploy to us-east.", attempts 2. The question reopened the task, which completed again there after 3 attempts: "TCK-D0BF93" |
+| 2026-10-14 | 7739ad25 + FIX-1981 | openai/gpt-5.4-mini (vercel gateway) | FAIL (control `fresh-store`, expected) | Restarted on a new file, the answer came back `400 Bad Request` (`j:answered`); every later `j:*` red with it, `kill:parked` green |
+| 2026-10-22 | fix/FIX-2086 on 2f342f609 | openai/gpt-5.4-mini (vercel gateway) | FAIL (J4, 4 of 4 attempts) | `j:names-ticket`, `j:one-draw`, `j:still-answers`. Killed 2059–2213 ms after the filing, each time while the parking `work` request was still running (its turn's last model call after `parkOnQuestion`): the conversation already held the parked notice, the restarted host left that request `interrupted`, and history reads completed requests only, so the answered attempt saw "Answer to your question: Use us-east." and nothing before it ("Used us-east."), and the later talk turn drew a fresh ticket. `j:unchanged` held: the talk left the row as it ended. Main fails the same way: a run of `origin/main` b43150fea (`GOAL_ATTEMPTS=2`, PR #3650's stand-in review) failed 2 of 2 on the same three tags, so this is pre-existing and tracked separately |
+| 2026-10-23 | `origin/main` 090559531 | openai/gpt-5.4-mini (vercel gateway) | FAIL (J4, 2 of 2 attempts) | Reproduced before the fix: `j:names-ticket`, `j:one-draw`, `j:still-answers` (attempt 2 also `j:names-region`). Each kill landed while the parking `work` request was on its last model call. That request reads `in_progress` until the stale sweep marks it `interrupted` about 60 s after the kill; the answered attempt starts within 7 s of the kill, so its history holds none of it. The later talk turn, after the sweep, also saw none of it (history read completed requests only) and drew a second ticket |
+| 2026-10-23 | `fix/FIX-2101` on 090559531 + an interrupted request's settled items in history, uncommitted | openai/gpt-5.4-mini (vercel gateway) | FAIL (J4, 3 of 3 attempts; partial) | `j:one-draw` and `j:still-answers` now PASS every attempt: after the sweep, the talk turn sees the interrupted turn's ask and its `drawTicket` result and answers with the ticket. `j:names-ticket` still FAILs (attempts 1 and 3 also `j:names-region`): the answered attempt started 6.6–7.7 s after the parking request did, 59–67 s before the sweep wrote `interrupted` (`interruptedAt`), so to that turn the dead request still read `in_progress` and was left out as a live sibling. Its history, read offline from the store after the sweep, matches a no-kill run's (leg b, the same commit) exactly, so what is left is when the dead request reads as over, not what history shows. Reported as a decision |
+| 2026-10-26 | `fix/fix-2131` on `f32747683`, uncommitted | openai/gpt-5.4-mini (vercel gateway) | FAIL (J4, 2 of 2 attempts) | `j:names-ticket` alone, the failure the 2026-10-22 and 2026-10-23 rows record on `main` (the asking request killed mid-turn reads `in_progress` to the answered turn). `kill:parked` (the row held on its question at the kill), `j:answered` (`updateTask_tasks` naming it), `j:second-answer` and the rest green. The leg's `connect` also returned no `fsd`, so it could not start on `main`; fixed here. |

@@ -12,10 +12,17 @@
  * Nothing here looks for a run any other way: no listing, no key rebuilt from
  * the task, no "latest session of this worker".
  */
-import { compareItemOrder, createSSEClient, type ResourceManifest } from "@flow-state-dev/client";
+import { compareItemOrder, type ResourceManifest } from "@flow-state-dev/client";
 import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
-import { OBSERVED_PLAN, type RequestStatus } from "@flow-state-dev/core/types";
-import type { LabClients } from "./connection";
+import {
+  OBSERVED_PLAN,
+  OBSERVED_PLAN_LIST,
+  planKeySegment,
+  planRowsPrefix,
+  readPlanTarget,
+  type RequestStatus,
+} from "@flow-state-dev/core/types";
+import type { Client } from "@flow-state-dev/client";
 import { describeFailure, type Failure } from "./reads";
 
 /** A run the screen can open: the row's link, and the flow its session names. */
@@ -36,10 +43,10 @@ function fail(error: unknown): never {
  * The flow that owns `sessionId`: the one the run's request, stream and abort
  * go through. A session that names no owner is refused rather than guessed at.
  */
-export async function resolveRunFlow(clients: LabClients, sessionId: string): Promise<string> {
+export async function resolveRunFlow(client: Client, sessionId: string): Promise<string> {
   let flowId: string | undefined;
   try {
-    flowId = (await clients.sessions.getSession(sessionId)).flowId;
+    flowId = (await client.sessions.get(sessionId)).flowId;
   } catch (error) {
     fail(error);
   }
@@ -52,9 +59,9 @@ export async function resolveRunFlow(clients: LabClients, sessionId: string): Pr
 }
 
 /** The run's request record, read through the run's flow. */
-export async function readRunStatus(clients: LabClients, run: Pick<OpenRun, "flowId" | "requestId">): Promise<RequestStatus> {
+export async function readRunStatus(client: Client, run: Pick<OpenRun, "flowId" | "requestId">): Promise<RequestStatus> {
   try {
-    return (await clients.actions(run.flowId).getRequestStatus(run.requestId)).status;
+    return (await client.flow(run.flowId).request(run.requestId).status()).status;
   } catch (error) {
     return fail(error);
   }
@@ -72,12 +79,12 @@ export type SessionItems = { items: OutputItem[]; truncated: boolean };
  * The run session's stored items, oldest first. At most {@link ITEM_PAGES}
  * pages; past that the answer says so rather than reading on.
  */
-export async function readSessionItems(clients: LabClients, sessionId: string): Promise<SessionItems> {
+export async function readSessionItems(client: Client, sessionId: string): Promise<SessionItems> {
   const items: OutputItem[] = [];
   let offset = 0;
   try {
     for (let page = 0; page < ITEM_PAGES; page += 1) {
-      const state = await clients.sessions.getSessionState(sessionId, { includeItems: true, offset, limit: ITEM_PAGE });
+      const state = await client.sessions.state(sessionId, { includeItems: true, offset, limit: ITEM_PAGE });
       items.push(...(state.items ?? []));
       if (state.pagination?.hasMore !== true) return { items: items.sort(compareItemOrder), truncated: false };
       offset = state.pagination.nextOffset ?? offset + ITEM_PAGE;
@@ -103,11 +110,8 @@ export type RequestFollower = {
  * Only finished, non-transient items are passed on: an item the store does not
  * hold yet is not drawn.
  */
-export function followRequest(clients: LabClients, run: Pick<OpenRun, "flowId" | "requestId">, to: RequestFollower): { close(): void } {
-  return createSSEClient({
-    url: `/api/flows/${encodeURIComponent(run.flowId)}/requests/${encodeURIComponent(run.requestId)}/stream`,
-    fetcher: clients.fetcher,
-    ...(clients.baseUrl === undefined ? {} : { baseUrl: clients.baseUrl }),
+export function followRequest(client: Client, run: Pick<OpenRun, "flowId" | "requestId">, to: RequestFollower): { close(): void } {
+  return client.flow(run.flowId).request(run.requestId).stream({
     onItemDone: (event) => {
       const item = event.item as OutputItem & { transient?: boolean };
       if (item.transient !== true) to.onItem(item);
@@ -117,11 +121,19 @@ export function followRequest(clients: LabClients, run: Pick<OpenRun, "flowId" |
   });
 }
 
+/** An item's identity across reads: its request and its id. */
+function itemKey(item: OutputItem): string {
+  return `${item.requestId}\u0000${item.id}`;
+}
+
+/** No request sent from the screen. */
+const NONE_SENT: ReadonlySet<string> = new Set();
+
 /** Merge items, each `(request, id)` once, keeping the finished copy, in stored order. */
 export function mergeItems(held: readonly OutputItem[], incoming: readonly OutputItem[]): OutputItem[] {
   const byKey = new Map<string, OutputItem>();
   for (const item of [...held, ...incoming]) {
-    const key = `${item.requestId}\u0000${item.id}`;
+    const key = itemKey(item);
     const seen = byKey.get(key);
     if (seen === undefined || compareItemOrder(item, seen) >= 0) byKey.set(key, item);
   }
@@ -131,11 +143,18 @@ export function mergeItems(held: readonly OutputItem[], incoming: readonly Outpu
 /**
  * What the Session shows of a session's items (BR-8): the items stamped with
  * this task's id, through the attribution helper the substrate and the UI
- * share, and whether the session also holds another task's work.
+ * share, and whether the session also holds another task's work. A request
+ * in `sent` shows too: its door turn stores no task stamp (FIX-2009).
  */
-export function taskItems(items: readonly OutputItem[], boardRef: string, taskId: string): { items: OutputItem[]; shared: boolean } {
+export function taskItems(
+  items: readonly OutputItem[],
+  boardRef: string,
+  taskId: string,
+  sent: ReadonlySet<string> = NONE_SENT,
+): { items: OutputItem[]; shared: boolean } {
+  const own = new Set(itemsForTask(items, boardRef, taskId).map(itemKey));
   return {
-    items: [...itemsForTask(items, boardRef, taskId)],
+    items: items.filter((item) => own.has(itemKey(item)) || sent.has(item.requestId)),
     shared: items.some((item) => item.taskId !== undefined && item.taskId !== taskId),
   };
 }
@@ -157,13 +176,13 @@ export type InterruptOutcome =
  * the abort is refused or fails, or the record never settles.
  */
 export async function interruptRun(
-  clients: LabClients,
+  client: Client,
   run: Pick<OpenRun, "flowId" | "requestId">,
   options: { timeoutMs?: number; pollMs?: number; signal?: AbortSignal } = {},
 ): Promise<InterruptOutcome> {
-  const actions = clients.actions(run.flowId);
+  const actions = client.flow(run.flowId);
   try {
-    await actions.abortRequest(run.requestId);
+    await actions.request(run.requestId).abort();
   } catch (error) {
     // 409: the request was already terminal. Anything else is a refusal.
     if (describeFailure(error).httpStatus !== 409) fail(error);
@@ -172,7 +191,7 @@ export async function interruptRun(
   for (;;) {
     // The screen that asked has gone: stop reading on its behalf.
     if (options.signal?.aborted === true) throw new RunReadError({ message: "The screen closed before the run's record settled." });
-    const status = await readRunStatus(clients, run);
+    const status = await readRunStatus(client, run);
     if (status === "aborted") return { kind: "aborted" };
     if (status !== "in_progress") return { kind: "finished", status };
     if (Date.now() > until) {
@@ -187,7 +206,7 @@ export async function interruptRun(
  * under, when it records them. Found in the run session's manifest by these
  * patterns; a flow that declares neither records neither.
  */
-const RECORDED = { plan: `${OBSERVED_PLAN}/**`, files: "observed-file-ops/**" } as const;
+const RECORDED = { plan: `${OBSERVED_PLAN}/**`, markers: `${OBSERVED_PLAN_LIST}/**`, files: "observed-file-ops/**" } as const;
 
 /** One step of the plan the run recorded. */
 export type PlanStep = { id: string; title: string; status: string | null };
@@ -208,33 +227,45 @@ function recordedRef(manifest: ResourceManifest, pattern: string): string | unde
 }
 
 /**
- * The plan and files the run recorded under its own request id, read once. A
- * run's rows are keyed `<request>/<invocation>/<item>`, so one prefix read
- * selects everything this request did and nothing an earlier run in the same
- * session did.
+ * The plan and files the run recorded, read once. File rows are keyed
+ * `<request>/<invocation>/<path>`, so one prefix read selects everything this
+ * request did and nothing an earlier run in the same session did. The plan is
+ * the harness conversation's: the run leaves a pointer to it under its own
+ * request, and a run from before plans were kept by conversation has its plan
+ * under the request, as files are.
  */
-export async function readRecordedWork(clients: LabClients, run: Pick<OpenRun, "sessionId" | "requestId">): Promise<RecordedWork> {
+export async function readRecordedWork(client: Client, run: Pick<OpenRun, "sessionId" | "requestId">): Promise<RecordedWork> {
   let manifest: ResourceManifest;
   try {
-    manifest = await clients.resources.getResourceManifest(run.sessionId);
+    manifest = await client.resources.getResourceManifest(run.sessionId);
   } catch (error) {
     fail(error);
   }
-  const read = async (pattern: string) => {
+  // Escaped the way the recorder keys it, so a request id holding a `/` still selects its own rows.
+  const underRequest = (pattern: string) => `${pattern.slice(0, -"/**".length)}/${planKeySegment(run.requestId)}/`;
+  const read = async (pattern: string, prefix = underRequest(pattern)) => {
     const ref = recordedRef(manifest, pattern);
     if (ref === undefined) return null;
-    const prefix = `${pattern.slice(0, -"/**".length)}/${run.requestId}/`;
     try {
-      const page = await clients.resources.listCollectionItems(run.sessionId, ref, { limit: RECORDED_PAGE, topicPrefix: prefix });
+      const page = await client.resources.listCollectionItems(run.sessionId, ref, { limit: RECORDED_PAGE, topicPrefix: prefix });
       return { items: page.items, truncated: page.nextCursor != null };
     } catch (error) {
       fail(error);
     }
   };
-  const [plan, files] = await Promise.all([read(RECORDED.plan), read(RECORDED.files)]);
-  /** The key segments after `<request>/<invocation>/`. */
-  const rest = (topic: string) => topic.split("/").slice(2).join("/");
+  const readPlan = async () => {
+    if (recordedRef(manifest, RECORDED.plan) === undefined) return null;
+    const pointers = await read(RECORDED.markers, planRowsPrefix(run.requestId, OBSERVED_PLAN_LIST));
+    const markers = (pointers?.items ?? []).map((item) => ({
+      topic: item.topic,
+      conversation: field(item.clientData, "conversation") as string | null | undefined,
+    }));
+    return read(RECORDED.plan, readPlanTarget(run.requestId, markers).rowsPrefix);
+  };
   const field = (data: unknown, key: string) => (data as Record<string, unknown> | undefined)?.[key];
+  const [plan, files] = await Promise.all([readPlan(), read(RECORDED.files)]);
+  /** The key segments after `<request>/<invocation>/`, or a plan's `conversation/<id>/`. */
+  const rest = (topic: string) => topic.split("/").slice(2).join("/");
   return {
     plan:
       plan === null

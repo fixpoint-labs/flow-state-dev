@@ -44,8 +44,7 @@ import {
 export type TaskStatus =
   | "pending"
   | "in_progress"
-  | "blocked"
-  | "parked"
+  | "held"
   | "completed"
   | "errored"
   | "cancelled"
@@ -84,9 +83,9 @@ export type TaskChangeKind =
   | "completed"
   | "errored"
   | "retried"
-  | "blocked"
-  | "unblocked"
-  | "review_requested"
+  | "held"
+  | "released"
+  | "settings_changed"
   | "resumed"
   | "cancelled"
   | "label_changed"
@@ -101,8 +100,7 @@ export type BoardCounts = {
   total: number;
   pending: number;
   in_progress: number;
-  blocked: number;
-  parked: number;
+  held: number;
   completed: number;
   errored: number;
   cancelled: number;
@@ -139,25 +137,32 @@ export type TaskPlanState = {
 // ---------------------------------------------------------------------------
 
 /**
- * The status `awaiting_review` shipped as `parked` (FIX-1245). Item logs are
- * immutable — a trace recorded before that rename still carries the old word on
- * `task-change.task.status`, and a `counts.awaiting_review` key on
- * `task-board-meta` — and no resource-level migration can reach them. So they
- * are mapped forward here, at the fold every consumer of this state reads
- * through. A trace recorded after the rename allocates nothing.
+ * The status `held` replaced (FIX-2080): a trace recorded before then carries
+ * `blocked` on `task-change.task.status` and a `counts.blocked` key on
+ * `task-board-meta`. Item logs are immutable and no resource-level migration
+ * can reach them, so they are read here as `held`, at the fold every consumer
+ * of this state reads through. A trace recorded after the rename allocates
+ * nothing.
  */
-const LEGACY_PARKED_STATUS = "awaiting_review";
+const LEGACY_HELD_STATUS = "blocked";
 
 function migrateTaskStatus<T extends { status?: unknown }>(task: T): T {
-  return task.status === LEGACY_PARKED_STATUS ? { ...task, status: "parked" } : task;
+  if (task.status === LEGACY_HELD_STATUS) return { ...task, status: "held" };
+  return task;
 }
 
-function migrateCounts<T extends { parked?: number }>(counts: T | undefined): T | undefined {
-  if (counts === undefined) return counts;
-  const legacy = (counts as Record<string, unknown>)[LEGACY_PARKED_STATUS];
+/** Fold a legacy count key into the current one, removing it. */
+function foldCount<T>(counts: T, legacyKey: string, key: string): T {
+  const legacy = (counts as Record<string, unknown>)[legacyKey];
   if (typeof legacy !== "number") return counts;
-  const { [LEGACY_PARKED_STATUS]: _legacy, ...rest } = counts as Record<string, unknown>;
-  return { ...rest, parked: (counts.parked ?? 0) + legacy } as unknown as T;
+  const { [legacyKey]: _legacy, ...rest } = counts as Record<string, unknown>;
+  const current = (counts as Record<string, unknown>)[key];
+  return { ...rest, [key]: (typeof current === "number" ? current : 0) + legacy } as unknown as T;
+}
+
+function migrateCounts<T extends { held?: number }>(counts: T | undefined): T | undefined {
+  if (counts === undefined) return counts;
+  return foldCount(counts, LEGACY_HELD_STATUS, "held");
 }
 
 export const TASK_CHANGE_COMPONENT = "task-change";
@@ -178,8 +183,7 @@ export const STATUS_SECTIONS: ReadonlyArray<{
 }> = [
   { status: "pending", label: "Todo" },
   { status: "in_progress", label: "In progress" },
-  { status: "blocked", label: "Blocked" },
-  { status: "parked", label: "Parked" },
+  { status: "held", label: "Held" },
   { status: "completed", label: "Done" },
   { status: "errored", label: "Failed" },
   { status: "cancelled", label: "Cancelled" },
@@ -239,13 +243,17 @@ export function scopeItemsToLatestCollectionRequest(
 // ---------------------------------------------------------------------------
 
 /**
- * Return the set of `item.id` values that belong to any task-board task in
- * `items` — across every `collectionId` present.
+ * Return the set of `item.id` values that belong to a task whose board
+ * `items` mounts a `<TaskPlan />` for (a `task-board-meta` item for its
+ * collection), across every such board.
  *
  * Items belonging to a task should render inside that task's expansion
  * in `<TaskPlan />`, not also inline in the chat thread. The chat-level
  * `<RequestGroupRenderer>` uses this set to skip them so the user sees
- * each tool call / message / reasoning event exactly once.
+ * each tool call / message / reasoning event exactly once. A task worked in
+ * this list for a board shown somewhere else, such as a post a coordinator
+ * handed to a delegate's session, has no `<TaskPlan />` here, so its items
+ * stay in the chat thread.
  *
  * Delegates to the shared `@flow-state-dev/core/items` attribution algorithm
  * (FIX-658), which keys off the emit-time `taskId` stamped on each item, so
@@ -256,7 +264,27 @@ export function scopeItemsToLatestCollectionRequest(
 export function collectTaskOwnedItemIds(
   items: ReadonlyArray<OutputItem>,
 ): Set<string> {
-  return collectAttributedItemIds(items);
+  const boards = new Set<string>();
+  for (const item of items) {
+    if (!isComponentItem(item) || item.component !== TASK_BOARD_META_COMPONENT) continue;
+    const collectionId = (item.data as TaskBoardMetaData).collectionId;
+    if (collectionId !== undefined) boards.add(collectionId);
+  }
+  if (boards.size === 0) return new Set();
+  const planned = new Set<string>();
+  for (const item of items) {
+    if (!isComponentItem(item) || item.component !== TASK_CHANGE_COMPONENT) continue;
+    const data = item.data as TaskChangeData;
+    if (data.collectionId !== undefined && boards.has(data.collectionId) && data.taskId !== undefined) {
+      planned.add(data.taskId);
+    }
+  }
+  const attributed = collectAttributedItemIds(items);
+  const owned = new Set<string>();
+  for (const item of items) {
+    if (attributed.has(item.id) && item.taskId !== undefined && planned.has(item.taskId)) owned.add(item.id);
+  }
+  return owned;
 }
 
 // ---------------------------------------------------------------------------

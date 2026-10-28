@@ -129,7 +129,7 @@ describe("V8", () => {
     const code = sources.filter((f) => /\.tsx?$/.test(f) && !relative(src, f).startsWith("components/flow-state/"));
     // An action is the only way Shift Manager can put an item in a session (the
     // client has no item write), so the sites that send one are the list.
-    const SEND = /\bsendAction(Stream)?\(/;
+    const SEND = /\.send\(/;
     const sites = (files: string[], read: (f: string) => string) =>
       files.filter((f) => read(f).split("\n").some((line) => SEND.test(line))).map((f) => relative(src, f)).sort();
     const read = (f: string) => readFileSync(f, "utf8");
@@ -139,14 +139,14 @@ describe("V8", () => {
     // The door is the one the inventory names, never an action name of Shift Manager's own.
     const sendLines = read(join(src, "lib/send.ts")).split("\n").filter((line) => SEND.test(line));
     expect(sendLines).toHaveLength(1);
-    expect(sendLines[0]).toContain("sendAction(target.door,");
+    expect(sendLines[0]).toContain("send(target.door,");
     // Every composer that talks to a worker sends through it.
     for (const file of ["surfaces/TaskFrame.tsx", "surfaces/Inbox.tsx", "components/Conversation.tsx"]) {
-      expect(read(join(src, file)), file).toContain("sendTurn(clients,");
+      expect(read(join(src, file)), file).toContain("sendTurn(client,");
     }
     // Planted: a composer that sends to a named action is caught.
     const planted = join(src, "surfaces/Planted.tsx");
-    expect(sites([...code, planted], (f) => (f === planted ? `await actions.sendAction("message", { message });` : read(f)))).toContain(
+    expect(sites([...code, planted], (f) => (f === planted ? `await actions.send("message", { message });` : read(f)))).toContain(
       "surfaces/Planted.tsx",
     );
   });
@@ -170,12 +170,14 @@ describe("V8", () => {
 
   it("makes no write from the task screen but the abort and the one send path (ER-15, D2)", () => {
     const taskFiles = ["lib/run.ts", "lib/task.tsx", "surfaces/TaskFrame.tsx", "surfaces/TaskSession.tsx", "surfaces/TaskInspector.tsx"];
-    const WRITES = /\b(sendAction|sendActionStream|resumeSuspension|postLine|createCollectionItem|updateCollectionItem|deleteCollectionItem|deleteSession|createSession|retryRequest|continueRequest)\b|method:\s*"(POST|PUT|PATCH|DELETE)"/;
-    const writes = (text: string) => text.split("\n").filter((line) => WRITES.test(line) || (/abortRequest\(/.test(line) && !/await actions\.abortRequest\(run\.requestId\)/.test(line)));
+    const WRITES = /\.(send|resume|answer|retry|continue|delete|updateMetadata)\(|\b(postLine|createCollectionItem|updateCollectionItem|deleteCollectionItem|createSession|retryRequest|continueRequest)\b|method:\s*"(POST|PUT|PATCH|DELETE)"/;
+    const writes = (text: string) =>
+      text.split("\n").filter((line) => WRITES.test(line) || (/\.request\([^)]*\)\.abort\(/.test(line) && !/await actions\.request\(run\.requestId\)\.abort\(\)/.test(line)));
     for (const file of taskFiles) expect(writes(readFileSync(join(src, file), "utf8")), file).toEqual([]);
-    expect(readFileSync(join(src, "lib/run.ts"), "utf8")).toContain("await actions.abortRequest(run.requestId)");
+    expect(readFileSync(join(src, "lib/run.ts"), "utf8")).toContain("await actions.request(run.requestId).abort()");
     // Planted: a second write is caught.
-    expect(writes(`await clients.actions(f).sendAction("run", {});`)).toHaveLength(1);
+    expect(writes(`await client.flow(f).send("run", {});`)).toHaveLength(1);
+    expect(writes(`await client.flow(f).request(id).abort();`)).toHaveLength(1);
   });
 
   it("keeps every registry copy byte-equal to its source, and holds exactly what its install list ships", () => {

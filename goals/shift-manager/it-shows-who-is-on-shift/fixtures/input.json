@@ -1,6 +1,6 @@
 {
   "spreads": [
-    { "coder": ["held"], "reviewer": ["parked"], "asker": ["ask"], "waiter": ["queued"] },
-    { "coder": ["parked", "queued"], "reviewer": ["held", "parked"], "spare": ["ask", "ask"], "waiter": ["held"], "asker": ["queued"] }
+    { "coder": ["held"], "reviewer": ["asked"], "asker": ["ask"], "waiter": ["queued"] },
+    { "coder": ["asked", "queued"], "reviewer": ["held", "asked"], "spare": ["ask", "ask"], "waiter": ["held"], "asker": ["queued"] }
   ]
 }

@@ -6,22 +6,22 @@
  * (`useResourceCollectionList`, `useResourceCollectionItem`).
  *
  * Caching lives per-instance: each hook call owns its own page cache keyed
- * by the normalized query. On `resource_change` items observed in the
- * session stream, entries for the affected ref are invalidated; active
- * subscribers refetch.
+ * by the normalized query, for the current client, session and collection. On
+ * `resource_change` items observed in the session stream, entries for the
+ * affected ref are invalidated; active subscribers refetch.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  createResourceClient,
   type CollectionItemHandle,
   type CollectionItemState,
   type CollectionListPage,
   type CollectionSnapshotEntry,
   type CollectionSnapshotPrefetchedItem,
-  type ResourceClient
+  type ResourcesApi
 } from "@flow-state-dev/client";
 import type { SessionView } from "./useSession";
-import { useFlowContext } from "../context/FlowContext";
+import { useReadFence, type ReadFence } from "./useReadFence";
+import { useClient } from "../internal/useClient";
 
 /**
  * Mutation actions available on the collection, shaped by declared permissions.
@@ -50,7 +50,11 @@ export type CollectionListOptions = {
  * so existing untyped call sites are unchanged.
  */
 export type UseResourceCollectionResult<TClient = unknown> = {
-  /** Fetch a paginated page of items. Cached by normalized query. */
+  /**
+   * Fetch a paginated page of items. Cached by normalized query. A `list` kept
+   * from before a session, ref or client change still reads, uncached, for the
+   * identity it was made for.
+   */
   list: (options?: CollectionListOptions) => Promise<CollectionListPage>;
   /** Fetch a single item by topic. Returns `null` if not present. */
   get: (topic: string) => Promise<CollectionItemState | null>;
@@ -90,6 +94,11 @@ type CachedPage = {
   page: CollectionListPage;
 };
 
+type PageCache = {
+  owner: ReadFence | null;
+  pages: Map<string, CachedPage>;
+};
+
 /** Normalized cache key — sorted JSON of the query. */
 function cacheKey(options: CollectionListOptions | undefined): string {
   if (!options) return "{}";
@@ -110,11 +119,16 @@ function pathAffectsCollection(path: string, ref: string): boolean {
   return path === ref || path.startsWith(`${ref}/`);
 }
 
-/** Locate the snapshot entry for `ref` across all scopes. */
+/**
+ * Locate the snapshot entry for `ref` across all scopes. None while the view
+ * still holds the previous session's snapshot: `useSession` keeps it on a
+ * switch until the new session's snapshot is read.
+ */
 export function findCollectionEntry(
   session: SessionView,
   ref: string
 ): CollectionSnapshotEntry | undefined {
+  if (session.snapshot?.sessionId !== session.sessionId) return undefined;
   const resources = session.snapshot?.resources;
   if (!resources) return undefined;
   for (const scope of ["session", "user", "org"] as const) {
@@ -131,7 +145,7 @@ export function findCollectionEntry(
 
 function wrapItem<TClient>(
   raw: { topic: string; clientData?: unknown; content?: string },
-  client: ResourceClient,
+  client: ResourcesApi,
   sessionId: string | undefined,
   ref: string
 ): CollectionItemHandle<TClient> {
@@ -157,20 +171,17 @@ export function useResourceCollection<TClient = unknown>(
   session: SessionView,
   ref: string
 ): UseResourceCollectionResult<TClient> {
-  const context = useFlowContext();
-  const baseUrl = context.baseUrl;
-  const apiPath = context.apiPath;
+  // One memoized client per hook: the fence below keys on it.
+  const client = useClient().resources;
 
-  // FIX-427: hoist the client into a single useMemo. The previous hook
-  // instantiated `createResourceClient` twice per render.
-  const client = useMemo(
-    () => createResourceClient({ baseUrl, apiPath }),
-    [baseUrl, apiPath]
-  );
+  const sessionId = session.sessionId;
 
-  // Per-instance page cache keyed by normalized query. Held in a ref so
-  // it survives re-renders without participating in render diffing.
-  const cacheRef = useRef<Map<string, CachedPage>>(new Map());
+  // The fence object names one stay: A → B → A does not reuse the first cache.
+  const fence = useReadFence([client, sessionId, ref]);
+
+  // Replaced on the first read under a new fence, not from an effect: a child
+  // effect can call `list` before this hook's effects run.
+  const cacheRef = useRef<PageCache>({ owner: null, pages: new Map() });
   // Generation counter — bumped on invalidation. Captured before each list()
   // await, then compared after to discard stale write-backs from races
   // between SSE invalidations and in-flight requests. Also flows into the
@@ -179,7 +190,7 @@ export function useResourceCollection<TClient = unknown>(
   const generationRef = useRef(0);
 
   const invalidate = useCallback(() => {
-    cacheRef.current.clear();
+    cacheRef.current.pages.clear();
     generationRef.current++;
     setGeneration(generationRef.current);
   }, []);
@@ -206,19 +217,14 @@ export function useResourceCollection<TClient = unknown>(
 
   const collectionEntry = useMemo(
     () => findCollectionEntry(session, ref),
-    [session.snapshot?.resources, ref]
+    [session.snapshot, session.sessionId, ref]
   );
 
-  // Snapshot refresh as a fallback invalidator. `resource_change` items are
-  // dropped by useSession's default filter, so the items-watching effect
-  // above misses them when the consumer isn't subscribed. useSession does
-  // call `refreshSnapshot()` at request completion when any resource changed
+  // Snapshot refresh as a fallback invalidator, behind the
+  // `session.resourceChanges` watcher above. useSession calls
+  // `refreshSnapshot()` at request completion when any resource changed
   // during streaming, which updates `count` (always emitted, FIX-427 §3.6).
-  // Invalidate whenever count moves so cached pages refetch on the next
-  // call. Conservative: a snapshot refresh that doesn't change count
-  // (e.g., update-in-place that leaves cardinality unchanged) won't trigger
-  // — but the items-watching path catches those when the resource_change
-  // is in the user's filter.
+  // Invalidate whenever count moves so cached pages refetch on the next call.
   const lastSeenCountRef = useRef<number | undefined>(collectionEntry?.count);
   useEffect(() => {
     const next = collectionEntry?.count;
@@ -230,27 +236,33 @@ export function useResourceCollection<TClient = unknown>(
 
   const list = useCallback(
     async (options?: CollectionListOptions): Promise<CollectionListPage> => {
-      const sessionId = session.sessionId;
       if (!sessionId) {
         return { items: [] };
       }
+      // Still answers for the identity it closed over. This cache belongs to the one in play.
+      if (!fence.isCurrent()) {
+        return client.listCollectionItems(sessionId, ref, options);
+      }
+      if (cacheRef.current.owner !== fence) {
+        cacheRef.current = { owner: fence, pages: new Map() };
+      }
+      const cache = cacheRef.current;
       const key = cacheKey(options);
-      const cached = cacheRef.current.get(key);
+      const cached = cache.pages.get(key);
       if (cached !== undefined) return cached.page;
 
-      // Snapshot the generation at request start. If invalidate() bumps it
-      // before the response lands (e.g., SSE resource_change while fetching),
-      // skip the write-back so we don't repopulate a cleared cache.
+      // Skip the write if invalidate() bumped generation. Write `cache`, not
+      // `cacheRef.current`: a switch replaces that ref while this is in flight.
       const startGen = generationRef.current;
       const page = await client.listCollectionItems(sessionId, ref, options);
       if (startGen === generationRef.current) {
-        cacheRef.current.set(key, { page });
+        cache.pages.set(key, { page });
       }
       return page;
     },
     // generation is in deps so the callback identity flips on invalidation;
     // convenience hooks watching `list` re-run their effects and refetch.
-    [client, ref, session.sessionId, generation]
+    [client, ref, sessionId, fence, generation]
   );
 
   const get = useCallback(

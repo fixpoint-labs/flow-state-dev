@@ -3,14 +3,12 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ClientHttpError,
   compareItemOrder,
-  createClient,
-  createRecoveryClient,
   createRequestStreamStore,
-  createSessionClient,
-  createSSEClient,
   createSSEClientFromResponse,
   type ExecuteActionResponse,
+  type FlowHandle,
   type RequestSSECallbacks,
   type RequestStreamHandle,
   type SessionDetail,
@@ -35,6 +33,7 @@ import type { ResumeAction } from "@flow-state-dev/core/types";
 // Previously hand-mirrored here because react may only type-import core.
 import { resolveItemVisibility } from "@flow-state-dev/contracts";
 import { useFlowContext } from "../context/FlowContext";
+import { useClient } from "../internal/useClient";
 import { followSession } from "../internal/followSession";
 import {
   isReducibleStateChange,
@@ -78,6 +77,46 @@ const IN_PROGRESS_LOOKUP_LIMIT = 10;
  */
 function optimisticIdOf(requestId: string): string {
   return `item_msg_optimistic_${requestId}`;
+}
+
+/**
+ * The id of the stop record the view shows for a request the person stopped,
+ * until the server's own stop record for it arrives.
+ */
+function abortItemIdOf(requestId: string): string {
+  return `item_status_aborted_${requestId}`;
+}
+
+/**
+ * Ask the server to stop `requestId`, and say whether it refused because the
+ * request already finished. A 409 can also mean the request was resumed before
+ * the stop reached it, which needs the stop sent again; a second 409 is a
+ * finished request. Other failures are best-effort: the server treats the
+ * disconnect that follows as "interrupted".
+ */
+async function serverRefusedStop(
+  flow: Pick<FlowHandle, "request">,
+  requestId: string
+): Promise<boolean> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await flow.request(requestId).abort();
+      return false;
+    } catch (cause) {
+      if (!(cause instanceof ClientHttpError && cause.status === 409)) return false;
+    }
+  }
+  return true;
+}
+
+/** The code of the status item that records a request was stopped. */
+const STOP_CODE = "system.request_aborted";
+
+/** Whether `item` is a record that `requestId` was stopped: the server's or the view's own. */
+function isStopRecordOf(item: OutputItem, requestId: string): boolean {
+  if (item.requestId !== requestId || item.type !== "status") return false;
+  const detail = (item as { detail?: unknown }).detail;
+  return typeof detail === "object" && detail !== null && (detail as { code?: unknown }).code === STOP_CODE;
 }
 
 /**
@@ -239,6 +278,11 @@ export type SessionView = {
    * session record has loaded. `undefined` for unbound sessions.
    */
   readonly orgId?: string;
+  /**
+   * True while this session's snapshot is being read. Starts true on the
+   * first paint when a session id is given, so a transcript can hide
+   * itself instead of flashing empty.
+   */
   readonly isLoading: boolean;
   readonly isStreaming: boolean;
   /** True when the main execution chain has completed but background work tasks are still running. */
@@ -467,7 +511,6 @@ export function useSession(
   const resolvedFlowKind = normalizeFlowKind(options?.flowKind ?? context.flowKind ?? "");
   const userId = options?.userId ?? context.userId ?? "devuser";
   const baseUrl = options?.baseUrl ?? context.baseUrl;
-  const apiPath = context.apiPath;
   const autoResume = options?.autoResume === true;
   const live = options?.live === true;
   const stuckThresholdMs = options?.stuckThresholdMs ?? 30_000;
@@ -556,7 +599,12 @@ export function useSession(
   const childSessionGenerationRef = useRef(0);
   const childSessionSequenceRef = useRef(0);
   const childSessionAppliedSequenceRef = useRef(0);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(sessionId !== undefined);
+  const [loadingSessionId, setLoadingSessionId] = useState(sessionId);
+  if (sessionId !== loadingSessionId) {
+    setLoadingSessionId(sessionId);
+    setIsLoading(sessionId !== undefined);
+  }
   const [isStreaming, setIsStreaming] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
   const [isStuck, setIsStuck] = useState(false);
@@ -577,6 +625,15 @@ export function useSession(
    * the "Dismiss" button.
    */
   const latestRequestIdAfterDropRef = useRef<string | null>(null);
+  /**
+   * Requests the person stopped whose stop the server has not yet shown in a
+   * snapshot. The view keeps its own stop record for each until a snapshot
+   * holds the server's: a read taken before the engine wrote its record
+   * would otherwise erase the stop, and the turn would read as running. A
+   * stop pressed while the turn's POST is still out is also read from here,
+   * when the POST answers.
+   */
+  const stoppedRequestsRef = useRef(new Set<string>());
   /**
    * Wall-clock timestamp of the most recent SSE event or heartbeat. The
    * watchdog reads this to decide whether the stream has gone silent
@@ -662,20 +719,11 @@ export function useSession(
     flushHandleRef.current = null;
   }, []);
 
-  const sessionClient = useMemo(
-    () => createSessionClient({ baseUrl, apiPath }),
-    [baseUrl, apiPath]
-  );
-
-  const client = useMemo(
-    () => createClient({ flowKind: resolvedFlowKind, userId, baseUrl, apiPath }),
-    [resolvedFlowKind, userId, baseUrl, apiPath]
-  );
-
-  const recoveryClient = useMemo(
-    () => createRecoveryClient({ baseUrl, apiPath }),
-    [baseUrl, apiPath]
-  );
+  // One client for every call and stream this view makes, memoized so a
+  // re-render keeps its streams open.
+  const fsd = useClient({ userId, baseUrl });
+  const sessionsApi = fsd.sessions;
+  const flow = useMemo(() => fsd.flow(resolvedFlowKind), [fsd, resolvedFlowKind]);
 
   /**
    * Fetch the single most recent request for this session.
@@ -692,7 +740,7 @@ export function useSession(
       return null;
     }
     try {
-      const list = await sessionClient.listSessionRequests(sessionId, { limit: 1 });
+      const list = await sessionsApi.requests(sessionId, { limit: 1 });
       const latest = list[0] ?? null;
       setLatestRequest(latest);
       return latest;
@@ -701,7 +749,7 @@ export function useSession(
       // session-level error. Consumers see the previous value.
       return null;
     }
-  }, [sessionId, sessionClient]);
+  }, [sessionId, sessionsApi]);
 
   /**
    * Re-read this session's background work.
@@ -723,7 +771,7 @@ export function useSession(
     const sequence = ++childSessionSequenceRef.current;
 
     try {
-      const rows = await sessionClient.listChildSessions(
+      const rows = await sessionsApi.children(
         sessionId,
         // Omitted entirely when the app named no page, so the route applies
         // its own default rather than being handed a number this side guessed.
@@ -754,7 +802,7 @@ export function useSession(
       // Keep the last known rows, but stop presenting them as current.
       setChildSessionsStale(true);
     }
-  }, [sessionId, sessionClient, childSessionLimit]);
+  }, [sessionId, sessionsApi, childSessionLimit]);
 
   const flushContentDeltas = useCallback(() => {
     flushHandleRef.current = null;
@@ -912,6 +960,17 @@ export function useSession(
           if (loaded !== undefined && !mayReplace(kept, loaded)) storeRef.current.upsert(kept);
         }
       }
+      // Put back the view's own stop record for each request the person
+      // stopped, until a snapshot holds the server's record of that stop.
+      const stopped = stoppedRequestsRef.current;
+      for (const requestId of [...stopped]) {
+        if ((nextSnapshot.items ?? []).some((item) => isStopRecordOf(item, requestId))) {
+          stopped.delete(requestId);
+          continue;
+        }
+        const shown = held.find((item) => item.requestId === requestId && item.id === abortItemIdOf(requestId));
+        if (shown !== undefined) storeRef.current.upsert(shown);
+      }
       setItems(storeRef.current.getSorted());
       return true;
     },
@@ -935,7 +994,7 @@ export function useSession(
     }
 
     if (!itemConfig.enabled) {
-      return sessionClient.getSessionState(sessionId, {
+      return sessionsApi.state(sessionId, {
         includeItems: false
       });
     }
@@ -956,7 +1015,7 @@ export function useSession(
       const mergedItems: OutputItem[] = [];
 
       while (true) {
-        const page = await sessionClient.getSessionState(sessionId, {
+        const page = await sessionsApi.state(sessionId, {
           includeItems: true,
           itemTypes: itemConfig.itemTypes,
           offset,
@@ -1001,7 +1060,7 @@ export function useSession(
     throw new Error(
       `Session ${sessionId} changed during each of ${SNAPSHOT_READ_ATTEMPTS} reads of its history; try again.`
     );
-  }, [sessionId, sessionClient, itemConfig.enabled, itemConfig.itemTypes]);
+  }, [sessionId, sessionsApi, itemConfig.enabled, itemConfig.itemTypes]);
 
   const refreshSnapshot = useCallback(async () => {
     if (sessionId === undefined) {
@@ -1011,7 +1070,7 @@ export function useSession(
     const read = beginSnapshotRead();
     try {
       const [nextDetail, nextSnapshot] = await Promise.all([
-        sessionClient.getSession(sessionId),
+        sessionsApi.get(sessionId),
         fetchSessionSnapshot()
       ]);
 
@@ -1022,7 +1081,7 @@ export function useSession(
     } catch (cause) {
       failSnapshotRead(read, cause);
     }
-  }, [sessionId, sessionClient, fetchSessionSnapshot, applySnapshot, beginSnapshotRead, failSnapshotRead]);
+  }, [sessionId, sessionsApi, fetchSessionSnapshot, applySnapshot, beginSnapshotRead, failSnapshotRead]);
 
   /**
    * Attach to an existing request's stream, optionally resuming from a cursor.
@@ -1167,6 +1226,21 @@ export function useSession(
 
           if (takeLiveItem(event.item, "own")) setItems(storeRef.current.getSorted());
         },
+        onItemUpdated: (event) => {
+          // Every patch comes before its item finishes, so on a finished copy
+          // it is older than it (a resumed stream replays from the start). An
+          // item the view doesn't hold, the filter's rejects among them, has
+          // nothing to patch.
+          const key = itemKey(event.requestId, event.itemId);
+          const held = storeRef.current.getById(key);
+          if (held === undefined || isFinished(held)) return;
+          if (!storeRef.current.applyItemPatch(key, event.patch)) return;
+          // The patched copy is live, like any copy `takeLiveItem` takes: a
+          // snapshot whose read began before it arrived doesn't take it away.
+          liveArrivalsRef.current += 1;
+          liveItemsRef.current.set(key, liveArrivalsRef.current);
+          setItems(storeRef.current.getSorted());
+        },
         onContentAdded: (event) => {
           const key = itemKey(event.requestId, event.itemId);
           // On a finished copy, a part it already has is older than it. A part
@@ -1282,10 +1356,7 @@ export function useSession(
 
       const handle = inlineResponse !== undefined
         ? createSSEClientFromResponse({ response: inlineResponse, ...sseCallbacks })
-        : createSSEClient({
-            url: `/api/flows/${encodeURIComponent(resolvedFlowKind)}/requests/${encodeURIComponent(requestId)}/stream`,
-            baseUrl,
-            apiPath,
+        : flow.request(requestId).stream({
             startingAfter: startingAfter !== undefined ? Number(startingAfter) : undefined,
             ...sseCallbacks
           });
@@ -1295,9 +1366,7 @@ export function useSession(
     [
       itemConfig.includeTransient,
       itemConfig.itemTypes,
-      resolvedFlowKind,
-      baseUrl,
-      apiPath,
+      flow,
       refreshSnapshot,
       refreshLatestRequest,
       scheduleContentFlush,
@@ -1315,7 +1384,7 @@ export function useSession(
     childSessionAppliedSequenceRef.current = 0;
     setChildSessions([]);
     setChildSessionsStale(false);
-  }, [sessionId, sessionClient]);
+  }, [sessionId, sessionsApi]);
 
   // The mount read. Besides a `live` view's run notices, this is the only
   // read that is not tied to a user interaction: it covers arriving at a
@@ -1347,7 +1416,6 @@ export function useSession(
     }
 
     let cancelled = false;
-    setIsLoading(true);
     setError(null);
     setSnapshotAppliedFor(undefined);
 
@@ -1375,7 +1443,7 @@ export function useSession(
         const read = beginSnapshotRead();
         reading = read;
         const [nextDetail, nextSnapshot] = await Promise.all([
-          sessionClient.getSession(sessionId),
+          sessionsApi.get(sessionId),
           fetchSessionSnapshot(),
           autoResume
             ? Promise.resolve(latestBeforeSnapshot)
@@ -1406,7 +1474,7 @@ export function useSession(
           // snapshot is still running. Under `allow` concurrency both can be
           // in flight at once, and a single-row read returns only the newer —
           // making the older one's absence prove nothing.
-          const requests = await sessionClient.listSessionRequests(sessionId, {
+          const requests = await sessionsApi.requests(sessionId, {
             status: "in_progress",
             limit: IN_PROGRESS_LOOKUP_LIMIT
           });
@@ -1466,6 +1534,8 @@ export function useSession(
           }
 
           if (activeRequest !== undefined) {
+            // The hook now carries this request, so a stop reaches it.
+            activeRequestIdRef.current = activeRequest.id;
             attachToStream(activeRequest.id);
           }
         }
@@ -1484,7 +1554,7 @@ export function useSession(
     return () => {
       cancelled = true;
     };
-  }, [sessionId, sessionClient, fetchSessionSnapshot, applySnapshot, beginSnapshotRead, failSnapshotRead, autoResume, itemConfig.enabled, attachToStream, refreshLatestRequest]);
+  }, [sessionId, sessionsApi, fetchSessionSnapshot, applySnapshot, beginSnapshotRead, failSnapshotRead, autoResume, itemConfig.enabled, attachToStream, refreshLatestRequest]);
 
   // Clean up when sessionId changes — close old stream and reset request state
   // so the new session isn't blocked by the previous session's in-flight request.
@@ -1503,6 +1573,7 @@ export function useSession(
       setIsStuck(false);
       activeRequestIdRef.current = null;
       latestRequestIdAfterDropRef.current = null;
+      stoppedRequestsRef.current.clear();
       lastEventAtRef.current = Date.now();
       cancelScheduledFlush();
     };
@@ -1540,8 +1611,7 @@ export function useSession(
     // the view as it would be without `live` (BR-16).
     const close = followSession({
       sessionId,
-      baseUrl,
-      apiPath,
+      client: fsd,
       since: snapshotAtRef.current,
       sessionCreatedAt: followedSessionCreatedAt,
       itemTypes: itemConfig.itemTypes,
@@ -1566,8 +1636,7 @@ export function useSession(
     sessionId,
     snapshotAppliedFor,
     followedSessionCreatedAt,
-    baseUrl,
-    apiPath,
+    fsd,
     takeLiveItem,
     itemConfig.enabled,
     itemConfig.includeTransient,
@@ -1622,7 +1691,7 @@ export function useSession(
     (requestId: string) => {
       if (!itemConfig.enabled) return;
       const abortItem: OutputItem = {
-        id: `item_status_aborted_${requestId}`,
+        id: abortItemIdOf(requestId),
         type: "status",
         status: "completed",
         requestId,
@@ -1630,7 +1699,7 @@ export function useSession(
         provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" },
         ts: Date.now(),
         message: "Request was stopped.",
-        detail: { code: "system.request_aborted" }
+        detail: { code: STOP_CODE }
       } as OutputItem;
 
       storeRef.current.upsert(abortItem);
@@ -1656,7 +1725,7 @@ export function useSession(
       }
 
       try {
-        await client.abortRequest(targetId);
+        await flow.request(targetId).abort();
       } catch {
         // Network failure or a 409 against an already-terminal record both
         // land here. The local cleanup below still runs so the UI clears.
@@ -1680,7 +1749,7 @@ export function useSession(
       void refreshLatestRequest();
     },
     [
-      client,
+      flow,
       flushContentDeltas,
       injectSyntheticAbortItem,
       refreshSnapshot,
@@ -1756,16 +1825,42 @@ export function useSession(
       }
 
       try {
-        // Use sendActionStream to POST with Accept: text/event-stream.
+        // Send with `stream: true` to POST with Accept: text/event-stream.
         // On serverless (Vercel), this returns the SSE stream directly from
         // the POST response — keeping action execution and event delivery
         // on the same function instance. Falls back to 202 JSON + separate
         // GET stream for servers that don't support inline streaming.
-        const postResponse = await client.sendActionStream(action, input, {
+        const postResponse = await flow.send(action, input, {
           sessionId,
           requestId,
-          metadata: actionOptions?.metadata
+          metadata: actionOptions?.metadata,
+          stream: true
         });
+
+        const accepted: ExecuteActionResponse = {
+          status: "in_progress",
+          request: {
+            id: requestId,
+            flowKind: resolvedFlowKind,
+            actionName: action,
+            status: "in_progress"
+          }
+        };
+
+        // Stopped while the POST was out. That stop may have reached nothing,
+        // since the server had no request yet; now it does. Stop it, and
+        // don't pick the turn back up.
+        if (stoppedRequestsRef.current.has(requestId)) {
+          postResponse.body?.cancel().catch(() => {});
+          if (await serverRefusedStop(flow, requestId)) {
+            // The turn finished before the stop reached it: drop the view's
+            // stop record and read the finished turn.
+            stoppedRequestsRef.current.delete(requestId);
+            storeRef.current.deleteById(abortItemIdOf(requestId));
+            await refreshSnapshot();
+          }
+          return accepted;
+        }
 
         const contentType = postResponse.headers.get("content-type") ?? "";
 
@@ -1777,15 +1872,7 @@ export function useSession(
             // Items disabled — release the unconsumed SSE body.
             postResponse.body?.cancel().catch(() => {});
           }
-          return {
-            status: "in_progress" as const,
-            request: {
-              id: requestId,
-              flowKind: resolvedFlowKind,
-              actionName: action,
-              status: "in_progress" as const
-            }
-          };
+          return accepted;
         }
 
         // Fallback: server returned 202 JSON (no inline streaming support).
@@ -1810,7 +1897,7 @@ export function useSession(
     [
       sessionId,
       resolvedFlowKind,
-      client,
+      flow,
       itemConfig.enabled,
       attachToStream,
       refreshSnapshot,
@@ -1843,16 +1930,15 @@ export function useSession(
   const abortRequest = useCallback(async () => {
     const requestId = activeRequestIdRef.current;
     if (requestId === null) return;
+    stoppedRequestsRef.current.add(requestId);
 
     // Mark the request as abort-requested in the persistent store. This
     // flag lets the server distinguish an intentional stop from an
-    // accidental disconnect (browser reload, network drop).
-    try {
-      await client.abortRequest(requestId);
-    } catch {
-      // Best-effort — if the endpoint is unreachable the server will
-      // treat the subsequent disconnect as "interrupted" instead.
-    }
+    // accidental disconnect (browser reload, network drop). A refused stop
+    // means the request finished first: the server's account of it stands,
+    // so the view stops claiming a stop.
+    const refused = await serverRefusedStop(flow, requestId);
+    if (refused) stoppedRequestsRef.current.delete(requestId);
 
     // Close the SSE connection. On the server, request.signal fires
     // and the catch block checks the abortRequested flag to decide
@@ -1867,8 +1953,8 @@ export function useSession(
     setIsFinishing(false);
     setIsStuck(false);
 
-    injectSyntheticAbortItem(requestId);
-  }, [client, flushContentDeltas, injectSyntheticAbortItem]);
+    if (!refused) injectSyntheticAbortItem(requestId);
+  }, [flow, flushContentDeltas, injectSyntheticAbortItem]);
 
   const refresh = useCallback(async () => {
     // Refreshes the whole view, background work included. Under the
@@ -1900,14 +1986,11 @@ export function useSession(
     setError(null);
 
     try {
-      const { newRequestId } = await recoveryClient.retry({
-        // Re-enter through the record's OWNER, the instance that ran it. The
-        // stored kind is metadata; for a collection it names no instance, and
-        // for a legacy record the bound address is the singleton it implies.
-        flowKind: target.flowId ?? resolvedFlowKind,
-        sessionId,
-        requestId: target.id
-      });
+      // Re-enter through the record's OWNER, the instance that ran it. The
+      // stored kind is metadata; for a collection it names no instance, and
+      // for a legacy record the bound address is the singleton it implies.
+      const retried = await fsd.flow(target.flowId ?? resolvedFlowKind).request(target.id).retry();
+      const newRequestId = retried.id;
 
       activeRequestIdRef.current = newRequestId;
       attachToStream(newRequestId);
@@ -1923,7 +2006,8 @@ export function useSession(
   }, [
     sessionId,
     latestRequest,
-    recoveryClient,
+    fsd,
+    resolvedFlowKind,
     attachToStream,
     refreshLatestRequest,
     refreshChildSessions
@@ -2004,15 +2088,18 @@ export function useSession(
       // Mirrors sendAction's inline-streaming path — essential on serverless
       // where a separate GET stream can't reach the in-flight continuation.
       await performInlineReentry(args.requestId, () =>
-        recoveryClient.resumeSuspensionStream(resolvedFlowKind, args.requestId, {
-          suspensionId: args.suspensionId,
-          action: args.action,
-          data: args.data,
-          resumedBy: args.resumedBy ?? userId
-        })
+        flow.request(args.requestId).resume(
+          {
+            suspensionId: args.suspensionId,
+            action: args.action,
+            data: args.data,
+            resumedBy: args.resumedBy ?? userId
+          },
+          { stream: true }
+        )
       );
     },
-    [recoveryClient, resolvedFlowKind, userId, performInlineReentry]
+    [flow, userId, performInlineReentry]
   );
 
   const continueRequest = useCallback(
@@ -2020,10 +2107,10 @@ export function useSession(
       if (sessionId === undefined) return;
 
       await performInlineReentry(requestId, () =>
-        recoveryClient.continueStream({ flowKind: resolvedFlowKind, sessionId, requestId })
+        flow.request(requestId).continue({ stream: true })
       );
     },
-    [sessionId, recoveryClient, resolvedFlowKind, performInlineReentry]
+    [sessionId, flow, performInlineReentry]
   );
 
   const subscribeAudioDelta = useCallback(

@@ -15,7 +15,7 @@ import { mockGenerator } from "@flow-state-dev/testing";
 import { bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
 
 const file = async (host: BoardHost, userId: string, conv: string, input: Record<string, unknown>) => {
-  const result = await host.act(userId, conv, "dispatchTask_tasks", input);
+  const result = await host.act(userId, conv, "createTask_tasks", input);
   expect(result.error, messageOf(result.error)).toBeUndefined();
   return result.output as { ok: boolean; taskId?: string; error?: string };
 };
@@ -107,7 +107,7 @@ describe("the session a task runs in (BR-16, BR-19)", () => {
       expect(taskSession).toBeDefined();
       expect((await host.row("alice", filing, filed.taskId!))?.status).toBe("completed");
 
-      const posted = await host.act("alice", conv, "run", { message: "what's our refund policy?" });
+      const posted = await host.act("alice", conv, "respond", { message: "what's our refund policy?" });
       expect(posted.error, messageOf(posted.error)).toBeUndefined();
       await host.settled();
       const delegateSession = await app.findWorkerSession({ worker: "otto", filingSessionId: filing });
@@ -192,7 +192,7 @@ describe("the session a task runs in (BR-16, BR-19)", () => {
     const host = bootBoardHost();
     try {
       // `tasker` is built on `installation.session()` alone: without the refusal, its schema drops these and the create succeeds.
-      for (const field of ["delegates", "fallback", "taskNotices", "splitParent"]) {
+      for (const field of ["delegates", "fallback", "taskNotices"]) {
         const created = await host.create("alice", "tasker", { state: { workerId: "eng.tasker", [field]: [] } });
         expect(created.status, `${field}: ${JSON.stringify(created.body)}`).toBe(400);
         expect(created.body).toMatchObject({ field });
@@ -236,27 +236,22 @@ describe("attempts and reassigns (BR-17, BR-18)", () => {
     }
   });
 
-  it("opens a new session for the worker a task is reassigned to; the first keeps its history", async () => {
+  it("refuses to reassign a task that has started: it keeps its worker and its session (FIX-2081)", async () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "pm");
       const filing = await host.filingOf("alice", conv);
-      const filed = await file(host, "alice", conv, { goal: "decide [park:which one?]", assignee: "eng.tasker" });
+      const filed = await file(host, "alice", conv, { goal: "decide [ask:which one?]", assignee: "eng.tasker" });
       await host.settled();
-      expect((await host.row("alice", filing, filed.taskId!))?.status).toBe("parked");
+      // Held on its question: started, running, waiting on the user.
+      expect((await host.row("alice", filing, filed.taskId!))?.status).toBe("in_progress");
       const first = host.runs[0]!.sessionId;
-      // Answered: the attempt ends and the row waits again, as an answer leaves it.
-      const parked = (await host.row("alice", filing, filed.taskId!))!;
-      const { partition: _p, ...stored } = parked;
-      await host.writeRow("alice", filing, { ...(stored as Task), status: "pending", feedback: "the second" });
 
-      const moved = await host.act("alice", conv, "assignTask_tasks", { taskId: filed.taskId, assignee: "eng.writer" });
-      expect(moved.output).toEqual({ ok: true });
+      const moved = await host.act("alice", conv, "updateTask_tasks", { id: filed.taskId, assignee: "eng.writer" });
+      expect(moved.output).toMatchObject({ ok: false, error: expect.stringMatching(/^field_locked_after_start: assignee/) });
       await host.settled();
-      expect(host.runs.map((run) => run.worker)).toEqual(["eng.tasker", "eng.writer"]);
-      const second = host.runs[1]!.sessionId;
-      expect(second).not.toBe(first);
-      expect((await host.session(second)).state).toMatchObject({ workerId: "eng.writer", taskId: filed.taskId });
+      expect((await host.row("alice", filing, filed.taskId!))?.assignee).toBe("eng.tasker");
+      expect(host.runs.every((run) => run.worker === "eng.tasker")).toBe(true);
       expect((await host.requestsOf(first)).length).toBeGreaterThan(0);
     } finally {
       await host.dispose();
@@ -291,14 +286,14 @@ describe("a task session files its pieces (BR-7, as FIX-1802 S6 replaces it)", (
       // lead's turn in the task session was handed the task tools.
       expect(taskTurnTools.length).toBeGreaterThan(0);
       for (const names of taskTurnTools) {
-        expect(names.filter((name) => ["addTask", "assignTask", "listTasks", "cancelTask"].includes(name)).sort()).toEqual([
-          "addTask",
-          "assignTask",
-          "cancelTask",
-          "listTasks"
+        expect(names.filter((name) => ["createTask", "getTask", "listTasks", "updateTask"].includes(name)).sort()).toEqual([
+          "createTask",
+          "getTask",
+          "listTasks",
+          "updateTask"
         ]);
       }
-      const byAction = await host.act("alice", taskSession!.id, "dispatchTask_tasks", { goal: "another piece", assignee: "eng.tasker" });
+      const byAction = await host.act("alice", taskSession!.id, "createTask_tasks", { goal: "another piece", assignee: "eng.tasker" });
       expect(byAction.output).toMatchObject({ ok: true });
       await host.settled();
       // The piece is on the task session's own board, not the conversation's.
@@ -322,7 +317,7 @@ describe("a filing's start, when its wake is lost (BR-10a)", () => {
       // A row started as usual, for the revision one bare add leaves.
       const bare = await file(host, "alice", conv, { goal: "first, started as usual" });
       await host.settled();
-      const lost = await host.loseDispatches("runTaskBoard");
+      const lost = await host.loseDispatches("dispatch");
       const filed = await file(host, "alice", conv, { goal: "Audit licenses", assignee: "eng.tasker" });
       expect(filed.ok).toBe(true);
       expect(lost.lost()).toBe(1);
@@ -358,7 +353,7 @@ describe("a filing's start, when its wake is lost (BR-10a)", () => {
    */
   const strandedRow = async (host: BoardHost, conv: string, goal: string, patch: Partial<Task>) => {
     const filing = await host.filingOf("alice", conv);
-    const lost = await host.loseDispatches("runTaskBoard");
+    const lost = await host.loseDispatches("dispatch");
     const filed = await file(host, "alice", conv, { goal, assignee: "eng.tasker" });
     lost.restore();
     await host.settled();
@@ -393,7 +388,7 @@ describe("a filing's start, when its wake is lost (BR-10a)", () => {
       const conv = await host.conversation("alice", "pm");
       // The assign to eng.writer committed; the crash came before its wake.
       const { filing, taskId } = await strandedRow(host, conv, "rewrite it", { assignee: "eng.writer" });
-      const again = await host.act("alice", conv, "assignTask_tasks", { taskId, assignee: "eng.writer" });
+      const again = await host.act("alice", conv, "updateTask_tasks", { id: taskId, assignee: "eng.writer" });
       expect(again.output).toEqual({ ok: true });
       await host.settled();
       expect(host.runs.map((run) => run.worker)).toEqual(["eng.writer"]);
@@ -408,7 +403,7 @@ describe("a filing's start, when its wake is lost (BR-10a)", () => {
     try {
       const conv = await host.conversation("alice", "desk");
       const filing = await host.filingOf("alice", conv);
-      const lost = await host.loseDispatches("runTaskBoard");
+      const lost = await host.loseDispatches("dispatch");
       const stranded = await file(host, "alice", conv, { goal: "stranded", assignee: "eng.tasker" });
       expect(lost.lost()).toBe(1);
       await host.settled();

@@ -163,7 +163,7 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
         settings: input.settings ?? {}
       });
       check(input.id, row);
-      await write(ctx as unknown as BlockContext, input.id, row);
+      await write(ctx, input.id, row);
       return { id: input.id, flow: row.flow };
     }
   });
@@ -179,9 +179,9 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
       const row =
         file !== undefined
           ? rowFromStandard(file)
-          : { ...(await readOwn(ctx as unknown as BlockContext, input.from)), forkedFrom: input.from };
+          : { ...(await readOwn(ctx, input.from)), forkedFrom: input.from };
       check(input.id, row);
-      await write(ctx as unknown as BlockContext, input.id, row);
+      await write(ctx, input.id, row);
       return { id: input.id, flow: row.flow };
     }
   });
@@ -193,7 +193,7 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
     resources: { ...installation.resources },
     execute: async (input, ctx) => {
       refuseStandard(input.id, "edit");
-      const current = await readOwn(ctx as unknown as BlockContext, input.id);
+      const current = await readOwn(ctx, input.id);
       const next: WorkerRow = {
         ...current,
         ...(input.flow !== undefined ? { flow: input.flow } : {}),
@@ -203,7 +203,7 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
         ...(input.settings !== undefined ? { settings: input.settings } : {})
       };
       check(input.id, next);
-      await roster(ctx as unknown as BlockContext).create(input.id, next as unknown as JsonObject, {
+      await roster(ctx).create(input.id, next as unknown as JsonObject, {
         replace: true
       });
       return { id: input.id, flow: next.flow };
@@ -217,8 +217,8 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
     resources: { ...installation.resources },
     execute: async (input, ctx) => {
       refuseStandard(input.id, "fire");
-      await readOwn(ctx as unknown as BlockContext, input.id);
-      await roster(ctx as unknown as BlockContext).delete(input.id);
+      await readOwn(ctx, input.id);
+      await roster(ctx).delete(input.id);
       return { id: input.id };
     }
   });

@@ -25,7 +25,7 @@ import {
   auditorInputSchema,
 } from "@flow-state-dev/patterns/response-auditor";
 
-const MODEL = process.env.GOAL_MODEL ?? "vercel/openai/gpt-5.4-mini";
+const MODEL = process.env.GOAL_MODEL ?? "vercel:openai/gpt-5.4-mini";
 const userInput = process.env.GOAL_USER_INPUT ?? "";
 const aiResponse = process.env.GOAL_AI_RESPONSE ?? "";
 

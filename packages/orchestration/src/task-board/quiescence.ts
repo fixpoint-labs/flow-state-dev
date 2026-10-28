@@ -18,8 +18,9 @@
  * - `drained` — nothing is left for THIS drain to wait on. Dominates the
  *   others.
  * - `blocked` — no worker is producing state changes and no `pending` task can
- *   be claimed (every remaining one has a non-`completed` dep), so continuing
- *   would spin forever. `complete-or-blocked` only.
+ *   be claimed (every remaining one has a non-`completed` dep, or every running
+ *   one waits on a person), so continuing would spin forever.
+ *   `complete-or-blocked` only.
  * - `exit` — `onIdle: "wait"` and the caller's `shouldExit` said to stop.
  * - `continue` — there is still something to wait on.
  *
@@ -28,25 +29,25 @@
  * `drained` used to mean "every task reached a terminal status", which was the
  * same sentence as the one above while every worker ran inside the claiming
  * request. A board with a `dispatcher({ type: "task" })` assignee breaks that
- * equivalence: the hand-off leaves the row `in_progress`, owned by a child session
+ * equivalence: the dispatch leaves the row `in_progress`, owned by a child session
  * that settles it from its own session, and the launching request has no more
  * work to do on it. Counting it kept that request parked in `idleWait` until
- * the child finished — the whole point of handing off, undone by the exit
+ * the child finished — the whole point of dispatching, undone by the exit
  * question.
  *
  * So the classifier now takes `runsElsewhere` and both of its counting arms
- * honour it. It is supplied by the board from its own dispatcher assignees,
- * and is `undefined` for every board that declares none — an inline board's
- * `in_progress` row still holds the drain open, unchanged and deliberately so.
+ * honour it. It is supplied by the board from its declared mode (FIX-2076),
+ * and is `undefined` for a plan board — whose `in_progress` row still holds
+ * the drain open, unchanged and deliberately so.
  *
  * **The exclusion holds only while the row's lease does.** `runsElsewhere` says
  * where a row's work belongs; the lease says whether anyone is on it, and a
  * claimant that died before its child ever started leaves a row that is
- * handed off by routing and abandoned in fact. So `countWaitable` requires both,
- * and a lapsed handed-off row goes back to holding the drain open until it is
+ * dispatched by routing and abandoned in fact. So `countWaitable` requires both,
+ * and a lapsed dispatched row goes back to holding the drain open until it is
  * reclaimed. That also keeps this classifier agreeing with the wake test either
  * side of the lapse: `hasClaimableTask` reads the same lease, so before the
- * lapse a handed-off row is invisible to both, and after it the wake test stirs
+ * lapse a dispatched row is invisible to both, and after it the wake test stirs
  * a worker into an exit check that no longer calls the board drained.
  *
  * The exit check maps a non-`continue` verdict straight onto its `reason`. The
@@ -56,23 +57,14 @@
  * `hasClaimableTask(c) || boardQuiescence(c, opts) !== "continue"` — the
  * claimable disjunct is deliberate and load-bearing, not redundant.
  *
- * ## `onReview: "exit"` is the second exclusion, and it threads the same way
+ * ## A row waiting on a person is not an active worker (FIX-2131)
  *
- * A board in park-exit mode (FIX-1234) excuses rows parked for a human from
- * both counting arms — see `countWaitable` in `shared.ts` for why that is a
- * predicate of its own rather than a widening of the routing one, and why it
- * carries no liveness conjunct. Like `runsElsewhere` it is supplied by the
- * board to *both* readers, never defaulted per call site.
- *
- * The board also has to report *why* it stopped, and the fact that rows were
- * excused as parked is knowable only here, at the decision. By the time the
- * completion item runs the pool has finished and it re-reads the collection —
- * a resume landing in that window turns the parked row back into a `pending`
- * one, and a reason inferred from the rows at that moment calls a successful
- * review exit a failure. So {@link classifyBoard} returns the excusal
- * alongside the verdict and the exit check carries it out; `boardQuiescence`
- * is the same classification with that half dropped, for the wake test, which
- * only ever asks whether the board is still going.
+ * A running row with an open hold — a question it asked, or the mirror of its
+ * run's stop for a person — is in flight, so the board isn't `drained`, but
+ * nothing in this drain moves it: the person's answer does. `activeWorkerCount`
+ * excuses it, so a `complete-or-blocked` board whose only open rows wait on a
+ * person reports `blocked` on its first idle pass, and both readers see that
+ * through the one count.
  */
 import type { TaskCollectionRef } from "../tasks";
 import {
@@ -103,84 +95,26 @@ export interface BoardQuiescenceOptions {
    * drift this module was collapsed to remove.
    */
   runsElsewhere?: RunsElsewhere;
-  /**
-   * Rows parked for a human, on a board that declared `onReview: "exit"`
-   * (FIX-1234). Omitted — and therefore `false` — for every board on the
-   * default, which is what keeps this classifier's answer for those boards
-   * bit-for-bit what it was.
-   *
-   * Threaded to **both** callers by the board, exactly like `runsElsewhere`
-   * and for the same reason.
-   */
-  excuseParked?: boolean;
 }
 
 /**
- * The board's state, and whether the park exclusion is why.
- *
- * `excusedParked` is true only when this classification is a *terminal* one
- * (the drain is stopping) and at least one row was dropped from the counts
- * because it is parked for a human. On a `continue` verdict it is false: the
- * drain did not stop, so nothing was excused causally.
- */
-export interface BoardClassification {
-  verdict: BoardQuiescence;
-  excusedParked: boolean;
-}
-
-/**
- * Classify the board's current state, and report whether parked rows were
- * excused to reach it. Synchronous and read-only: a handful of count/list
- * reads over the collection's sync view, cheap enough to run on every
- * idle-wait fan-out event.
- *
- * The one implementation of the exit question. {@link boardQuiescence} is this
- * function with the causal half dropped.
- */
-export function classifyBoard(
-  collection: TaskCollectionRef,
-  options: BoardQuiescenceOptions
-): BoardClassification {
-  if (options.onIdle === "wait") {
-    // `"wait"` never consults the counts, so park-exit cannot reach it. That is
-    // why the board refuses the combination at construction rather than
-    // shipping an option that quietly does nothing here (`park-exit.ts`).
-    return {
-      verdict: options.shouldExit?.(collection) === true ? "exit" : "continue",
-      excusedParked: false,
-    };
-  }
-  const excuseParked = options.excuseParked === true;
-  // Drained dominates: every task reached a terminal status, was handed to a
-  // child session that this drain is not the one waiting on, or is parked for a
-  // human this drain was told not to wait on.
-  const inFlight = inFlightCount(collection, options.runsElsewhere, excuseParked);
-  if (inFlight.waiting === 0) {
-    return { verdict: "drained", excusedParked: inFlight.excusedParked };
-  }
-  if (options.onIdle === "complete") {
-    return { verdict: "continue", excusedParked: false };
-  }
-  const active = activeWorkerCount(collection, options.runsElsewhere, excuseParked);
-  if (active.waiting === 0 && !hasClaimableTask(collection)) {
-    // The parked row's `pending` dependent is what kept `inFlight` non-zero;
-    // excusing the parked row is still why the board is stopping rather than
-    // spinning, so the excusal is carried from here too.
-    return { verdict: "blocked", excusedParked: active.excusedParked };
-  }
-  return { verdict: "continue", excusedParked: false };
-}
-
-/**
- * The board's verdict alone — the wake test's half of {@link classifyBoard}.
- *
- * Kept as its own name because the idle-wait predicate asks only "is this board
- * still going", and giving it the causal half to ignore would invite a second
- * opinion about what that half means.
+ * Classify the board's current state. Synchronous and read-only: a handful of
+ * count/list reads over the collection's sync view, cheap enough to run on
+ * every idle-wait fan-out event. The one implementation of the exit question.
  */
 export function boardQuiescence(
   collection: TaskCollectionRef,
   options: BoardQuiescenceOptions
 ): BoardQuiescence {
-  return classifyBoard(collection, options).verdict;
+  if (options.onIdle === "wait") {
+    return options.shouldExit?.(collection) === true ? "exit" : "continue";
+  }
+  // Drained dominates: every task reached a terminal status, or was handed to
+  // a child session that this drain is not the one waiting on.
+  if (inFlightCount(collection, options.runsElsewhere) === 0) return "drained";
+  if (options.onIdle === "complete") return "continue";
+  if (activeWorkerCount(collection, options.runsElsewhere) === 0 && !hasClaimableTask(collection)) {
+    return "blocked";
+  }
+  return "continue";
 }

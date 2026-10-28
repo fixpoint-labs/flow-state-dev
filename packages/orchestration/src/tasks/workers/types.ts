@@ -12,15 +12,15 @@
  *     `task.assignee`).
  *
  * Worker output write-back is the pattern's responsibility, not the
- * worker's. Workers return their result; `dispatchAndExecute` (or any
+ * worker's. Workers return their result; the task board (or any
  * pattern) calls `collection.complete(taskId, output)` afterward.
  */
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
 /**
- * Input contract handed to every worker. The pattern's
- * `dispatchAndExecute` / board `packWorkerInput` packs the claimed
+ * Input contract handed to every worker. The board's
+ * `packWorkerInput` (or any pattern) packs the claimed
  * task's salient fields into this shape so workers don't depend on
  * the substrate's `Task` type directly.
  *
@@ -64,18 +64,33 @@ export const taskWorkerInputSchema = z.object({
   attempts: z.number().int().nonnegative(),
   feedback: z.string().optional(),
   /**
-   * The answer to the question this task's worker parked on, present only on
-   * the attempt that answer re-queued (FIX-1817): `feedback` as the answer
-   * left it. Absent on a first attempt and on a retry after a failure, so a
-   * worker reads its presence as "this turn is the answer".
+   * Every steer on the task (`Task.steers`, FIX-2086), oldest first: words sent
+   * into it while it was open, with who sent each. Part of the brief, taken or
+   * not, so a retry is never run as first filed. Absent on a task never
+   * steered.
    */
-  answer: z.string().optional(),
+  steers: z
+    .array(
+      z.object({
+        message: z.string(),
+        from: z.enum(["filer", "user", "board"]),
+        /** The question this steer answers (FIX-2133), as it was asked; absent on a steer that answers none. */
+        question: z.string().optional(),
+      })
+    )
+    .optional(),
   /**
    * The finished task this one follows up (`Task.followUpOf`), present only
-   * on a follow-up: a `per-task` hand-off runs it in that task's session.
+   * on a follow-up: a `per-task` dispatch runs it in that task's session.
    */
   followUpOf: z.string().optional(),
   metadata: z.record(z.unknown()).optional(),
+  /**
+   * The row's server-written payload (`Task.sealed`), present only on a row
+   * filed with one. What the code that filed the row left for the entry that
+   * runs it; no model wrote it.
+   */
+  sealed: z.record(z.unknown()).optional(),
   /**
    * Selected observations from prior tasks in this board run.
    * Populated when the Task Board's `flowPolicy` returns a non-empty

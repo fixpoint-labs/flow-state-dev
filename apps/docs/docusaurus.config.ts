@@ -1,11 +1,25 @@
 import type { Config } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
-import { earthyDark, earthyLight } from "./src/prismThemes";
+import { inkTheme } from "./src/prismThemes";
+
+// Search is Algolia DocSearch. The Vercel Algolia integration puts the app id
+// and the search-only key into the build's environment; the search key is
+// meant for the browser (never use ALGOLIA_WRITE_API_KEY here). Without them,
+// as in a local or CI build, the site builds without a search bar instead of
+// failing. `indexName` must match the index the Algolia crawler writes to.
+const algolia: Preset.ThemeConfig["algolia"] =
+  process.env.ALGOLIA_APP_ID && process.env.ALGOLIA_SEARCH_API_KEY
+    ? {
+        appId: process.env.ALGOLIA_APP_ID,
+        apiKey: process.env.ALGOLIA_SEARCH_API_KEY,
+        indexName: "flow-state-dev",
+      }
+    : undefined;
 
 const config: Config = {
   title: "flow-state.dev",
   tagline: "Composable AI workflows for TypeScript. Blocks in. Streaming out.",
-  favicon: "img/favicon.ico",
+  favicon: "img/mark-paper.svg",
 
   url: "https://flow-state.dev",
   baseUrl: "/",
@@ -48,6 +62,34 @@ const config: Config = {
         theme: {
           customCss: "./src/css/custom.css",
         },
+        // Diagrams are SVGs imported into MDX and inlined through SVGR, so
+        // they read the page's tokens and fonts (see src/components/Figure).
+        // `cleanupIds` would shorten every id to "a", "b"…, which collide
+        // between two figures on one page; `prefixIds` prefixes each id with
+        // its file's name instead. Class names are left alone: they are the
+        // page's drawing classes. `descProp` lets a figure pass its long
+        // description as the SVG's <desc>. Any <title> is stripped, as the
+        // brand lint requires: the figure's caption names the drawing.
+        svgr: {
+          svgrConfig: {
+            descProp: true,
+            svgoConfig: {
+              plugins: [
+                {
+                  name: "preset-default",
+                  params: {
+                    overrides: {
+                      removeTitle: true,
+                      removeViewBox: false,
+                      cleanupIds: false,
+                    },
+                  },
+                },
+                { name: "prefixIds", params: { prefixClassNames: false } },
+              ],
+            },
+          },
+        },
       } satisfies Preset.Options,
     ],
   ],
@@ -74,6 +116,10 @@ const config: Config = {
       "@docusaurus/plugin-client-redirects",
       {
         redirects: [
+          {
+            from: "/docs/workforce/chief-of-staff",
+            to: "/docs/workforce/shift-coordinator",
+          },
           {
             from: "/docs/patterns/task-board",
             to: "/docs/orchestration/task-board",
@@ -112,11 +158,17 @@ const config: Config = {
   ],
 
   themeConfig: {
+    ...(algolia && { algolia }),
+    // The Algolia crawler reads this to verify we own the domain it crawls.
+    metadata: [
+      { name: "algolia-site-verification", content: "9C3EE12F53D419A7" },
+    ],
     navbar: {
       title: "flow-state.dev",
       logo: {
         alt: "flow-state.dev logo",
-        src: "img/mark-color.svg"
+        src: "img/mark-paper.svg",
+        srcDark: "img/mark-night.svg",
       },
       items: [
         {
@@ -140,7 +192,7 @@ const config: Config = {
       ],
     },
     footer: {
-      style: "dark",
+      style: "light",
       links: [
         {
           title: "Docs",
@@ -179,12 +231,12 @@ const config: Config = {
       copyright: `Copyright ${new Date().getFullYear()} Fixpoint Labs, LLC. Built with Docusaurus.`,
     },
     prism: {
-      theme: earthyLight,
-      darkTheme: earthyDark,
+      theme: inkTheme,
+      darkTheme: inkTheme,
       additionalLanguages: ["bash", "json"],
     },
     colorMode: {
-      defaultMode: "dark",
+      defaultMode: "light",
       respectPrefersColorScheme: true,
     },
   } satisfies Preset.ThemeConfig,

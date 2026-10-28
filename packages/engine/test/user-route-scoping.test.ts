@@ -152,6 +152,39 @@ const USER_ROUTE_SCOPING: Record<string, TableEntry> = {
       return reported || record?.status === "interrupted";
     }
   },
+  list_interrupted_requests: {
+    // A request record already marked interrupted: the read lists records,
+    // it sweeps nothing, so a reached row is one the body names.
+    seed: async (stores, rowId, owner) => {
+      const at = Date.now() - 60_000;
+      await stores.request.set(
+        rowId,
+        {
+          id: rowId,
+          flowKind: owner.flowId,
+          flowId: owner.flowId,
+          actionName: "run",
+          sessionId: `${rowId}-session`,
+          userId: owner.userId,
+          orgId: owner.orgId,
+          tenantId: owner.tenantId,
+          source: "http",
+          status: "interrupted",
+          interruptedAt: at,
+          startedAtMs: at,
+          state: {},
+          version: 0,
+          createdAt: at,
+          updatedAt: at
+        },
+        "any"
+      );
+    },
+    saw: async ({ body }, rowId) =>
+      (parseJson(body) as { interrupted?: { requestId: string }[] } | undefined)?.interrupted?.some(
+        (entry) => entry.requestId === rowId
+      ) ?? false
+  },
   user_stream: { notBuiltYet: 501 }
 };
 
@@ -173,7 +206,7 @@ const runAction = (kind: string) => ({
 
 /** A flow with no resolver of its own: open unless the host authenticates. */
 function openFlow(kind: string) {
-  return defineFlow({ kind, actions: runAction(kind) });
+  return defineFlow({ kind, actions: runAction(kind) })();
 }
 
 /** A flow that authenticates its own callers, from a header only it reads. */
@@ -187,7 +220,7 @@ function secureFlow(kind: string) {
         return user == null ? null : { userId: user, orgId: "acme" };
       }
     }
-  });
+  })();
 }
 
 /**
@@ -336,7 +369,7 @@ describe("user-route scoping · stage 1: every user-addressed route has an entry
   });
 
   it("has no entry for a route that is no longer user-addressed", () => {
-    const kinds = new Set(userRoutes.map((route) => route.kind));
+    const kinds = new Set<string>(userRoutes.map((route) => route.kind));
     const stale = Object.keys(USER_ROUTE_SCOPING).filter((kind) => !kinds.has(kind));
     expect(stale, "scoping-table entries for routes that are not user-addressed").toEqual([]);
   });

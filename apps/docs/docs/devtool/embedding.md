@@ -74,7 +74,11 @@ The panel ships its CSS as Tailwind v4 source, not precompiled. The consumer's T
 Two consequences:
 
 - The host must run Tailwind v4. (Kitchen-sink does, so this is the supported case today.)
-- The panel's CSS only scopes cleanly when imported in a route-level layout — Next.js per-route CSS scoping keeps the panel's styles from bleeding into the rest of the app.
+- Import the stylesheet in a route-level layout. Next.js per-route CSS scoping keeps the panel's styles from bleeding into the rest of the app.
+
+The panel's colour tokens and fonts apply only inside its root element (class `fsd-devtool-panel`), and its utilities are prefixed `fs-`, so they don't override your app's CSS variables or fonts. The stylesheet also carries Tailwind's base styles and a global `* { box-sizing: border-box }`, and those do reach the whole page. That is why the route-level import matters.
+
+The stylesheet imports its fonts, Space Grotesk and IBM Plex Mono, from `@fontsource` packages. They install as dependencies of `@flow-state-dev/devtool`, so your CSS build only has to be able to resolve them. There is no font link to add.
 
 A precompiled CSS variant for non-Tailwind hosts is on the roadmap.
 

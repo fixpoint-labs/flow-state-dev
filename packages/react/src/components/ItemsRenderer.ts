@@ -10,6 +10,7 @@ import type {
   ComponentItem,
   ContainerItem,
   OutputItem,
+  ReasoningItem,
   SuspensionItem,
   SuspensionResumeItem
 } from "@flow-state-dev/core/items";
@@ -17,6 +18,12 @@ import type { SuspensionStatus } from "@flow-state-dev/core/types";
 import { useFlowContext } from "../context/FlowContext";
 import type { RendererRegistry } from "../registry/block-renderers";
 import { ItemRenderer } from "./ItemRenderer";
+
+/**
+ * What an agent does between the things it says: a tool call, or the thinking
+ * that goes with one. A run of these renders as one unit.
+ */
+export type ActivityItem = ToolOutputItem | ReasoningItem;
 
 /**
  * Props for rendering output item lists.
@@ -38,28 +45,36 @@ export type ItemsRendererProps = {
    */
   showSubAgents?: boolean;
   /**
-   * When provided, consecutive `tool_output` items that survive the
-   * dedup / sub-agent / container-owner filters are rendered through this
-   * component as a single group instead of individually via the registry.
+   * When provided, consecutive `tool_output` and `reasoning` items that
+   * survive the dedup / sub-agent / container-owner filters are rendered
+   * through this component as a single group instead of individually via the
+   * registry: an agent's working, between the things it says.
    *
-   * The component receives the full batch of items for that segment.
-   * Singletons still flow through the group wrapper for visual consistency.
+   * The component receives the full batch of items for that segment, in
+   * order. Singletons still flow through the group wrapper for visual
+   * consistency.
    *
-   * Non-tool items continue to render through the renderer registry via
-   * `ItemRenderer` as normal.
+   * Every other item (messages, components, …) continues to render through
+   * the renderer registry via `ItemRenderer` as normal, and ends a group.
    */
-  toolGroupRenderer?: ComponentType<{ items: ToolOutputItem[] }>;
+  toolGroupRenderer?: ComponentType<{ items: ActivityItem[]; live?: boolean }>;
+  /**
+   * The stream is still open after the last of these items. The renderer is
+   * then told, as `live`, which group is the trailing one: the agent's working
+   * that no message has yet ended.
+   */
+  live?: boolean;
 };
 
 /**
  * A segment of the render stream after filtering and optional tool-call
  * grouping. `item` segments pass through to the renderer registry; `group`
- * segments represent a run of consecutive tool_output items that a
- * toolGroupRenderer should render as one unit.
+ * segments represent a run of consecutive tool_output and reasoning items
+ * that a toolGroupRenderer should render as one unit.
  */
 export type ItemRenderSegment =
   | { kind: "item"; item: OutputItem }
-  | { kind: "group"; items: ToolOutputItem[] };
+  | { kind: "group"; items: ActivityItem[] };
 
 /**
  * Options for {@link buildItemRenderStream}. Mirrors the ItemsRenderer
@@ -70,8 +85,8 @@ export type BuildItemRenderStreamOptions = {
   deduplicateByKey?: boolean;
   showSubAgents?: boolean;
   /**
-   * When true, consecutive tool_output items in the filtered stream
-   * are collapsed into `group` segments. Non-tool items break the run.
+   * When true, consecutive tool_output and reasoning items in the filtered
+   * stream are collapsed into `group` segments. Any other item breaks the run.
    */
   groupToolCalls?: boolean;
 };
@@ -148,8 +163,8 @@ const CONVERSATIONAL_TYPES = new Set(["message", "reasoning", "tool_output"]);
 
 /**
  * Pure helper: applies dedup / sub-agent / container-owner filters, then
- * optionally collapses consecutive tool_output runs into `group`
- * segments. Returns the ordered render stream.
+ * optionally collapses consecutive tool_output and reasoning runs into
+ * `group` segments. Returns the ordered render stream.
  *
  * Exposed so consumers can test filter + grouping behavior without a React
  * tree. ItemsRenderer uses this internally.
@@ -184,15 +199,15 @@ export function buildItemRenderStream(
   }
 
   const out: ItemRenderSegment[] = [];
-  let buf: ToolOutputItem[] = [];
+  let buf: ActivityItem[] = [];
   const flush = () => {
     if (buf.length === 0) return;
     out.push({ kind: "group", items: buf });
     buf = [];
   };
   for (const item of filtered) {
-    if (item.type === "tool_output") {
-      buf.push(item as ToolOutputItem);
+    if (item.type === "tool_output" || item.type === "reasoning") {
+      buf.push(item as ActivityItem);
     } else {
       flush();
       out.push({ kind: "item", item });
@@ -211,9 +226,9 @@ export function buildItemRenderStream(
  * Items owned by a container that has a registered renderer are suppressed —
  * the container renderer is responsible for displaying its owned items.
  *
- * When `toolGroupRenderer` is provided, consecutive `tool_output`
- * items in the filtered stream render as a single group via the supplied
- * component rather than individually.
+ * When `toolGroupRenderer` is provided, consecutive `tool_output` and
+ * `reasoning` items in the filtered stream render as a single group via the
+ * supplied component rather than individually.
  */
 export function ItemsRenderer(props: ItemsRendererProps): ReactNode[] {
   const { deduplicateByKey = true, showSubAgents = false, toolGroupRenderer } = props;
@@ -247,7 +262,10 @@ export function ItemsRenderer(props: ItemsRendererProps): ReactNode[] {
       return createElement(
         Fragment,
         { key },
-        createElement(toolGroupRenderer!, { items: segment.items })
+        createElement(toolGroupRenderer!, {
+          items: segment.items,
+          live: props.live === true && index === stream.length - 1,
+        })
       );
     }
     const { item } = segment;

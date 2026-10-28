@@ -16,7 +16,7 @@
  * Workforce's task entry (`workerTaskEntry`).
  *
  * At boot, after the inventory, the Lab opens one conversation with the lead
- * and files its tasks there through the conversation's own `dispatchTask_tasks`:
+ * and files its tasks there through the conversation's own `createTask_tasks`:
  *
  * - one **held** task for each worker named first on its flow: its run
  *   narrates a step about every second and holds until it is aborted (or
@@ -46,12 +46,14 @@
  * entry runs.
  */
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
-import type { BlockContext, FlowInstance } from "@flow-state-dev/core/types";
+import { harnessConversationNamespace, type BlockContext, type FlowInstance } from "@flow-state-dev/core/types";
 import {
   OBSERVED_FILE_OPS,
   OBSERVED_PLAN,
+  OBSERVED_PLAN_LIST,
   observedFileOpsCollection,
   observedPlanCollection,
+  observedPlanListCollection,
 } from "@flow-state-dev/claude-code/sdk";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
@@ -67,6 +69,9 @@ import {
   workerConfigSchema,
   workerTaskEntry,
   type InventoryActionRequest,
+  MESSAGE_RECEIVED_ENTRY,
+  messageReceivedEntry,
+  workerMessagesResources,
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
@@ -87,7 +92,7 @@ const INVENTORY_WRITER_FLOW = "inventory-writer";
  * The model the coordinator's best-fit call would run on. `desk` routes to
  * everyone and never makes that call, but the flow names no default.
  */
-const ROUTE_MODEL = "vercel/openai/gpt-5.4-mini";
+const ROUTE_MODEL = "vercel:openai/gpt-5.4-mini";
 
 /** How often a held run narrates a step. */
 const STEP_MS = 1_000;
@@ -194,11 +199,15 @@ const scriptedRun = handler({
     const resources = (ctx as { resources?: Record<string, unknown> }).resources ?? {};
     const plan = resources[OBSERVED_PLAN] as Upsertable | undefined;
     const files = resources[OBSERVED_FILE_OPS] as Upsertable | undefined;
+    const marker = resources[OBSERVED_PLAN_LIST] as Upsertable | undefined;
     const run = `${ctx.request.identity.id}/0#0`;
-    if (plan !== undefined && files !== undefined) {
+    // As a harness records it: the plan under its conversation, the run's pointer to it, files per run.
+    const conversation = harnessConversationNamespace("conv_1");
+    if (plan !== undefined && files !== undefined && marker !== undefined) {
       const now = Date.now();
-      await plan.upsert(`${run}/1`, { title: "Read the task", status: "completed", previousStatus: "in_progress", lastOutcome: "applied", lastTouchedAt: now });
-      await plan.upsert(`${run}/2`, { title: "Write the audit note", status: "in_progress", previousStatus: "pending", lastOutcome: "applied", lastTouchedAt: now });
+      await marker.upsert(run, { conversation });
+      await plan.upsert(`${conversation}/1`, { title: "Read the task", status: "completed", previousStatus: "in_progress", lastOutcome: "applied", lastTouchedAt: now });
+      await plan.upsert(`${conversation}/2`, { title: "Write the audit note", status: "in_progress", previousStatus: "pending", lastOutcome: "applied", lastTouchedAt: now });
       await files.upsert(`${run}/notes/audit.md`, { lastKind: "created", outcome: "applied", lastTouchedAt: now, appliedCount: 1 });
       ctx.emit.message("Wrote notes/audit.md");
     }
@@ -267,7 +276,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
     session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
     resources: { ...installation.resources, ...board.resources },
     actions: { ...hearingDoor, ...board.actions },
-    internal: { actions: board.entries(hearingDoor.message.block, () => "fixed") },
+    internal: { actions: board.entries(hearingDoor.respond.block, () => "fixed") },
   } as never);
   // Each worker's flow takes tasks through Workforce's task entry; the one on
   // a flow of its own also declares the collections a recording harness writes.
@@ -279,17 +288,25 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
       session: installation.session(),
       resources: {
         ...installation.resources,
-        ...(records ? { [OBSERVED_PLAN]: observedPlanCollection, [OBSERVED_FILE_OPS]: observedFileOpsCollection } : {}),
+        ...(records ? {
+              [OBSERVED_PLAN]: observedPlanCollection,
+              [OBSERVED_PLAN_LIST]: observedPlanListCollection,
+              [OBSERVED_FILE_OPS]: observedFileOpsCollection,
+            } : {}),
+        ...workerMessagesResources,
       },
       actions: { ...hearingDoor },
+      internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: flow }) } },
       task: { actions: { work: workerTaskEntry({ name: `run-lab-${flow}-task`, turn: scriptedRun }) } },
     } as never);
-  const coordinator = defineCoordinatorFlow({ installation, delegateFlows: [], routeModel: ROUTE_MODEL });
+  const coordinator = defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL });
 
   workerFlows = {
-    [leadFlow]: leadWorkerFlow,
+    [leadFlow]: { flow: leadWorkerFlow, roles: ["manager"] },
     [COORDINATOR_FLOW]: coordinator,
-    ...Object.fromEntries(flowsOfWorkers.map((flow) => [flow, workerFlowName(flow, flow === ownWorker?.flow)])),
+    ...Object.fromEntries(
+      flowsOfWorkers.map((flow) => [flow, { flow: workerFlowName(flow, flow === ownWorker?.flow), roles: ["contributor"] }]),
+    ),
   };
   const copies = hireWorkforce(installation);
   // The worker write takes caller-supplied rows, so it is internal only.
@@ -360,7 +377,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
   if (opened.status !== 201) throw new Error(`the lead's conversation was not opened: ${opened.status} ${JSON.stringify(opened.body)}`);
   const conversation = RUN_LAB_LEAD_SESSION;
   const file = async (worker: (typeof workers)[number], goal: string, script: RunScript, deps?: string[]) => {
-    const out = (await act(flows[leadFlow]!, conversation, "dispatchTask_tasks", {
+    const out = (await act(flows[leadFlow]!, conversation, "createTask_tasks", {
       goal,
       assignee: worker.id,
       input: script,

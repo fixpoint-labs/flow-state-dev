@@ -42,7 +42,7 @@ import chatFlow from "./src/flows/chat/flow";
 
 export default createFlowState({
   flows: { chat: chatFlow },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: inMemoryStores() } },
 });
 ```
@@ -132,7 +132,7 @@ resolvePrincipal: async (ctx) =>
     : readSession(ctx.request),
 ```
 
-With no resolver configured anywhere, a run is `cli-user` in the development organization,
+With no resolver configured anywhere, a run is `devuser`, the DevTool's default user, in the development organization,
 `DEFAULT_ORG_ID` (`__fsd_default_org__` in output). That is also who a run is with no config at all, when flows come from directory
 discovery or you pass `--no-config`. A configured resolver can't claim that organization: one that
 returns `DEFAULT_ORG_ID` is refused, from the terminal as over HTTP. See
@@ -155,7 +155,7 @@ Pass `--org` to say which organization to run in yourself:
 fsdev run billing refund -i '{"id":"r_1"}' --org acme --user support-bot
 ```
 
-`--org` skips your resolver entirely and runs as `--user`, or `cli-user` without it. It can't be
+`--org` skips your resolver entirely and runs as `--user`, or `devuser` without it. It can't be
 blank, not well-formed Unicode (a lone UTF-16 surrogate), or `DEFAULT_ORG_ID`. `fsdev serve` and `fsdev dev` have no such flag, so requests that arrive
 over the network always go through your resolver.
 

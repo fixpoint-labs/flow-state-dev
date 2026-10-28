@@ -12,12 +12,13 @@ import { PlayCircle } from "lucide-react";
 
 export function SuspensionResumeItemView({ item }: { item: SuspensionResumeItem }) {
   return (
-    <div className="flex items-center gap-1.5 text-xs text-emerald-300/90 py-0.5">
-      <PlayCircle className="h-3 w-3 shrink-0 text-emerald-400" aria-hidden />
-      <span className="text-emerald-400/80">resumed</span>
-      <span className="text-[10px] text-slate-600">{item.resolution}</span>
+    <div className="flex items-center gap-2 py-1 font-fs-mono text-[10.5px] font-medium text-fs-ink3">
+      <span className="h-px w-4 shrink-0 bg-fs-ink/20" aria-hidden />
+      <PlayCircle className="h-3 w-3 shrink-0 text-fs-green" aria-hidden />
+      <span className="uppercase tracking-[.12em]">resumed</span>
+      <span className="text-fs-ink2">{item.resolution}</span>
       {item.resolvedBy !== undefined && item.resolvedBy.length > 0 && (
-        <span className="truncate text-slate-400">by {item.resolvedBy}</span>
+        <span className="truncate text-fs-ink4">by {item.resolvedBy}</span>
       )}
     </div>
   );

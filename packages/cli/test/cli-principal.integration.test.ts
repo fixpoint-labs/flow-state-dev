@@ -14,8 +14,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Readable, Writable } from "node:stream";
 import { Command } from "commander";
-import { createInMemoryStores, runAction, type FlowState, type StoreRegistry } from "@flow-state-dev/engine";
-import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import { createInMemoryStores, createInProcessFetch, runAction, type FlowState, type StoreRegistry } from "@flow-state-dev/engine";
+import { DEFAULT_LOCAL_USER_ID, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { executeRunCommand, registerRunCommand } from "../src/commands/run";
 import { executeChatCommand, registerChatCommand } from "../src/commands/chat";
 import { registerServeCommand } from "../src/commands/serve";
@@ -69,9 +69,7 @@ async function http(router: Router, method: "GET" | "POST", path: string, body?:
     init.body = JSON.stringify(body);
     init.headers = { "content-type": "application/json" };
   }
-  const res = await router[method](new Request(`http://app.local/api/flows/${path}`, init), {
-    params: { path: path.split("/").filter((s) => s.length > 0) },
-  });
+  const res = await createInProcessFetch(router)(`/api/flows/${path}`, init);
   const text = await res.text();
   let json: any;
   try {
@@ -125,7 +123,7 @@ describe("V1 · fsdev run binds to the app's organization", () => {
     }
   });
 
-  it("with no resolver anywhere, stays cli-user in the development organization (BR-2)", async () => {
+  it("with no resolver anywhere, runs as the DevTool's local user in the development organization (BR-2, FIX-2063 D1)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "fsdev-principal-"));
     try {
       const stores = createInMemoryStores();
@@ -138,9 +136,9 @@ describe("V1 · fsdev run binds to the app's organization", () => {
         capture,
       });
       expect(result.success).toBe(true);
-      expect(await session(stores, "v2")).toMatchObject({ userId: "cli-user", orgId: DEFAULT_ORG_ID });
+      expect(await session(stores, "v2")).toMatchObject({ userId: DEFAULT_LOCAL_USER_ID, orgId: DEFAULT_ORG_ID });
       expect(JSON.parse(readFileSync(capture, "utf-8")).command.principal).toEqual({
-        userId: "cli-user",
+        userId: DEFAULT_LOCAL_USER_ID,
         orgId: DEFAULT_ORG_ID,
         from: "development-default",
       });
@@ -170,7 +168,7 @@ describe("V3 · the terminal's outcome equals the app's action route, flow by fl
 
       // A credential-less HTTP caller naming the same user, action and input.
       const res = await http(router, "POST", `${flow}/actions/respond`, {
-        userId: "cli-user",
+        userId: DEFAULT_LOCAL_USER_ID,
         input: { message: "hi" },
       });
       let httpOutcome: string;
@@ -222,13 +220,13 @@ describe("V5 · what a developer can name", () => {
     expect(await session(sharedStores(), "v5-org")).toMatchObject({ userId: "alice", orgId: "acme" });
   });
 
-  it("--org without --user runs as cli-user, and the capture says a flag chose it", async () => {
+  it("--org without --user runs as the local user, and the capture says a flag chose it", async () => {
     const dir = mkdtempSync(join(tmpdir(), "fsdev-principal-"));
     try {
       const capture = join(dir, "run.json");
       await run("echo", { session: "v5-flag", org: "acme", capture });
       expect(JSON.parse(readFileSync(capture, "utf-8")).command.principal).toEqual({
-        userId: "cli-user",
+        userId: DEFAULT_LOCAL_USER_ID,
         orgId: "acme",
         from: "flag",
       });
@@ -293,7 +291,7 @@ describe("V6 · an existing session is checked before any write", () => {
   }
 
   it.each([
-    ["-s on a development-organization session, against an app with a resolver", "cli-user", DEFAULT_ORG_ID, undefined],
+    ["-s on a development-organization session, against an app with a resolver", DEFAULT_LOCAL_USER_ID, DEFAULT_ORG_ID, undefined],
     ["--seed-session on a same-organization, different-user session", "alice", APP_ORG, '{"tampered":true}'],
     ["--seed-session on another organization's session", APP_USER, "acme", '{"tampered":true}'],
   ])("refuses %s and leaves it byte-for-byte unchanged", async (_label, owner, org, seed) => {
@@ -435,7 +433,7 @@ describe("V7 · fsdev chat asks per turn", () => {
       output: new Writable({ write: (_c, _e, cb) => cb() }) as unknown as NodeJS.WritableStream,
     });
     const sessions = await stores.session.list();
-    expect(sessions.map((s) => [s.flowKind, s.userId, s.orgId])).toEqual([["admin", "cli-user", "acme"]]);
+    expect(sessions.map((s) => [s.flowKind, s.userId, s.orgId])).toEqual([["admin", DEFAULT_LOCAL_USER_ID, "acme"]]);
   });
 
   it("refuses an invalid --org at startup", async () => {

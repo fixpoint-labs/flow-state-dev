@@ -22,6 +22,7 @@ function record(id: string, overrides: Partial<RequestRecord> = {}): RequestReco
     id,
     flowKind: "f",
     actionName: "a",
+    source: "http",
     userId: "u1",
     sessionId: "s1",
     status: "in_progress",

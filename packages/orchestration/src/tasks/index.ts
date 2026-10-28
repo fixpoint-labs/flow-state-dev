@@ -32,7 +32,80 @@ export {
   matchesFilter,
   type TaskInit,
   type TaskFilter,
+  type TaskSessionSetting,
+  type TaskResultSetting,
 } from "./schema/task-init";
+// What holds a task on its row (FIX-2133): one list of holds, and the one
+// predicate every reader asks of it, open holds.
+export {
+  MAX_HOLD_PROMPT,
+  taskHoldSchema,
+  rowHoldSchema,
+  suspensionHoldSchema,
+  type ConfirmOnNo,
+  type HoldAsk,
+  type HoldReleaser,
+  type RowHold,
+  type SuspensionHold,
+  type TaskHold,
+} from "./schema/hold";
+export {
+  NO_ANSWER_CAME,
+  answerOf,
+  askProblem,
+  hasOpenHold,
+  holdsDue,
+  isRowHold,
+  isSuspensionHold,
+  nextHoldDue,
+  openHolds,
+  openRowHolds,
+  owesTurn,
+  steerPlacesTaken,
+  suspensionHoldOf,
+  type HoldAnswer,
+} from "./collection/holds";
+
+// Filing settings and dependencies (FIX-2080): what a board refuses at filing,
+// and the edit a filing takes until it starts.
+export {
+  TaskFilingRefusedError,
+  assertDepsFileable,
+  assertFilingCallerContext,
+  assertFilingSettings,
+  assertFollowUpHasRun,
+  assertIdsFree,
+  assertParentsOpen,
+  assertUniqueIds,
+  parentCancelledRefusal,
+  type TaskFilingCallerContext,
+  type TaskFilingRule,
+  type TaskSettingsSupport,
+} from "./collection/filing";
+export { hasStarted, CASCADE_DUE_MS, cascadeEndedAt, type TaskSettingsPatch } from "./collection/internal";
+// Steers (FIX-2086): words sent into an open task, kept on the task.
+export { MAX_STEERS, taskSteerSchema, type TaskSteer } from "./schema/steer";
+export {
+  untakenSteers,
+  steersTakenIn,
+  steerWrite,
+  steerFromLine,
+  shownSteer,
+  LINE_STEER_REFUSALS,
+  type ShownSteer,
+  type LineSteerRefusal,
+  type SteerInput,
+} from "./steers";
+export { readCommittedTask } from "./collection/read-committed";
+// The field table (FIX-2081): each field `updateTask` changes, with its one rule.
+export {
+  TASK_FIELD_RULES,
+  lockedFields,
+  type TaskEditField,
+  type TaskUpdateField,
+} from "./collection/field-rules";
+// The two cascades (FIX-2080 D2): a board's payer for the tasks a task filed.
+export { SKIPPED_LABEL, endsDependents, endsFiledWork, type TaskFiledCascade } from "./collection/cascade";
 
 // The ownership token a task write presents (FIX-981). `ticketNamesTask` is the
 // guard's own identity rule and stays module-internal — a caller mints a ticket
@@ -73,12 +146,14 @@ export type {
   ClaimOptions,
   TaskHandle,
   TaskTransitionOptions,
-  AwaitReviewOptions,
-  UnparkOptions,
   FailOptions,
   TaskWriteOutcome,
   TaskWriteDeclineReason,
-  TaskDispatchOptions,
+  TaskWaitSlot,
+  TaskProgress,
+  TaskWaitingOn,
+  TaskCancelSource,
+  CancelOptions,
 } from "./collection/types";
 export { createStateBackedTaskCollection } from "./collection/state-backed";
 export type { StateBackedOptions } from "./collection/state-backed";
@@ -115,6 +190,8 @@ export {
   type TaskCapKind,
   type TaskCapOptions,
 } from "./collection/task-caps";
+// A wrapping ref's own refusal, answered by the task tools as a soft error (FIX-2076).
+export { TaskWriteRefusedError } from "./collection/refused-write";
 export {
   getOrCreateTaskCollection,
   TASK_CHANGE_COMPONENT_TYPE,
@@ -128,13 +205,17 @@ export {
 export {
   defineTaskCollection,
   isDefinedTaskCollection,
+  taskLedgerResources,
   freezeLedgerAssignee,
   hasFrozenLedgerAssignee,
   type DefinedTaskCollection,
   type DefineTaskCollectionOptions,
+  type DeclaredFiledCascade,
 } from "./collection/define-task-collection";
 // A ledger kept per partition (`defineTaskCollection({ partitionBy })`).
 export type { TaskPartitionContext, TaskPartitionFn } from "./collection/partition";
+// Which partitions of a partitioned ledger hold a task id (FIX-2160).
+export { findTaskPartitions, taskIdIndexKey } from "./collection/id-index";
 // A ledger's ending recorder (`defineTaskCollection({ recordEnding })`): what
 // each ending write hands it, inside that same write.
 export type { TaskEnding, TaskEndingRecorder } from "./collection/ending";
@@ -145,6 +226,7 @@ export { resolveResourceCollection } from "./collection/resolve-resource-collect
 export {
   recordEnding,
   owedNotices,
+  owesAnyNotice,
   isNoticeOwed,
   clearNotice,
   noticeKey,
@@ -155,7 +237,32 @@ export {
   type TaskNotice,
   type NoticePolicy,
   type NoticeDecision,
+  NOTICE_DUE_MS,
+  NOTICE_RESEND_CAP_MS,
+  nextResendAt,
+  noticeDueAt,
+  resendNowPatch,
+  cancelledDependents,
+  type NoticeRecording,
 } from "./notice/task-notice";
+// The take rule a notice and a message share (FIX-2123, FIX-2240).
+export { decideTake, hasEnded, takeRule, type TakeRule } from "./helpers/request-states";
+// The one delivery of a delegated row's ending (FIX-2078).
+export {
+  TASK_SETTLED_ENTRY,
+  markDelegating,
+  undeliverableRecord,
+  filerResolver,
+  type DeclaredDelivery,
+  type NoticeAddress,
+} from "./notice/delivery";
+
+// Filed work still holding a task (FIX-2077, rule 6).
+export { filedWorkHolds, holdsItsFiler } from "./helpers/filed-work";
+// The rows that run in one session: its tasks and their follow-ups (FIX-2160).
+export { rowsInSession } from "./helpers/session-rows";
+// A task waiting on a user (FIX-2129): its cancel, and the resume that cancel owes its run.
+export { cancelAndResume, owesUserResume } from "./helpers/user-stop";
 
 // Wake filters (FIX-660) — pair with `.waitForCondition`'s `wakeOn` option.
 export { onTaskChangeFor } from "./collection/predicates";
@@ -165,15 +272,6 @@ export type { TaskDispatcher } from "./dispatchers/types";
 export { fifoDispatcher } from "./dispatchers/fifo";
 export { topologicalDispatcher } from "./dispatchers/topological";
 export { priorityDispatcher } from "./dispatchers/priority";
-export {
-  classifierDispatcher,
-  type ClassifyFn,
-  type ClassifierDispatcherOptions,
-} from "./dispatchers/classifier";
-export {
-  eventDispatcher,
-  type EventDispatcherOptions,
-} from "./dispatchers/event";
 
 // Workers
 export type {
@@ -181,20 +279,6 @@ export type {
   TaskWorkerInput,
   TaskWorkerRegistry,
 } from "./workers/types";
-
-// Helpers
-export {
-  taskLoopBack,
-  defaultTaskLoopUntil,
-  DEFAULT_TASK_LOOP_MAX_ITERATIONS,
-  type TaskLoopBackOptions,
-  type TaskLoopBackHandle,
-} from "./helpers/task-loop-back";
-export {
-  dispatchAndExecuteBlock,
-  type DispatchAndExecuteOptions,
-  type DispatchAndExecuteResult,
-} from "./helpers/dispatch-and-execute";
 
 // Lease renewal (FIX-1005) — the worker half of durable-job recovery. Exported
 // so a caller driving `claim` itself renews the lease it holds; a claimed row

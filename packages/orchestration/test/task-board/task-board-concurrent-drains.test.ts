@@ -56,7 +56,7 @@ describe("taskBoard - a drain in another request cannot take this drain's flow s
           firstWorkerEntered.resolve();
           await releaseFirstWorker.promise;
         }
-        captured.push({ taskId: input.taskId, priorWork: input.priorWork });
+        captured.push({ taskId: input.taskId, priorWork: input.priorWork as TaskPriorWork | undefined });
         return { ok: true };
       },
     }) as TaskWorker;

@@ -21,7 +21,6 @@ interface ModeOption {
   label: string;
   description: string;
   icon: React.ComponentType<{ className?: string }>;
-  color: string;
 }
 
 const MODE_OPTIONS: ModeOption[] = [
@@ -30,28 +29,24 @@ const MODE_OPTIONS: ModeOption[] = [
     label: "Ask",
     description: "Questions, answers, and reasoning. Memory-first.",
     icon: MessageCircleQuestion,
-    color: "text-blue-500 dark:text-blue-400",
   },
   {
     value: "build",
     label: "Build",
     description: "File-writing, app-building, agentic execution.",
     icon: Hammer,
-    color: "text-amber-500 dark:text-amber-400",
   },
   {
     value: "interview",
     label: "Interview",
     description: "Structured questioning to extract knowledge and context.",
     icon: Mic,
-    color: "text-emerald-500 dark:text-emerald-400",
   },
   {
     value: "debate",
     label: "Debate",
     description: "Adversarial challenge to stress-test your ideas.",
     icon: Swords,
-    color: "text-rose-500 dark:text-rose-400",
   },
 ];
 
@@ -87,7 +82,7 @@ export function ModeSelector({ mode, onModeChange, disabled }: ModeSelectorProps
             "hover:border-foreground/20",
           )}
         >
-          <ActiveIcon className={cn("size-3.5", active.color)} />
+          <ActiveIcon className="size-3.5 text-foreground" />
           <span className="hidden sm:inline">{active.label}</span>
           <ChevronDownIcon className="size-3 opacity-50" />
         </Button>
@@ -111,7 +106,7 @@ export function ModeSelector({ mode, onModeChange, disabled }: ModeSelectorProps
                 <Icon
                   className={cn(
                     "mt-0.5 size-4 shrink-0",
-                    isActive ? option.color : "text-muted-foreground",
+                    isActive ? "text-foreground" : "text-muted-foreground",
                   )}
                 />
                 <div className="flex flex-col gap-0.5">

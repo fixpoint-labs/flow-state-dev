@@ -19,11 +19,13 @@
  */
 
 import { handler, harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
+import { projectWorkspaceCapability, type ProjectMcpToolsResolver } from "@flow-state-dev/workforce";
 import type {
   HarnessBlock,
   HarnessCallbackContext,
   HarnessRunOutcome,
   HarnessRunStatus,
+  HarnessUsageHook,
 } from "@flow-state-dev/core/types";
 
 /** One run the stub was asked to perform, exactly as it arrived. */
@@ -67,6 +69,8 @@ export interface HarnessStubOptions {
    * with what it found in its working folder.
    */
   finalMessage?: string | null | ((run: StubRun) => string | null);
+  /** The handle's `status` per run, overriding {@link status}. */
+  statusOf?: (run: StubRun) => HarnessRunStatus;
   /** The handle's `outcome` word per run, overriding {@link outcome}. */
   outcomeOf?: (run: StubRun) => HarnessRunOutcome | null;
   /**
@@ -110,6 +114,10 @@ export interface HarnessStub {
     cwd: (ctx: HarnessCallbackContext) => string | Promise<string>;
     resume: (ctx: HarnessCallbackContext) => string | null | Promise<string | null>;
     onSession: (sessionId: string, ctx: HarnessCallbackContext) => void | Promise<void>;
+    /** Where a run's usage windows go. The stub reports none. */
+    onUsage: HarnessUsageHook;
+    /** The Lab's relayed MCP servers. The stub takes none, and says so when the project names some. */
+    mcpTools?: ProjectMcpToolsResolver;
   }) => HarnessBlock;
 }
 
@@ -125,11 +133,13 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
 
   return {
     runs,
-    slot: ({ cwd, resume, onSession }) =>
+    slot: ({ cwd, resume, onSession, mcpTools }) =>
       handler({
         name: "devforce-lab-harness-stub",
         inputSchema: harnessRunInputSchema,
         outputSchema: harnessRunHandleSchema,
+        // The project read `named` makes, only when the Lab offers MCP servers.
+        ...(mcpTools === undefined ? {} : { uses: [projectWorkspaceCapability] }),
         execute: async (input: { prompt: string }, ctx) => {
           const context = ctx as unknown as HarnessCallbackContext;
           const run: StubRun = {
@@ -147,6 +157,16 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
           sessions += 1;
           await onSession(`sess_stub_${sessions}`, context);
 
+          // The scripted run takes no relayed tools: a project that names MCP
+          // servers runs without them here, and its session says so.
+          const unrelayed = mcpTools === undefined ? [] : await mcpTools.named(context);
+          if (unrelayed.length > 0) {
+            ctx.emit.status(
+              `This run goes without MCP servers ${unrelayed.join(", ")}: the scripted coder takes no relayed tools.`,
+              { transient: false },
+            );
+          }
+
           for (const step of options.steps ?? []) {
             if ((options.stepEveryMs ?? 0) > 0) await pause(options.stepEveryMs!, ctx.signal);
             ctx.emit.message(step);
@@ -155,7 +175,7 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
 
           return {
             source: "devforce-lab/stub",
-            status: options.status ?? ("completed" as const),
+            status: options.statusOf?.(run) ?? options.status ?? ("completed" as const),
             sessionId: `sess_stub_${sessions}`,
             url: null,
             dispatchedAt: Date.now(),

@@ -32,7 +32,7 @@
  * per conversation and a delivery that fails.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { FlowState } from "@flow-state-dev/engine";
+import { createInProcessFetch, type FlowState } from "@flow-state-dev/engine";
 
 import { delegateOfRun } from "@/lib/workforce-shell";
 
@@ -66,14 +66,11 @@ async function bootApp(control?: string): Promise<Router> {
 }
 
 async function call(router: Router, method: "GET" | "POST", segments: string[], body?: unknown, query = "") {
-  const res = await router[method](
-    new Request(`http://localhost/api/flows/${segments.map(encodeURIComponent).join("/")}${query}`, {
+  const res = await createInProcessFetch(router)(`/api/flows/${segments.map(encodeURIComponent).join("/")}${query}`, {
       method,
       headers: { "content-type": "application/json", accept: "text/event-stream" },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    }),
-    { params: { path: segments } },
-  );
+    });
   return { status: res.status, text: await res.text() };
 }
 
@@ -86,7 +83,7 @@ async function openConversation(router: Router): Promise<string> {
 
 /** Post the way the page's composer does: the coordinator's door, the post only. */
 async function post(router: Router, sessionId: string, message: string) {
-  const res = await call(router, "POST", ["coordinator", "actions", "run"], { userId: USER, sessionId, input: { message } });
+  const res = await call(router, "POST", ["coordinator", "actions", "respond"], { userId: USER, sessionId, input: { message } });
   expect(res.status, res.text).toBe(200);
   return res;
 }
@@ -237,7 +234,7 @@ describe("V3 · a post runs the specialist best fit picked once, on the app's ow
     const router = await bootApp();
     const conversation = await openConversation(router);
     const mark = token("claimed");
-    const res = await call(router, "POST", ["coordinator", "actions", "run"], {
+    const res = await call(router, "POST", ["coordinator", "actions", "respond"], {
       userId: USER,
       sessionId: conversation,
       input: { message: `[route:${ROUTED}] [scenario:wake] ${mark}`, author: "support.devices" },

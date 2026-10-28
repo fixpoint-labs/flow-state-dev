@@ -23,7 +23,7 @@
 
 **Controls:** on the same command. The app honours each only under `KITCHEN_SINK_TEST_MODE=1` (`apps/kitchen-sink/lib/coordinator-control.ts`).
 
-- `GOAL_CONTROL=no-delivery`: the coordinator registered with no flow that takes a delegated post, so nobody runs. Must FAIL at **support.accounts**, and at nothing else.
+- `GOAL_CONTROL=no-delivery`: the `agent` flow registered as one that takes no task, so no worker on it is a delegate (FIX-2083) and nobody runs. Must FAIL at **support.accounts**, and at nothing else.
 - `GOAL_CONTROL=no-route`: `support.help`'s best fit read as `everyone`, so every delegate hears every post. It is the **others** leg's control, which a fresh server could otherwise pass on empty lists. Must FAIL at **others**, and at nothing else.
 - `GOAL_CONTROL=answers-go-on`: the coordinator read with `rounds: 1`, so an answer goes back out to the delegates. It is `agent-replies-in-the-mailbox`'s **woken-once** control; the answers carry no token here, so it must leave **every** leg green.
 

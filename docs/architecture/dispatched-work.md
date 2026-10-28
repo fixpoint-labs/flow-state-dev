@@ -10,7 +10,7 @@ row it claims for that assignee to an entry declared under `flow.task.actions`.
 
 This document owns one question the other docs each answer a slice of: **what
 happens to dispatched work over its lifetime**, per deployment topology. What
-crosses into the child and what does not, what guards the row a task hand-off
+crosses into the child and what does not, what guards the row a task dispatch
 leaves behind, where the child actually runs, whether it survives the process,
 what `dispose()` settles, and what brings an abandoned run back.
 
@@ -23,7 +23,7 @@ Related, and deliberately not restated here:
 - [Action Forms](./action-forms.md) → *Dispatched: `internal` and `task`
   entries* — how a `task` or `internal` dispatch resolves its entry, and why
   neither is re-enterable from a public route.
-- `packages/orchestration/README.md` → *Handing tasks off through a dispatcher
+- `packages/orchestration/README.md` → *Dispatching tasks through a dispatcher
   assignee* — the task-board surface that is the ordinary way to start one.
 - `apps/docs/docs/server/background-work.md` — the HTTP surface for reading a
   session's children afterwards.
@@ -48,7 +48,7 @@ What crosses, exactly:
   `TaskDispatchInput` envelope — `{ boardId, assignee, taskId, attempt, createdAt,
   incarnationId?, partition?, payload }`, where `payload` is the worker input the drain
   packed at claim time, and `partition` is present when the board's ledger keeps
-  one set of rows per partition (see below). The hand-off round-trips it through JSON before
+  one set of rows per partition (see below). The dispatch round-trips it through JSON before
   sending, so the in-process and queued paths see the same value and a payload
   that cannot serialize fails the row in the drain rather than in the child.
 - **Identity, server-derived.** The envelope's `source` is the dispatch type
@@ -80,7 +80,7 @@ The presets frame the board id into the key (`taskSessionKeyFor`,
 `core/types/dispatch.ts`), so two boards' children stay apart even when their
 task ids coincide; a custom key is used as returned, so two dispatchers that return
 the same string share one child. A shared child serialises its rows:
-`defineFlow` defaults the entry a `per-worker` or `key` dispatcher hands off to
+`defineFlow` defaults the entry a `per-worker` or `key` dispatcher dispatches to
 `queue` concurrency, and an explicit policy on the entry wins. The in-process
 dispatcher always enforces it. An external dispatcher enforces it only when its
 adapter supplies a shared lease backend (`WorkerAdapter.leaseBackend`): the host
@@ -126,8 +126,8 @@ say. An owner-pinned instance whose pin (`{ orgId, userId? }`, see `context/inst
 the sending request's principal is outside is refused the same way, with the
 same sentence, before a child session is written — the dispatch-side twin of the
 HTTP doors' `404 Unknown flow`. Refusing there rather than at the child's
-admission is what lets a board hand-off put the claim back and fail the row,
-instead of reporting an accepted hand-off whose child
+admission is what lets a board dispatch put the claim back and fail the row,
+instead of reporting an accepted dispatch whose child
 `createExecutionContext` then refuses, leaving the row claimed until its lease
 lapses.
 
@@ -199,21 +199,21 @@ a flow id, and nothing about workers.
 
 ## The claim gate and the fence ticket
 
-A task hand-off leaves the row `in_progress` in the parent's ledger, owned by
+A task dispatch leaves the row `in_progress` in the parent's ledger, owned by
 a child that has not started yet. Between the claim and the child's first
 statement there is no request, so a cancel or a reclaim landing in that gap
 would leave the child proceeding from a stale snapshot. Two things close it.
 
 **The child cannot reach the bare worker.** The flow declares a task entry as
 a plain block, `task: { actions: { implement: { block } } }`, and the board
-binds its claim gate onto the hand-off it installs at each dispatcher
-(`bindTaskDispatcher`). `defineFlow` rebuilds every entry a reachable hand-off
+binds its claim gate onto the dispatch it installs at each dispatcher
+(`bindTaskDispatcher`). `defineFlow` rebuilds every entry a reachable dispatch
 addresses as `gate(entry)` (`createTaskGate`, `task-board/task-entry.ts`), so a
 `task` dispatch resolves the gate around the block and never the block. The
 gate's `inputSchema` is the envelope narrowed to *this* board's id, so a
 dispatch addressed to a board since removed or renamed is refused before a row
 is read. It also refuses an entry block that declares `sessionStateSchema`, at
-its root or in a composed child (`assertHandOffBlockSupported`): a worker's
+its root or in a composed child (`assertDispatchEntrySupported`): a worker's
 state belongs on the task, not on a session that may run many of them.
 
 **An entry may name where its tasks come from instead of being reached by one
@@ -232,7 +232,7 @@ organization, say — and the row re-read there authorizes the
 run. The gate records the ledger id beside the claim (`currentLedger` on the
 worker-body state) so its recorders settle on the ledger they read from.
 `defineFlow` gates such an entry with no board in the flow; one a same-flow
-board also hands off to is refused, since one entry runs behind one gate.
+board also dispatches to is refused, since one entry runs behind one gate.
 Because the sender picks the session policy, such an entry may opt out of the
 `sessionStateSchema` refusal (`allowSessionState`) when its session state is
 its own and the same shape for every task.
@@ -241,7 +241,7 @@ its own and the same shape for every task.
 `user`-scoped `defineTaskCollection({ partitionBy })` keeps one set of rows per
 partition, and a board resolved in a session reads and writes only the
 partition `partitionBy` names from that session's server-set identity. The
-drain's claim ticket names that partition and the hand-off puts it on the
+drain's claim ticket names that partition and the dispatch puts it on the
 envelope, so the child, on this flow or another, reads and settles the row
 there and never computes a partition from its own context: a board's gate
 resolves its ledger at the envelope's partition, and a `taskLedgers` resolver
@@ -258,8 +258,8 @@ assignee. Any miss throws `StaleTaskClaimError` (`code: "stale-task-claim"`) and
 writes nothing, so the row is left exactly as the gate found it. What that
 leaves behind depends on which arm refused: a superseded attempt or a row
 routed elsewhere is still a live `in_progress` claim, and stays one until its
-lease runs out and the next drain reclaims it; a row already settled, parked
-or deleted has nothing left to reclaim. Every one of those arms is an identity
+lease runs out and the next drain reclaims it; a row already settled or
+deleted has nothing left to reclaim. Every one of those arms is an identity
 check, decided by reading, and they run before the lease arm — which writes —
 so a dispatch about to be refused never extends a lease on a row someone else
 is entitled to.
@@ -274,7 +274,7 @@ same — stop, and write nothing: the renewal is declined, so a reclaim
 genuinely won; the row carries no committed lease span to take it back for; or
 the collection answers the renewal with no verdict at all. Adopted rather than
 refused, because this claimant has run nothing yet, so there are no side
-effects to double up; refusing here would strand handed-off work behind
+effects to double up; refusing here would strand dispatched work behind
 nothing worse than a deep queue.
 
 Past the gate, the same read does three more jobs: it marks the task scope so
@@ -289,16 +289,26 @@ exposes, so an argument would let a displaced child read the successor's
 attempt and settle over work it no longer owns. A settlement whose ticket no
 longer matches the row refuses `fence-rejected`.
 
-The request host the child sees is four verbs, closed: `parentTask()` reads
-the one row this request was dispatched for, `settleParentTask()` settles it,
-`livenessOf?()` asks whether requests this session dispatched are still
-running, and `resumeAsk?()` resumes a turn in this session parked on an ask
-gate (present only with durable execution). Beside them, one fact:
-`hasAskSweeper`, true when this process runs a durability sweeper that times
-asks out. `dispatchTask` offers `wait` only when both hold: the board
-opts in with `resumesAsks: true` (whatever runs it calls `resumeOwedAsks`), and
-the host reports `hasAskSweeper`. `addTask` never waits. Identity is
-never a parameter to any of them.
+The request host the child sees is a closed set of verbs: `parentTask()`
+reads the one row this request was dispatched for, `settleParentTask()`
+settles it, `livenessOf?()` asks whether requests this session dispatched are
+still running, `resumeWait?()` resumes a turn in this session parked on a wait
+gate (present only with durable execution), `wakes?` keeps the session's due
+times, and `waits?` (FIX-2082) holds a wait's deadline bounds, the live depth
+of the chain a new wait would join, and whether a request has ended, and
+`sessions?.read(id)` reads one session of the same user, tenant and
+organization as the request (its flow and a frozen copy of its `.readonly()`
+session fields), or `undefined` for any other. Beside them, one fact:
+`hasWaitSweeper`, true when this process runs a durability
+sweeper, which fires the wake that resumes a wait at its deadline.
+
+Waiting on a task is `getTask({ id, wait: true })`, offered only when the
+host can hold a wait (`canHoldWait`: `resumeWait`, `hasWaitSweeper` and
+`waits`) and the board opts in with `resumesWaits: true` (the filing
+session's `onTaskSettled` pass resumes an owed wait when its task ends).
+Waiting on a request this one dispatched is `dispatcher({ wait: true })`.
+`createTask` never waits. A wait's deadline cancels
+nothing: the work runs on. Identity is never a parameter to any of them.
 
 ## The rule that decides everything
 
@@ -356,7 +366,7 @@ platform's kill timeout for the longest job, not for `dispatchDrainTimeoutMs`.
 
 **`worker-only` is the trap.** It is the natural place to start durable jobs and
 the one place they silently are not durable. The mode consumes the queue and
-dispatches nothing, so a hand-off there runs the child in the worker process
+dispatches nothing, so a dispatch there runs the child in the worker process
 itself and enqueues nothing. A crash or a redeploy loses the run outright
 rather than costing a retry. For the queue to own the work, dispatch it from a
 process that has a dispatcher — `colocated` or `dispatch-only`.
@@ -406,9 +416,9 @@ worker were pulling. Whether the work ever ran is a question for the child
 session's own request list.
 
 **A refusal is decided before anything is dispatched.** That is what lets the
-task board's hand-off put the claim back and fail the row against it: the row
+task board's dispatch put the claim back and fail the row against it: the row
 is still genuinely the parent's to settle. A throw *after* the attempt cannot
-rule out a live child, so the hand-off treats the two differently — refused
+rule out a live child, so the dispatch treats the two differently — refused
 means hand the claim back; threw means leave the row to its lapsing lease.
 
 ## What cannot cross the queue
@@ -463,7 +473,7 @@ request that completed, one never registered, and one whose registration was
 lost all read the same, because terminal requests are deregistered. Treat
 `false` as permission to stop waiting, never as proof the work did not happen —
 re-dispatching on it alone is how double execution ships. Corroborate against
-durable state you own first, which for a task hand-off is the row itself.
+durable state you own first, which for a task dispatch is the row itself.
 
 The verb is **absent** when the liveness gate refused at construction: the
 request registry is not shared across processes, heartbeats cannot keep pace
@@ -487,7 +497,7 @@ operation refuses new work outright (`notStarted`, with a reason — surfaced to
 the sender as `dispatch-rejected`), which is what makes the drain's snapshot
 complete rather than merely early. A dispatch already in flight arrives
 afterwards and is refused: the child session record exists with no run, which
-is the adoptable state a retry already handles, and a hand-off hands its claim
+is the adoptable state a retry already handles, and a dispatch hands its claim
 back and fails the row.
 
 The drain runs in rounds, because dispatched work may itself dispatch and a
@@ -518,7 +528,7 @@ happens on the next claim, and it does **not** route through `pending`:
 `isClaimable` admits a row whose lease has lapsed, and `applyClaimToTask` hands
 it straight back out inside the atomic claim write — the row stays
 `in_progress` while `attempts` and `abandonments` both advance. Counting the
-abandonment in the same write as the hand-off is what leaves no window where a
+abandonment in the same write as the dispatch is what leaves no window where a
 row has been re-dispatched but not yet charged for it.
 
 Past the abandonment allowance that same write settles the row `errored`
@@ -532,66 +542,54 @@ in-flight, so a board that neither re-claimed nor settled it would never report
 explicit verb that returns a row to `pending` without touching `attempts`.
 Lease-lapse recovery does not call it.
 
-**A lapsed handed-off row resumes holding the launching drain open.** The
-exclusion that lets a handed-off row drop out of the board's in-flight count
-requires a live lease: `isHandedOff` is `in_progress && runsElsewhere(task) &&
+**A lapsed dispatched row resumes holding the launching drain open.** The
+exclusion that lets a dispatched row drop out of the board's in-flight count
+requires a live lease: `isDispatched` is `in_progress && runsElsewhere(task) &&
 !leaseLapsed(...)`. Routing says where the work belongs, the lease says whether
 anyone is actually on it, and a claimant that died before its child ever started
-leaves a row that is handed off by routing and abandoned in fact. So the row is
+leaves a row that is dispatched by routing and abandoned in fact. So the row is
 invisible to the drain while the lease is live and visible again once it lapses,
 until some claim takes it back. The wake test reads the same lease, so a worker
 stirs into an exit check that no longer calls the board drained.
 
 ### Two exclusions, and why only one is lease-gated
 
-The routing exclusion above is not the only way a row drops out of the board's
-in-flight count. A board declaring `onReview: "exit"` also excuses rows sitting
-in `parked`, and the two live side by side in `countWaitable` as
-separate predicates rather than one widened predicate. They answer different
-questions:
+The routing exclusion above is not the only way a row drops out of a count. A
+running row waiting on a person — an open hold on it, a question or a
+suspension mirrored from a `waitForUser` stop (FIX-2131) — is excused from
+`activeWorkerCount`, though `inFlightCount` keeps it. Both live in
+`countWaitable` as separate predicates rather than one widened predicate,
+because they answer different questions:
 
-| | routing exclusion (`runsElsewhere`) | park exclusion (`onReview: "exit"`) |
+| | routing exclusion (`runsElsewhere`) | person-wait exclusion (`waitsOnUser`) |
 |---|---|---|
 | Asks | where does this row's work belong? | is this row waiting on a *human*? |
-| Derived from | the assignees the board's dispatchers serve, plus the row's `assignee` | the row's status |
-| Applies to | `in_progress` rows only | `parked` rows only |
-| Applies on | boards with a dispatcher | any board, however it dispatches |
+| Derived from | the board's declared `mode` (FIX-2076) | the row's open holds |
+| Applies to | `in_progress` rows | `in_progress` rows with an open hold |
+| Applies on | `mode: "delegation"` boards, every row | any board, in the active-worker count only |
 | Liveness conjunct | **yes** — the lease | **no** |
 
-`runsElsewhere` reads the row's `assignee` against the assignees that hand off,
-and that is sound only because a hand-off board freezes the assignee while an
-attempt holds the row (`setAssignee` on an `in_progress` or `parked` row
-declines `immutable-assignee`): for a row a child is running the value cannot move under
-the predicate, and it survives a restart with no run state to rebuild. A
-waiting row can change hands (FIX-1780); its next claim hands it to the new
-assignee.
-`claimedBy` would not do — the child never claims, so a handed-off row still
+The person-wait exclusion is what lets a `complete-or-blocked` board whose only
+open rows wait on a person stop `blocked` instead of polling them: nobody is
+working them, and the answer is a write that starts the row's next turn on its
+own. It needs no lease conjunct because a row waiting on a person holds no
+lease — the turn that asked gave it up — so there is no claimant that could
+have died while the row still says someone is on it.
+
+`runsElsewhere` is the board's declared mode, not an inference from its
+assignees (FIX-2076): a delegation board's every assignee dispatches, so every
+running row is another session's, and a plan board's runs in the drain, so none
+is. `taskBoard()` refuses a board whose assignees contradict its mode, which is
+what keeps the predicate true without reading the row. It needs no run state, so
+it survives a restart. A dispatching board still freezes the assignee while an
+attempt holds the row (`setAssignee` on an `in_progress` row
+declines `immutable-assignee`), because the child's routing key derives from it;
+a waiting row can change hands (FIX-1780), and its next claim hands it to the
+new assignee.
+`claimedBy` would not do — the child never claims, so a dispatched row still
 carries the session of the parent that claimed it.
 The run's own coordinate is `run`, which the claim gate writes from inside the
 run (FIX-1668).
-
-**The missing liveness conjunct on the park exclusion is deliberate, not an
-oversight.** The routing exclusion needs one because a routed row can be
-abandoned by a claimant that died while the row still says the work belongs
-elsewhere — the paragraph above is that case. A parked row cannot be in that
-state. Parking moves it off `in_progress`, and the lease deliberately stops
-governing a row there so that a slow human cannot have the task reclaimed out
-from under them (`ticketForClaim`'s status fence, and the lease short-circuit for
-any status other than `in_progress`). A lease conjunct on the park exclusion
-would therefore either exclude nothing or reintroduce exactly the reclaim the
-substrate prevents on purpose.
-
-The practical consequence for a board that declares both: a handed-off row that
-parks stops being excused by *routing* — it is no longer `in_progress` — and
-starts being excused by the *park* exclusion instead, if and only if the board
-asked for that. On the default `onReview: "hold"` it is excused by neither and
-holds the drain open. What hands an excused row back into a drain is
-`board.unparkAndDrain` (FIX-1244): the fenced `unpark` write, then the board's
-own drain in the answering request, so the row is claimed there rather than by
-whatever happens to drain next. Note that this is not the same as saying a board with a
-dispatcher needs park-exit for its launching request to end: the hand-off
-already released that request before the park, and the parent's collection
-mirror cannot observe a write the child made in a separate concurrent request.
 
 **The request record** depends on how far the child got. Four endings; only the
 third leaves a row mid-flight, and the fourth leaves no row at all:
@@ -678,9 +676,9 @@ and the row stays as it is.
 | The dispatch seam: entry, session, envelope, start | `engine/src/context/create-request-host.ts`, `engine/src/context/dispatch-operation.ts` |
 | Child session derivation and adoption | `engine/src/context/dispatch-run.ts` |
 | Session policy and the child key | `core/src/types/dispatch.ts` → `taskSessionKeyFor` |
-| The hand-off at a board's dispatcher | `orchestration/src/task-board/blocks/hand-off.ts` |
+| The dispatch at a board's dispatcher | `orchestration/src/task-board/blocks/dispatch-row.ts` |
 | The claim gate | `orchestration/src/task-board/task-entry.ts` → `createTaskGate` |
-| Reading which assignees hand off; construction-time refusals | `orchestration/src/task-board/hand-off.ts` |
+| Reading which assignees dispatch; construction-time refusals | `orchestration/src/task-board/dispatch-assignee.ts` |
 | Per-dispatch runtime config and the override warning | `engine/src/transports/host/createInboundTransportHost.ts` |
 | Interrupted-request detection | `engine/src/execution/request-recovery.ts`, `engine/src/execution/stale-request-sweeper.ts` |
 | Lease and abandonment | `packages/orchestration` → task substrate |

@@ -5,6 +5,9 @@ sidebar_label: Documents on disk
 description: "Write a team's shared documents as Markdown files, read the tree at startup, and install them as resources on a flow."
 ---
 
+import Figure from "@site/src/components/Figure";
+import DocumentsReachDrawing from "./documents-reach.svg";
+
 # Documents on disk
 
 A handbook, a glossary, an escalation procedure: the reference material a team shares and an agent reads. You can declare each one in TypeScript with `defineResource`. You can also write it as a Markdown file and read the folder at startup, which lets someone who does not write TypeScript edit it.
@@ -269,7 +272,7 @@ Both functions throw rather than collecting. A record that cannot become a resou
 
 ## Who reaches what
 
-![Two panels. references/: the file is the text, re-read on each request and never written by the product. Its folders are nested walls: the worker ada reads the organization's references, its own team's and its own folder's, but not a teammate's folder, another team's, or an org worker's. resources/: the file seeds a stored row at first boot, which the product, a block or the agent can then write, and later edits to the file do not change a written row. Its folder is only part of the name. Each organization gets its own row, and flowIsolation: true gives each worker its own](./documents-reach.svg)
+<Figure svg={DocumentsReachDrawing} caption="references/ and resources/: where the text lives, who reaches it" description={"Two panels. references/: the file is the text, re-read on each request and never written by the product. Its folders are nested walls: the worker ada reads the organization's references, its own team's and its own folder's, but not a teammate's folder, another team's, or an org worker's. resources/: the file seeds a stored row at first boot, which the product, a block or the agent can then write, and later edits to the file do not change a written row. Its folder is only part of the name. Each organization gets its own row, and flowIsolation: true gives each worker its own"} />
 
 A folder means two different things here. Under `references/`, it is a wall: a worker reads the references of its organization, its team and its own folder, and nothing beside them. Under `resources/`, it is only part of the name: every document there is the organization's, and a flow that installs them reaches all of them unless you filter.
 
@@ -324,7 +327,7 @@ import { generator, readResourceContentTool } from "@flow-state-dev/core";
 
 export const answerQuestion = generator({
   name: "answer-question",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "Answer support questions. Check the team handbook before you answer.",
   tools: [readResourceContentTool()],
 });

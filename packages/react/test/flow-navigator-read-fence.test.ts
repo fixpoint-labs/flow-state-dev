@@ -31,18 +31,16 @@ const leaf = (address: string): FlowNavigatorLeaf => ({
 function deferredSource() {
   const pending: { address: string; release: (rows: SessionSummary[]) => void }[] = [];
 
-  return {
-    pending,
-    listSessions: vi.fn(
-      (options?: { flowId?: string; flowKind?: string }) =>
-        new Promise<SessionSummary[]>((resolve) => {
-          pending.push({
-            address: options?.flowId ?? options?.flowKind ?? "?",
-            release: resolve,
-          });
-        })
-    ),
-  };
+  const listSessions = vi.fn(
+    (options?: { flowId?: string; flowKind?: string }) =>
+      new Promise<SessionSummary[]>((resolve) => {
+        pending.push({
+          address: options?.flowId ?? options?.flowKind ?? "?",
+          release: resolve,
+        });
+      })
+  );
+  return { pending, listSessions, sessions: { list: listSessions } };
 }
 
 describe("useLeafSessions · a response outliving its leaf", () => {
@@ -50,7 +48,7 @@ describe("useLeafSessions · a response outliving its leaf", () => {
     const source = deferredSource();
     const { result, rerender } = renderHook(
       ({ address }: { address: string }) =>
-        useLeafSessions(source as never, leaf(address), "u", false, true),
+        useLeafSessions(source as never, leaf(address), false, true),
       { initialProps: { address: "worker-a" } }
     );
 
@@ -76,7 +74,7 @@ describe("useLeafSessions · two reads of ONE leaf racing", () => {
   it("never lets an older response overwrite a newer one for the same leaf", async () => {
     const source = deferredSource();
     const { result } = renderHook(() =>
-      useLeafSessions(source as never, leaf("worker-a"), "u", false, true)
+      useLeafSessions(source as never, leaf("worker-a"), false, true)
     );
 
     await waitFor(() => expect(source.pending).toHaveLength(1));
@@ -111,7 +109,7 @@ describe("useLeafSessions · a leaf that closes and opens again", () => {
   const mountLeaf = (source: ReturnType<typeof deferredSource>, isOpen: boolean) =>
     renderHook(
       ({ open }: { open: boolean }) =>
-        useLeafSessions(source as never, leaf("worker-a"), "u", false, open),
+        useLeafSessions(source as never, leaf("worker-a"), false, open),
       { initialProps: { open: isOpen } }
     );
 

@@ -81,7 +81,7 @@ describe("dispatcher — the definition", () => {
 
   it("is a task assignee when its type is task, carrying the session policy on its address", () => {
     const assignee = dispatcher({
-      name: "hand-off-implement",
+      name: "dispatch-implement",
       type: "task",
       action: "implement",
       session: "per-task"
@@ -92,14 +92,14 @@ describe("dispatcher — the definition", () => {
 
   it("is a task assignee from the session policy when type is omitted", () => {
     const perTask = dispatcher({
-      name: "hand-off-implement",
+      name: "dispatch-implement",
       action: "implement",
       session: "per-task"
     });
     expect(perTask.dispatch).toEqual({ type: "task", action: "implement", session: "per-task" });
 
     const byKey = dispatcher({
-      name: "hand-off-by-topic",
+      name: "dispatch-by-topic",
       action: "implement",
       session: { key: (task: { taskId: string }) => task.taskId }
     });
@@ -130,7 +130,7 @@ describe("dispatcher — the definition", () => {
 
   it("lets a task assignee name another flow", () => {
     const assignee = dispatcher({
-      name: "hand-off-billing",
+      name: "dispatch-billing",
       type: "task",
       flowKind: "billing",
       action: "charge",
@@ -250,6 +250,8 @@ describe("dispatcher — the body", () => {
     const error = await runForTest(block, {}, ctx).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(DispatchRefusedError);
     const refused = error as DispatchRefusedError;
+    // The code a `.rescue()` branches on, as the README documents it.
+    expect(refused.code).toBe("dispatch-refused");
     expect(refused.refused).toBe("session-not-found");
     expect(refused.address).toEqual({ type: "internal", action: "wake" });
     expect(refused.blockName).toBe("wake-epic");
@@ -262,9 +264,9 @@ describe("dispatcher — the body", () => {
       action: "wake",
       session: { id: () => "s_epic" }
     });
-    await expect(runForTest(block, {}, createMockContext())).rejects.toBeInstanceOf(
-      NoDispatchSeamError
-    );
+    const error = await runForTest(block, {}, createMockContext()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(NoDispatchSeamError);
+    expect((error as NoDispatchSeamError).code).toBe("no-dispatch-seam");
   });
 
   it("sends a task envelope under the key its policy derives, with the row as provenance", async () => {
@@ -314,7 +316,7 @@ describe("dispatcher — the body", () => {
       payload: {}
     };
     const assignee = dispatcher({
-      name: "hand-off-billing",
+      name: "dispatch-billing",
       type: "task",
       flowKind: "billing",
       action: "charge",

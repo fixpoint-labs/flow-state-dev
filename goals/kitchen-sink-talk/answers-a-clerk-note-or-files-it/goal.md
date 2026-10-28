@@ -31,7 +31,7 @@ Since FIX-1788 the rail lists each flow, not each worker, so "four specialists n
 
 **Controls:** on the same command. The app honours it only under `KITCHEN_SINK_TEST_MODE=1` (`apps/kitchen-sink/lib/landing-control.ts`).
 
-- `GOAL_CONTROL=no-landing`: the `agent` flow swapped for one that hears the delegated post and answers in the specialist's own session, and hands nothing back. The answer never reaches the conversation, so it must FAIL at **answer**. **roster** stays green: nothing else.
+- `GOAL_CONTROL=no-landing`: the `agent` flow swapped for one that hears the routed task and answers in the specialist's own session, and hands nothing back. The answer never reaches the conversation, so it must FAIL at **answer**. **roster** stays green: nothing else.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

@@ -19,8 +19,13 @@ import {
   readProjectedRecord,
   resolveCollectionKey,
 } from "@flow-state-dev/core/types";
-import { cloneValue, resolveClientProjection, hasClientProjection } from "@flow-state-dev/core/helpers";
+import {
+  cloneValue,
+  hasClientProjection,
+  resolveClientData
+} from "@flow-state-dev/core/helpers";
 import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import { collapseToCanonicalLog, resolveItemVisibility } from "@flow-state-dev/core/items";
 import { ValidationError, FlowError } from "../errors/flow-error";
 import type { RequestRecord, SessionRecord, SessionStore } from "../stores/types";
@@ -671,7 +676,7 @@ export async function buildResourceSnapshot(options: {
             storageKey: key
           };
           if (stateReadable) {
-            item.clientData = await resolveClientProjection(collectionClient, state);
+            item.clientData = await resolveClientData(maybeConfig, state);
           }
           if (prefetchContent && contentMap[key] !== undefined) {
             item.content = contentMap[key];
@@ -696,7 +701,7 @@ export async function buildResourceSnapshot(options: {
 
     const entry: Record<string, unknown> = {};
     if (hasClientProjection(config.client)) {
-      entry.clientData = await resolveClientProjection(config.client, state);
+      entry.clientData = await resolveClientData(config, state);
     }
     if (prefetch && contentMap[storageKey] !== undefined) {
       entry.content = contentMap[storageKey];
@@ -726,13 +731,14 @@ export async function buildResourceSnapshot(options: {
  * @returns The items a snapshot would show from that request, in log order.
  */
 export function snapshotItemsOf(
-  items: readonly OutputItem[] | undefined,
+  items: readonly RuntimeItem[] | undefined,
   itemTypes?: ReadonlySet<string>
 ): OutputItem[] {
   if (items === undefined) return [];
+  // Visibility drops trace rows unless `itemTypes` names one.
   return collapseToCanonicalLog(items).filter((item) =>
     itemTypes !== undefined ? itemTypes.has(item.type) : resolveItemVisibility(item).client
-  );
+  ) as OutputItem[];
 }
 
 export function sortItems(items: OutputItem[] | undefined): OutputItem[] {
@@ -784,7 +790,9 @@ export function buildReplayEvents(record: RequestRecord, session?: SessionRecord
     // reconstructs the stream from the items record, so it must drop a resumed
     // request's superseded run-1 emissions just like the GET history does. The
     // append-only event log (the primary replay source) is never collapsed.
-    for (const item of collapseToCanonicalLog(record.items)) {
+    for (const runtimeItem of collapseToCanonicalLog(record.items)) {
+      // Wire events name OutputItem; trace rows ride them.
+      const item = runtimeItem as OutputItem;
       events.push({
         stream: "request",
         type: "item.added",

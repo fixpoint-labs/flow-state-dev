@@ -21,7 +21,7 @@
  * {@link RECENT_CHARS} characters of their text, newest kept first. The line
  * that crosses the cap is cut short, ending `…`, and older ones are left out.
  *
- * A leaf, so the flow and the delegated-post entry share one line shape.
+ * A leaf, so the flow and the routed task's brief share one line shape.
  */
 import type { LLMMessage, SessionItem, SessionItemViews } from "@flow-state-dev/core/types";
 import { z } from "zod";
@@ -156,8 +156,9 @@ function writerOf(item: SessionItem, writers: LineWriters): string | undefined {
  * - **A user's post the routing handed to delegates** has no reply of the
  *   turn's after it, so the model reads it as still waiting on it, and acts
  *   on it again. Right after it comes the coordinator's own account of what
- *   happened, as an assistant message: `Handed this post to <delegates> by
- *   its routing, with no turn of mine. …`, what its `handOff` would have said.
+ *   happened, as an assistant message: `Handed this message to <delegates> by
+ *   its routing, with no turn of mine. …`, what its own filing would have
+ *   said.
  *
  * `history` holds no writers or requests, so each of its messages is matched
  * to the first item with the same role and text that no earlier message took.
@@ -197,7 +198,7 @@ export function coordinatorHistory(
       const answers = to.length === 1 ? "Its answer lands" : "Their answers land";
       return [
         message,
-        { role: "assistant", content: `Handed this post to ${to.join(", ")} by its routing, with no turn of mine. ${answers} in this conversation under ${to.length === 1 ? "its name" : "their names"}.` }
+        { role: "assistant", content: `Handed this message to ${to.join(", ")} by its routing, with no turn of mine. ${answers} in this conversation under ${to.length === 1 ? "its name" : "their names"}.` }
       ];
     }
     const delegate = writerOf(item, writers);

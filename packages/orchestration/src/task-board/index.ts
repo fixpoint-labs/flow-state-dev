@@ -4,9 +4,7 @@
  * Concurrent drain over a `TaskCollection` with dependency gating and
  * per-task worker routing. The unified Plan/Task primitive's canonical
  * validation case: dispatch is CAS-safe, workers are routed by
- * `task.assignee`, mid-drain enqueues are picked up automatically, and
- * `parked` is correctly handled (skip + wait) for the HITL
- * forward-compat surface that ships in Wave 2.
+ * `task.assignee`, and mid-drain enqueues are picked up automatically.
  *
  * ## Pipeline shape
  *
@@ -36,6 +34,13 @@
  * holds against a task the worker no longer owns, not just against
  * one it never named.
  *
+ * ## Mode (FIX-2076)
+ *
+ * `mode: "plan"` (default): every row runs in the drain, and the drain waits on
+ * every one. `mode: "delegation"`: every row is handed to another session
+ * through a dispatcher assignee, and the drain waits on none. The board refuses
+ * assignees that contradict its mode at construction (`./board-mode`).
+ *
  * ## Termination
  *
  * - `onIdle: 'complete-or-blocked'` (default, FIX-626): exit when the
@@ -47,25 +52,21 @@
  *   "all-completed" | "blocked-by-failures"` so callers can tell the
  *   two outcomes apart without inspecting `counts`.
  *
- * - `onIdle: 'complete'`: exit only when no `pending`, `in_progress`,
- *   or `parked` tasks remain. Legacy default. Use when a
- *   pending task with a non-completed dep is a transient state an
- *   external pump will eventually resolve.
- *   `parked` keeps the loop alive — workers idle-poll until
- *   an external actor transitions the task out.
+ * - `onIdle: 'complete'`: exit only when no `pending` or `in_progress`
+ *   tasks remain. Legacy default. Use when a pending task with a
+ *   non-completed dep is a transient state an external pump will
+ *   eventually resolve.
  *
  * - `onIdle: 'wait'`: never exit on drained-ness. Defer to
  *   `shouldExit`; the loop runs until that returns `true` or
  *   `maxIterations` trips.
  *
- * `onReview` is the second, independent knob (FIX-1234). On the default
- * `'hold'` a `parked` task holds the drain open in every mode
- * above. On `'exit'` it does not: parked rows are excused from the
- * board's waitable count, the drain returns reporting
- * `terminationReason: "parked-for-review"`, and the task stays parked
- * and durable for a later drain to claim once it is resumed. The mode
- * requires a durable board on the default `onIdle` with id-carrying
- * seeds, and refuses anything else at construction — see `./park-exit`.
+ * A running row waiting on a person (an open hold: a question it asked, or
+ * its run's stop for a review or an approval) is in flight but is no active
+ * worker (FIX-2131), so a `complete-or-blocked` board whose only open rows
+ * wait on a person exits `blocked` and leaves them as they are. The answer
+ * owes the task its next turn; a board built with the retired `onReview` is
+ * refused by name.
  *
  * ## CAS-safe dispatch
  *
@@ -74,7 +75,7 @@
  * and the other immediately re-scans for the next eligible task. No
  * pattern-level coordination beyond that.
  */
-import { handler, sequencer, defineCapability } from "@flow-state-dev/core";
+import { handler, sequencer, defineCapability, utility } from "@flow-state-dev/core";
 import { z } from "zod";
 import { whenBoardClaimable } from "./predicates";
 import type { DefinedCapability, SequencerDefinition } from "@flow-state-dev/core";
@@ -92,6 +93,7 @@ import {
   onTaskChangeFor,
   resolveTaskCapDefaults,
   startLeaseRenewal,
+  taskLedgerResources,
   ticketForClaim,
   type DefinedTaskCollection,
   type TaskCapOptions,
@@ -118,14 +120,12 @@ import {
   taskBoardWorkerStateSchema,
   taskBoardWorkerBodyStateSchema,
   claimResultSchema,
-  taskWriteOutcomeSchema,
-  unparkAndDrainInputSchema,
   type ClaimResult,
-  type UnparkAndDrainInput,
 } from "./schemas";
-import type { Task, TaskWriteOutcome } from "../tasks";
+import { taskSchema, type Task } from "../tasks";
 import { resolveDispatcher, type TaskBoardDispatcherInput } from "./shared";
 import { createSeedCollection } from "./blocks/seed-collection";
+import { owesATouch } from "../tasks/collection/cascade";
 import { createClaimTask } from "./blocks/claim-task";
 import { buildWorkerStep } from "./blocks/worker-step";
 import {
@@ -143,20 +143,22 @@ import {
   createInstallBoardFlowState,
   createTeardownBoardFlowState,
   currentBoardRunId,
+  openWorkerClaimScope,
   stampCurrentClaim,
 } from "./flow-policy-wiring";
-import { assertParkExitSupported, type TaskBoardOnReview } from "./park-exit";
 import {
-  assertHandOffBoardSupported,
-  handedOffTaskPredicate,
+  assertDispatchBoardSupported,
+  isTaskDispatcher,
   resolveWorkerSlots,
-  type HandOffAssignee,
+  type DispatchingAssignee,
   type TaskAssignee,
   type TaskAssigneeRegistry,
-} from "./hand-off";
-import { boardExitsConnector } from "./exits-connector";
+  type TaskDispatcherBlock,
+} from "./dispatch-assignee";
+import { assertBoardModeSupported, runsElsewhereFor, type TaskBoardMode } from "./board-mode";
 import { createTaskGate } from "./task-entry";
-import { createHandOff } from "./blocks/hand-off";
+import { createRowDispatch } from "./blocks/dispatch-row";
+import { markDelegating, TASK_SETTLED_ENTRY } from "../tasks/notice/delivery";
 import { recordBoardResolver } from "./board-resolver";
 
 // ---------------------------------------------------------------------------
@@ -170,7 +172,6 @@ export {
   claimResultSchema,
   taskWorkerInputSchema,
   checkBoardOutputSchema,
-  unparkAndDrainInputSchema,
 } from "./schemas";
 export type {
   TaskBoardState,
@@ -178,7 +179,6 @@ export type {
   TaskBoardWorkerBodyState,
   ClaimResult,
   CheckBoardOutput,
-  UnparkAndDrainInput,
 } from "./schemas";
 export type { TaskBoardDispatcherInput } from "./shared";
 export { createSeedCollection } from "./blocks/seed-collection";
@@ -202,6 +202,7 @@ export type { BuildWorkerStepOptions } from "./blocks/worker-step";
 export {
   createRecordSuccess,
   createRecordError,
+  TaskEndsForGoodError,
 } from "./blocks/record-result";
 export type {
   RecordSuccessOptions,
@@ -221,8 +222,6 @@ export type {
 } from "./blocks/recorder-failure";
 export { createCheckBoard } from "./blocks/check-board";
 export type { CheckBoardOptions } from "./blocks/check-board";
-export { createCascadeSkipDependents } from "./blocks/cascade-skip-dependents";
-export type { CascadeSkipDependentsOptions } from "./blocks/cascade-skip-dependents";
 export { createApplyReplan } from "./apply-replan";
 export type { ApplyReplanOptions, TaskContextSupply } from "./apply-replan";
 export {
@@ -248,42 +247,37 @@ export {
   type TaskBoardCapabilityOptions,
   type TaskBoardCapabilityAccessor,
 } from "./capability";
-export { currentWorkerClaim } from "./flow-policy-wiring";
-// The wait under `dispatchTask({ wait })` (FIX-1816, FIX-1875): the call that
-// dispatches a task and waits for its answer, whether this turn's host can
-// hold one, and the bounds. Node-only, like the claim seam it reads.
+export { currentWorkerClaim, type WorkerClaimReader } from "./flow-policy-wiring";
+// The wait on a task (FIX-1816; one wait since FIX-2082): under `getTask({ wait })`
+// and a plan board's drain on a row it handed to another session, and whether
+// this request's host can hold one. Node-only, like the claim seam it reads.
 export {
-  dispatchAndWait,
+  waitOnTask,
   canHoldWait,
-  askGateId,
-  DEFAULT_WAIT_TIMEOUT_MS,
-  MIN_WAIT_TIMEOUT_MS,
-  MAX_WAIT_TIMEOUT_MS,
-  type DispatchAndWaitOptions,
-  type DispatchAndWaitResult,
-  type DispatchRef,
-  type DispatchTarget,
-} from "../tasks/helpers/wait-for-response";
+  waitGateId,
+  type TaskWaitRefusal,
+  type TaskWaitResult,
+  type WaitOnTaskOptions,
+} from "../tasks/helpers/wait-on-task";
 export { isTaskTurn, TASK_SESSION_TASK_KEY } from "./task-turn";
 export type { BoardRunFlowState } from "./flow-policy-wiring";
-export { assertParkExitSupported } from "./park-exit";
-export type { TaskBoardOnReview } from "./park-exit";
 export {
-  assertHandOffBlockSupported,
-  assertHandOffBoardSupported,
-  handedOffTaskPredicate,
+  assertDispatchEntrySupported,
+  assertDispatchBoardSupported,
   isTaskDispatcher,
   resolveWorkerSlot,
   resolveWorkerSlots,
-} from "./hand-off";
+} from "./dispatch-assignee";
 export type {
-  HandOffAssignee,
+  DispatchingAssignee,
   TaskDispatcherBlock,
   TaskAssignee,
   TaskAssigneeAddress,
   TaskAssigneeRegistry,
-} from "./hand-off";
+} from "./dispatch-assignee";
 export type { TaskSessionPolicy } from "@flow-state-dev/core/types";
+export { assertBoardModeSupported } from "./board-mode";
+export type { TaskBoardMode } from "./board-mode";
 export {
   StaleTaskClaimError,
   UnknownTaskLedgerError,
@@ -293,8 +287,10 @@ export {
   type TaskLedgersOptions,
 } from "./task-entry";
 export type { TaskGateOptions, TaskDispatchInput } from "./task-entry";
-export { createHandOff } from "./blocks/hand-off";
-export type { HandOffOptions } from "./blocks/hand-off";
+export { afterTaskCheck, askMidway, noteTaskAnswer, taskRequestAdmission, STEER_TURN_DUE_MS, TaskAdmissionLost } from "./task-request";
+export type { MidwayAsk, TaskEndRules, TaskRequestAdmissionOptions } from "./task-request";
+export { createRowDispatch } from "./blocks/dispatch-row";
+export type { RowDispatchOptions } from "./blocks/dispatch-row";
 // A durable board's eight task tools as flow actions (FIX-1629). Defined with
 // the tools; re-exported here because a board's author reaches for it here.
 export {
@@ -368,7 +364,7 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * Explicit, stable identifier for this board. **Required when any assignee
    * holds a task dispatcher (`dispatcher({ action, session })`)**, optional otherwise.
    *
-   * A handed-off row's child session is keyed on this value together with the
+   * A dispatched row's child session is keyed on this value together with the
    * assignee and the row, so it lands in a persisted key. It cannot be derived
    * from `name` (unique per flow, not per session) or from `collectionId`
    * (the literal `"factory-supplied"` for every factory board), which is why
@@ -378,6 +374,24 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * old value are orphaned.
    */
   boardId?: string;
+
+  /**
+   * Whether the drain waits on its rows (FIX-2076). The author's choice,
+   * checked against the assignees when the board is built:
+   *
+   * - `"plan"` (**default**): the drain waits on every row. A row runs inline,
+   *   in the drain, or, through a `dispatcher({ action, session })` assignee or
+   *   `newSession`, in another session that the drain waits on until the row
+   *   ends (FIX-2082). A dispatcher that says `wait: false` is refused.
+   * - `"delegation"`: every row is handed to another session through a
+   *   `dispatcher({ action, session })` assignee, and the drain waits on none
+   *   of them; the session that works a row settles it. An assignee that runs
+   *   inline is refused, and so is a board with no dispatcher.
+   *
+   * `goalSeekLoop` refuses a delegation board: its judge would rule while the
+   * rows still run.
+   */
+  mode?: TaskBoardMode;
 
   /**
    * Where the collection lives — a once-chosen internal detail. Optional; an
@@ -406,12 +420,12 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * are standard `BlockDefinition`s consuming the substrate's
    * `TaskWorkerInput` shape.
    *
-   * A registry value may also be a `dispatcher({ action, session })` block — a
-   * **assignee that hands off**: the stamped address is `type: "task"`, the row is
-   * dispatched to the `task` entry the dispatcher names, and the flow that
-   * declares that entry owns the worker.
-   * The board runs the hand-off through its own claim gate, so the child
-   * settles the same row this drain claimed.
+   * On a `mode: "delegation"` board, a registry value is a
+   * `dispatcher({ action, session })` block — an **assignee that dispatches**:
+   * the stamped address is `type: "task"`, the row is dispatched to the `task`
+   * entry the dispatcher names, and the flow that declares that entry owns the
+   * worker. The board runs the dispatch through its own claim gate, so the
+   * child settles the same row this drain claimed.
    */
   workers: TaskWorker<TInput, TOutput> | TaskAssigneeRegistry;
 
@@ -424,6 +438,16 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * genuine miss). Blackboard and the patterns leave it unset.
    */
   defaultWorker?: TaskAssignee;
+
+  /**
+   * A plan board's way to run a row in a session of its own (FIX-2082): a
+   * `dispatcher({ action, session })`. A row filed `session: "new"` is handed
+   * to it under its own assignee, and the drain waits on it until it ends, as
+   * it waits on every row; every other row runs in `workers`. A row filed with
+   * no session runs inline. A delegation board refuses it: it hands every row
+   * over already.
+   */
+  newSession?: TaskDispatcherBlock;
 
   /**
    * Maximum parallel workers. Default: 4. The pattern spawns exactly
@@ -478,7 +502,7 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * completion item reports `terminationReason: "retry-budget-exhausted"`.
    *
    * `0` is legal and means "run every task once, never retry". Only failure
-   * retries count — `unblock`, `unpark`, and `reclaim` also re-pend a
+   * retries count — `unblock` and `reclaim` also re-pend a
    * task and do not consume the budget. See `tasks/collection/task-caps.ts` for
    * the full semantics, including why the budget is spent at authorization.
    */
@@ -499,34 +523,13 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    *   `pending` task is claimable. The final `task-board-meta` item's
    *   `terminationReason` field distinguishes `"all-completed"` from
    *   `"blocked-by-failures"`.
-   * - `"complete"`: exit only when no `pending`, `in_progress`, or
-   *   `parked` tasks remain. Pre-FIX-626 default; preserved
+   * - `"complete"`: exit only when no `pending` or `in_progress`
+   *   tasks remain. Pre-FIX-626 default; preserved
    *   for boards that wait on an external pump to mark deps complete.
    * - `"wait"`: never auto-exit; defer to `shouldExit`. Long-running
    *   session-scoped boards.
    */
   onIdle?: "wait" | "complete" | "complete-or-blocked";
-
-  /**
-   * What the board does when the only work left is parked for review
-   * (FIX-1234). Default `"hold"`.
-   *
-   * - `"hold"`: a `parked` task keeps the drain open, and the
-   *   launching request with it, until an external actor moves the task out.
-   *   What every board does today.
-   * - `"exit"`: a parked task is not this drain's to wait on. The drain
-   *   finishes and returns, the completion item reports
-   *   `terminationReason: "parked-for-review"`, and the task stays parked and
-   *   durable. `unparkAndDrain` is the return trip: it re-queues the task
-   *   and runs this drain in the answering request (FIX-1244). A bare
-   *   `unpark` only re-queues, and whatever drains the board next picks it up.
-   *
-   * Separate from `onIdle` deliberately, and **refused at construction** on
-   * three configurations it cannot serve: a board whose tasks don't outlive
-   * the request, either non-default `onIdle`, and `initialTasks` without
-   * explicit ids. Each refusal names the board and the fix.
-   */
-  onReview?: TaskBoardOnReview;
 
   /** Tasks seeded into the collection at board start. Optional. */
   initialTasks?: readonly TaskInit<TInput>[];
@@ -561,8 +564,7 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
 
   /**
    * Sleep duration when a worker's claim returns null. Bounds the
-   * busy-wait cost while waiting for new pending tasks (or for an
-   * `parked` task to be resumed). Default: 50ms.
+   * busy-wait cost while waiting for new pending tasks. Default: 50ms.
    */
   idlePollMs?: number;
 
@@ -653,16 +655,23 @@ export interface TaskBoardHandle<
    */
   backing: TaskBoardBacking;
   /**
+   * The board's declared mode (FIX-2076): `"plan"`, whose drain runs and waits
+   * on every row, or `"delegation"`, whose drain hands every row off and waits
+   * on none. A consumer that needs every row ended when the drain returns,
+   * such as `goalSeekLoop`, refuses a delegation board on this.
+   */
+  mode: TaskBoardMode;
+  /**
    * The board's declared `boardId`, or `undefined` when it declared none.
    * Always present on a board with a dispatcher assignee — that is what
-   * `assertHandOffBoardSupported` enforces.
+   * `assertDispatchBoardSupported` enforces.
    */
   boardId?: string;
   /**
    * The assignees holding a task dispatcher, in declaration order.
    * Empty on every board that declares no dispatcher assignee.
    */
-  handedOff: readonly HandOffAssignee[];
+  dispatchers: readonly DispatchingAssignee[];
   /**
    * Whether the board's own `initialTasks` seed carries any task without a
    * stable `id` (FIX-910). An idless initial task is re-added on every drain
@@ -685,31 +694,6 @@ export interface TaskBoardHandle<
    * `TaskBoardConfig.maxEnqueuedTasks`.
    */
   caps: TaskCapOptions;
-  /**
-   * Hand a parked task its answer and run the board in this request (FIX-1244).
-   *
-   * A sequencer step like any other: it reads `{ taskId, feedback }` from the
-   * value it is handed (`UnparkAndDrainInput`), calls the fenced `unpark`, and
-   * — only when that write was **accepted** — runs `board.drain` as a tap, so
-   * the step's own value is the write's `TaskWriteOutcome` either way. A
-   * refusal (`declined`, naming the status the write found) drains nothing:
-   * an already-queued task, a running one, a settled one all come back as a
-   * value with no drain behind it.
-   *
-   * A task id the ledger does not hold **throws**, as `unpark` does. So does
-   * an unsupported board, and it throws **when the step runs**, not when the
-   * board is built: the collection must be resource-backed (a parked row has
-   * to outlive the request that parked it), and `initialTasks` must all carry
-   * a stable id (the drain re-seeds on every pass, and an id-less entry would
-   * be added again and the answered work run twice). Both are checked here
-   * rather than at construction because a board that never calls this step
-   * has nothing to be refused for.
-   *
-   * The answering request has to resolve the same ledger as the request that
-   * parked the task — the same resolved storage key, per the resource-scope
-   * resolver — or the id is looked up on some other board.
-   */
-  unparkAndDrain: SequencerDefinition<UnparkAndDrainInput, TaskWriteOutcome>;
 }
 
 // ---------------------------------------------------------------------------
@@ -734,13 +718,14 @@ export function taskBoard<
   const {
     name,
     boardId,
+    mode = "plan",
     collection: collectionConfig,
     workers: workersConfig,
     defaultWorker: defaultWorkerConfig,
+    newSession: newSessionConfig,
     concurrency = 4,
     dispatcher: dispatcherInput = "topological",
     onIdle = "complete-or-blocked",
-    onReview = "hold",
     initialTasks = [],
     onError = "skip",
     maxIterations = 10_000,
@@ -749,6 +734,18 @@ export function taskBoard<
     toolCache,
     flowPolicy: flowPolicyConfig,
   } = config;
+
+  // The park exit is gone (FIX-2131): a task waiting on a person holds on its
+  // row or suspends its run, and the board exits `blocked` around it. Refused
+  // by name (BP-030), so a board still built with it fails at construction.
+  if ("onReview" in (config as object)) { // retired-name-refusal: the board refuses the removed option by name
+    throw new Error(
+      `[task-board] "${name}" sets \`onReview\`, which was removed (FIX-2131). A task waiting on a person ` + // retired-name-refusal
+        `no longer parks: a worker's question holds the task (\`askQuestion\`) and a review suspends its run ` +
+        `(\`ctx.waitForUser({ kind: "review" })\`), and a board whose only open rows wait on a person exits ` +
+        `\`blocked\` on its own. Remove the option.`
+    );
+  }
 
   const caps = resolveBoardCaps(name, config);
 
@@ -783,8 +780,11 @@ export function taskBoard<
   });
   const workers = resolvedWorkers.workers;
   const defaultWorker = resolvedWorkers.defaultWorker;
-  const handedOff = resolvedWorkers.handedOff;
+  const dispatchers = resolvedWorkers.dispatchers;
   const inlineAssignees = resolvedWorkers.inline;
+  const newSession = resolveNewSession(name, mode, newSessionConfig);
+  // Every dispatcher the board holds, for the refusals that apply to any.
+  const allDispatchers = newSession === undefined ? dispatchers : [...dispatchers, newSession];
 
   const dispatcher: TaskDispatcher = resolveDispatcher(dispatcherInput);
   const binding = resolveCollectionBinding<TInput, TOutput, TName>(
@@ -802,17 +802,31 @@ export function taskBoard<
     drainUses,
   } = binding;
 
-  // The hand-off refusals — loudly and by name, never degraded with a
+  // The dispatch refusals — loudly and by name, never degraded with a
   // warning. After the binding, because the once-chosen backing is only known
   // then.
-  assertHandOffBoardSupported({
+  assertDispatchBoardSupported({
     name,
     boardId,
     backing,
     ...(collectionDeclaration !== undefined
       ? { collection: collectionDeclaration }
       : {}),
-    handedOff,
+    dispatchers: allDispatchers,
+  });
+
+  // FIX-2076: the declared mode against the assignees. After the dispatch
+  // refusals, so a board that can't dispatch at all is told that first.
+  assertBoardModeSupported({
+    name,
+    mode,
+    dispatchers: allDispatchers,
+    inline: inlineAssignees,
+    uniformInline:
+      typeof (workersConfig as { run?: unknown }).run === "function" &&
+      !dispatchers.some((assignee) => assignee.kind === "uniform"),
+    floorInline:
+      defaultWorker !== undefined && !dispatchers.some((assignee) => assignee.kind === "floor"),
   });
 
   // Seed-inspectability for construction-time guards (FIX-910): an initial task
@@ -821,23 +835,28 @@ export function taskBoard<
   // `initialTasks` config field (not the `collection` spec).
   const hasIdlessInitialTasks = initialTasks.some((t) => t.id === undefined);
 
-  // FIX-1234 decision 3 — park-exit's three refusals. After the binding, like
-  // the hand-off ones, because two of the facts they test (the once-chosen
-  // backing, the seed's ids) are only known here. The third condition is the
-  // one park-exit itself creates: the mode makes a later drain the normal path,
-  // and the drain re-seeds ahead of the pool.
-  assertParkExitSupported({
-    name,
-    onReview,
-    backing,
-    onIdle,
-    hasIdlessInitialTasks,
-  });
-
   const seedBlock = createSeedCollection<TInput>({
     name: `${name}-seed`,
     collection: collectionFactory,
     initialTasks,
+  });
+
+  // A drain is a touch of the board (FIX-2080 D2): a cascade an ending still
+  // owes past its due time (a crash between the ending and its cascade) is
+  // paid by an idle worker before the exit check (`makeWorker`), from the
+  // rows it holds. This last step pays once more, unconditionally, for the
+  // rows only the store shows: a dependent another process filed. Not before
+  // the first claim: this step resolves the collection again, and a
+  // resource-backed board's resolution reads the store, which would hold
+  // back every start behind it.
+  const payOwedCascades = handler({
+    name: `${name}-pay-owed-cascades`,
+    transient: true,
+    inputSchema: z.unknown(),
+    execute: async (_input, ctx) => {
+      const collection = await collectionFactory(ctx);
+      await collection.payOwedCascades?.();
+    },
   });
 
   const boardMetaActive = createBoardMetaActive({
@@ -846,19 +865,13 @@ export function taskBoard<
     collectionId,
   });
 
-  // One predicate, built once and handed to EVERY consumer (FIX-982). Building
-  // it per call site is how the wake test and the exit check drifted apart
-  // before; the completion meta is the third reader (FIX-1074), and it has to
-  // agree with the other two — a board that exited because its work is running
-  // elsewhere must not then report that exit as a failure.
-  const runsElsewhere = handedOffTaskPredicate(handedOff, inlineAssignees);
-
-  // FIX-1234: the second exclusion, threaded to the exit check and the wake
-  // predicate from here — the same discipline `runsElsewhere` follows, and for
-  // the same reason. Neither reader derives it; a board that left `onReview` on
-  // the default passes `false` and both answer exactly what they answered
-  // before.
-  const excuseParked = onReview === "exit";
+  // One predicate, built once from the declared mode and handed to EVERY
+  // consumer (FIX-982, FIX-2076). Building it per call site is how the wake
+  // test and the exit check drifted apart before; the completion meta is the
+  // third reader (FIX-1074), and it has to agree with the other two — a board
+  // that exited because its work is running elsewhere must not then report
+  // that exit as a failure. A plan board passes none: it waits on every row.
+  const runsElsewhere = runsElsewhereFor(mode);
 
   const boardMetaCompleted = createBoardMetaCompleted({
     name: `${name}-meta-completed`,
@@ -891,7 +904,7 @@ export function taskBoard<
   });
   const teardownFlowState = createTeardownBoardFlowState({ name });
 
-  // The hand-off. A dispatcher assignee routes to a block that puts the claimed
+  // The dispatch. A dispatcher assignee routes to a block that puts the claimed
   // row through the dispatch seam and returns, instead of to the dispatcher
   // itself. The drain's shape is untouched (claim, route, record); only what
   // the route does changes, so an inline board composes exactly as it did.
@@ -901,16 +914,29 @@ export function taskBoard<
   // receives the same packed `TaskWorkerInput` an inline worker would, which
   // is what makes the two paths agree on what the worker sees.
   // Keyed by ASSIGNEE, never by block identity: one dispatcher may legitimately
-  // sit at two assignees, and each assignee's hand-off carries its own name so the
+  // sit at two assignees, and each assignee's dispatch carries its own name so the
   // row's assignee is what the child's gate checks.
   //
-  // The hand-off carries the board's BINDING — its id and the claim gate — so
+  // The dispatch carries the board's BINDING — its id and the claim gate — so
   // `defineFlow`, reaching it through the drain, can put the entry it addresses
   // behind this board's gate. The gate is built once for the board: it is the
-  // same ledger and the same failure policy whichever assignee hands off.
-  const handOffByAssignee = new Map<string, TaskWorker>();
-  let floorHandOff: TaskWorker | undefined;
-  if (boardId !== undefined && handedOff.length > 0) {
+  // same ledger and the same failure policy whichever assignee dispatches.
+  const dispatchByAssignee = new Map<string, TaskWorker>();
+  let floorDispatch: TaskWorker | undefined;
+  let newSessionDispatch: TaskWorker | undefined;
+  // A plan board's drain waits on every row it hands over (FIX-2082 D2).
+  const planWaits = mode === "plan" ? { collection: collectionFactory } : undefined;
+  // The entry the filer's pass runs in, which its flow must declare: a plan
+  // board's rows owe no notice, only the drain's resume, paid by the pass its
+  // ledger names (FIX-2082); every other board's by `onTaskSettled`.
+  const passEntry =
+    mode === "plan" ? (collectionDeclaration?.__taskCollection.delivery?.passEntry ?? TASK_SETTLED_ENTRY) : TASK_SETTLED_ENTRY;
+  if (boardId !== undefined && allDispatchers.length > 0) {
+    // A board that hands rows out delivers each ending to its filer (FIX-2078),
+    // whose flow must declare `onTaskSettled` (named on the binding below). A
+    // plan board's endings owe no notice: its drain waits on every row, and the
+    // ending of one it handed over resumes it (FIX-2082).
+    if (collectionDeclaration !== undefined) markDelegating(collectionDeclaration, mode === "plan" ? { notices: false } : {});
     const gate = createTaskGate({
       name,
       boardId,
@@ -923,27 +949,48 @@ export function taskBoard<
       // so it has to declare the board's durable collection itself.
       ...(drainUses !== undefined ? { uses: drainUses } : {}),
     });
-    for (const assignee of handedOff) {
-      if (assignee.kind === "floor") {
-        // The fallback stands in for every assignee the board does not name,
-        // so its hand-off carries no assignee: each row goes over under its own.
-        floorHandOff = createHandOff({
-          name: `${name}-hand-off-fallback`,
+    for (const assignee of allDispatchers) {
+      if (assignee.kind === "newSession") {
+        newSessionDispatch = createRowDispatch({
+          // A wire value, kept: a router's recorded decision names it.
+          name: `${name}-to-new-session`,
           boardId,
           address: assignee.dispatch,
-          binding: { boardId, gate },
+          // An entry that reads its tasks off a ledger by id (a worker's own
+          // `work` entry) takes this board's rows through its own gate.
+          // Its pass entry is not required of the flow: a row filed
+          // `session: "new"` is refused where it has none to run in, and
+          // without the pass the drain still reads the ending at its next
+          // deadline.
+          binding: { boardId, gate, viaEntrySource: true },
+          ...(planWaits !== undefined ? { wait: planWaits } : {}),
+        });
+        continue;
+      }
+      if (assignee.kind === "floor") {
+        // The fallback stands in for every assignee the board does not name,
+        // so its dispatch carries no assignee: each row goes over under its own.
+        floorDispatch = createRowDispatch({
+          // A wire value, kept: a router's recorded decision names it, and a request
+          // resumed across the rename must reselect the same route.
+          name: `${name}-hand-off-fallback`, // retired-name-refusal: durable route name
+          boardId,
+          address: assignee.dispatch,
+          binding: { boardId, gate, requiresInternal: [passEntry] },
+          ...(planWaits !== undefined ? { wait: planWaits } : {}),
         });
         continue;
       }
       if (assignee.kind !== "named") continue;
-      handOffByAssignee.set(
+      dispatchByAssignee.set(
         assignee.name,
-        createHandOff({
-          name: `${name}-hand-off-${assignee.name}`,
+        createRowDispatch({
+          name: `${name}-hand-off-${assignee.name}`, // retired-name-refusal: durable route name
           boardId,
           assignee: assignee.name,
           address: assignee.dispatch,
-          binding: { boardId, gate },
+          binding: { boardId, gate, requiresInternal: [passEntry] },
+          ...(planWaits !== undefined ? { wait: planWaits } : {}),
         })
       );
     }
@@ -955,12 +1002,12 @@ export function taskBoard<
       : Object.fromEntries(
           Object.entries(workers as TaskWorkerRegistry).map(([assignee, worker]) => [
             assignee,
-            handOffByAssignee.get(assignee) ?? worker,
+            dispatchByAssignee.get(assignee) ?? worker,
           ])
         );
-  const dispatchDefaultWorker = floorHandOff ?? defaultWorker;
+  const dispatchDefaultWorker = floorDispatch ?? defaultWorker;
 
-  const workerStep = buildWorkerStep({
+  const assigneeStep = buildWorkerStep({
     name,
     workers: dispatchWorkers,
     ...(dispatchDefaultWorker !== undefined
@@ -969,6 +1016,26 @@ export function taskBoard<
     collection: collectionFactory,
     resolveFlowPolicy: createFlowPolicyResolver(name),
   });
+  // FIX-2082: a row filed `session: "new"` goes to `newSession`, the rest to
+  // the assignees. Inline or handed over is read per row, not per board.
+  const workerStep =
+    newSessionDispatch === undefined
+      ? assigneeStep
+      : utility.keyedRouter({
+          name: `${name}-session-router`,
+          inputSchema: taskSchema,
+          outputSchema: z.unknown(),
+          blocks: {
+            inline: assigneeStep,
+            "new-session": buildWorkerStep({
+              name: `${name}-new-session`,
+              workers: newSessionDispatch,
+              collection: collectionFactory,
+              resolveFlowPolicy: createFlowPolicyResolver(name),
+            }),
+          },
+          select: (task: Task) => (task.session === "new" ? "new-session" : "inline"),
+        });
 
   // FIX-963. The inline batch is the one place that may DEFER: a recorder
   // failure is reported here and raised at `raiseRecorderFailures` below, so
@@ -1004,7 +1071,6 @@ export function taskBoard<
     onIdle,
     shouldExit,
     ...(runsElsewhere !== undefined ? { runsElsewhere } : {}),
-    ...(excuseParked ? { excuseParked } : {}),
   });
 
   // Worker body: the worker block runs directly (BP-011 conformance —
@@ -1024,15 +1090,13 @@ export function taskBoard<
     // CAS path before this body runs.
     stateSchema: taskBoardWorkerBodyStateSchema,
   })
-    .tap(async (task: Task, ctx) =>
-      // FIRST STATEMENT, before any await (FIX-1005). This publishes the slot
-      // the driver below is installed into; past the first `await` it would
-      // land on a continuation scope that dies with this tap, and every reader
-      // — the step's `abortSignal`, both recorders, `onSettled` — would see
-      // `undefined`. It also stops that driver if the setup below throws after
-      // the claim is committed, which is the one exit no recorder and no
-      // `onSettled` can see. See `withLeaseRenewalScope`.
-      withLeaseRenewalScope(async () => {
+    .tap(async (task: Task, ctx) => {
+      // FIRST STATEMENTS, before any await (FIX-1005). Opens the claim slot and
+      // the lease scope; past the first `await` both publish to nobody. The
+      // renewal scope also stops its driver if this setup throws after the
+      // claim is committed. See `openWorkerClaimScope` and `withLeaseRenewalScope`.
+      openWorkerClaimScope();
+      return withLeaseRenewalScope(async () => {
         // The ONE mint site for this board's claim tickets (FIX-981). `task` is
         // what `claim()` returned, so `attempts` is already incremented and this
         // is this worker's attempt, not the pre-claim one.
@@ -1045,7 +1109,7 @@ export function taskBoard<
         // every write-back the board makes, so the board never drains.
         const boardCollection = await collectionFactory(ctx);
         // On a partitioned ledger the ticket names the partition the claim was
-        // taken in, so a hand-off can put it on the dispatch.
+        // taken in, so a dispatch can put it on the dispatch.
         const ticket = ticketForClaim(
           boardCollection.collectionId,
           task,
@@ -1068,7 +1132,7 @@ export function taskBoard<
         // to this task (later hits get `sourceTask`) — and, since FIX-981, so any
         // task tool the worker calls presents this ticket without the model ever
         // seeing it.
-        stampCurrentClaim(ticket);
+        stampCurrentClaim(ticket, ctx);
         // FIX-1005: start renewing this claim's lease, and stamp the driver onto
         // the same per-worker seam. Renewal is what makes a lapsed lease mean
         // "no live worker holds this" rather than "the worker is taking a while",
@@ -1086,12 +1150,12 @@ export function taskBoard<
             signal: ctx.signal,
           })
         );
-      })
-    )
+      });
+    })
     // The worker runs under the driver's lease-loss signal, composed with the
     // request's by the step dispatch (FIX-1005). Losing the claim stops the
     // worker paying for work it can no longer record; it is not what makes the
-    // hand-off safe, which is the substrate's write fence.
+    // dispatch safe, which is the substrate's write fence.
     .step(workerStep, {
       abortSignal: () => currentLeaseRenewal()?.signal,
       // The recorders below stop the driver on the two exits they own, but a
@@ -1115,9 +1179,7 @@ export function taskBoard<
       // worker is not one. The row lapses, another worker recovers it, and the
       // suspended worker's own write-back is refused by the fence when it
       // resumes — bounded duplicate work, which is inside the mechanism's
-      // stated cost. A board that wants a long human pause without that should
-      // park the TASK (`awaitReview`), which the lease deliberately does not
-      // govern.
+      // stated cost.
       onSettled: (_ctx, outcome) => {
         if (outcome === "suspended") currentLeaseRenewal()?.stop();
       },
@@ -1163,6 +1225,15 @@ export function taskBoard<
           cell.collection = await collectionFactory(ctx);
           cell.wakeFilter = onTaskChangeFor(cell.collection.collectionId);
         }
+        // A drain is a touch of the board (FIX-2080 D2), and it must pay
+        // before the exit check reads the rows: a row behind a dead dependency
+        // is never claimable, so on `onIdle: "complete"` it would keep the
+        // drain waiting to `maxIterations`, and on the default the completion
+        // item would report it pending. Here, once nothing is claimable, on
+        // the ref this worker already holds, and only when the payer would
+        // cancel one of its rows now: paying before the first claim, or on
+        // every idle turn, reads the store and holds back the board's starts.
+        if (owesATouch(cell.collection.list(), cell.collection.now())) await cell.collection.payOwedCascades?.();
       })
       .waitForCondition(
         (items) =>
@@ -1172,7 +1243,6 @@ export function taskBoard<
                 onIdle,
                 shouldExit,
                 ...(runsElsewhere !== undefined ? { runsElsewhere } : {}),
-                ...(excuseParked ? { excuseParked } : {}),
               })(items),
         // Long timeout: a quiet board still wakes on task-change items.
         // The timeout is the upper bound on starvation if the wake
@@ -1249,46 +1319,19 @@ export function taskBoard<
         maxConcurrency: concurrency,
         // The per-worker wrapper is built at run time, so the walk `defineFlow`
         // makes over the drain would otherwise stop here and never see the
-        // hand-off dispatchers sitting in the worker router. The blocks every
+        // row dispatchers sitting in the worker router. The blocks every
         // worker is composed from are static and shared, and declaring them
         // is what lets a flow that reaches this drain without declaring the
-        // task entry an assignee hands off to be refused at definition rather than
-        // at the first hand-off.
+        // task entry an assignee dispatches to be refused at definition rather than
+        // at the first dispatch.
         blocks: [claimTask, workerBody, checkBoard],
       }
     )
-    // The completion item reads the pool's own exit outputs — the `forEach`
-    // result this tap receives — for the one fact it cannot re-derive: whether
-    // the drain stopped because rows were excused as parked (FIX-1234). Keep
-    // this tap directly after the `forEach`; a step inserted between the two
-    // would replace the value and the board would start reporting a review exit
-    // as a failure. The drain-level tests in
-    // `test/task-board/task-board-park-exit-drain.test.ts` assert the reported
-    // reason, so a rewiring fails there rather than silently.
-    //
-    // `boardExitsConnector` (FIX-1238) states that requirement to the compiler
-    // instead of leaving it to this comment. It is the identity function and
-    // changes nothing at run time. The guard is PARTIAL, and the line runs
-    // through whether the inserted step's output type is still something
-    // concrete by the time it reaches here: an insert carrying a real output
-    // type is a compile error at this line; an insert whose output type is
-    // already `any` is not. Declaring an output is NOT by itself enough to be
-    // caught. Three ways to land on the `any` side, all measured: a handler with
-    // no `outputSchema` (`boardMetaCompleted` is one), a handler that declares
-    // `outputSchema: z.any()`, and a composite exposed as
-    // `SequencerDefinition<any, any>` — however concrete its own inner steps
-    // are. In each case `any` absorbs the flowing type and leaves the connector
-    // nothing to check. Closing that half needs core's `forEach`-over-sequencer
-    // generics fixed (element type erases to `any[]`), which is out of scope
-    // here. So: the compiler catches an insert that carries a concrete output,
-    // the drain tests catch the unconditional one, and an `any`-typed insert on
-    // a board configuration those tests do not exercise is still silent.
-    .tap(boardExitsConnector, boardMetaCompleted)
+    .tap(boardMetaCompleted)
+    .tap(payOwedCascades)
     // FIX-963: the run fails here if this drain saved a result it could not
-    // announce. Deliberately AFTER the exits tap — the adjacency above is a
-    // compile-checked rule, and inserting between the two would replace the
-    // pool's exit outputs — and deliberately BEFORE teardown, whose sibling
-    // `.rescue` below still tears the run state down when this throws.
+    // announce. Deliberately BEFORE teardown, whose sibling `.rescue` below
+    // still tears the run state down when this throws.
     .tap(raiseRecorderFailures)
     // FIX-610: teardown on the success path. The `.rescue` below also
     // runs teardown on errors so cleanup is symmetric — leaving stale
@@ -1297,70 +1340,25 @@ export function taskBoard<
     .tap(teardownFlowState)
     .rescue([{ block: teardownFlowState }]);
 
-  // A handed-off board's assignee is fixed while an attempt holds a task, because it is what
+  // A dispatched board's assignee is fixed while an attempt holds a task, because it is what
   // the child's routing key derives from. Recorded on the LEDGER declaration
   // rather than on the refs built from it: two boards may bind the same
   // durable collection and only one need declare a dispatcher assignee, yet they
   // share rows, so a reassignment through either board's ref moves a key the
-  // handed-off board routes by. Reading it back at resolution time
+  // dispatched board routes by. Reading it back at resolution time
   // (`resolveResourceTaskCollection`) also makes construction order
   // irrelevant — the sibling board is as likely to be declared first.
   //
   // Deliberately the LAST thing this function does. The mark is one-way and
   // outlives a failed construction, so it must not run until everything that
-  // can throw has not: `assertHandOffBoardSupported` refuses a durable
-  // handed-off board that omits a `boardId`, and a caller that catches it — a
+  // can throw has not: `assertDispatchBoardSupported` refuses a durable
+  // dispatched board that omits a `boardId`, and a caller that catches it — a
   // config fallback, a hot reload, a test — would otherwise be left with a
   // declaration that declines valid `setAssignee` calls for a board that was
   // never created.
-  if (handedOff.length > 0 && isDefinedTaskCollection(collectionConfig)) {
+  if (dispatchers.length > 0 && isDefinedTaskCollection(collectionConfig)) {
     freezeLedgerAssignee(collectionConfig);
   }
-
-  // The return trip for a parked task (FIX-1244): the fenced re-queue, then the
-  // board's own drain, in the caller's request. Built for every board and
-  // refused only when it runs — see `TaskBoardHandle.unparkAndDrain` for why
-  // the two checks are invocation-time and not construction-time.
-  //
-  // A `.tapIf`, not a `.stepIf`: the tap runs the drain for effect and carries
-  // the write's outcome forward on both branches, so the step returns the
-  // `TaskWriteOutcome` whether the drain ran or not. A `.stepIf` would replace
-  // it with the drain's result on exactly the branch that matters, and
-  // `drain` is typed loosely enough that the swap would not be caught here.
-  const unparkStep = handler({
-    name: `${name}-unpark`,
-    inputSchema: unparkAndDrainInputSchema,
-    outputSchema: taskWriteOutcomeSchema,
-    ...(drainUses !== undefined ? { uses: drainUses } : {}),
-    execute: async (input, ctx): Promise<TaskWriteOutcome> => {
-      if (backing !== "resource") {
-        throw new Error(
-          `[task-board] "${name}" unparkAndDrain needs a resource-backed collection — ` +
-            `a parked task has to outlive the request that parked it for an answer to ` +
-            `find it, and a ${backing}-backed collection does not. Pass a ` +
-            `defineTaskCollection() to \`collection\`.`
-        );
-      }
-      if (hasIdlessInitialTasks) {
-        throw new Error(
-          `[task-board] "${name}" unparkAndDrain refuses a board whose \`initialTasks\` ` +
-            `carry no stable id — the drain it runs re-seeds ahead of the worker pool, ` +
-            `and an id-less entry is added again each pass, so the answered work would ` +
-            `run twice. Give each initialTask an explicit \`id\`.`
-        );
-      }
-      const tasks = await collectionFactory(ctx);
-      return tasks.unpark(input.taskId, input.feedback);
-    },
-  });
-
-  const unparkAndDrain: SequencerDefinition<UnparkAndDrainInput, TaskWriteOutcome> = sequencer({
-    name: `${name}-unpark-and-drain`,
-    inputSchema: unparkAndDrainInputSchema,
-    ...(drainUses !== undefined ? { uses: drainUses } : {}),
-  })
-    .step(unparkStep)
-    .tapIf((outcome: TaskWriteOutcome) => outcome.outcome === "recorded", drain);
 
   // Capability, collectionId, and (for durable boards) the drain's resource
   // `uses` all come from `resolveCollectionBinding` — one place that maps the
@@ -1372,11 +1370,11 @@ export function taskBoard<
     collectionId,
     capability,
     backing,
+    mode,
     ...(boardId !== undefined ? { boardId } : {}),
-    handedOff,
+    dispatchers,
     hasIdlessInitialTasks,
     caps,
-    unparkAndDrain,
   };
   // So `taskToolActions(board)` reaches these rows through the same resolver
   // the drain uses, without the handle carrying one publicly.
@@ -1386,6 +1384,34 @@ export function taskBoard<
 
 // ---------------------------------------------------------------------------
 // Internals
+
+/**
+ * Read a board's `newSession` (FIX-2082): a task dispatcher, on a plan board.
+ *
+ * @throws {Error} naming the board and the fix, for anything else.
+ */
+function resolveNewSession(
+  name: string,
+  mode: TaskBoardMode,
+  newSession: TaskDispatcherBlock | undefined
+): DispatchingAssignee | undefined {
+  if (newSession === undefined) return undefined;
+  if (!isTaskDispatcher(newSession)) {
+    throw new Error(
+      `[task-board] "${name}" newSession is not a task dispatcher. Put a ` +
+        `\`dispatcher({ action, session })\` there, naming the task entry a row filed ` +
+        `\`session: "new"\` runs in.`
+    );
+  }
+  if (mode !== "plan") {
+    throw new Error(
+      `[task-board] "${name}" is a delegation board and declares newSession: a delegation ` +
+        `board hands every row to another session already. Drop newSession, or drop \`mode\` ` +
+        `for a plan board, whose rows run inline unless filed \`session: "new"\`.`
+    );
+  }
+  return { name: "", kind: "newSession", label: "newSession", dispatch: newSession.dispatch };
+}
 // ---------------------------------------------------------------------------
 
 /**
@@ -1456,7 +1482,7 @@ interface CollectionBinding<TInput, TOutput, TName extends string> {
   /**
    * The durable collection's own declaration, when there is one (FIX-1074).
    * Only the `resource` backing has one; the others carry no scope at all, and
-   * a handed-off board on them is already refused on `backing`.
+   * a dispatched board on them is already refused on `backing`.
    */
   collectionDeclaration?: DefinedTaskCollection;
   /**
@@ -1524,7 +1550,7 @@ function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
     // `ctx.cap.<name>` board cap so the two never collide in `flattenCapabilities`.
     const resourceCapability = defineCapability({
       name: `${boardName}__taskCollection`,
-      resources: { [resourceKey]: definedCollection },
+      resources: taskLedgerResources(definedCollection),
     });
     const collectionFactory = (ctx: BlockContext) =>
       resolveResourceTaskCollection<TInput, TOutput>(ctx, {

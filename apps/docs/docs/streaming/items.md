@@ -77,7 +77,7 @@ One row per block execution. The same row is emitted at `item.added`, patched in
   "id": "item_block_trace_4_a1b2",
   "patch": {
     "generator": {
-      "model": "openai/gpt-5.4-mini",
+      "model": "openai/gpt-6-luna",
       "messages": [/* ... */],
       "temperature": 0.2
     }
@@ -99,7 +99,7 @@ One row per block execution. The same row is emitted at `item.added`, patched in
   "completedAt": 1717000004210,
   "duration": 4210,
   "modelUsage": {
-    "model": "openai/gpt-5.4-mini",
+    "model": "openai/gpt-6-luna",
     "promptTokens": 412,
     "completionTokens": 94,
     "totalTokens": 506
@@ -389,7 +389,7 @@ The default `<ItemsRenderer>` filters items with `history: false` visibility fro
 
 ## Observable model identity
 
-Every item produced by a generator carries a `model` field describing which concrete model produced it. This is distinct from "Generator identity" above (which answers *which agent* produced the item) — `model` answers *which model*. The two compose: an item can carry both `agentName: "executor"` and `model: { actual: "openai/gpt-5.5", requested: "intent/chat" }`.
+Every item produced by a generator carries a `model` field describing which concrete model produced it. This is distinct from "Generator identity" above (which answers *which agent* produced the item) — `model` answers *which model*. The two compose: an item can carry both `agentName: "executor"` and `model: { actual: "openai/gpt-6.1-sol", requested: "intent/chat" }`.
 
 ### Shape
 
@@ -441,7 +441,7 @@ Generator-emitted items carry `model`: `message`, `reasoning`, `source`, `tool_o
   "blockKind": "generator",
   "generator": { "model": "intent/chat", "tools": [], "prompt": "…" },
   "modelUsage": { "model": "intent/chat", "promptTokens": 100, "completionTokens": 80, "totalTokens": 180 },
-  "model": { "actual": "anthropic/claude-sonnet-4-6", "requested": "intent/chat" }
+  "model": { "actual": "anthropic/claude-sonnet-5-5", "requested": "intent/chat" }
 }
 ```
 
@@ -486,10 +486,14 @@ If you're not using React, the client SDK provides direct SSE access:
 ```ts
 import { createClient } from "@flow-state-dev/client";
 
-const client = createClient({ flowKind: "my-app", userId: "user_1" });
+const fsd = createClient({ userId: "user_1", baseUrl: "http://localhost:3000" });
 
-// sendAction returns the request it started; connect to its stream with request.id
-const { request } = await client.sendAction("chat", { message: "Hello" });
+// send resolves to the request it started; follow its events with stream()
+const sent = await fsd.flow("my-app").send("chat", { message: "Hello" });
+sent.stream({
+  onItemAdded: (event) => { /* a new item */ },
+  onContentDelta: (event) => { /* a text chunk */ },
+});
 ```
 
 See [Client Overview](/docs/client/overview) for the full client API.

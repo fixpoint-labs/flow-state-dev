@@ -144,7 +144,7 @@ async function hireTwoWorkersOver(root: string) {
     const worker = workers.find((s) => s.id === workerId)!;
     return createExecutionContext({
       flow: worker,
-      actionName: "run",
+      actionName: "respond",
       requestId: `req_${workerId}`,
       sessionId: `sess_${workerId}`,
       userId: "one-human",

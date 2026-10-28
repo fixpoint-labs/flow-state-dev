@@ -5,6 +5,10 @@ sidebar_label: Overview
 description: Describe a roster of workers, run each on one shared copy of the flow it names, and talk to a worker in a session that names it.
 ---
 
+import Figure from "@site/src/components/Figure";
+import PrivateAndSharedDrawing from "./private-and-shared.svg";
+import WorkforceOverviewDrawing from "./workforce-overview.svg";
+
 # Workforce
 
 `@flow-state-dev/workforce` gives each user a roster of workers: agents, or deterministic workflows, that work for that user and act as them.
@@ -17,7 +21,7 @@ Some workers are **standard**. Your installation's files define them, every user
 
 A worker can hand work to other workers on your roster, its **delegates**. That is **delegation**, and every hand-over is checked against your roster. A **coordinator** is the worker built for it: it picks a delegate for each message by its own judgment, by best fit, in turn, or sends to everyone.
 
-![One org, two users. The installation's files define the standard workers every user starts with. A shared area in the org holds a shared project, whose workstreams have one owner each, and org-scope data. Alice's private area holds her standard researcher, a private project, a coordinator and an analyst; Bob's holds his own standard researcher, a writer he forked, a coordinator and a private project. Alice owns a workstream of the shared project.](./private-and-shared.svg)
+<Figure svg={PrivateAndSharedDrawing} caption="Workers are private; sharing happens in shared resources" description={"One org, two users. The installation's files define the standard workers every user starts with. A shared area in the org holds a shared project, whose workstreams have one owner each, and org-scope data. Alice's private area holds her standard researcher, a private project, a coordinator and an analyst; Bob's holds his own standard researcher, a writer he forked, a coordinator and a private project. Alice owns a workstream of the shared project."} />
 
 For example, Alice and Bob each have the standard researcher. They are two workers, not one: Alice's answers for Alice, and Bob can't open her sessions, name her researcher as a delegate, or read what it remembers about her.
 
@@ -31,7 +35,7 @@ Reach for [Orchestration](../orchestration/overview) when you want to coordinate
 
 ## What a Workforce app looks like
 
-![A WORKER.md file in your repository is the description. readWorkforce turns files into plain records, and hireWorkforce gives back one copy of each flow a worker runs on, which your app registers. Every worker on a flow shares that copy. Sessions name their worker when they are created, and live in your store with the state and resources a worker writes. A worker a user hires or forks while the app runs is a row in their own data. A task's assignee can name a standard worker that takes tasks: the board runs the list, and Workforce finds the worker.](./workforce-overview.svg)
+<Figure svg={WorkforceOverviewDrawing} caption="Worker file, worker, session: where each lives" description={"A WORKER.md file in your repository is the description. readWorkforce turns files into plain records, and hireWorkforce gives back one copy of each flow a worker runs on, which your app registers. Every worker on a flow shares that copy. Sessions name their worker when they are created, and live in your store with the state and resources a worker writes. A worker a user hires or forks while the app runs is a row in their own data. A task's assignee can name a standard worker that takes tasks: the board runs the list, and Workforce finds the worker."} />
 
 Workforce reads your files and runs them. Each `WORKER.md` is a standard worker every user has, run by one shared copy of the flow it names. A user can add workers of their own, which nobody else can reach.
 
@@ -47,7 +51,7 @@ A worker on a team lives at `teams/<team>/workers/<name>/WORKER.md`, so `teams/e
 ```md
 ---
 description: Holds the board.
-model: openai/gpt-5.4-mini
+model: openai/gpt-6-luna
 ---
 You are the engineering lead. You break work into tasks and report what came back.
 ```
@@ -79,7 +83,7 @@ That worker file names no `flow:`, so it runs on the built-in worker flow, `agen
 
 A **skill** is a folder of instructions a worker can pull into a turn. `readWorkforce` collects the skills sitting beside each worker in the tree, and the built-in reads them. Each user keeps their own copy of a worker's skills. To talk to a worker, open a session that names it, as [Talking to a worker](./workers-on-disk.md#talking-to-a-worker) shows, and send `userId` beside `input`. The call never names the organization: every request runs in one, and [Authentication](../server/authentication.md#every-request-runs-in-an-organization) covers where it comes from. [The built-in worker](./built-in-worker.md) covers its settings, what your app can configure, and the rest of what it does not do.
 
-A `model:` such as `openai/gpt-5.4-mini` needs its provider's AI SDK package installed in your app: `@ai-sdk/openai` for an `OPENAI_API_KEY`, or `@ai-sdk/gateway` for the Vercel AI Gateway (`AI_GATEWAY_API_KEY`). Without it, the turn fails with an error naming the package to install. Use zod 3 (`zod@^3.25.76`): with zod 4 installed beside a provider package, flow definitions fail at startup. [Setting up models](../getting-started/setting-up-models.md#choose-a-provider) lists every provider.
+A `model:` such as `openai/gpt-6-luna` needs its provider's AI SDK package installed in your app: `@ai-sdk/openai` for an `OPENAI_API_KEY`, or `@ai-sdk/gateway` for the Vercel AI Gateway (`AI_GATEWAY_API_KEY`). Without it, the turn fails with an error naming the package to install. Use zod 3 (`zod@^3.25.76`): with zod 4 installed beside a provider package, flow definitions fail at startup. [Setting up models](../getting-started/setting-up-models.md#choose-a-provider) lists every provider.
 
 To run a worker on a flow you wrote yourself, name that flow's kind in the worker's `flow:`. Here is `teams/engineering/workers/triage/WORKER.md`:
 
@@ -111,19 +115,19 @@ Pass a flow under a key that is not its own `kind` and it is refused. [Workers o
 
 `readWorkforce` is Node-only (`@flow-state-dev/workforce/loader`). Import `createWorkerInstallation` and `hireWorkforce` from `@flow-state-dev/workforce`.
 
-## Projects and the chief of staff
+## Projects and the Shift Coordinator
 
 A **project** is a body of work, private to you or shared with your organization. It's a row your app creates while it runs, not a file.
 
 A **workstream** is one area of a project with one owner: an entry on the project that everyone who reads the project can see, and a lasting session of one of the owner's workers that does the work. Each user talks to a project through their own project coordinator, which hands work only to their own workstreams. See [Projects](./projects).
 
-The **chief of staff** is an org-level worker a user asks about the organization, such as who works here. Ask it for another worker and it hires one of your own. Ask it for one fewer and it puts the fire in front of you, and nothing is removed until you approve. Given the project tools, it also starts projects for the user who asks. A Lab that doesn't declare one doesn't have one. See [The chief of staff](./chief-of-staff).
+The **Shift Coordinator** is an org-level worker a user asks about the organization, such as who works here. Ask it for another worker and it hires one of your own. Ask it for one fewer and it puts the fire in front of you, and nothing is removed until you approve. Given the project tools, it also starts projects for the user who asks. A Lab that doesn't declare one doesn't have one. See [The Shift Coordinator](./shift-coordinator).
 
 ## Giving a task to a worker
 
 A [coordinator](./coordinators.md) files tasks for its delegates on its conversation's board, and any worker can file tasks for delegates of its own, as [Delegating work](./delegating-work.md) shows. A task names its worker by id, the name `discover` lists: `engineering.lead`. When the board hands the task over, the task runs in a session of that worker's flow that names it, one run per task.
 
-A worker on the built-in `agent` flow runs a task as one turn: its own instructions and tools, the task's title, goal and context as the message, and its answer as the task's result. A worker flow you write takes tasks when it declares a `work` task entry, built with [`workerTaskEntry`](./coordinators.md#taking-a-conversations-tasks).
+A worker on the built-in `agent` flow runs a task as one turn: its own instructions and tools, the task's title, goal and context as the message, and its answer as the task's result. A worker flow you write takes tasks when it declares the `contributor` role and a `work` task entry, built with [`workerTaskEntry`](./coordinators.md#taking-a-conversations-tasks).
 
 Filing a task for a worker that isn't one of the filer's delegates, or that takes no tasks, is refused, and the refusal names the worker. A task whose worker was removed or fired before it ran fails, and the conversation that filed it hears so. No other worker picks it up.
 
@@ -161,7 +165,7 @@ The resolver returns `{ userId, orgId }` from the verified credential, or `null`
 
 `serve()` runs a long-lived Node server. Next.js and Vercel have their own adapters; [Host adapters](../server/host-adapters.md) lists them.
 
-In the browser or in Node, give the client a `fetcher` that adds the credential. Pass the same one to `createWorkforceClient` and to every `createClient` you open on a worker's session:
+In the browser or in Node, give `createClient` a `fetcher` that adds the credential. Every call and stream the client makes goes through it, and so does every call of a workforce client built on it (see [Client options](../configuration/client.md#adding-credentials)). A call without the credential is refused with 401.
 
 ```ts
 import { createClient } from "@flow-state-dev/client";
@@ -175,9 +179,10 @@ const fetcher = (input: RequestInfo | URL, init?: RequestInit) => {
   return fetch(input, { ...init, headers });
 };
 
-const workforce = createWorkforceClient({ userId, baseUrl, fetcher });
+const fsd = createClient({ userId, baseUrl, fetcher });
+const workforce = createWorkforceClient(fsd);
 const session = await workforce.ensureWorkerSession({ worker: "engineering.lead" });
-const lead = createClient({ flowKind: session.flowKind, userId, baseUrl, fetcher });
+await fsd.flow(session.flowKind).send("respond", { message: "Where are we on the launch?" }, { sessionId: session.id });
 ```
 
 Actions run as the user and organization your resolver returns; the client's `userId` doesn't override it.
@@ -194,6 +199,7 @@ Actions run as the user and organization your resolver returns; the client's `us
 
 - [Workers on disk](./workers-on-disk) — the folder tree, `WORKER.md`, `readWorkforce`, `hireWorkforce`, and talking to a worker.
 - [The built-in worker](./built-in-worker) — the `agent` worker flow a record with no `flow:` runs on: its settings, tools, skills, and memory.
+- [Standing rules](./standing-rules) — notes a user asks a worker to keep, followed on every turn with that user.
 - [Documents on disk](./documents-on-disk) — a team's shared reference material as Markdown, installed as resources.
 - [Code on disk](./code-on-disk) — your own flows, blocks and capabilities in the same tree, registered by `fsdev gen`.
 - [Capabilities on disk](./capabilities-on-disk) — what a capability in a `resources/` folder gives a worker, and how a worker's file picks its presets.
@@ -202,7 +208,8 @@ Actions run as the user and organization your resolver returns; the client's `us
 - [Projects](./projects) — private or shared, with workstreams that each have one owner.
 - [Inventory](./inventory) — a record of every worker registered in an organization, readable by a block.
 - [Hiring and forking](./durable-hire) — a user's own workers, hired, forked and fired while the app runs.
-- [The chief of staff](./chief-of-staff) — the one worker a user asks to hire or fire workers of their own, with a fire waiting for their approval.
+- [The Shift Coordinator](./shift-coordinator) — the one worker a user asks to hire or fire workers of their own, with a fire waiting for their approval.
+- [The Error Reporter](./error-reporter) — a worker that turns each failure that stayed failed, or a problem a user describes, into one bug report the operator previews before it is filed.
 - [Workforce components](./ui) — browse your flow kinds, instances and sessions, and render a roster and boards, with React components.
 - [Orchestration](../orchestration/overview) — the task board and the workers that drain it.
 - [Agents](../orchestration/agents) — board workers, `definePersona`, and `createWorkforceCapability`.

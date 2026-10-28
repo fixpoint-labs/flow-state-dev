@@ -2,8 +2,10 @@
  * Cursor's to-do list in the run's plan record (`recordPlan`).
  *
  * What a reader of the plan panel relies on: the record equals the list Cursor
- * last confirmed, an empty confirmed list reads as empty rather than as no
- * plan, two runs in one request never share rows, a list that cannot be saved
+ * last confirmed, the plan belongs to Cursor's agent so a later run of the same
+ * agent carries it on, each run points at the agent's plan, an empty confirmed
+ * list reads as empty rather than as no plan, two agents never share rows, a
+ * list that cannot be saved
  * in full says so without failing the run, and a host that leaves the option
  * off gets exactly the block it had before. The rows, the trim and the marker
  * are core's `replacePlanList`, tested in core; these hold the Cursor side,
@@ -14,6 +16,7 @@ import { createTestContext, testBlock } from "@flow-state-dev/testing";
 import {
   OBSERVED_PLAN,
   OBSERVED_PLAN_LIST,
+  harnessConversationNamespace,
   harnessRunNamespace,
   observedPlanCollection,
   observedPlanItemStateSchema,
@@ -27,10 +30,10 @@ const GATE_OFF = {
   [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_SDK_VERSION }),
 } as CursorAgentOptions;
 
-/** A client whose one run replays `messages` and finishes. */
-function replaying(messages: CursorSdkMessage[]): () => ResolvedCursorClient {
+/** A client whose one run replays `messages` and finishes, on agent `agentId`. */
+function replaying(messages: CursorSdkMessage[], agentId = "agent_1"): () => ResolvedCursorClient {
   const agent = {
-    agentId: "agent_1",
+    agentId,
     async send() {
       return {
         id: "run_1",
@@ -66,7 +69,7 @@ function memoryCollection(failOnUpsert?: number) {
   };
 }
 
-/** Run the block once against in-memory plan collections; return them and the run's namespace. */
+/** Run the block once against in-memory plan collections; return them, the agent's plan namespace and the run's pointer. */
 async function runWithMemory(
   messages: CursorSdkMessage[],
   opts: { failPlanUpsert?: number } = {},
@@ -78,17 +81,18 @@ async function runWithMemory(
   const ctx = runtime.ctx as unknown as Record<string, unknown>;
   ctx.resources = { [OBSERVED_PLAN]: plan, [OBSERVED_PLAN_LIST]: marker };
   const handle = await block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
-  const ns = harnessRunNamespace(runtime.ctx as never);
+  const ns = harnessConversationNamespace("agent_1");
+  const pointer = marker.rows.get(harnessRunNamespace(runtime.ctx as never));
   const rowsInOrder = [...plan.rows.entries()]
     .filter(([key]) => key.startsWith(`${ns}/`))
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([, state]) => ({ title: state.title, status: state.status }));
-  return { handle, plan, marker, ns, rowsInOrder, markerState: marker.rows.get(ns) };
+  return { handle, plan, marker, ns, pointer, rowsInOrder, markerState: marker.rows.get(ns) };
 }
 
 const asRows = (todos: WireTodo[]) => todos.map((t) => ({ title: t.content, status: t.status }));
 
-describe("recordPlan — the hand-off to core's replacePlanList (V2)", () => {
+describe("recordPlan — what it passes to core's replacePlanList (V2)", () => {
   it("ends with the record equal to the last list Cursor confirmed", async () => {
     const later: WireTodo[] = [
       { content: "Read the failing test", status: "completed" },
@@ -130,9 +134,17 @@ describe("recordPlan — the hand-off to core's replacePlanList (V2)", () => {
     expect(markerState).toEqual({ status: "complete", count: 0, reason: null });
   });
 
-  it("writes no marker at all for a run that never confirmed a list", async () => {
-    const { markerState } = await runWithMemory([todosRunning("t1")]);
+  it("writes no plan marker for a run that never confirmed a list, only the run's pointer", async () => {
+    const { markerState, pointer } = await runWithMemory([todosRunning("t1")]);
     expect(markerState).toBeUndefined();
+    expect(pointer).toEqual({ conversation: "conversation/agent_1" });
+  });
+
+  it("stamps each row with the request that wrote it", async () => {
+    const { plan } = await runWithMemory([todosSettled("t1")]);
+    const requestIds = new Set([...plan.rows.values()].map((row) => row.requestId));
+    expect(requestIds.size).toBe(1);
+    expect([...requestIds][0]).toEqual(expect.any(String));
   });
 });
 
@@ -151,24 +163,29 @@ describe("recordPlan — on the block (V3)", () => {
     expect(block.declaredResources?.[OBSERVED_PLAN_LIST]).toBe(observedPlanListCollection);
   });
 
-  it("keeps two invocations in one request apart: rows and marker per invocation", async () => {
-    const first: WireTodo[] = [{ content: "First run's item", status: "pending" }];
-    const second: WireTodo[] = [
-      { content: "Second run's item", status: "inProgress" },
-      { content: "Second run's other item", status: "pending" },
+  it("gives a later run of the same agent its plan, and keeps a different agent's apart", async () => {
+    const first: WireTodo[] = [
+      { content: "Read the failing test", status: "completed" },
+      { content: "Fix the parser", status: "pending" },
     ];
-    const blockA = cursorAgent({ ...GATE_OFF, resolveCursorClient: replaying([todosSettled("a", first)]), recordPlan: true });
-    const blockB = cursorAgent({ ...GATE_OFF, resolveCursorClient: replaying([todosSettled("b", second)]), recordPlan: true });
-    const runtime = await createTestContext({ requestId: "req_shared", declaredResources: blockA.declaredResources });
+    const other: WireTodo[] = [{ content: "Another agent's item", status: "inProgress" }];
+    const turn1 = cursorAgent({ ...GATE_OFF, resolveCursorClient: replaying([todosSettled("a", first)]), recordPlan: true });
+    // The same agent's next run updates nothing: its plan stays turn 1's.
+    const turn2 = cursorAgent({ ...GATE_OFF, resolveCursorClient: replaying([]), recordPlan: true });
+    const elsewhere = cursorAgent({
+      ...GATE_OFF,
+      resolveCursorClient: replaying([todosSettled("c", other)], "agent_2"),
+      recordPlan: true,
+    });
+    const runtime = await createTestContext({ requestId: "req_shared", declaredResources: turn1.declaredResources });
     const ctx = runtime.ctx as unknown as Record<string, unknown>;
 
-    ctx._blockIdentity = { blockPath: "root/tool(cursor-agent,0:call_a)", attempt: 0 };
-    await blockA.config.execute?.({ prompt: "go" }, runtime.ctx as never);
-    const nsA = harnessRunNamespace(runtime.ctx as never);
-    ctx._blockIdentity = { blockPath: "root/tool(cursor-agent,1:call_b)", attempt: 0 };
-    await blockB.config.execute?.({ prompt: "go" }, runtime.ctx as never);
-    const nsB = harnessRunNamespace(runtime.ctx as never);
-    expect(nsA).not.toBe(nsB);
+    const runs: string[] = [];
+    for (const [i, block] of [turn1, turn2, elsewhere].entries()) {
+      ctx._blockIdentity = { blockPath: `root/tool(cursor-agent,${i}:call_${i})`, attempt: 0 };
+      await block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+      runs.push(harnessRunNamespace(runtime.ctx as never));
+    }
 
     const resources = runtime.ctx.resources as unknown as Record<
       string,
@@ -180,13 +197,17 @@ describe("recordPlan — on the block (V3)", () => {
         .filter((r) => r.path.startsWith(`${OBSERVED_PLAN}/${ns}/`))
         .sort((a, b) => a.path.localeCompare(b.path))
         .map((r) => r.state.title);
-    expect(titlesUnder(nsA)).toEqual(["First run's item"]);
-    expect(titlesUnder(nsB)).toEqual(["Second run's item", "Second run's other item"]);
+    const agent1 = harnessConversationNamespace("agent_1");
+    const agent2 = harnessConversationNamespace("agent_2");
+    expect(titlesUnder(agent1)).toEqual(["Read the failing test", "Fix the parser"]);
+    expect(titlesUnder(agent2)).toEqual(["Another agent's item"]);
+    for (const run of runs) expect(titlesUnder(run)).toEqual([]);
 
     const markers = await resources[OBSERVED_PLAN_LIST].list();
     const markerFor = (ns: string) => markers.find((m) => m.path === `${OBSERVED_PLAN_LIST}/${ns}`)?.state;
-    expect(markerFor(nsA)).toMatchObject({ status: "complete", count: 1 });
-    expect(markerFor(nsB)).toMatchObject({ status: "complete", count: 2 });
+    expect(markerFor(agent1)).toMatchObject({ status: "complete", count: 2 });
+    expect(markerFor(agent2)).toMatchObject({ status: "complete", count: 1 });
+    expect(runs.map((run) => markerFor(run)?.conversation)).toEqual([agent1, agent1, agent2]);
   });
 
   it("marks the list incomplete when a row fails to save, and the run still finishes", async () => {
@@ -219,7 +240,7 @@ describe("recordPlan — what a reader receives (V4)", () => {
     await block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const ns = harnessRunNamespace(runtime.ctx as never);
+    const ns = harnessConversationNamespace("agent_1");
     // The latest delta per row: what an open page holds once the run has written.
     const latest = new Map<string, unknown>();
     for (const c of seen) {
@@ -243,6 +264,6 @@ describe("recordPlan — what a reader receives (V4)", () => {
     expect(stored).toHaveLength(WHOLE_LIST.length);
     for (const row of stored) observedPlanItemStateSchema.strict().parse(row.state);
     const marker = seen.filter((c) => c.resourcePath === `${OBSERVED_PLAN_LIST}/${ns}`);
-    expect(marker.at(-1)?.delta).toEqual({ status: "complete", count: WHOLE_LIST.length, reason: null });
+    expect(marker.at(-1)?.delta).toEqual({ status: "complete", count: WHOLE_LIST.length, reason: null, conversation: null });
   });
 });

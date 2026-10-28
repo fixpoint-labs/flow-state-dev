@@ -75,8 +75,11 @@ Props:
 - `userId?: string` — Required for Phase 1
 - `baseUrl?: string` — Forwarded to the client. It is where the FlowState routes are mounted, minus the mount (`apiPath`, `/api/flows` by default), which the client adds. On the same origin with no base path, omit it; behind a base path, pass it (e.g. `/portal`); for an API on another origin, pass that origin plus any prefix (e.g. `https://api.example.com/portal`). See [Choosing `baseUrl`](https://flow-state.dev/docs/configuration/client#choosing-baseurl). A nested provider inherits its parent's `baseUrl`, so pass `baseUrl=""` to reset it to same-origin.
 - `apiPath?: string` — Where the server mounts the flow API. Default `/api/flows`. Set it to the server's mount when that differs, such as a Node host's `basePath`. Every hook and component under the provider uses it. A nested provider inherits its parent's. See [Choosing `apiPath`](https://flow-state.dev/docs/configuration/client#choosing-apipath).
+- `fetcher?: ClientFetch` — The `fetch` every hook and component under the provider calls and streams through: a wrapper that adds credentials, or the engine's `createInProcessFetch`. Default: the global `fetch`. A nested provider inherits its parent's. Pass a stable reference.
 - `renderers?: RendererRegistry` — Custom renderers keyed by item type or component key
 - `children: ReactNode`
+
+The hooks under a provider share one client built from its `userId`, `baseUrl`, `apiPath` and `fetcher`, the same `createClient` from `@flow-state-dev/client`.
 
 Nested providers merge `renderers` — child keys override parent keys.
 
@@ -158,7 +161,7 @@ function PlanRenderer({ item }: { item: ContainerItem }) {
 
 ### `useResourceCollection(session, ref)`
 
-Underlying primitive for collection resources. Returns `list`, `get`, `query`, `actions`, `refetch`, `prefetched`, and `count`. Pages are cached per-instance and invalidated on observed `resource_change` notices for the affected ref. Invalidation is driven by the `SessionView.resourceChanges` side channel (see below), so it works regardless of whether the caller opted into transient items.
+Underlying primitive for collection resources. Returns `list`, `get`, `query`, `actions`, `refetch`, `prefetched`, and `count`. Each hook call keeps its own page cache, tied to the current session, collection and `FlowProvider` `baseUrl` and `apiPath`. Change any of them and the hook reads afresh; results from the previous one never show up. A `resource_change` notice for the collection clears its cached pages. You don't need `includeTransient: true` on `useSession` for this.
 
 ### `useResourceCollectionList(session, ref, { limit?, topicPrefix? })`
 
@@ -312,7 +315,7 @@ function MyApproval({ item }) {
 }
 ```
 
-Returns `{ approve, reject, pendingAction, isResolving, error, resolved, resolvedStatus, outcome, canApprove, canReject }`. Resolution goes through `onApprove`/`onReject` if given, else the nearest `<SuspensionResolverProvider>` (streaming), else a self-contained recovery client.
+Returns `{ approve, reject, pendingAction, isResolving, error, resolved, resolvedStatus, outcome, canApprove, canReject }`. Resolution goes through `onApprove`/`onReject` if given, else the nearest `<SuspensionResolverProvider>` (streaming), else a non-streaming resume through the provider's client.
 
 ### `<ApprovalRenderer>`
 
@@ -416,7 +419,7 @@ Sessions load when you open a leaf, a row whose sessions you can open: a singlet
 
 Pass `includeDispatchRuns` and the listing also covers the sessions dispatchers ran work in, each drawn one level under the session that started it. One level is all there is: a run started by another run sits beside its own parent, and a run whose parent is not in the listing sits at the left margin. The `rowTrailing` slot receives `dispatchRun` on those rows, carrying the id of the session that started it, so you can label the row or link to it. Left out, the rail lists the sessions a person started.
 
-The navigator reads through a `client` and a `sessionClient`. Pass your own through those props when your API needs auth headers or a custom `fetch`, and pass a stable reference, one held in a context or a `useMemo` rather than an object built during render. Left out, the navigator builds its own pair against the nearest `FlowProvider`'s `baseUrl` and `userId`.
+The navigator reads through one `client`: its flow list and its user's sessions. Pass your own when your API needs auth headers or a custom `fetch`, and pass a stable reference, one held in a context or a `useMemo` rather than an object built during render. Any client from `createClient` works; the prop asks only for `flows` and `sessions.list`. Left out, the navigator uses the nearest `FlowProvider`'s user, `baseUrl` and `fetcher`. It lists the client's own user's sessions.
 
 The package brings no CSS framework and no icon set. Style the rows by setting the `--fsd-nav-*` CSS custom properties on any ancestor, and fill in your own affordances through `slots`: `sectionHeader` beside a section label, `rowTrailing` at the end of any row, `leafToolbar` at the end of an open leaf's row, `leafDetail` under an open leaf's row, and `emptySection` for a section whose kinds the server does not have.
 
@@ -440,7 +443,7 @@ While a leaf is open, `leafToolbar` is called with the leaf's `kind`, `address` 
 
 A row's actions, whatever `rowTrailing` and `leafToolbar` return for it, are hidden until the pointer is over the row or keyboard focus is inside it. They stay shown on the selected row. On a touch screen with no hover they are always shown. Hidden actions keep their space, so nothing on the row shifts when they appear, and they stay in the tab order, so tabbing to one reveals it.
 
-You can't pin an action visible. Only a session row's label is yours to set: it shows the session's `title`, which you set through the session client's `createSession` or `updateSessionMetadata`. Put a status your users need at a glance there. A session with no title shows its id instead, shortened to its prefix and last six characters (`sess_…8a71aa`) when the server generated it. Any other id, such as one you supplied, shows in full. Hover a session row to see its full id. Kind and instance rows always show the kind name and the instance id. For a section-wide control, use `sectionHeader`, which is always shown.
+You can't pin an action visible. Only a session row's label is yours to set: it shows the session's `title`, which you set through the client's `flow(address).createSession` or `sessions.updateMetadata`. Put a status your users need at a glance there. A session with no title shows its id instead, shortened to its prefix and last six characters (`sess_…8a71aa`) when the server generated it. Any other id, such as one you supplied, shows in full. Hover a session row to see its full id. Kind and instance rows always show the kind name and the instance id. For a section-wide control, use `sectionHeader`, which is always shown.
 
 Each level of the tree indents by the width of the expand arrow, so a row's arrow sits under its parent's label. Labels at the same level line up, whether or not the row can expand. A dashed line runs down from each open row past everything under it. Set `--fsd-nav-guide` to colour the lines, or to `transparent` to hide them. They take no space either way. Left unset, they draw in a translucent grey.
 
@@ -482,7 +485,7 @@ import { BoardColumns } from "@flow-state-dev/react";
 
 `boardRef` is the key the session's flow declares that board's ledger under. Like the roster's ref it is one path segment.
 
-The columns are the task statuses, in the order work moves through them: `pending`, `in_progress`, `blocked`, `parked`, `completed`, `errored`, `cancelled`. The package exports that list as `BOARD_STATUS_COLUMNS`. A row whose status the component does not recognise gets a column of its own at the end rather than vanishing.
+The columns are the task statuses, in the order work moves through them: `pending`, `in_progress`, `held`, `completed`, `errored`, `cancelled`. The package exports that list as `BOARD_STATUS_COLUMNS`. A row whose status the component does not recognise gets a column of its own at the end rather than vanishing.
 
 A board with no rows renders an empty state rather than a spinner.
 
@@ -500,13 +503,13 @@ import { BoardList } from "@flow-state-dev/react";
 <BoardList sessionId={sessionId} boardRef="eng.feature.triage" live />
 ```
 
-It reads the same rows `BoardColumns` does, through the same `sessionId`, `boardRef`, `resourceClient` and `limit`, and labels a row the same way, with the assignee beside it when there is one. Nothing is hidden: a finished or cancelled task stays in the list, and a status the component does not recognise shows as its own word. A row without a `createdAt` follows the dated ones, in read order.
+It reads the same rows `BoardColumns` does, through the same `sessionId`, `boardRef`, `client` and `limit`, and labels a row the same way, with the assignee beside it when there is one. Nothing is hidden: a finished or cancelled task stays in the list, and a status the component does not recognise shows as its own word. A row without a `createdAt` follows the dated ones, in read order.
 
 `live` re-reads the board whenever the session named by `sessionId` records a change to it. Pass the id of the session whose runs write to the board. A change made in a different session shows after the list remounts, or the next time this session changes the board. With `live` off, the default, it reads on mount like the other panels. If the server doesn't offer the session stream, or refuses it, the list reads once and shows no error.
 
 Each live list opens its own connection to its session's stream while mounted, so a page that also calls `useSession(..., { live: true })` on that session holds two.
 
-A host that passes its own `resourceClient` and wants `live` also passes `fetcher`, the `fetch` that client was built with. The stream is sent with it, so it carries the same credential as the reads. With `fetcher` alone, `live` works and the reads use it too. With neither, reads and stream go through the `FlowProvider`'s `baseUrl` with the plain `fetch`. If your `resourceClient` reads a different origin, pass that origin as the `baseUrl` prop on `BoardList` as well, so the stream goes to the same server as the reads. TypeScript rejects `resourceClient` with `live` and no `fetcher`.
+The read and the live stream go through one `client`, so the stream carries the read's credential to the read's origin. Any client from `createClient` works. A client that can only read (it has `resources.listCollectionItems` but no `sessions.stream`) takes no `live`, and TypeScript rejects that pair.
 
 The list renders the `<li>` for every row and puts the task's id on it (`data-task-id`), so a `row` slot returns the body that goes inside one.
 
@@ -522,7 +525,7 @@ import { WorkerDetail } from "@flow-state-dev/react";
   kind={row.kind}
   workerId={workerId}
   collectionRef="roster"
-  resourceClient={resourceClient}
+  client={client}
 />
 ```
 
@@ -530,13 +533,13 @@ Pass `kind` from the row you already have — a navigator row carries it — so 
 
 The instructions area keeps five states apart: the instructions, *none given*, *not published*, still reading, and could not be read. A read that failed says so rather than looking like a worker with nothing to show.
 
-It reads through `resourceClient` the same way `Roster` and `BoardColumns` do, and with the same fallback: left out, it builds a client with no auth headers. Pass your own when your API needs them.
+It reads through `client` the same way `Roster` and `BoardColumns` do, and with the same fallback: left out, it uses the nearest `FlowProvider`'s. Pass your own when your API needs auth headers.
 
 ### Transport and theming for the panels
 
-Each panel reads through a resource client. Pass your own through `resourceClient` when your API needs auth headers or a custom `fetch`, and pass a stable reference rather than an object built during render. Left out, each builds its own against the nearest `FlowProvider`'s `baseUrl`, with no auth headers.
+Each panel reads through a `client`. Pass your own when your API needs auth headers or a custom `fetch`, and pass a stable reference rather than an object built during render. Any client from `createClient` works; each panel asks only for the reads it makes (`resources.listCollectionItems`, or `resources.getCollectionItemState` for `WorkerDetail`). Left out, each uses the nearest `FlowProvider`'s user, `baseUrl` and `fetcher`.
 
-`Roster`, `BoardColumns` and `BoardList` follow the list route's cursor for up to 1,000 pages rather than stopping at the first response. `limit` sets the size of each page fetched, not a cap on what renders. A collection with pages left after 1,000 reads shows the error line and Retry instead of the rows read so far, because those aren't the whole list. Retry stops at the same point. If your `limit` is below 200, the list route's maximum, raising it lets the panel read further, and at `limit={200}` the ceiling is about 200,000 rows. Both hold only when the collection returns the page size you ask for: a projected collection may treat `limit` as a hint and return smaller pages, so raising it may not help there. A collection larger than that isn't one these panels are meant to show. A custom `resourceClient` whose cursor never ends hits the same error at any `limit`, and the fix belongs in that client. `WorkerDetail` reads one item and has no `limit`.
+`Roster`, `BoardColumns` and `BoardList` read every page of the list, up to 1,000 pages. `limit` sets the size of each page fetched, not a cap on what renders. A collection with pages left after 1,000 reads shows the error line and Retry instead of the rows read so far, because those aren't the whole list. Retry stops at the same point. If your `limit` is below 200, the list route's maximum, raising it lets the panel read further, and at `limit={200}` the ceiling is about 200,000 rows. Both hold only when the collection returns the page size you ask for: a projected collection may treat `limit` as a hint and return smaller pages, so raising it may not help there. A collection larger than that isn't one these panels are meant to show. A custom `client` whose cursor never ends hits the same error at any `limit`, and the fix belongs in that client. `WorkerDetail` reads one item and has no `limit`.
 
 A failed read shows what failed and offers a retry. Nothing re-reads on a timer.
 

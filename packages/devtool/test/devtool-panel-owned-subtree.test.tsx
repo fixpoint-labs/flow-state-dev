@@ -27,10 +27,12 @@ const demoInstance = {
 
 const devToolState = {
   config: { userId: "u1" },
-  client: { listFlows: vi.fn().mockResolvedValue([]) },
-  sessionClient: { listSessions: vi.fn().mockResolvedValue([]) },
-  recoveryClient: { checkInterrupted: vi.fn().mockResolvedValue([]), continueStream: vi.fn() },
-  resourceClient: { getResourceManifest: vi.fn().mockResolvedValue({ flowKind: "demo", resources: [] }) },
+  client: {
+    flows: vi.fn().mockResolvedValue([]),
+    sessions: { list: vi.fn().mockResolvedValue([]) },
+    requests: { interrupted: vi.fn().mockResolvedValue([]) },
+    resources: { getResourceManifest: vi.fn().mockResolvedValue({ flowKind: "demo", resources: [] }) },
+  },
   activeFlowId: "engineer-a",
   activeFlow: demoInstance,
   activeSessionId: "sess_1",

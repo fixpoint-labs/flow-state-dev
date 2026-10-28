@@ -1,12 +1,16 @@
 /**
- * Model-free check of `runGoal`'s verdict when a goal body throws —
- * `pnpm check:run-goal-verdict`.
+ * Model-free check of `runGoal`'s verdict when a goal body throws or reads
+ * no evidence — `pnpm check:run-goal-verdict`.
  *
  * A goal grades its legs in order. When an early leg fails and a later leg's
  * setup throws (often because of that earlier failure), the verdict must still
  * name the early leg: it is the real reason, and the throw is a consequence.
  * `runGoal` used to report only the throw, so whoever debugged the run started
  * on the wrong leg.
+ *
+ * An assertion whose `tell.over` read nothing must say CAN'T TELL, on its own
+ * exit code, never PASS; one whose empty result is the claim (`emptyIs`) passes
+ * and prints the reason; a real failure beside a can't-tell is a FAIL.
  *
  * `runGoal` exits the process, so each case runs a tiny goal body in its own
  * `tsx` child and grades the exit code and the PASS/FAIL text it printed.
@@ -24,7 +28,7 @@ interface Case {
   /** The goal body: the source of the function handed to `runGoal`. */
   body: string;
   /** Expected exit code. */
-  exit: 0 | 1;
+  exit: 0 | 1 | 3;
   /** Each must appear in the output, in this order. */
   inOrder: string[];
   /** None may appear in the output. */
@@ -80,6 +84,76 @@ const CASES: Record<string, Case> = {
     exit: 0,
     inOrder: ["PASS — all legs green"],
     absent: ["FAIL", "informational only"],
+  },
+  // The bug the third verdict exists for: a renamed field filters to [], and
+  // [].every() is true. The assertion read nothing, so the run can't tell.
+  "an assertion that read nothing is CAN'T TELL, not PASS": {
+    body: `async (failures, tell) => {
+      const seqs = tell.over("ordering · items' seq", [{ sequence: 1 }].map((i) => i.seq).filter((v) => typeof v === "number"));
+      if (!seqs.every((v, i) => i === 0 || seqs[i - 1] <= v)) failures.push("ordering: not non-decreasing");
+      return { failures, evidence: "sequence non-decreasing" };
+    }`,
+    exit: 3,
+    inOrder: ["CAN'T TELL —\n  - ordering · items' seq: read 0"],
+    absent: ["PASS", "FAIL"],
+  },
+  "a PASS names what each assertion read": {
+    body: `async (failures, tell) => {
+      tell.over("ordering · items' seq", [1, 2, 3]);
+      return { failures, evidence: "sequence non-decreasing" };
+    }`,
+    exit: 0,
+    inOrder: ["PASS — sequence non-decreasing · read: ordering · items' seq: 3"],
+  },
+  "an empty read declared the claim passes with its reason": {
+    body: `async (failures, tell) => {
+      tell.over("leaks · sessions seen", ["s1", "s2"]);
+      tell.over("leaks · other users' sessions", [], { emptyIs: "the claim: no session leaks" });
+      return { failures, evidence: "no session leaks" };
+    }`,
+    exit: 0,
+    inOrder: ["PASS — no session leaks", "leaks · sessions seen: 2", "leaks · other users' sessions: 0, empty is the claim: no session leaks"],
+    absent: ["CAN'T TELL"],
+  },
+  "one empty read among several of the same name is CAN'T TELL": {
+    body: `async (failures, tell) => {
+      for (const rows of [[1], [], [2]]) tell.over("b4 · task rows", rows);
+      return { failures, evidence: "rows graded" };
+    }`,
+    exit: 3,
+    inOrder: ["b4 · task rows: read 0 in 1 of 3 reads"],
+    absent: ["PASS"],
+  },
+  // emptyIs exempts the call that set it, not every read of the same name.
+  "an emptyIs on one read does not excuse another read of the name": {
+    body: `async (failures, tell) => {
+      tell.over("rows", []);
+      tell.over("rows", [], { emptyIs: "no matches expected here" });
+      return { failures, evidence: "rows graded" };
+    }`,
+    exit: 3,
+    inOrder: ["CAN'T TELL —\n  - rows: read 0 in 1 of 2 reads"],
+    absent: ["PASS"],
+  },
+  "a failure beside a can't-tell is FAIL and prints both": {
+    body: `async (failures, tell) => {
+      tell.over("leg a · rows", []);
+      failures.push("leg b: wrong answer");
+      return { failures, evidence: "" };
+    }`,
+    exit: 1,
+    inOrder: ["FAIL —", "leg b: wrong answer", "CAN'T TELL: leg a · rows: read 0"],
+    absent: ["PASS"],
+  },
+  // A throw is a failure too: the can't-tell recorded before it still prints.
+  "a throw after a can't-tell is FAIL and prints both": {
+    body: `async (failures, tell) => {
+      tell.over("leg a · rows", []);
+      throw new Error("leg b setup broke");
+    }`,
+    exit: 1,
+    inOrder: ["FAIL —", "- leg b setup broke", "CAN'T TELL: leg a · rows: read 0"],
+    absent: ["PASS"],
   },
 };
 

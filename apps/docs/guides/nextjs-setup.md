@@ -52,7 +52,7 @@ import chatFlow from "@/flows/hello-chat/flow";
 
 export const flowstate = createFlowState({
   flows: { chatFlow },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: inMemoryStores() } },
 });
 ```
@@ -69,7 +69,7 @@ import chatFlow from "./src/flows/hello-chat/flow";
 
 export default createFlowState({
   flows: { chatFlow },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: inMemoryStores() } },
 });
 ```
@@ -130,7 +130,7 @@ All under `/api/flows/`. Add more flows by listing them in `flows` on `createFlo
 
 ## Model resolution
 
-Generators specify a model string (e.g. `"openai/gpt-5.4-mini"`). At runtime, the server resolves that to an actual AI SDK model. You need a model resolver.
+Generators specify a model string (e.g. `"openai/gpt-6-luna"`). At runtime, the server resolves that to an actual AI SDK model. You need a model resolver.
 
 You configure models on `createFlowState`. `models.default` is the fallback. The resolver auto-detects providers from environment variables (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.) and auto-wires the Vercel AI Gateway when `AI_GATEWAY_API_KEY` is set.
 
@@ -138,16 +138,16 @@ You configure models on `createFlowState`. `models.default` is the fallback. The
 export const flowstate = createFlowState({
   flows: { chatFlow },
   models: {
-    default: "openai/gpt-5.4-mini",
+    default: "openai/gpt-6-luna",
     intents: {
-      chat: ["vercel/anthropic/claude-sonnet-4.6", "vercel/openai/gpt-5.5"],
+      chat: ["vercel:anthropic/claude-sonnet-5.5", "vercel:openai/gpt-6.1-sol"],
     },
   },
   stores: { default: { primary: inMemoryStores() } },
 });
 ```
 
-Model strings use slash format: `"openai/gpt-5.4-mini"`, `"anthropic/claude-sonnet-4-6"`. For gateway routing: `"vercel/openai/gpt-5.4"`. `intents` maps a named intent to an ordered list of candidate models the resolver tries in turn.
+Model strings look like `"openai/gpt-6-luna"` or `"anthropic/claude-sonnet-5-5"`. To name the gateway that serves a model, put it before a colon: `"vercel:openai/gpt-6.1-sol"`. `intents` maps a named intent to an ordered list of candidate models the resolver tries in turn.
 
 ---
 

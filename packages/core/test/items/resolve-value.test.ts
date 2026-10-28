@@ -7,11 +7,10 @@
  * resolution is unchanged.
  */
 import { describe, expect, it } from "vitest";
-import type { BlockTraceItem, MessageItem, OutputItem } from "../../src/items";
-import {
-  buildItemLookup,
-  resolveBlockValue,
-} from "../../src/items";
+import type { BlockTraceItem, MessageItem, OutputItem, ToolOutputItem } from "../../src/items";
+import { buildItemLookup } from "../../src/items";
+// A `ref` is executor-written, so this calls the internal resolver.
+import { resolveBlockValueInternal } from "../../src/items/internal";
 
 const baseProvenance = {
   blockName: "x",
@@ -57,7 +56,7 @@ describe("resolveBlockValue (FIX-480 ref-to-message)", () => {
     const msg = makeMessage("item_msg_1", "hello world");
     const items: OutputItem[] = [msg];
     const lookup = buildItemLookup(items);
-    const out = resolveBlockValue<string>(
+    const out = resolveBlockValueInternal<string>(
       { kind: "ref", sourceItemId: "item_msg_1" },
       lookup,
     );
@@ -73,7 +72,7 @@ describe("resolveBlockValue (FIX-480 ref-to-message)", () => {
       ],
     };
     const lookup = buildItemLookup([msg]);
-    const out = resolveBlockValue<string>(
+    const out = resolveBlockValueInternal<string>(
       { kind: "ref", sourceItemId: "item_msg_2" },
       lookup,
     );
@@ -85,9 +84,9 @@ describe("resolveBlockValue (FIX-480 ref-to-message)", () => {
       kind: "inline",
       value: { y: 42 },
     });
-    const items: OutputItem[] = [inner];
+    const items = [inner];
     const lookup = buildItemLookup(items);
-    const out = resolveBlockValue<{ y: number }>(
+    const out = resolveBlockValueInternal<{ y: number }>(
       { kind: "ref", sourceItemId: "item_block_output_inner" },
       lookup,
     );
@@ -96,7 +95,7 @@ describe("resolveBlockValue (FIX-480 ref-to-message)", () => {
 
   it("returns undefined when the ref target is missing", () => {
     const lookup = buildItemLookup([]);
-    const out = resolveBlockValue<string>(
+    const out = resolveBlockValueInternal<string>(
       { kind: "ref", sourceItemId: "missing" },
       lookup,
     );
@@ -117,7 +116,7 @@ describe("resolveBlockValue (FIX-480 ref-to-message)", () => {
       message: "x",
     };
     const lookup = buildItemLookup([status]);
-    const out = resolveBlockValue(
+    const out = resolveBlockValueInternal(
       { kind: "ref", sourceItemId: "item_status_1" },
       lookup,
     );
@@ -125,10 +124,41 @@ describe("resolveBlockValue (FIX-480 ref-to-message)", () => {
   });
 
   it("resolves inline values without lookup interaction", () => {
-    const out = resolveBlockValue(
+    const out = resolveBlockValueInternal(
       { kind: "inline", value: { hello: "world" } },
       buildItemLookup([]),
     );
     expect(out).toEqual({ hello: "world" });
+  });
+});
+
+describe("resolveBlockValue (ref to a tool result)", () => {
+  function makeToolOutput(id: string, fields: Partial<ToolOutputItem>): ToolOutputItem {
+    return {
+      id,
+      type: "tool_output",
+      status: "completed",
+      requestId: "req",
+      itemIndex: 0,
+      provenance: baseProvenance,
+      ts: 0,
+      blockName: "readFiles",
+      output: undefined,
+      toolCall: { callId: "c1", name: "readFiles", arguments: "{}" },
+      ...fields,
+    } as ToolOutputItem;
+  }
+
+  it("resolves a ref pointing at a tool_output to its recorded output", () => {
+    const tool = makeToolOutput("item_tool_1", { output: { files: ["a.ts"] } });
+    const out = resolveBlockValueInternal({ kind: "ref", sourceItemId: "item_tool_1" }, buildItemLookup([tool]));
+    expect(out).toEqual({ files: ["a.ts"] });
+  });
+
+  it("resolves a ref through a block_trace that itself refs the tool_output", () => {
+    const tool = makeToolOutput("item_tool_1", { output: 42 });
+    const inner = makeBlockOutput("item_bo_inner", { kind: "ref", sourceItemId: "item_tool_1" } as BlockTraceItem["output"]);
+    const out = resolveBlockValueInternal({ kind: "ref", sourceItemId: "item_bo_inner" }, buildItemLookup([tool, inner]));
+    expect(out).toBe(42);
   });
 });

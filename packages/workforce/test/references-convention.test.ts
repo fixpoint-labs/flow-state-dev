@@ -146,7 +146,7 @@ type Handle = { readContent(): Promise<string | null>; writeContent(body: string
 async function ctxFor(flow: FlowInstance, stores = createInMemoryStores()) {
   const ctx = await createExecutionContext({
     flow,
-    actionName: "run",
+    actionName: "respond",
     requestId: `req_${flow.id}`,
     sessionId: `sess_${flow.id}`,
     userId: USER,

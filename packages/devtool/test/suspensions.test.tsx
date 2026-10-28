@@ -13,8 +13,18 @@ const listSuspensions = vi.fn();
 const resumeSuspension = vi.fn();
 
 const devToolState = {
-  sessionClient: { debug: { listSuspensions } },
-  recoveryClient: { resumeSuspension },
+  client: {
+    sessions: { debug: { listSuspensions } },
+    // A resume, addressed to the exact instance and request.
+    flow: (flowId: string) => ({
+      request: (requestId: string) => ({
+        resume: async (body: unknown) => {
+          const resumed = await resumeSuspension(flowId, requestId, body);
+          return { id: (resumed as { requestId: string }).requestId };
+        },
+      }),
+    }),
+  },
 };
 
 vi.mock("../src/react/context/devtool-context", () => ({

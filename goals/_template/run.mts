@@ -4,8 +4,9 @@
  * Copy this with the goal folder, then fill in the body: load the held-out
  * fixture, drive the real path with a real model, and assert on the
  * user-visible surface — graded against the fixture, never the implementation's
- * own internal output. `runGoal` prints the PASS/FAIL verdict and sets the exit
- * code; return `failures` (empty means PASS) plus the `evidence` inspected.
+ * own internal output. `runGoal` prints the PASS / FAIL / CAN'T TELL verdict and
+ * sets the exit code; return `failures` (empty means PASS) plus the `evidence`
+ * inspected, and floor every list an assertion grades with `tell.over`.
  *
  * The shared helpers live in `goals/lib` — use them rather than re-deriving:
  * they encode the techniques in README.md → "Script techniques", and the two
@@ -17,9 +18,9 @@
 import {
   KITCHEN_SINK,
   DEFAULT_MODEL,
-  answerText,
   goalTmpDir,
   loadFixture,
+  messageText,
   readCapture,
   runFsdev,
   runGoal,
@@ -32,7 +33,7 @@ const fixture = loadFixture<{ message: string; mustContain: string }>(import.met
 
 const CAPTURE = join(goalTmpDir("<slug>"), "run.json");
 
-await runGoal((failures) => {
+await runGoal((failures, tell) => {
   // 2. Drive the REAL path with a REAL model, capturing the run. cwd must be
   //    the app dir — `fsdev` config search is cwd-only.
   const exit = runFsdev({
@@ -58,11 +59,19 @@ await runGoal((failures) => {
   }
 
   // 3. Assert on the user-visible surface, graded against the fixture — NOT on
-  //    implementation internals. `answerText` joins the assistant messages and
-  //    the action's terminal output, which is the surface a user sees.
+  //    implementation internals. Grade the assistant messages AND the action's
+  //    terminal output together, which is the surface a user sees: either alone
+  //    can miss the answer.
   //    Note: worker/block execution items are `type: "block_trace"` carrying an
   //    internal `BlockValueInternal` value — never unwrap those.
-  const answer = answerText(capture);
+  const answer = [
+    ...capture.items.filter((i) => i.type === "message" && i.role !== "user").map(messageText),
+    String(capture.result.output ?? ""),
+  ]
+    .join("\n")
+    .trim();
+  // emptyIs only when empty is the claim. README → Script techniques #5.
+  tell.over("answer · text", [answer].filter((text) => text.length > 0));
   if (!answer.toLowerCase().includes(fixture.mustContain.toLowerCase())) {
     failures.push(
       `answer did not contain "${fixture.mustContain}": ${JSON.stringify(answer.slice(0, 200))}`,

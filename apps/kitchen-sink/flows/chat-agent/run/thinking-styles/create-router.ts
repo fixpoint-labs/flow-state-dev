@@ -62,7 +62,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     backgroundWorkPipeline,
     /**
      * The background-work board's task entries, for the flow to declare under
-     * `task: { actions }`. The board hands each row off to a child session, and
+     * `task: { actions }`. The board dispatches each row to a child session, and
      * the entry is the claim gate that child's `task` dispatch resolves.
      */
     backgroundWorkTasks: backgroundWorkPipeline.taskEntries,

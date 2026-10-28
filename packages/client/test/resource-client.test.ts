@@ -5,7 +5,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import {
-  createResourceClient,
+  createClient,
   type ClientFetch,
   type CollectionListPage,
   type CollectionItemState,
@@ -26,7 +26,7 @@ describe("listCollectionItems", () => {
       nextCursor: "artifacts/a.md"
     };
     const fetcher = vi.fn<ClientFetch>(async () => jsonResponse(page));
-    const client = createResourceClient({ fetcher });
+    const client = createClient({ userId: "devuser", baseUrl: "", fetcher }).resources;
 
     const result = await client.listCollectionItems("sess_1", "artifacts", {
       limit: 50,
@@ -44,7 +44,7 @@ describe("listCollectionItems", () => {
       items: []
     };
     const fetcher = vi.fn<ClientFetch>(async () => jsonResponse(page));
-    const client = createResourceClient({ fetcher });
+    const client = createClient({ userId: "devuser", baseUrl: "", fetcher }).resources;
 
     await client.listCollectionItems("sess_1", "artifacts");
     expect(fetcher.mock.calls[0]?.[0]).toBe(
@@ -56,7 +56,7 @@ describe("listCollectionItems", () => {
     const fetcher = vi.fn<ClientFetch>(async () =>
       jsonResponse({ error: "forbidden" }, 403)
     );
-    const client = createResourceClient({ fetcher });
+    const client = createClient({ userId: "devuser", baseUrl: "", fetcher }).resources;
     await expect(client.listCollectionItems("sess_1", "artifacts")).rejects.toThrow();
   });
 });
@@ -68,7 +68,7 @@ describe("getCollectionItemState", () => {
       clientData: { title: "A" }
     };
     const fetcher = vi.fn<ClientFetch>(async () => jsonResponse(item));
-    const client = createResourceClient({ fetcher });
+    const client = createClient({ userId: "devuser", baseUrl: "", fetcher }).resources;
     const result = await client.getCollectionItemState("sess_1", "artifacts", "a.md");
     expect(result).toEqual(item);
     expect(fetcher.mock.calls[0]?.[0]).toBe(
@@ -78,7 +78,7 @@ describe("getCollectionItemState", () => {
 
   it("returns null when the topic is absent (server returns 200 + null body)", async () => {
     const fetcher = vi.fn<ClientFetch>(async () => jsonResponse(null));
-    const client = createResourceClient({ fetcher });
+    const client = createClient({ userId: "devuser", baseUrl: "", fetcher }).resources;
     const result = await client.getCollectionItemState("sess_1", "artifacts", "missing");
     expect(result).toBeNull();
   });
@@ -101,7 +101,7 @@ describe("getResourceManifest", () => {
       ]
     };
     const fetcher = vi.fn<ClientFetch>(async () => jsonResponse(manifest));
-    const client = createResourceClient({ fetcher });
+    const client = createClient({ userId: "devuser", baseUrl: "", fetcher }).resources;
     const result = await client.getResourceManifest("sess_1");
     expect(result).toEqual(manifest);
     expect(fetcher.mock.calls[0]?.[0]).toBe(

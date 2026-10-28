@@ -50,11 +50,11 @@ export function OmittedValueView({
   return (
     <div className={className}>
       <KindPill kind="omitted" detail={size} />
-      <div className="mt-1 text-[11px] text-slate-500 italic">
+      <div className="mt-1 text-[11px] text-fs-ink4 italic">
         Over the record limit. The run had the full value; the record keeps this preview.
       </div>
       {value.preview.length > 0 && (
-        <pre className="mt-1 whitespace-pre-wrap break-all text-[11px] font-mono text-slate-400">{value.preview}…</pre>
+        <pre className="mt-1 whitespace-pre-wrap break-all font-fs-mono text-[11px] text-fs-ink3">{value.preview}…</pre>
       )}
     </div>
   );
@@ -99,10 +99,10 @@ export function BlockValueView({ value, className }: BlockValueViewProps) {
   return (
     <div className={className}>
       <KindPill kind="structure" detail={value.shape.container} />
-      <div className="mt-1 space-y-1.5 border-l border-amber-900/40 pl-2">
+      <div className="mt-1 space-y-1.5 border-l border-fs-ink/20 pl-2">
         {entries.map(({ key, entry }) => (
           <div key={key} className="space-y-0.5">
-            <span className="text-[10px] font-mono text-slate-500">{key}</span>
+            <span className="font-fs-mono text-[10px] text-fs-ink4">{key}</span>
             <BlockValueView value={entry} />
           </div>
         ))}
@@ -145,7 +145,7 @@ function RefResolvedValue({ sourceItemId }: { sourceItemId: string }) {
   const sourceItem = getItem(sourceItemId);
   if (!sourceItem) {
     return (
-      <div className="mt-1 text-[11px] text-slate-500 italic">(source not retained)</div>
+      <div className="mt-1 text-[11px] text-fs-ink4 italic">(source not retained)</div>
     );
   }
 
@@ -185,14 +185,14 @@ function RefBadge({ sourceItemId }: { sourceItemId: string }) {
       disabled={!canSelect}
       title={sourceItemId}
       className={
-        "inline-flex items-center gap-1.5 text-[11px] font-mono rounded border px-1.5 py-0.5 " +
+        "inline-flex items-center gap-1.5 font-fs-mono text-[11px] border px-1.5 py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fs-blue/40 " +
         (canSelect
-          ? "border-sky-700/60 text-sky-300 hover:bg-sky-950/40 cursor-pointer"
-          : "border-slate-700 text-slate-500 cursor-not-allowed")
+          ? "border-fs-blue/60 text-fs-blue hover:border-fs-blue hover:bg-fs-blue/10 cursor-pointer"
+          : "border-fs-ink/20 text-fs-ink4 cursor-not-allowed")
       }
     >
       <Link2 className="h-3 w-3 shrink-0" />
-      <span className="text-slate-500">ref →</span>
+      <span className="text-fs-ink4">ref →</span>
       <span className="truncate max-w-[16rem]">{label}</span>
     </button>
   );
@@ -206,14 +206,15 @@ function KindPill({
   detail?: string;
 }) {
   const styles: Record<"inline" | "ref" | "structure" | "omitted", string> = {
-    inline: "border-slate-700 text-slate-400",
-    ref: "border-sky-700/60 text-sky-300",
-    structure: "border-amber-700/60 text-amber-300",
-    omitted: "border-rose-700/60 text-rose-300",
+    inline: "border-fs-ink/30 text-fs-ink3",
+    ref: "border-fs-blue/60 text-fs-blue",
+    structure: "border-fs-ink/45 text-fs-ink2",
+    // Omitted is a note about the record, not a failure of the run.
+    omitted: "border-dashed border-fs-ink3 text-fs-ink3",
   };
   return (
     <span
-      className={`inline-flex items-center gap-1 text-[10px] uppercase font-mono rounded border px-1.5 py-0 ${styles[kind]}`}
+      className={`inline-flex items-center gap-1 font-fs-mono text-[9.5px] uppercase tracking-[.08em] border px-1 py-0 ${styles[kind]}`}
     >
       {kind === "structure" && <Package className="h-3 w-3 shrink-0" />}
       <span>{detail ? `${kind} (${detail})` : kind}</span>

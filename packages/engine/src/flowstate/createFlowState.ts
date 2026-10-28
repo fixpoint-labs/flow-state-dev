@@ -31,8 +31,8 @@ import {
   type RuntimeLoggerLevel
 } from "../execution/logging";
 import { abortRequest } from "../execution/abort-registry";
-import { detectInterruptedRequests } from "../execution/request-recovery";
-import { createCheckpointDurabilityProvider } from "../durability/checkpoint-durability-provider";
+import { detectInterruptedRequests, internalEntriesFrom } from "../execution/request-recovery";
+import { resolveDurabilityProvider } from "../durability/default-durability";
 import { FlowStateConfigError, FlowStateDisposedError } from "../errors/flow-error";
 import type { CapabilitySlot, StoreAdapter, StoresConfig } from "../stores/store-adapter";
 import { resolveProfileStores } from "./resolve-slots";
@@ -51,9 +51,11 @@ import {
   type InProcessPrincipalQuestion
 } from "../transports/host/createInboundTransportHost";
 import { isInProcessDispatcher } from "../transports/host/in-process-dispatcher";
-import { createAskResumeOperation, type AskResumeOperation } from "../context/ask-resume-operation";
+import { createWaitResumeOperation, type WaitResumeOperation } from "../context/wait-resume-operation";
 import { createParkedStopDeps } from "../durability/stop-suspended";
-import { installAskSweeperFact } from "../durability/ask-deadlines";
+import { installWaitSweeperFact } from "../durability/wait-deadlines";
+import { installWakes, probeWakes } from "../durability/request-wakes";
+import { installWaits } from "../durability/wait-chain";
 import {
   createConcurrencyArbiter,
   type ConcurrencyArbiter
@@ -840,6 +842,8 @@ class InternalFlowState<TSettings extends object>
       stores,
       staleThresholdMs,
       queuedGraceMs,
+      // A request reaped here owes its session's passes now (FIX-2166).
+      wakeEntriesOf: internalEntriesFrom(this.#registry),
       // Resolved per call rather than captured, for the same reason
       // `#logShutdown` does it: the CLI installs its logger onto the resolved
       // config AFTER `getRuntime()` returns, and this sweep is already running
@@ -940,10 +944,9 @@ class InternalFlowState<TSettings extends object>
     // per-layer signature change.
     // Durable execution: build the default checkpoint provider from the SAME
     // resolved stores the router/worker use, so checkpoints, suspensions, and
-    // leases all read/write the active profile. Opt-in via `durable: true`.
-    const durabilityProvider = this.#options.durable === true
-      ? createCheckpointDurabilityProvider(stores)
-      : undefined;
+    // leases all read/write the active profile. On by default wherever those
+    // stores persist (FIX-2063 D2); `durable: false` turns it off.
+    const durabilityProvider = resolveDurabilityProvider({ stores, durable: this.#options.durable });
 
     // The request-host seam (FIX-999) belongs on the SHARED config, not on the
     // router's copy of it. This config is handed to `worker.startWorker` below
@@ -998,6 +1001,9 @@ class InternalFlowState<TSettings extends object>
       defaultSseHeartbeatMs: this.#options.defaultSseHeartbeatMs,
       durabilityProvider,
       durabilityRetention: this.#options.durabilityRetention,
+      maxDebtAgeMs: this.#options.maxDebtAgeMs,
+      waitDeadlines: this.#options.waitDeadlines,
+      userDeadlineMs: this.#options.userDeadlineMs,
       errorCapture: this.#options.errorCapture,
       queuedGraceMs,
       publicReentrySources: this.#options.publicReentrySources,
@@ -1019,7 +1025,12 @@ class InternalFlowState<TSettings extends object>
     // BEFORE the worker wiring and before any router exists, so every later copy
     // of `requestHost` carries it. See `#installDispatchOperation`.
     this.#installDispatchOperation(runtimeConfig, stores);
-    this.#installAskResume(runtimeConfig, stores);
+    this.#installWaitResume(runtimeConfig, stores);
+    // Before any router builds its sweeper: a wake store that can't be read
+    // withdraws the verb, and the sweeper's wake step with it (FIX-2078).
+    if (runtimeConfig.requestHost !== undefined) {
+      await probeWakes(runtimeConfig.requestHost, stores, runtimeConfig.logger ?? DEFAULT_RUNTIME_LOGGER);
+    }
 
     this.#detectInterruptedOnStartup(stores, staleThresholdMs, queuedGraceMs);
 
@@ -1065,6 +1076,8 @@ class InternalFlowState<TSettings extends object>
     if (requestHost.dispatchOperation !== undefined) return;
 
     let operation: DispatchOperation | undefined;
+    // Read per request: the worker's dispatcher is wired after this.
+    requestHost.dispatchRunsHere ??= () => isInProcessDispatcher(this.#options.dispatcher ?? this.#workerDispatcher);
     requestHost.dispatchOperation = (spec) => {
       if (this.#disposed) {
         return Promise.resolve({
@@ -1078,30 +1091,42 @@ class InternalFlowState<TSettings extends object>
   }
 
   /**
-   * Install the ask resume (`RequestHost.resumeAsk`) on the shared config, on
+   * Install the wait resume (`RequestHost.resumeWait`) on the shared config, on
    * the same terms and for the same reason as the dispatch operation above.
-   * Only with durable execution: without it nothing can park on an ask, and
+   * Only with durable execution: without it nothing can park on a wait, and
    * the verb stays absent.
    */
-  #installAskResume(runtimeConfig: RuntimeConfig, stores: StoreRegistry): void {
+  #installWaitResume(runtimeConfig: RuntimeConfig, stores: StoreRegistry): void {
     const requestHost = runtimeConfig.requestHost;
     const provider = runtimeConfig.durabilityProvider;
+    // Debts' due times (FIX-2078 D1), checked once here: offered only with
+    // durable execution and a store that keeps wakes, logged once otherwise.
+    if (requestHost !== undefined) {
+      installWakes(requestHost, {
+        stores,
+        durable: provider !== undefined,
+        ...(runtimeConfig.maxDebtAgeMs !== undefined ? { maxDebtAgeMs: runtimeConfig.maxDebtAgeMs } : {}),
+        logger: runtimeConfig.logger ?? DEFAULT_RUNTIME_LOGGER
+      });
+    }
     if (requestHost === undefined || provider === undefined) return;
+    // Waits (FIX-2082): offered where the wakes are, since a deadline is one.
+    installWaits(requestHost, provider, runtimeConfig.waitDeadlines);
     // How a block's `ctx.session.stopRequest` stops a parked request: the same
     // host, the same terms.
-    // Whether an ask parked under this host is bounded: a durability sweeper
+    // Whether a wait parked under this host is bounded: a durability sweeper
     // listens on this provider in this process (the router builds it).
-    installAskSweeperFact(requestHost, provider);
+    installWaitSweeperFact(requestHost, provider);
     requestHost.parkedStop ??= createParkedStopDeps({
       provider,
       stores,
       continueRequest: (options) =>
         this.#hostForRequestHostOperations(runtimeConfig, stores).continueRequest(options)
     });
-    if (requestHost.askResume !== undefined) return;
+    if (requestHost.waitResume !== undefined) return;
 
-    let operation: AskResumeOperation | undefined;
-    requestHost.askResume = (input) => {
+    let operation: WaitResumeOperation | undefined;
+    requestHost.waitResume = (input) => {
       // Closed with admission when `dispose()` begins, as a dispatch is: the
       // gate stays pending, and the next touch after a restart resumes it.
       if (this.#disposed) {
@@ -1111,7 +1136,7 @@ class InternalFlowState<TSettings extends object>
           detail: "the runtime is shutting down and is no longer resuming work"
         });
       }
-      operation ??= createAskResumeOperation({
+      operation ??= createWaitResumeOperation({
         provider,
         stores,
         continueRequest: (options) =>

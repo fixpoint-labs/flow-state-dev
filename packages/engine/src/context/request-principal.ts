@@ -131,7 +131,7 @@ export async function claimRequestRecord<T extends RequestRecord>(
   if (!principalOwnsRequest(holder, record)) {
     throw new RequestOwnerMismatchError(record.id);
   }
-  const handedOff: T = { ...record, incarnation: resolveRequestIncarnation(holder) };
-  await stores.request.set(record.id, handedOff, "any");
-  return handedOff;
+  const claimed: T = { ...record, incarnation: resolveRequestIncarnation(holder) };
+  await stores.request.set(record.id, claimed, "any");
+  return claimed;
 }

@@ -1,7 +1,7 @@
 /**
  * Public surface of `@flow-state-dev/codex`: the Codex harness block, its
  * opt-in capability, the client seam and its version gate, the pure
- * translation layer, the cost derivation, the handle and wire types, and the
+ * translation layer, the cost derivation, the usage read, the handle and wire types, and the
  * typed errors.
  *
  * A *harness* is a coding agent driven as a block — you hand it a prompt, it
@@ -20,6 +20,7 @@ export {
 } from "./codex-client";
 export { translateCodexEvent } from "./translate";
 export { estimateCodexCost } from "./cost";
+export { findCodexProgram, readCodexUsage, type CodexProgram, type ReadCodexUsageOptions } from "./usage";
 export {
   createEmitState,
   emitTranslatedEvent,

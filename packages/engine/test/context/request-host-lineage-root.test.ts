@@ -9,6 +9,7 @@
  * conversation at the top, because it was handed the same value twice.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createInMemoryStores } from "../../src";
 import type { StoreRegistry } from "../../src/stores/types";
 import { dispatchableFlow, spawnChild } from "./seam-harness";
@@ -18,7 +19,7 @@ const FLOW = dispatchableFlow("lineage-seam");
 /** Dispatch a child from `sessionId`, which belongs to lineage `lineageId`. */
 async function childOf(stores: StoreRegistry, sessionId: string, lineageId: string) {
   const childId = await spawnChild(stores, FLOW, "review", {
-    identity: { userId: "u_alice", tenantId: undefined, orgId: undefined, sessionId, lineageId }
+    identity: { userId: "u_alice", tenantId: undefined, orgId: DEFAULT_ORG_ID, sessionId, lineageId }
   });
   const record = await stores.session.get(childId);
   if (record === undefined) throw new Error("child record was not written");

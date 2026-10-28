@@ -9,7 +9,7 @@
  * of reach, a 5xx) is thrown as it came, and is something to retry.
  */
 import { ClientHttpError } from "@flow-state-dev/client";
-import type { LabClients } from "./connection";
+import type { Client, SentRequest } from "@flow-state-dev/client";
 import { newSessionId } from "./ids";
 import { describeFailure } from "./reads";
 
@@ -48,19 +48,19 @@ const REQUEST_PAGES = 20;
  * session it ran in.
  */
 export async function runAction(
-  clients: LabClients,
+  client: Client,
   flow: string,
   sessionId: string | undefined,
   action: string,
   input: unknown,
 ): Promise<{ output: unknown; sessionId: string }> {
-  const actions = clients.actions(flow);
+  const actions = client.flow(flow);
   // A new session is named here: the Lab's answer to an action started with
   // no session names none, and its requests are read back by session.
   const session = sessionId ?? newSessionId("act");
-  let started: Awaited<ReturnType<typeof actions.sendAction>>;
+  let started: SentRequest;
   try {
-    started = await actions.sendAction(action, input, { sessionId: session });
+    started = await actions.send(action, input, { sessionId: session });
   } catch (error) {
     // The Lab said no, with a reason. A 5xx or no answer at all is not a refusal.
     if (error instanceof ClientHttpError && error.status >= 400 && error.status < 500) {
@@ -68,12 +68,12 @@ export async function runAction(
     }
     throw error;
   }
-  const requestId = started.request.id;
+  const requestId = started.id;
 
   const until = Date.now() + TIMEOUT_MS;
-  let status: Awaited<ReturnType<typeof actions.getRequestStatus>>["status"];
+  let status: Awaited<ReturnType<SentRequest["status"]>>["status"];
   for (;;) {
-    status = (await actions.getRequestStatus(requestId)).status;
+    status = (await actions.request(requestId).status()).status;
     if (status !== "in_progress") break;
     if (Date.now() > until) throw new Error(`The Lab did not finish ${action} in time.`);
     await new Promise((resolve) => setTimeout(resolve, POLL_MS));
@@ -83,7 +83,7 @@ export async function runAction(
 
   const findAnswer = async () => {
     for (let page = 0; page < REQUEST_PAGES; page += 1) {
-      const listed = await clients.sessions.listSessionRequests(session, {
+      const listed = await client.sessions.requests(session, {
         status,
         includeResultOutput: true,
         limit: REQUEST_PAGE,

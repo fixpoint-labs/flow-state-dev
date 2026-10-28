@@ -3,7 +3,7 @@
  * organization: `alice` and `bob` (members), and `mallory` (in the org, not a
  * member).
  *
- * Covers the row writes (`createProject`, `setRepository`) and the project
+ * Covers the row writes (`createProject`, `setRepository`, `setBrief`) and the project
  * files read. Identity comes from a verified header, never the body (BP-031).
  *
  * **Controls.** Three modules are swappable on purpose, and each swap must turn
@@ -19,7 +19,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
-import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
+import { createFlowState, createInProcessFetch, inMemoryStores } from "@flow-state-dev/engine";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
@@ -103,18 +103,15 @@ async function boot(options: { primary?: ReturnType<typeof inMemoryStores> } = {
       return user == null ? null : { userId: user, orgId: ORG };
     }
   } as never);
-  const router = (await state.getRouter()) as any;
+  const inProcess = createInProcessFetch(state);
   const stores: StoreRegistry = (await state.getRuntime()).stores;
 
   const call = async (method: "GET" | "POST", user: string, path: string[], body?: unknown, query = ""): Promise<Answer> => {
-    const response = await router[method](
-      new Request(`http://test/api/flows/${path.join("/")}${query}`, {
+    const response = await inProcess(`http://test/api/flows/${path.join("/")}${query}`, {
         method,
         headers: { "content-type": "application/json", "x-verified-user": user },
         ...(body === undefined ? {} : { body: JSON.stringify(body) })
-      }),
-      { params: { path } }
-    );
+      });
     const text = await response.text();
     return { status: response.status, json: text.length > 0 ? JSON.parse(text) : undefined };
   };
@@ -404,6 +401,37 @@ describe("a project's repository", () => {
     expect(refusal(nowhere)).toContain("no-such-project");
     expect((await h.inspectRow("apollo")).row).toEqual(before);
     expect((await h.inspectRow("nope")).row).toBeNull();
+  });
+});
+
+describe("a project's brief", () => {
+  it("lets a member set, change and clear it, and changes nothing else on the row", async () => {
+    const h = await boot();
+    await apollo(h);
+    const before = (await h.inspectRow("apollo")).row;
+    const bobLab = await h.openSession("bob", "lab");
+    const set = await h.ok("bob", "lab", bobLab, "setBrief", { project: { visibility: "shared", id: "apollo" }, brief: "Ship guest checkout." });
+    expect(set.project).toEqual({ ...before, brief: "Ship guest checkout." });
+    expect((await h.inspectRow("apollo")).row).toEqual({ ...before, brief: "Ship guest checkout." });
+    const cleared = await h.ok("bob", "lab", bobLab, "setBrief", { project: { visibility: "shared", id: "apollo" }, brief: null });
+    expect(cleared.project.brief).toBeNull();
+  });
+
+  it("refuses a non-member, an unknown project, and a call naming none from a conversation linked to none", async () => {
+    const h = await boot();
+    await apollo(h);
+    const before = (await h.inspectRow("apollo")).row;
+    const malloryLab = await h.openSession("mallory", "lab");
+    const outsider = await h.act("mallory", "lab", malloryLab, "setBrief", { project: { visibility: "shared", id: "apollo" }, brief: "Mine now." });
+    expect(refusal(outsider)).toContain("not-a-member");
+    const nowhere = await h.act("mallory", "lab", malloryLab, "setBrief", { project: { visibility: "shared", id: "nope" }, brief: "x" });
+    expect(refusal(nowhere)).toContain("no-such-project");
+    const aliceLab = await h.openSession("alice", "lab");
+    for (const action of ["setBrief", "setRepository"]) {
+      const unnamed = await h.act("alice", "lab", aliceLab, action, action === "setBrief" ? { brief: "x" } : { repository: null });
+      expect(refusal(unnamed), action).toContain("no-such-project");
+    }
+    expect((await h.inspectRow("apollo")).row).toEqual(before);
   });
 });
 

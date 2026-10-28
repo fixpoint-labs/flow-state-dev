@@ -184,14 +184,6 @@ describe.each([
       expect(winners[0]?.id).toBe("only");
     });
 
-    it("skips parked tasks under default eligibility", async () => {
-      await collection.addTask({ id: "a", goal: "A" });
-      await collection.addTask({ id: "b", goal: "B" });
-      const first = await collection.claim("worker-1");
-      await collection.awaitReview(first!.id);
-      const second = await collection.claim("worker-2");
-      expect(second?.id).not.toBe(first?.id);
-    });
   });
 
   describe("complete / fail", () => {
@@ -277,59 +269,20 @@ describe.each([
     });
   });
 
-  describe("block / unblock / awaitReview / unpark / cancel", () => {
-    it("block transitions pending → blocked", async () => {
+  describe("hold / release / awaitReview / unpark / cancel", () => {
+    it("hold transitions pending → held", async () => {
       await collection.addTask({ id: "t", goal: "t" });
-      await collection.block("t", "deps not ready");
-      expect(collection.get("t")?.status).toBe("blocked");
-      expect(events.at(-1)?.kind).toBe("blocked");
+      await collection.hold("t");
+      expect(collection.get("t")?.status).toBe("held");
+      expect(events.at(-1)?.kind).toBe("held");
     });
 
-    it("unblock returns to pending", async () => {
+    it("release returns to pending", async () => {
       await collection.addTask({ id: "t", goal: "t" });
-      await collection.block("t");
-      await collection.unblock("t");
+      await collection.hold("t");
+      await collection.release("t");
       expect(collection.get("t")?.status).toBe("pending");
-      expect(events.at(-1)?.kind).toBe("unblocked");
-    });
-
-    it("awaitReview moves in_progress → parked", async () => {
-      await collection.addTask({ id: "t", goal: "t" });
-      await collection.claim("w");
-      await collection.awaitReview("t", "please review");
-      expect(collection.get("t")?.status).toBe("parked");
-      expect(collection.get("t")?.feedback).toBe("please review");
-      expect(events.at(-1)?.kind).toBe("review_requested");
-    });
-
-    it("awaitReview with no reason clears a failed attempt's note", async () => {
-      // A retry that parks without a reason must not leave the earlier failure
-      // text on `feedback`, where a reader (and the DevTool's Reason column)
-      // would take it for the reason the task is waiting on them.
-      await collection.addTask({ id: "t", goal: "t", maxAttempts: 2 });
-      await collection.claim("w");
-      await collection.fail("t", "TypeError: boom");
-      expect(collection.get("t")?.feedback).toBe("TypeError: boom");
-
-      await collection.claim("w");
-      await collection.awaitReview("t");
-      const t = collection.get("t")!;
-      expect(t.status).toBe("parked");
-      expect(t.feedback).toBeUndefined();
-    });
-
-    it("unpark returns to pending without incrementing attempts", async () => {
-      await collection.addTask({ id: "t", goal: "t" });
-      await collection.claim("w");
-      const beforeReview = collection.get("t")!;
-      const attempts = beforeReview.attempts;
-      await collection.awaitReview("t");
-      await collection.unpark("t", "do this instead");
-      const t = collection.get("t")!;
-      expect(t.status).toBe("pending");
-      expect(t.attempts).toBe(attempts);
-      expect(t.feedback).toBe("do this instead");
-      expect(events.at(-1)?.kind).toBe("resumed");
+      expect(events.at(-1)?.kind).toBe("released");
     });
 
     it("cancel on terminal status is a no-op (no event emitted)", async () => {
@@ -352,7 +305,7 @@ describe.each([
       await collection.addTask({ id: "t", goal: "t" });
       await collection.claim("w");
       await collection.complete("t", "ok");
-      await expect(collection.block("t")).rejects.toThrow(/illegal status transition/);
+      await expect(collection.fail("t", "too late")).rejects.toThrow(/illegal status transition/);
     });
   });
 

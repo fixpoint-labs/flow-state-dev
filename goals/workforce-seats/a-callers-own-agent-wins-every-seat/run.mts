@@ -21,7 +21,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@flow-state-dev/engine";
+import { createFlowApiRouter, createFlowRegistry, type StoreRegistry, createInProcessFetch } from "@flow-state-dev/engine";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import { AGENT_FLOW, type WorkerManifest } from "@flow-state-dev/workforce";
 import type { FlowInstance } from "@flow-state-dev/core/types";
@@ -72,14 +72,11 @@ function host(stores: StoreRegistry, flows: FlowInstance[]): Router {
 }
 
 async function call(router: Router, method: "GET" | "POST", path: string[], body?: unknown): Promise<Response> {
-  return router[method](
-    new Request(`http://goal/api/flows/${path.join("/")}`, {
+  return createInProcessFetch(router)(`http://goal/api/flows/${path.join("/")}`, {
       method,
       headers: { "content-type": "application/json" },
       ...(body === undefined ? {} : { body: JSON.stringify(body) })
-    }),
-    { params: { path } }
-  );
+    });
 }
 
 async function settled(stores: StoreRegistry, requestId: string): Promise<string | undefined> {

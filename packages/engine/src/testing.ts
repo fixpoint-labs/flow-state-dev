@@ -35,6 +35,10 @@ export {
   type CreateLeaseStoreConformanceTestsOptions
 } from "./stores/testing/lease-store-conformance";
 export {
+  createWakeStoreConformanceTests,
+  type CreateWakeStoreConformanceTestsOptions
+} from "./stores/testing/wake-store-conformance";
+export {
   createSessionStreamConformanceTests,
   type CreateSessionStreamConformanceTestsOptions
 } from "./stores/testing/session-stream-conformance";

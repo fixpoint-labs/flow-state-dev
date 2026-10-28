@@ -2,14 +2,14 @@
  * `@flow-state-dev/harness-manager` — a task-board row becomes a supervised
  * coding run.
  *
- * One handed-off worker on a board:
+ * One dispatched worker on a board:
  *
  *   open the run row → build the prompt & take the checkout → run the harness
  *   → read the verdict → settle or fail
  *
  * The **harness is a slot**, not a dependency. This package imports no coding
  * agent and reads no vendor field: the host hands it a factory, the manager
- * calls that factory once with the three feeds the harness contract declares
+ * calls that factory once with the four feeds the harness contract declares
  * (`@flow-state-dev/core`), and a Codex run and a Claude Code run settle
  * identically because the verdict is read off the neutral handle.
  *
@@ -19,8 +19,12 @@
  * package versions:
  *
  * - {@link harnessManager} and its options, including the `harness` slot.
- * - `harnessMessageDoor`, the message door for a flow whose runs come from
- *   more than one board.
+ * - `harnessSessionDoor`, the door a coding flow declares for a line typed
+ *   in a run's session: a steer while its task is open, talk once it has
+ *   finished. `harnessTalkTurn` is its talk half, which a coder also runs for
+ *   a message about a finished task.
+ * - `upgradeKeptTurns`, the upgrade's one-off step that writes a line the
+ *   coding door kept before FIX-2086 onto its task as a steer.
  * - `runOwnerDispatcher`, for a board kept per organization: a run belongs to
  *   the member who started it, and another member's drain leaves it alone.
  * - `PhaseSpec` and the run-context types a phase's hooks are handed: the
@@ -30,7 +34,10 @@
  *   `assertCheckoutRootUsable`, `assertPositiveInt`).
  * - `harnessDrainBudgetMs` and `resolveOwnership`, because a host sizing its
  *   own shutdown needs the same numbers the manager enforces.
- * - The run record and inbox collections, so a host can build a status surface.
+ * - The run record collection, so a host can build a status surface. A run's
+ *   question holds its task on the board, so a host reads questions there.
+ * - `harnessUsageAction`, the one query for how much of each harness's
+ *   subscription a person has used, and the collection behind it.
  *
  * **Checkout internals are NOT here.** They live behind
  * `@flow-state-dev/harness-manager/checkout`, a separate entry point, because
@@ -55,9 +62,9 @@ export {
   MAX_ANSWER_CHARS,
   HarnessAttemptFailed,
   HarnessAttemptSuperseded,
-  HarnessRunParked,
   HarnessRunRefused,
   RUNS,
+  STEER_POLL_MS,
   type ManagerOptions,
   type HarnessLedgers,
   type HarnessJudge,
@@ -70,24 +77,26 @@ export {
   type PromptRunContext,
   type CompletionRunContext,
   type AnsweredQuestion,
-  type QuestionAnnouncement,
   type RequestIdentityContext,
 } from "./manager";
 
-// ── A person's message into a run, for a host whose runs span boards ────────
+// ── A line typed in a run's session: a steer, or talk once finished ─────────
 export {
-  harnessMessageDoor,
-  messageDoorInputSchema,
-  messageDoorOutputSchema,
-  TurnRefused,
-  type HarnessMessageDoorOptions,
-  type MessageDoorAction,
-  type MessageDoorBoard,
-  type MessageDoorOptions,
-  type MessageDoorOutput,
-  type DoorRunIdentity,
-  type TurnRefusalReason,
-} from "./door";
+  harnessSessionDoor,
+  harnessTalkTurn,
+  harnessTalkInputSchema,
+  harnessTalkOutputSchema,
+  sessionDoorInputSchema,
+  sessionDoorOutputSchema,
+  SessionDoorRefused,
+  type HarnessSessionDoorOptions,
+  type HarnessTalkTurnOptions,
+  type SessionDoorBoard,
+  type SessionDoorRefusalReason,
+} from "./session-door";
+
+// ── The upgrade's one-off step for lines the coding door kept ───────────────
+export { upgradeKeptTurns, type KeptTurnUpgradeOptions, type KeptTurnUpgradeStores } from "./upgrade-kept-turns";
 
 // ── Whose run a row is, on a board kept per organization ────────────────────
 export {
@@ -124,24 +133,26 @@ export {
  */
 export { runBoardSegment } from "./workspace";
 
-// ── The question inbox ──────────────────────────────────────────────────────
+// ── Subscription usage left, per person and harness ─────────────────────────
 //
-// `withdrawEarlierQuestions` is not here for the same reason the run-record
-// writes are not: it is attempt-scoped reconciliation the manager performs at
-// the start of a run, and calling it from outside one withdraws a question a
-// live attempt is still waiting on.
+// The query is the read path: a host puts `harnessUsageAction({ readers })`
+// on one flow. `recordHarnessUsage` is the collection's one writer, for a
+// harness that reports usage during a run.
 export {
-  INBOX,
-  askQuestion,
-  answerQuestion,
-  inboxCollection,
-  listQuestions,
-  parseQuestionTopic,
-  questionFingerprint,
-  questionTopic,
-  readQuestion,
-  withdrawQuestion,
-} from "./inbox";
+  HARNESS_USAGE,
+  USAGE_READ_TIMEOUT_MS,
+  USAGE_REFRESH_EVERY_MS,
+  harnessUsageAction,
+  harnessUsageCollection,
+  harnessUsageStateSchema,
+  readHarnessUsage,
+  recordHarnessUsage,
+  type HarnessUsageActionOptions,
+  type HarnessUsageRow,
+  type HarnessUsageState,
+  type HarnessUsageWindowRow,
+  type UsageWrite,
+} from "./harness-usage";
 
 // ── The ask marker ──────────────────────────────────────────────────────────
 export { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE, askMarkerPath, readAskMarker } from "./ask";

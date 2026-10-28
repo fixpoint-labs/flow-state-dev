@@ -200,7 +200,7 @@ spoken for.** The problem and the solution are one **people table** — *someone
 after* (a spec) or *a team that… · today · after this epic* (an epic) — cut from the spec's own
 `SPEC.md`. Under it goes the spec's figure, as a raw image pinned to the commit that holds it
 ([`spec-figures.md`](spec-figures.md) → "In the PR body"), with its one sentence: the *what
-changes* figure on a spec PR; on an epic PR the box, then the path and the ownership matrix
+changes* figure on a spec PR; on an epic PR the box, then the ownership matrix
 further down. Between the table and that figure sits **the goal**: one sentence, the *how
 we'll know it's met* figure as a mermaid fence, and one line naming the goal check and the
 control that must fail. So the question on those PRs is not *does a diagram earn its place* but whether
@@ -303,40 +303,19 @@ ambiguous public guard surface, or a migration third parties didn't need" is a c
 owner can price. "The two guards would both have to be maintained" is a fact about our code,
 and it asks them to work out for themselves why that's bad.
 
-**Three is the ceiling, hardest first — and live forks count toward it.** Two ratified
-decisions and one fork is three; so is one ratified decision and two forks. Not a target —
-one decision and one fork is a healthy PR, and a change following an approved spec often has
-none. Past three, either the filters weren't applied or this PR carries more product surface
-than one PR should.
-
-> **On a spec PR the decisions in `DECISIONS.md` are what approval certifies, so none is
-> dropped — they are *sorted*.** The ones that pass both filters get a line here; the rest go
-> one bullet each in the collapsed engineering block. Nothing is hidden and nothing is approved
-> unseen. A decisions doc that yields six product decisions is one that put the owner in the
-> engineer's chair, and the fix for that is upstream in the spec
-> ([`spec-template.md`](spec-template.md) → `DECISIONS.md`), not a longer list here.
+**Three is the ceiling, hardest first, and live forks count toward it**
+([`asking-for-decisions.md`](asking-for-decisions.md) → "Batching"). On a spec PR none of
+`DECISIONS.md` is dropped: what fails the filters moves one bullet each to the collapsed
+engineering block (same file → "Filtering is sorting, not hiding").
 
 ### The live forks — the full ask, below the ratified ones
 
-A decision the author can't settle alone gets more than two bullets. It takes the six-part
-shape from [`asking-for-decisions.md`](asking-for-decisions.md): the fork as a heading, plain
-terms, the trade-off, **your recommendation**, what would change your mind, and what being
-wrong costs. Canonical there; don't re-derive it here. Same subheading convention as the
-ratified ones, so all of block 3 skims as one list of headings — the fork's just names both
-options: *"Hard ceiling at three, or a soft one?"*
-
-Three rules keep it from swallowing the block:
-
-- **Zero to two per PR**, inside the ceiling of three above. Three forks is a signal the
-  change went too long without checking in; a fork the whole PR rests on should have been
-  raised before the PR existed.
-- **One to three sentences per part; ~200 words for the whole fork** — the per-fork row in
-  [`writing-for-humans.md`](writing-for-humans.md) → Budgets. A five-sentence recommendation
-  is an argument with itself on the page. Make the call, give the reason that actually
-  decided it, and stop.
-- **Never present a fork as neutral when you have a view.** That spends a round extracting
-  the view, and it isn't neutrality — it's asking the reader to build a position from less
-  information than you have.
+A decision the author can't settle alone takes the six-part shape from
+[`asking-for-decisions.md`](asking-for-decisions.md), canonical there. Same subheading
+convention as the ratified ones, so block 3 skims as one list of headings; the fork's names
+both options: *"Hard ceiling at three, or a soft one?"* **Zero to two per PR**, inside the
+ceiling; **~200 words for the whole fork** ([`writing-for-humans.md`](writing-for-humans.md)
+→ Budgets).
 
 A PR where nothing is open says so in one line, matched to its route (see "The layout"
 above): *this implements the approved direction* on a spec-backed change, and *nothing here
@@ -481,7 +460,7 @@ What goes down here:
   construction ([`spec-template.md`](spec-template.md) → `DECISIONS.md`), so normally nothing
   filters out and the block is omitted. It appears only when the decisions doc collected an
   implementation call the filters caught, which keeps it complete without the reader having to
-  approve it. **Implementation calls a compliant spec made deliberately live in `PLAN.md` →
+  approve it. **Implementation calls a compliant spec made deliberately live in `DECISIONS.md` →
   Decided, not asked**, which is in the committed doc diff a reviewer already reads — don't
   copy them into the body.
 - **The long-form case.** On a spec or epic PR, **nothing**: the document set is the diff,
@@ -497,8 +476,8 @@ collapsed **How to review this** section.
 
 | PR kind | The one question | The human judges | Automated review helps most on | Do **not** report |
 |---|---|---|---|---|
-| **Spec PR** (`spec/<ISSUE-ID>`, merges after approval/checks) | Is this the right approach? | The goal's size and its check, the numbered decisions, scope, whether it's worth building | Design-invalidating constraints, missing rules, documentation promises, predecessor treatment and experimental isolation | Unpinned names/layout, local structure, test names, pixel-level figures, sketch and POC production polish |
-| **Epic PR** (`epic/<name>`, merges after approval/checks) | Is this body of work worth doing — and does the set overbuild? | The goal's size and the closure issue that checks it, set size and cross-cutting decisions | Conflicting decisions, rule ownership, missing/unnecessary issues, shared documentation ownership and lineage | Single-issue design details and routine status movement since the dated snapshot |
+| **Spec PR** (`spec/<ISSUE-ID>`, merges after approval/checks) | Is this the right approach? | The goal's size and its check, the numbered decisions, scope, whether it's worth building | Design-invalidating constraints, missing cases a person sees, the debt section, predecessor rows and experimental isolation | Unpinned names/layout, local structure, test names, pixel-level figures, POC production polish |
+| **Epic PR** (`epic/<name>`, merges after approval/checks) | Is this body of work worth doing — and does the set overbuild? | The goal's size and the closure issue that checks it, set size and cross-cutting decisions | Conflicting decisions, rule ownership in `DECISIONS.md`, missing/unnecessary issues, the docs line, *what's already here* and the set's debt | Single-issue design details and routine status movement since the dated snapshot |
 | **Implementation PR** (`fix/<ISSUE-ID>`, merges) | Is this correct, and does it match the approved direction? | The implementation decisions and their ramifications, what was subtracted, whether the goal was actually *proved*: a PASS on the spec's goal check, after its control was seen to FAIL | Correctness, second paths (BP-035), auth/routing from caller-controllable input (BP-031), legacy-shape tolerance (BP-030), concurrency and null boundaries | Re-litigating a Decision the spec already settled and a human approved; style the codebase has already settled |
 
 **The implementation row is the asymmetry worth noticing.** On a spec or epic PR we are
@@ -512,8 +491,9 @@ The [canonical convergence rule](orchestration.md#spec-review-the-bar-and-the-co
 still limits design rounds. Optional comments do not demand zero-thread convergence;
 required checks, approvals and thread-resolution policy still apply before merge.
 Retained POCs are experimental, but isolation and absence of secrets/generated
-dependencies remain reviewable. Implementation must reconcile `DOCS.md` against behavior
-and publish it, and account for the relevant predecessors in `EVOLUTION.md`.
+dependencies remain reviewable. Implementation writes the docs to the destinations
+`SPEC.md`'s docs line names, against what shipped, and honours the spec's debt verdict; a set
+retained in the older shape binds it to its `DOCS.md` and `EVOLUTION.md` instead.
 
 ## Where each block is authored
 
@@ -594,7 +574,7 @@ that **nothing was written down before the work that constrained it**:
 - **A pass whose scope came from the material** rather than from an issue — `polish-docs` at
   epic wrap is the standing case.
 - **Work filed retrospectively**, where the issue was written *after* the change to record
-  it — the `adhoc-commit-as-new-issue` route for anything that isn't a bug.
+  it — the `adhoc-quick-fix` "work already done" entry for anything that isn't a bug.
 
 **Do not paste variant 3 here.** It asserts a one-screen brief exists and that the work was
 expected to be small and local. Neither route wrote a brief, and a corpus-level pass isn't

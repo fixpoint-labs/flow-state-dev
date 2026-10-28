@@ -35,7 +35,7 @@ describe("a message to an agent worker", () => {
       const result = await runAction({
         orgId: DEFAULT_ORG_ID,
         flow: worker!,
-        actionName: "run",
+        actionName: "respond",
         input: { message: "where is my refund?" },
         userId: USER_ID,
         sessionId: "otto-conversation",

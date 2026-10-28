@@ -14,12 +14,13 @@
  *
  * `detached: true` turns the conversation-state half off — see the option.
  */
-import { handler, harnessRunInputSchema, harnessRunNamespace } from "@flow-state-dev/core";
+import { formatRunDuration, handler, harnessRunInputSchema, harnessRunNamespace } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type {
   HarnessCallbackContext,
   HarnessResolver,
   HarnessSessionHook,
+  HarnessUsageHook,
 } from "@flow-state-dev/core/types";
 import type { UsesSlot } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -48,7 +49,9 @@ import {
   workRecorderResources,
 } from "./work-collections";
 import { defaultResolveClaudeAgent } from "./sdk-client";
+import { CLAUDE_CODE_HARNESS, usageWindowOf } from "./usage";
 import { trackProcess } from "./process-exit";
+import { inProcessMcpServer, type ClaudeCodeMcpToolServer, type ClaudeCodeMcpTools } from "./mcp-tools";
 import {
   createClaudeAgentSessionProvider,
   type ClaudeAgentSession,
@@ -69,6 +72,26 @@ import {
   type ToolApprovalRequest,
 } from "./types";
 import type { BindingProvider } from "@flow-state-dev/core/types";
+
+/**
+ * Claude Code's to-do tools, added to every run's `allowedTools`. Outside its
+ * terminal, Claude Code on its current models offers them only when one is
+ * named there; without them a run keeps no list and the plan record stays
+ * empty. They ask no permission, so naming them allows nothing more.
+ */
+const TODO_TOOLS = ["TaskCreate", "TaskUpdate", "TaskGet", "TaskList"] as const;
+
+/**
+ * Claude Code's search tools, added to `allowedTools` under `bypassPermissions`
+ * only. Outside its terminal it offers them only when they are named there.
+ * They check paths for permission, so naming them for a host that prompts
+ * would approve searches outside the working directory; under
+ * `bypassPermissions` every tool is already allowed.
+ */
+const SEARCH_TOOLS = ["Grep", "Glob"] as const;
+
+/** The live status from the moment a run starts until Claude Code says anything. */
+const STARTING_STATUS = "Starting Claude Code…";
 
 /** Session-state key holding the SDK session id to resume across requests. */
 export const SDK_SESSION_ID_KEY = "sdkSessionId" as const;
@@ -116,20 +139,38 @@ export interface ClaudeCodeAgentOptions {
   sessionProvider?: BindingProvider<ClaudeAgentSession>;
   /** Derive the prompt from input/ctx. Default: `input.prompt`. */
   prompt?: (input: { prompt: string }, ctx: AgentCallbackContext) => string;
-  /** Model id forwarded to the SDK. */
-  model?: string;
+  /**
+   * Which model the run uses: a fixed id, or a resolver called once per
+   * invocation, like `cwd` and `resume`, so one block can run a different
+   * model for each run (each session of a host, say). Forwarded to the SDK as
+   * its `model`, on a fresh run and a resumed one alike.
+   *
+   * `null`, `""` and `undefined` from the resolver all mean "no model named":
+   * the SDK runs Claude Code's own default. The resolver is handed the context
+   * alone, never the prompt, for the reason `cwd` is (BP-031).
+   */
+  model?: string | HarnessResolver<string | null | undefined>;
   /**
    * The system prompt the run starts from, forwarded to the SDK as given; the
    * shapes are on {@link ClaudeAgentSystemPrompt}. Omitted, the run starts from
    * Claude Code's own prompt, the one the `claude` CLI uses.
    *
    * No prompt makes the agent keep a to-do list. `recordWork`'s plan half fills
-   * only when the run is offered the to-do tools and the agent chooses to use
-   * them; on newer models Claude Code offers them only when they are named in
-   * `allowedTools`.
+   * only when the agent chooses to use its to-do tools, which every run is
+   * offered (see `allowedTools`).
    */
   systemPrompt?: ClaudeAgentSystemPrompt;
-  /** Allowed tool names forwarded to the SDK. */
+  /**
+   * Tools the run may use without asking, forwarded to the SDK with Claude
+   * Code's to-do tools (`TaskCreate`, `TaskUpdate`, `TaskGet`, `TaskList`)
+   * added. Outside its terminal, Claude Code offers those on its current
+   * models only when they are named here, and they need no permission, so
+   * naming them allows nothing else. Under `bypassPermissions` its search
+   * tools (`Grep`, `Glob`) are added too, which Claude Code also offers only
+   * when named; in other modes naming them would skip path prompts, so they
+   * are left to the host. To keep a run from any of them, list them in
+   * `disallowedTools`.
+   */
   allowedTools?: string[];
   /** Disallowed tool names forwarded to the SDK. */
   disallowedTools?: string[];
@@ -151,7 +192,7 @@ export interface ClaudeCodeAgentOptions {
     ctx: AgentCallbackContext,
   ) => ToolApprovalDecision | Promise<ToolApprovalDecision>;
   /**
-   * Run the agent as **handed-off background work** — the block a task board
+   * Run the agent as **dispatched background work** — the block a task board
    * worker's `dispatcher({ type: "task" })` targets, declared on the flow under
    * `task: { actions }` and run in a child session. Default `false`: an
    * in-session agent that keeps conversation state — the `sdkSessionId` resume
@@ -160,8 +201,8 @@ export interface ClaudeCodeAgentOptions {
    *
    * **This is the canonical explanation; everywhere else links here.**
    *
-   * `defineFlow` refuses a handed-off entry whose block authors a
-   * `sessionStateSchema` (`assertHandOffBlockSupported`), because the block
+   * `defineFlow` refuses a dispatched entry whose block authors a
+   * `sessionStateSchema` (`assertDispatchEntrySupported`), because the block
    * runs in a child session it may share with other rows, where two blocks
    * choosing the same key with different shapes corrupt each other silently.
    *
@@ -273,6 +314,32 @@ export interface ClaudeCodeAgentOptions {
   sandbox?:
     | SandboxSettings
     | ((ctx: AgentCallbackContext) => SandboxSettings | Promise<SandboxSettings>);
+  /**
+   * Tools this process serves to the run, grouped by server name: a value, or
+   * a resolver called once per run with the run's context only (like `cwd`).
+   * Default: unset, which hands the SDK exactly today's options.
+   *
+   * **This is the canonical explanation; everywhere else links here.**
+   *
+   * Each entry becomes an MCP server inside this process, named by its key;
+   * the run calls its tools as `mcp__<server>__<tool>`. A tool is a name, a
+   * description, a JSON Schema for its input and a `call` function, so the
+   * option can't carry an address or headers: where a tool's work happens and
+   * what credential it uses stay with the host.
+   *
+   * Set, even to `{}`, it is the run's whole MCP set: `strictMcpConfig` keeps
+   * out servers from `.mcp.json`, settings files and plugins, and
+   * `disableClaudeAiConnectors` keeps out the signed-in account's claude.ai
+   * connectors. If the run still reports a server it wasn't handed, a status
+   * item says so. The tools are allowed without asking; name one in
+   * `disallowedTools` to keep it out. Each server's `close` is called when the
+   * run ends, however it ends, and once when several servers share it. An
+   * abort while the resolver is still connecting stops the wait; what it
+   * answers afterwards is closed.
+   */
+  mcpTools?:
+    | ClaudeCodeMcpTools
+    | ((ctx: AgentCallbackContext) => ClaudeCodeMcpTools | Promise<ClaudeCodeMcpTools>);
   /**
    * Capabilities installed on the block this factory returns — the same `uses`
    * slot any other block takes, forwarded to `handler()`.
@@ -486,6 +553,22 @@ export interface ClaudeCodeAgentOptions {
    * stream, so a slow hook slows the run and a throwing one fails it.
    */
   onSession?: HarnessSessionHook;
+  /**
+   * Called with each subscription usage window Claude Code reports during the
+   * run (its `rate_limit_event`), so a host can record how much of the
+   * subscription is left. Default: unset, and the events are dropped.
+   *
+   * The report names `claude-code`, the window, when it was observed, when the
+   * run started, and the account the run is signed in as (its `accountInfo()`
+   * email, asked once at the first event; `null` when it names none). An event
+   * that names no window, as on an API key, is not reported.
+   *
+   * Awaited like `onSession`, so no write lands after the run ends, but **a
+   * throw is logged and swallowed**: a usage write never fails the run. Unlike
+   * `onSession`, it is allowed in-session too: it owns no part of the
+   * conversation, so it races nothing.
+   */
+  onUsage?: HarnessUsageHook;
   /** Block name. Default `"claude-code-agent"`. */
   name?: string;
 }
@@ -545,8 +628,10 @@ export const runNamespace: (ctx: BlockContext) => string = harnessRunNamespace;
  * degrade to status notes alone. The two records are not optional that way —
  * without them there is nothing to record into.
  *
- * Every entry is keyed under {@link runNamespace}, which is what keeps a reused
- * child session's runs apart.
+ * File and gap entries are keyed under {@link runNamespace}, which is what keeps
+ * a reused child session's runs apart. Plan rows go under the conversation the
+ * SDK confirms (`bindConversation`), so a plan lasts as long as its
+ * conversation, and the run's marker points there.
  */
 function openWorkRecorder(ctx: BlockContext, cwd?: string): WorkRecorder | null {
   const resources = (ctx as { resources?: Record<string, unknown> }).resources;
@@ -568,6 +653,7 @@ function openWorkRecorder(ctx: BlockContext, cwd?: string): WorkRecorder | null 
   }
   return createWorkRecorder({
     runId: runNamespace(ctx),
+    requestId: ctx.request.identity.id,
     files,
     plan,
     ...(planList !== undefined ? { planList } : {}),
@@ -703,9 +789,11 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     cwd: resolveCwd,
     resume: resolveResume,
     onSession,
+    onUsage,
     settingSources,
     env,
     sandbox,
+    mcpTools,
     uses,
     onErrored,
     name = "claude-code-agent",
@@ -750,8 +838,8 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     inputSchema: harnessRunInputSchema,
     outputSchema: sdkAgentHandleSchema,
     // Decided HERE rather than at run time, and that is forced: `defineFlow`
-    // inspects this static definition (`assertHandOffBlockSupported`) and
-    // rejects the hand-off before any `execute` callback receives a context.
+    // inspects this static definition (`assertDispatchEntrySupported`) and
+    // rejects the dispatch before any `execute` callback receives a context.
     ...(detached ? {} : { sessionStateSchema: claudeAgentSessionStateSchema }),
     // Also static, and for a related reason: `defineFlow` collects declared
     // resources off block definitions at build time. A collection nobody
@@ -842,12 +930,18 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           ? ((await resolveResume(ctx)) ?? "")
           : "";
 
+      const runModel = (typeof model === "function" ? await model(ctx) : model) || undefined;
+
       const sandboxSettings =
         typeof sandbox === "function"
           ? await (sandbox as (c: AgentCallbackContext) => unknown)(ctx)
           : sandbox;
 
       const resolved = await resolveClaudeAgent(ctx);
+      // The handed servers, resolved inside the `try` below so its `finally`
+      // closes what opened however setup or the run ends.
+      let handedTools: ClaudeCodeMcpTools | undefined;
+      let handedServers: Set<string> | undefined;
       const dispatchedAt = Date.now();
       const abortController = forwardSignalToController(ctx.signal);
       // Holds the real process so an abort can wait for it to exit — the
@@ -855,14 +949,21 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       const agentProcess = trackProcess();
 
       const queryOptions: ClaudeAgentQueryOptions = {
-        model,
+        model: runModel,
         // The one place the default is decided, so every path that reaches the
         // SDK (in-session, detached, resumed, through a capability) gets it.
         // Left absent, the SDK sends an EMPTY custom prompt rather than Claude
         // Code's own, so the run would not start the way the CLI starts it.
         // `undefined` only: `""` is a host asking for that blank start.
         systemPrompt: systemPrompt ?? { type: "preset", preset: "claude_code" },
-        allowedTools,
+        // Added to the host's list: see `TODO_TOOLS` and `SEARCH_TOOLS`.
+        allowedTools: [
+          ...new Set([
+            ...(allowedTools ?? []),
+            ...TODO_TOOLS,
+            ...(permissionMode === "bypassPermissions" ? SEARCH_TOOLS : []),
+          ]),
+        ],
         disallowedTools,
         permissionMode,
         agents,
@@ -934,6 +1035,9 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       // there, even on the rejection path that skips it) — `.current` on an
       // object isn't tracked that way.
       const inFlightRef: { current: Promise<unknown> | null } = { current: null };
+      // The account the run is signed in as, asked of the running query once,
+      // at its first usage event, so its windows are bound to it.
+      let runAccount: Promise<string | null | undefined> | undefined;
 
       // The vendor loop, hoisted so the abort branch can wait on it (bounded)
       // after the race below has been lost to the signal.
@@ -952,6 +1056,19 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       // the return — and it cannot drift out of sync with a sibling copy,
       // because there isn't one.
       try {
+        // Resolved once per run, as late as possible, and raced against the
+        // run's signal: an abort stops waiting on a stalled connect, and what
+        // the resolver answers after that is closed when it arrives.
+        handedTools =
+          typeof mcpTools === "function" ? await resolveMcpTools(mcpTools, ctx) : mcpTools;
+        if (handedTools !== undefined) {
+          Object.assign(queryOptions, mcpQueryOptions(handedTools));
+          // With `mcpTools` set, the relayed tools are allowed without asking.
+          queryOptions.allowedTools = [
+            ...new Set([...(queryOptions.allowedTools ?? []), ...relayedToolNames(handedTools)]),
+          ];
+          handedServers = new Set(Object.keys(handedTools));
+        }
         try {
           // The loop runs as its own promise so it can be RACED against the
           // block's own signal (FIX-1301) rather than awaited outright — the
@@ -971,15 +1088,36 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           // terminal `item.done`, or a recorder observation landing after
           // `stop()` and never flushed.
           loop = (async () => {
-            for await (const message of resolved.query({
+            // Starting Claude Code can take a while on a busy host and the SDK
+            // says nothing until it is up, so the person is told it is starting.
+            // This covers the gap before `query()` only: the MCP tools set up above
+            // run before it. A status records no work, so the recorder is not
+            // handed it. The first output from Claude Code clears it.
+            if (!ctx.signal.aborted) {
+              translateState.quietStatus = true;
+              inFlightRef.current = emitTranslatedEvent({ kind: "status", message: STARTING_STATUS }, ctx, emitState, name);
+              try {
+                await inFlightRef.current;
+              } finally {
+                inFlightRef.current = null;
+              }
+            }
+            const running = resolved.query({
               prompt: promptText,
               options: queryOptions,
-            })) {
+            });
+            for await (const message of running) {
               // Capture the SDK session id from any message that carries it (the
               // `system` init message does, well before the terminal result), so an
               // aborted or failed run is still resumable.
               const sid = (message as { session_id?: string }).session_id;
-              if (typeof sid === "string" && sid !== "") newSessionId = sid;
+              if (typeof sid === "string" && sid !== "") {
+                newSessionId = sid;
+                // The plan is the conversation's: key it under the session the
+                // SDK confirmed, so the next turn of it updates the same plan.
+                // A no-op after the first message names it.
+                recorder?.bindConversation(sid);
+              }
 
               // **Tell the host, before this message is translated or the next
               // one is read.**
@@ -1026,6 +1164,48 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
               }
 
               if (ctx.signal.aborted) return;
+
+              // **A usage window, handed to the host and never failing the run.**
+              // Tracked like `onSession`, so it can't land after the run ends.
+              if (onUsage !== undefined && message.type === "rate_limit_event") {
+                const window = usageWindowOf(message.rate_limit_info);
+                if (window !== null) {
+                  const observedAt = Date.now();
+                  runAccount ??= accountOf(running);
+                  inFlightRef.current = runAccount
+                    .then((accountId) => {
+                      // Whose window this is isn't known: drop it rather than guess, and ask again on the next event.
+                      if (accountId === undefined) {
+                        runAccount = undefined;
+                        return;
+                      }
+                      return onUsage({ harness: CLAUDE_CODE_HARNESS, window, observedAt, runStartedAt: dispatchedAt, accountId }, ctx);
+                    })
+                    .catch((error: unknown) => {
+                      console.warn(`[claude-code] recording a usage window failed: ${error instanceof Error ? error.message : String(error)}`);
+                    });
+                  try {
+                    await inFlightRef.current;
+                  } finally {
+                    inFlightRef.current = null;
+                  }
+                  if (ctx.signal.aborted) return;
+                }
+              }
+
+              // **Exactly the handed servers.** The init message lists every MCP
+              // server the run connected to; one this block didn't hand it came
+              // from somewhere the strict flags were meant to keep out.
+              if (handedServers !== undefined && message.type === "system" && message.subtype === "init") {
+                for (const server of message.mcp_servers ?? []) {
+                  if (handedServers.has(server.name)) continue;
+                  ctx.emit.status(
+                    `MCP server "${server.name}" was offered to this run, though the host handed it only ` +
+                      `${handedServers.size === 0 ? "no servers" : [...handedServers].map((n) => `"${n}"`).join(", ")}.`,
+                    { transient: false },
+                  );
+                }
+              }
 
               const events = translateSdkMessage(message, translateState);
               // DELIVERY IS STRUCTURAL, like shutdown. Translation consumed this
@@ -1218,7 +1398,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
             ? `Claude Code agent run errored (${
                 resultSubtype === "success" ? "is_error" : (resultSubtype ?? "unknown subtype")
               }).`
-            : "Claude Code agent run completed.",
+            : `Claude Code agent run completed in ${formatRunDuration(Date.now() - dispatchedAt)}.`,
           { transient: false },
         );
 
@@ -1241,9 +1421,104 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         } catch {
           // Deliberately empty: see above.
         }
+        await closeMcpTools(handedTools);
       }
     },
   });
+}
+
+/**
+ * Call a `mcpTools` resolver, racing it against the run's signal. When the
+ * signal wins, the run stops waiting and throws the signal's reason, and what
+ * the resolver answers later is closed then, so a connection it was still
+ * opening isn't left open.
+ */
+/** How long a run waits for its own query to name its account. */
+const ACCOUNT_TIMEOUT_MS = 5_000;
+
+/**
+ * The email of the account a running query is signed in as, `null` when it
+ * names none (an OAuth token), or `undefined` when it can't be asked or
+ * doesn't answer in time, so a failed lookup never reads as an account change.
+ * Asks the query the run already holds, so no second process starts.
+ */
+async function accountOf(running: unknown): Promise<string | null | undefined> {
+  const ask = (running as { accountInfo?: () => Promise<{ email?: unknown }> }).accountInfo;
+  if (typeof ask !== "function") return undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const info = await Promise.race([
+      ask.call(running),
+      new Promise<undefined>((resolve) => {
+        timer = setTimeout(() => resolve(undefined), ACCOUNT_TIMEOUT_MS);
+      }),
+    ]);
+    if (info === undefined) return undefined;
+    return typeof info.email === "string" && info.email !== "" ? info.email : null;
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function resolveMcpTools(
+  resolve: (ctx: AgentCallbackContext) => ClaudeCodeMcpTools | Promise<ClaudeCodeMcpTools>,
+  ctx: AgentCallbackContext,
+): Promise<ClaudeCodeMcpTools> {
+  const pending = Promise.resolve().then(() => resolve(ctx));
+  const abortRace = rejectOnAbort(ctx.signal);
+  try {
+    return await Promise.race([pending, abortRace.promise]);
+  } catch (err) {
+    if (ctx.signal.aborted) void pending.then(closeMcpTools, () => {});
+    throw err;
+  } finally {
+    abortRace.stop();
+  }
+}
+
+/**
+ * Close the handed servers' connections. Each `close` is called once, even
+ * when several servers share one (a host that opens them through one
+ * manager), and each on its own, so one that throws neither hides the run's
+ * outcome nor keeps another open.
+ */
+async function closeMcpTools(tools: ClaudeCodeMcpTools | undefined): Promise<void> {
+  const closes = new Map<NonNullable<ClaudeCodeMcpToolServer["close"]>, ClaudeCodeMcpToolServer>();
+  for (const server of Object.values(tools ?? {})) {
+    if (server.close !== undefined && !closes.has(server.close)) closes.set(server.close, server);
+  }
+  await Promise.allSettled([...closes].map(async ([close, server]) => close.call(server)));
+}
+
+/**
+ * The SDK options `mcpTools` sets: each server in-process, nothing else.
+ *
+ * `strictMcpConfig` keeps out `.mcp.json`, settings-file and plugin servers;
+ * it does not keep out the signed-in account's claude.ai connectors, which
+ * `disableClaudeAiConnectors` does, read from the run's settings.
+ */
+function mcpQueryOptions(
+  tools: ClaudeCodeMcpTools,
+): Pick<ClaudeAgentQueryOptions, "mcpServers" | "strictMcpConfig" | "settings"> {
+  return {
+    mcpServers: Object.fromEntries(
+      Object.entries(tools).map(([server, entry]) => [
+        server,
+        { type: "sdk", name: server, instance: inProcessMcpServer(server, entry.tools) },
+      ]),
+    ),
+    strictMcpConfig: true,
+    settings: { disableClaudeAiConnectors: true },
+  };
+}
+
+/** Every relayed tool by the name the run calls it: `mcp__<server>__<tool>`. */
+function relayedToolNames(tools: ClaudeCodeMcpTools): string[] {
+  return Object.entries(tools).flatMap(([server, entry]) =>
+    entry.tools.map((tool) => `mcp__${server}__${tool.name}`),
+  );
 }
 
 /**

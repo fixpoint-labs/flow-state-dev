@@ -12,12 +12,13 @@
  * and again after a later touch, so a second copy shows.
  */
 import { describe, expect, it } from "vitest";
+import { NOTICE_DUE_MS } from "@flow-state-dev/orchestration/tasks";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { boardWorkers, bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
 
 const file = async (host: BoardHost, userId: string, conv: string, input: Record<string, unknown>) => {
-  const result = await host.act(userId, conv, "dispatchTask_tasks", input);
+  const result = await host.act(userId, conv, "createTask_tasks", input);
   expect(result.error, messageOf(result.error)).toBeUndefined();
   return result.output as { ok: boolean; taskId?: string };
 };
@@ -25,6 +26,9 @@ const file = async (host: BoardHost, userId: string, conv: string, input: Record
 /** The lines in a conversation about `goal`. */
 const linesAbout = async (host: BoardHost, conv: string, goal: string) =>
   (await host.messages(conv)).filter((message) => message.text.includes(`"${goal}"`)).map((message) => message.text);
+
+/** Wait until a notice owed now is past its due time, so a touch resends it (FIX-2078). */
+const pastDue = () => new Promise((resolve) => setTimeout(resolve, NOTICE_DUE_MS + 200));
 
 /** Touch the board again and let it settle: anything still owed would be sent now. */
 const touch = async (host: BoardHost, userId: string, conv: string) => {
@@ -85,7 +89,7 @@ describe("an attempt that completes (BR-22)", () => {
   it("wakes the coordinator's judgment turn once, with the notice as its message", async () => {
     const judgment = mockGenerator({
       script: [
-        { toolCalls: [{ toolCallId: "a1", toolName: "dispatchTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
+        { toolCalls: [{ toolCallId: "a1", toolName: "createTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
         { text: "Filed." },
         { when: (input) => JSON.stringify(input).includes("completed by eng.tasker"), then: { text: "Twelve licenses." } }
       ]
@@ -93,7 +97,7 @@ describe("an attempt that completes (BR-22)", () => {
     const host = bootBoardHost({ judgment });
     try {
       const conv = await host.conversation("alice", "lead");
-      expect((await host.act("alice", conv, "run", { message: "count our licenses" })).error).toBeUndefined();
+      expect((await host.act("alice", conv, "respond", { message: "count our licenses" })).error).toBeUndefined();
       await host.settled();
       await touch(host, "alice", conv);
       // One turn for the filing, one for the notice.
@@ -111,7 +115,7 @@ describe("an attempt that fails", () => {
   it("with attempts left wakes no turn: the board runs again and the next attempt completes (BR-23)", async () => {
     const judgment = mockGenerator({
       script: [
-        { toolCalls: [{ toolCallId: "a1", toolName: "dispatchTask", args: { goal: "flaky [fail-until:2]", assignee: "eng.tasker" } }] },
+        { toolCalls: [{ toolCallId: "a1", toolName: "createTask", args: { goal: "flaky [fail-until:2]", assignee: "eng.tasker" } }] },
         { text: "Filed." },
         { when: () => true, then: { text: "Done on the second try." } }
       ]
@@ -119,7 +123,7 @@ describe("an attempt that fails", () => {
     const host = bootBoardHost({ judgment });
     try {
       const conv = await host.conversation("alice", "lead");
-      expect((await host.act("alice", conv, "run", { message: "try it" })).error).toBeUndefined();
+      expect((await host.act("alice", conv, "respond", { message: "try it" })).error).toBeUndefined();
       await host.settled();
       await touch(host, "alice", conv);
       expect(host.runs.map((run) => run.attempt)).toEqual([1, 2]);
@@ -149,26 +153,28 @@ describe("an attempt that fails", () => {
   });
 });
 
-describe("a task parked on a question (BR-25)", () => {
-  it("gives one parked notice with the question, and a completed one once it's answered and done", async () => {
+describe("a task held on a question (FIX-2131)", () => {
+  it("gives no notice while it waits, and one completed notice once it's answered and done", async () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "desk");
       const filing = await host.filingOf("alice", conv);
-      const filed = await file(host, "alice", conv, { goal: "pick a region [park:Which region?]", assignee: "eng.tasker" });
+      const goal = "pick a region [ask:Which region?]";
+      const filed = await file(host, "alice", conv, { goal, assignee: "eng.tasker" });
       await host.settled();
       await touch(host, "alice", conv);
-      expect(await linesAbout(host, conv, "pick a region [park:Which region?]")).toEqual([
-        expect.stringMatching(/is waiting on a question from eng\.tasker: Which region\?$/)
-      ]);
-      // Answered: back in the queue with its answer, as an answer leaves it.
-      const parked = (await host.row("alice", filing, filed.taskId!))!;
-      const { partition: _p, ...stored } = parked;
-      await host.writeRow("alice", filing, { ...(stored as Task), status: "pending", feedback: "eu" });
+      // Nothing ended: until FIX-2070 the filer is told nothing when its task asks.
+      expect(await linesAbout(host, conv, goal)).toEqual([]);
+      const held = (await host.row("alice", filing, filed.taskId!))!;
+      expect(held.status).toBe("in_progress");
+      const question = held.holds!.find((hold) => hold.source.kind === "row")!;
+      const answered = await host.act("alice", conv, "updateTask_tasks", { id: filed.taskId, question: question.id, message: "eu" });
+      expect(answered.output).toMatchObject({ ok: true });
+      await host.settled();
       await touch(host, "alice", conv);
       await touch(host, "alice", conv);
-      const lines = await linesAbout(host, conv, "pick a region [park:Which region?]");
-      expect(lines).toEqual([expect.stringContaining("is waiting on a question"), expect.stringContaining("completed by eng.tasker")]);
+      expect(await linesAbout(host, conv, goal)).toEqual([expect.stringContaining("completed by eng.tasker")]);
+      expect(await host.row("alice", filing, filed.taskId!)).toMatchObject({ status: "completed", attempts: 1 });
     } finally {
       await host.dispose();
     }
@@ -180,7 +186,7 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
   const script = (...more: Array<{ when: (input: unknown) => boolean; then: { text: string } }>) =>
     mockGenerator({
       script: [
-        { toolCalls: [{ toolCallId: "a1", toolName: "dispatchTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
+        { toolCalls: [{ toolCallId: "a1", toolName: "createTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
         { text: "Filed." },
         { when: (input) => JSON.stringify(input).includes("completed by eng.tasker"), then: { text: "Twelve licenses." } },
         ...more
@@ -214,7 +220,7 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
     });
     try {
       held.conv = await held.host.conversation("alice", "lead");
-      held.replyId = await held.host.post("alice", held.conv, "run", { message: "count our licenses" });
+      held.replyId = await held.host.post("alice", held.conv, "respond", { message: "count our licenses" });
     } catch (error) {
       await held.host.dispose();
       throw error;
@@ -250,7 +256,7 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
     let nextStartedMidReply = false;
     let landedMidReply = true;
     const { host, conv, seen } = await replyHeldOpen(judgment, async ({ host, conv }) => {
-      await host.post("alice", conv, "run", { message: "and our workers?" });
+      await host.post("alice", conv, "respond", { message: "and our workers?" });
       nextStartedMidReply = await until(() =>
         judgment.calls.some((call) => JSON.stringify(call.input).includes("and our workers"))
       );
@@ -280,10 +286,12 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
       judgment,
       afterModelCall: async (blockName) => {
         if (blockName !== "coordinator-judgment" || ++calls !== 1) return;
-        // The task's own send is lost; touching the board mid-reply sends what the row still owes.
+        // The task's own send is lost; touching the board mid-reply, once it is
+        // past due, sends what the row still owes.
         await until(async () => (await host.rows("alice")).some((row) => row.status === "completed"));
         await until(() => lost.lost() > 0);
         lost.restore();
+        await pastDue();
         expect((await host.act("alice", conv, "listTasks_tasks", {})).error).toBeUndefined();
         seen.replayedMidReply = await until(async () => (await settledRequests(host, conv)).length > 0);
         seen.landedMidReply = await until(async () => (await linesAbout(host, conv, "Count licenses")).length > 0, 500);
@@ -292,7 +300,7 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
     const lost = await host.loseDispatches("onTaskSettled");
     try {
       conv = await host.conversation("alice", "lead");
-      await host.post("alice", conv, "run", { message: "count our licenses" });
+      await host.post("alice", conv, "respond", { message: "count our licenses" });
       await host.settled();
       expect(seen.replayedMidReply).toBe(true);
       expect(seen.landedMidReply).toBe(false);
@@ -307,9 +315,9 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
     // Call 2 is the round's reply: it files the task, and is held open until the notice arrives.
     const judgment = mockGenerator({
       script: [
-        { toolCalls: [{ toolCallId: "h1", toolName: "handOff", args: { worker: "eng.helper" } }] },
+        { toolCalls: [{ toolCallId: "h1", toolName: "createTask", args: { goal: "Take this", assignee: "eng.helper", session: "ongoing", resultTo: "conversation" } }] },
         { text: "Handed." },
-        { toolCalls: [{ toolCallId: "a1", toolName: "dispatchTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
+        { toolCalls: [{ toolCallId: "a1", toolName: "createTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
         { text: "Filed." },
         { when: (input) => JSON.stringify(input).includes("completed by eng.tasker"), then: { text: "Twelve licenses." } }
       ]
@@ -328,7 +336,7 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
     });
     try {
       conv = await host.conversation("alice", "mixed");
-      await host.post("alice", conv, "run", { message: "who's on call?" });
+      await host.post("alice", conv, "respond", { message: "who's on call?" });
       await host.settled();
       expect((await host.requestsOf(conv)).some((request) => request.actionName === "routeOn")).toBe(true);
       expect(seen.noticeArrivedMidReply).toBe(true);
@@ -376,9 +384,9 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
 });
 
 describe("a delegate's answer that arrives mid-reply", () => {
-  it("lands as it always has, without waiting for the reply: only a task's notice waits", async () => {
+  it("waits for the reply, like any task's notice: a routed task's ending takes the one ending path (FIX-2083)", async () => {
     const judgment = mockGenerator({
-      script: [{ toolCalls: [{ toolCallId: "h1", toolName: "handOff", args: { worker: "eng.helper" } }] }, { text: "Handed." }]
+      script: [{ toolCalls: [{ toolCallId: "h1", toolName: "createTask", args: { goal: "Take this", assignee: "eng.helper", session: "ongoing", resultTo: "conversation" } }] }, { text: "Handed." }]
     });
     let calls = 0;
     let conv = "";
@@ -387,16 +395,17 @@ describe("a delegate's answer that arrives mid-reply", () => {
       judgment,
       afterModelCall: async (blockName) => {
         if (blockName !== "coordinator-judgment" || ++calls !== 1) return;
-        landedMidReply = await until(async () =>
-          (await host.messages(conv)).some((message) => message.text.startsWith("eng.helper heard:"))
+        landedMidReply = await until(
+          async () => (await host.messages(conv)).some((message) => message.text.startsWith("eng.helper heard:")),
+          500
         );
       }
     });
     try {
       conv = await host.conversation("alice", "mixed");
-      await host.post("alice", conv, "run", { message: "who's on call?" });
+      await host.post("alice", conv, "respond", { message: "who's on call?" });
       await host.settled();
-      expect(landedMidReply).toBe(true);
+      expect(landedMidReply).toBe(false);
       const texts = (await host.messages(conv)).map((message) => message.text);
       expect(texts.filter((text) => text.startsWith("eng.helper heard:"))).toHaveLength(1);
       expect(texts.filter((text) => text === "Handed.")).toHaveLength(1);
@@ -436,7 +445,7 @@ describe("a notice sent twice (BR-26)", () => {
 });
 
 describe("the process dies between an ending and its notice (BR-26a)", () => {
-  it("leaves the notice owed on the row, and the next touch of the board sends it, once", async () => {
+  it("leaves the notice owed on the row, and the first touch of the board once it is past due sends it, once", async () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "desk");
@@ -448,10 +457,12 @@ describe("the process dies between an ending and its notice (BR-26a)", () => {
       // The ending stands, and its notice is still owed: nothing landed.
       const ended = await host.row("alice", filing, filed.taskId!);
       expect(ended?.status).toBe("completed");
-      expect(ended?.metadata?.["noticeOwed:1:completed"]).toEqual({ attempt: 1, ending: "completed" });
+      expect(ended?.metadata?.["noticeOwed:1:completed"]).toMatchObject({ attempt: 1, ending: "completed" });
       expect(await linesAbout(host, conv, "survives")).toEqual([]);
 
       lost.restore();
+      // A touch resends only what is past due (FIX-2078): the fast path pays first.
+      await pastDue();
       await touch(host, "alice", conv);
       await touch(host, "alice", conv);
       expect(await linesAbout(host, conv, "survives")).toHaveLength(1);
@@ -512,7 +523,7 @@ describe("a notice that can't land (BR-28)", () => {
       expect(refused.every((request) => request.status !== "completed")).toBe(true);
       const row = await host.row("alice", filing, filed.taskId!);
       expect(row?.status).toBe("completed");
-      expect(row?.metadata?.["noticeOwed:1:completed"]).toEqual({ attempt: 1, ending: "completed" });
+      expect(row?.metadata?.["noticeOwed:1:completed"]).toMatchObject({ attempt: 1, ending: "completed" });
       expect(await linesAbout(host, conv, "orphaned [slow:150]")).toEqual([]);
     } finally {
       await host.dispose();

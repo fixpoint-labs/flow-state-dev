@@ -1361,7 +1361,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 <section id="execution">
   <div class="sec-head"><span class="sec-num">13</span><h2>Execution and errors</h2></div>
   <p class="lede">A request is async by design: execution runs in the background and the client watches it over SSE, then refetches the snapshot for the authoritative answer.</p>
-  <p>The POST has two shapes. Ask for the stream inline — <code>Accept: text/event-stream</code>, which is what the client's <code>sendActionStream</code> sends — and the route returns <strong>200 with the live SSE stream as the body</strong>, keeping execution and streaming on one function instance. That mode is what makes the serverless hosts work. Otherwise it returns <strong>202</strong> with a request id and the client attaches to the stream separately. Same execution either way; only the response differs.</p>
+  <p>The POST has two shapes. Ask for the stream inline — <code>Accept: text/event-stream</code>, which is what the client's <code>send(..., { stream: true })</code> sends — and the route returns <strong>200 with the live SSE stream as the body</strong>, keeping execution and streaming on one function instance. That mode is what makes the serverless hosts work. Otherwise it returns <strong>202</strong> with a request id and the client attaches to the stream separately. Same execution either way; only the response differs.</p>
 
   <figure>
     <div class="fig-body">
@@ -1916,16 +1916,16 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
   <div class="sec-head"><span class="sec-num">24</span><h2>Client, React, CLI, DevTool</h2></div>
   <p class="lede">Four consumer surfaces over one wire. The layering is strict: <code>react</code> holds no transport logic, and <code>cli</code> holds no client at all.</p>
 
-  <h3>client — six sub-clients</h3>
+  <h3>client — one client, one transport</h3>
   <div class="tw"><table>
-    <thead><tr><th>Sub-client</th><th>Responsibility</th></tr></thead>
+    <thead><tr><th>On <code>createClient({ userId, baseUrl?, fetcher? })</code></th><th>Responsibility</th></tr></thead>
     <tbody>
-      <tr><td>action</td><td><code>executeAction</code> — POST an action, get a request id back.</td></tr>
-      <tr><td>session</td><td>List, read, create, delete sessions; read requests and state snapshots.</td></tr>
-      <tr><td>stream</td><td><code>createSSEClient</code> plus a request-stream store and a callback binder — the resume cursor lives here.</td></tr>
-      <tr><td>resource</td><td>Read resources and content; collection mutation endpoints.</td></tr>
-      <tr><td>recovery</td><td>Re-attach to an in-flight or interrupted request.</td></tr>
-      <tr><td>transcription</td><td>Post audio to the transcription endpoint.</td></tr>
+      <tr><td><code>flow(address)</code></td><td><code>send</code> an action, <code>createSession</code>, and <code>request(id)</code>: status, wait, abort, continue, retry, resume, stream.</td></tr>
+      <tr><td><code>sessions</code></td><td>List (the client&#8217;s own user by default), read, create, delete sessions; read requests, children and state snapshots; follow a session&#8217;s stream.</td></tr>
+      <tr><td><code>resources</code></td><td>Read resources and content; collection mutation endpoints.</td></tr>
+      <tr><td><code>requests.interrupted()</code></td><td>The user&#8217;s requests a crash or restart cut off, as request handles to continue or retry.</td></tr>
+      <tr><td><code>stream</code>, <code>transcribe</code></td><td>The user stream; post audio to the transcription endpoint.</td></tr>
+      <tr><td>fetcher</td><td>Every call and stream goes through one fetcher: <code>fetch</code> to a URL, a credentialed wrapper, or the engine&#8217;s <code>createInProcessFetch</code> with no web server. A request-stream store and a callback binder fold events for rendering.</td></tr>
     </tbody>
   </table></div>
 

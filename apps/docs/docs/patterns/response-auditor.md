@@ -64,7 +64,7 @@ import { z } from "zod";
 
 const chat = generator({
   name: "chat",
-  model: "openai/gpt-5.5",
+  model: "openai/gpt-6.1-sol",
   prompt: "You are a helpful assistant.",
   user: (input) => input.message,
 });
@@ -144,7 +144,7 @@ const biasAdapter = sequencer({
     userInput: input.userInput,
     aiResponse: input.response,   // biasAnalyzer expects "aiResponse", not "response"
   }))
-  .step(biasAnalyzer({ model: "openai/gpt-5.4-mini" }))
+  .step(biasAnalyzer({ model: "openai/gpt-6-luna" }))
   .map((output: Record<string, unknown>) => {
     const annotations = (output.annotations as Array<Record<string, unknown>>) ?? [];
     const severity = output.severity as string;
@@ -190,7 +190,7 @@ import { z } from "zod";
 
 const detect = generator({
   name: "tone/detect",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   inputSchema: auditorInputSchema,
   outputSchema: z.object({
     tone: z.string(),

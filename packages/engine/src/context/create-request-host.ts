@@ -10,7 +10,7 @@
  *
  * ## The dispatch seam
  *
- * A `dispatcher()` block (or the task board's hand-off) puts a `DispatchSpec`
+ * A `dispatcher()` block (or the task board's dispatch) puts a `DispatchSpec`
  * through the seam. The seam does four things, in order, and refuses by name
  * at each:
  *
@@ -29,7 +29,9 @@
  * 2. **Resolve the session.** A `key` derives a child of the running session
  *    and mints or adopts it; an `id` names a session that must exist and be this
  *    principal's, owned by the addressed instance — `session-not-found` /
- *    `session-not-addressable` otherwise, never created. `{ from: true }` is the
+ *    `session-not-addressable` otherwise, never created unless the target
+ *    carries starting state, which creates it at that id through the target
+ *    flow's create check (`create-refused` otherwise). `{ from: true }` is the
  *    same delivery as `id`, addressed at the trusted `dispatchStamp.from` —
  *    `no-sender` when this request was not dispatched.
  * 3. **Build the envelope**, from values the seam derived: the dispatch type as
@@ -65,12 +67,14 @@ import type {
   FlowInstance,
   LivenessAnswers,
   RequestHost,
-  ResumeAskInput,
-  ResumeAskResult,
+  ResumeWaitInput,
+  ResumeWaitResult,
   SettleParentTaskInput,
   SettleParentTaskResult,
+  WaitDeadlines,
+  WaitRow,
 } from "@flow-state-dev/core/types";
-import type { SessionRecord, StoreRegistry } from "../stores/types";
+import type { RequestRecord, SessionRecord, StoreRegistry } from "../stores/types";
 import { resolveEntry } from "@flow-state-dev/core";
 import type { DispatchStamp } from "../execution/dispatch-metadata";
 import type { RuntimeConfig } from "../runtime-config";
@@ -85,12 +89,18 @@ import type { DispatchOperation } from "./dispatch-operation";
 import {
   birthSession,
   SessionCreateRefusedError,
+  type SessionBirthOutcome,
   type SessionRecordSeed
 } from "./session-birth";
 import { pinRejectsCaller } from "./instance-pin";
-import { evaluateLivenessGate, type LivenessGateInputs } from "./liveness-gate";
+import { evaluateLivenessGate, heartbeatStaleThreshold, type LivenessGateInputs } from "./liveness-gate";
 import { readLiveness } from "./liveness-read";
-import type { AskResumeOperation } from "./ask-resume-operation";
+import type { WaitResumeOperation } from "./wait-resume-operation";
+import { createRequestWakes } from "../durability/request-wakes";
+import { createRequestWaits, type WaiterOf } from "../durability/wait-chain";
+import { createRequestSessions } from "./request-sessions";
+import type { DurabilityProvider } from "../durability/types";
+import type { WakeStore } from "../stores/types";
 
 /** The one parent-board row this request was dispatched for, stamped at spawn. */
 export type ParentTaskBinding = {
@@ -145,12 +155,37 @@ export type RequestHostInputs = {
   /** Absent unless this request was dispatched for a parent-board task. */
   parentTask?: ParentTaskBinding;
   /**
-   * Resumes an ask gate in this request's session. Absent when the host has no
-   * durable execution, and then so is `resumeAsk`.
+   * Resumes a wait gate in this request's session. Absent when the host has no
+   * durable execution, and then so is `resumeWait`.
    */
-  askResume?: AskResumeOperation;
-  /** Whether a sweeper bounds asks in this process; see `RequestHost.hasAskSweeper`. */
-  askSweeper?: () => boolean;
+  waitResume?: WaitResumeOperation;
+  /** Whether a sweeper bounds waits in this process; see `RequestHost.hasWaitSweeper`. */
+  waitSweeper?: () => boolean;
+  /** Whether what this request dispatches runs in this process; see `RequestHost.dispatchRunsHere`. */
+  dispatchRunsHere?: () => boolean;
+  /** The host's deadline for a user's stop, when it sets one; see `RequestHost.userDeadlineMs`. */
+  userDeadlineMs?: number;
+  /**
+   * The store debts' due times are kept in, and how they are bounded
+   * (`RequestHost.wakes`, FIX-2078 D1). Absent when the host keeps none.
+   */
+  wakes?: { store: WakeStore; maxDebtAgeMs: number; fenceMs: number };
+  /**
+   * Waits (`RequestHost.waits`, FIX-2082): where the depth of a chain of waits
+   * is read, the deadline bounds, and the running request's id and the row it
+   * works as the engine reads them. Offered only beside `waitResume` and
+   * `wakes`: a wait parks durably, and its deadline is a wake.
+   */
+  waits?: {
+    provider: Pick<DurabilityProvider, "listSuspended" | "loadSuspension">;
+    deadlines: WaitDeadlines;
+    requestId: string;
+    own: WaitRow | undefined;
+    /** The request that dispatched this one and waits on it, read off its trusted dispatch stamp. */
+    waitedBy?: WaiterOf;
+    /** A request's record with its item log, for `waits.ended`. */
+    readRequest: (requestId: string) => Promise<Pick<RequestRecord, "id" | "status" | "sessionId" | "items"> | undefined>;
+  };
   /**
    * The running request's trusted dispatch stamp, already read through
    * {@link readDispatchStamp}. A `{ from: true }` target delivers into
@@ -216,19 +251,25 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
   /**
    * An `id` target: the session must exist and be reachable from this request
    * — same flow, same principal, same tenant, and not bound to a different org.
-   * Never created: an unknown id is a typo, a stale reference, or a hallucinated
-   * value, and creating a session for it would be work nobody is watching.
+   * Never created here: an unknown id is a typo, a stale reference, or a
+   * hallucinated value, and creating a session for it would be work nobody is
+   * watching. Only a target that carries starting state creates, and that goes
+   * through `resolveOrBirthSession` and the target flow's create check first.
    *
    * Absent, another owner, and another tenant answer the same refusal on
    * purpose: a distinct reason would confirm that a session exists across a
    * boundary the caller cannot see past, which is an existence oracle.
+   *
+   * @param read The record when the caller has just read it (a birth that
+   *   found one), so it is not read twice. Read here when absent.
    */
   const resolveExistingSession = async (
     sessionId: string,
-    targetFlow: FlowInstance
+    targetFlow: FlowInstance,
+    read?: SessionRecord
   ): Promise<ResolvedSession> => {
     const storageKey = resolveSessionStorageKey(sessionId, identity.tenantId);
-    const record = await stores.session.get(storageKey);
+    const record = read ?? (await stores.session.get(storageKey));
     if (
       record === undefined ||
       record.userId !== identity.userId ||
@@ -278,6 +319,66 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       // downstream re-checks. `runAction`'s guard compares against this.
       recipientLineageId: resolveLineageId({ id: storageKey, lineageId: record.lineageId })
     };
+  };
+
+  /** The record both dispatch births start from. A `key` child adds parent, lineage, and labels. */
+  const dispatchSeed = (
+    storageKey: string,
+    targetFlow: FlowInstance,
+    ts: number
+  ): SessionRecordSeed => ({
+    id: storageKey,
+    version: 0,
+    createdAt: ts,
+    updatedAt: ts,
+    flowKind: targetFlow.kind,
+    flowId: targetFlow.id,
+    userId: identity.userId,
+    journal: [],
+    ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {}),
+    orgId: identity.orgId
+  });
+
+  /**
+   * Birth a dispatch session. State comes from the block (`fromCaller: false`),
+   * so a server-owned field is the flow's to set; the target schema parses it
+   * (defaults applied). Judged `via: "dispatch"`, tombstones reclaimed (FIX-1258),
+   * written create-if-absent. A refused create check is `create-refused`.
+   */
+  const birthDispatchSession = async (
+    storageKey: string,
+    sessionId: string,
+    targetFlow: FlowInstance,
+    state: Readonly<Record<string, unknown>> | undefined,
+    build: (ts: number) => SessionRecordSeed
+  ): Promise<{ outcome: SessionBirthOutcome } | { refused: Refused }> => {
+    const ts = nowMs();
+    try {
+      return {
+        outcome: await birthSession(
+          stores,
+          storageKey,
+          {
+            flow: targetFlow,
+            sessionId,
+            principal: {
+              userId: identity.userId,
+              orgId: identity.orgId,
+              ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {})
+            },
+            ...(state !== undefined ? { state: { ...state } } : {}),
+            fromCaller: false,
+            via: "dispatch"
+          },
+          () => build(ts)
+        )
+      };
+    } catch (error) {
+      if (error instanceof SessionCreateRefusedError) {
+        return { refused: refuse("create-refused", error.message) };
+      }
+      throw error;
+    }
   };
 
   /**
@@ -338,18 +439,9 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       lineageId: childLineageId
     };
 
-    const ts = nowMs();
-    const build = (): SessionRecordSeed => ({
-      id: storageKey,
-      version: 0,
-      createdAt: ts,
-      updatedAt: ts,
-      flowKind: targetFlow.kind,
-      flowId: targetFlow.id,
-      userId: identity.userId,
-      journal: [],
-      ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {}),
-      ...(identity.orgId !== undefined ? { orgId: identity.orgId } : {}),
+    // A child's id is derived, so a retry reuses it and create-if-absent is that race.
+    const attempt = await birthDispatchSession(storageKey, childId, targetFlow, initialState, (ts) => ({
+      ...dispatchSeed(storageKey, targetFlow, ts),
       parentSessionId: identity.sessionId,
       // Inherited verbatim for a same-flow child. Not a hash, not a
       // re-derivation — the same value, so parent and child address one bucket
@@ -363,42 +455,9 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       // fields the children listing reads.
       ...label("topic", key),
       ...label("coordinate", `${address.type}:${address.action}`)
-    });
-
-    // Through the one birth function every new session record takes: it
-    // parses the state the dispatching block's code named through the target
-    // flow's schema (defaults applied, so typed block reads never observe a
-    // missing key), runs its create check, reclaims the id's resource-state tombstones (FIX-1258) — a
-    // child's id is DERIVED from its key, so reuse is the norm — and writes
-    // create-if-absent, which is how a caller wins or loses a create race
-    // rather than silently overwriting a concurrent adopter's child.
-    let outcome: Awaited<ReturnType<typeof birthSession>>;
-    try {
-      outcome = await birthSession(
-        stores,
-        storageKey,
-        {
-          flow: targetFlow,
-          sessionId: childId,
-          principal: {
-            userId: identity.userId,
-            orgId: identity.orgId,
-            ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {})
-          },
-          ...(initialState !== undefined ? { state: { ...initialState } } : {}),
-          // From the dispatching block's code, not a caller, so a
-          // server-owned field is the flow's to set here.
-          fromCaller: false,
-          via: "dispatch"
-        },
-        build
-      );
-    } catch (error) {
-      if (error instanceof SessionCreateRefusedError) {
-        return refuse("create-refused", error.message);
-      }
-      throw error;
-    }
+    }));
+    if ("refused" in attempt) return attempt.refused;
+    const outcome = attempt.outcome;
     if (outcome.born) {
       return { ok: true, sessionId: childId, orgId: identity.orgId, adopted: false, delivery: "child" };
     }
@@ -439,6 +498,33 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
   };
 
   /**
+   * `{ id, state }`: birth a top-level session when the id is absent. A session
+   * already there, including one a racing creator wrote, goes through the plain
+   * `id` guards and keeps its own state.
+   */
+  const resolveOrBirthSession = async (
+    sessionId: string,
+    initialState: Readonly<Record<string, unknown>>,
+    targetFlow: FlowInstance
+  ): Promise<ResolvedSession> => {
+    const storageKey = resolveSessionStorageKey(sessionId, identity.tenantId);
+    const attempt = await birthDispatchSession(storageKey, sessionId, targetFlow, initialState, (ts) =>
+      dispatchSeed(storageKey, targetFlow, ts)
+    );
+    if ("refused" in attempt) return attempt.refused;
+    if (!attempt.outcome.born) return resolveExistingSession(sessionId, targetFlow, attempt.outcome.record);
+    return {
+      ok: true,
+      sessionId,
+      orgId: identity.orgId,
+      adopted: false,
+      // Not a child: concurrency and the incarnation guard apply.
+      delivery: "existing",
+      recipientLineageId: resolveLineageId({ id: storageKey, lineageId: attempt.outcome.record.lineageId })
+    };
+  };
+
+  /**
    * Spec → store. `{ from: true }` is delivery into the stamped sender — the
    * same path as `id`, with the id taken from the trusted `dispatchStamp`,
    * not from the spec. The author cannot name a reply-to; a missing stamp is
@@ -473,6 +559,9 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       return sender;
     }
     if ("id" in spec.session) {
+      if (spec.session.state !== undefined) {
+        return resolveOrBirthSession(spec.session.id, spec.session.state, targetFlow);
+      }
       return resolveExistingSession(spec.session.id, targetFlow);
     }
     return resolveDispatchRunSession(spec.session.key, spec.session.state, spec, targetFlow);
@@ -560,6 +649,12 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       // contract is "put a fact here only when the runtime produced it".
       metadata: {
         dispatch: {
+          // The sender's facts, without any key the seam owns: a provenance
+          // never moves the address, the reply route, the approved recipient
+          // or the waiter. Stripped rather than only out-ordered, because the
+          // seam writes several of them only on some dispatches, and on the
+          // rest a provenance one would read as server truth.
+          ...withoutSeamKeys(spec.provenance),
           type: spec.type,
           action: spec.action,
           // The instance the entry was resolved on, stamped only when the
@@ -581,7 +676,11 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
           ...(session.recipientLineageId !== undefined
             ? { recipientLineageId: session.recipientLineageId }
             : {}),
-          ...(spec.provenance ?? {})
+          // A sender that waits on this dispatch (FIX-2082): who it is and
+          // the row it works, from this request's own server-derived facts.
+          ...(spec.waits === true && inputs.waits !== undefined
+            ? { waitedBy: { requestId: inputs.waits.requestId, ...(inputs.waits.own !== undefined ? { own: inputs.waits.own } : {}) } }
+            : {})
         }
       },
       // The dispatched request continues THIS request's work, so it runs under
@@ -609,9 +708,9 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
             "under-delivering"
         );
       }
-      // The host refuses synchronously for a small set of pre-dispatch
-      // conditions, the reachable one being a `reject` concurrency policy whose
-      // key is already held.
+      // The host refused before starting, either by throwing from `dispatch`
+      // or through `accepted` — the latter being where a `reject` concurrency
+      // policy whose key is already held arrives.
       return refuse(
         "dispatch-rejected",
         `the host refused the dispatch before starting it: ${started.reason}`
@@ -645,18 +744,28 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
   };
 
   const host: RequestHost = { parentTask, settleParentTask };
+  // The host's deadline for a user's stop (FIX-2129): a fact, read as the request starts.
+  if (inputs.userDeadlineMs !== undefined) (host as { userDeadlineMs?: number }).userDeadlineMs = inputs.userDeadlineMs;
+  // Read once, as the request starts.
+  if (inputs.dispatchRunsHere?.() === true) (host as { dispatchRunsHere?: boolean }).dispatchRunsHere = true;
 
   // The fifth verb: present only where a host wired the resume, which it does
-  // only with durable execution — nothing can park on an ask without it. The
+  // only with durable execution — nothing can park on a wait without it. The
   // identity comes from here, never from the block that calls the verb.
-  const askResume = inputs.askResume;
-  if (askResume !== undefined) {
-    // Read once, as the request starts: whether an ask parked now is bounded.
-    if (inputs.askSweeper?.() === true) (host as { hasAskSweeper?: boolean }).hasAskSweeper = true;
-    host.resumeAsk = (input: ResumeAskInput): Promise<ResumeAskResult> =>
-      askResume({
-        gateId: input.gateId,
-        outcome: input.outcome,
+  const waitResume = inputs.waitResume;
+  if (waitResume !== undefined) {
+    // Read once, as the request starts: whether a wait parked now is bounded.
+    if (inputs.waitSweeper?.() === true) (host as { hasWaitSweeper?: boolean }).hasWaitSweeper = true;
+    host.resumeWait = (input: ResumeWaitInput): Promise<ResumeWaitResult> =>
+      waitResume({
+        ...("gateId" in input
+          ? { gateId: input.gateId, outcome: input.outcome }
+          : {
+              suspension: input.suspension,
+              outcome: input.outcome,
+              ...(input.first !== undefined ? { first: input.first } : {}),
+              ...(input.taskCancelled === true ? { taskCancelled: true } : {})
+            }),
         owner: {
           sessionId: identity.sessionId,
           userId: identity.userId,
@@ -665,6 +774,56 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
           flow
         }
       });
+  }
+
+  // The sixth verb (FIX-2078 D1): present only where the host keeps wakes.
+  // The owner and the target session's flow come from here, never the block.
+  if (inputs.wakes !== undefined) {
+    (host as { wakes?: RequestHost["wakes"] }).wakes = createRequestWakes({
+      store: inputs.wakes.store,
+      sessions: stores.session,
+      identity: {
+        userId: identity.userId,
+        tenantId: identity.tenantId,
+        orgId: identity.orgId,
+        sessionId: identity.sessionId
+      },
+      flowId: flow.id,
+      fenceMs: inputs.wakes.fenceMs,
+      maxDebtAgeMs: inputs.wakes.maxDebtAgeMs,
+      now: nowMs
+    });
+  }
+
+  // The eighth verb (FIX-2160 D2): the principal's own sessions, read before a
+  // write to one. The principal comes from here, never the block.
+  (host as { sessions?: RequestHost["sessions"] }).sessions = createRequestSessions({
+    sessions: stores.session,
+    identity: { userId: identity.userId, tenantId: identity.tenantId, orgId: identity.orgId },
+    flow,
+    ...(inputs.resolveFlow !== undefined ? { resolveFlow: inputs.resolveFlow } : {})
+  });
+
+  // The seventh verb (FIX-2082): a wait parks durably (the resume) and its
+  // deadline is a wake, so it is present only beside both. The user and the
+  // request come from here, never the block.
+  if (inputs.waits !== undefined && waitResume !== undefined && inputs.wakes !== undefined) {
+    // `running` answers for requests of this session only, which run this
+    // flow, so this flow's heartbeat is theirs (FIX-2166).
+    const staleThresholdMs = heartbeatStaleThreshold(inputs.liveness);
+    (host as { waits?: RequestHost["waits"] }).waits = createRequestWaits({
+      ...(staleThresholdMs !== undefined
+        ? { heartbeat: { readEntry: (requestId) => stores.activeRequests.get(requestId), staleThresholdMs, now: nowMs } }
+        : {}),
+      provider: inputs.waits.provider,
+      deadlines: inputs.waits.deadlines,
+      userId: identity.userId,
+      requestId: inputs.waits.requestId,
+      own: inputs.waits.own,
+      ...(inputs.waits.waitedBy !== undefined ? { waitedBy: inputs.waits.waitedBy } : {}),
+      sessionId: identity.sessionId,
+      readRequest: inputs.waits.readRequest
+    });
   }
 
   if (gate.enabled) {
@@ -837,4 +996,22 @@ async function isDescendantSession(
     cursor = parent;
   }
   return false;
+}
+
+/** Every key of `metadata.dispatch` the seam writes itself, some only on some dispatches. */
+const SEAM_KEYS: ReadonlySet<string> = new Set([
+  "type",
+  "action",
+  "flowKind",
+  "flowId",
+  "from",
+  "key",
+  "recipientLineageId",
+  "waitedBy"
+]);
+
+/** `provenance` without any key the seam owns ({@link SEAM_KEYS}). */
+function withoutSeamKeys(provenance: Readonly<Record<string, unknown>> | undefined): Record<string, unknown> {
+  if (provenance === undefined) return {};
+  return Object.fromEntries(Object.entries(provenance).filter(([key]) => !SEAM_KEYS.has(key)));
 }

@@ -72,19 +72,19 @@ const page = (...topics: string[]) => ({
 
 function flowSource() {
   const { calls, fn } = heldMethod<FlowListEntry[]>();
-  return { calls, listFlows: fn };
+  return { calls, listFlows: fn, flows: fn };
 }
 function sessionSource() {
   const { calls, fn } = heldMethod<SessionSummary[]>();
-  return { calls, listSessions: fn };
+  return { calls, listSessions: fn, sessions: { list: fn } };
 }
 function rowSource() {
   const { calls, fn } = heldMethod<ReturnType<typeof page>>();
-  return { calls, listCollectionItems: fn };
+  return { calls, listCollectionItems: fn, resources: { listCollectionItems: fn } };
 }
 function itemSource() {
   const { calls, fn } = heldMethod<{ topic: string; clientData?: unknown } | null>();
-  return { calls, getCollectionItemState: fn };
+  return { calls, getCollectionItemState: fn, resources: { getCollectionItemState: fn } };
 }
 
 const kinds = (flows: readonly FlowListEntry[]) => flows.map((f) => f.kind);
@@ -209,7 +209,7 @@ describe("useLeafSessions · what it shows", () => {
   it("BR-6 · an Error with a message shows that message", async () => {
     const source = sessionSource();
     const { result } = renderHook(() =>
-      useLeafSessions(source as never, leaf("worker-a"), "u", false, true)
+      useLeafSessions(source as never, leaf("worker-a"), false, true)
     );
     await waitFor(() => expect(source.calls).toHaveLength(1));
     await act(async () => source.calls[0]!.fail(new Error("sessions down")));
@@ -219,7 +219,7 @@ describe("useLeafSessions · what it shows", () => {
   it("BR-7 · a failure that is not an Error shows the session list's own text", async () => {
     const source = sessionSource();
     const { result } = renderHook(() =>
-      useLeafSessions(source as never, leaf("worker-a"), "u", false, true)
+      useLeafSessions(source as never, leaf("worker-a"), false, true)
     );
     await waitFor(() => expect(source.calls).toHaveLength(1));
     await act(async () => source.calls[0]!.fail({ status: 500 }));
@@ -230,7 +230,7 @@ describe("useLeafSessions · what it shows", () => {
     const source = sessionSource();
     const { rerender } = renderHook(
       ({ tick }: { tick: number }) =>
-        useLeafSessions(source as never, { ...leaf("worker-a"), tick } as never, "u", false, true),
+        useLeafSessions(source as never, { ...leaf("worker-a"), tick } as never, false, true),
       { initialProps: { tick: 0 } }
     );
     await settle();
@@ -245,7 +245,7 @@ describe("useLeafSessions · the closed leaf", () => {
   it("BR-13 · a leaf mounted closed asks for nothing and reports no sessions, loading, no error", async () => {
     const source = sessionSource();
     const { result } = renderHook(() =>
-      useLeafSessions(source as never, leaf("worker-a"), "u", false, false)
+      useLeafSessions(source as never, leaf("worker-a"), false, false)
     );
     await settle();
 
@@ -258,7 +258,7 @@ describe("useLeafSessions · the closed leaf", () => {
   it("BR-14 · refreshing a closed leaf sends no request", async () => {
     const source = sessionSource();
     const { result } = renderHook(() =>
-      useLeafSessions(source as never, leaf("worker-a"), "u", false, false)
+      useLeafSessions(source as never, leaf("worker-a"), false, false)
     );
     await settle();
 

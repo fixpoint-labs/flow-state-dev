@@ -23,11 +23,14 @@ const checkInterrupted = vi.fn().mockResolvedValue([]);
 // Fresh objects per call, as the real factories return: rebuilding a client on a
 // credential change is one of the things the read fences key on, so a shared
 // singleton here would hide it.
-vi.mock("../src/react/lib/client", () => ({
-  createDevToolClient: () => ({ listFlows }),
-  createDevToolSessionClient: () => ({ getSession }),
-  createDevToolRecoveryClient: () => ({ checkInterrupted }),
-  createDevToolResourceClient: () => ({}),
+vi.mock("@flow-state-dev/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@flow-state-dev/client")>()),
+  createClient: () => ({
+    flows: listFlows,
+    sessions: { get: getSession },
+    requests: { interrupted: checkInterrupted },
+    resources: {},
+  }),
 }));
 
 import { DevToolProvider, useDevTool } from "../src/react/context/devtool-context";

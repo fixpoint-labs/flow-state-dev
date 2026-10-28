@@ -25,7 +25,7 @@ const ORG_ID = "org-race";
 function racingFlow() {
   return defineFlow({
     kind: "org-race",
-    orgStateSchema: z.object({ tier: z.string().default("free") }),
+    org: { stateSchema: z.object({ tier: z.string().default("free") }) },
     actions: {
       run: {
         inputSchema: z.number(),

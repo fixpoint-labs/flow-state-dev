@@ -1,7 +1,9 @@
 /**
  * Chat-style message renderer.
  * User messages align right, assistant messages align left.
- * Assistant messages show an identity badge when itemVisibility/agentName are present.
+ * Assistant messages carry a mono label line above the text: the agent name
+ * (or the emitting block when no agent name is set), the model that answered
+ * when known, and a sub-agent tag when itemVisibility hides it from history.
  */
 import type { MessageItem } from "@flow-state-dev/core/items";
 import { resolveItemVisibility } from "@flow-state-dev/core/items";
@@ -9,12 +11,13 @@ import { resolveItemVisibility } from "@flow-state-dev/core/items";
 function IdentityBadge({ item }: { item: MessageItem }) {
   const vis = resolveItemVisibility(item);
   const visLabel = vis.history ? undefined : "sub-agent";
-  if (visLabel === undefined && item.agentName === undefined) return null;
+  const name = item.agentName ?? item.provenance?.blockName ?? item.role;
   return (
-    <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1 flex gap-1.5">
-      {item.agentName !== undefined && <span className="font-mono">{item.agentName}</span>}
+    <div className="mb-1.5 flex items-center gap-2.5 font-fs-mono text-[10.5px] font-medium tracking-[.06em]">
+      <span className="uppercase text-fs-ink2">{name}</span>
+      {item.model?.actual !== undefined && <span className="text-fs-ink4">{item.model.actual}</span>}
       {visLabel !== undefined && (
-        <span className="px-1 rounded-sm bg-slate-800/70 text-slate-400">{visLabel}</span>
+        <span className="border border-dashed border-fs-ink/45 px-1 text-[9.5px] uppercase tracking-[.08em] text-fs-ink3">{visLabel}</span>
       )}
     </div>
   );
@@ -31,8 +34,8 @@ export function MessageItemView({ item }: { item: MessageItem }) {
   if (isUser) {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-blue-600/20 border border-blue-500/20 px-3.5 py-2">
-          <p className="text-sm text-slate-200 whitespace-pre-wrap break-words leading-relaxed">
+        <div className="max-w-[70%] border border-fs-ink bg-fs-card px-[13px] py-[9px]">
+          <p className="text-[14px] text-fs-ink whitespace-pre-wrap break-words leading-normal">
             {text}
           </p>
         </div>
@@ -41,12 +44,12 @@ export function MessageItemView({ item }: { item: MessageItem }) {
   }
 
   return (
-    <div className="max-w-[95%]">
+    <div className="max-w-[78%]">
       <IdentityBadge item={item} />
-      <div className="text-sm text-slate-200 whitespace-pre-wrap break-words leading-relaxed">
+      <div className="text-[14.5px] text-fs-ink whitespace-pre-wrap break-words leading-[1.55]">
         {text}
         {isStreaming && (
-          <span className="inline-block w-1.5 h-4 bg-green-400/80 animate-pulse ml-0.5 align-text-bottom rounded-sm" />
+          <span className="inline-block w-1.5 h-4 bg-fs-blue animate-pulse ml-0.5 align-text-bottom" />
         )}
       </div>
     </div>

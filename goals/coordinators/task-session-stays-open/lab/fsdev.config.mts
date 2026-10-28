@@ -5,9 +5,9 @@
  * signs in with a verified bearer (`people.mts`).
  *
  * - `desk.lead`, the coordinator, files nothing itself: the check files
- *   through the app's `dispatchTask_tasks`. Its judgment turn, which a task's
+ *   through the app's `createTask_tasks`. Its judgment turn, which a task's
  *   notice wakes, is scripted to note the notice and do nothing.
- * - `desk.ops` runs on `vercel/openai/gpt-5.4-mini` through the AI Gateway,
+ * - `desk.ops` runs on `vercel:openai/gpt-5.4-mini` through the AI Gateway,
  *   with one goal-local tool, `drawTicket`: each call draws a fresh random
  *   ticket. Only the session that drew it can name it, which is what the
  *   check grades.
@@ -79,7 +79,7 @@ const drawTicket = handler({
 let flows: Record<string, unknown> = {};
 const installation = wf.createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => flows });
 const agent = wf.defineAgentWorkerFlow({ installation, catalog: { drawTicket } });
-const coordinator = wf.defineCoordinatorFlow({ installation, delegateFlows: [agent], routeModel: "scripted/route" });
+const coordinator = wf.defineCoordinatorFlow({ installation, routeModel: "scripted/route" });
 flows = { agent, coordinator };
 const copies = wf.hireWorkforce(installation) as Array<{ id: string }>;
 

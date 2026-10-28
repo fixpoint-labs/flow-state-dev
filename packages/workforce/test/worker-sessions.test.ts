@@ -62,7 +62,7 @@ describe("creating a session with a worker", () => {
     const id = created.body.session!.id;
     const ran = await runAction({
       flow: h.instances[FIXTURE],
-      actionName: "run",
+      actionName: "respond",
       input: { message: "hi", worker: "planner" },
       userId: "alice",
       orgId: ORG,
@@ -79,7 +79,7 @@ describe("creating a session with a worker", () => {
     const created = await h.create("alice", FIXTURE, {});
     expect(created.status).toBe(400);
     expect(created.body).toMatchObject({ field: "workerId" });
-    const res = await h.fetcherFor("alice")(`/api/flows/${FIXTURE}/fresh/actions/run`, {
+    const res = await h.fetcherFor("alice")(`/api/flows/${FIXTURE}/fresh/actions/respond`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ userId: "alice", sessionId: "fresh", input: { message: "hi" } })
@@ -129,18 +129,33 @@ describe("finding or starting a session with a worker", () => {
     expect(mine.id).toBe(hers);
   });
 
-  it("BR-14a · finds the user's own session with the worker, most recent first, and never another user's", async () => {
+  it("BR-14a · finds the user's own conversation with the worker at its derived address, never another user's", async () => {
     const h = host();
     await h.rosterAction("alice", "hire", { id: "scribe", flow: FIXTURE });
     await h.rosterAction("bob", "hire", { id: "scribe", flow: FIXTURE });
     const alice = h.client("alice");
     expect(await alice.findWorkerSession({ worker: "scribe" })).toBeUndefined();
-    const first = await h.create("alice", FIXTURE, { state: { workerId: "scribe" } });
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    const second = await h.create("alice", FIXTURE, { state: { workerId: "scribe" } });
-    expect((await alice.findWorkerSession({ worker: "scribe" }))?.id).toBe(second.body.session!.id);
-    expect(first.body.session!.id).not.toBe(second.body.session!.id);
+    const ensured = await alice.ensureWorkerSession({ worker: "scribe" });
+    expect((await alice.findWorkerSession({ worker: "scribe" }))?.id).toBe(ensured.id);
     expect(await h.client("bob").findWorkerSession({ worker: "scribe" })).toBeUndefined();
+  });
+
+  it("FIX-1989 · a session opened at another id is never the worker's conversation: messages land at the derived one", async () => {
+    const h = host();
+    await h.rosterAction("alice", "hire", { id: "scribe", flow: FIXTURE });
+    const alice = h.client("alice");
+    // A conversation from before the derived address, at a random id, and newer than nothing.
+    const older = await h.create("alice", FIXTURE, { state: { workerId: "scribe" } });
+    expect(older.status).toBeLessThan(300);
+    expect(await alice.findWorkerSession({ worker: "scribe" })).toBeUndefined();
+    const { deriveWorkerSessionId } = await import("../src/workers/derive-session-id");
+    const derived = await deriveWorkerSessionId({ userId: "alice", orgId: ORG, flow: FIXTURE, criteria: { worker: "scribe" } });
+    const ensured = await alice.ensureWorkerSession({ worker: "scribe" });
+    expect(ensured.id).toBe(derived);
+    expect(ensured.id).not.toBe(older.body.session!.id);
+    // Even when the random one was used more recently.
+    expect((await h.turn("alice", older.body.session!.id)).error).toBeUndefined();
+    expect((await alice.findWorkerSession({ worker: "scribe" }))?.id).toBe(derived);
   });
 
   it("BR-16 · a derived session deleted and ensured again is created fresh by its own create", async () => {
@@ -178,10 +193,10 @@ describe("finding or starting a session with a worker", () => {
     const roster = await h.client("alice").roster();
     // A fork names the worker it was forked from; a hire and a standard worker name none.
     expect(roster).toEqual([
-      { id: "planner-2", flow: OTHER, standard: false, description: "Plans.", forkedFrom: "planner" },
-      { id: "scribe", flow: OTHER, standard: false, description: "Takes notes.", forkedFrom: null },
-      { id: "planner", flow: OTHER, standard: true, description: "Plans.", forkedFrom: null },
-      { id: "researcher", flow: FIXTURE, standard: true, description: "Finds things out.", forkedFrom: null }
+      { id: "planner-2", flow: OTHER, standard: false, description: "Plans.", forkedFrom: "planner", name: null, teamName: null },
+      { id: "scribe", flow: OTHER, standard: false, description: "Takes notes.", forkedFrom: null, name: null, teamName: null },
+      { id: "planner", flow: OTHER, standard: true, description: "Plans.", forkedFrom: null, name: null, teamName: null },
+      { id: "researcher", flow: FIXTURE, standard: true, description: "Finds things out.", forkedFrom: null, name: null, teamName: null }
     ]);
   });
 });

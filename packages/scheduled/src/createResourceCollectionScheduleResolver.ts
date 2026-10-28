@@ -8,14 +8,17 @@
  * URL like `acme/evil/key` reads the cell of user `evil` in `acme`, which
  * won't hold a row another user saved.
  *
- * The user key comes from the engine's own derivation, so it is the cell
- * the flow's runs wrote: the user's cell in the org the id names. The id
- * selects a cell and grants nothing: a row there that names another org
- * resolves as missing, as does an id naming no org. On a hired worker the
- * id must also name the pin's org, and on a private one the pin's user.
+ * The user key comes from the engine's own derivation, handed in by the
+ * dispatch endpoint (`ctx.userStorageKey`), so it is the cell the flow's runs
+ * wrote: the user's cell in the org the id names. The id selects a cell and
+ * grants nothing: a row there that names another org resolves as missing, as
+ * does an id naming no org. On a hired worker the id must also name the pin's
+ * org, and on a private one the pin's user.
+ *
+ * Imports no engine, so a package that must not load the engine (Workforce)
+ * builds its resolver from `@flow-state-dev/scheduled/collection`.
  */
 import { isValidOrgId } from "@flow-state-dev/core";
-import { resolveUserStorageKey } from "@flow-state-dev/engine";
 import type {
   BlockDefinition,
   ScheduleConfig,
@@ -138,10 +141,7 @@ export function createResourceCollectionScheduleResolver(
     // derives it. The schedule collection is shared (it declares no
     // `flowIsolation`), which is the non-isolated key.
     const resourceKey = `${prefix}${parsed.collectionKey}`;
-    const scopeId = resolveUserStorageKey(parsed.userId, parsed.orgId, {
-      id: ctx.flowKind,
-      isolateUserState: false
-    });
+    const scopeId = ctx.userStorageKey(parsed.userId, parsed.orgId);
     // Resource state, where the collection's `create` wrote the row — not the
     // content store, which holds an instance's content body and never a
     // schedule row (FIX-1545).

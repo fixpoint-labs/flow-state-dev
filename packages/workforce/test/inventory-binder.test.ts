@@ -236,8 +236,11 @@ describe("what one boot writes", () => {
         id: "eng.coder",
         kind: "coder",
         door: null,
+        rules: false,
         hired: false,
-        incarnation: null
+        incarnation: null,
+        name: null,
+        teamName: null
       });
     } finally {
       await lab.dispose();
@@ -256,8 +259,11 @@ describe("what one boot writes", () => {
         id: "eng.lead",
         kind: "agent",
         door: null,
+        rules: false,
         hired: false,
-        incarnation: null
+        incarnation: null,
+        name: null,
+        teamName: null
       });
     } finally {
       await lab.dispose();

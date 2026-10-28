@@ -145,14 +145,22 @@ export function createScheduleDispatchWorker(
       : scheduleId;
     const url = `${baseUrl}/api/flows/${encodeURIComponent(flowKind)}/schedules/${encodeURIComponent(dispatchId)}/dispatch`;
 
-    const nominalFireTime = new Date(job.timestamp ?? Date.now()).toISOString();
+    // The scheduled time this job fires for: the scheduler's `prevMillis`, the
+    // slot it computed for the job. Not `job.timestamp`, which is when the job
+    // was created and is no scheduled time, so the endpoint would refuse it. A
+    // job without one sends no time, which counts against the latest
+    // scheduled time already due.
+    const slot = (job.opts as { prevMillis?: unknown } | undefined)?.prevMillis;
+    const body = typeof slot === "number" && Number.isFinite(slot) && slot > 0
+      ? { nominalFireTime: new Date(slot).toISOString() }
+      : {};
     const response = await fetch(url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${secret}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ nominalFireTime }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(25_000),
     });
 

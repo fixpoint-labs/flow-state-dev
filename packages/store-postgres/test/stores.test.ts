@@ -60,6 +60,7 @@ function makeRequestRecord(
     id,
     flowKind,
     actionName,
+    source: "http",
     userId,
     sessionId,
     status: "in_progress",
@@ -1141,8 +1142,8 @@ describe("PostgreSQL store adapter", () => {
   it("complex nested JSON round-trips correctly", async () => {
     const s = await freshStores();
     const record = makeSessionRecord("sess_complex", "flow-a", "user_1", {
-      state: { nested: { deep: { value: 42 } }, arr: [1, 2, 3] } as Record<string, unknown>,
-      resources: { "res-1": { name: "test", data: { x: 1 } } as Record<string, unknown> },
+      state: { nested: { deep: { value: 42 } }, arr: [1, 2, 3] },
+      resources: { "res-1": { name: "test", data: { x: 1 } } },
       metadata: { tags: ["a", "b"], config: { key: "val" } }
     });
 

@@ -28,6 +28,17 @@ describe("estimateCostUsd", () => {
     expect(sonnet).toBeGreaterThan(haiku);
   });
 
+  it("prices every current-generation tier, so a maxCostUsd budget can trip on any of them", () => {
+    const usage = { promptTokens: 1_000_000, completionTokens: 1_000_000, totalTokens: 2_000_000 };
+    // An unpriced model estimates to 0 and never trips the budget, so the top
+    // tier (the expensive one a budget exists for) must be priced too.
+    expect(estimateCostUsd("openai/gpt-6-astra", usage)).toBeCloseTo(10.0 + 50.0, 6);
+    expect(estimateCostUsd("anthropic/claude-opus-5-5", usage)).toBeCloseTo(4.0 + 20.0, 6);
+    expect(estimateCostUsd("vercel:anthropic/claude-opus-5.5", usage)).toBeCloseTo(4.0 + 20.0, 6);
+    expect(estimateCostUsd("openai/gpt-6.1-sol", usage)).toBeCloseTo(2.0 + 10.0, 6);
+    expect(estimateCostUsd("openai/gpt-6-luna", usage)).toBeCloseTo(0.1 + 0.5, 6);
+  });
+
   it("returns 0 for an unknown model without throwing", () => {
     expect(
       estimateCostUsd("some/unknown-model", {

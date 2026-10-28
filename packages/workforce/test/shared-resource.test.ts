@@ -79,7 +79,7 @@ const sharerFlow = defineFlow({
   cardinality: "collection",
   configSchema: workerConfigSchema(),
   actions: {
-    run: { inputSchema: writeInput, block: share, userMessage: (i: { message: string }) => i.message },
+    respond: { inputSchema: writeInput, block: share, userMessage: (i: { message: string }) => i.message },
     unsigned: { inputSchema: writeInput, block: unsigned },
     selfSigned: { inputSchema: writeInput, block: selfSigned }
   }
@@ -212,7 +212,7 @@ describe("a shared resource", () => {
   it("BR-22 · a `writtenBy` in the caller's input is ignored: the name comes from the session", async () => {
     const worker = sharerFlow({ id: "sharer", config: {} });
     await withRuntime([worker], async (run, read) => {
-      await run(worker, "run", "alice", { message: "forged", key: "forged", writtenBy: { userId: "mallory", workerId: "x" } });
+      await run(worker, "respond", "alice", { message: "forged", key: "forged", writtenBy: { userId: "mallory", workerId: "x" } });
       expect(await read("forged")).toEqual({ text: "forged", writtenBy: { userId: "alice" } });
     });
   });
@@ -250,7 +250,7 @@ describe("a shared resource", () => {
     });
     const readerFlow = defineFlow({ kind: "reader", actions: { read: { inputSchema: writeInput, block: reader } } })();
     await withRuntime([worker, readerFlow], async (run) => {
-      await run(worker, "run", "alice", { message: "for everyone", key: "everyone" });
+      await run(worker, "respond", "alice", { message: "for everyone", key: "everyone" });
       const read = await run(readerFlow, "read", "bob", { message: "", key: "everyone" });
       expect(read.error).toBeUndefined();
       expect(JSON.parse((read.output as { message: string }).message)).toEqual({

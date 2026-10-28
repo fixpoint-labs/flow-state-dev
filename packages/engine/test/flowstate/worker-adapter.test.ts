@@ -61,7 +61,7 @@ function makeFakeAdapter(mode?: WorkerMode) {
   const dispatcher: FlowDispatcher = {
     dispatch: vi.fn(async (envelope) => ({
       requestId: envelope.requestId,
-      finished: Promise.resolve({}),
+      finished: Promise.resolve({ output: undefined, items: [], durationMs: 0 }),
       abort: () => {}
     })),
     close: async () => {}

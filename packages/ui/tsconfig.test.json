@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "rootDir": "../..",
+    "noEmit": true,
+    // paths replace the base mappings (relative to this file; other imports then
+    // use package exports). Same stubs as vitest.config.ts and .storybook/main.ts.
+    "paths": {
+      "@/components/ui/*": ["./.storybook/shadcn/components/ui/*"],
+      "@/lib/utils": ["./.storybook/shadcn/lib/utils"]
+    }
+  },
+  "include": [
+    "scripts/**/*",
+    "src/**/*",
+    "test/**/*",
+    "registry/components/tool-grouping.ts",
+    "registry/components/tool-naming.ts",
+    "registry/components/task-plan-state.ts"
+  ],
+  // tsconfig.json also excludes test/render/**; this program does not.
+  "exclude": ["registry/**/*.tsx"]
+}

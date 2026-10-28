@@ -11,9 +11,9 @@
  *
  * The in-memory backend is the default: one process, one line per key, and a
  * give-back that hands the turn straight to the next waiter. The arbiter reaches
- * it through a synchronous side door (see `inMemoryInternals`) so a `reject` is
- * still refused synchronously from `dispatch` and a queued run is woken rather
- * than polled — the behaviour every in-process host had before backends existed.
+ * it through a synchronous side door (see `inMemoryInternals`) so two racing
+ * takes cannot both win and a queued run is woken rather than polled — the
+ * behaviour every in-process host had before backends existed.
  * The four public calls are the same line, answered asynchronously.
  *
  * The side door is deliberately not extensible: it is keyed to backends this

@@ -1,0 +1,103 @@
+// fallow: unused code, duplication, circular imports and complexity.
+//
+// The `fallow` job in .github/workflows/ci.yml reads this file:
+//   - `pnpm fallow:ci`  whole tree, unresolved imports + unlisted dependencies only.
+//   - `pnpm fallow:new-dead-code <ref>`  PRs only, fails on dead code the head
+//     has anywhere that the base ref doesn't.
+//   - `pnpm fallow:audit --base <ref>`  PRs only, reports new duplication and
+//     complexity in the changed files without failing.
+// `pnpm fallow` locally shows the whole backlog, and exits 1 while there is one.
+//
+// Framework plugins discover most entry points (package.json exports/bin, vitest,
+// Next, Vite, Docusaurus, Storybook). `entry` lists only what they can't see.
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+  "minimumVersion": "3.33.1",
+
+  "entry": [
+    "scripts/*.mjs",
+    ".omp/extensions/*.ts",
+    ".omp/test/*.mjs",
+
+    "packages/*/test/**/*.{test,spec}.{ts,tsx}",
+    "packages/*/**/*.type-test.ts",
+    "packages/cli/bin/*.ts",
+    "packages/cli/test/fixtures/**/*.ts",
+    // Fake Codex programs the codex specs spawn by path.
+    "packages/codex/test/fake-*.mjs",
+
+    "apps/kitchen-sink/flows/**/index.ts",
+    // Docusaurus seeds the config, sidebars and pages, not this theme module.
+    "apps/docs/src/prismThemes.ts",
+    // MDX pages import these; no plugin follows an import out of a .md file.
+    "apps/docs/src/components/**/index.tsx",
+
+    "examples/*/test/**/*.{test,spec}.ts",
+    // Neither a package.json entry nor seeded by the Next plugin.
+    "examples/knowledge-base/src/okf/index.ts",
+
+    "labs/knowledge-hub/src/index.ts",
+    "labs/knowledge-hub/fsdev.config.ts",
+    "labs/knowledge-hub/test/**/*.spec.ts",
+    "labs/knowledge-hub/scripts/**/*.mts",
+    "labs/conductor/fsdev.config.ts",
+    "labs/conductor/test/**/*.spec.ts",
+    "labs/conductor/test/harness.ts",
+
+    "plugins/flow-state-dev/test/**/*.test.mjs",
+    "plugins/flow-state-dev/skills/install-fsd/detect/detect.mjs",
+
+    "goals/scripts/*.mts"
+  ],
+
+  // Goals load their own files by path (the runnable check, fixtures, labs,
+  // controls, legs: copied, spawned, or imported by URL), so no import edge
+  // reaches them. The
+  // goal-local glob needs a file below `goals/<describe>/<it>/`, which keeps
+  // the shared `goals/lib` helpers analyzed like any module.
+  "dynamicallyLoaded": [
+    "goals/*/*/**/*.{ts,tsx,mts,mjs}",
+    "goals/lib/module-patch*.mjs"
+  ],
+
+  // Not analyzed. Specs and their PoCs aren't workspace code, and
+  // `goals/_template` is copied to start a new goal. The rest runs somewhere
+  // else, so its imports resolve against that place's paths and dependencies:
+  // goal harnesses and hosts run inside kitchen-sink, install-fsd templates are
+  // copied into a user's project, and packed-install fixtures run against a
+  // packed install.
+  "ignorePatterns": [
+    "!.omp/**",
+    "spec-poc/**",
+    "specs/**",
+    "plugins/flow-state-dev/skills/install-fsd/templates/**",
+    "scripts/packed-install/fixtures/**",
+    // Files the docs brand lint reads to prove each rule can fail.
+    "apps/docs/scripts/brand-lint-fixtures/**",
+    "goals/_template/**",
+    "goals/*/*/harness*.mts",
+    "goals/*/*/host/**"
+  ],
+
+  // Analyzed (their imports count) but never reported: vendored shadcn and
+  // registry sources.
+  "ignoreFindings": [
+    "packages/ui/registry/**",
+    "packages/ui/.storybook/shadcn/**"
+  ],
+
+  // Dead code fails `fallow audit` at its default severity. Complexity reports
+  // but doesn't fail: existing hot spots are common enough that a new-only gate
+  // would still fire on ordinary PRs. Duplication also reports without failing
+  // (fallow's default, no `duplicates.threshold`): editing code inside an
+  // existing clone splits it into clones fallow counts as new, so a failing
+  // gate would block ordinary fixes to code that is already duplicated.
+  "rules": {
+    "complexity-cyclomatic": "warn",
+    "complexity-cognitive": "warn",
+    "complexity-crap": "warn"
+  },
+
+  // The host API the .omp extensions import; OMP supplies it at run time.
+  "ignoreDependencies": ["@oh-my-pi/pi-coding-agent"]
+}

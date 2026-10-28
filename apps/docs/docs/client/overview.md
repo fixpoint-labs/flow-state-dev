@@ -4,61 +4,78 @@ sidebar_position: 1
 
 # Overview
 
-`@flow-state-dev/client` is an isomorphic API client for flow-state.dev. It works in Node, the browser, and edge runtimes. No React dependency. No DOM. Just HTTP and SSE.
+`@flow-state-dev/client` is how code outside the server talks to your flows. It works in Node, the browser and edge runtimes, with no React or DOM dependency. It speaks HTTP and SSE to a server, or calls an engine in the same process with no web server at all.
 
-If you're building a React app, see [Client > React](/docs/client/react). The React package wraps this client with hooks and renderers. This page covers direct client usage — for headless scripts, non-React UIs, or when you want full control.
+If you're building a React app, see [Client > React](/docs/client/react); the React package wraps this client with hooks and renderers. This page covers using the client directly, for scripts, tests, workers and non-React UIs.
 
-## createClient
+## Creating a client
 
-The basic client is dynamic. You specify flow kind and user, then call actions by name.
+`createClient` builds a client for one user and one server. It holds the user every call acts as and the transport every call goes through. Flows, sessions, resources and requests all hang off it.
 
 ```ts
 import { createClient } from "@flow-state-dev/client";
 
-const client = createClient({
-  flowKind: "my-app",
+const fsd = createClient({
   userId: "user_1",
-  // baseUrl: where the FlowState routes are mounted, minus /api/flows (the client adds it).
-  // Omit in a browser on the same origin with no base path; in Node pass an absolute URL
-  // such as "http://localhost:3000", plus any base path. See /docs/configuration/client#choosing-baseurl
+  baseUrl: "http://localhost:3000",
 });
-
-const { request } = await client.sendAction("chat", { message: "Hello" });
-const requestId = request.id;
-// `flowKind` is the instance the client is bound to: a flow's kind, or one
-// copy's id for a flow that runs as several. Every call goes to that instance,
-// and a session it starts is recorded as that instance's.
 ```
 
-`sendAction` resolves to `{ status, request, session?, error? }`, where `status` is `"in_progress"`, `"completed"`, `"failed"` or `"incomplete"` and you use `request.id` to connect to the request's stream. Execution is async. The server returns `202 Accepted`; the real work happens in the background. Connect to the stream to receive results.
+`baseUrl` is where the server answers, plus any base path; the client adds `/api/flows` itself. In a browser on the same origin, pass `""`. [Client options](/docs/configuration/client) covers `baseUrl`, `apiPath` and `fetcher` in detail, including how to add credentials and how to call an engine in the same process with no web server.
 
-## createTypedClient
+## Sending an action
 
-For type safety, use a typed client generated from your flow definition:
+`fsd.flow(address)` is one flow. The address is the flow's kind, or one copy's id for a flow that runs as several copies. There is no default flow, so every call names one.
 
 ```ts
-import { createTypedClient } from "@flow-state-dev/client";
-import myFlow from "./flows/my-app/flow";
+const support = fsd.flow("support");
 
-const client = createTypedClient({
-  flow: myFlow,
-  userId: "user_1",
-});
+const session = await support.createSession({ title: "Billing question" });
+const sent = await support.send("reply", { text: "Hello" }, { sessionId: session.id });
 
-const { request } = await client.actions.chat({ message: "Hello" });
+const final = await sent.wait();
+console.log(final.status); // "completed", "failed", "suspended", ...
 ```
 
-Action names and input shapes are checked at compile time. The typed client also exposes `sendAction` if you need it.
+`send` resolves once the server has accepted the request, usually before the work has finished. `sent.response` is the server's answer to the send (`{ status, request, session?, error? }`), and `sent` itself is a request handle you can wait on, stream, abort or resume. Leave out `sessionId` and the server starts a session; its id is in `sent.response.session`.
 
-## Stream connection
-
-Subscribe to a request's SSE stream with `createSSEClient`:
+To check action names and inputs at compile time, pass the flow's type. Import it with `import type`, so none of the server code ends up in a browser bundle:
 
 ```ts
-import { createSSEClient } from "@flow-state-dev/client";
+import type { supportFlow } from "./flows/support";
 
-const stream = createSSEClient({
-  url: `/api/flows/my-app/requests/${requestId}/stream`,
+const support = fsd.flow<typeof supportFlow>("support");
+await support.send("reply", { text: "Hello" }); // a typo in "reply" or a wrong input is a type error
+```
+
+## Requests
+
+A request handle is how you follow and steer one request. You get one from `send`, from `fsd.flow(address).request(id)`, or from [`fsd.requests.interrupted()`](#after-a-crash).
+
+```ts
+const request = fsd.flow("support").request("req_123");
+
+await request.status();   // { id, status, startedAtMs, sessionId?, ... }
+await request.wait();     // resolves once the request has settled
+await request.abort();    // ask the server to stop it
+```
+
+| Method | What it does |
+|--------|--------------|
+| `status()` | The request's state now. |
+| `wait({ pollMs?, timeoutMs? })` | Resolves once the request has settled. A request that stops to ask a person settles at `suspended`. |
+| `abort()` | Ask the server to stop it. |
+| `continue()` | Carry on a crash-interrupted request. It keeps its request id. |
+| `retry({ input? })` | Run it again as a new request, with a new id, in the same session. |
+| `resume({ suspensionId, action, data? })` | Answer a pending approval or form. It keeps its request id. |
+| `stream(callbacks)` | Follow its events live. |
+
+`fsd.flow(address).request(id)` reads nothing until you call a method, so an id is all you need to keep. [The API reference](/docs/api/client#request-handles) has every option and failure.
+
+## Streaming a request
+
+```ts
+const stream = sent.stream({
   onItemAdded: (event) => {
     // New item (message, reasoning, component, etc.)
   },
@@ -67,7 +84,7 @@ const stream = createSSEClient({
   },
   onRequestStatus: (event) => {
     if (event.status === "completed") {
-      // Refetch state snapshot for authoritative final state
+      // Read the state snapshot for the final picture
     }
   },
   onSessionMetadataChanged: (event) => {
@@ -75,40 +92,61 @@ const stream = createSSEClient({
     console.log(event.title);
   },
 });
+
+stream.close();
 ```
 
-The client handles reconnection, resume from cursor, and event assembly. Pass `Last-Event-ID` or `starting_after` in the URL to resume after disconnect. The server replays missed events, then continues live.
+If the connection drops, open the stream again with `startingAfter` set to the last sequence number you saw. The server replays what you missed, then continues live.
 
-If you'd rather have those events folded into a ready-to-render item list than handle each callback yourself, pass `createRequestStreamStore()` through `bindStoreToCallbacks` — the same accumulator the React hooks use, available to any non-React consumer. See [Stream state store](../api/client.md#createrequeststreamstore-and-bindstoretocallbacksstore-options) in the API reference. On React you don't need it; `useSession` and `useRequestStream` wrap it for you.
+If you'd rather have those events folded into a ready-to-render item list than handle each callback yourself, pass `createRequestStreamStore()` through `bindStoreToCallbacks`, the same accumulator the React hooks use. See [the store](/docs/api/client#createrequeststreamstore-and-bindstoretocallbacksstore-options) in the API reference. On React you don't need it; `useSession` and `useRequestStream` wrap it for you.
 
-A request's stream carries one request. To follow everything that happens in a session, including requests another tab, person or agent sent, use [`createSessionSSEClient`](../api/client.md#createsessionsseclientoptions). It delivers each item once it's finished, not text as it's generated.
+A request's stream carries one request. To follow everything that happens in a session, including requests another tab, person or agent sent, use [`fsd.sessions.stream`](/docs/api/client#following-a-session). It delivers each item once it's finished, not text as it's generated.
+
+## After a crash
+
+If the server process crashes or restarts while a request is running, the request is left `interrupted`. You can pick it up again from the client.
+
+If you saved the request id, continue it by id:
+
+```ts
+await fsd.flow("support").request(savedRequestId).continue();
+```
+
+`continue()` keeps the request id. Blocks that had finished are replayed from the durable log rather than run again, and the block that was in flight runs again. If you would rather start over with a new request in the same session, use `retry()`, which resolves to the new request.
+
+If you saved nothing, ask the server which of this user's requests were interrupted:
+
+```ts
+for (const lost of await fsd.requests.interrupted()) {
+  console.log(`${lost.flowKind}/${lost.actionName} stopped at`, new Date(lost.interruptedAt));
+  await lost.continue();
+}
+```
+
+Each entry is a request handle already addressed to its own flow, plus `sessionId`, `flowKind`, `actionName` and `interruptedAt`. A request stays in the list until it is continued or removed, so calling `interrupted()` again lists it again.
+
+Only an `interrupted` request can be continued; any other answers `409`. Use `resume` for a `suspended` one. A request that has no session can't be continued or retried, and the call rejects before anything is sent. [Durable execution](/docs/advanced/durable-execution) covers what replays and what runs again.
 
 ## Session management
 
-```ts
-import { createSessionClient } from "@flow-state-dev/client";
-
-const sessions = createSessionClient();
-```
+`fsd.sessions` reads and manages the user's sessions. You create a session on a flow, with `fsd.flow(address).createSession`.
 
 **Creating sessions with metadata:**
 
 ```ts
-const session = await sessions.createSession({
-  flowKind: "my-app",
-  userId: "user_1",
+const session = await fsd.flow("my-app").createSession({
   title: "Sprint planning",          // optional
   description: "Q2 kickoff session", // optional
   tags: ["planning", "sprint-12"],   // optional
 });
 ```
 
-Sessions expose `title`, `description`, and `tags` as first-class fields — separate from workflow state. They show up in session lists and are useful for building conversation history UIs.
+Sessions carry `title`, `description` and `tags` as their own fields, separate from workflow state. They show up in session lists and are useful for building conversation history UIs.
 
 **Updating metadata after the fact:**
 
 ```ts
-await sessions.updateSessionMetadata("sess_1", {
+await fsd.sessions.updateMetadata("sess_1", {
   title: "Revised title",
   tags: ["updated"],
   metadata: { reviewed: true },
@@ -125,32 +163,41 @@ If the session keeps changing too fast for your edit to land, the call throws `C
 **Fetching session state:**
 
 ```ts
-const snapshot = await sessions.getSessionState("sess_1", {
+const snapshot = await fsd.sessions.state("sess_1", {
   includeItems: true,
   clientData: ["session.artifactsList", "user.preferences"],
 });
 ```
 
-`getSessionState` returns state snapshots with clientData. Use `includeItems` to get the session item log. Specify which clientData keys you need.
+`state` returns the session's snapshot with the `clientData` keys you name. Add `includeItems` to get the session's item log.
 
 **Deleting a session:**
 
 ```ts
-await sessions.deleteSession("sess_1");
+await fsd.sessions.delete("sess_1");
 ```
 
-If the same user, in the same organization, later creates a session under that id, the new session treats the deleted session's requests and background runs as its own: they show in its snapshot, its live stream and its background-work list. Give a new session a new id.
+`delete` doesn't stop or wait for requests and background runs that are still going.
+
+You can pass your own `sessionId` to `createSession` (see [Deriving the session id from your data](/docs/persistence/overview#deriving-the-session-id-from-your-data)). Give a new session a new id. If you derive ids from your data, include something that changes each time you recreate the session, such as a counter you bump on every delete.
+
+If you reuse a deleted session's id, the new session picks up what the old one left behind:
+
+- **What it shows.** If the new session is created by the same user, in the same organization and tenant, it lists the deleted session's background runs in its background-work list and its live stream, even if it's for a different flow instance. It shows the deleted session's requests, in its snapshot and its live stream, only if it's also for the same flow instance. A new session created by anyone else shows none of them.
+- **What gets written to it.** Requests that were still running in the deleted session keep writing under that id, so they write to the new session if it's in the same tenant, whoever created it. Their state changes, [journal](/docs/fundamentals/state-and-scopes#sessions-in-depth) entries, and any title, description, tags or metadata they set land there. A session under the same id in another tenant is stored separately and gets none of it. Background runs write to their own sessions, not this one.
+- **Resources.** Those requests can write the new session's resources too. A content write always lands, even over content the new session deleted. A state write lands if the new session has already written that resource, and is applied to the new session's value. If the new session hasn't written it, a write that changes a value the request had already loaded is refused, and any other write creates the resource. Resources marked [`sharedToLineage`](/docs/resources/storage#session-scope-and-background-work) aren't affected: the new session never sees those writes.
 
 **Listing sessions:**
 
 ```ts
-const list = await sessions.listSessions({ flowKind: "my-app" });
+const list = await fsd.sessions.list({ flowKind: "my-app" });
+// The client's own user's sessions, newest first.
 // Each entry includes id, flowId, title, description, tags, createdAt, updatedAt.
 // `flowId` is the instance that owns the session; pass `flowId` instead of
 // `flowKind` to list one copy of a multi-copy flow.
 
 // Sessions dispatchers ran work in come back too when you ask for them.
-const withRuns = await sessions.listSessions({
+const withRuns = await fsd.sessions.list({
   flowKind: "my-app",
   include: "dispatch-runs",
 });
@@ -160,16 +207,29 @@ A row a dispatcher started carries `parentSessionId`, the conversation it was
 started from, along with its `topic` and `coordinate` labels. Rows belonging to
 another principal, organization or tenant are absent either way.
 
-The typed client includes a session client when created with a flow. Use it for creating sessions, listing requests, and fetching state.
+`list` returns the client's own user's sessions unless you pass another `userId`. A server with sign-in returns only the signed-in user's sessions either way.
+
+### Listing one flow's sessions
+
+Where a flow's sessions are filed depends on how the flow was declared, so `sessionQueryFor` reads the flow list and builds the right filter:
+
+```ts
+import { sessionQueryFor } from "@flow-state-dev/client";
+
+const flows = await fsd.flows();
+const rows = await fsd.sessions.list(sessionQueryFor("engineer-a", flows));
+```
+
+It returns `{ flowId: address }` for a copy of a collection flow and `{ flowKind: address }` otherwise. An address missing from the flow list is treated as a single-copy flow's kind. Spread it into `fsd.sessions.list` alongside any other filter.
 
 ### Dispatched runs
 
-Some flows start work that outlives the turn that kicked it off. A long research pass, a document being drafted, a job that runs for an hour. Work like that runs in a session of its own — a *dispatch run* — so it never shows up in the requests of the session the user is in. `listSessions` with `include: "dispatch-runs"` finds those runs across the flow; `listChildSessions` asks one session which runs were started from it, returning one `ChildSessionSummary` per run.
+Some flows start work that outlives the turn that kicked it off. A long research pass, a document being drafted, a job that runs for an hour. Work like that runs in a session of its own, a *dispatch run*, so it never shows up in the requests of the session the user is in. `fsd.sessions.list` with `include: "dispatch-runs"` finds those runs across the flow; `fsd.sessions.children` asks one session which runs were started from it, returning one `ChildSessionSummary` per run.
 
 [Work that outlives the turn](/guides/background-work) covers where these sessions come from and how they differ from the other things the docs call background work; [Dispatched work](/docs/server/background-work) is the HTTP surface underneath the two calls below.
 
 ```ts
-const runs = await sessions.listChildSessions("sess_1");
+const runs = await fsd.sessions.children("sess_1");
 
 for (const run of runs) {
   console.log(
@@ -202,10 +262,10 @@ Paging is `{ limit, offset }`: `limit` runs 1–100 and defaults to 25, `offset`
 A run's `id` is a session id, so hand it to any session read:
 
 ```ts
-const [run] = await sessions.listChildSessions("sess_1");
+const [run] = await fsd.sessions.children("sess_1");
 
 if (run) {
-  const requests = await sessions.listSessionRequests(run.id);
+  const requests = await fsd.sessions.requests(run.id);
 }
 ```
 
@@ -213,7 +273,7 @@ if (run) {
 
 A row whose session has had no run dispatched into it carries no `status` at all. Don't fold that absence into one of the five values. Your own label for it, like "Not started", is fine; mapping it to `active` claims a run is pending when none has been dispatched.
 
-`topic` and `coordinate` are optional too. `topic` is the key the run's session was derived from, `coordinate` the entry it was dispatched to. Both are display labels — nothing identifies or authorizes from them. Whether `topic` reads well depends on what the flow keyed on: a document id or an issue key is legible, a task-board worker's composed key is not. The session id is the one field always there, so fall back to it rather than to a made-up name:
+`topic` and `coordinate` are optional too. `topic` is the key the run's session was derived from, `coordinate` the entry it was dispatched to. Both are display labels; nothing identifies or authorizes from them. Whether `topic` reads well depends on what the flow keyed on: a document id or an issue key is legible, a task-board worker's composed key is not. The session id is the one field always there, so fall back to it rather than to a made-up name:
 
 ```tsx
 <li>
@@ -228,50 +288,46 @@ A row whose session has had no run dispatched into it carries no `status` at all
 
 ## State snapshots and clientData
 
-State snapshots include `clientData` — derived values computed from state and resources. clientData is the sole data gateway to clients. Raw state never reaches the client.
+A state snapshot carries `clientData`: values the flow computes from its state and resources and chooses to expose. That is the only data a client sees. Raw state never reaches it.
 
-Request a snapshot after `request.completed` for the authoritative final state. The stream gives you live updates; the snapshot gives you correctness.
+Read a snapshot once a request has completed for the final state. The stream gives you live updates; the snapshot is the authoritative picture.
 
-## Resource methods
+## Resources
 
-Collection resources expose paginated read methods on the resource client: `listCollectionItems` returns a page of item state, `getCollectionItemState` fetches a single item by topic. A separate `getResourceManifest` returns the static description of every public resource on a session's flow. See [Resource Collections — lazy state](/docs/resources/collections#lazy-state-by-default) and [Resource Manifest](/docs/resources/manifest) for the full mental model and React hook surface in [client/react](/docs/client/react#resource-collection-hooks).
-
-## Transcription helper
-
-For voice flows, the client exports a transcription helper:
+`fsd.resources` reads and writes a session's resources. Collection resources page: `listCollectionItems` returns a page of item state, and `getCollectionItemState` reads one item by topic. `getResourceManifest` describes every public resource on a session's flow.
 
 ```ts
-import { transcribe } from "@flow-state-dev/client";
-
-const result = await transcribe(audioBlob, { /* options */ });
+const page = await fsd.resources.listCollectionItems(sessionId, "notes", { limit: 50 });
+const note = await fsd.resources.getCollectionItemState(sessionId, "notes", "launch-plan");
 ```
 
-Use this to convert user audio to text before sending to an action.
+See [Client access](/docs/resources/client-access) for what a flow lets a client see and write, [Resource Collections](/docs/resources/collections#lazy-state-by-default) and [Resource Manifest](/docs/resources/manifest) for the model, and [React](/docs/client/react#resource-collection-hooks) for the hooks.
+
+## Transcription
+
+For voice flows, `fsd.transcribe` sends audio to the server and returns the text:
+
+```ts
+const { text } = await fsd.transcribe({ audio: audioBlob, mediaType: "audio/webm" });
+await fsd.flow("voice-chat").send("reply", { text }, { sessionId });
+```
 
 ## What the client handles
 
-- **Reconnection** — Automatic retry with configurable backoff.
-- **Resume from cursor** — Pass `Last-Event-ID` or `starting_after`; the server replays and continues.
-- **Event assembly** — Dedup by sequence number. Sliding window (`dedupWindowSize`, default 1000) avoids duplicates on reconnect.
-- **Request lifecycle** — `request.created`, `request.in_progress`, `request.completed` / `.incomplete` / `.failed`.
-
-## createClient vs createTypedClient
-
-| | createClient | createTypedClient |
-|--|--------------|-------------------|
-| Action calls | `sendAction("chat", input)` | `actions.chat(input)` |
-| Type safety | Runtime only | Compile-time + runtime |
-| Best for | Generic UIs, devtools, scripts | App code with known flow |
+- **Resume from a cursor.** Pass `startingAfter` (or `lastEventId`) to a request stream; the server replays what you missed and continues.
+- **Duplicate events.** A sliding window (`dedupWindowSize`, default 1000) drops events it has already delivered.
+- **Session streams reconnect.** `fsd.sessions.stream` retries with backoff on its own. A request stream doesn't; reopen it with `startingAfter`.
+- **One transport.** Every call and stream goes through the client's `fetcher`, so credentials and in-process dispatch apply everywhere.
 
 ## Requirements
 
-- `userId` is required for action and session calls in Phase 1.
-- The server must be running and registered with your flows.
-- For streaming, ensure CORS allows your origin if client and server differ.
+- `userId` is required. It's the user every call acts as.
+- The server must be running with your flows registered.
+- If the client and server are on different origins, the server's CORS settings must allow the client's origin.
 
 ## See also
 
-- [Items](/docs/streaming/overview) — Item types, audiences, emitting
-- [Streaming](/docs/streaming/items) — SSE protocol, event types, resume semantics
-- [Client > React](/docs/client/react) — React hooks that wrap this client
-- [API Reference: client](/docs/api/client) — Full API surface
+- [Client options](/docs/configuration/client): `baseUrl`, `apiPath`, `fetcher` and credentials
+- [Streaming](/docs/streaming/overview): item types, the SSE protocol, resume
+- [Client > React](/docs/client/react): React hooks that wrap this client
+- [API Reference: client](/docs/api/client): the full surface

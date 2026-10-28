@@ -24,8 +24,8 @@ export function StatusItemView({ item }: { item: StatusItem }) {
   if (label === null) return null;
 
   return (
-    <div className="flex items-center gap-1.5 text-xs text-slate-500 py-0.5">
-      <Loader2 className="h-3 w-3 animate-spin shrink-0 text-slate-500" />
+    <div className="flex w-fit max-w-[560px] items-center gap-2.5 border border-dashed border-fs-ink/45 px-2.5 py-[7px] font-fs-mono text-[11px] font-medium text-fs-ink3">
+      <Loader2 className="h-3 w-3 animate-spin shrink-0 text-fs-blue" />
       <span>{label}</span>
     </div>
   );

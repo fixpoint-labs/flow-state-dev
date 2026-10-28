@@ -14,10 +14,10 @@
  *   3. self-contained recovery client (non-streaming fire-and-forget fallback)
  */
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { createRecoveryClient } from "@flow-state-dev/client";
 import type { SuspensionItem } from "@flow-state-dev/core/items";
 import type { SuspensionStatus } from "@flow-state-dev/core/types";
 import { useFlowContext } from "../context/FlowContext";
+import { useClient } from "../internal/useClient";
 import { useSuspensionResolver } from "../context/SuspensionResolver";
 
 // ---------------------------------------------------------------------------
@@ -53,6 +53,8 @@ export function resolveApprovalOutcome(
       return { icon: "⏲", label: "Expired" };
     case "stopped":
       return { icon: "■", label: "Stopped" };
+    case "cancelled":
+      return { icon: "■", label: "Cancelled" };
     default:
       return { icon: "•", label: "Resolved" };
   }
@@ -113,7 +115,8 @@ export function useApproval(
   options: UseApprovalOptions = {}
 ): UseApprovalResult {
   const { isResolved = false, resolution, onApprove, onReject } = options;
-  const { flowKind, baseUrl, apiPath, userId } = useFlowContext();
+  const { flowKind, userId } = useFlowContext();
+  const fsd = useClient();
   const streamingResolve = useSuspensionResolver();
 
   // The action currently in flight, or null when idle. Doubles as the
@@ -126,10 +129,6 @@ export function useApproval(
   // propagating back. null until this hook resolves its own suspension.
   const [resolvedAction, setResolvedAction] = useState<"approve" | "reject" | null>(null);
 
-  const recoveryClient = useMemo(
-    () => createRecoveryClient({ baseUrl, apiPath }),
-    [baseUrl, apiPath]
-  );
 
   // A streaming resolver from context enables both actions just like a flowKind.
   const hasFlowKind = flowKind !== undefined && flowKind.length > 0;
@@ -180,7 +179,7 @@ export function useApproval(
         } else {
           // Self-contained fallback: non-streaming fire-and-forget resume.
           if (!hasFlowKind) return;
-          await recoveryClient.resumeSuspension(flowKind!, item.requestId, {
+          await fsd.flow(flowKind!).request(item.requestId).resume({
             suspensionId: item.suspensionId,
             action,
             resumedBy: userId
@@ -195,7 +194,7 @@ export function useApproval(
         setPendingAction(null);
       }
     },
-    [isResolving, canApprove, canReject, hasFlowKind, flowKind, item.requestId, item.suspensionId, userId, recoveryClient, streamingResolve, onApprove, onReject]
+    [isResolving, canApprove, canReject, hasFlowKind, flowKind, item.requestId, item.suspensionId, userId, fsd, streamingResolve, onApprove, onReject]
   );
 
   const approve = useCallback(() => { void handleAction("approve"); }, [handleAction]);

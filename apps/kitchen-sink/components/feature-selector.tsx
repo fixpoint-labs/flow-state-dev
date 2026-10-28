@@ -39,7 +39,6 @@ interface FeatureOption {
   label: string;
   description: string;
   icon: React.ComponentType<{ className?: string }>;
-  color: string;
 }
 
 const FEATURE_OPTIONS: FeatureOption[] = [
@@ -48,28 +47,24 @@ const FEATURE_OPTIONS: FeatureOption[] = [
     label: "Search",
     description: "Search the web for information",
     icon: Search,
-    color: "text-blue-500 dark:text-blue-400",
   },
   {
     key: "fetch",
     label: "Fetch",
     description: "Fetch and read the full content of web pages",
     icon: Globe,
-    color: "text-violet-500 dark:text-violet-400",
   },
   {
     key: "crawl",
     label: "Crawl",
     description: "Crawl websites following links up to a specified depth",
     icon: Network,
-    color: "text-amber-500 dark:text-amber-400",
   },
   {
     key: "biasCheck",
     label: "Bias Check",
     description: "Detect sycophancy and cognitive biases in responses",
     icon: ShieldCheck,
-    color: "text-rose-500 dark:text-rose-400",
   },
 ];
 
@@ -103,14 +98,14 @@ export function FeatureSelector({
           className={cn(
             "gap-1.5 text-xs font-medium transition-colors",
             "hover:border-foreground/20",
-            activeCount > 0 && "border-rose-500/30 dark:border-rose-400/30",
+            activeCount > 0 && "border-foreground/40",
           )}
         >
           <Settings2
             className={cn(
               "size-3.5",
               activeCount > 0
-                ? "text-rose-500 dark:text-rose-400"
+                ? "text-foreground"
                 : "text-muted-foreground",
             )}
           />
@@ -141,7 +136,7 @@ export function FeatureSelector({
               <Icon
                 className={cn(
                   "mt-0.5 size-4 shrink-0 transition-colors",
-                  isActive ? option.color : "text-muted-foreground/40",
+                  isActive ? "text-foreground" : "text-muted-foreground/40",
                 )}
               />
               <div className="flex flex-col gap-0.5">

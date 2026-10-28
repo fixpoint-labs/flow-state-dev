@@ -25,7 +25,7 @@ const resolvedControlTools = (list: unknown): GeneratorTool[] =>
 
 /** The task-board capability's own tool names, from a fresh instance. */
 function taskToolNames(): string[] {
-  const capability = createTaskToolsCapability() as unknown as {
+  const capability = createTaskToolsCapability(async () => undefined) as unknown as {
     __presetDefs?: { tools?: { controlTools?: unknown } };
   };
   const names = resolvedControlTools(capability.__presetDefs?.tools?.controlTools).map((tool) => tool.config?.name ?? tool.name);
@@ -52,14 +52,14 @@ async function judgmentToolNames(options: { skill: boolean; secondInstance?: "pe
     judgment: mockGenerator({ script: [{ when: () => true, then: { text: "Noted." } }] }),
     // A second instance composed per turn, the way a skill or a preset would
     // reach the turn: nothing refuses it before the turn runs.
-    ...(options.secondInstance === "per-turn" ? { agent: { uses: [() => [createTaskToolsCapability()]] } } : {}),
+    ...(options.secondInstance === "per-turn" ? { agent: { uses: [() => [createTaskToolsCapability(async () => undefined)]] } } : {}),
     observeTools: (blockName, names) => {
       if (blockName === "coordinator-judgment") seen.push(names);
     }
   });
   try {
     const conv = await host.conversation("alice", "lead");
-    const result = await host.act("alice", conv, "run", { message: "what's on the board?" });
+    const result = await host.act("alice", conv, "respond", { message: "what's on the board?" });
     await host.settled();
     return { seen, error: result.error, heard: JSON.stringify(host.judgment.calls.map((call) => call.input)) };
   } finally {
@@ -89,13 +89,13 @@ describe("the coordinator's turn carries the task tools once (ER-32)", () => {
   it("is refused, by core, when a second task-tools capability instance joins the turn", async () => {
     const { seen, error } = await judgmentToolNames({ skill: false, secondInstance: "per-turn" });
     expect(seen).toEqual([]);
-    expect(messageOf(error)).toMatch(/has two tools named "addTask"/);
+    expect(messageOf(error)).toMatch(/has two tools named "createTask"/);
   });
 
   it("is refused when the app composes a second instance beside it, before any turn runs", () => {
     // The same name twice in a turn's static `uses` is refused when the flow
     // is built, so no coordinator can be registered carrying two sets.
-    expect(() => bootBoardHost({ agent: { uses: [createTaskToolsCapability()] } })).toThrow(
+    expect(() => bootBoardHost({ agent: { uses: [createTaskToolsCapability(async () => undefined)] } })).toThrow(
       /"taskTools" is declared by two different defineCapability\(\) calls/
     );
   });

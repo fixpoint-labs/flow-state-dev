@@ -13,7 +13,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, handler } from "@flow-state-dev/core";
 import type { FlowInstance, GeneratorModel, ModelResolver, SuspensionRecord } from "@flow-state-dev/core/types";
-import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { createFlowState, createInProcessFetch, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { z } from "zod";
 import { defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { createWorkerInstallation } from "../src/workers/installation";
@@ -68,23 +68,20 @@ describe("a resumed turn on the shared agent copy", () => {
     } as never);
     try {
       const runtime = await state.getRuntime();
-      const router = await state.getRouter();
+      const inProcess = createInProcessFetch(state);
       const call = (method: "POST", path: string[], body: unknown) =>
-        router[method](
-          new Request(`http://localhost/api/flows/${path.join("/")}`, {
-            method,
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(body)
-          }),
-          { params: { path } }
-        );
+        inProcess(`/api/flows/${path.join("/")}`, {
+          method,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body)
+        });
 
       const sessionId = "conversation-amy";
       expect((await call("POST", ["agent", "sessions"], { userId: "alice", sessionId, state: { workerId: "desk.amy" } })).status).toBe(201);
       const started = await runAction({
         orgId: DEFAULT_ORG_ID,
         flow: copy,
-        actionName: "run",
+        actionName: "respond",
         input: { message: "refund o-1" },
         userId: "alice",
         sessionId,

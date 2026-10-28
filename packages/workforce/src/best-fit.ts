@@ -1,6 +1,7 @@
 /**
- * Best fit's ladder: where a post goes when one evaluator call picks who
- * answers it, for the coordinator's `best-fit` policy.
+ * Best fit's ladder: where a post goes when the one fit check
+ * (`fit-check.ts`) picks who answers it, for the coordinator's `best-fit`
+ * policy.
  *
  * The order, and nothing else:
  *
@@ -27,9 +28,7 @@
  * Each caller words its own reasons, so the ladder returns why a pick was not
  * used as a value ({@link BestFitMiss}), never a sentence.
  */
-import { handler } from "@flow-state-dev/core";
-import type { BlockDefinition, ChoiceAnswer } from "@flow-state-dev/core/types";
-import { z } from "zod";
+import { fitOutcome } from "./fit-check";
 
 /** What a best-fit post is placed from. */
 export interface BestFitCase {
@@ -75,24 +74,6 @@ export type BestFitPlacement =
   | { readonly by: "fallback"; readonly worker: string; readonly miss: BestFitMiss }
   | { readonly by: "none"; readonly miss: BestFitMiss; readonly fallbackUnreachable: boolean };
 
-/** What a failed evaluator call leaves: the reason, as a value. */
-export const failedEvaluationSchema = z.object({ failed: z.string() });
-
-/**
- * What an answered call leaves, as far as the ladder reads it: the `worker`
- * question's {@link ChoiceAnswer}, its choice unchecked (anything; the ladder
- * checks it against the options) and its confidence only when the model
- * reported one (the ladder reads one outside [0, 1] as none).
- */
-const answeredEvaluationSchema = z.object({
-  answers: z.object({
-    worker: z.object({
-      choice: z.unknown(),
-      confidence: z.number().finite().optional()
-    } satisfies Record<keyof Pick<ChoiceAnswer, "choice" | "confidence">, z.ZodTypeAny>)
-  })
-});
-
 /** The options a post can go to: every option but the coordinator's own. */
 function delegateOptions(bestFit: BestFitCase): string[] {
   return Object.keys(bestFit.options).filter((option) => option !== bestFit.coordinator);
@@ -107,25 +88,11 @@ export function needsBestFitCall(bestFit: BestFitCase): boolean {
 }
 
 /**
- * What the evaluator step left, read one way: the call's own failure, or what
- * it chose for `worker` and the confidence it reported, if any.
- */
-function evaluationOutcome(answer: unknown): { failed: string } | { choice: unknown; confidence?: number } {
-  const failed = failedEvaluationSchema.safeParse(answer);
-  if (failed.success) return failed.data;
-  const answered = answeredEvaluationSchema.safeParse(answer);
-  if (!answered.success) return { choice: undefined };
-  const { choice, confidence } = answered.data.answers.worker;
-  // Outside [0, 1] is no reported confidence, as core's cascading gate reads it.
-  return confidence === undefined || confidence < 0 || confidence > 1 ? { choice } : { choice, confidence };
-}
-
-/**
  * Place a post on the ladder.
  *
  * @param bestFit Who can be reached, the options, the holder and the fallback.
- * @param answer What the evaluator step left: its answers, a {@link failedEvaluationSchema}
- *   value, or nothing when the call was skipped.
+ * @param answer What the fit check left (`fit-check.ts`): its answers, its
+ *   failure, or nothing when the call was skipped.
  */
 export function placeBestFit(bestFit: BestFitCase, answer: unknown): BestFitPlacement {
   if (bestFit.held !== undefined) return { by: "held", worker: bestFit.held };
@@ -136,7 +103,7 @@ export function placeBestFit(bestFit: BestFitCase, answer: unknown): BestFitPlac
   } else if (delegateOptions(bestFit).length === 0) {
     miss = { kind: "none-described" };
   } else {
-    const outcome = evaluationOutcome(answer);
+    const outcome = fitOutcome(answer);
     const floor = bestFit.minConfidence;
     if ("failed" in outcome) {
       miss = { kind: "evaluation-failed", message: outcome.failed };
@@ -163,23 +130,4 @@ export function placeBestFit(bestFit: BestFitCase, answer: unknown): BestFitPlac
     return { by: "fallback", worker: bestFit.fallback, miss };
   }
   return { by: "none", miss, fallbackUnreachable: bestFit.fallback !== undefined };
-}
-
-/**
- * The block that turns the evaluator call's own failure into a value the
- * ladder reads, for `evaluator.rescue([{ block }])`. Nothing else is caught:
- * a cancelled request is not a failed call, so its error goes on up.
- *
- * @param name The block's name, distinct per caller.
- */
-export function bestFitEvaluationFailed(name: string): BlockDefinition<z.ZodUnknown, typeof failedEvaluationSchema> {
-  return handler({
-    name,
-    inputSchema: z.unknown(),
-    outputSchema: failedEvaluationSchema,
-    execute: (error: unknown, ctx) => {
-      if (ctx.signal.aborted) throw error;
-      return { failed: error instanceof Error ? error.message : String(error) };
-    }
-  });
 }

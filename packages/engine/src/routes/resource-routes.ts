@@ -20,7 +20,7 @@ import type {
   ResourceQuery,
 } from "@flow-state-dev/core/types";
 import { getPatternPrefix, matchesPattern, resolveCollectionKey, searchProjectedRecords } from "@flow-state-dev/core/types";
-import { resolveClientProjection } from "@flow-state-dev/core/helpers";
+import { resolveClientData } from "@flow-state-dev/core/helpers";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { SessionRecord, StoreRegistry } from "../stores/types";
 import { toBareState, toBareStates } from "../stores/resource-state-views";
@@ -29,7 +29,6 @@ import {
   extractBareTopic,
   jsonResponse,
   loadCheckedSession,
-  loadTenantSession,
   unknownSessionResponse,
   parseJsonBody,
 } from "./route-utils";
@@ -39,7 +38,7 @@ import {
 } from "../resources/normalize-resource-state";
 import { normalizeScopeResourceContent } from "../context/resource-registry";
 import { ValidationError } from "../errors/flow-error";
-import { ownerKeyAdmits, ownerWriteRefusal } from "../resources/owner-private";
+import { ownerKeyAdmits, ownerKeyMaySeed, ownerWriteRefusal } from "../resources/owner-private";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { isJsonObject } from "../utils/json-helpers";
 import {
@@ -68,8 +67,8 @@ type ResourceRouteContext = {
   tenantId?: string;
   /**
    * The session the owner check read and admitted the caller to
-   * (`RouteAuthResult.session`). The content routes read and write only under
-   * that session; the state routes do not compare against it yet.
+   * (`RouteAuthResult.session`). Every route here reads and writes only under
+   * that session.
    */
   checkedSession?: SessionRecord | null;
 };
@@ -78,16 +77,23 @@ type ResourceRouteContext = {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** Absent unless `ownerKeyMaySeed` admits the key for this user against the template scope's collections. */
 async function resolveTemplateRaw(
   ctx: ResourceRouteContext,
   flow: ResourceOwnerFlow,
   sessionId: string,
+  session: SessionRecord,
   config: { contentTemplateRef?: string }
 ): Promise<string | undefined> {
+  const userId = session.userId;
   if (!config.contentTemplateRef) return undefined;
   const templateFound = findResourceConfig(flow, config.contentTemplateRef);
   if (!templateFound) return undefined;
-  const templateData = await getPersistedData(ctx, flow, sessionId, templateFound.scope, ctx.tenantId);
+  const scopeConfigs = Object.values(flow.resources ?? {}).filter(
+    (entry) => (entry as { scope?: unknown } | null)?.scope === templateFound.scope
+  );
+  if (!ownerKeyMaySeed(templateFound.storageKey, userId, scopeConfigs)) return undefined;
+  const templateData = await getPersistedData(ctx, flow, sessionId, templateFound.scope, ctx.tenantId, session);
   return templateData?.content[templateFound.storageKey];
 }
 
@@ -131,7 +137,7 @@ export async function handleGetResourceContent(
     return jsonResponse(403, { error: `Content read not permitted for "${route.ref}"` });
   }
 
-  const data = await getPersistedData(ctx, flow, route.sessionId, scope, ctx.tenantId);
+  const data = await getPersistedData(ctx, flow, route.sessionId, scope, ctx.tenantId, session);
   if (!data) return jsonResponse(404, { error: "Scope data not found" });
 
   const state = normalizeResourceState(config, data.resources[found.storageKey]);
@@ -142,7 +148,7 @@ export async function handleGetResourceContent(
   const rawContent =
     data.content[found.storageKey] ??
     normalizeScopeResourceContent({ [found.storageKey]: config }, undefined)[found.storageKey];
-  const templateRaw = await resolveTemplateRaw(ctx, flow, route.sessionId, config);
+  const templateRaw = await resolveTemplateRaw(ctx, flow, route.sessionId, session, config);
   const content = await renderContent(config, rawContent, state, templateRaw);
 
   return jsonResponse(200, { ref: route.ref, content });
@@ -207,12 +213,12 @@ export async function handleGetCollectionItemContent(
     if (extState === undefined) {
       return jsonResponse(404, { error: `Item "${route.topic}" not found in "${route.ref}"` });
     }
-    const templateRaw = await resolveTemplateRaw(ctx, flow, route.sessionId, config);
+    const templateRaw = await resolveTemplateRaw(ctx, flow, route.sessionId, session, config);
     const content = await renderContent(config, undefined, extState, templateRaw);
     return jsonResponse(200, { ref: route.ref, topic: route.topic, content });
   }
 
-  const data = await getPersistedData(ctx, flow, route.sessionId, scope, ctx.tenantId);
+  const data = await getPersistedData(ctx, flow, route.sessionId, scope, ctx.tenantId, session);
   if (!data) return jsonResponse(404, { error: "Scope data not found" });
 
   const instanceState = data.resources[storageKey];
@@ -222,7 +228,7 @@ export async function handleGetCollectionItemContent(
 
   const state = isJsonObject(instanceState) ? instanceState : {};
   const rawContent = data.content[storageKey];
-  const templateRaw = await resolveTemplateRaw(ctx, flow, route.sessionId, config);
+  const templateRaw = await resolveTemplateRaw(ctx, flow, route.sessionId, session, config);
   const content = await renderContent(config, rawContent, state as JsonObject, templateRaw);
 
   return jsonResponse(200, { ref: route.ref, topic: route.topic, content });
@@ -428,10 +434,10 @@ const STATE_LIST_DEFAULT_LIMIT = 50;
 const STATE_LIST_MAX_LIMIT = 200;
 
 async function applyClientData(
-  config: { client?: CollectionClientConfig },
+  config: { client?: CollectionClientConfig; secret?: ReadonlyArray<string> },
   state: JsonObject
 ): Promise<unknown> {
-  return await resolveClientProjection(config.client, state);
+  return await resolveClientData(config, state);
 }
 
 function hasTruthyFlag(record: Record<string, unknown> | undefined): boolean {
@@ -457,10 +463,11 @@ export async function handleListCollectionState(
   route: Extract<ParsedFlowRoute, { kind: "list_collection_state" }>,
   ctx: ResourceRouteContext
 ): Promise<Response> {
-  const session = await loadTenantSession(
+  const session = await loadCheckedSession(
     ctx.stores.session,
     route.sessionId,
-    ctx.tenantId
+    ctx.tenantId,
+    ctx.checkedSession
   );
   if (!session) return unknownSessionResponse(route.sessionId);
 
@@ -538,7 +545,7 @@ export async function handleListCollectionState(
     // resolver (honors flowIsolation). A missing user/org record is a valid
     // empty collection — the user simply hasn't written anything yet — so it
     // reads as `{}`, never a 500. The pattern filter below applies identically.
-    const data = await getPersistedData(ctx, flow, route.sessionId, scope, ctx.tenantId);
+    const data = await getPersistedData(ctx, flow, route.sessionId, scope, ctx.tenantId, session);
     persisted = data?.resources ?? {};
   }
   const matchedKeys = Object.keys(persisted)
@@ -580,10 +587,11 @@ export async function handleGetCollectionItemState(
   route: Extract<ParsedFlowRoute, { kind: "get_collection_item_state" }>,
   ctx: ResourceRouteContext
 ): Promise<Response> {
-  const session = await loadTenantSession(
+  const session = await loadCheckedSession(
     ctx.stores.session,
     route.sessionId,
-    ctx.tenantId
+    ctx.tenantId,
+    ctx.checkedSession
   );
   if (!session) return unknownSessionResponse(route.sessionId);
 
@@ -641,7 +649,7 @@ export async function handleGetCollectionItemState(
     // User/org scope: resolve via the shared scope resolver (honors
     // flowIsolation). A missing user/org record means the topic isn't present
     // yet, which the not-present branch below already handles as 200 + null.
-    const data = await getPersistedData(ctx, flow, route.sessionId, scope, ctx.tenantId);
+    const data = await getPersistedData(ctx, flow, route.sessionId, scope, ctx.tenantId, session);
     value = data?.resources[storageKey];
   }
   if (value === undefined) {
@@ -686,10 +694,11 @@ export async function handleGetResourceManifest(
   route: Extract<ParsedFlowRoute, { kind: "get_resource_manifest" }>,
   ctx: ResourceRouteContext
 ): Promise<Response> {
-  const session = await loadTenantSession(
+  const session = await loadCheckedSession(
     ctx.stores.session,
     route.sessionId,
-    ctx.tenantId
+    ctx.tenantId,
+    ctx.checkedSession
   );
   if (!session) return unknownSessionResponse(route.sessionId);
 

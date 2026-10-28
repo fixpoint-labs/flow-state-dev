@@ -6,13 +6,20 @@
  * route. The rest are Shift Manager's own.
  *
  *     /cos                           Chief of Staff: where `/` and any unknown path land
- *     /inbox[/<suspensionId>]
+ *     /inbox[/<item>]                one Inbox item: a suspension id, or a held question's row (`inbox.ts`)
  *     /tasks[?by=state|worker|stream]
  *     /tasks/<boardRef>/<taskId>/<session|diff|checks|brief>
+ *     /messages                      every message between the user's workers (FIX-1989)
+ *     /schedules                     the user's scheduled work, each with its next run (FIX-2085)
+ *     /usage                         how much of each harness's subscription the user has used (FIX-2141)
+ *     /s/<sessionId>                 one of the user's sessions with a worker, as a conversation
  *     /p/<projectId>/<stream|board|workstreams|brief>[?owner=<userId>&ws=<workstreamId>]
  *     /p/private/<projectId>/<tab>[?owner=…&ws=…]   one of the user's own private projects
  *     /r/<sessionId>/<resourceRef>   a declared document, read-only
  *     /roster[?team=<teamId>]        every worker, or one team's (pinned, FIX-1723)
+ *     /roster/<workerId>/settings    one worker's settings: its standing rules for the user (FIX-2007)
+ *     /roster/<workerId>/rules       the same page, at the address it had before (read, never written)
+ *     /settings                      the user's own keys for the Lab's MCP servers (pinned, FIX-1905)
  */
 import { useSyncExternalStore } from "react";
 
@@ -27,9 +34,13 @@ export type TaskGrouping = (typeof TASK_GROUPINGS)[number];
 /** Where the user is. */
 export type Route =
   | { level: "cos" }
-  | { level: "inbox"; suspensionId: string | null }
+  | { level: "inbox"; item: string | null }
   | { level: "tasks"; by: TaskGrouping }
   | { level: "task"; boardRef: string; taskId: string; tab: TaskTab }
+  | { level: "messages" }
+  | { level: "schedules" }
+  | { level: "usage" }
+  | { level: "session"; sessionId: string }
   | {
       level: "project";
       projectId: string;
@@ -41,7 +52,10 @@ export type Route =
     }
   | { level: "resource"; sessionId: string; ref: string }
   /** `team: null` is All. */
-  | { level: "roster"; team: string | null };
+  | { level: "roster"; team: string | null }
+  /** One worker's settings: not the user's own `settings`. */
+  | { level: "worker-settings"; worker: string }
+  | { level: "settings" };
 
 function oneOf<T extends string>(values: readonly T[], value: string | undefined, fallback: T): T {
   return values.includes(value as T) ? (value as T) : fallback;
@@ -62,8 +76,15 @@ export function parseRoute(pathname: string, search = ""): Route {
   }
   if (head === "p" && a !== undefined) return { level: "project", projectId: a, tab: oneOf(PROJECT_TABS, b, "stream"), ...entryOf(search) };
   if (head === "r" && a !== undefined && b !== undefined) return { level: "resource", sessionId: a, ref: b };
+  // `/rules` was this page's address; links to it keep opening it (an unknown path would open Chief of Staff).
+  if (head === "roster" && a !== undefined && (b === "settings" || b === "rules")) return { level: "worker-settings", worker: a };
   if (head === "roster") return { level: "roster", team: new URLSearchParams(search).get("team") || null };
-  if (head === "inbox") return { level: "inbox", suspensionId: a ?? null };
+  if (head === "messages") return { level: "messages" };
+  if (head === "schedules") return { level: "schedules" };
+  if (head === "usage") return { level: "usage" };
+  if (head === "s" && a !== undefined) return { level: "session", sessionId: a };
+  if (head === "inbox") return { level: "inbox", item: a ?? null };
+  if (head === "settings") return { level: "settings" };
   return { level: "cos" };
 }
 
@@ -82,11 +103,19 @@ export function pathFor(route: Route): string {
     case "cos":
       return "/cos";
     case "inbox":
-      return route.suspensionId === null ? "/inbox" : `/inbox/${e(route.suspensionId)}`;
+      return route.item === null ? "/inbox" : `/inbox/${e(route.item)}`;
     case "tasks":
       return route.by === "state" ? "/tasks" : `/tasks?by=${route.by}`;
     case "task":
       return `/tasks/${e(route.boardRef)}/${e(route.taskId)}/${route.tab}`;
+    case "messages":
+      return "/messages";
+    case "schedules":
+      return "/schedules";
+    case "usage":
+      return "/usage";
+    case "session":
+      return `/s/${e(route.sessionId)}`;
     case "project": {
       const at = route.visibility === "private" ? `/p/private/${e(route.projectId)}` : `/p/${e(route.projectId)}`;
       const entry = route.entry === undefined ? "" : `?owner=${e(route.entry.owner)}&ws=${e(route.entry.id)}`;
@@ -96,6 +125,10 @@ export function pathFor(route: Route): string {
       return `/r/${e(route.sessionId)}/${e(route.ref)}`;
     case "roster":
       return route.team === null ? "/roster" : `/roster?team=${e(route.team)}`;
+    case "worker-settings":
+      return `/roster/${e(route.worker)}/settings`;
+    case "settings":
+      return "/settings";
   }
 }
 

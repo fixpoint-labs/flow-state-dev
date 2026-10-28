@@ -108,15 +108,17 @@ describe("task caps — maxEnqueuedTasks (the enqueue-burst bound)", () => {
 describe("task caps — maxTotalTasks (the lifetime bound)", () => {
   it("counts terminal tasks and is never refunded by draining", async () => {
     const collection = makeCollection({ maxTotalTasks: 3 });
-    const a = await collection.addTask({ goal: "a" });
-    const b = await collection.addTask({ goal: "b" });
+    await collection.addTask({ goal: "a" });
+    await collection.addTask({ goal: "b" });
     await collection.addTask({ goal: "c" });
 
     // Drain two to terminal states. A pending-only cap would now have room.
-    await collection.claim("w1");
-    await collection.complete(a.id, "done");
-    await collection.claim("w1");
-    await collection.fail(b.id, "boom");
+    // Settle whichever row each claim took: rows stamped in the same
+    // millisecond tie-break on id, which is not insertion order.
+    const first = await collection.claim("w1");
+    await collection.complete(first!.id, "done");
+    const second = await collection.claim("w1");
+    await collection.fail(second!.id, "boom");
     expect(collection.count({ status: "pending" })).toBe(1);
 
     const err = await capBreach(() => collection.addTask({ goal: "d" }));
@@ -219,9 +221,6 @@ describe("task caps — construction-time validation", () => {
   });
 });
 
-// The rule that a cap passed with `backing: "resource"` does NOT COMPILE is
-// asserted at the type level, in
-// `src/tasks/collection/tests/task-caps.type-test.ts`. It cannot live here:
-// this package's `typecheck` covers `src/**` only and vitest transpiles test
-// files without checking types, so a `@ts-expect-error` in this directory would
-// be inert.
+// A cap passed with `backing: "resource"` does not compile. Asserted in
+// `src/tasks/collection/tests/task-caps.type-test.ts`. `pnpm typecheck`
+// compiles that file and this one.

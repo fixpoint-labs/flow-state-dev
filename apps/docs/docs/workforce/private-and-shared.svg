@@ -1,76 +1,61 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 560" role="img" aria-labelledby="title desc">
-  <title id="title">Workers are private; sharing happens in shared resources</title>
-  <desc id="desc">One org, two users. Above the org, the installation's files define the standard workers every user starts with. Inside the org, a shared area holds a shared project whose workstreams have one owner each, and org-scope data a flow writes only when its author built it to. Below it, Alice's private area holds her standard researcher, a private project with its workstreams and tasks, a coordinator and an analyst. Bob's holds his own standard researcher, a writer he forked from a standard worker, a coordinator and a private project. Alice owns a workstream of the shared project.</desc>
-  <defs>
-    <style>
-      :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
-              --sess-fill:#eff6ff; --sess:#1d4ed8; --org-fill:#f0fdf4; --org:#15803d;
-              --card:#ffffff; --card-line:#334155; --box:#f8fafc; --faint:#94a3b8; }
-      @media (prefers-color-scheme: dark) {
-        :root { --bg:#0e0e14; --ink:#e5e7eb; --ink-2:#cbd5e1; --muted:#94a3b8;
-                --sess-fill:#0f1a33; --sess:#60a5fa; --org-fill:#0b2016; --org:#4ade80;
-                --card:#14141c; --card-line:#64748b; --box:#181822; --faint:#64748b; } }
-      .bg { fill: var(--bg); }
-      .files { fill: var(--box); stroke: var(--faint); stroke-width: 1.5; stroke-dasharray: 6 4; }
-      .org { fill: none; stroke: var(--faint); stroke-width: 1.5; stroke-dasharray: 6 4; }
-      .shared { fill: var(--sess-fill); stroke: var(--sess); stroke-width: 1.75; }
-      .private { fill: var(--org-fill); stroke: var(--org); stroke-width: 1.75; }
-      .card { fill: var(--card); stroke: var(--card-line); stroke-width: 1.25; }
-      .edge { stroke: var(--card-line); stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
-      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
-      .wl { font: 700 13px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
-      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
-      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: var(--ink-2); }
-      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: var(--muted); }
-    </style>
-    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-      <path d="M0 0 L10 5 L0 10 z" style="fill:var(--card-line)"/>
-    </marker>
-  </defs>
-  <rect x="0" y="0" width="920" height="560" rx="16" class="bg"/>
-  <text x="28" y="36" class="title">Workers are private; sharing happens in shared resources</text>
-
-  <rect x="28" y="52" width="864" height="44" rx="8" class="files"/>
-  <text x="460" y="79" text-anchor="middle" class="p">The installation's files: the standard workers every user starts with</text>
-
-  <rect x="20" y="110" width="880" height="434" rx="10" class="org"/>
-  <text x="36" y="130" class="muted">org acme</text>
-
-  <rect x="40" y="142" width="840" height="110" rx="8" class="shared"/>
-  <text x="56" y="164" class="wl">Shared</text>
-  <rect x="56" y="174" width="400" height="62" rx="6" class="card"/>
-  <text x="70" y="198" class="h">Shared project</text>
-  <text x="70" y="218" class="p">workstreams, one owner each</text>
-  <rect x="472" y="174" width="392" height="62" rx="6" class="card"/>
-  <text x="486" y="198" class="h">Org-scope data</text>
-  <text x="486" y="218" class="p">written only by a flow built to write it</text>
-
-  <rect x="40" y="304" width="410" height="224" rx="8" class="private"/>
-  <text x="56" y="514" class="wl">Alice: private</text>
-  <rect x="56" y="320" width="184" height="60" rx="6" class="card"/>
-  <text x="70" y="346" class="h">researcher</text>
-  <text x="70" y="366" class="p">worker (standard)</text>
-  <rect x="252" y="320" width="184" height="60" rx="6" class="card"/>
-  <text x="266" y="346" class="h">private project</text>
-  <text x="266" y="366" class="p">workstreams + tasks</text>
-  <rect x="56" y="392" width="184" height="48" rx="6" class="card"/>
-  <text x="148" y="421" text-anchor="middle" class="p">coordinator (worker)</text>
-  <rect x="252" y="392" width="184" height="48" rx="6" class="card"/>
-  <text x="344" y="421" text-anchor="middle" class="p">analyst (worker)</text>
-
-  <rect x="470" y="304" width="410" height="224" rx="8" class="private"/>
-  <text x="486" y="514" class="wl">Bob: private</text>
-  <rect x="486" y="320" width="184" height="60" rx="6" class="card"/>
-  <text x="500" y="346" class="h">researcher</text>
-  <text x="500" y="366" class="p">worker (standard)</text>
-  <rect x="682" y="320" width="184" height="60" rx="6" class="card"/>
-  <text x="696" y="346" class="h">writer</text>
-  <text x="696" y="366" class="p">worker (forked)</text>
-  <rect x="486" y="392" width="184" height="48" rx="6" class="card"/>
-  <text x="578" y="421" text-anchor="middle" class="p">coordinator (worker)</text>
-  <rect x="682" y="392" width="184" height="48" rx="6" class="card"/>
-  <text x="774" y="421" text-anchor="middle" class="p">private project</text>
-
-  <path d="M344 238 L344 302" class="edge"/>
-  <text x="354" y="276" class="muted">a workstream Alice owns</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 34 920 696">
+<defs>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="solid" x="28" y="56" width="864" height="44"/>
+<text class="lb" x="40" y="82">THE INSTALLATION'S FILES</text>
+<text class="t" x="240" y="82">the standard workers every user starts with</text>
+<rect class="solid" x="28" y="124" width="864" height="416"/>
+<text class="lb" x="40" y="146">ORG ACME</text>
+<rect class="solid" x="44" y="158" width="832" height="104"/>
+<text class="lb" x="56" y="180">SHARED · EVERYONE IN THE ORG READS IT</text>
+<rect class="thin" x="56" y="194" width="396" height="54"/>
+<text class="nm" x="66" y="216">Shared project</text>
+<text class="sub" x="66" y="236">workstreams, one owner each</text>
+<rect class="thin" x="468" y="194" width="396" height="54"/>
+<text class="nm" x="478" y="216">Org-scope data</text>
+<text class="sub" x="478" y="236">written only by a flow built to write it</text>
+<rect class="solid" x="44" y="320" width="408" height="196"/>
+<rect class="thin" x="56" y="340" width="186" height="52"/>
+<text class="c" x="66" y="362">private project</text>
+<text class="t" x="66" y="380">workstreams + tasks</text>
+<rect class="thin" x="254" y="340" width="186" height="52"/>
+<text class="c" x="264" y="362">researcher</text>
+<text class="t" x="264" y="380">worker (standard)</text>
+<rect class="thin" x="56" y="406" width="186" height="52"/>
+<text class="c" x="66" y="428">coordinator</text>
+<text class="t" x="66" y="446">worker</text>
+<rect class="thin" x="254" y="406" width="186" height="52"/>
+<text class="c" x="264" y="428">analyst</text>
+<text class="t" x="264" y="446">worker</text>
+<line class="hi" x1="44" y1="478" x2="452" y2="478"/>
+<text class="lb" x="56" y="502">ALICE · PRIVATE · ONLY SHE READS IT</text>
+<rect class="solid" x="468" y="320" width="408" height="196"/>
+<rect class="thin" x="480" y="340" width="186" height="52"/>
+<text class="c" x="490" y="362">researcher</text>
+<text class="t" x="490" y="380">worker (standard)</text>
+<rect class="thin" x="678" y="340" width="186" height="52"/>
+<text class="c" x="688" y="362">writer</text>
+<text class="t" x="688" y="380">worker (forked)</text>
+<rect class="thin" x="480" y="406" width="186" height="52"/>
+<text class="c" x="490" y="428">coordinator</text>
+<text class="t" x="490" y="446">worker</text>
+<rect class="thin" x="678" y="406" width="186" height="52"/>
+<text class="c" x="688" y="428">private project</text>
+<text class="t" x="688" y="446">workstreams + tasks</text>
+<line class="hi" x1="468" y1="478" x2="876" y2="478"/>
+<text class="lb" x="480" y="502">BOB · PRIVATE · ONLY HE READS IT</text>
+<path class="ln" d="M460 101 V292"/><circle cx="460" cy="292" r="2.6" class="ink"/><path class="ln" d="M460 292 H347 V338" marker-end="url(#ah)"/><path class="ln" d="M460 292 H573 V338" marker-end="url(#ah)"/><rect class="ground" x="447.7" y="105" width="24.6" height="15"/><text class="plate" x="460" y="116" text-anchor="middle">01</text>
+<circle cx="149" cy="320" r="2.6" class="ink"/><line class="ln" x1="149" y1="320" x2="149" y2="250" marker-end="url(#ah)"/><rect class="ground" x="136.7" y="282" width="24.6" height="15"/><text class="plate" x="149" y="293" text-anchor="middle">02</text>
+<line class="hi" x1="0" y1="564" x2="920" y2="564"/>
+<text class="n" x="28" y="590">01</text>
+<text class="t" x="60" y="590">The installation's files define the standard workers every user starts with. Alice and Bob each have their own</text>
+<text class="t" x="60" y="607">standard researcher: two workers, not one. Bob's writer is a worker he forked from a standard one.</text>
+<text class="n" x="28" y="632">02</text>
+<text class="t" x="60" y="632">Alice owns a workstream of the shared project. Each workstream has one owner.</text>
+<text class="n" x="28" y="657">03</text>
+<text class="t" x="60" y="657">A worker's own state and a user's data are private. Shared resources and org-scope data are shared with the org,</text>
+<text class="t" x="60" y="674">and a flow writes to org scope only when its author built it to.</text>
+<line class="ln" x1="28" y1="701" x2="54" y2="701" marker-end="url(#ah)"/><text class="lb" x="62" y="705">DEFINES · OWNS</text>
+<rect class="solid" x="210" y="695" width="26" height="11"/><text class="lb" x="244" y="705">A WALL · ITS LABEL SAYS WHO READS</text>
 </svg>

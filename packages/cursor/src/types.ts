@@ -41,7 +41,7 @@ export const CURSOR_SOURCE = "cursor/sdk" as const;
  * build against any other installed version, and the escape is a release of
  * this package; there is no override option.
  */
-export const TESTED_SDK_VERSION = "1.0.31" as const;
+export const TESTED_SDK_VERSION = "1.0.40" as const;
 
 /**
  * Cursor's full token breakdown for a run.
@@ -277,6 +277,11 @@ export interface CursorRunLike {
   cancel(): Promise<void>;
   /** The SDK's own capability probe. Absent on a scripted double, and then every operation is assumed supported. */
   supports?(operation: string): boolean;
+  /**
+   * Hand a line to the turn in flight. Local runs only; settles on Cursor's
+   * terminal answer, and `revert_to_followup` means "send it as a follow-up".
+   */
+  steer?(text: string): Promise<string>;
 }
 
 /** The subset of the SDK's `SDKAgent` this package drives. */

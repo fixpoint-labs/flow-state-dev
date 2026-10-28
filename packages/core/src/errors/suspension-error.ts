@@ -12,10 +12,23 @@
 
 import type { ZodTypeAny } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import type { ResumeAction, SuspensionReason } from "../types/suspension";
+import type { ResumeAction, SuspensionReason, WaitForUserKind } from "../types/suspension";
 
 export interface SuspendOptions {
   reason: SuspensionReason;
+  /**
+   * What a user's suspension asks for. `ctx.waitForUser` sets it, with the
+   * reason it maps to; a raw `ctx.suspend` leaves it out, and its kind is then
+   * read from its reason (`waitForUserKindOf`).
+   */
+  kind?: WaitForUserKind;
+  /**
+   * A short heading for the suspension, a few words. Surfaces that list or
+   * head a suspension draw this, and `message` becomes the body under it. Omit
+   * it when `message` is already one short line.
+   */
+  title?: string;
+  /** What the suspension says. With a `title`, the body under it, and may be markdown. */
   message?: string;
   data?: Record<string, unknown>;
   /**
@@ -38,7 +51,7 @@ export interface SuspendOptions {
   allow?: ResumeAction[];
   /**
    * The suspension's id, when the caller must record it before the turn parks
-   * (an ask gate's row carries it). Must be unique within the request and the
+   * (a wait gate's row carries it). Must be unique within the request and the
    * same on every replay of the call that suspends. Omit to have one minted.
    */
   suspensionId?: string;
@@ -75,6 +88,10 @@ function normalizeResumeSchema(
 export class SuspensionError extends Error {
   readonly suspensionId: string;
   readonly reason: SuspensionReason;
+  /** What a user's suspension asks for, when the caller set it (see {@link SuspendOptions.kind}). */
+  readonly kind?: WaitForUserKind;
+  /** The suspension's short heading, when the caller gave one (see {@link SuspendOptions.title}). */
+  readonly title?: string;
   readonly data?: Record<string, unknown>;
   readonly resumeSchema?: Record<string, unknown>;
   readonly render?: { component: string; props?: Record<string, unknown> };
@@ -111,6 +128,8 @@ export class SuspensionError extends Error {
     this.name = "SuspensionError";
     this.suspensionId = options.suspensionId;
     this.reason = options.reason;
+    if (options.kind !== undefined) this.kind = options.kind;
+    if (options.title !== undefined) this.title = options.title;
     this.data = options.data;
     this.resumeSchema = normalizeResumeSchema(options.resumeSchema);
     this.render = options.render;
@@ -128,27 +147,44 @@ export class SuspensionRejectedError extends Error {
    * unanswered, and the run continues as if it were no longer valid.
    */
   readonly expired: boolean;
+  /**
+   * True when nobody answered: the task the suspension's request works was
+   * cancelled while it waited, or the board cancelled this stop (FIX-2129).
+   * `ctx.waitForUser` returns `{ cancelled: true }` for it instead.
+   */
+  readonly cancelled: boolean;
 
   constructor(
     suspensionId: string,
     rejectedBy?: string,
     rejectionData?: unknown,
-    options?: { expired?: boolean }
+    options?: { expired?: boolean; cancelled?: boolean }
   ) {
     const expired = options?.expired === true;
+    const cancelled = options?.cancelled === true;
     super(
-      expired
-        ? `Suspension ${suspensionId} expired and is no longer valid`
-        : `Suspension ${suspensionId} was rejected`
+      cancelled
+        ? `Suspension ${suspensionId} was cancelled`
+        : expired
+          ? `Suspension ${suspensionId} expired and is no longer valid`
+          : `Suspension ${suspensionId} was rejected`
     );
     this.name = "SuspensionRejectedError";
     this.suspensionId = suspensionId;
     this.rejectedBy = rejectedBy;
     this.rejectionData = rejectionData;
     this.expired = expired;
+    this.cancelled = cancelled;
   }
 }
 
+/**
+ * Thrown where a suspension that is not an approval resumes at its deadline
+ * with no answer (FIX-2129, D1): a review's or an input's `ctx.waitForUser`,
+ * or a raw `ctx.suspend` that allows no `reject`. Catch it to go ahead, end,
+ * or ask again; left uncaught it fails the try. An approval at its deadline
+ * reads as a no instead.
+ */
 export class SuspensionTimeoutError extends Error {
   readonly suspensionId: string;
 

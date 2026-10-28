@@ -4,12 +4,14 @@ import type { VoiceProvider } from "@flow-state-dev/core/types";
 import { createInMemoryStores } from "../src/stores";
 import type { RequestRecord, StoreRegistry } from "../src/stores/types";
 import { detectInterruptedRequests, retryRequest } from "../src/execution/request-recovery";
+import type { runAction } from "../src/execution/runAction";
 
 // retryRequest dispatches via runAction; mock it so the test asserts what
-// retry hands off without executing a real flow.
-const runActionMock = vi.fn(() => Promise.resolve(undefined));
+// retry dispatches without executing a real flow.
+type RunActionOptions = Parameters<typeof runAction>[0];
+const runActionMock = vi.fn((_options: RunActionOptions) => Promise.resolve(undefined));
 vi.mock("../src/execution/runAction", () => ({
-  runAction: (...args: unknown[]) => runActionMock(...args)
+  runAction: (options: RunActionOptions) => runActionMock(options)
 }));
 
 function makeVoiceProvider(id: string): VoiceProvider {
@@ -31,6 +33,7 @@ function makeRequestRecord(
     flowKind: "chat",
     actionName: "run",
     userId: "user_1",
+    source: "http",
     status: "in_progress",
     startedAtMs: ts,
     state: {},
@@ -59,6 +62,7 @@ describe("detectInterruptedRequests", () => {
       requestId: "req_legacy",
       flowKind: "chat",
       actionName: "run",
+      source: "http",
       userId: "user_1",
       startedAt: Date.now() - 60_000,
       lastHeartbeatAt: Date.now() - 60_000
@@ -81,6 +85,7 @@ describe("detectInterruptedRequests", () => {
       requestId: "req_attributed",
       flowKind: "chat",
       actionName: "run",
+      source: "http",
       userId: "user_1",
       orgId: DEFAULT_ORG_ID,
       startedAt: Date.now() - 60_000,
@@ -104,6 +109,7 @@ describe("detectInterruptedRequests", () => {
       requestId: "req_stale",
       flowKind: "chat",
       actionName: "run",
+      source: "http",
       userId: "user_1",
       startedAt: Date.now() - 60_000,
       lastHeartbeatAt: Date.now() - 60_000
@@ -139,6 +145,7 @@ describe("detectInterruptedRequests", () => {
       requestId: "req_race",
       flowKind: "chat",
       actionName: "run",
+      source: "http",
       userId: "user_1",
       startedAt: Date.now() - 60_000,
       lastHeartbeatAt: Date.now() - 60_000
@@ -181,6 +188,7 @@ describe("detectInterruptedRequests", () => {
       requestId: "req_done",
       flowKind: "chat",
       actionName: "run",
+      source: "http",
       userId: "user_1",
       startedAt: Date.now() - 60_000,
       lastHeartbeatAt: Date.now() - 60_000
@@ -219,6 +227,7 @@ describe("detectInterruptedRequests", () => {
       requestId: "req_alice",
       flowKind: "chat",
       actionName: "run",
+      source: "http",
       userId: "alice",
       startedAt: longAgo,
       lastHeartbeatAt: longAgo
@@ -234,6 +243,7 @@ describe("detectInterruptedRequests", () => {
       requestId: "req_bob",
       flowKind: "chat",
       actionName: "run",
+      source: "http",
       userId: "bob",
       startedAt: longAgo,
       lastHeartbeatAt: longAgo
@@ -331,7 +341,7 @@ describe("detectInterruptedRequests", () => {
     });
 
     expect(runActionMock).toHaveBeenCalledTimes(1);
-    expect(runActionMock.mock.calls[0][0].orgId).toBe("org-acme");
+    expect(runActionMock.mock.calls[0]![0].orgId).toBe("org-acme");
   });
 
   it("prefers the per-flow voice provider over the router-level one on retry", async () => {
@@ -365,7 +375,7 @@ describe("detectInterruptedRequests", () => {
     });
 
     expect(runActionMock).toHaveBeenCalledTimes(1);
-    expect(runActionMock.mock.calls[0][0].runtimeConfig.voiceProvider).toBe(flowProvider);
+    expect(runActionMock.mock.calls[0]![0].runtimeConfig.voiceProvider).toBe(flowProvider);
   });
 
   it("falls back to the router-level voice provider when the flow declares none", async () => {
@@ -390,7 +400,7 @@ describe("detectInterruptedRequests", () => {
     });
 
     expect(runActionMock).toHaveBeenCalledTimes(1);
-    expect(runActionMock.mock.calls[0][0].runtimeConfig.voiceProvider).toBe(routerProvider);
+    expect(runActionMock.mock.calls[0]![0].runtimeConfig.voiceProvider).toBe(routerProvider);
   });
 
   it("skips entries with recent heartbeats", async () => {
@@ -399,6 +409,7 @@ describe("detectInterruptedRequests", () => {
       requestId: "req_fresh",
       flowKind: "chat",
       actionName: "run",
+      source: "http",
       userId: "user_1",
       startedAt: Date.now(),
       lastHeartbeatAt: Date.now()
@@ -416,5 +427,101 @@ describe("detectInterruptedRequests", () => {
     // Request should still be in_progress
     const record = await stores.request.get("req_fresh");
     expect(record!.status).toBe("in_progress");
+  });
+
+  describe("a request it marks interrupted owes its session's passes now (FIX-2166)", () => {
+    // A pass in that session may hold something for the request while it runs
+    // (a task's notice, FIX-2123). The request will never end on its own now,
+    // so what was held is owed now, not at the pass's backoff.
+    const LATER = Date.now() + 300_000;
+    const wake = (sessionId: string, entry: string, dueAt = LATER) => ({
+      sessionId,
+      entry,
+      flowKind: "chat",
+      userId: "user_1",
+      orgId: DEFAULT_ORG_ID,
+      dueAt,
+      landBy: dueAt
+    });
+    const crashed = async (requestId: string, sessionId: string, lastHeartbeatAt = Date.now() - 60_000) => {
+      await stores.activeRequests.register({
+        orgId: DEFAULT_ORG_ID,
+        requestId,
+        flowKind: "chat",
+        actionName: "run",
+        source: "http",
+        userId: "user_1",
+        sessionId,
+        startedAt: lastHeartbeatAt,
+        lastHeartbeatAt
+      });
+      await stores.request.set(requestId, makeRequestRecord(requestId, { sessionId }), "any");
+    };
+    const dueOf = async (sessionId: string, entry: string) => (await stores.wakes!.get({ sessionId, entry }))?.dueAt;
+
+    it("brings each wake its session keeps forward to now, and no other session's", async () => {
+      await crashed("req_crashed", "s_filer");
+      await stores.wakes!.owe(wake("s_filer", "onTaskSettled"));
+      await stores.wakes!.owe(wake("s_filer", "dispatch"));
+      await stores.wakes!.owe(wake("s_other", "onTaskSettled"));
+      const before = Date.now();
+
+      await detectInterruptedRequests({ stores, staleThresholdMs: 30_000, wakeEntriesOf: () => ["onTaskSettled", "dispatch", "neverOwed"] });
+
+      expect((await stores.request.get("req_crashed"))?.status).toBe("interrupted");
+      expect(await dueOf("s_filer", "onTaskSettled")).toBeGreaterThanOrEqual(before);
+      expect(await dueOf("s_filer", "onTaskSettled")).toBeLessThanOrEqual(Date.now());
+      expect(await dueOf("s_filer", "dispatch")).toBeLessThanOrEqual(Date.now());
+      // Nothing is written where nothing was owed.
+      expect(await stores.wakes!.get({ sessionId: "s_filer", entry: "neverOwed" })).toBeNull();
+      expect(await dueOf("s_other", "onTaskSettled")).toBe(LATER);
+    });
+
+    it("bumps the wake's version, so a pass that read it before settles stale and leaves it due now", async () => {
+      await crashed("req_racing", "s_racing");
+      await stores.wakes!.owe(wake("s_racing", "onTaskSettled"));
+      // A pass in flight read the wake while the request still looked alive.
+      const read = (await stores.wakes!.get({ sessionId: "s_racing", entry: "onTaskSettled" }))!;
+
+      await detectInterruptedRequests({ stores, staleThresholdMs: 30_000, wakeEntriesOf: () => ["onTaskSettled"] });
+
+      // That pass now settles to its backoff, at the version it read.
+      expect(await stores.wakes!.move({ sessionId: "s_racing", entry: "onTaskSettled" }, read.version, LATER)).toBe(false);
+      expect(await dueOf("s_racing", "onTaskSettled")).toBeLessThanOrEqual(Date.now());
+    });
+
+    it("leaves the wakes of a request it doesn't mark, and every wake when its caller names no entries", async () => {
+      // Still beating: maybe on a live peer, so nothing it holds is owed yet.
+      await crashed("req_beating", "s_beating", Date.now());
+      await stores.wakes!.owe(wake("s_beating", "onTaskSettled"));
+      await crashed("req_unnamed", "s_unnamed");
+      await stores.wakes!.owe(wake("s_unnamed", "onTaskSettled"));
+
+      await detectInterruptedRequests({ stores, staleThresholdMs: 30_000, wakeEntriesOf: (record) => (record.sessionId === "s_beating" ? ["onTaskSettled"] : []) });
+
+      expect(await dueOf("s_beating", "onTaskSettled")).toBe(LATER);
+      expect((await stores.request.get("req_unnamed"))?.status).toBe("interrupted");
+      expect(await dueOf("s_unnamed", "onTaskSettled")).toBe(LATER);
+    });
+
+    it("still marks the request when the wake store fails", async () => {
+      await crashed("req_blip", "s_blip");
+      const warned: string[] = [];
+      const failing = Object.assign(Object.create(stores.wakes!), {
+        get: async () => Promise.reject(new Error("store unavailable"))
+      }) as NonNullable<StoreRegistry["wakes"]>;
+
+      const interrupted = await detectInterruptedRequests({
+        stores: { ...stores, wakes: failing },
+        staleThresholdMs: 30_000,
+        wakeEntriesOf: () => ["onTaskSettled"],
+        logger: { warn: (message) => warned.push(message) }
+      });
+
+      expect(warned.some((message) => message.includes("wakes weren't brought forward"))).toBe(true);
+
+      expect(interrupted.map((info) => info.entry.requestId)).toEqual(["req_blip"]);
+      expect((await stores.request.get("req_blip"))?.status).toBe("interrupted");
+    });
   });
 });

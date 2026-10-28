@@ -150,25 +150,27 @@ const registeredWorkers = handler({
 ### What each row holds
 
 ```ts
-{ id: "engineering.lead", kind: "agent", door: "run", hired: false, incarnation: null }
+{ id: "engineering.lead", kind: "agent", door: "respond", rules: true, hired: false, incarnation: null }
 ```
 
 `kind` is the flow the worker runs on. Every row `openInventory` writes has `hired: false` and `incarnation: null`, because the inventory lists only the workers your files declare.
 
-`door` names an action on the worker's flow: the one that takes a user's message for this worker. It is the flow's one public action that declares `userMessage` and takes `{ message }`. The built-in worker's is named `run`, which is unrelated to the `run` callback above. Every worker flow has exactly one: `hireWorkforce` refuses a flow with none, or with two, before it registers anything ([which flows can run workers](./workers-on-disk.md#which-flows-can-run-workers)). A worker you build by hand with no such action gets `door: null`, and an app should say that worker takes no message rather than guess.
+`door` names an action on the worker's flow: the one that takes a user's message for this worker. It is `respond`, the public action that declares `userMessage` and takes `{ message }`, on every worker flow: `hireWorkforce` refuses a flow without one, or with a second, before it registers anything ([which flows can run workers](./workers-on-disk.md#which-flows-can-run-workers)). A worker you build by hand with no such action gets `door: null`, and an app should say that worker takes no message rather than guess.
 
-`openInventory` reads the door from each worker's `actions`, so pass it `inventoryWorkers(installation)`, which gives each standard worker with its flow's actions. A worker you build by hand needs `actions` too; pass `{}` for one that takes no message.
+`rules` says whether the worker keeps [standing rules](./standing-rules.md): its flow declares the `standingRules` action. Check it before offering a rules screen for a worker. An app's own `agent` flow that leaves the action out gets `rules: false`.
+
+`openInventory` reads the door and `rules` from each worker's `actions`, so pass it `inventoryWorkers(installation)`, which gives each standard worker with its flow's actions. A worker you build by hand needs `actions` too; pass `{}` for one that takes no message.
 
 ### From a browser
 
 The collection can be read from a browser, with the same collection read your app's client code uses for any other resource. You read through a session, by the name that session's flow gave the collection in its `resources` map. That name is up to the flow, so look it up in the session's resource manifest by its pattern, `inventory/workers/*`:
 
 ```ts
-import { createResourceClient } from "@flow-state-dev/client";
+import { createClient } from "@flow-state-dev/client";
 
-const resources = createResourceClient({ baseUrl: "https://app.example.com" });
+const fsd = createClient({ userId, baseUrl: "https://app.example.com" });
 
-const manifest = await resources.getResourceManifest(rosterSessionId);
+const manifest = await fsd.resources.getResourceManifest(rosterSessionId);
 const workersRef = manifest.resources.find(
   (entry) => entry.pattern === "inventory/workers/*",
 )?.ref;
@@ -177,12 +179,12 @@ const workers: unknown[] = [];
 if (workersRef !== undefined) {
   let cursor: string | undefined;
   do {
-    const page = await resources.listCollectionItems(rosterSessionId, workersRef, { cursor });
+    const page = await fsd.resources.listCollectionItems(rosterSessionId, workersRef, { cursor });
     workers.push(...page.items.map((item) => item.clientData));
     cursor = page.nextCursor;
   } while (cursor !== undefined);
 }
-// workers[0] → { id: "engineering.lead", kind: "agent", door: "run", hired: false, incarnation: null }
+// workers[0] → { id: "engineering.lead", kind: "agent", door: "respond", rules: true, hired: false, incarnation: null }
 ```
 
 Workforce's roster flow (`workforce-roster`) declares the collection, so every user's roster session reads the workers. So does any flow carrying `inventoryWriterActions()`.

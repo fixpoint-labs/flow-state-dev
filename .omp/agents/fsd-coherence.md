@@ -18,4 +18,4 @@ If the coordinator explicitly assigns Depth instead, read
 stop before its interactive design or mutation phases. If assigned an Alternatives
 phase instead, apply only the supplied `adhd` frame or focus instructions and its
 phase schema, not the coherence critique. The coordinator owns that skill's fanout,
-scoring, clustering, and final review-context output. Do not launch its loop yourself.
+scoring, clustering, and final analysis-context output. Do not launch its loop yourself.

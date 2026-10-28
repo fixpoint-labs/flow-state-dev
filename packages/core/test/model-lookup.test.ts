@@ -56,4 +56,17 @@ describe("model lookup", () => {
     expect(usd).toBeGreaterThan(0);
     expect(Number(usd.toFixed(6))).toBeCloseTo(0.00957, 5);
   });
+
+  it("prices 5.5 cache reads at 5% of input, not the 10% fallback, in both spellings", () => {
+    // Opus 5.5 and Sonnet 5.5 read cache at 5% of input; the 10% default
+    // would overstate every cached prompt's cost twofold.
+    const estimator = modelPricingEstimator();
+    const allCacheRead = { prompt: 1_000_000, completion: 0, total: 1_000_000, cacheReadTokens: 1_000_000, cacheCreationTokens: 0 };
+    for (const id of ["anthropic/claude-sonnet-5-5", "vercel:anthropic/claude-sonnet-5.5"]) {
+      expect(estimator.estimate(allCacheRead, id), id).toBeCloseTo(0.1, 6);
+    }
+    for (const id of ["anthropic/claude-opus-5-5", "vercel:anthropic/claude-opus-5.5"]) {
+      expect(estimator.estimate(allCacheRead, id), id).toBeCloseTo(0.2, 6);
+    }
+  });
 });

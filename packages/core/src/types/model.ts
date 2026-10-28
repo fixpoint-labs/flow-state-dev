@@ -334,15 +334,17 @@ export type ModelResolver = ((
    * Returns the primary underlying model string for any model reference.
    * For intents, returns the first available provider/model string (applying
    * the resolver's provider preference and any call-site override).
-   * For direct model strings, returns the input as-is.
+   * For direct model strings, returns the input as-is. A `name:model` string
+   * is returned as-is when its route is registered, and throws the same
+   * "Unknown route" error resolving it would when it is not.
    *
    * @example
    * resolver.resolveId("intent/chat")
-   *   // → "anthropic/claude-sonnet-4-6"
+   *   // → "anthropic/claude-sonnet-5-5"
    * resolver.resolveId("intent/chat", { preferProvider: "openai" })
-   *   // → "openai/gpt-5.4" (reorders the intent before walking it)
-   * resolver.resolveId("anthropic/claude-sonnet-4-6")
-   *   // → "anthropic/claude-sonnet-4-6"
+   *   // → "openai/gpt-6.1-sol" (reorders the intent before walking it)
+   * resolver.resolveId("anthropic/claude-sonnet-5-5")
+   *   // → "anthropic/claude-sonnet-5-5"
    */
   resolveId(
     modelId: string,
@@ -365,4 +367,14 @@ export type ModelResolver = ((
     modelId: string,
     blockName?: string
   ): EvaluationModel | Promise<EvaluationModel>;
+
+  /**
+   * The provider a model string's call reaches, classified against this
+   * resolver's own `providers` and `gateways` maps: `"anthropic"` for
+   * `"vercel:anthropic/claude-sonnet-5.5"`, `"triage"` for `"triage:native"`.
+   * Returns `"unknown"` when the string names no provider. Optional: a
+   * generator's model-array fallback uses it to label each entry, and falls
+   * back to `extractProviderName`'s config-free guess when it is absent.
+   */
+  providerOf?(modelId: string): string;
 };

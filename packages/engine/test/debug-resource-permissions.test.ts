@@ -86,7 +86,7 @@ const externalPositions = defineProjectedResourceCollection({
   scope: "org",
   stateSchema: z.object({ v: z.string().default("") }),
   read: async () => null,
-  search: async () => ({ items: [], nextCursor: null })
+  search: async () => ({ hits: [] })
 });
 
 function buildFlow() {
@@ -118,6 +118,8 @@ async function listResources(): Promise<DebugResourceEntry[]> {
     flowKind: "permissions-flow",
     userId: "user_1",
     state: {},
+    journal: [],
+    version: 0,
     createdAt: Date.now(),
     updatedAt: Date.now()
   };

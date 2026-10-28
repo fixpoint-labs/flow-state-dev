@@ -12,13 +12,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { registryTokenDefaults } from "../../../packages/ui/scripts/token-defaults";
-import { SHIFT_MANAGER_CSS, PACKAGE_ROOT, REPO_ROOT, findThemeValues, luminance, rule, themeValues, toRgb } from "./theme";
+import { SHIFT_MANAGER_CSS, PACKAGE_ROOT, REPO_ROOT, fencedHits, findThemeValues, luminance, rule, themeValues, toRgb } from "./theme";
 
 const css = readFileSync(SHIFT_MANAGER_CSS, "utf8");
 const light = rule(css, ":root");
-const dark = rule(css, ".dark");
+const dark = rule(css, ".dark, html[data-theme=dark]");
 /** Evening sets only what differs from day; everything else it reads from day. */
-const eveningOverrides = rule(css, ':root[data-theme=evening]');
+const eveningOverrides = rule(css, ":root[data-theme=evening], :root.evening");
 const evening = { ...light, ...eveningOverrides };
 
 /** The token names the registry's `tokens` item installs, as custom properties. */
@@ -170,10 +170,10 @@ describe("the fence", () => {
     expect(values).not.toContain("ui-monospace");
   });
 
-  it("finds no theme value anywhere under packages/", () => {
+  it("finds no theme value anywhere under packages/, the DevTool aside", () => {
     const { walked, hits } = findThemeValues(join(REPO_ROOT, "packages"), values);
     expect(walked).toBeGreaterThan(500);
-    expect(hits).toEqual([]);
+    expect(fencedHits(hits)).toEqual([]);
   });
 
   it("names the file and value when one is planted in a package file", () => {

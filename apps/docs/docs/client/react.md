@@ -41,6 +41,27 @@ Renderers map item types to React components:
 
 Nested providers merge renderers (child keys override parent keys).
 
+### Connection
+
+`FlowProvider` also takes `baseUrl`, `apiPath` and `fetcher`, and every hook and component under it calls through one client built from them and `userId`. A `fetcher` that adds an `Authorization` header gives every read and stream that credential:
+
+```tsx
+const fetcher = useMemo(
+  () => (input: RequestInfo | URL, init?: RequestInit) => {
+    const headers = new Headers(init?.headers);
+    headers.set("authorization", `Bearer ${token}`);
+    return fetch(input, { ...init, headers });
+  },
+  [token],
+);
+
+<FlowProvider flowKind="my-app" userId={userId} fetcher={fetcher}>
+  <MyUI />
+</FlowProvider>
+```
+
+Pass a stable reference. A nested provider inherits its parent's. See [Client options](/docs/configuration/client#flowprovider).
+
 ## Hooks
 
 ### `useFlow` — Session Lifecycle
@@ -114,7 +135,7 @@ const conversation = useSession(sessionId, {
 
 The hook then opens one stream for the session. Each finished item from any request in it joins `session.items` about a second after the server saves it, in the order a reload would show. The stream carries whole items, not text as it is typed, so another writer's answer appears in one piece. Your own requests' items arrive through their request stream, and none shows twice. Items are told apart by their request and their id together, so two requests that each save an item with the same id both appear in `session.items`. An item one request emits more than once under the same id, such as a keyed component, shows its latest copy, whatever order the copies arrive in.
 
-The background-work list stays current too. The hook re-reads `session.childSessions` when a run is handed off, even one still waiting its turn, and again when the run finishes. To list the runs that haven't finished:
+The background-work list stays current too. The hook re-reads `session.childSessions` when a run is dispatched, even one still waiting its turn, and again when the run finishes. To list the runs that haven't finished:
 
 ```tsx
 const working = conversation.childSessions.filter((run) => run.status === "active");
@@ -126,7 +147,7 @@ Once the stream is open, a drop the first reconnect recovers from, such as the s
 
 ### Background work
 
-Some flows hand a long job off to run on its own. The conversation returns straight away and the job carries on in a session of its own, called a *dispatch run*. `session.childSessions` is how you show those runs, one `ChildSessionSummary` per run.
+Some flows dispatch a long job to run on its own. The conversation returns straight away and the job carries on in a session of its own, called a *dispatch run*. `session.childSessions` is how you show those runs, one `ChildSessionSummary` per run.
 
 Each entry carries enough to render a row:
 
@@ -152,7 +173,7 @@ This list sits beside the conversation rather than inside it. Nothing a run prod
 
 The list is current as of the last thing the reader did. It is re-read when the component mounts, at the start of each action you send, and whenever you call `session.refresh()`. By default it does not update on its own while someone sits and watches, so work started in another tab shows up on their next action — or immediately, if you give them a refresh control.
 
-In a view with `live: true` the list also changes on its own, within about a second of a run being handed off (even one waiting its turn) or finishing, from this tab or anywhere else. A run that hasn't finished stays in the list even when it is older than the page the hook reads.
+In a view with `live: true` the list also changes on its own, within about a second of a run being dispatched (even one waiting its turn) or finishing, from this tab or anywhere else. A run that hasn't finished stays in the list even when it is older than the page the hook reads.
 
 `session.childSessionsStale` turns `true` for different reasons. A re-read failed, and the next successful read clears the flag. Or you asked for a page the server won't serve, and nothing but a smaller `limit` clears it. In a live view it also turns `true` when the stream stops following the session, as [above](#hearing-requests-you-didnt-send), and after a refused reconnect a retry clears it only when a new session the reader can open has taken the id. In every case the rows already fetched stay on screen; the hook never empties the list. The hook doesn't say which reason applies, so mark the panel as possibly out of date rather than showing nothing, and if you offer a retry, don't promise it clears the flag.
 
@@ -167,7 +188,7 @@ const session = useSession(sessionId, {
 
 #### What a row's status tells you
 
-`status` is missing until a run has been handed off into the row's session. From then on it reads `"active"` until the work ends, even while the run waits its turn, and after that it says how the work ended.
+`status` is missing until a run has been dispatched into the row's session. From then on it reads `"active"` until the work ends, even while the run waits its turn, and after that it says how the work ended.
 
 `"active"` means *not finished* and nothing else. It does not tell you whether the job is thinking, queued, or stopped waiting for someone to answer a question. It also reports the last state recorded, not a check that the job is alive: work whose worker stopped unexpectedly reads as unfinished until the system picks it back up. So in a list someone reads once, don't label an `"active"` row "running" or "working". In a live view a row stops reading `"active"` within about a second of the work ending, so "working" is a usable label there, as long as you accept that a job paused for approval, or one whose worker died, shows the same way. [What `status` tells you](/docs/server/background-work#what-status-tells-you) has each value in full.
 

@@ -1,6 +1,6 @@
 /**
  * Goal check: recording a task on a conversation's board never starts it, and
- * `dispatchTask` starts a recorded task, or a new one, now (FIX-1875). See
+ * `createTask` starts a recorded task, or a new one, now (FIX-1875). See
  * goal.md.
  *
  * One person on a goal-local Lab (`lab/`), the FIX-1817 Lab's shape with two
@@ -55,11 +55,11 @@ const CONTROLS: Record<string, Control> = {
     patches: [
       {
         module: "packages/orchestration/src/skills/task-tools-capability.ts",
-        from: String.raw`addTask\(\{ \.\.\.checked\.init, undispatched: true \}\)`,
-        to: "addTask({ ...checked.init })",
+        from: String.raw`\.\.\.\(input\.held === true \? \{ held: true \} : \{\}\),`,
+        to: "",
       },
     ],
-    does: "the task tools file addTask's row without the not-dispatched mark, so recording a task for a delegate starts it, as before FIX-1875",
+    does: "the task tools drop createTask's held setting and file the row ready, so writing a task down for a delegate starts it, as before FIX-1875",
   },
 };
 
@@ -85,26 +85,28 @@ async function drive(origin: string, store: string) {
     return fetch(input, { ...init, headers });
   };
   const transport = { baseUrl: origin, fetcher };
-  const sessionsApi = shipped.client.createSessionClient(transport);
-  const flow = (flowKind: string) => shipped.client.createClient({ flowKind, userId: ALICE.userId, ...transport });
+  // The app's one client, as Alice.
+  const fsd = shipped.client.createClient({ userId: ALICE.userId, ...transport });
+  const sessionsApi = fsd.sessions;
+  const flow = (flowKind: string) => fsd.flow(flowKind);
 
   const act = async (sessionId: string, action: string, input: unknown, timeoutMs = 120_000): Promise<Acted> => {
     const client = flow("coordinator");
     let requestId: string;
     try {
-      requestId = (await client.sendAction(action, input, { sessionId })).request.id;
+      requestId = (await client.send(action, input, { sessionId })).id;
     } catch (error) {
       return { status: "http", requestId: null, output: undefined, error: error instanceof Error ? error.message : String(error) };
     }
     let status = "timed-out";
     for (const until = Date.now() + timeoutMs; Date.now() < until; await sleep(100)) {
-      const now = (await client.getRequestStatus(requestId).catch(() => undefined))?.status as string | undefined;
+      const now = (await client.request(requestId).status().catch(() => undefined))?.status as string | undefined;
       if (now !== undefined && TERMINAL.has(now)) {
         status = now;
         break;
       }
     }
-    const listed = (await sessionsApi.listSessionRequests(sessionId, { includeResultOutput: true, limit: 200 }).catch(() => [])) as any[];
+    const listed = (await sessionsApi.requests(sessionId, { includeResultOutput: true, limit: 200 }).catch(() => [])) as any[];
     const found = listed.find((r) => r.id === requestId);
     return { status, requestId, output: found?.result?.output, error: found?.result?.error?.message };
   };
@@ -122,7 +124,7 @@ async function drive(origin: string, store: string) {
     }
   };
   const conversation = async () =>
-    (await sessionsApi.createSession({ flowKind: "coordinator", userId: ALICE.userId, state: { workerId: "desk.lead" } })).id as string;
+    (await fsd.flow("coordinator").createSession({ state: { workerId: "desk.lead" } })).id as string;
 
   // Held out: who each task is for, and its words. Both forms of a recorded
   // row run every time: one recorded for a delegate, and one recorded for
@@ -136,9 +138,9 @@ async function drive(origin: string, store: string) {
   const conv = await conversation();
   const elsewhere = await conversation();
 
-  // rec: record both through the app's addTask_tasks, then touch the board for 30 s.
-  const assigned = await act(conv, "addTask_tasks", { goal: drill(`${word}-a`), assignee: delegate });
-  const unassigned = await act(conv, "addTask_tasks", { goal: drill(`${word}-u`) });
+  // rec: record both through the app's createTask_tasks, held, then touch the board for 30 s.
+  const assigned = await act(conv, "createTask_tasks", { held: true, goal: drill(`${word}-a`), assignee: delegate });
+  const unassigned = await act(conv, "createTask_tasks", { held: true, goal: drill(`${word}-u`) });
   const assignedId = assigned.output?.taskId as string | undefined;
   const unassignedId = unassigned.output?.taskId as string | undefined;
   let touches = 0;
@@ -153,16 +155,16 @@ async function drive(origin: string, store: string) {
   });
   const afterTouches = { assigned: snapshot(assignedId), unassigned: snapshot(unassignedId) };
 
-  // lineage: the same dispatch from Alice's other conversation.
-  const reached = assignedId === undefined ? null : await act(elsewhere, "dispatchTask_tasks", { taskId: assignedId });
+  // lineage: the same release from Alice's other conversation.
+  const reached = assignedId === undefined ? null : await act(elsewhere, "updateTask_tasks", { id: assignedId, status: "pending" });
   await quiet();
   const afterReach = row(assignedId);
 
-  // disp: dispatch both recorded rows, and a new one.
-  const dispatchedAssigned = assignedId === undefined ? null : await act(conv, "dispatchTask_tasks", { taskId: assignedId });
-  const dispatchedUnassigned = unassignedId === undefined ? null : await act(conv, "dispatchTask_tasks", { taskId: unassignedId, assignee: other });
+  // disp: release both recorded rows, and file a new one ready.
+  const dispatchedAssigned = assignedId === undefined ? null : await act(conv, "updateTask_tasks", { id: assignedId, status: "pending" });
+  const dispatchedUnassigned = unassignedId === undefined ? null : await act(conv, "updateTask_tasks", { id: unassignedId, assignee: other, status: "pending" });
   const freshFor = pick(DELEGATES);
-  const fresh = await act(conv, "dispatchTask_tasks", { goal: drill(`${word}-n`), assignee: freshFor });
+  const fresh = await act(conv, "createTask_tasks", { goal: drill(`${word}-n`), assignee: freshFor });
   const freshId = fresh.output?.taskId as string | undefined;
   await waitFor(() => [assignedId, unassignedId, freshId].every((id) => ENDED.includes(row(id)?.status ?? "")), 180_000);
   await quiet();
@@ -194,9 +196,10 @@ function grade(o: Awaited<ReturnType<typeof drive>>, store: string): { failures:
     ["for nobody", o.unassigned, o.afterTouches.unassigned],
   ] as const) {
     const rec = after.row;
-    if (rec === undefined || rec.status !== "pending" || rec.attempts !== 0 || rec.run !== undefined || after.sessions !== 0) {
+    // A recorded row is held (FIX-2080): filed, and not started until released.
+    if (rec === undefined || rec.status !== "held" || rec.attempts !== 0 || rec.run !== undefined || after.sessions !== 0) {
       failures.push(
-        `rec:not-started — wanted the row addTask_tasks recorded ${form} to be pending with no run after ${o.touches} touches over ${TOUCH_MS / 1000} s; ` +
+        `rec:not-started — wanted the row createTask_tasks filed held ${form} to be held with no run after ${o.touches} touches over ${TOUCH_MS / 1000} s; ` +
           `recording answered ${show(filed.output ?? filed.error)}, the row ${show(rec && { status: rec.status, attempts: rec.attempts, run: rec.run, assignee: rec.assignee })}, task sessions ${after.sessions}`,
       );
     }

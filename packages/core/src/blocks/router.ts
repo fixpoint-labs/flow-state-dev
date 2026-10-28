@@ -24,6 +24,7 @@ import type {
 
 import { buildBlock, extractDeclaredResources, mergeDeclaredResources } from "./internal/build-block";
 import { resolveCapabilities } from "./internal/resolve-capabilities";
+import { foldSequencerStateRequirements } from "./internal/sequencer-state";
 import { findBlockTraceIdByInstance } from "./internal/find-block-trace";
 import type { ReplayLog } from "./internal/replay-log";
 import {
@@ -239,9 +240,16 @@ export function router<
     extractDeclaredResources(config)
   );
 
+  // Routes share the router's `ctx.sequencer`, so their requirements pass up.
+  const sequencerStateSchema = foldSequencerStateRequirements(
+    config.sequencerStateSchema,
+    config.routes ?? [],
+    config.name
+  );
+
   return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
     kind: "router",
-    config: { ...config, stateSchema: effectiveStateSchema } as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
+    config: { ...config, stateSchema: effectiveStateSchema, sequencerStateSchema } as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
     declaredResources,
     ownDeclaredResources,
     resolvedCapabilities,

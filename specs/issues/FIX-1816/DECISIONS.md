@@ -66,6 +66,8 @@ arrive as a second message. Then the kill line fires, and assign alone is the se
 
 It comes down to what the person sees: an ask folds each delegate's line into one reply.
 
+> **Amended 2026-10-13 ([FIX-1872](../FIX-1872/SPEC.md), by [epic FIX-1870 D2](../../epics/FIX-1870/DECISIONS.md)).** The post still stays a post, and each delegate still answers with its own line. What changed is the *Locks in* row: the two answer-once checks became one. A post is now one row per delegate on the conversation's board, so the row's claim ticket decides that an answer counts, and the ledger token is gone. The *Price* in the figure no longer holds.
+
 ## Cut before the gate
 
 The epic coordinator cut these within the approved objective, before the product owner's gate.

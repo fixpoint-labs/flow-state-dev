@@ -4,7 +4,8 @@ import { providerNames, type GatewayConfig } from "./types";
 // Standard env var mappings
 // ---------------------------------------------------------------------------
 
-const DEFAULT_ENV_VARS: Record<string, string> = {
+/** Env-var name that supplies the API key for each built-in provider. */
+export const PROVIDER_ENV_VARS: Record<string, string> = {
   anthropic: "ANTHROPIC_API_KEY",
   openai: "OPENAI_API_KEY",
   google: "GOOGLE_GENERATIVE_AI_API_KEY",
@@ -49,7 +50,7 @@ export function detectAvailableProviders(config: {
   const available = new Map<string, ProviderAvailability>();
 
   // Phase 1: Check direct provider keys (explicit config + env vars)
-  for (const [provider, envVar] of Object.entries(DEFAULT_ENV_VARS)) {
+  for (const [provider, envVar] of Object.entries(PROVIDER_ENV_VARS)) {
     const key = config.keys?.[provider] ?? env[envVar];
     if (key) {
       available.set(provider, { provider, source: "key", apiKey: key });
@@ -125,18 +126,27 @@ export function detectAvailableProviders(config: {
 // Model string parsing
 // ---------------------------------------------------------------------------
 
-export interface ParsedModelString {
-  /** "direct" = provider/model, "gateway" = gateway/provider/model, "intent" = intent/name */
-  type: "direct" | "gateway" | "intent";
-  /** Provider name (e.g., "openai"). Present for direct and gateway types. */
-  provider?: string;
-  /** Model ID (e.g., "gpt-5.4"). Present for direct and gateway types. */
-  modelId?: string;
-  /** Gateway name (e.g., "vercel"). Only present for gateway type. */
-  gateway?: string;
-  /** Intent name (e.g., "utility"). Only present for intent type. */
-  intentName?: string;
-}
+/** A model string split into a lane. Whether an alias is a gateway or a provider is the resolver's call. */
+export type ParsedModelString =
+  | {
+      type: "direct";
+      /** Provider name (e.g., "openai"). */
+      provider: string;
+      /** The part after the slash (`gpt-6.1-sol`). */
+      modelId: string;
+    }
+  | {
+      type: "alias";
+      /** The route name before the first colon (e.g., "vercel", "triage"). */
+      alias: string;
+      /** Everything after the first colon, untouched (`anthropic/claude-sonnet-5-5`). */
+      modelId: string;
+    }
+  | {
+      type: "intent";
+      /** Intent name (e.g., "utility"). */
+      intentName: string;
+    };
 
 /** Allowed shape for intent names referenced via `intent/<name>`. */
 export const INTENT_NAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
@@ -153,17 +163,29 @@ export function canonicalizeIntentName(intentName: string): string {
 }
 
 /**
- * Parse a model string into its components.
- *
- * Supported formats:
- * - `"provider/model"` → direct provider access
- * - `"gateway/provider/model"` → route through a gateway
- * - `"intent/name"` → resolve a named intent (configured via createModelResolver)
+ * Parse a model string into its lane: `provider/model`, `intent/name`, or
+ * `name:model` (first `:` before the first `/`, so `openai/gpt-oss:free` stays
+ * a slash id). The removed `gateway/provider/model` form throws, naming its
+ * colon spelling.
  */
 export function parseModelString(modelString: string): ParsedModelString {
   const trimmed = modelString.trim();
   if (trimmed.length === 0) {
     throw new Error("Model string cannot be empty.");
+  }
+
+  const colon = trimmed.indexOf(":");
+  const slash = trimmed.indexOf("/");
+  if (colon !== -1 && (slash === -1 || colon < slash)) {
+    const alias = trimmed.slice(0, colon);
+    const modelId = trimmed.slice(colon + 1);
+    if (alias.length === 0 || modelId.length === 0) {
+      throw new Error(
+        `Invalid model format: "${modelString}". ` +
+          `A named route needs a name and a model id, e.g. "vercel:openai/gpt-6.1-sol" or "openai:gpt-6.1-sol".`
+      );
+    }
+    return { type: "alias", alias, modelId };
   }
 
   const parts = trimmed.split("/");
@@ -181,37 +203,42 @@ export function parseModelString(modelString: string): ParsedModelString {
     return { type: "direct", provider: parts[0], modelId: parts[1] };
   }
 
-  if (parts.length === 3) {
+  if (parts.length >= 3) {
     if (parts[0] === "intent") {
       throw new Error(
         `Invalid model format: "${modelString}". intent/* model strings must be 2 parts (intent/name).`
       );
     }
-    return {
-      type: "gateway",
-      gateway: parts[0],
-      provider: parts[1],
-      modelId: parts[2],
-    };
+    const renamed = `${parts[0]}:${parts.slice(1).join("/")}`;
+    throw new Error(
+      `Invalid model format: "${modelString}". The "gateway/provider/model" form was removed; ` +
+        `name the route with a colon: "${renamed}".`
+    );
   }
 
   throw new Error(
     `Invalid model format: "${modelString}". ` +
-      `Expected "provider/model" (e.g., "openai/gpt-5.4") or ` +
-      `"gateway/provider/model" (e.g., "vercel/openai/gpt-5.4").`
+      `Expected "provider/model" (e.g., "openai/gpt-6.1-sol") or a named route ` +
+      `"name:model" (e.g., "vercel:openai/gpt-6.1-sol").`
   );
 }
 
 /**
- * Extract the provider segment from a model string. For direct strings this
- * is `parts[0]`; for gateway strings it is the inner provider segment
- * (`parts[1]`). Returns `"unknown"` for malformed strings or intent strings.
+ * Provider name with no app config. A named route uses the model id's first
+ * slash segment, else the name itself. `"unknown"` for an intent or a bad
+ * string. Use it only without a resolver: `ModelResolver.providerOf`
+ * classifies against the app's maps, and agrees with this on every string
+ * whose route does not depend on them.
  */
 export function extractProviderName(modelString: string): string {
   try {
     const parsed = parseModelString(modelString);
     if (parsed.type === "intent") return "unknown";
-    return parsed.provider ?? "unknown";
+    if (parsed.type === "alias") {
+      const slash = parsed.modelId.indexOf("/");
+      return slash > 0 ? parsed.modelId.slice(0, slash) : parsed.alias;
+    }
+    return parsed.provider;
   } catch {
     return "unknown";
   }

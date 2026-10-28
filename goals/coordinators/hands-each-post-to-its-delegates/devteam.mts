@@ -9,8 +9,8 @@
  * by a fixture or written to a store. Every grade is read back as that
  * person: the conversation's items (its routing records and the turn's tool
  * outputs) and the delegate's own session through the install's routes, and
- * the conversation's session record (its delegates and its delivery ledger)
- * from the install's store file, from the row that person owns. The session
+ * the conversation's record (its delegates, and its routed tasks) from the
+ * install's store file, from the rows that person owns. The session
  * route sends a client only the state a flow exposes, and the coordinator
  * exposes neither field. A reply's words are graded only in leg d, and only
  * against the list the session holds.
@@ -18,11 +18,13 @@
  * The clients are loaded from the checkout under test, so a run on another
  * commit drives that commit's own clients.
  */
+import type { Client, CreateClientOptions } from "@flow-state-dev/client";
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
+import { routedDeliveries, type RoutedDelivery } from "../../lib/routed-tasks.mts";
 import { labRoutes, type LabRoutes, type StoredItem } from "../../lib/shift-manager.mts";
 
 /** One person the run acts as. */
@@ -38,17 +40,10 @@ type SessionSummary = { id: string; flowKind: string };
 /** The shipped clients, as the checkout under test exports them. */
 export interface Shipped {
   client: {
-    createClient(options: { flowKind: string; userId: string; baseUrl?: string; fetcher?: typeof fetch }): {
-      sendAction(action: string, input: unknown, options: { sessionId: string }): Promise<{ request: { id: string } }>;
-      getRequestStatus(requestId: string): Promise<{ status: string }>;
-    };
-    createSessionClient(options: { baseUrl?: string; fetcher?: typeof fetch }): {
-      createSession(options: { flowKind: string; userId: string; sessionId?: string; state?: Record<string, unknown> }): Promise<{ id: string }>;
-      listSessions(options: { flowKind?: string; userId?: string }): Promise<Array<{ id: string; createdAt: number }>>;
-    };
+    createClient(options: CreateClientOptions): Client;
   };
   workforce: {
-    createWorkforceClient(options: { userId: string; baseUrl?: string; fetcher?: typeof fetch }): {
+    createWorkforceClient(client: Client): {
       roster(): Promise<RosterEntry[]>;
       ensureWorkerSession(criteria: { worker: string }): Promise<SessionSummary>;
     };
@@ -66,8 +61,8 @@ export async function loadShipped(root: string): Promise<Shipped> {
 interface Connected {
   person: Person;
   workforce: ReturnType<Shipped["workforce"]["createWorkforceClient"]>;
-  sessions: ReturnType<Shipped["client"]["createSessionClient"]>;
-  flow(flowKind: string): ReturnType<Shipped["client"]["createClient"]>;
+  sessions: Client["sessions"];
+  flow(flowKind: string): ReturnType<Client["flow"]>;
   routes: LabRoutes;
 }
 
@@ -78,11 +73,13 @@ function connect(shipped: Shipped, origin: string, person: Person): Connected {
     return fetch(input, { ...init, headers });
   };
   const transport = { baseUrl: origin, fetcher };
+  // One client per person: their user, their credential.
+  const client = shipped.client.createClient({ userId: person.userId, ...transport });
   return {
     person,
-    workforce: shipped.workforce.createWorkforceClient({ userId: person.userId, ...transport }),
-    sessions: shipped.client.createSessionClient(transport),
-    flow: (flowKind) => shipped.client.createClient({ flowKind, userId: person.userId, ...transport }),
+    workforce: shipped.workforce.createWorkforceClient(client),
+    sessions: client.sessions,
+    flow: (flowKind) => client.flow(flowKind),
     routes: labRoutes(origin, { userId: person.userId, bearer: person.bearer }),
   };
 }
@@ -107,20 +104,20 @@ async function act(who: Connected, flowKind: string, sessionId: string, action: 
   const client = who.flow(flowKind);
   let requestId: string;
   try {
-    requestId = (await client.sendAction(action, input, { sessionId })).request.id;
+    requestId = (await client.send(action, input, { sessionId })).id;
   } catch (error) {
     const status = (error as { status?: unknown }).status;
     return { status: `http ${typeof status === "number" ? status : "?"}`, requestId: null, output: undefined, error: messageOf(error) };
   }
   let status = "timed-out";
   for (const until = Date.now() + timeoutMs; Date.now() < until; await sleep(400)) {
-    const now = (await client.getRequestStatus(requestId).catch(() => undefined))?.status;
+    const now = (await client.request(requestId).status().catch(() => undefined))?.status;
     if (now !== undefined && !RUNNING.has(now)) {
       status = now;
       break;
     }
   }
-  const found = (await who.routes.requests(sessionId).catch(() => [])).find((r) => r.id === requestId);
+  const found = (await who.routes.requests(sessionId).catch((): Array<Record<string, any>> => [])).find((r) => r.id === requestId);
   return { status, requestId, output: found?.result?.output, error: found?.result?.error?.message };
 }
 
@@ -161,7 +158,7 @@ const providerError = (text: string) => /rate.?limit|429|5\d\d |overloaded|timed
 /** Say `words` to the chief of staff in `session`, and read the turn back by its request id. A provider error re-runs it once. */
 async function talk(turns: Turn[], leg: string, who: Connected, session: SessionSummary, words: string): Promise<Turn> {
   const once = async (): Promise<Turn> => {
-    const acted = await act(who, session.flowKind, session.id, "run", { message: words }, 240_000);
+    const acted = await act(who, session.flowKind, session.id, "respond", { message: words }, 240_000);
     const turn: Turn = { leg, words, sessionId: session.id, requestId: acted.requestId, status: acted.status, tools: [], reply: "", replied: false };
     if (acted.requestId === null) {
       turn.reply = `refused: ${acted.error ?? ""}`;
@@ -186,15 +183,15 @@ async function talk(turns: Turn[], leg: string, who: Connected, session: Session
   return turn;
 }
 
-type Delivery = { postId: string; round: number; delegate: { worker: string; target?: string }; status: string; sessionId?: string; answered: boolean };
+type Delivery = RoutedDelivery;
 
 /**
- * A conversation's session record (its delegates, its delivery ledger and best fit's hold),
- * read from the SQLite file the install writes, from the row `who` owns. Not
+ * A conversation's record (its delegates, its routed tasks and best fit's hold),
+ * read from the SQLite file the install writes, from the rows `who` owns. Not
  * through the session route: that sends a client only the state a flow
- * exposes, and the coordinator exposes neither field (its ledger carries
- * delivery tokens). A row is keyed by the session id, prefixed `<tenant>:`
- * when the session has a tenant. Read-only, and closed after each read.
+ * exposes, and the coordinator exposes neither its delegates nor its hold. A
+ * session row is keyed by the session id, prefixed `<tenant>:` when the
+ * session has a tenant. Read-only, and closed after each read.
  */
 async function recordOf(
   store: string,
@@ -208,7 +205,7 @@ async function recordOf(
       .prepare("SELECT data FROM sessions WHERE (id = ? OR id = tenant_id || ':' || ?) AND user_id = ?")
       .get(sessionId, sessionId, who.person.userId) as { data: string } | undefined;
     const state = row === undefined ? undefined : (JSON.parse(row.data) as { state?: Record<string, any> }).state;
-    return { delegates: state?.delegates ?? null, ledger: (state?.deliveries ?? []) as Delivery[], hold: state?.bestFitHold ?? null };
+    return { delegates: state?.delegates ?? null, ledger: routedDeliveries(store, who.person.userId, sessionId), hold: state?.bestFitHold ?? null };
   } finally {
     db.close();
   }
@@ -459,9 +456,29 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
       r.notes.push(`second ask ${again.status}; tools: ${again.tools.map((t) => `${t.name}(${t.args}) → ${show(t.output)}`).join("; ") || "none"}`);
       const own3 = await ownWorkers(alice);
       if (!same(own3, own2)) r.failures.push(`c:no-second-hire — asked again, her own workers went from [${own2.join(", ")}] to [${own3.join(", ")}]`);
-      const againDeliveries = (await recordOf(o.store, alice, cos.id)).ledger.filter((d) => d.postId === again.requestId);
-      if (hire === undefined || !againDeliveries.some((d) => d.delegate.worker === hire && d.status === "delivered")) {
-        r.failures.push(`c:same-worker — asked again, wanted a delivery to ${hire ?? "the hire"}; the ledger holds ${show(againDeliveries)}`);
+      // A delegate works one routed task at a time (FIX-2083): asked again while
+      // the hire still works the first ask, the second waits in Alice's list,
+      // pending, for that same worker, and starts once the first ends. So the
+      // second counts as handed to the hire when it was delivered, or when it
+      // waits pending while the first is still open. One still pending after
+      // the first has ended has 60 s to start, then fails.
+      const firstTaskId = firstDeliveries[0]?.taskId;
+      const sameWorker = async () => {
+        const ledger = (await recordOf(o.store, alice, cos.id)).ledger;
+        const all = ledger.filter((d) => d.postId === again.requestId);
+        const toHire = all.filter((d) => d.delegate.worker === hire);
+        const first = ledger.find((d) => d.taskId === firstTaskId);
+        const firstOpen = first !== undefined && !["completed", "errored", "cancelled"].includes(first.rowStatus);
+        const delivered = toHire.some((d) => d.status === "delivered");
+        const queued = toHire.some((d) => d.status === "pending") && firstOpen;
+        return { ok: delivered || queued, delivered, pending: toHire.some((d) => d.status === "pending"), first, all };
+      };
+      let read = await sameWorker();
+      for (const until = Date.now() + 60_000; !read.ok && read.pending && Date.now() < until; await sleep(1_000)) read = await sameWorker();
+      if (hire === undefined || !read.ok) {
+        r.failures.push(`c:same-worker — asked again, wanted a routed task for ${hire ?? "the hire"}, delivered, or pending while its first is still open; the ledger holds ${show(read.all)}; the first ask's task: ${show(read.first)}`);
+      } else if (!read.delivered) {
+        r.notes.push(`asked again: a routed task for \`${hire}\`, pending behind its first (${read.first?.rowStatus}), as a delegate works one at a time`);
       }
     }
   }
@@ -470,7 +487,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
   if (o.legs.has("d")) {
     const r = leg("d");
     const kind = (await alice.workforce.ensureWorkerSession({ worker: COS })).flowKind;
-    const conv = await alice.sessions.createSession({ flowKind: kind, userId: o.alice.userId, state: { workerId: COS } });
+    const conv = await alice.flow(kind).createSession({ state: { workerId: COS } });
     const session = { id: conv.id, flowKind: kind };
     const roster = await alice.workforce.roster();
     const removeId = o.defaults[randomBytes(1)[0]! % Math.max(1, o.defaults.length)] ?? "eng.coder";
@@ -518,8 +535,8 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
   if (o.legs.has("f")) {
     const r = leg("f");
     const rosterKind = "workforce-roster";
-    const bobRoster = (await bob.sessions.listSessions({ flowKind: rosterKind, userId: o.bob.userId }))[0]?.id ??
-      (await bob.sessions.createSession({ flowKind: rosterKind, userId: o.bob.userId })).id;
+    const bobRoster = (await bob.sessions.list({ flowKind: rosterKind, userId: o.bob.userId }))[0]?.id ??
+      (await bob.flow(rosterKind).createSession()).id;
     const bobWorker = `bob-${word()}`;
     const hired = await act(bob, rosterKind, bobRoster, "hire", { id: bobWorker, flow: "agent", description: "Answers Bob's questions." });
     const bobs = await ownWorkers(bob);
@@ -529,7 +546,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
     } else {
       r.notes.push(`Bob hired \`${bobWorker}\` on \`agent\`; Alice's roster ${(await ownWorkers(alice)).includes(bobWorker) ? "LISTS it" : "doesn't list it"}`);
       const kind = (await alice.workforce.ensureWorkerSession({ worker: COS })).flowKind;
-      const conv = await alice.sessions.createSession({ flowKind: kind, userId: o.alice.userId, state: { workerId: COS } });
+      const conv = await alice.flow(kind).createSession({ state: { workerId: COS } });
       const missing = `nobody-${word()}`;
       const viaApp = await act(alice, kind, conv.id, "addDelegate", { worker: bobWorker });
       const viaAppMissing = await act(alice, kind, conv.id, "addDelegate", { worker: missing });
@@ -554,7 +571,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
       const ask = o.asks.f.replace("{worker}", bobWorker);
       let adds: Turn["tools"] = [];
       for (let attempt = 1; attempt <= 2 && adds.length === 0; attempt += 1) {
-        const where = attempt === 1 ? conv : await alice.sessions.createSession({ flowKind: kind, userId: o.alice.userId, state: { workerId: COS } });
+        const where = attempt === 1 ? conv : await alice.flow(kind).createSession({ state: { workerId: COS } });
         o.say(`leg f, attempt ${attempt}: "${ask}"`);
         const turn = await talk(turns, "f", alice, { id: where.id, flowKind: kind }, ask);
         adds = turn.tools.filter((t) => t.name === "addDelegate");
@@ -593,7 +610,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
   if (o.legs.has("h")) {
     const r = leg("h");
     const kind = (await alice.workforce.ensureWorkerSession({ worker: COS })).flowKind;
-    const conv = await alice.sessions.createSession({ flowKind: kind, userId: o.alice.userId, state: { workerId: COS } });
+    const conv = await alice.flow(kind).createSession({ state: { workerId: COS } });
     const session = { id: conv.id, flowKind: kind };
     const pick = <T,>(list: readonly T[]) => list[randomBytes(1)[0]! % list.length]!;
     const job = pick(o.asks.h.jobs);
@@ -675,7 +692,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
   // hires no one. Last, so a hire it makes here can't sway another leg.
   if (o.legs.has("g")) {
     const kind = (await alice.workforce.ensureWorkerSession({ worker: COS })).flowKind;
-    const conv = await alice.sessions.createSession({ flowKind: kind, userId: o.alice.userId, state: { workerId: COS } });
+    const conv = await alice.flow(kind).createSession({ state: { workerId: COS } });
     const theWord = word();
     const ask = o.asks.g.replace("{slug}", `cart-${hex()}`).replace("{word}", theWord);
     await askTheEm("g", { id: conv.id, flowKind: kind }, ask, theWord, await ownWorkers(alice));

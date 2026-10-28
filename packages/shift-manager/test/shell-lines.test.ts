@@ -1,10 +1,10 @@
 /**
  * The lines the sidebar and Chief of Staff derive for design v2's form: the
- * footer's initials, a message's clock time, and the suggestions above Chief
- * of Staff's composer, each from what the Lab holds and nothing else.
+ * footer's initials and a message's clock time, each from what the Lab holds
+ * and nothing else.
  */
 import { describe, expect, it } from "vitest";
-import { chiefOfStaffSuggestions, clockTime, initialsOf } from "../src/lib/shell";
+import { clockTime, initialsOf } from "../src/lib/shell";
 import { isChiefOfStaffWorking, startChiefOfStaffWork } from "../src/lib/working";
 
 describe("the footer's initials (v2:110)", () => {
@@ -27,12 +27,6 @@ describe("a message's time (v2:135)", () => {
   it("is 24-hour HH:MM", () => {
     expect(clockTime(new Date(2026, 9, 2, 9, 5).getTime())).toBe("09:05");
     expect(clockTime(new Date(2026, 9, 2, 22, 41).getTime())).toBe("22:41");
-  });
-});
-
-describe("Chief of Staff's suggestions (v2:174)", () => {
-  it("offers who is on call, and only fills the draft", () => {
-    expect(chiefOfStaffSuggestions()).toEqual(["Who's on call?"]);
   });
 });
 

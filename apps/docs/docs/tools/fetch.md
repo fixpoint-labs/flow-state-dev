@@ -28,7 +28,7 @@ import { tools } from "@flow-state-dev/tools";
 
 const reader = generator({
   name: "reader",
-  model: "anthropic/claude-sonnet-4-6",
+  model: "anthropic/claude-sonnet-5-5",
   prompt: "Read URLs the user provides and summarize them.",
   tools: [tools.fetch()],
 });
@@ -122,7 +122,7 @@ A natural pattern: search first, then fetch the best results for full content.
 ```ts
 const researcher = generator({
   name: "researcher",
-  model: "anthropic/claude-sonnet-4-6",
+  model: "anthropic/claude-sonnet-5-5",
   prompt: "Search for information, then read the most relevant pages to give thorough answers.",
   tools: [tools.search(), tools.fetch()],
 });

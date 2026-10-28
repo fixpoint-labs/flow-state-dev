@@ -17,8 +17,13 @@ const nextConfig = {
   // bundle it. `@vercel/sandbox` doesn't need this entry — the bash
   // adapter takes the SDK class via DI from the consumer (see
   // `flows/chat-agent/shared/capabilities/bash.ts`), so the static import is
-  // visible to nft like any other dependency.
-  serverExternalPackages: ["pg", "bullmq", "ioredis", "express"],
+  // visible to nft like any other dependency. The Claude Agent SDK is loaded
+  // by name at run time and starts the Claude Code executable it ships, so it
+  // stays a package on disk, never bundled. The Cursor SDK is the same: it
+  // ships its local runtime as a native binary, and the Cursor package loads
+  // it by name, in the runtime's own process. The Codex SDK is the same: it
+  // starts the Codex program its platform package ships.
+  serverExternalPackages: ["pg", "better-sqlite3", "bullmq", "ioredis", "express", "@anthropic-ai/claude-agent-sdk", "@cursor/sdk", "@openai/codex-sdk"],
   transpilePackages: workspacePackages,
   turbopack: {
     root: resolve(__dirname, "../../"),

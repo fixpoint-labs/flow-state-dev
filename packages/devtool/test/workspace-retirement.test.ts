@@ -28,15 +28,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 
-const sessionClient = {
-  listSessions: vi.fn(),
-  listSessionRequests: vi.fn(),
+const sessions = {
+  list: vi.fn(),
+  requests: vi.fn(),
 };
-const recoveryClient = { checkInterrupted: vi.fn() };
+const interrupted = vi.fn();
+const client = { sessions, requests: { interrupted } };
 
 const devToolState = {
-  sessionClient,
-  recoveryClient,
+  client,
   config: { userId: "devuser" },
   autoRecoverInterrupted: false,
   workspaceToken: 0,
@@ -60,11 +60,11 @@ function deferred<T>() {
 describe("workspace retirement, for the readers that outlive the switch", () => {
   beforeEach(() => {
     devToolState.workspaceToken = 0;
-    devToolState.sessionClient = sessionClient;
+    devToolState.client = client;
     devToolState.config = { userId: "devuser" };
-    sessionClient.listSessions.mockReset().mockResolvedValue([]);
-    sessionClient.listSessionRequests.mockReset().mockResolvedValue([]);
-    recoveryClient.checkInterrupted.mockReset().mockResolvedValue(undefined);
+    sessions.list.mockReset().mockResolvedValue([]);
+    sessions.requests.mockReset().mockResolvedValue([]);
+    interrupted.mockReset().mockResolvedValue(undefined);
   });
 
   describe("the request list", () => {
@@ -73,12 +73,12 @@ describe("workspace retirement, for the readers that outlive the switch", () => 
       // `in_progress` row does not just look wrong — it opens a stream on a
       // request in the workspace the operator just left.
       const held = deferred<unknown>();
-      sessionClient.listSessionRequests.mockReturnValueOnce(held.promise);
-      sessionClient.listSessionRequests.mockReturnValue(new Promise(() => {}));
+      sessions.requests.mockReturnValueOnce(held.promise);
+      sessions.requests.mockReturnValue(new Promise(() => {}));
 
       const { result, rerender } = renderHook(() => useSessionRequests("sess_1"));
       await waitFor(() =>
-        expect(sessionClient.listSessionRequests).toHaveBeenCalled(),
+        expect(sessions.requests).toHaveBeenCalled(),
       );
 
       devToolState.workspaceToken = 1;
@@ -93,7 +93,7 @@ describe("workspace retirement, for the readers that outlive the switch", () => 
     });
 
     it("shows nothing from the retired visit while the new one is still reading", async () => {
-      sessionClient.listSessionRequests.mockResolvedValue([
+      sessions.requests.mockResolvedValue([
         { id: "req_1", status: "completed" },
       ]);
 
@@ -102,7 +102,7 @@ describe("workspace retirement, for the readers that outlive the switch", () => 
 
       // Derived during RENDER. An effect-only reset would leave a frame in
       // which the previous visit's rows are what live mode reads.
-      sessionClient.listSessionRequests.mockReturnValue(new Promise(() => {}));
+      sessions.requests.mockReturnValue(new Promise(() => {}));
       devToolState.workspaceToken = 1;
       rerender();
 

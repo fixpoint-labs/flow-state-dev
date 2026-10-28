@@ -46,14 +46,16 @@ const facts = [
   {
     id: "F1",
     says: "the runtime's update-todos call reaches the SDK as a call of type `updateTodos` whose args are {content, status} pairs only: the SDK keeps no item id and no merge flag",
-    re: /case"updateTodosToolCall":\{[\s\S]{0,80}?type:"updateTodos",args:\{todos:t\.todos\.map\(\(e=>\(\{content:e\.content,status:[A-Za-z_$]+\(e\.status\)\}\)\)\)\}\}/,
+    re: /case"updateTodosToolCall":\{[\s\S]{0,80}?type:"updateTodos",args:\{todos:[A-Za-z_$]+\.todos\.map\(\(([A-Za-z_$]+)=>\(\{content:\1\.content,status:[A-Za-z_$]+\(\1\.status\)\}\)\)\)\}/,
   },
   {
     id: "F1b",
     says: "the runtime itself does have them: its to-do item carries an id, and its update carries a merge flag, so the args alone may be a partial list",
     re: [
-      /typeName="agent\.v1\.UpdateTodosArgs"[\s\S]{0,120}?name:"todos"[\s\S]{0,60}?name:"merge"/,
-      /typeName="agent\.v1\.TodoItem",[\s\S]{0,80}?name:"id"/,
+      // Two spellings of one protobuf descriptor: field objects through 1.0.31, a
+      // compact "Name|n field type" string from 1.0.32 on.
+      /typeName="agent\.v1\.UpdateTodosArgs"[\s\S]{0,120}?name:"todos"[\s\S]{0,60}?name:"merge"|"UpdateTodosArgs\|\d+ todos [^|"]*\|\d+ merge /,
+      /typeName="agent\.v1\.TodoItem",[\s\S]{0,80}?name:"id"|"TodoItem\|1 id 9\|/,
     ],
   },
   {
@@ -64,17 +66,17 @@ const facts = [
   {
     id: "F2",
     says: "a to-do status is one of pending, inProgress, completed, cancelled",
-    re: /z\.enum\(\["pending","inProgress","completed","cancelled"\]\)/,
+    re: /[A-Za-z_$]+\.enum\(\["pending","inProgress","completed","cancelled"\]\)/,
   },
   {
     id: "F3",
     says: "a stream tool_call takes its `name` from the converted call's `type` when it has no name, so the to-do call reaches the stream named `updateTodos`",
-    re: /"string"==typeof t\.name\?t\.name:"string"==typeof t\.type\?t\.type:"unknown"/,
+    re: /"string"==typeof ([A-Za-z_$]+)\.name\?\1\.name:"string"==typeof \1\.type\?\1\.type:"unknown"/,
   },
   {
     id: "F4",
     says: "a `task` stream message is the runtime's `summary` event, text only: a summary of the run, not a to-do list",
-    re: /case"summary":return\{type:"task",agent_id:t,run_id:n,text:e\.summary\}/,
+    re: /case"summary":return\{type:"task",agent_id:[A-Za-z_$]+,run_id:[A-Za-z_$]+,text:[A-Za-z_$]+\.summary\}/,
   },
   {
     id: "F5",
@@ -87,7 +89,7 @@ if (control) {
   facts.push({
     id: "C1",
     says: "(planted) to-do items carry an id",
-    re: /type:"updateTodos",args:\{todos:t\.todos\.map\(\(e=>\(\{id:e\.id/,
+    re: /type:"updateTodos",args:\{todos:[A-Za-z_$]+\.todos\.map\(\(([A-Za-z_$]+)=>\(\{id:\1\.id/,
   });
 }
 

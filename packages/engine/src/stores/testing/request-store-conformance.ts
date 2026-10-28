@@ -735,6 +735,62 @@ export function createRequestStoreConformanceTests(
         expect(await store.getRunOnceResult("foo", "step")).toEqual({ found: false });
       });
     });
+
+    // Retention judges a record evictable by its status, then deletes it. A
+    // record that started running in between must not be the one deleted.
+    describe("deleteIfStatus", () => {
+      it("deletes the request and everything under its id while its status is allowed", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_delete_if_match";
+          await store.set(requestId, makeRecord(requestId, "interrupted", []), "any");
+          store.persistItems(requestId, [makeItem(requestId, 0)]);
+          await store.flushItems(requestId);
+          store.persistEvents(requestId, [makeRequestStreamEvent(requestId, 1)]);
+          await store.flushEvents(requestId);
+          await store.setRunOnceResult(requestId, "step", { owner: "previous" });
+
+          const result = await store.deleteIfStatus(requestId, ["completed", "interrupted"]);
+
+          expect(result).toEqual({ applied: true, status: "interrupted" });
+          expect(await store.get(requestId)).toBeUndefined();
+          expect(await store.countItems(requestId)).toBe(0);
+          expect(await store.getEvents(requestId)).toEqual([]);
+          expect(await store.getRunOnceResult(requestId, "step")).toEqual({ found: false });
+        });
+      });
+
+      it("leaves a request whose status is outside the predicate, with its items and events", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_delete_if_running";
+          await store.set(requestId, makeRecord(requestId, "in_progress", []), "any");
+          store.persistItems(requestId, [makeItem(requestId, 0)]);
+          await store.flushItems(requestId);
+          store.persistEvents(requestId, [makeRequestStreamEvent(requestId, 1)]);
+          await store.flushEvents(requestId);
+          await store.setRunOnceResult(requestId, "step", { owner: "running" });
+
+          const result = await store.deleteIfStatus(requestId, ["interrupted"]);
+
+          expect(result).toEqual({ applied: false, status: "in_progress" });
+          expect((await store.get(requestId))?.status).toBe("in_progress");
+          expect(await store.countItems(requestId)).toBe(1);
+          expect((await store.getEvents(requestId)).map((e) => e.sequence_number)).toEqual([1]);
+          expect(await store.getRunOnceResult(requestId, "step")).toEqual({
+            found: true,
+            value: { owner: "running" }
+          });
+        });
+      });
+
+      it("reports an absent request as no match", async () => {
+        await withStore(async (store) => {
+          expect(await store.deleteIfStatus("req_delete_if_absent", ["completed"])).toEqual({
+            applied: false,
+            status: undefined
+          });
+        });
+      });
+    });
   });
 
   describe(`${name} (RequestStore incarnation conformance)`, () => {

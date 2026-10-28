@@ -1,4 +1,5 @@
-import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
+import type { RequestStreamEvent } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type {
   ConditionalRequestFields,
   ConditionalWriteResult,
@@ -157,7 +158,7 @@ export class FilesystemRequestStore implements RequestStore {
   private readonly itemWriteQueues = new Map<string, SerializedWriteQueue>();
   private readonly itemWriteQueued = new Set<string>();
   /** Holds the most recent items snapshot so the queued write always uses the latest data. */
-  private readonly latestItemSnapshots = new Map<string, OutputItem[]>();
+  private readonly latestItemSnapshots = new Map<string, RuntimeItem[]>();
   private readonly eventWriteQueues = new Map<string, SerializedWriteQueue>();
   private readonly eventWriteQueued = new Set<string>();
   /** Accumulates new events between coalesced writes for incremental persistence. */
@@ -168,6 +169,8 @@ export class FilesystemRequestStore implements RequestStore {
    * propagate persist failures instead of silently swallowing them (FIX-399).
    */
   private readonly lastEventError = new Map<string, Error>();
+  /** The same for item writes: `flushItems` throws (and clears) it. */
+  private readonly lastItemError = new Map<string, Error>();
   private readonly pollIntervalMs: number;
   private readonly onPersistError?: PersistErrorHandler;
 
@@ -418,6 +421,33 @@ export class FilesystemRequestStore implements RequestStore {
     // An event write failure not yet reported belonged to the deleted
     // request; the id's next owner must not be handed it by its first flush.
     this.lastEventError.delete(id);
+    this.lastItemError.delete(id);
+  }
+
+  async deleteIfStatus(
+    id: string,
+    allowedStatuses: readonly RequestStatus[]
+  ): Promise<ConditionalWriteResult> {
+    // Wait out event writes already queued, without dropping the unwritten
+    // batch first as `delete` does: if the predicate fails, they belong to a
+    // run that is still going.
+    await this.eventWriteQueues.get(id)?.drain();
+    let found: RequestStatus | undefined;
+    // The status check, the sidecar sweep and the record removal share the
+    // per-id lock, so no conditional write lands between check and delete.
+    const deleted = await this.store.delete(
+      id,
+      () => this.deleteSidecars(id),
+      (current) => {
+        found = current?.status;
+        return found !== undefined && allowedStatuses.includes(found);
+      }
+    );
+    if (!deleted) return { applied: false, status: found };
+    this.pendingNewEvents.delete(id);
+    this.lastEventError.delete(id);
+    this.lastItemError.delete(id);
+    return { applied: true, status: found };
   }
 
   /**
@@ -491,7 +521,7 @@ export class FilesystemRequestStore implements RequestStore {
     return overlaid.map((record) => withRequestSourceDefault(record));
   }
 
-  persistItems(requestId: string, items: OutputItem[]): void {
+  persistItems(requestId: string, items: RuntimeItem[]): void {
     // Always capture the latest snapshot so the queued write uses the most
     // recent items, even when subsequent calls are coalesced away.
     this.latestItemSnapshots.set(requestId, [...items]);
@@ -527,6 +557,13 @@ export class FilesystemRequestStore implements RequestStore {
     const queue = this.itemWriteQueues.get(requestId);
     if (queue !== undefined) {
       await queue.drain();
+    }
+    // A failed write rejects the flush, as `flushEvents` does: a caller that
+    // treats a resolved flush as proof the items are stored must not be told so.
+    const lastError = this.lastItemError.get(requestId);
+    if (lastError !== undefined) {
+      this.lastItemError.delete(requestId);
+      throw lastError;
     }
   }
 
@@ -693,6 +730,7 @@ export class FilesystemRequestStore implements RequestStore {
       queue = createSerializedWriteQueue({
         label: `request-items:${requestId}`,
         onError: (err) => {
+          this.lastItemError.set(requestId, err);
           this.onPersistError?.({ store: "request", id: requestId, error: err });
           console.error(
             `[flow-state] item persistence failed for ${requestId}`,

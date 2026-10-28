@@ -57,13 +57,13 @@ describe("resources declared on a tool-only block", () => {
       sessionId: "sess_tool_res",
       stores: createInMemoryStores(),
       runtimeConfig: {
-        modelResolver: (modelId) => ({
+        modelResolver: Object.assign((modelId: string) => ({
           modelId,
           async generate(options: any) {
             await options.tools[0].execute({ text: "remember this" });
             return { text: "ok" };
           }
-        })
+        }), { resolveId: (id: string) => id })
       }
     });
 

@@ -9,6 +9,11 @@ export {
   type FlowApiRouter
 } from "./createFlowApiRouter";
 export {
+  createInProcessFetch,
+  type InProcessFetch,
+  type InProcessFetchOptions
+} from "./in-process-fetch";
+export {
   decodePathSegments,
   parseFlowRoute,
   type ParsedFlowRoute

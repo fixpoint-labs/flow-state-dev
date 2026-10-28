@@ -11,7 +11,7 @@
 import { resolveRequestIncarnation } from "../stores/scope-keys";
 import type { RequestRecord, RequestStatus, RequestStore } from "../stores/types";
 import { abortRequest } from "./abort-registry";
-import { pendingGatesOf, stopSuspendedRequest, type SuspendedStopDeps } from "../durability/stop-suspended";
+import { parkedInterruptedIds, stopSuspendedRequest, type SuspendedStopDeps } from "../durability/stop-suspended";
 
 /**
  * What recording a stop came to.
@@ -23,11 +23,14 @@ import { pendingGatesOf, stopSuspendedRequest, type SuspendedStopDeps } from "..
  *   was fired.
  * - `recorded`: the stop is recorded; the process running the request picks it
  *   up on its next heartbeat.
- * - `stopped-parked`: the request was parked (`suspended`, or `interrupted` on a
- *   pending gate) and the stop resolved its gate (FIX-1816). It ends
- *   `aborted`; a turn parked on an ask first cancels the task it asked for.
+ * - `stopped-parked`: the request was parked (`suspended`, or `interrupted` and
+ *   parked by `parkedInterruptedIds`: a pending gate, or a logged gate owed a
+ *   re-drive) and the stop resolved its gate (FIX-1816), overriding a
+ *   person's resolution the turn never ran past (FIX-2108). It ends
+ *   `aborted`; a turn parked on a wait first cancels the task it waits on.
  * - `already-resolved`: the request was parked, but its gate was resolved
- *   first (an answer won the race), so it runs again. Nothing was written.
+ *   first (an answer won the race, or a resume or re-drive holds its lease),
+ *   so it runs again. Nothing was written.
  */
 export type RequestStopResult =
   | { kind: "gone" }
@@ -69,9 +72,10 @@ export async function recordRequestStop(
   );
 
   if (result.status === undefined) return { kind: "gone" };
-  // Parked: `suspended`, or `interrupted` (the process died) while a gate of
-  // it is still pending. An interrupted request with no pending gate is not
-  // waiting on anything, and answers as before.
+  // Parked: `suspended`, or `interrupted` (the process died) while it is
+  // parked (`parkedInterruptedIds`: a pending gate, or a logged gate owed a
+  // re-drive). An interrupted request that is not is waiting on nothing, and
+  // answers as before.
   if (
     !result.applied &&
     (result.status === "suspended" || result.status === "interrupted") &&
@@ -83,7 +87,7 @@ export async function recordRequestStop(
     if (current === undefined || resolveRequestIncarnation(current) !== incarnation) {
       return { kind: "gone" };
     }
-    if (current.status === "interrupted" && (await pendingGatesOf(parked, current)).length === 0) {
+    if (current.status === "interrupted" && !(await parkedInterruptedIds(parked.provider, [current])).has(current.id)) {
       return { kind: "finished", status: "interrupted" };
     }
     const stopped = await stopSuspendedRequest(parked, current);

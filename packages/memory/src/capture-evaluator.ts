@@ -67,11 +67,11 @@ export const CAPTURE_EVALUATOR_NAME = 'memory/capture-evaluator'
  *
  * The model is passed through untouched: a model string resolves when the
  * block runs, the same way the app's generator model strings do; a model
- * instance (e.g. `openai.evaluationModel("gpt-5.4-mini")`) is used as given.
+ * instance (e.g. `openai.evaluationModel("gpt-6-luna")`) is used as given.
  *
  * @example
  * const mem = system({
- *   model: 'openai/gpt-5.4-mini',
+ *   model: 'openai/gpt-6-luna',
  *   working: true,
  *   evaluator: captureEvaluator('typesafe-ai/jev'),
  * })

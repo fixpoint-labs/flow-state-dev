@@ -20,23 +20,23 @@ type Story = StoryObj<typeof meta>;
 
 /** The roster read has not answered yet. */
 export const Loading: Story = {
-  args: { resourceClient: loadingRowsSource },
+  args: { client: loadingRowsSource },
 };
 
 /** The organization has hired nobody. */
 export const Empty: Story = {
-  args: { resourceClient: rowsSource([]) },
+  args: { client: rowsSource([]) },
 };
 
 /** The read failed. The line says what failed and offers Retry; nothing re-reads on a timer. */
 export const Failed: Story = {
-  args: { resourceClient: failingRowsSource("Failed to load the roster") },
+  args: { client: failingRowsSource("Failed to load the roster") },
 };
 
 /** Workers on the roster, each with the flow it runs. */
 export const Populated: Story = {
   args: {
-    resourceClient: rowsSource([
+    client: rowsSource([
       rosterRow("support.ada", "support-agent", "Answer billing questions."),
       rosterRow("support.grace", "support-agent"),
       rosterRow("triage.lin", "triage-agent", "Route new tickets."),
@@ -51,7 +51,7 @@ export const Populated: Story = {
 export const WithProblems: Story = {
   args: {
     problems: ['support.kay: flow "billing-agent" is not registered'],
-    resourceClient: rowsSource([
+    client: rowsSource([
       rosterRow("support.ada", "support-agent"),
       { topic: "broken", clientData: { workerId: "broken" } },
     ]),

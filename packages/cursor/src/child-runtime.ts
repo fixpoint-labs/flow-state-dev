@@ -25,12 +25,12 @@
  * run's commands with the environment the host chose not to hand them.
  *
  * The protocol: the parent sends `{ id, op }` requests (`open`, `send`, `wait`,
- * `cancel`) and the child answers `{ id, value }` or `{ id, error }`. After
+ * `steer`, `cancel`) and the child answers `{ id, value }` or `{ id, error }`. After
  * `send`, the child streams `{ event: "message" }` for each run message, then
  * `{ event: "end" }` or `{ event: "stream-error" }`. The parent closing the
  * channel tells the child to close the agent and exit.
  */
-import { fork, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
@@ -85,11 +85,13 @@ class ChildRuntime {
   private wake: (() => void) | null = null;
 
   constructor(options: ChildRuntimeOptions) {
-    this.child = fork(CHILD_SCRIPT, [options.sdkModule ?? "@cursor/sdk"], {
+    // `spawn` of this Node with an IPC channel, which is what `fork` does with
+    // `execArgv: []`: no inspector or loader flag of the parent's reaches the
+    // run. Not `fork` itself, because a bundler that traces `fork` (Next's
+    // Turbopack) fails the build on a script path it can't resolve statically.
+    this.child = spawn(process.execPath, [CHILD_SCRIPT, options.sdkModule ?? "@cursor/sdk"], {
       // A copy, so nothing a caller adds to its object later reaches the child.
       env: { ...options.env },
-      // Not the parent's: an inspector or loader flag is not the run's to inherit.
-      execArgv: [],
       stdio: ["ignore", "ignore", "pipe", "ipc"],
       serialization: "advanced",
     });
@@ -211,6 +213,7 @@ async function openInChild(
       const started = (await runtime.request("send", { prompt, options: sendOptions })) as {
         runId: string;
         supportsWait: boolean;
+        supportsSteer?: boolean;
       };
       return {
         id: started.runId,
@@ -220,6 +223,10 @@ async function openInChild(
           await runtime.request("cancel");
         },
         supports: (operation: string) => (operation === "wait" ? started.supportsWait : true),
+        // Only a run the child found able to steer has one, so the block never offers a steer it can't take.
+        ...(started.supportsSteer === true
+          ? { steer: (text: string) => runtime.request("steer", { text }) as Promise<string> }
+          : {}),
       };
     },
     close: () => runtime.close(),

@@ -14,6 +14,7 @@
  * The clients are loaded from the checkout under test, so a run on another
  * commit drives that commit's own clients.
  */
+import type { Client, CreateClientOptions } from "@flow-state-dev/client";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -29,20 +30,9 @@ export interface Person {
   bearer: string;
 }
 
-type Client = {
-  sendAction(action: string, input: unknown, options: { sessionId: string }): Promise<{ request: { id: string } }>;
-  getRequestStatus(requestId: string): Promise<{ status: string }>;
-};
-type SessionClient = {
-  createSession(options: { flowKind: string; userId: string; sessionId?: string; state?: Record<string, unknown> }): Promise<{ id: string }>;
-  listSessions(options: { flowKind?: string; userId?: string }): Promise<Array<{ id: string }>>;
-  listSessionRequests(sessionId: string, options: { includeResultOutput?: boolean; limit?: number }): Promise<Array<{ id: string; result?: { output?: unknown; error?: { message: string } } }>>;
-};
-
-/** The shipped clients, as the checkout under test exports them. */
+/** The shipped client, as the checkout under test exports it. */
 export interface Shipped {
-  createClient(options: { flowKind: string; userId: string; baseUrl?: string; fetcher?: typeof fetch }): Client;
-  createSessionClient(options: { baseUrl?: string; fetcher?: typeof fetch }): SessionClient;
+  createClient(options: CreateClientOptions): Client;
 }
 
 /** Load the shipped clients from the checkout at `root`. */
@@ -71,10 +61,12 @@ function connect(shipped: Shipped, origin: string, person: Person) {
     return fetch(input, { ...init, headers });
   };
   const transport = { baseUrl: origin, fetcher };
+  // One client per person: their user, their credential.
+  const client = shipped.createClient({ userId: person.userId, ...transport });
   return {
     person,
-    sessions: shipped.createSessionClient(transport),
-    flow: (flowKind: string) => shipped.createClient({ flowKind, userId: person.userId, ...transport }),
+    sessions: client.sessions,
+    flow: (flowKind: string) => client.flow(flowKind),
   };
 }
 type Connected = ReturnType<typeof connect>;
@@ -83,21 +75,21 @@ async function act(who: Connected, flowKind: string, sessionId: string, action: 
   const client = who.flow(flowKind);
   let requestId: string;
   try {
-    requestId = (await client.sendAction(action, input, { sessionId })).request.id;
+    requestId = (await client.send(action, input, { sessionId })).id;
   } catch (error) {
     const status = (error as { status?: unknown }).status;
     return { status: `http ${typeof status === "number" ? status : "?"}`, requestId: null, output: undefined, error: messageOf(error) };
   }
   let status = "timed-out";
   for (const until = Date.now() + timeoutMs; Date.now() < until; await sleep(400)) {
-    const now = (await client.getRequestStatus(requestId).catch(() => undefined))?.status;
+    const now = (await client.request(requestId).status().catch(() => undefined))?.status;
     if (now !== undefined && !RUNNING.has(now)) {
       status = now;
       break;
     }
   }
-  const listed: Awaited<ReturnType<SessionClient["listSessionRequests"]>> = await who.sessions
-    .listSessionRequests(sessionId, { includeResultOutput: true, limit: 200 })
+  const listed: Awaited<ReturnType<Client["sessions"]["requests"]>> = await who.sessions
+    .requests(sessionId, { includeResultOutput: true, limit: 200 })
     .catch(() => []);
   const found = listed.find((r) => r.id === requestId);
   return { status, requestId, output: found?.result?.output, error: found?.result?.error?.message };
@@ -147,8 +139,8 @@ export async function legE(o: {
   const alice = connect(o.shipped, o.origin, o.alice);
   const rosterKind = "workforce-roster";
   const roster =
-    (await alice.sessions.listSessions({ flowKind: rosterKind, userId: o.alice.userId }))[0]?.id ??
-    (await alice.sessions.createSession({ flowKind: rosterKind, userId: o.alice.userId })).id;
+    (await alice.sessions.list({ flowKind: rosterKind, userId: o.alice.userId }))[0]?.id ??
+    (await alice.flow(rosterKind).createSession()).id;
   const broken = `drafter-${word()}`;
   const helper = `scribe-${word()}`;
   const badModel = `openai/${word()}-unserved`;
@@ -156,7 +148,7 @@ export async function legE(o: {
     await act(alice, rosterKind, roster, "hire", { id: broken, flow: "agent", description: "Drafts release notes.", settings: { model: badModel } }),
     await act(alice, rosterKind, roster, "hire", { id: helper, flow: "agent", description: "Drafts release notes.", settings: { model: o.helperModel } }),
   ];
-  const conv = (await alice.sessions.createSession({ flowKind: "coordinator", userId: o.alice.userId, state: { workerId: COS } })).id;
+  const conv = (await alice.flow("coordinator").createSession({ state: { workerId: COS } })).id;
   const added = [
     await act(alice, "coordinator", conv, "addDelegate", { worker: broken }),
     await act(alice, "coordinator", conv, "addDelegate", { worker: helper }),
@@ -164,7 +156,7 @@ export async function legE(o: {
   const goalWord = word();
   const ask = o.ask.replaceAll("{broken}", broken).replaceAll("{helper}", helper).replaceAll("{word}", goalWord);
   o.say(`leg e: "${ask}"`);
-  const turn = await act(alice, "coordinator", conv, "run", { message: ask }, 240_000);
+  const turn = await act(alice, "coordinator", conv, "respond", { message: ask }, 240_000);
   // The task's two attempts, its notice, the turn that notice wakes, and any
   // task that turn files: wait for all of it to go quiet, then a grace.
   await sleep(2_000);

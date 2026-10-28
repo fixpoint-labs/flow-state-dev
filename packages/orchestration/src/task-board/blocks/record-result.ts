@@ -13,7 +13,9 @@
  *   sequencer. Receives the caught error as input, reads
  *   `currentClaim` from worker state, calls `collection.fail`. Honors
  *   `onError`: `"skip"` swallows the error after writing the failure;
- *   `"fail"` rethrows so the parent forEach rejects.
+ *   `"fail"` rethrows so the parent forEach rejects. A
+ *   {@link TaskEndsForGoodError} ends the row on this attempt instead of
+ *   re-queueing it: `fail` with `noRetry`, or `cancel`.
  *
  * Both write-backs are **advisory** (FIX-951): they pass `ifAllowed` and the
  * worker's `claim`, so a result that arrives after the task was settled by
@@ -25,13 +27,6 @@
  * The write's target comes from the ticket rather than being named separately
  * (FIX-981), so "which task do I settle" and "which task may I settle" are one
  * fact and cannot disagree.
- *
- * **Neither recorder writes to a row the worker parked for review** (FIX-1234).
- * A worker that calls `awaitReview()` on its own task has handed that row to a
- * human, and both `parked → completed` and `parked → errored`
- * are legal transitions the ticket fence admits — so without an explicit status
- * read the park did not survive the very next step. See
- * {@link workerParkedItForReview}.
  *
  * **A write that committed and then failed to be announced is reported, not
  * swallowed** (FIX-963). Both backings announce a change as a tail call, after
@@ -47,7 +42,7 @@
  * classify, release sequence lives once, in
  * {@link writeRethrowingIfNothingSaved}, and both recorders call it. Everything
  * that decides how a recorder *leaves* stays written out in that recorder's own
- * body: its no-claim and parked exits, where it stops renewal and clears the
+ * body: its no-claim exit, where it stops renewal and clears the
  * claim (the two recorders do those in different orders), and the tail that
  * emits the report and then raises or defers by site. The error recorder's two
  * containment guards stay two separate statements for the same reason: one is
@@ -73,12 +68,14 @@ import {
   type TaskWriteToken,
 } from "../../tasks";
 import {
+  advisoryCancel,
   advisoryComplete,
   advisoryFail,
 } from "../../tasks/collection/advisory-write-back";
 import { currentLeaseRenewal } from "../../tasks/lease-renewal-scope";
 import { taskBoardWorkerBodyStateSchema } from "../schemas";
 import {
+  HandedOverRowError,
   reportRecorderFailure,
   TaskBoardRecorderFailureError,
   TaskBoardReportFailureError,
@@ -128,65 +125,13 @@ import {
  * option the board composes it with. A worker that calls `ctx.suspend()` exits
  * through NEITHER recorder (`SuspensionError` bypasses `.rescue()` by design)
  * and does not abort its signal either, so that third stop is what keeps a
- * parked worker from renewing an `in_progress` row forever. That hook fires on
+ * suspended worker from renewing an `in_progress` row forever. That hook fires on
  * the returned and threw paths too, which is exactly why it must not stop on
  * them: it runs before the recorder that owns the write. The unref'd timer only
  * keeps the runtime from being held open; it does not stop the renewals.
  */
 function stopLeaseRenewal(): void {
   currentLeaseRenewal()?.stop();
-}
-
-/**
- * Did the worker park this row for a human before it left (FIX-1234)?
- *
- * Both recorders ask before they write, and a `true` answer means **write
- * nothing**: the row is not this worker's to settle any more.
- *
- * ## Why the ticket fence does not already cover this
- *
- * Every write below is advisory — `ifAllowed` plus the worker's claim — so the
- * natural assumption is that a row the worker moved out from under itself is
- * refused anyway. It is not. The claim ticket admits a row in `in_progress` *or*
- * `parked` (a parked row is still that attempt's row, which is what
- * lets a worker resume and settle it later), and `parked → completed`
- * and `parked → errored` are both legal transitions. So a worker that
- * called `awaitReview()` on its own task and then returned normally had that
- * task **completed** by the success tap a moment later: the park never survived
- * the step that follows it, `onReview: "exit"` had nothing to excuse, and the
- * HITL surface the substrate documents did not work from inside a worker at all.
- *
- * The status is therefore read explicitly, and it is read on **every** board
- * rather than only on one that declared `onReview: "exit"`. A worker parking its
- * own row is a deliberate, recorded transition on any board; silently undoing it
- * is wrong wherever it happens, and gating the guard on board configuration
- * would leave the same defect standing on the default.
- *
- * ## This read is an optimisation. The guarantee is in the write.
- *
- * An earlier version of this comment claimed the read was "the conservative
- * direction, not a race", on the grounds that a resume landing between the read
- * and the write moves the row to `pending`, which the fence declines anyway.
- * That is true of a **resume** and false of a **park**, and the difference is
- * the whole point: `parked` is in `ATTEMPT_OWNED_STATUSES`, so a
- * concurrent park lands the row in a status this attempt still owns and one that
- * `parked → completed` / `→ errored` can legally leave. Nothing in the
- * fence refused it, so a park arriving in that window was overwritten — the
- * defect this guard exists to stop, reachable through the guard itself.
- *
- * So the refusal now lives in `transitionDeclineReason`, evaluated inside the
- * atomic write against committed state, and returns `parked`. A check that has
- * to win a race can be wrong; a check the write cannot bypass cannot be.
- *
- * What this read still buys is skipping work the substrate would decline —
- * resolving nothing, emitting nothing, and leaving the reason in one place
- * rather than in a discarded verdict. Deleting it would change no outcome.
- */
-function workerParkedItForReview(
-  collection: TaskCollectionRef,
-  taskId: string
-): boolean {
-  return collection.get(taskId)?.status === "parked";
 }
 
 /**
@@ -208,6 +153,27 @@ function readTaskQuietly(
   }
 }
 
+/**
+ * Thrown when the next attempt would end the same way. The recorder ends the
+ * row on this attempt, under the worker's claim, so the worker writes no
+ * ending of its own. `ending` defaults to `errored`.
+ *
+ * It speaks only for `taskId`, the row its thrower holds: a recorder holding
+ * another row (a board nested inside the worker rethrows its worker's error on
+ * `onError: "fail"`) reads it as an ordinary failure.
+ */
+export class TaskEndsForGoodError extends Error {
+  readonly taskId: string;
+  readonly ending: "errored" | "cancelled";
+
+  constructor(message: string, options: { taskId: string; ending?: "errored" | "cancelled" }) {
+    super(message);
+    this.name = "TaskEndsForGoodError";
+    this.taskId = options.taskId;
+    this.ending = options.ending ?? "errored";
+  }
+}
+
 function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -216,7 +182,7 @@ function messageOf(err: unknown): string {
  * How a settlement site reports a recorder failure (FIX-963).
  *
  * Both recorders are composed in two places — the inline drain, and the gate
- * around a task handed off to a child run — and the difference between them is
+ * around a task dispatched to a child run — and the difference between them is
  * entirely about *when* the run is allowed to fail.
  */
 export interface RecorderFailureWiring {
@@ -279,6 +245,8 @@ async function writeRethrowingIfNothingSaved(params: {
   recorder: RecorderKind;
   runId: RecorderFailureWiring["runId"];
   attempt: (write: TaskWriteToken) => Promise<unknown>;
+  /** The row's failure is final, so a release ends it rather than re-queueing it. */
+  noRetry?: boolean;
 }): Promise<RecorderFailureReport | undefined> {
   const { ctx, collection, claim, recorder, attempt } = params;
   const write = beginTaskWrite(readTaskQuietly(collection, claim.taskId));
@@ -304,7 +272,7 @@ async function writeRethrowingIfNothingSaved(params: {
       landed === true ? "committed" : "undetermined";
 
     if (verdict === "undetermined") {
-      await releaseRow(collection, claim, err);
+      await releaseRow(collection, claim, err, params.noRetry === true);
     }
 
     const runId = params.runId?.(ctx);
@@ -331,7 +299,8 @@ async function writeRethrowingIfNothingSaved(params: {
  *
  * One fenced write serves both halves of the uncertainty: if the original write
  * did commit, the claim fence declines this one harmlessly; if it did not, this
- * settles the row (or re-queues it, where retries remain).
+ * settles the row (or re-queues it, where retries remain). A row whose
+ * worker said its failure is final (`noRetry`) is not re-queued here either.
  *
  * Best-effort by design. Nothing is hidden by a failure here — the report still
  * goes out and the run still fails — and letting a failed *recovery* displace
@@ -340,14 +309,15 @@ async function writeRethrowingIfNothingSaved(params: {
 async function releaseRow(
   collection: TaskCollectionRef,
   claim: TaskClaimTicket,
-  err: unknown
+  err: unknown,
+  noRetry: boolean
 ): Promise<void> {
   try {
     await advisoryFail(
       collection,
       claim.taskId,
       `task board could not confirm its own write: ${messageOf(err)}`,
-      { ifAllowed: true, claim, refuseWhenParked: true }
+      { ifAllowed: true, claim, ...(noRetry ? { noRetry: true } : {}) }
     );
   } catch {
     /* see above */
@@ -385,19 +355,6 @@ export function createRecordSuccess(options: RecordSuccessOptions) {
         return;
       }
       const collection = await collectionFactory(ctx);
-      if (workerParkedItForReview(collection, claim.taskId)) {
-        // The worker handed this row to a human and then returned. It owes the
-        // substrate no result, so nothing is written — but it IS done with the
-        // row, so the two pieces of bookkeeping below still run. Stopping
-        // renewal here is safe for the reason the block comment above gives:
-        // the rule is "once no further fenced write can follow", and on this
-        // path there is no write at all and no `.rescue()` to come, because the
-        // worker returned normally. Leaving the driver running would renew a
-        // lease on a row the lease has deliberately stopped governing.
-        stopLeaseRenewal();
-        await ctx.sequencer!.patchState({ currentClaim: undefined, currentLedger: undefined });
-        return;
-      }
       // FIX-963. This call RETHROWS the write's own error untouched when the
       // write committed nothing, which is the pre-existing path: the body's
       // `.rescue()` then runs `recordError`, whose fenced `fail()` settles the
@@ -417,10 +374,6 @@ export function createRecordSuccess(options: RecordSuccessOptions) {
           advisoryComplete(collection, claim.taskId, output, {
             ifAllowed: true,
             claim,
-            // The guarantee. The status read above can be raced by a park;
-            // this cannot, because it is evaluated inside the same atomic
-            // write.
-            refuseWhenParked: true,
             write,
           }),
       });
@@ -494,6 +447,11 @@ export function createRecordError(options: RecordErrorOptions) {
     execute: async (error: unknown, ctx) => {
       const claim = ctx.sequencer!.state.currentClaim;
       const message = error instanceof Error ? error.message : String(error);
+      const forGood =
+        error instanceof TaskEndsForGoodError && claim !== undefined && error.taskId === claim.taskId
+          ? error.ending
+          : undefined;
+      const recorded = forGood === "cancelled" ? ("cancelled" as const) : ("errored" as const);
 
       // A report that could not be DELIVERED is fatal wherever it happens, and
       // is never written to the row or swallowed by `onError`. The deferral
@@ -501,6 +459,15 @@ export function createRecordError(options: RecordErrorOptions) {
       // for the drain's tail to find; when the emission itself failed there is
       // nothing there to find, so there is nothing to defer to.
       if (error instanceof TaskBoardReportFailureError) {
+        stopLeaseRenewal();
+        throw error;
+      }
+
+      // A plan drain that failed past its hand-over: the row is another
+      // session's, so there is nothing of this request's to record on it, and
+      // `skip` swallowing it would leave the drain waiting on nothing. The
+      // plan fails instead (see `dispatch-row.ts`).
+      if (error instanceof HandedOverRowError) {
         stopLeaseRenewal();
         throw error;
       }
@@ -528,43 +495,37 @@ export function createRecordError(options: RecordErrorOptions) {
       try {
         if (claim !== undefined) {
           const collection = await collectionFactory(ctx);
-          // The mirror of the success path (FIX-1234), and it matters more here
-          // than it looks. `fail()` on a parked row does not merely overwrite
-          // the park: on a task carrying `maxAttempts` it RE-PENDS the row for
-          // another attempt, so a worker that parked for a human and then threw
-          // would put that row back in the queue and a sibling worker would run
-          // it — while the human is still being asked. The park is an explicit
-          // decision the worker recorded; a throw afterwards is about the
-          // worker, not about the row.
+          // FIX-963, and this is the half that was worse than the filed one:
+          // before it, nothing caught a throw from this write, so it escaped
+          // the rescue it runs inside, the `forEach` rejected, and every task
+          // that had not started was abandoned.
           //
-          // The error is not swallowed by this: it still reaches `onError`
-          // below, which rethrows on `"fail"` and reports it on `"skip"`.
-          if (!workerParkedItForReview(collection, claim.taskId)) {
-            // FIX-963, and this is the half that was worse than the filed one:
-            // before it, nothing caught a throw from this write, so it escaped
-            // the rescue it runs inside, the `forEach` rejected, and every task
-            // that had not started was abandoned.
-            //
-            // This call still RETHROWS the write's own error untouched when the
-            // write committed nothing — a store that is simply down on a task
-            // the worker still holds has nothing to do with that issue and
-            // keeps reaching the caller. The claim stays set on that path; the
-            // `finally` below still stops renewal.
-            recorderFailure = await writeRethrowingIfNothingSaved({
-              ctx,
-              collection,
-              claim,
-              recorder: "fail",
-              runId: wiring.runId,
-              attempt: (write) =>
-                advisoryFail(collection, claim.taskId, message, {
-                  ifAllowed: true,
-                  claim,
-                  refuseWhenParked: true,
-                  write,
-                }),
-            });
-          }
+          // This call still RETHROWS the write's own error untouched when the
+          // write committed nothing — a store that is simply down on a task
+          // the worker still holds has nothing to do with that issue and
+          // keeps reaching the caller. The claim stays set on that path; the
+          // `finally` below still stops renewal.
+          recorderFailure = await writeRethrowingIfNothingSaved({
+            ctx,
+            collection,
+            claim,
+            recorder: "fail",
+            runId: wiring.runId,
+            ...(forGood !== undefined ? { noRetry: true } : {}),
+            attempt: (write) =>
+              forGood === "cancelled"
+                ? advisoryCancel(collection, claim.taskId, message, {
+                    ifAllowed: true,
+                    claim,
+                    write,
+                  })
+                : advisoryFail(collection, claim.taskId, message, {
+                    ifAllowed: true,
+                    claim,
+                    write,
+                    ...(forGood === "errored" ? { noRetry: true } : {}),
+                  }),
+          });
           await ctx.sequencer!.patchState({ currentClaim: undefined, currentLedger: undefined });
         }
       } finally {
@@ -586,13 +547,64 @@ export function createRecordError(options: RecordErrorOptions) {
         // `onError`'s throw here instead would reject the fan-out and abandon
         // every task that had not started, which is the defect this branch
         // exists to remove.
-        return { recorded: "errored" as const, error: message };
+        return { recorded, error: message };
       }
 
       if (onError === "fail") {
         throw error instanceof Error ? error : new Error(message);
       }
-      return { recorded: "errored" as const, error: message };
+      return { recorded, error: message };
     },
   });
+}
+
+/**
+ * Settle a dispatched task's claim from the claim gate's check at its
+ * request's end (FIX-2077), with the recorders' write semantics (FIX-963):
+ * `settle` is the fenced write (a completion or a failure), run under a write
+ * token so a write that threw can be classified.
+ *
+ * - The write didn't throw: `undefined`.
+ * - It threw and committed nothing: a completion fails the attempt instead,
+ *   as the gate's rescue would; when that write throws too, its error comes
+ *   back. A failure's own error comes back.
+ * - It threw having committed, or the board can't tell: the report is emitted
+ *   on its saved entry (and the row released when it can't tell), and a
+ *   {@link TaskBoardRecorderFailureError} comes back.
+ *
+ * Returns the failure rather than raising it: the check runs after the
+ * request's record is written, and the engine turns a failure the check hands
+ * back into the request's own (`onRequestEnded`).
+ */
+export async function settleAtRequestEnd(params: {
+  ctx: BlockContext;
+  collection: TaskCollectionRef;
+  claim: TaskClaimTicket;
+  recorder: RecorderKind;
+  settle: (write: TaskWriteToken) => Promise<unknown>;
+}): Promise<Error | undefined> {
+  const { ctx, collection, claim } = params;
+  let report: RecorderFailureReport | undefined;
+  try {
+    report = await writeRethrowingIfNothingSaved({
+      ctx,
+      collection,
+      claim,
+      recorder: params.recorder,
+      runId: undefined,
+      attempt: params.settle,
+    });
+  } catch (err) {
+    if (params.recorder === "fail") return err instanceof Error ? err : new Error(messageOf(err));
+    // Nothing was saved: fail the attempt, the rescue's write.
+    try {
+      await advisoryFail(collection, claim.taskId, messageOf(err), { ifAllowed: true, claim });
+      return undefined;
+    } catch (failed) {
+      return failed instanceof Error ? failed : new Error(messageOf(failed));
+    }
+  }
+  if (report === undefined) return undefined;
+  await reportRecorderFailure(ctx, report);
+  return new TaskBoardRecorderFailureError([report]);
 }

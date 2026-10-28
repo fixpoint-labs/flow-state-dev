@@ -16,7 +16,8 @@ import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import { conversationLedgerResources } from "../src/conversation-board/ledger";
 import { workerConfigSchema } from "../src/worker-config";
 import type { WorkerInstallation } from "../src/workers/installation";
-import { bootBoardHost, boardWorkers, messageOf, type BoardHost } from "./conversation-board-harness";
+import { bootBoardHost, boardWorkers, messageOf, type BoardHost, hearsMessages } from "./conversation-board-harness";
+import { workerMessagesResources } from "../src/messages/message-log";
 
 /** What the block was handed, per run. */
 type Seen = { taskId: string; goal: string; input: unknown; claim: unknown };
@@ -41,8 +42,9 @@ function blockFlow(installation: WorkerInstallation, seen: Seen[]) {
     kind: "blocker",
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources, ...conversationLedgerResources },
-    actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
+    resources: { ...installation.resources, ...conversationLedgerResources, ...workerMessagesResources },
+    internal: { actions: hearsMessages(installation, "blocker") },
+    actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
     task: { actions: { work: workerTaskEntry({ name: "blocker-task", block: run }) } }
   } as never);
 }
@@ -54,12 +56,12 @@ function boot(seen: Seen[]): BoardHost {
       { id: "eng.blocker", declared: { flow: "blocker", description: "Takes the task itself." }, body: "", skills: [] },
       { id: "intake", declared: { flow: "coordinator", delegates: ["eng.blocker"] }, body: "", skills: [] }
     ],
-    flows: (installation) => ({ blocker: blockFlow(installation, seen) })
+    flows: (installation) => ({ blocker: { flow: blockFlow(installation, seen), roles: ["contributor"] } })
   });
 }
 
 const file = async (host: BoardHost, conv: string, input: Record<string, unknown>) => {
-  const result = await host.act("alice", conv, "dispatchTask_tasks", input);
+  const result = await host.act("alice", conv, "createTask_tasks", input);
   expect(result.error, messageOf(result.error)).toBeUndefined();
   const output = result.output as { ok: boolean; taskId?: string; error?: string };
   expect(output.ok, output.error).toBe(true);

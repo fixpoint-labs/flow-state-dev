@@ -62,9 +62,9 @@ const GUARD_TEST = "packages/core/test/retired-terms-check.test.ts";
 /** First match wins. `scope: true` is swept; `false` keeps its words by design. */
 export const AREAS = [
   { id: "history", scope: false, re: /^specs\/|^spec\/|^spec-poc|^docs\/internal\/|(^|\/)CHANGELOG\.md$|^\.changeset\/|^apps\/docs\/blog\/|^docs\/atlas\/|^docs\/superpowers\/|^pnpm-lock\.yaml$/, why: "dated records: no rewriting history" },
-  { id: "process", scope: false, re: new RegExp(`^\\.agents\\/|^\\.omp\\/|^\\.github\\/|^\\.claude\\/|^\\.cursor\\/|^plugins\\/|^scripts\\/|^docs\\/contributing\\/|^docs\\/(philosophy|objectives|PROMPT_CACHING)\\.md$|^docs\\/assets\\/|^(CLAUDE|AGENTS|CONTRIBUTING|CODE_OF_CONDUCT|SECURITY|compound-engineering\\.local)\\.md$|^${GUARD_TEST.replace(/[./]/g, "\\$&")}$`), why: "process tooling and contributor instructions" },
+  { id: "process", scope: false, re: new RegExp(`^\\.agents\\/|^\\.husky\\/|^\\.omp\\/|^\\.github\\/|^\\.claude\\/|^\\.cursor\\/|^plugins\\/|^scripts\\/|^docs\\/contributing\\/|^docs\\/(philosophy|objectives|PROMPT_CACHING)\\.md$|^docs\\/assets\\/|^(CLAUDE|AGENTS|CONTRIBUTING|CODE_OF_CONDUCT|SECURITY|compound-engineering\\.local)\\.md$|^${GUARD_TEST.replace(/[./]/g, "\\$&")}$`), why: "process tooling and contributor instructions" },
   { id: "goals", scope: false, re: /^goals\//, why: "tests of behaviour: renamed identifiers reach them through typecheck, their words stay" },
-  { id: "config", scope: false, re: /^[^/]+\.(json|ya?ml)$|^LICENSE$|^\.gitignore$|^\.ignore$/, why: "root configuration" },
+  { id: "config", scope: false, re: /^[^/]+\.(json|ya?ml)$|^eslint\.config\.mjs$|^LICENSE$|^\.gitignore$|^\.ignore$/, why: "root configuration" },
   { id: "package-src", scope: true, re: /^packages\/[^/]+\/src\// },
   { id: "package-tests", scope: true, re: /^packages\/[^/]+\/(test|tests|e2e)\// },
   { id: "package-other", scope: true, re: /^packages\// },
@@ -154,8 +154,8 @@ export const EXCEPTIONS = [
   {
     id: "kind-type-names",
     terms: ["kind"],
-    strip: /\b\w+ErrorKind\b|\bEntryKind\b|\bTaskChangeKind\b|\bPathReport<Kind\b|\bKind extends\b|:\s*Kind\b|\b(?:WRITER|PLAIN)_KIND\b|\bworkerWriterKind\b|`Kind`/g,
-    why: "a type discriminant's own type, and the engine flow kinds a test registers (BR-10)",
+    strip: /\b\w+ErrorKind\b|\bEntryKind\b|\bTaskChangeKind\b|\bPathReport<Kind\b|\bKind extends\b|:\s*Kind\b|\b(?:WRITER|PLAIN)_KIND\b|\bworkerWriterKind\b|\b(?:waitForUserKindOf|WaitForUserKind)\b|`Kind`/g,
+    why: "a type discriminant's own type, core's names for what a user's stop asks (FIX-2129), and the engine flow kinds a test registers (BR-10)",
   },
   {
     id: "engine-flow-kind",
@@ -211,6 +211,13 @@ export const EXCEPTIONS = [
     terms: ["thread"],
     strip: /\bchat[ -]threads?\b|\bthread:\s*\{/gi,
     why: "a chat thread in the UI, and a coding harness's own `thread:` option, not a mailbox's",
+  },
+  {
+    id: "claude-code-threads",
+    terms: ["thread"],
+    where: (path) => path.startsWith("labs/claude-code-style/workforce/"),
+    strip: /\bthreads?\b/gi,
+    why: "Claude Code's threads mode, which the Claude Code-style lab copies by name: a thread is a task in a session of its own, not a mailbox's",
   },
   {
     id: "old-page-redirect",
@@ -316,7 +323,7 @@ export const GLOSSARY_TERMS = [
   "Project",
   "Workstream",
   "Project coordinator",
-  "Chief of staff",
+  "Shift Coordinator",
 ];
 
 /**

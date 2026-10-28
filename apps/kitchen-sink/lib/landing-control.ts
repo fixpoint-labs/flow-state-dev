@@ -1,38 +1,44 @@
 /**
  * The goal check's control for an answer's landing (`GOAL_CONTROL=no-landing`).
  *
- * Swaps the built-in `agent` flow for one that takes a coordinator's delegated
- * post and answers it with the worker's instructions and the tools its
- * `tools:` names, in its own conversation, and hands nothing back: the answer
- * stays in the specialist's conversation and never reaches the user's
- * conversation with the coordinator. That is all it takes away. A check that
+ * Swaps the built-in `agent` flow for one that takes a coordinator's routed
+ * task behind the published `work` entry's claim gate and answers it with
+ * the worker's instructions and the tools its `tools:` names, in its own
+ * conversation, and hands nothing back: its turn then fails, so the task
+ * ends with no answer on it, and the answer stays in the specialist's
+ * conversation and never reaches the user's conversation with the
+ * coordinator. That is all it takes away. A check that
  * the specialist's answer lands under its name must FAIL under it.
  *
  * Everything else a check reads stays as the real flow has it: the
  * specialist's answers are drawn and kept in its own conversation, and a
  * user's direct conversation with a specialist still answers. With no answer
  * landing, best fit's hold stays on the specialist that took the user's
- * first post.
+ * first message.
  *
  * Honoured only under `KITCHEN_SINK_TEST_MODE=1` (`goalControl`), so a control
  * can never reach a deployed build. The published flow has no switch that
  * stops an answer landing, and must not.
  */
-import { defineFlow, generator, handler, type BlockDefinition } from "@flow-state-dev/core";
+import { defineFlow, generator, handler, sequencer, type BlockDefinition } from "@flow-state-dev/core";
 import {
   AGENT_FLOW,
-  delegatedPostSchema,
+  WORKER_TASK_ENTRY,
   workerConfigOf,
   workerConfigSchema,
-  type DelegatedPost,
+  workerTaskEntry,
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
 import { goalControl } from "./goal-control";
 
-/** A delegated post as the specialist's turn reads it, the way the real flow words it. */
-const heard = (post: DelegatedPost) => `${post.from}, through ${post.coordinator}: ${post.body}`;
+/** A routed task's brief, as much of it as the specialist's turn reads. */
+const briefSchema = z.object({ body: z.string(), from: z.string(), coordinator: z.string() }).passthrough();
+type Brief = z.infer<typeof briefSchema>;
+
+/** A routed message as the specialist's turn reads it, the way the real flow words it. */
+const heard = (brief: Brief) => `${brief.from}, through ${brief.coordinator}: ${brief.body}`;
 
 /**
  * The quiet `agent` flow when the control is on; `undefined` otherwise.
@@ -62,6 +68,17 @@ export function landingControl(catalog: Record<string, BlockDefinition<any, any>
     tools,
   };
   const turnInput = z.object({ message: z.string() });
+  const run = generator({ ...answer, inputSchema: turnInput, user: (input: { message: string }) => input.message });
+  const keep = handler({
+    name: "agent-quiet-keep",
+    inputSchema: z.unknown(),
+    execute: (): string => {
+      throw new Error("this agent keeps its answer");
+    },
+  });
+  const quiet = sequencer({ name: "agent-quiet-task", inputSchema: z.object({ sealed: z.unknown() }).passthrough() })
+    .step((task: { sealed?: unknown }) => briefSchema.parse(task.sealed), generator({ ...answer, inputSchema: briefSchema, user: heard }))
+    .step(keep);
   const loadWorker = handler({
     name: "agent-resolve-worker",
     inputSchema: z.unknown(),
@@ -78,19 +95,16 @@ export function landingControl(catalog: Record<string, BlockDefinition<any, any>
     resources: { ...installation.resources },
     request: { onStarted: loadWorker },
     actions: {
-      run: {
+      respond: {
         inputSchema: turnInput.strict(),
-        block: generator({ ...answer, inputSchema: turnInput, user: (input: { message: string }) => input.message }),
+        block: run,
         userMessage: (input: { message: string }) => input.message,
       },
     },
-    internal: {
+    task: {
       actions: {
-        onDelegatedPost: {
-          inputSchema: delegatedPostSchema,
-          block: generator({ ...answer, inputSchema: delegatedPostSchema, user: heard }),
-          userMessage: heard,
-        },
+        // The published entry's gate, so the task is read and claimed as the real flow's is.
+        [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "agent-quiet-task", block: quiet }),
       },
     },
   } as never);

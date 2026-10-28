@@ -23,7 +23,7 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import { Message } from "@/components/flow-state/message";
 import { Reasoning } from "@/components/flow-state/reasoning";
 import { CodeBlock } from "@/components/flow-state/code-block";
-import { Tool, ToolGroup, ToolHeader, ToolShell, type ToolState } from "@/components/flow-state/tool";
+import { Tool, ToolGroup } from "@/components/flow-state/tool";
 import { Approval } from "@/components/flow-state/approval";
 import { TaskPlan } from "@/components/flow-state/task-plan";
 import { AuditAnnotation } from "@/components/flow-state/audit-annotation";
@@ -96,11 +96,10 @@ const routedDone = f.routedSpecialists("req-rs-done", true);
 
 const task = (id: string, status: string, extra: Record<string, unknown> = {}) => ({ id, goal: `A ${status} task`, status, ...extra });
 const boards: Array<{ name: string; means?: "attention" | "warning"; items: OutputItem[] }> = [
-  { name: "task-plan:parked", means: "attention", items: f.board("b-parked", "active", [task("t1", "parked")]) },
   {
     name: "task-plan:blocked",
     means: "warning",
-    items: f.board("b-blocked", "active", [task("t2", "blocked", { feedback: "Needs the schema first.", attempts: 2 })]),
+    items: f.board("b-held", "active", [task("t2", "held", { feedback: "Needs the schema first.", attempts: 2 })]),
   },
   { name: "task-plan:in-progress", items: f.board("b-running", "active", [task("t3", "in_progress")]) },
   { name: "task-plan:completed", items: f.board("b-done", "active", [task("t4", "completed")]) },
@@ -131,14 +130,14 @@ const sessionItems: OutputItem[] = [
   ...boards.flatMap((b) => b.items),
 ];
 
-const toolStates: Array<[ToolState, "attention" | "warning" | undefined]> = [
-  ["pending", undefined],
-  ["running", undefined],
-  ["awaiting", "attention"],
-  ["completed", undefined],
-  ["error", undefined],
-  ["denied", "warning"],
-];
+// One call in each state the tool line shows. A call waiting on a person carries no
+// attention colour: the approval card it waits on does.
+const toolLines = [
+  ["running", f.tool("refund_order", { order: 118 }, undefined, "in_progress")],
+  ["waiting", f.tool("refund_order", { order: 118 }, undefined, "failed", { error: { code: "SUSPENSION", message: "Waiting for approval" } })],
+  ["completed", f.tool("refund_order", { order: 118 }, { refunded: true }, "completed")],
+  ["error", f.tool("refund_order", { order: 118 }, undefined, "failed", { error: { code: "TOOL_ERROR", message: "Payment provider timed out" } })],
+] as const;
 
 // --- chrome fixtures -------------------------------------------------------
 
@@ -151,20 +150,20 @@ const sessions = [
   { id: "sess-1", flowKind: "support", flowId: "support", userId: "demo", title: "Refund for order 118", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
   { id: "sess-2", flowKind: "support", flowId: "support", userId: "demo", title: "Password reset", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
 ];
-const flowClient = { listFlows: async () => flows } as never;
-const sessionClient = { listSessions: async () => sessions } as never;
+/** The navigator's client: the flow list and the session listing it reads, as one user. */
+const navigatorClient = { userId: "u1", flows: async () => flows, sessions: { list: async () => sessions } } as never;
 
 const seats = [
   { topic: "billing", clientData: { workerId: "billing", flow: "agent", instructions: "Handle refunds." } },
   { topic: "triage", clientData: { workerId: "triage", flow: "agent", instructions: null } },
 ];
-const cards = ["pending", "in_progress", "parked", "blocked", "completed"].map((status, i) => ({
+const cards = ["pending", "in_progress", "held", "completed"].map((status, i) => ({
   topic: `card-${i}`,
   clientData: { id: `card-${i}`, status, title: `Card ${status}`, assignee: i % 2 ? "billing" : undefined },
 }));
-const rosterSource = { listCollectionItems: async () => ({ items: seats }) };
-const boardSource = { listCollectionItems: async () => ({ items: cards }) };
-const seatSource = { getCollectionItemState: async () => seats[0] };
+const rosterSource = { resources: { listCollectionItems: async () => ({ items: seats }) } } as never;
+const boardSource = { resources: { listCollectionItems: async () => ({ items: cards }) } } as never;
+const seatSource = { resources: { getCollectionItemState: async () => seats[0] } } as never;
 
 // --- page --------------------------------------------------------------------
 
@@ -189,11 +188,9 @@ function Page() {
             <CodeBlock code={"const total = 42;\nexport default total;"} language="ts" />
           </Part>
 
-          {toolStates.map(([state, means]) => (
-            <Part key={state} name={`tool:${state}`} component="tool.tsx" means={means}>
-              <ToolShell defaultOpen={false}>
-                <ToolHeader name="refund_order" state={state} />
-              </ToolShell>
+          {toolLines.map(([state, item]) => (
+            <Part key={state} name={`tool:${state}`} component="tool.tsx">
+              <Tool item={item} />
             </Part>
           ))}
           <Part name="tool:item" component="tool.tsx">
@@ -288,22 +285,20 @@ function Page() {
               ]}
               selectedSessionId="sess-1"
               onSelectSession={() => {}}
-              client={flowClient}
-              sessionClient={sessionClient}
-              userId="demo"
+              client={navigatorClient}
             />
           </Part>
           <Part name="roster" component="Roster">
-            <Roster sessionId="sess-1" resourceClient={rosterSource} />
+            <Roster sessionId="sess-1" client={rosterSource} />
           </Part>
           <Part name="board-columns" component="BoardColumns">
-            <BoardColumns sessionId="sess-1" boardRef="support.queue" resourceClient={boardSource} />
+            <BoardColumns sessionId="sess-1" boardRef="support.queue" client={boardSource} />
           </Part>
           <Part name="board-list" component="BoardList">
-            <BoardList sessionId="sess-1" boardRef="support.queue" resourceClient={boardSource} />
+            <BoardList sessionId="sess-1" boardRef="support.queue" client={boardSource} />
           </Part>
           <Part name="seat-detail" component="WorkerDetail">
-            <WorkerDetail sessionId="sess-1" kind="agent" workerId="billing" resourceClient={seatSource} />
+            <WorkerDetail sessionId="sess-1" kind="agent" workerId="billing" client={seatSource} />
           </Part>
         </main>
       </SessionItemsProvider>

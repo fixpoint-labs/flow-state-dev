@@ -11,7 +11,7 @@ shows the whole setup.
 |------|---------------|
 | `src/facets.ts` | The questions, and the ticket state and search types that follow from them. |
 | `src/flow.ts` | The collection and the `write`, `search` and `reindex` actions. The flow takes the evaluator; it never names a model. |
-| `fsdev.config.ts` | Where the model is named: Jev through Vercel's AI Gateway when `AI_GATEWAY_API_KEY` is set, `openai/gpt-5.4-mini` otherwise. |
+| `fsdev.config.ts` | Where the model is named: Jev through Vercel's AI Gateway when `AI_GATEWAY_API_KEY` is set, `openai/gpt-6-luna` otherwise. |
 | `test/` | The same flow on the mock evaluation model. |
 
 ```bash

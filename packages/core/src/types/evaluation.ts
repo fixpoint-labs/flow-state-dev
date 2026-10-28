@@ -21,7 +21,7 @@ export type EvaluationQuestionType = "choice" | "score" | "boolean";
 
 /**
  * An AI SDK evaluation model: what a provider's `evaluationModel(id)`
- * returns (for example `openai.evaluationModel("gpt-5.4-mini")`, or Jev's
+ * returns (for example `openai.evaluationModel("gpt-6-luna")`, or Jev's
  * `typeSafeAi.evaluationModel("jev-latest")`).
  *
  * Kept structural and opaque on purpose: FSD checks only what it needs to
@@ -32,7 +32,7 @@ export interface EvaluationModel {
   readonly specificationVersion: string;
   /** Provider id reported by the model, e.g. `"openai.evaluation"`. */
   readonly provider: string;
-  /** Model id, e.g. `"gpt-5.4-mini"` or `"jev-latest"`. */
+  /** Model id, e.g. `"gpt-6-luna"` or `"jev-latest"`. */
   readonly modelId: string;
   /** The question types this model answers. */
   readonly supportedQuestionTypes: readonly EvaluationQuestionType[];

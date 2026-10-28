@@ -65,6 +65,11 @@ const BUILT: readonly KitchenSinkMode[] = MODES.map((mode) =>
   mode.id === "flow-state" ? mode : { ...mode, flowKind: `${mode.id}-session` },
 );
 
+/** The modes with Codex not built, so "not built yet" has a mode to say it of. */
+const UNBUILT_CODEX: readonly KitchenSinkMode[] = MODES.map((mode) =>
+  mode.id === "codex" ? { id: mode.id, label: mode.label, href: mode.href } : mode,
+);
+
 describe("V1 · readHarnessWorkspace", () => {
   it("BR-6: off on Vercel, even when the setting names a checkout", () => {
     const read = readHarnessWorkspace({ VERCEL: "1", [SETTING]: checkout }, checkout);
@@ -135,10 +140,11 @@ describe("V1 · decideAvailability", () => {
   });
 
   it("BR-9: with the host on, a mode with no flow kind is not built yet", async () => {
-    const decided = await decideAvailability({ workspace: on, modes: MODES, checks: {}, gateOpen: false });
-    for (const id of ["claude-code", "codex", "cursor"] as const) {
-      expect(decided[id]).toEqual({ available: false, reason: NOT_BUILT_YET });
-    }
+    const decided = await decideAvailability({ workspace: on, modes: UNBUILT_CODEX, checks: {}, gateOpen: false });
+    expect(decided.codex).toEqual({ available: false, reason: NOT_BUILT_YET });
+    // Claude Code and Cursor modes are built: with no check of their own given here, they are available.
+    expect(decided["claude-code"]).toEqual({ available: true });
+    expect(decided.cursor).toEqual({ available: true });
   });
 
   it("BR-10: with the host on and the mode built, its own check decides, handed the repository", async () => {
@@ -178,7 +184,7 @@ describe("V1 · decideAvailability", () => {
     const failing: ModeCheck = () => ({ available: false, reason: "own check" });
     const hostOff = await decideAvailability({ workspace: off, modes: BUILT, checks: { codex: failing }, gateOpen: false });
     expect(hostOff.codex).toEqual({ available: false, reason: "host is off" });
-    const unbuilt = await decideAvailability({ workspace: on, modes: MODES, checks: { codex: failing }, gateOpen: false });
+    const unbuilt = await decideAvailability({ workspace: on, modes: UNBUILT_CODEX, checks: { codex: failing }, gateOpen: false });
     expect(unbuilt.codex).toEqual({ available: false, reason: NOT_BUILT_YET });
   });
 
@@ -196,7 +202,7 @@ describe("V1 · decideAvailability", () => {
     const failing: ModeCheck = () => ({ available: false, reason: "own check" });
     const built = await decideAvailability({ workspace: off, modes: BUILT, checks: { codex: failing }, gateOpen: true });
     expect(built.codex).toEqual({ available: true });
-    const unbuilt = await decideAvailability({ workspace: off, modes: MODES, checks: {}, gateOpen: true });
+    const unbuilt = await decideAvailability({ workspace: off, modes: UNBUILT_CODEX, checks: {}, gateOpen: true });
     expect(unbuilt.codex).toEqual({ available: false, reason: NOT_BUILT_YET });
   });
 
@@ -215,12 +221,14 @@ describe("V1 · BR-13 · decided once per server start", () => {
   it("reads the host once: a change to the setting shows only after a restart", async () => {
     vi.stubEnv("VERCEL", "");
     vi.stubEnv(SETTING, plain);
-    const first = await modeAvailability();
-    expect(first.codex.available === false && first.codex.reason).toContain("not a git repository");
-    vi.stubEnv(SETTING, checkout);
-    expect(await modeAvailability()).toBe(first);
-    resetModeAvailabilityForTests(); // the restart
-    expect((await modeAvailability()).codex).toEqual({ available: false, reason: NOT_BUILT_YET });
+    await withUnbuiltCodex(async () => {
+      const first = await modeAvailability();
+      expect(first.codex.available === false && first.codex.reason).toContain("not a git repository");
+      vi.stubEnv(SETTING, checkout);
+      expect(await modeAvailability()).toBe(first);
+      resetModeAvailabilityForTests(); // the restart
+      expect((await modeAvailability()).codex).toEqual({ available: false, reason: NOT_BUILT_YET });
+    });
   });
 
   it("runs a mode's own check once, however many readers ask", async () => {
@@ -234,20 +242,32 @@ describe("V1 · BR-13 · decided once per server start", () => {
   });
 });
 
-/** Make codex built, with `check` as its own check, for one case; as shipped again after. */
-async function withBuiltCodex(check: ModeCheck | undefined, run: () => Promise<void>): Promise<void> {
+/**
+ * Run one case with Codex's mode entry built or not, and `check` as its own
+ * check (none when `undefined`); as shipped again after.
+ */
+async function withCodex(built: boolean, check: ModeCheck | undefined, run: () => Promise<void>): Promise<void> {
   const modes = MODES as KitchenSinkMode[];
   const index = modes.findIndex((mode) => mode.id === "codex");
   const shipped = modes[index]!;
-  modes[index] = { ...shipped, flowKind: "codex-session" };
+  const shippedCheck = MODE_CHECKS.codex;
+  modes[index] = built ? { ...shipped, flowKind: "codex-session" } : UNBUILT_CODEX[index]!;
   if (check !== undefined) MODE_CHECKS.codex = check;
+  else delete MODE_CHECKS.codex;
   try {
     await run();
   } finally {
     modes[index] = shipped;
-    delete MODE_CHECKS.codex;
+    if (shippedCheck !== undefined) MODE_CHECKS.codex = shippedCheck;
+    else delete MODE_CHECKS.codex;
   }
 }
+
+/** Codex built, with `check` as its own check (none when `undefined`), for one case. */
+const withBuiltCodex = (check: ModeCheck | undefined, run: () => Promise<void>) => withCodex(true, check, run);
+
+/** Codex not built, for one case. */
+const withUnbuiltCodex = (run: () => Promise<void>) => withCodex(false, undefined, run);
 
 describe("V2 · BR-15 · an unavailable mode's flow is not served", () => {
   /** A stand-in harness flow, at the kind a built mode would have. */
@@ -311,6 +331,8 @@ describe("V2 · BR-15 · an unavailable mode's flow is not served", () => {
   it("does not serve it while the mode is not built", async () => {
     vi.stubEnv("VERCEL", "");
     vi.stubEnv(SETTING, checkout);
-    expect(await served()).toBe(404);
+    await withUnbuiltCodex(async () => {
+      expect(await served()).toBe(404);
+    });
   });
 });

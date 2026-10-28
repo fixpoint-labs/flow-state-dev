@@ -129,7 +129,7 @@ export interface RoutedSpecialistsConfig<
         input: unknown
       ) => Record<string, unknown> | Promise<Record<string, unknown>>);
 
-  /** Model id for the default controller and synthesizer. Default: `"openai/gpt-5.4-mini"`. */
+  /** Model id for the default controller and synthesizer. Default: `"openai/gpt-6-luna"`. */
   model?: string;
 
   /** Context slot for the default controller and synthesizer. */
@@ -179,7 +179,7 @@ function buildDefaultController(config: {
 }) {
   return generator({
     name: `${config.name}-controller`,
-    model: config.model ?? "openai/gpt-5.4-mini",
+    model: config.model ?? "openai/gpt-6-luna",
     outputSchema: controllerOutputSchema,
     resources: { workspace: config.workspace },
     sequencerStateSchema: routedSpecialistsControlSchema,
@@ -274,7 +274,7 @@ function buildDefaultSynthesizer(config: {
 
   return generator({
     name: `${config.name}-synthesizer`,
-    model: config.model ?? "openai/gpt-5.4-mini",
+    model: config.model ?? "openai/gpt-6-luna",
     resources: { workspace: config.workspace },
     itemVisibility: config.itemVisibility ?? { client: true, history: true },
     ...(config.outputSchema ? { outputSchema: config.outputSchema } : {}),

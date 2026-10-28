@@ -23,6 +23,6 @@ export function useWorkspaceFence(
   extra: readonly unknown[],
   onRetired?: () => void,
 ): ReadFence {
-  const { workspaceToken, sessionClient } = useDevTool();
-  return useReadFence([workspaceToken, sessionClient, ...extra], onRetired);
+  const { workspaceToken, client } = useDevTool();
+  return useReadFence([workspaceToken, client, ...extra], onRetired);
 }

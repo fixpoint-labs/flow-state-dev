@@ -20,8 +20,8 @@
  *             once the Queued toggle is on, which says how many it hides.
  *             Every row is on a conversation's own board, so the task level
  *             opens from here
- *   Inbox     Inbox equals the stored pending asks, or says nothing needs you
- *             with the runs still going and the workers on call
+ *   Inbox     Inbox equals the stored pending asks and open questions, or says nothing needs you
+ *             with the runs still going
  *   reach     every level, tab and panel opens, and each empty one is named
  *   entry     (DevTeam) a workstream the person opens in a project is listed
  *             on its Workstreams tab, and the project Board's lane for its
@@ -103,26 +103,20 @@ type LabName = keyof typeof LABS;
 
 /** Stored statuses a board row is finished in. Tasks leaves these out. */
 const DONE = new Set(["completed", "cancelled"]);
-/** Stored statuses a row waits on a person in; `awaiting_review` is `parked`'s older word. */
-const PARKED = new Set(["parked", "awaiting_review"]);
-/** Queued: open, and neither running nor waiting on a person. Tasks hides these by default. */
-const QUEUED = (status: string) => !DONE.has(status) && status !== "in_progress" && status !== "errored" && !PARKED.has(status);
+/** Queued: open, and not running. A row waiting on a person is running, held on its question. Tasks hides these by default. */
+const QUEUED = (status: string) => !DONE.has(status) && status !== "in_progress" && status !== "errored";
 
 /**
- * What an Inbox with nothing pending says: the sessions still running, and the
- * workers on call, each worked out from the store. A row is a seat's when its
- * assignee is the seat's address or its name (the trees' convention).
+ * What an Inbox with nothing pending says: the sessions still running, worked
+ * out from the store.
  */
 function emptyInbox(store: Store): string {
   const rows = Object.values(store.rows).flat();
   // Sessions, not rows: running rows linked to one run session count once, and an unlinked running row is its own.
   const live = rows.filter((r) => r.status === "in_progress");
   const running = new Set(live.flatMap((r) => (r.runSession === null ? [] : [r.runSession]))).size + live.filter((r) => r.runSession === null).length;
-  const holds = (seat: string, wanted: (status: string) => boolean) =>
-    rows.some((r) => wanted(r.status) && (r.assignee === seat || r.assignee === seat.slice(seat.indexOf(".") + 1)));
-  const onCall = store.seats.filter((seat) => !holds(seat, (s) => s === "in_progress") && holds(seat, (s) => PARKED.has(s))).length;
   const n = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
-  return `Nothing needs you. ${n(running, "session is", "sessions are")} still running and ${n(onCall, "worker is", "workers are")} on call.`;
+  return `Nothing needs you. ${n(running, "session is", "sessions are")} still running.`;
 }
 /** Suspension reasons that are a person being asked something. */
 const PERSON_REASONS = new Set(["human_approval", "human_input"]);
@@ -223,9 +217,14 @@ type Store = {
    * Board holder -> every stored row on its board: a conversation's own
    * board (`<sessionId>.tasks`), keyed by the conversation that filed it.
    */
-  rows: Record<string, Array<{ ref: string; id: string; status: string; title: string; assignee: string | null; runSession: string | null }>>;
+  rows: Record<
+    string,
+    Array<{ ref: string; id: string; status: string; title: string; assignee: string | null; runSession: string | null; questions: string[] }>
+  >;
   /** Suspension ids pending on a person, across the seats' sessions. */
   asks: string[];
+  /** The rows' open questions, by hold id: each is an Inbox item too (FIX-2133). */
+  questions: string[];
   /** The organization's project rows, by id. */
   projects: Array<{ id: string }>;
 };
@@ -302,6 +301,7 @@ async function conversationRows(api: LabApi, userId: string): Promise<Store["row
           row.run != null && typeof row.run.sessionId === "string" && typeof row.run.requestId === "string" && typeof row.run.attempt === "number"
             ? row.run.sessionId
             : null,
+        questions: openQuestions(row),
       });
     }
     if (body.nextCursor === undefined || body.nextCursor === null || body.nextCursor === cursor) break;
@@ -350,7 +350,8 @@ async function readStore(api: LabApi, userId: string): Promise<Store> {
     projectsRef === undefined || reader === undefined
       ? []
       : (await api.collection(reader, projectsRef)).map((r) => ({ id: String(r.id) }));
-  return { seats, rows, asks, projects };
+  const questions = Object.values(rows).flat().flatMap((row) => row.questions);
+  return { seats, rows, asks, questions, projects };
 }
 
 // ---- putting a row on each board ---------------------------------------------
@@ -371,11 +372,18 @@ async function act(api: LabApi, flowId: string, sessionId: string, action: strin
   return "in_progress";
 }
 
+/** A stored row's open questions, by hold id: a row hold on a running row that no steer answers. */
+function openQuestions(row: Record<string, any>): string[] {
+  if (row.status !== "in_progress" || !Array.isArray(row.holds)) return [];
+  const answered = new Set(((row.steers ?? []) as Array<{ answers?: string }>).flatMap((s) => (typeof s.answers === "string" ? [s.answers] : [])));
+  return (row.holds as Array<{ id: string; source?: { kind?: string } }>).filter((h) => h.source?.kind === "row" && !answered.has(h.id)).map((h) => h.id);
+}
+
 /** Wait until a conversation's board holds a row, or give up. */
-async function waitForRow(api: LabApi, predicate: (status: string) => boolean, userId: string) {
+async function waitForRow(api: LabApi, predicate: (row: Store["rows"][string][number]) => boolean, userId: string) {
   for (let waited = 0; waited < 30_000; waited += 250) {
     const store = await readStore(api, userId);
-    if (Object.values(store.rows).flat().some((r) => predicate(r.status))) return true;
+    if (Object.values(store.rows).flat().some((r) => predicate(r))) return true;
     await sleep(250);
   }
   return false;
@@ -454,8 +462,8 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       if (filed.status !== "completed" || filed.output?.ok !== true) {
         throw new Error(`${name}: the planner's filing ended ${filed.status ?? filed.refusal}: ${JSON.stringify(filed.output)}`);
       }
-      // The planner's board hands the row to its worker at once, and the worker parks it on its question.
-      if (!(await waitForRow(api, (s) => s === "parked", userId))) throw new Error(`${name}: the filed row never parked`);
+      // The planner's board hands the row to its worker at once, and the worker holds it on its question.
+      if (!(await waitForRow(api, (r) => r.questions.length > 0, userId))) throw new Error(`${name}: the filed row never held on its question`);
     } else {
       // The person opens a workstream in the organization's first project, led
       // by the tree's EM, through the projects flow Shift Manager opens one
@@ -484,7 +492,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
         api,
         EM_FLOW,
         session,
-        "dispatchTask_tasks",
+        "createTask_tasks",
         {
           goal: fixture.devteam.followUp.text,
           assignee: first.assignee ?? undefined,
@@ -494,7 +502,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
         userId,
       );
       if (followUp !== "completed") throw new Error(`${name}: filing the follow-up ended ${followUp}`);
-      if (!(await waitForRow(api, (s) => s === "pending" || s === "blocked", userId))) throw new Error(`${name}: the follow-up is not queued on the board`);
+      if (!(await waitForRow(api, (r) => r.status === "pending" || r.status === "held", userId))) throw new Error(`${name}: the follow-up is not queued on the board`);
       workstream = { project, id: WORKSTREAM, session, lead };
     }
 
@@ -515,21 +523,23 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       const under = await page.locator(`[data-testid=team][data-team="${team}"] [data-testid=worker]`).evaluateAll((els) =>
         els.map((e) => e.getAttribute("data-worker-id") ?? ""),
       );
-      // A seat with no team (an org seat) sits in the Staff row.
-      const want = store.seats.filter((s) => (s.includes(".") ? s.split(".")[0] : "Staff") === team);
+      // A worker with no team (an org worker) sits in the General row (id `_general`).
+      const want = store.seats.filter((s) => (s.includes(".") ? s.split(".")[0] : "_general") === team);
       if (!same(under, want)) fail("TEAMS equals the store's seats", `team ${team} lists ${diff(want, under)}`);
     }
 
     // ---- Inbox ---------------------------------------------------------------
     const inboxItems = await page.getByTestId("inbox-item").count();
-    if (store.asks.length === 0) {
+    // Each pending ask and each open question is one Inbox item.
+    const pending = store.asks.length + store.questions.length;
+    if (pending === 0) {
       const want = emptyInbox(store);
       const said = (await visible(page, "inbox-empty", 3_000)) ? await page.getByTestId("inbox-empty").textContent() : null;
       if (said !== want) fail("Inbox equals the store's pending asks", `no ask is pending and Inbox says ${said === null ? "nothing" : `"${said}"`}, the store gives "${want}"`);
-    } else if (inboxItems !== store.asks.length) {
-      fail("Inbox equals the store's pending asks", `${inboxItems} listed, ${store.asks.length} pending in the store`);
+    } else if (inboxItems !== pending) {
+      fail("Inbox equals the store's pending asks", `${inboxItems} listed, ${store.asks.length} asks and ${store.questions.length} questions pending in the store`);
     }
-    evidence.push(`${name}: inbox ${inboxItems} listed / ${store.asks.length} pending`);
+    evidence.push(`${name}: inbox ${inboxItems} listed / ${store.asks.length} asks + ${store.questions.length} questions pending`);
 
     // ---- Tasks ---------------------------------------------------------------
     await page.getByTestId("nav-tasks").click();

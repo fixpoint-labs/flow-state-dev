@@ -3,7 +3,7 @@
  *
  * The dispatch seam (`create-request-host.ts`) resolves the entry and the
  * session — derives and adopts a child, or verifies an existing session — and
- * then hands off to *this* to start the run. It is the one place a dispatched
+ * then calls *this* to start the run. It is the one place a dispatched
  * dispatch becomes an `InboundRequestEnvelope`.
  *
  * ## Why the start goes through the transport host rather than a dispatcher
@@ -222,9 +222,9 @@ export function createDispatchOperation(inputs: DispatchOperationInputs): Dispat
 
     // A SYNCHRONOUS throw here is pre-dispatch, and that is a property
     // `host.dispatch` is BUILT to hold rather than one this seam infers.
-    // Everything that can throw synchronously — resolving the flow, claiming the
-    // concurrency key, the kickoff itself — runs before a child exists; the one
-    // step that runs after the child has started, the `onBackgroundWork`
+    // Everything that can throw synchronously — resolving the flow, the kickoff
+    // itself — runs before a child exists; the one step that runs after the
+    // child has started, the `onBackgroundWork`
     // keep-alive hook, is contained there precisely so it cannot escape as a
     // throw. Read `createInboundTransportHost`'s note on that hook before
     // relying on this: an uncontained post-start throw would arrive here
@@ -274,7 +274,7 @@ export function createDispatchOperation(inputs: DispatchOperationInputs): Dispat
     // rather than "we intended to". It is deliberately the ONLY thing awaited,
     // and deliberately not a stronger milestone.
     //
-    // A task row is not what this protects. A hand-off leaves the row holding a
+    // A task row is not what this protects. A dispatch leaves the row holding a
     // lease nobody renews, so a child that dies — in setup, mid-run, or with its
     // process — lets that lease lapse and the next drain recovers it. That is
     // the designed path for every way a child can die, and waiting for a later

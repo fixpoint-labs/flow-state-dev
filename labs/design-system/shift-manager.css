@@ -91,7 +91,8 @@
   --radius-4xl: 0;
 }
 
-.dark {
+.dark,
+html[data-theme=dark] {
   --background: #1c1b15;
   --foreground: #ece7da;
   --card: #24231c;
@@ -129,10 +130,12 @@
  * day is set, so every other token is day's. The page is the design's surface
  * one step toward amber, the shell surfaces keep their step below it, and the
  * on-ink foregrounds follow the design's paper. `accent` is day's tint,
- * flattened over this page. Applies under `data-theme="evening"` on the root;
- * night is `.dark`, and the two never apply together.
+ * flattened over this page. Applies under `data-theme="evening"` or the
+ * `evening` class on the root, as night takes either form.
+ * Night is `.dark` or `html[data-theme=dark]`; evening never applies with either.
  */
-:root[data-theme=evening] {
+:root[data-theme=evening],
+:root.evening {
   --background: #eee8d7;
   --card: #f5f0e2;
   --popover: #f5f0e2;

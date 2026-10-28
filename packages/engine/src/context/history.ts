@@ -18,14 +18,14 @@ import type {
   TokenCounter,
 } from "@flow-state-dev/core/types";
 import type {
-  BlockTraceItem,
   Content,
   ItemVisibility,
   MessageItem,
   OutputItem,
   ToolOutputItem,
 } from "@flow-state-dev/core/items";
-import { resolveItemVisibility } from "@flow-state-dev/core/items";
+import { collapseToCanonicalLog, resolveItemVisibility } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import { sanitizeToolName } from "@flow-state-dev/core/helpers";
 import {
   buildAssistantToolCallMessage,
@@ -64,8 +64,8 @@ function omittedToolResultText(toolName: string, bytes: number | null): string {
  * `allItems` is used to resolve `block_output` BlockValue refs back to their
  * source items (FIX-413); pass the same list you're iterating over.
  */
-export function itemToLLMMessages(item: OutputItem | BlockTraceItem, allItems: readonly (OutputItem | BlockTraceItem)[]): LLMMessage[] {
-  if (!resolveItemVisibility(item as OutputItem).history) {
+export function itemToLLMMessages(item: RuntimeItem, allItems: readonly RuntimeItem[]): LLMMessage[] {
+  if (!resolveItemVisibility(item).history) {
     return [];
   }
 
@@ -167,28 +167,34 @@ function trimOrphanedToolMessages(messages: LLMMessage[]): LLMMessage[] {
 /**
  * Expands the items of a single RequestRecord into LLM-ready messages.
  *
- * Applies, in order: a stable sort by `(ts, itemIndex)`, the transient
- * filter, the allowed-item-types filter, and `itemToLLMMessages` per item.
+ * Applies, in order: the canonical-log collapse, a stable sort by
+ * `(ts, itemIndex)`, the transient filter, the allowed-item-types filter,
+ * and `itemToLLMMessages` per item.
+ *
+ * The collapse keeps a tool call that waited on an approval from replaying
+ * its wait: raw, a later turn shows the model the approval's question as the
+ * call's error, then the same call again, which it reads as a retry.
+ *
  * `itemToLLMMessages` internally applies `resolveItemVisibility` so
  * sub-agent and trace items are dropped here as well.
  *
  * `allowedRoles`, when set, drops any produced LLM message whose role is
  * not in the allowlist.
  *
- * Sort-equivalence assumption: this expands and sorts items per request,
- * not globally. That is safe because completed prior requests have
- * non-overlapping `(ts, itemIndex)` ranges — `priorRequests` is sorted by
- * `startedAtMs` and a completed request's items have timestamps strictly
- * within its lifetime. Concatenating expansions of pre-ordered requests
- * therefore preserves the same global ordering the previous flatten-then-
- * sort path produced.
+ * Ordering: this expands and sorts items per request, not globally, and
+ * `priorRequests` is sorted by `startedAtMs`, so history reads turn by turn
+ * in the order the turns started. Prior requests usually have
+ * non-overlapping `(ts, itemIndex)` ranges, and then this equals a global
+ * sort. An interrupted turn whose dead host overlapped a sibling is the
+ * exception: its items stay together, in its start order, rather than
+ * interleaving with the sibling's.
  */
 export function expandRequestToMessages(
-  items: readonly (OutputItem | BlockTraceItem)[],
+  items: readonly RuntimeItem[],
   allowedTypes: Set<string>,
   allowedRoles: Set<"user" | "assistant" | "system" | "developer" | "tool"> | undefined,
 ): LLMMessage[] {
-  const sorted = [...items].sort((a, b) => {
+  const sorted = collapseToCanonicalLog(items).sort((a, b) => {
     const tsDiff = a.ts - b.ts;
     return tsDiff !== 0 ? tsDiff : a.itemIndex - b.itemIndex;
   });
@@ -222,7 +228,7 @@ export type SelectedTurn = { messages: LLMMessage[] };
  * can assemble the final array without re-expanding.
  *
  * Turn-based (bare `number` or `{ turns: N }`): returns the last N
- * completed prior requests. Guards `Array.prototype.slice(-0)` — which
+ * prior turns (completed or interrupted requests). Guards `Array.prototype.slice(-0)` — which
  * returns the whole array — by explicitly returning `[]` for N <= 0.
  *
  * Token-based (`{ tokens: T }`): walks `priorRequests` from the end,
@@ -296,7 +302,8 @@ export async function selectRequestsByLimit(
 }
 
 /**
- * Loads conversation history from prior completed requests in this session,
+ * Loads conversation history from prior settled requests in this session
+ * (completed, or interrupted with only their settled items),
  * converts to LLM-ready messages, and applies turn-aware limiting.
  *
  * `limit` is interpreted as a count of conversational turns, where one
@@ -328,7 +335,7 @@ export async function loadLLMHistory(
   tokenCounter: TokenCounter,
   resolveModelId: () => string,
   query?: ItemQuery,
-  readLiveItems?: () => Array<OutputItem | BlockTraceItem>
+  readLiveItems?: () => RuntimeItem[]
 ): Promise<LLMMessage[]> {
   const allowedTypes = query?.itemTypes
     ? new Set(query.itemTypes)
@@ -367,7 +374,7 @@ export async function loadLLMHistory(
  * Converts an OutputItem (from the response emitter) to a SessionItem
  * so it can be included in the all() view alongside historical items.
  */
-export function outputItemToSessionItem(item: OutputItem): SessionItem {
+export function outputItemToSessionItem(item: RuntimeItem): SessionItem {
   // Extract readable content for the payload based on item type.
   // Message items get their text extracted; other items pass through.
   let payload: unknown;
@@ -400,7 +407,7 @@ export function outputItemToSessionItem(item: OutputItem): SessionItem {
  * Applies `itemVisibility` / `agentName` filters from a SessionItem query.
  * Returns true if the item passes the filter (or no filter applies).
  */
-export function matchesIdentityFilter(
+function matchesIdentityFilter(
   item: SessionItem,
   query: ItemQuery | undefined,
 ): boolean {
@@ -459,7 +466,7 @@ export function createSessionItemViews(
   options: {
     tokenCounter: TokenCounter;
     resolveModelId: () => string;
-    readLiveItems?: () => Array<OutputItem | BlockTraceItem>;
+    readLiveItems?: () => RuntimeItem[];
   }
 ): SessionItemViews {
   // Compute once — priorItems is immutable for the request lifetime.

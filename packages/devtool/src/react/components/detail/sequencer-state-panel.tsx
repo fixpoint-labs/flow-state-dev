@@ -34,7 +34,7 @@ export function SequencerStatePanel({ snapshots }: SequencerStatePanelProps) {
 
   if (snapshots.length === 0) {
     return (
-      <div className="text-[11px] text-slate-500 italic py-2">
+      <div className="py-2 text-[11px] italic text-fs-ink4">
         No state configured for this sequencer.
       </div>
     );
@@ -54,10 +54,10 @@ export function SequencerStatePanel({ snapshots }: SequencerStatePanelProps) {
               <button
                 key={`${snap.stepIndex}-${snap.ts}`}
                 className={cn(
-                  "text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors",
+                  "border px-1.5 py-0.5 font-fs-mono text-[10px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fs-blue/40",
                   isSelected
-                    ? "bg-amber-900/40 border-amber-600/60 text-amber-300"
-                    : "border-slate-700 text-slate-500 hover:border-slate-600 hover:text-slate-400",
+                    ? "border-fs-blue bg-fs-blue/10 text-fs-blue"
+                    : "border-fs-ink/30 text-fs-ink3 hover:border-fs-ink hover:text-fs-ink",
                 )}
                 onClick={() => setSelectedIndex(i)}
                 title={isInitial ? "Initial state" : `State changed after: ${snap.stepName} (step ${snap.stepIndex})`}
@@ -72,17 +72,17 @@ export function SequencerStatePanel({ snapshots }: SequencerStatePanelProps) {
       {/* Controls — diff toggle requires at least two frames; step indicator only adds noise when there's just one */}
       {hasTimeline && (
         <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1 text-[10px] text-slate-500 cursor-pointer">
+          <label className="flex cursor-pointer items-center gap-1 font-fs-mono text-[10px] text-fs-ink3">
             <input
               type="checkbox"
               checked={diffMode}
               onChange={(e) => setDiffMode(e.target.checked)}
-              className="rounded border-slate-600 bg-slate-800 h-3 w-3"
+              className="h-3 w-3 border-fs-ink/45 bg-fs-card accent-[var(--fs-blue)]"
             />
             Show diff
           </label>
           {selected && (
-            <span className="text-[10px] text-slate-600 font-mono ml-auto">
+            <span className="ml-auto font-fs-mono text-[10px] text-fs-ink4">
               step {selected.stepIndex === -1 ? "init" : selected.stepIndex}
             </span>
           )}
@@ -140,21 +140,21 @@ function computeShallowDiff(prev: unknown, next: unknown): DiffEntry[] {
 
 function DiffView({ diff }: { diff: DiffEntry[] }) {
   return (
-    <div className="rounded-md bg-slate-950 border border-slate-800 p-3 font-mono text-xs space-y-1">
+    <div className="space-y-1 border border-fs-ink/20 bg-fs-card p-3 font-fs-mono text-[11.5px] leading-[1.55] text-fs-ink2">
       {diff.map((entry) => (
         <div key={entry.key} className="flex items-start gap-2">
           <DiffIndicator type={entry.type} />
-          <span className="text-blue-300">{entry.key}:</span>
+          <span className="text-fs-ink">{entry.key}:</span>
           {entry.type === "changed" ? (
             <span>
-              <span className="text-red-400/70 line-through">{formatValue(entry.prev)}</span>
+              <span className="text-fs-red line-through">{formatValue(entry.prev)}</span>
               {" "}
-              <span className="text-green-400">{formatValue(entry.next)}</span>
+              <span className="text-fs-green">{formatValue(entry.next)}</span>
             </span>
           ) : entry.type === "removed" ? (
-            <span className="text-red-400/70 line-through">{formatValue(entry.prev)}</span>
+            <span className="text-fs-red line-through">{formatValue(entry.prev)}</span>
           ) : (
-            <span className={entry.type === "added" ? "text-green-400" : "text-slate-400"}>
+            <span className={entry.type === "added" ? "text-fs-green" : "text-fs-ink3"}>
               {formatValue(entry.next)}
             </span>
           )}
@@ -166,10 +166,10 @@ function DiffView({ diff }: { diff: DiffEntry[] }) {
 
 function DiffIndicator({ type }: { type: DiffEntry["type"] }) {
   const styles = {
-    added: "text-green-500",
-    removed: "text-red-500",
-    changed: "text-amber-500",
-    unchanged: "text-slate-600",
+    added: "text-fs-green",
+    removed: "text-fs-red",
+    changed: "text-fs-blue",
+    unchanged: "text-fs-ink5",
   };
   const symbols = { added: "+", removed: "-", changed: "~", unchanged: " " };
 
@@ -199,16 +199,16 @@ export function SequencerStateSection({ snapshots }: { snapshots: StateSnapshot[
   return (
     <div>
       <button
-        className="flex items-center gap-1 w-full text-left py-0.5"
+        className="flex w-full items-center gap-1.5 py-0.5 text-left text-fs-ink3 hover:text-fs-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fs-blue/40"
         onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
       >
-        {open ? <ChevronDown className="h-3 w-3 text-slate-500" /> : <ChevronRight className="h-3 w-3 text-slate-500" />}
-        <Layers className="h-3 w-3 text-amber-500" />
-        <span className="text-[10px] font-medium uppercase text-amber-500/80">
+        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        <Layers className="h-3 w-3" />
+        <span className="font-fs-mono text-[10px] font-medium uppercase tracking-[.14em]">
           Sequencer State
         </span>
         {hasMultipleSnapshots && (
-          <span className="text-[10px] text-slate-600 ml-1">
+          <span className="ml-1 font-fs-mono text-[10px] text-fs-ink4">
             ({snapshots.length} snapshots)
           </span>
         )}

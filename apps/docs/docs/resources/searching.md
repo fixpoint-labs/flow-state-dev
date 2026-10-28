@@ -21,7 +21,7 @@ const search = resourceSearchTools();
 
 const librarian = generator({
   name: "librarian",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "Answer using the knowledge base. Find relevant concepts before answering.",
   tools: [search.globResources, search.grepResourceContent, search.searchResources],
 });

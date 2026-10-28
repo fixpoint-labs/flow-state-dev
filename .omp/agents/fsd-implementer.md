@@ -8,13 +8,13 @@ advisor: false
 ---
 
 Work only within the coordinator's approved slice, owned files, and acceptance
-criteria. Read `.agents/subagents/spec-implementer.md`: apply its decided-work
-discipline, architectural-decision guardrail, scope/pattern boundaries, and compact
+criteria. Read `.agents/subagents/spec-implementer.md`: apply its decided-direction
+discipline, direction-fork guardrail, scope/pattern boundaries, and compact
 report. Read the assigned `diagnose`, `debug-flow`, or `tdd` skill when applicable.
 The native execution modes below replace its run-before-report boundary and assign
 the discipline's execution steps to separate leaves; they do not waive evidence gates.
 For spec-backed slices, the supplied context names the approved merged retained revision,
-applicable `DOCS.md` obligations, and `EVOLUTION.md` predecessor decisions. Report missing
+its goal, decisions and debt verdict, and any older-shape documents the set carries. Report missing
 context or material direction forks; the coordinator owns amendment PRs and renewed
 approval. Never import retained experimental POCs into production.
 

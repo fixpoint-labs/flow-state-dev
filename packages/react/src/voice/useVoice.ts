@@ -3,7 +3,6 @@
  * STT input, TTS output, and voice state management.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { transcribe, type TranscribeOptions } from "@flow-state-dev/client";
 import type { Content, MessageItem, OutputAudioContent } from "@flow-state-dev/core/items";
 import { createAudioRecorder, type AudioRecorder } from "./audio-recorder";
 import { createAudioPlayer, type AudioPlayer, type AudioPlayerState } from "./audio-player";
@@ -14,6 +13,7 @@ import {
   type SpeechRecognitionHandle
 } from "./speech-recognition";
 import type { SessionView } from "../hooks/useSession";
+import { useClient } from "../internal/useClient";
 
 export type UseVoiceOptions = {
   /** Action name to dispatch with transcribed text. */
@@ -200,10 +200,8 @@ export function useVoice(
     }
   }, [session.items, autoPlayTTS]);
 
-  const transcribeOptions: TranscribeOptions = useMemo(
-    () => ({ baseUrl: options.baseUrl, apiPath: options.apiPath }),
-    [options.baseUrl, options.apiPath]
-  );
+  // Transcription goes through the provider's transport, as the session's user.
+  const fsd = useClient({ userId: session.userId, baseUrl: options.baseUrl, apiPath: options.apiPath });
 
   const startListening = useCallback(async () => {
     if (isListening || !isAvailable) return;
@@ -258,12 +256,11 @@ export function useVoice(
       const audioBlob = await recorder.stop();
 
       // Send to server for authoritative transcription
-      const result = await transcribe({
+      const result = await fsd.transcribe({
         audio: audioBlob,
         mediaType: audioBlob.type || "audio/webm",
-        language: options.language,
-        userId: session.userId
-      }, transcribeOptions);
+        language: options.language
+      });
 
       setInterimTranscript("");
 
@@ -288,7 +285,7 @@ export function useVoice(
     options.action,
     options.language,
     buildInput,
-    transcribeOptions,
+    fsd,
     interimTranscript
   ]);
 

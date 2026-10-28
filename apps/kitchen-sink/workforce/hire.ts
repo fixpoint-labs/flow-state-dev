@@ -38,7 +38,7 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 
-import { coordinatorWorkersUnderControl, delegateFlowsUnderControl } from "../lib/coordinator-control";
+import { agentFlowUnderControl, coordinatorWorkersUnderControl } from "../lib/coordinator-control";
 import { landingControl } from "../lib/landing-control";
 import { ROUTE_MODEL } from "../lib/models";
 import { blocks, packageBlocks, workerBlocks, workerFlows } from "./workforce.gen";
@@ -98,19 +98,24 @@ export async function buildKitchenSinkWorkforce(): Promise<KitchenSinkWorkforce>
     packageBlocks,
   });
   // The built-in `agent`, carrying the tool catalog, takes the coordinator's
-  // posts. The goal check's `no-landing` control swaps it for one that takes a
-  // post and hands no answer back, in test mode only.
-  const agent = landingControl(blocks, installation) ?? defineAgentWorkerFlow({ installation, catalog: blocks });
+  // routed tasks. The goal check's `no-landing` control swaps it for one that
+  // takes a routed task and hands no answer back, and `no-delivery` for one
+  // that takes none, in test mode only.
+  // The landing control's flow takes tasks and keeps no board of its own.
+  const landing = landingControl(blocks, installation);
+  const agent =
+    landing === undefined
+      ? agentFlowUnderControl(defineAgentWorkerFlow({ installation, catalog: blocks }))
+      : { flow: landing, roles: ["contributor"] };
   flows = {
     ...workerFlows,
     agent,
-    // The coordinator flow: `support.help` runs on it. Its delegates take
-    // posts on `agent`, and best fit's one evaluator call runs on ROUTE_MODEL.
-    // Its judgment turn, for a post best fit can't place, is the agent's own
-    // turn, built from the same catalog.
+    // The coordinator flow: `support.help` runs on it. Its delegates take its
+    // routed tasks on `agent`, and best fit's one evaluator call runs on
+    // ROUTE_MODEL. Its judgment turn, for a message best fit can't place, is
+    // the agent's own turn, built from the same catalog.
     [COORDINATOR_FLOW]: defineCoordinatorFlow({
       installation,
-      delegateFlows: delegateFlowsUnderControl([agent]),
       routeModel: ROUTE_MODEL,
       agent: { catalog: blocks },
     }),

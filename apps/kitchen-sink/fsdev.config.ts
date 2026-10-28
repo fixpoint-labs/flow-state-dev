@@ -9,19 +9,21 @@
  * behind `@flow-state-dev/vercel/next`.
  *
  * Profile selection: `FSD_ENV` picks the active profile, falling back to
- * `defaultProfile: "dev"` (in-memory) for local development and CI. Production
+ * `defaultProfile: "dev"` (SQLite) for local development and CI. Production
  * deploys set `FSD_ENV=prod` to select the Postgres-backed profile.
  *
  * Run a flow from the CLI without the browser (from this directory):
  *   pnpm fsdev run chat-agent run -i '{"message":"hi","mode":"ask"}'
  */
 import { after } from "next/server";
+import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { createGateway } from "@ai-sdk/gateway";
-import { createFlowState, inMemoryStores, filesystemStores, type FlowState } from "@flow-state-dev/engine";
+import { createFlowState, inMemoryStores, filesystemStores, type FlowState, type StoreAdapter } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core";
 import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
+import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { setScheduleIndexImpl } from "@/lib/schedule-index";
 import { resolveKitchenSinkPrincipal } from "@/lib/kitchen-sink-principal";
@@ -32,10 +34,38 @@ import richTextComponentFlow from "@/flows/rich-text-component/flow";
 import weeklyDigestFlow from "@/flows/weekly-digest/flow";
 import { buildKitchenSinkWorkforce } from "@/workforce/hire";
 import { availableHarnessFlows } from "@/lib/harness-gate";
+import { claudeCodeSessionFlow } from "@/lib/claude-code-mode";
+import { codexSessionFlow } from "@/lib/codex-mode";
+import { cursorSessionFlow } from "@/lib/cursor-mode";
+import { afterStoredWorkUpgrade } from "@/lib/stored-work-upgrade";
 import { mergeWorkerFlows } from "@flow-state-dev/workforce";
 import { bullmqWorker } from "@flow-state-dev/bullmq";
 
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
+/**
+ * The local SQLite store, its folder made when the store is first used, not when
+ * this file loads: a deployment on Postgres never opens it and may not be able
+ * to write here. SQLite opens a file in a folder that exists, and a fresh
+ * checkout has no `.fsdev/data`.
+ */
+function localSqliteStores(): StoreAdapter {
+  const dir = path.join(process.cwd(), ".fsdev", "data");
+  let inner: StoreAdapter | undefined;
+  return {
+    capabilities: ["primary"],
+    resolve(slots) {
+      if (inner === undefined) {
+        mkdirSync(dir, { recursive: true });
+        inner = sqliteStores({ filename: path.join(dir, "flowstate.db") });
+      }
+      return inner.resolve(slots);
+    },
+    dispose() {
+      return inner?.dispose?.();
+    },
+  };
+}
+
 const databaseUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
 const openaiApiKey = process.env.OPENAI_API_KEY;
 const redisUrl = process.env.REDIS_URL;
@@ -89,8 +119,12 @@ for (const failedPath of workforce.errors) {
 // available on this host (`lib/harness-gate.ts`): on a host that can't run a
 // mode, `/api/flows/<its flow>/…` is not found, so the picker is not the only
 // fence. Decided once per server start, the same answer the picker reads.
-// A mode's issue adds its flow here, by mode id; none is built yet.
-const harnessFlows = await availableHarnessFlows<FlowInstance<any, any>>({});
+// A mode's issue adds its flow here, by mode id.
+const harnessFlows = await availableHarnessFlows<FlowInstance<any, any>>({
+  "claude-code": claudeCodeSessionFlow,
+  codex: codexSessionFlow,
+  cursor: cursorSessionFlow,
+});
 
 // The workforce's copies are addressed by their flow's name (`agent`,
 // `coordinator`, and `workforce-roster` for the roster flow). A session with a
@@ -112,19 +146,19 @@ const flowstate = createFlowState({
     default: DEFAULT_KITCHEN_SINK_MODEL,
     intents: {
       utility: [
-        "vercel/google/gemini-3.1-flash-lite",
-        "vercel/anthropic/claude-haiku-4.5",
-        "vercel/openai/gpt-5.4-nano",
+        "vercel:google/gemini-3.1-flash-lite",
+        "vercel:anthropic/claude-haiku-5.5",
+        "vercel:openai/gpt-6-luna",
       ],
-      chat: ["vercel/anthropic/claude-sonnet-5", "vercel/openai/gpt-5.6-luna"],
-      plan: ["vercel/anthropic/claude-opus-4.8", "vercel/openai/gpt-5.6-sol"],
+      chat: ["vercel:anthropic/claude-sonnet-5.5", "vercel:openai/gpt-6-luna"],
+      plan: ["vercel:anthropic/claude-opus-5.5", "vercel:openai/gpt-6-astra"],
       synthesize: [
-        "vercel/anthropic/claude-sonnet-5",
-        "vercel/openai/gpt-5.6-terra",
-        "vercel/google/gemini-2.5-pro",
+        "vercel:anthropic/claude-sonnet-5.5",
+        "vercel:openai/gpt-6.1-sol",
+        "vercel:google/gemini-2.5-pro",
       ],
-      code: ["vercel/anthropic/claude-sonnet-5", "vercel/openai/gpt-5.6-terra"],
-      reason: ["vercel/anthropic/claude-opus-4.8", "vercel/openai/gpt-5.6-sol"],
+      code: ["vercel:anthropic/claude-sonnet-5.5", "vercel:openai/gpt-6.1-sol"],
+      reason: ["vercel:anthropic/claude-opus-5.5", "vercel:openai/gpt-6-astra"],
     },
     // Bind the gateway explicitly: the resolver's dynamic require() path
     // doesn't run in bundled Next.js, so a static instance is required.
@@ -148,13 +182,17 @@ const flowstate = createFlowState({
     : undefined,
   stores: {
     prod: { primary: pgStores, scheduler: pgStores },
-    // `STORE_TYPE=filesystem` opts the local profile into on-disk persistence
-    // (`.fsdev/data`); otherwise dev runs against ephemeral in-memory stores.
+    // The local profile persists to SQLite (`.fsdev/data/flowstate.db`) so
+    // sessions and hired workers survive a restart. `STORE_TYPE=memory` opts
+    // into ephemeral in-memory stores (tests, e2e); `STORE_TYPE=filesystem`
+    // keeps the JSON-file store.
     dev: {
       primary:
-        process.env.STORE_TYPE === "filesystem"
-          ? filesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") })
-          : inMemoryStores(),
+        process.env.STORE_TYPE === "memory"
+          ? inMemoryStores()
+          : process.env.STORE_TYPE === "filesystem"
+            ? filesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") })
+            : localSqliteStores(),
     },
   },
   // Default to the Postgres profile whenever a database URL is configured
@@ -173,11 +211,11 @@ const flowstate = createFlowState({
   // Schema/recovery scans on cold start can exhaust the serverless pool before
   // real requests are served.
   detectInterruptedOnStartup: !databaseUrl,
-  // Durable execution (FIX-140/141). Builds the checkpoint durability provider
-  // from the active profile's stores, so actions marked `durable: true` (e.g.
-  // chat-agent's `requestApproval` HITL gate) get ctx.suspend() and
-  // checkpoint-based resume. The retention sweeper bounds checkpoint/suspension/
-  // lease growth; a 60s cadence here makes its effect observable in dev.
+  // Durable execution is on by default wherever stores persist (the Postgres
+  // and filesystem profiles). Set here because the default `dev` profile is
+  // in-memory, where it is off unless asked for: its stops are lost when the
+  // process ends, which is fine for local dev. The retention sweeper bounds
+  // checkpoint/suspension/lease growth; a 60s cadence makes it observable.
   durable: true,
   durabilityRetention: { sweepIntervalMs: 60_000 },
   // Enable the gated debug endpoints (incl. the DevTool Suspensions list) for
@@ -202,7 +240,10 @@ const flowstate = createFlowState({
   },
 });
 
-export default flowstate;
+// The workforce's stored-work upgrades run before the first router (`lib/stored-work-upgrade.ts`).
+// Every caller gets this handle; only the HMR slot below keeps the raw one, to dispose it.
+const upgradedFlowstate = afterStoredWorkUpgrade(flowstate, workforce.copies);
+export default upgradedFlowstate;
 
 // `next dev` re-evaluates this module on every HMR edit, building a fresh
 // FlowState (and, under dispatch mode, a fresh BullMQ worker) each time.
@@ -224,9 +265,18 @@ hmr.__fsdFlowstate = flowstate;
 // worker consumes the queue from boot rather than from the first web request.
 // dispose() drains the worker and closes the queue before the stores.
 if (bullmq && bullmqDispatch) {
-  void flowstate.ready().then(() => {
-    console.log("[flowstate] BullMQ worker adapter active (all actions route through queue)");
-  });
+  // Through the upgraded handle, so the stored-work upgrades run before the
+  // router and its sweep. A failed upgrade fails the start: the host refuses
+  // to serve records it can't resume.
+  upgradedFlowstate.ready().then(
+    () => {
+      console.log("[flowstate] BullMQ worker adapter active (all actions route through queue)");
+    },
+    (error: unknown) => {
+      console.error("[flowstate] start failed:", error instanceof Error ? error.message : error);
+      process.exit(1);
+    },
+  );
 
   // Register signal handlers once per process (not per HMR generation —
   // process.on accumulates listeners across re-evaluations otherwise) and

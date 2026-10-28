@@ -2,20 +2,20 @@
 
 **Issue:** FIX-1723
 
-**Outcome:** A person running a Lab in Shift Manager opens Roster and sees every worker the Lab has, each on shift, on call or off shift as the Lab's own records say, with the tasks it holds and what it waits on, for all teams or one. The sidebar's Roster entry, its footer and its TEAMS rows agree with the page.
+**Outcome:** A person running a Lab in Shift Manager opens Roster and sees every worker the Lab has, each on shift or off shift as the Lab's own records say, with the tasks it holds and what it waits on, for all teams or one. The sidebar's Roster entry, its footer and its TEAMS rows agree with the page.
 
-**Input:** the shift-lab (`lab/`), served by Shift Manager's command: two teams (`eng`, `ops`) and one org-level seat (`chief-of-staff`) with no team. `eng.lead`'s `delegates:` names every worker of both teams that takes a task, and it files every task on its own conversation's board, through that conversation's `dispatchTask_tasks`; `eng.desk` and `ops.desk` are coordinators nothing posts to. At boot it builds a **spread** (`fixtures/input.json`): per worker, tasks its scripted run holds until stopped, tasks its run parks on a question for a person (`parkOnQuestion`), tasks that wait on a held or parked task so nothing starts them, and pending approvals in a session of its own. Every assignee names exactly one worker. The check runs two spreads; another spread over the same tree must pass a correct Shift Manager too. No seat, team or board name is written in the check.
+**Input:** the shift-lab (`lab/`), served by Shift Manager's command: two teams (`eng`, `ops`) and one org-level seat (`chief-of-staff`) with no team. `eng.lead`'s `delegates:` names every worker of both teams that takes a task, and it files every task on its own conversation's board, through that conversation's `createTask_tasks`; `eng.desk` and `ops.desk` are coordinators nothing posts to. At boot it builds a **spread** (`fixtures/input.json`): per worker, tasks its scripted run holds until stopped, tasks its run holds on a question for a person (`askQuestion`; `asked` in the spread, `parked` before FIX-2131), tasks that wait on a held or asked task so nothing starts them, and pending approvals in a session of its own. Every assignee names exactly one worker. The check runs two spreads; another spread over the same tree must pass a correct Shift Manager too. No seat, team or board name is written in the check.
 
 **Signal:** per spread, each failure tagged `[spread <n>] <leg>`. Reached by clicking Roster, then each team in the picker, then each TEAMS row.
 
 - **store** (precondition): the store holds the rows and asks the spread built, every assignee resolves to one seat by the check's own rule, Staff and two teams exist, every status has a worker, and the store reads the same after grading as before.
 - **roster**: All lists exactly the inventory's seats; a team lists exactly its seats.
-- **status**: each worker's group equals what the store gives: a running row is on shift; otherwise a parked row or a pending ask is on call; otherwise off shift.
-- **slots**: each worker's slots read `<n> in use` with n squares, n its running and parked rows.
+- **status**: each worker's group equals what the store gives: a running row (one held on a question included) or a pending ask is on shift; otherwise off shift. Nothing reads on call.
+- **slots**: each worker's slots read `<n> in use` with n squares, n its running rows, those held on a question included.
 - **holding**: its HOLDING chips are exactly those rows, or it says *nothing assigned*.
-- **waits**: its waits-on entries are exactly its parked rows and its pending asks.
-- **summary**: *N on shift · M on call · K off shift · J waiting on you* equals the store's, for the workers shown.
-- **sidebar**: the Roster entry's `on shift·on call` and the footer's counts equal the store's.
+- **waits**: its waits-on entries are exactly its rows held on a question and its pending asks.
+- **summary**: *N on shift · K off shift · J waiting on you* equals the store's, for the workers shown.
+- **sidebar**: the Roster entry's on-shift count and the footer's equal the store's, and the sidebar never says on call.
 - **TEAMS**: one row per group, Staff first, each with a square per seat carrying the store's status, and its on-shift count over its seats.
 - **filter**: each TEAMS row opens Roster for exactly that team, names it in the title, and is marked current.
 
@@ -47,3 +47,6 @@
 | 2026-10-10 | same, `GOAL_CONTROL=ignore-asks` | n/a | FAIL (expected) | **status** on ops.asker (spread 1) and eng.spare (spread 2), drawn off shift where the store says on call, with the **summary**, **sidebar** and **TEAMS** counts that follow. slots, holding, waits, roster and filter pass. |
 | 2026-10-10 | same, `GOAL_CONTROL=count-queued` | n/a | FAIL (expected) | **slots** and **holding** on ops.waiter (spread 1), eng.coder and ops.asker (spread 2); the extra chip names the queued task on the lead's `<sessionId>.tasks` board. status, summary, sidebar, TEAMS and filter pass. |
 | 2026-10-11 | FIX-1792 P4 on 617aeabb + uncommitted | n/a | PASS | No change needed beyond P4's own edit to `lab/lab.mts` (the inventory write's new shape). Both spreads as on P3: 9 workers in [Staff, eng, ops] each time, every row on the lead's `<sessionId>.tasks` board. Spread 1: eng.coder on shift, eng.reviewer and ops.asker on call, ops.waiter off shift with 1 queued. Spread 2: eng.reviewer and ops.waiter on shift, eng.coder and eng.spare on call, ops.asker off shift with 1 queued. |
+| 2026-10-13 | FIX-1964 on 321a97b0 + uncommitted | n/a | PASS | On Call removed: two statuses. A running row, a parked row or a pending ask is on shift. Spread 1: eng.coder, eng.reviewer and ops.asker on shift; spread 2: eng.coder, eng.reviewer, eng.spare and ops.waiter on shift. The sidebar's Roster entry and footer carry the on-shift count alone. |
+| 2026-10-13 | same, `GOAL_CONTROL=ignore-asks` | n/a | FAIL (expected) | **status** on the workers whose only wait is an ask (eng.spare in spread 2, among others), drawn off shift where the store says on shift, with the **summary** and **TEAMS** counts that follow. |
+| 2026-10-26 | `fix/fix-2131` on `f32747683`, uncommitted | n/a | PASS | The `parked` state is `asked` (FIX-2131): the run holds its task on a question with `askQuestion`. Spread 1: eng.coder, eng.reviewer (1 held, 1 wait) and ops.asker on shift; spread 2: eng.coder, eng.reviewer, eng.spare and ops.waiter on shift. |

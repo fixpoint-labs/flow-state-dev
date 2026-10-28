@@ -122,7 +122,6 @@ export function ComposerShell({
   statusState,
   lead,
   extra,
-  above,
   scale = "default",
 }: {
   testId: string;
@@ -140,8 +139,6 @@ export function ComposerShell({
   statusState: string;
   lead?: ReactNode;
   extra?: ReactNode;
-  /** Drawn above Chief of Staff's box: its suggestions (v2:174). */
-  above?: ReactNode;
   /** `cos`: Chief of Staff's larger composer (v2:175-178). */
   scale?: "default" | "cos";
 }) {
@@ -184,7 +181,6 @@ export function ComposerShell({
     <form onSubmit={onSubmit} className={scale === "cos" ? "flex flex-col gap-2.5" : "px-[22px] pt-2.5 pb-4"} data-testid={testId}>
       {scale === "cos" ? (
         <>
-          {above}
           <div className="flex items-center border-[1.5px] border-foreground bg-card" data-look="composer">
             {input}
             {extra}
@@ -227,7 +223,6 @@ export function TurnComposer({
   onHeld,
   onDelivered,
   extra,
-  suggestions,
   scale = "default",
   autoSend,
   onAutoSend,
@@ -247,11 +242,6 @@ export function TurnComposer({
   onDelivered?: (message: string) => void;
   /** Controls drawn beside Send. */
   extra?: ReactNode;
-  /**
-   * Lines offered above Chief of Staff's box as v2's dashed chips (v2:174).
-   * A click only puts the line in the draft; nothing is sent until Send.
-   */
-  suggestions?: readonly string[];
   /** `cos`: Chief of Staff's larger composer (v2:175-178). */
   scale?: "default" | "cos";
   /**
@@ -325,28 +315,6 @@ export function TurnComposer({
         )
       }
       extra={extra}
-      above={
-        suggestions === undefined || suggestions.length === 0 ? undefined : (
-          <div className="flex flex-wrap gap-1.5" data-testid={`${testId}-suggestions`}>
-            {suggestions.map((line) => (
-              <button
-                key={line}
-                type="button"
-                disabled={blocked !== null}
-                onClick={() => {
-                  setDraft(line);
-                  reset();
-                }}
-                className="border border-dashed border-foreground/45 px-[9px] py-[5px] font-mono text-[11.5px] font-medium text-muted-foreground hover:border-foreground hover:text-foreground disabled:opacity-60"
-                data-testid={`${testId}-suggestion`}
-                data-look="suggestion"
-              >
-                {line}
-              </button>
-            ))}
-          </div>
-        )
-      }
       scale={scale}
     />
   );

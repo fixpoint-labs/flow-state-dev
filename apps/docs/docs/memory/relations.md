@@ -17,7 +17,7 @@ Set `relations` on the semantic tier.
 import { system } from "@flow-state-dev/memory";
 
 const mem = system({
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   episodic: true,
   semantic: {
     relations: {

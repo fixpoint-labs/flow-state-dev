@@ -346,7 +346,7 @@ describe("FIX-701: per-block resource-load tracing", () => {
     expect(byName("declarer")?.declaredResources).toContain("decl");
   });
 
-  it("records nothing on the items stream when trace observability is disabled", async () => {
+  it("keeps the replay record and not the load lists when trace observability is disabled", async () => {
     process.env.FSDEV_TRACE_OBSERVABILITY = "false";
     const lazyColl = defineResourceCollection({
       scope: "session",
@@ -383,10 +383,9 @@ describe("FIX-701: per-block resource-load tracing", () => {
       runtimeConfig: { modelResolver: createStubModelResolver() }
     });
     expect(result.error).toBeUndefined();
-    // With observability off the trace-capture hook is undefined, so no
-    // block_trace items are emitted at all — which means neither `resourceLoads`
-    // nor `declaredResources` can leak onto the items stream.
-    const traceItems = response.getItems().filter((i) => i.type === "block_trace");
-    expect(traceItems).toHaveLength(0);
+    const traceItems = response.getItems().filter((i) => i.type === "block_trace") as BlockTraceItem[];
+    expect(traceItems).toHaveLength(1);
+    expect(traceItems[0]!.resourceLoads).toBeUndefined();
+    expect(traceItems[0]!.declaredResources).toBeUndefined();
   });
 });

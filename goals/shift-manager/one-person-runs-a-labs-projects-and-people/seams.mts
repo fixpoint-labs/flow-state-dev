@@ -121,8 +121,9 @@ export function seams(base: string): SeamRow[] {
     const cos = toolsOf(join(tree, "org/workers/chief-of-staff/WORKER.md"));
     // PLAN's six less `rehire` and `brokenSeats`, which FIX-1788 retired, and `setWorkstreams` and
     // `post-to-mailbox`, which went with mailboxes (FIX-1792); `setRepository` (FIX-1762),
-    // `openWorkstream` (FIX-1793), `memory/recall` (FIX-1776) and `listProjects`, which reads a project before filing.
-    const want = ["hire", "fire", "listProjects", "createProject", "setRepository", "openWorkstream", "memory/recall"];
+    // `openWorkstream` (FIX-1793), `memory/recall` (FIX-1776), `listProjects`, which reads a project before filing,
+    // and `listLeads` (FIX-1920), which picks a workstream's lead.
+    const want = ["hire", "fire", "listProjects", "createProject", "setRepository", "listLeads", "openWorkstream", "memory/recall"];
     out.push(`CoS tools: [${cos.join(", ")}]`);
     const cosOk = JSON.stringify([...cos].sort()) === JSON.stringify([...want].sort());
     if (!cosOk) out.push(`FAIL: wanted [${want.join(", ")}]`);
@@ -231,11 +232,12 @@ export function seams(base: string): SeamRow[] {
     const has = (page: string, re: RegExp) => existsSync(join(REPO_ROOT, page)) && re.test(readFileSync(join(REPO_ROOT, page), "utf8"));
     const owned: Array<[string, string, RegExp]> = [
       // Since FIX-1793 a project no longer groups workstreams by list: the section defines both terms.
-      ["the shared section, projects and workstreams (FIX-1718)", "apps/docs/docs/workforce/overview.md", /^## Projects and the chief of staff\n[\s\S]*?\*\*project\*\*[\s\S]*?\*\*workstream\*\* is one area of a project\b/im],
-      ["the shared section, org seat and mailbox (FIX-1719)", "apps/docs/docs/workforce/overview.md", /^## Projects and the chief of staff\n[\s\S]*?chief of staff[\s\S]*?(approve)/im],
-      ["Asking CoS for a project (FIX-1718)", "apps/docs/docs/workforce/projects.md", /^# Projects$[\s\S]*chief of staff/m],
+      // FIX-1960 renamed the chief of staff the Shift Coordinator in the docs.
+      ["the shared section, projects and workstreams (FIX-1718)", "apps/docs/docs/workforce/overview.md", /^## Projects and the Shift Coordinator\n[\s\S]*?\*\*project\*\*[\s\S]*?\*\*workstream\*\* is one area of a project\b/im],
+      ["the shared section, org seat and mailbox (FIX-1719)", "apps/docs/docs/workforce/overview.md", /^## Projects and the Shift Coordinator\n[\s\S]*?Shift Coordinator[\s\S]*?(approve)/im],
+      ["Asking CoS for a project (FIX-1718)", "apps/docs/docs/workforce/projects.md", /^# Projects$[\s\S]*Shift Coordinator/m],
       ["Shift Manager's PROJECTS (FIX-1718)", "packages/shift-manager/README.md", /^## What you see$[\s\S]*?PROJECTS/m],
-      ["The CoS page (FIX-1719)", "apps/docs/docs/workforce/chief-of-staff.md", /^# The chief of staff$[\s\S]*?^## Adding one$[\s\S]*?^## What asks first$[\s\S]*?"reason": "human_approval"/m],
+      ["The CoS page (FIX-1719)", "apps/docs/docs/workforce/shift-coordinator.md", /^# The Shift Coordinator$[\s\S]*?^## Adding one$[\s\S]*?^## What asks first$[\s\S]*?"reason": "human_approval"/m],
       // Each person talks to a project through their own project coordinator; the project rooms are gone (FIX-1793).
       ["Talking to a project (FIX-1793)", "apps/docs/docs/workforce/projects.md", /^## Talking to a project$[\s\S]*?\*\*project coordinator\*\*[\s\S]*?^### How its delegates follow your workstreams$/m],
       // FIX-1621's repair of a seat whose kind is gone was retired by FIX-1788: a worker is a row its owner fires or edits.

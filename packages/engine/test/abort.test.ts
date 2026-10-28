@@ -3086,7 +3086,7 @@ describe("a queued request cancelled through the route", () => {
       });
     const requestId = "req_queued_handoff";
 
-    const holder = dispatch("hold", "req_queued_handoff_holder");
+    const holder = dispatch("hold", "req_queued_abort_holder");
     await holding;
     const queued = dispatch("queued", requestId);
     for (let i = 0; i < 100 && (await stores.request.get(requestId)) === undefined; i++) {

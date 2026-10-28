@@ -79,8 +79,9 @@ a new field. Then keep it internal until all three harnesses have written it.
 - **No approval prompts; the sandbox is the fence.** Kitchen Sink has no in-page approval for a
   harness, so the SDK's prompts would have no one to answer them. Writes stay in the session's
   worktree, and nowhere else: not the main checkout, and not the repository's `.git`. No sandbox, or a server running as root, makes the mode unavailable with that reason.
-  The run sees an allowlisted environment (`harnessEnv`), as Shift Manager passes Claude Code,
-  never the server's whole environment.
+  The run starts with an allowlisted environment (`harnessEnv`), as Shift Manager passes Claude Code,
+  never the server's whole environment. That filters what commands start with; it is not a
+  security boundary (amended Oct 13, below).
 - **The binding is session state, with a record per turn.** The session holds the confirmed id,
   written only by `onSession`. Each turn holds, under its request, the id it asked for (noted by
   `resume`) and the id `onSession` confirmed *during that turn*, if any. The page derives the
@@ -202,5 +203,11 @@ The one unproved mechanism, live rows on a lazily loaded collection, is a CI che
 - **Amended again (Oct 12, cross-spec check, decided by the coordinator)**: a turn is refused
   only when the harness reports it doesn't know the stored conversation, through a neutral
   classification each package sets (S13); any other failure before confirmation is an error.
+- **Amended after merge (Oct 13, owner decision)**: the allowlist is environment filtering, not a
+  security boundary. BR-13b claimed the run never sees the server's secrets; on Linux a command
+  running as the server's user can read the server's environment through `/proc/<pid>/environ`.
+  Jake decided to ship it as filtering: commands start with only the allowlisted variables, and the
+  docs say it is not a security boundary. A real boundary, a separate operating-system user or a
+  container, is a follow-up issue. BR-13b and V6 now claim only what the allowlist does.
 
 **Open: none.**

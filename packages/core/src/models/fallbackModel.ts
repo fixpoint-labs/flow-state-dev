@@ -14,7 +14,7 @@ import { deepMerge } from "../helpers/deep-merge";
 export interface FallbackModelEntry {
   model: GeneratorModel;
   modelId: string;
-  /** Provider prefix extracted from 'provider:model-id'. */
+  /** The provider the entry's call reaches (`openai` for `openai/gpt-6.1-sol`, `anthropic` for `vercel:anthropic/…`). Keys per-provider defaults. */
   providerName: string;
 }
 

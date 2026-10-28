@@ -1,12 +1,16 @@
 /**
- * Inbox (S10): every pending approval and question in the worker sessions the
- * Lab lists for this user, dispatch runs included, oldest first (BR-24).
- * A list and a detail pane; the detail draws the ask with the same card Chief
+ * Inbox (S10): everything waiting on the user, oldest first (BR-24): every
+ * pending approval and question in the worker sessions the Lab lists for this
+ * user, dispatch runs included, and every task holding questions for them. It
+ * draws the snapshot's `inbox` section and reads no other list (`inbox.ts`).
+ * A list and a detail pane; the detail draws an ask with the same card Chief
  * of Staff uses, and answers it through the same resume (BR-25).
  *
  * Drawn as design v2's Inbox (v2:559-645): a 400px list whose items carry the
  * highlighter square (each one waits on the user), and a detail on the
- * inspector surface headed by the question at 26px. Under it, *From the
+ * inspector surface headed by the ask's short title at 26px; an ask that gave a
+ * title has its message drawn under it at body size, as markdown, rather than
+ * the whole ask set in display type. Under it, *From the
  * session* lists the worker's last tool calls before it asked, and the
  * user's own lines sent into that session follow (BR-18), both read from
  * the ask's session.
@@ -16,15 +20,17 @@
  * worker flow has no door gets the box disabled, saying so; Approve and Reject are
  * untouched (BR-22).
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import Markdown from "react-markdown";
 import { AskCard } from "../components/AskCard";
 import { TurnComposer } from "../components/TurnComposer";
 import { EmptyState, Meta, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
 import { askSessionOf, type SessionCall, type SessionReply } from "../lib/ask-session";
-import { doorOf, rosterOf, waited, type LoadedSnapshot } from "../lib/derive";
+import { doorOf, inboxItemAt, rosterOf, waited, workerLabel, type LoadedSnapshot } from "../lib/derive";
+import type { InboxHold, InboxItem as OrchestrationInboxItem } from "@flow-state-dev/orchestration/inbox";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Ask, type Failure } from "../lib/reads";
-import { navigate } from "../lib/routes";
+import { navigate, pathFor } from "../lib/routes";
 import { readSessionItems, RunReadError } from "../lib/run";
 import { sendTurn, TurnNotDelivered } from "../lib/send";
 import { emptyInboxSentence } from "../lib/tasks";
@@ -34,28 +40,87 @@ import type { Gaps } from "../gaps";
 const FILTERS = ["All", "Approvals", "Questions"] as const;
 type Filter = (typeof FILTERS)[number];
 
-function matches(filter: Filter, ask: Ask): boolean {
-  return filter === "All" || (filter === "Approvals") === (ask.kind === "approval");
+/** An Inbox item, its suspensions drawn with the ask a worker session holds for them. */
+type InboxItem = OrchestrationInboxItem<Ask>;
+
+/** Whether `item` is an approval, as the filter and its tag read it: its first hold asks for a yes or a no. */
+function isApproval(item: InboxItem): boolean {
+  return item.holds[0]!.ask.kind === "approval";
 }
 
-export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapshot; suspensionId: string | null; gaps: Gaps }) {
-  const { clients, refresh } = useLab();
+function matches(filter: Filter, item: InboxItem): boolean {
+  return filter === "All" || (filter === "Approvals") === isApproval(item);
+}
+
+function askHeading(ask: Ask): string {
+  return ask.item.title || ask.item.message || "(no message)";
+}
+
+/** An item's heading: its first hold's title, else what it asks. */
+function itemHeading(item: InboxItem): string {
+  const { ask } = item.holds[0]!;
+  return ask.title || ask.prompt || "(no message)";
+}
+
+/** Who an item waits for the user on behalf of: the task's assignee, else the worker that asked, and the task. */
+function itemFrom(item: InboxItem): string {
+  const who = item.task?.assignee ?? item.holds[0]!.detail?.workerId ?? "unknown worker";
+  const more = item.holds.length > 1 ? ` · ${item.holds.length} asks` : "";
+  return `${workerLabel(who)} · task ${item.task?.title ?? "—"}${more}`;
+}
+
+/**
+ * The ask a suspension item's card is drawn with: the pending ask the
+ * worker's session holds for it, or, when the session wasn't read, one made
+ * from what the task's row records of the stop. Either answers through the
+ * same route, by the hold's source.
+ */
+function askOfItem(item: InboxItem): Ask {
+  const hold = item.holds[0]!;
+  if (hold.detail !== undefined) return hold.detail;
+  if (hold.source.kind !== "suspension") throw new Error(`Inbox item "${item.id}" holds no suspension`);
+  const approval = hold.ask.kind === "approval";
+  return {
+    sessionId: hold.source.sessionId,
+    workerId: item.task?.assignee ?? null,
+    flowId: hold.source.flowId,
+    parentSessionId: null,
+    kind: approval ? "approval" : "question",
+    item: {
+      type: "suspension",
+      id: hold.source.suspensionId,
+      suspensionId: hold.source.suspensionId,
+      requestId: hold.source.requestId,
+      suspensionStatus: "pending",
+      reason: approval ? "human_approval" : "human_input",
+      message: hold.ask.prompt,
+      ...(hold.ask.title !== undefined ? { title: hold.ask.title } : {}),
+      allow: approval ? ["approve", "reject"] : ["submit"],
+    } as Ask["item"],
+    since: hold.openedAt,
+    unanswerable: item.unanswerable,
+  };
+}
+
+export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; itemId: string | null; gaps: Gaps }) {
+  const { client, refresh } = useLab();
   const [filter, setFilter] = useState<Filter>("All");
   // Bumped when a reply is delivered, so the ask's session is read again then.
   const [replies, setReplies] = useState(0);
-  if (!snapshot.asks.ok) {
+  if (!snapshot.inbox.ok) {
     return (
       <div className="p-6">
-        <SectionFailure what="Inbox" failure={snapshot.asks.failure} onRetry={() => void refresh()} />
+        <SectionFailure what="Inbox" failure={snapshot.inbox.failure} onRetry={() => void refresh()} />
       </div>
     );
   }
-  const asks = snapshot.asks.value;
-  const shown = asks.filter((ask) => matches(filter, ask));
-  const selected = asks.find((ask) => ask.item.suspensionId === suspensionId) ?? null;
+  const items = snapshot.inbox.value;
+  const shown = items.filter((item) => matches(filter, item));
+  // An older link names a suspension id; it opens the item that holds it.
+  const selected = inboxItemAt(snapshot, itemId);
   const now = snapshot.readAt;
 
-  const oldest = asks.reduce<number | null>((min, ask) => (min === null || ask.since < min ? ask.since : min), null);
+  const oldest = items.reduce<number | null>((min, item) => (min === null || item.since < min ? item.since : min), null);
 
   return (
     <div className="flex h-full min-h-0" data-testid="inbox">
@@ -64,7 +129,7 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
           <div className="flex items-baseline justify-between gap-3 px-[18px]">
             <ScreenTitle>Inbox</ScreenTitle>
             <Meta className="text-muted-foreground" testId="inbox-sub">
-              {oldest === null ? "all clear" : `${asks.length} waiting · oldest ${waited(oldest, now)}`}
+              {oldest === null ? "all clear" : `${items.length} waiting · oldest ${waited(oldest, now)}`}
             </Meta>
           </div>
           <p className="mt-2 px-[18px] text-xs text-muted-foreground" data-testid="inbox-scope">
@@ -76,11 +141,11 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
               selected={filter}
               onSelect={setFilter}
               label="Inbox filter"
-              counts={Object.fromEntries(FILTERS.map((f) => [f, asks.filter((a) => matches(f, a)).length]))}
+              counts={Object.fromEntries(FILTERS.map((f) => [f, items.filter((item) => matches(f, item)).length]))}
             />
           </div>
         </header>
-        {asks.length === 0 ? (
+        {items.length === 0 ? (
           <p className="px-[18px] py-7 text-sm leading-normal text-muted-foreground" data-testid="inbox-empty">
             {emptyInboxSentence(snapshot)}
           </p>
@@ -90,17 +155,19 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
           </p>
         ) : (
           <ol className="min-h-0 flex-1 overflow-y-auto">
-            {shown.map((ask) => {
-              const isSelected = ask === selected;
+            {shown.map((item) => {
+              const isSelected = item === selected;
               return (
-                <li key={ask.item.suspensionId}>
+                <li key={item.id}>
                   <button
                     type="button"
-                    onClick={() => navigate({ level: "inbox", suspensionId: ask.item.suspensionId })}
+                    onClick={() => navigate({ level: "inbox", item: item.id })}
                     aria-selected={isSelected}
                     data-testid="inbox-item"
-                    data-suspension-id={ask.item.suspensionId}
-                    data-session-id={ask.sessionId}
+                    data-item-id={item.id}
+                    data-source={item.holds[0]!.source.kind}
+                    data-suspension-id={item.holds[0]!.source.kind === "suspension" ? item.holds[0]!.source.suspensionId : undefined}
+                    data-session-id={item.holds[0]!.source.kind === "suspension" ? item.holds[0]!.source.sessionId : undefined}
                     className={cn(
                       "grid w-full grid-cols-[10px_minmax(0,1fr)_auto] gap-2.5 border-b border-foreground/10 px-[18px] py-[13px] text-left",
                       isSelected ? "bg-card shadow-[inset_2px_0_0_var(--color-info)]" : "hover:bg-foreground/5",
@@ -111,18 +178,18 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
                     <span className="flex min-w-0 flex-col gap-1">
                       <span className="flex">
                         <span className="border border-foreground/50 px-1 font-mono text-[9.5px] font-medium tracking-[0.1em]" data-testid="inbox-item-kind">
-                          {ask.kind === "approval" ? "APPROVAL" : "QUESTION"}
+                          {isApproval(item) ? "APPROVAL" : "QUESTION"}
                         </span>
                       </span>
                       <span className="line-clamp-2 text-sm leading-[1.3] font-semibold" data-testid="inbox-item-question">
-                        {ask.item.message ?? "(no message)"}
+                        {itemHeading(item)}
                       </span>
                       <Meta className="text-muted-foreground" testId="inbox-item-from">
-                        {ask.workerId ?? "unknown worker"} · task —
+                        {itemFrom(item)}
                       </Meta>
                     </span>
                     <Meta role="count" className="text-muted-foreground" testId="inbox-item-wait">
-                      waiting {waited(ask.since, now)}
+                      waiting {waited(item.since, now)}
                     </Meta>
                   </button>
                 </li>
@@ -134,16 +201,53 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
       <section className="flex min-w-0 flex-1 flex-col bg-inspector" data-testid="inbox-detail">
         {selected === null ? (
           <EmptyState title="Pick an ask">Choose an ask on the left to answer it.</EmptyState>
+        ) : selected.holds[0]!.source.kind === "row" ? (
+          <HeldQuestions item={selected} />
         ) : (
+          <AskDetail
+            ask={askOfItem(selected)}
+            snapshot={snapshot}
+            gaps={gaps}
+            client={client}
+            replies={replies}
+            onDelivered={() => {
+              setReplies((n) => n + 1);
+              void refresh();
+            }}
+          />
+        )}
+      </section>
+    </div>
+  );
+}
+
+/** A suspension's detail: its card, its session, and the reply box under it. */
+function AskDetail({
+  ask: selected,
+  snapshot,
+  gaps,
+  client,
+  replies,
+  onDelivered,
+}: {
+  ask: Ask;
+  snapshot: LoadedSnapshot;
+  gaps: Gaps;
+  client: ReturnType<typeof useLab>["client"];
+  replies: number;
+  onDelivered: () => void;
+}) {
+  return (
           <>
             <div className="min-h-0 flex-1 overflow-y-auto px-[34px] py-6">
               <div className="flex max-w-[660px] flex-col gap-[18px]">
                 <Meta className="text-muted-foreground" testId="inbox-detail-head">
-                  {selected.workerId ?? "unknown worker"} asked, in session {selected.sessionId}
+                  {workerLabel(selected.workerId ?? "unknown worker")} asked, in session {selected.sessionId}
                 </Meta>
                 <ScreenTitle scale="detail" testId="inbox-detail-title">
-                  {selected.item.message ?? "(no message)"}
+                  {askHeading(selected)}
                 </ScreenTitle>
+                {selected.item.title && selected.item.message ? <AskBody text={selected.item.message} /> : null}
                 <AskCard ask={selected} titled />
                 <AskSession key={selected.item.suspensionId} ask={selected} reread={replies} />
               </div>
@@ -155,17 +259,129 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
                   ask={selected}
                   snapshot={snapshot}
                   gaps={gaps}
-                  clients={clients}
-                  onDelivered={() => {
-                    setReplies((n) => n + 1);
-                    void refresh();
-                  }}
+                  client={client}
+                  onDelivered={onDelivered}
                 />
               </div>
             </div>
           </>
+  );
+}
+
+/**
+ * A task holding questions: every open one, oldest first, and the task they
+ * hold. One item however many it holds (rule 11). Each is answered here,
+ * through the task's board as the user (FIX-2133): a question with words, a
+ * confirm with a yes or a no.
+ */
+function HeldQuestions({ item }: { item: InboxItem }) {
+  const task = item.task === null ? null : { level: "task" as const, boardRef: item.task.board, taskId: item.task.taskId, tab: "brief" as const };
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto px-[34px] py-6" data-testid="inbox-held">
+      <div className="flex max-w-[660px] flex-col gap-[18px]">
+        {task === null ? null : (
+          <Meta className="text-muted-foreground" testId="inbox-detail-head">
+            {workerLabel(item.task!.assignee ?? "unassigned")} waits on {item.holds.length === 1 ? "your answer" : `${item.holds.length} answers`} to start or go on with{" "}
+            <a href={pathFor(task)} onClick={(e) => (e.preventDefault(), navigate(task))} className="underline" data-testid="inbox-held-task">
+              {item.task!.title}
+            </a>
+          </Meta>
         )}
-      </section>
+        <ol className="flex flex-col gap-3" data-testid="inbox-held-questions">
+          {item.holds.map((hold) => (
+            <li key={hold.id} className="flex flex-col gap-2" data-testid="inbox-held-question" data-question-id={hold.id}>
+              <ScreenTitle scale="detail">{hold.ask.prompt}</ScreenTitle>
+              <HeldAnswer hold={hold} />
+            </li>
+          ))}
+        </ol>
+      </div>
+    </div>
+  );
+}
+
+/** One held question's answer: words for a question, a yes or a no (with a note) for a confirm. */
+function HeldAnswer({ hold }: { hold: InboxHold<unknown> }) {
+  const { answerHold } = useLab();
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  if (!hold.answerable) {
+    return (
+      <p className="text-xs text-muted-foreground" data-testid="inbox-held-unanswerable">
+        {hold.unanswerable}
+      </p>
+    );
+  }
+  const send = async (answer: Parameters<typeof answerHold>[1]) => {
+    setSending(true);
+    setFailure(null);
+    try {
+      await answerHold(hold, answer);
+      setText("");
+    } catch (error) {
+      setFailure(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSending(false);
+    }
+  };
+  const confirm = hold.ask.kind === "confirm";
+  return (
+    <div className="flex flex-col gap-1.5" data-testid="inbox-held-answer">
+      <textarea
+        className="min-h-[56px] w-full border border-foreground/20 bg-card px-2.5 py-1.5 text-sm"
+        placeholder={confirm ? "A note, if you like" : "Your answer"}
+        aria-label={confirm ? `A note for: ${hold.ask.prompt}` : `Answer: ${hold.ask.prompt}`}
+        value={text}
+        disabled={sending}
+        onChange={(event) => setText(event.target.value)}
+        data-testid="inbox-held-answer-text"
+      />
+      <div className="flex gap-2">
+        {confirm ? (
+          <>
+            <button type="button" className="border border-foreground/30 px-3 py-1 text-sm" disabled={sending} onClick={() => void send({ done: true, ...(text.trim() !== "" ? { note: text } : {}) })} data-testid="inbox-held-yes">
+              Yes
+            </button>
+            <button type="button" className="border border-foreground/30 px-3 py-1 text-sm" disabled={sending} onClick={() => void send({ done: false, ...(text.trim() !== "" ? { note: text } : {}) })} data-testid="inbox-held-no">
+              No
+            </button>
+          </>
+        ) : (
+          <button type="button" className="border border-foreground/30 px-3 py-1 text-sm" disabled={sending || text.trim() === ""} onClick={() => void send({ text })} data-testid="inbox-held-send">
+            Answer
+          </button>
+        )}
+      </div>
+      {failure !== null ? (
+        <p className="text-xs text-destructive" role="alert" data-testid="inbox-held-failure">
+          {failure}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * A titled ask's message, under its title: body text drawn from markdown, so
+ * a list of questions is a list and code is code. Headings in it stay body
+ * size; the ask's title is the only heading.
+ */
+const bodyHeading = ({ children }: { children?: ReactNode }) => <p className="font-semibold">{children}</p>;
+const BODY_COMPONENTS = { h1: bodyHeading, h2: bodyHeading, h3: bodyHeading, h4: bodyHeading, h5: bodyHeading, h6: bodyHeading };
+
+function AskBody({ text }: { text: string }) {
+  return (
+    <div
+      className={cn(
+        "text-sm leading-[1.55]",
+        "[&_p]:my-1.5 [&_ul]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1",
+        "[&_code]:bg-foreground/10 [&_code]:px-1 [&_code]:font-mono [&_code]:text-[12.5px]",
+        "[&_pre]:my-1.5 [&_pre]:overflow-x-auto [&_pre]:bg-foreground/10 [&_pre]:p-2.5 [&_pre_code]:bg-transparent [&_pre_code]:px-0",
+      )}
+      data-testid="inbox-detail-body"
+    >
+      <Markdown components={BODY_COMPONENTS}>{text}</Markdown>
     </div>
   );
 }
@@ -188,12 +404,12 @@ type AskSessionRead =
  * ask, so the ask it reads around never changes under it.
  */
 function AskSession({ ask, reread }: { ask: Ask; reread: number }) {
-  const { clients } = useLab();
+  const { client } = useLab();
   const [read, setRead] = useState<AskSessionRead | null>(null);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let live = true;
-    readSessionItems(clients, ask.sessionId).then(
+    readSessionItems(client, ask.sessionId).then(
       (got) => live && setRead({ ok: true, value: askSessionOf(got.items, ask.item), truncated: got.truncated }),
       (error: unknown) => live && setRead({ ok: false, failure: error instanceof RunReadError ? error.failure : describeFailure(error) }),
     );
@@ -201,7 +417,7 @@ function AskSession({ ask, reread }: { ask: Ask; reread: number }) {
       live = false;
     };
     // `ask` is fixed for this component's life (keyed by the ask), so the session is the dependency.
-  }, [clients, ask.sessionId, reread, attempt]);
+  }, [client, ask.sessionId, reread, attempt]);
   if (read === null) {
     return (
       <Meta className="text-muted-foreground" testId="inbox-session-loading">
@@ -269,7 +485,7 @@ function replyRoute(ask: Ask, snapshot: LoadedSnapshot, gaps: Gaps): { blocked: 
   if (ask.flowId === null) return { blocked: ask.unanswerable ?? "This session names no flow to send through." };
   if (!snapshot.inventory.ok) return { blocked: snapshot.inventory.failure.message };
   const door = doorOf(rosterOf(snapshot).workers, ask.flowId);
-  if (door === null) return { blocked: `${ask.workerId ?? ask.flowId} ${gaps.turn.replyNoDoor}` };
+  if (door === null) return { blocked: `${workerLabel(ask.workerId ?? ask.flowId)} ${gaps.turn.replyNoDoor}` };
   return { blocked: null, flowId: ask.flowId, door };
 }
 
@@ -278,13 +494,13 @@ function Reply({
   ask,
   snapshot,
   gaps,
-  clients,
+  client,
   onDelivered,
 }: {
   ask: Ask;
   snapshot: LoadedSnapshot;
   gaps: Gaps;
-  clients: ReturnType<typeof useLab>["clients"];
+  client: ReturnType<typeof useLab>["client"];
   onDelivered: () => void;
 }) {
   const route = replyRoute(ask, snapshot, gaps);
@@ -292,14 +508,14 @@ function Reply({
     <div>
       <TurnComposer
         testId="inbox-reply"
-        label={`Reply to ${ask.workerId ?? "this worker"}`}
-        placeholder={`Reply to ${ask.workerId ?? "this worker"}…`}
+        label={`Reply to ${workerLabel(ask.workerId ?? "this worker")}`}
+        placeholder={`Reply to ${workerLabel(ask.workerId ?? "this worker")}…`}
         blocked={route.blocked}
         send={async (message, held) => {
           // The box is disabled while blocked; a send that got here anyway
           // must not read as delivered.
           if (route.blocked !== null) throw new TurnNotDelivered("refused", route.blocked);
-          return sendTurn(clients, { sessionId: ask.sessionId, flowId: route.flowId, door: route.door }, message, { onHeld: held });
+          return sendTurn(client, { sessionId: ask.sessionId, flowId: route.flowId, door: route.door }, message, { onHeld: held });
         }}
         onHeld={onDelivered}
         onDelivered={onDelivered}

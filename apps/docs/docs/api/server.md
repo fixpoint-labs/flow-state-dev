@@ -19,7 +19,7 @@ import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 
 const flowstate = createFlowState({
   flows: { myFlow },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: inMemoryStores() } },
 });
 ```
@@ -215,17 +215,25 @@ const resolver = createModelResolver();
 // With options:
 const resolver = createModelResolver({
   keys: { openai: "sk-..." },
-  defaultModel: "openai/gpt-5.4-mini",
-  intents: { utility: ["openai/gpt-5.4-mini", "anthropic/claude-haiku-4-5"] },
+  defaultModel: "openai/gpt-6-luna",
+  intents: { utility: ["openai/gpt-6-luna", "anthropic/claude-haiku-5-5"] },
   retryPolicy: { maxAttemptsPerModel: 3 },
 });
 ```
 
-Model strings use slash format: `"openai/gpt-5.4"`, `"anthropic/claude-sonnet-4-6"`, `"vercel/openai/gpt-5.4"`.
+Model strings look like `"openai/gpt-6.1-sol"` or `"anthropic/claude-sonnet-5-5"`. To name the gateway that serves a model, put it before a colon: `"vercel:openai/gpt-6.1-sol"`.
 
 ### `parseModelString(modelString)`
 
-Parse a slash-format model string into its components (provider, model, gateway).
+Split a model string by lane, using the string alone:
+
+```ts
+parseModelString("openai/gpt-6.1-sol");          // { type: "direct", provider: "openai", modelId: "gpt-6.1-sol" }
+parseModelString("vercel:openai/gpt-6.1-sol");   // { type: "alias", alias: "vercel", modelId: "openai/gpt-6.1-sol" }
+parseModelString("intent/chat");             // { type: "intent", intentName: "chat" }
+```
+
+An `alias` result doesn't say whether the name is a gateway or a provider. The resolver decides that from its `providers` and `gateways`. A string with three slash-separated parts throws, naming its colon spelling.
 
 ## Voice
 

@@ -34,7 +34,7 @@ export interface SessionTitleGeneratorConfig {
  * ```ts
  * const titleBlock = sessionTitleGenerator({
  *   name: "auto-title",
- *   model: "openai/gpt-5.4-mini"
+ *   model: "openai/gpt-6-luna"
  * });
  *
  * const pipeline = sequencer({ name: "chat", inputSchema })
@@ -43,7 +43,7 @@ export interface SessionTitleGeneratorConfig {
  * ```
  */
 export function sessionTitleGenerator(config: SessionTitleGeneratorConfig) {
-  const modelId = config.model ?? "openai/gpt-5-nano";
+  const modelId = config.model ?? "openai/gpt-6-luna";
   const messageLimit = config.messageLimit ?? 4;
 
   const titleGenerator = generator({

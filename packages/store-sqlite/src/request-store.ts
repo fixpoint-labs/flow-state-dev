@@ -13,7 +13,8 @@
  * independent of server runtime values.
  */
 import type Database from "better-sqlite3";
-import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
+import type { RequestStreamEvent } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type {
   ConditionalRequestFields,
   ConditionalWriteResult,
@@ -52,6 +53,28 @@ function isTerminalRequestStatus(status: RequestStatus | undefined): boolean {
     status === "aborted" ||
     status === "suspended"
   );
+}
+
+/**
+ * Whether a deferred write found the connection closed, and so is dropped
+ * (FIX-2097). At host shutdown a request the drain cancelled can still emit
+ * after the registry closed the database; its write runs in a microtask with
+ * no caller to reach, so a throw there would be an uncaught exception that
+ * takes the host down. Nothing is left to persist to, so the write is logged
+ * and dropped instead.
+ */
+function droppedAfterClose(
+  db: Database.Database,
+  kind: "items" | "events",
+  requestId: string,
+  count: number
+): boolean {
+  if (db.open) return false;
+  console.warn(
+    `[store-sqlite] dropped ${count} ${kind} for request ${requestId}: ` +
+      `the write arrived after the database closed`
+  );
+  return true;
 }
 
 /**
@@ -216,7 +239,7 @@ export function createSQLiteRequestStore(
   /** Set membership marks a request with a queued (synchronous) item flush. */
   const pendingItemWrites = new Set<string>();
   /** Holds the most recent items so the queued write always uses the latest data. */
-  const latestItemSnapshots = new Map<string, OutputItem[]>();
+  const latestItemSnapshots = new Map<string, RuntimeItem[]>();
   /**
    * Per-request map of item id → the JSON last persisted to `request_items`.
    * Diffing by serialized content (not object reference) keeps persistence
@@ -235,7 +258,7 @@ export function createSQLiteRequestStore(
       "sequence = excluded.sequence, item_type = excluded.item_type, data = excluded.data"
   );
   const writeItemsBatchTxn = db.transaction(
-    (batch: OutputItem[], requestId: string) => {
+    (batch: RuntimeItem[], requestId: string) => {
       for (const item of batch) {
         insertItemStmt.run(
           requestId,
@@ -294,6 +317,8 @@ export function createSQLiteRequestStore(
   const updateStatusDataStmt = db.prepare(
     "UPDATE requests SET status = ?, data = ?, updated_at = ? WHERE id = ?"
   );
+  const selectStatusStmt = db.prepare("SELECT status FROM requests WHERE id = ?");
+  const deleteRequestStmt = db.prepare("DELETE FROM requests WHERE id = ?");
 
   /**
    * The stored abort flag, or `undefined` when the request or the key is
@@ -335,9 +360,9 @@ export function createSQLiteRequestStore(
   }
 
   /** Read all persisted items for a request, ordered by sequence. */
-  function queryItems(requestId: string): OutputItem[] {
+  function queryItems(requestId: string): RuntimeItem[] {
     const rows = selectItemsStmt.all(requestId) as Array<{ data: string }>;
-    return rows.map((r) => JSON.parse(r.data) as OutputItem);
+    return rows.map((r) => JSON.parse(r.data) as RuntimeItem);
   }
 
   /** Forget the per-request item-tracking state (terminal write / delete). */
@@ -360,11 +385,11 @@ export function createSQLiteRequestStore(
    */
   function itemDelta(
     requestId: string,
-    snapshot: OutputItem[]
-  ): { batch: OutputItem[]; persisted: Map<string, string> } {
+    snapshot: RuntimeItem[]
+  ): { batch: RuntimeItem[]; persisted: Map<string, string> } {
     const priorById = lastPersistedItems.get(requestId);
     const persisted = new Map<string, string>();
-    const byId = new Map<string, OutputItem>();
+    const byId = new Map<string, RuntimeItem>();
     for (const item of snapshot) {
       const serialized = JSON.stringify(item);
       persisted.set(item.id, serialized);
@@ -375,7 +400,7 @@ export function createSQLiteRequestStore(
   }
 
   /** Reject an item id past the length bound, before any SQL runs. */
-  function assertItemIds(items: OutputItem[]): void {
+  function assertItemIds(items: RuntimeItem[]): void {
     for (const item of items) {
       if (item.id.length > MAX_ITEM_ID_LENGTH) {
         throw new Error(
@@ -408,7 +433,7 @@ export function createSQLiteRequestStore(
     if (withSource.length === 0) return withSource;
 
     const requestIds = withSource.map((r) => r.id);
-    const byRequestId = new Map<string, OutputItem[]>();
+    const byRequestId = new Map<string, RuntimeItem[]>();
     for (let i = 0; i < requestIds.length; i += SQLITE_MAX_VARIABLE_NUMBER) {
       const chunk = requestIds.slice(i, i + SQLITE_MAX_VARIABLE_NUMBER);
       const placeholders = chunk.map(() => "?").join(", ");
@@ -421,7 +446,7 @@ export function createSQLiteRequestStore(
         .all(...chunk) as Array<{ request_id: string; data: string }>;
       for (const r of rows) {
         const list = byRequestId.get(r.request_id) ?? [];
-        list.push(JSON.parse(r.data) as OutputItem);
+        list.push(JSON.parse(r.data) as RuntimeItem);
         byRequestId.set(r.request_id, list);
       }
     }
@@ -442,7 +467,7 @@ export function createSQLiteRequestStore(
       id: string,
       value: RequestRecord,
       expectedVersion: ExpectedVersion,
-      items: OutputItem[]
+      items: RuntimeItem[]
     ): SetResult<RequestRecord> => {
       const result = base.setSync(id, value, expectedVersion);
       if (result.ok) writeItemsBatchTxn(items, id);
@@ -563,6 +588,35 @@ export function createSQLiteRequestStore(
       await base.delete(id);
     },
 
+    async deleteIfStatus(
+      id: string,
+      allowedStatuses: readonly RequestStatus[]
+    ): Promise<ConditionalWriteResult> {
+      // One IMMEDIATE transaction, for the reason `setFieldsIfStatus` gives:
+      // the status the predicate reads is the status of the row deleted.
+      // Children and record go together, so a failure rolls back all of them.
+      const result = db.transaction((): ConditionalWriteResult => {
+        const row = selectStatusStmt.get(id) as { status: RequestStatus } | undefined;
+        if (row === undefined) return { applied: false, status: undefined };
+        if (!allowedStatuses.includes(row.status)) {
+          return { applied: false, status: row.status };
+        }
+        deleteItemsStmt.run(id);
+        deleteEventsStmt.run(id);
+        deleteRunOnceStmt.run(id);
+        deleteRequestStmt.run(id);
+        return { applied: true, status: row.status };
+      }).immediate();
+      // Synchronous with the transaction, so a `persistItems` or
+      // `persistEvents` microtask queued earlier finds nothing to write, as
+      // in `delete`. A request that failed the predicate keeps its writes.
+      if (result.applied) {
+        clearItemMaps(id);
+        pendingNewEvents.delete(id);
+      }
+      return result;
+    },
+
     async list(options?: RequestListOptions): Promise<RequestRecord[]> {
       if (options?.withItems === true) return listWithItems(options);
 
@@ -572,7 +626,7 @@ export function createSQLiteRequestStore(
       return records.map((r) => withSourceDefault(r) as RequestRecord);
     },
 
-    persistItems(requestId: string, items: OutputItem[]): void {
+    persistItems(requestId: string, items: RuntimeItem[]): void {
       // Merge-by-id (FIX-811): writes are UPSERTs keyed on (request_id, item_id),
       // never a full-set replace — so two `persistItems` calls with disjoint
       // item sets leave `get` returning the ordered union. This is what lets a
@@ -597,6 +651,7 @@ export function createSQLiteRequestStore(
         const snapshot = latestItemSnapshots.get(requestId);
         latestItemSnapshots.delete(requestId);
         if (snapshot === undefined) return;
+        if (droppedAfterClose(db, "items", requestId, snapshot.length)) return;
 
         const { batch, persisted } = itemDelta(requestId, snapshot);
         if (batch.length > 0) writeItemsBatchTxn(batch, requestId);
@@ -629,6 +684,7 @@ export function createSQLiteRequestStore(
         const newEvents = pendingNewEvents.get(requestId) ?? [];
         pendingNewEvents.delete(requestId);
         if (newEvents.length === 0) return;
+        if (droppedAfterClose(db, "events", requestId, newEvents.length)) return;
         // INSERT OR REPLACE handles duplicates by sequence_number.
         insertEventsBatch(newEvents, requestId);
         // Nudge the shared live-tail loop to deliver the just-committed events

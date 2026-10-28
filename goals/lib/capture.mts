@@ -101,8 +101,8 @@ export interface RunFsdevOptions {
    * Set this true only for a goal that shells out to an app expected to run
    * ladder-free. And note the inverse hazard: if the goal ALSO called
    * `stripIntentOverrides()` in-process, the child inherits that stripped parent
-   * env regardless of this flag — snapshot with `captureIntentOverrides()` and
-   * pass it back through `env`.
+   * env regardless of this flag — copy the overrides before the strip and pass
+   * them back through `env`.
    */
   stripIntents?: boolean;
 }
@@ -182,31 +182,4 @@ export function messageText(item: CapturedItem | undefined): string {
       .join(" ");
   }
   return String(content);
-}
-
-/** Every assistant (non-user) message item in the capture. */
-export function assistantMessages(items: CapturedItem[]): CapturedItem[] {
-  return items.filter((item) => item.type === "message" && item.role !== "user");
-}
-
-/** The assistant messages' text, newline-joined. */
-export function assistantText(items: CapturedItem[]): string {
-  return assistantMessages(items).map(messageText).join("\n");
-}
-
-/**
- * The full user-visible answer surface: assistant message text plus the
- * action's returned output. This is what a content assertion should grade —
- * asserting on either alone is what made the first-snapshot bug invisible.
- */
-export function answerText(capture: ParsedCapture): string {
-  return `${assistantText(capture.items)}\n${String(capture.result.output ?? "")}`.trim();
-}
-
-/** The model the assistant generator actually ran on, if the capture records it. */
-export function actualModel(items: CapturedItem[]): string {
-  const found = assistantMessages(items)
-    .map((message) => (message as { model?: { actual?: string } }).model?.actual)
-    .find(Boolean);
-  return found ?? "unknown";
 }

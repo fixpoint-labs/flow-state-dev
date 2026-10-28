@@ -10,6 +10,7 @@
  * whichever backend is underneath.
  *
  *   - `resolve` derives the effective policy + key for a dispatch (pure).
+ *   - `continuationDecision` maps `reject` and `defer` onto the queue budget.
  *   - `admit` takes the dispatch's place before any request record or live
  *     stream is created: for `reject` it claims the key only if it is free and
  *     refuses with `ConcurrencyRejectedError` otherwise (so the dropped caller
@@ -25,11 +26,10 @@
  *     place the backend dropped takes a new one at the back of the line; a
  *     running holder whose place cannot be kept is told to stop (`lost`).
  *
- * Over the in-memory default backend all of this is synchronous where it was
- * before backends existed: a `reject` throws from `dispatch`, and a queued run
- * is woken when the run ahead of it settles. Over an adapter-supplied backend
- * (FIX-1634) admission is asynchronous — a `reject` refusal arrives through the
- * dispatch's `accepted` — and a queued run re-checks its turn on the schedule
+ * Over the in-memory default backend `admit` is synchronous — a `reject`
+ * refusal is thrown from it — and a queued run is woken when the run ahead of
+ * it settles. Over an adapter-supplied backend (FIX-1634) admission is
+ * asynchronous, and a queued run re-checks its turn on the schedule
  * `planQueueWait` sets. An unreachable backend refuses the dispatch; nothing
  * runs unarbitrated.
  *
@@ -144,8 +144,9 @@ export interface ConcurrencyArbiter {
     envelope: DispatchEnvelope
   ): ResolvedDecision;
   /**
-   * Take a dispatch's place on its key. Call at the top of `dispatch`, before
-   * any record/stream is created:
+   * Take a dispatch's place on its key. Call once the caller's ownership of
+   * the session and request id has been checked, and before any record is
+   * created:
    *   - `reject` → claim the key only if it is free; if another request holds
    *     it, refuse with `ConcurrencyRejectedError(key, inFlightRequestId)` (so
    *     no record is created for the dropped caller).
@@ -210,6 +211,17 @@ function resolveKey(key: ConcurrencyKey, envelope: DispatchEnvelope): string | u
   return key(ctx);
 }
 
+
+/**
+ * The place a continuation waits for. `reject` and `defer` use the queue
+ * budget: the request was already admitted, and an unbounded defer wait
+ * would outlast its resume lease.
+ */
+export function continuationDecision(decision: ResolvedDecision): ResolvedDecision {
+  if (decision.key === undefined) return decision;
+  if (decision.policy === "allow" || decision.policy === "hold") return decision;
+  return { policy: "queue", key: decision.key };
+}
 
 /** Whether a value returned by `admit` is still pending. */
 export function isPendingAdmission(
@@ -684,8 +696,9 @@ export function createConcurrencyArbiter(
     if (key === undefined || policy === "allow") return UNARBITRATED;
     if (policy === "defer") return deferredAdmission(key, requestId);
     const input = { key, requestId, ...(policy === "reject" ? { ifEmpty: true } : {}) };
-    // In memory the take is synchronous, so two racing callers can't both win
-    // and a refusal is thrown before `dispatch` returns.
+    // In memory the take is synchronous, so two racing callers can't both win.
+    // The host calls this only after ownership has been checked, so the
+    // refusal thrown here reaches the caller through `accepted` / `finished`.
     if (inMemory !== undefined) return admitted(policy, key, requestId, inMemory.take(input));
     return backend.take(input).then((result) => admitted(policy, key, requestId, result));
   };
@@ -701,7 +714,7 @@ export function createConcurrencyArbiter(
       // name for a `public` dispatch, the adapter's namespaced coordinate for
       // webhook / schedule, the entry name for task / internal. A forged
       // `metadata.webhook` on an HTTP dispatch therefore still resolves the
-      // named action's policy, and a task hand-off whose name collides with a
+      // named action's policy, and a task dispatch whose name collides with a
       // public action never inherits that action's `queue` / `reject` — each
       // reads only its own map.
       // A dynamic schedule has no static coordinate: its core is produced by

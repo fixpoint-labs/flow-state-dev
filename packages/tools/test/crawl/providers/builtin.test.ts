@@ -263,6 +263,7 @@ describe("builtin crawl adapter — network boundary", () => {
       maxDepth: 1,
       includePatterns: [],
       excludePatterns: [],
+      waitForJS: false,
     });
 
     expect(result.pages).toEqual([]);
@@ -293,6 +294,7 @@ describe("builtin crawl adapter — network boundary", () => {
       maxDepth: 2,
       includePatterns: [],
       excludePatterns: [],
+      waitForJS: false,
     });
 
     expect(result.pages.map((p) => p.url)).toEqual(["https://example.com/"]);

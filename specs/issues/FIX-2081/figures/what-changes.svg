@@ -1,0 +1,83 @@
+<svg viewBox="0 0 940 470" role="img" aria-label="Two panels. Today: eleven task tools; addTask, readTask, assignTask, cancelTask, completeTask and failTask leave here, blockTask with FIX-2080, while answerTask and dispatchTask stay for now; and updateTask patches four fields in any state. After: five tools, the filer's createTask, getTask, listTasks and updateTask, with updateTask's three bands: before a task starts, edits, the assignee, hold and release; until it finishes, a cancel; after, nothing; beside them, the worker's fifth, reportProgress, on a task turn. A strip below: who a task can reach. Today the session's delegates, and in a task session anyone on the roster. After, the filer's delegates, or anyone with delegates all; only the user changes the list, unless a coordinator is set to change its own."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .tool  { fill:var(--surface-2); }
+    .keep  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .stay  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1; stroke-dasharray:4 3; }
+    .band  { fill:var(--accent-soft); }
+    .none  { fill:var(--surface-2); }
+    .strike{ stroke:var(--gone); stroke-width:1.4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-m   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; }
+    .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="470"/>
+
+  <g id="today">
+    <rect class="panel" x="16" y="16" width="440" height="300" rx="6"/>
+    <text class="t-lbl" x="32" y="38">TODAY · ELEVEN TASK TOOLS</text>
+    <rect class="tool" x="32" y="52" width="130" height="24" rx="3"/><text class="t-g" x="42" y="68">addTask</text><line class="strike" x1="40" y1="64" x2="100" y2="64"/>
+    <rect class="tool" x="172" y="52" width="130" height="24" rx="3"/><text class="t-g" x="182" y="68">readTask</text><line class="strike" x1="180" y1="64" x2="244" y2="64"/>
+    <rect class="tool" x="312" y="52" width="130" height="24" rx="3"/><text class="t-g" x="322" y="68">assignTask</text><line class="strike" x1="320" y1="64" x2="398" y2="64"/>
+    <rect class="tool" x="32" y="84" width="130" height="24" rx="3"/><text class="t-g" x="42" y="100">cancelTask</text><line class="strike" x1="40" y1="96" x2="118" y2="96"/>
+    <rect class="tool" x="172" y="84" width="130" height="24" rx="3"/><text class="t-g" x="182" y="100">completeTask</text><line class="strike" x1="180" y1="96" x2="272" y2="96"/>
+    <rect class="tool" x="312" y="84" width="130" height="24" rx="3"/><text class="t-g" x="322" y="100">failTask</text><line class="strike" x1="320" y1="96" x2="380" y2="96"/>
+    <rect class="tool" x="32" y="116" width="130" height="24" rx="3"/><text class="t-m" x="42" y="132">blockTask</text>
+    <rect class="tool" x="172" y="116" width="130" height="24" rx="3"/><text class="t-m" x="182" y="132">listTasks</text>
+    <rect class="tool" x="312" y="116" width="130" height="24" rx="3"/><text class="t-m" x="322" y="132">updateTask</text>
+    <rect class="stay" x="32" y="148" width="130" height="24" rx="3"/><text class="t-m" x="42" y="164">answerTask</text>
+    <rect class="stay" x="172" y="148" width="130" height="24" rx="3"/><text class="t-m" x="182" y="164">dispatchTask</text>
+    <text class="t-s" x="32" y="196">struck: removed here · blockTask: FIX-2080</text>
+    <text class="t-s" x="32" y="212">dashed: stays for now · answerTask to FIX-2058,</text>
+    <text class="t-s" x="32" y="228">dispatchTask to FIX-2082 and FIX-2083 (D1)</text>
+    <text class="t-lbl" x="32" y="260">TODAY'S updateTask</text>
+    <text class="t-s" x="32" y="280">priority · metadata · assignee · a label</text>
+    <text class="t-s" x="32" y="296">in any state, a finished task included</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="484" y="16" width="440" height="300" rx="6"/>
+    <text class="t-lbl" x="500" y="38">AFTER · FIVE TASK TOOLS</text>
+    <rect class="keep" x="500" y="52" width="96" height="24" rx="3"/><text class="t-m" x="508" y="68">createTask</text>
+    <rect class="keep" x="604" y="52" width="96" height="24" rx="3"/><text class="t-m" x="612" y="68">getTask</text>
+    <rect class="keep" x="708" y="52" width="96" height="24" rx="3"/><text class="t-m" x="716" y="68">listTasks</text>
+    <rect class="keep" x="812" y="52" width="96" height="24" rx="3"/><text class="t-m" x="820" y="68">updateTask</text>
+    <text class="t-lbl" x="500" y="104">updateTask · ONE RULE PER FIELD</text>
+    <rect class="band" x="500" y="114" width="408" height="56" rx="4"/>
+    <text class="t-b" x="512" y="134">Before it starts</text>
+    <text class="t-s" x="512" y="152">goal, title, context, input, deps, priority, labels,</text>
+    <text class="t-s" x="512" y="165">metadata, assignee, maxAttempts · hold and release</text>
+    <rect class="band" x="500" y="178" width="408" height="44" rx="4"/>
+    <text class="t-b" x="512" y="198">Until it finishes</text>
+    <text class="t-s" x="512" y="214">status: "cancelled" · message is FIX-2086's</text>
+    <rect class="none" x="500" y="230" width="408" height="44" rx="4"/>
+    <text class="t-b" x="512" y="250">After</text>
+    <text class="t-s" x="512" y="266">nothing: a follow-up instead</text>
+    <rect class="keep" x="500" y="282" width="116" height="24" rx="3"/><text class="t-m" x="508" y="298">reportProgress</text>
+    <text class="t-s" x="626" y="292">the worker's, on a task turn only</text>
+    <text class="t-s" x="626" y="306">the filer's four are screen actions, as the user</text>
+  </g>
+
+  <g id="reach">
+    <rect class="panel" x="16" y="332" width="908" height="122" rx="6"/>
+    <text class="t-lbl" x="32" y="354">WHO A TASK CAN REACH</text>
+    <text class="t-b" x="32" y="380">Today</text>
+    <text class="t-s" x="32" y="398">the session's delegates · in a task session, anyone</text>
+    <text class="t-s" x="32" y="412">on the roster · any coordinator edits its own list</text>
+    <text class="t-b" x="484" y="380">After</text>
+    <text class="t-s" x="484" y="398">the filer's delegates, or the roster with delegates: all</text>
+    <text class="t-s" x="484" y="412">only the user changes the list, unless editsOwnDelegates</text>
+    <text class="t-s" x="484" y="436">a worker's step for itself is a plan row (FIX-2076)</text>
+  </g>
+</svg>

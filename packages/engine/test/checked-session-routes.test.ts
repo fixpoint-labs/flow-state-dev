@@ -29,6 +29,9 @@ import {
   disposeFlowApiRouter
 } from "../src";
 import type { RequestRecord, SessionRecord, StoreRegistry } from "../src";
+import { routeSubject } from "../src/routes/route-auth";
+import { listFlowRoutes, matchFlowRoute } from "../src/routes/router";
+import { resourceScopeIds, toIsolationFlow } from "../src/stores/scope-keys";
 
 const ORG = "org_test";
 const SESSION = "sess_shared";
@@ -39,6 +42,20 @@ const notes = defineResourceCollection({
   stateSchema: z.object({ title: z.string().default("") }),
   client: {
     content: { read: true, create: true, update: true, delete: true },
+    state: { read: true }
+  }
+});
+
+/**
+ * Kept per user, so a route that reads it under mallory's session reads her
+ * rows, not alice's, even though both sessions sit at the same id.
+ */
+const prefs = defineResourceCollection({
+  scope: "user",
+  pattern: "prefs/*",
+  stateSchema: z.object({ title: z.string().default("") }),
+  client: {
+    content: { read: true, create: true },
     state: { read: true }
   }
 });
@@ -55,7 +72,7 @@ function build(authenticated: boolean) {
     kind: "guarded",
     actions: {
       run: {
-        block: handler({ name: "guarded-run", resources: { notes, doc }, execute: () => ({}) })
+        block: handler({ name: "guarded-run", resources: { notes, doc, prefs }, execute: () => ({}) })
       }
     },
     ...(authenticated
@@ -72,9 +89,16 @@ function build(authenticated: boolean) {
   const registry = createFlowRegistry();
   registry.register(flow);
   const stores = createInMemoryStores();
-  const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
+  const router = createFlowApiRouter({
+    registry,
+    stores,
+    staleSweepIntervalMs: 0,
+    // Debug routes are in the compare; call() sends no Origin.
+    debugEndpointsEnabled: true,
+    debugAllowAnonymousLocal: true
+  });
   routers.push(router);
-  return { router, stores };
+  return { router, stores, flow };
 }
 
 const routers: ReturnType<typeof createFlowApiRouter>[] = [];
@@ -120,11 +144,12 @@ function call(
   router: ReturnType<typeof createFlowApiRouter>,
   method: "GET" | "POST" | "PATCH" | "DELETE",
   path: string[],
-  body?: unknown
+  body?: unknown,
+  user = "alice"
 ): Promise<Response> {
   const init: RequestInit = {
     method,
-    headers: { "content-type": "application/json", "x-user": "alice" },
+    headers: { "content-type": "application/json", "x-user": user },
     ...(body === undefined ? {} : { body: JSON.stringify(body) })
   };
   const request = new Request(`http://localhost/api/flows/${path.join("/")}`, init);
@@ -141,6 +166,7 @@ type RouteCase = {
 };
 
 const ROUTES: RouteCase[] = [
+  { name: "get_session", method: "GET", path: ["sessions", SESSION], okStatus: 200 },
   { name: "delete_session", method: "DELETE", path: ["sessions", SESSION], okStatus: 204 },
   { name: "list_session_children", method: "GET", path: ["sessions", SESSION, "children"], okStatus: 200 },
   { name: "list_session_requests", method: "GET", path: ["sessions", SESSION, "requests"], okStatus: 200 },
@@ -175,8 +201,101 @@ const ROUTES: RouteCase[] = [
     method: "DELETE",
     path: ["sessions", SESSION, "resources", "notes", "n1"],
     okStatus: 200
+  },
+  {
+    name: "patch_session_metadata",
+    method: "PATCH",
+    path: ["sessions", SESSION, "metadata"],
+    body: { title: "alice's title" },
+    okStatus: 200
+  },
+  { name: "get_session_state", method: "GET", path: ["sessions", SESSION, "state"], okStatus: 200 },
+  { name: "session_stream", method: "GET", path: ["sessions", SESSION, "stream"], okStatus: 200 },
+  {
+    name: "list_collection_state",
+    method: "GET",
+    path: ["sessions", SESSION, "resources", "notes"],
+    okStatus: 200
+  },
+  {
+    name: "get_collection_item_state",
+    method: "GET",
+    path: ["sessions", SESSION, "resources", "notes", "n1"],
+    okStatus: 200
+  },
+  { name: "get_resource_manifest", method: "GET", path: ["sessions", SESSION, "manifest"], okStatus: 200 },
+  {
+    name: "debug_list_resources",
+    method: "GET",
+    path: ["sessions", SESSION, "debug", "resources"],
+    okStatus: 200
+  },
+  {
+    name: "debug_list_suspensions",
+    method: "GET",
+    path: ["sessions", SESSION, "debug", "suspensions"],
+    okStatus: 200
+  },
+  {
+    name: "debug_list_collection_items",
+    method: "GET",
+    path: ["sessions", SESSION, "debug", "resources", "notes", "items"],
+    okStatus: 200
+  },
+  {
+    name: "debug_get_resource_content",
+    method: "GET",
+    path: ["sessions", SESSION, "debug", "resources", "doc", "content"],
+    okStatus: 200
+  },
+  {
+    name: "debug_get_collection_item_content",
+    method: "GET",
+    path: ["sessions", SESSION, "debug", "resources", "notes", "n1", "content"],
+    okStatus: 200
   }
 ];
+
+function sessionAddressedRouteKinds(): string[] {
+  const kinds = new Set<string>();
+  for (const route of listFlowRoutes()) {
+    const sample = route.pattern.replace(/[:*](\w+)/g, (_, name: string) => `sample-${name}`);
+    const parsed = matchFlowRoute(route.method, sample);
+    if (parsed.kind !== route.kind) {
+      throw new Error(`sample path for ${route.method} ${route.pattern} parsed as "${parsed.kind}"`);
+    }
+    if (routeSubject(parsed).kind === "session") kinds.add(route.kind);
+  }
+  return [...kinds].sort();
+}
+
+const SESSION_ADDRESSED_ROUTE_KINDS = sessionAddressedRouteKinds();
+
+describe("every session-addressed route is held to the compare", () => {
+  it("finds the session-addressed routes from the guard's classification", () => {
+    // Guards the derivation itself: an empty set would pass the check below.
+    expect(SESSION_ADDRESSED_ROUTE_KINDS.length).toBeGreaterThan(0);
+  });
+
+  it("has a row for every route the guard classifies as session-addressed", () => {
+    const covered = new Set(ROUTES.map((route) => route.name));
+    const missing = SESSION_ADDRESSED_ROUTE_KINDS.filter((kind) => !covered.has(kind));
+    expect(missing, "session-addressed routes with no row in ROUTES").toEqual([]);
+  });
+
+  it("calls the route each row is named for", () => {
+    const misnamed = ROUTES.filter(
+      (route) => matchFlowRoute(route.method, `/${route.path.join("/")}`).kind !== route.name
+    ).map((route) => route.name);
+    expect(misnamed, "rows whose path reaches another route").toEqual([]);
+  });
+
+  it("has no row for a route that is not session-addressed", () => {
+    const kinds = new Set(SESSION_ADDRESSED_ROUTE_KINDS);
+    const stale = ROUTES.map((route) => route.name).filter((name) => !kinds.has(name));
+    expect(stale, "rows for routes the guard does not treat as session-addressed").toEqual([]);
+  });
+});
 
 /**
  * Alice's session with one note in it, written through the route as she
@@ -197,6 +316,8 @@ async function seed(router: ReturnType<typeof createFlowApiRouter>, stores: Stor
     content: "alice's note"
   });
   expect(created.status).toBe(201);
+  // The debug content read serves stored bytes, not doc's declared default.
+  await stores.content.set("session", SESSION, "doc", "alice's doc");
   // No session at the id, but the note stays under it, so a route that read
   // the session arriving there has an item to serve.
   if (owner === "none") await stores.session.delete(SESSION);
@@ -206,14 +327,15 @@ async function seed(router: ReturnType<typeof createFlowApiRouter>, stores: Stor
  * Once the guard has read the session at `SESSION` (alice's, or none), the
  * id is mallory's before the handler reads it.
  */
-function handIdToMallory(stores: StoreRegistry): { changed: () => boolean } {
+function handIdToMallory(stores: StoreRegistry, afterReads = 1): { changed: () => boolean } {
   const get = stores.session.get.bind(stores.session);
   const set = stores.session.set.bind(stores.session);
   const remove = stores.session.delete.bind(stores.session);
   let changed = false;
+  let reads = 0;
   vi.spyOn(stores.session, "get").mockImplementation(async (id) => {
     const found = await get(id);
-    if (!changed && id === SESSION) {
+    if (!changed && id === SESSION && ++reads === afterReads) {
       changed = true;
       if (found !== undefined) await remove(id);
       await set(id, sessionOf("mallory", Date.now()), "absent");
@@ -222,6 +344,57 @@ function handIdToMallory(stores: StoreRegistry): { changed: () => boolean } {
   });
   return { changed: () => changed };
 }
+
+/**
+ * Routes that go on to read the session's resources after their checked read.
+ * `leak` is what the response shows of mallory's row when it served it; by
+ * default her row's own text, for the routes that show only a count, the
+ * count of a collection alice never wrote to.
+ */
+const LATE_ROUTES: (Pick<RouteCase, "name" | "path"> & { leak?: RegExp })[] = [
+  { name: "get_session_state", path: ["sessions", SESSION, "state"], leak: /"prefs":\{"count":1\}/ },
+  { name: "list_collection_state", path: ["sessions", SESSION, "resources", "prefs"] },
+  { name: "get_collection_item_state", path: ["sessions", SESSION, "resources", "prefs", "p1"] },
+  {
+    name: "get_collection_item_content",
+    path: ["sessions", SESSION, "resources", "prefs", "p1", "content"]
+  },
+  {
+    name: "debug_list_resources",
+    path: ["sessions", SESSION, "debug", "resources"],
+    leak: /"primaryName":"prefs"[^}]*"itemCount":1[,}]/
+  },
+  {
+    name: "debug_list_collection_items",
+    path: ["sessions", SESSION, "debug", "resources", "prefs", "items"]
+  },
+  {
+    name: "debug_get_collection_item_content",
+    path: ["sessions", SESSION, "debug", "resources", "prefs", "p1", "content"]
+  }
+];
+
+describe("a session route reads resources under the session it checked, not one read again", () => {
+  // The guard and the handler both read alice's session; the id is mallory's
+  // from the read after. A route that reads the session a third time to find
+  // its user rows reads mallory's.
+  for (const route of LATE_ROUTES) {
+    it(`${route.name} serves none of the user rows of a session that took the id later`, async () => {
+      const { router, stores, flow } = build(true);
+      await seed(router, stores, "alice");
+      // Mallory's own row in this flow's user scope, where her runs write it.
+      for (const id of resourceScopeIds({ userId: "mallory", orgId: ORG }, toIsolationFlow(flow), "user")) {
+        await stores.resourceState.set("user", id, "prefs/p1", { title: "mallory's pref" }, "any");
+        await stores.content.set("user", id, "prefs/p1", "mallory's pref");
+      }
+      handIdToMallory(stores, 2);
+
+      const res = await call(router, "GET", route.path);
+
+      expect(await res.text()).not.toMatch(route.leak ?? /mallory's pref/);
+    });
+  }
+});
 
 describe("a session route acts only on the session the owner check admitted the caller to", () => {
   for (const scenario of ["taken", "arrived"] as const) {
@@ -246,6 +419,7 @@ describe("a session route acts only on the session the owner check admitted the 
             // Nothing of mallory's session reached alice.
             expect(text).not.toContain("req_mallory");
             expect(text).not.toContain("child_mallory");
+            expect(text).not.toContain('"mallory"');
             vi.restoreAllMocks();
             // Mallory's session is still hers, and its content as it was.
             const held = await stores.session.get(SESSION);
@@ -265,7 +439,15 @@ describe("a session route acts only on the session the owner check admitted the 
       const { router, stores } = build(true);
       await seed(router, stores, "alice");
       const res = await call(router, route.method, route.path, route.body);
-      expect(res.status).toBe(route.okStatus);
+      try {
+        expect(res.status).toBe(route.okStatus);
+      } finally {
+        // The stream route answers with an open stream whose loop polls the
+        // stores until the reader goes away; disposing the router does not
+        // stop it. Cancelling the unread body ends it, and is a no-op for
+        // every other route.
+        await res.body?.cancel();
+      }
     });
   }
 
@@ -276,7 +458,15 @@ describe("a session route acts only on the session the owner check admitted the 
       const { router, stores } = build(false);
       await seed(router, stores, "alice");
       const res = await call(router, route.method, route.path, route.body);
-      expect(res.status).toBe(route.okStatus);
+      try {
+        expect(res.status).toBe(route.okStatus);
+      } finally {
+        // The stream route answers with an open stream whose loop polls the
+        // stores until the reader goes away; disposing the router does not
+        // stop it. Cancelling the unread body ends it, and is a no-op for
+        // every other route.
+        await res.body?.cancel();
+      }
     });
   }
 });

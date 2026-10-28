@@ -24,14 +24,12 @@ import { describe, expect, it } from "vitest";
 import {
   createStateBackedTaskCollection,
   DEFAULT_LEASE_DURATION_MS,
+  ticketForClaim,
   type TaskCollectionRef,
 } from "../../src/tasks";
 import { boardQuiescence, type BoardQuiescence } from "../../src/task-board/quiescence";
 import { whenBoardClaimable } from "../../src/task-board/predicates";
-import {
-  handedOffTaskPredicate,
-  type HandOffAssignee,
-} from "../../src/task-board/hand-off";
+import { runsElsewhereFor } from "../../src/task-board/board-mode";
 import { createFakeSequencerState } from "../helpers";
 
 type OnIdle = "wait" | "complete" | "complete-or-blocked";
@@ -43,9 +41,36 @@ type OnIdle = "wait" | "complete" | "complete-or-blocked";
  */
 const BOARD_NOW = 1000;
 
+/**
+ * Claim row `id` and leave it waiting on a person (FIX-2131), the two ways a
+ * running row does: held on a question it asked (a row hold, its lease
+ * dropped), or its run stopped for the user's review (the mirror of that stop,
+ * a suspension hold, no lease). Neither deadline is set.
+ */
+async function waitOnPerson(collection: TaskCollectionRef, id: string, how: "question" | "review"): Promise<void> {
+  const claimed = await collection.claim("w1", { eligibility: (task) => task.id === id });
+  const claim = ticketForClaim(collection.collectionId, claimed!);
+  if (how === "question") {
+    expect(await collection.ask!(id, [{ kind: "question", prompt: "Which region?" }], { claim })).toMatchObject({ outcome: "recorded" });
+    return;
+  }
+  expect(
+    await collection.setWaitingOn!(id, "wait", {
+      claim,
+      hold: {
+        id: `s-${id}`,
+        actor: "user",
+        openedAt: BOARD_NOW,
+        source: { kind: "suspension", requestId: `r-${id}`, suspensionId: `s-${id}` },
+        ask: { kind: "review", prompt: "Does this draft read right?" },
+      },
+    }),
+  ).toMatchObject({ outcome: "recorded" });
+}
+
 /** A collection in one of the board states the classifier discriminates. */
 async function collectionInState(
-  state: "empty" | "claimable" | "working" | "parked" | "dep-blocked" | "settled"
+  state: "empty" | "claimable" | "working" | "held" | "review" | "dep-blocked" | "settled"
 ): Promise<TaskCollectionRef> {
   const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({
     tasks: {},
@@ -66,18 +91,18 @@ async function collectionInState(
       await collection.addTask({ id: "a", goal: "a" });
       await collection.claim("w1");
       break;
-    case "parked":
+    case "held":
+    case "review":
       await collection.addTask({ id: "a", goal: "a" });
-      await collection.claim("w1");
-      await collection.awaitReview("a");
+      await waitOnPerson(collection, "a", state === "held" ? "question" : "review");
       break;
     case "dep-blocked":
-      // `pending` forever: its dep is errored, so it can never be claimed and
-      // no worker is in flight. The state the `blocked` verdict exists for.
-      await collection.addTask({ id: "dep", goal: "dep" });
+      // `pending` until something releases its dep: the dep is held, so
+      // neither can be claimed and no worker is in flight. The state the
+      // `blocked` verdict exists for. (A dep that failed no longer leaves one:
+      // the board cancels its dependents, FIX-2080.)
+      await collection.addTask({ id: "dep", goal: "dep", held: true });
       await collection.addTask({ id: "a", goal: "a", deps: ["dep"] });
-      await collection.claim("w1");
-      await collection.fail("dep", "boom");
       break;
     case "settled":
       await collection.addTask({ id: "a", goal: "a" });
@@ -110,12 +135,18 @@ const rows: Row[] = [
   { state: "empty", onIdle: "complete", verdict: "drained", wakes: true },
   { state: "empty", onIdle: "complete-or-blocked", verdict: "drained", wakes: true },
 
-  // --- A sibling is working, or a task is parked for review: keep waiting,
-  // --- and stay asleep. This is the abandonment-fix path for `parked`.
+  // --- A sibling is working: keep waiting, and stay asleep.
   { state: "working", onIdle: "complete", verdict: "continue", wakes: false },
   { state: "working", onIdle: "complete-or-blocked", verdict: "continue", wakes: false },
-  { state: "parked", onIdle: "complete", verdict: "continue", wakes: false },
-  { state: "parked", onIdle: "complete-or-blocked", verdict: "continue", wakes: false },
+
+  // --- A row waits on a person, on a question or a review (FIX-2131): in
+  // --- flight, so never drained, but no active worker, so `complete-or-blocked`
+  // --- calls it `blocked` on its first idle pass rather than spinning, and the
+  // --- wake test stirs a sleeping worker into that exit.
+  { state: "held", onIdle: "complete", verdict: "continue", wakes: false },
+  { state: "held", onIdle: "complete-or-blocked", verdict: "blocked", wakes: true },
+  { state: "review", onIdle: "complete", verdict: "continue", wakes: false },
+  { state: "review", onIdle: "complete-or-blocked", verdict: "blocked", wakes: true },
 
   // --- Dep-blocked: `complete-or-blocked` calls it, `complete` waits on an
   // --- external pump (its documented legacy behaviour).
@@ -191,7 +222,7 @@ async function boardWithRows(
     id: string;
     assignee?: string;
     /** Omitted leaves the row `pending`. */
-    drive?: "claim" | "park";
+    drive?: "claim" | "question" | "review";
   }[],
   /**
    * Where the collection's clock sits when the classifier reads it. Defaults to
@@ -218,8 +249,8 @@ async function boardWithRows(
   }
   for (const spec of specs) {
     if (spec.drive === undefined) continue;
-    await collection.claim("w1", { eligibility: (task) => task.id === spec.id });
-    if (spec.drive === "park") await collection.awaitReview(spec.id);
+    if (spec.drive === "claim") await collection.claim("w1", { eligibility: (task) => task.id === spec.id });
+    else await waitOnPerson(collection, spec.id, spec.drive);
   }
   now = readAt();
   return collection;
@@ -241,7 +272,7 @@ const AFTER_EVERY_LEASE = () => BOARD_NOW + DEFAULT_LEASE_DURATION_MS + 1;
  * point, silently undone by the exit question.
  *
  * Every case asserts BOTH consumers, for the reason this file exists: the exit
- * check and the wake test drifted apart once already, and a hand-off honoured
+ * check and the wake test drifted apart once already, and a dispatch honoured
  * by only one of them puts a worker to sleep on a board the other calls
  * drained.
  *
@@ -252,8 +283,8 @@ const AFTER_EVERY_LEASE = () => BOARD_NOW + DEFAULT_LEASE_DURATION_MS + 1;
  */
 describe("boardQuiescence - work handed to a child session", () => {
   const onIdles: OnIdle[] = ["complete", "complete-or-blocked"];
-  /** Stands in for a board whose only assignee hands off. */
-  const allHandedOff = () => true;
+  /** Stands in for a board whose only assignee dispatches. */
+  const allDispatched = () => true;
 
   it.each(onIdles)(
     "onIdle %s: an inline in-progress row still holds the drain open",
@@ -272,7 +303,7 @@ describe("boardQuiescence - work handed to a child session", () => {
     "onIdle %s: the same row drains once it is running elsewhere",
     async (onIdle) => {
       const collection = await boardWithRows([{ id: "a", drive: "claim" }]);
-      const options = { onIdle, runsElsewhere: allHandedOff };
+      const options = { onIdle, runsElsewhere: allDispatched };
 
       // The fix, stated against the control above: one declaration flips the
       // identical board state from "keep waiting" to "nothing left for me".
@@ -285,7 +316,7 @@ describe("boardQuiescence - work handed to a child session", () => {
   it.each(onIdles)(
     "onIdle %s: an inline sibling still holds a mixed board open",
     async (onIdle) => {
-      // A registry board where one assignee hands off and one does not. The
+      // A registry board where one assignee dispatches and one does not. The
       // exclusion has to be per-row, not per-board.
       const collection = await boardWithRows([
         { id: "bg", assignee: "background", drive: "claim" },
@@ -302,13 +333,13 @@ describe("boardQuiescence - work handed to a child session", () => {
   );
 
   it.each(onIdles)(
-    "onIdle %s: a pending handed-off row is still this drain's work to dispatch",
+    "onIdle %s: a pending dispatched row is still this drain's work to dispatch",
     async (onIdle) => {
       // The exclusion reaches `in_progress` only. A drain that dropped pending
-      // handed-off rows would exit before dispatching them — the feature inverted
+      // dispatched rows would exit before dispatching them — the feature inverted
       // into a board that silently runs nothing.
       const collection = await boardWithRows([{ id: "a" }]);
-      const options = { onIdle, runsElsewhere: allHandedOff };
+      const options = { onIdle, runsElsewhere: allDispatched };
 
       expect(boardQuiescence(collection, options)).toBe("continue");
       // ...and it is claimable, so a sleeping worker must be stirred to spawn it.
@@ -316,25 +347,31 @@ describe("boardQuiescence - work handed to a child session", () => {
     }
   );
 
-  it("keeps a parked handed-off row holding the drain, and says so on purpose", async () => {
-    // A documented bound, not an oversight: `parked` waits on an
-    // external actor whichever way the row was dispatched, so it is left alone.
-    // Pinned here so removing the limit is a deliberate edit to this line
-    // rather than a silent widening of the exclusion.
-    const collection = await boardWithRows([{ id: "a", drive: "park" }]);
-    const options = { onIdle: "complete-or-blocked" as OnIdle, runsElsewhere: allHandedOff };
+  it("reports a plan board whose only open rows wait on a person blocked, leaving both rows as they were (FIX-2131)", async () => {
+    // A row waiting on a person is in flight, so the board isn't drained. It
+    // is no active worker either, so the board stops `blocked` on its first
+    // idle pass, far under its iteration limit, which with no deadline on
+    // either wait it would never leave by spinning.
+    const collection = await boardWithRows([
+      { id: "asks", drive: "question" },
+      { id: "reviewed", drive: "review" },
+    ]);
+    const before = collection.list().map((row) => ({ id: row.id, status: row.status, holds: row.holds }));
+    const options = { onIdle: "complete-or-blocked" as OnIdle };
 
-    expect(boardQuiescence(collection, options)).toBe("continue");
+    expect(boardQuiescence(collection, options)).toBe("blocked");
+    expect(whenBoardClaimable(collection, options)([])).toBe(true);
+    expect(collection.list().map((row) => ({ id: row.id, status: row.status, holds: row.holds }))).toEqual(before);
   });
 
   it.each(onIdles)(
-    "onIdle %s: a handed-off row nobody is holding any more is this drain's work again",
+    "onIdle %s: a dispatched row nobody is holding any more is this drain's work again",
     async (onIdle) => {
       // The exclusion is "running elsewhere", and `runsElsewhere` alone cannot
       // say that: it reads the board's declarations and the row's assignee, and
       // both are just as true of a row NOBODY is running. A claimant that died
       // between `claim()` and the child's first breath leaves exactly this row
-      // — `in_progress`, handed-off assignee, no worker anywhere — and so does a
+      // — `in_progress`, dispatched assignee, no worker anywhere — and so does a
       // child that was accepted and then died.
       //
       // What it costs is the worker loop's exit: `claimTask` runs before
@@ -344,9 +381,9 @@ describe("boardQuiescence - work handed to a child session", () => {
       // circle back and reclaim it. The board reports `drained` holding a
       // claimed row nothing will settle.
       //
-      // No persisted "the hand-off was accepted" mark distinguishes those
+      // No persisted "the dispatch was accepted" mark distinguishes those
       // states, whichever side of the spawn it is written on: before, and it is
-      // present for a hand-off that never happened; after, and a crash between
+      // present for a dispatch that never happened; after, and a crash between
       // acceptance and the write leaves it absent for one that did — and it
       // says nothing at all about a child that started and then died. The lease
       // is the fact that EXPIRES, so it is the one that can answer.
@@ -354,7 +391,7 @@ describe("boardQuiescence - work handed to a child session", () => {
         [{ id: "a", drive: "claim" }],
         AFTER_EVERY_LEASE
       );
-      const options = { onIdle, runsElsewhere: allHandedOff };
+      const options = { onIdle, runsElsewhere: allDispatched };
 
       expect(boardQuiescence(collection, options)).toBe("continue");
       // ...and it is reclaimable, so the sleeper must be stirred to take it —
@@ -365,7 +402,7 @@ describe("boardQuiescence - work handed to a child session", () => {
     }
   );
 
-  it("does not report a handed-off board as blocked", async () => {
+  it("does not report a dispatched board as blocked", async () => {
     // `blocked` means "nothing is producing state changes and nothing can be
     // claimed". A board whose only remaining row is running in a child session is
     // drained from this drain's side, and `drained` dominates — reporting
@@ -375,52 +412,27 @@ describe("boardQuiescence - work handed to a child session", () => {
     expect(
       boardQuiescence(collection, {
         onIdle: "complete-or-blocked",
-        runsElsewhere: allHandedOff,
+        runsElsewhere: allDispatched,
       })
     ).toBe("drained");
   });
 });
 
 /**
- * How a board decides which of its rows a child session is running.
- *
- * Resolution has to mirror the child's own gate — a declared assignee, else
- * the floor — or the drain and the child disagree about which assignee a row
- * belongs to.
+ * How a board decides which of its rows another session is running: its
+ * declared mode (FIX-2076), not its assignees. A delegation board excuses every
+ * running row while the lease holds; a plan board excuses none.
  */
-describe("handedOffTaskPredicate", () => {
-  const assignee = (name: string): HandOffAssignee => ({
-    name,
-    kind: "named",
-    label: `assignee:${name}`,
-    dispatch: { type: "task", action: "t", session: "per-task" },
+describe("runsElsewhereFor", () => {
+  it("is absent for a plan board, which waits on every row", () => {
+    // Absence is what keeps every plan board on the `count()` path.
+    expect(runsElsewhereFor("plan")).toBeUndefined();
   });
 
-  it("is absent for a board with no dispatcher assignee", () => {
-    // Absence is what keeps every existing board on the `count()` path — the
-    // classifier's answer for them is bit-for-bit unchanged.
-    expect(handedOffTaskPredicate([])).toBeUndefined();
-  });
-
-  it("separates a handed-off assignee from an inline one", () => {
-    const predicate = handedOffTaskPredicate([assignee("background")])!;
+  it("excuses every row of a delegation board, whatever its assignee", () => {
+    const predicate = runsElsewhereFor("delegation")!;
     expect(predicate({ assignee: "background" } as never)).toBe(true);
-    expect(predicate({ assignee: "inline" } as never)).toBe(false);
-  });
-
-  it("never hands an undeclared assignee off — only a named assignee can", () => {
-    // The floor and the uniform assignee cannot hand off (the board refuses a
-    // dispatcher there), so an unrouted row is always this drain's.
-    const predicate = handedOffTaskPredicate([assignee("background")])!;
-    expect(predicate({ assignee: "unknown" } as never)).toBe(false);
-    expect(predicate({} as never)).toBe(false);
-    expect(predicate({ assignee: "background" } as never)).toBe(true);
-  });
-
-  it("does not resolve an inherited Object.prototype member as an assignee", () => {
-    // `assignee` reaches the board from a model-facing tool, so a bare index
-    // would route `"constructor"` at a declared assignee that does not exist.
-    const predicate = handedOffTaskPredicate([assignee("background")])!;
-    expect(predicate({ assignee: "constructor" } as never)).toBe(false);
+    expect(predicate({ assignee: "constructor" } as never)).toBe(true);
+    expect(predicate({} as never)).toBe(true);
   });
 });

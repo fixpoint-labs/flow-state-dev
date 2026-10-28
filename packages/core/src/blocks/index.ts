@@ -4,11 +4,12 @@ export { evaluator, choice, score, boolean, assertEvaluatorBlock } from "./evalu
 export type { EvaluatorConfig, EvaluatorDefinition, EvaluatorOutputSchema, EvaluatorQuestionsSlot, EvaluatorSlotNames } from "./evaluator";
 export { sequencer } from "./sequencer";
 export { router } from "./router";
-export { dispatcher, dispatchHandleSchema } from "./dispatcher";
+export { dispatcher, dispatchHandleSchema, dispatchWaitResultSchema } from "./dispatcher";
 
 export type { HandlerConfig } from "./handler";
 export type {
   DispatchHandle,
+  DispatchWaitResult,
   DispatcherConfig,
   DispatcherSession,
   InternalDispatcherConfig,

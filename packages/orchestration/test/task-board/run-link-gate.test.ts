@@ -20,7 +20,7 @@
  *   settles the attempt as a gate failure. The row goes back for retry still
  *   naming this run, and the retry's claim clears it.
  *
- * The end-to-end hand-off (real drain, real child sessions, every assignee policy)
+ * The end-to-end dispatch (real drain, real child sessions, every assignee policy)
  * is `integration-tests/src/scenarios/task-board-run-link.test.ts`.
  */
 import { describe, expect, it } from "vitest";
@@ -65,7 +65,7 @@ async function harness(fault: Fault) {
       claimIdentity: { sessionId: "s_parent", requestId: "req_parent" },
     });
 
-  // The parent's side: one row, claimed, as a drain leaves it before hand-off.
+  // The parent's side: one row, claimed, as a drain leaves it before dispatch.
   const parent = await ledger();
   // Two attempts, so a gate failure the rescue settles goes back for retry
   // rather than ending the row.
@@ -175,7 +175,7 @@ describe("the claim gate writes the run link", () => {
     const row = await h.row();
     // From the run's own context — not the claiming parent's coordinate,
     // which the row also carries and which must not leak into the link.
-    expect(row?.run).toEqual({ sessionId: "s_run", requestId: result.requestId, attempt: 1 });
+    expect(row?.run).toEqual({ sessionId: "s_run", requestId: result.requestId, attempt: 1, startedAt: expect.any(Number) });
     expect(h.events[0]?.task.claimedBy?.sessionId).toBe("s_parent");
     // Written before the worker, so the settlement comes after it.
     const kinds = h.events.map((e) => e.kind);
@@ -227,7 +227,7 @@ describe("the claim gate writes the run link", () => {
     // The link is true: it names the run the attempt entered, and that run's
     // request reads failed, which is where a reader would look to see why.
     const row = await h.row();
-    expect(row?.run).toEqual({ sessionId: "s_run", requestId: result.requestId, attempt: 1 });
+    expect(row?.run).toEqual({ sessionId: "s_run", requestId: result.requestId, attempt: 1, startedAt: expect.any(Number) });
     expect(row?.status).toBe("in_progress");
     const request = await h.stores.request.get(result.requestId!);
     expect(request?.status).toBe("failed");
@@ -254,7 +254,7 @@ describe("the claim gate writes the run link", () => {
     const row = await h.row();
     expect(row?.status).toBe("pending");
     expect(row?.feedback).toMatch(/claim state could not be saved/);
-    expect(row?.run).toEqual({ sessionId: "s_run", requestId: result.requestId, attempt: 1 });
+    expect(row?.run).toEqual({ sessionId: "s_run", requestId: result.requestId, attempt: 1, startedAt: expect.any(Number) });
     const request = await h.stores.request.get(result.requestId!);
     expect(request?.status).toBe("failed");
 

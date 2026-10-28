@@ -6,8 +6,8 @@ import hello from "./flows/hello/flow.mts";
 
 const modelResolver = createModelResolver({
   providers: { openai },
-  defaultModel: "openai/gpt-5.4-mini",
-  intents: { chat: ["openai/gpt-5.4-mini"] },
+  defaultModel: "openai/gpt-6-luna",
+  intents: { chat: ["openai/gpt-6-luna"] },
 });
 
 export default createFlowState({

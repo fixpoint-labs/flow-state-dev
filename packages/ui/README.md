@@ -35,7 +35,8 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `conversation` | Container for message threads with auto-scroll |
 | `message` | Individual message display with streaming markdown |
 | `reasoning` | Expandable reasoning/thinking display with streaming |
-| `tool` | Rich tool invocation display with args, result, status, plus `ToolGroup` for Claude-Code-style grouping of consecutive calls |
+| `tool` | Tool calls as one-line rows that open to args, result and metadata; `ToolGroup` folds a run of consecutive calls and reasoning into one line that opens to every step in order |
+| `tool-naming` | Pure `toolSubject` and `toolIntent` helpers that name a tool call from its name and args (the shell command run, the file read, the MCP tool called); installed with `tool` |
 | `code-block` | Syntax-highlighted code with copy action and dual-theme |
 | `prompt-input` | Smart input with file upload, suggestions, submit |
 | `sources` | Citation and source display with collapsible list |
@@ -117,7 +118,7 @@ import { TaskPlan } from "@/components/flow-state/task-plan";
 />
 ```
 
-Sections render in canonical order (`pending → in_progress → blocked → parked → completed → errored`), empty sections hide, `cancelled` is hidden by default. Statuses outside the canonical seven trail at the end with a humanized label, so pattern wrappers that emit extended states (`planning`, `replanning`, `reviewing`) still render. Pass `statusConfig` to customize their presentation.
+Sections render in canonical order (`pending → in_progress → held → completed → errored`), empty sections hide, `cancelled` is hidden by default. Statuses outside the canonical six trail at the end with a humanized label, so pattern wrappers that emit extended states (`planning`, `replanning`, `reviewing`) still render. Pass `statusConfig` to customize their presentation.
 
 `TaskPlan` reads its items from `useSessionItems()` by default; pass an explicit `items` prop when rendering outside that context (tests, replayed snapshots).
 

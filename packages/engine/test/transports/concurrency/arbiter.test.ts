@@ -6,6 +6,7 @@
  * are covered separately.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import {
   createConcurrencyArbiter,
   type ConcurrencyFlowView
@@ -21,6 +22,7 @@ function envelope(overrides: Partial<DispatchEnvelope> = {}): DispatchEnvelope {
     actionName: "respond",
     input: {},
     userId: "u_1",
+    orgId: DEFAULT_ORG_ID,
     sessionId: "s_1",
     ...overrides
   };

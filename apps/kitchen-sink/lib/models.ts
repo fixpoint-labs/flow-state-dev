@@ -10,18 +10,16 @@
 
 /** Gateway model strings shown in the kitchen-sink model selector. */
 export const KITCHEN_SINK_MODELS = [
-  "vercel/anthropic/claude-haiku-4.5",
-  "vercel/anthropic/claude-sonnet-5",
-  "vercel/anthropic/claude-opus-4.8",
-  "vercel/openai/gpt-5.4-nano",
-  "vercel/openai/gpt-5.4-mini",
-  "vercel/openai/gpt-5.6-luna",
-  "vercel/openai/gpt-5.6-terra",
-  "vercel/openai/gpt-5.6-sol",
-  "vercel/google/gemini-2.5-pro",
-  "vercel/zai/glm-5.2",
-  "vercel/xiaomi/mimo-v2.5",
-  "vercel/moonshotai/kimi-k3",
+  "vercel:anthropic/claude-haiku-5.5",
+  "vercel:anthropic/claude-sonnet-5.5",
+  "vercel:anthropic/claude-opus-5.5",
+  "vercel:openai/gpt-6-luna",
+  "vercel:openai/gpt-6.1-sol",
+  "vercel:openai/gpt-6-astra",
+  "vercel:google/gemini-2.5-pro",
+  "vercel:zai/glm-5.2",
+  "vercel:xiaomi/mimo-v2.5",
+  "vercel:moonshotai/kimi-k3",
 ] as const;
 
 /**
@@ -33,29 +31,40 @@ export const KITCHEN_SINK_MODELS = [
  * forces every generator onto the cheap model. Test mode scripts the call by
  * its block name, `coordinator-route`, and never reaches this model.
  */
-export const ROUTE_MODEL = "vercel/typesafe-ai/jev";
+export const ROUTE_MODEL = "vercel:typesafe-ai/jev";
 
 /** Union of accepted gateway model strings for the kitchen-sink. */
 export type KitchenSinkModel = (typeof KITCHEN_SINK_MODELS)[number];
 
 /** Default model selection when a user has no stored preference. */
 export const DEFAULT_KITCHEN_SINK_MODEL: KitchenSinkModel =
-  "vercel/anthropic/claude-sonnet-5";
+  "vercel:anthropic/claude-sonnet-5.5";
 
 /** True when `value` is a current catalog model id. */
 export function isKitchenSinkModel(value: string): value is KitchenSinkModel {
   return (KITCHEN_SINK_MODELS as readonly string[]).includes(value);
 }
 
+/** Saved ids in the removed slash spelling already logged by this process. */
+const loggedSlashIds = new Set<string>();
+
 /**
  * Resolve a persisted or client-provided model id to a catalog entry.
  * Unknown or removed catalog ids fall back to {@link DEFAULT_KITCHEN_SINK_MODEL}.
+ * A saved three-slash id falls back the same way and is logged once; it is never rewritten.
  */
 export function coalesceKitchenSinkModel(
   value: string | null | undefined,
 ): KitchenSinkModel {
   if (value != null && isKitchenSinkModel(value)) {
     return value;
+  }
+  if (value != null && value.split("/").length >= 3 && !loggedSlashIds.has(value)) {
+    loggedSlashIds.add(value);
+    console.warn(
+      `[kitchen-sink] saved model "${value}" uses the removed slash spelling; ` +
+        `using the default "${DEFAULT_KITCHEN_SINK_MODEL}" instead.`,
+    );
   }
   return DEFAULT_KITCHEN_SINK_MODEL;
 }
@@ -65,51 +74,43 @@ export const MODEL_LABELS: Record<
   KitchenSinkModel,
   { label: string; description: string }
 > = {
-  "vercel/anthropic/claude-haiku-4.5": {
-    label: "Claude Haiku 4.5",
+  "vercel:anthropic/claude-haiku-5.5": {
+    label: "Claude Haiku 5.5",
     description: "Fast, low cost",
   },
-  "vercel/anthropic/claude-sonnet-5": {
-    label: "Claude Sonnet 5",
+  "vercel:anthropic/claude-sonnet-5.5": {
+    label: "Claude Sonnet 5.5",
     description: "Balanced default",
   },
-  "vercel/anthropic/claude-opus-4.8": {
-    label: "Claude Opus 4.8",
+  "vercel:anthropic/claude-opus-5.5": {
+    label: "Claude Opus 5.5",
     description: "Highest capability",
   },
-  "vercel/openai/gpt-5.4-nano": {
-    label: "GPT-5.4 Nano",
+  "vercel:openai/gpt-6-luna": {
+    label: "GPT-6 Luna",
     description: "Fast, low cost",
   },
-  "vercel/openai/gpt-5.4-mini": {
-    label: "GPT-5.4 Mini",
-    description: "Mid-tier",
-  },
-  "vercel/openai/gpt-5.6-luna": {
-    label: "GPT-5.6 Luna",
-    description: "Fast, low cost",
-  },
-  "vercel/openai/gpt-5.6-terra": {
-    label: "GPT-5.6 Terra",
+  "vercel:openai/gpt-6.1-sol": {
+    label: "GPT-6.1 Sol",
     description: "Balanced",
   },
-  "vercel/openai/gpt-5.6-sol": {
-    label: "GPT-5.6 Sol",
+  "vercel:openai/gpt-6-astra": {
+    label: "GPT-6 Astra",
     description: "Highest capability",
   },
-  "vercel/google/gemini-2.5-pro": {
+  "vercel:google/gemini-2.5-pro": {
     label: "Gemini 2.5 Pro",
     description: "Long context",
   },
-  "vercel/zai/glm-5.2": {
+  "vercel:zai/glm-5.2": {
     label: "GLM 5.2",
     description: "Open-weight, strong coding",
   },
-  "vercel/xiaomi/mimo-v2.5": {
+  "vercel:xiaomi/mimo-v2.5": {
     label: "MiMo V2.5",
     description: "Open-weight, efficient reasoning",
   },
-  "vercel/moonshotai/kimi-k3": {
+  "vercel:moonshotai/kimi-k3": {
     label: "Kimi K3",
     description: "Open-weight, agentic long context",
   },

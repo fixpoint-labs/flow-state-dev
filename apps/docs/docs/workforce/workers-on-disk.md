@@ -5,6 +5,9 @@ sidebar_label: Workers on disk
 description: "Workforce convention: describe each worker in a folder, read the tree at startup, and run every worker on one shared copy of the flow it names."
 ---
 
+import Figure from "@site/src/components/Figure";
+import DocumentsReachDrawing from "./documents-reach.svg";
+
 # Workers on disk
 
 Workforce is how you describe a roster of workers and run them. You can write each worker in TypeScript, or put each one in a folder and read the folder at startup.
@@ -47,7 +50,7 @@ workforce/
     …
 ```
 
-An org worker is one worker the whole organization shares, such as a chief of staff, rather than a member of any team.
+An org worker is one worker the whole organization shares, such as a Shift Coordinator, rather than a member of any team.
 
 Every example below reads the first tree, the one without `org/`.
 
@@ -59,7 +62,7 @@ Settings between the `---` fences, instructions below them:
 ---
 description: Holds the engineering board and breaks work into tasks.
 flow: custom-agent
-model: openai/gpt-5.4-mini
+model: openai/gpt-6-luna
 tools: [board, search]
 resources:
   - teams/engineering/handbook
@@ -70,7 +73,7 @@ You are the engineering lead. You do not write code yourself. You break the
 request into tasks, assign them, and report what came back.
 ```
 
-`description` is the only key the file itself requires. When a [coordinator](./coordinators.md), a worker that hands each message to other workers called its delegates, routes by `best-fit`, a delegate's description is what it picks by, unless the delegate was given a note in its place. The file refuses `persona:`, `workerSkills:`, `workerTools:`, `workerPackages:`, `workerId:` and `teamInstructions:` outright. A worker's skills and the blocks it can reach come from where its folders sit, and its team's instructions from that team's [`TEAM.md`](#what-a-teammd-says). `flow` names which of your worker flows this worker runs. Leave it out and the worker runs on [the built-in worker flow](./built-in-worker.md), which needs no flow of yours.
+`description` is the only key the file itself requires. An optional `name:` is the worker's display name, such as `Engineering Manager` for `eng.em`. It's for people: apps show it in place of the id, which stays the worker's address. When a [coordinator](./coordinators.md), a worker that hands each message to other workers called its delegates, routes by `best-fit`, a delegate's description is what it picks by, unless the delegate was given a note in its place. The file refuses `persona:`, `workerSkills:`, `workerTools:`, `workerPackages:`, `workerId:` and `teamInstructions:` outright. A worker's skills and the blocks it can reach come from where its folders sit, and its team's instructions from that team's [`TEAM.md`](#what-a-teammd-says). `flow` names which of your worker flows this worker runs. Leave it out and the worker runs on [the built-in worker flow](./built-in-worker.md), which needs no flow of yours.
 
 `resources:` is a list of the [documents](./documents-on-disk.md) this worker may touch, chosen from the ones the app passed to the installation as `documents`. Each entry is a document's [ref](./documents-on-disk.md#a-documents-ref), the name it gets from where its file sits. A ref on its own is read-only. `<ref>: rw` grants writes, and `<ref>: ro` spells the default out. Leave the key out and the worker reaches every document the app passed as `documents`, on the flow's shared copy, and writes the ones that allow writes; `resources: []` is how you say it gets none.
 
@@ -102,7 +105,10 @@ Stay inside the engagement's scope. Never touch a host the brief does not name.
 The file is optional. A team without one loads normally, and nothing is
 reported.
 
-`description` is required when the file exists, and it comes back on the loader's result.
+`description` is required when the file exists, and it comes back on the loader's result. An
+optional `name:` is the team's display name, such as `Engineering` for a team folder named `eng`.
+It comes back on the team record, and each of the team's workers carries it as `teamName`. Apps
+show it to people in place of the folder's name.
 Everything else you write in the frontmatter lands on the team record spelled the way you spelled
 it, apart from the keys the file refuses: `id:`, which is the folder's name; `flow:`, which belongs
 to a worker's `WORKER.md`; `instructions:`, which the body already is; and `teamInstructions:`, which
@@ -133,7 +139,7 @@ that way: booting past it runs those workers short of instructions someone wrote
 Instructions written in a `TEAM.md` reach only that team's workers. They ride each worker's own
 configuration, so a worker on another team never sees them.
 
-![Two panels. references/: the file is the text, re-read on each request and never written by the product. Its folders are nested walls: the worker ada reads the organization's references, its own team's and its own folder's, but not a teammate's folder, another team's, or an org worker's. resources/: the file seeds a stored row at first boot, which the product, a block or the agent can then write, and later edits to the file do not change a written row. Its folder is only part of the name. Each organization gets its own row, and flowIsolation: true gives each worker its own](./documents-reach.svg)
+<Figure svg={DocumentsReachDrawing} caption="references/ and resources/: where the text lives, who reaches it" description={"Two panels. references/: the file is the text, re-read on each request and never written by the product. Its folders are nested walls: the worker ada reads the organization's references, its own team's and its own folder's, but not a teammate's folder, another team's, or an org worker's. resources/: the file seeds a stored row at first boot, which the product, a block or the agent can then write, and later edits to the file do not change a written row. Its folder is only part of the name. Each organization gets its own row, and flowIsolation: true gives each worker its own"} />
 
 Team documents work differently by folder. Under `teams/<team>/resources/` they reach every worker on the worker flow that installed them, whatever its team; under `teams/<team>/references/` they reach only that team's workers. [Who reaches what](./documents-on-disk.md#who-reaches-what) shows how to filter the first.
 
@@ -189,7 +195,7 @@ const lead = workers.find((worker) => worker.id === "engineering.lead")!;
 lead.declared;
 // { description: "Holds the engineering board and breaks work into tasks.",
 //   flow: "custom-agent",
-//   model: "openai/gpt-5.4-mini",
+//   model: "openai/gpt-6-luna",
 //   tools: ["board", "search"] }
 lead.body;     // "You are the engineering lead. …"
 ```
@@ -313,12 +319,12 @@ export const customAgentFlow = workerFlow((installation) =>
     kind: "custom-agent",
     configSchema: workerConfigSchema().extend({
       instructions: z.string(), // the contract's own is optional; this flow requires one
-      model: z.string().default("openai/gpt-5.4-mini"),
+      model: z.string().default("openai/gpt-6-luna"),
       tools: z.array(z.string()).default([]),
     }),
     session: installation.session(),          // the session's worker, checked when it is created
     resources: { ...installation.resources }, // the user's workers, and the standard ones
-    actions: { run: { inputSchema, block: runTurn(installation), userMessage: (input) => input.message } },
+    actions: { respond: { inputSchema, block: runTurn(installation), userMessage: (input) => input.message } },
   }),
 );
 
@@ -328,7 +334,7 @@ export const intakeFlow = workerFlow((installation) =>
     configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: { run: { inputSchema, block: greet(installation), userMessage: (input) => input.message } },
+    actions: { respond: { inputSchema, block: greet(installation), userMessage: (input) => input.message } },
   }),
 );
 ```
@@ -347,7 +353,7 @@ What is checked is what your schema accepts, not which function built it, so dec
 by hand works too. Composing is how you stay current: a key added to the contract reaches a
 composed flow for free, and makes a hand-rolled one refuse at startup until you add it as well.
 
-The installation reads keys of its own: `flow` to pick the flow, `description` as a label for the roster, [`resources`](#supplying-the-documents-a-worker-may-name) and `references` to decide which documents the worker reaches, and [`packages`](./packages-on-disk.md#giving-one-to-a-worker) to decide which library packages it holds. Everything else becomes that worker's settings and is parsed against the flow's `configSchema`, which is closed. So the flow's author, not the framework, decides what a worker on that flow may say about itself.
+The installation reads keys of its own: `flow` to pick the flow, `description` as a label for the roster, `name` as the worker's display name, [`resources`](#supplying-the-documents-a-worker-may-name) and `references` to decide which documents the worker reaches, and [`packages`](./packages-on-disk.md#giving-one-to-a-worker) to decide which library packages it holds. Everything else becomes that worker's settings and is parsed against the flow's `configSchema`, which is closed. So the flow's author, not the framework, decides what a worker on that flow may say about itself.
 
 A turn reads its worker's settings by loading the worker. `ctx.flow.config` is the shared copy's
 own, the same for every worker on it, so don't read a worker's settings there:
@@ -361,7 +367,7 @@ worker.config;
 //   workerSkills: [],
 //   workerTools: [],
 //   workerId: "engineering.lead",
-//   model: "openai/gpt-5.4-mini",
+//   model: "openai/gpt-6-luna",
 //   tools: ["board", "search"] }
 ```
 
@@ -399,11 +405,18 @@ A worker flow must:
   [above](#the-flow-decides-what-a-worker-may-declare). If you declare the keys yourself, each must
   accept the value a worker brings and keep it as given: `workerId` is a string, for instance, and a
   transform that replaces it is refused.
-- **Have one door.** Exactly one public action declares `userMessage` and takes `{ message }`, so
-  an app can talk to any worker without knowing which flow it runs on.
+- **Take a user's message on `respond`.** Exactly one public action declares `userMessage` and
+  takes `{ message }`, and it is named `respond`, so an app can talk to any worker without knowing
+  which flow it runs on. A flow whose message action has another name is refused, and the problem
+  names the action to rename.
+- **Have the entries its roles need.** A flow declares the [roles](#a-worker-flows-roles) it plays,
+  and each role's entries must be there, built by that role's factory.
 - **Declare the installation's session.** `session: installation.session()` gives every session a
   readonly `workerId`, checked when the session is created. A flow without it is refused. Load the worker with `installation.resolveWorker` on
   every turn: in the flow's `request.onStarted`, or in the block that reads it.
+- **Receive messages from other workers.** Mount an `onMessageReceived` internal action built by
+  `messageReceivedEntry`, as [Messaging other workers](./messaging-workers.md#without-the-session-kit)
+  shows. A flow built with `defineSessionBoard` gets it from the kit's `entries(turn)`.
 - **Declare any resource with `writtenBy` through `sharedResource()`.** A resource that has a
   `writtenBy` field is declared with [`sharedResource()`](#sharing-something-from-a-worker), which
   adds the field itself. A resource you define by hand with a `writtenBy` field is refused, even
@@ -438,12 +451,52 @@ const installation = createWorkerInstallation({
 
 A user's own worker that names no flow is then refused, and the message names `agent`.
 
-Writing a library of worker flows? Check each one in your own tests, without an app:
+#### A worker flow's roles
+
+Every worker takes a user's message on `respond`. Beyond that, a flow says what else it does by
+declaring roles when you register it:
+
+| Role | What the flow does | The entries it needs | Where they come from |
+| --- | --- | --- | --- |
+| `contributor` | Takes tasks other workers file for it | `work`, a task entry | `workerTaskEntry` |
+| `manager` | Files tasks for its delegates and hears how each ended | `dispatch` and `onTaskSettled`, internal entries | `defineSessionBoard`'s `entries(turn)` |
+| `coordinator` | Routes each message to its delegates | A manager's, plus `routeOn`, `roundDeadline` and `changeWorkstreamDelegate` | `defineCoordinatorFlow` |
+
+Declare them on the builder, or on the entry you pass in `workerFlows`:
+
+```ts
+export const deskFlow = workerFlow(buildDesk, { roles: ["contributor", "manager"] });
+
+const installation = createWorkerInstallation({
+  standardWorkers: workers,
+  workerFlows: { research: { flow: researchFlow, roles: ["contributor"] } },
+});
+```
+
+The built-in `agent` and `coordinator` declare their own, so you register them as plain flows. A
+flow that declares no role takes no tasks and files none: a worker on it can't be a delegate.
+
+`hireWorkforce` checks the roles both ways before it registers anything. A declared role is
+refused when one of its entries is missing, wasn't built by the role's factory, or refuses the
+input its caller sends. A piece of a role's factory is refused on a flow that doesn't declare the
+role, such as a `workerTaskEntry` on a flow that isn't a `contributor`, or the board's
+`onTaskSettled` spread without `manager`. An entry of your own that only shares a name, such as
+your own `dispatch` action, is yours and isn't read as a role's. Each problem names the flow, the
+role, the entry and the fix:
+
+```
+hireWorkforce refused 1 worker flow ("desk"); nothing was hired:
+  - worker flow "desk" carries "work", built by `workerTaskEntry` for the "contributor" role,
+    but doesn't declare "contributor". Declare it in its registration's `roles` …
+```
+
+Writing a library of worker flows? Check each one in your own tests, without an app, passing the
+roles you register it with:
 
 ```ts
 import { workerFlowProblems } from "@flow-state-dev/workforce";
 
-expect(workerFlowProblems("triage", triageFlow)).toEqual([]);
+expect(workerFlowProblems("triage", triageFlow, ["contributor"])).toEqual([]);
 ```
 
 #### Where a worker's data lives
@@ -591,14 +644,14 @@ export const customAgentFlow = workerFlow((installation) => {
     kind: "custom-agent",
     configSchema: workerConfigSchema().extend({
       instructions: z.string(),
-      model: z.string().default("openai/gpt-5.4-mini"),
+      model: z.string().default("openai/gpt-6-luna"),
       tools: z.array(z.string()).default([]),
     }),
     session: installation.session(),
     resources: { ...installation.resources, ...installation.documents, board: boardResource },
     resourceVisibility: installation.resourceVisibility,
     request: { onStarted: loadWorker },
-    actions: { run: { inputSchema, block: runTurn(installation), userMessage: (input) => input.message } },
+    actions: { respond: { inputSchema, block: runTurn(installation), userMessage: (input) => input.message } },
   });
 });
 ```
@@ -646,9 +699,10 @@ A worker is refused when it:
   is kept.
 
 `hireWorkforce` checks each flow in `workerFlows` too, before it registers anything. A flow is
-refused when it is passed under a key that is not its own `kind`, has no door or more than one,
-doesn't accept a worker's configuration, doesn't declare the installation's session, or has a
-resource with `writtenBy` that `sharedResource()` didn't build. One run names every problem with
+refused when it is passed under a key that is not its own `kind`, has no `respond` or more than
+one action that takes a user's message, misses an entry one of its roles needs or carries a role's
+piece it doesn't declare, doesn't accept a worker's configuration, doesn't declare the
+installation's session, or has a resource with `writtenBy` that `sharedResource()` didn't build. One run names every problem with
 every flow, and nothing is registered.
 
 A user's own worker that stops resolving after it was saved, because a tool it names was removed
@@ -690,12 +744,12 @@ export const requestTriageFlow = workerFlow((installation) => {
     kind: "request-triage",
     configSchema: workerConfigSchema().extend({
       instructions: z.string(),
-      model: z.string().default("openai/gpt-5.4-mini"),
+      model: z.string().default("openai/gpt-6-luna"),
       escalateAbove: z.number().default(3),
     }),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: { run: { inputSchema: requestSchema, block: triage, userMessage: (input) => input.message } },
+    actions: { respond: { inputSchema: requestSchema, block: triage, userMessage: (input) => input.message } },
   });
 });
 ```
@@ -746,30 +800,32 @@ entry names the flow it runs on, as `flow` (most run on `agent`).
 **2. Find or start the session.**
 
 ```ts
+import { createClient } from "@flow-state-dev/client"
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser"
 
-const workforce = createWorkforceClient({ userId, baseUrl })
+const fsd = createClient({ userId, baseUrl })
+const workforce = createWorkforceClient(fsd)
 const session = await workforce.ensureWorkerSession({ worker: "researcher" })
 ```
 
-`createWorkforceClient` takes the same options as `createSessionClient`. Its
-`ensureWorkerSession` returns the user's most recent session with that worker, and creates one
-if there isn't one. It looks up the worker's flow for you. Two calls at once get the same
+`createWorkforceClient` takes your app's client and calls through it, as that client's user.
+Its `ensureWorkerSession` returns the user's conversation with that worker, and creates it
+if there isn't one. Messages from [other workers](./messaging-workers.md) land in that
+conversation. It looks up the worker's flow for you. Two calls at once get the same
 session, not two. If you move a worker to another flow, the next call starts a new session
 there. When you only want to check, `findWorkerSession` takes the same argument and returns the
 session or nothing. Both throw `No worker "<id>" on your roster.` for a worker that isn't on
 the user's roster.
 
-Both are built on the session client, which you can call directly. Use it to start a second
-conversation with the same worker:
+A user can hold more than one conversation with the same worker. Start another on the
+worker's flow, naming the worker in `workerId`:
 
 ```ts
-import { createSessionClient } from "@flow-state-dev/client"
-
-const sessions = createSessionClient({ baseUrl })
-const mine = await sessions.listSessions({ flowKind: "agent", userId, state: { workerId: "researcher" } })
-const fresh = await sessions.createSession({ flowKind: "agent", userId, state: { workerId: "researcher" } })
+const fresh = await fsd.flow("agent").createSession({ state: { workerId: "researcher" } })
 ```
+
+A session you start this way is a conversation of its own. `ensureWorkerSession` and
+`findWorkerSession` never return it, and messages from other workers don't land in it.
 
 The server checks the worker when the session is created: it must be yours or a standard
 one, and it must run on this flow. A worker that isn't yours is refused with the same answer
@@ -777,13 +833,31 @@ as one that doesn't exist. A session created without a worker is refused. `worke
 readonly field of the session's state: nothing can change it after the create. It works the way
 a project does in [Example: one session per project](../fundamentals/state-and-scopes.md#example-one-session-per-project).
 
+To show the user all their conversations with a worker, call `listWorkerSessions`:
+
+```ts
+const conversations = await workforce.listWorkerSessions("researcher")
+// [{ session: { id: "…", flowKind: "agent", … }, isDefault: true },
+//  { session: { id: "…", flowKind: "agent", … }, isDefault: false }]
+```
+
+Each entry is a `WorkerSessionEntry`: the `session` summary, and `isDefault`, which marks the
+conversation `ensureWorkerSession` returns. That one comes first. The rest follow by latest
+activity, most recent first. The list holds only the calling user's sessions on the worker's
+current flow. It never creates a session. Before the first `ensureWorkerSession`, no entry is
+marked default, and the list holds only conversations the user started with `createSession`, if
+any. It throws the same roster error as the other two calls.
+
+Some sessions with a worker are not conversations and are left out: the session a task handed to
+the worker runs in (reach it through the task), a coordinator conversation's session with one of
+its delegates, a [workstream](./projects.md#workstreams)'s lead session, and your [project coordinator](./projects.md#talking-to-a-project)'s session for a project
+(`ensureWorkerSession({ worker, projectId })`). So is a session on a flow the worker ran on before
+you moved it. Entries carry no title, and opening one is an ordinary action on `session.id`.
+
 **3. Talk to it.** An ordinary action on that session:
 
 ```ts
-import { createClient } from "@flow-state-dev/client"
-
-const agent = createClient({ flowKind: session.flowKind, userId, baseUrl })
-await agent.sendAction("run", { message }, { sessionId: session.id })
+const sent = await fsd.flow(session.flowKind).send("respond", { message }, { sessionId: session.id })
 ```
 
 A message that names a worker is refused. So is a turn on a session whose worker was fired, or
@@ -794,7 +868,7 @@ starting state, so a worker's flow refuses them: find or start the session with 
 make it the hook's active session.
 
 ```tsx
-const workforce = useMemo(() => createWorkforceClient({ userId, baseUrl }), [userId, baseUrl])
+const workforce = useMemo(() => createWorkforceClient(createClient({ userId, baseUrl })), [userId, baseUrl])
 const flow = useFlow({ flowKind: "agent" })
 
 useEffect(() => {

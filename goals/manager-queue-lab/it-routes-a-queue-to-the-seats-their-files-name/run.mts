@@ -33,10 +33,10 @@
  * `GOAL_FILER` decides who files:
  *
  * - **`model` (default) — THE GATE.** The manager's judgment turn decides
- *   which builder each piece is for and files with its `dispatchTask` tool, which
+ *   which builder each piece is for and files with its `createTask` tool, which
  *   it holds because its delegates take tasks. Needs a model credential.
  * - **`scripted` — NOT the gate.** The four rows are filed through the
- *   conversation's `dispatchTask_tasks` action, spread across the manager's
+ *   conversation's `createTask_tasks` action, spread across the manager's
  *   delegates, and every other leg runs unchanged. The manager's turn, woken by
  *   each task's notice, runs on a quiet stub that files nothing. It proves the
  *   routing half and nothing about a model choosing; its evidence line says so.
@@ -153,7 +153,7 @@ await runGoal(async (failures) => {
               { goal: WORK[3], assignee: three },
             ];
       for (const filed of filings) {
-        const result = await lab.act("dispatchTask_tasks", filed);
+        const result = await lab.act("createTask_tasks", filed);
         if (result.error !== undefined || result.output?.ok !== true) {
           note(`could not file ${JSON.stringify(filed.goal)}: ${result.error ?? result.output?.error}`);
         }
@@ -173,12 +173,12 @@ await runGoal(async (failures) => {
       note(`${elsewhere.length} row(s) are stored outside the manager's conversation's board`);
     }
     if (FILER === "model") {
-      // Filed by the turn's own tool: the check sent no `dispatchTask_tasks`, and
+      // Filed by the turn's own tool: the check sent no `createTask_tasks`, and
       // the turn was handed the tool.
       const actions = (await lab.requestsOf(lab.conversation)).map((request) => String(request.actionName));
-      if (actions.includes("dispatchTask_tasks") || actions.includes("addTask_tasks")) note(`something filed through the action, not the manager's turn`);
-      if (!lab.judgmentCalls.some((call) => call.tools.includes("dispatchTask"))) {
-        note(`the manager's turn was never handed dispatchTask`);
+      if (actions.includes("createTask_tasks")) note(`something filed through the action, not the manager's turn`);
+      if (!lab.judgmentCalls.some((call) => call.tools.includes("createTask"))) {
+        note(`the manager's turn was never handed createTask`);
       }
     }
 
@@ -283,19 +283,19 @@ await runGoal(async (failures) => {
 
     // ---- f. a row for nobody on the team, and a row for nobody --------------
     const stranger = "eng.nobody";
-    const refused = await lab.act("dispatchTask_tasks", { goal: "a piece for a stranger", assignee: stranger });
+    const refused = await lab.act("createTask_tasks", { goal: "a piece for a stranger", assignee: stranger });
     const refusal = String(refused.output?.error ?? refused.error ?? "");
     if (refused.output?.ok !== false || !refusal.startsWith("unknown_assignee") || !refusal.includes(stranger)) {
       note(`a filing for ${stranger} was not refused unknown_assignee by name: ${JSON.stringify(refused)}`);
     }
-    const unassigned = await lab.act("addTask_tasks", { goal: "a piece of work for nobody in particular" });
+    const unassigned = await lab.act("createTask_tasks", { held: true, goal: "a piece of work for nobody in particular" });
     const unassignedId = String(unassigned.output?.taskId ?? "");
     await lab.settled();
     const afterF = await lab.rows();
     if (afterF.some((row) => row.goal === "a piece for a stranger")) note(`the refused filing was stored anyway`);
     const waiting = afterF.find((row) => row.id === unassignedId);
     if (waiting === undefined) note(`the unassigned row was not stored: ${JSON.stringify(unassigned)}`);
-    else if (waiting.status !== "pending" || waiting.assignee !== undefined) {
+    else if (waiting.status !== "held" || waiting.assignee !== undefined) {
       note(`the unassigned row is ${waiting.status} for ${waiting.assignee ?? "nobody"}; with three delegates it waits, unassigned`);
     }
     const ranAfterF = lab.workLines().slice(lines.length);
@@ -336,9 +336,9 @@ await runGoal(async (failures) => {
     const filedBy =
       FILER === "model"
         ? `The manager, whose own file says \`tools: []\`, decided who got what and filed ${rowsAfter.length} rows ` +
-          `for ${WORK.length} pieces with its own dispatchTask tool, which it holds because its delegates take tasks.`
+          `for ${WORK.length} pieces with its own createTask tool, which it holds because its delegates take tasks.`
         : `**NOT THE GATE — GOAL_FILER=scripted.** No model chose: the ${rowsAfter.length} rows were filed ` +
-          `through the conversation's dispatchTask_tasks action, spread across the manager's delegates. What follows ` +
+          `through the conversation's createTask_tasks action, spread across the manager's delegates. What follows ` +
           `is the routing half, and says nothing about a manager choosing.`;
     evidence =
       `one tree at ${LAB_TREE}${FILER === "model" ? `, on ${model}` : ""}: ${filedBy} Every row is stored on ` +
@@ -347,7 +347,7 @@ await runGoal(async (failures) => {
       `carrying that worker's own file (${placement}), proved by ${outbox}, each in its own task session, a ` +
       `child of the manager's conversation, holding none of its other pieces. The second row for one worker ` +
       `was neither re-routed nor dropped. A filing for ${stranger} answered "${refusal.split(":")[0]}" and stored ` +
-      `nothing; a filing for nobody waits, pending and unassigned, and ran nowhere.`;
+      `nothing; a filing for nobody waits, held and unassigned, and ran nowhere.`;
   } finally {
     await lab.dispose();
   }

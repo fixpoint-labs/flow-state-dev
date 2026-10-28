@@ -4,8 +4,8 @@
  *
  * The planner files work for its delegates on its own conversation's board.
  * Its flow carries Workforce's filing kit (`defineSessionBoard`), so a
- * conversation with the planner has the task actions (`addTask_tasks`,
- * `assignTask_tasks`, `answerTask_tasks`, `listTasks_tasks`, …) while one of
+ * conversation with the planner has the task actions (`createTask_tasks`,
+ * `updateTask_tasks`, `answerTask_tasks`, `listTasks_tasks`, …) while one of
  * the planner's `delegates:` takes a task. A row filed there names its
  * delegate by worker id, and the board hands it to that worker's task
  * session at once. A user answers a row parked on its worker's question
@@ -42,6 +42,6 @@ export function definePlannerFlow(options: PlannerFlowOptions) {
     resources: { ...installation.resources, ...kit.resources },
     actions: { ...hearingDoor, ...kit.actions },
     // A task's notice lands as a line in the conversation; nothing here acts on it.
-    internal: { actions: kit.entries(hearingDoor.message.block, () => "fixed") },
+    internal: { actions: kit.entries(hearingDoor.respond.block, () => "fixed") },
   } as never);
 }
