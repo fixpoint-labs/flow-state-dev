@@ -345,7 +345,9 @@ async function grade(
   // same coding session (FIX-2086: a steer ends the run, not the request).
   let next: RecordedAttempt | undefined;
   for (const until = Date.now() + NEXT_ATTEMPT_MS; Date.now() < until && next === undefined; await sleep(250)) {
-    next = attemptsOf(turn.row.id).find((a) => a.prompt.includes(turn.line));
+    // A steer's run is handed the line with no row line, so look it up by the
+    // line's unique token; the resume id below ties it to the row.
+    next = attempts().find((a) => a.prompt.includes(turn.line));
   }
   if (next === undefined) fail("continued", `the harness recorded no run on ${turn.issue} whose prompt holds the line`);
   else if (next.resume !== turn.previousSession) {
