@@ -27,7 +27,7 @@ import {
   waitFlow,
   BOARD,
   finalAnswer,
-  readTask,
+  getTask,
   rows,
   runtimeFor,
   SESSION,
@@ -437,7 +437,7 @@ describe("wait on a task: an ending first, and the deadline that cancels nothing
           taskId = waitedTaskId([opts], 0);
           // The colleague finishes while this request still runs.
           await settle();
-          return readTask("c2", () => taskId)(opts);
+          return getTask("c2", () => taskId)(opts);
         },
         finalAnswer
       ],

@@ -317,7 +317,7 @@ describe.each([
 
   /** Add + claim, returning the claimed task (attempts === 1). */
   async function claimed(init: { id: string; maxAttempts?: number }) {
-    await collection.addTask({ goal: init.id, ...init });
+    await collection.createTask({ goal: init.id, ...init });
     const task = await collection.claim("worker-1", {
       eligibility: (t) => t.id === init.id,
     });
@@ -463,7 +463,7 @@ describe.each([
       await collection.fail("p", "stale worker", ADVISORY);
       expect(collection.get("p")?.status).toBe("pending");
 
-      await collection.addTask({ id: "b", goal: "b", held: true });
+      await collection.createTask({ id: "b", goal: "b", held: true });
       await collection.fail("b", "stale worker", ADVISORY);
       expect(collection.get("b")?.status).toBe("held");
       expect(collection.get("b")?.error).toBeUndefined();
@@ -672,7 +672,7 @@ describe.each([
       // reaches terminal via `complete()`, so this path is untested there and
       // a green run proves nothing about it. Without the terminal arm the
       // fix would regress the one method that was already correct.
-      await collection.addTask({ id: "t", goal: "t" });
+      await collection.createTask({ id: "t", goal: "t" });
       await collection.cancel("t", "first reason");
       setNow(9999);
       events.length = 0;
@@ -686,7 +686,7 @@ describe.each([
     });
 
     it("cancel still works on a non-terminal task", async () => {
-      await collection.addTask({ id: "t", goal: "t" });
+      await collection.createTask({ id: "t", goal: "t" });
       await collection.cancel("t", "user cancelled");
       expect(collection.get("t")?.status).toBe("cancelled");
       expect(events.at(-1)?.kind).toBe("cancelled");
@@ -700,7 +700,7 @@ describe.each([
   /** Settle `t` into each terminal status, from a fresh task each time. */
   async function settledInto(status: "completed" | "errored" | "cancelled") {
     if (status === "cancelled") {
-      await collection.addTask({ id: "t", goal: "t" });
+      await collection.createTask({ id: "t", goal: "t" });
       await collection.cancel("t", "no longer needed");
       return;
     }
@@ -740,7 +740,7 @@ describe.each([
     });
 
     it("reports recorded on a live task", async () => {
-      await collection.addTask({ id: "t", goal: "t" });
+      await collection.createTask({ id: "t", goal: "t" });
       const outcome = await collection.cancel("t", "user cancelled");
       expect(outcome).toEqual({ outcome: "recorded" });
       expect(events.at(-1)?.kind).toBe("cancelled");
@@ -764,7 +764,7 @@ describe.each([
     );
 
     it("records the write on a live task and emits a change item", async () => {
-      await collection.addTask({ id: "t", goal: "t" });
+      await collection.createTask({ id: "t", goal: "t" });
       events.length = 0;
 
       const outcome = await collection.setAssignee("t", "researcher");
@@ -782,7 +782,7 @@ describe.each([
       // still runs `updateState` for the no-op and still emits a
       // `resource_change`; that is documented, preserved behaviour, and a test
       // asserting its absence would pin a wish rather than the contract.
-      await collection.addTask({ id: "t", goal: "t", assignee: "researcher" });
+      await collection.createTask({ id: "t", goal: "t", assignee: "researcher" });
       const before = JSON.stringify(collection.get("t"));
       events.length = 0;
 
@@ -817,7 +817,7 @@ describe.each([
     );
 
     it("removeLabel records on a terminal task", async () => {
-      await collection.addTask({ id: "t", goal: "t", labels: ["stale"] });
+      await collection.createTask({ id: "t", goal: "t", labels: ["stale"] });
       await collection.cancel("t", "dropped");
 
       const outcome = await collection.removeLabel("t", "stale");
@@ -845,7 +845,7 @@ describe.each([
     });
 
     it("reports unchanged for an idempotent sibling write", async () => {
-      await collection.addTask({ id: "t", goal: "t", labels: ["dup"], priority: 3 });
+      await collection.createTask({ id: "t", goal: "t", labels: ["dup"], priority: 3 });
       expect(await collection.addLabel("t", "dup")).toEqual({ outcome: "unchanged" });
       expect(await collection.removeLabel("t", "absent")).toEqual({ outcome: "unchanged" });
       expect(await collection.setPriority("t", 3)).toEqual({ outcome: "unchanged" });
@@ -899,7 +899,7 @@ describe.each([
     });
 
     it("declines a fail from held with reason disallowed", async () => {
-      await collection.addTask({ id: "b", goal: "b", held: true });
+      await collection.createTask({ id: "b", goal: "b", held: true });
 
       const outcome = await collection.fail("b", "stale worker", ADVISORY);
 
@@ -994,12 +994,12 @@ describe("retry budget — a declined stale failure records nothing (FIX-948)", 
     if (budget === "spent") {
       // Burn the single grant on an unrelated task, so the subject's failure
       // would be DENIED if the declined path wrote anything.
-      await collection.addTask({ id: "spender", goal: "spender", maxAttempts: 5 });
+      await collection.createTask({ id: "spender", goal: "spender", maxAttempts: 5 });
       await collection.claim("w0", { eligibility: (t) => t.id === "spender" });
       await collection.fail("spender", "spend it");
     }
 
-    await collection.addTask({ id: "subject", goal: "subject", maxAttempts: 5 });
+    await collection.createTask({ id: "subject", goal: "subject", maxAttempts: 5 });
     const first = await collection.claim("w1", { eligibility: (t) => t.id === "subject" });
     if (first === null) throw new Error("fixture failed to claim");
     // Displace it: reclaim the lease, then let a second worker claim it.
@@ -1048,7 +1048,7 @@ describe("retry budget — a declined stale failure records nothing (FIX-948)", 
     const { collection, staleClaim } = await displacedAttempt("available");
     await collection.fail("subject", "stale", { ifAllowed: true, claim: staleClaim });
 
-    await collection.addTask({ id: "later", goal: "later", maxAttempts: 5 });
+    await collection.createTask({ id: "later", goal: "later", maxAttempts: 5 });
     await collection.claim("w3", { eligibility: (t) => t.id === "later" });
     await collection.fail("later", "genuine failure");
 
@@ -1079,7 +1079,7 @@ describe.each([
 
   /** Add + claim, returning the ticket the substrate mints for that claim. */
   async function claimTicket(init: { id: string; maxAttempts?: number }) {
-    await inner.addTask({ goal: init.id, ...init });
+    await inner.createTask({ goal: init.id, ...init });
     const task = await inner.claim("worker-1", { eligibility: (t) => t.id === init.id });
     if (task === null) throw new Error("fixture failed to claim");
     return { task, ticket: ticketForClaim(inner.collectionId, task) };
@@ -1336,7 +1336,7 @@ describe("the seam against a ref that predates part of the interface (FIX-964)",
     // the caller's error with a TypeError — losing containment for precisely
     // the oldest refs, the ones most likely to be missing the guards too.
     const { collection } = await sequencerBacking()();
-    await collection.addTask({ id: "t", goal: "t" });
+    await collection.createTask({ id: "t", goal: "t" });
     const task = await collection.claim("worker-1");
     if (task === null) throw new Error("fixture failed to claim");
     const claim = ticketForClaim(collection.collectionId, task);
@@ -1358,7 +1358,7 @@ describe("the seam against a ref that predates part of the interface (FIX-964)",
     // The other side of the same guard. Evidence-gathering that fails means the
     // same thing as evidence that shows nothing: the throw is the caller's.
     const { collection } = await sequencerBacking()();
-    await collection.addTask({ id: "t", goal: "t" });
+    await collection.createTask({ id: "t", goal: "t" });
     const task = await collection.claim("worker-1");
     if (task === null) throw new Error("fixture failed to claim");
     const claim = ticketForClaim(collection.collectionId, task);
@@ -1408,7 +1408,7 @@ describe("the seam judges the call by what was true WHEN IT RAN (FIX-964)", () =
       now: () => clock,
     });
 
-    await collection.addTask({ id: "t", goal: "t" });
+    await collection.createTask({ id: "t", goal: "t" });
     const task = await collection.claim("worker-1", { leaseDurationMs: MIN_LEASE_DURATION_MS });
     if (task === null) throw new Error("fixture failed to claim");
     const claim = ticketForClaim(collection.collectionId, task);
@@ -1437,7 +1437,7 @@ describe("the seam judges the call by what was true WHEN IT RAN (FIX-964)", () =
     //
     // Both built-in backings copy on `get` already; this store does not.
     const { collection } = await sequencerBacking()();
-    await collection.addTask({ id: "t", goal: "t" });
+    await collection.createTask({ id: "t", goal: "t" });
     const task = await collection.claim("worker-1");
     if (task === null) throw new Error("fixture failed to claim");
     const claim = ticketForClaim(collection.collectionId, task);
@@ -1478,7 +1478,7 @@ describe("a displacement inside the snapshot→write window (FIX-964)", () => {
     // which is the very defect this change exists to fix, reached through the
     // one window the snapshot cannot see across.
     const { collection } = await sequencerBacking()();
-    await collection.addTask({ id: "t", goal: "t" });
+    await collection.createTask({ id: "t", goal: "t" });
     const task = await collection.claim("worker-1");
     if (task === null) throw new Error("fixture failed to claim");
     const claim = ticketForClaim(collection.collectionId, task);
@@ -1502,7 +1502,7 @@ describe("a displacement inside the snapshot→write window (FIX-964)", () => {
     // task, so the re-read shows it exactly as we left it and the predicate
     // declines nothing. A store that is merely down must still reach the caller.
     const { collection } = await sequencerBacking()();
-    await collection.addTask({ id: "t", goal: "t" });
+    await collection.createTask({ id: "t", goal: "t" });
     const task = await collection.claim("worker-1");
     if (task === null) throw new Error("fixture failed to claim");
     const claim = ticketForClaim(collection.collectionId, task);
@@ -1543,7 +1543,7 @@ describe("resolving fail's route against pre-write budget state (FIX-964)", () =
       maxTotalRetries: 1,
     });
 
-    await collection.addTask({ id: "t", goal: "t", maxAttempts: 5 });
+    await collection.createTask({ id: "t", goal: "t", maxAttempts: 5 });
     const task = await collection.claim("worker-1");
     if (task === null) throw new Error("fixture failed to claim");
     const claim = ticketForClaim(collection.collectionId, task);
@@ -1596,8 +1596,8 @@ describe("fail's route is a prediction, not a fact (FIX-964)", () => {
       maxTotalRetries: 1,
     });
 
-    await collection.addTask({ id: "mine", goal: "mine", maxAttempts: 5 });
-    await collection.addTask({ id: "sibling", goal: "sibling", maxAttempts: 5 });
+    await collection.createTask({ id: "mine", goal: "mine", maxAttempts: 5 });
+    await collection.createTask({ id: "sibling", goal: "sibling", maxAttempts: 5 });
     const mine = await collection.claim("worker-1", { eligibility: (t) => t.id === "mine" });
     if (mine === null) throw new Error("fixture failed to claim");
     const claim = ticketForClaim(collection.collectionId, mine);

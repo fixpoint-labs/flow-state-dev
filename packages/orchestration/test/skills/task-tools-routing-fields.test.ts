@@ -33,9 +33,9 @@ async function toolsFor() {
   const filed: TaskInit[] = [];
   const board: TaskCollectionRef = {
     ...collection,
-    addTask: async (init) => {
+    createTask: async (init) => {
       filed.push(init);
-      return collection.addTask(init);
+      return collection.createTask(init);
     }
   };
   const tools = taskToolsForTurn(async () => board, () => roster, { dispatches: true })(ctx);

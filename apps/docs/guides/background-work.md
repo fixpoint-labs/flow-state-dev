@@ -180,7 +180,7 @@ export default defineFlow({
 
 The drain claims a row, sends it to the `investigate` entry, and moves on. The run executes `investigateBlock` with the same worker input an inline worker would get, and settles the row itself. When the row ends, this session hears it once, on `onTaskSettled`, which `defineFlow` requires of a flow holding a board like this one; see [Hearing how a task ended](/docs/orchestration/task-board#hearing-how-a-task-ended). Which session a row lands in is the worker's `session` policy: `"per-task"`, `"per-worker"`, or `{ key: (task) => string }`.
 
-Tasks are seeded here to keep the example in one piece. A row added later with `addTask` carries the same `assignee` field.
+Tasks are seeded here to keep the example in one piece. A row added later with `createTask` carries the same `assignee` field.
 
 A board with a worker that dispatches needs `mode: "delegation"`, an explicit `boardId` and a `defineTaskCollection()`, and every worker on it dispatches; work that runs inline goes on a board of its own. The run settles its row after the request that claimed it is gone, so the ledger it settles against has to outlive that request. All of these are checked when the board is built.
 

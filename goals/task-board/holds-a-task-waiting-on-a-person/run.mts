@@ -271,7 +271,7 @@ function buildHost(filename: string, settings: { userDeadlineMs?: number } = {})
   const filePiece = async (ctx: BlockContext, label: string): Promise<string> => {
     const ref = await doerBoard.board.resolver(ctx as never);
     try {
-      const added = await ref!.addTask({ goal: `piece ${label} ${RUN_STAMP} [slow:50]`, assignee: "eng.helper" });
+      const added = await ref!.createTask({ goal: `piece ${label} ${RUN_STAMP} [slow:50]`, assignee: "eng.helper" });
       return `added:${added.id}:${added.status}`;
     } catch (error) {
       return `refused:${(error as Error).message.split(":")[0]}`;

@@ -35,8 +35,8 @@ const fakeCtx = {} as BlockContext;
 describe("fifoDispatcher", () => {
   it("picks earliest-createdAt pending task", async () => {
     const c = buildCollection();
-    await c.addTask({ id: "second", goal: "second" });
-    await c.addTask({ id: "first", goal: "first" });
+    await c.createTask({ id: "second", goal: "second" });
+    await c.createTask({ id: "first", goal: "first" });
     // first was added second — but createdAt is monotonic in our clock,
     // so "second" has the lower createdAt. The fifo dispatcher picks the
     // earliest createdAt regardless of insertion order.
@@ -46,9 +46,9 @@ describe("fifoDispatcher", () => {
 
   it("skips a task another worker is running", async () => {
     const c = buildCollection();
-    await c.addTask({ id: "review-me", goal: "r" });
+    await c.createTask({ id: "review-me", goal: "r" });
     await c.claim("w");
-    await c.addTask({ id: "ready", goal: "ok" });
+    await c.createTask({ id: "ready", goal: "ok" });
     const claimed = await fifoDispatcher.claim(c, "w2", fakeCtx);
     expect(claimed?.id).toBe("ready");
   });
@@ -57,8 +57,8 @@ describe("fifoDispatcher", () => {
 describe("topologicalDispatcher", () => {
   it("waits for deps to complete before claiming a downstream task", async () => {
     const c = buildCollection();
-    await c.addTask({ id: "upstream", goal: "u" });
-    await c.addTask({ id: "downstream", goal: "d", deps: ["upstream"] });
+    await c.createTask({ id: "upstream", goal: "u" });
+    await c.createTask({ id: "downstream", goal: "d", deps: ["upstream"] });
 
     // Downstream is not eligible yet.
     const first = await topologicalDispatcher.claim(c, "w", fakeCtx);
@@ -72,8 +72,8 @@ describe("topologicalDispatcher", () => {
 
   it("returns null when only blocked-deps tasks remain", async () => {
     const c = buildCollection();
-    await c.addTask({ id: "u", goal: "u" });
-    await c.addTask({ id: "d", goal: "d", deps: ["u"] });
+    await c.createTask({ id: "u", goal: "u" });
+    await c.createTask({ id: "d", goal: "d", deps: ["u"] });
     // Claim the upstream so only the dep-locked downstream is left.
     await topologicalDispatcher.claim(c, "w", fakeCtx);
     const second = await topologicalDispatcher.claim(c, "w2", fakeCtx);
@@ -82,8 +82,8 @@ describe("topologicalDispatcher", () => {
 
   it("re-checks deps at claim time, not at list time", async () => {
     const c = buildCollection();
-    await c.addTask({ id: "u", goal: "u" });
-    await c.addTask({ id: "d", goal: "d", deps: ["u"] });
+    await c.createTask({ id: "u", goal: "u" });
+    await c.createTask({ id: "d", goal: "d", deps: ["u"] });
     // Two parallel dispatcher attempts after upstream completes.
     await c.claim("w");
     await c.complete("u", "ok");
@@ -98,9 +98,9 @@ describe("topologicalDispatcher", () => {
 
   it("skips a task another worker is running", async () => {
     const c = buildCollection();
-    await c.addTask({ id: "a", goal: "a" });
+    await c.createTask({ id: "a", goal: "a" });
     await c.claim("w");
-    await c.addTask({ id: "b", goal: "b" });
+    await c.createTask({ id: "b", goal: "b" });
     const claimed = await topologicalDispatcher.claim(c, "w2", fakeCtx);
     expect(claimed?.id).toBe("b");
   });
@@ -109,34 +109,34 @@ describe("topologicalDispatcher", () => {
 describe("priorityDispatcher", () => {
   it("picks highest-priority pending task", async () => {
     const c = buildCollection();
-    await c.addTask({ id: "low", goal: "low", priority: 1 });
-    await c.addTask({ id: "hi", goal: "hi", priority: 9 });
-    await c.addTask({ id: "mid", goal: "mid", priority: 5 });
+    await c.createTask({ id: "low", goal: "low", priority: 1 });
+    await c.createTask({ id: "hi", goal: "hi", priority: 9 });
+    await c.createTask({ id: "mid", goal: "mid", priority: 5 });
     const claimed = await priorityDispatcher.claim(c, "w", fakeCtx);
     expect(claimed?.id).toBe("hi");
   });
 
   it("breaks ties on createdAt ascending", async () => {
     const c = buildCollection();
-    await c.addTask({ id: "later", goal: "later", priority: 5 });
-    await c.addTask({ id: "earlier", goal: "earlier", priority: 5 });
+    await c.createTask({ id: "later", goal: "later", priority: 5 });
+    await c.createTask({ id: "earlier", goal: "earlier", priority: 5 });
     const claimed = await priorityDispatcher.claim(c, "w", fakeCtx);
     expect(claimed?.id).toBe("later"); // later has the earlier createdAt
   });
 
   it("respects deps", async () => {
     const c = buildCollection();
-    await c.addTask({ id: "u", goal: "u", priority: 1 });
-    await c.addTask({ id: "d", goal: "d", priority: 99, deps: ["u"] });
+    await c.createTask({ id: "u", goal: "u", priority: 1 });
+    await c.createTask({ id: "d", goal: "d", priority: 99, deps: ["u"] });
     const claimed = await priorityDispatcher.claim(c, "w", fakeCtx);
     expect(claimed?.id).toBe("u");
   });
 
   it("skips a task another worker is running", async () => {
     const c = buildCollection();
-    await c.addTask({ id: "hi", goal: "hi", priority: 9 });
+    await c.createTask({ id: "hi", goal: "hi", priority: 9 });
     await c.claim("w");
-    await c.addTask({ id: "low", goal: "low", priority: 1 });
+    await c.createTask({ id: "low", goal: "low", priority: 1 });
     const claimed = await priorityDispatcher.claim(c, "w2", fakeCtx);
     expect(claimed?.id).toBe("low");
   });

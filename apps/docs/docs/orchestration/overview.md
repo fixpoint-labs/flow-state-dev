@@ -45,7 +45,7 @@ Which path you take depends on who decides the shape of the work.
 
 **Agent-first.** A generator decides what work to run at runtime. Give it the task tools over a board with `createTaskToolsCapability(resolver)` (`createTask`, `getTask`, `listTasks` and `updateTask`) and it plans the work as tasks, with an `assignee` and `deps` on each, for the board's workers to take.
 
-Both paths drive the same substrate, and a worker can enqueue follow-up work mid-run either way. In a code-defined board, a worker resolves the collection with `getOrCreateTaskCollection` and calls `addTask`. A model calls the `createTask` task tool.
+Both paths drive the same substrate, and a worker can enqueue follow-up work mid-run either way. In a code-defined board, a worker resolves the collection with `getOrCreateTaskCollection` and calls `createTask`. A model calls the `createTask` task tool.
 
 ## Where work blocks, and where it doesn't
 

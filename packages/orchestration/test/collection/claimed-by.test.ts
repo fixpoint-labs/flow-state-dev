@@ -101,7 +101,7 @@ const backings: Array<[string, BackingFactory]> = [
 describe.each(backings)("claimedBy — %s", (_name, makeBacking) => {
   it("stamps the coordinate inside the claim write", async () => {
     const { collection } = await makeBacking();
-    await collection.addTask({ goal: "do a thing" });
+    await collection.createTask({ goal: "do a thing" });
 
     const claimed = await collection.claim("worker-1");
 
@@ -110,7 +110,7 @@ describe.each(backings)("claimedBy — %s", (_name, makeBacking) => {
 
   it("carries the tenant when the identity has one", async () => {
     const { collection } = await makeBacking({ ...IDENTITY, tenantId: "acme" });
-    await collection.addTask({ goal: "do a thing" });
+    await collection.createTask({ goal: "do a thing" });
 
     const claimed = await collection.claim("worker-1");
 
@@ -119,7 +119,7 @@ describe.each(backings)("claimedBy — %s", (_name, makeBacking) => {
 
   it("omits the tenant when the identity has none, rather than writing undefined", async () => {
     const { collection } = await makeBacking();
-    await collection.addTask({ goal: "do a thing" });
+    await collection.createTask({ goal: "do a thing" });
 
     const claimed = await collection.claim("worker-1");
 
@@ -130,7 +130,7 @@ describe.each(backings)("claimedBy — %s", (_name, makeBacking) => {
     // A directly-constructed backing in a test, or any caller with no context
     // to read. Absent is a supported state, not a half-filled coordinate.
     const { collection } = await makeBacking(null);
-    await collection.addTask({ goal: "do a thing" });
+    await collection.createTask({ goal: "do a thing" });
 
     const claimed = await collection.claim("worker-1");
 
@@ -141,7 +141,7 @@ describe.each(backings)("claimedBy — %s", (_name, makeBacking) => {
   // exactly that list rather than a second one invented here.
   it("clears the coordinate when the task completes", async () => {
     const { collection } = await makeBacking();
-    const [task] = await collection.addTasks([{ goal: "do a thing" }]);
+    const [task] = await collection.createTasks([{ goal: "do a thing" }]);
     await collection.claim("worker-1");
 
     await collection.complete(task.id, { ok: true });
@@ -151,7 +151,7 @@ describe.each(backings)("claimedBy — %s", (_name, makeBacking) => {
 
   it("clears the coordinate when the task fails terminally", async () => {
     const { collection } = await makeBacking();
-    const [task] = await collection.addTasks([{ goal: "do a thing" }]);
+    const [task] = await collection.createTasks([{ goal: "do a thing" }]);
     await collection.claim("worker-1");
 
     await collection.fail(task.id, "boom");
@@ -162,7 +162,7 @@ describe.each(backings)("claimedBy — %s", (_name, makeBacking) => {
 
   it("clears the coordinate when a failure re-pends the task for retry", async () => {
     const { collection } = await makeBacking();
-    const [task] = await collection.addTasks([{ goal: "do a thing", maxAttempts: 3 }]);
+    const [task] = await collection.createTasks([{ goal: "do a thing", maxAttempts: 3 }]);
     await collection.claim("worker-1");
 
     await collection.fail(task.id, "transient");
@@ -174,7 +174,7 @@ describe.each(backings)("claimedBy — %s", (_name, makeBacking) => {
 
   it("clears the coordinate when the task is cancelled", async () => {
     const { collection } = await makeBacking();
-    const [task] = await collection.addTasks([{ goal: "do a thing" }]);
+    const [task] = await collection.createTasks([{ goal: "do a thing" }]);
     await collection.claim("worker-1");
 
     await collection.cancel(task.id, "no longer needed");
@@ -184,7 +184,7 @@ describe.each(backings)("claimedBy — %s", (_name, makeBacking) => {
 
   it("clears the coordinate when a stale lease is reclaimed", async () => {
     const { collection } = await makeBacking();
-    const [task] = await collection.addTasks([{ goal: "do a thing" }]);
+    const [task] = await collection.createTasks([{ goal: "do a thing" }]);
     await collection.claim("worker-1");
 
     // Well past the claim's lease — `reclaim` is the manual verb and is
@@ -213,7 +213,7 @@ describe.each(backings)("claimedBy — %s", (_name, makeBacking) => {
    */
   it("refuses to release a claimed task, writing nothing", async () => {
     const { collection } = await makeBacking();
-    const [task] = await collection.addTasks([{ goal: "do a thing" }]);
+    const [task] = await collection.createTasks([{ goal: "do a thing" }]);
     await collection.claim("worker-1");
     const leaseBefore = collection.get(task.id)?.leaseUntil;
 
@@ -231,7 +231,7 @@ describe.each(backings)("claimedBy — %s", (_name, makeBacking) => {
   it("still releases a held task, which carries neither field", async () => {
     // The control. A guard that refused everything would pass the one above.
     const { collection } = await makeBacking();
-    const [task] = await collection.addTasks([{ goal: "do a thing", held: true }]);
+    const [task] = await collection.createTasks([{ goal: "do a thing", held: true }]);
 
     expect(await collection.release(task.id)).toEqual({ outcome: "recorded" });
 
@@ -425,7 +425,7 @@ describe("claimedBy — the emission boundary (the leak this PR must not ship)",
           collectionId: "leak",
           changeVisibility: { client: true, history: false },
         });
-        await collection.addTask({ goal: "do a thing" });
+        await collection.createTask({ goal: "do a thing" });
         const claimed = await collection.claim("worker-1");
         return { claimedBy: claimed?.claimedBy };
       },

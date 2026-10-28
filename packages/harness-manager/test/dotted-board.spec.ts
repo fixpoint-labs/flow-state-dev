@@ -155,7 +155,7 @@ function host(options: { script: Array<"finished" | "failed">; gate: boolean }) 
     execute: async (_input, ctx) => {
       const tasks = (ctx as { cap: Record<string, any> }).cap["dotted-board"];
       if ((await tasks.getTask(TASK_ID)) === undefined) {
-        await tasks.addTask({
+        await tasks.createTask({
           id: TASK_ID,
           goal: "the feature",
           input: { issue: ISSUE, phase: PHASE },

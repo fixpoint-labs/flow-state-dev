@@ -43,7 +43,7 @@
  * `ResourceRef.state` is a live getter, so reads through the mirror always
  * reflect the latest committed state for every task the mirror knows
  * about — the mirror only tracks the SET of refs, never a frozen
- * snapshot of their data. Tasks created via `addTask`/`addTasks` are
+ * snapshot of their data. Tasks created via `createTask`/`createTasks` are
  * inserted into the mirror as they are created.
  *
  * Freshness boundary (FIX-990). The mirror is **shared by every
@@ -919,7 +919,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     // board as evidence that a budget applied.
     maxTotalRetries: null,
 
-    async addTask(init) {
+    async createTask(init) {
       assertFilingSettings(init, options.settings, options.collectionId);
       const task = buildInitialTask<TInput, TOutput>(withFollowUpPlacement(init, lookupRow), now(), options.createdBy, filerFor(init), options.filing);
       await refreshDeps([task as Task]);
@@ -937,7 +937,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       return task;
     },
 
-    async addTasks(inits) {
+    async createTasks(inits) {
       for (const init of inits) assertFilingSettings(init, options.settings, options.collectionId);
       const built = inits.map((init) =>
         buildInitialTask<TInput, TOutput>(withFollowUpPlacement(init, lookupRow), now(), options.createdBy, filerFor(init), options.filing)

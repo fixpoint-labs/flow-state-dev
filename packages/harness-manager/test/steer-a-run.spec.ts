@@ -236,7 +236,7 @@ function host(options: { script: Step[]; stopsOnAbort: boolean; live?: Omit<Live
     execute: async (_input, ctx) => {
       const tasks = (ctx as { cap: Record<string, any> }).cap["steer-board"];
       if ((await tasks.getTask(TASK_ID)) === undefined) {
-        await tasks.addTask({ id: TASK_ID, goal: "the feature", input: { issue: ISSUE, phase: PHASE }, assignee: "coder", maxAttempts: 3 });
+        await tasks.createTask({ id: TASK_ID, goal: "the feature", input: { issue: ISSUE, phase: PHASE }, assignee: "coder", maxAttempts: 3 });
       }
       return { id: TASK_ID };
     },
@@ -280,7 +280,7 @@ function host(options: { script: Step[]; stopsOnAbort: boolean; live?: Omit<Live
     uses: [board.capability],
     execute: async (_input, ctx) => {
       const tasks = (ctx as { cap: Record<string, any> }).cap["steer-board"];
-      await tasks.addTask({ id: FOLLOW_UP_ID, goal: "the follow-up", input: { issue: ISSUE, phase: PHASE }, assignee: "coder", followUpOf: TASK_ID, held: true });
+      await tasks.createTask({ id: FOLLOW_UP_ID, goal: "the follow-up", input: { issue: ISSUE, phase: PHASE }, assignee: "coder", followUpOf: TASK_ID, held: true });
       return { id: FOLLOW_UP_ID };
     },
   });

@@ -150,7 +150,7 @@ function buildScenario() {
       await delay(IDLE_POLL_MS * 20);
       const tasks: TaskCollectionRef = await ctx.cap[boardName].tasks();
 
-      await tasks.addTask({ id: "parked", goal: "parked", input: { topic: "p" } });
+      await tasks.createTask({ id: "parked", goal: "parked", input: { topic: "p" } });
       const claimed = await tasks.claim("external-actor", {
         eligibility: (task) => task.id === "parked",
       });
@@ -255,10 +255,10 @@ describe("taskBoard - durable collection resolutions inside one request", () => 
           });
 
         const refA = await resolve();
-        await refA.addTask({ id: "t1", goal: "t1" });
-        await refA.addTask({ id: "t2", goal: "t2" });
+        await refA.createTask({ id: "t1", goal: "t1" });
+        await refA.createTask({ id: "t2", goal: "t2" });
         // Third create trips the cap and evicts the oldest instance.
-        await refA.addTask({ id: "t3", goal: "t3" });
+        await refA.createTask({ id: "t3", goal: "t3" });
 
         // A later resolution reconciles the shared record against the store.
         const refB = await resolve();
@@ -316,7 +316,7 @@ describe("taskBoard - durable collection resolutions inside one request", () => 
         // Both refs resolve before the add — the shape of a parked worker.
         const refA: TaskCollectionRef = await acc.tasks();
         const refB: TaskCollectionRef = await acc.tasks();
-        await refA.addTask({ id: "t1", goal: "g1", input: { topic: "t" } });
+        await refA.createTask({ id: "t1", goal: "g1", input: { topic: "t" } });
         return { viaA: refA.count(), viaB: refB.count() };
       },
     });

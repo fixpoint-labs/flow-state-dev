@@ -307,7 +307,7 @@ function rosterOf(delegates: TaskDelegates): AssigneeRoster {
       const why = [...delegates.unavailable].map(([worker, reason]) => `${worker}: ${reason}`).join("; ");
       return `${listed}. Not taking tasks now: ${why}`;
     },
-    // The same default the guarded `addTask` gives an unassigned row: the
+    // The same default the guarded `createTask` gives an unassigned row: the
     // conversation's only task-taking delegate, or none.
     soleAssignee: () => soleTaskDelegate(delegates)
   };
@@ -1182,7 +1182,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       if (owner !== undefined) await stampFiledMarker(ctx, owner, conversationLedgerAt);
       // A start owed has a due time before the row exists (FIX-2078).
       await owePass(ctx);
-      const added = await ref.addTask({
+      const added = await ref.createTask({
         ...init,
         ...(input !== undefined ? { input } : {}),
         id,
@@ -1200,7 +1200,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       if (added.status !== "held" && isStartable(added, ref.list())) await triggerPass(ctx);
       return added;
     };
-    const addTask: TaskCollectionRef["addTask"] = async (filing) => {
+    const createTask: TaskCollectionRef["createTask"] = async (filing) => {
       // A caller never writes the session a target resolved to.
       const { targetSessionId: _resolved, ...init } = filing;
       checkFiling(init);
@@ -1254,7 +1254,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     };
     return {
       ...ref,
-      addTask,
+      createTask: createTask,
       complete: ending(ref.complete.bind(ref)) as TaskCollectionRef["complete"],
       fail: ending(ref.fail.bind(ref)) as TaskCollectionRef["fail"],
       cancel: ending(ref.cancel.bind(ref)) as TaskCollectionRef["cancel"],
@@ -1319,7 +1319,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         if (outcome.outcome !== "declined" && hasStartable(ref, id)) await triggerPass(ctx);
         return outcome;
       },
-      async addTasks(inits) {
+      async createTasks(inits) {
         // A refused batch files nothing (FIX-2080): every row's checks, the
         // batch's ids (unique, and none already filed), its dependencies (its
         // own ids count) and every row's place in the chain come first. A
@@ -1442,7 +1442,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       const input = ownProjectIn(init.input, (await filedProjectFor(ctx)).own);
       // A step a task session plans is that task's, server-written (FIX-2081).
       const owner = await pieceOwnerOf(ctx);
-      const added = await plan.addTask({
+      const added = await plan.createTask({
         ...init,
         ...(input !== undefined ? { input } : {}),
         ...(owner !== undefined ? { filedByTask: owner } : {}),
@@ -1454,7 +1454,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       await markAdded();
       return added;
     };
-    const fileStep: TaskCollectionRef["addTask"] = async (init) => {
+    const fileStep: TaskCollectionRef["createTask"] = async (init) => {
       checkStep(init);
       // A step in a session of its own is one board deeper (FIX-2082 D2).
       return fileReservedStep(init, await reserveFiling(ctx, plan, partition, init, init.session === "new"));
@@ -1479,10 +1479,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       );
     };
     const isStepFiling = (init: TaskInit): boolean => init.assignee !== undefined && init.assignee === self;
-    const addTask: TaskCollectionRef["addTask"] = async (init) => {
+    const createTask: TaskCollectionRef["createTask"] = async (init) => {
       const step = isStepFiling(init);
       depsOnOneLedger(init, step);
-      return step ? fileStep(init) : board.addTask(init);
+      return step ? fileStep(init) : board.createTask(init);
     };
     /** The ledger holding `id`: the plan ledger for a step, the board for anything else. */
     const holder = (id: string): TaskCollectionRef => (board.get(id) === undefined && plan.get(id) !== undefined ? plan : board);
@@ -1507,8 +1507,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       };
     return {
       ...board,
-      addTask,
-      async addTasks(inits) {
+      createTask: createTask,
+      async createTasks(inits) {
         // A refused batch files nothing (FIX-2080). Before the first add: the
         // batch's ids (unique, and none already on either ledger), each row's
         // ledger (the batch's rows for the other ledger count), and for the
@@ -1533,7 +1533,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         assertDepsFileable(stepInits, (id) => plan.get(id));
         const reserved: Array<{ id: string; markAdded: () => Promise<void> }> = [];
         for (const init of stepInits) reserved.push(await reserveFiling(ctx, plan, partition, init, init.session === "new"));
-        const tasks = await board.addTasks(batch.filter((init) => !isStepFiling(init)));
+        const tasks = await board.createTasks(batch.filter((init) => !isStepFiling(init)));
         const steps: Task[] = [];
         for (const [i, init] of stepInits.entries()) steps.push(await fileReservedStep(init, reserved[i]!));
         const byId = new Map([...tasks, ...steps].map((row) => [row.id, row]));
@@ -1831,7 +1831,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     await owePass(ctx);
     let added: Task;
     try {
-      added = await ref.addTask(init);
+      added = await ref.createTask(init);
     } catch (error) {
       // Two routings of one message at once: the other's add landed first.
       if (ref.get(init.id) !== undefined) return "exists";

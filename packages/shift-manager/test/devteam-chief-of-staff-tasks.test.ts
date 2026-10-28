@@ -230,7 +230,7 @@ describe("the chief of staff files tasks (FIX-1794 S11)", () => {
 
 /**
  * The coder takes a conversation's task (FIX-1866): the chief of staff files
- * it with `addTask`, the coder works it as a supervised coding run in a
+ * it with `createTask`, the coder works it as a supervised coding run in a
  * checkout of the project's repository, and the conversation hears one line
  * under `eng.coder`. The harness is a stub that answers with what it finds in
  * its working folder; Jev is scripted through the model resolver's evaluation

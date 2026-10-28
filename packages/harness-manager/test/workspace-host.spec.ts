@@ -233,7 +233,7 @@ function lab(options: {
     uses: [board.capability],
     execute: async (_input, ctx) => {
       const tasks = (ctx as { cap: Record<string, any> }).cap["host-board"];
-      await tasks.addTask({
+      await tasks.createTask({
         id: TASK_ID,
         goal: "the feature",
         input: { issue: ISSUE, phase: PHASE },

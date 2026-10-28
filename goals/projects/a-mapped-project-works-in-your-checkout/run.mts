@@ -238,7 +238,7 @@ await runGoal(async (failures) => {
     execute: async (input, ctx) => {
       const tasks = (ctx as { cap: Record<string, any> }).cap["goal-board"];
       const id = `${input.issue}--${PHASE}`;
-      await tasks.addTask({ id, goal: input.issue, input: { issue: input.issue, phase: PHASE }, assignee: input.assignee, maxAttempts: 3 });
+      await tasks.createTask({ id, goal: input.issue, input: { issue: input.issue, phase: PHASE }, assignee: input.assignee, maxAttempts: 3 });
       return { id };
     },
   });

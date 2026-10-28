@@ -69,7 +69,7 @@ export function planMapReduce<TResult>(
         collectionId,
       });
       for (const item of input.items) {
-        await collection.addTask({
+        await collection.createTask({
           id: item.id,
           goal: item.id,
           assignee: "map",

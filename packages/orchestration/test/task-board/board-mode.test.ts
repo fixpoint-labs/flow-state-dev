@@ -230,7 +230,7 @@ describe("goalSeekLoop — refuses a board whose drain can return with a row not
         inputSchema: z.unknown(),
         uses: [board.capability],
         execute: async (_input, ctx) => {
-          await (ctx.cap as any)[board.capability.name].addTasks([{ id: "a", goal: "a" }, { id: "b", goal: "b" }]);
+          await (ctx.cap as any)[board.capability.name].createTasks([{ id: "a", goal: "a" }, { id: "b", goal: "b" }]);
         },
       }),
       judge: (input) => {

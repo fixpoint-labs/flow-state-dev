@@ -547,7 +547,7 @@ describe("taskBoard - default worker (the floor)", () => {
   // Object.prototype member used to resolve off the prototype chain and be
   // dispatched as if it were a registered worker — the task errored on the
   // route-candidate check instead of reaching the floor. Assignees are
-  // model-authored (addTask), so these names are reachable input.
+  // model-authored (createTask), so these names are reachable input.
   it.each(["toString", "constructor", "valueOf", "hasOwnProperty", "__proto__"])(
     "I1: routes the Object.prototype name %s to the floor, not off the prototype chain",
     async (protoAssignee) => {
@@ -747,8 +747,8 @@ describe("taskBoard - mid-drain enqueue", () => {
           state: ctx.getTarget("fanout")!,
         });
         if (input.goal === "seed") {
-          await collection.addTask({ id: "child-a", goal: "child-a" });
-          await collection.addTask({ id: "child-b", goal: "child-b" });
+          await collection.createTask({ id: "child-a", goal: "child-a" });
+          await collection.createTask({ id: "child-b", goal: "child-b" });
         }
         return { ack: input.goal };
       },
@@ -1034,7 +1034,7 @@ describe("taskBoard - onIdle modes", () => {
           });
           setTimeout(() => {
             collection
-              .addTask({ id: "late", goal: "late" })
+              .createTask({ id: "late", goal: "late" })
               .catch(() => undefined);
           }, 50);
         }
@@ -1095,8 +1095,8 @@ describe("taskBoard - remix blocks", () => {
       inputSchema: z.unknown(),
       execute: async (_input, ctx) => {
         const c = await collectionFactory(ctx);
-        await c.addTask({ id: "a", goal: "alpha" });
-        await c.addTask({ id: "b", goal: "beta", deps: ["a"] });
+        await c.createTask({ id: "a", goal: "alpha" });
+        await c.createTask({ id: "b", goal: "beta", deps: ["a"] });
       },
     });
 
@@ -1318,7 +1318,7 @@ describe("taskBoard - capability", () => {
 // ---------------------------------------------------------------------------
 // Request default — a sibling/outer step can add a task BEFORE the board
 // drains (the footgun the sequencer default made throw), and the accessor
-// sugar (addTask/addTasks/getTask/listTasks/countTasks) delegates to the ref.
+// sugar (createTask/createTasks/getTask/listTasks/countTasks) delegates to the ref.
 // ---------------------------------------------------------------------------
 
 describe("taskBoard - request default + accessor sugar", () => {
@@ -1340,12 +1340,12 @@ describe("taskBoard - request default + accessor sugar", () => {
       inputSchema: z.unknown(),
       uses: [board.capability],
       execute: async (_input, ctx) => {
-        await ctx.cap.preboard.addTask({
+        await ctx.cap.preboard.createTask({
           id: "s1",
           goal: "s1",
           input: { topic: "s1" },
         });
-        await ctx.cap.preboard.addTasks([
+        await ctx.cap.preboard.createTasks([
           { id: "s2", goal: "s2", input: { topic: "s2" } },
         ]);
       },
@@ -1379,8 +1379,8 @@ describe("taskBoard - request default + accessor sugar", () => {
       uses: [board.capability],
       execute: async (_input, ctx) => {
         const acc = ctx.cap.sugar;
-        await acc.addTask({ id: "t1", goal: "g1", input: { topic: "t1" } });
-        await acc.addTasks([{ id: "t2", goal: "g2", input: { topic: "t2" } }]);
+        await acc.createTask({ id: "t1", goal: "g1", input: { topic: "t1" } });
+        await acc.createTasks([{ id: "t2", goal: "g2", input: { topic: "t2" } }]);
         const t1 = await acc.getTask("t1");
         return {
           count: await acc.countTasks(),
@@ -1427,7 +1427,7 @@ describe("taskBoard - durable (resource-backed) collection", () => {
       inputSchema: z.unknown(),
       uses: [board.capability],
       execute: async (_input, ctx) => {
-        await ctx.cap["todo-board"].addTask({
+        await ctx.cap["todo-board"].createTask({
           id: "d1",
           goal: "d1",
           input: { topic: "d1" },
@@ -1487,9 +1487,9 @@ describe("taskBoard - durable (resource-backed) collection", () => {
       uses: [board.capability],
       execute: async (_input, ctx) => {
         const acc = ctx.cap["fresh-board"];
-        await acc.addTask({ id: "f1", goal: "f1" });
+        await acc.createTask({ id: "f1", goal: "f1" });
         const afterFirst = await acc.countTasks();
-        await acc.addTask({ id: "f2", goal: "f2" });
+        await acc.createTask({ id: "f2", goal: "f2" });
         const afterSecond = await acc.countTasks();
         return { afterFirst, afterSecond };
       },
@@ -1544,7 +1544,7 @@ describe("taskBoard - re-entry (request-scoped collection)", () => {
           backing: "state",
           collectionId: "reentry-basic",
         });
-        await collection.addTask({
+        await collection.createTask({
           id: "c",
           goal: "gamma",
           input: { topic: "gamma" },
@@ -1603,7 +1603,7 @@ describe("taskBoard - re-entry (request-scoped collection)", () => {
             collectionId: "reentry-three-rounds",
           });
           for (const id of ids) {
-            await collection.addTask({ id, goal: id, input: { topic: id } });
+            await collection.createTask({ id, goal: id, input: { topic: id } });
           }
         },
       });
@@ -1660,7 +1660,7 @@ describe("taskBoard - re-entry (request-scoped collection)", () => {
           collectionId: "reentry-concurrent",
         });
         for (let i = 0; i < 8; i += 1) {
-          await collection.addTask({
+          await collection.createTask({
             id: `r2-${i}`,
             goal: `r2-${i}`,
             input: { topic: `r2-${i}` },
@@ -1949,7 +1949,7 @@ describe("taskBoard - item attribution (FIX-658)", () => {
             collectionId: "fanout",
             state: ctx.getTarget("fanout")!,
           });
-          await collection.addTask({ id: "analyzer", goal: "analyzer" });
+          await collection.createTask({ id: "analyzer", goal: "analyzer" });
           await analyzerEmitted.promise;
           ctx.emit.message("discoverer step 2");
         } else {

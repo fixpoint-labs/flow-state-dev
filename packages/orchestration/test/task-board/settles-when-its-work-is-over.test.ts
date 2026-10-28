@@ -77,7 +77,7 @@ async function harness(
     });
 
   const parent = await ledger();
-  await parent.addTask({ id: "t1", goal: "do it", assignee: "coder", input: {}, maxAttempts: 2 });
+  await parent.createTask({ id: "t1", goal: "do it", assignee: "coder", input: {}, maxAttempts: 2 });
   const claimed = (await parent.claim("drain", { leaseDurationMs: 10_000 }))!;
 
   let behaviour: Behaviour = async () => "the answer";
@@ -363,7 +363,7 @@ describe("the claim gate settles a task when its work is over", () => {
   it("a task whose filed work is open stays running with no lease, and the next request for it settles it", async () => {
     const h = await harness();
     h.setBehaviour(async (ctx, ledger) => {
-      await ledger.addTask({ id: "piece", goal: "a piece", assignee: "helper", filedByTask: currentWorkerClaim(ctx)!.taskId });
+      await ledger.createTask({ id: "piece", goal: "a piece", assignee: "helper", filedByTask: currentWorkerClaim(ctx)!.taskId });
       return "first answer";
     });
 
@@ -389,7 +389,7 @@ describe("the claim gate settles a task when its work is over", () => {
   it("a steer written onto a task waiting on its filed work gets its turn once that work ends", async () => {
     const h = await harness({ steerTurn: true });
     h.setBehaviour(async (ctx, ledger) => {
-      await ledger.addTask({ id: "piece", goal: "a piece", assignee: "helper", filedByTask: currentWorkerClaim(ctx)!.taskId });
+      await ledger.createTask({ id: "piece", goal: "a piece", assignee: "helper", filedByTask: currentWorkerClaim(ctx)!.taskId });
       return "first answer";
     });
     await h.run();
@@ -410,7 +410,7 @@ describe("the claim gate settles a task when its work is over", () => {
   it("a request whose own filed work ended before it did settles at its end", async () => {
     const h = await harness();
     h.setBehaviour(async (ctx, ledger) => {
-      await ledger.addTask({ id: "piece", goal: "a piece", filedByTask: currentWorkerClaim(ctx)!.taskId });
+      await ledger.createTask({ id: "piece", goal: "a piece", filedByTask: currentWorkerClaim(ctx)!.taskId });
       await ledger.cancel("piece", "not needed");
       return "answer";
     });
@@ -850,7 +850,7 @@ describe("a task's background error fails its attempt", () => {
   /** The task's work files a piece and answers; the piece then ends, so the notice of its ending is the request that checks it. */
   async function waitingOnAPiece(h: Awaited<ReturnType<typeof harness>>) {
     h.setBehaviour(async (ctx, ledger) => {
-      await ledger.addTask({ id: "piece", goal: "a piece", assignee: "helper", filedByTask: currentWorkerClaim(ctx)!.taskId });
+      await ledger.createTask({ id: "piece", goal: "a piece", assignee: "helper", filedByTask: currentWorkerClaim(ctx)!.taskId });
       return "first answer";
     });
     await h.run();

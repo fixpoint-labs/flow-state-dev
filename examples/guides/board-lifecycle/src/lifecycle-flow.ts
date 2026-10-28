@@ -41,7 +41,7 @@ const seedTasks = handler({
       collectionId: COLLECTION_ID,
     });
     for (const [i, text] of input.items.entries()) {
-      await collection.addTask({
+      await collection.createTask({
         id: `task-${i}`,
         goal: `process ${text}`,
         assignee: "processor",

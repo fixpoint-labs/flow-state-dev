@@ -304,7 +304,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
     const inits = taskInitsFor(entry, depth);
     if (inits.length === 0) return;
     const collection = await getCollection(ctx);
-    await collection.addTasks(inits);
+    await collection.createTasks(inits);
   }
 
   // Top-of-emit: append the seed entry, spawn depth-1 tasks for matching actors.
@@ -358,7 +358,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
         // across entries partial: with the budget nearly full, entry one commits
         // and entry two throws, so the source task errors with part of its
         // output already dispatched. Everything this output wants to spawn goes
-        // in ONE `addTasks`, submitted before any state is committed.
+        // in ONE `createTasks`, submitted before any state is committed.
         const seen = new Set(
           (workspaceRef.state as EventActorsWorkspaceState).entries.map(
             (e: Record<string, unknown>) => JSON.stringify([e.type, e.topic]),
@@ -382,7 +382,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
 
         // WORKSPACE FIRST, then one atomic dispatch.
         //
-        // `addTasks` publishes pending tasks and emits their task-change items,
+        // `createTasks` publishes pending tasks and emits their task-change items,
         // so an idle board worker can claim and run an actor the moment it
         // returns. Anything that actor needs in the shared log must already be
         // there. Dispatching first raced on every re-emission under
@@ -410,7 +410,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
 
         if (inits.length > 0) {
           const collectionForSpawn = await getCollection(ctx);
-          await collectionForSpawn.addTasks(inits);
+          await collectionForSpawn.createTasks(inits);
         }
       },
     });

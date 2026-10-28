@@ -297,7 +297,7 @@ function buildHost(filename: string) {
     if (split !== null) {
       const ref = await doerBoard.board.resolver(ctx as never);
       for (let i = 0; i < Number(split[1]); i += 1) {
-        await ref!.addTask({ goal: `piece ${i} of ${row?.id} ${RUN_STAMP} [slow:${split[2]}]`, assignee: "eng.helper" });
+        await ref!.createTask({ goal: `piece ${i} of ${row?.id} ${RUN_STAMP} [slow:${split[2]}]`, assignee: "eng.helper" });
       }
     }
     const hold = /\[hold:(\d+)\]/.exec(message);

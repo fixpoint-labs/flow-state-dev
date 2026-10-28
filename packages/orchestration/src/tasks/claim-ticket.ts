@@ -138,7 +138,7 @@ export const taskClaimTicketSchema = z.object({
  * Mint a ticket for a task the caller has just claimed.
  *
  * Pass the task **returned by `claim()`**, never the pre-claim task: `attempts`
- * is incremented by the claim, so a ticket built from an `addTask()` result
+ * is incremented by the claim, so a ticket built from an `createTask()` result
  * names an attempt nobody holds and every write presenting it is refused.
  *
  * `partition` is the claiming ref's own (`TaskCollectionRef.partition`), on a

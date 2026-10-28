@@ -69,7 +69,7 @@ describe("a stranded job returns to the queue and gets done", () => {
     // exactly the state a worker leaves behind when its process dies.
     const clock = { skew: 0 };
     const collection = liveCollection("recovery", clock);
-    await collection.addTask({ id: "t", goal: "finish the stranded job" });
+    await collection.createTask({ id: "t", goal: "finish the stranded job" });
     await collection.claim("worker-that-died", { leaseDurationMs: 1_000 });
     expect(collection.get("t")?.status).toBe("in_progress");
 

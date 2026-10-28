@@ -81,7 +81,7 @@ function takerFlow(installation: WorkerInstallation, runs: Run[]) {
         const ref = await board.board.resolver(ctx as never);
         // The delegate names a project of its own: the board writes the one it
         // works in over the guess, so the piece isn't refused other-project.
-        await ref!.addTask({
+        await ref!.createTask({
           goal: `piece of ${held.goal}`,
           assignee: "eng.coder",
           input: { message: "piece", project: { visibility: "shared", id: "beta" } }
@@ -90,7 +90,7 @@ function takerFlow(installation: WorkerInstallation, runs: Run[]) {
       if (held !== undefined && held.goal.startsWith("plan") && !split.has(held.id)) {
         split.add(held.id);
         const ref = await board.board.turnResolver(ctx as never);
-        await ref!.addTask({ id: "s-own", goal: `step of ${held.goal}`, assignee: worker, session: "new" });
+        await ref!.createTask({ id: "s-own", goal: `step of ${held.goal}`, assignee: worker, session: "new" });
       }
       return "asked";
     }

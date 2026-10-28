@@ -38,8 +38,8 @@ describe("sequencer-state integration", () => {
           collectionId: "plan",
           state: ctx.sequencer!,
         });
-        await collection.addTask({ id: "a", goal: "alpha" });
-        await collection.addTask({ id: "b", goal: "beta" });
+        await collection.createTask({ id: "a", goal: "alpha" });
+        await collection.createTask({ id: "b", goal: "beta" });
         return { count: collection.count() };
       },
     });
@@ -107,7 +107,7 @@ describe("sequencer-state integration", () => {
           collectionId: "plan",
           state: ctx.sequencer!,
         });
-        await collection.addTask({ id: "t", goal: "do" });
+        await collection.createTask({ id: "t", goal: "do" });
         await collection.claim("w");
         await collection.complete("t", "ok");
         return null;
@@ -163,7 +163,7 @@ describe("sequencer-state integration", () => {
           collectionId: "plan",
           state: ctx.sequencer!,
         });
-        await collection.addTask({ id: "a", goal: "alpha" });
+        await collection.createTask({ id: "a", goal: "alpha" });
         return null;
       },
     });

@@ -170,7 +170,7 @@ function buildHost(filename: string) {
         return waited.ok ? { ok: true, status: waited.task.status, answer: waited.task.output } : waited;
       }
       try {
-        if (script.op === "file") return { ok: true, ids: (await ref.addTasks(script.tasks)).map((t) => t.id) };
+        if (script.op === "file") return { ok: true, ids: (await ref.createTasks(script.tasks)).map((t) => t.id) };
         if (script.op === "two-passes") {
           const send = () =>
             dispatchThroughSeam(ctx, { type: "internal", action: "dispatch", session: { id: ctx.session.identity.id }, payload: {}, from: "goal-two-passes" });
@@ -197,7 +197,7 @@ function buildHost(filename: string) {
       const piece = /\[file:([^\]]+)\]/.exec(input.message);
       if (piece !== null) {
         const ref = await doerBoard.board.resolver(ctx as never);
-        await ref!.addTask({ goal: `${piece[1]} [slow:400]`, assignee: "eng.helper" });
+        await ref!.createTask({ goal: `${piece[1]} [slow:400]`, assignee: "eng.helper" });
         return "filed a piece";
       }
       return work(input.message, attempt);
@@ -245,7 +245,7 @@ function buildHost(filename: string) {
     outputSchema: z.unknown(),
     execute: async (input, ctx) => {
       const ref = await plansRef(ctx as never);
-      await ref.addTasks(input.tasks.map((t) => ({ ...t, assignee: "doer", maxAttempts: 1 })));
+      await ref.createTasks(input.tasks.map((t) => ({ ...t, assignee: "doer", maxAttempts: 1 })));
       return {};
     }
   });
