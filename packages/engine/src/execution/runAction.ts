@@ -3186,6 +3186,15 @@ async function runActionAttempt<
         error: endFailure.message
       });
     }
+    // The ending just handed on what the observers and side-chains after the
+    // settlement spent too: record it as settled, so a continuation never
+    // counts it again from the log (FIX-2145).
+    if (ending.status === "interrupted" && terminalRecordIncarnation !== undefined) {
+      await patchRequestRecord(options.stores, requestId, {
+        spentByModel: ctx.request.tokenUsage.byModel,
+        spentThroughItemIndex: lastItemIndexOf(itemsToPersist())
+      });
+    }
     const writesSettled = await settlePendingWrites(options.stores, requestId, logger);
     await resumeWaitingParent(options, requestId, logger);
 

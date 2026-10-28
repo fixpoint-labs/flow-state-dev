@@ -352,6 +352,69 @@ describe("request spend ledger", () => {
     expect(outcome.error?.message).toBe("Token budget exceeded: consumed 11 > 10");
   });
 
+  it("hands on what an interrupted request's observer spent once, not again at the continuation", async () => {
+    // The interrupted ending hands on what `onFinished` spent after the
+    // record settled. The continuation must not read that call's trace as a
+    // dead run's spend and hand it on a second time.
+    process.env.FSDEV_TRACE_OBSERVABILITY = "false";
+    const endings: RequestEnding[] = [];
+    let calls = 0;
+    const modelResolver = Object.assign(
+      () => ({
+        modelId: "openai/gpt-6-luna",
+        async generate() {
+          calls += 1;
+          return { text: "ok", usage: calls === 1 ? usage4x4 : { promptTokens: 2, completionTokens: 1, totalTokens: 3 } };
+        }
+      }),
+      { resolveId: (id: string) => id }
+    );
+    let waited = false;
+    const waitOnce = handler({
+      name: "wait-once",
+      inputSchema: z.any(),
+      execute: async (value, ctx) => {
+        if (waited) return value;
+        waited = true;
+        await new Promise((_resolve, reject) => ctx.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))));
+        return value;
+      }
+    });
+    const ask = (name: string) => generator({ name, model: "openai/gpt-6-luna", prompt: () => "p", user: () => "u" });
+    const flow = defineFlow({
+      kind: "spend-interrupt-observer",
+      session: { [SESSION_REQUEST_END_HOOK]: () => (ending) => void endings.push(ending) },
+      request: { onFinished: ask("notify") },
+      actions: {
+        run: {
+          inputSchema: z.object({}),
+          block: sequencer({ name: "seq", durable: true }).step(ask("first")).step(waitOnce).step(ask("second"))
+        }
+      }
+    })({ id: "spend-interrupt-observer" });
+    const stores = createInMemoryStores();
+    const provider = createCheckpointDurabilityProvider({ checkpoints: stores.checkpoints, suspensions: stores.suspensions, leases: stores.leases });
+    const runtimeConfig = { durabilityProvider: provider, modelResolver };
+    const disconnect = new AbortController();
+
+    const running = runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-observer", signal: disconnect.signal, stores, runtimeConfig });
+    while (!waited) await new Promise((resolve) => setTimeout(resolve, 5));
+    disconnect.abort();
+    await running;
+    expect((await stores.request.get("r-observer"))?.status).toBe("interrupted");
+    const registry = createFlowRegistry();
+    registry.register(flow as never);
+    const { finished } = await continueRequest({ requestId: "r-observer", stores, flowRegistry: registry, runtimeConfig });
+    await finished;
+
+    // first (8) + notify (3), then second (3) + notify (3).
+    expect(calls).toBe(4);
+    expect(endings.map((ending) => [ending.status, ending.spend.byModel["openai/gpt-6-luna"]?.total])).toEqual([
+      ["interrupted", 11],
+      ["completed", 6]
+    ]);
+  });
+
   it.each(["false", "true"])(
     "keeps counting a request's token budget across a continuation after its process died (observability %s)",
     async (observability) => {
