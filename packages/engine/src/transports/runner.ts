@@ -1,9 +1,9 @@
 /**
- * Pluggable flow execution dispatcher.
+ * Pluggable flow execution runner.
  *
- * Controls WHERE a flow action executes. The default InProcessDispatcher
+ * Controls WHERE a flow action executes. The default InProcessRunner
  * runs actions in the current process via runAction. Alternative
- * implementations (WorkerDispatcher for BullMQ, future TriggerDevDispatcher)
+ * implementations (WorkerRunner for BullMQ, future TriggerDevRunner)
  * route execution to external workers with live event bridging.
  */
 import type { ActionCore } from "@flow-state-dev/core/types";
@@ -29,7 +29,7 @@ export interface DispatchEnvelope {
   userId: string;
   sessionId?: string;
   /**
-   * The organization the run belongs to. Required (FIX-1442): a dispatcher
+   * The organization the run belongs to. Required (FIX-1442): a runner
    * hands work to a worker that runs BELOW principal resolution, so the
    * envelope is the only place that worker can learn the organization from.
    * A durable job written before this field existed is refused on the way
@@ -42,8 +42,8 @@ export interface DispatchEnvelope {
   /**
    * Pre-resolved action core for an event dispatch with no static coordinate
    * (the dynamic schedule). NOT serializable — a block cannot cross a queue
-   * boundary — so it is honoured only by the in-process dispatcher; external
-   * dispatchers (BullMQ) drop it, which is consistent with dynamic schedules
+   * boundary — so it is honoured only by the in-process runner; external
+   * runners (BullMQ) drop it, which is consistent with dynamic schedules
    * being non-recoverable. See `InboundRequestEnvelope.resolvedActionCore`.
    */
   resolvedActionCore?: ActionCore;
@@ -89,7 +89,7 @@ export interface DispatchEnvelope {
 export type LeaseTurn = { kind: "now" } | { kind: "when-free"; key: string };
 
 /**
- * Handle returned by FlowDispatcher.dispatch(). Exposes the request id
+ * Handle returned by FlowRunner.dispatch(). Exposes the request id
  * and a promise that resolves when execution finishes, plus an abort hook.
  */
 export interface FlowDispatchHandle {
@@ -100,7 +100,7 @@ export interface FlowDispatchHandle {
    * without waiting for the run (FIX-982). Rejects with the run's own error
    * when it dies before getting that far.
    *
-   * Optional because a dispatcher is free not to distinguish the two, but the
+   * Optional because a runner is free not to distinguish the two, but the
    * in-process one does: `dispatchLocal` returns as soon as `runAction` reaches
    * its first await, which is before the registration write has landed, so the
    * handle alone is not evidence the request exists.
@@ -111,11 +111,11 @@ export interface FlowDispatchHandle {
 
 /**
  * Controls where flow actions execute. Implementations:
- * - InProcessDispatcher (default) — calls runAction in the current process
- * - WorkerDispatcher (BullMQ) — enqueues to a BullMQ queue, subscribes via bridge
- * - Future: TriggerDevDispatcher, PgBossDispatcher
+ * - InProcessRunner (default) — calls runAction in the current process
+ * - WorkerRunner (BullMQ) — enqueues to a BullMQ queue, subscribes via bridge
+ * - Future: TriggerDevRunner, PgBossRunner
  */
-export interface FlowDispatcher {
+export interface FlowRunner {
   dispatch(
     envelope: DispatchEnvelope,
     bridge?: StreamBridge
@@ -165,4 +165,19 @@ export interface StreamSubscriber {
 export interface StreamBridge {
   createPublisher(requestId: string): StreamPublisher;
   createSubscriber(requestId: string): StreamSubscriber;
+}
+
+/**
+ * Refuse the `dispatcher` option key, which is now `runner`. A caller that is
+ * not type-checked, or spreads an older config object, would otherwise have
+ * its queue runner silently dropped and its work run in process.
+ *
+ * @param options - The options object an entry point was handed.
+ * @param where - The entry point's name, for the message.
+ */
+export function refuseRetiredDispatcherOption(options: object, where: string): void {
+  if ((options as { dispatcher?: unknown }).dispatcher === undefined) return;
+  throw new Error(
+    `${where}: the \`dispatcher\` option is now \`runner\`. Pass the same FlowRunner as \`runner\`.`
+  );
 }

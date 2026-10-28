@@ -4,7 +4,7 @@
  * Provides durable background jobs, native cron scheduling, and full-flow
  * worker dispatch for long-lived self-hosted FSD deployments. Composes
  * from existing framework seams (runAction, ScheduleIndex, dispatch contract)
- * with FlowDispatcher/StreamBridge interfaces for pluggable execution.
+ * with FlowRunner/StreamBridge interfaces for pluggable execution.
  */
 export { bullmqWorker } from "./flowstate-adapter";
 export type { BullmqWorkerOptions, BullmqWorkerAdapter } from "./flowstate-adapter";
@@ -12,7 +12,7 @@ export { createBullmqRuntime } from "./runtime";
 export type { BullmqRuntime, CreateBullmqRuntimeOptions } from "./runtime";
 export { createFlowWorker, createFlowJobProcessor } from "./worker";
 export type { FlowWorkerDeps, CreateFlowWorkerOptions } from "./worker";
-export { createWorkerDispatcher } from "./dispatcher";
+export { createWorkerRunner } from "./runner";
 export { createRedisLeaseBackend, leaseJobId, DEFAULT_LEASE_MS } from "./lease-backend";
 export type {
   CreateRedisLeaseBackendOptions,
@@ -20,7 +20,7 @@ export type {
   JobLeaseTakeInput,
   RedisLeaseBackend,
 } from "./lease-backend";
-export type { CreateWorkerDispatcherOptions } from "./dispatcher";
+export type { CreateWorkerRunnerOptions } from "./runner";
 export { createRedisStreamBridge } from "./stream-bridge";
 export type { CreateRedisStreamBridgeOptions } from "./stream-bridge";
 export { createBullmqScheduleIndex } from "./schedule-index";

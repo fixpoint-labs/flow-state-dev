@@ -81,9 +81,9 @@ describe.each([
     setNow = setup.setNow;
   });
 
-  describe("addTask / addTasks", () => {
+  describe("createTask / createTasks", () => {
     it("adds a task with defaults", async () => {
-      const task = await collection.addTask({ goal: "do thing" });
+      const task = await collection.createTask({ goal: "do thing" });
       expect(task.goal).toBe("do thing");
       expect(task.status).toBe("pending");
       expect(task.attempts).toBe(0);
@@ -93,15 +93,15 @@ describe.each([
     });
 
     it("throws on id collision", async () => {
-      await collection.addTask({ id: "x", goal: "first" });
-      await expect(collection.addTask({ id: "x", goal: "second" })).rejects.toThrow(
+      await collection.createTask({ id: "x", goal: "first" });
+      await expect(collection.createTask({ id: "x", goal: "second" })).rejects.toThrow(
         /already exists/
       );
     });
 
-    it("addTasks emits one change event per task", async () => {
+    it("createTasks emits one change event per task", async () => {
       events.length = 0;
-      await collection.addTasks([
+      await collection.createTasks([
         { id: "a", goal: "A" },
         { id: "b", goal: "B" },
       ]);
@@ -114,7 +114,7 @@ describe.each([
     it("only claims pending tasks", async () => {
       // task.assignee stays undefined when the user didn't seed one — claim's
       // workerId is for trace/lease, not the registry routing key.
-      await collection.addTask({ id: "a", goal: "A" });
+      await collection.createTask({ id: "a", goal: "A" });
       const claimed = await collection.claim("worker-1");
       expect(claimed?.id).toBe("a");
       expect(claimed?.status).toBe("in_progress");
@@ -124,7 +124,7 @@ describe.each([
     });
 
     it("preserves user-set assignee through claim (registry routing key)", async () => {
-      await collection.addTask({ id: "a", goal: "A", assignee: "researcher" });
+      await collection.createTask({ id: "a", goal: "A", assignee: "researcher" });
       const claimed = await collection.claim("worker-1");
       expect(claimed?.assignee).toBe("researcher");
     });
@@ -135,7 +135,7 @@ describe.each([
     });
 
     it("emits change event with kind=claimed and prevStatus=pending", async () => {
-      await collection.addTask({ id: "a", goal: "A" });
+      await collection.createTask({ id: "a", goal: "A" });
       events.length = 0;
       await collection.claim("worker-1");
       const evt = events.find((e) => e.kind === "claimed");
@@ -144,16 +144,16 @@ describe.each([
 
     it("respects createdAt ordering — earliest pending wins", async () => {
       setNow(1000);
-      await collection.addTask({ id: "second", goal: "second" });
+      await collection.createTask({ id: "second", goal: "second" });
       setNow(500);
-      await collection.addTask({ id: "first", goal: "first" });
+      await collection.createTask({ id: "first", goal: "first" });
       const claimed = await collection.claim("worker-1");
       expect(claimed?.id).toBe("first");
     });
 
     it("eligibility predicate filters out non-matching candidates", async () => {
-      await collection.addTask({ id: "a", goal: "A", labels: ["low"] });
-      await collection.addTask({ id: "b", goal: "B", labels: ["high"] });
+      await collection.createTask({ id: "a", goal: "A", labels: ["low"] });
+      await collection.createTask({ id: "b", goal: "B", labels: ["high"] });
       const claimed = await collection.claim("worker-1", {
         eligibility: (task) =>
           task.status === "pending" && (task.labels ?? []).includes("high"),
@@ -162,8 +162,8 @@ describe.each([
     });
 
     it("two concurrent claim calls return distinct tasks", async () => {
-      await collection.addTask({ id: "a", goal: "A" });
-      await collection.addTask({ id: "b", goal: "B" });
+      await collection.createTask({ id: "a", goal: "A" });
+      await collection.createTask({ id: "b", goal: "B" });
       const [r1, r2] = await Promise.all([
         collection.claim("worker-1"),
         collection.claim("worker-2"),
@@ -174,7 +174,7 @@ describe.each([
     });
 
     it("two concurrent claim calls on a single task: one wins, one returns null", async () => {
-      await collection.addTask({ id: "only", goal: "only" });
+      await collection.createTask({ id: "only", goal: "only" });
       const [r1, r2] = await Promise.all([
         collection.claim("worker-1"),
         collection.claim("worker-2"),
@@ -188,7 +188,7 @@ describe.each([
 
   describe("complete / fail", () => {
     it("complete sets output, completedAt, status=completed", async () => {
-      await collection.addTask({ id: "t", goal: "t" });
+      await collection.createTask({ id: "t", goal: "t" });
       await collection.claim("w");
       setNow(2000);
       await collection.complete("t", { result: 42 });
@@ -200,7 +200,7 @@ describe.each([
     });
 
     it("fail sets error, status=errored", async () => {
-      await collection.addTask({ id: "t", goal: "t" });
+      await collection.createTask({ id: "t", goal: "t" });
       await collection.claim("w");
       await collection.fail("t", "boom");
       const t = collection.get("t")!;
@@ -212,14 +212,14 @@ describe.each([
 
   describe("fail retry semantics (maxAttempts)", () => {
     it("with maxAttempts unset, fail goes terminal (errored) on first failure", async () => {
-      await collection.addTask({ id: "t", goal: "t" });
+      await collection.createTask({ id: "t", goal: "t" });
       await collection.claim("w");
       await collection.fail("t", "boom");
       expect(collection.get("t")?.status).toBe("errored");
     });
 
     it("with maxAttempts=3, fail re-pends with kind=retried until budget exhausts", async () => {
-      await collection.addTask({ id: "t", goal: "t", maxAttempts: 3 });
+      await collection.createTask({ id: "t", goal: "t", maxAttempts: 3 });
 
       // attempt 1: claim → fail → re-pend
       await collection.claim("w1");
@@ -247,7 +247,7 @@ describe.each([
     });
 
     it("with maxAttempts=1, fail goes terminal on first failure", async () => {
-      await collection.addTask({ id: "t", goal: "t", maxAttempts: 1 });
+      await collection.createTask({ id: "t", goal: "t", maxAttempts: 1 });
       await collection.claim("w");
       expect(collection.get("t")?.attempts).toBe(1);
       await collection.fail("t", "boom");
@@ -256,7 +256,7 @@ describe.each([
     });
 
     it("each retry preserves the user-set assignee", async () => {
-      await collection.addTask({
+      await collection.createTask({
         id: "t",
         goal: "t",
         assignee: "worker-a",
@@ -269,16 +269,16 @@ describe.each([
     });
   });
 
-  describe("hold / release / awaitReview / unpark / cancel", () => {
+  describe("hold / release / cancel", () => {
     it("hold transitions pending → held", async () => {
-      await collection.addTask({ id: "t", goal: "t" });
+      await collection.createTask({ id: "t", goal: "t" });
       await collection.hold("t");
       expect(collection.get("t")?.status).toBe("held");
       expect(events.at(-1)?.kind).toBe("held");
     });
 
     it("release returns to pending", async () => {
-      await collection.addTask({ id: "t", goal: "t" });
+      await collection.createTask({ id: "t", goal: "t" });
       await collection.hold("t");
       await collection.release("t");
       expect(collection.get("t")?.status).toBe("pending");
@@ -286,7 +286,7 @@ describe.each([
     });
 
     it("cancel on terminal status is a no-op (no event emitted)", async () => {
-      await collection.addTask({ id: "t", goal: "t" });
+      await collection.createTask({ id: "t", goal: "t" });
       await collection.claim("w");
       await collection.complete("t", "ok");
       events.length = 0;
@@ -295,14 +295,14 @@ describe.each([
     });
 
     it("cancel emits change event with kind=cancelled when task is non-terminal", async () => {
-      await collection.addTask({ id: "t", goal: "t" });
+      await collection.createTask({ id: "t", goal: "t" });
       await collection.cancel("t", "user cancelled");
       expect(collection.get("t")?.status).toBe("cancelled");
       expect(events.at(-1)?.kind).toBe("cancelled");
     });
 
     it("rejects illegal transitions", async () => {
-      await collection.addTask({ id: "t", goal: "t" });
+      await collection.createTask({ id: "t", goal: "t" });
       await collection.claim("w");
       await collection.complete("t", "ok");
       await expect(collection.fail("t", "too late")).rejects.toThrow(/illegal status transition/);
@@ -312,7 +312,7 @@ describe.each([
   describe("reclaim", () => {
     it("resets stale-leased tasks back to pending", async () => {
       setNow(1000);
-      await collection.addTask({ id: "t", goal: "t" });
+      await collection.createTask({ id: "t", goal: "t" });
       // Default lease: two minutes (FIX-1005 raised it from 30s, because a
       // lease is now something a live worker renews rather than a number that
       // expires under everyone).
@@ -335,7 +335,7 @@ describe.each([
       // because `assignee` is the registry routing key, not the
       // runtime worker identity.
       setNow(1000);
-      await collection.addTask({ id: "t", goal: "t", assignee: "researcher" });
+      await collection.createTask({ id: "t", goal: "t", assignee: "researcher" });
       await collection.claim("w");
       setNow(1000 + 60_000);
       await collection.reclaim();
@@ -344,7 +344,7 @@ describe.each([
 
     it("does not reset still-leased tasks", async () => {
       setNow(1000);
-      await collection.addTask({ id: "t", goal: "t" });
+      await collection.createTask({ id: "t", goal: "t" });
       await collection.claim("w");
       // Tick forward less than lease duration.
       setNow(1000 + 1000);
@@ -356,21 +356,21 @@ describe.each([
 
   describe("metadata / labels / priority / assignee mutations", () => {
     it("addLabel emits label_changed", async () => {
-      await collection.addTask({ id: "t", goal: "t" });
+      await collection.createTask({ id: "t", goal: "t" });
       await collection.addLabel("t", "priority-high");
       expect(collection.get("t")?.labels).toContain("priority-high");
       expect(events.at(-1)?.kind).toBe("label_changed");
     });
 
     it("addLabel idempotent — duplicate add does not emit", async () => {
-      await collection.addTask({ id: "t", goal: "t", labels: ["x"] });
+      await collection.createTask({ id: "t", goal: "t", labels: ["x"] });
       events.length = 0;
       await collection.addLabel("t", "x");
       expect(events).toHaveLength(0);
     });
 
     it("removeLabel emits when present", async () => {
-      await collection.addTask({ id: "t", goal: "t", labels: ["x", "y"] });
+      await collection.createTask({ id: "t", goal: "t", labels: ["x", "y"] });
       events.length = 0;
       await collection.removeLabel("t", "x");
       expect(collection.get("t")?.labels).toEqual(["y"]);
@@ -378,14 +378,14 @@ describe.each([
     });
 
     it("setAssignee emits assignee_changed", async () => {
-      await collection.addTask({ id: "t", goal: "t" });
+      await collection.createTask({ id: "t", goal: "t" });
       events.length = 0;
       await collection.setAssignee("t", "alice");
       expect(events.at(-1)?.kind).toBe("assignee_changed");
     });
 
     it("setPriority emits priority_changed only on change", async () => {
-      await collection.addTask({ id: "t", goal: "t", priority: 5 });
+      await collection.createTask({ id: "t", goal: "t", priority: 5 });
       events.length = 0;
       await collection.setPriority("t", 5);
       expect(events).toHaveLength(0);
@@ -394,7 +394,7 @@ describe.each([
     });
 
     it("patchMetadata merges and emits metadata_changed", async () => {
-      await collection.addTask({ id: "t", goal: "t", metadata: { a: 1 } });
+      await collection.createTask({ id: "t", goal: "t", metadata: { a: 1 } });
       events.length = 0;
       await collection.patchMetadata("t", { b: 2 });
       expect(collection.get("t")?.metadata).toEqual({ a: 1, b: 2 });
@@ -404,8 +404,8 @@ describe.each([
 
   describe("query — list / count", () => {
     it("filters by status", async () => {
-      await collection.addTask({ id: "a", goal: "A" });
-      await collection.addTask({ id: "b", goal: "B" });
+      await collection.createTask({ id: "a", goal: "A" });
+      await collection.createTask({ id: "b", goal: "B" });
       await collection.claim("w");
       expect(collection.count({ status: "pending" })).toBe(1);
       expect(collection.count({ status: "in_progress" })).toBe(1);
@@ -413,14 +413,14 @@ describe.each([
     });
 
     it("filters by assignee", async () => {
-      await collection.addTask({ id: "a", goal: "A", assignee: "alice" });
-      await collection.addTask({ id: "b", goal: "B", assignee: "bob" });
+      await collection.createTask({ id: "a", goal: "A", assignee: "alice" });
+      await collection.createTask({ id: "b", goal: "B", assignee: "bob" });
       expect(collection.count({ assignee: "alice" })).toBe(1);
     });
 
     it("filters by hasLabel / hasAllLabels", async () => {
-      await collection.addTask({ id: "a", goal: "A", labels: ["urgent"] });
-      await collection.addTask({ id: "b", goal: "B", labels: ["urgent", "blocker"] });
+      await collection.createTask({ id: "a", goal: "A", labels: ["urgent"] });
+      await collection.createTask({ id: "b", goal: "B", labels: ["urgent", "blocker"] });
       expect(collection.count({ hasLabel: "urgent" })).toBe(2);
       expect(collection.count({ hasAllLabels: ["urgent", "blocker"] })).toBe(1);
     });
@@ -433,14 +433,14 @@ describe.each([
   // retrievable rather than silently discarded.
   describe("prototype-named task ids", () => {
     // `taskId` reaches the collection straight off a model tool call
-    // (`completeTask`/`failTask`/… take `taskId: z.string()`), and the
+    // (`getTask`/`updateTask` take `id: z.string()`), and the
     // sequencer backing keeps tasks in a plain object. An inherited
     // `Object.prototype` member is truthy, so a falsity-only guard resolves
     // `"constructor"` to a function and the not-found path never fires.
     it.each(["constructor", "toString", "valueOf", "hasOwnProperty"])(
       "get(%j) is a miss, not an Object.prototype member",
       async (protoKey) => {
-        await collection.addTask({ id: "real", goal: "real" });
+        await collection.createTask({ id: "real", goal: "real" });
         expect(collection.get(protoKey)).toBeUndefined();
       },
     );
@@ -448,29 +448,29 @@ describe.each([
     it.each(["constructor", "toString"])(
       "complete(%j) takes the not-found path",
       async (protoKey) => {
-        await collection.addTask({ id: "real", goal: "real" });
+        await collection.createTask({ id: "real", goal: "real" });
         await expect(collection.complete(protoKey, "done")).rejects.toThrow(
           /not found/,
         );
       },
     );
 
-    it("addTask does not report a prototype-named id as already existing", async () => {
+    it("createTask does not report a prototype-named id as already existing", async () => {
       // The duplicate check is `tasks[id] !== undefined`; a prototype hit makes
       // a brand-new task look like a collision.
       await expect(
-        collection.addTask({ id: "constructor", goal: "legit" }),
+        collection.createTask({ id: "constructor", goal: "legit" }),
       ).resolves.toBeDefined();
       expect(collection.get("constructor")?.goal).toBe("legit");
     });
 
-    it("addTasks stores a __proto__ id as a real entry, not a phantom write", async () => {
+    it("createTasks stores a __proto__ id as a real entry, not a phantom write", async () => {
       // Assigning `next[task.id] = task` for id `"__proto__"` on a plain
       // object sets the object's prototype instead of creating an own
       // property — the write reports success but the task is then absent
       // from get/list/count. Batch insert is the one insertion path that
       // used bracket assignment on a possibly-fresh object.
-      await collection.addTasks([{ id: "__proto__", goal: "proto" }]);
+      await collection.createTasks([{ id: "__proto__", goal: "proto" }]);
       expect(collection.get("__proto__")?.goal).toBe("proto");
       expect(collection.list().map((t) => t.id)).toContain("__proto__");
       expect(collection.count()).toBe(1);
@@ -479,7 +479,7 @@ describe.each([
 
   describe("change events", () => {
     it("every event carries collectionId, taskId, kind, task", async () => {
-      await collection.addTask({ id: "t", goal: "t" });
+      await collection.createTask({ id: "t", goal: "t" });
       const evt = events.at(-1)!;
       expect(evt.collectionId).toBe("tasks");
       expect(evt.taskId).toBe("t");
@@ -488,7 +488,7 @@ describe.each([
     });
 
     it("includes prevStatus on transitions and omits it on additions", async () => {
-      await collection.addTask({ id: "t", goal: "t" });
+      await collection.createTask({ id: "t", goal: "t" });
       expect(events.at(-1)?.prevStatus).toBeUndefined();
 
       await collection.claim("worker-1");
@@ -515,7 +515,7 @@ describe("resource-backed sync mirror", () => {
       collection: fake,
       now: () => 1000,
     });
-    await seeder.addTasks([
+    await seeder.createTasks([
       { id: "a", goal: "A" },
       { id: "b", goal: "B" },
     ]);
@@ -533,7 +533,7 @@ describe("resource-backed sync mirror", () => {
     expect(tasks.get("a")?.goal).toBe("A");
   });
 
-  it("reflects an awaited addTask in subsequent sync list()", async () => {
+  it("reflects an awaited createTask in subsequent sync list()", async () => {
     const fake = createFakeResourceCollection();
     const tasks = await createResourceBackedTaskCollection({
       collectionId: "tasks",
@@ -542,7 +542,7 @@ describe("resource-backed sync mirror", () => {
     });
 
     expect(tasks.list()).toHaveLength(0);
-    await tasks.addTask({ id: "new", goal: "fresh" });
+    await tasks.createTask({ id: "new", goal: "fresh" });
     const ids = tasks.list().map((t) => t.id);
     expect(ids).toEqual(["new"]);
     expect(tasks.get("new")?.goal).toBe("fresh");
@@ -555,7 +555,7 @@ describe("resource-backed sync mirror", () => {
       collection: fake,
       now: () => 1000,
     });
-    await tasks.addTask({ id: "x", goal: "X" });
+    await tasks.createTask({ id: "x", goal: "X" });
 
     // Defensive runtime guard: the sync-mirror contract must not leak the
     // underlying async ResourceCollectionRef reads through the query

@@ -101,7 +101,7 @@ function callOnce(marker: string, tool: { toolName: string; args: unknown }, aft
   ];
 }
 
-/** A turn that files one task with `addTask`, then says so; a notice it hears is answered. */
+/** A turn that files one task with `createTask`, then says so; a notice it hears is answered. */
 function fileScript(marker: string, goal: string, assignee: string): MockGeneratorScriptEntry[] {
   return [
     on("completed by", { text: "Heard it." }),
@@ -252,7 +252,7 @@ describe("a worker with no delegate that takes a task (BR-2, BR-3, BR-4)", () =>
     { name: "an `agent` worker with no delegates", worker: "solo", flow: "agent", block: "agent-answer" }
   ];
   for (const { name, worker: workerId, flow, block } of cases) {
-    it(`gets the task tools for its own steps only, and its app's addTask answers no_delegation_board: ${name}`, async () => {
+    it(`gets the task tools for its own steps only, and its app's createTask answers no_delegation_board: ${name}`, async () => {
       const h = host();
       try {
         const sessionId = flow === "agent" ? await agentSession(h, "alice", workerId) : await h.conversation("alice", workerId);

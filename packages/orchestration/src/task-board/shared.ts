@@ -1,52 +1,52 @@
 /**
  * Shared helpers for the Task Board pattern.
  *
- * Centralizes dispatcher resolution, ready-task filtering, and the
+ * Centralizes claim order resolution, ready-task filtering, and the
  * "any-work-still-in-flight" predicate. These read-only checks are
  * non-atomic — used for selection previews and termination decisions
  * where a stale snapshot is acceptable. CAS-correct operations go
  * through `collection.claim` on the substrate.
  */
 import {
-  fifoDispatcher,
-  hasOpenHold,
+  fifoClaimOrder,
+  hasOpenQuestion,
   isClaimable,
   leaseLapsed,
-  priorityDispatcher,
-  topologicalDispatcher,
+  priorityClaimOrder,
+  topologicalClaimOrder,
   type Task,
   type TaskCollectionRef,
-  type TaskDispatcher,
+  type ClaimOrder,
   type TaskStatus,
 } from "../tasks";
 
 /**
- * Accepted shapes for the Task Board's `dispatcher` config: either a
- * `TaskDispatcher` instance, or a string naming one of the substrate's
- * standard dispatchers.
+ * Accepted shapes for the Task Board's `claimOrder` config: either a
+ * `ClaimOrder` instance, or a string naming one of the substrate's
+ * standard claim orders.
  */
-export type TaskBoardDispatcherInput =
-  | TaskDispatcher
+export type TaskBoardClaimOrderInput =
+  | ClaimOrder
   | "fifo"
   | "topological"
   | "priority";
 
-/** Resolve a `TaskBoardDispatcherInput` to a concrete dispatcher. */
-export function resolveDispatcher(
-  input: TaskBoardDispatcherInput
-): TaskDispatcher {
+/** Resolve a `TaskBoardClaimOrderInput` to a concrete claim order. */
+export function resolveClaimOrder(
+  input: TaskBoardClaimOrderInput
+): ClaimOrder {
   if (typeof input !== "string") return input;
   switch (input) {
     case "fifo":
-      return fifoDispatcher;
+      return fifoClaimOrder;
     case "topological":
-      return topologicalDispatcher;
+      return topologicalClaimOrder;
     case "priority":
-      return priorityDispatcher;
+      return priorityClaimOrder;
     default: {
       const _exhaustive: never = input;
       throw new Error(
-        `[task-board] unknown dispatcher name "${String(_exhaustive)}"`
+        `[task-board] unknown claim order name "${String(_exhaustive)}"`
       );
     }
   }
@@ -188,7 +188,7 @@ function countWaitable(
  * a row; the user's answer does.
  */
 export function waitsOnUser(row: Task): boolean {
-  return row.status === "in_progress" && hasOpenHold(row);
+  return row.status === "in_progress" && hasOpenQuestion(row);
 }
 
 /**

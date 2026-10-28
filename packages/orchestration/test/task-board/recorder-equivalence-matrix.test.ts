@@ -129,7 +129,7 @@ async function fixture(opts: FixtureOptions = {}): Promise<Fixture> {
     collectionId: "tasks",
     state: state,
   });
-  await inner.addTask({ id: "t", goal: "work" });
+  await inner.createTask({ id: "t", goal: "work" });
   const task = (await inner.claim("w", { leaseDurationMs: 30_000 }))!;
   const ticket = ticketForClaim("tasks", task);
 

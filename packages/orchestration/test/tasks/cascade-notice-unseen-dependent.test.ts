@@ -70,7 +70,7 @@ function cascadeFlow(heard: TaskSettledInput[], gate: { wait: Promise<void>; cla
     outputSchema: z.any(),
     execute: async (input, ctx) => {
       const board = await boardOf(ctx as unknown as BlockContext);
-      const task = await board.addTask({
+      const task = await board.createTask({
         goal: input.goal,
         assignee: "researcher",
         maxAttempts: 1,

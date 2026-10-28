@@ -63,7 +63,7 @@ export const flowstate = createFlowState({
 
 A POST to an action now returns a request id instead of running the action. A worker picks the job up, runs it against the same stores, and the client attaches to `GET /requests/:id/stream` exactly as it would for an in-process run. Same request, same session. A worker that dies mid-action retries the job.
 
-The configuration above runs in `colocated` mode, the default: one process both accepts jobs and consumes them, so you get the queue's durability and its retries without deploying anything new. Separating the tiers is a mode flag rather than a rewrite — `dispatch-only` on the web process, `worker-only` on a dedicated worker that calls `flowstate.ready()` to start consuming. A `worker-only` process only consumes: it installs no dispatcher, so an action that reaches a router in that process runs inline instead of becoming a job. Keep the router on the dispatching tier.
+The configuration above runs in `colocated` mode, the default: one process both accepts jobs and consumes them, so you get the queue's durability and its retries without deploying anything new. Separating the tiers is a mode flag rather than a rewrite — `dispatch-only` on the web process, `worker-only` on a dedicated worker that calls `flowstate.ready()` to start consuming. A `worker-only` process only consumes: it installs no runner, so an action that reaches a router in that process runs inline instead of becoming a job. Keep the router on the dispatching tier.
 
 Reach for it when the run is long or heavy enough that you don't want it on the web tier at all, or when you want to scale workers separately.
 
@@ -180,7 +180,7 @@ export default defineFlow({
 
 The drain claims a row, sends it to the `investigate` entry, and moves on. The run executes `investigateBlock` with the same worker input an inline worker would get, and settles the row itself. When the row ends, this session hears it once, on `onTaskSettled`, which `defineFlow` requires of a flow holding a board like this one; see [Hearing how a task ended](/docs/orchestration/task-board#hearing-how-a-task-ended). Which session a row lands in is the worker's `session` policy: `"per-task"`, `"per-worker"`, or `{ key: (task) => string }`.
 
-Tasks are seeded here to keep the example in one piece. A row added later with `addTask` carries the same `assignee` field.
+Tasks are seeded here to keep the example in one piece. A row added later with `createTask` carries the same `assignee` field.
 
 A board with a worker that dispatches needs `mode: "delegation"`, an explicit `boardId` and a `defineTaskCollection()`, and every worker on it dispatches; work that runs inline goes on a board of its own. The run settles its row after the request that claimed it is gone, so the ledger it settles against has to outlive that request. All of these are checked when the board is built.
 
@@ -192,7 +192,7 @@ Dispatching comes with bounds:
 
 **On serverless, the work is bounded by the function unless something else consumes the queue.** A dispatched run executes inside the invocation that started it, so the function's maximum duration is the ceiling. A queue adapter alone does not lift it: in `colocated` mode the same process both enqueues *and* consumes, so the job is picked up by the invocation that is already running out of time. What lifts the ceiling is a consumer with its own lifetime — run the function in `dispatch-only` mode and host the worker separately, as a container or a long-lived process in `worker-only` mode. `colocated` is the right answer on a server you keep running, not on a function.
 
-**A run started from a `worker-only` process isn't durable.** That mode installs no dispatcher, so the work executes in the worker process instead of going to the queue, and nothing re-runs it if that process stops. See [From a worker-only process](/docs/cli/overview#from-a-worker-only-process).
+**A run started from a `worker-only` process isn't durable.** That mode installs no runner, so the work executes in the worker process instead of going to the queue, and nothing re-runs it if that process stops. See [From a worker-only process](/docs/cli/overview#from-a-worker-only-process).
 
 **A row released to a run stops holding up the drain.** A row a run has in hand is not counted by the board that filed it, so the request that filed it finishes without waiting.
 

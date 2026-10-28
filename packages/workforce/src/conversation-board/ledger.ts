@@ -90,7 +90,7 @@ export const CONVERSATION_BOARD_CLIENT_FIELDS = [
   "feedback",
   // What holds a task for the user (FIX-2133): the Inbox lists the task's item from its open holds,
   // and a question is open while no steer carries its id.
-  "holds",
+  "questions",
   "steers",
   "createdAt",
   "updatedAt",

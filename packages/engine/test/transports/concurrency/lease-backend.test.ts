@@ -31,7 +31,7 @@ import {
   ConcurrencyQueueTimeoutError,
   ConcurrencyRejectedError
 } from "../../../src/transports/errors";
-import type { DispatchEnvelope } from "../../../src/transports/dispatcher";
+import type { DispatchEnvelope } from "../../../src/transports/runner";
 
 function envelope(requestId: string): DispatchEnvelope {
   return {

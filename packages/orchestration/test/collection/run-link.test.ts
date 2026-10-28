@@ -11,7 +11,7 @@
  *    keep it. A finished task still names the run that worked it, and a new
  *    attempt never shows the previous attempt's run as its own.
  * 3. **Nobody else writes it.** It is absent from `TaskInit`, and a runtime
- *    attempt to smuggle one in through `addTask` is dropped.
+ *    attempt to smuggle one in through `createTask` is dropped.
  *
  * The gate that calls the verb is covered in `task-board/run-link-gate.test.ts`.
  */
@@ -90,7 +90,7 @@ describe.each([
     init: Partial<TaskInit> = {}
   ): Promise<Backing & { claim: TaskClaimTicket; task: Task }> {
     const backing = await makeBacking();
-    await backing.collection.addTask({ id: "t", goal: "t", ...init });
+    await backing.collection.createTask({ id: "t", goal: "t", ...init });
     const task = (await backing.collection.claim("w", { leaseDurationMs: 10_000 }))!;
     return { ...backing, task, claim: ticketForClaim(backing.collection.collectionId, task) };
   }
@@ -238,7 +238,7 @@ describe.each([
     // Every recovery spends one abandonment; once the allowance is spent the
     // claim settles the row errored instead of handing it out again.
     const { collection, setNow } = await makeBacking();
-    await collection.addTask({ id: "t", goal: "t" });
+    await collection.createTask({ id: "t", goal: "t" });
     let clock = 1000;
     let last: TaskRunLink | undefined;
     for (;;) {
@@ -265,11 +265,11 @@ describe.each([
 
   // ---- nobody else writes it (BR-9, BR-10) ---------------------------------
 
-  it("drops a link smuggled into addTask", async () => {
+  it("drops a link smuggled into createTask", async () => {
     const backing = await makeBacking();
     const smuggled = { id: "t", goal: "t", run: runOf(0) } as TaskInit;
 
-    await backing.collection.addTask(smuggled);
+    await backing.collection.createTask(smuggled);
 
     expect(backing.collection.get("t")?.run).toBeUndefined();
   });

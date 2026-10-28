@@ -12,17 +12,17 @@ import {
   cancelAndResume,
   createResourceBackedTaskCollection,
   createStateBackedTaskCollection,
-  openHolds,
+  openQuestions,
   ticketForClaim,
   TaskFilingRefusedError,
-  type SuspensionHold,
+  type SuspensionQuestion,
   type TaskClaimTicket,
   type TaskCollectionRef,
 } from "../../src/tasks";
 import { payOwedResumes } from "../../src/tasks/helpers/wait-on-task";
 import { createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 
-const STOP: SuspensionHold = {
+const STOP: SuspensionQuestion = {
   id: "susp_1",
   actor: "user",
   openedAt: 1000,
@@ -64,33 +64,33 @@ describe.each([
 ])("a task waiting on a user (%s)", (_name, make) => {
   async function waiting(): Promise<{ collection: TaskCollectionRef; claim: TaskClaimTicket }> {
     const collection = await make();
-    await collection.addTask({ id: "t", goal: "t" });
+    await collection.createTask({ id: "t", goal: "t" });
     const task = (await collection.claim("w", { leaseDurationMs: 10_000 }))!;
     const claim = ticketForClaim(collection.collectionId, task);
-    await collection.setWaitingOn!("t", "wait", { claim, hold: STOP });
+    await collection.setKeptOpenBy!("t", "wait", { claim, question: STOP });
     return { collection, claim };
   }
 
   it("mirrors the stop it waits on in the write that drops the lease, and the run's own resume closes it", async () => {
     const { collection, claim } = await waiting();
-    expect(collection.get("t")).toMatchObject({ status: "in_progress", waitingOn: "wait", holds: [STOP] });
-    expect(openHolds(collection.get("t")!)).toEqual([STOP]);
+    expect(collection.get("t")).toMatchObject({ status: "in_progress", keptOpenBy: "wait", questions: [STOP] });
+    expect(openQuestions(collection.get("t")!)).toEqual([STOP]);
     expect(collection.get("t")!.leaseUntil).toBeUndefined();
     // A later request admitted while the run stays parked keeps it; the run's own resume closes it.
-    await collection.setWaitingOn!("t", null, { claim, leaseUntil: 50_000 });
-    expect(collection.get("t")).toMatchObject({ holds: [STOP] });
-    expect(collection.get("t")!.waitingOn).toBeUndefined();
-    await collection.setWaitingOn!("t", null, { claim, leaseUntil: 50_000, resume: true });
-    expect(collection.get("t")!.holds).toBeUndefined();
+    await collection.setKeptOpenBy!("t", null, { claim, leaseUntil: 50_000 });
+    expect(collection.get("t")).toMatchObject({ questions: [STOP] });
+    expect(collection.get("t")!.keptOpenBy).toBeUndefined();
+    await collection.setKeptOpenBy!("t", null, { claim, leaseUntil: 50_000, resume: true });
+    expect(collection.get("t")!.questions).toBeUndefined();
   });
 
   it("refuses to mirror a stop on a row a question holds: one wait per turn", async () => {
     const { collection, claim } = await waiting();
-    await collection.setWaitingOn!("t", null, { claim, leaseUntil: 50_000, resume: true });
+    await collection.setKeptOpenBy!("t", null, { claim, leaseUntil: 50_000, resume: true });
     expect((await collection.ask!("t", [{ kind: "question", prompt: "Which date column?" }], { claim })).outcome).toBe("recorded");
-    const refused = await collection.setWaitingOn!("t", "wait", { claim, hold: STOP });
-    expect(refused).toMatchObject({ outcome: "declined", reason: "held" });
-    expect(openHolds(collection.get("t")!).map((hold) => hold.source.kind)).toEqual(["row"]);
+    const refused = await collection.setKeptOpenBy!("t", "wait", { claim, question: STOP });
+    expect(refused).toMatchObject({ outcome: "declined", reason: "open-question" });
+    expect(openQuestions(collection.get("t")!).map((hold) => hold.source.kind)).toEqual(["row"]);
   });
 
   it("a cancel owes the parked run its resume in the same write, keeping the stop it is owed to; the clear drops both", async () => {
@@ -98,20 +98,20 @@ describe.each([
     await collection.cancel("t", "no longer needed");
     const ended = collection.get("t")!;
     // Closed with the row (no open hold), its address kept for the debt.
-    expect(ended).toMatchObject({ status: "cancelled", resumeOwed: true, holds: [STOP] });
-    expect(openHolds(ended)).toEqual([]);
-    expect(ended.waitingOn).toBeUndefined();
+    expect(ended).toMatchObject({ status: "cancelled", resumeOwed: true, questions: [STOP] });
+    expect(openQuestions(ended)).toEqual([]);
+    expect(ended.keptOpenBy).toBeUndefined();
     // A later write to the ended row keeps the debt's address.
     await collection.patchMetadata("t", { note: "x" });
-    expect(collection.get("t")!.holds).toEqual([STOP]);
+    expect(collection.get("t")!.questions).toEqual([STOP]);
     await collection.clearResumeOwed!("t");
     expect(collection.get("t")!.resumeOwed).toBeUndefined();
-    expect(collection.get("t")!.holds).toBeUndefined();
+    expect(collection.get("t")!.questions).toBeUndefined();
   });
 
   it("an ending of a row that waits on nothing owes nothing", async () => {
     const collection = await make();
-    await collection.addTask({ id: "t", goal: "t" });
+    await collection.createTask({ id: "t", goal: "t" });
     await collection.cancel("t");
     expect(collection.get("t")!.resumeOwed).toBeUndefined();
   });
@@ -127,7 +127,7 @@ describe.each([
     const paid = hostThat(async () => ({ ok: true }));
     expect((await payOwedResumes(paid.ctx, collection)).resumed).toEqual(["t"]);
     expect(collection.get("t")!.resumeOwed).toBeUndefined();
-    expect(collection.get("t")!.holds).toBeUndefined();
+    expect(collection.get("t")!.questions).toBeUndefined();
   });
 
   it("cancelAndResume writes the cancel under the stop's fence, then the resume is paid and nothing stays owed", async () => {
@@ -158,19 +158,19 @@ describe.each([
     const { collection } = await waiting();
     const host = hostThat(async () => ({ ok: false, refused: "busy", detail: "held" }));
     await cancelAndResume(host.ctx, collection, "t");
-    expect(collection.get("t")).toMatchObject({ status: "cancelled", resumeOwed: true, holds: [STOP] });
+    expect(collection.get("t")).toMatchObject({ status: "cancelled", resumeOwed: true, questions: [STOP] });
   });
 
   it("refuses a filing by a task that is already cancelled, on the same board", async () => {
     const collection = await make();
-    await collection.addTask({ id: "parent", goal: "p" });
-    await collection.addTask({ id: "early", goal: "c", filedByTask: "parent" });
+    await collection.createTask({ id: "parent", goal: "p" });
+    await collection.createTask({ id: "early", goal: "c", filedByTask: "parent" });
     await collection.cancel("parent");
-    await expect(collection.addTask({ id: "late", goal: "c", filedByTask: "parent" })).rejects.toMatchObject({
+    await expect(collection.createTask({ id: "late", goal: "c", filedByTask: "parent" })).rejects.toMatchObject({
       name: TaskFilingRefusedError.name,
       rule: "parent_cancelled",
     });
-    await expect(collection.addTasks([{ id: "late2", goal: "c", filedByTask: "parent" }])).rejects.toMatchObject({ rule: "parent_cancelled" });
+    await expect(collection.createTasks([{ id: "late2", goal: "c", filedByTask: "parent" }])).rejects.toMatchObject({ rule: "parent_cancelled" });
     expect(collection.get("late")).toBeUndefined();
   });
 });
