@@ -299,7 +299,16 @@ async function turnWith(page: Page, lead: string, text: string): Promise<boolean
   // Memory records the turn after the answer, in the same request: the next line waits for it.
   const busy = conversation(page).getByRole("status").filter({ hasText: "is answering" });
   for (const until = Date.now() + fixture.answerWithinMs; Date.now() < until && (await busy.count()) > 0; ) await sleep(250);
-  return (await busy.count()) === 0;
+  if ((await busy.count()) > 0) return false;
+  // "is answering" clears when the request ends, which can be before the streamed answer's last words are drawn.
+  const shown = async () => (await entriesOf(page)).map((e) => e.text).join("\n");
+  for (let was = await shown(), until = Date.now() + 10_000; Date.now() < until; ) {
+    await sleep(1_000);
+    const now = await shown();
+    if (now === was) break;
+    was = now;
+  }
+  return true;
 }
 
 /**
