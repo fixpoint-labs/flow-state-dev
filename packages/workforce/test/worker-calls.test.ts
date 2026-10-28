@@ -26,6 +26,7 @@ import { REPLY_CONCURRENCY } from "../src/conversation-board/task-settled";
 import { MESSAGE_RECEIVED_ENTRY } from "../src/messages/keys";
 import { WORKER_MESSAGES_PATTERN, workerMessagesResources } from "../src/messages/message-log";
 import { messageReceivedEntry, messageReceivedSchema } from "../src/messages/message-received-entry";
+import { RECEIVED_MARK } from "../src/messages/received-mark";
 import { deriveWorkerSessionId } from "../src/workers/derive-session-id";
 import { createWorkerInstallation, type WorkerInstallation } from "../src/workers/installation";
 import { callWorker } from "../src/messages/call";
@@ -120,6 +121,28 @@ function stopperFlow(installation: WorkerInstallation) {
     resources: { ...installation.resources, ...workerMessagesResources, ...conversationLedgerResources },
     actions: { respond: { inputSchema: z.object({ message: z.string() }), block: door, userMessage: (i: { message: string }) => i.message, concurrency: REPLY_CONCURRENCY } },
     internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "stopper", turn: answer }) } }
+  } as never);
+}
+
+/**
+ * A worker whose `onMessageReceived` runs no turn: a message lands as its items
+ * and nothing answers it. `unmarked` builds it as a copy of this package from
+ * before the entry said so, which the sender can't read up front.
+ */
+function quietFlow(installation: WorkerInstallation, unmarked = false) {
+  const entry = messageReceivedEntry({ installation, flowKind: "quiet" }) as Record<symbol, unknown>;
+  if (unmarked) {
+    const { runsTurn: _runsTurn, ...mark } = entry[RECEIVED_MARK] as Record<string, unknown>;
+    entry[RECEIVED_MARK] = mark;
+  }
+  const door = handler({ name: "quiet-run", inputSchema: z.object({ message: z.string() }), execute: async (input) => `heard: ${input.message}` });
+  return defineFlow({
+    kind: "quiet",
+    configSchema: workerConfigSchema(),
+    session: installation.session(),
+    resources: { ...installation.resources, ...workerMessagesResources, ...conversationLedgerResources },
+    actions: { respond: { inputSchema: z.object({ message: z.string() }), block: door, userMessage: (i: { message: string }) => i.message, concurrency: REPLY_CONCURRENCY } },
+    internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: entry } }
   } as never);
 }
 
@@ -278,6 +301,55 @@ describe("a call", { timeout: 40_000 }, () => {
     expect(outputs[0]).toMatchObject({ ok: false, error: expect.stringMatching(/^wait_deadline_out_of_range/) });
     expect(outputs[1]).toMatchObject({ ok: false, error: expect.stringMatching(/^no_such_call/) });
     expect(await logRows(h)).toEqual([]);
+  });
+});
+
+describe("a call to a worker that runs nothing on a message", { timeout: 40_000 }, () => {
+  const quiet = (unmarked = false): BoardHostOptions => ({
+    standard: [...boardWorkers(), { id: "quiet", declared: { flow: "quiet", description: "Takes messages, answers none." }, body: "", skills: [] }],
+    flows: (installation) => ({ quiet: { flow: quietFlow(installation, unmarked), roles: [] } })
+  });
+
+  // Silence passed off as an answer reads as "it said nothing": the call must say no reply will ever come.
+  it("is refused no_reply before anything is written, and a plain send to it still lands", async () => {
+    let first = true;
+    const { model } = ottoModel({
+      "Ask the quiet one": () => {
+        const args = first ? { to: "quiet", text: "What is the codename?", wait: true } : { to: "quiet", text: "FYI: the codename is Bluebird." };
+        first = false;
+        return [{ args }];
+      }
+    });
+    const { h, otto } = await boot(model, quiet());
+    await h.post("alice", otto, "respond", { message: "Ask the quiet one" }, "agent");
+    await h.settled();
+    const [refused] = await toolOutputs(h, otto);
+    expect(refused).toMatchObject({ ok: false, error: expect.stringMatching(/^no_reply: "quiet" takes messages but runs nothing on them/) });
+    expect(await logRows(h)).toEqual([]);
+
+    await h.post("alice", otto, "respond", { message: "Ask the quiet one again" }, "agent");
+    await h.settled();
+    expect((await toolOutputs(h, otto))[1]).toMatchObject({ sent: expect.stringMatching(/^msg_/) });
+    expect(await until(async () => (await logRows(h))[0]?.status === "delivered")).toBe(true);
+  });
+
+  it("answers failed with no_reply once it lands, where the sender couldn't tell up front", async () => {
+    const { model } = ottoModel({ "Ask the quiet one": () => [{ args: { to: "quiet", text: "What is the codename?", wait: true } }] });
+    const { h, otto } = await boot(model, quiet(true));
+    await h.post("alice", otto, "respond", { message: "Ask the quiet one" }, "agent");
+    expect(await until(async () => (await ottoTurns(h, otto))[0]?.status === "completed")).toBe(true);
+    await h.settled();
+    const [output] = await toolOutputs(h, otto);
+    expect(output).toEqual({
+      status: "failed",
+      callId: expect.stringMatching(/^msg_/),
+      error: expect.stringMatching(/^no_reply: "quiet" takes messages but runs nothing on them/)
+    });
+    // It was sent and it landed: only the reply never comes.
+    const rows = await logRows(h);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: output!.callId, call: true, status: "delivered" });
+    expect(rows[0]!.repliedAt).toBeUndefined();
   });
 });
 
