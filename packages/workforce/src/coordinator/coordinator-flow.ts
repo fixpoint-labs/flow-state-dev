@@ -1591,10 +1591,11 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * a failure here leaves it owed for the board's next touch, and an answer
    * its round already keeps isn't kept or said twice. Completed, its answer
    * lands as a line under the delegate's name; failed or cancelled, it only
-   * ends that delegate's part. In an open round an answer is kept for what
-   * goes on, and the round closes if that was the last task out; in a round
-   * already closed, it lands and goes no further. A task filed with no brief
-   * (not on a turn routing a message) only lands its answer. Like every wake,
+   * ends that delegate's part, and lets go of best fit's hold if it had it.
+   * In an open round an answer is kept for what goes on, and the round
+   * closes if that was the last task out; in a round already closed, it
+   * lands and goes no further. A task filed with no brief (not on a turn
+   * routing a message) only lands its answer. Like every wake,
    * it also closes each round past its deadline. It wakes no turn of its own:
    * a failure of a task the judgment turn filed is said, and wakes that turn,
    * by `onTaskSettled` after this has run (FIX-2115, `task-settled.ts`).
@@ -1622,17 +1623,22 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
           ctx.session.atomicState(mutator as never),
         (state: Readonly<Record<string, unknown>>): { state: Record<string, unknown>; result: Ended } => {
           const rounds = roundsIn(state);
+          const hold = state[HOLD_STATE] as { postId: string; delegate: DelegateRef } | null | undefined;
+          const held =
+            hold !== null && hold !== undefined && hold.postId === post.postId && sameDelegate(hold.delegate, post.delegate);
           if (body === undefined) {
             const closing = closeRound(rounds, rows, post.postId, post.round, now);
             const swept = closeOverdue(closing.rounds, rows, now);
+            // A failed or cancelled holder holds nothing (FIX-1610 D1); an empty answer keeps its hold.
+            const releases = held && ending.ending !== "completed";
             return {
-              state: rounds.length === 0 ? {} : { [ROUNDS_STATE]: swept.rounds },
+              state: {
+                ...(releases ? { [HOLD_STATE]: null } : {}),
+                ...(rounds.length === 0 ? {} : { [ROUNDS_STATE]: swept.rounds })
+              },
               result: { kept: false, closed: [...(closing.closed === undefined ? [] : [closing.closed]), ...swept.closed] }
             };
           }
-          const hold = state[HOLD_STATE] as { postId: string; delegate: DelegateRef } | null | undefined;
-          const releases =
-            hold !== null && hold !== undefined && hold.postId === post.postId && sameDelegate(hold.delegate, post.delegate);
           const landed = landAnswer(rounds, rows, posted, body, now);
           const swept = closeOverdue(landed.rounds, rows, now);
           // Heard again after a failure past this write: it landed then.
@@ -1651,7 +1657,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
                 text: body,
                 at: now
               }),
-              ...(releases ? { [HOLD_STATE]: null } : {}),
+              ...(held ? { [HOLD_STATE]: null } : {}),
               ...(rounds.length === 0 ? {} : { [ROUNDS_STATE]: swept.rounds })
             },
             result: {
