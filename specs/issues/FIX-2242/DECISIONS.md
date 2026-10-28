@@ -75,7 +75,10 @@ a child of FIX-2070, [FIX-2260](https://linear.app/fixpoint-labs/issue/FIX-2260)
 - **Leg e asks through `askQuestion`, from an agent worker's task.** Both ask paths share one
   point (`askMidway`); the coder's path is j1b, re-run in row 3. The walk then needs no Claude Code.
 - **Leg c's crash uses FIX-2240's `exit-after-row` fault,** through `goals/lib/module-patch.mjs`,
-  one-shot on the call's row.
+  one-shot on the call's row. FIX-2260's faults (`workers-message-each-other/faults.mts`, #4032)
+  fire only on the herald's messages, so the closure takes a sender parameter in place of that
+  gate. Leg c's timings follow leg 9's 120 s: a crash after the take is taken over in about 86 s,
+  since the engine marks a dead taker interrupted only after about 60 s of stale heartbeats.
 - **[FIX-2087 D1](../FIX-2087/DECISIONS.md#d1), inherited:** a structural miss on any attempt is a
   finding; only a judgment miss (what the model chose to write) earns another attempt.
 - **One new control, `call-holds-session`:** a parked call keeps its session's place, so a
