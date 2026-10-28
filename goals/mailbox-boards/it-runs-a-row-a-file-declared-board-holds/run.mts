@@ -43,11 +43,12 @@ import {
   defineSessionBoard,
   hireWorkforce,
   workerConfigSchema,
+  workerMessagesResources,
   workerTaskEntry,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { goalTmpDir, actingAs, runGoal, silentLogger, untilIdle } from "../../lib/index.mts";
+import { goalTmpDir, actingAs, hearsMessages, runGoal, silentLogger, untilIdle } from "../../lib/index.mts";
 
 const TREE = fileURLToPath(new URL("./fixtures/workforce", import.meta.url));
 const USER_ID = "u_mailbox_boards";
@@ -127,8 +128,9 @@ await runGoal(async (failures) => {
     kind: delegateKind,
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources },
+    resources: { ...installation.resources, ...workerMessagesResources },
     actions: { respond: { inputSchema: doorInput, block: delegateTurn, userMessage: (input: { message: string }) => input.message } },
+    internal: { actions: hearsMessages(installation, delegateKind) },
     task: { actions: { work: workerTaskEntry({ name: "row-goal-delegate-task", turn: delegateTurn }) } }
   } as never);
 

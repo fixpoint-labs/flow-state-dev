@@ -75,6 +75,33 @@ export const CONTRACT_PROBE_BAG: Readonly<Record<string, unknown>> = Object.free
   delegates: ["probe"]
 });
 
+/**
+ * Which of `keys` the flow's `configSchema` doesn't declare, read the way
+ * {@link contractKeysRefused} reads the contract's: mint a probe copy with the
+ * full bag and each key set, and take the keys its refusal names as not
+ * declared. A refusal of a key's probe value, or of a setting of the flow's
+ * own that the bag leaves out, says nothing about declaration and is passed
+ * over.
+ */
+export function undeclaredSettings(flow: WorkerFlowDefinition, keys: readonly string[]): string[] {
+  if (keys.length === 0) return [];
+  try {
+    (flow as unknown as (options: { id: string; config: Record<string, unknown> }) => unknown)({
+      id: `${flow.kind}::shown-settings-probe`,
+      config: { ...CONTRACT_PROBE_BAG, ...Object.fromEntries(keys.map((key) => [key, null])) }
+    });
+    return [];
+  } catch (error) {
+    if (!(error instanceof FlowConfigRefusalError)) return [];
+    const undeclared = new Set(
+      error.issues
+        .filter((issue) => issue.code === "unrecognized_keys" && issue.path.length === 1)
+        .map((issue) => String(issue.path[0]))
+    );
+    return keys.filter((key) => undeclared.has(key));
+  }
+}
+
 /** What a flow's refusal of a bag says about the contract. */
 export type ContractRefusal = {
   /** The flow declares no `configSchema` at all. */

@@ -320,7 +320,83 @@ Numeric turn limits are cheap and predictable: pick one when the conversation sh
 
 A turn whose items are entirely sub-agent output, or any other items that don't contribute to LLM history, still counts against `{ turns: N }` but contributes no messages. This keeps the windowing logic at the request level. If sub-agent-heavy turns become common in your flow, prefer a token budget.
 
-Tool-aware compaction (rewriting older tool calls into shorter summaries) and goal-aware pruning (dropping turns that aren't relevant to the current goal) are deliberately not part of this default. They belong to higher-level patterns that layer on top of this windowing primitive.
+### Summarizing turns past the window
+
+A turn that leaves the window is gone from the model's view. If the user said something important in turn 1 of a 60-turn conversation, a 50-turn window loses it. `utility.historySummary` keeps a running summary of the turns before the window and gives it to the answering generator.
+
+It returns `{ capability, fold, resource }`:
+
+- `capability` goes in the answering generator's `uses`. It puts the summary in that generator's context as an `<earlier-conversation>` section, and starts the generator's history reads after the last turn in the summary, so no turn is read twice.
+- `fold` is a step you run before that generator. It adds turns to the summary before they leave the window.
+- `resource` is the session-scoped resource that holds the summary.
+
+```ts
+import { defineFlow, generator, sequencer, utility } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const earlier = utility.historySummary({
+  summarize: utility.summarizer({
+    name: "earlier-turns",
+    model: "openai/gpt-6-luna",
+    granularity: "detailed",
+    objectives: [
+      "The input's `summary` is the summary so far and `turns` are newer turns: write one summary of both, never of the turns alone.",
+      "Keep every name, code and number the user stated, word for word.",
+    ],
+  }),
+});
+
+const answer = generator({
+  name: "answer",
+  model: "openai/gpt-6-luna",
+  prompt: "You are a helpful assistant.",
+  history: true,
+  uses: [earlier.capability],
+});
+
+const inputSchema = z.object({ message: z.string() });
+
+defineFlow({
+  kind: "chat",
+  session: { historyWindow: { turns: 50 } },
+  actions: {
+    say: {
+      inputSchema,
+      block: sequencer({ name: "chat", inputSchema }).tap(earlier.fold).step(answer),
+      userMessage: (input) => input.message,
+    },
+  },
+});
+```
+
+`summarize` is any block that takes `{ summary: string | null, turns: LLMMessage[] }` and returns `{ summary: string, keyPoints?: string[] }`. `summary` is the summary so far (`null` the first time) and `turns` are the turns being added, oldest first. Key points are kept as a list under the summary. Core's `utility.summarizer` fits as is. Give it an objective like the first one above that says what `summary` and `turns` are. Without it, a small model will sometimes summarize only the new turns and drop what the earlier summary held.
+
+`historySummary` also takes `name`, the resource's name and storage key (default `historySummary`).
+
+**When it folds.** Folding starts before turns leave. When a turn that isn't summarized yet drifts into the oldest quarter of the window, the fold summarizes up to a quarter of the window's turns at once. With a 50-turn window, that's 12 turns at a time. A turn that hasn't finished yet (still running, or waiting on an approval) is skipped and folded once it finishes.
+
+**When summarizing fails.** A failed `summarize` call doesn't fail the turn. The turn answers with the summary it had, and the next turn tries again. Folding starts about a quarter of the window early, so `summarize` can fail on roughly that many turns in a row without losing anything. If it keeps failing longer than that, turns leave the window unsummarized, and the resource's `complete` turns `false` and stays `false`.
+
+**When the fold step is missing.** If the capability is installed but `fold` never runs, the first turn after a turn has left the window throws an error that names the missing step.
+
+**Showing it in a UI.** Each request in `client.sessions.requests(sessionId)` can carry `historyStart: { requestId }`: the oldest earlier turn its history window still held, when earlier turns had fallen out of it. It's absent while every earlier turn was in the window. Draw a divider above that turn; the turns above it are in the summary.
+
+The resource exposes `throughRequestId` (the last turn in the summary), `complete` and `folds` to the client, under `snapshot.resources.session.historySummary.clientData` in `client.sessions.state(sessionId)`. `complete` is `false` while a skipped turn is still waiting to be folded, and stays `false` once a turn has left the window without being summarized (for example, when you add the summary to a conversation that was already past its window). Use `complete` to label the divider "earlier turns summarized" or "some earlier turns are missing".
+
+To keep the summary in context but read the window's full history, switch off the narrowing: `uses: [earlier.capability.presets({ history: false })]`. The model then reads some turns twice, once in the summary and once word for word.
+
+On a Workforce agent worker, pass the fold as `beforeAnswer` and the capability in `uses`:
+
+```ts
+import { defineAgentWorkerFlow } from "@flow-state-dev/workforce";
+
+defineAgentWorkerFlow({
+  uses: [earlier.capability],
+  beforeAnswer: earlier.fold,
+});
+```
+
+The summary covers whole turns. Rewriting older tool calls into shorter summaries, or dropping turns that aren't relevant to the current goal, is up to your own flow.
 
 ## Authoring the prompt as an external file
 

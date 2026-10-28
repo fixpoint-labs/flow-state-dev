@@ -13,8 +13,11 @@ export type {
   LooseBlockContext,
 } from "./types/block";
 export type {
+  HistoryTurn,
+  HistoryTurnQuery,
   OrgScopeHandle,
   RequestScopeHandle,
+  SessionHistoryWindow,
   SessionScopeHandle,
   StopRequestOutcome,
   UserScopeHandle,
@@ -252,6 +255,7 @@ export {
   blockPathBranch,
   blockPathIteration,
   blockPathLoop,
+  blockPathObserver,
   blockPathRescue,
   blockPathSegment,
   blockPathTool,
@@ -629,6 +633,35 @@ export type {
   PlanMarkerRead,
   ReplacePlanListResult,
 } from "./types/harness-plan";
+
+/**
+ * The session's pull-request record: the rows, the rules that read a create
+ * call, the one writer, and the recorder (a function harness blocks call, and
+ * a block a flow adds as a step).
+ */
+export {
+  DEFAULT_PULL_REQUEST_RULES,
+  OBSERVED_PULL_REQUESTS,
+  findOpenedPullRequests,
+  githubPullRequestRule,
+  observedPullRequestStateSchema,
+  observedPullRequestsCollection,
+  pullRequestKey,
+  pullRequestRefFromUrl,
+  writePullRequests,
+} from "./types/pull-requests";
+export type {
+  ObservedPullRequestState,
+  PullRequestCollection,
+  PullRequestLink,
+  PullRequestRef,
+  PullRequestRule,
+  PullRequestSource,
+  PullRequestToolCall,
+  WritePullRequestsOptions,
+} from "./types/pull-requests";
+export { pullRequestRecorder, pullRequestWritesSettled, recordPullRequests } from "./helpers/pull-request-recorder";
+export type { PullRequestRecorderContext, RecordPullRequestsOptions } from "./helpers/pull-request-recorder";
 
 /** The allowlisted environment for a harness's child process. */
 export { harnessEnv } from "./helpers/harness-env";

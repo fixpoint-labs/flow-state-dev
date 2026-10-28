@@ -1895,7 +1895,7 @@ describe("cross-process abort accepted in the teardown window", () => {
       inputSchema: z.any(),
       outputSchema: z.unknown(),
       execute: async (_input, ctx) =>
-        ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+        ctx.suspend!({ reason: "user_approval", message: "Approve?" })
     });
     const after = handler({
       name: "after",
@@ -2017,7 +2017,7 @@ describe("a stop accepted in the window before the turn is written parked (FIX-1
       name: "gate",
       inputSchema: z.any(),
       outputSchema: z.unknown(),
-      execute: async (_input, ctx) => ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+      execute: async (_input, ctx) => ctx.suspend!({ reason: "user_approval", message: "Approve?" })
     });
     const flow = defineFlow({
       kind: "teardown-window-stop",

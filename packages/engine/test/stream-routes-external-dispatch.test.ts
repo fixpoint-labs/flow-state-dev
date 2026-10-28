@@ -290,7 +290,7 @@ describe("external dispatch — enqueue failure at the route boundary (FIX-828)"
       flowKind: FLOW_KIND,
       actionName: "run",
       userId: "u_1",
-      reason: "human_approval",
+      reason: "user_approval",
       message: "Approve?",
       status: "pending",
       blockInstanceId: "b1",

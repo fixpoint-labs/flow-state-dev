@@ -1,0 +1,92 @@
+<svg viewBox="0 0 940 426" role="img" aria-label="D1, where a task&#x27;s token count is kept. Chosen: on the task row, kept per request, with ER-9 amended. Instead of: a read over the run&#x27;s request records. Decides it: the row&#x27;s run link names only the latest request, so a read over it loses earlier attempts and turns. The price: ER-9 is amended and the row gains a field. Locks in: a system-written spend field on the row. Flips if: a request record names its task and its filer can read it."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="426"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Where is a task&#x27;s count kept?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">On the task row, per request</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">A read over the run&#x27;s requests</text>
+  </g>
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">EARLIER ATTEMPTS</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Every request counted</text>
+    <text class="t-s" x="248" y="179">each one settles onto the row</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Latest request only</text>
+    <text class="t-s" x="612" y="179">the run link names one</text>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="218">NEW READ PATHS</text>
+    <text class="mark plus" x="228" y="224">+</text>
+    <text class="t-b" x="248" y="223">None</text>
+    <text class="t-s" x="248" y="241">the run writes its own row</text>
+    <text class="mark minus" x="592" y="224">−</text>
+    <text class="t-b" x="612" y="223">A cross-request read</text>
+    <text class="t-s" x="612" y="241">who may read whose requests</text>
+    <line class="row" x1="16" y1="256" x2="924" y2="256"/>
+  </g>
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="280">ER-9</text>
+    <text class="mark minus" x="228" y="286">−</text>
+    <text class="t-b" x="248" y="285">Amended</text>
+    <text class="t-s" x="248" y="303">the row gains one spend field</text>
+    <text class="mark tie" x="592" y="286">=</text>
+    <text class="t-b" x="612" y="285">Kept as written</text>
+    <text class="t-s" x="612" y="303">no field on the row</text>
+    <line class="row" x1="16" y1="318" x2="924" y2="318"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="336" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="357">LOCKS IN</text>
+    <text class="t-b" x="32" y="377">spend on the task row</text>
+    <text class="t-s" x="32" y="395">written only from inside the run</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="336" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="357">FLIPS IF</text>
+    <text class="t-b" x="494" y="377">A request record names its task</text>
+    <text class="t-s" x="494" y="395">readable by the task&#x27;s filer</text>
+  </g>
+</svg>

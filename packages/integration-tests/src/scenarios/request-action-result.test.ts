@@ -32,7 +32,7 @@ const gate = handler({
   inputSchema: z.unknown(),
   outputSchema: z.unknown(),
   execute: async (_input, ctx) => {
-    const decision = (await ctx.suspend!({ reason: "human_input", message: "Answer?" })) as { answer?: string };
+    const decision = (await ctx.suspend!({ reason: "user_input", message: "Answer?" })) as { answer?: string };
     return { ok: true, answer: decision?.answer ?? null };
   }
 });

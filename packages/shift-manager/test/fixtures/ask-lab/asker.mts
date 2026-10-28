@@ -3,7 +3,7 @@
  * anything.
  *
  * Two doors, both durable, both ending in the framework's stock
- * `human_approval` suspension:
+ * `user_approval` suspension:
  *
  * - `work` — the task entry a coordinator's routed task is handed to
  *   (Workforce's `workerTaskEntry`), in the delegate's own session for that
@@ -17,9 +17,9 @@
  * engine writes as a user item before the block runs. It says it heard, as an
  * assistant item of its own ({@link heardLine}), refuses a line that asks to
  * be refused, takes its time over a line that asks it to, or stops on a stock approval for a line that asks for one, the
- * way a chief of staff's gated change does, so a test can see each. Built
+ * way a Shift Coordinator's gated change does, so a test can see each. Built
  * with `projects`, a line `start project <id>` also creates that project
- * through the project writes' own `createProject`, the way a chief of staff's
+ * through the project writes' own `createProject`, the way a Shift Coordinator's
  * tool does, so the turn writes the organization's `projects` collection.
  *
  * Built with `inventory`, the worker flow also declares the organization's inventory
@@ -90,7 +90,7 @@ const hear = handler({
   execute: async (input, ctx) => {
     if (input.message === ASKER_REFUSED_LINE) throw new Error("This worker won't take that line.");
     if (input.message === ASKER_SLOW_LINE) await slow;
-    if (input.message === ASKER_GATED_LINE) await ctx.suspend!({ reason: "human_approval", message: `Approve: ${input.message}` });
+    if (input.message === ASKER_GATED_LINE) await ctx.suspend!({ reason: "user_approval", message: `Approve: ${input.message}` });
     ctx.emit.message(heardLine(input.message));
     return { heard: input.message };
   },
@@ -105,8 +105,8 @@ const gate = handler({
     try {
       await ctx.suspend!(
         input.detail === undefined
-          ? { reason: "human_approval", message: `Approve: ${input.what}` }
-          : { reason: "human_approval", title: `Approve: ${input.what}`, message: input.detail },
+          ? { reason: "user_approval", message: `Approve: ${input.what}` }
+          : { reason: "user_approval", title: `Approve: ${input.what}`, message: input.detail },
       );
       return { what: input.what, approved: true };
     } catch (error) {

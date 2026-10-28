@@ -7,7 +7,7 @@
 - a worker's harness run throws for `[harness-bug]`, throws once for `[flaky]`, and does nothing for `[gives-up]`;
 - a `burst: <word>` message fails with an error naming the word.
 
-Most planted failures go to Sandbox's project coordinator. Its routing is `judgment`, so a failure in its turn fails the request. Leg C sends them to the chief of staff: its `best-fit` routing answers a crash in its own turn with "Nobody took this message", and the request completes. The trigger is held out: any message that names a project with no repository trips the same bug.
+Most planted failures go to Sandbox's project coordinator. Its routing is `judgment`, so a failure in its turn fails the request. Leg C sends them to the Shift Coordinator: its `best-fit` routing answers a crash in its own turn with "Nobody took this message", and the request completes. The trigger is held out: any message that names a project with no repository trips the same bug.
 **Signal:**
 - **Leg 1.** The message fails the turn. One report reaches Inbox and nothing is filed. Its request, session and user ids equal the store's, in the row and in the draft. The operator answers File with *"Label it P1 and say which model the coordinator ran."* Exactly one issue is filed, and it says P1 and the project coordinator's model. A second Claude Code run, given only the issue, names a worker and message. Sent in a clean Lab, that message trips the same fingerprint.
 - **Leg 2.** The same failure 10 more times gives one report with count 11 and no second Inbox card.
@@ -17,7 +17,7 @@ Most planted failures go to Sandbox's project coordinator. Its routing is `judgm
 - **Leg 6.** The reporter's own harness fails, so its report stays owed or drafting and the reporter files no report about itself. After a restart with the plant gone, the report is retried and reaches Inbox. Leg 2's count is still 11.
 - **Leg 7.** A task that ends errored with no thrown failure gives exactly one report.
 - **Leg H.** The bug planted in a worker's harness run gives one report in Inbox, and its link opens the task.
-- **Leg C.** In a fresh Lab, the chief of staff's own turn crashes on the planted bug and best fit answers it; its report reaches Inbox. Then the chief of staff hands a post to an agent worker, `researcher`, whose turn fails on it; that post's report reaches Inbox.
+- **Leg C.** In a fresh Lab, the Shift Coordinator's own turn crashes on the planted bug and best fit answers it; its report reaches Inbox. Then the Shift Coordinator hands a post to an agent worker, `researcher`, whose turn fails on it; that post's report reaches Inbox.
 - **Leg M.** A person tells the Error Reporter, in its own conversation, about a problem that threw nothing. One report reaches Inbox and nothing is filed.
 
 **Anti-game:**
@@ -37,7 +37,7 @@ Most planted failures go to Sandbox's project coordinator. Its routing is `judgm
 - `no-cap`: the new-report cap is off. It must FAIL leg 3 on *at most 5 reports*.
 - `eager`: a retried attempt is reported. It must FAIL leg 4 on *no report for a task that passed on retry*.
 - `no-redact`: the dossier reaches the harness unredacted. It must FAIL leg 5 on *no secret in a report*.
-- `rescue-unreported`: the chief of staff's answered crash is not reported. It must FAIL leg C on *the chief of staff's own crash reaches Inbox*.
+- `rescue-unreported`: the Shift Coordinator's answered crash is not reported. It must FAIL leg C on *the Shift Coordinator's own crash reaches Inbox*.
 - `post-on-touch`: a delegate's failed post goes out only on the board's next touch. It must FAIL leg C on *the delegate's failed post reaches Inbox*.
 
 ## Verdict log

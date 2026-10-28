@@ -276,6 +276,8 @@ export type MergedCapabilitySurface = {
   toolEntries: Array<GeneratorTool[] | ((ctx: BlockContext) => GeneratorTool[] | Promise<GeneratorTool[]>)>;
   /** Fence-exempt control tools (FIX-1393) — see `PresetDef.controlTools`. */
   controlToolEntries: Array<GeneratorTool[] | ((ctx: BlockContext) => GeneratorTool[] | Promise<GeneratorTool[]>)>;
+  /** History query entries (FIX-1613) — see `PresetDef.history`. In merge order. */
+  historyEntries: Array<NonNullable<PresetDef["history"]>>;
   // Generator-only singletons. Last-wins among capabilities; block-level
   // setting wins over capability (handled in the generator block factory).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -299,6 +301,7 @@ export function createEmptyMergedSurface(): MergedCapabilitySurface {
     contextEntries: [],
     toolEntries: [],
     controlToolEntries: [],
+    historyEntries: [],
     model: undefined,
     providerOptions: undefined,
     caching: undefined,
@@ -583,6 +586,17 @@ export function mergeSurfaceInto(
       );
     }
     acc.controlToolEntries.push(surface.controlTools);
+  }
+
+  // History query — generator only, like context (FIX-1613).
+  if (surface.history !== undefined) {
+    if (blockKind !== "generator") {
+      throw new Error(
+        `Capability "${capName}" ${source} declares history, ` +
+        `but the consuming block is a ${blockKind}. history is only valid on generator blocks.`
+      );
+    }
+    acc.historyEntries.push(surface.history);
   }
 
   // Generator singletons — generator only. Last-wins among capabilities;

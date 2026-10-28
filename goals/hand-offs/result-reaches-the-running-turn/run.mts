@@ -34,6 +34,7 @@ import {
   defineAgentWorkerFlow,
   hireWorkforce,
   workerConfigSchema,
+  workerMessagesResources,
   workerTaskEntry,
   type WorkerInstallation,
   type WorkerManifest
@@ -45,6 +46,7 @@ import {
   gatewayModel,
   goalAttempts,
   actingAs,
+  hearsMessages,
   keysServing,
   loadFixture,
   runGoal,
@@ -125,8 +127,9 @@ function lookupFlow(installation: WorkerInstallation, timing: Timing) {
     kind: "lookup",
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources },
+    resources: { ...installation.resources, ...workerMessagesResources },
     actions: { respond: { inputSchema: z.object({ message: z.string() }), block: turn, userMessage: (input: { message: string }) => input.message } },
+    internal: { actions: hearsMessages(installation, "lookup") },
     task: { actions: { work: workerTaskEntry({ name: "lookup-task", turn }) } }
   });
 }

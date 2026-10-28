@@ -421,7 +421,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
       const questions = draft.questions.length === 0 ? "" : `\n\n**Questions**\n\n${draft.questions.map((q) => `- ${q}`).join("\n")}`;
       try {
         const answer = await ctx.suspend!({
-          reason: "human_input",
+          reason: "user_input",
           // The question's heading in Inbox; `data.title` is the issue title it files under.
           title: `Error report: ${draft.title}`,
           message: `Seen ${seen} time${seen === 1 ? "" : "s"}. File it?${questions}`,

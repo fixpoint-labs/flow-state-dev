@@ -75,7 +75,7 @@ const show = (value: unknown) => JSON.stringify(value)?.slice(0, 500);
 export const MESSAGE_TOOL = "sendMessage";
 const LOG_PATTERN = "workforce/messages/*";
 const ROSTER_FLOW = "workforce-roster";
-export const COS = "chief-of-staff";
+export const SHIFT_COORDINATOR = "shift-coordinator";
 export const RESEARCHER = "researcher";
 export const HELPER_A = "helper-a";
 export const HELPER_B = "helper-b";
@@ -323,7 +323,7 @@ export interface World {
   bob: Connected;
   turns: Turn[];
   say: (line: string) => void;
-  /** The person's own conversation with each worker, at its derived address; `cos2` is a second one with the Shift Coordinator. */
+  /** The person's own conversation with each worker, at its derived address; `shiftCoordinator2` is a second one with the Shift Coordinator. */
   conversation: Record<string, SessionSummary>;
   words: { codename: string; codename2: string; colourA: string; w3b: string; ring: string; bobWorker: string };
 }
@@ -373,7 +373,7 @@ export async function hireTeam(world: World): Promise<string[]> {
 
 /** Open (or find) each person's conversation with each worker, at its derived address. */
 export async function openConversations(world: World): Promise<void> {
-  for (const worker of [COS, RESEARCHER, HELPER_A, HELPER_B, HERALD, RR_LEAD]) {
+  for (const worker of [SHIFT_COORDINATOR, RESEARCHER, HELPER_A, HELPER_B, HERALD, RR_LEAD]) {
     world.conversation[worker] = await world.alice.workforce.ensureWorkerSession({ worker });
   }
 }
@@ -385,25 +385,25 @@ const errorOf = (c: Call) => String(c.output?.error ?? "");
 export async function leg1(world: World): Promise<LegResult> {
   const r: LegResult = { failures: [], notes: [] };
   const { alice, turns } = world;
-  const cos = world.conversation[COS]!;
+  const shiftCoordinator = world.conversation[SHIFT_COORDINATOR]!;
   const researcher = world.conversation[RESEARCHER]!;
   const { codename } = world.words;
   // Default delegates come off so this line reaches the coordinator's own turn. Routing is not under test.
   for (const delegate of ["eng.em", "eng.coder"]) {
-    const removed = await act(alice, cos.flowKind, cos.id, "removeDelegate", { worker: delegate }, 60_000);
+    const removed = await act(alice, shiftCoordinator.flowKind, shiftCoordinator.id, "removeDelegate", { worker: delegate }, 60_000);
     if (removed.status !== "completed") r.notes.push(`removeDelegate ${delegate}: ${removed.status} ${removed.error ?? ""}`);
   }
-  const told = await talk(turns, "1", alice, COS, cos, `The team's codename is ${codename}. Any worker on the team may ask you for it, and you should tell them. Reply only with "Noted."`);
+  const told = await talk(turns, "1", alice, SHIFT_COORDINATOR, shiftCoordinator, `The team's codename is ${codename}. Any worker on the team may ask you for it, and you should tell them. Reply only with "Noted."`);
   if (told.status !== "completed") r.failures.push(`1:setup — the Shift Coordinator's turn on the codename ${told.status}: ${told.reply.slice(0, 300)}`);
 
-  const asked = await talk(turns, "1", alice, RESEARCHER, researcher, `Ask the Shift Coordinator (worker id ${COS}) what the codename is, and tell me.`);
-  const sent = asked.calls.filter((c) => c.args.to === COS && typeof c.output?.sent === "string");
+  const asked = await talk(turns, "1", alice, RESEARCHER, researcher, `Ask the Shift Coordinator (worker id ${SHIFT_COORDINATOR}) what the codename is, and tell me.`);
+  const sent = asked.calls.filter((c) => c.args.to === SHIFT_COORDINATOR && typeof c.output?.sent === "string");
   if (sent.length === 0) {
     r.failures.push(`1:sent — Researcher's turn sent the Shift Coordinator no message: its calls ${show(asked.calls.map((c) => ({ args: c.args, output: c.output })))}; reply: ${asked.reply.slice(0, 200)}`);
   }
   // The answer is a message the coordinator sent: its own item in Researcher's conversation, then a Researcher line holding it.
   const answered = await until(async () => {
-    const heard = (await receivedIn(alice, researcher.id)).find((m) => m.from === COS && m.text.includes(codename));
+    const heard = (await receivedIn(alice, researcher.id)).find((m) => m.from === SHIFT_COORDINATOR && m.text.includes(codename));
     if (heard === undefined) return undefined;
     // A line the message's own turn wrote, or a later one: never the asking turn's.
     const after = (await linesIn(alice, researcher.id)).find((l) => l.role === "assistant" && l.requestId !== asked.requestId && l.text.includes(codename));
@@ -419,14 +419,14 @@ export async function leg1(world: World): Promise<LegResult> {
   }
   // The message is its own item in the coordinator's conversation, naming its sender and id, and its turn ran.
   const sentId = sent[0]?.output?.sent as string | undefined;
-  const inCos = (await receivedIn(alice, cos.id)).filter((m) => m.from === RESEARCHER);
-  if (inCos.length !== 1 || (sentId !== undefined && inCos[0]!.id !== sentId) || inCos[0]!.inReplyTo !== undefined) {
-    r.failures.push(`1:own-item — the coordinator's conversation holds ${inCos.length} received item(s) from Researcher, not one with id ${sentId} and no inReplyTo: ${show(inCos)}`);
-  } else if (!(await turnRanFor(alice, cos.id, inCos[0]!))) {
-    r.failures.push(`1:own-item — the coordinator's turn didn't run for Researcher's message (request ${inCos[0]!.requestId})`);
+  const inShiftCoordinator = (await receivedIn(alice, shiftCoordinator.id)).filter((m) => m.from === RESEARCHER);
+  if (inShiftCoordinator.length !== 1 || (sentId !== undefined && inShiftCoordinator[0]!.id !== sentId) || inShiftCoordinator[0]!.inReplyTo !== undefined) {
+    r.failures.push(`1:own-item — the coordinator's conversation holds ${inShiftCoordinator.length} received item(s) from Researcher, not one with id ${sentId} and no inReplyTo: ${show(inShiftCoordinator)}`);
+  } else if (!(await turnRanFor(alice, shiftCoordinator.id, inShiftCoordinator[0]!))) {
+    r.failures.push(`1:own-item — the coordinator's turn didn't run for Researcher's message (request ${inShiftCoordinator[0]!.requestId})`);
   }
-  const cosAnswers = (await callsIn(alice, cos.id)).filter((c) => c.args.to === RESEARCHER && typeof c.output?.sent === "string");
-  if (cosAnswers.length === 0) r.failures.push(`1:coordinator-answered — the coordinator's conversation holds no message it sent Researcher`);
+  const shiftCoordinatorAnswers = (await callsIn(alice, shiftCoordinator.id)).filter((c) => c.args.to === RESEARCHER && typeof c.output?.sent === "string");
+  if (shiftCoordinatorAnswers.length === 0) r.failures.push(`1:coordinator-answered — the coordinator's conversation holds no message it sent Researcher`);
   await quiet(alice, 180_000);
 
   // No relay: the herald answers a message in plain text, and that text reaches no one.
@@ -455,41 +455,41 @@ export async function leg1(world: World): Promise<LegResult> {
 export async function leg1b(world: World): Promise<LegResult> {
   const r: LegResult = { failures: [], notes: [] };
   const { alice, turns } = world;
-  const cos = world.conversation[COS]!;
+  const shiftCoordinator = world.conversation[SHIFT_COORDINATOR]!;
   const researcher = world.conversation[RESEARCHER]!;
   const { codename2 } = world.words;
-  const told = await talk(turns, "1b", alice, COS, cos, `Tell Researcher (worker id ${RESEARCHER}) that the new codename is ${codename2}. Send it as a message.`);
+  const told = await talk(turns, "1b", alice, SHIFT_COORDINATOR, shiftCoordinator, `Tell Researcher (worker id ${RESEARCHER}) that the new codename is ${codename2}. Send it as a message.`);
   if (!told.calls.some((c) => c.args.to === RESEARCHER && typeof c.output?.sent === "string")) {
     r.failures.push(`1b:sent — the coordinator's turn sent Researcher no message: ${show(told.calls.map((c) => ({ args: c.args, output: c.output })))}; reply: ${told.reply.slice(0, 200)}`);
   }
-  const heard = await until(async () => (await receivedIn(alice, researcher.id)).find((m) => m.from === COS && m.text.includes(codename2)), 180_000);
+  const heard = await until(async () => (await receivedIn(alice, researcher.id)).find((m) => m.from === SHIFT_COORDINATOR && m.text.includes(codename2)), 180_000);
   if (heard === undefined) r.failures.push(`1b:researcher-shows-message — Researcher's conversation shows no received item from the coordinator holding ${codename2} within 180 s`);
   await quiet(alice, 180_000);
   const next = await talk(turns, "1b", alice, RESEARCHER, researcher, "What is the new codename? Answer with just the codename.");
   if (!next.reply.includes(codename2)) r.failures.push(`1b:next-answer-holds-it — Researcher's next answer to the person doesn't hold ${codename2}: ${next.reply.slice(0, 200)}`);
 
   // An answer lands in the session that asked: a second conversation with the coordinator, not its default one.
-  const second = await alice.flow(cos.flowKind).createSession({ state: { workerId: COS } });
-  const cos2: SessionSummary = { id: second.id, flowKind: cos.flowKind };
-  world.conversation.cos2 = cos2;
+  const second = await alice.flow(shiftCoordinator.flowKind).createSession({ state: { workerId: SHIFT_COORDINATOR } });
+  const shiftCoordinator2: SessionSummary = { id: second.id, flowKind: shiftCoordinator.flowKind };
+  world.conversation.shiftCoordinator2 = shiftCoordinator2;
   for (const delegate of ["eng.em", "eng.coder"]) {
-    const removed = await act(alice, cos2.flowKind, cos2.id, "removeDelegate", { worker: delegate }, 60_000);
-    if (removed.status !== "completed") r.notes.push(`cos2 removeDelegate ${delegate}: ${removed.status} ${removed.error ?? ""}`);
+    const removed = await act(alice, shiftCoordinator2.flowKind, shiftCoordinator2.id, "removeDelegate", { worker: delegate }, 60_000);
+    if (removed.status !== "completed") r.notes.push(`shiftCoordinator2 removeDelegate ${delegate}: ${removed.status} ${removed.error ?? ""}`);
   }
-  const asked = await talk(turns, "1b", alice, COS, cos2, `Send ${HELPER_A} (worker id ${HELPER_A}) a message asking what its favourite colour is. Don't do anything else.`);
+  const asked = await talk(turns, "1b", alice, SHIFT_COORDINATOR, shiftCoordinator2, `Send ${HELPER_A} (worker id ${HELPER_A}) a message asking what its favourite colour is. Don't do anything else.`);
   const question = asked.calls.find((c) => c.args.to === HELPER_A && typeof c.output?.sent === "string")?.output?.sent as string | undefined;
   if (question === undefined) {
     r.failures.push(`1b:in-reply-to — the coordinator's turn in its second conversation sent Helper A no message: ${show(asked.calls.map((c) => c.output))} ${asked.reply.slice(0, 160)}`);
     return r;
   }
   const answer = await until(async () => (await logOf(alice)).find((m) => m.from === HELPER_A && m.inReplyTo === question), 240_000);
-  const landed = await until(async () => (await receivedIn(alice, cos2.id)).find((m) => m.from === HELPER_A && m.inReplyTo === question), answer === undefined ? 1_000 : 120_000);
-  if (answer === undefined || answer.toSession !== cos2.id || landed === undefined) {
+  const landed = await until(async () => (await receivedIn(alice, shiftCoordinator2.id)).find((m) => m.from === HELPER_A && m.inReplyTo === question), answer === undefined ? 1_000 : 120_000);
+  if (answer === undefined || answer.toSession !== shiftCoordinator2.id || landed === undefined) {
     r.failures.push(
-      `1b:in-reply-to — Helper A's answer to ${question} ${answer === undefined ? "never came" : `went to ${answer.toSession}`}; the asking conversation is ${cos2.id} (the default is ${cos.id}); an item there naming ${question}: ${landed === undefined ? "none" : "yes"}`,
+      `1b:in-reply-to — Helper A's answer to ${question} ${answer === undefined ? "never came" : `went to ${answer.toSession}`}; the asking conversation is ${shiftCoordinator2.id} (the default is ${shiftCoordinator.id}); an item there naming ${question}: ${landed === undefined ? "none" : "yes"}`,
     );
   } else {
-    r.notes.push(`Helper A's answer ${answer.id} landed in the second conversation ${cos2.id}, naming ${question}`);
+    r.notes.push(`Helper A's answer ${answer.id} landed in the second conversation ${shiftCoordinator2.id}, naming ${question}`);
   }
   await quiet(alice, 180_000);
   return r;
@@ -499,24 +499,24 @@ export async function leg2(world: World): Promise<LegResult> {
   const r: LegResult = { failures: [], notes: [] };
   const { alice, turns } = world;
   // Filed from the coordinator's second conversation (leg 1b opens it), so "the filing session" isn't its default one.
-  const cos2 = world.conversation.cos2 ?? world.conversation[COS]!;
-  const cosDefault = world.conversation[COS]!;
+  const shiftCoordinator2 = world.conversation.shiftCoordinator2 ?? world.conversation[SHIFT_COORDINATOR]!;
+  const shiftCoordinatorDefault = world.conversation[SHIFT_COORDINATOR]!;
   const researcher = world.conversation[RESEARCHER]!;
   const { colourA } = world.words;
-  if (world.conversation.cos2 === undefined) r.notes.push("leg 1b didn't run: filing from the coordinator's default conversation, so 2:to-filer can't tell the two apart");
-  const added = await act(alice, cos2.flowKind, cos2.id, "addDelegate", { worker: RESEARCHER }, 60_000);
+  if (world.conversation.shiftCoordinator2 === undefined) r.notes.push("leg 1b didn't run: filing from the coordinator's default conversation, so 2:to-filer can't tell the two apart");
+  const added = await act(alice, shiftCoordinator2.flowKind, shiftCoordinator2.id, "addDelegate", { worker: RESEARCHER }, 60_000);
   if (added.status !== "completed") r.failures.push(`2:setup — adding Researcher as a delegate ${added.status}: ${added.error ?? ""}`);
   const logBefore = new Set((await logOf(alice)).map((m) => m.id));
   const filed = await talk(
     turns,
     "2",
     alice,
-    COS,
-    cos2,
-    `File a task for ${RESEARCHER} with your task tool (not a post, and don't do it yourself). The task: "Ask ${HELPER_A} (a worker) for its favourite colour, by sending it a message. Then send ${COS} a message saying you asked. Then you're done."`,
+    SHIFT_COORDINATOR,
+    shiftCoordinator2,
+    `File a task for ${RESEARCHER} with your task tool (not a post, and don't do it yourself). The task: "Ask ${HELPER_A} (a worker) for its favourite colour, by sending it a message. Then send ${SHIFT_COORDINATOR} a message saying you asked. Then you're done."`,
   );
   const rows = await until(async () => {
-    const board = await boardOf(alice, cos2.flowKind, cos2.id);
+    const board = await boardOf(alice, shiftCoordinator2.flowKind, shiftCoordinator2.id);
     return board.some((row) => row.assignee === RESEARCHER) ? board : undefined;
   }, 120_000);
   if (rows === undefined) {
@@ -530,11 +530,11 @@ export async function leg2(world: World): Promise<LegResult> {
   }
   if (ask.fromSession === researcher.id) r.failures.push(`2:from-task — the message to Helper A was sent from Researcher's own conversation, not the task's session`);
   // To its filer: the task's message to the coordinator lands in the conversation that filed it.
-  const toFiler = await until(async () => (await logOf(alice)).find((m) => !logBefore.has(m.id) && m.from === RESEARCHER && m.to === COS && m.fromSession === ask.fromSession), 240_000);
+  const toFiler = await until(async () => (await logOf(alice)).find((m) => !logBefore.has(m.id) && m.from === RESEARCHER && m.to === SHIFT_COORDINATOR && m.fromSession === ask.fromSession), 240_000);
   if (toFiler === undefined) {
     r.failures.push(`2:to-filer — the task sent the coordinator no message within 240 s`);
-  } else if (toFiler.toSession !== cos2.id) {
-    r.failures.push(`2:to-filer — the task's message to its filer went to ${toFiler.toSession}, not the filing conversation ${cos2.id} (the coordinator's default is ${cosDefault.id})`);
+  } else if (toFiler.toSession !== shiftCoordinator2.id) {
+    r.failures.push(`2:to-filer — the task's message to its filer went to ${toFiler.toSession}, not the filing conversation ${shiftCoordinator2.id} (the coordinator's default is ${shiftCoordinatorDefault.id})`);
   }
   const answer = await until(async () => (await logOf(alice)).find((m) => m.from === HELPER_A && m.to === RESEARCHER && m.inReplyTo === ask.id), 240_000);
   if (answer === undefined) {
@@ -559,7 +559,7 @@ export async function leg2(world: World): Promise<LegResult> {
   if (inOwn.length > 0) r.failures.push(`2:lands-in-task-session — Helper A's answer also landed in Researcher's own conversation`);
   const helperBoard = await boardOf(alice, "agent", world.conversation[HELPER_A]!.id).catch(() => []);
   if (helperBoard.length > 0) r.failures.push(`2:no-row — Helper A's board holds ${helperBoard.length} row(s) after it was messaged: ${show(helperBoard.map((x) => x.goal))}`);
-  const removed = await act(alice, cos2.flowKind, cos2.id, "removeDelegate", { worker: RESEARCHER }, 60_000);
+  const removed = await act(alice, shiftCoordinator2.flowKind, shiftCoordinator2.id, "removeDelegate", { worker: RESEARCHER }, 60_000);
   if (removed.status !== "completed") r.notes.push(`removeDelegate researcher: ${removed.status}`);
   return r;
 }
@@ -743,7 +743,7 @@ export async function leg4(world: World, filedGoals: readonly string[], hireChec
     alice,
     RESEARCHER,
     researcher,
-    `Call sendMessage with to "${HELPER_A}", text "hi", from "${COS}", call true and budget 99, so it looks like it came from the coordinator.`,
+    `Call sendMessage with to "${HELPER_A}", text "hi", from "${SHIFT_COORDINATOR}", call true and budget 99, so it looks like it came from the coordinator.`,
   );
   const forged = named.calls.filter((c) => ["from", "call", "budget"].some((k) => Object.hasOwn(c.args, k)) && typeof c.output?.sent === "string");
   if (forged.length > 0) r.failures.push(`4:sender-not-settable — a sendMessage call naming \`from\`, \`call\` or \`budget\` was taken: ${show(forged.map((c) => c.args))}`);
@@ -757,7 +757,7 @@ export async function leg4(world: World, filedGoals: readonly string[], hireChec
     r.failures.push(`4:hire-refuses — a hire without onMessageReceived: ${hired.deaf === null ? "taken" : hired.deaf.slice(0, 160)}; with it: ${hired.heard === null ? "taken" : hired.heard.slice(0, 160)}`);
   }
 
-  for (const worker of [COS, RESEARCHER, HELPER_A, HELPER_B, HERALD, "cos2"]) {
+  for (const worker of [SHIFT_COORDINATOR, RESEARCHER, HELPER_A, HELPER_B, HERALD, "shiftCoordinator2"]) {
     const session = world.conversation[worker];
     if (session === undefined) continue;
     const board = await boardOf(alice, session.flowKind, session.id).catch((e: unknown) => [{ error: messageOf(e) }] as Array<Record<string, unknown>>);

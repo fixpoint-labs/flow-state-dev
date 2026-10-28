@@ -20,7 +20,7 @@ export interface WorkerManifest {
    * The worker's identity and flow address. On a file-declared record it is one
    * of two declared shapes:
    * - a team worker (`teams/<teamId>/workers/<name>/`) is "<teamId>.<name>", e.g. "engineering.lead";
-   * - an org worker (`org/workers/<name>/`) has no team and is the bare "<name>", e.g. "chief-of-staff".
+   * - an org worker (`org/workers/<name>/`) has no team and is the bare "<name>", e.g. "shift-coordinator".
    * On a runtime hire it is the org-qualified address instead, and the declared
    * id is {@link WorkerManifest.workerId}. To read a worker's team, parse
    * `manifest.workerId ?? manifest.id` with `parseDeclaredWorkerId` rather than

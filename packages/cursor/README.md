@@ -111,7 +111,7 @@ is the agent's: rows and their marker are keyed under `conversation/<Cursor agen
 later run of the same agent that doesn't touch its list leaves the plan as it was, and a
 different agent has its own. Each run writes a pointer to that plan when the agent is created
 or resumed; core's `readPlanTarget` follows it from a request id. Off by default; off, the block
-declares no session state. Guide:
+writes no plan. Guide:
 [Recording the run's plan](https://flow-state.dev/docs/tools/cursor#recording-the-runs-plan).
 
 `env` is the environment Cursor's runtime sees. Set it and the block runs the runtime in a
@@ -135,6 +135,15 @@ package manager. Without `env`, under pnpm, your app must depend on the platform
 the way a run with that `env` would, without starting one. It returns `{ supported: true }` or
 `{ supported: false, reason }` with Cursor's own message. It takes about a second, so call it once,
 from a startup or health check.
+
+## Pull requests it opened
+
+The block records the pull requests a run opens in the session's pull-request record,
+`observed-pull-requests`, defined in `@flow-state-dev/core`. A shell call that runs `gh pr create`,
+or a `create_pull_request` MCP tool, whose output holds the pull request's link is one row, written
+as the call settles. On by default, apart from `recordPlan`; with `recordPullRequests: false` the
+block records none and declares no collection. Guide:
+[pull requests a session opened](https://flow-state.dev/docs/tools/coding-agents#pull-requests-a-session-opened).
 
 ## Sign-in check
 

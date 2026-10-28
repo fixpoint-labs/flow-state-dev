@@ -16,7 +16,7 @@ const CONFIG = join(DEVTEAM, "fsdev.config.mts");
 /** The input: two notes, each a marker the replies must carry exactly. */
 const NOTES = {
   start: { marker: "Noted —", words: "From now on, start every reply with `Noted —`." },
-  end: { marker: "— CoS", words: "From now on, end every reply with `— CoS`." },
+  end: { marker: "— Shift Coordinator", words: "From now on, end every reply with `— Shift Coordinator`." },
 };
 /** What the person asks the worker to change the start marker to, in words. */
 const CHANGED_START = "Got it —";
@@ -25,7 +25,7 @@ const PAGE_END = "— Shift";
 
 /** Unrelated asks, one per fresh session: each worker gets ones it answers itself. */
 const ASKS: Record<string, string[]> = {
-  "chief-of-staff": [
+  "shift-coordinator": [
     "Who works on this team? Keep it short.",
     "Which projects do we have right now? Keep it short.",
     "What does the researcher do? One sentence.",
@@ -36,7 +36,7 @@ const ASKS: Record<string, string[]> = {
     "In one sentence, what is the trade-off of a monorepo?",
   ],
 };
-const WORKERS = (process.env.GOAL_WORKERS ?? "chief-of-staff,researcher").split(",").map((w) => w.trim()).filter(Boolean);
+const WORKERS = (process.env.GOAL_WORKERS ?? "shift-coordinator,researcher").split(",").map((w) => w.trim()).filter(Boolean);
 
 /** The control: the capability's context entry returns nothing. Reads the same in the source and in tsx's output. */
 const CONTROL_PATCHES: ModulePatch[] = [

@@ -112,6 +112,8 @@ export function cursorBlockOptions(feeds: HarnessFeeds, seams: CursorSeams = {})
     model: async (ctx) => cursorModelSelection(await feeds.model(ctx)),
     // Declares no plan record, so goal leg **p** can be seen to fail.
     recordPlan: goalControl() !== "no-record",
+    // Records no pull request in the turn, so goal leg **r1** can be seen to fail.
+    recordPullRequests: goalControl() !== "no-pr-record",
     agent: {
       mode: "agent",
       // Cursor's sandbox is off: Kitchen Sink confines no run. See the header.
