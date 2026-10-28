@@ -118,8 +118,11 @@ const BUILD_TIME_ONLY_KEYS = [
  * the behaviour — *"carries a selected preset's context but not its tool past
  * the worker's fence"* and *"lets a selected preset's CONTROL tool through the
  * same empty tools list"*, one key apart on the same worker.
+ *
+ * `history` (FIX-1613) is dynamic for the same reason: core collects a
+ * dynamic entry's `history` query with its context.
  */
-const DYNAMIC_KEYS = ["context", "tools", "controlTools"] as const satisfies readonly (keyof PresetDef)[];
+const DYNAMIC_KEYS = ["context", "tools", "controlTools", "history"] as const satisfies readonly (keyof PresetDef)[];
 
 /**
  * Compile-time proof that every `PresetDef` key is classified as one or the

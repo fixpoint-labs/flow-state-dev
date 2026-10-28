@@ -2,7 +2,7 @@
  * The goal's fixture seat kind: a seat that asks a person, and a door that
  * hears them.
  *
- * - `ask`, durable: suspends on the framework's stock `human_approval`, so
+ * - `ask`, durable: suspends on the framework's stock `user_approval`, so
  *   Inbox lists it.
  * - `message`, the door: a person's line into the seat's session. The engine
  *   stores the line as a user item before the step runs; the step then says
@@ -46,7 +46,7 @@ const gate = handler({
   outputSchema: z.object({ what: z.string(), approved: z.boolean() }),
   execute: async (input, ctx) => {
     try {
-      await ctx.suspend!({ reason: "human_approval", message: `Approve: ${input.what}` });
+      await ctx.suspend!({ reason: "user_approval", message: `Approve: ${input.what}` });
       return { what: input.what, approved: true };
     } catch (error) {
       if (error instanceof SuspensionRejectedError) return { what: input.what, approved: false };

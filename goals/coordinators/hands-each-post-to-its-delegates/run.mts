@@ -5,12 +5,12 @@
  * each delegate answers each post once per round; answers go back out only
  * within a set number of rounds; every routing decision is recorded; and no
  * other user's worker is ever a delegate (FIX-1791). A plain ask to the
- * DevTeam chief of staff reaches its delegate by one Jev call with no turn of
+ * DevTeam Shift Coordinator reaches its delegate by one Jev call with no turn of
  * its own, and its own jobs still reach its turn (FIX-1833). See goal.md.
  *
  * - Legs a to d, f, g and h (`devteam.mts`): Shift Manager's DevTeam install, served
  *   by its own command over a fresh store, with Alice and Bob through the
- *   shipped clients, the chief of staff's turn on the real model its file
+ *   shipped clients, the Shift Coordinator's turn on the real model its file
  *   names, and best fit's route on Jev (`typesafe-ai/jev`), as the host names it.
  * - Leg e (`leg-e.mts`): a goal-local coordinator tree on the real engine and
  *   its HTTP router, with scripted delegates, evaluator and judgment, run as
@@ -32,9 +32,9 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, intentFreeEnv, keysServing, runGoal } from "../../lib/index.mts";
-import { buildShiftManagerPages, devteamCosModel, startShiftManager } from "../../lib/shift-manager.mts";
+import { buildShiftManagerPages, devteamShiftCoordinatorModel, startShiftManager } from "../../lib/shift-manager.mts";
 import { CONTROL_NAMES, CONTROLS, controlEnv, describePatch, type Control } from "./controls/patches.mts";
-import { COS, cosDefaults, devteamLegs, loadShipped, type Asks, type LegResult, type Person } from "./devteam.mts";
+import { SHIFT_COORDINATOR, shiftCoordinatorDefaults, devteamLegs, loadShipped, type Asks, type LegResult, type Person } from "./devteam.mts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SCRATCH = goalTmpDir("coordinators-delegates");
@@ -230,12 +230,12 @@ await runGoal(async () => {
   const devLegs = [...legs].filter((l) => l !== "e");
 
   if (devLegs.length > 0) {
-    const cosModel = devteamCosModel(checkout.root);
+    const shiftCoordinatorModel = devteamShiftCoordinatorModel(checkout.root);
     // Best fit's route model, as the commit's DevTeam host names it.
     const routeModel =
       /routeModel:\s*"([^"]+)"/.exec(readFileSync(join(checkout.root, "packages", "shift-manager", "teams", "devteam", "host.mts"), "utf8"))?.[1] ?? "none named";
     const routeModels: string[] = [];
-    for (const [what, model] of [["the chief of staff's model", cosModel], ["best fit's route model", routeModel]] as const) {
+    for (const [what, model] of [["the Shift Coordinator's model", shiftCoordinatorModel], ["best fit's route model", routeModel]] as const) {
       const modelKeys = keysServing(model);
       if (!modelKeys.some((k) => (process.env[k] ?? "") !== "")) {
         return { failures: [`blocked: no key here serves ${what}, ${model}; none of ${modelKeys.join(", ")} is set`], evidence: "" };
@@ -247,7 +247,7 @@ await runGoal(async () => {
     if (users?.owner === undefined || users.member === undefined) throw new Error("setup: the DevTeam host exports no LAB_USERS owner and member");
     const alice: Person = { label: "Alice", ...users.owner };
     const bob: Person = { label: "Bob", ...users.member };
-    const defaults = cosDefaults(checkout.root);
+    const defaults = shiftCoordinatorDefaults(checkout.root);
     say(`building Shift Manager's pages`);
     const pages = await buildShiftManagerPages(join(SCRATCH, `pages-${checkout.commit.slice(0, 9)}`), join(checkout.root, "packages", "shift-manager"));
     const shipped = await loadShipped(checkout.root);
@@ -272,7 +272,7 @@ await runGoal(async () => {
         timeoutMs: 180_000,
       });
       try {
-        say(`attempt ${attempt} of ${attempts}, legs ${pending.join(", ")}: DevTeam at ${served.origin}; the chief of staff's defaults: [${defaults.join(", ")}]`);
+        say(`attempt ${attempt} of ${attempts}, legs ${pending.join(", ")}: DevTeam at ${served.origin}; the Shift Coordinator's defaults: [${defaults.join(", ")}]`);
         const ran = await devteamLegs({ origin: served.origin, store, shipped, alice, bob, defaults, legs: new Set(pending), asks, routeModels, say });
         for (const t of ran.turns) say(`attempt ${attempt} turn (${t.leg}) ${t.status}: tools ${t.tools.map((x) => x.name).join(", ") || "none"}; reply: ${t.reply.slice(0, 240).replace(/\n/g, " ")}${t.providerRetry === undefined ? "" : ` (re-run after a provider error: ${t.providerRetry})`}`);
         for (const l of pending) {
@@ -288,7 +288,7 @@ await runGoal(async () => {
       }
     }
     evidence.push(
-      `DevTeam's chief of staff (${COS}) on ${checkout.describe}, its turn on ${cosModel}, Alice ${alice.userId} and Bob ${bob.userId}; ` +
+      `DevTeam's Shift Coordinator (${SHIFT_COORDINATOR}) on ${checkout.describe}, its turn on ${shiftCoordinatorModel}, Alice ${alice.userId} and Bob ${bob.userId}; ` +
         `each routed post's evaluation trace named ${[...new Set(routeModels)].join(", ") || "no model (no post was routed)"}`,
     );
   }

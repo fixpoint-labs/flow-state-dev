@@ -1,0 +1,20 @@
+{
+  "port": 4620,
+  "lead": "teammates.lead",
+  "researcher": "teammates.researcher",
+  "coder": "teammates.coder",
+  "ask": "Ask researcher for our launch date, and help me outline the post.",
+  "second": "Make section 2 about pricing.",
+  "fix": "Have coder fix the typo in the README's first line.",
+  "project": { "id": "relay", "title": "Relay" },
+  "typos": [
+    { "readme": "# Relay — a tiny relay servce", "wrong": "servce", "right": "service" },
+    { "readme": "# Relay — passes mesages along", "wrong": "mesages", "right": "messages" },
+    { "readme": "# Relay — a small mesage relay", "wrong": "mesage", "right": "message" }
+  ],
+  "rest": "\nIt relays messages between services.\n",
+  "answerWithinMs": 180000,
+  "replyWithinMs": 240000,
+  "unpickedMs": 30000,
+  "runWithinMs": 900000
+}

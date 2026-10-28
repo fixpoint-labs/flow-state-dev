@@ -22,7 +22,7 @@ A stop that waits for a user holds its task and ends exactly once (FIX-2129).
 **Migration:**
 
 - `TaskWaitingOn` reads `"user"` where it read `"person"`. Stored rows are not migrated.
-- A raw `ctx.suspend` with `human_approval` or `human_input` now gets the same mark, cancel and stop as `waitForUser`. A raw `human_input` stop past its `timeoutMs` now resumes its block with `SuspensionTimeoutError` instead of staying parked, and a cancelled one throws `SuspensionRejectedError` with `cancelled: true`.
+- A raw `ctx.suspend` with `user_approval` or `user_input` now gets the same mark, cancel and stop as `waitForUser`. A raw `user_input` stop past its `timeoutMs` now resumes its block with `SuspensionTimeoutError` instead of staying parked, and a cancelled one throws `SuspensionRejectedError` with `cancelled: true`.
 - `isExpiredApproval` is now `continuesAtExpiry`, which also covers a user's review and input.
 - A filing by a cancelled task is refused (`TaskFilingRefusedError`, rule `parent_cancelled`), and a piece filed on a task session's board under a cancelled task is refused before it is added, so it is never claimable.
 - Shift Manager answers every ask through the answer route; `REOPENED_SOURCES` and `DISPATCHED_RUN_UNANSWERABLE` are gone.

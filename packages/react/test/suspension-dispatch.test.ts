@@ -2,7 +2,7 @@
 /**
  * ItemRenderer dispatch for suspension items (FIX-849).
  *
- * Verifies the default-renderer selection: a `human_input` suspension routes to
+ * Verifies the default-renderer selection: a `user_input` suspension routes to
  * the form/selection/question card by schema shape; a registered
  * `render.component` wins over the reason default; and a registered
  * `renderers.suspension` (or `false`) still overrides everything.
@@ -27,7 +27,7 @@ function suspension(overrides: Partial<SuspensionItem> = {}): SuspensionItem {
     provenance,
     ts: 0,
     suspensionId: "sus_1",
-    reason: "human_input",
+    reason: "user_input",
     message: "Tell us more",
     ...overrides
   } as SuspensionItem;
@@ -58,22 +58,22 @@ describe("ItemRenderer suspension dispatch", () => {
     expect(container.querySelector('input[type="radio"]')).not.toBeNull();
   });
 
-  it("renders the question card for a free-text human_input", () => {
+  it("renders the question card for a free-text user_input", () => {
     const { container } = renderItem(suspension({ allow: ["submit"] }));
     expect(container.querySelector('[data-suspension-input="question"]')).not.toBeNull();
   });
 
-  it("renders the approval card for a human_approval suspension", () => {
-    const { getByText } = renderItem(suspension({ reason: "human_approval", allow: ["approve", "reject"] }));
+  it("renders the approval card for a user_approval suspension", () => {
+    const { getByText } = renderItem(suspension({ reason: "user_approval", allow: ["approve", "reject"] }));
     expect(getByText("Approve")).not.toBeNull();
     expect(getByText("Reject")).not.toBeNull();
   });
 
-  it("renders the approval card for a legacy human_input with no allow set", () => {
-    // A human_input gate persisted before `allow` existed has no submit path
+  it("renders the approval card for a legacy user_input with no allow set", () => {
+    // A user_input gate persisted before `allow` existed has no submit path
     // (the route treats missing allow as binary), so it must render approve/reject
     // rather than a submit-only card the server would 409.
-    const { getByText, container } = renderItem(suspension({ reason: "human_input", allow: undefined }));
+    const { getByText, container } = renderItem(suspension({ reason: "user_input", allow: undefined }));
     expect(getByText("Approve")).not.toBeNull();
     expect(container.querySelector('[data-suspension-input="question"]')).toBeNull();
   });

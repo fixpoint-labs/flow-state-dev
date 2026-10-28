@@ -35,9 +35,9 @@ const askQuestionStep = handler({
     // The `message` IS the question — it renders once as the card heading. Don't
     // emit a separate "we're about to ask…" line or wrap the question in a
     // meta-question; that just restates it. A single-string resumeSchema renders
-    // a free-text box; the default `allow` for `human_input` is `["submit"]`.
+    // a free-text box; the default `allow` for `user_input` is `["submit"]`.
     const answer = (await ctx.suspend!({
-      reason: "human_input",
+      reason: "user_input",
       message: input.question,
       resumeSchema: z.string().min(1),
     })) as string;
@@ -88,7 +88,7 @@ const collectFormStep = handler({
     // `ctx.suspend()` returns the SUSPENSION_SKIPPED sentinel instead of a
     // payload, so the run continues with a default rather than aborting.
     const result = await ctx.suspend!({
-      reason: "human_input",
+      reason: "user_input",
       message: `Share feedback on "${input.subject}" (optional)`,
       resumeSchema: feedbackSchema,
       allow: ["submit", "skip"],
@@ -123,7 +123,7 @@ const chooseOptionStep = handler({
   execute: async (input, ctx) => {
     // A top-level enum renders as a single-choice selection card.
     const choice = (await ctx.suspend!({
-      reason: "human_input",
+      reason: "user_input",
       message: input.question,
       resumeSchema: z.enum(["yes", "no", "not sure"]),
     })) as string;

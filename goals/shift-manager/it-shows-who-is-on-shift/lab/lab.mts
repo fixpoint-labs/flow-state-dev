@@ -8,7 +8,7 @@
  * gives its conversation the task tools, and it files each task on that
  * conversation's own board, at the Lab user's scope. `eng.desk` and
  * `ops.desk` are coordinators on Workforce's `coordinator` flow that nothing
- * posts to. One org-level seat, `chief-of-staff`, has no team: the tree has
+ * posts to. One org-level seat, `shift-coordinator`, has no team: the tree has
  * no place for one yet, so it is registered in the seat inventory beside the
  * hired workers, as an org seat's row will be.
  *
@@ -62,7 +62,7 @@ const SHIFT_LAB_TREE = join(dirname(fileURLToPath(import.meta.url)), "workforce"
 /** The one person this Lab runs as. */
 export const SHIFT_LAB_USER_ID = "u_shift_lab";
 /** The org-level seat, registered with no team. */
-export const ORG_SEAT = { id: "chief-of-staff", kind: "chief-of-staff", actions: {} } as const;
+export const ORG_SEAT = { id: "shift-coordinator", kind: "shift-coordinator", actions: {} } as const;
 
 /** The kind the filing worker is hired into. */
 const LEAD_KIND = "lead";
@@ -172,7 +172,7 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
     outputSchema: z.object({ approved: z.boolean() }),
     execute: async (input, ctx) => {
       try {
-        await ctx.suspend!({ reason: "human_approval", message: `Approve: ${input.what}` });
+        await ctx.suspend!({ reason: "user_approval", message: `Approve: ${input.what}` });
         return { approved: true };
       } catch (error) {
         if (error instanceof SuspensionRejectedError) return { approved: false };

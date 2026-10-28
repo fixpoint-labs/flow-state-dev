@@ -244,7 +244,7 @@ function buildHost(filename: string) {
           toSession: sessionId,
           toFlow: "doer",
           hop: 1,
-          status: "delivered",
+          status: "unconfirmed",
           at: Date.now()
         } as never);
         await dispatchThroughSeam(ctx, {
