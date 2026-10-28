@@ -15,13 +15,13 @@
  *
  *   delivered    the run session the task links to holds the line as a user
  *                item, the composer showed *delivered* only once it did, and
- *                the next attempt's run link names that same session
- *   stopped      the attempt that was running reads `aborted`
- *   continued    the harness recorded a next attempt whose prompt holds the
- *                line and whose resume id is the previous attempt's session
- *   standing     the row's retry standing (attempts, less the re-entries
- *                it isn't charged for) is unchanged by the turn, read from
- *                the stored row
+ *                the task's run link still names that session and request
+ *   stopped      the running run ended for the line (a steer, FIX-2086), not
+ *                its request: the request still runs the next run
+ *   continued    the harness recorded a next run whose prompt holds the
+ *                line and whose resume id is the previous run's session
+ *   standing     the row's attempts and retry standing are unchanged by
+ *                the line, read from the stored row
  *   only that    the line reaches the task it was typed on, not the other
  *                task running beside it
  *   em door      Inbox's reply to DevTeam's EM ask lands in the EM's session, and the EM answers it
@@ -341,53 +341,41 @@ async function grade(
   const held = await api.holds(run.sessionId, "user", turn.line);
   if (!held) fail("delivered", `the run session ${run.sessionId} holds no user item with the line`);
 
-  // stopped
-  let record = await api.requestStatus(turn.owner, run.requestId);
-  for (let waited = 0; record === "in_progress" && waited < 5_000; waited += 250) {
-    await sleep(250);
-    record = await api.requestStatus(turn.owner, run.requestId);
-  }
-  if (record !== "aborted") fail("stopped", `the running attempt's request ${run.requestId} reads ${record}`);
-
-  // continued
+  // continued: the running run ended and the next run took the line, in the
+  // same coding session (FIX-2086: a steer ends the run, not the request).
   let next: RecordedAttempt | undefined;
   for (const until = Date.now() + NEXT_ATTEMPT_MS; Date.now() < until && next === undefined; await sleep(250)) {
-    next = attemptsOf(turn.row.id).find((a) => a.prompt.includes(turn.line));
+    // A steer's run is handed the line with no row line, so look it up by the
+    // line's unique token; the resume id below ties it to the row.
+    next = attempts().find((a) => a.prompt.includes(turn.line));
   }
-  if (next === undefined) fail("continued", `the harness recorded no attempt on ${turn.issue} whose prompt holds the line`);
+  if (next === undefined) fail("continued", `the harness recorded no run on ${turn.issue} whose prompt holds the line`);
   else if (next.resume !== turn.previousSession) {
-    fail("continued", `the next attempt resumed ${next.resume ?? "nothing"} (the resume id), wanted the previous attempt's session ${turn.previousSession}`);
+    fail("continued", `the next run resumed ${next.resume ?? "nothing"} (the resume id), wanted the previous run's session ${turn.previousSession}`);
   }
 
-  // standing: once the next attempt is claimed, the stored counters say the
-  // turn's re-entry wasn't charged.
-  let after: Counters | undefined;
-  for (const until = Date.now() + NEXT_ATTEMPT_MS; Date.now() < until; await sleep(250)) {
-    after = await storedCounters(turn.row.topic);
-    if (after === undefined || after.attempts > turn.counters.attempts) break;
-  }
+  // stopped: the run was stopped for the line, not its request. The request
+  // that was running runs the next run: still in_progress, never aborted.
+  const record = await api.requestStatus(turn.owner, run.requestId);
+  if (next !== undefined && record !== "in_progress") fail("stopped", `the running attempt's request ${run.requestId} reads ${record}, wanted it running the next run`);
+
+  // standing: the line used no attempt and charged nothing.
+  const after = await storedCounters(turn.row.topic);
   if (after === undefined) fail("standing", `the row ${turn.row.id} is no longer stored`);
-  else if (after.attempts === turn.counters.attempts) fail("standing", `no next attempt was claimed (attempts still ${after.attempts})`);
-  else if (standing(after) !== standing(turn.counters)) {
-    fail("standing", `retry standing went ${standing(turn.counters)} → ${standing(after)} (attempts ${after.attempts}, abandonments ${after.abandonments})`);
+  else if (after.attempts !== turn.counters.attempts || standing(after) !== standing(turn.counters)) {
+    fail("standing", `the line cost the task: attempts ${turn.counters.attempts} → ${after.attempts}, standing ${standing(turn.counters)} → ${standing(after)}`);
   }
-  // delivered, read again after delivery: the next attempt's run link still
-  // names the session the line was delivered into, so the task's Session view
-  // keeps showing it. A run that moved to a new session drops the line from it.
-  let linked: Row["run"] = null;
-  for (const until = Date.now() + NEXT_ATTEMPT_MS; Date.now() < until; await sleep(250)) {
-    linked = (await api.rows(where.sessionId)).find((r) => r.id === turn.row.id)?.run ?? null;
-    if (linked !== null && linked.requestId !== run.requestId) break;
-  }
-  if (linked === null || linked.requestId === run.requestId) {
-    fail("delivered", `after delivery, no next attempt linked on ${turn.row.id}`);
-  } else if (linked.sessionId !== run.sessionId) {
-    fail("delivered", `after delivery the task links session ${linked.sessionId}, not ${run.sessionId} where the line was delivered`);
+  // delivered, read again after delivery: the task's run link still names the
+  // session and the request the line was delivered into, so the task's
+  // Session view keeps showing it.
+  const linked = (await api.rows(where.sessionId)).find((r) => r.id === turn.row.id)?.run ?? null;
+  if (linked === null || linked.sessionId !== run.sessionId || linked.requestId !== run.requestId) {
+    fail("delivered", `after delivery the task links ${linked === null ? "nothing" : `${linked.sessionId} / ${linked.requestId}`}, not ${run.sessionId} / ${run.requestId} where the line was delivered`);
   }
 
   evidence.push(
     `${turn.route} → ${turn.row.id}: ${sent.state}${sent.heldAtDelivered === true ? " (held when drawn)" : ""}, linked after ${linked?.sessionId === run.sessionId ? "same session" : (linked?.sessionId ?? "none")}, request ${record}, ` +
-      `next attempt resume=${next?.resume ?? "none"} (previous ${turn.previousSession}), standing ${standing(turn.counters)} → ${after === undefined ? "?" : `${standing(after)} (attempts ${after.attempts}, abandonments ${after.abandonments})`}`,
+      `next run resume=${next?.resume ?? "none"} (previous ${turn.previousSession}), standing ${standing(turn.counters)} → ${after === undefined ? "?" : `${standing(after)} (attempts ${after.attempts}, abandonments ${after.abandonments})`}`,
   );
 }
 
