@@ -23,7 +23,7 @@ import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import type { HarnessBlock } from "@flow-state-dev/core/types";
 import { createFlowState, createInMemoryStores, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { cursorAgent } from "@flow-state-dev/cursor";
-import { harnessManager, harnessTaskInputSchema, runOwnerDispatcher } from "@flow-state-dev/harness-manager";
+import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder } from "@flow-state-dev/harness-manager";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import {
   defineTaskCollection,
@@ -202,7 +202,7 @@ await runGoal(async (failures) => {
       mode: "delegation",
       collection: ledger,
       concurrency: 1,
-      dispatcher: runOwnerDispatcher(),
+      claimOrder: runOwnerClaimOrder(),
       workers: { coder: dispatcher({ name: "goal-board-dispatch", action: "work", session: "per-task" }) },
     });
     const tasks = (ctx: never) =>
@@ -213,7 +213,7 @@ await runGoal(async (failures) => {
       outputSchema: z.unknown(),
       uses: [board.capability],
       execute: async (_input, ctx) =>
-        (ctx as { cap: Record<string, any> }).cap["goal-board"].addTask({
+        (ctx as { cap: Record<string, any> }).cap["goal-board"].createTask({
           id: TASK,
           goal: "the files",
           input: { issue: "GOAL-1", phase: "implement" },

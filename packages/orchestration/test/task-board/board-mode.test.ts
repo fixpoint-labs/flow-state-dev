@@ -12,7 +12,7 @@
  *
  * `goalSeekLoop` refuses a board whose drain can return with a row not ended,
  * a delegation board: its judge would rule while work still runs. A board
- * built with the retired `onReview` is refused by name (FIX-2131).
+ * built with the removed review option is refused by name (FIX-2131).
  *
  * Each refusal is asserted by the setting it names and the fix it gives, so a
  * refusal that starts firing for another cause fails here.
@@ -201,16 +201,16 @@ describe("goalSeekLoop — refuses a board whose drain can return with a row not
     );
   });
 
-  it("refuses a board built with the retired onReview, by name (FIX-2131)", () => {
-    for (const onReview of ["exit", "hold"]) {
+  it("refuses a board built with the retired onReview, by name (FIX-2131)", () => { // retired-name-refusal: refusal test
+    for (const onReview of ["exit", "hold"]) { // retired-name-refusal: refusal test
       expect(() =>
         taskBoard({
           name: "gsl-park-exit",
           collection: durable("gsl-park-exit"),
           workers: inline("gsl-park-exit-w"),
-          onReview,
+          onReview, // retired-name-refusal: refusal test
         } as never),
-      ).toThrow(/"gsl-park-exit" sets `onReview`, which was removed \(FIX-2131\).*askQuestion.*waitForUser.*blocked/s);
+      ).toThrow(/"gsl-park-exit" sets `onReview`, which was removed \(FIX-2131\).*askQuestion.*waitForUser.*blocked/s); // retired-name-refusal: refusal test
     }
   });
 
@@ -230,7 +230,7 @@ describe("goalSeekLoop — refuses a board whose drain can return with a row not
         inputSchema: z.unknown(),
         uses: [board.capability],
         execute: async (_input, ctx) => {
-          await (ctx.cap as any)[board.capability.name].addTasks([{ id: "a", goal: "a" }, { id: "b", goal: "b" }]);
+          await (ctx.cap as any)[board.capability.name].createTasks([{ id: "a", goal: "a" }, { id: "b", goal: "b" }]);
         },
       }),
       judge: (input) => {

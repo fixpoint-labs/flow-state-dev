@@ -318,7 +318,7 @@ describe("createSeedTasksFromPlan", () => {
     expect(changes[0]?.data?.task?.assignee).toBe("agent-a");
   });
 
-  it("does not call addTasks for empty tasks array", async () => {
+  it("does not call createTasks for empty tasks array", async () => {
     const seed = createSeedTasksFromPlan({
       name: "test",
       collectionId: "test",

@@ -64,30 +64,30 @@ describe("RESUME_ACTION_STATUS", () => {
 });
 
 describe("resolveAllowedActions", () => {
-  it("defaults human_input to submit-only", () => {
-    expect(resolveAllowedActions("human_input", undefined)).toEqual(["submit"]);
+  it("defaults user_input to submit-only", () => {
+    expect(resolveAllowedActions("user_input", undefined)).toEqual(["submit"]);
   });
 
-  it("defaults human_approval (and any other reason) to binary approve/reject", () => {
-    expect(resolveAllowedActions("human_approval", undefined)).toEqual(["approve", "reject"]);
+  it("defaults user_approval (and any other reason) to binary approve/reject", () => {
+    expect(resolveAllowedActions("user_approval", undefined)).toEqual(["approve", "reject"]);
     expect(resolveAllowedActions("external_event", undefined)).toEqual(["approve", "reject"]);
   });
 
   it("honours an explicit allow set over the reason default", () => {
-    expect(resolveAllowedActions("human_input", ["submit", "skip"])).toEqual(["submit", "skip"]);
+    expect(resolveAllowedActions("user_input", ["submit", "skip"])).toEqual(["submit", "skip"]);
   });
 });
 
 describe("SuspensionError.allow", () => {
   it("resolves the default allow set from the reason", () => {
-    const err = new SuspensionError({ suspensionId: "s1", reason: "human_input" });
+    const err = new SuspensionError({ suspensionId: "s1", reason: "user_input" });
     expect(err.allow).toEqual(["submit"]);
   });
 
   it("carries an explicit allow set verbatim", () => {
     const err = new SuspensionError({
       suspensionId: "s1",
-      reason: "human_input",
+      reason: "user_input",
       allow: ["submit", "skip"]
     });
     expect(err.allow).toEqual(["submit", "skip"]);

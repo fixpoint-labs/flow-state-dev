@@ -27,7 +27,7 @@ import { TurnComposer } from "../components/TurnComposer";
 import { EmptyState, Meta, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
 import { askSessionOf, type SessionCall, type SessionReply } from "../lib/ask-session";
 import { doorOf, inboxItemAt, rosterOf, waited, workerLabel, type LoadedSnapshot } from "../lib/derive";
-import type { InboxHold, InboxItem as OrchestrationInboxItem } from "@flow-state-dev/orchestration/inbox";
+import type { InboxQuestion, InboxItem as OrchestrationInboxItem } from "@flow-state-dev/orchestration/inbox";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Ask, type Failure } from "../lib/reads";
 import { navigate, pathFor } from "../lib/routes";
@@ -45,7 +45,7 @@ type InboxItem = OrchestrationInboxItem<Ask>;
 
 /** Whether `item` is an approval, as the filter and its tag read it: its first hold asks for a yes or a no. */
 function isApproval(item: InboxItem): boolean {
-  return item.holds[0]!.ask.kind === "approval";
+  return item.questions[0]!.ask.kind === "approval";
 }
 
 function matches(filter: Filter, item: InboxItem): boolean {
@@ -58,14 +58,14 @@ function askHeading(ask: Ask): string {
 
 /** An item's heading: its first hold's title, else what it asks. */
 function itemHeading(item: InboxItem): string {
-  const { ask } = item.holds[0]!;
+  const { ask } = item.questions[0]!;
   return ask.title || ask.prompt || "(no message)";
 }
 
 /** Who an item waits for the user on behalf of: the task's assignee, else the worker that asked, and the task. */
 function itemFrom(item: InboxItem): string {
-  const who = item.task?.assignee ?? item.holds[0]!.detail?.workerId ?? "unknown worker";
-  const more = item.holds.length > 1 ? ` · ${item.holds.length} asks` : "";
+  const who = item.task?.assignee ?? item.questions[0]!.detail?.workerId ?? "unknown worker";
+  const more = item.questions.length > 1 ? ` · ${item.questions.length} asks` : "";
   return `${workerLabel(who)} · task ${item.task?.title ?? "—"}${more}`;
 }
 
@@ -76,7 +76,7 @@ function itemFrom(item: InboxItem): string {
  * same route, by the hold's source.
  */
 function askOfItem(item: InboxItem): Ask {
-  const hold = item.holds[0]!;
+  const hold = item.questions[0]!;
   if (hold.detail !== undefined) return hold.detail;
   if (hold.source.kind !== "suspension") throw new Error(`Inbox item "${item.id}" holds no suspension`);
   const approval = hold.ask.kind === "approval";
@@ -92,7 +92,7 @@ function askOfItem(item: InboxItem): Ask {
       suspensionId: hold.source.suspensionId,
       requestId: hold.source.requestId,
       suspensionStatus: "pending",
-      reason: approval ? "human_approval" : "human_input",
+      reason: approval ? "user_approval" : "user_input",
       message: hold.ask.prompt,
       ...(hold.ask.title !== undefined ? { title: hold.ask.title } : {}),
       allow: approval ? ["approve", "reject"] : ["submit"],
@@ -165,9 +165,9 @@ export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; it
                     aria-selected={isSelected}
                     data-testid="inbox-item"
                     data-item-id={item.id}
-                    data-source={item.holds[0]!.source.kind}
-                    data-suspension-id={item.holds[0]!.source.kind === "suspension" ? item.holds[0]!.source.suspensionId : undefined}
-                    data-session-id={item.holds[0]!.source.kind === "suspension" ? item.holds[0]!.source.sessionId : undefined}
+                    data-source={item.questions[0]!.source.kind}
+                    data-suspension-id={item.questions[0]!.source.kind === "suspension" ? item.questions[0]!.source.suspensionId : undefined}
+                    data-session-id={item.questions[0]!.source.kind === "suspension" ? item.questions[0]!.source.sessionId : undefined}
                     className={cn(
                       "grid w-full grid-cols-[10px_minmax(0,1fr)_auto] gap-2.5 border-b border-foreground/10 px-[18px] py-[13px] text-left",
                       isSelected ? "bg-card shadow-[inset_2px_0_0_var(--color-info)]" : "hover:bg-foreground/5",
@@ -201,7 +201,7 @@ export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; it
       <section className="flex min-w-0 flex-1 flex-col bg-inspector" data-testid="inbox-detail">
         {selected === null ? (
           <EmptyState title="Pick an ask">Choose an ask on the left to answer it.</EmptyState>
-        ) : selected.holds[0]!.source.kind === "row" ? (
+        ) : selected.questions[0]!.source.kind === "row" ? (
           <HeldQuestions item={selected} />
         ) : (
           <AskDetail
@@ -281,14 +281,14 @@ function HeldQuestions({ item }: { item: InboxItem }) {
       <div className="flex max-w-[660px] flex-col gap-[18px]">
         {task === null ? null : (
           <Meta className="text-muted-foreground" testId="inbox-detail-head">
-            {workerLabel(item.task!.assignee ?? "unassigned")} waits on {item.holds.length === 1 ? "your answer" : `${item.holds.length} answers`} to start or go on with{" "}
+            {workerLabel(item.task!.assignee ?? "unassigned")} waits on {item.questions.length === 1 ? "your answer" : `${item.questions.length} answers`} to start or go on with{" "}
             <a href={pathFor(task)} onClick={(e) => (e.preventDefault(), navigate(task))} className="underline" data-testid="inbox-held-task">
               {item.task!.title}
             </a>
           </Meta>
         )}
         <ol className="flex flex-col gap-3" data-testid="inbox-held-questions">
-          {item.holds.map((hold) => (
+          {item.questions.map((hold) => (
             <li key={hold.id} className="flex flex-col gap-2" data-testid="inbox-held-question" data-question-id={hold.id}>
               <ScreenTitle scale="detail">{hold.ask.prompt}</ScreenTitle>
               <HeldAnswer hold={hold} />
@@ -301,8 +301,8 @@ function HeldQuestions({ item }: { item: InboxItem }) {
 }
 
 /** One held question's answer: words for a question, a yes or a no (with a note) for a confirm. */
-function HeldAnswer({ hold }: { hold: InboxHold<unknown> }) {
-  const { answerHold } = useLab();
+function HeldAnswer({ hold }: { hold: InboxQuestion<unknown> }) {
+  const { answerOne } = useLab();
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -313,11 +313,11 @@ function HeldAnswer({ hold }: { hold: InboxHold<unknown> }) {
       </p>
     );
   }
-  const send = async (answer: Parameters<typeof answerHold>[1]) => {
+  const send = async (answer: Parameters<typeof answerOne>[1]) => {
     setSending(true);
     setFailure(null);
     try {
-      await answerHold(hold, answer);
+      await answerOne(hold, answer);
       setText("");
     } catch (error) {
       setFailure(error instanceof Error ? error.message : String(error));

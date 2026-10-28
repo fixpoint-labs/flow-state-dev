@@ -165,7 +165,7 @@ describe("retry budget — where the knob comes from", () => {
 describe("retry budget — the board reports it honestly", () => {
   it("reports the retry count, the limit in force, and the budget termination reason", async () => {
     const collection = budgetedCollection({ maxTotalRetries: 2 });
-    await collection.addTask({ goal: "flaky", maxAttempts: 100 });
+    await collection.createTask({ goal: "flaky", maxAttempts: 100 });
 
     // Three failure cycles: two granted, the third denied by the budget.
     await claimAndFail(collection);
@@ -180,7 +180,7 @@ describe("retry budget — the board reports it honestly", () => {
 
   it("still reports `all-completed` for a clean drain", async () => {
     const collection = budgetedCollection({ maxTotalRetries: 5 });
-    const task = await collection.addTask({ goal: "fine" });
+    const task = await collection.createTask({ goal: "fine" });
     await collection.claim("w1");
     await collection.complete(task.id, "done");
 
@@ -197,8 +197,8 @@ describe("retry budget — the board reports it honestly", () => {
     // board, and no retry ever refused. Inferring the reason arithmetically
     // would make the board claim its budget stopped it, which is a lie.
     const collection = budgetedCollection({ maxTotalRetries: 1 });
-    const flaky = await collection.addTask({ goal: "flaky", maxAttempts: 5 });
-    const doomed = await collection.addTask({ goal: "doomed" });
+    const flaky = await collection.createTask({ goal: "flaky", maxAttempts: 5 });
+    const doomed = await collection.createTask({ goal: "doomed" });
 
     await collection.claim("w1", { eligibility: (t) => t.id === flaky.id });
     await collection.fail(flaky.id, "first try"); // consumes the only grant
@@ -226,7 +226,7 @@ describe("retry budget — the board reports it honestly", () => {
       state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
       maxTotalRetries: 5,
     });
-    await supplied.addTask({ goal: "t" });
+    await supplied.createTask({ goal: "t" });
 
     const report = await reportFor(supplied);
     expect(report.maxTotalRetries).toBe(5);
@@ -242,7 +242,7 @@ describe("retry budget — the board reports it honestly", () => {
       collectionId: "durable",
       collection: createFakeResourceCollection(),
     });
-    await collection.addTask({ goal: "flaky", maxAttempts: 5 });
+    await collection.createTask({ goal: "flaky", maxAttempts: 5 });
     await claimAndFail(collection);
     await claimAndFail(collection);
 
@@ -283,7 +283,7 @@ describe("retry budget — the request backing inherits the sequencer path", () 
       collectionId: "req-board",
       maxTotalRetries: 1,
     });
-    await collection.addTask({ goal: "flaky", maxAttempts: 100 });
+    await collection.createTask({ goal: "flaky", maxAttempts: 100 });
 
     await claimAndFail(collection);
     const settled = await claimAndFail(collection);
@@ -319,7 +319,7 @@ describe("retry budget — goal check on a real board drain", () => {
       name: "retry-storm",
       collection: { collectionId: "retry-storm" },
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: alwaysFails,
       // The storm: a permissive per-task retry budget that would otherwise
       // re-pend this task 1000 times, with generous creation caps that never

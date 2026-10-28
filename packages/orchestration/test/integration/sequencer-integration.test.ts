@@ -15,7 +15,7 @@ import { testBlock } from "@flow-state-dev/testing";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { z } from "zod";
 import {
-  fifoDispatcher,
+  fifoClaimOrder,
   getOrCreateTaskCollection,
   taskSchema,
 } from "../../src/tasks";
@@ -38,8 +38,8 @@ describe("sequencer-state integration", () => {
           collectionId: "plan",
           state: ctx.sequencer!,
         });
-        await collection.addTask({ id: "a", goal: "alpha" });
-        await collection.addTask({ id: "b", goal: "beta" });
+        await collection.createTask({ id: "a", goal: "alpha" });
+        await collection.createTask({ id: "b", goal: "beta" });
         return { count: collection.count() };
       },
     });
@@ -56,7 +56,7 @@ describe("sequencer-state integration", () => {
           collectionId: "plan",
           state: ctx.sequencer!,
         });
-        const task = await fifoDispatcher.claim(collection, "worker-1", ctx);
+        const task = await fifoClaimOrder.claim(collection, "worker-1", ctx);
         if (task !== null) {
           await collection.complete(task.id, `done:${task.goal}`);
         }
@@ -107,7 +107,7 @@ describe("sequencer-state integration", () => {
           collectionId: "plan",
           state: ctx.sequencer!,
         });
-        await collection.addTask({ id: "t", goal: "do" });
+        await collection.createTask({ id: "t", goal: "do" });
         await collection.claim("w");
         await collection.complete("t", "ok");
         return null;
@@ -163,7 +163,7 @@ describe("sequencer-state integration", () => {
           collectionId: "plan",
           state: ctx.sequencer!,
         });
-        await collection.addTask({ id: "a", goal: "alpha" });
+        await collection.createTask({ id: "a", goal: "alpha" });
         return null;
       },
     });

@@ -45,7 +45,7 @@ const BACKINGS = [
 describe.each(BACKINGS)("fail with noRetry (%s)", (_name, makeBacking) => {
   it("ends a task with attempts left errored, on its first failure", async () => {
     const tasks = await makeBacking();
-    await tasks.addTask({ id: "t", goal: "t", maxAttempts: 3 });
+    await tasks.createTask({ id: "t", goal: "t", maxAttempts: 3 });
     const claimed = (await tasks.claim("w", { leaseDurationMs: 10_000 }))!;
 
     const outcome = await tasks.fail("t", "refused: no project", {
@@ -59,7 +59,7 @@ describe.each(BACKINGS)("fail with noRetry (%s)", (_name, makeBacking) => {
 
   it("is still refused for an attempt that no longer holds the task", async () => {
     const tasks = await makeBacking();
-    await tasks.addTask({ id: "t", goal: "t", maxAttempts: 3 });
+    await tasks.createTask({ id: "t", goal: "t", maxAttempts: 3 });
     const first = (await tasks.claim("w", { leaseDurationMs: 10_000 }))!;
     await tasks.fail("t", "first try failed", { claim: ticketForClaim("tasks", first) });
     await tasks.claim("w", { leaseDurationMs: 10_000 });
@@ -72,7 +72,7 @@ describe.each(BACKINGS)("fail with noRetry (%s)", (_name, makeBacking) => {
 
   it("without it, the same failure still re-pends", async () => {
     const tasks = await makeBacking();
-    await tasks.addTask({ id: "t", goal: "t", maxAttempts: 3 });
+    await tasks.createTask({ id: "t", goal: "t", maxAttempts: 3 });
     const claimed = (await tasks.claim("w", { leaseDurationMs: 10_000 }))!;
     await tasks.fail("t", "try again", { claim: ticketForClaim("tasks", claimed) });
     expect((tasks.get("t") as Task).status).toBe("pending");

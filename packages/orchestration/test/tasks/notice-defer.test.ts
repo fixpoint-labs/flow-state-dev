@@ -45,7 +45,7 @@ function host(defer: () => boolean, options: HostOptions = {}) {
     inputSchema: z.object({ id: z.string() }),
     outputSchema: z.any(),
     execute: async ({ id }, ctx) => {
-      await (await boardOf(ctx)).addTask({ id, goal: "Find the fact" });
+      await (await boardOf(ctx)).createTask({ id, goal: "Find the fact" });
       return {};
     }
   });
@@ -83,7 +83,7 @@ function host(defer: () => boolean, options: HostOptions = {}) {
               }
               heard.push(notice);
               await options.gate;
-              if (options.park === true) await ctx.suspend!({ reason: "human_approval", message: "Tell the customer?" });
+              if (options.park === true) await ctx.suspend!({ reason: "user_approval", message: "Tell the customer?" });
               return {};
             }
           }),

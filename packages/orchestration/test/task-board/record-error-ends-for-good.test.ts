@@ -23,7 +23,7 @@ import { createFakeSequencerState } from "../helpers";
 async function claimedWithAttemptsLeft(): Promise<{ collection: TaskCollectionRef; ctx: BlockContext }> {
   const state = createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} });
   const collection = createStateBackedTaskCollection({ collectionId: "tasks", state });
-  await collection.addTask({ id: "t", goal: "work", maxAttempts: 3 });
+  await collection.createTask({ id: "t", goal: "work", maxAttempts: 3 });
   const task = (await collection.claim("w"))!;
   const bodyState = createFakeSequencerState<{ currentClaim?: unknown }>({
     currentClaim: ticketForClaim("tasks", task),
@@ -118,7 +118,7 @@ describe("a board nested inside a worker", () => {
       name: "inner",
       collection: { collectionId: "inner" },
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: innerWorker,
       initialTasks: [{ id: "inner-t", goal: "inner", maxAttempts: 1 }],
       onError: "fail",
@@ -132,7 +132,7 @@ describe("a board nested inside a worker", () => {
       name: "outer",
       collection: { collectionId: "outer" },
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: outerWorker,
       initialTasks: [{ id: "outer-t", goal: "outer", maxAttempts: 3 }],
       onError: "skip",

@@ -32,7 +32,7 @@ function suspension(overrides: Partial<SuspensionItem> = {}): SuspensionItem {
     provenance,
     ts: 0,
     suspensionId: "sus_1",
-    reason: "human_input",
+    reason: "user_input",
     message: "Tell us more",
     ...overrides
   } as SuspensionItem;
@@ -96,26 +96,26 @@ describe("analyzeResumeSchema", () => {
 });
 
 describe("suspensionShape", () => {
-  it("routes human_input to a card by schema shape when submit is allowed", () => {
-    expect(suspensionShape({ reason: "human_input", allow: ["submit"] })).toBe("question");
+  it("routes user_input to a card by schema shape when submit is allowed", () => {
+    expect(suspensionShape({ reason: "user_input", allow: ["submit"] })).toBe("question");
     expect(
-      suspensionShape({ reason: "human_input", allow: ["submit"], resumeSchema: { type: "string", enum: ["a"] } })
+      suspensionShape({ reason: "user_input", allow: ["submit"], resumeSchema: { type: "string", enum: ["a"] } })
     ).toBe("selection");
     expect(
       suspensionShape({
-        reason: "human_input",
+        reason: "user_input",
         allow: ["submit"],
         resumeSchema: { type: "object", properties: { a: { type: "string" } } }
       })
     ).toBe("form");
   });
 
-  it("falls back to the approval card for human_approval and for binary/legacy human_input", () => {
-    expect(suspensionShape({ reason: "human_approval", allow: ["approve", "reject"] })).toBe("approval");
-    // Legacy human_input with no allow (route treats as binary) → approval.
-    expect(suspensionShape({ reason: "human_input" })).toBe("approval");
-    // Explicitly binary human_input (no submit path) → approval, not a submit card.
-    expect(suspensionShape({ reason: "human_input", allow: ["approve", "reject"] })).toBe("approval");
+  it("falls back to the approval card for user_approval and for binary/legacy user_input", () => {
+    expect(suspensionShape({ reason: "user_approval", allow: ["approve", "reject"] })).toBe("approval");
+    // Legacy user_input with no allow (route treats as binary) → approval.
+    expect(suspensionShape({ reason: "user_input" })).toBe("approval");
+    // Explicitly binary user_input (no submit path) → approval, not a submit card.
+    expect(suspensionShape({ reason: "user_input", allow: ["approve", "reject"] })).toBe("approval");
   });
 });
 

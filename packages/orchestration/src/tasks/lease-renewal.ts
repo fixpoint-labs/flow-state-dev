@@ -103,7 +103,7 @@ export interface LeaseRenewalOptions {
   /**
    * The task **as `claim()` committed it**. The renewal span is read off this
    * row rather than passed in, which is what makes the driver correct by
-   * construction: a dispatcher that claimed with a five-second lease and a
+   * construction: a claim order that claimed with a five-second lease and a
    * driver that assumed two minutes cannot disagree, because there is nothing
    * to agree about.
    */
@@ -242,7 +242,7 @@ export function startLeaseRenewal(options: LeaseRenewalOptions): LeaseRenewalDri
       // A decline is the only stop condition — a throw below is the unknown
       // case, not the dead case. But there are two kinds of decline and they
       // mean different things to the worker.
-      if (outcome.reason === "disallowed" || outcome.reason === "held") {
+      if (outcome.reason === "disallowed" || outcome.reason === "open-question") {
         // The row no longer takes a lease, but nobody displaced the worker:
         // it moved to a status the lease does not govern (`disallowed`), or
         // it waits on a person with an open hold (`held`: the turn asked a

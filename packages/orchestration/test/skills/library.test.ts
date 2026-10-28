@@ -479,7 +479,7 @@ describe("createSkillsLibrary — removed skill sub-agents", () => {
       "    prompt: You research things.",
       "---",
       "",
-      "addTask then runBoard.",
+      "createTask then runBoard.",
     ].join("\n"),
   };
 

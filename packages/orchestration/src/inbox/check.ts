@@ -11,7 +11,7 @@
 import type { SessionRequestSummary } from "@flow-state-dev/client";
 import { isUserSuspension } from "@flow-state-dev/core/types";
 import { isTerminalStatus, type TaskStatus } from "../tasks/schema/task-status";
-import { taskItemId } from "./holds";
+import { taskItemId } from "./questions";
 import type { InboxItem, InboxRow } from "./types";
 
 export { taskItemId };
@@ -103,9 +103,9 @@ export function rowTruthOf(rows: readonly InboxRow[]): RowTruth[] {
     const answered = new Set((row.steers ?? []).flatMap((steer) => (steer.answers === undefined ? [] : [steer.answers])));
     const suspensionHolds: string[] = [];
     const rowHolds: string[] = [];
-    // Open holds re-derived here on purpose, not through `openRowHolds`: the
+    // Open holds re-derived here on purpose, not through `openRowQuestions`: the
     // truth stays independent of the predicate it checks.
-    for (const hold of row.holds ?? []) {
+    for (const hold of row.questions ?? []) {
       if (hold.actor !== "user") continue;
       if (hold.source.kind === "suspension") suspensionHolds.push(hold.source.suspensionId);
       else if (!answered.has(hold.id)) rowHolds.push(hold.id);
@@ -128,7 +128,7 @@ export function reconcileInbox(items: readonly InboxItem<unknown>[], truth: Inbo
   const missing = [...want].filter((id) => !listed.has(id));
   // A duplicate is an item listed twice, or one stop shown under two items whose ids differ.
   const holdCounts = new Map<string, number>();
-  for (const item of items) for (const hold of new Set(item.holds.map((h) => h.id))) holdCounts.set(hold, (holdCounts.get(hold) ?? 0) + 1);
+  for (const item of items) for (const hold of new Set(item.questions.map((h) => h.id))) holdCounts.set(hold, (holdCounts.get(hold) ?? 0) + 1);
   const duplicate = [
     ...new Set([...[...counts].filter(([, n]) => n > 1).map(([id]) => id), ...[...holdCounts].filter(([, n]) => n > 1).map(([id]) => id)]),
   ];
@@ -138,25 +138,25 @@ export function reconcileInbox(items: readonly InboxItem<unknown>[], truth: Inbo
   const live = new Set(truth.suspensions.map((s) => s.suspensionId));
   for (const stop of truth.suspensions.filter((s) => s.taskRun)) {
     const holders = truth.rows.filter((r) => r.suspensionHolds.includes(stop.suspensionId));
-    if (holders.length !== 1) drift.push(`stop ${stop.suspensionId}: ${holders.length} open holds`);
+    if (holders.length !== 1) drift.push(`stop ${stop.suspensionId}: ${holders.length} open questions`);
   }
   for (const row of truth.rows) {
-    for (const id of row.suspensionHolds) if (!live.has(id)) drift.push(`hold ${id} on ${row.board}:${row.taskId}: no live stop`);
+    for (const id of row.suspensionHolds) if (!live.has(id)) drift.push(`question ${id} on ${row.board}:${row.taskId}: no live stop`);
   }
-  // A listed task item shows the holds its row holds now: a stale list offers a stop that ended, or a question answered.
+  // A listed task item shows the holds its row has now: a stale list offers a stop that ended, or a question answered.
   const heldBy = new Map(truth.rows.map((r) => [taskItemId(r.board, r.taskId), [...r.suspensionHolds, ...r.rowHolds].sort()]));
   for (const item of items) {
     if (item.task === null) continue;
     const held = heldBy.get(item.id) ?? [];
-    const shown = item.holds.map((h) => h.id).sort();
-    if (shown.join(",") !== held.join(",")) drift.push(`item ${item.id} shows ${shown.join(", ") || "none"}, its row holds ${held.join(", ") || "none"}`);
+    const shown = item.questions.map((h) => h.id).sort();
+    if (shown.join(",") !== held.join(",")) drift.push(`item ${item.id} shows ${shown.join(", ") || "none"}, its row has ${held.join(", ") || "none"}`);
   }
 
-  const unanswerable = items.flatMap((item) => item.holds.flatMap((hold) => (hold.unanswerable === null ? [] : [{ id: item.id, hold: hold.id, why: hold.unanswerable }])));
+  const unanswerable = items.flatMap((item) => item.questions.flatMap((hold) => (hold.unanswerable === null ? [] : [{ id: item.id, hold: hold.id, why: hold.unanswerable }])));
   // Closure is the hold's: listed again, or held again in the reads made apart from the list.
   const closed = new Set(truth.closed ?? []);
   const holdsSeen = new Set([
-    ...items.flatMap((item) => item.holds.map((h) => h.id)),
+    ...items.flatMap((item) => item.questions.map((h) => h.id)),
     ...truth.rows.flatMap((r) => [...r.suspensionHolds, ...r.rowHolds]),
     ...truth.suspensions.map((s) => s.suspensionId),
   ]);

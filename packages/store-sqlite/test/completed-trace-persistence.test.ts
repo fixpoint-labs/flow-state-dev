@@ -76,7 +76,7 @@ describe("completed block traces persist on a suspended request (FIX-839)", () =
       inputSchema: z.any(),
       outputSchema: z.unknown(),
       execute: async (_input, ctx) =>
-        ctx.suspend!({ reason: "human_approval", message: "approve?" })
+        ctx.suspend!({ reason: "user_approval", message: "approve?" })
     });
     const flow = defineFlow({
       kind: "trace-persist",

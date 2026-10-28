@@ -1394,7 +1394,7 @@ const { hire, fire } = createWorkerHireBlocks(installation);
 const rosterTools = {
   hire: hire.as({ name: "hire", description: "Hire a worker of the user's own." }),
   fire: sequencer({ name: "fire", description: "Fire one of the user's own workers.", inputSchema: fire.inputSchema, outputSchema: fire.outputSchema })
-    .tap(askFire) // your own `human_approval` suspension, if a fire should wait for the user
+    .tap(askFire) // your own `user_approval` suspension, if a fire should wait for the user
     .step(fire),
 };
 
@@ -1879,8 +1879,8 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
   const workforce = createWorkforceClient(fsd);
 
   const roster = await workforce.roster();
-  // [{ id: "scribe", flow: "research", standard: false, description: "Takes notes." },
-  //  { id: "researcher", flow: "research", standard: true, description: "Finds things out." }]
+  // [{ id: "scribe", flow: "research", standard: false, description: "Takes notes.", settings: {} },
+  //  { id: "researcher", flow: "research", standard: true, description: "Finds things out.", settings: {} }]
 
   const session = await workforce.ensureWorkerSession({ worker: roster[0].id });
   // { id: "wks_…", flowKind: "research", userId, createdAt, updatedAt, … }
@@ -1890,6 +1890,23 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
   });
   const { status } = await sent.wait(); // or follow it live with sent.stream({ ... })
   ```
+
+  A row's `settings` holds only the settings its flow shows. Name them where you register the
+  flow, and every worker's value for them rides on its row, for a standard worker and a user's own
+  alike. Any other setting stays on the server:
+
+  ```ts
+  createWorkerInstallation({
+    standardWorkers: roster.workers,
+    workerFlows: { coder: { flow: coderFlow, showSettings: ["harness"] } },
+  });
+  // roster(): [{ id: "coder", flow: "coder", …, settings: { harness: "claude-code" } }]
+  ```
+
+  `hireWorkforce` refuses a name the flow's `configSchema` doesn't declare. It also refuses the
+  keys every worker carries (`instructions`, `workerSkills` and the rest) and the ones the hire
+  reads itself (`description`, `resources` and the rest). A worker that doesn't set a shown key
+  has none on its row: the flow's default isn't filled in.
 
   In React, build the client once with `useMemo` over the same options. `useFlow` creates sessions
   with no starting state, which a worker flow refuses, so find or start the session with the client
@@ -2162,7 +2179,7 @@ Any worker's turn, a task's included, can wait on a task it filed with
 A task's worker can split it into pieces for its own delegates; a piece for any other worker is
 refused with `unknown_assignee`. An unassigned piece goes to
 its delegate when it has exactly one. Each piece carries `filedByTask`, the task it was split from.
-The task stays running while a piece is open, with no lease (`waitingOn: "filed"`). Each piece's
+The task stays running while a piece is open, with no lease (`keptOpenBy: "filed"`). Each piece's
 ending wakes a turn in the task session, which decides what it means: a failed piece fails nothing
 by itself. Once no piece holds it, the task completes with its output like any task's: the latest
 `reportProgress` checkpoint, else the answer of the last turn a piece's ending woke. A turn that
@@ -2225,7 +2242,7 @@ and the like), never a task's input, output or metadata.
 Rows an earlier version wrote can owe a notice, an Error Reporter report, or the
 settle of a [split task](https://flow-state.dev/docs/workforce/delegating-work#splitting-a-task)
 whose pieces have all ended but which hasn't completed, with no wake to pay it. A split an earlier
-version stored reads as `in_progress`, `waitingOn: "filed"`, and its pieces hold it. So does a
+version stored reads as `in_progress`, `keptOpenBy: "filed"`, and its pieces hold it. So does a
 task an earlier version held open for a message queued to its session: its work had answered, and
 it settles with that answer once checked. Call `backfillBoardWakes(stores, { userCell })` once at host
 start, with the runtime's `stores` and `userCell: (userId, orgId) => resolveUserStorageKey(userId,
@@ -2310,7 +2327,7 @@ Send to talk; call when the worker needs to use the answer now; file a task for 
   gets one message per question, from the task's worker, in the conversation that filed the task;
   it wakes that worker's `onMessageReceived` turn like any message. The text is
   `Your task "<title, else goal>" (<task id>) asks: "<question>"`, then
-  `Answer it with updateTask({ id: "<task id>", question: "<question id>", message }), or leave it to the user, who sees it in their Inbox.`
+  `Answer it with updateTask({ id: "<task id>", answers: "<question id>", message }), or leave it to the user, who sees it in their Inbox.`
   For a task filed with `target` or `targetSessionId` the second line is
   `The user answers it from their Inbox; it isn't yours to answer.` (the filer's answer is refused with
   `question_is_the_users`). A long question is cut with an ellipsis to fit one message. The id is
@@ -2443,7 +2460,7 @@ await reporter.bind(host); // after the runtime exists; restarts owed work
 - **One report per fingerprint** (flow, action, error code, normalized message). A repeat raises the count; a redelivered occurrence counts once. At most `limits.newPerWindow` (5) new reports per `limits.windowMs` (1 hour); the rest go into one storm report.
 - **Secrets are redacted at intake**, before a row, a held request or a storm entry is written: the environment's keys, `secrets()`, and the operator's stored MCP keys.
 - **The draft run has no tracker tools.** A separate filing run gets the tracker project's MCP servers, and a failed filing is tried again.
-- **Preview.** The draft waits on a `human_input` suspension (so the runtime needs `durable: true`) until the operator files or dismisses it, unless `preview.autoFile` or `preview.autoFileAfterMs` say otherwise.
+- **Preview.** The draft waits on a `user_input` suspension (so the runtime needs `durable: true`) until the operator files or dismisses it, unless `preview.autoFile` or `preview.autoFileAfterMs` say otherwise.
 - **A filed report's repeats** add a comment at most every `limits.commentEveryMs`.
 - **It never reports its own failures**, and runs on its own flow, never through a coordinator.
 
@@ -2486,7 +2503,7 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 | `defineCoordinatorFlow({ installation, routeModel, agent?, roundDeadlineMs? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `respond`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. Its judgment is the agent's turn, built with the `agent` options; `agent.isolateUserState` keys this flow's user-scoped storage by its copy, as it does `agent`'s. `roundDeadlineMs` is how long a round waits for its answers (five minutes by default); a value that isn't a positive whole number of milliseconds throws. |
 | `defineSessionBoard({ installation, flowKind })` | The task-filing kit for a worker flow of your own (see [Delegating work](https://flow-state.dev/docs/workforce/delegating-work)): `tools` for the model block's `uses` (Orchestration's task tools, present only while the session has a delegate that takes tasks), `progress` for the same `uses` (`reportProgress` on a turn working a task), `delegateTools` for the same `uses` (`listDelegates`, plus `addDelegate`, `removeDelegate` and `setFallback` on a worker set to `editsOwnDelegates: true`), `actions` (the task tools as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`), `resources`, `sessionStateShape` for `installation.session(...)`, `serverOwned` for `session.serverOwned`, `messages` for the same `uses` (the `sendMessage` tool; see [Worker messages](#worker-messages)), `entries(turn)` for `internal: { actions }`, which carries `onTaskSettled` (where each ending of a task the session filed arrives, once) and `onMessageReceived` (where a worker message arrives), `planned(turn)` to wrap a turn so the steps its worker files for itself run in its request (use the wrapped turn for `run`, the task entry and `entries`), and `files(ctx)` / `taskDelegates(ctx)` to read whether the session files and who takes its tasks. |
 | `coordinatorConfigSchema()`, `coordinatorRouteRecordSchema`, `COORDINATOR_FLOW`, `COORDINATOR_ROUTE` | A coordinator's configuration, its routing record, the flow's kind and the record's component name. |
-| `workerFlow(build, { standardOnly?, roles? })` | A worker flow built on its installation, for a flow in its own file: the installation calls `build(installation)` once. `roles` declares what it does beside taking a message (`contributor`, `manager`), checked at hire. Goes in `workerFlows`, and is what `fsdev gen`'s `workerFlows` holds. |
+| `workerFlow(build, { standardOnly?, roles?, showSettings? })` | A worker flow built on its installation, for a flow in its own file: the installation calls `build(installation)` once. `roles` declares what it does beside taking a message (`contributor`, `manager`), checked at hire. `showSettings` names the settings a worker's `roster()` row shows. Goes in `workerFlows`, and is what `fsdev gen`'s `workerFlows` holds. |
 | `WORKER_ROLES` / `WorkerRole` | The roles a worker flow may declare: `contributor`, `manager`, `coordinator`. |
 | `upgradeWorkerEntryNames(stores, flows, { incarnationOf })` / `EntryNameUpgradeStores` / `EntryNameUpgradeOptions` / `EntryNameFlow` / `EntryNameRequest` | Run once at host start, before `getRouter()`, with `hireWorkforce`'s copies and the engine's `resolveRequestIncarnation` as `incarnationOf`: rewrites unfinished requests stored under a worker's old door (`run`, `message`) to `respond`, and requests and wakes under `runTaskBoard` to `dispatch`, on the registered worker flows only. Each rewrite is fenced on the record's incarnation, and the live-request registry's entries are renamed too. Returns `{ requests, wakes, leftover }`: how many writes applied, and how many wakes kept changing through every attempt to move them (each warned of, and moved by the next start). |
 | `inventoryWorkers(installation)` | The standard workers as `openInventory` takes workers: each worker's id, its flow and that flow's actions. |

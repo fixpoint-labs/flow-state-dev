@@ -17,7 +17,7 @@ If what you're gating is a task on a board rather than one step of a flow, the s
 - **The work can go on from the answer later.** A question: the worker's model calls `askQuestion`, or its code calls `askMidway`. The task waits on the question, the turn ends, and the answer starts the task's next turn.
 - **You need a form.** `ctx.suspend()` with your own schema, as this guide builds.
 
-The first two show in the user's [Inbox](/docs/orchestration/task-board#building-an-inbox), and so does a `ctx.suspend()` whose reason is `human_approval` or `human_input`; one with a reason of your own doesn't. See [A task waiting on a user](/docs/orchestration/task-board#a-task-waiting-on-a-user) and [A task held on questions](/docs/orchestration/task-board#a-task-held-on-questions).
+The first two show in the user's [Inbox](/docs/orchestration/task-board#building-an-inbox), and so does a `ctx.suspend()` whose reason is `user_approval` or `user_input`; one with a reason of your own doesn't. See [A task waiting on a user](/docs/orchestration/task-board#a-task-waiting-on-a-user) and [A task's questions](/docs/orchestration/task-board#a-tasks-questions).
 
 ## How a pause works
 
@@ -66,7 +66,7 @@ const reviewGate = handler({
   }),
   execute: async (input, ctx) => {
     const decision = await ctx.suspend!({
-      reason: "human_approval",
+      reason: "user_approval",
       message: `Review before publishing: "${input.content.slice(0, 80)}…"`,
       resumeSchema: {
         type: "object",
@@ -188,13 +188,13 @@ If you're not using `@flow-state-dev/ui`, the `@flow-state-dev/react` package sh
 
 Approve / reject is the simplest gate, but a pause can ask for more than a yes/no. The same suspend/resume cycle handles a free-text answer, a small form, or a choice from a fixed set. Two resolution actions drive this: `submit` (the human returns a typed payload) and `skip` (the human declines an optional step).
 
-The server decides what a gate asks for through its `reason` and `resumeSchema`. Use `reason: "human_input"` for an input gate; it defaults to `allow: ["submit"]`. On the client, `ItemsRenderer` reads the schema shape and renders the matching card. The renderer picks a free-text question for no flat schema, a selection for an enum, and a form for a flat object — automatically, with the same wiring as the approval example above.
+The server decides what a gate asks for through its `reason` and `resumeSchema`. Use `reason: "user_input"` for an input gate; it defaults to `allow: ["submit"]`. On the client, `ItemsRenderer` reads the schema shape and renders the matching card. The renderer picks a free-text question for no flat schema, a selection for an enum, and a form for a flat object — automatically, with the same wiring as the approval example above.
 
 ### A question (free text)
 
 ```ts
 const askName = await ctx.suspend!({
-  reason: "human_input",
+  reason: "user_input",
   message: "What should we title this draft?",
   resumeSchema: z.object({ title: z.string() }),
 });
@@ -208,7 +208,7 @@ A flat object of scalars and enums renders as one combined form, one control per
 
 ```ts
 const details = await ctx.suspend!({
-  reason: "human_input",
+  reason: "user_input",
   message: "Add publishing details.",
   resumeSchema: z.object({
     clarification: z
@@ -234,7 +234,7 @@ A single enum renders as a single-choice control; an array of enums renders as m
 
 ```ts
 const pick = await ctx.suspend!({
-  reason: "human_input",
+  reason: "user_input",
   message: "Which channels should this post to?",
   resumeSchema: z.object({
     channels: z.array(z.enum(["blog", "email", "social"])),
@@ -250,7 +250,7 @@ Add `"skip"` to `allow` to let a human decline a step. A skip is normal control 
 import { SUSPENSION_SKIPPED } from "@flow-state-dev/core";
 
 const answer = await ctx.suspend!({
-  reason: "human_input",
+  reason: "user_input",
   message: "Add a reviewer note? (optional)",
   resumeSchema: z.object({ note: z.string() }),
   allow: ["submit", "skip"],
@@ -281,7 +281,7 @@ const publishPost = handler({
     // Pause before publishing. On resume this returns the human's payload;
     // on reject it throws, and the model sees a denial result.
     const decision = await ctx.suspend!({
-      reason: "human_approval",
+      reason: "user_approval",
       message: `Publish "${input.title}"?`,
       resumeSchema: z.object({ note: z.string().nullable() }),
     });
@@ -373,7 +373,7 @@ import { useSuspensions } from "@flow-state-dev/react";
 
 function ReviewQueue({ session }) {
   const { pending, approve, reject } = useSuspensions(session, {
-    reasons: ["human_approval"],
+    reasons: ["user_approval"],
   });
 
   return (

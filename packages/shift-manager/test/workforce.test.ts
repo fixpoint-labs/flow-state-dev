@@ -66,7 +66,7 @@ describe("useWorkforce's client, on a Lab that runs its workers as data", () => 
     const workforce = createWorkforceClient(connect({ userId: USER, bearerToken: SECRET, baseUrl }));
 
     expect(await workforce.roster()).toEqual([
-      { id: "desk.amy", flow: "agent", standard: true, description: "Answers the front desk.", forkedFrom: null, name: null, teamName: null },
+      { id: "desk.amy", flow: "agent", standard: true, description: "Answers the front desk.", forkedFrom: null, name: null, teamName: null, settings: {} },
     ]);
 
     const first = await workforce.ensureWorkerSession({ worker: "desk.amy" });

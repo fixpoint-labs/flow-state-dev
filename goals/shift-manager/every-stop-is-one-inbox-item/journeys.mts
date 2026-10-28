@@ -31,7 +31,7 @@ async function receivedFrom(c: Context, from: string): Promise<Array<{ text: str
 }
 
 /** The midway questions a row has ever had, answered or not: a question's id outlives its answer. */
-const everAsked = (row: Row | undefined): Row[] => ((row?.holds ?? []) as Row[]).filter((h) => h.source?.kind === "row" && h.midway === true);
+const everAsked = (row: Row | undefined): Row[] => ((row?.questions ?? []) as Row[]).filter((h) => h.source?.kind === "row" && h.midway === true);
 
 /**
  * j1: `desk.front`'s model files work and answers for it.
@@ -57,8 +57,8 @@ export async function journeyFiles(c: Context): Promise<void> {
   );
   const mine = (await c.alice.rows()).filter((r) => !before.has(r.id) && r.assignee === CAST.asker);
   // A question at filing is the user's: the task must ask its own, midway.
-  if (filedTurn.status !== "completed" || mine.length !== 1 || ((mine[0]!.holds ?? []) as Row[]).some((h) => h.midway !== true)) {
-    c.fail("j1:filer-files", `desk.front's turn ${filedTurn.status} filed ${mine.length} task(s) for ${CAST.asker}, holds ${show(mine[0]?.holds)}`);
+  if (filedTurn.status !== "completed" || mine.length !== 1 || ((mine[0]!.questions ?? []) as Row[]).some((h) => h.midway !== true)) {
+    c.fail("j1:filer-files", `desk.front's turn ${filedTurn.status} filed ${mine.length} task(s) for ${CAST.asker}, holds ${show(mine[0]?.questions)}`);
     return;
   }
   const id = mine[0]!.id as string;
@@ -66,7 +66,7 @@ export async function journeyFiles(c: Context): Promise<void> {
   const asked = await c.alice.until(() => c.alice.row(id), (r) => everAsked(r).length > 0 || TERMINAL.has(r?.status), 240_000);
   const question = everAsked(asked)[0];
   if (question === undefined) {
-    c.fail("j1:filer-answers-own", `the asker's task never asked midway: ${asked?.status}, holds ${show(asked?.holds)}`);
+    c.fail("j1:filer-answers-own", `the asker's task never asked midway: ${asked?.status}, holds ${show(asked?.questions)}`);
     return;
   }
   if (waiting("midway", asked)) {
@@ -98,7 +98,7 @@ export async function journeyFiles(c: Context): Promise<void> {
   const coderAsked = await c.alice.until(() => c.alice.row(coding.id), (r) => waiting("midway", r) || TERMINAL.has(r?.status), 480_000);
   const coderQuestion = rowHolds(coderAsked)[0];
   if (coderQuestion === undefined) {
-    c.fail("j1b:coder-heard", `the coder's task never asked: ${coderAsked?.status}, holds ${show(coderAsked?.holds)}`);
+    c.fail("j1b:coder-heard", `the coder's task never asked: ${coderAsked?.status}, holds ${show(coderAsked?.questions)}`);
   } else {
     const told = await c.alice.until(() => receivedFrom(c, CAST.coder), (m) => m.some((x) => x.text.includes(coding.id)), 30_000);
     const about = told.filter((m) => m.text.includes(coding.id));
@@ -132,9 +132,9 @@ export async function journeyFiles(c: Context): Promise<void> {
     c.fail("j1:filer-calls", `desk.front's turn ${tried.status} made no updateTask on ${hold.id} that came back question_is_the_users: ${show(calls.map((i) => i.output))}`);
   }
   const still = await c.alice.row(held.id);
-  c.note(`j1: desk.front's turn on the user's question ended ${tried.status}, its updateTask refused ${calls.length} time(s); the row reads ${show({ status: still?.status, holds: still?.holds?.map((h: Row) => h.id), steers: still?.steers })}`);
+  c.note(`j1: desk.front's turn on the user's question ended ${tried.status}, its updateTask refused ${calls.length} time(s); the row reads ${show({ status: still?.status, questions: still?.questions?.map((h: Row) => h.id), steers: still?.steers })}`);
   if (still?.status !== "pending" || !rowHolds(still).some((h) => h.id === hold.id) || (await c.alice.itemOf(held.id)) === undefined) {
-    c.fail("j1:routed-answers-nothing", `the filer's steer answered the user's question: ${show({ status: still?.status, holds: still?.holds, steers: still?.steers })}`);
+    c.fail("j1:routed-answers-nothing", `the filer's steer answered the user's question: ${show({ status: still?.status, questions: still?.questions, steers: still?.steers })}`);
   }
   // Tidy: the user answers it, so the leg leaves nothing waiting.
   const item = await c.alice.itemOf(held.id);

@@ -348,7 +348,7 @@ Two rules make the seam safe, and both are structural rather than validated:
 
 Adoption validates the stored record's full identity — flow kind, principal, tenant, org, parent session — before reusing it. The derivation alone is not sufficient, because the seam is not the only writer: the public session-create route lets a caller choose a session id, so a record can be pre-created at the deterministic child key, and `createExecutionContext` validates user/tenant/org bindings but neither flow kind nor parent session. A mismatch is a named refusal, never a silent create.
 
-The member is optional in the *type* so a hand-built test context still type-checks. It is not optional in *deployment*: a process that executes requests without one is a construction failure, `worker-only` included — that mode constructs no dispatcher today, so a deployment whose capabilities dispatch must supply the start operation there explicitly.
+The member is optional in the *type* so a hand-built test context still type-checks. It is not optional in *deployment*: a process that executes requests without one is a construction failure, `worker-only` included — that mode constructs no runner today, so a deployment whose capabilities dispatch must supply the start operation there explicitly.
 
 ### The liveness enablement gate
 
@@ -451,7 +451,7 @@ Completed blocks are not re-executed. The runtime replays each one's recorded `b
 
 #### Waiting for a user
 
-`ctx.waitForUser({ kind, prompt, deadline? })` is `ctx.suspend` with a kind (`approval`, `review`, `input`, recorded on the suspension beside the `human_approval` / `human_input` reason it maps to), a deadline, and a cancel (FIX-2129). One predicate, `isUserSuspension` in `contracts`, says whether a suspension waits for a user; a raw `ctx.suspend` with either reason is one too. Every way such a stop ends resolves its single pending state under the request's lease, so the first wins and the rest are told `already-resolved`:
+`ctx.waitForUser({ kind, prompt, deadline? })` is `ctx.suspend` with a kind (`approval`, `review`, `input`, recorded on the suspension beside the `user_approval` / `user_input` reason it maps to), a deadline, and a cancel (FIX-2129). One predicate, `isUserSuspension` in `contracts`, says whether a suspension waits for a user; a raw `ctx.suspend` with either reason is one too. Every way such a stop ends resolves its single pending state under the request's lease, so the first wins and the rest are told `already-resolved`:
 
 - **Answered** through the answer route (`POST /:flowKind/requests/:requestId/answer`, `routes/answer-routes.ts`). Unlike resume, it is open to every source, `task` included, because the caller sends only where the stop is and the answer. It runs resume's ownership checks (`ownsRecord`, `callerReachesRequest`) on the stop's request before it reads the stop, answers a stop that isn't the caller's, or isn't a user's, as a missing one, checks the answer against the stop's `allow` and `resumeSchema`, and records the signed-in caller as `resolvedBy`.
 - **Its deadline**: the call's `deadline`, else the host's `userDeadlineMs` (`RequestHost.userDeadlineMs`), else none; a raw `ctx.suspend` keeps its own `timeoutMs`. The sweeper expires it and re-drives the request: an approval reads as a no, a review or an input throws `SuspensionTimeoutError`. A stop with no deadline is never expired.

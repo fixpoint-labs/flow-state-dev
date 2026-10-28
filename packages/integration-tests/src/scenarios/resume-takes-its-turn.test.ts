@@ -52,7 +52,7 @@ function harness() {
               name: "approve",
               inputSchema: z.any(),
               outputSchema: z.unknown(),
-              execute: async (_input, ctx) => ctx.suspend!({ reason: "human_approval", message: "Send it?" })
+              execute: async (_input, ctx) => ctx.suspend!({ reason: "user_approval", message: "Send it?" })
             })
           )
           .step(

@@ -244,7 +244,7 @@ function buildHost(filename: string) {
           toSession: sessionId,
           toFlow: "doer",
           hop: 1,
-          status: "delivered",
+          status: "unconfirmed",
           at: Date.now()
         } as never);
         await dispatchThroughSeam(ctx, {
@@ -297,7 +297,7 @@ function buildHost(filename: string) {
     if (split !== null) {
       const ref = await doerBoard.board.resolver(ctx as never);
       for (let i = 0; i < Number(split[1]); i += 1) {
-        await ref!.addTask({ goal: `piece ${i} of ${row?.id} ${RUN_STAMP} [slow:${split[2]}]`, assignee: "eng.helper" });
+        await ref!.createTask({ goal: `piece ${i} of ${row?.id} ${RUN_STAMP} [slow:${split[2]}]`, assignee: "eng.helper" });
       }
     }
     const hold = /\[hold:(\d+)\]/.exec(message);
@@ -749,8 +749,8 @@ async function legI(run: Run): Promise<void> {
   await run.h.idle();
   for (const id of ids) {
     const row = await run.h.byId(id);
-    if (row?.status !== "in_progress" || row.waitingOn !== "wait") {
-      run.failures.push(`i:stopped — wanted it stopped and waiting; it is ${row?.status}, waiting on ${show(row?.waitingOn)}`);
+    if (row?.status !== "in_progress" || row.keptOpenBy !== "wait") {
+      run.failures.push(`i:stopped — wanted it stopped and waiting; it is ${row?.status}, waiting on ${show(row?.keptOpenBy)}`);
     }
   }
   for (const id of ids) await resumeStop(run, id);
