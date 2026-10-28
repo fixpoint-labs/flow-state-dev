@@ -1591,6 +1591,9 @@ export function useSession(
       setIsStuck(false);
       activeRequestIdRef.current = null;
       latestRequestIdAfterDropRef.current = null;
+      // The view's request state goes with the session, so a request followed
+      // again later replays from its start.
+      lastStreamEventRef.current = null;
       stoppedRequestsRef.current.clear();
       lastEventAtRef.current = Date.now();
       cancelScheduledFlush();

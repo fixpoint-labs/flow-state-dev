@@ -19,6 +19,9 @@
  *   - reset the finishing state on every attach, and the "still finishing"
  *     case fails: the resumed stream skips the status that set it, so the
  *     view blocks actions the request no longer blocks.
+ *   - keep the saved cursor across a session change, and the "after the
+ *     view left the session" case fails: the request resumes past the
+ *     status the cleared view no longer has.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
@@ -151,6 +154,26 @@ describe("useSession.followRequest (FIX-2265)", () => {
     act(() => result.current.followRequest("req_turn"));
     expect(result.current.isStreaming).toBe(true);
     expect(result.current.canSendAction).toBe(true);
+  });
+
+  it("followed again after the view left the session and came back, streams from the start", async () => {
+    const { result, rerender } = renderHook(({ id }) => useSession(id, { flowKind: "demo" }), { initialProps: { id: "sess1" } });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => result.current.followRequest("req_turn"));
+    const first = connections.at(-1)!;
+    act(() => first.callbacks.onEvent?.({ stream: "request", requestId: "req_turn", sequence_number: 4, ts: 1000, type: "item.added" }));
+    rerender({ id: "sess2" });
+    rerender({ id: "sess1" });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // The session change cleared the view's request state, so the request replays it from the start.
+    act(() => result.current.followRequest("req_turn"));
+    expect((connections.at(-1)!.callbacks as { startingAfter?: number }).startingAfter).toBeUndefined();
   });
 
   it("makes the followed request the one a stop reaches", async () => {
