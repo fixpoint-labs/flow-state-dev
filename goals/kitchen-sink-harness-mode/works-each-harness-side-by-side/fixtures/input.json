@@ -1,0 +1,10 @@
+{
+  "port": 3049,
+  "codexPlan": "none",
+  "modes": [
+    { "id": "flow-state", "tag": "fs", "label": "Flow State", "href": "/flow-state", "plan": null },
+    { "id": "claude-code", "tag": "cc", "label": "Claude Code", "href": "/claude-code", "plan": "task list" },
+    { "id": "codex", "tag": "cx", "label": "Codex", "href": "/codex", "plan": "plan" },
+    { "id": "cursor", "tag": "cu", "label": "Cursor", "href": "/cursor", "plan": "to-do list" }
+  ]
+}
