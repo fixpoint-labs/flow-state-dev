@@ -71,4 +71,4 @@ pull request.
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
-| | | | | |
+| 2026-10-28 | c194740c4 | Claude Code (Agent SDK) | PASS | First run on `goals/harness-manager/host.mts` after the conductor lab was deleted. Row `completed` after 1 attempt; fact file in the run's checkout held the generated fact; 2 prompts built. Run from inside a Claude Code session, so both run rows report the ambient session id: signal 2 is corroboration only, signal 3 carries the proof. |

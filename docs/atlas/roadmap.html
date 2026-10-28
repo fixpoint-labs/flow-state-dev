@@ -87,6 +87,15 @@ a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outli
 main { padding: 34px 44px 120px; min-width: 0; }
 
 .masthead { border-bottom: 1px solid var(--rule); padding-bottom: 30px; margin-bottom: 40px; }
+.retired-banner {
+  margin: 0 0 22px;
+  padding: 12px 14px;
+  border: 1px solid var(--gone);
+  background: color-mix(in srgb, var(--gone) 12%, var(--surface));
+  color: var(--ink);
+  font-size: 14.5px;
+  line-height: 1.5;
+}
 .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); margin: 0 0 14px; }
 h1 { font-family: var(--display); font-weight: 700; font-size: clamp(32px, 5vw, 52px); line-height: 1.03; letter-spacing: -.028em; margin: 0 0 16px; text-wrap: balance; }
 .standfirst { font-size: 18px; line-height: 1.55; color: var(--ink-2); max-width: 64ch; margin: 0 0 20px; }
@@ -213,6 +222,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
 <main>
 <header class="masthead">
+  <p class="retired-banner" role="status"><strong>Historical in part.</strong> Everything this page says about Conductor predates its retirement: D-12 retired the product name, and the conductor lab is gone. The coding-run loop lives in <code>packages/harness-manager</code>, and the <a href="workforce.html">Workforce atlas</a> holds the current direction. Strategy owns the rewrite.</p>
   <p class="eyebrow">Product horizon</p>
   <h1>Three jobs, one substrate</h1>
   <p class="standfirst">This is the public product horizon. Not a company plan. FSD is <strong>three jobs</strong>, not two products: an unopinionated framework, a set of opinions other people can take as a component, and one user product that drives coding harnesses. The sibling atlases design the last two. This page keeps the horizon from flattening them into a pair of installs.</p>
@@ -270,7 +280,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <rect class="n-prop" x="632" y="16" width="292" height="248" rx="5"/>
         <text class="t-lbl" x="650" y="40">JOB 3 &#183; USER PRODUCT</text>
         <rect class="n-code" x="650" y="56" width="256" height="44" rx="4"/>
-        <text class="t-s f-code" x="664" y="74">unpublished lab exists</text>
+        <text class="t-s f-code" x="664" y="74">lab retired</text>
         <text class="t-xs" x="664" y="90">harness-manager &#183; retired lab</text>
         <text class="t-b f-accent" x="650" y="128">Conductor</text>
         <text class="t-s" x="650" y="152">software-dev meta-harness</text>
