@@ -201,6 +201,15 @@ export interface ConversationBoardOptions {
    * conversation is handed here, which attaches the message and files it.
    */
   routes?: RoutedFiling;
+  /**
+   * The messages the session sent that are still owed (FIX-2240): the pass's
+   * first half pays them, beside the plan ledger's debts, and its settle
+   * keeps the next one's due time. `resources` are what the step reads.
+   */
+  messages?: {
+    readonly resources: Record<string, unknown>;
+    readonly payDebts: (ctx: BlockContext) => Promise<number | undefined>;
+  };
 }
 
 /**
@@ -780,7 +789,8 @@ const HELD_ELSEWHERE_RETRY_MS = 5_000;
 const passStateSchema = z.object({
   passWake: z.object({ dueAt: z.number(), landBy: z.number(), version: z.number() }).optional(),
   passRounds: z.number().optional(),
-  passPlanDue: z.number().optional()
+  passPlanDue: z.number().optional(),
+  passMessagesDue: z.number().optional()
 });
 type PassState = z.infer<typeof passStateSchema>;
 const passStateOf = (ctx: BlockContext): PassState => (ctx.request.state ?? {}) as PassState;
@@ -1658,7 +1668,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     name: "conversation-board-before-drain",
     inputSchema: z.unknown(),
     outputSchema: z.object({}),
-    resources: { ...conversationLedgerResources, ...taskChainResources, ...routedSessionResources },
+    resources: { ...conversationLedgerResources, ...taskChainResources, ...routedSessionResources, ...(options.messages?.resources ?? {}) },
     requestStateSchema: passStateSchema,
     execute: async (_input, ctx) => {
       notePassStarted(ctx as never);
@@ -1676,6 +1686,12 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       if (plan !== undefined) {
         const planDebts = await payBoardDebts(ctx as never, plan, { filerOf: filerResolver(planDelivery, plan.partition), resend: false });
         if (planDebts.nextDue !== undefined) await ctx.request.patchState({ passPlanDue: planDebts.nextDue });
+      }
+      // The messages this session sent that haven't landed (FIX-2240), in
+      // any session that sends, filing or not: sent again, or ended and told.
+      if (options.messages !== undefined) {
+        const messagesDue = await options.messages.payDebts(ctx as never);
+        if (messagesDue !== undefined) await ctx.request.patchState({ passMessagesDue: messagesDue });
       }
       return {};
     }
@@ -1717,8 +1733,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     requestStateSchema: passStateSchema,
     execute: async (round, ctx) => {
       notePassEnded(ctx as never);
-      const planDue = passStateOf(ctx as never).passPlanDue;
-      const due = planDue === undefined ? round.nextDue : round.nextDue === undefined ? planDue : Math.min(round.nextDue, planDue);
+      const { passPlanDue, passMessagesDue } = passStateOf(ctx as never);
+      const dues = [round.nextDue, passPlanDue, passMessagesDue].filter((at): at is number => at !== undefined);
+      const due = dues.length === 0 ? undefined : Math.min(...dues);
       await settlePassWake(ctx as never, DISPATCH_ENTRY, passStateOf(ctx as never).passWake, due);
       return round.nextDue === undefined ? {} : { nextDue: round.nextDue };
     }

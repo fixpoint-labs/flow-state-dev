@@ -37,19 +37,15 @@ The model calls `sendMessage` with the recipient's worker id and the text:
 
 The input takes `to`, `text` and, for an answer, `inReplyTo`. Nothing else. `to` is usually a worker id; it can also name [a task or a conversation](#messaging-a-task-or-a-conversation). The tool's description lists the workers the send would take, by id and description, so the model picks from real ids. The sending worker itself, and workers that hear only in task sessions, aren't listed.
 
-A sent message answers with its id:
+Once the message is written to the [log](#showing-messages-in-your-app), the tool answers with its id:
 
 ```json
 { "sent": "msg_3f1c0a9e2b7d4c6a8e10" }
 ```
 
+That answer means the message is on its way, not that it has landed. See [Delivery](#delivery) for what happens next.
+
 `text` holds up to 8,000 characters. A longer one is refused, not cut.
-
-If the delivery couldn't be confirmed, the answer says so. The message may still arrive:
-
-```json
-{ "sent": "msg_3f1c0a9e2b7d4c6a8e10", "unconfirmed": "the delivery couldn't be confirmed (…); it may still arrive." }
-```
 
 ## What the recipient sees
 
@@ -126,6 +122,42 @@ A worker whose flow hears messages only in its tasks' sessions, such as the codi
 
 That coding worker answers from the coding session the task ran in, by resuming it with the message. It has no `sendMessage`, so its reply stays in the task's session, where you can read it. Nothing goes back to the sender. To build the same on your own coding flow, pass `harnessTalkTurn` as the flow's message turn (see [Answering a worker's message](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/harness-manager/README.md#answering-a-workers-message) in the `@flow-state-dev/harness-manager` README).
 
+## Delivery
+
+A message is delivered once it lands in the recipient's conversation. The recipient *takes* a message when it starts landing it there. Its row in the [log](#showing-messages-in-your-app) says where it got to, in `status`:
+
+| `status` | What it means |
+|----------|---------------|
+| `unconfirmed` | On its way: written to the log, and not yet taken by the recipient. |
+| `delivered` | It landed in the recipient's conversation. |
+| `refused` | It can't be delivered. Final, with the reason in `reason`. |
+| `undeliverable` | Nobody had taken it by the host's debt age, [`maxDebtAgeMs`](../configuration/runtime.md), a day by default. Final. |
+
+**It's sent again until it lands.** While a message is `unconfirmed`, the session that sent it sends it again. The first resend comes 2 seconds after the send, then the gap doubles each time, up to 5 minutes. It stops once the message is delivered, refused or past the debt age. The row's `resent` holds how many times it was sent again and when last, and `reason` holds why the last try failed.
+
+Some failures are waited out. The message is sent again when:
+
+- the recipient's host is busy and turns the delivery away for now (`dispatch-rejected`);
+- the host has no way to deliver it (`no-dispatch-operation`);
+- a flow is missing for a moment (`flow-not-found`);
+- the delivery throws.
+
+Others are final, and the message is `refused`: the recipient's flow has no entry for messages, its session is missing or can't be addressed, or creating the session was refused.
+
+Each resend checks the recipient again, the same way the send did. If the recipient is fired after the send, the message is refused with `no_worker` or `worker_unavailable` and never reaches it.
+
+**It's heard once.** However many copies arrive, and however late, the message lands in the recipient's conversation once and wakes one turn. If a delivery stops partway, the next copy finishes it.
+
+**The sender hears when it can't land.** If the recipient's host refuses the first delivery for good, the tool answers [`not_delivered`](#when-a-send-is-refused) with the reason. If a message can't land after the tool has answered `{ sent }`, the sending session gets one line in its conversation:
+
+```text
+Your message msg_3f1c0a9e2b7d4c6a8e10 to chief-of-staff wasn't delivered: <reason>.
+```
+
+Its next turn reads the line in its history. No turn is started for it.
+
+**Resends need a host that keeps wakes.** The resend runs on the sending session's [wake](../advanced/durable-execution.md#wakes), so it needs a durable host. On a host without wakes, an owed message is sent again only when that session's board runs for something else. A worker flow without the session kit's entries, `board.entries(turn)`, sends a message once and never again.
+
 ## The budget
 
 Messages between workers can't run on forever. Each line you type starts a **budget**: at most 6 messages (`hopLimit`) for everything that descends from that line, across every worker. The messages, the turns they wake, the answers those turns send and the tasks filed along the way all draw on the same 6, parallel branches included. On top of that, any one request sends at most 3 (`perTurn`).
@@ -156,7 +188,7 @@ Each must be a whole number of at least 1, or `hireWorkforce` throws.
 
 ## When a send is refused
 
-A refused send answers `{ ok: false, error }`, and nothing is sent. The error starts with a code, then says what happened in words the model can act on:
+A refused send answers `{ ok: false, error }`, and the message isn't delivered. The error starts with a code, then says what happened in words the model can act on:
 
 ```json
 { "ok": false, "error": "task_sessions_only: \"eng.coder\" answers only from its tasks' sessions, so it can't be messaged by name. File it a task instead." }
@@ -178,7 +210,7 @@ A refused send answers `{ ok: false, error }`, and nothing is sent. The error st
 | `no_such_message` | `inReplyTo` names no message the `to` worker sent this worker, or is passed with `{ task }` or `{ session }`. |
 | `budget` | The send would go past `messages.hopLimit` messages since the user's last line. |
 | `per_request_limit` | This request already sent `messages.perTurn` messages. |
-| `not_delivered` | The server refused the delivery. The error carries its reason. |
+| `not_delivered` | The recipient's host refused the first delivery for good. The error carries its reason, and the message's row in the log is `refused`. See [Delivery](#delivery). |
 
 ## Message or delegate?
 
@@ -333,8 +365,13 @@ Each row has:
 | `toSession`, `toFlow` | The session it landed in, and that session's flow. |
 | `chain` | The id of the budget the message drew on: everything descending from one user's line. Optional. |
 | `hop` | Its place in that budget, from 1. |
-| `status` | `delivered`, `refused`, or `unconfirmed`. |
-| `reason` | Why it was refused or is unconfirmed. |
+| `status` | `unconfirmed`, `delivered`, `refused` or `undeliverable`. See [Delivery](#delivery). The package root exports the list as `MESSAGE_STATUSES`. |
+| `reason` | Why it was refused or couldn't be delivered. While it's `unconfirmed`, why the last try failed. |
+| `toState` | The state the recipient's conversation starts with. Optional. |
+| `takenBy` | The recipient's request that took it. Optional. |
+| `deliveredAs`, `deliveredAt` | The request it landed in, and when. Set once, on delivery. |
+| `resent` | `{ n, at }`: how many times it was sent again, and when last. Optional. |
+| `toldAt` | When the sending session was told it was refused or couldn't be delivered. Optional. |
 | `at` | When it was sent, in ms. |
 
 The read never returns another user's messages.

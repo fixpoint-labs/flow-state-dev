@@ -732,6 +732,26 @@ export interface BlockContext<
   ): Promise<void>;
 
   /**
+   * @internal Emit a message item and AWAIT its delivery: the message twin of
+   * {@link _emitComponentAwaited}, settling once the item has been added and
+   * completed and rejecting rather than swallowing. Absent in a hand-built
+   * context; a caller that depends on it treats absence as a failure.
+   */
+  _emitMessageAwaited?(
+    text: string,
+    options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }
+  ): Promise<void>;
+
+  /**
+   * @internal Resolve once every item this request has completed so far is
+   * written to the request store (`flushItems` on the request's id). An item
+   * emitted with an awaited emitter is completed when that emitter settles, so
+   * awaiting the emitter, then this, is the barrier for "the item is stored"
+   * before a write that says it was. Absent in a hand-built context.
+   */
+  _flushItems?(): Promise<void>;
+
+  /**
    * @internal Top up the per-scope resource caches with an action's or block's
    * declared resources at dispatch time (FIX-688 Waves 2 & 3). Loads only the
    * eager entries not already cached; with `loadLazySingles: true` (per-block

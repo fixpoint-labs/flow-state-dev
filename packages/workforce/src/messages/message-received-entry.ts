@@ -5,11 +5,13 @@
  *
  * The payload names a message id and nothing else: the row in the user's
  * message log is read here, so the sender, the text and the budget are what
- * the sending turn's server code wrote. The entry acts on a message id once
- * (a versioned dedupe write in this session), so a copy sent twice wakes the
- * recipient once. Then the message lands as two items: a line the model reads
+ * the sending turn's server code wrote. The entry takes the message on its
+ * row before anything lands (`delivery.ts`, FIX-2240), so a copy sent again,
+ * at any distance, wakes the recipient once, and a copy that finds the taker
+ * ended without delivering takes over. Then the message lands as two items: a line the model reads
  * in its history, and a client-only `workforce:received` component carrying
- * the sender, the id and the message it answers, for an app to draw. The
+ * the sender, the id and the message it answers, for an app to draw, and the
+ * row is marked `delivered`. The
  * session's hop count and chain become the message's, and the flow's turn,
  * when it has one, runs with {@link MessageReceived} as its input. A worker in
  * the middle of a turn hears it after that turn, as a task's notice does: the
@@ -19,15 +21,15 @@
  * `sendMessage` and `inReplyTo`, and one that ends in plain text answers no one.
  */
 import { handler, sequencer } from "@flow-state-dev/core";
-import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { AFTER_REPLY_CONCURRENCY } from "../conversation-board/task-settled";
 import type { WorkerInstallation } from "../workers/installation";
 import { messageTurnStateSchema, startTurnAtHop } from "./hop";
-import { MESSAGE_RECEIVED_ENTRY, RECEIVED_MESSAGE_COMPONENT, SEND_MESSAGE_TOOL, WORKER_MESSAGES_SEEN_STATE } from "./keys";
+import { markDelivered, storedEmitters, takeMessage } from "./delivery";
+import { MESSAGE_RECEIVED_ENTRY, RECEIVED_MESSAGE_COMPONENT, SEND_MESSAGE_TOOL } from "./keys";
 import { messageLimitsOf } from "./message-limits";
-import { messageChainsOf, messageLogOf, workerMessagesResources } from "./message-log";
+import { messageChainsOf, workerMessagesResources } from "./message-log";
 
 /** What the entry takes: the message's id, and nothing a sender could shape. */
 export const messageReceivedInputSchema = z.object({ messageId: z.string().min(1) }).strict();
@@ -56,14 +58,6 @@ export type MessageReceived = z.infer<typeof messageReceivedSchema>;
  * (`task_sessions_only`). Absent: wherever a message lands.
  */
 export type MessageHearing = "task-sessions";
-
-/** The most message ids a session keeps for its dedupe. */
-const MAX_SEEN = 500;
-
-/** The session state the entry keeps. */
-export const messageReceivedStateShape = {
-  [WORKER_MESSAGES_SEEN_STATE]: z.array(z.string()).default([])
-} as const;
 
 /**
  * The mark `messageReceivedEntry` puts on what it builds, carrying `hears`.
@@ -163,22 +157,13 @@ export function messageReceivedEntry(options: {
     name: "message-received-heard",
     inputSchema: messageReceivedInputSchema,
     outputSchema: heardSchema,
-    sessionStateSchema: z.object(messageReceivedStateShape),
     requestStateSchema: messageTurnStateSchema,
     resources: { ...workerMessagesResources },
     execute: async (input, ctx): Promise<Heard> => {
-      const row = (await messageLogOf(ctx as never).getOptional(input.messageId))?.state;
-      // Delivered here, and only here: the row says which session it is for.
-      if (row === undefined || row.toSession !== ctx.session.identity.id) return { act: "none" };
-      const first = await withOutcome(
-        (mutator: (s: Readonly<Record<string, unknown>>) => Record<string, unknown>) => ctx.session.atomicState(mutator as never),
-        (state: Readonly<Record<string, unknown>>) => {
-          const seen = (state[WORKER_MESSAGES_SEEN_STATE] ?? []) as string[];
-          if (seen.includes(row.id)) return { state: {}, result: false };
-          return { state: { [WORKER_MESSAGES_SEEN_STATE]: [...seen, row.id].slice(-MAX_SEEN) }, result: true };
-        }
-      );
-      if (first !== true) return { act: "none" };
+      // Delivered here, and only here (the row says which session it is
+      // for), and only by the request that took it.
+      const row = await takeMessage(ctx as never, input.messageId);
+      if (row === undefined) return { act: "none" };
       await startTurnAtHop(ctx as never, row.hop, row.chain ?? null);
       const { hopLimit } = messageLimitsOf(options.installation);
       // What is left is the chain's, not the row's: sends since this one (a
@@ -192,14 +177,19 @@ export function messageReceivedEntry(options: {
         ...(row.inReplyTo === undefined ? {} : { inReplyTo: row.inReplyTo }),
         budget: Math.max(0, hopLimit - Math.max(row.hop, chainSent))
       };
-      // The two items, in one place, after the dedupe: the line the model
+      // The two items, in one place, after the take: the line the model
       // reads, and the item an app draws.
-      ctx.emit.message(`From ${row.from}: ${row.text}`, { agentName: row.from, itemVisibility: { client: false, history: true } });
-      ctx.emit.component(
+      const emit = storedEmitters(ctx as never);
+      await emit.message(`From ${row.from}: ${row.text}`, { agentName: row.from, itemVisibility: { client: false, history: true } });
+      await emit.component(
         RECEIVED_MESSAGE_COMPONENT,
         { id: row.id, from: row.from, text: row.text, ...(row.inReplyTo === undefined ? {} : { inReplyTo: row.inReplyTo }), budget: received.budget },
         { agentName: row.from, itemVisibility: { client: true, history: false } }
       );
+      // Landed once both are stored: the sending session's pass stops sending
+      // it. A taker killed before this is taken over, and the message shows twice.
+      await emit.stored();
+      await markDelivered(ctx as never, row.id);
       return { act: "heard", received };
     }
   });

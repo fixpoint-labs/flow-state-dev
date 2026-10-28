@@ -106,8 +106,12 @@ verbatim. Three keys are refused when the block is built:
 
 `recordPlan: true` records Cursor's to-do list in the run's plan record, `observed-plan`, the
 shape every harness shares and `@flow-state-dev/core` defines. The record holds the whole list
-Cursor last confirmed, one row per place in the list, with Cursor's own status words. Off by
-default; off, the block declares no session state. Guide:
+Cursor last confirmed, one row per place in the list, with Cursor's own status words. The plan
+is the agent's: rows and their marker are keyed under `conversation/<Cursor agent id>`, so a
+later run of the same agent that doesn't touch its list leaves the plan as it was, and a
+different agent has its own. Each run writes a pointer to that plan when the agent is created
+or resumed; core's `readPlanTarget` follows it from a request id. Off by default; off, the block
+declares no session state. Guide:
 [Recording the run's plan](https://flow-state.dev/docs/tools/cursor#recording-the-runs-plan).
 
 `env` is the environment Cursor's runtime sees. Set it and the block runs the runtime in a

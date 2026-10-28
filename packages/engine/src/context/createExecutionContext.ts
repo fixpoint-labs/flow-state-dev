@@ -404,6 +404,37 @@ function createEmitComponentAwaited(
 }
 
 /**
+ * The awaited message emitter behind `ctx._emitMessageAwaited`: as
+ * {@link createEmitMessage}, but it settles on the emission and rejects if
+ * either step does, as {@link createEmitComponentAwaited} does for components.
+ */
+function createEmitMessageAwaited(
+  emCtx: EmissionContext
+): (text: string, options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }) => Promise<void> {
+  return async function emitMessageAwaited(text, options): Promise<void> {
+    const itemIndex = emCtx.nextItemIndex();
+    const item: MessageItem = {
+      id: `item_message_${itemIndex}_${Math.random().toString(16).slice(2)}`,
+      type: "message",
+      status: "completed",
+      transient: options?.transient === true ? true : undefined,
+      requestId: emCtx.requestId,
+      itemIndex,
+      provenance: emCtx.provenance(),
+      ts: Date.now(),
+      ownedBy: emCtx.ownedBy,
+      taskId: emCtx.taskId,
+      itemVisibility: options?.itemVisibility ?? emCtx.itemVisibility,
+      agentName: options?.agentName ?? emCtx.agentName,
+      role: "assistant",
+      content: [{ type: "output_text", text }]
+    };
+    await emCtx.response.emitItemAdded(item);
+    await emCtx.response.emitItemDone(item);
+  };
+}
+
+/**
  * Request-scoped status slot. Shared across every `createEmitStatus` call
  * within a single request so nested scopes see the same "current message"
  * value — implements the single-slot semantics from FIX-387.
@@ -4311,6 +4342,9 @@ export async function createExecutionContext<
     // — `emit.component` stays `void`, and a caller that needs delivery to be
     // observable asks for it by name.
     context._emitComponentAwaited = createEmitComponentAwaited(activeEmCtx);
+    context._emitMessageAwaited = createEmitMessageAwaited(activeEmCtx);
+    // The barrier after an awaited emission: its item is in the request store.
+    context._flushItems = () => stores.request.flushItems(activeEmCtx.requestId);
 
     Object.defineProperty(context, "sequencer", {
       enumerable: true,

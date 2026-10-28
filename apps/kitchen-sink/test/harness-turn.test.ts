@@ -12,7 +12,19 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { latestTurn, planPanelState, planRowStage, turnNotice, UNKNOWN_CONVERSATION, type PlanPanelInput, type TurnRecord } from "@/lib/harness-turn";
+import {
+  earliestTurnOf,
+  latestTurn,
+  planPanelState,
+  planRowStage,
+  planSource,
+  PREDATES_REASON,
+  turnNotice,
+  turnNumbers,
+  UNKNOWN_CONVERSATION,
+  type PlanPanelInput,
+  type TurnRecord,
+} from "@/lib/harness-turn";
 
 const blank: TurnRecord = { asked: null, confirmed: null, failure: null, stopped: null, error: null, at: 1, steered: null };
 
@@ -81,12 +93,12 @@ describe("planPanelState", () => {
 
   it("before the first turn, and for a turn with nothing recorded (BR-15)", () => {
     expect(planPanelState({ ...base, turn: null })).toEqual({ kind: "no-turn" });
-    expect(planPanelState({ ...base, turn: 2 })).toEqual({ kind: "none", turn: 2 });
+    expect(planPanelState({ ...base, turn: 2 })).toEqual({ kind: "none", scope: "turn", turn: 2 });
   });
 
   it("tells a reported empty list from nothing reported (BR-17)", () => {
     const marker = { topic: "r/s#1", status: "complete", count: 0, reason: null };
-    expect(planPanelState({ ...base, markers: [marker] })).toEqual({ kind: "empty", turn: 1 });
+    expect(planPanelState({ ...base, markers: [marker] })).toEqual({ kind: "empty", scope: "turn", turn: 1 });
   });
 
   it("shows the rows in item order, the last run's only", () => {
@@ -106,6 +118,80 @@ describe("planPanelState", () => {
     const writing = { topic: "r/s#1", status: "writing", count: 2, reason: null };
     expect(planPanelState({ ...base, rows, markers: [writing], ended: false })).toMatchObject({ incomplete: null });
     expect(planPanelState({ ...base, rows, markers: [writing], ended: true })).toMatchObject({ incomplete: { reason: null } });
+  });
+});
+
+// A conversation's plan is the plan of every turn in it: a turn that touches
+// one row, or none, must not make the others vanish, and the label must say
+// which turn last changed it rather than pretend the latest turn wrote it all.
+describe("planPanelState — a conversation's plan", () => {
+  const turns = new Map([["req_1", 1], ["req_2", 2], ["req_3", 3]]);
+  const conv = (rows: PlanPanelInput["rows"], predates = false, markers: PlanPanelInput["markers"] = []) =>
+    planPanelState({ ...base, turn: 3, rows, markers, conversation: { turns, predates } });
+  const at = (item: string, title: string | null, status: string, requestId: string) => ({
+    topic: `conversation/sess_1/${item}`,
+    title,
+    status,
+    requestId,
+  });
+
+  it("shows every row of the conversation, labelled with the turn that last changed one", () => {
+    const state = conv([at("1", "List the files", "completed", "req_1"), at("2", "Count the lines", "completed", "req_2"), at("3", "Sort", "pending", "req_1")]);
+    expect(state).toMatchObject({ kind: "rows", scope: "conversation", turn: 2, incomplete: null });
+    expect(state.kind === "rows" && state.rows.map((r) => r.title)).toEqual(["List the files", "Count the lines", "Sort"]);
+  });
+
+  it("ignores a run's pointer, which is not a list marker", () => {
+    const pointer = { topic: "req_3/root#0", status: null, count: null, reason: null, conversation: "conversation/sess_1" };
+    expect(conv([at("1", "a", "pending", "req_1")], false, [pointer])).toMatchObject({ kind: "rows", incomplete: null });
+    expect(conv([], false, [pointer])).toEqual({ kind: "none", scope: "conversation", turn: null });
+  });
+
+  it("says the plan may be incomplete when the conversation began before plans were kept across turns", () => {
+    expect(conv([at("2", null, "completed", "req_3")], true)).toMatchObject({ incomplete: { reason: PREDATES_REASON } });
+    // A failed write's own reason comes first.
+    const failed = { topic: "conversation/sess_1", status: "incomplete", count: null, reason: "write failed" };
+    expect(conv([at("2", null, "completed", "req_3")], true, [failed])).toMatchObject({ incomplete: { reason: "write failed" } });
+  });
+
+  it("an emptied list is empty, and a row from a turn it can't number has no label", () => {
+    const emptied = { topic: "conversation/sess_1", status: "complete", count: 0, reason: null };
+    expect(conv([], false, [emptied])).toEqual({ kind: "empty", scope: "conversation", turn: null });
+    expect(conv([at("1", "a", "pending", "req_gone")])).toMatchObject({ kind: "rows", turn: null });
+  });
+});
+
+// Which plan the panel reads decides whether a person sees the plan at all:
+// a turn that never reached the harness must not hide the conversation's plan,
+// and a session recorded per turn must still show its own rows.
+describe("planSource", () => {
+  it("follows the turn's pointer, whatever the binding says", () => {
+    expect(planSource("conversation/a", true, "conversation/b")).toEqual({ kind: "conversation", namespace: "conversation/a" });
+  });
+
+  it("reads the bound conversation while a turn runs and before its pointer is written", () => {
+    expect(planSource(null, false, "conversation/b")).toEqual({ kind: "conversation", namespace: "conversation/b" });
+  });
+
+  it("an ended turn with no pointer reads its own rows, then the bound conversation when it has none", () => {
+    expect(planSource(null, true, "conversation/b")).toEqual({ kind: "turn", whenEmpty: "conversation/b" });
+    expect(planSource(null, false, null)).toEqual({ kind: "turn", whenEmpty: null });
+  });
+});
+
+describe("turnNumbers and earliestTurnOf", () => {
+  it("numbers turns as latestTurn does", () => {
+    const items = [{ requestId: "a", type: "message" }, { requestId: "b", type: "message" }, { requestId: "a", type: "status" }];
+    expect([...turnNumbers(items)]).toEqual([["a", 1], ["b", 2]]);
+  });
+
+  it("finds the conversation's earliest recorded turn, by when it started", () => {
+    const record = (asked: string | null, confirmed: string | null, at: number) =>
+      ({ asked, confirmed, failure: null, stopped: null, error: null, at }) as TurnRecord;
+    const turns = { r3: record("s1", "s1", 30), r1: record(null, "s0", 10), r2: record(null, "s1", 20) };
+    expect(earliestTurnOf(turns, (id) => id === "s1")).toBe("r2");
+    expect(earliestTurnOf(turns, (id) => id === "nope")).toBeNull();
+    expect(earliestTurnOf(null, () => true)).toBeNull();
   });
 });
 

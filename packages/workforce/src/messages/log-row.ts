@@ -33,8 +33,12 @@ export const messageAddressSchema = z
 
 export type MessageAddress = z.infer<typeof messageAddressSchema>;
 
-/** What became of a message: `delivered` once the host accepted it; `refused` when it refused it; `unconfirmed` when a dispatch threw twice. */
-export const MESSAGE_STATUSES = ["delivered", "refused", "unconfirmed"] as const;
+/**
+ * What became of a message (FIX-2240): `unconfirmed` until the recipient's
+ * `onMessageReceived` takes it; `delivered` once it landed there; `refused`,
+ * final; `undeliverable` once it was owed past the host's debt age.
+ */
+export const MESSAGE_STATUSES = ["unconfirmed", "delivered", "refused", "undeliverable"] as const;
 
 /** One message. */
 export const workerMessageRowSchema = z.object({
@@ -62,13 +66,24 @@ export const workerMessageRowSchema = z.object({
   /** Where this message was delivered. */
   toSession: z.string().min(1),
   toFlow: z.string().min(1),
+  /** The state a derived conversation is opened with, so a resend opens it too when the first dispatch never did. */
+  toState: z.record(z.string()).optional(),
   /** How many worker messages this one is from the last user's turn, counted across the whole exchange. */
   hop: z.number().int().min(1),
   /** The chain the hop is counted in: the user's turn the exchange descends from. Absent on rows from before rows carried one. */
   chain: z.string().min(1).optional(),
   status: z.enum(MESSAGE_STATUSES),
-  /** Why the host refused it, or why it is unconfirmed. */
+  /** Why it was refused or couldn't be delivered, or why its last send failed. */
   reason: z.string().optional(),
+  /** The `onMessageReceived` request that took it (FIX-2123's take, on a message). */
+  takenBy: z.string().min(1).optional(),
+  /** The request it landed in. Set once. */
+  deliveredAs: z.string().min(1).optional(),
+  deliveredAt: z.number().optional(),
+  /** How often the sending session's pass has sent it again, and when last. */
+  resent: z.object({ n: z.number().int().min(1), at: z.number() }).optional(),
+  /** When the sending session was told it was refused or couldn't be delivered. */
+  toldAt: z.number().optional(),
   /** When it was sent, in ms. */
   at: z.number()
 });

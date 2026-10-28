@@ -140,8 +140,8 @@ const RESENT_PREFIX = "noticeResent:";
  */
 const DEFERRED_PREFIX = "noticeDeferred:";
 
-/** The longest a pass waits between two resends of one notice: 5 minutes. */
-const NOTICE_RESEND_CAP_MS = 300_000;
+/** The longest a pass waits between two resends of one notice or message: 5 minutes. */
+export const NOTICE_RESEND_CAP_MS = 300_000;
 
 /** What a marker holds: enough to rebuild the notice from the row it is on. */
 interface OwedMarker {
@@ -442,8 +442,20 @@ function resentOf(row: Task, attempt: number, ending: NoticeEnding): { at: numbe
  * its way.
  */
 function nextSendAt(row: Task, marker: OwedMarker): number {
-  const resent = resentOf(row, marker.attempt, marker.ending);
-  if (resent === undefined) return marker.due ?? 0;
+  return nextResendAt(resentOf(row, marker.attempt, marker.ending), marker.due ?? 0);
+}
+
+/**
+ * The resend backoff, pure (FIX-2240): `due` until a pass has sent it again,
+ * then the last resend plus `NOTICE_DUE_MS · 2^n`, at most
+ * {@link NOTICE_RESEND_CAP_MS}. A task notice and a worker message are resent
+ * by it.
+ *
+ * @param resent - When it was last resent, and how many times, if ever.
+ * @param due - When it first fell due.
+ */
+export function nextResendAt(resent: { readonly at: number; readonly n: number } | undefined, due: number): number {
+  if (resent === undefined) return due;
   return resent.at + Math.min(NOTICE_DUE_MS * 2 ** resent.n, NOTICE_RESEND_CAP_MS);
 }
 

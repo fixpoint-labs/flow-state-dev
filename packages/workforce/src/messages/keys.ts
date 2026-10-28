@@ -12,5 +12,5 @@ export const SEND_MESSAGE_TOOL = "sendMessage";
 /** The client-only component a received message is drawn by. **Pinned**: an app's renderer is keyed by it. */
 export const RECEIVED_MESSAGE_COMPONENT = "workforce:received";
 
-/** Server-written session state: the message ids a session has acted on, newest last. */
-export const WORKER_MESSAGES_SEEN_STATE = "workerMessagesSeen";
+/** Server-written session state: the messages a session sent that haven't landed or ended yet, with the request that sent each (FIX-2240). */
+export const WORKER_MESSAGES_OWED_STATE = "workerMessagesOwed";

@@ -8,14 +8,14 @@
  * Everything is read from what reached each session and the store, never
  * from the tool's return value alone.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { runAction } from "@flow-state-dev/engine";
 import { mockGenerator, type MockGeneratorScriptEntry } from "@flow-state-dev/testing";
 import type { WorkerManifest } from "../src";
 import { boardWorkers, bootBoardHost, hearsMessages, messageOf, type BoardHost } from "./conversation-board-harness";
 import { WORKER_MESSAGES_PATTERN } from "../src/messages/message-log";
 import { sendMessageInputSchema } from "../src/messages/message-tool";
-import { recipientRefusal } from "../src/messages/send-message";
+import { recheckRecipient, recipientRefusal } from "../src/messages/send-message";
 import { createWorkerInstallation, type RosterWorker } from "../src/workers/installation";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -921,6 +921,28 @@ describe("who can be messaged", () => {
     expect(recipientRefusal(installation, "otto", "eng.coder", coder, true)).toBeUndefined();
   });
 
+  // A resend re-runs the send's check: an answer that was let through once
+  // must not be refused for good when its first dispatch didn't land.
+  it("lets a resent answer to a worker that hears only in its tasks' sessions through, and still refuses one by name", async () => {
+    let flows: Record<string, unknown> = {};
+    const installation = createWorkerInstallation({ standardWorkers: [], workerFlows: () => flows as never });
+    const door = z.object({ message: z.string() });
+    flows = {
+      coder: defineFlow({
+        kind: "coder",
+        configSchema: workerConfigSchema(),
+        session: installation.session(),
+        actions: { respond: { inputSchema: door, userMessage: (i: { message: string }) => i.message, block: handler({ name: "coder-run", inputSchema: door, execute: (i) => i }) } },
+        internal: { actions: hearsMessages(installation, "coder", "task-sessions") }
+      })
+    };
+    const coder: RosterWorker = { id: "eng.coder", standard: true, flow: "coder", description: null, delegates: [] } as RosterWorker;
+    vi.spyOn(installation, "rosterWorker").mockResolvedValue(coder);
+    const row = { from: "otto", to: "eng.coder" };
+    expect(await recheckRecipient({} as never, installation, { ...row, inReplyTo: "msg-1" })).toBeUndefined();
+    expect(await recheckRecipient({} as never, installation, { ...row, inReplyTo: undefined })).toMatch(/^task_sessions_only/);
+  });
+
   it("refuses another user's worker as missing, a worker that hears only in its tasks' sessions with 'file a task', and itself, writing nothing; a round-robin coordinator hears one", async () => {
     const calls = [
       { to: "bob.friend", text: "Hi Bob's worker." },
@@ -1140,7 +1162,7 @@ describe("delivery", () => {
     }
   });
 
-  it("marks the row refused, and the tool says why, when the host refuses the dispatch", async () => {
+  it("keeps the row unconfirmed, and the tool answers it sent, when the host turns the dispatch away for now", async () => {
     const h = boot({
       agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "sendMessage", { to: "lead", text: "What is the codename?" }), fallback] })
     });
@@ -1150,10 +1172,11 @@ describe("delivery", () => {
       await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
       await h.settled();
       lost.restore();
+      // Busy is not final (FIX-2240): the sending session's pass sends it again.
       const [row] = await logRows(h, "alice");
-      expect(row).toMatchObject({ status: "refused", reason: expect.stringMatching(/^dispatch-rejected/) });
+      expect(row).toMatchObject({ status: "unconfirmed", reason: expect.stringMatching(/^dispatch-rejected/) });
       const outputs = (await toolOutputs(h, otto)).map((output) => JSON.stringify(output));
-      expect(outputs[0]).toMatch(/not_delivered.*dispatch-rejected/);
+      expect(outputs[0]).toMatch(/^\{"sent":"msg_\w+"\}$/);
     } finally {
       await h.dispose();
     }

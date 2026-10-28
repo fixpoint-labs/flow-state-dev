@@ -46,12 +46,14 @@
  * entry runs.
  */
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
-import type { BlockContext, FlowInstance } from "@flow-state-dev/core/types";
+import { harnessConversationNamespace, type BlockContext, type FlowInstance } from "@flow-state-dev/core/types";
 import {
   OBSERVED_FILE_OPS,
   OBSERVED_PLAN,
+  OBSERVED_PLAN_LIST,
   observedFileOpsCollection,
   observedPlanCollection,
+  observedPlanListCollection,
 } from "@flow-state-dev/claude-code/sdk";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
@@ -197,11 +199,15 @@ const scriptedRun = handler({
     const resources = (ctx as { resources?: Record<string, unknown> }).resources ?? {};
     const plan = resources[OBSERVED_PLAN] as Upsertable | undefined;
     const files = resources[OBSERVED_FILE_OPS] as Upsertable | undefined;
+    const marker = resources[OBSERVED_PLAN_LIST] as Upsertable | undefined;
     const run = `${ctx.request.identity.id}/0#0`;
-    if (plan !== undefined && files !== undefined) {
+    // As a harness records it: the plan under its conversation, the run's pointer to it, files per run.
+    const conversation = harnessConversationNamespace("conv_1");
+    if (plan !== undefined && files !== undefined && marker !== undefined) {
       const now = Date.now();
-      await plan.upsert(`${run}/1`, { title: "Read the task", status: "completed", previousStatus: "in_progress", lastOutcome: "applied", lastTouchedAt: now });
-      await plan.upsert(`${run}/2`, { title: "Write the audit note", status: "in_progress", previousStatus: "pending", lastOutcome: "applied", lastTouchedAt: now });
+      await marker.upsert(run, { conversation });
+      await plan.upsert(`${conversation}/1`, { title: "Read the task", status: "completed", previousStatus: "in_progress", lastOutcome: "applied", lastTouchedAt: now });
+      await plan.upsert(`${conversation}/2`, { title: "Write the audit note", status: "in_progress", previousStatus: "pending", lastOutcome: "applied", lastTouchedAt: now });
       await files.upsert(`${run}/notes/audit.md`, { lastKind: "created", outcome: "applied", lastTouchedAt: now, appliedCount: 1 });
       ctx.emit.message("Wrote notes/audit.md");
     }
@@ -282,7 +288,11 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
       session: installation.session(),
       resources: {
         ...installation.resources,
-        ...(records ? { [OBSERVED_PLAN]: observedPlanCollection, [OBSERVED_FILE_OPS]: observedFileOpsCollection } : {}),
+        ...(records ? {
+              [OBSERVED_PLAN]: observedPlanCollection,
+              [OBSERVED_PLAN_LIST]: observedPlanListCollection,
+              [OBSERVED_FILE_OPS]: observedFileOpsCollection,
+            } : {}),
         ...workerMessagesResources,
       },
       actions: { ...hearingDoor },

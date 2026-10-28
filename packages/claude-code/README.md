@@ -367,8 +367,8 @@ resource collections and writes into them as it goes:
 | Accessor | One entry per |
 |----------|---------------|
 | `observed-file-ops` | path the run's file-writing/editing tools touched — `lastKind`, `outcome` (`pending`/`applied`/`failed`), `lastTouchedAt`, `appliedCount`. Paths, never contents |
-| `observed-plan` | to-do item the run kept — `title`, `status`, `previousStatus`, `lastOutcome` |
-| `observed-plan-list` | run whose plan could not be written in full — `status: "incomplete"` and the `reason`. Written only when a plan entry fails to write |
+| `observed-plan` | to-do item the conversation kept — `title`, `status`, `previousStatus`, `lastOutcome`, and `requestId`, the request that last changed it |
+| `observed-plan-list` | conversation whose plan could not be written in full — `status: "incomplete"` and the `reason`, written only when a plan entry fails to write, and kept for the rest of the conversation; plus one pointer per run, whose `conversation` names the namespace the run's plan is in |
 | `observed-gaps` | mutation the recorder understood and could not record — `kind` (`file`/`plan`/`run`) says which record it stands in for, plus the reason and the raw path |
 
 The `observed-plan` shape and its `observed-plan-list` marker are defined in
@@ -398,8 +398,12 @@ a run from any of these, list them in `disallowedTools`. Neither the default pro
 the agent use them, and it often works without a list. An empty `observed-plan` means the
 run kept no list; it is not a recording failure.
 
-Entries are keyed as `<requestId>/<invocation>`, so a session reused across runs —
-and a request that runs the agent more than once — both answer per run.
+File-operation and gap entries are keyed as `<requestId>/<invocation>`, so a session
+reused across runs — and a request that runs the agent more than once — both answer per
+run. Plan entries are keyed by conversation, as `conversation/<Claude Code session id>/<task id>`,
+so a later turn's `TaskUpdate` keeps the title its earlier `TaskCreate` wrote. Each run writes
+its pointer under `<requestId>/<invocation>` once the session id is known; read a request's
+plan through it with core's `readPlanTarget`.
 All four declare client state reads, so
 `GET /sessions/:id/resources/observed-file-ops?topicPrefix=observed-file-ops/<requestId>/`
 returns them; each row's payload is on `clientData`. Follow `nextCursor` — the

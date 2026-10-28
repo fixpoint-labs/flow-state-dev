@@ -455,10 +455,13 @@ export {
   observedPlanItemStateSchema,
   observedPlanListCollection,
   observedPlanListStateSchema,
+  harnessConversationNamespace,
+  planConversationPrefix,
   planKeySegment,
   planRowsPrefix,
+  readPlanTarget,
 } from "./harness-plan";
-export type { ObservedOutcome, ObservedPlanListStatus, PlanListItem } from "./harness-plan";
+export type { ObservedOutcome, ObservedPlanListStatus, PlanListItem, PlanMarkerRead } from "./harness-plan";
 
 /**
  * The coding-harness contract (LAB-152) — what a harness block is handed and

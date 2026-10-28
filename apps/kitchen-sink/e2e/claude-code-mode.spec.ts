@@ -121,22 +121,46 @@ test.describe("Claude Code mode (V7)", () => {
 });
 
 test.describe("the plan panel (V8)", () => {
-  test("labels the latest turn, and a turn with no plan after one with a plan says so", async ({ page, consoleErrors: _consoleErrors }) => {
+  test("keeps the conversation's plan across turns, labelled with the turn that last changed it", async ({ page, consoleErrors }) => {
     await newSession(page);
     const panel = page.getByTestId("plan-panel");
+    const stages = () => panel.getByTestId("plan-row").evaluateAll((lis) => lis.map((li) => li.getAttribute("data-stage")));
     await expect(panel.locator("[data-plan-state]")).toHaveAttribute("data-plan-state", "no-turn");
 
     await send(page, "[plan] make a plan");
     await expect(notice(page)).toHaveAttribute("data-kind", "started");
     await expect(panel.locator("[data-plan-state]")).toHaveAttribute("data-plan-state", "rows");
-    await expect(panel.getByTestId("plan-turn")).toHaveText("Turn 1");
+    await expect(panel.getByTestId("plan-turn")).toHaveText("Last changed in turn 1");
     // A row says how far along it is by its mark; one nobody has started holds no status and reads as to do.
     await expect(panel.getByTestId("plan-row-title")).toHaveText(["Read the request", "Answer it"]);
-    expect(await panel.getByTestId("plan-row").evaluateAll((lis) => lis.map((li) => li.getAttribute("data-stage")))).toEqual(["active", "pending"]);
+    expect(await stages()).toEqual(["active", "pending"]);
 
-    await send(page, "no plan this time");
+    // Turn 2 moves on by task id alone: the titles are still turn 1's.
+    await send(page, "[plan-next] carry on");
     await expect(notice(page)).toHaveAttribute("data-kind", "continued");
-    await expect(panel.getByTestId("plan-turn")).toHaveText("Turn 2");
+    await expect(panel.getByTestId("plan-turn")).toHaveText("Last changed in turn 2");
+    await expect(panel.getByTestId("plan-row-title")).toHaveText(["Read the request", "Answer it"]);
+    await expect.poll(stages).toEqual(["done", "active"]);
+
+    // A turn that leaves the plan alone leaves it, and its label, as they were.
+    await send(page, "no plan this time");
+    await expect(page.getByText("turn 3 of conversation", { exact: false })).toBeVisible();
+    await expect(notice(page)).toHaveAttribute("data-kind", "continued");
+    await expect(panel.getByTestId("plan-turn")).toHaveText("Last changed in turn 2");
+    await expect(panel.getByTestId("plan-row-title")).toHaveText(["Read the request", "Answer it"]);
+    expect(await stages()).toEqual(["done", "active"]);
+
+    // A turn that fails before Claude Code names its conversation leaves the plan as it was.
+    await send(page, "[fail-early] go on");
+    await expect(notice(page)).toHaveAttribute("data-kind", "error");
+    await expect(panel.getByTestId("plan-turn")).toHaveText("Last changed in turn 2");
+    await expect(panel.getByTestId("plan-row-title")).toHaveText(["Read the request", "Answer it"]);
+    // The failed turn's request reports to the console; that is the turn's error, shown above.
+    consoleErrors.length = 0;
+
+    // A new conversation starts with no plan.
+    await send(page, "[new] start over");
+    await expect(notice(page)).toHaveAttribute("data-kind", "moved");
     await expect(panel.locator("[data-plan-state]")).toHaveAttribute("data-plan-state", "none");
     await expect(panel.getByTestId("plan-row")).toHaveCount(0);
 
