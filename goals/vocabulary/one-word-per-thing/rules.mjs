@@ -68,6 +68,13 @@ export const RETIRED = [
     pattern: /\b(an|every|each) ask\b|\basks? (gate|resume|binding|marker|option)s?\b|\basked (task|row|worker|turn|colleague)s?\b|\basker\b|\bthe ask\b(?! (card|inbox))|\b(task|work|row)s? (it|they|you|a turn|the turn) asked for\b/i
   },
   {
+    id: "human-reasons",
+    files: new RegExp(`${CODE_OR_PUBLISHED.source}|${PENDING_NOTES.source}`),
+    // FIX-2151: the suspension reasons say user. SuspensionReason's open `string & {}` arm compiles a
+    // missed one, which then silently becomes a custom reason, so the exact strings are retired.
+    pattern: /\bhuman_(approval|input)\b/
+  },
+  {
     id: "post-to-mailbox",
     files: new RegExp(`${CODE_OR_PUBLISHED.source}|${PENDING_NOTES.source}`),
     pattern: /post-to-mailbox|postToMailbox/
@@ -95,6 +102,17 @@ export const EXCLUDE = [
 
 /** Hits that keep their word, each with its reason (D3: ask = a question to a person; hand-off = mid-work). */
 export const KEEP = [
+  {
+    path: /^goals\//,
+    line: /^\| \d{4}-\d{2}-\d{2} \|/,
+    rules: ["human-reasons"],
+    why: "FIX-2151: a goal's dated verdict row records a past run under the reasons it ran with: history"
+  },
+  {
+    path: /^\.changeset\/user-suspension-reasons\.md$/,
+    rules: ["human-reasons"],
+    why: "FIX-2151: the release note that tells consumers which old reasons to replace"
+  },
   {
     path: /^packages\/engine\/src\/stores\/testing\/request-store-conformance\.ts$/,
     line: /const requestId = "req_fence_(legacy_)?handed_off";$/,

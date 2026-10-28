@@ -26,7 +26,7 @@ import { updateArtifact } from "./shared/artifacts";
 import { setSelectedModelHandler, setThinkingEnabledHandler } from "./settings";
 import { taskQueueDemo } from "./task-queue-demo";
 import { approvalGate } from "./approval-gate";
-import { askQuestion, collectForm, chooseOption } from "./human-input";
+import { askQuestion, collectForm, chooseOption } from "./user-input";
 import { mem } from "./run/cognition";
 import { bashCap } from "./shared/capabilities/features";
 import {
