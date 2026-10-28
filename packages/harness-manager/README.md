@@ -25,6 +25,7 @@ const manager = harnessManager({
   phase: implementPhase(),    // prompt builder + done-condition
   workspace: { root, sourceRepo, baseRef },
   runTimeoutMs: 30 * 60_000,
+  // reviewChanges: true,   // optional: a user reviews a run's commits before its task completes
 
   // The slot. Called once; the manager hands down its feeds.
   harness: ({ cwd, resume, onSession, onUsage }) =>
@@ -161,8 +162,9 @@ naming one issue still get a tree each. A fixed board runs feature rows only, an
 row whose id isn't the one its payload derives.
 
 A completed run's output carries `answer`, the agent's last message (up to 8,000 characters),
-the run's `branch` (`null` for a run with only kept files), how many `commits` it made, and
-`judged`. A feature row's output gains the same fields.
+the run's `branch` (`null` for a run with only kept files), how many `commits` it made,
+`judged`, and `review`: `"accepted"` or `"deadline"` when the run's changes were
+[reviewed](#reviewing-a-runs-changes), `null` otherwise. A feature row's output gains the same fields.
 
 On a board read from the claim:
 
@@ -269,6 +271,33 @@ The recorded session is the one the harness *confirmed* it was in. If the agent 
 - `run.answers` reads the task's answered questions from its row.
 - `run.askMarkerPath` is `.fsdev/ask/<attempt>-<run>.md`. A phase that names a path of its own must use the one it is handed.
 - `askMarkerPath(path, attempt, run)` and `readAskMarker(path, attempt, run)` take the run.
+
+## Reviewing a run's changes
+
+`harnessManager({ ..., reviewChanges: true })` makes a user review a run's commits before its task completes. Off by default.
+
+A run's changes are the commits it made over the base its branch was cut from. A run that would complete (the judge said done, there is no judge, or the judge's verdict was under its `floor`) and has commits on its branch waits for a review. So does a run whose commit count git couldn't read; its review says the commits couldn't be read. A run with no commits completes unreviewed. A failed run fails its attempt unreviewed. A judge's confident verdicts skip the review: *not done* fails the attempt, and *ask* holds the task on a question.
+
+While it waits, the task stays `in_progress` on the same attempt and keeps its claim, and the checkout is free. The row lists the wait among its open holds, with `source.kind: "suspension"` and `ask.kind: "review"`, titled "Review the run's changes". Its prompt gives the commit count and up to 20 commit subjects, then the judge's verdict, confidence and reason ("No judge read this run." without one), and the line "The judge's verdict is information, not approval." The hold's data is `{ branch, commits, subjects, judge }`. The Inbox lists it as a review.
+
+The answer is a `HarnessReviewAnswer`, checked against `harnessReviewAnswerSchema`: `{ verdict: "accepted" }`, or `{ verdict: "revise", words }` with non-blank `words`. With the Inbox client:
+
+```ts
+import { createInboxClient } from "@flow-state-dev/orchestration/inbox";
+
+const inbox = createInboxClient(client);
+await inbox.answer(item, { value: { verdict: "accepted" } });
+await inbox.answer(item, { value: { verdict: "revise", words: "Keep the old endpoint as a fallback." } });
+```
+
+That posts to the engine's answer route, `POST /api/flows/:flow/requests/:requestId/answer` with `{ suspensionId, action: "submit", data }`. Blank `words` are refused with a 400, and the review stays open.
+
+- **Accepted**: the task completes with no further run, output `review: "accepted"`.
+- **Revise**: the words are written on the task as the user's steer, and one more run starts on the same attempt, continuing the same coding session with the words in its prompt, as any steer is taken. If it commits again it is reviewed again, over all the branch's commits. Each revision counts toward the task's steer limit; past it the attempt fails. If the harness confirmed no coding session, the revision fails the attempt instead, and the next attempt's brief carries the words.
+- **Deadline**: none unless the host sets `userDeadlineMs`. At the deadline the task completes with no further run, output `review: "deadline"`. Show that as not reviewed, never as approved.
+- **Cancel** (the board's `updateTask` cancel): the review closes, no run starts, and the branch's commits and kept files stay.
+
+Reviews need a host with durable execution. A host can restart while a review waits; the answer continues the run.
 
 ## Talking to a run
 
@@ -438,7 +467,7 @@ The record is `harnessUsageCollection` (`HARNESS_USAGE`, `harness-usage/**`, use
 
 ## The export surface, in two halves
 
-**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `harnessTalkTurn` with `harnessTalkInputSchema` and `harnessTalkOutputSchema`, `upgradeKeptTurns`, `STEER_POLL_MS`, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
+**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `harnessTalkTurn` with `harnessTalkInputSchema` and `harnessTalkOutputSchema`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer` for [answering a review](#reviewing-a-runs-changes), `upgradeKeptTurns`, `STEER_POLL_MS`, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
 
 **`@flow-state-dev/harness-manager/checkout`** is how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. `run` and the git timeouts it re-exports come from `@flow-state-dev/workspace`. It is outside the versioned contract, so a host should not import from it. Everything in it is specific to git worktrees. Adopt `harnessManager({ harness })` and let it own the checkout.
 
@@ -475,6 +504,7 @@ from `/`. Given a location it cannot resolve, it refuses and names the option.
 - **A harness that can't resume can't be talked to once finished.** Talk resumes the confirmed coding session, so the door refuses a finished run whose harness never confirmed one (`cannot-continue`).
 - **A steer waits for the step to end** unless the run takes it live (Cursor today) or the manager is built with `stopsOnAbort: true`. Claude Code and Codex runs don't take a line mid-turn yet.
 - **A steer step needs a confirmed session.** The step a steer adds resumes the coding session the run confirmed. On a run whose harness confirmed none, a steer that arrives after its last step is left on the task untaken: only the `STEER_TURN_ENTRY` turn acts on it, and a host without that entry completes the task over it.
+- **Reviewing changes needs durable execution.** On a host without it, a manager built with `reviewChanges: true` refuses the run before any harness step, and the task is cancelled with a message naming durable execution.
 - **Git worktrees specifically**, as above.
 
 ## Running tests

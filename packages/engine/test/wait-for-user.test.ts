@@ -385,6 +385,47 @@ describe("waitForUser: a crash after the stop's resolution was logged replays it
   }
 });
 
+describe("waitForUser in a nested sequencer", () => {
+  it("restores the nested sequencer's own state on the answer, so its later steps read what earlier ones wrote", async () => {
+    const seen: string[] = [];
+    const mark = handler({
+      name: "mark",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (input, ctx) => {
+        await ctx.sequencer!.patchState({ mark: "written before the wait" });
+        return input;
+      }
+    });
+    const ask = handler({
+      name: "ask",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => ctx.waitForUser({ kind: "input", prompt: "?" } as never)
+    });
+    const read = handler({
+      name: "read",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (input, ctx) => {
+        seen.push(String((ctx.sequencer!.state as { mark: string | null }).mark));
+        return input;
+      }
+    });
+    const inner = sequencer({ name: "inner", stateSchema: z.object({ mark: z.string().nullable().default(null) }) })
+      .step(mark)
+      .step(ask)
+      .step(read);
+    const flow = defineFlow({ kind: "asking", actions: { run: { block: sequencer({ name: "s" }).step(inner) } } })({ id: "asking" });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, {});
+
+    expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "ok" })).status).toBe(202);
+    await h.drain();
+    expect(seen).toEqual(["written before the wait"]);
+  });
+});
+
 describe("the answer route (D2)", () => {
   it("answers the stop once, as the signed-in caller; a second answer is told it is resolved", async () => {
     const seen: string[] = [];

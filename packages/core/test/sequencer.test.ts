@@ -133,6 +133,41 @@ describe("sequencer builder", () => {
     expect(capturedIncIds[2]).toContain("loop[2]");
   });
 
+  it("never reuses a pass's child paths when two loopBacks target the same step", async () => {
+    // A resume's replay log answers a child by its path, so a step that ran
+    // again under a reused path would be handed an earlier pass's output.
+    const inc = addHandler("inc", 1);
+    const mark = addHandler("mark", 0);
+    const seq = sequencer({ name: "two-loops", inputSchema: z.number() })
+      .step(inc)
+      .loopBack("inc", { when: (value) => (value as number) % 2 === 1, maxIterations: 5 })
+      .step(mark)
+      .loopBack("inc", { when: (value) => (value as number) < 4, maxIterations: 5 });
+
+    const paths: Record<string, string[]> = { inc: [], mark: [] };
+    const ctx = createMockContext();
+    (ctx as any)._withExecutionScope = async (
+      parent: { name: string; instanceId: string; path: string },
+      execute: (c: BlockContext) => Promise<unknown>
+    ) => {
+      paths[parent.name]?.push(parent.path);
+      const childCtx = {
+        ...ctx,
+        _blockIdentity: { blockName: parent.name, blockInstanceId: parent.instanceId, blockPath: parent.path }
+      } as BlockContext;
+      return execute(childCtx);
+    };
+
+    await expect(runForTest(seq, 0, ctx)).resolves.toBe(4);
+
+    // inc runs at 0, 1 (first loop), 2 (second loop), 3 (first loop inside
+    // the second loop's pass); mark runs once per pass of the second loop.
+    expect(paths.inc).toHaveLength(4);
+    expect(new Set(paths.inc).size).toBe(4);
+    expect(paths.mark).toHaveLength(2);
+    expect(new Set(paths.mark).size).toBe(2);
+  });
+
   it("supports work and waitForSideChain", async () => {
     const sideChainBlock = handler({
       name: "bg-work",
