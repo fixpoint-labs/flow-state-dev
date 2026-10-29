@@ -28,6 +28,10 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | **Because** | The list an app shows is computed by orchestration (steps beside tasks, the latest follow-up as `current`, server-only fields stripped) over a partitioned, user-scoped ledger, behind the session's membership check. Only running the package's own block on the session gives the same rows under the same fence. A read is that block with the record taken away, and with writes refused so "nothing stored" holds by construction rather than by each author's care. A push would be the better end state, but a conversation's rows are settled by task sessions on other flows, whose changes reach their own streams, and the engine's cross-session stream (`/users/:userId/stream`) is unbuilt (501). An unrecorded action would still be allowed to write and dispatch, so the log would lose real changes, and the client's way of getting an action's answer (read the request back) would have nothing to read. Storing then deleting still writes per poll and races the client's read of the answer |
 | **Locks in** | `defineFlow({ reads })`, a map of name to `{ block, description? }`, names unique within the map (a read may share a name with an action). `POST /:flowKind/:sessionId/reads/:readName` with `{ input }`, answering `200 { output }`; a refusal answers as the action route would (4xx with a reason); a block that throws answers 4xx/5xx by the error's own retryability. The read's context refuses resource, collection, content and session-state writes and every dispatch with code `read_only`; its emitted items go nowhere. Client: `client.flow(kind).read(name, input, { sessionId })` resolving to the output |
 
+**The condition it's signed off on:** `reads` is the one hook for watching a computed view. Nothing
+that does the same job is added beside it, and the existing one-off watchers move onto it over time,
+tracked under the FIX-2316 cleanup.
+
 **What would change my mind:** the cross-session stream landing first. Then the board publishes its
 changes there and the apps subscribe; reads would still serve the first load.
 
