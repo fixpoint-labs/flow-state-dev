@@ -153,7 +153,9 @@ export function defineSessionBoard(options: SessionBoardOptions) {
       payDebts: async (ctx) => {
         const sends = await payMessageDebts(ctx, (inner, row) => recheckRecipient(inner, options.installation, row));
         const replies = await payReplyDebts(ctx, options.installation, options.flowKind);
-        return sends === undefined ? replies : replies === undefined ? sends : Math.min(sends, replies);
+        // The earlier of the two next looks, if either owes one.
+        const due = [sends, replies].filter((at): at is number => at !== undefined);
+        return due.length === 0 ? undefined : Math.min(...due);
       }
     },
     ...(options.routes === undefined ? {} : { routes: options.routes })

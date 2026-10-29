@@ -7,8 +7,9 @@
  * `deadline`, `callId`), so a call can't name a sender, a hop count or that it
  * is a call, and a session only as a target the server checks (FIX-2160).
  * Without `wait`, an answer arrives later as a message of the recipient's own
- * and wakes this worker; with `replyRequested` (FIX-2310, `./asks`), one
- * answer is owed and always comes, the recipient's or a "no answer". With `wait: true` it is a call (FIX-2239, `./call`): the recipient's
+ * and wakes this worker; with `replyRequested` (FIX-2310, `./owed-replies`),
+ * one answer is owed and always comes, the recipient's or a "no answer".
+ * With `wait: true` it is a call (FIX-2239, `./call`): the recipient's
  * reply is the tool's result, in the same request, until the deadline; and
  * `{ callId }` waits again on one. Its description lists who the worker can
  * message, read before each model call: the roster's workers that have a
