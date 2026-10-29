@@ -21,22 +21,21 @@
  *      lead answers the codename and the launch date without asking anyone,
  *      and the divider, labelled summarized, sits after both the codename
  *      line and researcher's reply.
- *   5  with no project, coder's run is refused and the task card asks for one;
- *      for 30 s nothing else runs and nothing on disk changes; you pick
- *      `relay`, lead files again, the run goes through Claude Code, a worktree
- *      of the checkout gets one commit that changes the README's first line and
- *      nothing else, the checkout itself is untouched, and the result lands in
- *      lead's conversation from coder.
+ *   5  you ask for a fix; with one project, lead puts its conversation in
+ *      `relay` and files the task there with no question, the run goes through
+ *      Claude Code, a worktree of the checkout gets one commit that changes the
+ *      README's first line and nothing else, the checkout itself is untouched,
+ *      and the result lands in lead's conversation from coder.
  *
- * Inputs are held out: the launch date is drawn at random and written into a
- * copy of the workers' tree, the codename is drawn at random, and the README's
- * typo is one of several.
+ * Inputs are held out: the launch date is drawn at random and written into the
+ * project's README, where researcher reads it, the codename is drawn at random, and the
+ * README's typo is one of several.
  *
  * Run:      pnpm tsx goals/teammates-lab/a-worker-talks-to-another-while-you-talk/run.mts
- * Controls: GOAL_CONTROL=no-model | no-lead-send | no-reply-tool | pick-not-kept | no-summary | no-memory (see goal.md)
+ * Controls: GOAL_CONTROL=no-model | no-lead-send | no-reply-tool | project-not-kept | no-summary | no-memory (see goal.md)
  */
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
-import { cpSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "playwright";
 import { createClient, readEveryCollectionPage } from "@flow-state-dev/client";
@@ -79,7 +78,6 @@ interface Fixture {
   rest: string;
   answerWithinMs: number;
   replyWithinMs: number;
-  unpickedMs: number;
   runWithinMs: number;
 }
 
@@ -87,8 +85,6 @@ const fixture = loadFixture<Fixture>(import.meta.url);
 const LAB = repoPath("labs", "teammates");
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const MODEL = process.env.GOAL_MODEL ?? DEFAULT_MODEL;
-/** What the page says after you pick a project (the lab's `PICKED_LINE`). */
-const PICKED_LINE = "I picked a project for you. File the task again.";
 
 /** Drop one worker's `sendMessage`: the capability lists no tool on that worker's turns. */
 const dropSendFor = (worker: string): ModulePatch => ({
@@ -117,13 +113,15 @@ const CONTROLS: Record<string, { patches?: ModulePatch[]; model?: string; steps:
   "no-lead-send": { patches: [dropSendFor(fixture.lead)], steps: ["2", "3"], mayAlso: ["5"], skip: ["4"] },
   // researcher hears lead but can't answer it.
   "no-reply-tool": { patches: [dropSendFor(fixture.researcher)], steps: ["3"], skip: ["4"] },
-  // The pick answers as kept but is never stored, so the task filed again still has no project.
-  "pick-not-kept": {
+  // A conversation's project answers as kept but is never stored, so lead's task has no project.
+  // Step 3 may go red too: researcher puts its own conversation in the project to read the date,
+  // and that is not stored either.
+  "project-not-kept": {
     patches: [
       {
         module: "packages/workforce/src/projects/work-project.ts",
         from: String.raw`await ctx\.session\.patchState\(\{ \[WORK_PROJECT_STATE_KEY\]: projectRef\(input\.project\) \}\);`,
-        to: "/* goal control pick-not-kept: not stored */",
+        to: "/* goal control project-not-kept: not stored */",
       },
     ],
     steps: ["5"],
@@ -165,23 +163,14 @@ function launchDate() {
   return { text: `${day} ${month}`, isIn: (line: string) => said.test(line) && monthSaid.test(line) };
 }
 
-/** A copy of the lab's workers whose researcher knows the held-out date instead of the shipped one. */
-function workersWith(dir: string, date: string): string {
-  const tree = join(dir, "workforce");
-  cpSync(join(LAB, "workforce"), tree, { recursive: true });
-  const file = join(tree, "teams/teammates/workers/researcher/WORKER.md");
-  const before = readFileSync(file, "utf8");
-  const after = before.replace(/The launch date is [^.\n]+\./, `The launch date is ${date}.`);
-  if (after === before) throw new Error("setup: researcher's WORKER.md has no launch date line to hold out");
-  writeFileSync(file, after);
-  return tree;
-}
+/** The README after its first line: the fixture's, with the held-out launch date. */
+const restWith = (date: string) => `${fixture.rest}\nThe launch date is ${date}.\n`;
 
 /** A scratch git checkout whose README's first line has a typo; `.fsdev/` ignored, as a run needs. */
-function scratchCheckout(dir: string, typo: Fixture["typos"][number]): string {
+function scratchCheckout(dir: string, typo: Fixture["typos"][number], rest: string): string {
   const checkout = join(dir, "relay");
   mkdirSync(checkout, { recursive: true });
-  writeFileSync(join(checkout, "README.md"), `${typo.readme}\n${fixture.rest}`);
+  writeFileSync(join(checkout, "README.md"), `${typo.readme}\n${rest}`);
   writeFileSync(join(checkout, ".gitignore"), "**/.fsdev/\n");
   git(checkout, "init", "-q", "-b", "main");
   git(checkout, "-c", "user.email=goal@example.com", "-c", "user.name=goal", "add", ".");
@@ -386,8 +375,8 @@ await runGoal(async (failures, tell_) => {
   const dir = goalTmpDir("teammates-lab");
   const date = launchDate();
   const typo = pick(fixture.typos);
-  const tree = workersWith(dir, date.text);
-  const checkout = scratchCheckout(dir, typo);
+  const rest = restWith(date.text);
+  const checkout = scratchCheckout(dir, typo, rest);
   // Where the lab puts runs: beside its store (`fsdev.config.mts`).
   const runsRoot = join(dir, "teammates-runs");
   const lead = short(fixture.lead);
@@ -403,7 +392,6 @@ await runGoal(async (failures, tell_) => {
   const env = intentFreeEnv(process.env, {
     TEAMMATES_MODEL: control?.model ?? MODEL,
     TEAMMATES_STORE: join(dir, "teammates.sqlite"),
-    TEAMMATES_TREE: tree,
     TEAMMATES_USER: "you",
     TEAMMATES_PROJECTS: JSON.stringify([{ ...fixture.project, checkout }]),
     ...(patches.length > 0 ? modulePatchEnv(patches, REPO_ROOT, mark) : {}),
@@ -520,95 +508,68 @@ await runGoal(async (failures, tell_) => {
     if (control?.skip?.includes("4")) evidence.push(`4: not run under GOAL_CONTROL=${CONTROL}`);
     else await stepFour(page, log, date, fail, evidence, tell_);
 
-    // ---- 5 · lead hands coder a fix, in lead's project ------------------------
-    const chip = (await page.getByLabel(`Project for ${lead}`).inputValue()) || "none";
-    if (chip !== "none") fail("5", `lead already shows project "${chip}" before any pick`);
+    // ---- 5 · lead hands coder a fix, in the one project ----------------------
     const before = diskOf(checkout);
     await tell(page, lead, fixture.fix);
     const tasks = conversation(page).locator("[data-entry=task]");
     // Only the cards lead files from here on are this step's.
     const earlier = (await entriesOf(page)).filter((e) => e.kind === "task").length;
     const cardsNow = (es: Drawn[]) => es.filter((e) => e.kind === "task").slice(earlier);
-    const asking = await readUntil(page, (es) => cardsNow(es).some((e) => e.status === "needs a project"), fixture.answerWithinMs);
-    if (!asking.ok) {
-      fail("5", `no task card for ${coder} asking for a project within ${fixture.answerWithinMs / 1000}s (${cardsNow(asking.entries).map((e) => e.status).join(", ") || "no task card"})`);
+    const fixAt = (es: Drawn[]) => userAt(es, fixture.fix);
+    const ended = await readUntil(
+      page,
+      (es) => cardsNow(es).some((e) => e.status !== undefined && /^(done in|failed|refused|needs)/.test(e.status)),
+      fixture.runWithinMs,
+    );
+    const filed = tell_.over("5 · task cards lead filed in this step", cardsNow(ended.entries), { emptyIs: "lead filed nothing, which a control produces" });
+    const run = filed.find((e) => e.status !== undefined && /^(done in|failed|refused|needs)/.test(e.status));
+    if (filed.length === 0) fail("5", `lead filed no task for ${coder} within ${fixture.runWithinMs / 1000}s`);
+    else if (run?.status !== `done in ${fixture.project.id}`) fail("5", `lead's task ended "${run?.status ?? filed[0]!.status}", not "done in ${fixture.project.id}"`);
+    // One project: lead files into it without asking which (FIX-2309's check 2), and never sends a card that waits for a pick.
+    if (filed.some((e) => e.status === "needs a project")) fail("5", "a task card asked for a project though there is only one");
+    const chip = await page.getByLabel(`Project for ${lead}`).inputValue();
+    if (chip !== fixture.project.id) fail("5", `lead's conversation shows project "${chip || "none"}", not "${fixture.project.id}"`);
+    if (run?.status === `done in ${fixture.project.id}`) {
+      // The run, opened on its card: it went through Claude Code.
+      const runCard = tasks.nth(earlier + filed.indexOf(run));
+      await runCard.getByRole("button", { name: new RegExp(`^Task for ${coder}: `) }).click();
+      const runList = runCard.getByRole("list", { name: /^Run of / });
+      let runText: string | null = "";
+      // The run's steps are read once the card opens; give them time to arrive.
+      for (const until = Date.now() + 30_000; Date.now() < until && !/Claude Code/.test(runText ?? ""); await sleep(500)) {
+        runText = (await runList.count()) > 0 ? await runList.textContent() : "";
+      }
+      if (!/Claude Code/.test(runText ?? "")) fail("5", `the run's steps don't show it ran on Claude Code: "${(runText ?? "").slice(0, 200)}"`);
+
+      const result = await readUntil(page, (es) => es.some((e, i) => i > fixAt(es) && e.kind === "result" && e.label === `From ${coder}`), 60_000);
+      const resultAt = result.entries.map((e) => e.kind === "result" && e.label === `From ${coder}`).lastIndexOf(true);
+      if (resultAt < 0 || resultAt < fixAt(result.entries)) fail("5", `the result never landed in lead's conversation as a line from ${coder}`);
+      else if (/task failed/i.test(result.entries[resultAt]!.text)) fail("5", `${coder}'s last result is a failure: "${result.entries[resultAt]!.text}"`);
+    }
+    // The disk: the checkout untouched, one worktree of it with one commit that fixes the first line only.
+    const after = diskOf(checkout);
+    if (after.head !== before.head || after.status !== before.status) fail("5", "the checkout itself changed (HEAD or working tree)");
+    const worktrees = tell_.over(
+      "5 · worktrees of the checkout other than itself",
+      after.worktrees
+        .split("\n\n")
+        .map((block) => ({ path: /^worktree (.+)$/m.exec(block)?.[1], head: /^HEAD (.+)$/m.exec(block)?.[1] }))
+        .filter((w): w is { path: string; head: string } => w.path !== undefined && w.head !== undefined && w.path !== checkout),
+      { emptyIs: "no run worked in the checkout, which a control produces" },
+    );
+    const changed = worktrees.filter((w) => w.head !== before.head);
+    if (changed.length !== 1) {
+      fail("5", `${changed.length} worktree(s) of the checkout carry a commit; want exactly one`);
     } else {
-      const prompt = tasks.nth(earlier).getByRole("group", { name: "Pick a project" });
-      if ((await prompt.count()) === 0) fail("5", "the refused task's card shows no project picker");
-      await sleep(fixture.unpickedMs);
-      const waited = await entriesOf(page);
-      const running = cardsNow(waited).filter((e) => e.status?.startsWith("running"));
-      if (running.length > 0) fail("5", `with no pick, a run started: ${running.map((e) => e.status).join(", ")}`);
-      const still = diskOf(checkout);
-      if (JSON.stringify(still) !== JSON.stringify(before)) fail("5", "with no pick, something changed in the checkout");
-
-      const picked = await prompt
-        .getByLabel("Project")
-        .selectOption(fixture.project.id, { timeout: 15_000 })
-        .then(() => prompt.getByRole("button", { name: "Use project" }).click())
-        .then(() => true, (error: Error) => (fail("5", `couldn't pick ${fixture.project.id} on the card: ${error.message.split("\n")[0]}`), false));
-      if (!picked) throw new Error("step 5 stopped: no pick could be made");
-      const ended = await readUntil(
-        page,
-        (es) => {
-          const filed = cardsNow(es);
-          const last = filed[filed.length - 1];
-          return filed.length >= 2 && last!.status !== undefined && /^(done in|failed|refused)/.test(last!.status);
-        },
-        fixture.runWithinMs,
-      );
-      const filed = tell_.over("5 · task cards lead filed in this step", cardsNow(ended.entries));
-      if (userAt(ended.entries, PICKED_LINE) < 0) fail("5", "your pick was not said to lead as your line");
-      const rerun = filed.length >= 2 ? filed[filed.length - 1]! : undefined;
-      if (rerun === undefined) fail("5", "lead never filed the task again after the pick");
-      else if (rerun.status !== `done in ${fixture.project.id}`) fail("5", `the task filed again ended "${rerun.status}", not "done in ${fixture.project.id}"`);
-      if (rerun?.status === `done in ${fixture.project.id}`) {
-        // The run, opened on its card: it went through Claude Code.
-        const rerunCard = tasks.last();
-        await rerunCard.getByRole("button", { name: new RegExp(`^Task for ${coder}: `) }).click();
-        const runList = rerunCard.getByRole("list", { name: /^Run of / });
-        let runText: string | null = "";
-        // The run's steps are read once the card opens; give them time to arrive.
-        for (const until = Date.now() + 30_000; Date.now() < until && !/Claude Code/.test(runText ?? ""); await sleep(500)) {
-          runText = (await runList.count()) > 0 ? await runList.textContent() : "";
-        }
-        if (!/Claude Code/.test(runText ?? "")) fail("5", `the run's steps don't show it ran on Claude Code: "${(runText ?? "").slice(0, 200)}"`);
-
-        // The refused task's ending lands from coder too, before the pick: wait for one after it.
-        const resultAfterPick = (es: Drawn[]) => es.some((e, i) => i > userAt(es, PICKED_LINE) && e.kind === "result" && e.label === `From ${coder}`);
-        const result = await readUntil(page, (es) => userAt(es, PICKED_LINE) >= 0 && resultAfterPick(es), 60_000);
-        // The run's is the last one.
-        const resultAt = result.entries.map((e) => e.kind === "result" && e.label === `From ${coder}`).lastIndexOf(true);
-        if (resultAt < 0) fail("5", `the result never landed in lead's conversation as a line from ${coder}`);
-        else if (resultAt < userAt(result.entries, PICKED_LINE)) fail("5", `no result from ${coder} after your pick`);
-        else if (/task failed/i.test(result.entries[resultAt]!.text)) fail("5", `${coder}'s last result is a failure: "${result.entries[resultAt]!.text}"`);
-      }
-
-      // The disk: the checkout untouched, one worktree of it with one commit that fixes the first line only.
-      const after = diskOf(checkout);
-      if (after.head !== before.head || after.status !== before.status) fail("5", "the checkout itself changed (HEAD or working tree)");
-      const worktrees = tell_.over(
-        "5 · worktrees of the checkout other than itself",
-        after.worktrees
-          .split("\n\n")
-          .map((block) => ({ path: /^worktree (.+)$/m.exec(block)?.[1], head: /^HEAD (.+)$/m.exec(block)?.[1] }))
-          .filter((w): w is { path: string; head: string } => w.path !== undefined && w.head !== undefined && w.path !== checkout),
-        { emptyIs: "no run worked in the checkout, which a control produces" },
-      );
-      const changed = worktrees.filter((w) => w.head !== before.head);
-      if (changed.length !== 1) {
-        fail("5", `${changed.length} worktree(s) of the checkout carry a commit; want exactly one`);
-      } else {
-        const [run] = changed;
-        const files = git(checkout, "diff", "--name-only", before.head, run!.head).split("\n").filter(Boolean);
-        if (files.join(",") !== "README.md") fail("5", `the run changed ${files.join(", ") || "nothing"}, not README.md alone`);
-        const readme = git(checkout, "show", `${run!.head}:README.md`).split("\n");
-        if (!readme[0]!.includes(typo.right) || readme[0]!.includes(typo.wrong)) fail("5", `the README's first line is still wrong: "${readme[0]}"`);
-        // `git` here trims the output, so the README's last newline is gone.
-        if (readme.slice(1).join("\n") !== fixture.rest.trimEnd()) fail("5", "the run changed more of the README than its first line");
-        if (!run!.path.startsWith(runsRoot)) fail("5", `the run's worktree ${run!.path} is not under the lab's runs folder`);
-        evidence.push(`5: refused until picked, then Claude Code fixed "${typo.wrong}" in ${run!.path}, README.md only, checkout untouched`);
-      }
+      const [worktree] = changed;
+      const files = git(checkout, "diff", "--name-only", before.head, worktree!.head).split("\n").filter(Boolean);
+      if (files.join(",") !== "README.md") fail("5", `the run changed ${files.join(", ") || "nothing"}, not README.md alone`);
+      const readme = git(checkout, "show", `${worktree!.head}:README.md`).split("\n");
+      if (!readme[0]!.includes(typo.right) || readme[0]!.includes(typo.wrong)) fail("5", `the README's first line is still wrong: "${readme[0]}"`);
+      // `git` here trims the output, so the README's last newline is gone.
+      if (readme.slice(1).join("\n") !== rest.trimEnd()) fail("5", "the run changed more of the README than its first line");
+      if (!worktree!.path.startsWith(runsRoot)) fail("5", `the run's worktree ${worktree!.path} is not under the lab's runs folder`);
+      evidence.push(`5: filed in ${fixture.project.id} with no question; Claude Code fixed "${typo.wrong}" in ${worktree!.path}, README.md only, checkout untouched`);
     }
     if (patches.length > 0) assertPatched(patches, REPO_ROOT, mark);
   } finally {

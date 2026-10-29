@@ -95,7 +95,7 @@ afterEach(async () => {
 });
 
 /** Otto's first turn mentioning `marker` messages `to` once. */
-function ottoSends(to: string, marker = "ask the lead") {
+function ottoSends(to: string, marker = "ask the lead", extra: Record<string, unknown> = {}) {
   let called = false;
   return mockGenerator({
     script: [
@@ -105,7 +105,7 @@ function ottoSends(to: string, marker = "ask the lead") {
           called = true;
           return true;
         },
-        then: { toolCalls: [{ toolCallId: "ask", toolName: "sendMessage", args: { to, text: "What is the codename?" } }] }
+        then: { toolCalls: [{ toolCallId: "ask", toolName: "sendMessage", args: { to, text: "What is the codename?", ...extra } }] }
       },
       { when: () => true, then: { text: "" } }
     ]
@@ -229,6 +229,23 @@ describe("a final refusal of the send's own dispatch", () => {
     await sleep(2_500);
     expect((await h.messages(otto)).some((m) => m.text.includes("wasn't delivered"))).toBe(false);
     expect((await logRows(h))[0]?.resent).toBeUndefined();
+  }, 30_000);
+});
+
+describe("a final refusal of a reply-requested message's own dispatch", () => {
+  // A reply-requested message that never landed has nobody to answer it: the refusal is the
+  // whole answer, never a "no answer" beside it (FIX-2310).
+  it("is told by the refusal alone: no answer comes back for it", async () => {
+    fault.refuseFastPath = true;
+    const { h, otto } = await boot("lead", { agentAnswer: ottoSends("lead", "ask the lead", { replyRequested: true }) });
+    await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
+    await h.settled();
+    expect((await toolOutputs(h, otto))[0]).toMatch(/not_delivered.*session-not-found/);
+    await sleep(2_500);
+    const rows = await logRows(h);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ status: "refused", replyRequested: true });
+    expect(rows[0]!.answeredBy).toBeUndefined();
   }, 30_000);
 });
 

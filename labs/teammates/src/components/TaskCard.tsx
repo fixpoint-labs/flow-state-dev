@@ -1,13 +1,14 @@
 import { useState } from "react";
-import type { LabAdapter, ProjectRow, BoardTask } from "../adapter";
+import type { LabAdapter, NewProject, ProjectRow, BoardTask } from "../adapter";
 import { useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
+import { NewProjectForm } from "./NewProjectForm";
 
 /**
  * A task a conversation filed for a worker that takes tasks: one line with
  * what it is and where it runs, opening to the run, read only. A run refused
  * for want of a project asks for one on the card; picking it is the only
- * thing that starts a run.
+ * thing that starts a run. With no project to pick, the card makes one.
  */
 export function TaskCard({
   adapter,
@@ -17,6 +18,7 @@ export function TaskCard({
   projects,
   nameOf,
   onPick,
+  onCreateProject,
   defaultOpen = false,
 }: {
   adapter: LabAdapter;
@@ -29,6 +31,8 @@ export function TaskCard({
   nameOf: (id: string) => string;
   /** Present where a pick can be made: the filer's own conversation. */
   onPick?: (project: string) => void;
+  /** Make a project, which the filer then works in. Shown where a pick can be made and there is none. */
+  onCreateProject?: (project: NewProject) => Promise<void>;
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -67,7 +71,7 @@ export function TaskCard({
           {open ? "▾" : "▸"}
         </span>
       </button>
-      {asking ? <ProjectPrompt filer={filer} to={to} projects={projects} onPick={onPick} /> : null}
+      {asking ? <ProjectPrompt filer={filer} to={to} projects={projects} onPick={onPick} onCreate={onCreateProject} /> : null}
       {open ? (
         <ol aria-label={`Run of ${task.title}`} className="border-t border-dashed border-border px-3 py-2 font-mono text-xs text-muted-foreground">
           {task.status === "needs-project" ? <li>No run started: {filer} had no project.</li> : null}
@@ -81,9 +85,33 @@ export function TaskCard({
   );
 }
 
-/** The ask for a project, the first time a job needs files. */
-function ProjectPrompt({ filer, to, projects, onPick }: { filer: string; to: string; projects: ProjectRow[]; onPick: (project: string) => void }) {
-  const [project, setProject] = useState(projects[0]?.id ?? "");
+/** The ask for a project, the first time a job needs files. With none to pick, it makes one, so there is always a way on. */
+function ProjectPrompt({
+  filer,
+  to,
+  projects,
+  onPick,
+  onCreate,
+}: {
+  filer: string;
+  to: string;
+  projects: ProjectRow[];
+  onPick: (project: string) => void;
+  onCreate?: (project: NewProject) => Promise<void>;
+}) {
+  const [picked, setProject] = useState<string>();
+  // Until one is chosen, the first: the list may arrive, or grow, after the card.
+  const project = picked ?? projects[0]?.id ?? "";
+  if (projects.length === 0) {
+    return (
+      <div role="group" aria-label="Create a project" className="flex flex-col gap-2 border-t border-dashed border-attention/60 px-3 py-2 text-xs">
+        <span className="text-foreground">
+          {to} needs a project to work in, and you have none yet. Create one for {filer}: a name, and the folder its code is in. Or ask {filer} to make one.
+        </span>
+        {onCreate ? <NewProjectForm onCreate={onCreate} /> : null}
+      </div>
+    );
+  }
   return (
     <div role="group" aria-label="Pick a project" className="flex flex-wrap items-center gap-2 border-t border-dashed border-attention/60 px-3 py-2 text-xs">
       <span className="text-foreground">
