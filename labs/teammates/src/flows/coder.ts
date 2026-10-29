@@ -10,8 +10,9 @@
  *
  * Where a run works comes from the host's workspace, whose source is
  * `projectWorkspace()`: the project of the conversation that filed the task.
- * A task filed from a conversation with no project is refused `no-project`
- * before any file exists, and the task ends with that reason.
+ * A task filed for it from a conversation with no project is refused at
+ * filing (`no_project`, `needsProject`), so no task or run exists; the run's
+ * own `no-project` refusal stays the backstop.
  *
  * It hears worker messages only in its tasks' sessions, so nobody messages it
  * by name, and its door answers a user's line with where to go instead: in
@@ -147,6 +148,7 @@ export function coderFlow(options: CoderFlowOptions) {
         },
       } as never);
     },
-    { roles: ["contributor"] },
+    // Its tasks work in a project's files: one filed with no project is refused at filing (ER-8).
+    { roles: ["contributor"], needsProject: true },
   );
 }

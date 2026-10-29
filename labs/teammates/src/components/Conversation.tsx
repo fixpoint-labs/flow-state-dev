@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import type { LabAdapter, NewProject, ProjectRow, WorkerRow } from "../adapter";
+import type { BoardTask, LabAdapter, NewProject, ProjectRow, WorkerRow } from "../adapter";
 import { pendingFor } from "../lib/talk";
 import { useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
@@ -56,8 +56,9 @@ export function Conversation({
   const pending = pendingFor(worker.id, talk, entries);
   const tasks = useWatch(adapter.watchTasks, sessionId) ?? [];
   const workProject = useWatch(adapter.watchWorkProject, worker.id);
-  // A job refused for want of a project waits on the pick, from its card or the header.
-  const waiting = !workProject && tasks.some((t) => t.status === "needs-project");
+  // A job refused for want of a project waits on the pick, from its card or the header. Filing refuses it
+  // before a task exists; a run refused at its start is the backstop.
+  const waiting = !workProject && (entries.some((e) => e.kind === "needs-project") || tasks.some((t) => t.status === "needs-project"));
   // The pick is stored on the worker, then said to it as your line, so it files the job again. The line
   // doesn't name the project: the job is filed in the stored one, never in one the worker names.
   const pick = async (project: string) => {
@@ -81,9 +82,8 @@ export function Conversation({
     end.current?.scrollIntoView?.({ block: "end" });
   }, [entries.length, running, pending.length, sessionId]);
 
-  // A card shows once the board's row has arrived.
-  const taskTile = (taskId: string) => {
-    const task = tasks.find((t) => t.id === taskId);
+  // A card shows once the board's row has arrived, or at once for a filing refused for want of a project.
+  const taskTile = (task: BoardTask | undefined) => {
     if (!task) return null;
     return (
       <TaskCard
@@ -179,7 +179,9 @@ export function Conversation({
               ) : null}
               <div className={cn(i < markAt && "opacity-60")} data-in-window={markAt < 0 || i >= markAt ? "true" : "false"}>
                 {entry.kind === "task" ? (
-                  taskTile(entry.taskId)
+                  taskTile(tasks.find((t) => t.id === entry.taskId))
+                ) : entry.kind === "needs-project" ? (
+                  taskTile({ id: entry.id, to: entry.to, title: entry.title, status: "needs-project" })
                 ) : (
                   <Entry
                     entry={entry}

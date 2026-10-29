@@ -33,7 +33,9 @@ lead for a code change and lead files a task for coder, which runs it through Cl
 in lead's project. A card in lead's conversation shows the task and opens to its run, and the result
 lands as a line from coder.
 
-Talking to a worker never needs a project; a job that needs files does. lead lists your projects
+Talking to a worker never needs a project; a job that needs files does. A task for coder filed
+from a conversation with no project is refused before it exists, and a card in lead's conversation
+asks you for one; pick it and lead files the task again. lead lists your projects
 when it files one: with one, it works in it; with several, it asks which; with none, or when you name
 a folder no project has, it creates one with that folder as its repository, once you approve it on a card in lead's
 conversation.
@@ -110,7 +112,7 @@ names the package call it makes.
 | Making a project, from the page and from lead | the projects flow's `createProject`; lead's `projectTools` and `setWorkProjectTool` |
 | Approving the repository lead names for a project | the `user_approval` stop of lead's tool, answered with the request's `answer` |
 | Hiring, changing and firing your own teammates | the workforce client's `hire`, `edit` and `fire`, on the roster flow |
-| Task cards, the refusal for want of a project | the conversation board's rows, and `projectWorkspace()`'s `no-project` refusal |
+| Task cards, the refusal for want of a project | the conversation board's rows; `createTask`'s `no_project` refusal, since coder's flow says it needs a project (`needsProject`); and `projectWorkspace()`'s `no-project` refusal, the backstop |
 | coder's runs | the task row's `run` link, read as the run session's items |
 | The divider and its *summarized* label | the last request's `historyStart`, and the session's `historySummary` resource |
 
@@ -133,8 +135,8 @@ and on a flow over 200 lines; `--wired` also fails on any fixture.
 <!-- inventory:start -->
 | Kind | Files | Lines |
 |---|---:|---:|
-| Configuration | 16 | 655 |
-| React UI | 24 | 2269 |
-| Small flows | 1 | 152 |
-| Checks (not app code) | 9 | 1097 |
+| Configuration | 16 | 657 |
+| React UI | 24 | 2280 |
+| Small flows | 1 | 154 |
+| Checks (not app code) | 9 | 1122 |
 <!-- inventory:end -->

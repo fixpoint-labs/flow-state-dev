@@ -88,7 +88,8 @@ export async function runProjectOf(ctx: LooseBlockContext): Promise<RunProject |
   return refused(
     "no-project",
     "this run's session works for no workstream or project, and its task names none, so its coding runs have " +
-      'nowhere to keep their files. A task can name one as `input.project`: `{ "visibility": "shared", "id": "<project>" }`.'
+      "nowhere to keep their files. Set the project of the conversation that files it (listProjects, then " +
+      "setWorkProject), then file the task again."
   );
 }
 

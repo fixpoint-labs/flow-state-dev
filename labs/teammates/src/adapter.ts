@@ -126,6 +126,8 @@ export type ConversationEntry =
   | { kind: "received"; id: string; messageId: string; from: string; text: string; inReplyTo?: string }
   /** The worker filed a task; the card reads the board's row by its id. */
   | { kind: "task"; id: string; taskId: string }
+  /** A task the worker tried to file for `to` was refused for want of a project: no task exists, and the card asks for one. */
+  | { kind: "needs-project"; id: string; to: string; title: string }
   /** A task it filed ended, as a line under the name of the worker that ran it. */
   | { kind: "result"; id: string; taskId: string; from: string; text: string; failed?: boolean }
   /** A tool of the worker's waits for your yes, such as a project's repository; `resolution` once answered. */
@@ -214,6 +216,8 @@ const PROJECTS = "projects";
 const TASK_CHANGE = "task-change";
 /** The tool a worker files a task with. */
 const CREATE_TASK = "createTask";
+/** How a board's refusal of a filing with no project to work in starts (`needsProject` on the worker's flow). */
+const NO_PROJECT = "no_project:";
 /** Requests that are a worker answering: everything but the board's own passes and the project write. */
 const QUIET_ACTIONS = new Set(["dispatch", SET_WORK_PROJECT_ACTION]);
 /** The harness a run's items came from, by the block that emitted them. */
@@ -309,7 +313,7 @@ function boardRows(items: readonly Item[]): Map<string, Record<string, any>> {
   return rows;
 }
 
-/** A board row as a task card. A run refused `no-project` is one that waits for a project. */
+/** A board row as a task card. A run refused `no-project`, the filing check's backstop, is one that waits for a project. */
 function toBoardTask(row: Record<string, any>): BoardTask {
   const filedIn = row.metadata?.filedInProject;
   const project = typeof filedIn === "string" ? filedIn.slice(filedIn.indexOf("/") + 1) : undefined;
@@ -360,6 +364,9 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>):
       }
     } else if (item.type === "tool_output" && item.toolCall?.name === CREATE_TASK && item.output?.ok === true) {
       entries.push({ kind: "task", id: item.id, taskId: item.output.taskId });
+    } else if (item.type === "tool_output" && item.toolCall?.name === CREATE_TASK && String(item.output?.error ?? "").startsWith(NO_PROJECT)) {
+      const args = parseArgs(item);
+      entries.push({ kind: "needs-project", id: item.id, to: String(args.assignee ?? ""), title: String(args.title ?? args.goal ?? "a task") });
     } else if (item.type === "suspension" && item.reason === "user_approval") {
       entries.push({ kind: "approval", id: item.id, requestId: item.requestId, suspensionId: item.suspensionId, text: item.message });
     } else if (item.type === "suspension_resume") {

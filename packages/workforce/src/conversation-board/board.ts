@@ -196,6 +196,12 @@ export interface ConversationBoardOptions {
   /** The most tasks under one top task, read on every filing. Omitted, {@link DEFAULT_TASK_CHAIN_LIMIT}. */
   chainLimit?: () => number | undefined;
   /**
+   * Whether a delegate's flow works in a project's files (FIX-2333): a task
+   * for it filed with no project to work in is refused `no_project` before
+   * anything is reserved or written. Omitted, no flow needs one.
+   */
+  needsProject?: (flowKind: string) => boolean;
+  /**
    * How a session that routes messages files a routed task from its model's
    * turn (FIX-2083): on a turn routing one, a filing whose result goes to the
    * conversation is handed here, which attaches the message and files it.
@@ -1128,6 +1134,30 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       }
       return { ...init, assignee, targetSessionId: resolved.sessionId };
     };
+    /**
+     * A task for a delegate whose flow works in a project's files, filed with
+     * no project to work in, is refused here, before anything is reserved or
+     * written (FIX-2333), so the app can ask for a project before a task
+     * exists. A project is the filer's workstream, or a target's; the one the
+     * row would be stamped with (a follow-up's root's); or one the task
+     * names. The run's own `no-project` check stays the backstop.
+     */
+    const assertProjectFor = async (init: TaskInit): Promise<void> => {
+      if (options.needsProject === undefined || init.target !== undefined) return;
+      const assignee = init.assignee ?? (await soleDelegate());
+      const flow = assignee === undefined ? undefined : (await reach(ctx)).available.get(assignee);
+      if (flow === undefined || !options.needsProject(flow)) return;
+      if (filingWorkstreamOf(ctx.session.state) !== undefined) return;
+      const root = init.followUpOf === undefined ? undefined : ref.get(init.followUpOf);
+      if ((await filedProjectFor(ctx, root)).stamp !== null) return;
+      if (projectAddressSchema.safeParse((init.input as { project?: unknown } | null | undefined)?.project).success) return;
+      throw new TaskWriteRefusedError(
+        "no_project",
+        `"${assignee}" works in a project's files, and this conversation has no project for it to work in. Nothing was filed. ` +
+          "Set the conversation's project first: call listProjects, then setWorkProject with the one to work in " +
+          "(ask the user which when there are several, or create one when there is none), then file the task again."
+      );
+    };
     /** The conversation's only task-taking delegate, which a row filed with no assignee goes to; none with none or several. */
     const soleDelegate = async (): Promise<string | undefined> => {
       return soleTaskDelegate(await options.delegates(ctx));
@@ -1209,6 +1239,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // One at a time: a batch on such a turn files plain tasks.
       if (init.resultTo === "conversation" && options.routes?.routing(ctx) === true) return options.routes.file(ctx, init);
       const targeted = await withTarget(init);
+      await assertProjectFor(targeted);
       await refuseUnderCancelledTask();
       return fileReserved(targeted, await reserveFiling(ctx, ref, partition, targeted, true));
     };
@@ -1334,6 +1365,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         for (const init of ordered) checkFiling(init, filedWith);
         const batch: Array<TaskInit & { id: string }> = [];
         for (const init of ordered) batch.push({ ...(await withTarget(init)), id: init.id });
+        for (const init of batch) await assertProjectFor(init);
         // As stored now, so one another request ended is refused before reserveFiling (FIX-2114).
         // A backing with no `refresh` must serve `get` committed across requests.
         const filed = new Set(batch.map((init) => init.id));

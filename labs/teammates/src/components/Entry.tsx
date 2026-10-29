@@ -65,7 +65,8 @@ export function Entry({
         </section>
       );
     case "task":
-      // Drawn by the conversation, from the board's row.
+    case "needs-project":
+      // Drawn by the conversation as a task card.
       return null;
     case "approval":
       return <ApprovalCard workerName={workerName} text={entry.text} resolution={entry.resolution} onAnswer={onAnswer} />;

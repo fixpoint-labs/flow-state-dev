@@ -12,7 +12,9 @@
  * 3. The project the task names in `input.project`, by visibility and id,
  *    read off the row the run holds, with membership checked against the
  *    run's own user, never anything in the task.
- * 4. With none of these, `no-project`, saying the task can name one.
+ * 4. With none of these, `no-project`, saying to set the conversation's
+ *    project and file again. A flow that needs a project refuses such a task
+ *    at filing first (FIX-2333); this is the backstop.
  *
  * A task filed from a conversation with a project names that project. Each
  * delegate's turn asks the source the way a coding run's would, and keeps
@@ -115,7 +117,7 @@ const standardWorkers: WorkerManifest[] = [
 ];
 
 /** Boot the host. `checkouts` is handed to `projectWorkspace()`, the source every delegate's turn asks. */
-async function boot(options: { checkouts?: readonly ProjectCheckout[] } = {}) {
+async function boot(options: { checkouts?: readonly ProjectCheckout[]; needsProject?: boolean } = {}) {
   const asked: Asked[] = [];
   const source = options.checkouts === undefined ? projectWorkspace() : projectWorkspace({ checkouts: options.checkouts });
   const projects = defineProjectBlocks();
@@ -130,7 +132,7 @@ async function boot(options: { checkouts?: readonly ProjectCheckout[] } = {}) {
     }),
     flows: (installation) => ({
       filer: { flow: filerFlow(installation), roles: ["manager"] },
-      taker: { roles: ["contributor"], flow: takerFlow(installation, asked, source) },
+      taker: { roles: ["contributor"], flow: takerFlow(installation, asked, source), needsProject: options.needsProject === true },
       [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: "typesafe-ai/jev" })
     }),
     models: { generators: { "coordinator-judgment": judgment } }
@@ -167,7 +169,7 @@ async function boot(options: { checkouts?: readonly ProjectCheckout[] } = {}) {
     expect(asked).toHaveLength(1);
     return asked[0]!;
   };
-  return { ...h, asked, judgment, createProject, projectConversation, plainConversation, workstreamConversation, file };
+  return { ...h, asked, judgment, settled, createProject, projectConversation, plainConversation, workstreamConversation, file };
 }
 
 const storefront = { visibility: "shared" as const, id: "storefront" };
@@ -253,11 +255,13 @@ describe("projectWorkspace for a task a conversation filed", () => {
     expect((run.answer as { message: string }).message).toContain('"nope"');
   });
 
-  it("refuses a task that names no project, from a conversation with none, saying the task can name one (BR-8)", async () => {
+  it("refuses a task that names no project, from a conversation with none, saying to set the conversation's project (BR-8)", async () => {
     const h = await boot();
     const run = await h.file("alice", await h.plainConversation("alice"));
     expect(run.answer).toMatchObject({ kind: "refused", reason: "no-project" });
-    expect((run.answer as { message: string }).message).toContain("input.project");
+    // A filer told never to name a project in a task can act on it within its rules (FIX-2333).
+    expect((run.answer as { message: string }).message).toContain("setWorkProject");
+    expect((run.answer as { message: string }).message).not.toContain("input.project");
   });
 
   it("works in the project conversation's project whatever project the task names, and the row names that one (BR-9)", async () => {
@@ -306,6 +310,48 @@ describe("projectWorkspace for a task a conversation filed", () => {
     const bare = await h.file("alice", await h.plainConversation("alice"), { input: { project: "storefront" } });
     expect(bare.answer).toMatchObject({ kind: "refused", reason: "no-project" });
     expect((bare.answer as { message: string }).message).toMatch(/visibility and (its )?id/);
+  });
+});
+
+// FIX-2333: a job that needs a project is refused when it is filed with none,
+// before a row or a run exists, so the app can ask for a project first (the
+// epic's ER-8). The run's own `no-project` stays the backstop.
+describe("a task for a flow that needs a project", () => {
+  /** File a task for the taker and settle: what the filing answered, and the rows on the filer's board. */
+  const fileFrom = async (h: Awaited<ReturnType<typeof boot>>, session: string, input: Record<string, unknown> = {}) => {
+    const filed = (await h.ok("alice", COORDINATOR_FLOW, session, "createTask_tasks", { goal: "Fix the typo", assignee: "eng.taker", ...input })) as any;
+    await h.settled();
+    const listed = (await h.ok("alice", COORDINATOR_FLOW, session, "listTasks_tasks", {})) as any;
+    return { filed, rows: (listed.tasks ?? listed) as unknown[] };
+  };
+
+  it("is refused at filing from a conversation with no project: no row, no run, and the refusal says how to settle one", async () => {
+    const h = await boot({ needsProject: true });
+    const { filed, rows } = await fileFrom(h, await h.plainConversation("alice"));
+    expect(filed).toMatchObject({ ok: false });
+    expect(filed.error).toMatch(/^no_project: /);
+    // It points at what the filer can do within its own rules, never at naming a project in the task.
+    expect(filed.error).toContain("setWorkProject");
+    expect(filed.error).toContain("listProjects");
+    expect(filed.error).not.toContain("input.project");
+    expect(rows).toEqual([]);
+    expect(h.asked).toEqual([]);
+  });
+
+  it("files and runs in the conversation's project once it has one", async () => {
+    const h = await boot({ needsProject: true });
+    await h.createProject("alice", { id: "storefront", title: "Storefront", repository: STOREFRONT_REPO });
+    const { filed } = await fileFrom(h, await h.projectConversation("alice", storefront));
+    expect(filed).toMatchObject({ ok: true });
+    expect(h.asked.map((run) => run.answer)).toEqual([{ kind: "repo", repo: STOREFRONT_REPO, projectId: "storefront" }]);
+  });
+
+  it("files a task that names a project from a conversation with none", async () => {
+    const h = await boot({ needsProject: true });
+    await h.createProject("alice", { id: "storefront", title: "Storefront", repository: STOREFRONT_REPO });
+    const { filed } = await fileFrom(h, await h.plainConversation("alice"), { input: { project: storefront } });
+    expect(filed).toMatchObject({ ok: true });
+    expect(h.asked.map((run) => run.answer)).toEqual([{ kind: "repo", repo: STOREFRONT_REPO, projectId: "storefront" }]);
   });
 });
 

@@ -428,7 +428,7 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     expect(failed[0]!.text).toContain(boom);
   });
 
-  it("refuses a task that names no project after one attempt, without running, and says it can name one", async () => {
+  it("refuses a task that names no project after one attempt, without running, and says to set the conversation's project", async () => {
     const stub = readsMarker();
     const { lab } = await openCoderLab(scriptedCoder([fileForCoder("look at our repo")]), stub);
     const { id, task, taskId } = await fileAndSettle(lab);
@@ -437,7 +437,8 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     expect(stub.runs).toHaveLength(0);
     const failed = (await coderLines(lab, id, taskId)).filter((m) => m.text.includes("failed for good"));
     expect(failed).toHaveLength(1);
-    expect(failed[0]!.text).toContain("input.project");
+    expect(failed[0]!.text).toContain("setWorkProject");
+    expect(failed[0]!.text).not.toContain("input.project");
   });
 
   it("refuses a project named by its id alone, saying a project is named by its visibility and id", async () => {

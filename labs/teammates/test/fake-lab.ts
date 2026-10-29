@@ -140,14 +140,17 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     notify();
   };
 
-  /** `createTask` for coder: a card in the filer's conversation. The run gets the filer's project, or is refused before it starts. */
+  /**
+   * `createTask` for coder: a card in the filer's conversation. The run gets the filer's project; with
+   * none, the filing is refused (`no_project`), so no task exists and the card asks for one.
+   */
   const fileTask = (w: FixtureWorker, title: string): Step[1] => () => {
     const project = workProjects.get(w.row.id);
-    const task: FixtureTask = { id: nextId("t"), to: CODER, title, status: project ? "running" : "needs-project", project, sessionId: w.sessionId };
-    if (project) task.runSessionId = `run:${task.id}`;
+    if (!project) return push(w, { kind: "needs-project", id: nextId("k"), to: CODER, title });
+    const task: FixtureTask = { id: nextId("t"), to: CODER, title, status: "running", project, sessionId: w.sessionId };
+    task.runSessionId = `run:${task.id}`;
     tasks = [...tasks, task];
     push(w, { kind: "task", id: nextId("k"), taskId: task.id });
-    if (!project) return;
     const result = "Fixed the typo in README.md, line 1.";
     let at = 0;
     for (const [delay, run] of [
@@ -188,7 +191,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       return [[800, say(w, "Handing it to coder.")], [400, fileTask(w, "Fix the typo in the README's first line")]];
     }
     const project = workProjects.get(w.row.id);
-    const refused = tasks.find((t) => t.sessionId === w.sessionId && t.status === "needs-project" && !refiled.has(t.id));
+    const refused = w.entries.find((e): e is Extract<ConversationEntry, { kind: "needs-project" }> => e.kind === "needs-project" && !refiled.has(e.id));
     if (w.row.id === LEAD && refused && project) {
       refiled.add(refused.id);
       return [[600, say(w, `Filing it again, in ${project}.`)], [300, fileTask(w, refused.title)]];

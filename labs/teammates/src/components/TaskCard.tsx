@@ -6,9 +6,10 @@ import { NewProjectForm } from "./NewProjectForm";
 
 /**
  * A task a conversation filed for a worker that takes tasks: one line with
- * what it is and where it runs, opening to the run, read only. A run refused
- * for want of a project asks for one on the card; picking it is the only
- * thing that starts a run. With no project to pick, the card makes one.
+ * what it is and where it runs, opening to the run, read only. A filing
+ * refused for want of a project (no task exists yet), or a run refused at its
+ * start, asks for one on the card; picking it is the only thing that starts a
+ * run. With no project to pick, the card makes one.
  */
 export function TaskCard({
   adapter,

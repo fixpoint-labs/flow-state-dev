@@ -643,7 +643,7 @@ The run is refused, before any file is read, when:
 |---|---|
 | `other-project` | The task names a project other than the one its conversation belongs to, which a task filed through the conversation's own task tools never does. The refusal names both. |
 | `no-project` | The task names a project by its id alone. A private and a shared project can share an id, so a project is named by its visibility and id. |
-| `no-project` | None of the three steps finds a project. The message says the task can name one in `input.project`. |
+| `no-project` | None of the three steps finds a project. The message says to set the project of the conversation that files the task, then file it again. |
 | `not-a-member` | The user the run belongs to isn't one of the project's members. |
 | `not-the-owner` | The run is in a workstream whose owner is someone else. |
 | `no-such-workstream`, `no-such-project` | What the task or its session names is gone. |
@@ -657,6 +657,18 @@ A coordinator filing for a coding worker from a conversation with no project nam
 ```
 
 Put `projectWorkspaceCapability` on the harness manager's `uses`, as in the example above.
+
+#### Asking for a project before a task exists
+
+A refused run means the task was already filed, and the user finds out late. Register the coding worker's flow with `needsProject: true` and the check moves to filing:
+
+```ts
+createWorkerInstallation({
+  workerFlows: { coder: workerFlow(buildCoderFlow, { roles: ["contributor"], needsProject: true }) },
+});
+```
+
+A task for one of that flow's workers is then refused when it is filed with nowhere to work: no workstream, no project on the conversation, and none named in `input.project`. Nothing is filed and nothing runs. The filer's `createTask` answers `{ ok: false, error: "no_project: …" }`, and the message tells it to set the conversation's project (`listProjects`, then `setWorkProject`) and file again. An app can watch for that answer and ask the user for a project right there. The run's own `no-project` refusal still catches anything filed some other way.
 
 ### Setting the project a conversation works in
 
