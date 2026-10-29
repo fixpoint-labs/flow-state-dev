@@ -12,7 +12,7 @@
 import type { DurabilityProvider } from "../durability/types";
 import { parkedInterruptedIds } from "../durability/stop-suspended";
 import { PAST_TURN_STATUSES, retriedIds } from "../execution/past-turns";
-import type { RequestRecord, RequestStore } from "../stores/types";
+import type { RequestRecord, RequestStore, WakeStore } from "../stores/types";
 import { compareTurnsOldestFirst } from "./history";
 import type { sessionRequestScope } from "./session-request-scope";
 
@@ -34,6 +34,8 @@ export type SettledTurnsInputs = {
   openTurns?: readonly Pick<RequestRecord, "metadata">[];
   /** Where parked gates are read. Without one, nothing is treated as parked. */
   durability?: Pick<DurabilityProvider, "listSuspended" | "loadSuspension">;
+  /** Where a park a turn owes is read (FIX-2269): a turn that owes one is parked. */
+  wakes?: WakeStore;
   /**
    * Called when the parked gates could not be read. The read goes on with
    * nothing treated as parked: a view that may show a parked turn, never a
@@ -84,7 +86,7 @@ export async function readSettledTurns(inputs: SettledTurnsInputs): Promise<Sett
   const retried = retriedIds([...window, ...(inputs.openTurns ?? [])], inputs.runningMetadata);
   let parked = new Set<string>();
   try {
-    parked = await parkedInterruptedIds(inputs.durability, window);
+    parked = await parkedInterruptedIds(inputs.durability, window, inputs.wakes);
   } catch (error) {
     inputs.onGateReadError(error);
   }

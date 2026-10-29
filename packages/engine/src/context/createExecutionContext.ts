@@ -809,6 +809,7 @@ export async function createExecutionContext<
       ...(options.effectiveRuntimeConfig?.durabilityProvider !== undefined
         ? { durability: options.effectiveRuntimeConfig.durabilityProvider }
         : {}),
+      ...(stores.wakes !== undefined ? { wakes: stores.wakes } : {}),
       // A gate read that fails costs this turn a view that may show a parked
       // turn, never the turn itself: nothing is treated as parked, and it is logged.
       onGateReadError: (error) =>

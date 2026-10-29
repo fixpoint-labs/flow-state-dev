@@ -99,6 +99,7 @@ import { readLiveness } from "./liveness-read";
 import type { WaitResumeOperation } from "./wait-resume-operation";
 import { createRequestWakes } from "../durability/request-wakes";
 import { createRequestWaits, type WaiterOf } from "../durability/wait-chain";
+import { createOwingPark } from "../durability/park-owed";
 import { createRequestSessions } from "./request-sessions";
 import type { DurabilityProvider } from "../durability/types";
 import type { WakeStore } from "../stores/types";
@@ -185,7 +186,7 @@ export type RequestHostInputs = {
     /** The request that dispatched this one and waits on it, read off its trusted dispatch stamp. */
     waitedBy?: WaiterOf;
     /** A request's record with its item log, for `waits.ended`. */
-    readRequest: (requestId: string) => Promise<Pick<RequestRecord, "id" | "status" | "sessionId" | "items"> | undefined>;
+    readRequest: (requestId: string) => Promise<Pick<RequestRecord, "id" | "status" | "sessionId" | "tenantId" | "items"> | undefined>;
   };
   /**
    * The running request's trusted dispatch stamp, already read through
@@ -846,7 +847,17 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       own: inputs.waits.own,
       ...(inputs.waits.waitedBy !== undefined ? { waitedBy: inputs.waits.waitedBy } : {}),
       sessionId: identity.sessionId,
-      readRequest: inputs.waits.readRequest
+      readRequest: inputs.waits.readRequest,
+      wakes: inputs.wakes.store,
+      // A wait that starts its own work owes its park as a wake (FIX-2269).
+      owingPark: createOwingPark({
+        store: inputs.wakes.store,
+        requestId: inputs.waits.requestId,
+        identity: { userId: identity.userId, tenantId: identity.tenantId, orgId: identity.orgId, sessionId: identity.sessionId },
+        flowId: flow.id,
+        fenceMs: inputs.wakes.fenceMs,
+        now: nowMs
+      })
     });
   }
 
