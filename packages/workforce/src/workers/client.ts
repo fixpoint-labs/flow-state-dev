@@ -67,6 +67,34 @@ export type WorkerSessionEntry = {
   isDefault: boolean;
 };
 
+/**
+ * A new worker of the user's own, as {@link WorkforceClient.hire} takes it:
+ * the roster flow's `hire` action's input.
+ */
+export type HireWorkerInput = {
+  /** The new worker's id: one path segment, not a standard worker's. */
+  id: string;
+  /** The worker flow it runs on. Omitted, `agent`. */
+  flow?: string;
+  description?: string;
+  instructions?: string;
+  /** Skills by name. */
+  skills?: string[];
+  /** The keys a `WORKER.md` frontmatter accepts other than `flow` and `description`. */
+  settings?: Record<string, unknown>;
+};
+
+/** A change to one of the user's own workers, as {@link WorkforceClient.edit} takes it: each field given replaces the stored one. */
+export type EditWorkerInput = {
+  id: string;
+  flow?: string;
+  description?: string | null;
+  instructions?: string | null;
+  skills?: string[];
+  /** Replaces the stored settings whole. */
+  settings?: Record<string, unknown>;
+};
+
 /** A user's roster, and their sessions with each worker. */
 export interface WorkforceClient {
   /**
@@ -133,6 +161,31 @@ export interface WorkforceClient {
     project: { visibility: "shared" | "private"; id: string },
     options?: { sessionId?: string }
   ): Promise<SetWorkProjectOutput>;
+  /**
+   * Hire a worker of the user's own, through the roster flow's `hire`. It is
+   * on {@link roster} at once, and its first turn runs on its row: nothing is
+   * registered and nothing restarts. Rejects, writing nothing, for a standard
+   * worker's id or one already on the roster, a flow that isn't a worker
+   * flow, or settings that flow refuses.
+   */
+  hire(input: HireWorkerInput): Promise<{ id: string; flow: string }>;
+  /**
+   * Copy a standard worker, or one of the user's own, to a new worker of the
+   * user's own under `id`, through the roster flow's `fork`.
+   */
+  fork(from: string, id: string): Promise<{ id: string; flow: string }>;
+  /**
+   * Change one of the user's own workers, through the roster flow's `edit`.
+   * The worker's next turn reads the change; a turn already running keeps
+   * what it started with. Rejects for a standard worker: fork it first.
+   */
+  edit(input: EditWorkerInput): Promise<{ id: string; flow: string }>;
+  /**
+   * Fire one of the user's own workers, through the roster flow's `fire`. It
+   * leaves the roster; its conversations stay readable, and a new turn there
+   * is refused. Rejects for a standard worker.
+   */
+  fire(id: string): Promise<{ id: string }>;
 }
 
 function stateOf(session: SessionSummary): Record<string, unknown> {
@@ -399,7 +452,11 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
       const sessionId = setOptions?.sessionId ?? (await client.ensureWorkerSession({ worker })).id;
       const flow = flowOf(await readRoster((await roster()).id), worker);
       return (await runIn(flow, sessionId, SET_WORK_PROJECT_ACTION, { project, worker })) as SetWorkProjectOutput;
-    }
+    },
+    hire: async (input) => (await runIn(ROSTER_FLOW, (await roster()).id, "hire", input)) as { id: string; flow: string },
+    fork: async (from, id) => (await runIn(ROSTER_FLOW, (await roster()).id, "fork", { from, id })) as { id: string; flow: string },
+    edit: async (input) => (await runIn(ROSTER_FLOW, (await roster()).id, "edit", input)) as { id: string; flow: string },
+    fire: async (id) => (await runIn(ROSTER_FLOW, (await roster()).id, "fire", { id })) as { id: string }
   };
   return client;
 }

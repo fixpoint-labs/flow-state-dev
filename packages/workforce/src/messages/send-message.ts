@@ -15,8 +15,9 @@
  *   hears only in its tasks' sessions (the coder) is refused here,
  *   `task_sessions_only`;
  * - an answer (`inReplyTo`) names a message the recipient sent this worker;
- * - a call lands where a turn runs on it: one to a flow whose entry runs
- *   nothing is refused, `no_reply` (FIX-2300);
+ * - a call, or a message that asks for a reply (FIX-2310), lands where a
+ *   turn runs on it: one to a flow whose entry runs nothing is refused,
+ *   `no_reply` (FIX-2300);
  * - the budget: one per message a user types (`hop.ts`), at most `perTurn`
  *   per request.
  *
@@ -192,7 +193,7 @@ async function payPlace(ctx: BlockContext, installation: WorkerInstallation, giv
   const budgetRefusal = (hop: number): Place => ({
     ok: false,
     error:
-      `budget: this would be message ${hop} since the user's last line, and the budget is ${limits.hopLimit}. ` +
+      `budget: this would be message ${hop} since the user's last line, and the budget is ${limits.budget}. ` +
       "Nothing was sent. Stop passing messages on, and say that you stopped; the next line from the user lets the workers go on."
   });
   /** The place a send takes in a chain that already holds `sent`. */
@@ -219,7 +220,7 @@ async function payPlace(ctx: BlockContext, installation: WorkerInstallation, giv
   const id = given ?? newMessageId();
   const chainRow = await chains.getOrCreate(chain, { sent: [] });
   await chainRow.updateState((row) =>
-    row.sent.includes(id) || placeAfter(row.sent.length) > limits.hopLimit ? row : { ...row, sent: [...row.sent, id] }
+    row.sent.includes(id) || placeAfter(row.sent.length) > limits.budget ? row : { ...row, sent: [...row.sent, id] }
   );
   const place = chainRow.state.sent.indexOf(id);
   if (place < 0) {
@@ -259,8 +260,12 @@ function exemptPlace(ctx: BlockContext, given: string | undefined): Place {
  *   (FIX-2239): the row is marked a call, and the dispatch says the sender
  *   waits on it. Set by the call's own code, never by a model.
  * @param options.exempt The server's own message (a task's midway question,
- *   FIX-2241): it costs no budget and no spent one refuses it. Never a
- *   model's input.
+ *   FIX-2241, or the framework's answer to a reply-requested message, FIX-2310): it costs no
+ *   budget and no spent one refuses it. Never a model's input.
+ * @param options.replyRequested The sender asks for a reply and goes on
+ *   (FIX-2310): the row says so, and the recipient's turn owes one answer.
+ * @param options.noAnswer The framework's "no answer" to the message this one
+ *   answers (FIX-2310): the row says so, for an app to draw.
  */
 export async function sendMessage(
   ctx: BlockContext,
@@ -268,7 +273,13 @@ export async function sendMessage(
   flowKind: string,
   input: SendMessageInput,
   from: string,
-  options: { readonly id?: string; readonly call?: { readonly deadlineAt: number }; readonly exempt?: true } = {}
+  options: {
+    readonly id?: string;
+    readonly call?: { readonly deadlineAt: number };
+    readonly exempt?: true;
+    readonly replyRequested?: true;
+    readonly noAnswer?: true;
+  } = {}
 ): Promise<SendOutcome> {
   const refuse = (error: string): SendOutcome => ({ ok: false, error });
   const state = (ctx.session.state ?? {}) as Record<string, unknown>;
@@ -295,9 +306,9 @@ export async function sendMessage(
     // that dispatch starts, and a resend from the pass leaves it none to follow.
     const resends = carriesPass(installation, flowKind);
     if (written.status === "unconfirmed" && written.takenBy === undefined && (written.call === true || !resends)) {
-      return dispatchOnce(ctx, writtenRef, written, from, resends);
+      return markAnswer(ctx, written, await dispatchOnce(ctx, writtenRef, written, from, resends));
     }
-    return { ok: true, id: written.id };
+    return markAnswer(ctx, written, { ok: true, id: written.id });
   }
   const to = input.to;
   let recipient: RosterWorker;
@@ -332,10 +343,10 @@ export async function sendMessage(
     }
   }
 
-  // ---- a call needs a turn to answer it -----------------------------------
+  // ---- a call, or a reply request, needs a turn to answer it ---------------
   // The flow it lands on, which for an answer is the original sender's.
-  if (options.call !== undefined && runsMessageTurn(installation.workerFlows()[destination.flow]?.flow) === false) {
-    return refuse(`${noReplyError(recipient.id)} Nothing was sent.`);
+  if ((options.call !== undefined || options.replyRequested === true) && runsMessageTurn(installation.workerFlows()[destination.flow]?.flow) === false) {
+    return refuse(`${noReplyError(recipient.id, options.call !== undefined ? "wait" : "replyRequested")} Nothing was sent.`);
   }
 
   // ---- the budget ----------------------------------------------------------
@@ -363,11 +374,52 @@ export async function sendMessage(
     hop,
     chain,
     ...(options.call === undefined ? {} : { call: true as const, deadlineAt: options.call.deadlineAt }),
+    // A call's reply is its tool's result, so a call is never also reply-requested.
+    ...(options.replyRequested === true && options.call === undefined ? { replyRequested: true as const } : {}),
+    ...(options.noAnswer === true ? { noAnswer: true as const } : {}),
     status: "unconfirmed",
     at: Date.now()
   };
   const ref = await log.getOrCreate(id, row);
-  return dispatchOnce(ctx, ref, row, from, resends);
+  // An answer claims the message it answers before it goes out, so a crash
+  // after the dispatch can't leave room for a second answer; a refused one
+  // gives the claim back.
+  await claimAnswer(ctx, row);
+  const outcome = await dispatchOnce(ctx, ref, row, from, resends);
+  if (!outcome.ok) await releaseAnswer(ctx, row);
+  return outcome;
+}
+
+/**
+ * Record an answer on the message it answers, when that one asked for a reply
+ * (FIX-2310): `answeredBy`, written once, so the framework's answer at the
+ * turn's end, or the pass's, sends nothing more.
+ */
+async function claimAnswer(ctx: BlockContext, row: Pick<WorkerMessageRow, "id" | "inReplyTo">): Promise<void> {
+  if (row.inReplyTo === undefined) return;
+  const asked = await messageLogOf(ctx).getOptional(row.inReplyTo);
+  if (asked?.state.replyRequested === true && asked.state.answeredBy === undefined) {
+    await asked.updateState((current) => (current.answeredBy === undefined ? { ...current, answeredBy: row.id } : current));
+  }
+}
+
+/** Give back {@link claimAnswer}'s claim when `row`'s send was refused: a refused answer answers nothing. */
+async function releaseAnswer(ctx: BlockContext, row: Pick<WorkerMessageRow, "id" | "inReplyTo">): Promise<void> {
+  if (row.inReplyTo === undefined) return;
+  const asked = await messageLogOf(ctx).getOptional(row.inReplyTo);
+  if (asked?.state.answeredBy === row.id) {
+    await asked.updateState((current) => {
+      if (current.answeredBy !== row.id) return current;
+      const { answeredBy: _answeredBy, ...rest } = current;
+      return rest;
+    });
+  }
+}
+
+/** {@link claimAnswer} for a repeat of a send that went out: the first send's claim, if its process ended before it. */
+async function markAnswer(ctx: BlockContext, row: Pick<WorkerMessageRow, "id" | "inReplyTo">, outcome: SendOutcome): Promise<SendOutcome> {
+  if (outcome.ok) await claimAnswer(ctx, row);
+  return outcome;
 }
 
 /**

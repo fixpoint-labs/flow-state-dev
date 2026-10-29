@@ -1,9 +1,10 @@
-import { useEffect } from "react";
-import type { LabAdapter, WorkerRow } from "../adapter";
+import { useEffect, useState } from "react";
+import type { LabAdapter, NewTeammate, WorkerRow } from "../adapter";
 import { waitingOn } from "../lib/talk";
 import { useSeen } from "../lib/unread";
 import { age, useNow, useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
+import { HireForm } from "./TeammateForms";
 
 /** The entries that count toward unread: everything but your own lines. */
 const unreadable = (entries: { kind: string }[]) => entries.filter((e) => e.kind !== "user").length;
@@ -11,7 +12,8 @@ const unreadable = (entries: { kind: string }[]) => entries.filter((e) => e.kind
 /**
  * The left pane: one row per worker, never a list of sessions. Each row is the
  * worker's name, what it is doing, a dot while it answers, and how many new
- * entries its conversation has since you last looked.
+ * entries its conversation has since you last looked. At the foot, hire a
+ * teammate of your own.
  */
 export function WorkersList({
   adapter,
@@ -20,6 +22,7 @@ export function WorkersList({
   selected,
   nameOf,
   onSelect,
+  onHire,
 }: {
   adapter: LabAdapter;
   workers: WorkerRow[];
@@ -27,8 +30,10 @@ export function WorkersList({
   selected: string | undefined;
   nameOf: (id: string) => string;
   onSelect: (worker: string) => void;
+  onHire: (teammate: NewTeammate) => Promise<void>;
 }) {
   const [seen, markSeen] = useSeen();
+  const [hiring, setHiring] = useState(false);
   return (
     <nav aria-label="Workers" className="flex h-full min-h-0 flex-col bg-sidebar">
       <div className="px-4 pt-4 pb-2 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">Teammates</div>
@@ -48,7 +53,22 @@ export function WorkersList({
           </li>
         ))}
       </ul>
-      <div className="px-4 py-3 text-xs text-muted-foreground">One conversation per worker</div>
+      <div className="flex flex-col gap-2 px-4 py-3 text-xs text-muted-foreground">
+        {hiring ? (
+          <HireForm
+            onHire={async (teammate) => {
+              await onHire(teammate);
+              setHiring(false);
+            }}
+            onCancel={() => setHiring(false)}
+          />
+        ) : (
+          <button type="button" onClick={() => setHiring(true)} className="w-fit rounded-sm border border-border px-2 py-1 text-foreground hover:bg-accent">
+            Hire a teammate
+          </button>
+        )}
+        <span>One conversation per worker</span>
+      </div>
     </nav>
   );
 }

@@ -101,7 +101,7 @@ export function checkTaskEntry(concurrency: ConcurrencyConfig) {
 /**
  * Admit the running request for this session's task while it waits: first in
  * the entry's sequencer, `.tap(admitOwnTask(...))`. The entry's flow declares
- * the conversation ledger (the session kit's resources).
+ * the conversation ledger (the session factory's resources).
  *
  * @param answerCounts Whether the entry's turn answer can be the task's result (a woken turn's can; the check entry, which runs no turn, can't).
  * @param options.unlessAnotherTurnWaits Admit nothing while another request in the session waits on a step of its own plan (a steer's turn, FIX-2113).

@@ -8,7 +8,7 @@
 **Model:** n/a — model-free.
 **Run:** `pnpm tsx goals/vocabulary/one-word-per-thing/run.mts` (CI's Process guards run `node goals/vocabulary/one-word-per-thing/sweep.mjs` and the same with `--control`)
 **Output:** `run.mts` passes `--list`, so a local FAIL prints every open line; CI's step prints only the per-file summary. Both fail on the same lines.
-**Controls:** `--control` on `sweep.mjs`: the planted `parkOnAsk` must be reported.
+**Controls:** `--control` on `sweep.mjs`: the planted `parkOnAsk`, and FIX-2070's `messageWorker` and `replyTo` (FIX-2242 D2), must each be reported by its own rule.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

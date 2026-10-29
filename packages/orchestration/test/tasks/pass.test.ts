@@ -113,9 +113,9 @@ describe("a board's pass", () => {
   it("owes the next debt's due time when it started with no wake to move", async () => {
     const owed: Array<{ entry: string; dueAt: number }> = [];
     const ctx = session([], owed);
-    await settlePassWake(ctx as never, "runTaskBoard", undefined, 42_000);
-    expect(owed).toEqual([{ entry: "runTaskBoard", dueAt: 42_000 }]);
-    await settlePassWake(ctx as never, "runTaskBoard", undefined, undefined);
+    await settlePassWake(ctx as never, "dispatch", undefined, 42_000);
+    expect(owed).toEqual([{ entry: "dispatch", dueAt: 42_000 }]);
+    await settlePassWake(ctx as never, "dispatch", undefined, undefined);
     expect(owed).toHaveLength(1);
   });
 });

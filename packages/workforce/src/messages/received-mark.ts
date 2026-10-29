@@ -65,12 +65,13 @@ export function runsMessageTurn(flow: unknown): boolean | undefined {
 }
 
 /**
- * Why a call to `to` can't be answered (FIX-2300): its flow runs nothing on a
- * message. The send refuses with it before anything is written where it can
+ * Why a call to `to`, or a message asking it for a reply (FIX-2310), can't be
+ * answered (FIX-2300): its flow runs nothing on a message. `asked` names what
+ * to leave out. The send refuses with it before anything is written where it can
  * tell; the call answers it failed where it learns only once it lands.
  */
-export function noReplyError(to: string): string {
-  return `no_reply: "${to}" takes messages but runs nothing on them, so no reply comes back. Send without wait, or file it a task.`;
+export function noReplyError(to: string, asked: "wait" | "replyRequested" = "wait"): string {
+  return `no_reply: "${to}" takes messages but runs nothing on them, so no reply comes back. Send without ${asked}, or file it a task.`;
 }
 
 /**

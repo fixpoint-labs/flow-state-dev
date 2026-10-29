@@ -3333,3 +3333,48 @@ describe("claudeCodeAgent — the model, per run", () => {
     }
   });
 });
+
+describe("claudeCodeAgent — onActivity", () => {
+  const messages: SdkMessageLike[] = [
+    { type: "system", subtype: "init", session_id: "sess_new" },
+    {
+      type: "stream_event",
+      event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Tests pass;" } },
+    } as SdkMessageLike,
+    {
+      type: "assistant",
+      message: {
+        content: [
+          { type: "thinking", thinking: "private" },
+          { type: "text", text: "Tests pass; writing the changeset." },
+          { type: "tool_use", id: "toolu_1", name: "Bash", input: { command: "pnpm test" } },
+        ],
+      },
+    },
+    { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "toolu_1", content: "ok" }] } },
+    // A sub-agent launch is a tool call too, though the transcript shows it as a container.
+    { type: "assistant", message: { content: [{ type: "tool_use", id: "toolu_2", name: "Task", input: { description: "review" } }] } },
+    { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "toolu_2", content: "done" }] } },
+    RESULT_OK,
+  ];
+
+  // Partial messages are on by default, and then the translator hands text on only as deltas.
+  for (const includePartialMessages of [true, false]) {
+    it(`reports each completed message and started tool call, once each, with partial messages ${includePartialMessages ? "on" : "off"}`, async () => {
+      const seen: unknown[] = [];
+      const block = claudeCodeAgent({
+        resolveClaudeAgent: scriptedQuery(messages),
+        includePartialMessages,
+        onActivity: (activity) => seen.push(activity),
+      });
+      const { error } = await testBlock(block, { input: { prompt: "go" } });
+
+      expect(error).toBeNull();
+      expect(seen).toEqual([
+        { kind: "message", text: "Tests pass; writing the changeset." },
+        { kind: "tool", name: "Bash", arguments: JSON.stringify({ command: "pnpm test" }) },
+        { kind: "tool", name: "Task", arguments: JSON.stringify({ description: "review" }) },
+      ]);
+    });
+  }
+});

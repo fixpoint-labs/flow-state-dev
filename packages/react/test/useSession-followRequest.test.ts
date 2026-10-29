@@ -13,6 +13,24 @@
  *   - let a stop's cleanup close whatever stream is open when the stop's
  *     answer lands, and the "stop that lands late" case fails: the request
  *     followed meanwhile loses its stream.
+ *   - follow a request again from the start after its stream dropped, and
+ *     the "picks up after the last event" case fails: the server replays
+ *     events the view already applied.
+ *   - reset the finishing state on every attach, and the "still finishing"
+ *     case fails: the resumed stream skips the status that set it, so the
+ *     view blocks actions the request no longer blocks.
+ *   - keep the saved cursor across a session change, and the "after the
+ *     view left the session" case fails: the request resumes past the
+ *     status the cleared view no longer has.
+ *   - resume a request whose stream ended rather than dropped, and the
+ *     "after it ended" case fails: the stream starts past its own end and
+ *     never settles.
+ *   - follow a request the person stopped or dismissed, and the "stopped"
+ *     and "dismissed" cases fail: the view opens its stream again from the
+ *     start.
+ *   - keep an earlier stream's cursor when a stream starts from the
+ *     beginning, and the "dropped before its first event" case fails: the
+ *     next follow resumes past the earlier stream's end.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
@@ -104,6 +122,144 @@ describe("useSession.followRequest (FIX-2265)", () => {
 
     expect(first.closed).toBe(true);
     expect(connections.at(-1)!.url).toContain("/requests/req_line/stream");
+  });
+
+  it("followed again after its stream dropped, picks up after the last event the view had", async () => {
+    const { result } = renderHook(() => useSession("sess1", { flowKind: "demo" }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => result.current.followRequest("req_turn"));
+    const first = connections.at(-1)!;
+    const resumesAfter = (stream: (typeof connections)[number]) => (stream.callbacks as { startingAfter?: number }).startingAfter;
+    expect(resumesAfter(first)).toBeUndefined();
+    act(() => first.callbacks.onEvent?.({ stream: "request", requestId: "req_turn", sequence_number: 7, ts: 1000, type: "item.added" }));
+    act(() => first.callbacks.onError?.(new Error("dropped")));
+
+    // Replayed from the start, an increment or push the view already applied would apply twice.
+    act(() => result.current.followRequest("req_turn"));
+    expect(resumesAfter(connections.at(-1)!)).toBe(7);
+    // Another request still streams from its start.
+    act(() => result.current.followRequest("req_line"));
+    expect(resumesAfter(connections.at(-1)!)).toBeUndefined();
+  });
+
+  it("followed again while finishing, still lets actions through", async () => {
+    const { result } = renderHook(() => useSession("sess1", { flowKind: "demo" }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => result.current.followRequest("req_turn"));
+    const first = connections.at(-1)!;
+    act(() => first.callbacks.onEvent?.({ stream: "request", requestId: "req_turn", sequence_number: 4, ts: 1000, type: "item.added" }));
+    act(() =>
+      first.callbacks.onItemAdded?.({ type: "item.added", item: { id: "st1", type: "status", requestId: "req_turn", blocked: false, ts: 1000 } })
+    );
+    expect(result.current.canSendAction).toBe(true);
+    act(() => first.callbacks.onError?.(new Error("dropped")));
+
+    act(() => result.current.followRequest("req_turn"));
+    expect(result.current.isStreaming).toBe(true);
+    expect(result.current.canSendAction).toBe(true);
+  });
+
+  it("followed again after the view left the session and came back, streams from the start", async () => {
+    const { result, rerender } = renderHook(({ id }) => useSession(id, { flowKind: "demo" }), { initialProps: { id: "sess1" } });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => result.current.followRequest("req_turn"));
+    const first = connections.at(-1)!;
+    act(() => first.callbacks.onEvent?.({ stream: "request", requestId: "req_turn", sequence_number: 4, ts: 1000, type: "item.added" }));
+    rerender({ id: "sess2" });
+    rerender({ id: "sess1" });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // The session change cleared the view's request state, so the request replays it from the start.
+    act(() => result.current.followRequest("req_turn"));
+    expect((connections.at(-1)!.callbacks as { startingAfter?: number }).startingAfter).toBeUndefined();
+  });
+
+  it("followed again after it ended, streams from the start", async () => {
+    const { result } = renderHook(() => useSession("sess1", { flowKind: "demo" }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => result.current.followRequest("req_turn"));
+    const first = connections.at(-1)!;
+    act(() => first.callbacks.onEvent?.({ stream: "request", requestId: "req_turn", sequence_number: 9, ts: 1000, type: "request.completed" }));
+    act(() => first.callbacks.onRequestStatus?.({ stream: "request", requestId: "req_turn", sequence_number: 9, ts: 1000, type: "request.completed", status: "completed" }));
+
+    // Past its end there is nothing to stream, so the view would never settle.
+    act(() => result.current.followRequest("req_turn"));
+    expect((connections.at(-1)!.callbacks as { startingAfter?: number }).startingAfter).toBeUndefined();
+  });
+
+  it("followed again from the start and dropped before its first event, streams from the start", async () => {
+    const { result } = renderHook(() => useSession("sess1", { flowKind: "demo" }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => result.current.followRequest("req_turn"));
+    const first = connections.at(-1)!;
+    act(() => first.callbacks.onEvent?.({ stream: "request", requestId: "req_turn", sequence_number: 9, ts: 1000, type: "request.completed" }));
+    act(() => first.callbacks.onRequestStatus?.({ stream: "request", requestId: "req_turn", sequence_number: 9, ts: 1000, type: "request.completed", status: "completed" }));
+    act(() => result.current.followRequest("req_turn"));
+    act(() => connections.at(-1)!.callbacks.onError?.(new Error("dropped")));
+
+    // The first stream's end is not where this one dropped.
+    act(() => result.current.followRequest("req_turn"));
+    expect((connections.at(-1)!.callbacks as { startingAfter?: number }).startingAfter).toBeUndefined();
+  });
+
+  it("does not follow a request the person stopped", async () => {
+    const { result } = renderHook(() => useSession("sess1", { flowKind: "demo" }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => result.current.followRequest("req_turn"));
+    await act(async () => {
+      await result.current.abortRequest();
+    });
+    const opened = connections.length;
+
+    // The server may list it as running until its worker sees the stop.
+    let followed = true;
+    act(() => {
+      followed = result.current.followRequest("req_turn");
+    });
+    expect(followed).toBe(false);
+    expect(connections.length).toBe(opened);
+    expect(result.current.isStreaming).toBe(false);
+  });
+
+  it("does not follow a request the person dismissed", async () => {
+    const { result } = renderHook(() => useSession("sess1", { flowKind: "demo" }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => result.current.followRequest("req_turn"));
+    act(() => connections.at(-1)!.callbacks.onError?.(new Error("dropped")));
+    await act(async () => {
+      await result.current.dismissRequest();
+    });
+    const opened = connections.length;
+
+    let followed = true;
+    act(() => {
+      followed = result.current.followRequest("req_turn");
+    });
+    expect(followed).toBe(false);
+    expect(connections.length).toBe(opened);
   });
 
   it("makes the followed request the one a stop reaches", async () => {

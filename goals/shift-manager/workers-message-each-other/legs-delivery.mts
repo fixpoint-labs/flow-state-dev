@@ -35,13 +35,13 @@ export type SubLeg = (typeof SUB_LEGS)[number];
 /** Hired for 9:late-refusal and fired mid-leg, so Helper B stays on the roster for every other leg. */
 export const LATE_HELPER = "late-helper";
 /** The block name the pass's resend is dispatched from (`MESSAGE_RESEND_FROM`). */
-const RESEND_FROM = "worker-message-resend";
+export const RESEND_FROM = "worker-message-resend";
 const RECEIVED_ENTRY = "onMessageReceived";
 const ROSTER_FLOW = "workforce-roster";
 /** Every send here is a plain message: a call (FIX-2239) parks the herald's turn on the reply, which no sub-leg grades. */
 const NO_WAIT = "Send it as a plain message: don't wait for a reply.";
 /** How long a takeover from a crashed taker may take: the engine's stale-heartbeat window, then one backoff step (32 s). */
-const TAKEOVER_MS = 120_000;
+export const TAKEOVER_MS = 120_000;
 
 type SessionSummary = { id: string; flowKind: string };
 type Request = Record<string, any>;
@@ -63,14 +63,14 @@ export interface Servers {
 const fired = (servers: Servers, fault: FaultName, since: number): FaultLine[] => faultLines(servers.faultLog).filter((l) => l.fault === fault && l.at >= since);
 
 /** The `onMessageReceived` requests for message `id` in `sessionId`, oldest first. */
-async function requestsFor(who: Connected, sessionId: string, id: string): Promise<Request[]> {
+export async function requestsFor(who: Connected, sessionId: string, id: string): Promise<Request[]> {
   return (await who.routes.requests(sessionId))
     .filter((r) => (r.actionName ?? r.action) === RECEIVED_ENTRY && r.input?.messageId === id)
     .sort((a, b) => Number(a.createdAt ?? 0) - Number(b.createdAt ?? 0));
 }
 
 /** The block a request's dispatch stamp names as its sender, and the session it came from. */
-const senderOf = (r: Request | undefined) => ({
+export const senderOf = (r: Request | undefined) => ({
   block: r?.metadata?.dispatch?.from?.block as string | undefined,
   session: r?.metadata?.dispatch?.from?.sessionId as string | undefined,
 });
@@ -81,7 +81,7 @@ async function rowOf(who: Connected, id: string): Promise<MessageRow | undefined
 }
 
 /** What a reader of "took it" needs: the row, its received items, and the requests for it. */
-interface Took {
+export interface Took {
   ok: boolean;
   why: string;
   row: MessageRow | undefined;
@@ -90,7 +90,7 @@ interface Took {
 }
 
 /** Whether the recipient took message `id`, as the file header defines it. */
-async function took(who: Connected, id: string): Promise<Took> {
+export async function took(who: Connected, id: string): Promise<Took> {
   const row = await rowOf(who, id);
   if (row === undefined) return { ok: false, why: `no row for ${id}`, row, requests: [], delivering: undefined };
   const items = (await receivedIn(who, row.toSession)).filter((m) => m.id === id);
@@ -103,7 +103,7 @@ async function took(who: Connected, id: string): Promise<Took> {
 }
 
 /** Poll {@link took} until it holds, or the last reading after `timeoutMs`. */
-async function tookWithin(who: Connected, id: string, timeoutMs: number): Promise<Took> {
+export async function tookWithin(who: Connected, id: string, timeoutMs: number): Promise<Took> {
   const got = await until(async () => {
     const t = await took(who, id);
     return t.ok ? t : undefined;

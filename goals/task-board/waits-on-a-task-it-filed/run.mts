@@ -722,6 +722,9 @@ await runGoal(async (failures, tell) => {
       const before = ownCalls();
       await h.http.act("desk", cancelled, "updateTask_tasks", { id: cancelRow?.id, status: "cancelled" });
       await h.until(async () => (runRequest === undefined ? false : !["suspended", "in_progress"].includes((await h.status(runRequest)) ?? "")), 15_000);
+      // The cancel cascades to the piece; one already claimed is held on its gate,
+      // which nothing else opens, so open it before waiting for the host to go idle.
+      gate("c-cancel").open();
       await h.idle();
       const after = ownCalls();
       const ended = runRequest === undefined ? undefined : await h.runtime.stores.request.get(runRequest);
@@ -730,7 +733,6 @@ await runGoal(async (failures, tell) => {
       if (after !== before || cancelledRow?.status !== "cancelled" || cancelledRow.output !== undefined || stillWaiting) {
         failures.push(`c:a cancelled task's waiting request ends with no further model call and no recorded return — ${after - before} model call(s) after the cancel; the request ${ended?.status}; the row ${cancelledRow?.status} with output ${JSON.stringify(cancelledRow?.output)}`);
       }
-      gate("c-cancel").open();
 
       // Killed mid-wait: the deadline still resumes it.
       rmSync(KILL_DB, { force: true });
@@ -750,6 +752,8 @@ await runGoal(async (failures, tell) => {
         const resumed = await r.until(async () => (await r.status(plan.asking)) !== "suspended", KILL_DEADLINE_MS + 15_000);
         const resumedAt = Date.now();
         const due = Math.max(plan.parkedAt + KILL_DEADLINE_MS, restartedAt);
+        // Resumed is the moment it left `suspended`; the read it resumed with lands as the request runs on.
+        await r.until(async () => (await r.toolOutputs(plan.asking, "getTask")).join(" ").includes('"status"'), 5_000);
         const read = (await r.toolOutputs(plan.asking, "getTask")).join(" ");
         if (plan.status !== "suspended" || !resumed || resumedAt - due > 2_000 || !read.includes('"status"')) {
           failures.push(`c:killed mid-wait, the deadline resumes it within due time plus 2 s — parked as ${plan.status}; resumed ${resumed} ${resumedAt - due} ms past due; read ${read.slice(0, 200)}`);

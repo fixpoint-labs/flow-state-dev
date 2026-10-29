@@ -96,6 +96,8 @@ None.
   request id. A call is safe in the same window (its message id is kept first and the recipient
   takes it once), so only the call owes a park. The dispatcher keeps today's behaviour (left
   `interrupted` for a hand continue) until it has a dispatch identity kept before the send.
+  Decided on #4078: ship call-only here; the dispatcher is
+  [FIX-2322](https://linear.app/fixpoint-labs/issue/FIX-2322).
 - **A repeated send pays its budget once (review, Codex P2).** The send's per-request count now
   names the ids it holds (`workforceMessagesPaid`), and the chain row appends an id only once, so a
   call continued after dying between paying and its row isn't charged (or refused) a second time.
