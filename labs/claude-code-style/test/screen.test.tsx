@@ -211,13 +211,14 @@ describe("the session-mode screen", () => {
   });
 
   it("queues a line sent while a turn runs, and runs it after", async () => {
-    render(<App adapter={fast()} />);
+    // Slow enough that the turn is still running when the second line lands, even on a busy runner.
+    render(<App adapter={createFakeLab({ speed: 0.1 })} />);
     await pick();
     await ask("Compare Acme and Globex for us.");
     await within(thread()).findByRole("status");
     await ask("Also add a risks section.");
     expect(within(thread()).getByText(/queued · runs when this turn ends/)).toBeTruthy();
-    await within(thread()).findByText(/Noted\./);
+    await within(thread()).findByText(/Noted\./, undefined, { timeout: 3000 });
   });
 
   it("interrupts the running turn with Stop", async () => {
