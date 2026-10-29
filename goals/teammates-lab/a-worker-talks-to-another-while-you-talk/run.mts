@@ -29,7 +29,7 @@
  * several.
  *
  * Run:      pnpm tsx goals/teammates-lab/a-worker-talks-to-another-while-you-talk/run.mts
- * Controls: GOAL_CONTROL=no-model | no-lead-send | no-reply-tool | project-not-kept (see goal.md)
+ * Controls: GOAL_CONTROL=no-model | no-lead-send | no-reply-back | project-not-kept (see goal.md)
  */
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import { writeFileSync, mkdirSync } from "node:fs";
@@ -93,8 +93,17 @@ const CONTROLS: Record<string, { patches?: ModulePatch[]; model?: string; steps:
   // Step 5 may go red too: with no way to message, lead files its research ask as a task instead,
   // and after the pick it has filed none again (seen in 2 of 2 runs). That is the model, not a leak.
   "no-lead-send": { patches: [dropSendFor(fixture.lead)], steps: ["2", "3"], mayAlso: ["5"] },
-  // researcher hears lead but can't answer it.
-  "no-reply-tool": { patches: [dropSendFor(fixture.researcher)], steps: ["3"] },
+  // lead asks with a reply requested, and researcher's answer never goes back to it.
+  "no-reply-back": {
+    patches: [
+      {
+        module: "packages/workforce/src/messages/owed-replies.ts",
+        from: String.raw`if \(row !== undefined && wantsReply\(row\) && row\.answeredBy === undefined\) \{`,
+        to: "if (false) { /* goal control no-reply-back: the owed reply is never sent */",
+      },
+    ],
+    steps: ["3"],
+  },
   // A conversation's project answers as kept but is never stored, so lead's task has no project.
   // Step 3 may go red too: researcher puts its own conversation in the project to read the date,
   // and that is not stored either.
@@ -370,6 +379,8 @@ await runGoal(async (failures, tell_) => {
       if (used === undefined) fail("3", `no line of lead's after the reply states the launch date ${date.text}`);
       const replies = (await log()).filter((r) => r.from === fixture.researcher && r.to === fixture.lead && r.inReplyTo !== undefined);
       if (!replies.some((r) => r.status === "delivered")) fail("3", "no delivered reply row researcher → lead in the message log");
+      const asked3 = (await log()).filter((r) => r.from === fixture.lead && r.to === fixture.researcher);
+      if (!asked3.some((r) => r.replyRequested === true)) fail("3", "lead's message to researcher didn't ask for a reply (no replyRequested row)");
       if (used !== undefined) evidence.push(`3: reply landed after lead's answer; lead's next line says ${date.text}`);
     }
 

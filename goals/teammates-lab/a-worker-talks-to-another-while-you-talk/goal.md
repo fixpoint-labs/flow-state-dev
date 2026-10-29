@@ -1,12 +1,12 @@
 # teammates-lab › it a worker talks to another while you talk
 
-**Issue:** FIX-2154 (leg b of the FIX-2152 epic's goal); step 5 and the held-out date amended by FIX-2309
+**Issue:** FIX-2154 (leg b of the FIX-2152 epic's goal); step 5 and the held-out date amended by FIX-2309, the reply path by FIX-2310
 **Outcome:** In the Teammates lab, a list-of-workers app on the Grok Bot pattern, you talk to lead, lead messages researcher, and researcher's reply reaches lead while you are still talking to it; lead uses it. A coding job lead hands coder runs through Claude Code in the user's one project, which lead puts its conversation in without asking.
 **Input:** held out. The launch date is drawn at random each run and written into the project's README, which researcher reads and lead can't, so lead can only state it by hearing it from researcher. The README's typo is one of several (`fixtures/input.json`). The lines you send are in the fixture.
 **Signal:**
 - **1:** lead answers your first line in its conversation.
 - **2:** a card *To researcher* in lead's conversation, a line *From lead* in researcher's, the exchange under *with researcher* in lead's Talk panel, and a delivered row lead → researcher in the message log.
-- **3:** your second line goes in before researcher's reply has landed. The reply shows in lead's conversation under researcher's name, after lead's answer to you, carrying the date; the log holds it as a delivered reply; a line of lead's after it states the date.
+- **3:** your second line goes in before researcher's reply has landed. The reply shows in lead's conversation under researcher's name, after lead's answer to you, carrying the date; lead's message asked for a reply (`replyRequested`), and the log holds the answer as a delivered reply; a line of lead's after it states the date.
 - **4:** not run. It needs the history window's mark (G1, FIX-1613); the step waits on it.
 - **5:** you ask for the fix. With one project, lead puts its conversation in `relay` and files the task there: no card asks for a project, and the header shows `relay`. The run ends *done in relay*, its steps show Claude Code, and the result lands in lead's conversation from coder. On disk: the checkout's HEAD and working tree are untouched, and exactly one worktree of it, under the lab's runs folder, carries a commit that changes README.md alone, fixing its first line and nothing else.
 **Anti-game:** Graded on what the browser shows, the message log read through the public client, and git. Never on the lab's adapter or the server's own state. Lead can't state the launch date without the reply, because it is drawn per run. The disk check reads git, so a run that only says it fixed the typo fails. The step-3 order check reads entry order as drawn, so a reply drawn before lead's answer fails. Each graded list is floored with `tell.over`; an empty log or no worktree counts only where a control produces it, and says so.
@@ -15,7 +15,7 @@
 **Controls:** each on the same command, failing the steps named and no other:
 - `GOAL_CONTROL=no-model`: the workers answer on a model that doesn't exist. Steps 1, 2, 3 and 5 FAIL.
 - `GOAL_CONTROL=no-lead-send`: lead's `sendMessage` is dropped from its tools (a scratch patch to `message-tool.ts`). Steps 2 and 3 FAIL. Step 5 may fail too: with no way to message, lead files its research ask as a task for coder, and after the pick it filed nothing again (2 of 2 runs).
-- `GOAL_CONTROL=no-reply-tool`: researcher's `sendMessage` is dropped. Step 3 FAILS.
+- `GOAL_CONTROL=no-reply-back`: lead asks with `replyRequested`, and the answer the framework sends back when researcher's turn ends is never sent (a scratch patch to `owed-replies.ts`). Step 3 FAILS.
 - `GOAL_CONTROL=project-not-kept`: `setWorkProject` answers as kept but stores nothing (a scratch patch to `work-project.ts`), so lead's task has no project and the README never changes. Step 5 FAILS. Step 3 may fail too: researcher can't keep the project it reads the date from.
 
 Steps 2 and 3 have no isolating red state for lead's side: without lead's message there is nothing to reply to, so `no-lead-send` reddens both. Under `no-model` the screen doesn't show your own lines either until a reload: a turn that fails shows nothing live.
@@ -34,3 +34,5 @@ Steps 2 and 3 have no isolating red state for lead's side: without lead's messag
 | 2026-10-28 | 600e888+ | openai/gpt-5.4-mini, Claude Code | PASS | Under the lab's own Grok Bot-like theme (FIX-2308). Typo "mesages"; date 10 February |
 | 2026-10-28 | 8141924+ | openai/gpt-5.4-mini, Claude Code | PASS | Real tools, no hard-coded facts: researcher reads the date from the README. Lead filed into relay with no question. Typo "servce"; date 11 August; one worktree, README.md only |
 | 2026-10-29 | 8141924+ | openai/gpt-5.4-mini | FAIL (expected) | `project-not-kept`: [5] task ended needing a project, a card asked, header shows none, 0 worktrees; [3] also (mayAlso): no reply from researcher |
+| 2026-10-29 | dd5f323+ | openai/gpt-5.4-mini, Claude Code | PASS | lead asks researcher with `replyRequested` (FIX-2310); researcher answers in place and the answer comes back. Typo "mesage"; date 8 July; one worktree, README.md only |
+| 2026-10-29 | dd5f323+ | openai/gpt-5.4-mini | FAIL (expected) | `no-reply-back`: only [3] "no reply From researcher within 240s" |
