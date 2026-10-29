@@ -176,6 +176,9 @@ describe("the teammates screen", () => {
     const runs = await screen.findByRole("main", { name: "Coding tasks" });
     expect(item.getAttribute("aria-current")).toBe("true");
     expect(within(runs).queryByRole("textbox")).toBeNull();
+    // No Talk panel beside a run, and no empty column held for one.
+    expect(screen.queryByRole("complementary", { name: "Talk" })).toBeNull();
+    expect((runs.parentElement as HTMLElement).style.gridTemplateColumns).toBe("15rem minmax(0,1fr)");
     const run = await within(runs).findByRole("list", { name: "Run of Fix the typo in the README's first line" });
     await waitFor(() => expect(run.textContent).toMatch(/Edited line 1/), { timeout: 2000 });
   });
