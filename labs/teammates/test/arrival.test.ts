@@ -27,8 +27,9 @@ describe("whether the worker is answering", () => {
     expect(answeringOf([message("r1", "in_progress")], [])).toBe(true);
   });
 
-  it("is done the moment the items show the answer finished, though the timed list still names the request", () => {
-    expect(answeringOf([message("r1", "completed")], ["r1"])).toBe(false);
+  it("stays answering after a finished answer while the list still names its request: a request can answer again", () => {
+    // A worker that drains its own plan answers once, works, and answers again in the same request.
+    expect(answeringOf([message("r1", "completed")], ["r1"])).toBe(true);
   });
 
   it("is answering for a request the list names that has no finished answer yet", () => {

@@ -350,20 +350,18 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>):
 /**
  * Whether the worker is answering, from the conversation's items and the
  * requests the server lists as in progress. The list is read on a timer, so
- * it trails the items: a request whose answer the items already show as
- * finished, with nothing of it still being written, is done here at once,
- * and an item of the newest request still being written is an answer under
- * way before the list says so, unless the requests already show that request
- * ended (`ended`): a failed or aborted turn leaves its half-written item so for
- * good. The "answering" line then comes and goes with the text.
+ * it trails the items: an item of the newest request still being written is
+ * an answer under way before the list says so, unless the requests already
+ * show that request ended (`ended`): a failed or aborted turn leaves its
+ * half-written item so for good. A finished answer does not end its request
+ * here, since one request can answer more than once (a worker that drains its
+ * own plan answers again); only the list does.
  */
 export function answeringOf(items: readonly Item[], inProgress: readonly string[], ended: readonly string[] = []): boolean {
   // Only the newest request, or one the list names: an item a crashed turn left half-written stays so for good.
   const newest = items[items.length - 1]?.requestId;
   const live = (requestId: string) => inProgress.includes(requestId) || (requestId === newest && !ended.includes(requestId));
-  if (items.some((i) => i.status === "in_progress" && live(i.requestId))) return true;
-  const answered = new Set(items.filter((i) => i.type === "message" && i.role === "assistant" && i.status === "completed").map((i) => i.requestId));
-  return inProgress.some((requestId) => !answered.has(requestId));
+  return inProgress.length > 0 || items.some((i) => i.status === "in_progress" && live(i.requestId));
 }
 
 /** Who a `sendMessage` output went to, when it sent one: a wait-again or a refused call sent nothing. */
@@ -390,9 +388,22 @@ export function toSteps(items: readonly Item[]): SessionStep[] {
   return steps;
 }
 
-/** The turn of a conversation that read message `messageId`, as steps: the message, then all that turn did. */
-function exchangeOf(items: readonly Item[], messageId: string): SessionStep[] {
-  const read = items.find((i) => i.type === "component" && i.component === RECEIVED_MESSAGE_COMPONENT && i.data?.id === messageId);
+/** The session a message was delivered to, from the message log; undefined while the log doesn't hold it. */
+export function destinationOf(rows: readonly unknown[], messageId: string): string | undefined {
+  for (const row of rows) {
+    const parsed = workerMessageRowSchema.safeParse(row);
+    if (parsed.success && parsed.data.id === messageId) return parsed.data.toSession;
+  }
+  return undefined;
+}
+
+/**
+ * The turn of a conversation that read message `messageId`, as steps: the
+ * message, then all that turn did. The last receipt: a taker that died is
+ * taken over, and the turn that took over is the one that answered.
+ */
+export function exchangeOf(items: readonly Item[], messageId: string): SessionStep[] {
+  const read = [...items].reverse().find((i) => i.type === "component" && i.component === RECEIVED_MESSAGE_COMPONENT && i.data?.id === messageId);
   return read === undefined ? [] : toSteps(items.filter((i) => i.requestId === read.requestId));
 }
 
@@ -605,10 +616,16 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     watchExchange(worker, messageId, onChange) {
       let stop: Unsubscribe | undefined;
       let live = true;
-      void conversationOf(worker).then(({ sessionId }) => {
+      void (async () => {
+        // A reply lands where the message it answers was sent from, a task's session included: the log row says where.
+        // A failed log read falls back to the recipient's conversation rather than leaving the popup unwatched.
+        const rows = await anyConversation()
+          .then(({ sessionId: logSession }) => readEveryCollectionPage(client.resources, logSession, WORKER_MESSAGES_RESOURCE))
+          .catch(() => []);
+        const sessionId = destinationOf(rows.map((row) => row.clientData), messageId) ?? (await conversationOf(worker)).sessionId;
         if (!live) return;
         stop = watchFeed(sessionId, (items) => exchangeOf(items, messageId), stableList(onChange));
-      });
+      })();
       return () => {
         live = false;
         stop?.();

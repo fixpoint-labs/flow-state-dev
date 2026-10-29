@@ -60,12 +60,14 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   const lookOf = useCallback((id: string) => lookOfRow(workers.find((w) => w.id === id) ?? { id, name: id }), [workers]);
   const teammates = workers.filter((w) => !w.takesTasks);
   const worker = teammates.find((w) => w.id === selected);
+  // No worker chosen, no Talk column held for one.
+  const talkShown = talkOpen && worker !== undefined;
   const closePopup = useCallback(() => setPopup(undefined), []);
   const sessionId = selected ? sessions[selected] : undefined;
   return (
     <div
       className="grid h-full grid-rows-[minmax(0,1fr)] overflow-hidden"
-      style={{ gridTemplateColumns: talkOpen ? "15rem minmax(0,1fr) 18rem" : "15rem minmax(0,1fr)" }}
+      style={{ gridTemplateColumns: talkShown ? "15rem minmax(0,1fr) 18rem" : "15rem minmax(0,1fr)" }}
     >
       <WorkersList
         adapter={adapter}
@@ -98,7 +100,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
       ) : (
         <main aria-label="Conversation" />
       )}
-      {talkOpen && worker ? <TalkPanel adapter={adapter} worker={worker} nameOf={nameOf} onClose={() => setTalkOpen(false)} /> : null}
+      {talkShown ? <TalkPanel adapter={adapter} worker={worker} nameOf={nameOf} onClose={() => setTalkOpen(false)} /> : null}
       {popup ? <PopupView adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} onClose={closePopup} /> : null}
     </div>
   );

@@ -65,18 +65,18 @@ no session list. The design and the decisions behind it are in the
 The lab runs on a real model and a durable SQLite store, served by `fsdev dev`:
 
 ```bash
-TEAMMATES_WORKDIR=/path/to/checkout pnpm --filter @flow-state-dev/teammates dev
+pnpm --filter @flow-state-dev/teammates dev
 ```
 
-`TEAMMATES_WORKDIR` names the git checkout the team works in. Then ask Chief of Staff to fix
-something in it.
+The team works in this repository's checkout. To point it at another one, set
+`TEAMMATES_WORKDIR=/path/to/checkout`. Then ask Chief of Staff to fix something in it.
 
 This builds the pages and serves them with the lab's server (`fsdev.config.mts`). It reads:
 
 | Variable | What it sets | Default |
 |---|---|---|
 | `TEAMMATES_MODEL` | the model Chief of Staff, researcher and writer answer on | `openai/gpt-5.4-mini` |
-| `TEAMMATES_WORKDIR` | the working folder: an absolute path to a git checkout on this machine | none: required |
+| `TEAMMATES_WORKDIR` | the working folder: an absolute path to a git checkout on this machine | the root of this repository |
 | `TEAMMATES_HARNESS` | the harness coding tasks run on: `claude-code` or `codex` | `claude-code` |
 | `TEAMMATES_STORE` | the SQLite file | `.fsdev/teammates.sqlite` here |
 | `TEAMMATES_USER` | who the page acts as | `you` |
@@ -87,9 +87,9 @@ Code signed in, or `ANTHROPIC_API_KEY` (Codex: signed in, or `OPENAI_API_KEY`). 
 search needs one search provider's key (`TAVILY_API_KEY`, `EXA_API_KEY`, `BRAVE_API_KEY`, or another
 `@flow-state-dev/tools` takes); fetching a page needs none.
 
-The working folder is required. With `TEAMMATES_WORKDIR` unset, or naming a folder that doesn't
-exist or isn't a git checkout, the lab stops at start with an error that names the setting and the
-path. It never falls back to the current directory or to the lab's own checkout. Each coding run
+With `TEAMMATES_WORKDIR` unset, the working folder is the root of this repository. Naming a folder
+that doesn't exist or isn't a git checkout stops the lab at start with an error that names the
+setting and the path; it never falls back to the current directory. Each coding run
 works in a worktree of the folder, under the lab's `.fsdev/teammates-runs/`, so the checkout's
 `.gitignore` must ignore `**/.fsdev/`, where a run keeps its own notes; a run refuses a checkout
 that doesn't. The checkout's own branch and working tree are never changed.
