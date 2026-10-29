@@ -328,20 +328,18 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>):
 /**
  * Whether the worker is answering, from the conversation's items and the
  * requests the server lists as in progress. The list is read on a timer, so
- * it trails the items: a request whose answer the items already show as
- * finished, with nothing of it still being written, is done here at once,
- * and an item of the newest request still being written is an answer under
- * way before the list says so, unless the requests already show that request
- * ended (`ended`): a failed or aborted turn leaves its half-written item so for
- * good. The "answering" line then comes and goes with the text.
+ * it trails the items: an item of the newest request still being written is
+ * an answer under way before the list says so, unless the requests already
+ * show that request ended (`ended`): a failed or aborted turn leaves its
+ * half-written item so for good. A finished answer does not end its request
+ * here, since one request can answer more than once (a worker that drains its
+ * own plan answers again); only the list does.
  */
 export function answeringOf(items: readonly Item[], inProgress: readonly string[], ended: readonly string[] = []): boolean {
   // Only the newest request, or one the list names: an item a crashed turn left half-written stays so for good.
   const newest = items[items.length - 1]?.requestId;
   const live = (requestId: string) => inProgress.includes(requestId) || (requestId === newest && !ended.includes(requestId));
-  if (items.some((i) => i.status === "in_progress" && live(i.requestId))) return true;
-  const answered = new Set(items.filter((i) => i.type === "message" && i.role === "assistant" && i.status === "completed").map((i) => i.requestId));
-  return inProgress.some((requestId) => !answered.has(requestId));
+  return inProgress.length > 0 || items.some((i) => i.status === "in_progress" && live(i.requestId));
 }
 
 /** A roster entry as the screen lists it. */
