@@ -61,7 +61,7 @@ const HARNESSES: Record<string, (feeds: HarnessFeeds) => HarnessBlock> = {
       permissionMode: "acceptEdits",
     } as never) as unknown as HarnessBlock,
   codex: (feeds) =>
-    codexAgent({ cwd: feeds.cwd, resume: feeds.resume, onSession: feeds.onSession, name: "codex" }) as unknown as HarnessBlock,
+    codexAgent({ cwd: feeds.cwd, resume: feeds.resume, onSession: feeds.onSession, onActivity: feeds.onActivity, name: "codex" }) as unknown as HarnessBlock,
 };
 
 /** The one phase: the task as the main session wrote it, a question or a change, done when the harness says it finished. */

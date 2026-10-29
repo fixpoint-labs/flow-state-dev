@@ -28,9 +28,11 @@ import {
   harnessRunNamespace,
   observedPullRequestsCollection,
   recordPullRequests as startPullRequestRecorder,
+  reportHarnessActivity,
 } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type {
+  HarnessActivityHook,
   HarnessCallbackContext,
   HarnessResolver,
   HarnessSessionHook,
@@ -591,6 +593,12 @@ export interface ClaudeCodeAgentOptions {
    * conversation, so it races nothing.
    */
   onUsage?: HarnessUsageHook;
+  /**
+   * Called with each completed assistant message and each tool call the run
+   * starts (FIX-2290), so a host can say how the run is doing. Default: unset.
+   * Not awaited, and a throw is logged and swallowed.
+   */
+  onActivity?: HarnessActivityHook;
   /** Block name. Default `"claude-code-agent"`. */
   name?: string;
 }
@@ -813,6 +821,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     resume: resolveResume,
     onSession,
     onUsage,
+    onActivity,
     settingSources,
     env,
     sandbox,
@@ -1256,6 +1265,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
               for (const event of events) recorder?.observe(event);
               for (const event of events) {
                 if (ctx.signal.aborted) return;
+                reportHarnessActivity(onActivity, event, ctx);
                 inFlightRef.current = emitTranslatedEvent(event, ctx, emitState, name);
                 try {
                   await inFlightRef.current;
