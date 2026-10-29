@@ -35,7 +35,7 @@ function placeholderOf(entry: TaskEntry): BoardTask {
  * New content settles in place: the list follows it only while you are at
  * the end, and offers *Jump to latest* when you have scrolled up. A task card
  * is drawn at its full size the moment it is filed, before its row arrives,
- * and "is answering" shows only while no answer text is being written.
+ * and "is answering" shows only until the turn's answer text starts.
  */
 export function Conversation({
   adapter,
@@ -73,8 +73,8 @@ export function Conversation({
   };
 
   const last = entries[entries.length - 1];
-  // The text being written is the sign it is answering; the line shows only before it starts.
-  const answering = running && !(last?.kind === "assistant" && last.streaming);
+  // An answer on screen, written or being written, is the sign it is answering; the line shows only before one starts.
+  const answering = running && last?.kind !== "assistant";
   const scroller = useRef<HTMLDivElement>(null);
   const { atEnd, jumpToLatest } = useStickToBottom(
     scroller,
