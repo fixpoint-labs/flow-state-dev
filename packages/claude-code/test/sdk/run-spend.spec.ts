@@ -96,7 +96,7 @@ describe("claudeCodeAgent reports its run's spend", () => {
     const failed: SdkMessageLike = { ...RESULT, subtype: "error_max_turns", is_error: true, result: undefined };
     const block = claudeCodeAgent({ resolveClaudeAgent: scripted([failed], { apiKeySource: "ANTHROPIC_API_KEY" }), detached: true });
 
-    const { reported } = await runReporting(block, { failErrorItem: true });
+    const { settled: reported } = await runReporting(block, { failErrorItem: true });
 
     expect(reported).toEqual([{ harness: "claude-code", inputTokens: 1000, outputTokens: 200, costUsd: 0.42, billing: "api-key" }]);
   });
