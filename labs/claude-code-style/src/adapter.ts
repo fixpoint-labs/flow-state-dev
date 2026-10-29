@@ -22,6 +22,7 @@
  */
 import { createClient, type Client, type SessionSummary } from "@flow-state-dev/client";
 import { readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
+import type { TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 import { createInboxClient, inboxItems, type InboxAnswer, type InboxQuestion, type InboxRow, type TaskQuestion } from "@flow-state-dev/orchestration/inbox";
 import {
   createWorkforceClient,
@@ -117,6 +118,8 @@ export interface TaskRow {
   review?: "accepted" | "deadline" | null;
   /** Steps done of total, when known. */
   steps?: { done: number; total: number };
+  /** The run's harness, model and tokens as the board reports them; none until the task runs. */
+  spend?: TaskSpendView;
   /** When the task last changed, in ms. */
   updatedAt?: number;
 }
@@ -418,6 +421,7 @@ function createWiredLab(fsd: Client): LabAdapter {
       ...(task.assignee === undefined ? {} : { assignee: task.assignee }),
       ...(task.statusNote == null ? {} : { statusNote: task.statusNote }),
       ...(typeof task.updatedAt === "number" ? { updatedAt: task.updatedAt } : {}),
+      ...(task.spend == null ? {} : { spend: task.spend }),
       ...(task.run?.sessionId === undefined ? {} : { runSessionId: task.run.sessionId, run: task.run }),
       ...(Array.isArray(task.questions) ? { questions: task.questions } : {}),
     }));

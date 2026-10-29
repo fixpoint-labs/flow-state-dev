@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import type { LabAdapter, TaskRow, TaskStatus } from "../adapter";
 import { TASK_STATUS } from "../lib/task-status";
+import { spendSplit } from "../lib/task-spend";
 import { useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Entry } from "./Entry";
@@ -90,7 +91,16 @@ function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter;
           </span>
         </span>
       }
-      subtitle={task.goal}
+      subtitle={
+        <>
+          {task.goal}
+          {task.spend ? (
+            <span className="mt-1 block font-mono text-xs" data-task-spend>
+              {spendSplit(task.spend)}
+            </span>
+          ) : null}
+        </>
+      }
       onClose={onClose}
       footer={READ_ONLY_NOTE}
     >

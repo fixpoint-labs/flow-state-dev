@@ -1,5 +1,6 @@
 import type { TaskRow } from "../adapter";
 import { TASK_STATUS } from "../lib/task-status";
+import { spendLine, spendTotal } from "../lib/task-spend";
 import { cn } from "../lib/utils";
 
 /*
@@ -29,14 +30,20 @@ export function TaskCard({ task, selected, onOpen }: { task: TaskRow; selected: 
           {task.statusNote ? ` · "${task.statusNote}"` : ""}
         </span>
         {task.assignee ? <span className="block text-xs text-muted-foreground">{task.assignee}</span> : null}
+        {task.spend ? (
+          <span className="block truncate font-mono text-[11px] text-muted-foreground" data-task-spend>
+            {spendLine(task.spend)}
+          </span>
+        ) : null}
       </span>
     </button>
   );
 }
 
-/** A finished task, on one line: its mark, title and worker. */
+/** A finished task, on one line: its mark, title, worker and final token total. */
 export function TaskDoneRow({ task, selected, onOpen }: { task: TaskRow; selected: boolean; onOpen: () => void }) {
   const status = TASK_STATUS[task.status];
+  const total = task.spend ? spendTotal(task.spend) : undefined;
   return (
     <button
       type="button"
@@ -51,6 +58,11 @@ export function TaskDoneRow({ task, selected, onOpen }: { task: TaskRow; selecte
         {task.title}
       </span>
       {task.assignee ? <span className="shrink-0 text-muted-foreground">{task.assignee}</span> : null}
+      {total === undefined ? null : (
+        <span className="shrink-0 font-mono text-[11px] text-muted-foreground" data-task-spend>
+          {total}
+        </span>
+      )}
     </button>
   );
 }
