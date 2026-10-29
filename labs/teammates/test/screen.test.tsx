@@ -9,7 +9,7 @@
  * goal check proves the package at wiring.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { createFixtureLab } from "./fake-lab";
 
@@ -174,6 +174,33 @@ describe("the teammates screen", () => {
     // The answer's text takes the column's width; only your own lines are capped, on the right.
     await waitFor(() => expect(entries("assistant").length).toBeGreaterThan(0));
     expect(entries("assistant").every((e) => !/max-w-/.test(e.className))).toBe(true);
+  });
+
+  it("refits a draft's height when the column's width changes, not only when its text does", async () => {
+    // happy-dom lays nothing out: stand in for the observer and the box's measurements.
+    const resized: Array<() => void> = [];
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(private readonly onResize: () => void) {}
+      observe() { resized.push(this.onResize); }
+      disconnect() {}
+    });
+    try {
+      render(<App adapter={fast()} />);
+      const box = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
+      let width = 600;
+      let lines = 2;
+      Object.defineProperty(box, "clientWidth", { get: () => width });
+      Object.defineProperty(box, "scrollHeight", { get: () => lines * 20 });
+      fireEvent.change(box, { target: { value: "a draft long enough to wrap" } });
+      expect(box.style.height).toBe("40px");
+      // Talk opens and the column narrows: the same draft now wraps onto three lines.
+      width = 400;
+      lines = 3;
+      act(() => resized.forEach((onResize) => onResize()));
+      expect(box.style.height).toBe("60px");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("doesn't carry a draft to another worker: switching workers starts an empty box", async () => {

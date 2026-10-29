@@ -11,11 +11,21 @@ export function Composer({ workerName, running, onSend }: { workerName: string; 
   const box = useRef<HTMLTextAreaElement>(null);
   // Fit the box to its text: shrink to one line, then grow to the content (the CSS caps it).
   useLayoutEffect(() => {
+    if (box.current) fitToText(box.current);
+  }, [text]);
+  // The column narrows or widens when Talk toggles, which rewraps the draft: fit again on a width change.
+  useLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-  }, [text]);
+    let width = el.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (el.clientWidth === width) return;
+      width = el.clientWidth;
+      fitToText(el);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
   const send = () => {
     const line = text.trim();
     if (!line) return;
@@ -61,4 +71,9 @@ export function Composer({ workerName, running, onSend }: { workerName: string; 
       </div>
     </form>
   );
+}
+
+function fitToText(el: HTMLTextAreaElement) {
+  el.style.height = "auto";
+  el.style.height = `${el.scrollHeight}px`;
 }
