@@ -2314,9 +2314,9 @@ description, leaving out the sender and any worker that hears only in its tasks'
 { "to": "shift-coordinator", "text": "What's the codename for the spring launch?" }
 ```
 
-Send to talk; call when the worker needs to use the answer now; file a task for work that should be tracked.
+Send to talk; ask for a reply when the worker wants an answer but can go on; call when it needs to use the answer now; file a task for work that should be tracked.
 
-- **Sending.** The input is `{ to, text, inReplyTo? }` and nothing else (a call adds `wait`, `deadline` and `callId`, below); `text` holds up to 8,000
+- **Sending.** The input is `{ to, text, inReplyTo?, replyRequested? }` and nothing else (a call adds `wait`, `deadline` and `callId`, below); `text` holds up to 8,000
   characters. `to` is a worker's id, `{ task: id }` or `{ session: id }` (see
   [Addressing a task or a conversation](#addressing-a-task-or-a-conversation)). Once the message is written to the log, the tool answers `{ sent: "msg_…" }`: it is on its
   way, not yet landed. A refused one answers
@@ -2332,9 +2332,9 @@ Send to talk; call when the worker needs to use the answer now; file a task for 
   (`MESSAGE_RECEIVED_ENTRY`). The session it lands in gets two items: a `From <sender>: <text>`
   line under the sender's name that the model reads in history and the client never receives, and
   a client-only component item `workforce:received` (`RECEIVED_MESSAGE_COMPONENT`) with `data`
-  `{ id, from, text, inReplyTo?, budget, call }`, for an app to draw. Then the flow's turn, if it gave one, runs
-  with a `MessageReceived` (`{ id, from, text, call, inReplyTo?, budget }`; `call` is `true` when the
-  sender waits for the reply). A copy delivered twice wakes the recipient once; a recipient mid-turn hears it after
+  `{ id, from, text, inReplyTo?, budget, call, replyRequested? }`, for an app to draw. Then the flow's turn, if it gave one, runs
+  with a `MessageReceived` (`{ id, from, text, call, inReplyTo?, budget, replyRequested? }`; `call` is `true` when the
+  sender waits for the reply, `replyRequested` when it asked for one). A copy delivered twice wakes the recipient once; a recipient mid-turn hears it after
   that turn. A message to a conversation stopped for the user (an approval or an input), or, in a
   task's session, to a task held on the user's stop or question, lands once nothing holds it; while
   it waits its row has `queuedBehind: "user"`. Coordinators hear messages whatever their routing, in their own turn.
@@ -2347,6 +2347,18 @@ Send to talk; call when the worker needs to use the answer now; file a task for 
 - **Answering.** Nothing is sent back automatically. The recipient answers with `sendMessage`, `to`
   the sender and `inReplyTo` the message's id. A turn that ends in plain text answers no one, and
   not answering is a valid answer. A plain message doesn't wait for its answer.
+- **Asking for a reply.** `{ to, text, replyRequested: true }` sends and asks for a reply: the tool answers
+  `{ sent }` and the sender goes on. The recipient's prompt says the sender asked for a reply, and
+  when its turn ends, its final text goes back to the sender as an ordinary answer (`inReplyTo` the
+  message's id, from the recipient), landing in the sending session and waking a turn there. It spends no
+  budget and never asks for a reply itself. If the recipient answers with `sendMessage` and that
+  `inReplyTo` during the turn, that is the answer and the final text isn't sent: one answer per message.
+  An empty final text, a turn that throws (it still fails), a recipient that runs no turn, or a
+  server that stops mid-turn (picked up a few seconds later on flows with the session kit's
+  entries) answers `I have no answer to your message <id>.`, with `noAnswer: true` on its row. A
+  send the sender can tell won't be answered is refused with `no_reply`; a refused send gets nothing
+  more. To ask several workers, send each one with `replyRequested` in the same step; each answer is its own
+  turn. With `wait: true` it is just a call.
 - **Calls.** `{ to, text, wait: true, deadline? }` sends the message and waits, in the same turn,
   for the recipient's reply: the final text of the recipient's turn on it (cut to 8,000
   characters); the recipient's prompt tells it to answer there, not with `sendMessage`. The tool
@@ -2363,7 +2375,7 @@ Send to talk; call when the worker needs to use the answer now; file a task for 
   `wait_already_pending` (one wait per model step, shared with `getTask`'s `wait`),
   `wait_too_deep` (waits nest at most 5 deep), `no_such_call` (no call with that id from this
   conversation), `no_reply` (the recipient's flow runs no turn on a message, so nothing would
-  answer), `wait_again_only` (`callId` with anything but `deadline`), `missing_message`
+  answer; `replyRequested` meets it too), `wait_again_only` (`callId` with anything but `deadline`), `missing_message`
   (neither `to` and `text` nor `callId`) and `deadline_without_wait`.
 - **Hearing only in task sessions.** A worker flow whose entry is built with
   `hears: "task-sessions"` hears messages only in its tasks' sessions. A message to one of its
@@ -2406,7 +2418,8 @@ Send to talk; call when the worker needs to use the answer now; file a task for 
   `at`, plus `addressedBy` (`"task"` or `"session"`,
   absent for a worker's id) and `toTask` (the task, when `addressedBy` is `"task"`), and for a call
   `call: true`, `deadlineAt` (when the sender stops waiting, ms) and `repliedAt` (when the reply was
-  given, ms), plus `queuedBehind: "user"` while a message waits behind the user. Another user's
+  given, ms), for a message that asks for a reply `replyRequested: true` and `answeredBy` (the answering message's id, set
+  once), `noAnswer: true` on a "no answer" answer, plus `queuedBehind: "user"` while a message waits behind the user. Another user's
   rows are never returned.
 - **Delivery.** `status` is `unconfirmed` until the recipient's `onMessageReceived` takes the
   message, `delivered` once it lands in the recipient's conversation, `refused` (final, with
@@ -2578,7 +2591,7 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 | `renderWorkforceCode(files, modules, workerBlocks?, packageBlocks?)` | Render a discovery's `files`, `resourceModules`, `workerBlocks` and `packageBlocks` as a module of static imports exporting `workerFlows`, `blocks`, `resourceModules`, `workerBlocks` and `packageBlocks`. Pass all four: the last two default to `[]`, so omitting one renders an empty map and reports nothing. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
 | `hireWorkforce(installation, { taskChainLimit?, messages? })` | The flows to register for an installation: one copy of each worker flow, under its name, and the roster flow (`workforce-roster`) with `hire`, `fork`, `edit` and `fire`. Throws, naming every problem, when a worker flow misses the contract or doesn't declare the installation's session, or when a standard worker would be refused on its first turn; nothing is registered. `taskChainLimit` is the most tasks one top task may have under it, at any depth (100 when omitted); a value that isn't a whole number of at least 1 throws. `messages: { hopLimit?, perTurn? }` limits [worker messages](#worker-messages) (6 and 3 when omitted), under the same rule. |
 | `SEND_MESSAGE_TOOL` / `MESSAGE_RECEIVED_ENTRY` / `RECEIVED_MESSAGE_COMPONENT` / `WORKER_MESSAGES_RESOURCE` / `WORKER_MESSAGES_PATTERN` / `workerMessageRowSchema` / `WorkerMessageRow` / `MAX_MESSAGE_CHARS` / `DEFAULT_MESSAGE_HOP_LIMIT` / `DEFAULT_MESSAGES_PER_TURN` / `sendMessageInputSchema` | [Worker messages](#worker-messages): the tool's name (`"sendMessage"`), the entry a message arrives on (`"onMessageReceived"`), the component item type a received message is drawn by (`"workforce:received"`), the log's accessor and pattern and its row schema, the 8,000-character cap, the default limits (6 and 3), and the tool's input schema. Also exported: `MESSAGE_STATUSES`, `MessageAddress`, `workerMessagesCollection` and `workerMessagesResources` (the log as a flow resource), and `sendMessage(ctx, installation, flowKind, { to, text, inReplyTo? }, from, { id? })`, the send the tool runs, answering a `SendOutcome` (`{ ok: true, id }` or `{ ok: false, error }`); its input type is `SendMessageInput`. Pass a server-chosen `id` to make a repeated send one message: when its row already exists, the repeat writes nothing, spends no budget and answers `{ ok: true, id }`. The tool never passes one. `checkTaskTarget` / `checkTargetSession` / `MessageTarget` / `TargetCheck` / `CheckedTarget`: see [Addressing a task or a conversation](#addressing-a-task-or-a-conversation). |
-| `messageReceivedEntry({ installation, flowKind, turn?, hears? })` / `MessageHearing` | The `onMessageReceived` internal entry every worker flow carries (see [Worker messages](#worker-messages)). `turn` runs with a `MessageReceived` after the message lands; left out, nothing runs, the request outputs `{ turnless: true }`, and a call to the flow's workers is refused (or fails) with `no_reply`. `hears: "task-sessions"` (`MessageHearing`) makes the flow's workers hear only in their tasks' sessions, refusing a message by name with `task_sessions_only`. The session kit's `entries(turn)` includes one. |
+| `messageReceivedEntry({ installation, flowKind, turn?, hears? })` / `MessageHearing` | The `onMessageReceived` internal entry every worker flow carries (see [Worker messages](#worker-messages)). `turn` runs with a `MessageReceived` after the message lands; left out, nothing runs, the request outputs `{ turnless: true }`, and a call to the flow's workers is refused (or fails) with `no_reply`, as is `replyRequested` (or it gets the "no answer" answer). `hears: "task-sessions"` (`MessageHearing`) makes the flow's workers hear only in their tasks' sessions, refusing a message by name with `task_sessions_only`. The session kit's `entries(turn)` includes one. |
 | `messageReceivedSchema` / `MessageReceived` / `messageReceivedInputSchema` | What a turn hears, `{ id, from, text, call, inReplyTo?, budget }` (`call` is `true` for a call, whose reply is the turn's final text; `budget` is how many more messages the exchange can send), and what the entry takes, `{ messageId }`. |
 | `promptedMessageTurn(turn)` / `receivedMessagePrompt(received)` | Wrap a block that takes `{ message }` so it can serve as `messageReceivedEntry`'s `turn`, and the text it hands that block: who wrote, which message, how to answer with `sendMessage` and `inReplyTo`, and the budget left; for a call, that the sender is waiting and the reply is the turn's final text. |
 | `mergeWorkerFlows(flows, workers)` | Add the flows `hireWorkforce` returned to your app's flows record under their ids, for `createFlowState({ flows })`. Throws, naming the id, when one is already in `flows`. |

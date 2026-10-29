@@ -150,6 +150,8 @@ export interface TalkRow {
   at: number;
   /** It was refused, or nobody took it in time: it will never land. */
   undelivered?: boolean;
+  /** The sender asked for a reply and went on: an answer comes back as a message. */
+  replyRequested?: boolean;
 }
 
 /** Whether a worker is busy, read from its conversation's requests. */
@@ -501,6 +503,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
               text: m.text,
               at: m.at,
               ...(m.inReplyTo === undefined ? {} : { inReplyTo: m.inReplyTo }),
+              ...(m.replyRequested === true ? { replyRequested: true } : {}),
               ...(m.status === "refused" || m.status === "undeliverable" ? { undelivered: true } : {}),
             }));
         },

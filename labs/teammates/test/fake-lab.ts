@@ -117,9 +117,12 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
 
   const say = (w: FixtureWorker, text: string): Step[1] => () => push(w, { kind: "assistant", id: nextId("a"), text });
 
-  /** `sendMessage`: a card in the sender's conversation, a row in the log, and a `receive` queued for the recipient. */
+  /**
+   * `sendMessage`: a card in the sender's conversation, a row in the log, and a
+   * `receive` queued for the recipient. A send that isn't an answer asks for one.
+   */
   const sendMessage = (w: FixtureWorker, to: string, text: string, inReplyTo?: string): Step[1] => () => {
-    const message: TalkRow = { id: nextId("m"), from: w.row.id, to, text, inReplyTo, at: now() };
+    const message: TalkRow = { id: nextId("m"), from: w.row.id, to, text, inReplyTo, ...(inReplyTo ? {} : { replyRequested: true }), at: now() };
     push(w, { kind: "sent", id: nextId("s"), messageId: message.id, to, text });
     log.push(message);
     const recipient = worker(to);
