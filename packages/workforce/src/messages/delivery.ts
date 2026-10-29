@@ -37,6 +37,7 @@ import { DISPATCH_ENTRY } from "../conversation-board/board-entries";
 import type { WorkerInstallation } from "../workers/installation";
 import { MESSAGE_RECEIVED_ENTRY, SEND_MESSAGE_TOOL, SENDS_MESSAGES_MARK, WORKER_MESSAGES_OWED_STATE } from "./keys";
 import { messageLogOf, type WorkerMessageRow } from "./message-log";
+import { owedReplyStateShape } from "./owed-reply-state";
 
 /** The host's debt age when it keeps no wakes to say one: a day. */
 const DEFAULT_DEBT_AGE_MS = 24 * 60 * 60 * 1000;
@@ -46,9 +47,10 @@ const owedMessageSchema = z.object({ id: z.string().min(1), by: z.string().min(1
 
 type OwedMessage = z.infer<typeof owedMessageSchema>;
 
-/** The session state the owed list is kept in. Server-owned. */
+/** The session state the owed lists are kept in: messages sent and not landed, and reply-requested messages landed and not answered (FIX-2310). Server-owned. */
 export const messageDeliveryStateShape = {
-  [WORKER_MESSAGES_OWED_STATE]: z.array(owedMessageSchema).default([])
+  [WORKER_MESSAGES_OWED_STATE]: z.array(owedMessageSchema).default([]),
+  ...owedReplyStateShape
 } as const;
 
 /** The block name a resend is dispatched from: a resend's request record names it as its sender. */

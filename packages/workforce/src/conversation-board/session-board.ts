@@ -51,6 +51,7 @@ import { workerMessagesResources } from "../messages/message-log";
 import { defineSendMessageCapability } from "../messages/message-tool";
 import { MESSAGE_RECEIVED_ENTRY } from "../messages/keys";
 import { messageDeliveryStateShape, payMessageDebts } from "../messages/delivery";
+import { payReplyDebts } from "../messages/owed-replies";
 import { messageReceivedEntry, promptedMessageTurn } from "../messages/message-received-entry";
 import { recheckRecipient } from "../messages/send-message";
 import { fileScheduledTaskEntry } from "../schedules/file-scheduled-task";
@@ -146,9 +147,14 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     takesOwnTasks: () => takesTasks(options.installation.workerFlows()[options.flowKind]),
     chainLimit: () => taskChainLimitOf(options.installation),
     // The messages the session sent that haven't landed (FIX-2240): the pass sends them again.
+    // And the reply-requested messages it landed that its turns never answered (FIX-2310): the pass says "no answer".
     messages: {
       resources: { ...options.installation.resources, ...workerMessagesResources },
-      payDebts: (ctx) => payMessageDebts(ctx, (inner, row) => recheckRecipient(inner, options.installation, row))
+      payDebts: async (ctx) => {
+        const sends = await payMessageDebts(ctx, (inner, row) => recheckRecipient(inner, options.installation, row));
+        const replies = await payReplyDebts(ctx, options.installation, options.flowKind);
+        return sends === undefined ? replies : replies === undefined ? sends : Math.min(sends, replies);
+      }
     },
     ...(options.routes === undefined ? {} : { routes: options.routes })
   });
