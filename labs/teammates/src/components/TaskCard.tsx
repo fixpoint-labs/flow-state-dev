@@ -3,7 +3,7 @@ import type { BoardTask } from "../adapter";
 import { cn } from "../lib/utils";
 import type { Look } from "../lib/looks";
 import { Avatar } from "./Avatar";
-import { taskLine } from "./Popups";
+import { RunsOn, runsOn, taskLabel, taskLine } from "./Popups";
 
 /**
  * A task a conversation filed, as one line in the thread: what was asked of
@@ -25,12 +25,13 @@ export const TaskCard = memo(function TaskCard({
   onOpen: (taskId: string) => void;
 }) {
   const line = taskLine(task, coding, nameOf);
+  const on = coding ? runsOn(task) : undefined;
   return (
     <button
       type="button"
       data-entry="task"
       data-status={task.status}
-      aria-label={line}
+      aria-label={coding ? taskLabel(line, task) : line}
       onClick={() => onOpen(task.id)}
       className="flex w-full max-w-[85%] items-center gap-2 rounded-md border border-border bg-card/60 px-3 py-1.5 text-left text-sm hover:bg-accent"
     >
@@ -42,6 +43,7 @@ export const TaskCard = memo(function TaskCard({
         <Avatar look={lookOf(task.to)} size="sm" />
       )}
       <span className="min-w-0 flex-1 truncate">{line}</span>
+      {on === undefined ? null : <RunsOn on={on} />}
       <span className={cn("shrink-0 text-xs", task.status === "failed" ? "text-destructive" : "text-muted-foreground")} data-task-status>
         {task.status}
       </span>

@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import { destinationOf, exchangeOf, toEntries, toSteps } from "../src/adapter";
 import { repliedIn } from "../src/components/Popups";
 
-const CODER = "teammates.coder";
+const CODER = "teammates.claude-code";
 const line = (id: string, text: string) =>
   ({ id, type: "message", role: "assistant", agentName: CODER, status: "completed", requestId: "r1", content: [{ type: "output_text", text }] });
 const row = (id: string, status: string) =>
@@ -25,7 +25,7 @@ describe("a task's ending in the conversation", () => {
   });
 
   it("still draws a named task that errored as failed", () => {
-    const [entry] = toEntries([row("task_x", "errored"), line("b", "coder's task (task_x) ended: errored")], new Set([CODER]));
+    const [entry] = toEntries([row("task_x", "errored"), line("b", "Claude Code's task (task_x) ended: errored")], new Set([CODER]));
     expect(entry).toMatchObject({ kind: "result", taskId: "task_x", failed: true });
   });
 });

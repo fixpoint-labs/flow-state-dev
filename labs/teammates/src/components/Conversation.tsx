@@ -19,10 +19,10 @@ const HEADER_BUTTON = "rounded-sm border border-border px-2 py-0.5 font-mono tex
 type TaskEntry = Extract<ConversationEntry, { kind: "task" }>;
 const placeholders = new WeakMap<TaskEntry, BoardTask>();
 /** The card a filed task shows until its board row arrives: one object per (reused) entry, so the memoized card skips re-renders. */
-function placeholderOf(entry: TaskEntry): BoardTask {
+function placeholderOf(entry: TaskEntry, harness: string | undefined): BoardTask {
   let task = placeholders.get(entry);
   if (task === undefined) {
-    task = { id: entry.taskId, to: entry.to, title: entry.title, status: "running" };
+    task = { id: entry.taskId, to: entry.to, title: entry.title, status: "running", ...(harness === undefined ? {} : { harness }) };
     placeholders.set(entry, task);
   }
   return task;
@@ -47,6 +47,7 @@ export function Conversation({
   nameOf,
   lookOf,
   isCoding,
+  harnessOf,
   onFire,
   onOpen,
   talkOpen,
@@ -59,6 +60,8 @@ export function Conversation({
   lookOf: (id: string) => Look;
   /** The worker is the one coding tasks run on, not a teammate. */
   isCoding: (id: string) => boolean;
+  /** A coding worker's harness, by the screen's name for it. */
+  harnessOf: (id: string) => string | undefined;
   onFire: () => Promise<void>;
   /** Open a popup over the thread: a task this conversation filed, or a message it sent. */
   onOpen: (popup: Popup) => void;
@@ -96,7 +99,7 @@ export function Conversation({
 
   // A line is drawn from the filing until the board's row arrives, then from the row, in the same place.
   const taskTile = (entry: TaskEntry) => {
-    const task = tasks.find((t) => t.id === entry.taskId) ?? placeholderOf(entry);
+    const task = tasks.find((t) => t.id === entry.taskId) ?? placeholderOf(entry, harnessOf(entry.to));
     return <TaskCard task={task} nameOf={nameOf} lookOf={lookOf} coding={isCoding(task.to)} onOpen={openTask} />;
   };
 

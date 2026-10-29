@@ -43,7 +43,7 @@ describe("the teammates screen", () => {
     render(<App adapter={fast()} />);
     await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3));
     // Coding is a background task, not a teammate: the worker coding tasks run on is not listed.
-    expect(workers().querySelector('[data-worker="coder"]')).toBeNull();
+    for (const coder of ["Claude Code", "Codex", "Cursor"]) expect(workers().querySelector(`[data-worker="${coder}"]`), coder).toBeNull();
     expect(workerRow("Chief of Staff").getAttribute("aria-current")).toBe("true");
     expect(within(conversation()).getByRole("heading", { name: "Chief of Staff" })).toBeTruthy();
     // Grok Bot's sidebar has no session list and no new chat.
@@ -165,7 +165,7 @@ describe("the teammates screen", () => {
     await tell("Chief of Staff", "Fix the typo in the README's first line.");
 
     // Step 5: the task runs in the working folder straight away: nothing asks where.
-    const card = await within(conversation()).findByRole("button", { name: "Coding task: Fix the typo in the README's first line" });
+    const card = await within(conversation()).findByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Claude Code" });
     const tile = card.closest<HTMLElement>("[data-entry=task]")!;
     expect(tile.querySelector("[data-task-status]")?.textContent).toBe("running");
     // The lab has no projects: no select, no prompt, no card, and no word for one anywhere.
@@ -175,7 +175,7 @@ describe("the teammates screen", () => {
 
     // The result lands as the coding task's, never a teammate's, and Chief of Staff's next line uses it.
     expect(await within(conversation()).findByRole("region", { name: "From the coding task" }, { timeout: 2000 })).toBeTruthy();
-    expect(within(conversation()).queryByRole("region", { name: "From coder" })).toBeNull();
+    expect(within(conversation()).queryByRole("region", { name: "From Claude Code" })).toBeNull();
     expect(tile.querySelector("[data-task-status]")?.textContent).toBe("done");
     expect(await within(conversation()).findByText(/The coding task is done: "Fixed the typo in README.md, line 1\."/, {}, { timeout: 2000 })).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/project/i);
@@ -184,7 +184,7 @@ describe("the teammates screen", () => {
   it("opens a coding task's run in a popup, read only, from its line in the thread or its background item", async () => {
     render(<App adapter={fast()} />);
     await tell("Chief of Staff", "Fix the typo in the README's first line.");
-    const card = await within(conversation()).findByRole("button", { name: "Coding task: Fix the typo in the README's first line" });
+    const card = await within(conversation()).findByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Claude Code" });
 
     // From the thread: the run fills in live, with no composer, and its result lands in it.
     fireEvent.click(card);
@@ -197,12 +197,59 @@ describe("the teammates screen", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
 
     // From the background list: the same popup, and the item says it's the one open. The conversation stays.
-    const item = within(background()).getByRole("button", { name: "Coding task: Fix the typo in the README's first line" });
+    const item = within(background()).getByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Claude Code" });
     fireEvent.click(item);
     popup = await screen.findByRole("dialog", { name: "Coding task: Fix the typo in the README's first line" });
     expect(item.getAttribute("aria-current")).toBe("true");
     expect(conversation()).toBeTruthy();
     expect(popup.textContent).toMatch(/Edited line 1/);
+  });
+
+  it("runs a coding task on the agent you name, and on Claude Code when you name none, and its line says which", async () => {
+    render(<App adapter={fast()} />);
+    const line = () => entries("task").at(-1) as HTMLElement;
+    const on = () => line().querySelector("[data-harness]")?.textContent;
+
+    // No agent named: the default runs, with no question first. Claude Code reports no model, so none shows.
+    await tell("Chief of Staff", "Fix the typo in the README's first line.");
+    await waitFor(() => expect(on()).toBe("Claude Code"), { timeout: 2000 });
+    await waitFor(() => expect(line().querySelector("[data-task-status]")?.textContent).toBe("done"), { timeout: 3000 });
+    expect(on()).toBe("Claude Code");
+
+    // Named: that one runs. Codex reports its model once its run starts, and only then is it shown.
+    await tell("Chief of Staff", "Have Codex fix the typo in the README's first line.");
+    await waitFor(() => expect(entries("task")).toHaveLength(2), { timeout: 3000 });
+    await waitFor(() => expect(on()).toBe("Codex"), { timeout: 2000 });
+    await waitFor(() => expect(on()).toBe("Codex · gpt-5.5-codex"), { timeout: 2000 });
+    expect(line().getAttribute("aria-label")).toBe("Coding task: Fix the typo in the README's first line, on Codex · gpt-5.5-codex");
+    fireEvent.click(line());
+    const popup = await screen.findByRole("dialog", { name: "Coding task: Fix the typo in the README's first line" });
+    expect(popup.querySelector("[data-harness]")?.textContent).toBe("Codex · gpt-5.5-codex");
+    await waitFor(() => expect(popup.textContent).toMatch(/on Codex/), { timeout: 2000 });
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    await waitFor(() => expect(line().querySelector("[data-task-status]")?.textContent).toBe("done"), { timeout: 3000 });
+    await tell("Chief of Staff", "Have Cursor fix the typo in the README's first line.");
+    await waitFor(() => expect(entries("task")).toHaveLength(3), { timeout: 3000 });
+    await waitFor(() => expect(on()).toBe("Cursor"), { timeout: 2000 });
+    // All three are tasks, never teammates.
+    for (const coder of ["Claude Code", "Codex", "Cursor"]) expect(workers().querySelector(`[data-worker="${coder}"]`), coder).toBeNull();
+  });
+
+  it("fails a task on a harness this machine isn't set up for at once, naming it, and runs nothing else in its place", async () => {
+    render(<App adapter={fast({ notSetUp: ["cursor"] })} />);
+    await tell("Chief of Staff", "Have Cursor fix the typo in the README's first line.");
+    await waitFor(() => expect(entries("task")).toHaveLength(1), { timeout: 3000 });
+    const line = entries("task")[0] as HTMLElement;
+    await waitFor(() => expect(line.querySelector("[data-task-status]")?.textContent).toBe("failed"), { timeout: 2000 });
+    expect(line.querySelector("[data-harness]")?.textContent).toBe("Cursor");
+    const result = await within(conversation()).findByRole("region", { name: "From the coding task" }, { timeout: 2000 });
+    expect(result.textContent).toMatch(/Cursor isn't set up on this machine/);
+    // No other harness took it: one task, on Cursor, and no run.
+    expect(entries("task")).toHaveLength(1);
+    fireEvent.click(line);
+    const popup = await screen.findByRole("dialog", { name: "Coding task: Fix the typo in the README's first line" });
+    expect(popup.textContent).not.toMatch(/on Claude Code|on Codex/);
   });
 
   it("lines the composer up with the message list: one column token, centred, Talk open or closed", async () => {
@@ -293,7 +340,7 @@ describe("the teammates screen", () => {
   it("draws a task card the moment it is filed and fills it in place: the same card from filing to done", async () => {
     render(<App adapter={fast()} />);
     await tell("Chief of Staff", "Fix the typo in the README's first line.");
-    const card = (await within(conversation()).findByRole("button", { name: "Coding task: Fix the typo in the README's first line" })).closest("[data-entry=task]")!;
+    const card = (await within(conversation()).findByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Claude Code" })).closest("[data-entry=task]")!;
     await waitFor(() => expect(card.querySelector("[data-task-status]")?.textContent).toBe("done"), { timeout: 3000 });
     expect(conversation().querySelector("[data-entry=task]")).toBe(card);
   });

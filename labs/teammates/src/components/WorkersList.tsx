@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { LabAdapter, NewTeammate, WorkerRow } from "../adapter";
-import type { Popup } from "./Popups";
+import { runsOn, taskLabel, type Popup } from "./Popups";
 import type { Look } from "../lib/looks";
 import { statusLine } from "../lib/status";
 import { useSeen } from "../lib/unread";
@@ -182,14 +182,14 @@ function BackgroundItems({
       <button
         type="button"
         aria-current={t.id === openTask ? "true" : undefined}
-        aria-label={`Coding task: ${t.title}`}
+        aria-label={taskLabel(`Coding task: ${t.title}`, t)}
         data-background={t.status}
         onClick={() => onOpen({ kind: "task", sessionId, taskId: t.id })}
         className={cn("flex w-full flex-col border-l-2 border-transparent px-4 py-1.5 text-left hover:bg-accent", t.id === openTask && "border-primary bg-accent")}
       >
         <span className="block truncate font-mono text-xs">⚙ {t.title}</span>
         <span className="block truncate text-xs text-muted-foreground" data-status>
-          {t.status}
+          {[t.status, runsOn(t)].filter(Boolean).join(" · ")}
         </span>
       </button>
     </li>
