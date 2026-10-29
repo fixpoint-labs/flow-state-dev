@@ -61,8 +61,6 @@ import { launchChromium } from "../../lib/playwright.mts";
 interface Fixture {
   port: number;
   lead: string;
-  /** The name lead's `WORKER.md` declares, which the screen shows. */
-  leadName: string;
   researcher: string;
   ask: string;
   second: string;
@@ -257,8 +255,7 @@ async function open(page: Page, worker: string): Promise<void> {
 
 const userAt = (entries: Drawn[], text: string) => entries.findIndex((e) => e.kind === "user" && e.text.includes(text));
 const lastUserAt = (entries: Drawn[], text: string) => entries.map((e) => e.kind === "user" && e.text.includes(text)).lastIndexOf(true);
-/** The name the screen shows for a worker: its declared name, else the last part of its id. */
-const short = (id: string) => (id === fixture.lead ? fixture.leadName : id.replace(/^teammates\./, ""));
+const short = (id: string) => (id === fixture.lead ? "Chief of Staff" : id.replace(/^teammates\./, ""));
 
 /** Say `text` to lead and wait until lead has answered it and finished the turn; false when it didn't in time. */
 async function turnWith(page: Page, lead: string, text: string): Promise<boolean> {
