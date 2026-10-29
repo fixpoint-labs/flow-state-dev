@@ -3352,6 +3352,9 @@ describe("claudeCodeAgent — onActivity", () => {
       },
     },
     { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "toolu_1", content: "ok" }] } },
+    // A sub-agent launch is a tool call too, though the transcript shows it as a container.
+    { type: "assistant", message: { content: [{ type: "tool_use", id: "toolu_2", name: "Task", input: { description: "review" } }] } },
+    { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "toolu_2", content: "done" }] } },
     RESULT_OK,
   ];
 
@@ -3370,6 +3373,7 @@ describe("claudeCodeAgent — onActivity", () => {
       expect(seen).toEqual([
         { kind: "message", text: "Tests pass; writing the changeset." },
         { kind: "tool", name: "Bash", arguments: JSON.stringify({ command: "pnpm test" }) },
+        { kind: "tool", name: "Task", arguments: JSON.stringify({ description: "review" }) },
       ]);
     });
   }

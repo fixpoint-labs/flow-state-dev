@@ -1249,11 +1249,15 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
 
               // **Activity reads the whole message, in either streaming mode.**
               // With partial messages on, the translator hands text on only as
-              // deltas, which aren't activity, so a completed message is read
-              // here; tool calls come from the translated events below.
+              // deltas, and it turns a sub-agent launch into a container rather
+              // than a tool call, so neither would reach the hook from its events.
               if (onActivity !== undefined && message.type === "assistant") {
                 for (const block of message.message?.content ?? []) {
-                  if (block.type === "text") reportHarnessActivity(onActivity, { kind: "message", text: block.text }, ctx);
+                  if (block.type === "text") {
+                    reportHarnessActivity(onActivity, { kind: "message", text: block.text }, ctx);
+                  } else if (block.type === "tool_use") {
+                    reportHarnessActivity(onActivity, { kind: "tool_call", name: block.name, arguments: JSON.stringify(block.input ?? {}) }, ctx);
+                  }
                 }
               }
 
@@ -1275,7 +1279,6 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
               for (const event of events) recorder?.observe(event);
               for (const event of events) {
                 if (ctx.signal.aborted) return;
-                if (event.kind === "tool_call") reportHarnessActivity(onActivity, event, ctx);
                 inFlightRef.current = emitTranslatedEvent(event, ctx, emitState, name);
                 try {
                   await inFlightRef.current;
