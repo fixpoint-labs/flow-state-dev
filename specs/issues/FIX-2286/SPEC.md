@@ -138,6 +138,9 @@ surface nothing but the task list uses.
 2. **[D2](DECISIONS.md#d2) · A read never runs the board's pass.** If wrong: a row whose wake was
    lost waits for the next action on the board instead of the next poll.
 
+3. **[D3](DECISIONS.md#d3) · The WebSocket push says when to read; a read says what changed.** If
+   wrong: a push that carries rows, and reads kept only for the first load.
+
 **Open: none.** Reasoning and what lost: [DECISIONS.md](DECISIONS.md).
 
 Improvement · `core` + `engine` + `client` (one generic hook) + `orchestration` + `workforce` + lab and

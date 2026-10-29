@@ -11,6 +11,7 @@ side effect the action has.
 flowchart TD
   I["FIX-2286"] --> D1["D1 · a flow declares reads · answered in the response · stored nowhere · writes refused"]
   D1 --> D2["D2 · a read never runs the board's pass"]
+  D1 --> D3["D3 · the WebSocket push says when to read · reads stay the fetch, first load and fallback"]
   D1 -.->|"rejected"| X1["push on the session stream · settles land on other sessions' streams"]
   D1 -.->|"rejected"| X2["record: false on an action · hides real writes, no record to answer from"]
   D1 -.->|"rejected"| X3["store the request, then delete it · still a write per poll, races the answer"]
@@ -46,6 +47,18 @@ changes there and the apps subscribe; reads would still serve the first load.
 
 **What would change my mind:** a stranded row that only a poll ever rescued. Then the fix is the
 wake that missed it, not a write inside a read.
+
+<a name="d3"></a>
+## D3 · The WebSocket push says when to read; a read says what changed
+
+| | |
+|---|---|
+| **Instead of** | Dropping reads once client updates move to a WebSocket push of small "this changed" notices, or making the push carry the changed rows |
+| **Because** | A notice carries no rows, so the client still fetches the board when one lands. That fetch is today's poll. Without a read it runs `listTasks_tasks` as an action and stores a request, so the push would cut how often the client fetches but not what each fetch costs. A push that carried rows would have to repeat the session fence and orchestration's list view on the stream. With reads, the notice decides when, and one read serves the notice, the first load, and the polling fallback |
+| **Locks in** | Nothing on the push side: this spec ships reads and switches the apps' polls to them. When the push channel lands, its notice for a board names the session, and the app's handler calls the same `read`; the poll stays only as the fallback |
+
+**What would change my mind:** a push design whose notices must carry the rows (a client that can't make
+a request back). Then the stream needs its own projection and fence, and reads keep only the first load.
 
 ## Decided, not asked
 
