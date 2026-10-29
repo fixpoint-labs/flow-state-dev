@@ -173,7 +173,7 @@ import { harnessEnv } from "@flow-state-dev/core";
 import { readCodexUsage } from "@flow-state-dev/codex";
 
 const reading = await readCodexUsage({ env: harnessEnv({ pass: ["PATH", "HOME", "CODEX_HOME"] }) });
-// { status: "windows", plan, accountId, windows: [{ id: "codex:primary", minutes: 300, usedPercent, resetsAt, label }] }
+// { status: "windows", plan, accountId, windows: [{ id: "codex:primary", minutes: 300, usedPercent, level: null, resetsAt, label }] }
 ```
 
 It never throws. A ChatGPT sign-in reads `windows`, every window Codex reports.
@@ -188,7 +188,7 @@ pathDirs }`), and throws when the SDK can't be loaded.
 **Local only.** OpenAI permits the app-server's ChatGPT sign-in on your own
 machine, not in a hosted service. A host opts in by passing `readCodexUsage` as
 its Codex usage reader, for example to `harnessUsageAction` in
-`@flow-state-dev/harness-manager`.
+`@flow-state-dev/harness-manager`. Guide: [reading usage left](https://flow-state.dev/docs/tools/codex#reading-usage-left).
 
 ## Listing models
 

@@ -207,6 +207,7 @@ Actions run as the user and organization your resolver returns; the client's `us
 - [Coordinators](./coordinators) — a worker that hands each message to its delegates, and files tasks for them on its conversation's board.
 - [Projects](./projects) — private or shared, with workstreams that each have one owner.
 - [Inventory](./inventory) — a record of every worker registered in an organization, readable by a block.
+- [Worker usage](./worker-usage) — the tokens each worker used for a user, by model and coding agent, per UTC day.
 - [Hiring and forking](./durable-hire) — a user's own workers, hired, forked and fired while the app runs.
 - [The Shift Coordinator](./shift-coordinator) — the one worker a user asks to hire or fire workers of their own, with a fire waiting for their approval.
 - [The Error Reporter](./error-reporter) — a worker that turns each failure that stayed failed, or a problem a user describes, into one bug report the operator previews before it is filed.

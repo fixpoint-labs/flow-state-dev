@@ -352,12 +352,13 @@ its own `checkedAt` and `ageMs`. The row's `checkedAt` and `ageMs` belong to the
 last reading, so a harness that has only run windows and was never read has a
 row `checkedAt` of `null`, and each window says how old it is.
 
-**Run windows land on their own.** Pass the slot's `onUsage` through to a
-harness that reports usage, as the Claude Code example in
-[Choosing the harness](#choosing-the-harness) does, and every window a
-run reports is stored for the user the run belongs to. A line sent through the
-[session door](#the-session-door) stores its run's windows for the user
-talking. For Claude Code, register
+### Windows a run reports
+
+Pass the slot's `onUsage` through to a harness that reports usage, as the
+Claude Code example in [Choosing the harness](#choosing-the-harness) does, and
+every window a run reports is stored for the user the run belongs to. A message sent through the
+[session door](#the-session-door) stores its run's windows for the user who
+sent it. For Claude Code, register
 [`readClaudeUsage`](/docs/tools/claude-code-sdk#reading-usage-left) as the
 `claude-code` reader. It supplies the account and plan, and the windows come
 from runs:
@@ -375,6 +376,8 @@ harnessUsageAction({
 });
 ```
 
+### Refreshing
+
 **Without `refresh`, nothing is read.** The query returns what is stored.
 A harness with a reader and no reading yet is listed with `status: "unavailable"`,
 `reason: "Not checked yet"` and no windows.
@@ -391,7 +394,9 @@ query runs, by the server's clock. A window whose `resetsAt` has passed reads
 `rolledOver: true`; its percent is from before the reset, so show the reset
 rather than the number.
 
-**One current record per user and harness.** A reader's result and the
+### How readings and run windows combine
+
+Each user has one current record per harness. A reader's result and the
 windows runs reported sit side by side:
 
 - A reading replaces the windows the last reading left and keeps the run windows it doesn't name. Where both name one window, the newer wins.
@@ -400,6 +405,8 @@ windows runs reported sit side by side:
 - A reading with no number (`api-key`, `signed-out`) clears every window. A run that started before that reading doesn't bring them back.
 
 The account is kept only as a hash, with no email. There is no history.
+
+### Reading and writing on the server
 
 The readings live in `harnessUsageCollection` (`harness-usage/**`, user scope).
 A client can't read the collection directly. Read it through the `harnessUsage`
