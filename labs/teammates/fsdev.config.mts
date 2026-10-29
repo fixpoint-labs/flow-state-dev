@@ -2,7 +2,7 @@
  * The Teammates lab's server, as `fsdev dev --app @flow-state-dev/teammates`
  * loads it from this folder. Everything is read from the environment:
  *
- * - `TEAMMATES_MODEL`: the model lead, researcher and writer answer on
+ * - `TEAMMATES_MODEL`: the model Chief of Staff, researcher and writer answer on
  *   (default `openai/gpt-5.4-mini`).
  * - `TEAMMATES_WORKDIR` (required): the working folder, an absolute path to a
  *   git checkout. Coding runs work in worktrees of it, and the workers read

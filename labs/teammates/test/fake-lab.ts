@@ -5,12 +5,12 @@
  * in `src/` imports it.
  *
  * Three teammates, each with one conversation, and coder, the hidden worker
- * coding tasks run on. Your first ask to lead makes it message researcher;
- * researcher looks the fact up and replies. Ask lead to fix something and lead
+ * coding tasks run on. Your first ask to Chief of Staff makes it message researcher;
+ * researcher looks the fact up and replies. Ask Chief of Staff to fix something and Chief of Staff
  * starts a coding task, which runs in the working folder. Each worker
  * answers one request at a time: a line you send, or a message from another
  * worker, waits while the worker is answering, and runs when it is done.
- * lead's conversation starts past the 50-turn history window.
+ * Chief of Staff's conversation starts past the 50-turn history window.
  */
 import type { ConversationEntry, LabAdapter, RunStep, TalkRow, BoardTask, Unsubscribe, WindowMark, WorkerRow } from "../src/adapter";
 
@@ -29,12 +29,12 @@ const WINDOW_TURNS = 50;
 const MINUTE = 60_000;
 
 const ROSTER: WorkerRow[] = [
-  { id: "teammates.lead", name: "lead", role: "Plans the launch with you, and asks the other workers when it needs a fact or a draft." },
+  { id: "teammates.chief-of-staff", name: "Chief of Staff", role: "Plans the launch with you, and asks the other workers when it needs a fact or a draft." },
   { id: "teammates.researcher", name: "researcher", role: "Finds facts for the team, and replies to whoever asked." },
   { id: "teammates.writer", name: "writer", role: "Drafts and tightens copy when you or another worker asks." },
   { id: "teammates.coder", name: "coder", role: "Where coding tasks run in the background.", takesTasks: true },
 ];
-const LEAD = "teammates.lead";
+const LEAD = "teammates.chief-of-staff";
 const RESEARCHER = "teammates.researcher";
 const WRITER = "teammates.writer";
 const CODER = "teammates.coder";
@@ -56,7 +56,7 @@ interface FixtureWorker {
 /** A scripted step: wait, then run. */
 type Step = [delayMs: number, run: () => void];
 
-/** Planning chatter for lead's older turns. */
+/** Planning chatter for Chief of Staff's older turns. */
 const OLDER_TURNS: [string, string][] = [
   ["Who is the post for?", "Teams that sync files across offices. I'd write for the person who sets it up."],
   ["List the launch channels.", "The blog, the changelog, and the newsletter a day later."],
@@ -170,7 +170,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
         [600, sendMessage(w, RESEARCHER, "What's our launch date?")],
       ];
     }
-    // lead thinks longer than researcher looks a fact up, so a reply can arrive while you talk to lead.
+    // Chief of Staff thinks longer than researcher looks a fact up, so a reply can arrive while you talk to Chief of Staff.
     return [[w.row.id === LEAD ? 6000 : 900, say(w, `Noted: "${job.text}" I've folded it into the plan.`)]];
   };
 
@@ -204,7 +204,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     startNext(w);
   };
 
-  // Seed: lead's conversation runs two turns past the window, with an exchange with writer near its end.
+  // Seed: Chief of Staff's conversation runs two turns past the window, with an exchange with writer near its end.
   const seed = (w: FixtureWorker, entries: ConversationEntry[], lastActiveAt: number) => {
     w.entries = entries;
     w.lastActiveAt = lastActiveAt;
