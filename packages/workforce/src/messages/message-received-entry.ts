@@ -256,13 +256,11 @@ export function messageReceivedEntry(options: {
       // input's shape, which a turn's own output could match.
       const state = ctx.request.state as Record<string, unknown> | undefined;
       if (state?.[RECEIVED_LANDED_STATE] !== true) return {};
-      // Landed, and nothing ran on it: no reply, not an empty one.
-      if (options.turn === undefined) {
-        await replyOwedHere(ctx as never, "");
-        return { turnless: true as const };
-      }
-      const reply = replyTextOf(input);
+      // A turnless landing answers blank: "no answer".
+      const reply = options.turn === undefined ? "" : replyTextOf(input);
       await replyOwedHere(ctx as never, reply);
+      // Landed, and nothing ran on it: no reply, not an empty one.
+      if (options.turn === undefined) return { turnless: true as const };
       const call = state[RECEIVED_CALL_STATE];
       if (typeof call === "string") await (await messageLogOf(ctx as never).getOptional(call))?.patchState({ repliedAt: Date.now() });
       return { reply: reply.slice(0, MAX_MESSAGE_CHARS) };
