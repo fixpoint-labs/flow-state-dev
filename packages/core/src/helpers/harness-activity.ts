@@ -23,8 +23,9 @@ export function harnessActivityOf(event: ActivityEvent): HarnessActivity | null 
 }
 
 /**
- * Hand an event to `onActivity` when it is activity. Never throws: a host's
- * failure to record how the run is doing never fails the run.
+ * Hand an event to `onActivity` when it is activity, without awaiting it.
+ * Never throws: a host's failure to record how the run is doing, thrown or
+ * rejected, never fails the run.
  */
 export function reportHarnessActivity(
   onActivity: HarnessActivityHook | undefined,
@@ -35,8 +36,14 @@ export function reportHarnessActivity(
   const activity = harnessActivityOf(event);
   if (activity === null) return;
   try {
-    onActivity(activity, ctx);
+    // `void` admits an async hook, so its promise may come back here.
+    const returned: unknown = onActivity(activity, ctx);
+    if (returned instanceof Promise) returned.catch(warnActivityFailed);
   } catch (error) {
-    console.warn(`[harness] reporting the run's activity failed: ${error instanceof Error ? error.message : String(error)}`);
+    warnActivityFailed(error);
   }
+}
+
+function warnActivityFailed(error: unknown): void {
+  console.warn(`[harness] reporting the run's activity failed: ${error instanceof Error ? error.message : String(error)}`);
 }

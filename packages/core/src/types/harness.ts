@@ -482,7 +482,8 @@ export type HarnessActivity =
 /**
  * Called by a harness with each {@link HarnessActivity} of its run, so the host
  * can say how the run is doing (harness-manager keeps the task's status note
- * from it). Not awaited, and a throw never fails the run: like usage, it is a
- * reading, not part of the work. A harness that reports none never calls it.
+ * from it). Not awaited, and a throw or a rejection never fails the run: like
+ * usage, it is a reading, not part of the work. A harness that reports none
+ * never calls it.
  */
 export type HarnessActivityHook = (activity: HarnessActivity, ctx: HarnessCallbackContext) => void;
