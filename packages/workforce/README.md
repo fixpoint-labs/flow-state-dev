@@ -2317,7 +2317,8 @@ Send to talk; ask for a reply when the worker wants an answer but can go on; cal
   below, and so does a call.
 - **Receiving.** A message arrives on the recipient flow's internal `onMessageReceived` entry
   (`MESSAGE_RECEIVED_ENTRY`). The session it lands in gets two items: a `From <sender>: <text>`
-  line under the sender's name that the model reads in history and the client never receives, and
+  `user` line under the sender's name that the model reads in history as someone else's words, and
+  the client never receives, and
   a client-only component item `workforce:received` (`RECEIVED_MESSAGE_COMPONENT`) with `data`
   `{ id, from, text, inReplyTo?, budget, call, replyRequested? }`, for an app to draw. Then the flow's turn, if it gave one, runs
   with a `MessageReceived` (`{ id, from, text, call, inReplyTo?, budget, replyRequested? }`; `call` is `true` when the

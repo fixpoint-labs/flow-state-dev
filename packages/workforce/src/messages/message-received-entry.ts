@@ -204,7 +204,9 @@ export function messageReceivedEntry(options: {
       // The two items, in one place, after the take: the line the model
       // reads, and the item an app draws.
       const emit = storedEmitters(ctx as never);
-      await emit.message(`From ${row.from}: ${row.text}`, { agentName: row.from, itemVisibility: { client: false, history: true } });
+      // A `user` line: the sender's words, which the recipient's model must
+      // not read as something it already said.
+      await emit.message(`From ${row.from}: ${row.text}`, { role: "user", agentName: row.from, itemVisibility: { client: false, history: true } });
       await emit.component(
         RECEIVED_MESSAGE_COMPONENT,
         {
