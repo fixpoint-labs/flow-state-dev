@@ -2,8 +2,8 @@
  * The `@flow-state-dev/ui` registry's `tokens` item, as `fsdev ui add` installs
  * it: `components.json` names this file as the stylesheet, so the install
  * writes the item here. Neutral defaults in a base layer, and the Tailwind
- * names pointed at them. Edit nothing here. The lab's look comes from the
- * design-system import in `src/styles.css`.
+ * names pointed at them. Edit nothing here. The lab's look comes from its
+ * own theme, `src/lib/theme.css`.
  */
 @theme inline {
   --color-background: var(--background);

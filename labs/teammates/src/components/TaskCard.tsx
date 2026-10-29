@@ -117,7 +117,7 @@ function ProjectPrompt({
       <span className="text-foreground">
         {to} needs a project to work in. Pick one for {filer}; it sticks to {filer}.
       </span>
-      <select aria-label="Project" value={project} onChange={(e) => setProject(e.target.value)} className="border border-border bg-card px-1 py-0.5">
+      <select aria-label="Project" value={project} onChange={(e) => setProject(e.target.value)} className="rounded-sm border border-border bg-card px-1 py-0.5">
         {projects.map((p) => (
           <option key={p.id} value={p.id}>
             {p.name}
@@ -128,7 +128,7 @@ function ProjectPrompt({
         type="button"
         disabled={!project}
         onClick={() => onPick(project)}
-        className="rounded-md bg-primary px-2 py-0.5 font-semibold text-primary-foreground disabled:opacity-40"
+        className="rounded-sm bg-primary px-2 py-0.5 font-semibold text-primary-foreground disabled:opacity-40"
       >
         Use project
       </button>

@@ -27,7 +27,7 @@ export function Entry({
     case "user":
       return (
         <div className="flex justify-end">
-          <div className="max-w-[80%] rounded-lg bg-accent px-3 py-2 text-sm whitespace-pre-wrap" data-entry="user">
+          <div className="max-w-[80%] rounded-lg bg-accent px-4 py-2.5 text-sm whitespace-pre-wrap" data-entry="user">
             {entry.text}
             {entry.queued ? <span className="mt-1 block text-xs text-muted-foreground">waits for {workerName}'s answer</span> : null}
           </div>
@@ -35,7 +35,7 @@ export function Entry({
       );
     case "assistant":
       return (
-        <div className="max-w-[85%] rounded-lg border border-border bg-card px-3 py-2 text-sm leading-relaxed" data-entry="assistant">
+        <div className="max-w-[85%] py-1 text-sm leading-relaxed" data-entry="assistant">
           <AgentMarkdown text={entry.text} />
         </div>
       );

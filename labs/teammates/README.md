@@ -1,9 +1,12 @@
 # Teammates
 
-A private lab that copies the core layout and interaction of Grok Bot, in the Flow State theme, on
-the workforce package. It is one half of the evidence that the same package pieces make familiar
+A private lab that copies the core layout and interaction of Grok Bot on the workforce package. It is one half of the evidence that the same package pieces make familiar
 apps: an app adds only configuration, React UI and a few small flows, and anything else it needs is
 a gap filed against the package.
+
+Its theme is its own: a dark, chat-first look like Grok Bot's, in `src/lib/theme.css`, over the
+registry's `tokens` item. The other labs take theirs from the design system; this one keeps a local
+theme on purpose, so it reads as the app it copies.
 
 - **Left:** the workers, lead, researcher, writer and coder. Each row is a worker with an ongoing
   role, never a list of sessions. A row shows what the worker is doing and how many new entries its
@@ -126,8 +129,8 @@ and on a flow over 200 lines; `--wired` also fails on any fixture.
 <!-- inventory:start -->
 | Kind | Files | Lines |
 |---|---:|---:|
-| Configuration | 16 | 615 |
-| React UI | 23 | 2140 |
+| Configuration | 18 | 887 |
+| React UI | 26 | 2615 |
 | Small flows | 1 | 152 |
 | Checks (not app code) | 8 | 1043 |
 <!-- inventory:end -->

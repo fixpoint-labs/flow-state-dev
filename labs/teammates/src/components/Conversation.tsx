@@ -109,7 +109,7 @@ export function Conversation({
           aria-label={`Project for ${worker.name}`}
           value={workProject ?? ""}
           onChange={(e) => (e.target.value === NEW_PROJECT ? setPanel("project") : choose(e.target.value))}
-          className="border border-border bg-card px-1 py-0.5 font-mono text-[10px] tracking-widest uppercase"
+          className="rounded-sm border border-border bg-card px-1 py-0.5 font-mono text-[10px] tracking-widest uppercase"
         >
           <option value="" disabled>
             {projects.length === 0 ? "no projects yet" : "no project"}
@@ -140,7 +140,7 @@ export function Conversation({
           type="button"
           aria-pressed={talkOpen}
           onClick={onToggleTalk}
-          className={cn("border border-border px-2 py-0.5 font-mono text-[10px] tracking-widest uppercase hover:bg-accent", talkOpen && "bg-accent")}
+          className={cn("rounded-sm border border-border px-2 py-0.5 font-mono text-[10px] tracking-widest uppercase hover:bg-accent", talkOpen && "bg-accent")}
         >
           Talk
         </button>
