@@ -1,5 +1,5 @@
 import { z, type ZodTypeAny } from "zod";
-import type { BlockContext, BlockDefinition, BlockOutputHint, ConnectorFn, RescueHandlerSpec } from "../types/block";
+import type { BlockContext, BlockDefinition, BlockOutputHint, ConnectorFn, GeneratorModelResultPayload, RescueHandlerSpec } from "../types/block";
 import { asRuntime } from "../types/block";
 import type { ModelIdentity } from "../types/model";
 import type { BlockValue, BlockValueInternal, OutputItem, StructureShape } from "../items/types";
@@ -26,6 +26,7 @@ import { absorbSequencerStateRequirement, foldSequencerStateRequirements } from 
 import { resolveActiveStatusMessage } from "./internal/resolve-active-status-message";
 import { findBlockTraceIdByInstance } from "./internal/find-block-trace";
 import { stashEvaluatorModelResult } from "./internal/evaluator-model-result";
+import { cacheTokensOf } from "../helpers/cache-tokens";
 import type { ReplayLog } from "./internal/replay-log";
 import { isInlineConfig, resolveCallShape } from "./internal/arg-shapes";
 import type { StepOutcome } from "./internal/arg-shapes";
@@ -523,41 +524,21 @@ export async function executeBlock(
           ...scopedCtx,
           _runtimeHooks: {
             ...scopedCtx._runtimeHooks,
-            onGeneratorModelResult: (payload: {
-              model: string;
-              usage?: {
-                promptTokens: number;
-                completionTokens: number;
-                totalTokens: number;
-                cacheReadInputTokens?: number;
-                cacheCreationInputTokens?: number;
-              };
-              providerMetadata?: Record<string, Record<string, unknown>>;
-              identity?: ModelIdentity;
-            }) => {
-              if (block.kind === "evaluator" && payload.identity !== undefined) {
+            onGeneratorModelResult: (payload: GeneratorModelResultPayload) => {
+              // A ledger-only report is not this block's row: forward it only.
+              if (block.kind === "evaluator" && payload.countsIn !== "ledger" && payload.identity !== undefined) {
                 evaluatorModelIdentity = payload.identity;
               }
-              if (payload.usage) {
-                const anthropic = payload.providerMetadata?.anthropic ?? {};
-                // Prefer the adapter-normalised usage fields; fall back to
-                // provider metadata so older call paths keep working.
-                const cacheReadTokens =
-                  payload.usage.cacheReadInputTokens ??
-                  (typeof anthropic.cacheReadInputTokens === "number"
-                    ? anthropic.cacheReadInputTokens : undefined);
-                const cacheCreationTokens =
-                  payload.usage.cacheCreationInputTokens ??
-                  (typeof anthropic.cacheCreationInputTokens === "number"
-                    ? anthropic.cacheCreationInputTokens : undefined);
+              if (payload.usage && payload.countsIn !== "ledger") {
+                const cache = cacheTokensOf(payload.usage, payload.providerMetadata);
                 modelUsage = {
                   model: payload.model,
                   promptTokens: payload.usage.promptTokens,
                   completionTokens: payload.usage.completionTokens,
                   totalTokens: payload.usage.totalTokens,
                   providerMetadata: payload.providerMetadata,
-                  cacheReadTokens,
-                  cacheCreationTokens,
+                  cacheReadTokens: cache.read,
+                  cacheCreationTokens: cache.creation,
                 };
               }
               // Chain to original hook

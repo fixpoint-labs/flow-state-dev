@@ -70,7 +70,7 @@ function request(options: { fail?: boolean; seam?: boolean; declared?: boolean; 
     for (const listener of [...listeners]) listener(item, "done");
   };
   const end = async () => {
-    for (const hook of hooks) await hook({ status: "completed" });
+    for (const hook of hooks) await hook({ status: "completed", spend: { byModel: {}, harnessRuns: [] } });
   };
   return { ctx, settle, end, collection, listeners, hooks, notes, response };
 }

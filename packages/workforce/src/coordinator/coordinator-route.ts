@@ -78,7 +78,7 @@ export type RoutedDelegate = z.infer<typeof routedDelegateSchema>;
 /** One routing decision's record. */
 export const coordinatorRouteRecordSchema = z.object({
   /** The post routed. */
-  postId: z.string(),
+  messageRequestId: z.string(),
   /** The round it was routed in: 0 for a user's post, one more each time answers go back out. */
   round: z.number().int().min(0),
   /** The conversation's routing policy. */

@@ -41,6 +41,17 @@ export type {
 } from "./summarizer";
 
 export {
+  consultSessionHistoryInputSchema,
+  consultSessionHistoryTool,
+  CONSULT_DEFAULT_BUDGET_TOKENS
+} from "./consult-session-history";
+
+export type {
+  ConsultSessionHistoryOptions,
+  ConsultTarget
+} from "./consult-session-history";
+
+export {
   historySummary,
   historySummaryStateSchema
 } from "./history-summary";

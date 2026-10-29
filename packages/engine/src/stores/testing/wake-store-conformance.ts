@@ -28,7 +28,7 @@ export type CreateWakeStoreConformanceTestsOptions = {
 function wake(overrides: Partial<WakeInput> = {}): WakeInput {
   return {
     sessionId: "s1",
-    entry: "runTaskBoard",
+    entry: "dispatch",
     flowKind: "desk",
     userId: "u1",
     orgId: "o1",
@@ -58,10 +58,10 @@ export function createWakeStoreConformanceTests(options: CreateWakeStoreConforma
     it("keeps what it was owed under its key, with its owner", async () => {
       await withStore(async (store) => {
         const written = await store.owe(wake());
-        const read = await store.get({ sessionId: "s1", entry: "runTaskBoard" });
+        const read = await store.get({ sessionId: "s1", entry: "dispatch" });
         expect(read).toMatchObject({
           sessionId: "s1",
-          entry: "runTaskBoard",
+          entry: "dispatch",
           flowKind: "desk",
           userId: "u1",
           orgId: "o1",
@@ -83,7 +83,7 @@ export function createWakeStoreConformanceTests(options: CreateWakeStoreConforma
         const sooner = await store.owe(wake({ dueAt: 5_000, landBy: 30_000 }));
         expect(sooner.dueAt).toBe(5_000);
         expect(sooner.landBy).toBe(30_000);
-        expect(await store.get({ sessionId: "s1", entry: "runTaskBoard" })).toMatchObject({ dueAt: 5_000, landBy: 30_000 });
+        expect(await store.get({ sessionId: "s1", entry: "dispatch" })).toMatchObject({ dueAt: 5_000, landBy: 30_000 });
       });
     });
 
@@ -93,9 +93,9 @@ export function createWakeStoreConformanceTests(options: CreateWakeStoreConforma
         await store.owe(wake({ tenantId: "t2", dueAt: 2 }));
         await store.owe(wake({ sessionId: "s2", dueAt: 3 }));
         await store.owe(wake({ entry: "onTaskSettled", dueAt: 4 }));
-        expect((await store.get({ sessionId: "s1", entry: "runTaskBoard" }))?.dueAt).toBe(1);
-        expect((await store.get({ tenantId: "t2", sessionId: "s1", entry: "runTaskBoard" }))?.dueAt).toBe(2);
-        expect((await store.get({ sessionId: "s2", entry: "runTaskBoard" }))?.dueAt).toBe(3);
+        expect((await store.get({ sessionId: "s1", entry: "dispatch" }))?.dueAt).toBe(1);
+        expect((await store.get({ tenantId: "t2", sessionId: "s1", entry: "dispatch" }))?.dueAt).toBe(2);
+        expect((await store.get({ sessionId: "s2", entry: "dispatch" }))?.dueAt).toBe(3);
         expect((await store.get({ sessionId: "s1", entry: "onTaskSettled" }))?.dueAt).toBe(4);
         expect(await store.listDue(10, 100)).toHaveLength(4);
       });
@@ -106,29 +106,29 @@ export function createWakeStoreConformanceTests(options: CreateWakeStoreConforma
         const read = await store.owe(wake({ dueAt: 10_000 }));
         // A debt written during the pass.
         const during = await store.owe(wake({ dueAt: 12_000 }));
-        expect(await store.clear({ sessionId: "s1", entry: "runTaskBoard" }, read.version)).toBe(false);
-        expect(await store.move({ sessionId: "s1", entry: "runTaskBoard" }, read.version, 99_000)).toBe(false);
-        expect(await store.get({ sessionId: "s1", entry: "runTaskBoard" })).toMatchObject({ dueAt: 10_000, version: during.version });
+        expect(await store.clear({ sessionId: "s1", entry: "dispatch" }, read.version)).toBe(false);
+        expect(await store.move({ sessionId: "s1", entry: "dispatch" }, read.version, 99_000)).toBe(false);
+        expect(await store.get({ sessionId: "s1", entry: "dispatch" })).toMatchObject({ dueAt: 10_000, version: during.version });
       });
     });
 
     it("a move at the version read moves the due time, either way, and keeps the version", async () => {
       await withStore(async (store) => {
         const read = await store.owe(wake({ dueAt: 10_000 }));
-        expect(await store.move({ sessionId: "s1", entry: "runTaskBoard" }, read.version, 40_000)).toBe(true);
-        expect(await store.get({ sessionId: "s1", entry: "runTaskBoard" })).toMatchObject({ dueAt: 40_000, version: read.version });
-        expect(await store.move({ sessionId: "s1", entry: "runTaskBoard" }, read.version, 3_000)).toBe(true);
-        expect((await store.get({ sessionId: "s1", entry: "runTaskBoard" }))?.dueAt).toBe(3_000);
+        expect(await store.move({ sessionId: "s1", entry: "dispatch" }, read.version, 40_000)).toBe(true);
+        expect(await store.get({ sessionId: "s1", entry: "dispatch" })).toMatchObject({ dueAt: 40_000, version: read.version });
+        expect(await store.move({ sessionId: "s1", entry: "dispatch" }, read.version, 3_000)).toBe(true);
+        expect((await store.get({ sessionId: "s1", entry: "dispatch" }))?.dueAt).toBe(3_000);
       });
     });
 
     it("a clear at the version read deletes the wake; a missing wake clears nothing", async () => {
       await withStore(async (store) => {
         const read = await store.owe(wake());
-        expect(await store.clear({ sessionId: "s1", entry: "runTaskBoard" }, read.version)).toBe(true);
-        expect(await store.get({ sessionId: "s1", entry: "runTaskBoard" })).toBeNull();
-        expect(await store.clear({ sessionId: "s1", entry: "runTaskBoard" }, read.version)).toBe(false);
-        expect(await store.move({ sessionId: "s1", entry: "runTaskBoard" }, read.version, 1)).toBe(false);
+        expect(await store.clear({ sessionId: "s1", entry: "dispatch" }, read.version)).toBe(true);
+        expect(await store.get({ sessionId: "s1", entry: "dispatch" })).toBeNull();
+        expect(await store.clear({ sessionId: "s1", entry: "dispatch" }, read.version)).toBe(false);
+        expect(await store.move({ sessionId: "s1", entry: "dispatch" }, read.version, 1)).toBe(false);
         // A wake written again after a clear starts over.
         const again = await store.owe(wake({ dueAt: 7 }));
         expect(again.dueAt).toBe(7);

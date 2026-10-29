@@ -113,6 +113,6 @@ export function createWaitResumeOperation(deps: WaitResumeDeps): WaitResumeOpera
     // One pending gate is the one to resume; with none, any owned gate answers
     // `already-resolved` through the same path.
     const gate = pending[0] ?? owned[0]!;
-    return resumeWaitGate(deps, gate, outcome, `ask:${owner.sessionId}`);
+    return resumeWaitGate(deps, gate, outcome, `wait:${owner.sessionId}`);
   };
 }

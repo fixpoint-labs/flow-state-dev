@@ -282,6 +282,33 @@ describe("an answer", () => {
       await h.dispose();
     }
   });
+
+  it("hands the recipient's model a heard message as another's words, never as its own", async () => {
+    // Stored as an assistant line, the model reads the sender's request as
+    // something it already said, and can end its turn with nothing to add.
+    const agentAnswer = mockGenerator({
+      script: [
+        { when: (input) => textOf(input).includes("It is Bluebird."), then: { text: "The codename is Bluebird." } },
+        ...callOnce("ask the lead", "sendMessage", { to: "lead", text: "What is the codename?" }),
+        fallback
+      ]
+    });
+    const h = boot({
+      judgment: mockGenerator({ script: [...answerOnce("otto", "What is the codename?", "It is Bluebird."), fallback] }),
+      agentAnswer
+    });
+    try {
+      const otto = await agentSession(h, "alice", "otto");
+      await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
+      await h.settled();
+
+      const woken = agentAnswer.calls.find((call) => textOf(call.input).includes("It is Bluebird."))!;
+      const heard = (woken.input as Array<{ role: string; content: unknown }>).filter((m) => JSON.stringify(m.content).includes("From lead: It is Bluebird."));
+      expect(heard.map((m) => m.role)).toEqual(["user"]);
+    } finally {
+      await h.dispose();
+    }
+  });
 });
 
 /** The board's workers, a coordinator that files for `otto`, and two more agent workers. */
@@ -479,8 +506,8 @@ describe("the hop limit across a branching exchange", () => {
 });
 
 describe("a Lab's own limits", () => {
-  it("takes hireWorkforce's messages.hopLimit and messages.perTurn", async () => {
-    const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: ringScript() }), hire: { messages: { hopLimit: 2 } } });
+  it("takes hireWorkforce's messages.budget and messages.perTurn", async () => {
+    const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: ringScript() }), hire: { messages: { budget: 2 } } });
     try {
       const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
       await h.post("alice", otto.id, "respond", { message: "Please start the ring" }, "agent");
@@ -498,7 +525,9 @@ describe("a Lab's own limits", () => {
     } finally {
       await fan.dispose();
     }
-    expect(() => bootBoardHost({ hire: { messages: { hopLimit: 0 } } })).toThrow(/messages.hopLimit must be a whole number/);
+    expect(() => bootBoardHost({ hire: { messages: { budget: 0 } } })).toThrow(/messages.budget must be a whole number/);
+    // A host still passing the old key would otherwise get the default budget without noticing.
+    expect(() => bootBoardHost({ hire: { messages: { hopLimit: 2 } as never } })).toThrow(/messages.hopLimit was renamed messages.budget/); // retired-name-refusal: the renamed key is refused by name
   });
 });
 
@@ -594,7 +623,7 @@ describe("the hop count through a delegation", () => {
     ["in a session of its own", {}],
     ['in the delegate\'s ongoing session (session: "ongoing")', { session: "ongoing" }]
   ])("stops a chain through a task filed %s at the same depth: with a limit of 1, the task's message is refused", async (_where, setting) => {
-    const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: relayThroughTask(setting) }), hire: { messages: { hopLimit: 1 } } });
+    const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: relayThroughTask(setting) }), hire: { messages: { budget: 1 } } });
     try {
       const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
       await h.post("alice", otto.id, "respond", { message: "Please ask helper-a" }, "agent");

@@ -7,6 +7,9 @@
  * - **lead, researcher and writer** run on the built-in `agent` flow, so each
  *   has `sendMessage` and one conversation where messages land. Memory is
  *   composed in through `uses` (read) and `afterAnswer` (record each turn).
+ *   A history summary keeps what was said before the history window: its
+ *   capability goes in `uses` and its fold runs as `beforeAnswer`, so a turn
+ *   is summarized before it leaves the window the worker reads word for word.
  *   The flow's tool catalog holds Workforce's project tools, web search and
  *   fetch, and `uses` adds reading a project's source; each worker's
  *   `tools:` line picks its own from them.
@@ -33,11 +36,12 @@ import { CLAUDE_CODE_PASS, claudeCodeAgent } from "@flow-state-dev/claude-code/s
 import { createFlowState, runAction } from "@flow-state-dev/engine";
 import { system } from "@flow-state-dev/memory";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { defineFlow } from "@flow-state-dev/core";
+import { defineFlow, utility } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core/types";
 import { fetch, search } from "@flow-state-dev/tools";
 import {
   AGENT_FLOW,
+  consultSessionsCapability,
   createWorkerInstallation,
   defineAgentWorkerFlow,
   defineProjectBlocks,
@@ -55,6 +59,9 @@ import { PROJECTS_FLOW } from "./src/lib/projects-flow.ts";
 
 /** The workers, beside this file. */
 const TEAMMATES_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
+
+/** The smaller model a consult of another conversation reads on. */
+const UTILITY_MODEL = "openai/gpt-6-luna";
 
 /** One project the lab starts with. */
 export interface LabProject {
@@ -125,6 +132,19 @@ export async function openTeammates(options: TeammatesOptions) {
   );
 
   const mem = system({ model: options.model, working: { capacity: 7 }, episodic: true, semantic: true });
+  const earlier = utility.historySummary({
+    summarize: utility.summarizer({
+      name: "earlier-turns",
+      model: options.model,
+      granularity: "detailed",
+      // Named, or a small model summarizes the newer turns alone and drops the summary so far.
+      objectives: [
+        "The input's `summary` is the summary so far and `turns` are newer turns: write one summary of both, never of the turns alone.",
+        "Your summary replaces the summary so far: everything it says must still be in yours, then add what the newer turns add.",
+        "Keep every name, date, code and number the user or another worker stated, word for word. Small talk can shrink; those never go.",
+      ],
+    }),
+  });
   // One host for coder's runs and the workers' reads, so a read sees the clone a run works from.
   const workspace = localWorkspaceHost({
     root: options.runsRoot,
@@ -147,7 +167,14 @@ export async function openTeammates(options: TeammatesOptions) {
         fetch: fetch(),
       },
       // The project collections the source reads go through.
-      uses: [mem.capability.presets({ recall: false, connect: false, semantic: true, episodic: true }), projectWorkspaceCapability],
+      uses: [
+        mem.capability.presets({ recall: false, connect: false, semantic: true, episodic: true }),
+        projectWorkspaceCapability,
+        earlier.capability,
+        // Offered to a worker whose file picks `consultSessions: [consult]` (lead).
+        consultSessionsCapability(installation),
+      ],
+      beforeAnswer: earlier.fold,
       afterAnswer: mem.captureFromItems,
     }),
     [CODER_FLOW]: coderFlow({
@@ -165,6 +192,8 @@ export async function openTeammates(options: TeammatesOptions) {
     stores: { default: { primary: sqliteStores({ filename: options.store }) } },
     durable: true,
     devtool: { userId: options.userId },
+    // A consult reads on `intent/utility`: a smaller model than the workers answer on.
+    models: { default: options.model, intents: { utility: [UTILITY_MODEL] } },
   } as never);
 
   // The projects, as the lab's user. One the user already has comes back unchanged.

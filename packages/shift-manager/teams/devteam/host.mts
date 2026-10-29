@@ -44,7 +44,6 @@ import {
   createInProcessFetch,
   ensureSessionRecord,
   PrincipalResolutionError,
-  resolveRequestIncarnation,
   resolveUserStorageKey,
   runAction,
   type FlowState,
@@ -105,7 +104,8 @@ import {
   type ProjectBlocks,
   type WorkstreamBlocks,
   backfillBoardWakes,
-  upgradeWorkerEntryNames,
+  WORKER_USAGE_ACTION,
+  workerUsageAction,
 } from "@flow-state-dev/workforce";
 import {
   readDeclaredRoster,
@@ -1056,6 +1056,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       // because Shift Manager reads this flow first, so the Usage view and a
       // worker call one address.
       [HARNESS_USAGE_ACTION]: harnessUsageAction({ readers: options.usage ?? {} }),
+      // How many tokens each of the caller's workers used, beside it (FIX-2145).
+      [WORKER_USAGE_ACTION]: workerUsageAction(installation),
     },
   } as never)();
 
@@ -1131,17 +1133,13 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     (runtime.runtimeConfig as { logger?: unknown }).logger = options.logger;
   }
   // Before the router is built, which starts the durability sweep, so no wake
-  // fires before it is owed or renamed.
+  // fires before it is owed.
   // A notice, report or split settle a board owed before its debts had wakes
   // (FIX-2078) gets one now, so its conversation's pass pays it without a touch.
   // A no-op on a store that keeps no wakes, and on a Lab that owes nothing.
   await backfillBoardWakes(runtime.stores, {
     userCell: (userId, orgId) => resolveUserStorageKey(userId, orgId, { id: "", isolateUserState: false }),
   });
-  // A reply an older host left unfinished under a worker's old door (`run`,
-  // or this Lab's `message`), and a board pass or its wake under
-  // `runTaskBoard`, resume under `respond` and `dispatch`. A second start finds none.
-  await upgradeWorkerEntryNames(runtime.stores, copies, { incarnationOf: resolveRequestIncarnation });
 
   // After the logger is set, so the router the door probes run through is
   // built with it too.

@@ -522,7 +522,7 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
   let mineItems: StoredItem[] = [];
   const sent = Date.now();
   for (let settledAt: number | undefined; Date.now() - sent < 150_000; await sleep(1_500)) {
-    ledger = ledgerOf(o.store, alice, coordinator.id).filter((x) => postIds.has(x.postId));
+    ledger = ledgerOf(o.store, alice, coordinator.id).filter((x) => postIds.has(x.messageRequestId));
     mineItems = holdsWord(await alice.routes.items(aliceWs.view.sessionId, "message"));
     if (ledger.length > 0 && ledger.every((x) => x.status !== "pending") && mineItems.length > 0) {
       settledAt ??= Date.now();
@@ -534,7 +534,7 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
   const routing = (await alice.routes.items(coordinator.id, "component"))
     .filter((i) => (i as { component?: string }).component === "coordinator-route")
     .map((i) => i.data as Record<string, any>)
-    .filter((x) => postIds.has(x?.postId));
+    .filter((x) => postIds.has(x?.messageRequestId));
   const bobsItems = holdsWord(await bob.routes.items(bobWs.view.sessionId, "message"));
   c.notes.push(`the post's ledger: ${show(ledger)}; routing: ${show(routing.map((x) => ({ by: x.by, delegates: x.delegates })))}`);
 

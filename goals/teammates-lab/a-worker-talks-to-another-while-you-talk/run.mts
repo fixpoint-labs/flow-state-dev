@@ -17,7 +17,10 @@
  *      shows in lead's conversation under researcher's name after lead's answer
  *      to you, a delivered reply row is in the log, and a line of lead's after
  *      it carries the held-out launch date.
- *   4  not run: the history window's mark is gap G1 (FIX-1613).
+ *   4  you give lead a codename, then 60 more lines, past the 50-turn window;
+ *      lead answers the codename and the launch date without asking anyone,
+ *      and the divider, labelled summarized, sits after both the codename
+ *      line and researcher's reply.
  *   5  you ask for a fix; with one project, lead puts its conversation in
  *      `relay` and files the task there with no question, the run goes through
  *      Claude Code, a worktree of the checkout gets one commit that changes the
@@ -25,11 +28,11 @@
  *      and the result lands in lead's conversation from coder.
  *
  * Inputs are held out: the launch date is drawn at random and written into the
- * project's README, where researcher reads it, and the README's typo is one of
- * several.
+ * project's README, where researcher reads it, the codename is drawn at random, and the
+ * README's typo is one of several.
  *
  * Run:      pnpm tsx goals/teammates-lab/a-worker-talks-to-another-while-you-talk/run.mts
- * Controls: GOAL_CONTROL=no-model | no-lead-send | no-reply-back | project-not-kept (see goal.md)
+ * Controls: GOAL_CONTROL=no-model | no-lead-send | no-reply-back | project-not-kept | no-summary | no-memory (see goal.md)
  */
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import { writeFileSync, mkdirSync } from "node:fs";
@@ -51,6 +54,7 @@ import {
   runGoal,
   stopProcessGroup,
   type ModulePatch,
+  type Tell,
 } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 
@@ -62,6 +66,13 @@ interface Fixture {
   ask: string;
   second: string;
   fix: string;
+  /** Step 4's first line; `{code}` is the codename drawn for the run. */
+  remember: string;
+  recall: string;
+  codename: { colours: string[]; animals: string[]; numbers: number[] };
+  fillers: string[];
+  /** How many lines step 4 sends between the codename and the question: past the 50-turn window. */
+  pastWindow: number;
   project: { id: string; title: string };
   typos: { readme: string; wrong: string; right: string }[];
   rest: string;
@@ -82,17 +93,24 @@ const dropSendFor = (worker: string): ModulePatch => ({
   to: `if (typeof self !== "string" || self === ${JSON.stringify(worker)}) return [];`,
 });
 
+/** A scratch patch to the lab's host, where lead's flow is put together. */
+const hostPatch = (from: string): ModulePatch => ({ module: "labs/teammates/host.mts", from, to: "" });
+/** The history summary out of lead's flow: its capability and its fold. */
+const NO_SUMMARY = [hostPatch(String.raw`,\s*earlier\.capability`), hostPatch(String.raw`beforeAnswer: earlier\.fold,`)];
+
 /**
  * Each control: what it changes, the steps it must redden, and any step it may
  * redden besides, with the reason in a comment. Any other red step is a leak.
+ * `skip` is step 4 under a control about another step: its 60 turns test
+ * nothing there.
  */
-const CONTROLS: Record<string, { patches?: ModulePatch[]; model?: string; steps: string[]; mayAlso?: string[] }> = {
+const CONTROLS: Record<string, { patches?: ModulePatch[]; model?: string; steps: string[]; mayAlso?: string[]; skip?: string[] }> = {
   // No model answers: lead's conversation holds only your own lines.
-  "no-model": { model: "openai/no-such-model-goal-control", steps: ["1", "2", "3", "5"] },
+  "no-model": { model: "openai/no-such-model-goal-control", steps: ["1", "2", "3", "5"], skip: ["4"] },
   // lead can't message: no card, no line in researcher's conversation, no row, and so no reply.
   // Step 5 may go red too: with no way to message, lead files its research ask as a task instead,
   // and after the pick it has filed none again (seen in 2 of 2 runs). That is the model, not a leak.
-  "no-lead-send": { patches: [dropSendFor(fixture.lead)], steps: ["2", "3"], mayAlso: ["5"] },
+  "no-lead-send": { patches: [dropSendFor(fixture.lead)], steps: ["2", "3"], mayAlso: ["5"], skip: ["4"] },
   // lead asks with a reply requested, and researcher's answer never goes back to it.
   "no-reply-back": {
     patches: [
@@ -103,6 +121,7 @@ const CONTROLS: Record<string, { patches?: ModulePatch[]; model?: string; steps:
       },
     ],
     steps: ["3"],
+    skip: ["4"],
   },
   // A conversation's project answers as kept but is never stored, so lead's task has no project.
   // Step 3 may go red too: researcher puts its own conversation in the project to read the date,
@@ -116,6 +135,21 @@ const CONTROLS: Record<string, { patches?: ModulePatch[]; model?: string; steps:
       },
     ],
     steps: ["5"],
+    skip: ["4"],
+  },
+  // Step 3 may go red under both of these: researcher sometimes answers lead in its own conversation
+  // instead of with `sendMessage`, so no reply lands (2 of 3 runs on 2026-10-28). Neither patch
+  // touches messaging; that is the model, not a leak.
+  // No history summary: memory may still answer, but the divider can't say the earlier turns were summarized.
+  "no-summary": { patches: NO_SUMMARY, steps: ["4"], mayAlso: ["3"] },
+  // Neither memory nor the summary: nothing holds what left the window, so lead can't answer it.
+  "no-memory": {
+    patches: [
+      ...NO_SUMMARY,
+      hostPatch(String.raw`mem\.capability\.presets\(\{[^)]*\}\)`),
+      hostPatch(String.raw`afterAnswer: mem\.captureFromItems,`),
+    ],
+    steps: ["4"],
     mayAlso: ["3"],
   },
 };
@@ -203,6 +237,8 @@ interface Drawn {
   label: string;
   text: string;
   status?: string;
+  /** The divider's reading: "false" for an entry above it, out of lead's word-for-word view. */
+  inWindow?: string;
 }
 
 /** The open conversation's entries in order, as drawn. */
@@ -216,6 +252,7 @@ async function entriesOf(page: Page): Promise<Drawn[]> {
         // As shown: block breaks between the label and a Markdown body, and the label in its uppercase style.
         text: (el as HTMLElement).innerText,
         status: el.querySelector("[data-task-status]")?.textContent ?? undefined,
+        inWindow: el.closest("[data-in-window]")?.getAttribute("data-in-window") ?? undefined,
       })),
     );
 }
@@ -243,7 +280,102 @@ async function open(page: Page, worker: string): Promise<void> {
 }
 
 const userAt = (entries: Drawn[], text: string) => entries.findIndex((e) => e.kind === "user" && e.text.includes(text));
+const lastUserAt = (entries: Drawn[], text: string) => entries.map((e) => e.kind === "user" && e.text.includes(text)).lastIndexOf(true);
 const short = (id: string) => id.replace(/^teammates\./, "");
+
+/** Say `text` to lead and wait until lead has answered it and finished the turn; false when it didn't in time. */
+async function turnWith(page: Page, lead: string, text: string): Promise<boolean> {
+  const said = (es: Drawn[]) => es.filter((e) => e.kind === "user" && e.text.includes(text)).length;
+  const before = said(await entriesOf(page));
+  await tell(page, lead, text);
+  // The line is drawn once its turn starts; only an answer after this copy of it counts.
+  const answered = await readUntil(
+    page,
+    (es) => said(es) > before && es.slice(lastUserAt(es, text) + 1).some((e) => e.kind === "assistant" && e.text.trim() !== ""),
+    fixture.answerWithinMs,
+  );
+  if (!answered.ok) return false;
+  // Memory records the turn after the answer, in the same request: the next line waits for it.
+  const busy = conversation(page).getByRole("status").filter({ hasText: "is answering" });
+  for (const until = Date.now() + fixture.answerWithinMs; Date.now() < until && (await busy.count()) > 0; ) await sleep(250);
+  if ((await busy.count()) > 0) return false;
+  // "is answering" clears when the request ends, which can be before the streamed answer's last words are drawn.
+  const shown = async () => (await entriesOf(page)).map((e) => e.text).join("\n");
+  for (let was = await shown(), until = Date.now() + 10_000; Date.now() < until; ) {
+    await sleep(1_000);
+    const now = await shown();
+    if (now === was) break;
+    was = now;
+  }
+  return true;
+}
+
+/**
+ * Step 4: a codename, then more lines than the window holds, then the codename
+ * and the launch date asked back. Both left the window long before the
+ * question, so lead answers them from what it kept, and the divider says where
+ * its word-for-word reading begins.
+ */
+async function stepFour(
+  page: Page,
+  log: () => Promise<{ from: string; to: string }[]>,
+  date: ReturnType<typeof launchDate>,
+  fail: (step: string, line: string) => void,
+  evidence: string[],
+  tell_: Tell,
+): Promise<void> {
+  const lead = short(fixture.lead);
+  const researcher = short(fixture.researcher);
+  const code = { colour: pick(fixture.codename.colours), animal: pick(fixture.codename.animals), number: pick(fixture.codename.numbers) };
+  const codename = `${code.colour} ${code.animal} ${code.number}`;
+  const remember = fixture.remember.replace("{code}", codename);
+  const fillers = [...fixture.fillers].sort(() => Math.random() - 0.5);
+  console.error(`goal: step 4 codename "${codename}", then ${fixture.pastWindow} lines`);
+  for (const [i, line] of [remember, ...Array.from({ length: fixture.pastWindow }, (_, n) => fillers[n % fillers.length]!)].entries()) {
+    if (!(await turnWith(page, lead, line))) {
+      fail("4", `lead didn't finish answering line ${i + 1} of step 4 within ${fixture.answerWithinMs / 1000}s: "${line}"`);
+      return;
+    }
+  }
+
+  // A standing rule is in lead's view on every turn, so a codename kept as one never left it.
+  const afterRemember = await entriesOf(page);
+  if (afterRemember.slice(userAt(afterRemember, remember) + 1).some((e) => /Rule added/.test(e.text) && e.text.includes(code.animal))) {
+    fail("4", "lead kept the codename as a standing rule, so it never left lead's view and the step tests nothing");
+  }
+
+  // Asked back, from what lead kept: a fresh message to researcher would answer the date without it.
+  const asked = (await log()).filter((r) => r.from === fixture.lead && r.to === fixture.researcher).length;
+  const card = conversation(page).getByRole("button", { name: new RegExp(`^To ${researcher}: `) });
+  const cards = await card.count();
+  if (!(await turnWith(page, lead, fixture.recall))) {
+    fail("4", `lead didn't answer the question within ${fixture.answerWithinMs / 1000}s`);
+    return;
+  }
+  const drawn = tell_.over("4 · entries drawn in lead's conversation", await entriesOf(page));
+  const answer = drawn.slice(lastUserAt(drawn, fixture.recall) + 1).find((e) => e.kind === "assistant")?.text ?? "";
+  const missing = [code.colour, code.animal, String(code.number)].filter((word) => !answer.toLowerCase().includes(word));
+  if (missing.length > 0) fail("4", `lead's answer lacks ${missing.join(", ")} of the codename "${codename}": "${answer.slice(0, 300)}"`);
+  if (!date.isIn(answer)) fail("4", `lead's answer doesn't state the launch date ${date.text}: "${answer.slice(0, 300)}"`);
+  if ((await card.count()) > cards || (await log()).filter((r) => r.from === fixture.lead && r.to === fixture.researcher).length > asked) {
+    fail("4", "lead messaged researcher again to answer the question");
+  }
+
+  // The divider: labelled summarized, with the codename line and researcher's reply above it.
+  const divider = conversation(page).getByRole("separator");
+  const shown = await divider.first().waitFor({ timeout: 15_000 }).then(() => true, () => false);
+  const label = shown ? await divider.first().getAttribute("aria-label") : null;
+  if (!shown) fail("4", "no divider in lead's conversation");
+  else if (label !== "Earlier turns summarized") fail("4", `the divider reads "${label}", not "Earlier turns summarized"`);
+  const marked = await entriesOf(page);
+  const codeLine = marked[userAt(marked, remember)];
+  const reply = marked.find((e) => e.kind === "received" && e.label === `From ${researcher}`);
+  if (codeLine?.inWindow !== "false") fail("4", "the codename line is not above the divider, so lead may have read it word for word");
+  if (reply?.inWindow !== "false") fail("4", "researcher's reply is not above the divider, so lead may have read the date word for word");
+  if (missing.length === 0 && date.isIn(answer) && label === "Earlier turns summarized") {
+    evidence.push(`4: after ${fixture.pastWindow} more lines lead answered "${codename}" and ${date.text}; divider "${label}" below both`);
+  }
+}
 
 // ---------------------------------------------------------------------------
 
@@ -377,15 +509,17 @@ await runGoal(async (failures, tell_) => {
       if (!date.isIn(drawn3[replyAt]!.text)) fail("3", `researcher's reply doesn't carry the launch date ${date.text}: "${drawn3[replyAt]!.text}"`);
       const used = drawn3.slice(replyAt + 1).find((e) => e.kind === "assistant" && date.isIn(e.text));
       if (used === undefined) fail("3", `no line of lead's after the reply states the launch date ${date.text}`);
-      const replies = (await log()).filter((r) => r.from === fixture.researcher && r.to === fixture.lead && r.inReplyTo !== undefined);
+      const rows3 = await log();
+      const replies = rows3.filter((r) => r.from === fixture.researcher && r.to === fixture.lead && r.inReplyTo !== undefined);
       if (!replies.some((r) => r.status === "delivered")) fail("3", "no delivered reply row researcher → lead in the message log");
-      const asked3 = (await log()).filter((r) => r.from === fixture.lead && r.to === fixture.researcher);
+      const asked3 = rows3.filter((r) => r.from === fixture.lead && r.to === fixture.researcher);
       if (!asked3.some((r) => r.replyRequested === true)) fail("3", "lead's message to researcher didn't ask for a reply (no replyRequested row)");
       if (used !== undefined) evidence.push(`3: reply landed after lead's answer; lead's next line says ${date.text}`);
     }
 
-    // ---- 4 · the history window ------------------------------------------------
-    evidence.push("4: not run, waits on the history window's mark (G1, FIX-1613)");
+    // ---- 4 · past the history window --------------------------------------------
+    if (control?.skip?.includes("4")) evidence.push(`4: not run under GOAL_CONTROL=${CONTROL}`);
+    else await stepFour(page, log, date, fail, evidence, tell_);
 
     // ---- 5 · lead hands coder a fix, in the one project ----------------------
     const before = diskOf(checkout);

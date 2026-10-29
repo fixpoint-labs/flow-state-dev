@@ -12,7 +12,7 @@
  * | `answerApproval`    | the request's `answer`: approve or reject a `user_approval` stop             |
  * | `watchTalk`         | the user's message log (`workforceMessages`), as `sendMessage` writes it     |
  * | `watchActivity`     | `listSessionRequests` on the worker's conversation                           |
- * | `watchWindow`       | the mark the history window leaves: gap G1 (FIX-1613), not yet in the package |
+ * | `watchWindow`       | the last answering request's `historyStart`, and the session's `historySummary` |
  * | `listProjects`      | the user's projects, read through their roster session                       |
  * | `watchProjects`     | the same read, again every few seconds, so a project lead made shows          |
  * | `createProject`     | the projects flow's `createProject`, the block lead's tool runs               |
@@ -235,6 +235,46 @@ const parseArgs = (item: Item): Record<string, unknown> => {
     return {};
   }
 };
+
+/** The session resource the lab's history summary keeps; its public face carries the mark. */
+const HISTORY_SUMMARY = "historySummary";
+
+/** What the screen reads of where the worker's last turn began reading word for word. */
+interface WindowRead {
+  /** The first turn the window held, when earlier turns had left it. */
+  historyStart?: string;
+  /** The newest turn folded into the summary, once one was. */
+  summarizedThrough?: string;
+  /** Whether the summary covers every turn before its mark; one with a hole can't be called that. */
+  summaryComplete?: boolean;
+}
+
+/**
+ * The divider, from the items: before the first entry the worker read word
+ * for word. That is the window's first turn, or the first turn after the
+ * summary's mark when the summary reaches past it: the capability starts the
+ * reads there, so no turn is read twice. Turns go in the order they started,
+ * as history reads them: overlapping turns interleave their items, so the
+ * summarized turn's last item can sit after a newer turn's first.
+ */
+export function windowMarkOf(items: readonly Item[], entries: readonly ConversationEntry[], read: WindowRead): WindowMark | undefined {
+  const firstOf = (requestId: string) => items.findIndex((i) => i.requestId === requestId);
+  const turns = [...new Set(items.map((i) => i.requestId))];
+  /** The first item of the turn that started after `requestId`; past the end when none did. */
+  const turnAfter = (requestId: string) => {
+    const at = turns.indexOf(requestId);
+    if (at < 0) return -1;
+    const next = turns[at + 1];
+    return next === undefined ? items.length : firstOf(next);
+  };
+  const start = read.historyStart === undefined ? -1 : firstOf(read.historyStart);
+  const folded = read.summarizedThrough === undefined ? -1 : turnAfter(read.summarizedThrough);
+  const from = Math.max(start, folded);
+  if (from < 0) return undefined;
+  const drawn = new Set(entries.map((e) => e.id));
+  const first = items.slice(from).find((i) => drawn.has(i.id));
+  return first === undefined ? undefined : { firstVerbatimEntryId: first.id, summarized: read.summaryComplete !== false && folded >= 0 && folded >= start };
+}
 
 /** Read `read` now and every `everyMs` until stopped; a failed read keeps the last value. */
 function poll<T>(read: () => Promise<T>, onValue: (value: T) => void, everyMs = POLL_MS): Unsubscribe {
@@ -518,10 +558,45 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         return activityOf(await client.sessions.requests(known.sessionId, { limit: 20 }));
       }, onChange);
     },
-    watchWindow(_sessionId, onChange) {
-      // G1 (FIX-1613): the package leaves no mark yet, so no divider is drawn.
-      onChange(undefined);
-      return () => {};
+    watchWindow(sessionId, onChange) {
+      let items: Item[] = [];
+      let read: WindowRead = {};
+      let last = "";
+      const emit = () => {
+        const mark = windowMarkOf(items, toEntries(items, workerIds), read);
+        const seen = JSON.stringify(mark ?? null);
+        if (seen === last) return;
+        last = seen;
+        onChange(mark);
+      };
+      const stopFeed = watchFeed(sessionId, (next) => next, (next) => {
+        items = next;
+        emit();
+      });
+      const stopPoll = poll(
+        async (): Promise<WindowRead> => {
+          // The latest turn of the worker's own, by when it started: its window is the one the worker read last.
+          const answering = (await client.sessions.requests(sessionId, { limit: 20 })).filter((r) => !QUIET_ACTIONS.has(r.actionName));
+          const latest = answering.reduce<SessionRequestSummary | undefined>((a, r) => (a === undefined || (r.startedAtMs ?? 0) > (a.startedAtMs ?? 0) ? r : a), undefined);
+          const summary = (await client.sessions.state(sessionId, { includeItems: false })).resources?.session?.[HISTORY_SUMMARY] as
+            | { clientData?: { throughRequestId?: string | null; complete?: boolean } }
+            | undefined;
+          const through = summary?.clientData?.throughRequestId;
+          return {
+            ...(latest?.historyStart == null ? {} : { historyStart: latest.historyStart.requestId }),
+            // The worker reads after the mark whether or not the summary has a hole; a hole only changes the label.
+            ...(through == null ? {} : { summarizedThrough: through, summaryComplete: summary?.clientData?.complete === true }),
+          };
+        },
+        (next) => {
+          read = next;
+          emit();
+        },
+      );
+      return () => {
+        stopFeed();
+        stopPoll();
+      };
     },
     listProjects,
     watchProjects(onChange) {

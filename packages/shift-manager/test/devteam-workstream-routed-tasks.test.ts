@@ -259,8 +259,8 @@ async function handOn(lead: Lead, coderRuns: ReturnType<typeof gate>, options: {
   await runAction(client, "coordinator", pc, "respond", { message: FIRST_ASK });
   const rows = async () => Object.values(await lab!.stored("user", "tasks/")) as Row[];
   const routedRow = async (body?: string) =>
-    (await rows()).find((r) => r.sealed?.postId !== undefined && (body === undefined || r.sealed.body === body));
-  const coderRow = async () => (await rows()).find((r) => r.sealed?.postId === undefined);
+    (await rows()).find((r) => r.sealed?.messageRequestId !== undefined && (body === undefined || r.sealed.body === body));
+  const coderRow = async () => (await rows()).find((r) => r.sealed?.messageRequestId === undefined);
   const steer = async (id: string) =>
     expect((await runAction(client, "coordinator", pc, "updateTask_tasks", { id, message: STEER })).output).toEqual({ ok: true });
   return { client, workstream, pc, routedRow, coderRow, steer };

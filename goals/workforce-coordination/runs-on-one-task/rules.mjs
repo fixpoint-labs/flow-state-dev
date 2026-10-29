@@ -261,8 +261,6 @@ export const KEEP = [
   { path: /^packages\/harness-manager\/src\/manager\.ts$/, line: /^if \("announce" in \(options as object\)\) \{$|^"\[harness-manager\] `announce` was removed: /, why: "BP-030: the manager refuses the removed `announce` option loudly, naming it (FIX-2132)" },
   { path: /^packages\/harness-manager\/README\.md$/, line: /^- The manager keeps no questions of its own\. Removed: /, why: "the README's migration note: says the question inbox is gone and what replaces it (FIX-2132)" },
   { path: /^packages\/orchestration\/README\.md$/, line: /^\*\*Migrating from `resumeOwedWaits`\.\*\* `resumeOwedWaits\(ctx, collection\)` is no longer exported/, why: "the README's migration note: says the helper is gone" },
-  { path: /^packages\/workforce\/src\/conversation-board\/(board-entries|ledger)\.ts$/, line: /\bRETRY_OF\b/, why: "BP-030: the retired marker's key, kept only so a row an older host wrote has it stripped from what a caller reads; nothing writes it" },
-  { path: /^packages\/workforce\/src\/workers\/upgrade-entry-names\.ts$/, line: /from: "runTaskBoard"/, why: "BP-030: the host-start rewrite of a request stored under the old entry name (FIX-2084)" },
 ];
 
 /**

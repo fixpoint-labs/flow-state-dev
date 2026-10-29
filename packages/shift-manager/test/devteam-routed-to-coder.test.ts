@@ -112,7 +112,7 @@ describe("a message a coordinator routes to the coder", () => {
     expect((await act(lab, "coordinator", conversation, "respond", { message: ASK })).error).toBeUndefined();
 
     const routed = await eventually(async () => {
-      const row = (Object.values(await lab.stored("user", "tasks/")) as any[]).find((r) => r.sealed?.postId !== undefined);
+      const row = (Object.values(await lab.stored("user", "tasks/")) as any[]).find((r) => r.sealed?.messageRequestId !== undefined);
       return ["completed", "failed", "errored", "cancelled"].includes(row?.status) ? row : undefined;
     }, "the routed task to end");
     // The id the harness couldn't carry as it was.

@@ -240,6 +240,7 @@ const sidebars: SidebarsConfig = {
         "workforce/packages-on-disk",
         "workforce/projects",
         "workforce/inventory",
+        "workforce/worker-usage",
         "workforce/durable-hire",
         "workforce/shift-coordinator",
         "workforce/ui",

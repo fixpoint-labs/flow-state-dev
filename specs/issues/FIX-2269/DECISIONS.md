@@ -68,6 +68,51 @@ None.
   at `ba527aa`: `durability-sweeper.ts` step 2b, `request-recovery.ts`, `call.ts`, and the
   dispatcher's `sendAndWait`, which has the same window.
 
+## Amendments while building
+
+- **E5 · The obligation is a wake, not a request-record field.** It is kept as an engine-owned
+  wake, entry `parkOwed:<requestId>`, on the request's session, due one stale threshold out
+  (`dueAt` and `landBy` both). The wake store already survives a crash, already arms the sweep's
+  tick when owed (so E6 needs no new hook: the tick is armed at `dueAt` as the owe is written), and
+  already fires in step 2's scan, so the new branch (2c) sits beside the deadline wakes. A record
+  field would have needed a store-contract change on every adapter. A record written before this
+  has no such wake, so it owes nothing (BP-030).
+- **E4 · The cap is age, not a count.** Wakes coalesce and keep their first `createdAt`, so the
+  sweep gives up on a request still owing its park 10 minutes (`PARK_OWED_GIVE_UP_MS`) after the
+  first owe, clears the wake and leaves the request `interrupted`. That bounds a crash loop with no
+  second value. Each continuation moves the wake 30 s out first, so a continuation that dies again
+  is tried again on a later tick, never in the same one.
+- **A stop lets the owe go.** Stopping an interrupted request that owes a park clears the wake, so
+  the sweep doesn't continue a request someone stopped.
+- **A call's repeated send dispatches (Workforce).** The spec assumed the send's `runOnce` result
+  survives the death. It doesn't when the process dies after the row is written and before the
+  dispatch (the goal's `exit-after-row` fault): the replay repeats the send, which found the row and,
+  on a flow with a pass, left the dispatch to the pass. The call then had no request to wait on and
+  answered `running`. A repeat of a call's send now dispatches itself, pass or not; the take keeps
+  the message once.
+- **The dispatcher does not owe a park yet (review, Codex P1).** `runOnce` records a result only
+  after its function returns, so a dispatcher that dies after its child is accepted and before the
+  record would dispatch a second child on the continuation: the dispatch seam takes no stable
+  request id. A call is safe in the same window (its message id is kept first and the recipient
+  takes it once), so only the call owes a park. The dispatcher keeps today's behaviour (left
+  `interrupted` for a hand continue) until it has a dispatch identity kept before the send.
+  Decided on #4078: ship call-only here; the dispatcher is
+  [FIX-2322](https://linear.app/fixpoint-labs/issue/FIX-2322).
+- **A repeated send pays its budget once (review, Codex P2).** The send's per-request count now
+  names the ids it holds (`workforceMessagesPaid`), and the chain row appends an id only once, so a
+  call continued after dying between paying and its row isn't charged (or refused) a second time.
+- **The park is paid once its gate is logged (review, Codex P2).** `runAction` clears the owe after
+  the suspension item is flushed to the request's log, not right after the gate is written: a gate
+  the log doesn't name yet can't be resumed, and the owe is what continues the request then.
+- **The owe is read before the logged gate (review, Codex P2).** A later wait's owe outlives an
+  earlier wait's gate, answered or pruned, so history, retention and `waits.ended` read it first.
+- **A stop and a continuation are fenced by the request's lease (review, Codex P2).** The stop lets
+  the owe go under the lease, and the sweep's admission reads the owe again under it; a stop that
+  finds the lease held answers `already-resolved` (it runs again).
+- **Waits owing the park at once share it (review, Codex P2).** Parallel branches of one request owe
+  the same wake, so the wrapper counts them: the last to settle clears it, and none does once one
+  has parked (the engine clears that one after its gate is logged).
+
 ## Notes from review
 
 Round 1 (Codex: no findings; Cursor: direction approved). Folded: the obligation's lifecycle in one

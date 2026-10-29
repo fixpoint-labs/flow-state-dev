@@ -1,12 +1,13 @@
 /**
  * Central block execution entrypoint: dispatch, seam interception, retry, and error normalization.
  */
-import type { BlockContext, BlockDefinition, BlockOutputHint, ModelIdentity } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockDefinition, BlockOutputHint, GeneratorModelResultPayload, ModelIdentity } from "@flow-state-dev/core/types";
 import { asRuntime } from "@flow-state-dev/core/types";
 import type { CapabilityRef } from "@flow-state-dev/core";
 import { SuspensionError, runRescue } from "@flow-state-dev/core";
 import { getBaseCapability, resolveActiveStatusMessage } from "@flow-state-dev/core";
 import { buildBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
+import { cacheTokensOf } from "@flow-state-dev/core";
 import { normalizeError } from "../errors/normalize-error";
 import { getResponseItems } from "./internal/response";
 import {
@@ -74,41 +75,22 @@ async function executeByKind(
     let modelIdentity: ModelIdentity | undefined;
     const runtimeHooks = {
       ...ctx._runtimeHooks,
-      onGeneratorModelResult: (payload: {
-        model: string;
-        usage?: {
-          promptTokens: number;
-          completionTokens: number;
-          totalTokens: number;
-          cacheReadInputTokens?: number;
-          cacheCreationInputTokens?: number;
-        };
-        providerMetadata?: Record<string, Record<string, unknown>>;
-        identity?: ModelIdentity;
-      }) => {
-        if (payload.identity !== undefined) {
+      onGeneratorModelResult: (payload: GeneratorModelResultPayload) => {
+        // A ledger-only report (a step, or an evaluator called as a tool) is
+        // not this block's row: forward it, and leave the row alone.
+        if (payload.countsIn !== "ledger" && payload.identity !== undefined) {
           modelIdentity = payload.identity;
         }
-        if (payload.usage !== undefined) {
-          const anthropic = payload.providerMetadata?.anthropic ?? {};
-          // Prefer adapter-normalised cache fields; fall back to raw
-          // Anthropic provider metadata for older call paths.
-          const readTokens =
-            payload.usage.cacheReadInputTokens ??
-            (typeof anthropic.cacheReadInputTokens === "number"
-              ? anthropic.cacheReadInputTokens : undefined);
-          const creationTokens =
-            payload.usage.cacheCreationInputTokens ??
-            (typeof anthropic.cacheCreationInputTokens === "number"
-              ? anthropic.cacheCreationInputTokens : undefined);
+        if (payload.countsIn !== "ledger" && payload.usage !== undefined) {
+          const cache = cacheTokensOf(payload.usage, payload.providerMetadata);
           modelUsage = {
             model: payload.model,
             promptTokens: payload.usage.promptTokens,
             completionTokens: payload.usage.completionTokens,
             totalTokens: payload.usage.totalTokens,
             providerMetadata: payload.providerMetadata,
-            cacheReadTokens: readTokens,
-            cacheCreationTokens: creationTokens
+            cacheReadTokens: cache.read,
+            cacheCreationTokens: cache.creation
           };
         }
         ctx._runtimeHooks?.onGeneratorModelResult?.(payload);
