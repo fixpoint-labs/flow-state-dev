@@ -252,6 +252,16 @@ describe("the teammates screen", () => {
     expect(conversation().querySelector("[data-entry=task]")).toBe(card);
   });
 
+  it("sizes the composer's box to its draft in CSS, so a column that narrows rewraps and regrows it", async () => {
+    render(<App adapter={fast()} />);
+    const box = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
+    // One line to start; the browser grows the box with its text (and its width) up to the cap, then it scrolls.
+    expect(box.getAttribute("rows")).toBe("1");
+    expect(box.classList.contains("field-sizing-content")).toBe(true);
+    expect(box.classList.contains("max-h-48")).toBe(true);
+    expect(box.style.height).toBe("");
+  });
+
   it("doesn't carry a draft to another worker: switching workers starts an empty box", async () => {
     render(<App adapter={fast()} />);
     const leadBox = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
@@ -272,6 +282,20 @@ describe("the teammates screen", () => {
     expect(entries("user").some((e) => e.textContent?.includes("日本語"))).toBe(false);
     fireEvent.keyDown(box, { key: "Enter" });
     await waitFor(() => expect(entries("user").some((e) => e.textContent?.includes("日本語"))).toBe(true));
+  });
+
+  it("shows what a worker waits for your yes on, and Approve answers it so its turn carries on", async () => {
+    render(<App adapter={fast()} />);
+    await waitFor(() => expect(workerRow("writer")).toBeTruthy());
+    fireEvent.click(workerRow("writer"));
+    await tell("writer", "Publish the draft.");
+    const card = await within(conversation()).findByRole("region", { name: "writer asks" });
+    expect(card.textContent).toContain("Publish the draft to the team page?");
+    expect(card.textContent).toContain("waiting for you");
+    await act(async () => fireEvent.click(within(card).getByRole("button", { name: "Approve" })));
+    await waitFor(() => expect(card.textContent).toContain("approved"));
+    expect(within(card).queryByRole("button", { name: "Approve" })).toBeNull();
+    expect(await within(conversation()).findByText("Published.", {}, { timeout: 2000 })).toBeTruthy();
   });
 
   it("hires a teammate you can talk to, changes its instructions, and fires it; the files' workers can't be", async () => {

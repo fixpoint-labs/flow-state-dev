@@ -90,8 +90,9 @@ says in its conversation that it is waiting for a project, as well as the screen
 > missing, the lab doesn't start. The host's run source is the existing constant one, so every
 > coding run gets a worktree of that folder and researcher's and writer's reads read it. Nothing
 > asks where, nothing is refused `no-project`, and no worker has a project tool: the header's
-> project select, the task card's prompt, the *New project* form and lead's approval card are gone,
-> and task cards say *running* and *done*. Locks in, instead: a person never picks a folder in the
+> project select, the task card's prompt and the *New project* form are gone, and task cards say
+> *running* and *done*. The approval card stays: it now shows any worker's `waitForUser`
+> approval, not only lead's project creation. Locks in, instead: a person never picks a folder in the
 > lab, and no model can name one. Projects may come back later as an example of configuring the app
 > beyond what Grok Bot does.
 

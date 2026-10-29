@@ -150,6 +150,7 @@ export function Conversation({
                     workerName={worker.name}
                     nameOf={nameOf}
                     isCoding={isCoding}
+                    {...(entry.kind === "approval" ? { onAnswer: (approve: boolean) => adapter.answerApproval(sessionId, entry, approve) } : {})}
                   />
                 )}
               </div>
