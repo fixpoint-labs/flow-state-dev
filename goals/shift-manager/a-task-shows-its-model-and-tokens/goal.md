@@ -11,7 +11,7 @@
 3. **codex**: the coder on `codexAgent` started with `gpt-5`, its client scripted through `resolveCodexClient`, paused before `turn.completed`.
 4. **cursor**: the coder on `cursorAgent` configured with `composer-2`, its client scripted through `resolveCursorClient`, paused before the turn's usage.
 
-The chief of staff's model is scripted to file one coder task per `[[usage:<tag>]]` and reports no usage. `openai/gpt-6-luna` (the general lead's and the researcher's) answers at 4 + 4 tokens a call: the general lead files one researcher task per `[[research:<tag>]]`, and the researcher's run reports progress, then answers. Rows are read through `listTasks` from the board's task actions over the Lab's HTTP door. Each leg runs as its own user.
+The Shift Coordinator's model is scripted to file one coder task per `[[usage:<tag>]]` and reports no usage. `openai/gpt-6-luna` (the general lead's and the researcher's) answers at 4 + 4 tokens a call: the general lead files one researcher task per `[[research:<tag>]]`, and the researcher's run reports progress, then answers. Rows are read through `listTasks` from the board's task actions over the Lab's HTTP door. Each leg runs as its own user.
 
 **Signal:** each failure tagged `<leg>:<assertion>`.
 
@@ -25,7 +25,7 @@ The chief of staff's model is scripted to file one coder task per `[[usage:<tag>
 
 **Anti-game:**
 - No assertion reads orchestration's modules or a row written directly. Rows are read through the board's `listTasks` action, and worker usage through `workerUsage`, over each Lab's HTTP door.
-- Spend enters as model results and SDK messages only, through the real chain: chief of staff or general lead, task board, harness manager, the harness, the request's ledger, the task request's spend tick and its request-end settle.
+- Spend enters as model results and SDK messages only, through the real chain: Shift Coordinator or general lead, task board, harness manager, the harness, the request's ledger, the task request's spend tick and its request-end settle.
 - Mid-run reads wait past one spend tick (`SPEND_TICK_MS` + 1.5 s) at a pause the run cannot leave until the check releases it.
 - Production is a separate process whose own log line says `NODE_ENV=production traces=off`.
 

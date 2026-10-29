@@ -23,6 +23,8 @@ export interface TaskSpendWrite {
   /** `live`: what it has spent since its last ending. `settle`: what an ending handed on. */
   readonly part: "live" | "settle";
   readonly spend: RequestSpend;
+  /** The admission writing: a request continued after its process died is admitted again, under a new one. */
+  readonly writer?: string;
 }
 
 /** The harness and model a request's spend names last, if any. */
@@ -37,6 +39,23 @@ function namesOf(spend: RequestSpend): { harness?: string; harnessModel?: string
 }
 
 /**
+ * `entry` as a write from `writer` finds it. A live part another admission
+ * wrote, never settled, is a run whose process died: its request is continued
+ * by a new admission whose ledger recovers the dead run's model calls from the
+ * log but not its harness runs. So the dead run's harness part is settled here,
+ * and its model part left for the new ledger's report to replace.
+ */
+function orphanedLive(entry: TaskSpendRequest, writer: string | undefined): TaskSpendRequest {
+  if (entry.live === null || entry.writer === null || writer === undefined || entry.writer === writer) return entry;
+  const harnessRuns = entry.live.filter((source) => source.kind === "harness");
+  return {
+    ...entry,
+    settled: harnessRuns.reduce<TaskSpendSource[]>((all, source) => addRequestSpendSource(all, source) as TaskSpendSource[], entry.settled),
+    live: null,
+  };
+}
+
+/**
  * The row's `spend` after `write`, or `undefined` when it changes nothing (a
  * live part equal to the one stored). Pure: both backings run it inside their
  * write, against the committed row.
@@ -46,8 +65,8 @@ export function spendAfterWrite(task: Pick<Task, "spend">, write: TaskSpendWrite
   const at = stored.requests.findIndex((entry) => entry.requestId === write.requestId);
   const was: TaskSpendRequest =
     at < 0
-      ? { requestId: write.requestId, settled: [], live: null, harness: null, harnessModel: null, model: null }
-      : stored.requests[at]!;
+      ? { requestId: write.requestId, settled: [], live: null, harness: null, harnessModel: null, model: null, writer: null }
+      : orphanedLive(stored.requests[at]!, write.writer);
   const sources = requestSpendSources(write.spend) as TaskSpendSource[];
   const names = namesOf(write.spend);
   // An ending that spent nothing, for a request that never wrote: no entry.
@@ -56,11 +75,11 @@ export function spendAfterWrite(task: Pick<Task, "spend">, write: TaskSpendWrite
     ...was,
     ...(write.part === "settle"
       ? { settled: sources.reduce<TaskSpendSource[]>((all, source) => addRequestSpendSource(all, source) as TaskSpendSource[], was.settled), live: null }
-      : { live: sources }),
+      : { live: sources, ...(write.writer !== undefined ? { writer: write.writer } : {}) }),
     ...(names.harness !== undefined ? { harness: names.harness, harnessModel: names.harnessModel ?? null } : {}),
     ...(names.model !== undefined ? { model: names.model } : {}),
   };
-  if (at >= 0 && JSON.stringify(next) === JSON.stringify(was)) return undefined;
+  if (at >= 0 && JSON.stringify(next) === JSON.stringify(stored.requests[at])) return undefined;
   // The entry that reported its harness or model last is the last one, so the
   // view names what ran most recently across requests: a running request's
   // write, or an ending that names something new. A late ending of an older

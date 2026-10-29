@@ -39,7 +39,7 @@ describe("taskSpendView", () => {
   });
 
   it("names a harness run's model before any tokens, and reads its tokens as null, not 0, while unreported", () => {
-    const view = taskSpendView({ spend: { requests: [{ requestId: "q1", settled: [], live: [{ source: "codex", kind: "harness", billing: null, inputTokens: 0, outputTokens: 0, costUsd: null, runs: 1, unreported: 1 }], harness: "codex", harnessModel: "gpt-5", model: null }] } });
+    const view = taskSpendView({ spend: { requests: [{ requestId: "q1", settled: [], live: [{ source: "codex", kind: "harness", billing: null, inputTokens: 0, outputTokens: 0, costUsd: null, runs: 1, unreported: 1 }], harness: "codex", harnessModel: "gpt-5", model: null, writer: null }] } });
     expect(view).toEqual({ harness: "codex", model: "gpt-5", inputTokens: null, outputTokens: null, unreported: true, live: true });
   });
 });
@@ -136,6 +136,20 @@ describe.each([
     await collection.complete("t", "done", { ifAllowed: true, claim: claim2 });
 
     expect(view(collection)).toMatchObject({ inputTokens: 1200, outputTokens: 250, live: false });
+  });
+
+  it("keeps a dead run's harness tokens when its request is continued in a new process", async () => {
+    // The continuation's ledger recovers model calls from the log, not harness runs: the row is their only record.
+    const { collection, claim } = await claimed();
+    await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: harnessRun(300, 60), writer: "first" }, { claim });
+    await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: harnessRun(null, null), writer: "second" }, { claim });
+    expect(view(collection)).toMatchObject({ inputTokens: 300, outputTokens: 60, live: true });
+    await collection.recordSpend!("t", { requestId: "q1", part: "settle", spend: harnessRun(100, 20), writer: "second" }, { claim });
+    expect(view(collection)).toMatchObject({ inputTokens: 400, outputTokens: 80, live: false });
+    // The same admission's later writes replace its own live part, never settle it.
+    await collection.recordSpend!("t", { requestId: "q2", part: "live", spend: harnessRun(10, 1), writer: "third" }, { claim });
+    await collection.recordSpend!("t", { requestId: "q2", part: "live", spend: harnessRun(20, 2), writer: "third" }, { claim });
+    expect(view(collection)).toMatchObject({ inputTokens: 420, outputTokens: 82 });
   });
 
   it("names the model reported last across requests, not the request admitted last", async () => {

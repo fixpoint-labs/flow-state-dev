@@ -128,6 +128,12 @@ interface Admitted {
   readonly own: boolean;
   /** The tick writing this request's live spend onto the row (FIX-2288), while it runs. */
   spendTick?: Ticker;
+  /**
+   * This admission's own id, on each spend write (FIX-2288): a request continued
+   * in a new process is admitted again under the same request id, and the row
+   * tells that run's writes from the dead one's by it.
+   */
+  readonly writer: string;
 }
 
 /**
@@ -257,6 +263,7 @@ export async function admitClaimedTask(
     rules: options.rules ?? {},
     inline: false,
     own: options.own,
+    writer: crypto.randomUUID(),
   };
   // The hook closes over its own record: a resume reuses the request id, so a
   // hook from the run before it must never check (or drop) the resume's record.
@@ -279,7 +286,7 @@ async function writeSpend(record: Admitted, part: "live" | "settle", spend: Requ
   const requestId = requestKey(record.ctx);
   try {
     // Only the task this request was admitted for: two tasks a worker runs at once never share a request's spend.
-    await recordSpend.call(record.ref, record.ticket.taskId, { requestId, part, spend }, { claim: record.ticket });
+    await recordSpend.call(record.ref, record.ticket.taskId, { requestId, part, spend, writer: record.writer }, { claim: record.ticket });
     return true;
   } catch (error) {
     console.warn(`[task-board] task "${record.ticket.taskId}": what its run spent couldn't be written: ${(error as Error).message}`);

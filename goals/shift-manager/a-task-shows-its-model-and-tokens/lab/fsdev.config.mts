@@ -14,7 +14,7 @@
  *   `composer-2`, its client scripted through `resolveCursorClient`). Each
  *   scripted run pauses where the setup says, until the check releases it
  *   (`pause.mjs`).
- * - **The models are scripted.** The chief of staff's (`anthropic/claude-haiku-5-5`)
+ * - **The models are scripted.** The Shift Coordinator's (`anthropic/claude-haiku-5-5`)
  *   files one coder task per `[[usage:<tag>]]` in a message and reports no
  *   usage. `openai/gpt-6-luna` (the general lead's and the researcher's)
  *   answers at 4 + 4 tokens a call: the general lead files one researcher task
@@ -68,7 +68,7 @@ const tagsIn = (text: string, marker: string) => [...text.matchAll(new RegExp(`\
 const textOf = (message: { content?: unknown } | undefined) =>
   typeof message?.content === "string" ? message.content : JSON.stringify(message?.content ?? "");
 
-/** The chief of staff's model: each new tag in a message files one task for the coder. */
+/** The Shift Coordinator's model: each new tag in a message files one task for the coder. */
 function scriptedChief(): GeneratorModel {
   const filed = new Set<string>();
   return {

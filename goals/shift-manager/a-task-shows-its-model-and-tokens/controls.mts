@@ -87,8 +87,8 @@ export const CONTROLS: Record<ControlName, Control> = {
       {
         module: TASK_REQUEST,
         // A ticket made for each row, as a writer that targets rows by worker would: the row's own fence can't tell.
-        from: String.raw`await recordSpend\.call\(record\.ref, record\.ticket\.taskId, \{ requestId, part, spend \}, \{ claim: record\.ticket \}\);`,
-        to: 'for (const t of record.ref.list().filter((t) => t.status === "in_progress" && t.assignee === record.ref.get(record.ticket.taskId)?.assignee)) await recordSpend.call(record.ref, t.id, { requestId, part, spend }, { claim: { ...record.ticket, taskId: t.id, createdAt: t.createdAt } });',
+        from: String.raw`await recordSpend\.call\(record\.ref, record\.ticket\.taskId, \{ requestId, part, spend, writer: record\.writer \}, \{ claim: record\.ticket \}\);`,
+        to: 'for (const t of record.ref.list().filter((t) => t.status === "in_progress" && t.assignee === record.ref.get(record.ticket.taskId)?.assignee)) await recordSpend.call(record.ref, t.id, { requestId, part, spend, writer: record.writer }, { claim: { ...record.ticket, taskId: t.id, createdAt: t.createdAt, incarnationId: t.incarnationId } });',
       },
     ],
     does: "a request's spend is written to every task its worker is running, not to the one it was admitted for",

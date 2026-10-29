@@ -38,6 +38,8 @@ const taskSpendRequestSchema = z.object({
   harnessModel: z.string().nullable().default(null),
   /** The model the request last called, or `null` when it called none. */
   model: z.string().nullable().default(null),
+  /** The admission that wrote `live` last, or `null`: a write from another one finds that run dead. */
+  writer: z.string().nullable().default(null),
 });
 
 /** `Task.spend`: the task's requests, the one that last reported its harness or model last. */

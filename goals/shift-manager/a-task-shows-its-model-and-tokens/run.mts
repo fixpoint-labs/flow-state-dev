@@ -115,7 +115,7 @@ await runGoal(async () => {
     return (done.output as { workers: UsageRow[] }).workers.find(worker)?.tokens ?? { input: 0, output: 0 };
   };
 
-  /** A conversation that files tasks, as `user`: a chief of staff's, or the general lead's. */
+  /** A conversation that files tasks, as `user`: a Shift Coordinator's, or the general lead's. */
   const conversation = async (served: ServedShiftManager, user: LabUser & { label: string }, kind: "coordinator" | "agent", workerId: string) => {
     const routes = labRoutes(served.origin, user);
     const sessionId = `s-${kind}-${user.label}-${RUN_STAMP}`;
@@ -170,7 +170,7 @@ await runGoal(async () => {
 
   /** Leg b: a coder task on Claude Code, read at each pause. */
   const legB = async (served: ServedShiftManager, user: typeof USERS.b, tag: string, paused_: boolean) => {
-    const chief = await conversation(served, user, "coordinator", "chief-of-staff");
+    const chief = await conversation(served, user, "coordinator", "shift-coordinator");
     await chief.say(`Please take this on. [[usage:${tag}]]`);
     const reads: Spend[] = [];
     if (paused_) {
@@ -183,7 +183,7 @@ await runGoal(async () => {
       }
     }
     const row = await chief.ended(tag);
-    return { row, reads, usage: await usageOf(served, user, (r) => r.worker !== "chief-of-staff") };
+    return { row, reads, usage: await usageOf(served, user, (r) => r.worker !== "shift-coordinator") };
   };
 
   try {
@@ -229,16 +229,16 @@ await runGoal(async () => {
       equalsUsage("b", end, devB.usage);
 
       // d: attempt one spends and fails its check; attempt two passes.
-      const chiefD = await conversation(dev.served, USERS.d, "coordinator", "chief-of-staff");
+      const chiefD = await conversation(dev.served, USERS.d, "coordinator", "shift-coordinator");
       await chiefD.say("Please take this on. [[usage:d]]");
       const dEnd = await chiefD.ended("d", 240_000);
       if (dEnd.status !== "completed" || dEnd.attempts !== 2 || ranTimes("d") !== 2) failures.push(`d:setup — the task ended ${dEnd.status} after ${dEnd.attempts} attempt(s), ${ranTimes("d")} run(s)`);
       if (dEnd.spend?.inputTokens !== 1230 || dEnd.spend.outputTokens !== 270) failures.push(`d:1500 — after two attempts the row reads ${show(dEnd.spend)}`);
       notes.push(`d: ${dEnd.status} after ${dEnd.attempts} attempts and ${ranTimes("d")} runs; ${show(dEnd.spend)}`);
-      equalsUsage("d", dEnd.spend, await usageOf(dev.served, USERS.d, (r) => r.worker !== "chief-of-staff"));
+      equalsUsage("d", dEnd.spend, await usageOf(dev.served, USERS.d, (r) => r.worker !== "shift-coordinator"));
 
       // g: two tasks for one coder at once; the second is cancelled mid-run.
-      const chiefG = await conversation(dev.served, USERS.g, "coordinator", "chief-of-staff");
+      const chiefG = await conversation(dev.served, USERS.g, "coordinator", "shift-coordinator");
       await chiefG.say("Please take these on. [[usage:g1]] [[usage:g2]]");
       await paused("g1-1", 0);
       await paused("g2-1", 0);
@@ -295,7 +295,7 @@ await runGoal(async () => {
     ] as const) {
       const lab = await start(vendor, { harness: vendor });
       try {
-        const chief = await conversation(lab.served, user, "coordinator", "chief-of-staff");
+        const chief = await conversation(lab.served, user, "coordinator", "shift-coordinator");
         await chief.say("Please take this on. [[usage:c]]");
         await paused(`${vendor}-c`, 0);
         await sleep(PAST_A_TICK_MS);
@@ -306,7 +306,7 @@ await runGoal(async () => {
         const end = await chief.ended("c");
         if (end.spend?.inputTokens !== want[0] || end.spend.outputTokens !== want[1] || end.spend.unreported !== false) failures.push(`c:after — ${vendor} at the end reads ${show(end.spend)} (${end.status})`);
         notes.push(`c: ${vendor} mid-turn ${show(mid)}; end ${end.status} ${show(end.spend)}`);
-        equalsUsage(`c-${vendor}`, end.spend, await usageOf(lab.served, user, (r) => r.worker !== "chief-of-staff"));
+        equalsUsage(`c-${vendor}`, end.spend, await usageOf(lab.served, user, (r) => r.worker !== "shift-coordinator"));
       } finally {
         await stop(vendor, lab.served);
       }
