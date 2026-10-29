@@ -107,6 +107,20 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
 
   const say = (w: FixtureWorker, text: string): Step[1] => () => push(w, { kind: "assistant", id: nextId("a"), text });
 
+  /** An answer written word by word, as a streamed send draws it: the same entry, growing, then finished. */
+  const sayStreamed = (w: FixtureWorker, text: string): Step[1] => () => {
+    const id = nextId("a");
+    const words = text.split(" ");
+    const draw = (count: number) => {
+      const entry: ConversationEntry = { kind: "assistant", id, text: words.slice(0, count).join(" "), ...(count < words.length ? { streaming: true } : {}) };
+      const at = w.entries.findIndex((e) => e.id === id);
+      w.entries = at < 0 ? [...w.entries, entry] : w.entries.map((e, i) => (i === at ? entry : e));
+      notify();
+      if (count < words.length) setTimeout(() => draw(count + 1), 60 * speed);
+    };
+    draw(1);
+  };
+
   /**
    * `sendMessage`: a card in the sender's conversation, a row in the log, and a
    * `receive` queued for the recipient. A send that isn't an answer asks for one.
@@ -130,12 +144,18 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     notify();
   };
 
-  /** `createTask` for coder: a card in the filer's conversation, and a run in the working folder. */
+  /**
+   * `createTask` for coder: a card in the filer's conversation, and a run in the working folder. The
+   * board's row lands a moment after the filing, as the real stream sends it.
+   */
   const fileTask = (w: FixtureWorker, title: string): Step[1] => () => {
     const id = nextId("t");
     const task: FixtureTask = { id, to: CODER, title, status: "running", runSessionId: `run:${id}`, sessionId: w.sessionId };
-    tasks = [...tasks, task];
-    push(w, { kind: "task", id: nextId("k"), taskId: task.id });
+    push(w, { kind: "task", id: nextId("k"), taskId: task.id, title, to: CODER });
+    setTimeout(() => {
+      tasks = [...tasks, task];
+      notify();
+    }, 300 * speed);
     const result = "Fixed the typo in README.md, line 1.";
     let at = 0;
     for (const [delay, run] of [
@@ -171,7 +191,10 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       return [[600, () => push(w, { kind: "approval", id: nextId("ap"), requestId: nextId("req"), suspensionId, text: "Publish the draft to the team page?" })]];
     }
     if (w.row.id === LEAD && /\bfix\b/i.test(job.text)) {
-      return [[800, say(w, "Starting a coding task.")], [400, fileTask(w, "Fix the typo in the README's first line")]];
+      return [
+        [800, sayStreamed(w, "Starting a coding task for that. It runs in the background, and its card shows here.")],
+        [1200, fileTask(w, "Fix the typo in the README's first line")],
+      ];
     }
     if (w.row.id === LEAD && !log.some((m) => m.from === LEAD && m.to === RESEARCHER)) {
       return [

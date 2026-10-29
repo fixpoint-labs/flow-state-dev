@@ -179,6 +179,82 @@ describe("the teammates screen", () => {
     expect(entries("assistant").every((e) => !/max-w-/.test(e.className))).toBe(true);
   });
 
+  it("stays put while you read further up: new text and a task card arrive below, and Jump to latest takes you back", async () => {
+    render(<App adapter={fast()} />);
+    await screen.findByLabelText("Message Chief of Staff");
+    const scroller = conversation().querySelector<HTMLElement>("[data-scroller]")!;
+    // happy-dom lays nothing out: give the list a size, and record every scroll it is asked for.
+    Object.defineProperty(scroller, "scrollHeight", { configurable: true, get: () => 5000 });
+    Object.defineProperty(scroller, "clientHeight", { configurable: true, get: () => 500 });
+    let top = 0;
+    Object.defineProperty(scroller, "scrollTop", { configurable: true, get: () => top, set: (value: number) => (top = value) });
+    const scrolls: ScrollToOptions[] = [];
+    scroller.scrollTo = ((options: ScrollToOptions) => scrolls.push(options)) as typeof scroller.scrollTo;
+    // Let any smooth scroll from the first render land before reading starts.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    // At the end, then up to read.
+    scroller.scrollTop = 4500;
+    fireEvent.scroll(scroller);
+    scroller.scrollTop = 1200;
+    fireEvent.scroll(scroller);
+    const jump = await within(conversation()).findByRole("button", { name: "Jump to latest" });
+    // Only what happens from here, while reading, counts: following before it was right.
+    scrolls.length = 0;
+
+    const before = entries("assistant");
+    await tell("Chief of Staff", "Fix the typo in the README's first line.");
+    // The answer streams in and a task card lands, below the reader.
+    await within(conversation()).findByText(/its card shows here\./, {}, { timeout: 2000 });
+    await within(conversation()).findByRole("button", { name: /Coding task/ });
+    expect(conversation().querySelector("[data-scroller]")).toBe(scroller);
+    expect(scrolls).toEqual([]);
+    expect(scroller.scrollTop).toBe(1200);
+    // What was on screen is the same nodes, not redrawn ones.
+    expect(entries("assistant").slice(0, before.length)).toEqual(before);
+    before.forEach((node, i) => expect(entries("assistant")[i]).toBe(node));
+
+    fireEvent.click(jump);
+    expect(scrolls.at(-1)).toEqual({ top: 5000, behavior: "smooth" });
+    expect(within(conversation()).queryByRole("button", { name: "Jump to latest" })).toBeNull();
+  });
+
+  it("follows a streamed answer smoothly while you are at the end, and shows 'answering' only before its text starts", async () => {
+    // Slow enough to look at the answer while it is still being written.
+    render(<App adapter={fast({ speed: 0.5 })} />);
+    await screen.findByLabelText("Message Chief of Staff");
+    const scroller = conversation().querySelector<HTMLElement>("[data-scroller]")!;
+    const scrolls: ScrollToOptions[] = [];
+    scroller.scrollTo = ((options: ScrollToOptions) => scrolls.push(options)) as typeof scroller.scrollTo;
+    await tell("Chief of Staff", "Fix the typo in the README's first line.");
+    const streaming = await waitFor(
+      () => {
+        const last = entries("assistant").at(-1);
+        // Caught part-written: it has begun, and not yet ended.
+        expect(last?.textContent).toMatch(/^Starting a coding task/);
+        expect(last?.textContent).not.toMatch(/its card shows here\./);
+        return last!;
+      },
+      { interval: 5 },
+    );
+    // While its text is being written, the text is the sign it is answering: no second line under it.
+    expect(within(conversation()).queryByRole("status")).toBeNull();
+    const followed = scrolls.length;
+    await within(conversation()).findByText(/its card shows here\./, {}, { timeout: 4000 });
+    // It followed the text as it grew, each time smoothly, and never jumped.
+    expect(scrolls.length).toBeGreaterThan(followed);
+    expect(scrolls.every((s) => s.behavior === "smooth")).toBe(true);
+    // The growing answer was one node all along.
+    expect(entries("assistant").at(-1)).toBe(streaming);
+  });
+
+  it("draws a task card the moment it is filed and fills it in place: the same card from filing to done", async () => {
+    render(<App adapter={fast()} />);
+    await tell("Chief of Staff", "Fix the typo in the README's first line.");
+    const card = (await within(conversation()).findByRole("button", { name: "Coding task: Fix the typo in the README's first line" })).closest("[data-entry=task]")!;
+    await waitFor(() => expect(card.querySelector("[data-task-status]")?.textContent).toBe("done"), { timeout: 3000 });
+    expect(conversation().querySelector("[data-entry=task]")).toBe(card);
+  });
+
   it("sizes the composer's box to its draft in CSS, so a column that narrows rewraps and regrows it", async () => {
     render(<App adapter={fast()} />);
     const box = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
