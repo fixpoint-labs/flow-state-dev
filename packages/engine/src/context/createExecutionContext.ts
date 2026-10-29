@@ -169,8 +169,8 @@ import {
 import { isCollectionConfig } from "../resources/is-collection-config";
 import { createReactiveDispatcher, createCascadeController } from "./reactive-dispatch";
 import { DEFAULT_STALE_SWEEP_THRESHOLD_MS } from "../runtime-config";
-import { PAST_TURN_STATUSES, retriedIds } from "../execution/past-turns";
-import { parkedInterruptedIds } from "../durability/stop-suspended";
+import { PAST_TURN_STATUSES } from "../execution/past-turns";
+import { readSettledTurns } from "./settled-turns";
 import { cancelledWithTask } from "../durability/cancel-user-suspension";
 
 /**
@@ -778,63 +778,37 @@ export async function createExecutionContext<
   // When the window was read: a turn that settles after it is in neither the
   // window nor the open turns `turns()` lists later (FIX-1613).
   const windowLoadedAtMs = Date.now();
-  const [loadedUser, loadedOrg, listedPriorRequests] = await Promise.all([
+  const [loadedUser, loadedOrg, pastTurns] = await Promise.all([
     userKey !== undefined ? stores.user.get(userKey) : undefined,
     optionsOrgKey !== undefined ? stores.org.get(optionsOrgKey) : undefined,
-    // The N most-recently-started past turns (`PAST_TURN_STATUSES`). The
-    // status filter excludes the current (in-progress) request and any
-    // in-flight siblings; an `interrupted` request is a turn its host died in,
-    // and what it persisted (the message that started it, the calls that ran) is part of the
-    // conversation. `orderBy:"startedAtMs"` makes the windowed selection
-    // robust to out-of-order metadata writes. `items` reconstruct cross-turn
-    // history.
-    stores.request.list({
-      ...turnScope,
-      status: PAST_TURN_STATUSES,
-      // One row past the window, read only to learn whether an earlier turn
-      // fell out of it (FIX-1613's `historyStart`); it is dropped below,
-      // before anything reads the window.
-      limit: historyWindowTurns + 1,
-      orderBy: "startedAtMs",
-      withItems: true
+    // The window: the N most recently started past turns, and of them the
+    // settled ones a model reads (`settled-turns.ts`). `settled` is reused by
+    // all()/client() (via priorItems) and history() (via loadLLMHistory);
+    // `historyStart` names the first turn the window holds when an earlier
+    // turn is out of view (FIX-1613).
+    readSettledTurns({
+      requests: stores.request,
+      scope: turnScope,
+      turns: historyWindowTurns,
+      runningRequestId: requestId,
+      ...(options.metadata !== undefined ? { runningMetadata: options.metadata } : {}),
+      ...(options.effectiveRuntimeConfig?.durabilityProvider !== undefined
+        ? { durability: options.effectiveRuntimeConfig.durabilityProvider }
+        : {}),
+      // A gate read that fails costs this turn a view that may show a parked
+      // turn, never the turn itself: nothing is treated as parked, and it is logged.
+      onGateReadError: (error) =>
+        logRuntimeEvent(options.logger ?? DEFAULT_RUNTIME_LOGGER, "warn", "[flow-state] history could not read the gates of interrupted turns", {
+          requestId,
+          sessionId,
+          error: String(error)
+        })
     })
   ]);
-
-  // The windowed list already filters by status at the store; exclude the
-  // current request (defends a retry that reuses an id), an interrupted turn
-  // that will run again (parked) or that a retry re-ran (`past-turns.ts`),
-  // keep only the settled items of an interrupted turn (a call the kill cut
-  // off has no result to show), then sort ascending for stable history
-  // ordering. Reused by all()/client() (via priorItems) and history() (via
-  // loadLLMHistory).
-  // The window itself: the N most recently started, in the store's newest-first
-  // order (which breaks a start-time tie by id), trimmed before it is reversed
-  // so a tie at the edge keeps the same turn it did without the extra row.
-  // `historyStart` names the first turn the window holds when that extra row
-  // says an earlier turn is out of view.
-  const priorRequests = listedPriorRequests.slice(0, historyWindowTurns).reverse();
-  const historyStart =
-    listedPriorRequests.length > historyWindowTurns && priorRequests[0] !== undefined
-      ? { requestId: priorRequests[0].id }
-      : undefined;
-  const retried = retriedIds(priorRequests, options.metadata);
-  // A gate read that fails costs this turn a view that may show a parked
-  // turn, never the turn itself: nothing is treated as parked, and it is logged.
-  let parked = new Set<string>();
-  try {
-    parked = await parkedInterruptedIds(options.effectiveRuntimeConfig?.durabilityProvider, priorRequests);
-  } catch (error) {
-    logRuntimeEvent(options.logger ?? DEFAULT_RUNTIME_LOGGER, "warn", "[flow-state] history could not read the gates of interrupted turns", {
-      requestId,
-      sessionId,
-      error: String(error)
-    });
-  }
-  const settledPriorRequests = priorRequests
-    .filter((r) => r.id !== requestId)
-    .filter((r) => r.status !== "interrupted" || (!retried.has(r.id) && !parked.has(r.id)))
-    .map((r) => (r.status === "interrupted" && r.items !== undefined ? { ...r, items: r.items.filter((i) => i.status !== "in_progress") } : r))
-    .sort((a, b) => compareTurnsOldestFirst(a.startedAtMs, a.id, b.startedAtMs, b.id));
+  const priorRequests = pastTurns.window;
+  const historyStart = pastTurns.start;
+  const retried = pastTurns.retried;
+  const settledPriorRequests = pastTurns.settled;
 
   // `items.turns()` (FIX-1613): the window's turns and every turn of this
   // session still open, each marked settled or not, or named turns read by id

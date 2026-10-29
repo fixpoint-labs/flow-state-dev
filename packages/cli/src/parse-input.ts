@@ -52,7 +52,7 @@ export function parseInputArg(options: ParseInputOptions): unknown {
     }
 
     try {
-      return JSON.parse(raw);
+      return JSON.parse(raw.replace(/^\uFEFF/, "").trim());
     } catch {
       throw new CliError(
         `Invalid JSON in input file: ${filePath}`,

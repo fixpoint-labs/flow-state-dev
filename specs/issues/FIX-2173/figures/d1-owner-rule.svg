@@ -1,0 +1,99 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, who may consult a session. Chosen: its owner, by sessions.read&#x27;s rule, with no project check and no opt-out. Instead of: an added project-membership check. It comes down to the first row: everything a consult reads, the person can already read on screen, so a project check blocks nothing they can&#x27;t see. The price is the second row: a flow can&#x27;t close its sessions to a model. The third row: the owner rule is one shared gate in the engine, while a membership check is a second gate in Workforce. Locks in: every session of the person is consultable. Flips if: sessions are shared between people."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>  <rect class="bg" x="0" y="0" width="940" height="420"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Who may consult a session?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">The owner · sessions.read&#x27;s rule</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Owner plus project membership</text>
+  </g>
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHAT THE PERSON</text>
+    <text class="t-lbl" x="32" y="169">CAN ALREADY READ</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Reads only that</text>
+    <text class="t-s" x="248" y="179">every item is on their screen too</text>
+    <text class="mark tie" x="592" y="162">=</text>
+    <text class="t-b" x="612" y="161">Blocks only that</text>
+    <text class="t-s" x="612" y="179">a person taken off can still scroll it</text>
+  </g>
+
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="222">A FLOW THAT</text>
+    <text class="t-lbl" x="32" y="235">WANTS OUT</text>
+    <text class="mark minus" x="228" y="224">−</text>
+    <text class="t-b" x="248" y="223">Can&#x27;t close its sessions</text>
+    <text class="t-s" x="248" y="241">an opt-out is additive later</text>
+    <text class="mark minus" x="592" y="224">−</text>
+    <text class="t-b" x="612" y="223">Can&#x27;t either</text>
+    <text class="t-s" x="612" y="241">membership isn&#x27;t a flow&#x27;s setting</text>
+    <line class="row" x1="16" y1="256" x2="924" y2="256"/>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="282">WHERE THE</text>
+    <text class="t-lbl" x="32" y="295">GATE LIVES</text>
+    <text class="mark plus" x="228" y="284">+</text>
+    <text class="t-b" x="248" y="283">One rule, shared</text>
+    <text class="t-s" x="248" y="301">the engine&#x27;s owner check, as read uses</text>
+    <text class="mark minus" x="592" y="284">−</text>
+    <text class="t-b" x="612" y="283">A second gate</text>
+    <text class="t-s" x="612" y="301">a Workforce idea checked beside the engine</text>
+    <line class="row" x1="16" y1="316" x2="924" y2="316"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="351">LOCKS IN</text>
+    <text class="t-b" x="32" y="371">Every session of the person is consultable</text>
+    <text class="t-s" x="32" y="389">task sessions included; a miss reads as absent</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="351">FLIPS IF</text>
+    <text class="t-b" x="494" y="371">Sessions shared between people</text>
+    <text class="t-s" x="494" y="389">then the read follows the items&#x27; own reading rule</text>
+  </g>
+</svg>
