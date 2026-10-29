@@ -27,6 +27,8 @@ export interface TaskSpendWrite {
   readonly writer?: string;
   /** When that admission was made: a later one of the same request supersedes an earlier one that never settled. */
   readonly admittedAt?: number;
+  /** What that admission's ledger recovered from the request's log when it was admitted: its pending model calls then. */
+  readonly recovered?: RequestSpend["byModel"];
 }
 
 /** The harness and model a request's spend names last, if any. */
@@ -54,7 +56,7 @@ export function spendAfterWrite(task: Pick<Task, "spend">, write: TaskSpendWrite
   const at = stored.requests.findIndex((entry) => entry.requestId === write.requestId && entry.writer === writer);
   const was: TaskSpendRequest =
     at < 0
-      ? { requestId: write.requestId, settled: [], live: null, harness: null, harnessModel: null, model: null, writer, admittedAt: write.admittedAt ?? null }
+      ? { requestId: write.requestId, settled: [], live: null, harness: null, harnessModel: null, model: null, writer, admittedAt: write.admittedAt ?? null, recovered: write.recovered === undefined ? null : (requestSpendSources({ byModel: write.recovered, harnessRuns: [] }) as TaskSpendSource[]) }
       : stored.requests[at]!;
   const sources = requestSpendSources(write.spend) as TaskSpendSource[];
   const names = namesOf(write.spend);
@@ -89,9 +91,11 @@ export function spendAfterWrite(task: Pick<Task, "spend">, write: TaskSpendWrite
  * An admission whose process died never settles: its live part stays. Once
  * a later admission of the same request has written, that part is superseded:
  * its harness runs still count (they were spent, and the continuation's ledger
- * doesn't recover them), its model calls don't (the continuation's ledger
- * recovers them from the log and reports them itself), and it no longer reads
- * as running. A predecessor's ending that is only late replaces its live part
+ * doesn't recover them), its model calls count less what the next admission
+ * recovered from the log (that one reports those itself; a block that never
+ * finished logged nothing, so its calls are only here), and it no longer
+ * reads as running. An older next admission that recorded nothing recovered
+ * drops them all. A predecessor's ending that is only late replaces its live part
  * with what it settles, so nothing counts twice. `live` is never true on a
  * terminal row either.
  */
@@ -103,10 +107,15 @@ export function taskSpendView(task: Pick<Task, "spend"> & Partial<Pick<Task, "st
   let output = 0;
   let reportedAny = false;
   let unreported = false;
-  const superseded = (entry: TaskSpendRequest) =>
-    requests.some((other) => other.requestId === entry.requestId && other.writer !== entry.writer && (other.admittedAt ?? 0) > (entry.admittedAt ?? 0));
+  // The next admission of the same request, if any: it supersedes this one's unsettled live part.
+  const nextOf = (entry: TaskSpendRequest) =>
+    requests
+      .filter((other) => other.requestId === entry.requestId && other.writer !== entry.writer && (other.admittedAt ?? 0) > (entry.admittedAt ?? 0))
+      .sort((a, b) => (a.admittedAt ?? 0) - (b.admittedAt ?? 0))[0];
+  const superseded = (entry: TaskSpendRequest) => nextOf(entry) !== undefined;
   for (const entry of requests) {
-    const live = entry.live === null ? [] : superseded(entry) ? entry.live.filter((source) => source.kind === "harness") : entry.live;
+    const next = entry.live === null ? undefined : nextOf(entry);
+    const live = entry.live === null ? [] : next === undefined ? entry.live : unrecovered(entry.live, next.recovered);
     for (const source of [...entry.settled, ...live]) {
       input += source.inputTokens;
       output += source.outputTokens;
@@ -124,4 +133,20 @@ export function taskSpendView(task: Pick<Task, "spend"> & Partial<Pick<Task, "st
     unreported,
     live: (task.status === undefined || !isTerminalStatus(task.status)) && requests.some((entry) => entry.live !== null && !superseded(entry)),
   };
+}
+
+/**
+ * A superseded admission's live part, less the model calls its continuation
+ * recovered from the log: harness runs whole, model calls only what was never
+ * logged. With nothing recorded as recovered (an older row), no model calls.
+ */
+function unrecovered(live: TaskSpendSource[], recovered: TaskSpendSource[] | null): TaskSpendSource[] {
+  return live.flatMap((source) => {
+    if (source.kind === "harness") return [source];
+    if (recovered === null) return [];
+    const logged = recovered.find((other) => other.kind === "model" && other.source === source.source);
+    const inputTokens = Math.max(0, source.inputTokens - (logged?.inputTokens ?? 0));
+    const outputTokens = Math.max(0, source.outputTokens - (logged?.outputTokens ?? 0));
+    return inputTokens === 0 && outputTokens === 0 ? [] : [{ ...source, inputTokens, outputTokens }];
+  });
 }

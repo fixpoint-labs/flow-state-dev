@@ -39,7 +39,7 @@ describe("taskSpendView", () => {
   });
 
   it("names a harness run's model before any tokens, and reads its tokens as null, not 0, while unreported", () => {
-    const view = taskSpendView({ spend: { requests: [{ requestId: "q1", settled: [], live: [{ source: "codex", kind: "harness", billing: null, inputTokens: 0, outputTokens: 0, costUsd: null, runs: 1, unreported: 1 }], harness: "codex", harnessModel: "gpt-5", model: null, writer: null, admittedAt: null }] } });
+    const view = taskSpendView({ spend: { requests: [{ requestId: "q1", settled: [], live: [{ source: "codex", kind: "harness", billing: null, inputTokens: 0, outputTokens: 0, costUsd: null, runs: 1, unreported: 1 }], harness: "codex", harnessModel: "gpt-5", model: null, writer: null, admittedAt: null, recovered: null }] } });
     expect(view).toEqual({ harness: "codex", model: "gpt-5", inputTokens: null, outputTokens: null, unreported: true, live: true });
   });
 });
@@ -142,13 +142,29 @@ describe.each([
     // The continuation's ledger recovers model calls from the log, not harness runs: the row is their only record.
     const { collection, claim } = await claimed();
     const first = { writer: "first", admittedAt: 1 };
-    const second = { writer: "second", admittedAt: 2 };
+    const second = { writer: "second", admittedAt: 2, recovered: modelCalls(4, 4).byModel };
     await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: { byModel: modelCalls(4, 4).byModel, harnessRuns: harnessRun(300, 60).harnessRuns }, ...first }, { claim });
     // The continuation reports the recovered model calls itself: they count once.
     await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: modelCalls(4, 4), ...second }, { claim });
     expect(view(collection)).toMatchObject({ inputTokens: 304, outputTokens: 64, live: true });
     await collection.recordSpend!("t", { requestId: "q1", part: "settle", spend: modelCalls(6, 6), ...second }, { claim });
     expect(view(collection)).toMatchObject({ inputTokens: 306, outputTokens: 66, live: false });
+  });
+
+  it("keeps a dead run's model calls that its log never recorded, once, when its request is continued", async () => {
+    // A generator that died mid-block had its finished steps on the row, but the log records a block's calls only when it
+    // finishes: the continuation recovers the 4 a finished block logged, not the 6 the unfinished one spent, and calls again.
+    const { collection, claim } = await claimed();
+    const first = { writer: "first", admittedAt: 1 };
+    const second = { writer: "second", admittedAt: 2, recovered: modelCalls(4, 4).byModel };
+    await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: modelCalls(10, 10), ...first }, { claim });
+    await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: modelCalls(9, 9), ...second }, { claim });
+    expect(view(collection)).toMatchObject({ inputTokens: 15, outputTokens: 15, live: true });
+    // A continuation recorded before admissions kept what they recovered drops the dead run's model calls, as before.
+    const { recovered: _, ...legacy } = second;
+    await collection.recordSpend!("t", { requestId: "q2", part: "live", spend: modelCalls(10, 10), ...first }, { claim });
+    await collection.recordSpend!("t", { requestId: "q2", part: "live", spend: modelCalls(9, 9), ...legacy }, { claim });
+    expect(view(collection)).toMatchObject({ inputTokens: 15 + 9, outputTokens: 15 + 9 });
   });
 
   it("keeps each admission's part when the interrupted one's ending lands after its continuation wrote", async () => {

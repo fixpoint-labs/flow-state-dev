@@ -42,6 +42,13 @@ const taskSpendRequestSchema = z.object({
   writer: z.string().nullable().default(null),
   /** When that admission was made (ms), or `null` on an older row. */
   admittedAt: z.number().nullable().default(null),
+  /**
+   * The model calls this admission's ledger recovered from the request's log
+   * when it was admitted (a continuation counts what the run before it logged),
+   * or `null` on an older row. What the run before it spent and never logged
+   * is its live part less this.
+   */
+  recovered: z.array(taskSpendSourceSchema).nullable().default(null),
 });
 
 /** `Task.spend`: the task's requests, the one that last reported its harness or model last. */
