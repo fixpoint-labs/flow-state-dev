@@ -177,7 +177,8 @@ export async function sceneAC(world: World, servers: Servers, walked: Walked): P
   // a:answer-in-request — the request that made the call, replayed by the host, reads the answer.
   const requestId = line.request ?? asked ?? "";
   // `interrupted` is not an end here: a call that died before it parked still owes its park, and the
-  // durability sweep continues it a stale threshold later (FIX-2269). One left interrupted times out.
+  // durability sweep continues it a stale threshold later (FIX-2269). A request that never leaves
+  // interrupted reads timed-out.
   const ended = await follow(world.alice, helperA().flowKind, requestId, 360_000, OWED_ENDS);
   const calls = (await callsIn(world.alice, helperA().id)).filter((c) => c.requestId === requestId && c.output != null && typeof c.output === "object");
   const call = calls.find((c) => isWait(c) && c.output?.callId === line.id);
