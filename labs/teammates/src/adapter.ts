@@ -614,8 +614,10 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       let live = true;
       void (async () => {
         // A reply lands where the message it answers was sent from, a task's session included: the log row says where.
-        const { sessionId: logSession } = await anyConversation();
-        const rows = await readEveryCollectionPage(client.resources, logSession, WORKER_MESSAGES_RESOURCE);
+        // A failed log read falls back to the recipient's conversation rather than leaving the popup unwatched.
+        const rows = await anyConversation()
+          .then(({ sessionId: logSession }) => readEveryCollectionPage(client.resources, logSession, WORKER_MESSAGES_RESOURCE))
+          .catch(() => []);
         const sessionId = destinationOf(rows.map((row) => row.clientData), messageId) ?? (await conversationOf(worker)).sessionId;
         if (!live) return;
         stop = watchFeed(sessionId, (items) => exchangeOf(items, messageId), stableList(onChange));
