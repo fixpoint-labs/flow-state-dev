@@ -12,7 +12,7 @@
 | **asks one of their own workers** (hired at run time, no `name:`) | Same "ChatGPT" | Its id stands in for the name; its description is its role |
 | **asks a worker to do something it has a tool for** | It often offers: "I can look that up if you like" | The default layer tells it to use its tools before answering, and not to offer what it can do now |
 | **writes an app on its own worker flow** | Unaffected | Unaffected. The layer is the built-in worker flow's, and exported for a custom flow to put first |
-| **runs a worker outside an installation** (a bare `hireWorkforce` roster) | No identity | "You are `<worker id>`." only: there is no roster to read teammates from |
+| **runs a worker outside an installation** (a bare `hireWorkforce` roster) | No identity | Unchanged: no roster to read, so the layer is absent, not empty |
 
 ## The goal, and how we'll know it's met
 
@@ -61,16 +61,18 @@ The unit test on the front of the prompt fails, and the goal leg must see "ChatG
   that take tasks only ([D2](DECISIONS.md#d2)).
 - **`RosterWorker` carries `name` and `teamName`.** The client's `RosterEntry` already has both,
   read the same way (`workerDisplayName`, `manifest.teamName`); the server-side row gains them so
-  the turn doesn't read files twice.
+  the turn doesn't read files twice. With none, the name and team fall back to the id's segments
+  (`parseDeclaredWorkerId`).
 - **One recipients reader.** `sendMessage`'s description and the identity block both list the
   workers a send would take; that filter moves out of `message-tool.ts` into one function both
   call, so the two lists can't disagree.
 - **The tool-use rule**, a few sentences: use your tools to do what you're asked before you answer;
   don't offer to do something you can do now, do it.
 - **Exported** for a custom worker flow to put first in its own prompt array.
-- **Docs:** `docs/architecture/workforce-default-worker-flow.md` (C1) says the default layer
-  shipped and what it holds; the Workforce worker-flow docs page and the package README say what
-  every worker is told first.
+- **Docs:** `docs/architecture/workforce-default-worker-flow.md` (C1, the order paragraph and the
+  "owned and shipped elsewhere" line) and the seam comment in `agent-worker-flow.ts` say the
+  default layer shipped, what it holds, and that FIX-2334 owns it; the Workforce worker-flow docs
+  page and the package README say what every worker is told first.
 
 ## What stays as it is
 

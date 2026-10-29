@@ -42,10 +42,10 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
   "you are Alex" contradicts the block, and the model decides.
 
 **Ownership.** On main the default prompt has no owner: FIX-1344 (Done) carried it as its third
-part and closed without it, and the C1 doc's pointer is stale. This issue takes the slot and its
-first two pieces; the rest of the default prompt files as its own issue when someone needs it.
-The question is open to fsd-architect on agent-mailbox#46; an answer that moves placement
-re-drafts D1.
+part and closed without it (the cycle-10 ledger calls it a false Done), and the C1 doc's pointer
+is stale. fsd-architect confirmed this on agent-mailbox#46 and placed it here: **FIX-2334 owns the
+default layer from now on.** Later default-prompt text joins this layer as a line, not a second
+block (FIX-2073, telling the filer about asks after a task is done, is the next one).
 
 <a name="d2"></a>
 ## D2 · The block reads the roster each turn, and its reach is what `sendMessage` would take
@@ -67,8 +67,9 @@ re-drafts D1.
 
 ## Decided, not asked
 
-- **E1 · Off an installation** (a bare `hireWorkforce` roster, no `installation` option) there is
-  no roster to read: the block is "You are `<workerId>`." and no reach.
+- **E1 · Off an installation** (a bare `hireWorkforce` roster, no `installation` option), or
+  with no worker resolved, the layer returns `undefined`, never `""`, so the prompt slot drops it
+  (the seam's existing rule).
 - **E2 · Layer boundary:** all of it is Workforce. Core's prompt slot already resolves async
   entries and drops absent ones.
 - **E3 · Only the built-in worker flow** gets it by default. The error reporter and app flows
@@ -76,8 +77,10 @@ re-drafts D1.
 - **E4 · The tool-use rule** is general and short, and names no tool. App-specific "act, don't
   offer" guidance (FIX-2336's Chief of Staff) stays in that worker's file.
 - **E5 · Vocabulary:** the text says worker, team and teammates.
-- **E6 · Cost:** the prompt slot resolves before every step of the tool loop. Read the roster
-  once per turn if that measures as a cost.
+- **E6 · Once per turn:** the prompt slot resolves before every step of the tool loop; the
+  roster is read once per turn, not on every step.
+- **E7 · Names:** `name:` is already kept on the manifest (`declared.name`, read by
+  `workerDisplayName`), so no loader change. With none, the id's worker segment stands in.
 
 ## Considered and dropped
 
@@ -88,4 +91,10 @@ re-drafts D1.
 
 ## Notes from review
 
-None yet.
+- fsd-architect (2026-10-29, agent-mailbox#46 comment 6508512742): ownership confirmed and placed
+  on FIX-2334; front of the existing array, not on the installation; one roster rule shared with
+  `sendMessage`; carry the name; fixed text, `undefined` off an installation; read once per turn.
+  Folded into D1, D2, E1, E6. Its claim that the loader drops `name:` is wrong on main
+  (`read-workforce-directory.ts` validates and keeps it in `declared`); E7.
+- For the implementer: FIX-2336 renames lead to Chief of Staff; check the goal leg against the
+  renamed worker. Keep the existing prompt-order tests as they are.
