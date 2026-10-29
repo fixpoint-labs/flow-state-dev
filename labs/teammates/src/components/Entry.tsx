@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import type { ConversationEntry } from "../adapter";
 import { useSubmit } from "../lib/use-submit";
 import { cn } from "../lib/utils";
@@ -11,9 +11,9 @@ import { AgentMarkdown } from "./flow-state/message-response";
  * filed coming back, lands under the sender's name. A worker's text is
  * Markdown; your own lines are shown as typed. A worker that waits for your
  * yes (`waitForUser` with an approval) is a card with Approve and Deny until
- * you answer.
+ * you answer. Memoized: a streamed chunk redraws only the entry that changed.
  */
-export function Entry({
+export const Entry = memo(function Entry({
   entry,
   workerName,
   nameOf,
@@ -77,7 +77,7 @@ export function Entry({
     case "approval":
       return <ApprovalCard workerName={workerName} text={entry.text} resolution={entry.resolution} onAnswer={onAnswer} />;
   }
-}
+});
 
 /** What a worker waits on you for. Once answered it says how. */
 function ApprovalCard({

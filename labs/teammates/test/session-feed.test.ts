@@ -81,6 +81,31 @@ describe("the session feed", () => {
     stop();
   });
 
+  it("keeps a tool result from the send's own stream, so a card lands in order beside the text", async () => {
+    const client = clientOver([], () => {});
+    let seen: OutputItem[] = [];
+    const feed = sessionFeeds(client)("s4");
+    const stop = feed.watch((items) => (seen = items));
+    const encoder = new TextEncoder();
+    let push!: (event: string, data: Record<string, unknown>) => void;
+    let seq = 0;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        push = (event, data) => controller.enqueue(encoder.encode(`id: ${++seq}\nevent: ${event}\ndata: ${JSON.stringify({ type: event, sequence_number: seq, ...data })}\n\n`));
+      },
+    });
+    feed.followResponse(new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }));
+    const sent = { id: "out_1", requestId: "req_3", type: "tool_output", ts: 5, itemIndex: 0, status: "completed", toolCall: { name: "sendMessage" }, output: { sent: "m1" } };
+    const text = { id: "msg_2", requestId: "req_3", type: "message", role: "assistant", ts: 6, itemIndex: 1, status: "in_progress", content: [{ type: "output_text", text: "" }] };
+    push("item.added", { item: sent });
+    push("item.added", { item: text });
+    push("content.delta", { itemId: "msg_2", contentIndex: 0, delta: "Asked writer." });
+    await until(() => seen.some((i) => i.id === "msg_2"));
+    // The card's item is there while the text is still being written, and before it.
+    expect(seen.map((i) => i.id)).toEqual(["out_1", "msg_2"]);
+    stop();
+  });
+
   it("reads the snapshot again when a read fails", async () => {
     let reads = 0;
     const client = clientOver([item(1)], () => {

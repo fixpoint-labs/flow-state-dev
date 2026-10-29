@@ -7,7 +7,7 @@
  * The session stream sends an item once it is finished, and a request's stream
  * read by id carries no text as it is written, so an answer being written
  * comes from the send's own response: {@link SessionFeed.followResponse} keeps
- * its messages as they grow.
+ * its messages as they grow, and its tool results and components as they land.
  */
 import { bindStoreToCallbacks, compareItemOrder, createRequestStreamStore, createSSEClientFromResponse, type Client } from "@flow-state-dev/client";
 import type { OutputItem } from "@flow-state-dev/core/items";
@@ -16,13 +16,15 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 const PAGE = 500;
 /** How long a failed snapshot read waits before it is read again. */
 const RETRY_MS = 2_000;
+/** The kinds of item a send's own stream is kept for. */
+const FOLLOWED = new Set(["message", "tool_output", "component"]);
 
 export interface SessionFeed {
   /** Every item so far, in display order. */
   items(): OutputItem[];
   /** Called on every change, and at once when the snapshot is already read. Returns the stop. */
   watch(onChange: (items: OutputItem[]) => void): () => void;
-  /** Keep the messages of a send's streamed response as they are written, until it ends. */
+  /** Keep a send's streamed response, its messages as they are written, until it ends. */
   followResponse(response: Response): void;
 }
 
@@ -105,7 +107,9 @@ function follow(client: Client, sessionId: string, onClosed: () => void): Sessio
         onChange: () => {
           if (done) return;
           store.flushDeltas();
-          for (const item of store.getSorted()) if (item.type === "message") keep(item);
+          // Messages as they are written, and tool results and components as they land, so a card
+          // a turn draws (a message sent, a task filed) sits where it happened, not sorted in later.
+          for (const item of store.getSorted()) if (FOLLOWED.has(item.type)) keep(item);
           publish();
           // Ended: the session stream carries its finished items from here.
           if (store.status !== "in_progress") end();
