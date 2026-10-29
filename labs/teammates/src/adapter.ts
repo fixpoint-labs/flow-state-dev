@@ -425,17 +425,18 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   };
   /** The session the page's project writes run in, opened on the first one. */
   let projectsSession: Promise<string> | undefined;
-  /** Wait for a request a send started; reject with its error when it didn't complete. */
-  const finished = async (sent: SentRequest, action: string): Promise<void> => {
+  /** Wait for a request a send started; its output, or its error when it didn't complete. */
+  const finished = async (sent: SentRequest, action: string): Promise<unknown> => {
     let status: string = sent.response.status;
     for (const until = Date.now() + 30_000; status === "in_progress"; status = (await sent.status()).status) {
       if (Date.now() > until) throw new Error(`teammates: ${action} did not finish in time`);
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
-    if (status === "completed") return;
     const sessionId = sent.response.session?.id;
-    const failed = sessionId === undefined ? [] : await client.sessions.requests(sessionId, { includeResultOutput: true, limit: 20 });
-    throw new Error(failed.find((r) => r.id === sent.id)?.result?.error?.message ?? `teammates: ${action} ended ${status}`);
+    const requests = sessionId === undefined ? [] : await client.sessions.requests(sessionId, { includeResultOutput: true, limit: 20 });
+    const result = requests.find((r) => r.id === sent.id)?.result;
+    if (status === "completed") return result?.output;
+    throw new Error(result?.error?.message ?? `teammates: ${action} ended ${status}`);
   };
 
   const watchFeed = <T>(sessionId: string, map: (items: Item[]) => T, onChange: (value: T) => void): Unsubscribe =>
@@ -526,7 +527,9 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     async createProject({ id, title, checkout }) {
       const session = (projectsSession ??= client.flow(PROJECTS_FLOW).createSession().then((s) => s.id));
       const input = { id, title, ...(checkout === undefined ? {} : { repository: `file://${checkout}` }) };
-      await finished(await client.flow(PROJECTS_FLOW).send("createProject", input, { sessionId: await session }), "createProject");
+      const output = await finished(await client.flow(PROJECTS_FLOW).send("createProject", input, { sessionId: await session }), "createProject");
+      // A project of yours already has this id: the write keeps it as it was, so this one wasn't made.
+      if ((output as { created?: boolean } | undefined)?.created === false) throw new Error(`teammates: a project "${id}" already exists`);
       visibility.set(id, "shared");
       return { id, name: title };
     },
