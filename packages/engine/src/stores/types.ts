@@ -270,9 +270,10 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   /**
    * `true` while the run that settled this record as `interrupted` may still be
    * running its observers: that run hands on what they spend itself, so a
-   * continuation counts nothing from the log past
-   * {@link RequestRecord.spentThroughItemIndex}. A continuation sets it back to
-   * `false` when it takes the record. Absent on older records: read as `false`.
+   * continuation counts the log's spend past
+   * {@link RequestRecord.spentThroughItemIndex} toward its budget but never
+   * hands it on again. A continuation sets it back to `false` when it takes the
+   * record. Absent on older records: read as `false`.
    */
   spendHandedOnByRun?: boolean;
 };

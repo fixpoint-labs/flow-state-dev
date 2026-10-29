@@ -165,6 +165,16 @@ export function loggedSpendOf(items: readonly RuntimeItem[], afterItemIndex: num
   return byModel;
 }
 
+/** `a` and `b` added up by model, as a new map; neither is changed. */
+export function sumSpend(
+  a: Readonly<Record<string, ModelUsageEntry>>,
+  b: Readonly<Record<string, ModelUsageEntry>>
+): Record<string, ModelUsageEntry> {
+  const sum = copyOf(a);
+  for (const [model, entry] of Object.entries(b)) addEntry((sum[model] ??= emptyEntry()), entry);
+  return sum;
+}
+
 function addEntry(entry: ModelUsageEntry, added: ModelUsageEntry): void {
   entry.prompt += added.prompt;
   entry.completion += added.completion;
