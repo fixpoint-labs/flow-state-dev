@@ -260,6 +260,32 @@ describe("request spend ledger", () => {
     expect(endings.map((ending) => [ending.status, ending.spend.byModel["openai/gpt-6-luna"]?.total])).toEqual([["failed", 8]]);
   });
 
+  it("waits for an onStarted side-chain's spend before a failed startup ends", async () => {
+    process.env.FSDEV_TRACE_OBSERVABILITY = "false";
+    const endings: RequestEnding[] = [];
+    const slow = Object.assign(
+      () => ({
+        modelId: "openai/gpt-6-luna",
+        async generate() {
+          await new Promise((resolve) => setTimeout(resolve, 30));
+          return { text: "ok", usage: usage4x4 };
+        }
+      }),
+      { resolveId: (id: string) => id }
+    );
+    const boom = handler({ name: "boom", inputSchema: z.any(), execute: async () => { throw new Error("startup failed"); } });
+    const warm = generator({ name: "warm", model: "openai/gpt-6-luna", prompt: () => "p", user: () => "u" });
+    const flow = defineFlow({
+      kind: "spend-startup-side",
+      session: { [SESSION_REQUEST_END_HOOK]: () => (ending) => void endings.push(ending) },
+      request: { onStarted: sequencer({ name: "start" }).sideChain(warm).step(boom) },
+      actions: { run: { inputSchema: z.object({}), block: handler({ name: "noop", inputSchema: z.any(), execute: async () => ({}) }) } }
+    })({ id: "spend-startup-side" });
+
+    await expect(runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", stores: createInMemoryStores(), runtimeConfig: { modelResolver: slow } })).rejects.toThrow("startup failed");
+    expect(endings.map((ending) => [ending.status, ending.spend.byModel["openai/gpt-6-luna"]?.total])).toEqual([["failed", 8]]);
+  });
+
   it("keeps counting a resumed request's token budget from what it spent before it suspended", async () => {
     // The ledger is built per run, and a resume does not call the model again
     // for the steps before the gate: without the carried count, a request
