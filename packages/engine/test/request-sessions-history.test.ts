@@ -151,6 +151,25 @@ describe("RequestHost.sessions.history", () => {
     expect(history?.running).toBe(true);
   });
 
+  it("says a turn is open when the parked turn is older than the turns read", async () => {
+    const { stores, turn } = await setup();
+    await turn("r1", 1000, "", { status: "interrupted", items: [message("r1", "user", "Approve the refund?", 1000, 0)] });
+    await turn("r2", 2000, "settled line");
+    const durability = {
+      listSuspended: async () => [{ requestId: "r1", status: "pending" }],
+      loadSuspension: async () => undefined
+    } as never;
+    const sessions = createRequestSessions({
+      sessions: stores.session,
+      identity: { userId: "u1", orgId: "o1", tenantId: undefined },
+      flow: deskFlow,
+      history: { requests: stores.request, runningRequestId: "req_running", durability, tokenCounter: () => counter, resolveModelId: () => "m", onGateReadError: () => {} }
+    });
+    const history = await sessions.history("writer", { limit: { turns: 1 } });
+    expect(history?.turns.map((t) => t.requestId)).toEqual(["r2"]);
+    expect(history?.running).toBe(true);
+  });
+
   it("never reads the running request, even when it runs in the session read", async () => {
     const { turn, host } = await setup();
     await turn("r1", 1000, "earlier");

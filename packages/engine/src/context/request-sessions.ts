@@ -30,6 +30,7 @@ import { resolveSessionStorageKey } from "../stores/scope-keys";
 import type { RequestStore, SessionRecord, SessionStore } from "../stores/types";
 import { LLM_AUDIENCE_TYPES, selectRequestsByLimit } from "./history";
 import { sessionRequestScope } from "./session-request-scope";
+import { parkedInterruptedIds } from "../durability/stop-suspended";
 import { readSettledTurns } from "./settled-turns";
 
 /** The most turns `history` reads from the store, whatever its limit asks. */
@@ -58,6 +59,29 @@ export type RequestSessionsInputs = {
     onGateReadError: (error: unknown) => void;
   };
 };
+
+/**
+ * Whether an interrupted turn older than the turns read is parked to run
+ * again: the session still has an open turn, though the window doesn't hold
+ * it. Read only when earlier turns fell out of the window; bounded like it.
+ */
+async function parkedBefore(
+  reads: NonNullable<RequestSessionsInputs["history"]>,
+  scope: ReturnType<typeof sessionRequestScope>,
+  window: readonly { id: string }[]
+): Promise<boolean> {
+  if (reads.durability === undefined) return false;
+  const inWindow = new Set(window.map((r) => r.id));
+  const interrupted = (
+    await reads.requests.list({ ...scope, status: ["interrupted"], limit: SESSION_HISTORY_MAX_TURNS, orderBy: "startedAtMs", withItems: true })
+  ).filter((r) => !inWindow.has(r.id) && r.id !== reads.runningRequestId);
+  try {
+    return (await parkedInterruptedIds(reads.durability, interrupted)).size > 0;
+  } catch (error) {
+    reads.onGateReadError(error);
+    return false;
+  }
+}
 
 /**
  * The owner rule both reads share: the session record, when it is the
@@ -154,7 +178,7 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
         turns: read,
         ...(first !== undefined && leftOut ? { startRequestId: first.id } : {}),
         ...(newest !== undefined ? { asOf: { requestId: newest.id, atMs: newest.completedAtMs ?? newest.updatedAt } } : {}),
-        running: open.length > 0 || past.parked.size > 0
+        running: open.length > 0 || past.parked.size > 0 || (past.start !== undefined && (await parkedBefore(reads, scope, past.window)))
       };
     },
   };
