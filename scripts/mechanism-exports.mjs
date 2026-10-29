@@ -6,7 +6,8 @@
  * only, no type-check) and its re-exports are followed to the file that declares
  * the name, across workspace packages too. No build and no graft index needed.
  *
- * A reader is `read(path) → text | null` plus `read.packageDirs()`, so the same
+ * A reader is `read(path) → text | null` plus `read.packageDirs()` and `read.list(dir)`
+ * (every file under a directory, for wildcard subpaths), so the same
  * walk runs on the working tree or on another commit (`git show <ref>:<path>`).
  */
 import { readFileSync, readdirSync } from "node:fs";
@@ -18,6 +19,7 @@ import ts from "typescript";
 export const fsReader = (root) => {
   const read = (path) => { try { return readFileSync(join(root, path), "utf8"); } catch { return null; } };
   read.packageDirs = () => readdirSync(join(root, "packages"));
+  read.list = (dir) => { try { return readdirSync(join(root, dir), { recursive: true }).map((f) => join(dir, f)); } catch { return []; } };
   return read;
 };
 
@@ -26,6 +28,7 @@ export const gitReader = (root, ref) => {
   const git = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8", maxBuffer: 1 << 26, stdio: ["ignore", "pipe", "ignore"] });
   const read = (path) => { try { return git(["show", `${ref}:${path}`]); } catch { return null; } };
   read.packageDirs = () => git(["ls-tree", "--name-only", `${ref}:packages`]).split("\n").filter(Boolean);
+  read.list = (dir) => { try { return git(["ls-tree", "-r", "--name-only", ref, "--", `${dir}/`]).split("\n").filter(Boolean); } catch { return []; } };
   return read;
 };
 
@@ -60,6 +63,7 @@ function moduleExports(w, file) {
       const mod = from(node);
       const b = node.importClause?.namedBindings;
       if (mod && b && ts.isNamedImports(b)) for (const el of b.elements) imports.set(el.name.text, [mod, (el.propertyName ?? el.name).text]);
+      if (mod && node.importClause?.name) imports.set(node.importClause.name.text, [mod, "default"]); // import foo from "./foo"
     } else if (ts.isExportDeclaration(node)) {
       const mod = from(node);
       if (!node.exportClause) { // export * from "./x"
@@ -101,9 +105,14 @@ export function packageExports(read) {
     for (const [sub, v] of Object.entries(typeof map === "string" ? { ".": map } : map)) {
       const target = typeof v === "string" ? v : v.default ?? v.import;
       if (typeof target !== "string" || !target.includes("/src/")) continue;
-      const file = normalize(join("packages", dir, target));
-      w.bare.set(sub === "." ? name : `${name}/${sub.slice(2)}`, file);
-      files.push(file);
+      const add = (key, file) => { w.bare.set(key === "." ? name : `${name}/${key.slice(2)}`, file); files.push(file); };
+      const pattern = normalize(join("packages", dir, target));
+      if (!pattern.includes("*")) { add(sub, pattern); continue; }
+      // "./items/*" → "./src/items/*.ts": one entry per file the pattern matches.
+      const [head, tail] = pattern.split("*");
+      for (const file of read.list(dirname(head))) {
+        if (file.startsWith(head) && file.endsWith(tail) && file.length > head.length + tail.length) add(sub.replace("*", file.slice(head.length, file.length - tail.length)), file);
+      }
     }
     entries.set(name, files);
   }

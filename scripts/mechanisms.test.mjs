@@ -26,6 +26,7 @@ const index = packageExports(real);
 function overlay(files) {
   const read = (path) => (path in files ? files[path] : real(path));
   read.packageDirs = real.packageDirs;
+  read.list = real.list;
   return read;
 }
 
@@ -56,7 +57,30 @@ describe("anchor check", () => {
   });
 });
 
+describe("export walk", () => {
+  it("expands a wildcard subpath in an exports map to the files it matches", () => {
+    // contracts maps "./items/*" to "./src/items/*.ts"; refBlockValue is public only through items/internal.
+    assert.equal(index.get("@flow-state-dev/contracts").get("refBlockValue")?.file, "packages/contracts/src/items/resolve-value.ts");
+  });
+
+  it("traces a default import re-exported by name to the module that declares it", () => {
+    const head = packageExports(overlay({
+      "packages/core/src/types/default-thing.ts": "export default function defaultThing() {}\n",
+      [CORE_INDEX]: `import defaultThing from "./types/default-thing";\n${real(CORE_INDEX)}\nexport { defaultThing };\n`,
+    }));
+    assert.equal(head.get("@flow-state-dev/core").get("defaultThing")?.file, "packages/core/src/types/default-thing.ts");
+  });
+});
+
 describe("PR classifier", () => {
+  it("keeps an overlap recorded on one row only, whichever id sorts first", () => {
+    // wait-gate names suspension; suspension does not name wait-gate.
+    const files = ["wait-gate", "suspension"].map((id) => rows.find((r) => r.id === id).file);
+    const result = classify(rows, index, index, files);
+    assert.deepEqual(result.overlaps.map((o) => [o.a, o.b].sort()), [["suspension", "wait-gate"]]);
+    assert.deepEqual(result.labels, [LABELS.overlap]);
+  });
+
   it("labels a second way to park a request as a new mechanism that overlaps wait-gate", () => {
     const head = packageExports(overlay({
       "packages/core/src/types/timer-park.ts": "export async function parkOnTimer(ms: number) {}\n",

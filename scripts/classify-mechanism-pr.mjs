@@ -64,7 +64,13 @@ export function classify(rows, base, head, changedFiles) {
     }
   }
   const touched = new Set([...added.filter((a) => a.row).map((a) => a.row.id), ...rows.filter((r) => changedFiles.includes(r.file)).map((r) => r.id)]);
-  const overlaps = rows.flatMap((r) => (touched.has(r.id) ? r.overlaps ?? [] : []).filter((o) => touched.has(o.id) && r.id < o.id).map((o) => ({ a: r.id, b: o.id, note: o.note })));
+  // An overlap may be recorded on either row, or both: key each pair by its sorted ids.
+  const pairs = new Map();
+  for (const r of rows) for (const o of r.overlaps ?? []) {
+    const [a, b] = [r.id, o.id].sort();
+    if (touched.has(a) && touched.has(b) && !pairs.has(`${a} ${b}`)) pairs.set(`${a} ${b}`, { a, b, note: o.note });
+  }
+  const overlaps = [...pairs.values()];
   const lookalikes = added.filter((a) => !a.row).map((a) => ({
     name: a.name,
     rows: rows.map((r) => ({ id: r.id, shared: words(a.name).filter((w) => [...words(r.id), ...words(r.anchor)].includes(w)) })).filter((r) => r.shared.length),
