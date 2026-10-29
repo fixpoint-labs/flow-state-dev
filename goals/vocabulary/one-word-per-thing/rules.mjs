@@ -96,6 +96,64 @@ export const RETIRED = [
     pathName: /(^|\/)(in-process-dispatcher\.ts|run-owner-dispatcher\.spec\.ts)$|\/tasks\/dispatchers\/|^packages\/engine\/src\/transports\/dispatcher\.ts$|^packages\/bullmq\/(src|test)\/dispatcher\.(test\.)?ts$/
   },
   {
+    id: "routed-task-names",
+    files: CODE_OR_PUBLISHED,
+    // FIX-2246: a coordinator's post is a routed task. The message it routes is named by the request that
+    // carried it (messageRequestId); the post entries, the post-row reader and the old row id are gone.
+    pattern: /\b(onDelegatedPost|isPostRow|onPostSettled|postCancelled|RoundPost|postId|legacyPostRowId)\b/
+  },
+  {
+    id: "entry-name-upgrade",
+    files: CODE_OR_PUBLISHED,
+    // FIX-2246: the board's pass is dispatch, with no host-start rewrite of the old entry names and no
+    // retired retry marker left to strip.
+    pattern: /\b(runTaskBoard|upgradeWorkerEntryNames|EntryNameFlow|EntryNameRequest|EntryNameUpgradeOptions|EntryNameUpgradeStores|RETRY_OF)\b|upgrade-entry-names/
+  },
+  {
+    id: "wait-mark-spellings",
+    files: CODE_OR_PUBLISHED,
+    // FIX-2246: a wait gate's id and resolver say wait:, a notice says waitedOn, and no reader takes the
+    // spellings from before the wait rename.
+    pattern: /(?<=["'`])ask:|\b(LEGACY_WAIT_GATE_REASON|withMigratedWait)\b|\bnotice\.asked\b/
+  },
+  {
+    id: "message-budget",
+    files: CODE_OR_PUBLISHED,
+    // FIX-2246: hireWorkforce's messages.budget caps the one budget a user's line starts; it was a hop limit.
+    pattern: /\b(hopLimit|DEFAULT_MESSAGE_HOP_LIMIT|hop_limit)\b/
+  },
+  {
+    id: "split-leftovers",
+    files: CODE_OR_PUBLISHED,
+    // FIX-2246: the split's board, settle and cancel, gone with no new name.
+    pattern: /\b(delegationBoard|settleSplitTask|cancelSplitPieces)\b/
+  },
+  {
+    id: "session-factory",
+    files: CODE_OR_PUBLISHED,
+    // FIX-2246: what defineSessionBoard builds is the factory, never the kit.
+    pattern: /\b(filing|session|task-filing|manager) kits?\b|\bthe kit('s)?\b|\b(const|this) kit\b|\bkit\.\w+/i
+  },
+  {
+    id: "worker-run-door",
+    files: /^(packages\/workforce\/(src\/.*\.ts|README\.md)|apps\/docs\/docs\/workforce\/.*\.mdx?)$/,
+    // FIX-2246: a Workforce worker flow's door is respond, the one the worker contract requires.
+    pattern: /\bactions: \{ ?run:|`run` \(public\)|wrapped turn for `run`/
+  },
+  {
+    id: "message-door",
+    files: CODE_OR_PUBLISHED,
+    // FIX-2246: the harness message door and the row mark it kept are gone; harnessSessionDoor replaced it.
+    pattern: /\b(parkedForTurn|messageDoor|harnessMessageDoor)\b/
+  },
+  {
+    id: "reopened-shape",
+    files: CODE_OR_PUBLISHED,
+    // FIX-2246: a finished task takes a follow-up (followUpOf); the reopened row is a retired shape, read
+    // only on its marked lines. Exact identifiers, never a reopen prefix: the Inbox's reopened stays.
+    pattern: /\bREOPENED_STEER\b|\brow\.reopened\b|\breopened: (true|\{)|"reopened"/
+  },
+  {
     id: "human-reasons",
     files: new RegExp(`${CODE_OR_PUBLISHED.source}|${PENDING_NOTES.source}`),
     // FIX-2151: the suspension reasons say user. SuspensionReason's open `string & {}` arm compiles a
@@ -167,6 +225,18 @@ export const EXCLUDE = [
 /** Hits that keep their word, each with its reason (D3: ask = a question to a person; hand-off = mid-work). */
 export const KEEP = [
   {
+    path: /^packages\/harness-manager\/README\.md$/,
+    line: /^### Upgrading from `messageDoor`$|^Before `harnessSessionDoor`, a manager's `messageDoor` \(and `harnessMessageDoor`\) kept/,
+    rules: ["message-door"],
+    why: "FIX-2246: the README's upgrade note, which says the door is gone and how its kept lines become steers; a page can't carry the marker"
+  },
+  {
+    path: /^packages\/orchestration\/README\.md$/,
+    line: /^`reopened: true` reads unmarked; while it is still open/,
+    rules: ["reopened-shape"],
+    why: "FIX-2246: the README's upgrade note for the reopened shape the read boundary still maps; a page can't carry the marker"
+  },
+  {
     path: /^goals\//,
     line: /^\| \d{4}-\d{2}-\d{2} \|/,
     rules: ["human-reasons"],
@@ -182,13 +252,6 @@ export const KEEP = [
     line: /const requestId = "req_fence_(legacy_)?handed_off";$/,
     rules: ["handoff-symbol"],
     why: "a same-owner hand-off of a running request: work already under way changing hands"
-  },
-  {
-    path: /^apps\/docs\/docs\/orchestration\/task-board\.md$/,
-    // The sentence sits on a line of its own, so nothing else on the line is kept with it.
-    line: /^\s*Older logs report `"handed-off"` for the same thing\.$/,
-    rules: ["handoff-symbol-in-docs", "handoff-prose"],
-    why: "WR-14: the ending's old stored value, so a reader of an old log knows what it means"
   },
   {
     path: /^goals\//,
@@ -321,12 +384,6 @@ export const KEEP = [
     why: "WR-25b: FIX-1872's sentences that the tool was named handOff and a worker file naming it is refused; a page can't carry the marker"
   },
   {
-    path: /^packages\/(orchestration|engine)\/(src|test)\//,
-    line: /fsd\.ask\.(step|plan|file)/,
-    rules: ["ask-mark"],
-    why: "D2: the run-once keys are a process-internal wire value, kept so a replay across the upgrade finds its record (WR-11)"
-  },
-  {
     path: /^(packages|apps|docs\/architecture)\//,
     // A capitalized English verb ("Ask the team anything.", "Asked of the host here", "Self-Ask"),
     // on a line naming no identifier built on ask: the symbol rules' pattern can't tell them apart.
@@ -406,12 +463,6 @@ export const KEEP = [
     line: /never as an ask/,
     rules: ["ask-prose"],
     why: "WR-3: a person's approval or question, which a blocked task's notes are not drawn as"
-  },
-  {
-    path: /^packages\/(orchestration\/(src\/tasks\/notice\/task-notice\.ts|test\/tasks\/task-notice\.test\.ts)|workforce\/src\/conversation-board\/task-settled\.ts)$/,
-    line: /\basked\??:/,
-    rules: ["ask-mark", "ask-prose"],
-    why: "D2: a notice's asked flag is a process-internal wire value, kept so a notice owed across the upgrade is taken (WR-13)"
   },
   {
     path: /^packages\/((core|engine)\/(src\/execution\/request-side-chain-pool\.ts|test\/request-side-chain-pool\.test\.ts)|tools\/test\/bash-moat-purge\.test\.ts)$/,

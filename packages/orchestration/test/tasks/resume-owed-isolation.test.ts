@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import type { TaskCollectionRef } from "../../src/tasks";
 import { payOwedResumes } from "../../src/tasks/helpers/wait-on-task";
 
-const row = (id: string) => ({ id, status: "completed", output: id, wait: { gateId: `ask:b:${id}`, deadline: 1 }, resumeOwed: true });
+const row = (id: string) => ({ id, status: "completed", output: id, wait: { gateId: `wait:b:${id}`, deadline: 1 }, resumeOwed: true });
 
 function board(clearFails: ReadonlySet<string>) {
   const cleared: string[] = [];
@@ -28,7 +28,7 @@ describe("payOwedResumes: one row's failure is that row's", () => {
     const ctx = {
       requestHost: {
         resumeWait: async ({ gateId }: { gateId: string }) => {
-          if (gateId === "ask:b:a") throw new Error("the store blinked");
+          if (gateId === "wait:b:a") throw new Error("the store blinked");
           return { ok: true };
         }
       }
@@ -42,7 +42,7 @@ describe("payOwedResumes: one row's failure is that row's", () => {
     const ctx = {
       requestHost: {
         resumeWait: async ({ gateId }: { gateId: string }) =>
-          gateId === "ask:b:a"
+          gateId === "wait:b:a"
             ? { ok: false, refused: "busy", detail: "not parked yet" }
             : { ok: false, refused: "already-resolved", detail: "resolved" }
       }

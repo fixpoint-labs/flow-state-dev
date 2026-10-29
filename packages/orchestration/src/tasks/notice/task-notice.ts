@@ -92,7 +92,7 @@ export interface TaskNotice {
   readonly output?: unknown;
   readonly error?: string;
   /** The row is waited on: a turn is parked on its ending (read off a marker stored before FIX-2078). */
-  readonly asked?: true;
+  readonly waitedOn?: true;
   /**
    * On a failure or a cancel: the dependents this ending cancelled that share
    * its filer, by id (FIX-2078 D2). They owe no notice of their own.
@@ -395,7 +395,7 @@ export function owedNotices(
       ending: value.ending,
       ...(value.ending === "completed" ? { output: row.output } : {}),
       ...(value.error !== undefined ? { error: value.error } : {}),
-      ...(row.wait != null ? { asked: true as const } : {}),
+      ...(row.wait != null ? { waitedOn: true as const } : {}),
       ...(cancelled.length > 0 ? { cancelled } : {})
     });
   }
@@ -596,9 +596,9 @@ export type NoticeDecision =
   | { readonly act: "resume-wait" };
 
 /** The one choice of what a notice does. */
-export function decideNotice(notice: Pick<TaskNotice, "ending" | "asked">, policy: NoticePolicy): NoticeDecision {
+export function decideNotice(notice: Pick<TaskNotice, "ending" | "waitedOn">, policy: NoticePolicy): NoticeDecision {
   if (notice.ending === "retried") return { act: "run-board" };
-  if (notice.asked === true) return { act: "resume-wait" };
+  if (notice.waitedOn === true) return { act: "resume-wait" };
   return policy === "judgment" ? { act: "wake-turn" } : { act: "line" };
 }
 

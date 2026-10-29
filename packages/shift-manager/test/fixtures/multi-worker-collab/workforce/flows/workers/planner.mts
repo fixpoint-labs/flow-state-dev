@@ -3,7 +3,7 @@
  * the flow the planner's `WORKER.md` names in its `flow:` line.
  *
  * The planner files work for its delegates on its own conversation's board.
- * Its flow carries Workforce's filing kit (`defineSessionBoard`), so a
+ * Its flow carries Workforce's filing factory (`defineSessionBoard`), so a
  * conversation with the planner has the task actions (`createTask_tasks`,
  * `updateTask_tasks`, `listTasks_tasks`, …) while one of
  * the planner's `delegates:` takes a task. A row filed there names its
@@ -28,20 +28,20 @@ export interface PlannerFlowOptions {
 }
 
 /**
- * Build the `planner` flow: the hearing door, and the filing kit over the
+ * Build the `planner` flow: the hearing door, and the filing factory over the
  * conversation's own board.
  */
 export function definePlannerFlow(options: PlannerFlowOptions) {
   const { installation } = options;
-  const kit = defineSessionBoard({ installation, flowKind: PLANNER_FLOW });
+  const factory = defineSessionBoard({ installation, flowKind: PLANNER_FLOW });
   return defineFlow({
     kind: PLANNER_FLOW,
     cardinality: "collection",
     configSchema: workerConfigSchema(),
-    session: { ...installation.session(kit.sessionStateShape), serverOwned: [...kit.serverOwned] },
-    resources: { ...installation.resources, ...kit.resources },
-    actions: { ...hearingDoor, ...kit.actions },
+    session: { ...installation.session(factory.sessionStateShape), serverOwned: [...factory.serverOwned] },
+    resources: { ...installation.resources, ...factory.resources },
+    actions: { ...hearingDoor, ...factory.actions },
     // A task's notice lands as a line in the conversation; nothing here acts on it.
-    internal: { actions: kit.entries(hearingDoor.respond.block, () => "fixed") },
+    internal: { actions: factory.entries(hearingDoor.respond.block, () => "fixed") },
   } as never);
 }

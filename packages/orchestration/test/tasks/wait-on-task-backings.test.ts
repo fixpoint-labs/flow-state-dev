@@ -104,7 +104,7 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
       await expect(waitOnTask(turnCtx(memo, "park"), board, id, wait)).rejects.toThrow("parked");
       const slot = board.get(id)!.wait!;
       expect(slot).toMatchObject({ requestId: "req_1" });
-      expect(slot.gateId.startsWith(`ask:waits:${id}#`)).toBe(true);
+      expect(slot.gateId.startsWith(`wait:waits:${id}#`)).toBe(true);
       await expect(waitOnTask(turnCtx(memo, "park"), board, id, wait)).rejects.toThrow("parked");
       expect(board.get(id)!.wait).toEqual(slot);
     });

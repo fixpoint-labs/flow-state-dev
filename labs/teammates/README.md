@@ -85,6 +85,11 @@ and help me outline the post."* lead answers and messages researcher, which read
 README. Before researcher replies, send lead a second line: the reply shows as pending,
 then lands after lead's answer, and lead uses it in its next line.
 
+A conversation outlasts its history window (50 turns). Before a turn leaves it, the turn is folded
+into a running summary that lead reads with the turns it still has word for word. The divider sits
+where those begin, labelled *summarized*, so a fact you gave lead a hundred lines ago is above it and
+lead still knows it.
+
 Then ask lead *"Have coder fix the typo in the README's first line."* lead puts its conversation in
 your project and files the task there, coder's run shows its steps, and the result lands in lead's
 conversation.
@@ -107,11 +112,10 @@ names the package call it makes.
 | Hiring, changing and firing your own teammates | the workforce client's `hire`, `edit` and `fire`, on the roster flow |
 | Task cards, the refusal for want of a project | the conversation board's rows, and `projectWorkspace()`'s `no-project` refusal |
 | coder's runs | the task row's `run` link, read as the run session's items |
+| The divider and its *summarized* label | the last request's `historyStart`, and the session's `historySummary` resource |
 
 Not wired yet:
 
-- **The divider and its *summarized* label** wait on the history window's mark (G1, FIX-1613). Until
-  then the screen draws no divider.
 - **Which harness coder runs on.** The roster doesn't carry a worker's settings, so the screen names
   the harness from the run's own steps once it starts (FIX-2281).
 - **Editing a worker from the files.** They are read-only on the roster; how a user changes one (a
@@ -129,8 +133,8 @@ and on a flow over 200 lines; `--wired` also fails on any fixture.
 <!-- inventory:start -->
 | Kind | Files | Lines |
 |---|---:|---:|
-| Configuration | 16 | 615 |
-| React UI | 24 | 2194 |
+| Configuration | 16 | 636 |
+| React UI | 24 | 2269 |
 | Small flows | 1 | 152 |
-| Checks (not app code) | 8 | 1046 |
+| Checks (not app code) | 9 | 1097 |
 <!-- inventory:end -->

@@ -86,7 +86,7 @@ import type { JsonObject } from "@flow-state-dev/core";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 import { readCommitted, updateStateWith } from "@flow-state-dev/core/helpers";
-import { withMigratedWait, type Task, type TaskClaimIdentity, type TaskStatus } from "../schema/task";
+import { type Task, type TaskClaimIdentity, type TaskStatus } from "../schema/task";
 import type { TaskFilter } from "../schema/task-init";
 import {
   assertTransitionAllowed,
@@ -290,10 +290,9 @@ export interface ResourceBackedOptions {
 
 /**
  * The read boundary for this backing. Collection instances are stored, not
- * parsed, so a row written before the wait rename arrives carrying its legacy
- * wait mark, and one in a shape the retired-shape map reads (FIX-2080); both
- * are mapped forward here (see `withMigratedWait` and
- * `withRetiredShapes`), before any filter or the transition guard sees it.
+ * parsed, so a row in a shape the retired-shape map reads (FIX-2080) arrives
+ * as stored; it is mapped forward here (see `withRetiredShapes`), before any
+ * filter or the transition guard sees it.
  *
  * Every read of committed task state goes through this — `readTaskState` for
  * a ref, and directly for the `current` a CAS updater is handed, since that
@@ -302,7 +301,7 @@ export interface ResourceBackedOptions {
 function readTaskStateOf<TInput, TOutput>(
   state: JsonObject
 ): Task<TInput, TOutput> {
-  return withRetiredShapes(withMigratedWait(state)) as unknown as Task<TInput, TOutput>;
+  return withRetiredShapes(state) as unknown as Task<TInput, TOutput>;
 }
 
 function readTaskState<TInput, TOutput>(
