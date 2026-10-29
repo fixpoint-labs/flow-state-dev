@@ -188,7 +188,7 @@ function BackgroundItems({
       >
         <span className="block truncate font-mono text-xs">⚙ {t.title}</span>
         <span className="block truncate text-xs text-muted-foreground" data-status>
-          {t.status === "needs-project" ? "needs a project" : t.status === "running" ? "running" : t.status}
+          {t.status}
         </span>
       </button>
     </li>

@@ -9,8 +9,9 @@ import { AgentMarkdown } from "./flow-state/message-response";
  * answers on the left. A message the worker sent another worker is a one-line
  * card that opens to its full text; a message it received, or a task it
  * filed coming back, lands under the sender's name. A worker's text is
- * Markdown; your own lines are shown as typed. A tool that waits for your yes
- * is a card with Approve and Deny until you answer.
+ * Markdown; your own lines are shown as typed. A worker that waits for your
+ * yes (`waitForUser` with an approval) is a card with Approve and Deny until
+ * you answer.
  */
 export function Entry({
   entry,
@@ -78,7 +79,7 @@ export function Entry({
   }
 }
 
-/** What a worker's tool waits on you for. Once answered it says how. */
+/** What a worker waits on you for. Once answered it says how. */
 function ApprovalCard({
   workerName,
   text,

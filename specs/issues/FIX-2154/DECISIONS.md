@@ -82,6 +82,20 @@ It comes down to the box's own refusal: a task with no project doesn't run.
 **What would change my mind:** people missing the prompt, so coding jobs sit waiting. Then lead
 says in its conversation that it is waiting for a project, as well as the screen asking.
 
+> **Amended 2026-10-29 ([FIX-2335](https://linear.app/fixpoint-labs/issue/FIX-2335), with the epic's
+> [ER-8 amendment](../../epics/FIX-2152/DECISIONS.md#who-owns-what)).** Superseded in this lab: Jake
+> took projects out of it, because making one first was in the way and choosing between them is an
+> unsolved UX problem, and the lab should prove projects aren't required. The lab now has one
+> working folder, a git checkout the operator names at start (`TEAMMATES_WORKDIR`); unset or
+> missing, the lab doesn't start. The host's run source is the existing constant one, so every
+> coding run gets a worktree of that folder and researcher's and writer's reads read it. Nothing
+> asks where, nothing is refused `no-project`, and no worker has a project tool: the header's
+> project select, the task card's prompt and the *New project* form are gone, and task cards say
+> *running* and *done*. The approval card stays: it now shows any worker's `waitForUser`
+> approval, not only lead's project creation. Locks in, instead: a person never picks a folder in the
+> lab, and no model can name one. Projects may come back later as an example of configuring the app
+> beyond what Grok Bot does.
+
 <a name="d4"></a>
 ## D4 · Only a task-taking coder runs a harness; the workers you talk to stay on our generator
 

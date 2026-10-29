@@ -35,7 +35,6 @@
     "What is a good habit for better sleep, in one line?"
   ],
   "pastWindow": 60,
-  "project": { "id": "relay", "title": "Relay" },
   "typos": [
     { "readme": "# Relay — a tiny relay servce", "wrong": "servce", "right": "service" },
     { "readme": "# Relay — passes mesages along", "wrong": "mesages", "right": "messages" },
