@@ -1149,12 +1149,15 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
      */
     const assertProjectFor = async (init: TaskInit): Promise<void> => {
       if (options.needsProject === undefined || init.target !== undefined) return;
-      const assignee = init.assignee ?? (await soleDelegate());
+      // A follow-up runs where its root ran, with its worker and its target (`withFollowUpPlacement`).
+      const named = init.followUpOf === undefined ? undefined : ref.get(init.followUpOf);
+      const root = named?.followUpOf === undefined ? named : ref.get(named.followUpOf);
+      if (root?.target !== undefined) return;
+      const assignee = root?.assignee ?? init.assignee ?? (await soleDelegate());
       const flow = assignee === undefined ? undefined : (await reach(ctx)).available.get(assignee);
       if (flow === undefined || !options.needsProject(flow)) return;
       if (filingWorkstreamOf(ctx.session.state) !== undefined) return;
-      const root = init.followUpOf === undefined ? undefined : ref.get(init.followUpOf);
-      if ((await filedProjectFor(ctx, root)).stamp !== null) return;
+      if ((await filedProjectFor(ctx, named)).stamp !== null) return;
       if (namesProject(init.input)) return;
       throw new TaskWriteRefusedError(
         "no_project",
