@@ -51,7 +51,7 @@
  * nothing outside the gate, and the gate checks at its entry's last step.
  */
 import { handler } from "@flow-state-dev/core";
-import { dispatchThroughSeam, isUserSuspension, onRequestEnded, readRequestSpend, waitForUserKindOf, type RequestEndVerdict, type RequestEnding, type RequestSpend, type SuspensionAddress } from "@flow-state-dev/core/types";
+import { dispatchThroughSeam, isUserSuspension, onRequestEnded, readRequestSpend, requestSpendSources, waitForUserKindOf, type RequestEndVerdict, type RequestEnding, type RequestSpend, type SuspensionAddress } from "@flow-state-dev/core/types";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
@@ -283,6 +283,13 @@ export async function admitClaimedTask(
   // only where its end settles it, so a live part never outlives its request.
   if (registered) record.spendTick = startSpendTick(record);
   admitted.set(key, registered ? record : { ...record, inline: true });
+  // A continuation's baseline lands before it spends anything: the row counts
+  // the run before it less what this one recovered, so a continuation that
+  // dies before its first tick must not leave that run measured against the
+  // next one's recovery (which holds what this one logged too).
+  if (record.spendTick !== undefined && record.recovered !== undefined && requestSpendSources(record.recovered).length > 0) {
+    await writeSpend(record, "live", record.recovered);
+  }
   return { renewal, ticket };
 }
 

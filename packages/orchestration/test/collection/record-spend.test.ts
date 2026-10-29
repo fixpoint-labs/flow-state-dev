@@ -178,6 +178,20 @@ describe.each([
     expect(view(collection)).toMatchObject({ inputTokens: 15 + 9, outputTokens: 15 + 9 });
   });
 
+  it("counts a continuation that died before its first tick by its admission write, not against the next one's recovery", async () => {
+    // A spends 10 (4 logged); B recovers 4, logs 5 more and dies before ticking; C recovers those 9 and settles them.
+    // Measured against C's recovery, A's 6 unlogged would shrink to 1: B's admission write keeps its own baseline.
+    const { collection, claim } = await claimed();
+    const first = { writer: "first", admittedAt: 1 };
+    const second = { writer: "second", admittedAt: 2, recovered: modelCalls(4, 4) };
+    const third = { writer: "third", admittedAt: 3, recovered: modelCalls(9, 9) };
+    await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: modelCalls(10, 10), ...first }, { claim });
+    await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: modelCalls(4, 4), ...second }, { claim });
+    await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: modelCalls(9, 9), ...third }, { claim });
+    await collection.recordSpend!("t", { requestId: "q1", part: "settle", spend: modelCalls(9, 9), ...third }, { claim });
+    expect(view(collection)).toMatchObject({ inputTokens: 15, outputTokens: 15, live: false });
+  });
+
   it("keeps each admission's part when the interrupted one's ending lands after its continuation wrote", async () => {
     // The engine can publish the interruption before the old run's ending runs: a late ending is not a dead run.
     const { collection, claim } = await claimed();

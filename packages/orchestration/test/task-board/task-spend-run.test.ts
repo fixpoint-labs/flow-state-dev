@@ -12,11 +12,12 @@
  */
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler, sequencer } from "@flow-state-dev/core";
-import { reportHarnessSpend, type ActionCore } from "@flow-state-dev/core/types";
+import { REQUEST_END_SEAM, REQUEST_SPEND_SEAM, reportHarnessSpend, type ActionCore, type BlockContext, type RequestSpend } from "@flow-state-dev/core/types";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import { z } from "zod";
 import { createTaskGate, SPEND_TICK_MS, taskWorkerInputSchema } from "../../src/task-board";
-import { createResourceBackedTaskCollection, taskSpendView, type Task, type TaskSpendView } from "../../src/tasks";
+import { admitClaimedTask } from "../../src/task-board/task-request";
+import { createResourceBackedTaskCollection, taskSpendView, ticketForClaim, type Task, type TaskSpendView } from "../../src/tasks";
 import { createFakeResourceCollection } from "../helpers";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -133,4 +134,27 @@ describe("a task's run writes its spend onto the row", () => {
 
     expect(await t.view()).toMatchObject({ inputTokens: 100, outputTokens: 20, live: false });
   }, 20_000);
+
+  it("writes a continuation's recovered spend as it is admitted, before its first tick", async () => {
+    // A continuation that dies before ticking must still leave what it recovered on the row: the run before it is
+    // counted less that, and without it would be counted less the next continuation's recovery, which is larger.
+    const ledger = await createResourceBackedTaskCollection({ collectionId: "admit-ledger", collection: createFakeResourceCollection(), now: () => Date.now() });
+    await ledger.createTask({ id: "t1", goal: "do it", assignee: "coder", input: {} });
+    const row = (await ledger.claim("drain", { leaseDurationMs: 60_000 }))!;
+    const recovered: RequestSpend = { byModel: { "openai/gpt-6-luna": { prompt: 4, completion: 4, total: 8, cacheReadTokens: 0, cacheCreationTokens: 0 } }, harnessRuns: [] };
+    const abort = new AbortController();
+    const ctx = {
+      request: { identity: { id: "q1" } },
+      signal: abort.signal,
+      [REQUEST_END_SEAM]: { add: () => {} },
+      [REQUEST_SPEND_SEAM]: { reportHarnessRun: () => {}, pending: () => recovered },
+    } as unknown as BlockContext;
+    try {
+      await admitClaimedTask(ctx, { ref: ledger, row, ticket: ticketForClaim(ledger.collectionId, row), answerCounts: false, own: true });
+      expect(taskSpendView(ledger.get("t1")!)).toMatchObject({ model: "openai/gpt-6-luna", inputTokens: 4, outputTokens: 4, live: true });
+      expect(ledger.get("t1")!.spend!.requests[0]).toMatchObject({ requestId: "q1", recovered: [{ source: "openai/gpt-6-luna", inputTokens: 4 }] });
+    } finally {
+      abort.abort();
+    }
+  });
 });
