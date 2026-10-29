@@ -17,6 +17,7 @@
  * | `fire`              | the workforce client's `fire`, on one of the user's own workers               |
  * | `watchTasks`        | the board's rows, as the conversation's stream carries each one (`task-change`) |
  * | `watchRun`          | the items of the session the task's row names as its run                     |
+ * | `watchExchange`     | the receiving worker's conversation: the turn that read one message          |
  *
  * A received message is drawn from its own item (`workforce:received`), which
  * carries its message id, so the pending line joins the log to the
@@ -80,10 +81,19 @@ export interface BoardTask {
   runSessionId?: string;
 }
 
-/** One step of a task's run, as the harness reported it. */
-export interface RunStep {
+/**
+ * One step of a session as a popup draws it: a line given to the worker (a
+ * task's brief, or a message), what the worker wrote, a message it sent, a
+ * tool it ran, or the harness a coding run went through.
+ */
+export interface SessionStep {
   id: string;
+  kind: "given" | "said" | "sent" | "tool" | "harness";
   text: string;
+  /** For `sent`, the worker it went to. */
+  to?: string;
+  /** For `said`, while it is still being written. */
+  streaming?: boolean;
 }
 
 /** One entry of a worker's conversation, in the order it happened. */
@@ -161,7 +171,13 @@ export interface LabAdapter {
   /** The tasks a conversation filed, oldest first. */
   watchTasks(sessionId: string, onChange: (tasks: BoardTask[]) => void): Unsubscribe;
   /** A task's run, by the session its row names, read only: the worker that runs it takes no messages. */
-  watchRun(runSessionId: string, onChange: (steps: RunStep[]) => void): Unsubscribe;
+  watchRun(runSessionId: string, onChange: (steps: SessionStep[]) => void): Unsubscribe;
+  /**
+   * What `worker` did with one message it was sent: the turn in its own
+   * conversation that read it, from the message to the turn's end, live.
+   * Empty until the message is read.
+   */
+  watchExchange(worker: string, messageId: string, onChange: (steps: SessionStep[]) => void): Unsubscribe;
 }
 
 /** How often the reads with no stream are read again. */
@@ -333,6 +349,30 @@ export function answeringOf(items: readonly Item[], inProgress: readonly string[
   if (items.some((i) => i.status === "in_progress" && live(i.requestId))) return true;
   const answered = new Set(items.filter((i) => i.type === "message" && i.role === "assistant" && i.status === "completed").map((i) => i.requestId));
   return inProgress.some((requestId) => !answered.has(requestId));
+}
+
+/** A session's items as a popup's steps: what it was given, what it wrote, and the tools it ran. */
+export function toSteps(items: readonly Item[]): SessionStep[] {
+  const steps: SessionStep[] = [];
+  for (const item of items) {
+    if (item.type === "message" && textOf(item).trim() !== "") {
+      steps.push({ id: item.id, kind: item.role === "user" ? "given" : "said", text: textOf(item), ...(item.status === "in_progress" ? { streaming: true } : {}) });
+    } else if (item.type === "component" && item.component === RECEIVED_MESSAGE_COMPONENT && typeof item.data?.text === "string") {
+      steps.push({ id: item.id, kind: "given", text: item.data.text });
+    } else if (item.type === "tool_output" && item.toolCall?.name === SEND_MESSAGE_TOOL) {
+      const args = parseArgs(item);
+      steps.push({ id: item.id, kind: "sent", text: String(args.text ?? ""), to: String(args.to ?? "") });
+    } else if (item.type === "tool_output" && typeof item.toolCall?.name === "string") {
+      steps.push({ id: item.id, kind: "tool", text: item.toolCall.name });
+    }
+  }
+  return steps;
+}
+
+/** The turn of a conversation that read message `messageId`, as steps: the message, then all that turn did. */
+export function exchangeOf(items: readonly Item[], messageId: string): SessionStep[] {
+  const read = items.find((i) => i.type === "component" && i.component === RECEIVED_MESSAGE_COMPONENT && i.data?.id === messageId);
+  return read === undefined ? [] : toSteps(items.filter((i) => i.requestId === read.requestId));
 }
 
 /** A roster entry as the screen lists it. */
@@ -529,15 +569,21 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     },
     watchRun(runSessionId, onChange) {
       return watchFeed(runSessionId, (items) => {
-        const steps: RunStep[] = [];
         const block = items.find((i) => HARNESS_LABEL[i.provenance?.blockName ?? ""] !== undefined)?.provenance?.blockName;
-        if (block !== undefined) steps.push({ id: "harness", text: `on ${HARNESS_LABEL[block]}` });
-        for (const item of items) {
-          if (item.type === "message" && item.role === "assistant" && textOf(item).trim() !== "") steps.push({ id: item.id, text: textOf(item) });
-          else if (item.type === "tool_output" && typeof item.toolCall?.name === "string") steps.push({ id: item.id, text: item.toolCall.name });
-        }
-        return steps;
-      }, onChange);
+        return [...(block === undefined ? [] : [{ id: "harness", kind: "harness" as const, text: `on ${HARNESS_LABEL[block]}` }]), ...toSteps(items)];
+      }, stableList(onChange));
+    },
+    watchExchange(worker, messageId, onChange) {
+      let stop: Unsubscribe | undefined;
+      let live = true;
+      void conversationOf(worker).then(({ sessionId }) => {
+        if (!live) return;
+        stop = watchFeed(sessionId, (items) => exchangeOf(items, messageId), stableList(onChange));
+      });
+      return () => {
+        live = false;
+        stop?.();
+      };
     },
   };
 }

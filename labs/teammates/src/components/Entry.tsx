@@ -1,13 +1,13 @@
-import { memo, useState } from "react";
+import { memo } from "react";
 import type { ConversationEntry } from "../adapter";
-import { cn } from "../lib/utils";
 import { AgentMarkdown } from "./flow-state/message-response";
 
 /**
  * One entry of a conversation. Your lines sit on the right; the worker's
- * answers on the left. A message the worker sent another worker is a one-line
- * card that opens to its full text; a message it received, or a task it
- * filed coming back, lands under the sender's name. A worker's text is
+ * answers on the left. A message the worker sent another worker is one line,
+ * "Messaged researcher", that opens the exchange in a popup; a message it
+ * received, or a task it filed coming back, lands under the sender's name,
+ * and a task's result opens that task's popup. A worker's text is
  * Markdown; your own lines are shown as typed. Memoized: a streamed chunk
  * redraws only the entry that changed.
  */
@@ -16,12 +16,21 @@ export const Entry = memo(function Entry({
   workerName,
   nameOf,
   isCoding = () => false,
+  replied = false,
+  onOpenMessage,
+  onOpenTask,
 }: {
   entry: ConversationEntry;
   workerName: string;
   nameOf: (id: string) => string;
   /** The worker coding tasks run on: its results are the task's, not a teammate's. */
   isCoding?: (id: string) => boolean;
+  /** For a sent message: it was answered. */
+  replied?: boolean;
+  /** Open the exchange a sent message started. */
+  onOpenMessage?: (entry: Extract<ConversationEntry, { kind: "sent" }>) => void;
+  /** Open the task a result came from. */
+  onOpenTask?: (taskId: string) => void;
 }) {
   switch (entry.kind) {
     case "user":
@@ -40,7 +49,7 @@ export const Entry = memo(function Entry({
         </div>
       );
     case "sent":
-      return <SentCard to={nameOf(entry.to)} text={entry.text} />;
+      return <SentLine to={nameOf(entry.to)} text={entry.text} replied={replied} onOpen={onOpenMessage ? () => onOpenMessage(entry) : undefined} />;
     case "received":
       return (
         <section
@@ -60,8 +69,15 @@ export const Entry = memo(function Entry({
       const from = isCoding(entry.from) ? "the coding task" : nameOf(entry.from);
       return (
         <section aria-label={`From ${from}`} data-entry="result" className="max-w-[85%] rounded-md border border-dashed border-success/60 bg-success/5 px-3 py-2">
-          <div className="font-mono text-[10px] tracking-widest text-success uppercase">
-            ← {isCoding(entry.from) ? "coding task" : nameOf(entry.from)} · {entry.failed ? "task failed" : "task done"}
+          <div className="flex items-center gap-2 font-mono text-[10px] tracking-widest text-success uppercase">
+            <span className="flex-1">
+              ← {isCoding(entry.from) ? "coding task" : nameOf(entry.from)} · {entry.failed ? "task failed" : "task done"}
+            </span>
+            {entry.taskId !== "" && onOpenTask ? (
+              <button type="button" onClick={() => onOpenTask(entry.taskId)} className="text-muted-foreground normal-case hover:text-foreground">
+                Open
+              </button>
+            ) : null}
           </div>
           <AgentMarkdown className="mt-0.5 text-sm" text={entry.text} />
         </section>
@@ -73,22 +89,23 @@ export const Entry = memo(function Entry({
   }
 });
 
-/** A message to another worker: one line until opened. */
-function SentCard({ to, text }: { to: string; text: string }) {
-  const [open, setOpen] = useState(false);
+/** A message to another worker: one line, "Messaged researcher", that opens the exchange. */
+function SentLine({ to, text, replied, onOpen }: { to: string; text: string; replied: boolean; onOpen?: () => void }) {
   return (
     <button
       type="button"
-      aria-expanded={open}
-      aria-label={`To ${to}: ${text}`}
+      aria-label={`Messaged ${to}: ${text}`}
       data-entry="sent"
-      onClick={() => setOpen((o) => !o)}
-      className="flex max-w-[85%] items-start gap-2 rounded-md border border-dashed border-success/60 px-3 py-1.5 text-left font-mono text-xs text-success hover:bg-success/5"
+      onClick={onOpen}
+      className="flex w-full max-w-[85%] items-center gap-2 rounded-md border border-border bg-card/60 px-3 py-1.5 text-left text-sm hover:bg-accent"
     >
-      <span className="shrink-0">→ to {to} ·</span>
-      <span className={cn("min-w-0 flex-1 text-foreground", open ? "whitespace-pre-wrap" : "truncate")}>{text}</span>
       <span aria-hidden className="shrink-0 text-muted-foreground">
-        {open ? "▾" : "▸"}
+        ↗
+      </span>
+      <span className="shrink-0">Messaged {to}</span>
+      <span className="min-w-0 flex-1 truncate text-muted-foreground">{text}</span>
+      <span className="shrink-0 text-xs text-muted-foreground" data-sent-status>
+        {replied ? "replied" : "working"}
       </span>
     </button>
   );

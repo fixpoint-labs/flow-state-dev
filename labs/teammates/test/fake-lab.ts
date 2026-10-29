@@ -12,7 +12,7 @@
  * worker, waits while the worker is answering, and runs when it is done.
  * Chief of Staff's conversation starts past the 50-turn history window.
  */
-import type { ConversationEntry, LabAdapter, RunStep, TalkRow, BoardTask, Unsubscribe, WindowMark, WorkerRow } from "../src/adapter";
+import type { ConversationEntry, LabAdapter, SessionStep, TalkRow, BoardTask, Unsubscribe, WindowMark, WorkerRow } from "../src/adapter";
 
 /** How the double keeps time, and what it plays. */
 export interface FixtureOptions {
@@ -86,7 +86,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
   const bySession = (sessionId: string) => [...workers.values()].find((w) => w.sessionId === sessionId);
   const fired = new Set<string>();
   let tasks: FixtureTask[] = [];
-  const runs = new Map<string, RunStep[]>();
+  const runs = new Map<string, SessionStep[]>();
 
   const notify = () => {
     for (const listener of [...listeners]) listener();
@@ -137,7 +137,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     notify();
   };
   const step = (taskId: string, text: string): Step[1] => () => {
-    runs.set(taskId, [...(runs.get(taskId) ?? []), { id: nextId("step"), text }]);
+    runs.set(taskId, [...(runs.get(taskId) ?? []), { id: nextId("step"), kind: "tool", text }]);
     notify();
   };
 
@@ -363,7 +363,28 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     },
 
     watchRun(runSessionId, onChange) {
-      return watch(() => onChange(runs.get(runSessionId.replace(/^run:/, "")) ?? []));
+      const taskId = runSessionId.replace(/^run:/, "");
+      return watch(() => {
+        const steps = runs.get(taskId) ?? [];
+        onChange(steps.length === 0 ? [] : [{ id: "harness", kind: "harness", text: "on Claude Code" }, ...steps]);
+      });
+    },
+
+    watchExchange(workerId, messageId, onChange) {
+      // The recipient's turn that read the message: from its received entry to the next thing it was given.
+      return watch(() => {
+        const entries = worker(workerId).entries;
+        const at = entries.findIndex((e) => e.kind === "received" && e.messageId === messageId);
+        if (at < 0) return onChange([]);
+        const steps: SessionStep[] = [];
+        for (const e of entries.slice(at)) {
+          if (steps.length > 0 && (e.kind === "user" || e.kind === "received")) break;
+          if (e.kind === "received") steps.push({ id: e.id, kind: "given", text: e.text });
+          else if (e.kind === "assistant") steps.push({ id: e.id, kind: "said", text: e.text, ...(e.streaming ? { streaming: true } : {}) });
+          else if (e.kind === "sent") steps.push({ id: e.id, kind: "sent", text: e.text, to: e.to });
+        }
+        onChange(steps);
+      });
     },
   };
 }
