@@ -3,17 +3,14 @@
  *
  * Coding is a background task, not a teammate: `coder` is the hidden worker
  * coding tasks go to, off the screen's list. A coding task a teammate starts
- * becomes a
- * supervised coding run, through the harness its own `WORKER.md` names in
- * `harness:`, or the host's default when it names none, in the project its
- * task was filed in. The flow builds one `harnessManager` per harness the
- * host offers and routes each task by the worker's setting (the epic's ER-9),
- * so a Codex coder is one more `WORKER.md`, or a hire, with no new flow.
+ * becomes a supervised coding run, through the harness its own `WORKER.md`
+ * names in `harness:`, or the host's default when it names none. The flow
+ * builds one `harnessManager` per harness the host offers and routes each
+ * task by the worker's setting (the epic's ER-9), so a Codex coder is one
+ * more `WORKER.md`, or a hire, with no new flow.
  *
- * Where a run works comes from the host's workspace, whose source is
- * `projectWorkspace()`: the project of the conversation that filed the task.
- * A task filed from a conversation with no project is refused `no-project`
- * before any file exists, and the task ends with that reason.
+ * Where a run works comes from the host's workspace, whose source is the
+ * lab's one working folder: every run gets a worktree of it.
  *
  * It hears worker messages only in its tasks' sessions, so nobody messages it
  * by name. The screen opens no conversation with it, so its door is not
@@ -31,7 +28,6 @@ import {
   conversationLedgers,
   MESSAGE_RECEIVED_ENTRY,
   messageReceivedEntry,
-  projectWorkspaceCapability,
   WORKER_TASK_ENTRY,
   workerConfigSchema,
   workerFlow,
@@ -54,7 +50,7 @@ export interface CoderFlowOptions {
   harnesses: Readonly<Record<string, Harness>>;
   /** The harness a worker that names none runs on: one of {@link harnesses}. */
   defaultHarness: string;
-  /** Where a run works: a host whose source is `projectWorkspace()`. */
+  /** Where a run works: the host over the lab's working folder. */
   workspace: WorkspaceHost;
   /** Wall-clock budget for one run. */
   runTimeoutMs: number;
@@ -104,7 +100,6 @@ export function coderFlow(options: CoderFlowOptions) {
           workspace: options.workspace,
           runTimeoutMs: options.runTimeoutMs,
           harness,
-          uses: [projectWorkspaceCapability],
         } as never) as TaskWorker;
       }
 

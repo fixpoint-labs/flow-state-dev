@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { LabAdapter, NewProject, NewTeammate, ProjectRow, WorkerRow } from "./adapter";
+import type { LabAdapter, NewTeammate, WorkerRow } from "./adapter";
 import { Conversation } from "./components/Conversation";
 import { Runs } from "./components/Runs";
 import { TalkPanel } from "./components/TalkPanel";
@@ -13,12 +13,10 @@ import { WorkersList } from "./components/WorkersList";
  * that opens the center to the runs, read only. The app opens on the first
  * teammate.
  *
- * The roster is read again after a hire or a fire made here, and the projects
- * are watched, so one a worker created shows without a reload.
+ * The roster is read again after a hire or a fire made here.
  */
 export function App({ adapter }: { adapter: LabAdapter }) {
   const [workers, setWorkers] = useState<WorkerRow[]>([]);
-  const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [sessions, setSessions] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<string>();
   // A background item chosen on the left: the coding task whose run the center opens to.
@@ -39,18 +37,11 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     void loadRoster().then(({ talking }) => {
       if (live) setSelected((current) => current ?? talking[0]?.id);
     });
-    const stopProjects = adapter.watchProjects(setProjects);
     return () => {
       live = false;
-      stopProjects();
     };
   }, [adapter, loadRoster]);
 
-  const createProject = async (project: NewProject) => {
-    const created = await adapter.createProject(project);
-    setProjects((rows) => (rows.some((p) => p.id === created.id) ? rows : [...rows, created]));
-    return created;
-  };
   const hire = async (teammate: NewTeammate) => {
     const hired = await adapter.hire(teammate);
     await loadRoster();
@@ -90,7 +81,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
         onHire={hire}
       />
       {openRun !== undefined ? (
-        <Runs key={openRun} adapter={adapter} workers={teammates} sessions={sessions} projects={projects} nameOf={nameOf} isCoding={isCoding} openRun={openRun} />
+        <Runs key={openRun} adapter={adapter} workers={teammates} sessions={sessions} nameOf={nameOf} isCoding={isCoding} openRun={openRun} />
       ) : worker && sessionId ? (
         <Conversation
           // One conversation per session: a draft typed to one worker never carries over to another.
@@ -98,10 +89,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
           adapter={adapter}
           worker={worker}
           sessionId={sessionId}
-          projects={projects}
           nameOf={nameOf}
           isCoding={isCoding}
-          onCreateProject={createProject}
           onFire={() => fire(worker.id)}
           talkOpen={talkOpen}
           onToggleTalk={() => setTalkOpen((open) => !open)}

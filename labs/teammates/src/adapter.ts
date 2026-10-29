@@ -9,18 +9,12 @@
  * | `openConversation`  | `ensureWorkerSession({ worker })`: the worker's default conversation         |
  * | `send`              | the worker's door, `respond`, streamed, so its answer shows as it is written  |
  * | `watchConversation` | the session's items, from its snapshot and then its stream                   |
- * | `answerApproval`    | the request's `answer`: approve or reject a `user_approval` stop             |
  * | `watchTalk`         | the user's message log (`workforceMessages`), as `sendMessage` writes it     |
  * | `watchActivity`     | `listSessionRequests` on the worker's conversation                           |
  * | `watchWindow`       | the last answering request's `historyStart`, and the session's `historySummary` |
- * | `listProjects`      | the user's projects, read through their roster session                       |
- * | `watchProjects`     | the same read, again every few seconds, so a project lead made shows          |
- * | `createProject`     | the projects flow's `createProject`, the block lead's tool runs               |
  * | `hire`              | the workforce client's `hire`: a row on the user's roster                     |
  * | `editInstructions`  | the workforce client's `edit`, on one of the user's own workers               |
  * | `fire`              | the workforce client's `fire`, on one of the user's own workers               |
- * | `watchWorkProject`  | the conversation's `workProjectId`, from the session read                    |
- * | `setWorkProject`    | the workforce client's `setWorkProject(worker, project)`                     |
  * | `watchTasks`        | the board's rows, as the conversation's stream carries each one (`task-change`) |
  * | `watchRun`          | the items of the session the task's row names as its run                     |
  *
@@ -31,24 +25,19 @@
  * The page acts as the user `fsdev dev` hands it (the config's `devtool`
  * block), with the bearer token when there is one, on the server it came from.
  */
-import { createClient, readEveryCollectionPage, type Client, type SentRequest, type SessionRequestSummary } from "@flow-state-dev/client";
+import { createClient, readEveryCollectionPage, type Client, type SessionRequestSummary } from "@flow-state-dev/client";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
   createWorkforceClient,
-  parseProjectRef,
   RECEIVED_MESSAGE_COMPONENT,
-  ROSTER_FLOW,
   SEND_MESSAGE_TOOL,
-  SET_WORK_PROJECT_ACTION,
-  WORK_PROJECT_STATE_KEY,
   WORKER_MESSAGES_RESOURCE,
   workerMessageRowSchema,
   type RosterEntry,
   type WorkforceClient,
 } from "@flow-state-dev/workforce/browser";
 import { CODER_FLOW } from "./lib/coder-flow";
-import { PROJECTS_FLOW } from "./lib/projects-flow";
 import { sessionFeeds, type SessionFeed } from "./lib/session-feed";
 
 /** Stops a watch. */
@@ -68,15 +57,6 @@ export interface WorkerRow {
   own?: boolean;
 }
 
-/** A project to create from the page. */
-export interface NewProject {
-  /** A short lowercase slug. */
-  id: string;
-  title: string;
-  /** An absolute path to a git checkout on the server's machine; stored as a `file://` repository. */
-  checkout?: string;
-}
-
 /** A teammate to hire from the page. */
 export interface NewTeammate {
   /** Its name, which is its id on the roster: one word, lowercase. */
@@ -86,24 +66,13 @@ export interface NewTeammate {
   instructions: string;
 }
 
-/** One of the user's projects: where a worker's runs get their files. */
-export interface ProjectRow {
-  id: string;
-  name: string;
-}
-
-/**
- * A task a conversation filed for a worker that takes tasks, from the board's
- * row. `needs-project` is a run refused `no-project` before any file existed.
- */
+/** A task a conversation filed, from the board's row. */
 export interface BoardTask {
   id: string;
   /** The worker it was filed for. */
   to: string;
   title: string;
-  status: "needs-project" | "running" | "done" | "failed";
-  /** The project its run works in; none when it was refused. */
-  project?: string;
+  status: "running" | "done" | "failed";
   /** What the run reported when it ended, or why it failed. */
   result?: string;
   /** The session its run works in, once it started. */
@@ -128,8 +97,7 @@ export type ConversationEntry =
   | { kind: "task"; id: string; taskId: string }
   /** A task it filed ended, as a line under the name of the worker that ran it. */
   | { kind: "result"; id: string; taskId: string; from: string; text: string; failed?: boolean }
-  /** A tool of the worker's waits for your yes, such as a project's repository; `resolution` once answered. */
-  | { kind: "approval"; id: string; requestId: string; suspensionId: string; text: string; resolution?: string };
+
 
 /** What a conversation shows now. */
 export interface ConversationView {
@@ -177,27 +145,17 @@ export interface LabAdapter {
   openConversation(worker: string): Promise<string>;
   send(sessionId: string, text: string): Promise<void>;
   watchConversation(sessionId: string, onChange: (view: ConversationView) => void): Unsubscribe;
-  /** Say yes or no to what an approval entry asks; the worker's turn carries on. */
-  answerApproval(sessionId: string, approval: { requestId: string; suspensionId: string }, approve: boolean): Promise<void>;
   /** Every message to or from `worker`, oldest first. */
   watchTalk(worker: string, onChange: (rows: TalkRow[]) => void): Unsubscribe;
   watchActivity(worker: string, onChange: (activity: Activity) => void): Unsubscribe;
   /** `undefined` while the whole conversation is inside the window. */
   watchWindow(sessionId: string, onChange: (mark: WindowMark | undefined) => void): Unsubscribe;
-  listProjects(): Promise<ProjectRow[]>;
-  /** The user's projects, read again until stopped: one a worker creates shows without a reload. */
-  watchProjects(onChange: (projects: ProjectRow[]) => void): Unsubscribe;
-  /** Create a project the user owns. Rejects with the reason, creating nothing. */
-  createProject(project: NewProject): Promise<ProjectRow>;
   /** Hire a teammate onto the user's roster, on the built-in agent flow. */
   hire(teammate: NewTeammate): Promise<WorkerRow>;
   /** Replace one of the user's own teammates' instructions, from its next turn on. */
   editInstructions(worker: string, instructions: string): Promise<void>;
   /** Fire one of the user's own teammates: it leaves the roster, and its conversation stays readable. */
   fire(worker: string): Promise<void>;
-  /** The project `worker`'s runs work in; `undefined` until one is picked. */
-  watchWorkProject(worker: string, onChange: (project: string | undefined) => void): Unsubscribe;
-  setWorkProject(worker: string, project: string): Promise<void>;
   /** The tasks a conversation filed, oldest first. */
   watchTasks(sessionId: string, onChange: (tasks: BoardTask[]) => void): Unsubscribe;
   /** A task's run, by the session its row names, read only: the worker that runs it takes no messages. */
@@ -206,16 +164,12 @@ export interface LabAdapter {
 
 /** How often the reads with no stream are read again. */
 const POLL_MS = 1_500;
-/** How often the project list is read again. */
-const PROJECTS_POLL_MS = 3_000;
-/** The accessor the user's shared projects are read under, on their roster session. */
-const PROJECTS = "projects";
 /** The keyed item a conversation's board emits for each row it changes. */
 const TASK_CHANGE = "task-change";
 /** The tool a worker files a task with. */
 const CREATE_TASK = "createTask";
-/** Requests that are a worker answering: everything but the board's own passes and the project write. */
-const QUIET_ACTIONS = new Set(["dispatch", SET_WORK_PROJECT_ACTION]);
+/** Requests that are a worker answering: everything but the board's own passes. */
+const QUIET_ACTIONS = new Set(["dispatch"]);
 /** The harness a run's items came from, by the block that emitted them. */
 const HARNESS_LABEL: Record<string, string> = { "claude-code-agent": "Claude Code", "codex-agent": "Codex", "cursor-agent": "Cursor" };
 
@@ -309,26 +263,17 @@ function boardRows(items: readonly Item[]): Map<string, Record<string, any>> {
   return rows;
 }
 
-/** A board row as a task card. A run refused `no-project` is one that waits for a project. */
+/** A board row as a task card. */
 function toBoardTask(row: Record<string, any>): BoardTask {
-  const filedIn = row.metadata?.filedInProject;
-  const project = typeof filedIn === "string" ? filedIn.slice(filedIn.indexOf("/") + 1) : undefined;
   const error = typeof row.error === "string" ? row.error : undefined;
   const status: BoardTask["status"] =
-    row.status === "completed"
-      ? "done"
-      : row.status === "errored" || row.status === "cancelled"
-        ? error?.includes("(no-project)")
-          ? "needs-project"
-          : "failed"
-        : "running";
+    row.status === "completed" ? "done" : row.status === "errored" || row.status === "cancelled" ? "failed" : "running";
   const answer = typeof row.output?.answer === "string" ? row.output.answer : undefined;
   return {
     id: row.id,
     to: row.assignee ?? "",
     title: row.title ?? row.goal ?? row.id,
     status,
-    ...(project === undefined ? {} : { project }),
     ...((answer ?? error) === undefined ? {} : { result: answer ?? error }),
     ...(typeof row.run?.sessionId === "string" ? { runSessionId: row.run.sessionId } : {}),
   };
@@ -360,11 +305,6 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>):
       }
     } else if (item.type === "tool_output" && item.toolCall?.name === CREATE_TASK && item.output?.ok === true) {
       entries.push({ kind: "task", id: item.id, taskId: item.output.taskId });
-    } else if (item.type === "suspension" && item.reason === "user_approval") {
-      entries.push({ kind: "approval", id: item.id, requestId: item.requestId, suspensionId: item.suspensionId, text: item.message });
-    } else if (item.type === "suspension_resume") {
-      const asked = entries.find((e) => e.kind === "approval" && e.suspensionId === item.suspensionId);
-      if (asked?.kind === "approval") asked.resolution = item.resolution;
     } else if (item.type === "component" && item.component === RECEIVED_MESSAGE_COMPONENT) {
       const { id, from, text, inReplyTo } = item.data ?? {};
       entries.push({ kind: "received", id: item.id, messageId: id, from, text, ...(inReplyTo === undefined ? {} : { inReplyTo }) });
@@ -398,32 +338,6 @@ function connect(): Client {
   return createClient({ userId: readUserId(), baseUrl: "", fetcher: withBearerToken(readBearerToken()) });
 }
 
-/**
- * The project a conversation works in, as the screen names it: the id of the
- * `workProjectId` its session read shows. The screen lists only shared
- * projects, so it joins on visibility and id both, and a private one names none.
- */
-export function workProjectOf(state: Readonly<Record<string, unknown>> | undefined): string | undefined {
-  const stored = state?.[WORK_PROJECT_STATE_KEY];
-  const ref = typeof stored === "string" ? parseProjectRef(stored) : undefined;
-  return ref?.visibility === "shared" ? ref.id : undefined;
-}
-
-/**
- * `onChange`, called only when the value differs from the one it last passed on. A
- * watch fed both by reads and by a pick made on this page compares with what the
- * screen shows, not with the last read: a change made elsewhere back to that read
- * still reaches the screen.
- */
-export function shownOnChange<T>(onChange: (value: T) => void): (value: T) => void {
-  let shown: { value: T } | undefined;
-  return (value) => {
-    if (shown !== undefined && shown.value === value) return;
-    shown = { value };
-    onChange(value);
-  };
-}
-
 /** The adapter the app runs on: the package, through one client. */
 export function createLabAdapter(client: Client = connect()): LabAdapter {
   const workforce: WorkforceClient = createWorkforceClient(client);
@@ -433,10 +347,6 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   const flowOfSession = new Map<string, string>();
   /** The workers, by id, so a line under a worker's name reads as a task's ending. */
   let workerIds = new Set<string>();
-  /** Each shared project's visibility, as listed. */
-  const visibility = new Map<string, "shared" | "private">();
-  /** Who watches each worker's project, told at once when a pick here is stored. */
-  const projectWatchers = new Map<string, Set<(project: string | undefined) => void>>();
 
   const conversationOf = async (worker: string) => {
     const known = conversations.get(worker);
@@ -450,36 +360,6 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
 
   /** Any conversation of the user's: the message log is read through one. */
   const anyConversation = async () => conversations.values().next().value ?? (await conversationOf((await workforce.roster()).find((w) => w.flow !== CODER_FLOW)!.id));
-
-  /** The user's projects: read through their roster session, where they are kept. */
-  const listProjects = async (): Promise<ProjectRow[]> => {
-    // Reading the roster opens the user's roster session.
-    await workforce.roster();
-    const roster = (await client.sessions.list({ flowKind: ROSTER_FLOW, userId: client.userId }))[0];
-    if (roster === undefined) return [];
-    const rows = await readEveryCollectionPage(client.resources, roster.id, PROJECTS);
-    return rows.flatMap((row) => {
-      const project = row.clientData as { id?: string; title?: string; members?: string[] } | undefined;
-      if (typeof project?.id !== "string" || !(project.members ?? []).includes(client.userId)) return [];
-      visibility.set(project.id, "shared");
-      return [{ id: project.id, name: project.title ?? project.id }];
-    });
-  };
-  /** The session the page's project writes run in, opened on the first one. */
-  let projectsSession: Promise<string> | undefined;
-  /** Wait for a request a send started; its output, or its error when it didn't complete. */
-  const finished = async (sent: SentRequest, action: string): Promise<unknown> => {
-    let status: string = sent.response.status;
-    for (const until = Date.now() + 30_000; status === "in_progress"; status = (await sent.status()).status) {
-      if (Date.now() > until) throw new Error(`teammates: ${action} did not finish in time`);
-      await new Promise((resolve) => setTimeout(resolve, 200));
-    }
-    const sessionId = sent.response.session?.id;
-    const requests = sessionId === undefined ? [] : await client.sessions.requests(sessionId, { includeResultOutput: true, limit: 20 });
-    const result = requests.find((r) => r.id === sent.id)?.result;
-    if (status === "completed") return result?.output;
-    throw new Error(result?.error?.message ?? `teammates: ${action} ended ${status}`);
-  };
 
   const watchFeed = <T>(sessionId: string, map: (items: Item[]) => T, onChange: (value: T) => void): Unsubscribe =>
     (feeds(sessionId) as SessionFeed).watch((items: readonly OutputItem[]) => onChange(map(items as unknown as Item[])));
@@ -500,11 +380,6 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       const response = await client.flow(flow).send("respond", { message: text }, { sessionId, stream: true });
       if (!response.ok) throw new Error(`teammates: the send was refused (${response.status})`);
       if (response.headers.get("content-type")?.includes("text/event-stream")) feeds(sessionId).followResponse(response);
-    },
-    async answerApproval(sessionId, approval, approve) {
-      const flow = flowOfSession.get(sessionId);
-      if (flow === undefined) throw new Error(`teammates: ${sessionId} is not an open conversation`);
-      await client.flow(flow).request(approval.requestId).answer({ suspensionId: approval.suspensionId, action: approve ? "approve" : "reject" });
     },
     watchConversation(sessionId, onChange) {
       let entries: ConversationEntry[] = [];
@@ -598,19 +473,6 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         stopPoll();
       };
     },
-    listProjects,
-    watchProjects(onChange) {
-      return poll(listProjects, onChange, PROJECTS_POLL_MS);
-    },
-    async createProject({ id, title, checkout }) {
-      const session = (projectsSession ??= client.flow(PROJECTS_FLOW).createSession().then((s) => s.id));
-      const input = { id, title, ...(checkout === undefined ? {} : { repository: `file://${checkout}` }) };
-      const output = await finished(await client.flow(PROJECTS_FLOW).send("createProject", input, { sessionId: await session }), "createProject");
-      // A project of yours already has this id: the write keeps it as it was, so this one wasn't made.
-      if ((output as { created?: boolean } | undefined)?.created === false) throw new Error(`teammates: a project "${id}" already exists`);
-      visibility.set(id, "shared");
-      return { id, name: title };
-    },
     async hire({ name, role, instructions }) {
       const written = await workforce.hire({ id: name, description: role, instructions });
       const hired = (await workforce.roster()).find((w) => w.id === written.id && !w.standard);
@@ -624,29 +486,6 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     async fire(worker) {
       await workforce.fire(worker);
       conversations.delete(worker);
-    },
-    watchWorkProject(worker, onChange) {
-      // The project stored on the conversation, whoever set it: the session read shows it, read only.
-      // A pick here shows at once, so each read is checked against what was last shown.
-      const show = shownOnChange(onChange);
-      const watchers = projectWatchers.get(worker) ?? new Set();
-      projectWatchers.set(worker, watchers);
-      watchers.add(show);
-      let reads = 0;
-      const stop = poll(async () => {
-        const { sessionId } = await conversationOf(worker);
-        // Numbered, so `poll` passes every read on rather than only a changed one.
-        return { read: reads++, project: workProjectOf((await client.sessions.get(sessionId)).state) };
-      }, ({ project }) => show(project));
-      return () => {
-        watchers.delete(show);
-        stop();
-      };
-    },
-    async setWorkProject(worker, project) {
-      await workforce.setWorkProject(worker, { visibility: visibility.get(project) ?? "shared", id: project });
-      // Stored: say so now rather than on the next read, which confirms it.
-      for (const watcher of projectWatchers.get(worker) ?? []) watcher(project);
     },
     watchTasks(sessionId, onChange) {
       return watchFeed(sessionId, (items) => [...boardRows(items).values()].map(toBoardTask), onChange);

@@ -7,13 +7,12 @@
  * Three teammates, each with one conversation, and coder, the hidden worker
  * coding tasks run on. Your first ask to lead makes it message researcher;
  * researcher looks the fact up and replies. Ask lead to fix something and lead
- * starts a coding task: with no project picked for lead, the run is refused before it
- * touches a file, and once you pick one lead files it again. Each worker
+ * starts a coding task, which runs in the working folder. Each worker
  * answers one request at a time: a line you send, or a message from another
  * worker, waits while the worker is answering, and runs when it is done.
  * lead's conversation starts past the 50-turn history window.
  */
-import type { ConversationEntry, LabAdapter, ProjectRow, RunStep, TalkRow, BoardTask, Unsubscribe, WindowMark, WorkerRow } from "../src/adapter";
+import type { ConversationEntry, LabAdapter, RunStep, TalkRow, BoardTask, Unsubscribe, WindowMark, WorkerRow } from "../src/adapter";
 
 /** How the double keeps time, and what it plays. */
 export interface FixtureOptions {
@@ -23,8 +22,6 @@ export interface FixtureOptions {
   now?: () => number;
   /** Turns past the window are summarized for the worker, not dropped. */
   summary?: boolean;
-  /** The user's projects at the start. Defaults to two. */
-  projects?: ProjectRow[];
 }
 
 /** How many turns a worker reads word for word: the agent flow's default. */
@@ -36,10 +33,6 @@ const ROSTER: WorkerRow[] = [
   { id: "teammates.researcher", name: "researcher", role: "Finds facts for the team, and replies to whoever asked." },
   { id: "teammates.writer", name: "writer", role: "Drafts and tightens copy when you or another worker asks." },
   { id: "teammates.coder", name: "coder", role: "Where coding tasks run in the background.", takesTasks: true },
-];
-const PROJECTS: ProjectRow[] = [
-  { id: "relay", name: "relay" },
-  { id: "relay-site", name: "relay-site" },
 ];
 const LEAD = "teammates.lead";
 const RESEARCHER = "teammates.researcher";
@@ -91,15 +84,9 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     return found;
   };
   const bySession = (sessionId: string) => [...workers.values()].find((w) => w.sessionId === sessionId);
-  const workProjects = new Map<string, string>();
-  let projects = options.projects ?? PROJECTS;
   const fired = new Set<string>();
   let tasks: FixtureTask[] = [];
   const runs = new Map<string, RunStep[]>();
-  /** Refused tasks lead has filed again. */
-  const refiled = new Set<string>();
-  /** The project each of lead's approvals waits to make, by suspension id. */
-  const asked = new Map<string, { w: FixtureWorker; project: ProjectRow }>();
 
   const notify = () => {
     for (const listener of [...listeners]) listener();
@@ -140,14 +127,12 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     notify();
   };
 
-  /** `createTask` for coder: a card in the filer's conversation. The run gets the filer's project, or is refused before it starts. */
+  /** `createTask` for coder: a card in the filer's conversation, and a run in the working folder. */
   const fileTask = (w: FixtureWorker, title: string): Step[1] => () => {
-    const project = workProjects.get(w.row.id);
-    const task: FixtureTask = { id: nextId("t"), to: CODER, title, status: project ? "running" : "needs-project", project, sessionId: w.sessionId };
-    if (project) task.runSessionId = `run:${task.id}`;
+    const id = nextId("t");
+    const task: FixtureTask = { id, to: CODER, title, status: "running", runSessionId: `run:${id}`, sessionId: w.sessionId };
     tasks = [...tasks, task];
     push(w, { kind: "task", id: nextId("k"), taskId: task.id });
-    if (!project) return;
     const result = "Fixed the typo in README.md, line 1.";
     let at = 0;
     for (const [delay, run] of [
@@ -166,7 +151,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
   };
 
   const script = (w: FixtureWorker, job: Job): Step[] => {
-    if (job.kind === "result") return [[900, say(w, `The coding task is done: "${job.task.result}" That's in ${job.task.project}.`)]];
+    if (job.kind === "result") return [[900, say(w, `The coding task is done: "${job.task.result}"`)]];
     if (job.kind === "receive") {
       const { message } = job;
       const from = worker(message.from).row.name;
@@ -176,22 +161,8 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       }
       return [[700, say(w, "On it.")], [2000, sendMessage(w, message.from, "Done. It's in the doc.", message.id)]];
     }
-    // A folder no project has: lead creates one with it as the repository, which waits for your yes.
-    const folder = /\/\S+/.exec(job.text)?.[0];
-    if (w.row.id === LEAD && folder !== undefined) {
-      const name = folder.slice(folder.lastIndexOf("/") + 1);
-      const suspensionId = nextId("sus");
-      asked.set(suspensionId, { w, project: { id: name, name } });
-      return [[600, () => push(w, { kind: "approval", id: nextId("ap"), requestId: nextId("req"), suspensionId, text: `Create project "${name}" with repository file://${folder}?` })]];
-    }
     if (w.row.id === LEAD && /\bfix\b/i.test(job.text)) {
       return [[800, say(w, "Starting a coding task.")], [400, fileTask(w, "Fix the typo in the README's first line")]];
-    }
-    const project = workProjects.get(w.row.id);
-    const refused = tasks.find((t) => t.sessionId === w.sessionId && t.status === "needs-project" && !refiled.has(t.id));
-    if (w.row.id === LEAD && refused && project) {
-      refiled.add(refused.id);
-      return [[600, say(w, `Filing it again, in ${project}.`)], [300, fileTask(w, refused.title)]];
     }
     if (w.row.id === LEAD && !log.some((m) => m.from === LEAD && m.to === RESEARCHER)) {
       return [
@@ -321,15 +292,6 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       });
     },
 
-    async answerApproval(_sessionId, { suspensionId }, approve) {
-      const ask = asked.get(suspensionId);
-      if (!ask) throw new Error(`no approval ${suspensionId}`);
-      asked.delete(suspensionId);
-      ask.w.entries = ask.w.entries.map((e) => (e.kind === "approval" && e.suspensionId === suspensionId ? { ...e, resolution: approve ? "approved" : "rejected" } : e));
-      if (approve) projects = [...projects, ask.project];
-      say(ask.w, approve ? `Made project ${ask.project.id}.` : "Left it alone.")();
-    },
-
     watchTalk(workerId, onChange) {
       return watch(() => onChange(log.filter((m) => m.from === workerId || m.to === workerId).sort((a, b) => a.at - b.at)));
     },
@@ -354,22 +316,6 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       });
     },
 
-    async listProjects() {
-      return projects;
-    },
-
-    watchProjects(onChange) {
-      return watch(() => onChange(projects));
-    },
-
-    async createProject({ id, title }) {
-      if (projects.some((p) => p.id === id)) throw new Error(`a project "${id}" already exists`);
-      const row = { id, name: title };
-      projects = [...projects, row];
-      notify();
-      return row;
-    },
-
     async hire({ name, role }) {
       if (workers.has(name) && !fired.has(name)) throw new Error(`"${name}" is already on your roster`);
       const row: WorkerRow = { id: name, name, role, own: true };
@@ -386,15 +332,6 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       if (!worker(workerId).row.own) throw new Error(`"${workerId}" is a standard worker`);
       // Its conversation stays readable, so it keeps its place here and leaves the roster.
       fired.add(workerId);
-      notify();
-    },
-
-    watchWorkProject(workerId, onChange) {
-      return watch(() => onChange(workProjects.get(workerId)));
-    },
-
-    async setWorkProject(workerId, project) {
-      workProjects.set(workerId, project);
       notify();
     },
 

@@ -2,11 +2,11 @@
  * Goal check: in the Teammates lab, you talk to lead, lead messages
  * researcher, researcher's reply reaches lead while you are still talking to
  * it, and a coding task lead starts runs through Claude Code, in the
- * background, in lead's project. See goal.md for the contract.
+ * background, in the lab's working folder. See goal.md for the contract.
  *
  * Real path, real model, out of CI. The lab's pages are built here and served
- * by `fsdev dev --app` over a fresh SQLite store, with one project, `relay`,
- * mapped to a scratch git checkout made here. One headless browser drives the
+ * by `fsdev dev --app` over a fresh SQLite store, with a scratch git checkout
+ * made here as its working folder (`TEAMMATES_WORKDIR`). One headless browser drives the
  * screen as a person would. Graded, per step:
  *
  *   1  lead answers your first line in its conversation.
@@ -21,18 +21,18 @@
  *      lead answers the codename and the launch date without asking anyone,
  *      and the divider, labelled summarized, sits after both the codename
  *      line and researcher's reply.
- *   5  you ask for a fix; with one project, lead puts its conversation in
- *      `relay` and files the task there with no question, the run goes through
+ *   5  you ask for a fix; lead starts a coding task with no question and no
+ *      project anywhere on the screen, the run goes through
  *      Claude Code, a worktree of the checkout gets one commit that changes the
  *      README's first line and nothing else, the checkout itself is untouched,
  *      and the result lands in lead's conversation as the coding task's.
  *
  * Inputs are held out: the launch date is drawn at random and written into the
- * project's README, where researcher reads it, the codename is drawn at random, and the
+ * working folder's README, where researcher reads it, the codename is drawn at random, and the
  * README's typo is one of several.
  *
  * Run:      pnpm tsx goals/teammates-lab/a-worker-talks-to-another-while-you-talk/run.mts
- * Controls: GOAL_CONTROL=no-model | no-lead-send | no-reply-tool | project-not-kept | no-summary | no-memory (see goal.md)
+ * Controls: GOAL_CONTROL=no-model | no-lead-send | no-reply-tool | no-summary | no-memory (see goal.md)
  */
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import { writeFileSync, mkdirSync } from "node:fs";
@@ -72,7 +72,6 @@ interface Fixture {
   fillers: string[];
   /** How many lines step 4 sends between the codename and the question: past the 50-turn window. */
   pastWindow: number;
-  project: { id: string; title: string };
   typos: { readme: string; wrong: string; right: string }[];
   rest: string;
   answerWithinMs: number;
@@ -107,25 +106,11 @@ const CONTROLS: Record<string, { patches?: ModulePatch[]; model?: string; steps:
   // No model answers: lead's conversation holds only your own lines.
   "no-model": { model: "openai/no-such-model-goal-control", steps: ["1", "2", "3", "5"], skip: ["4"] },
   // lead can't message: no card, no line in researcher's conversation, no row, and so no reply.
-  // Step 5 may go red too: with no way to message, lead files its research ask as a task instead,
-  // and after the pick it has filed none again (seen in 2 of 2 runs). That is the model, not a leak.
+  // Step 5 may go red too: with no way to message, lead files its research ask as a task instead
+  // (seen in 2 of 2 runs before the lab dropped projects). That is the model, not a leak.
   "no-lead-send": { patches: [dropSendFor(fixture.lead)], steps: ["2", "3"], mayAlso: ["5"], skip: ["4"] },
   // researcher hears lead but can't answer it.
   "no-reply-tool": { patches: [dropSendFor(fixture.researcher)], steps: ["3"], skip: ["4"] },
-  // A conversation's project answers as kept but is never stored, so lead's task has no project.
-  // Step 3 may go red too: researcher puts its own conversation in the project to read the date,
-  // and that is not stored either.
-  "project-not-kept": {
-    patches: [
-      {
-        module: "packages/workforce/src/projects/work-project.ts",
-        from: String.raw`await ctx\.session\.patchState\(\{ \[WORK_PROJECT_STATE_KEY\]: projectRef\(input\.project\) \}\);`,
-        to: "/* goal control project-not-kept: not stored */",
-      },
-    ],
-    steps: ["5"],
-    skip: ["4"],
-  },
   // Step 3 may go red under both of these: researcher sometimes answers lead in its own conversation
   // instead of with `sendMessage`, so no reply lands (2 of 3 runs on 2026-10-28). Neither patch
   // touches messaging; that is the model, not a leak.
@@ -391,7 +376,7 @@ await runGoal(async (failures, tell_) => {
     TEAMMATES_MODEL: control?.model ?? MODEL,
     TEAMMATES_STORE: join(dir, "teammates.sqlite"),
     TEAMMATES_USER: "you",
-    TEAMMATES_PROJECTS: JSON.stringify([{ ...fixture.project, checkout }]),
+    TEAMMATES_WORKDIR: checkout,
     ...(patches.length > 0 ? modulePatchEnv(patches, REPO_ROOT, mark) : {}),
   });
   console.error(`goal: launch date ${date.text}; typo "${typo.wrong}"; scratch ${dir}`);
@@ -506,7 +491,7 @@ await runGoal(async (failures, tell_) => {
     if (control?.skip?.includes("4")) evidence.push(`4: not run under GOAL_CONTROL=${CONTROL}`);
     else await stepFour(page, log, date, fail, evidence, tell_);
 
-    // ---- 5 · lead starts a coding task for a fix, in the one project ---------
+    // ---- 5 · lead starts a coding task for a fix, in the working folder ------
     const before = diskOf(checkout);
     await tell(page, lead, fixture.fix);
     const tasks = conversation(page).locator("[data-entry=task]");
@@ -516,18 +501,17 @@ await runGoal(async (failures, tell_) => {
     const fixAt = (es: Drawn[]) => userAt(es, fixture.fix);
     const ended = await readUntil(
       page,
-      (es) => cardsNow(es).some((e) => e.status !== undefined && /^(done in|failed|refused|needs)/.test(e.status)),
+      (es) => cardsNow(es).some((e) => e.status !== undefined && /^(done|failed)$/.test(e.status)),
       fixture.runWithinMs,
     );
     const filed = tell_.over("5 · task cards lead filed in this step", cardsNow(ended.entries), { emptyIs: "lead filed nothing, which a control produces" });
-    const run = filed.find((e) => e.status !== undefined && /^(done in|failed|refused|needs)/.test(e.status));
+    const run = filed.find((e) => e.status !== undefined && /^(done|failed)$/.test(e.status));
     if (filed.length === 0) fail("5", `lead started no coding task within ${fixture.runWithinMs / 1000}s`);
-    else if (run?.status !== `done in ${fixture.project.id}`) fail("5", `lead's task ended "${run?.status ?? filed[0]!.status}", not "done in ${fixture.project.id}"`);
-    // One project: lead files into it without asking which (FIX-2309's check 2), and never sends a card that waits for a pick.
-    if (filed.some((e) => e.status === "needs a project")) fail("5", "a task card asked for a project though there is only one");
-    const chip = await page.getByLabel(`Project for ${lead}`).inputValue();
-    if (chip !== fixture.project.id) fail("5", `lead's conversation shows project "${chip || "none"}", not "${fixture.project.id}"`);
-    if (run?.status === `done in ${fixture.project.id}`) {
+    else if (run?.status !== "done") fail("5", `lead's task ended "${run?.status ?? filed[0]!.status}", not "done"`);
+    // The lab has no projects (FIX-2335): the page never shows one, and no worker says the word.
+    const said = (await page.locator("body").innerText()).match(/[^\n]*\bprojects?\b[^\n]*/i);
+    if (said !== null) fail("5", `the page mentions a project: "${said[0].slice(0, 200)}"`);
+    if (run?.status === "done") {
       // The run, opened on its card: it went through Claude Code.
       const runCard = tasks.nth(earlier + filed.indexOf(run));
       await runCard.getByRole("button", { name: /^Coding task: / }).click();
@@ -567,7 +551,7 @@ await runGoal(async (failures, tell_) => {
       // `git` here trims the output, so the README's last newline is gone.
       if (readme.slice(1).join("\n") !== rest.trimEnd()) fail("5", "the run changed more of the README than its first line");
       if (!worktree!.path.startsWith(runsRoot)) fail("5", `the run's worktree ${worktree!.path} is not under the lab's runs folder`);
-      evidence.push(`5: filed in ${fixture.project.id} with no question; Claude Code fixed "${typo.wrong}" in ${worktree!.path}, README.md only, checkout untouched`);
+      evidence.push(`5: started with no question and no project; Claude Code fixed "${typo.wrong}" in ${worktree!.path}, README.md only, checkout untouched`);
     }
     if (patches.length > 0) assertPatched(patches, REPO_ROOT, mark);
   } finally {
