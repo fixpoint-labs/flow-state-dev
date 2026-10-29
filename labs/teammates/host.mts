@@ -82,11 +82,12 @@ const HARNESSES: Record<string, Harness> = {
       allowedTools: ["Read", "Write", "Edit", "Bash"],
       permissionMode: "acceptEdits",
     } as never) as unknown as HarnessBlock,
-  codex: ({ cwd, resume, onSession }) =>
+  codex: ({ cwd, resume, onSession, onActivity }) =>
     codexAgent({
       cwd,
       resume,
       onSession,
+      onActivity,
       client: { env: harnessEnv({ pass: CODEX_PASS }) },
       thread: { sandboxMode: "workspace-write" },
     } as never) as unknown as HarnessBlock,
