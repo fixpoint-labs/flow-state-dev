@@ -360,17 +360,23 @@ export function answeringOf(items: readonly Item[], inProgress: readonly string[
   return inProgress.some((requestId) => !answered.has(requestId));
 }
 
+/** Who a `sendMessage` output went to, when it sent one: a wait-again or a refused call sent nothing. */
+function sentTo(item: Item): string | undefined {
+  const to = parseArgs(item).to;
+  const messageId = item.output?.sent ?? item.output?.callId;
+  return typeof messageId === "string" && typeof to === "string" ? to : undefined;
+}
+
 /** A session's items as a popup's steps: what it was given, what it wrote, and the tools it ran. */
-function toSteps(items: readonly Item[]): SessionStep[] {
+export function toSteps(items: readonly Item[]): SessionStep[] {
   const steps: SessionStep[] = [];
   for (const item of items) {
     if (item.type === "message" && textOf(item).trim() !== "") {
       steps.push({ id: item.id, kind: item.role === "user" ? "given" : "said", text: textOf(item), ...(item.status === "in_progress" ? { streaming: true } : {}) });
     } else if (item.type === "component" && item.component === RECEIVED_MESSAGE_COMPONENT && typeof item.data?.text === "string") {
       steps.push({ id: item.id, kind: "given", text: item.data.text });
-    } else if (item.type === "tool_output" && item.toolCall?.name === SEND_MESSAGE_TOOL) {
-      const args = parseArgs(item);
-      steps.push({ id: item.id, kind: "sent", text: String(args.text ?? ""), to: String(args.to ?? "") });
+    } else if (item.type === "tool_output" && item.toolCall?.name === SEND_MESSAGE_TOOL && sentTo(item) !== undefined) {
+      steps.push({ id: item.id, kind: "sent", text: String(parseArgs(item).text ?? ""), to: sentTo(item) ?? "" });
     } else if (item.type === "tool_output" && typeof item.toolCall?.name === "string") {
       steps.push({ id: item.id, kind: "tool", text: item.toolCall.name });
     }

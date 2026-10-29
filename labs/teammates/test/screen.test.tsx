@@ -102,6 +102,15 @@ describe("the teammates screen", () => {
     await waitFor(() => expect(popup.querySelector("[data-popup-status]")?.textContent).toBe("replied"));
     expect(line.querySelector("[data-sent-status]")?.textContent).toBe("replied");
 
+    // Modal: Tab can't leave it, and focus that strayed behind it comes back in.
+    const close = within(popup).getByRole("button", { name: "Close" });
+    close.focus();
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(popup.contains(document.activeElement)).toBe(true);
+    line.focus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(popup.contains(document.activeElement)).toBe(true);
+
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(document.activeElement).toBe(line);

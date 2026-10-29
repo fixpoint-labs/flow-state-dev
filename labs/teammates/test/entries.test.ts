@@ -2,10 +2,11 @@
  * A task's ending as the line under the worker that ran it. A task filed with
  * `resultTo: "conversation"` ends as the worker's bare answer, with no task id
  * on the line: that is a finished task, never one drawn as failed. A
- * `user_approval` stop is an approval entry, answered once it resumes.
+ * `user_approval` stop is an approval entry, answered once it resumes. In a
+ * popup, only a `sendMessage` that sent something is a sent step.
  */
 import { describe, expect, it } from "vitest";
-import { toEntries } from "../src/adapter";
+import { toEntries, toSteps } from "../src/adapter";
 
 const CODER = "teammates.coder";
 const line = (id: string, text: string) =>
@@ -35,5 +36,25 @@ describe("a worker waiting for your yes", () => {
     const resume = { id: "s2", type: "suspension_resume", status: "completed", requestId: "r1", suspensionId: "sus_1", resolution: "approved" };
     const [answered] = toEntries([stop, resume], new Set([CODER]));
     expect(answered).toMatchObject({ kind: "approval", resolution: "approved" });
+  });
+});
+
+describe("a session's steps in a popup", () => {
+  const send = (id: string, args: Record<string, unknown>, output: Record<string, unknown>) =>
+    ({ id, type: "tool_output", status: "completed", requestId: "r1", toolCall: { name: "sendMessage", arguments: JSON.stringify(args) }, output });
+
+  it("draws a message that went out as sent, to its recipient", () => {
+    expect(toSteps([send("m1", { to: "teammates.writer", text: "Draft it." }, { sent: "msg_1" })])).toEqual([
+      { id: "m1", kind: "sent", text: "Draft it.", to: "teammates.writer" },
+    ]);
+  });
+
+  it("draws a wait-again and a refused call as tool steps, never as messages sent", () => {
+    const waitAgain = send("m2", { callId: "msg_1" }, { callId: "msg_1", answered: false });
+    const refused = send("m3", { to: "teammates.writer" }, { ok: false, error: "missing_message: Nothing was sent." });
+    expect(toSteps([waitAgain, refused])).toEqual([
+      { id: "m2", kind: "tool", text: "sendMessage" },
+      { id: "m3", kind: "tool", text: "sendMessage" },
+    ]);
   });
 });

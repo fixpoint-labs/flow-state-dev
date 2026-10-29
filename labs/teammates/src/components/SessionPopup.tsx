@@ -20,11 +20,15 @@ export function SessionPopup({ label, title, status, onClose, children }: {
   children: ReactNode;
 }) {
   const close = useRef<HTMLButtonElement>(null);
+  const dialog = useRef<HTMLElement>(null);
   useEffect(() => {
-    // Focus moves in, and back to whatever opened it on close.
+    // Focus moves in, stays in while it is open, and goes back to whatever opened it on close.
     const opener = document.activeElement as HTMLElement | null;
     close.current?.focus();
-    const onKey = (event: KeyboardEvent) => event.key === "Escape" && onClose();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+      else if (event.key === "Tab") keepFocusIn(dialog.current, event);
+    };
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
@@ -34,6 +38,7 @@ export function SessionPopup({ label, title, status, onClose, children }: {
   return createPortal(
     <div data-popup-backdrop className="fixed inset-0 z-20 flex justify-center bg-background/70 p-6 backdrop-blur-[1px]" onClick={onClose}>
       <section
+        ref={dialog}
         role="dialog"
         aria-modal="true"
         aria-label={label}
@@ -56,6 +61,24 @@ export function SessionPopup({ label, title, status, onClose, children }: {
     </div>,
     document.body,
   );
+}
+
+/** Tab and Shift+Tab wrap around the popup's own controls, so the thread under it can't take focus. */
+function keepFocusIn(container: HTMLElement | null, event: KeyboardEvent) {
+  if (container === null) return;
+  const focusable = [...container.querySelectorAll<HTMLElement>("button, [href], input, select, textarea, summary, [tabindex]:not([tabindex='-1'])")].filter(
+    (el) => !el.hasAttribute("disabled"),
+  );
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  const inside = container.contains(document.activeElement);
+  if (event.shiftKey && (!inside || document.activeElement === first)) {
+    event.preventDefault();
+    last?.focus();
+  } else if (!event.shiftKey && (!inside || document.activeElement === last)) {
+    event.preventDefault();
+    first?.focus();
+  }
 }
 
 /**
