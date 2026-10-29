@@ -215,8 +215,18 @@ export type SdkMessageLike =
        */
       is_error?: boolean;
       session_id?: string;
-      /** `NonNullableUsage` carries `input_tokens`/`output_tokens` (+ cache). */
-      usage?: { input_tokens?: number; output_tokens?: number } | null;
+      /** `NonNullableUsage` carries `input_tokens`/`output_tokens` (+ cache). Main agent loop only. */
+      usage?: {
+        input_tokens?: number;
+        output_tokens?: number;
+        cache_read_input_tokens?: number | null;
+        cache_creation_input_tokens?: number | null;
+      } | null;
+      /** The whole query's tokens by model: sub-agents and auxiliary calls included. */
+      modelUsage?: Record<
+        string,
+        { inputTokens?: number; outputTokens?: number; cacheReadInputTokens?: number; cacheCreationInputTokens?: number }
+      > | null;
       total_cost_usd?: number | null;
     };
 
@@ -348,6 +358,12 @@ export type TranslatedEvent =
       finalMessage: string | null;
       sessionId: string | null;
       usage: { inputTokens: number; outputTokens: number } | null;
+      /**
+       * What the whole query spent, cached input included: `modelUsage`
+       * summed when the SDK sends it, else `usage` with its cache tokens.
+       * `usage` stays the main loop's, as the handle has always read it.
+       */
+      spentTokens: { inputTokens: number; outputTokens: number } | null;
       costUsd: number | null;
     };
 

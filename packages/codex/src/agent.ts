@@ -30,8 +30,10 @@ import {
   recordPullRequests as startPullRequestRecorder,
   reportHarnessActivity,
 } from "@flow-state-dev/core";
+import { reportHarnessSpend } from "@flow-state-dev/core/types";
 import type {
   HarnessActivityHook,
+  HarnessBilling,
   HarnessCallbackContext,
   HarnessResolver,
   HarnessRunOutcome,
@@ -76,6 +78,9 @@ import {
  * type-checking for reasons that had nothing to do with the host.
  */
 type AgentCallbackContext = HarnessCallbackContext;
+
+/** The name Codex's usage is kept under, as its usage reader's record is. */
+const CODEX_HARNESS = "codex";
 
 /** Options for {@link codexAgent}. */
 export interface CodexAgentOptions {
@@ -254,6 +259,11 @@ export function codexAgent(options: CodexAgentOptions = {}) {
     { signal: "the block's own `ctx.signal` owns cancellation" },
   );
 
+  // How a run is paid for (FIX-2145): a key handed to the client bills per
+  // token; anything else (a ChatGPT sign-in, a key the CLI finds itself) is
+  // not this block's to know.
+  const billing: HarnessBilling | null = clientOptions?.apiKey ? "api-key" : null;
+
   return handler({
     name,
     description:
@@ -321,131 +331,144 @@ export function codexAgent(options: CodexAgentOptions = {}) {
       // A manager settles runs on that difference (LAB-152's contract).
       let outcome: HarnessRunOutcome | null = null;
 
+      // What the run spent, into the request, however it ends (FIX-2145): the
+      // tokens Codex reported by then, never a cost (Codex reports none, and an
+      // estimate is not a reported cost).
       try {
-        const stream = await runStreamed(thread, prompt, ctx.signal);
-        const iterator = stream[Symbol.asyncIterator]();
-        // The block's own signal, raced against the stream rather than merely
-        // forwarded into it. The SDK's abort rejects only once the CLI's stdout
-        // closes (POC finding, §9), and a subprocess the CLI spawned can hold
-        // that open long past the caller's deadline — at which point the
-        // deadline no longer bounds what it promised to.
-        const deadline = abortRace(ctx.signal);
         try {
-          for (;;) {
-            const pending = iterator.next();
-            // The losing side of a race still settles, and nothing is awaiting
-            // it any more. When the deadline wins, the CLI is killed moments
-            // later and this rejects — unhandled, which can take a host's
-            // process down over a cancel that worked. Claiming the rejection
-            // here does not hide it from the `await` below: a promise may have
-            // any number of reactions, and the one that matters still sees it.
-            pending.catch(() => {});
-            const next = await Promise.race([pending, deadline.promise]);
-            if (next.done === true) break;
-            for (const event of translateCodexEvent(next.value)) {
-              if (event.kind === "thread_started") {
-                sessionId = event.threadId;
-                // BEFORE any turn work is consumed, and before anything below
-                // can throw: a cancelled or crashed run returns no handle, and
-                // a status item is transient by contract, so this hook is the
-                // only carrier that reaches the host's durable state in exactly
-                // the case the resume resolver exists for.
-                if (!hookFired) {
-                  hookFired = true;
-                  await onSession?.(event.threadId, ctx);
+          const stream = await runStreamed(thread, prompt, ctx.signal);
+          const iterator = stream[Symbol.asyncIterator]();
+          // The block's own signal, raced against the stream rather than merely
+          // forwarded into it. The SDK's abort rejects only once the CLI's stdout
+          // closes (POC finding, §9), and a subprocess the CLI spawned can hold
+          // that open long past the caller's deadline — at which point the
+          // deadline no longer bounds what it promised to.
+          const deadline = abortRace(ctx.signal);
+          try {
+            for (;;) {
+              const pending = iterator.next();
+              // The losing side of a race still settles, and nothing is awaiting
+              // it any more. When the deadline wins, the CLI is killed moments
+              // later and this rejects — unhandled, which can take a host's
+              // process down over a cancel that worked. Claiming the rejection
+              // here does not hide it from the `await` below: a promise may have
+              // any number of reactions, and the one that matters still sees it.
+              pending.catch(() => {});
+              const next = await Promise.race([pending, deadline.promise]);
+              if (next.done === true) break;
+              for (const event of translateCodexEvent(next.value)) {
+                if (event.kind === "thread_started") {
+                  sessionId = event.threadId;
+                  // BEFORE any turn work is consumed, and before anything below
+                  // can throw: a cancelled or crashed run returns no handle, and
+                  // a status item is transient by contract, so this hook is the
+                  // only carrier that reaches the host's durable state in exactly
+                  // the case the resume resolver exists for.
+                  if (!hookFired) {
+                    hookFired = true;
+                    await onSession?.(event.threadId, ctx);
+                  }
+                  ctx.emit.status(`Codex thread ${event.threadId}`);
+                  continue;
                 }
-                ctx.emit.status(`Codex thread ${event.threadId}`);
-                continue;
+                if (event.kind === "turn_completed") {
+                  outcome = "finished";
+                  usage = event.usage;
+                }
+                if (event.kind === "turn_failed") {
+                  outcome = "failed";
+                  failureMessage = event.message;
+                }
+                if (event.kind === "stream_error") streamError = event.message;
+                reportHarnessActivity(onActivity, event, ctx);
+                await emitTranslatedEvent(event, ctx, emitState, name);
               }
-              if (event.kind === "turn_completed") {
-                outcome = "finished";
-                usage = event.usage;
-              }
-              if (event.kind === "turn_failed") {
-                outcome = "failed";
-                failureMessage = event.message;
-              }
-              if (event.kind === "stream_error") streamError = event.message;
-              reportHarnessActivity(onActivity, event, ctx);
-              await emitTranslatedEvent(event, ctx, emitState, name);
             }
+          } finally {
+            deadline.dispose();
+            // Tell the stream nobody is reading it any more. On the normal path
+            // the generator is already done and this is a no-op; on the abort and
+            // throw paths it is what lets the SDK release the reader instead of
+            // holding it for a consumer that has gone.
+            void iterator.return?.().catch(() => {});
           }
-        } finally {
-          deadline.dispose();
-          // Tell the stream nobody is reading it any more. On the normal path
-          // the generator is already done and this is a no-op; on the abort and
-          // throw paths it is what lets the SDK release the reader instead of
-          // holding it for a consumer that has gone.
-          void iterator.return?.().catch(() => {});
+        } catch (err) {
+          await finalizeOpenItems(ctx, emitState, name);
+          const failure = toRunFailure(
+            err,
+            sessionId,
+            hookFired ? null : resumeId,
+            failureMessage ?? (streamError === null ? null : readableFailure(streamError)),
+          );
+          // One line; what the CLI said on its way out rides along as details.
+          const said = failure instanceof CodexAgentRunError ? failure.detail?.cause : undefined;
+          await emitTranslatedEvent(
+            {
+              kind: "error",
+              message: failure.message,
+              code: failure.code,
+              ...(said !== undefined && !failure.message.includes(said) ? { details: { output: said } } : {}),
+            },
+            ctx,
+            emitState,
+            name,
+          );
+          // Codex already reported the turn failed; the CLI's exit after it says
+          // nothing new. Settle it as the `turn.failed` it is, an outcome like
+          // the one with no exit after it, so the run's failure is shown once
+          // (a throw would have the runtime add its own copy of the same line).
+          if (outcome !== "failed" || failure instanceof CodexAgentAbortedError) throw failure;
+          failureShown = true;
         }
-      } catch (err) {
+
         await finalizeOpenItems(ctx, emitState, name);
-        const failure = toRunFailure(
-          err,
+
+        // A stream that errored and then ended with no terminal turn event: its
+        // error is what happened, kept as the run's one failure line.
+        if (outcome === null && streamError !== null) {
+          failureMessage = readableFailure(streamError);
+          await emitTranslatedEvent({ kind: "error", message: failureMessage }, ctx, emitState, name);
+          failureShown = true;
+        }
+
+        const handle: CodexAgentHandle = {
+          source: CODEX_SOURCE,
+          // `outcome` is the fact; `status` follows it. A run that produced no
+          // terminal turn event did not complete, so it reads `errored` with
+          // `outcome: null` — "we do not know how it ended", not "it failed".
+          status: outcome === "finished" ? "completed" : "errored",
           sessionId,
-          hookFired ? null : resumeId,
-          failureMessage ?? (streamError === null ? null : readableFailure(streamError)),
-        );
-        // One line; what the CLI said on its way out rides along as details.
-        const said = failure instanceof CodexAgentRunError ? failure.detail?.cause : undefined;
-        await emitTranslatedEvent(
-          {
-            kind: "error",
-            message: failure.message,
-            code: failure.code,
-            ...(said !== undefined && !failure.message.includes(said) ? { details: { output: said } } : {}),
-          },
-          ctx,
-          emitState,
-          name,
-        );
-        // Codex already reported the turn failed; the CLI's exit after it says
-        // nothing new. Settle it as the `turn.failed` it is, an outcome like
-        // the one with no exit after it, so the run's failure is shown once
-        // (a throw would have the runtime add its own copy of the same line).
-        if (outcome !== "failed" || failure instanceof CodexAgentAbortedError) throw failure;
-        failureShown = true;
+          url: null,
+          dispatchedAt,
+          outcome,
+          finalMessage: emitState.finalMessage,
+          usage:
+            usage === null ? null : { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens },
+          cost: estimateCodexCost(usage, runModel),
+          codexUsage: usage,
+          failureMessage,
+        };
+
+        // An error item already says why the run failed; the closing note would say it again.
+        if (!failureShown) {
+          ctx.emit.status(
+            outcome === "finished"
+              ? `Codex run completed in ${formatRunDuration(Date.now() - dispatchedAt)}.`
+              : `Codex run errored (${failureMessage ?? "no terminal turn event"}).`,
+            { transient: false },
+          );
+        }
+
+        return handle;
+      } finally {
+        reportHarnessSpend(ctx, {
+          harness: CODEX_HARNESS,
+          inputTokens: usage?.inputTokens ?? null,
+          outputTokens: usage?.outputTokens ?? null,
+          costUsd: null,
+          billing,
+        });
       }
-
-      await finalizeOpenItems(ctx, emitState, name);
-
-      // A stream that errored and then ended with no terminal turn event: its
-      // error is what happened, kept as the run's one failure line.
-      if (outcome === null && streamError !== null) {
-        failureMessage = readableFailure(streamError);
-        await emitTranslatedEvent({ kind: "error", message: failureMessage }, ctx, emitState, name);
-        failureShown = true;
-      }
-
-      const handle: CodexAgentHandle = {
-        source: CODEX_SOURCE,
-        // `outcome` is the fact; `status` follows it. A run that produced no
-        // terminal turn event did not complete, so it reads `errored` with
-        // `outcome: null` — "we do not know how it ended", not "it failed".
-        status: outcome === "finished" ? "completed" : "errored",
-        sessionId,
-        url: null,
-        dispatchedAt,
-        outcome,
-        finalMessage: emitState.finalMessage,
-        usage:
-          usage === null ? null : { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens },
-        cost: estimateCodexCost(usage, runModel),
-        codexUsage: usage,
-        failureMessage,
-      };
-
-      // An error item already says why the run failed; the closing note would say it again.
-      if (!failureShown) {
-        ctx.emit.status(
-          outcome === "finished"
-            ? `Codex run completed in ${formatRunDuration(Date.now() - dispatchedAt)}.`
-            : `Codex run errored (${failureMessage ?? "no terminal turn event"}).`,
-          { transient: false },
-        );
-      }
-
-      return handle;
     },
   });
 }

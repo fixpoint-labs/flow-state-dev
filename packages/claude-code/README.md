@@ -567,6 +567,10 @@ On a subscription, Claude Code reports its limit windows while it runs. `claudeC
 
 `readClaudeUsage({ env, timeoutMs?, signal? })` is a `HarnessUsageReader` for who is signed in: `windows` with `plan`, `accountId` and no windows (those come from runs), `api-key`, `signed-out`, or `unavailable` when the SDK isn't installed or Claude Code didn't answer (which keeps a stored reading). It never throws. `usageWindowOf(info)` maps one raw `rate_limit_event` payload to a window, and `CLAUDE_CODE_HARNESS` is `"claude-code"`. Nothing here reads a credentials file, calls a usage endpoint, or uses the SDK's experimental usage call. Guide: [reading usage left](https://flow-state.dev/docs/tools/claude-code-sdk#reading-usage-left).
 
+### What a run spent
+
+When a run ends, however it ends, `claudeCodeAgent` reports its spend to the request with `reportHarnessSpend`: `harness: "claude-code"`, the input and output tokens from Claude Code's result, the `total_cost_usd` it reported as `costUsd`, and `billing` from Claude Code's own `accountInfo()` (`"api-key"` when it runs on a key, `"subscription"` when it is signed in to a plan, otherwise `null`). A run that failed after its result arrived reports that result's numbers. A run that ended before any usage arrived reports `null` tokens and cost. Guide: [what a run spent](https://flow-state.dev/docs/tools/coding-agents#what-a-run-spent).
+
 ### Following what a run does
 
 `claudeCodeAgent({ onActivity })` reports what a run is doing: each completed assistant message as `{ kind: "message", text }` and each tool call the run starts as `{ kind: "tool", name, arguments }`, with `arguments` the call's JSON text. The hook isn't awaited, and a throw from it is logged while the run carries on.

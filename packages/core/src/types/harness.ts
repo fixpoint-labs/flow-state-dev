@@ -34,6 +34,9 @@
  *   {@link HarnessUsageReport} and {@link HarnessUsageHook} — a
  *   subscription's usage windows as a vendor reports them, and the on-demand
  *   read a host registers per harness.
+ * - {@link HarnessRunSpend}, {@link HarnessBilling} and
+ *   {@link reportHarnessSpend} — what one run spent, reported into the
+ *   running request when the run ends (FIX-2145).
  * - {@link HarnessSteer} and {@link HarnessSteerHook} — how a run that can take
  *   a line into its turn in flight offers that to the host.
  *
@@ -48,6 +51,7 @@
 import { z } from "zod";
 import type { BlockContext, BlockDefinition } from "./block";
 import type { AnyResourceRef } from "./resource";
+import { REQUEST_SPEND_SEAM, type RequestSpendSeam } from "./request-end";
 
 /**
  * Which harness, and which of its doors, produced a handle.
@@ -447,6 +451,49 @@ export interface HarnessUsageReport {
  * never fails the run: usage is a reading, not part of the work.
  */
 export type HarnessUsageHook = (report: HarnessUsageReport, ctx: HarnessCallbackContext) => void | Promise<void>;
+
+/**
+ * How a harness run was paid for, as the harness knows it from its own
+ * sign-in (FIX-2145): `api-key`, billed per token; `subscription`, drawn from
+ * a plan's windows. `null` when the harness can't tell.
+ */
+export type HarnessBilling = "api-key" | "subscription";
+
+/**
+ * What one harness run spent, as its harness reports it when the run ends,
+ * however it ends (FIX-2145). Only what the vendor reported: a token count
+ * or a cost the vendor never sent is `null`, never 0 and never an estimate.
+ */
+export interface HarnessRunSpend {
+  /** The harness, by the name a usage record is kept under (`claude-code`, `codex`, `cursor`). */
+  harness: string;
+  /** Input tokens the vendor reported, or `null` when it reported none (a run killed before its usage arrived). */
+  inputTokens: number | null;
+  /** Output tokens the vendor reported, or `null` when it reported none. */
+  outputTokens: number | null;
+  /** The cost the vendor reported, in US dollars, or `null` when it reported none. Never a price-table estimate. */
+  costUsd: number | null;
+  /** How the run was paid for, or `null` when the harness can't tell. */
+  billing: HarnessBilling | null;
+}
+
+/**
+ * Report one harness run's spend to the running request (FIX-2145). A harness
+ * calls it once per run, when the run ends however it ends (from a
+ * `finally`), with whatever usage its vendor had sent by then. It is counted
+ * in the request's spend, which request-end hooks are handed; it is not a
+ * model call, so `ctx.request.tokenUsage` and an action's token budget never
+ * see it.
+ *
+ * @returns `false` when the context carries no spend ledger: a hand-built
+ *   test context, or a block run outside a request. Nothing is counted then.
+ */
+export function reportHarnessSpend(ctx: object, spend: HarnessRunSpend): boolean {
+  const seam = (ctx as { readonly [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM];
+  if (seam == null) return false;
+  seam.reportHarnessRun(spend);
+  return true;
+}
 
 /**
  * Hands one line to a run's turn in flight. Resolves `"delivered"` only when

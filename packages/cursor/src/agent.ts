@@ -51,6 +51,7 @@ import {
   reportHarnessActivity,
   type PlanListCollection,
 } from "@flow-state-dev/core";
+import { reportHarnessSpend } from "@flow-state-dev/core/types";
 import type {
   DeclaredResourceEntry,
   HarnessActivityHook,
@@ -115,6 +116,9 @@ function selectionOf(choice: ModelChoice | null | undefined): CursorModelSelecti
   const selection = typeof choice === "string" ? { id: choice } : choice;
   return selection.id === "" ? undefined : selection;
 }
+
+/** The name Cursor's spend is kept under. */
+const CURSOR_HARNESS = "cursor";
 
 /** Options for {@link cursorAgent}. */
 export interface CursorAgentOptions {
@@ -485,6 +489,10 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
       let steering: SteerOffer | null = null;
       let sessionId: string | null = null;
       let runModel: CursorModelSelection | undefined;
+      // What the run has spent so far, kept as it streams so a run that is
+      // stopped or fails still reports the turns it finished (FIX-2145).
+      // `undefined` until a run was sent: nothing was spent before.
+      let spent: { usage: CursorRunUsage | null } | undefined;
 
       try {
         // Resolved once, before the agent is opened, beside its directory and conversation.
@@ -506,9 +514,11 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         // aborted never fires `abort` again.
         if (ctx.signal?.aborted) throw new CursorAgentAbortedError(agent.agentId);
         const run = await agent.send(prompt, sendOptions);
+        spent = { usage: null };
         steering = offerSteer(run, ctx, onSteerable);
-        const mirrored = await mirrorRun(run, ctx, emitState, name, writePlan, onActivity);
+        const mirrored = await mirrorRun(run, ctx, emitState, name, writePlan, spent, onActivity);
         const settled = await settleRun(run, mirrored, ctx.signal);
+        spent.usage = settled.usage;
         if (steering !== null) {
           steering.withdraw();
           await steering.answered(ctx.signal);
@@ -540,6 +550,19 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         throw failure;
       } finally {
         steering?.withdraw();
+        // What the run spent, into the request, however it ended (FIX-2145):
+        // tokens only, cached prompt tokens counted as input. Cursor's cost is
+        // an estimate and its billing unknown.
+        if (spent !== undefined) {
+          const usage = spent.usage;
+          reportHarnessSpend(ctx, {
+            harness: CURSOR_HARNESS,
+            inputTokens: usage ? usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens : null,
+            outputTokens: usage?.outputTokens ?? null,
+            costUsd: null,
+            billing: null,
+          });
+        }
         closeQuietly(agent);
       }
     },
@@ -751,6 +774,8 @@ function mergeCreateOptions(
 
 /**
  * Drain `run.stream()`, racing each `next()` against the block's own signal.
+ * The usage summed so far is also kept on `spent` as each turn reports it, so
+ * the caller can report it when the run is stopped mid-way.
  *
  * The SDK is still told about cancel via {@link cancelQuietly} when the race
  * loses or the stream throws — that is what stops the local runtime — even
@@ -769,6 +794,7 @@ async function mirrorRun(
   emitState: ReturnType<typeof createEmitState>,
   blockName: string,
   writePlan: PlanWriter | null,
+  spent: { usage: CursorRunUsage | null },
   onActivity: HarnessActivityHook | undefined,
 ): Promise<MirrorFacts> {
   const stream = run.stream();
@@ -791,6 +817,7 @@ async function mirrorRun(
       for (const event of translateCursorMessage(next.value)) {
         if (event.kind === "run_usage") {
           usage = addUsage(usage, event.usage);
+          spent.usage = usage;
         } else if (event.kind === "model") {
           model = event.model;
         } else if (event.kind === "plan_list") {

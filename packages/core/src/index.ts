@@ -240,6 +240,7 @@ export { mapLimit } from "./helpers/concurrency";
 export { SLASH_COMMAND_PATTERN } from "./helpers/slash-command";
 export { lifecycleSchema } from "./helpers/lifecycle-schema";
 export { isTraceObservabilityEnabled } from "./helpers/trace-observability";
+export { cacheTokensOf } from "./helpers/cache-tokens";
 export { resolveTracingLevel } from "./helpers/tracing-level";
 export type { TracingLevel } from "./helpers/tracing-level";
 export { transientSlot } from "./helpers/transient-slot";

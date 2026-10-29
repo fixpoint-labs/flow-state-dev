@@ -270,6 +270,9 @@ export class TaskAdmissionLost extends Error {
   }
 }
 
+/** How a request ended, as a task's check reads it: everything but its spend. */
+type TaskEnding = Omit<RequestEnding, "spend">;
+
 /**
  * Note the answer the running request gave, when it is one the task's
  * result can be (see {@link Admitted.answerCounts}). With no request-end seam,
@@ -291,7 +294,7 @@ async function noteAnswer(ctx: BlockContext, output: unknown): Promise<void> {
  * its lease. A failure to record the result is handed back as the request's
  * own (FIX-963), so the run's status never reads as success.
  */
-async function endRequest(key: string, record: Admitted, ending: RequestEnding): Promise<RequestEndVerdict | undefined> {
+async function endRequest(key: string, record: Admitted, ending: TaskEnding): Promise<RequestEndVerdict | undefined> {
   // Only this record's own entry leaves the map: a resume's is another record.
   if (admitted.get(key) === record) admitted.delete(key);
   try {
@@ -311,7 +314,7 @@ const failsTheAttempt = (status: RequestEnding["status"]) =>
   status === "failed" || status === "aborted" || status === "interrupted";
 
 /** The one check (rule 6), at the end of a request admitted for the task. A failure to record comes back. */
-async function checkTask(record: Admitted, ending: RequestEnding): Promise<Error | undefined> {
+async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | undefined> {
   const { ref, ticket } = record;
   const row = ref.get(ticket.taskId);
   // First, before any other branch (FIX-2133): a request whose turn asked
@@ -388,7 +391,7 @@ function waitsOnItsOwnRequest(prior: TaskKeptOpenBy | undefined): boolean {
  * predicate, `isUserSuspension`). A request other than the task's own that
  * stops after the task answered leaves it waiting on what it waited on.
  */
-function stopOf(record: Admitted, ending: RequestEnding): { on: TaskKeptOpenBy; forPerson: boolean } {
+function stopOf(record: Admitted, ending: TaskEnding): { on: TaskKeptOpenBy; forPerson: boolean } {
   if (!record.own && answeredBefore(record.prior)) return { on: record.prior!, forPerson: false };
   const suspension = ending.suspension;
   return { on: "wait", forPerson: suspension !== undefined && isUserSuspension(suspension) };
@@ -402,7 +405,7 @@ function stopOf(record: Admitted, ending: RequestEnding): { on: TaskKeptOpenBy; 
  * row's run link names. `undefined` when the ending names no suspension id (a
  * host before it).
  */
-function mirrorOf(ctx: BlockContext, ending: RequestEnding): SuspensionQuestion | undefined {
+function mirrorOf(ctx: BlockContext, ending: TaskEnding): SuspensionQuestion | undefined {
   const suspension = ending.suspension;
   if (suspension?.suspensionId === undefined) return undefined;
   const kind = waitForUserKindOf(suspension);

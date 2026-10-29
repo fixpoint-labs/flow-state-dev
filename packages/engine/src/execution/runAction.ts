@@ -17,7 +17,7 @@ import { readDispatchStamp } from "./dispatch-metadata";
 import { hasResumeMetadata, stripResumeMetadata } from "./resume-metadata";
 import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
 import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, blockPathObserver, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf, addressEntries } from "@flow-state-dev/core";
-import type { BackgroundFailure, RequestEnding, TaskEntry } from "@flow-state-dev/core/types";
+import { SESSION_REQUEST_END_HOOK, onRequestEnded, type BackgroundFailure, type RequestEnding, type TaskEntry } from "@flow-state-dev/core/types";
 import type { ReplayLog } from "@flow-state-dev/core";
 import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
@@ -84,7 +84,8 @@ import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
 import { ownRowOf, resumeIfChildEnded, resumeRequestWaiters } from "../durability/wait-chain";
 import { stopSuspendedRequest } from "../durability/stop-suspended";
 import { noteSuspensionDeadline } from "../durability/suspension-deadlines";
-import { requestEndRegistryOf } from "./request-end-hooks";
+import { WRITES_OUTLIVE_ABORT, requestEndRegistryOf, type WritesOutliveAbort } from "./request-end-hooks";
+import { holdInterruptedEnding } from "./request-spend-ledger";
 import { WAIT_DEADLINE_ENTRY, isUserSuspension, isWaitGate, continuesAtExpiry, waitGateDataOf } from "@flow-state-dev/core/types";
 
 type RunActionInternalOptions<
@@ -99,6 +100,11 @@ const RUNTIME_PROVENANCE: ItemProvenance = {
   blockInstanceId: "runtime",
   phase: "main"
 };
+
+/** The highest item index in `items`, or -1 when there are none. */
+function lastItemIndexOf(items: readonly RuntimeItem[]): number {
+  return items.reduce((last, item) => Math.max(last, item.itemIndex), -1);
+}
 
 /**
  * Renders an `AbortSignal.reason` into a log-safe string. Reasons are
@@ -596,6 +602,22 @@ async function patchRequestRecord(
   patch: RequestRecordFields & { status?: "in_progress" }
 ): Promise<string | undefined> {
   return writeRequestRecordPatch(stores, requestId, patch);
+}
+
+/**
+ * Writes an interrupted request's settled spend once its ending has handed it
+ * on (FIX-2145), only while the record is still `interrupted` under this
+ * request and no later settlement recorded a further cursor.
+ */
+async function recordSettledSpend(
+  stores: StoreRegistry,
+  requestId: string,
+  incarnation: string,
+  spend: { spentByModel: RequestRecord["spentByModel"]; spentThroughItemIndex: number }
+): Promise<void> {
+  const current = await stores.request.get(requestId);
+  if (current?.status !== "interrupted" || (current.spentThroughItemIndex ?? -1) > spend.spentThroughItemIndex) return;
+  await stores.request.setFieldsIfStatus(requestId, spend, ["interrupted"], Date.now(), incarnation);
 }
 
 /**
@@ -1385,6 +1407,8 @@ async function runActionAttempt<
   // Incarnation of the record this run's terminal patch wrote, so the final
   // `finalizedAtMs` stamp lands on that record and no other.
   let terminalRecordIncarnation: string | undefined;
+  // Set while an interrupted ending still owes its spend (FIX-2145).
+  let releaseInterruptedEnding: (() => void) | undefined;
   attempt.trackTerminal(() => terminalRecordIncarnation);
 
   /**
@@ -2267,6 +2291,18 @@ async function runActionAttempt<
   // difference is that the abort controller is registered by now, so this guard
   // has to release that too. Rethrows, so the caller still sees the failure.
   try {
+    // The session config's request-end hook (FIX-2145), added to this
+    // request's registry as a block's `onRequestEnded` would add it. Before
+    // the startup observers, so what they spend is handed on too, and a
+    // failed startup ends through it below. Its writes record what the
+    // request spent, so an explicit abort doesn't stop them; every other
+    // hook's writes still stop on one.
+    const sessionEndHook = options.flow.session?.[SESSION_REQUEST_END_HOOK]?.(ctx);
+    if (sessionEndHook !== undefined) {
+      const outliveAbort = (ctx as { [WRITES_OUTLIVE_ABORT]?: WritesOutliveAbort })[WRITES_OUTLIVE_ABORT];
+      onRequestEnded(ctx, outliveAbort === undefined ? sessionEndHook : (ending) => outliveAbort(async () => sessionEndHook(ending)));
+    }
+
     await emitActionLifecycleSeam(internalSeams, "started", metadata);
 
     await runObserver(options.flow.request?.onStarted, {
@@ -2276,6 +2312,18 @@ async function runActionAttempt<
   } catch (startupError) {
     stopHeartbeatTimer();
     deregisterAbortController(requestId, registered);
+    // The request ends here, never reaching the paths below: hand on what the
+    // startup observers spent, once the `.sideChain()` work they queued has
+    // settled, as the other endings do. A hook's failure is logged, never in
+    // place of the startup error.
+    await drainRequestSideChainPool(ctx);
+    const endFailure = await requestEndRegistryOf(ctx)?.run(
+      { status: "failed", error: { message: startupError instanceof Error ? startupError.message : String(startupError) } },
+      { requestId, logger }
+    );
+    if (endFailure !== undefined) {
+      logRuntimeEvent(logger, "warn", "[flow-state] a request-end hook failed", { requestId, status: "failed", error: endFailure.message });
+    }
     throw startupError;
   }
 
@@ -2454,8 +2502,13 @@ async function runActionAttempt<
           });
         }
 
+        // What it spent so far goes with it, so a resume's token budget
+        // counts this run too (FIX-2145).
+        const suspendedItems = itemsToPersist();
         await settleRequestRecord(options.stores, requestId, { status: "suspended" }, {
-          items: itemsToPersist()
+          items: suspendedItems,
+          spentByModel: ctx.request.tokenUsage.byModel,
+          spentThroughItemIndex: lastItemIndexOf(suspendedItems)
         });
         ctx.requestRuntime.status = "suspended";
         await response.emitRequestStatus("suspended");
@@ -3073,11 +3126,21 @@ async function runActionAttempt<
         await flushCheckpoints();
         await flushTraces();
 
-        terminalRecordIncarnation = await settleRequestRecord(options.stores, requestId, { status: "interrupted" }, {
-          interruptedAt: Date.now(),
-          items: itemsToPersist(),
-          heartbeatsUntilFinalized: false
-        });
+        // What this run spent is recorded only once its ending has handed it
+        // on, below, so a continuation after this process died recovers it
+        // from the log. Until then a continuation in this process carries it
+        // instead, since this run still hands it on (FIX-2145).
+        releaseInterruptedEnding = holdInterruptedEnding(options.stores.request, requestId);
+        try {
+          terminalRecordIncarnation = await settleRequestRecord(options.stores, requestId, { status: "interrupted" }, {
+            interruptedAt: Date.now(),
+            items: itemsToPersist(),
+            heartbeatsUntilFinalized: false
+          });
+        } catch (settleError) {
+          releaseInterruptedEnding();
+          throw settleError;
+        }
 
         ctx.requestRuntime.status = "interrupted" as typeof ctx.requestRuntime.status;
 
@@ -3160,7 +3223,7 @@ async function runActionAttempt<
     // failure a hook hands back changes nothing; it is logged, as a hook's throw is.
     // The cancel is this flag, not the error's name. A disconnect is `interrupted` and still hands its failures on.
     const handedOn = await backgroundFailuresOf(ctx, async () => wasIntentionalAbort || abortController.signal.aborted);
-    const ending: RequestEnding = wasIntentionalAbort
+    const ending: Omit<RequestEnding, "spend"> = wasIntentionalAbort
       ? { status: "aborted" }
       : signalAborted
         ? { status: "interrupted", ...handedOn }
@@ -3172,6 +3235,21 @@ async function runActionAttempt<
         status: ending.status,
         error: endFailure.message
       });
+    }
+    // The ending just handed on what the observers and side-chains after the
+    // settlement spent too: record it as settled, so a continuation never
+    // counts it again from the log (FIX-2145). Only while the record is still
+    // this settlement's: a continuation that already took it, or settled past
+    // this cursor, holds newer accounting.
+    try {
+      if (ending.status === "interrupted" && terminalRecordIncarnation !== undefined) {
+        await recordSettledSpend(options.stores, requestId, terminalRecordIncarnation, {
+          spentByModel: ctx.request.tokenUsage.byModel,
+          spentThroughItemIndex: lastItemIndexOf(itemsToPersist())
+        });
+      }
+    } finally {
+      releaseInterruptedEnding?.();
     }
     const writesSettled = await settlePendingWrites(options.stores, requestId, logger);
     await resumeWaitingParent(options, requestId, logger);

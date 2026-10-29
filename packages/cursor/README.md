@@ -221,6 +221,10 @@ the run just observed, and the SDK documents the figure as eventually consistent
 Read at the moment a run ends it can say `0` for a run whose billing has not
 landed, and `0` reads as "this was free".
 
+## What a run spent
+
+When a run ends, however it ends, `cursorAgent` reports its spend to the request with `reportHarnessSpend`: `harness: "cursor"`, the tokens Cursor reported, added up turn by turn so a stopped run keeps the turns it finished, and `costUsd` and `billing` both `null`. A run that failed before any turn reports `null` tokens. Guide: [what a run spent](https://flow-state.dev/docs/tools/coding-agents#what-a-run-spent).
+
 ## Tests
 
 ```bash

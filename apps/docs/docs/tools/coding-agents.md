@@ -457,6 +457,52 @@ To keep readings and run windows and serve them with their age, hand your reader
 to the [harness manager's usage query](/docs/orchestration/harness-manager#subscription-usage)
 and let the manager feed your harness its `onUsage`.
 
+## What a run spent
+
+When a run ends, however it ends, the harness block reports what it spent to the request it ran in: one `HarnessRunSpend` per run.
+
+| Field | What it holds |
+|---|---|
+| `harness` | `claude-code`, `codex` or `cursor`. |
+| `inputTokens` / `outputTokens` | The tokens the agent reported, or `null` when it reported none, as for a run killed before its usage arrived. |
+| `costUsd` | The cost the agent reported, in US dollars, or `null`. Never an estimate. |
+| `billing` | `"api-key"`, `"subscription"`, or `null` when the harness can't tell. |
+
+What each harness fills in:
+
+| Harness | Tokens | `costUsd` | `billing` |
+|---|---|---|---|
+| Claude Code | From its result | The cost Claude Code reported | From Claude Code's own account info: `api-key` when it runs on a key, `subscription` when it is signed in to a plan, otherwise `null` |
+| Codex | From its turns | Always `null` | `api-key` when you hand its client an `apiKey`, otherwise `null` |
+| Cursor | Added up turn by turn, so a stopped run keeps the turns it finished | Always `null` | Always `null` |
+
+A failed run reports the tokens it got before it failed. A run that failed before any usage arrived reports `null` tokens.
+
+The report is a count kept apart from the request's model tokens: it never adds to `ctx.request.tokenUsage` or an action's [token budget](/docs/configuration/flow#token-budgets). Workforce records it per worker; see [Worker usage](/docs/workforce/worker-usage).
+
+### Reporting from a harness of your own
+
+Call `reportHarnessSpend` once per run, from a `finally`, with whatever the agent had sent by then:
+
+```ts
+import { reportHarnessSpend } from "@flow-state-dev/core/types";
+
+let usage: { input: number; output: number } | null = null;
+try {
+  // ... run the agent, setting `usage` when it reports tokens
+} finally {
+  reportHarnessSpend(ctx, {
+    harness: "my-agent",
+    inputTokens: usage?.input ?? null,
+    outputTokens: usage?.output ?? null,
+    costUsd: null,
+    billing: null,
+  });
+}
+```
+
+It returns `false`, and counts nothing, when the context belongs to no request, such as a hand-built test context.
+
 ## What a run is doing
 
 A harness block can report what its run is doing as it goes, through an

@@ -857,6 +857,7 @@ function translateResult(msg: Extract<SdkMessageLike, { type: "result" }>): Tran
         }
       : null;
   const costUsd = typeof msg.total_cost_usd === "number" ? msg.total_cost_usd : null;
+  const spentTokens = spentTokensOf(msg);
 
   // Success results carry `result`; error-subtype results carry `errors[]` and
   // have no `result`. Coalesce to the best detail available, else a generic.
@@ -889,7 +890,34 @@ function translateResult(msg: Extract<SdkMessageLike, { type: "result" }>): Tran
       typeof msg.result === "string" ? msg.result : (errorsText ?? null),
     sessionId: msg.session_id ?? null,
     usage,
+    spentTokens,
     costUsd,
   });
   return events;
+}
+
+/**
+ * What a whole query spent, cached input counted as input (FIX-2145). The
+ * result's `usage` is the main agent loop only, so `modelUsage` (every model
+ * the query called, sub-agents included) is read when it is there.
+ */
+function spentTokensOf(
+  msg: Extract<SdkMessageLike, { type: "result" }>,
+): { inputTokens: number; outputTokens: number } | null {
+  const models = msg.modelUsage ? Object.values(msg.modelUsage) : [];
+  if (models.length > 0) {
+    let inputTokens = 0;
+    let outputTokens = 0;
+    for (const model of models) {
+      inputTokens += (model.inputTokens ?? 0) + (model.cacheReadInputTokens ?? 0) + (model.cacheCreationInputTokens ?? 0);
+      outputTokens += model.outputTokens ?? 0;
+    }
+    return { inputTokens, outputTokens };
+  }
+  const usage = msg.usage;
+  if (!usage || (usage.input_tokens === undefined && usage.output_tokens === undefined)) return null;
+  return {
+    inputTokens: (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0),
+    outputTokens: usage.output_tokens ?? 0,
+  };
 }

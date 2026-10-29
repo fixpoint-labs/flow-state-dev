@@ -15,6 +15,9 @@
  * reaches it by name.
  */
 
+import type { ModelUsageEntry } from "./flow";
+import type { HarnessRunSpend } from "./harness";
+
 /** How a request ended, as a request-end hook is told. */
 export type RequestEndStatus = "completed" | "incomplete" | "failed" | "aborted" | "interrupted" | "suspended";
 
@@ -63,6 +66,29 @@ export interface RequestEnding {
    * task's attempt) does so itself.
    */
   readonly backgroundFailures?: readonly BackgroundFailure[];
+  /**
+   * What the request spent since its last ending (FIX-2145): its model calls
+   * by model and its harness runs, as the request's spend ledger counted them.
+   * Counted per ending, so a request that suspends and resumes hands each
+   * part on once. Always present; both parts are empty for a request that
+   * spent nothing.
+   */
+  readonly spend: RequestSpend;
+}
+
+/**
+ * What a request spent, counted where it was spent (FIX-2145). One ledger per
+ * request: every model result a generator or evaluator reports is added to
+ * `byModel`, and every run a harness settles through `reportHarnessSpend` is
+ * appended to `harnessRuns`. `ctx.request.tokenUsage` reads `byModel` (an
+ * action's token budget counts model calls only); a request-end hook is
+ * handed both.
+ */
+export interface RequestSpend {
+  /** Model calls, by model id: the same entries `ctx.request.tokenUsage.byModel` reads. */
+  readonly byModel: Readonly<Record<string, ModelUsageEntry>>;
+  /** Harness runs, one entry per run, in the order they were reported. */
+  readonly harnessRuns: readonly HarnessRunSpend[];
 }
 
 /**
@@ -111,4 +137,34 @@ export function onRequestEnded(ctx: { readonly [REQUEST_END_SEAM]?: RequestEndSe
   if (seam == null) return false;
   seam.add(hook);
   return true;
+}
+
+/**
+ * The session-config slot a framework package puts a request-end hook in
+ * (FIX-2145), so every request of a flow gets the hook without a block having
+ * to call {@link onRequestEnded}.
+ *
+ * Framework-facing, like {@link REQUEST_END_SEAM}: a symbol key, set by the
+ * package that builds the session config, never written by a flow author. When a request
+ * starts, the runtime calls the function with the request's context and adds
+ * what it returns to the request's registry, exactly as `onRequestEnded(ctx,
+ * hook)` would: same list, same order, same shutdown drain. Returning
+ * `undefined` adds nothing.
+ */
+export const SESSION_REQUEST_END_HOOK: unique symbol = Symbol.for("@flow-state-dev/session-request-end-hook");
+
+/** What sits under {@link SESSION_REQUEST_END_HOOK}: called once per request start. */
+export type SessionRequestEndHook = (ctx: import("./block").BlockContext) => RequestEndHook | undefined;
+
+/**
+ * The context slot the runtime attaches the request's spend ledger under
+ * (FIX-2145). Reached through {@link reportHarnessSpend} in `./harness`, never
+ * by name from a handler body.
+ */
+export const REQUEST_SPEND_SEAM: unique symbol = Symbol.for("@flow-state-dev/request-spend-seam");
+
+/** The request's spend ledger, as a harness reaches it. */
+export interface RequestSpendSeam {
+  /** Add one settled harness run to the request's spend. */
+  reportHarnessRun(run: HarnessRunSpend): void;
 }

@@ -7,7 +7,7 @@
  * captures the payload and stashes it on the evaluator's scoped ctx, where
  * the `output` phase of `_withExecutionScope` reads it onto the row.
  */
-import type { BlockContext } from "../../types/block";
+import type { BlockContext, GeneratorModelResultPayload } from "../../types/block";
 import type { ModelIdentity } from "../../types/model";
 
 /** Usage as the trace row records it. */
@@ -16,13 +16,6 @@ export type EvaluatorModelUsageMeta = {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
-};
-
-/** The payload an evaluator reports through `onGeneratorModelResult`. */
-type EvaluatorModelResultPayload = {
-  model: string;
-  usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
-  identity?: ModelIdentity;
 };
 
 /**
@@ -46,9 +39,11 @@ export function stashEvaluatorModelResult(
 
 /**
  * Run an evaluator with its model result captured onto `scopedCtx`, on
- * success and failure. The payload is not forwarded to the enclosing hook:
- * inside a generator's tool call that hook is the generator's own capture,
- * and the evaluator's model must not overwrite the generator's on its row.
+ * success and failure. The payload is forwarded to the enclosing hook marked
+ * `countsIn: "ledger"`: inside a generator's tool call that hook is the
+ * generator's own capture, and the evaluator's model must not overwrite the
+ * generator's on its row, but the call still counts in the request's spend
+ * ledger, which every capture forwards to (FIX-2145).
  */
 export async function runEvaluatorCapturingModelResult<T>(
   scopedCtx: BlockContext,
@@ -60,15 +55,20 @@ export async function runEvaluatorCapturingModelResult<T>(
     ...scopedCtx,
     _runtimeHooks: {
       ...scopedCtx._runtimeHooks,
-      onGeneratorModelResult: (payload: EvaluatorModelResultPayload) => {
-        if (payload.identity !== undefined) identity = payload.identity;
-        if (payload.usage !== undefined) {
-          usage = {
-            model: payload.model,
-            promptTokens: payload.usage.promptTokens,
-            completionTokens: payload.usage.completionTokens,
-            totalTokens: payload.usage.totalTokens,
-          };
+      onGeneratorModelResult: (payload: GeneratorModelResultPayload) => {
+        if (payload.countsIn !== "ledger") {
+          if (payload.identity !== undefined) identity = payload.identity;
+          if (payload.usage !== undefined) {
+            usage = {
+              model: payload.model,
+              promptTokens: payload.usage.promptTokens,
+              completionTokens: payload.usage.completionTokens,
+              totalTokens: payload.usage.totalTokens,
+            };
+          }
+        }
+        if (payload.countsIn !== "trace") {
+          scopedCtx._runtimeHooks?.onGeneratorModelResult?.({ ...payload, countsIn: "ledger" });
         }
       },
     },

@@ -22,7 +22,8 @@ export type {
   ResponseEmitterHandle,
   RetryPolicy,
   StateRef,
-  TargetRef
+  TargetRef,
+  GeneratorModelResultPayload
 } from "./block";
 
 export { asRuntime, itemScope } from "./block";
@@ -108,8 +109,18 @@ export { waitForUserOn } from "./wait-for-user";
 export type { ApprovalAnswer, UserAnswer, WaitForUser, WaitForUserCancelled, WaitForUserContext, WaitForUserOptions } from "./wait-for-user";
 
 /** The request-end seam (FIX-2077): a framework package's hook after a request's last drain. */
-export { REQUEST_END_SEAM, onRequestEnded } from "./request-end";
-export type { BackgroundFailure, RequestEndHook, RequestEndSeam, RequestEndStatus, RequestEndVerdict, RequestEnding } from "./request-end";
+export { REQUEST_END_SEAM, REQUEST_SPEND_SEAM, SESSION_REQUEST_END_HOOK, onRequestEnded } from "./request-end";
+export type {
+  BackgroundFailure,
+  RequestEndHook,
+  RequestEndSeam,
+  RequestEndStatus,
+  RequestEndVerdict,
+  RequestEnding,
+  RequestSpend,
+  RequestSpendSeam,
+  SessionRequestEndHook
+} from "./request-end";
 
 export {
   DISPATCH_SEAM,
@@ -138,6 +149,7 @@ export type {
   ActionCore,
   ActionMcpConfig,
   CostEstimator,
+  ModelUsageEntry,
   ClientDataComputeFn,
   ClientDataContext,
   FlowActionBlock,
@@ -474,11 +486,15 @@ export type { ObservedPullRequestState, PullRequestRef, PullRequestSource } from
  * The coding-harness contract (LAB-152) — what a harness block is handed and
  * what it hands back, plus the signatures a host feeds it configuration
  * through. The matching runtime schemas are exported from the package root.
+ * `reportHarnessSpend` is how a harness counts a run's spend in the request
+ * (FIX-2145).
  */
+export { reportHarnessSpend } from "./harness";
 export type {
   ClassifiedHarnessError,
   HarnessActivity,
   HarnessActivityHook,
+  HarnessBilling,
   HarnessBlock,
   HarnessCallbackContext,
   HarnessCostBasis,
@@ -489,6 +505,7 @@ export type {
   HarnessRunHandle,
   HarnessRunInput,
   HarnessRunOutcome,
+  HarnessRunSpend,
   HarnessRunStatus,
   HarnessRunUsage,
   HarnessSessionHook,

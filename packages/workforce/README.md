@@ -1520,6 +1520,18 @@ The row schema is closed, so a key it does not declare is dropped on the way in 
 `id` and `kind` are required and the schema rejects a row without them. The schema ships as
 `workerInventoryRowSchema` beside the `WorkerInventoryRow` type, for checking what you are about to write.
 
+## Worker usage
+
+Every worker flow built on `installation.session()`, with `installation.resources` in its `resources`, records what each request spent when the request ends: its model calls by model, and each coding-harness run reported through `reportHarnessSpend`, by harness and billing. Records are per user (user scope), per worker, per UTC day, in the `worker-usage` collection that `installation.resources` carries. Concurrent requests for the same worker are both counted; a failed write is logged and never fails the request. A flow that declares the session but not the collection fails a request that spent tokens in development, and logs a warning in production. It is usage, not a quota.
+
+Read it with the `workerUsage` query, which a host puts on one flow:
+
+```ts
+actions: { [WORKER_USAGE_ACTION]: workerUsageAction(installation) }
+```
+
+Input `{ days?: number }`, 1 to 90, default 7: today and the days before it, in UTC. Output `{ workers: WorkerUsageRow[] }`, one row per worker that spent in the period, ordered by id: `worker`, `gone` (no longer on the caller's roster; its records are kept), `tokens: { input, output }`, `costUsd`, and `bySource`, each `{ source, kind: "model" | "harness", billing, inputTokens, outputTokens, costUsd, runs, unreported }`. `costUsd` is a number only for an `api-key` harness run whose harness reported a cost, and `null` everywhere else (show it as not reported). A run that reported no tokens counts in `runs` and `unreported`, never as 0 tokens. Guide: [Worker usage](https://flow-state.dev/docs/workforce/worker-usage).
+
 ## Projects
 
 A project is a row with a title, a brief, an owner, its `members` and the git remote its code
@@ -2631,6 +2643,9 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 | `InventoryRoster` / `InventoryWorker` / `InventoryWorkerWriter` | What `openInventory` takes: the roster (`{ workers }`), one worker (`{ id, kind, actions }`: its `door` action and `rules` read from `actions`, `{}` for a worker with none), and which flow writes the rows (`{ flowKind, sessionId? }`). |
 | `InventoryActionRequest` / `InventoryBinding` | What the `run` callback receives (`{ action, input, userId, orgId, flowKind, sessionId, source? }` — `source` is `"internal"` on the request and must reach `runAction`), and what one boot of `openInventory` returns (`{ workers, problems }`). |
 | `OpenInventoryOptions` | The options `openInventory` takes: `run`, `workerWriter`, `userId`, `orgId`. |
+| `workerUsageAction(installation)` / `WORKER_USAGE_ACTION` | The `workerUsage` query (see [Worker usage](#worker-usage)) and its action name, `"workerUsage"`. |
+| `WorkerUsageRow` / `WorkerSourceSpend` | One worker's row for a period, and one source's spend in it. |
+| `workerUsageCollection` / `WORKER_USAGE_RESOURCE` / `WORKER_USAGE_DEFAULT_DAYS` / `WORKER_USAGE_MAX_DAYS` | The user-scoped `worker-usage/**` collection `installation.resources` carries, its accessor key, and the query's default (7) and longest (90) period in days. |
 | `workerDoorOf(worker)` / `WorkerDoor` | A hired worker's door: `respond`, the public action its worker flow declares with `userMessage` and a `{ message }` input. Returns `{ door, problem? }`. `door` is `"respond"`, or `null` with `problem` saying what to fix when the flow has none, a second, or its door under another name. `openInventory` writes it on the worker's row. Such a flow is refused when hired, so a hired worker's door is always `respond`. |
 
 ## Error Semantics
