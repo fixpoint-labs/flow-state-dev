@@ -27,7 +27,7 @@ import { MAX_MESSAGE_CHARS, messageLogOf, type WorkerMessageRow } from "./messag
 import { sendMessage } from "./send-message";
 
 /** The block name the framework's answer is dispatched from. */
-export const OWED_REPLY_FROM = "message-received-answer";
+const OWED_REPLY_FROM = "message-received-answer";
 
 /** Whether `row` asks its recipient for a reply the framework owes: reply-requested, and not a call. */
 export function wantsReply(row: Pick<WorkerMessageRow, "replyRequested" | "call">): boolean {
@@ -35,7 +35,7 @@ export function wantsReply(row: Pick<WorkerMessageRow, "replyRequested" | "call"
 }
 
 /** The id the framework's answer to `messageId` is sent under: one per message, whichever request sends it. */
-export function replyIdFor(messageId: string): string {
+function replyIdFor(messageId: string): string {
   return `a:${messageId}`;
 }
 
