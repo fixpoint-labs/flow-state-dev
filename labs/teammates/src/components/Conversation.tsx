@@ -1,9 +1,12 @@
 import { Fragment, useCallback, useRef, useState } from "react";
 import type { BoardTask, ConversationEntry, LabAdapter, WorkerRow } from "../adapter";
+import type { Look } from "../lib/looks";
+import { useStatusLine } from "../lib/status";
 import { useStickToBottom } from "../lib/stick-to-bottom";
 import { pendingFor } from "../lib/talk";
 import { useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
+import { Avatar } from "./Avatar";
 import { Composer } from "./Composer";
 import { Entry } from "./Entry";
 import { repliedIn, type Popup } from "./Popups";
@@ -42,6 +45,7 @@ export function Conversation({
   worker,
   sessionId,
   nameOf,
+  lookOf,
   isCoding,
   onFire,
   onOpen,
@@ -52,6 +56,7 @@ export function Conversation({
   worker: WorkerRow;
   sessionId: string;
   nameOf: (id: string) => string;
+  lookOf: (id: string) => Look;
   /** The worker is the one coding tasks run on, not a teammate. */
   isCoding: (id: string) => boolean;
   onFire: () => Promise<void>;
@@ -67,6 +72,7 @@ export function Conversation({
   const running = view?.running ?? false;
   const pending = pendingFor(worker.id, talk, entries);
   const tasks = useWatch(adapter.watchTasks, sessionId) ?? [];
+  const status = useStatusLine(adapter, worker, sessionId, nameOf, isCoding);
   const [panel, setPanel] = useState<"instructions">();
   const fire = () => {
     if (window.confirm(`Fire ${worker.name}? It leaves your roster; this conversation stays readable.`)) void onFire();
@@ -91,14 +97,20 @@ export function Conversation({
   // A line is drawn from the filing until the board's row arrives, then from the row, in the same place.
   const taskTile = (entry: TaskEntry) => {
     const task = tasks.find((t) => t.id === entry.taskId) ?? placeholderOf(entry);
-    return <TaskCard task={task} nameOf={nameOf} coding={isCoding(task.to)} onOpen={openTask} />;
+    return <TaskCard task={task} nameOf={nameOf} lookOf={lookOf} coding={isCoding(task.to)} onOpen={openTask} />;
   };
 
   const markAt = mark ? entries.findIndex((e) => e.id === mark.firstVerbatimEntryId) : -1;
   return (
     <main aria-label="Conversation" className="flex h-full min-h-0 min-w-0 flex-col">
       <header className="flex items-center gap-3 border-b border-border px-6 py-3">
-        <h1 className="text-sm font-semibold">{worker.name}</h1>
+        <Avatar look={lookOf(worker.id)} />
+        <div className="min-w-0">
+          <h1 className="text-sm font-semibold">{worker.name}</h1>
+          <p className="truncate text-xs text-muted-foreground" data-header-status>
+            {status}
+          </p>
+        </div>
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{worker.role}</span>
         {worker.own ? (
           <>
@@ -160,6 +172,7 @@ export function Conversation({
                     entry={entry}
                     workerName={worker.name}
                     nameOf={nameOf}
+                    lookOf={lookOf}
                     isCoding={isCoding}
                     replied={entry.kind === "sent" && repliedIn(talk, entry.messageId)}
                     onOpenMessage={openMessage}

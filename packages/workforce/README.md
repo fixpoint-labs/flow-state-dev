@@ -1952,6 +1952,21 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
   reads itself (`description`, `resources` and the rest). A worker that doesn't set a shown key
   has none on its row: the flow's default isn't filled in.
 
+  The built-in `agent` flow's own settings are fixed. To give its workers a setting of your
+  app's, such as an icon a screen draws, declare it with `settings` and show it the same way:
+
+  ```ts
+  workerFlows: () => ({
+    agent: {
+      flow: defineAgentWorkerFlow({ installation, settings: { icon: z.string().optional() } }),
+      showSettings: ["icon"],
+    },
+  }),
+  ```
+
+  A worker's file then sets `icon:` beside its other settings. A key the flow already declares,
+  such as `model`, is refused when the flow is built.
+
   In React, build the client once with `useMemo` over the same options. `useFlow` creates sessions
   with no starting state, which a worker flow refuses, so find or start the session with the client
   and select it on the hook (`flow.selectSession(session.id)`).

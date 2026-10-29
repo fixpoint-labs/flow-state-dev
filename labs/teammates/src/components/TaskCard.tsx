@@ -1,6 +1,8 @@
 import { memo } from "react";
 import type { BoardTask } from "../adapter";
 import { cn } from "../lib/utils";
+import type { Look } from "../lib/looks";
+import { Avatar } from "./Avatar";
 import { taskLine } from "./Popups";
 
 /**
@@ -11,11 +13,13 @@ import { taskLine } from "./Popups";
 export const TaskCard = memo(function TaskCard({
   task,
   nameOf,
+  lookOf,
   coding = false,
   onOpen,
 }: {
   task: BoardTask;
   nameOf: (id: string) => string;
+  lookOf: (id: string) => Look;
   /** It is a coding task: a background task, not a teammate's. */
   coding?: boolean;
   onOpen: (taskId: string) => void;
@@ -30,9 +34,13 @@ export const TaskCard = memo(function TaskCard({
       onClick={() => onOpen(task.id)}
       className="flex w-full max-w-[85%] items-center gap-2 rounded-md border border-border bg-card/60 px-3 py-1.5 text-left text-sm hover:bg-accent"
     >
-      <span aria-hidden className="shrink-0 text-muted-foreground">
-        {coding ? "⚙" : "↗"}
-      </span>
+      {coding ? (
+        <span aria-hidden className="shrink-0 text-muted-foreground">
+          ⚙
+        </span>
+      ) : (
+        <Avatar look={lookOf(task.to)} size="sm" />
+      )}
       <span className="min-w-0 flex-1 truncate">{line}</span>
       <span className={cn("shrink-0 text-xs", task.status === "failed" ? "text-destructive" : "text-muted-foreground")} data-task-status>
         {task.status}

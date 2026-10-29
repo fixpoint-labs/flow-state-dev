@@ -10,8 +10,11 @@ registry's `tokens` item. The other labs take theirs from the design system; thi
 theme on purpose, so it reads as the app it copies.
 
 - **Left:** the teammates, Chief of Staff, researcher and writer. Each row is a teammate with an
-  ongoing role, never a list of sessions. A row shows what the teammate is doing and how many new
-  entries its conversation has since you last looked. Under them, *Background* lists the coding
+  ongoing role, never a list of sessions. A row shows the teammate's icon on its color, a line
+  saying what it is doing now (*Replying to you*, *Messaging writer*, *Running coding task: …*,
+  *Idle*), and how many new entries its conversation has since you last looked. The same icon
+  marks the teammate in the conversation's header, on message lines and in popups; the header
+  carries the same status line. Under them, *Background* lists the coding
   tasks they started; each opens its run in a popup, read only.
 - **Center:** the chosen worker's one conversation. It goes on for weeks. A divider marks where the
   turns the worker reads word for word begin; it reads *summarized* only when the earlier turns were
@@ -119,10 +122,16 @@ names the package call it makes.
 | Workers messaging each other, the Talk panel | `sendMessage`, the received-message item (`workforce:received`), and the message log |
 | Hiring, changing and firing your own teammates | the workforce client's `hire`, `edit` and `fire`, on the roster flow |
 | Task lines | the conversation board's rows |
+| A teammate's icon and color | its `WORKER.md`'s `icon:` and `color:` lines, declared on the `agent` flow with `settings` and shown on its `roster()` row with `showSettings` |
+| The status line | the conversation's requests (`listSessionRequests`) and items for what it is answering, the board's rows for a running coding task, the message log for a message waiting on a reply |
 | A message's popup | the recipient's session items: the turn whose received-message item carries the message's id |
 | The working folder | `localWorkspaceHost` with a constant run source, `{ kind: "repo", repo }`, and the folder in `localRepositories`; `projectSourceTools` read it |
 | Coding tasks and their runs | the conversation board's rows assigned to the worker on the coding flow, which the list leaves out; the row's `run` link, read as the run session's items |
 | The divider and its *summarized* label | the last request's `historyStart`, and the session's `historySummary` resource |
+
+`color:` names one of the lab's palette, `blue`, `green`, `amber`, `rose`, `violet` or `teal`,
+each a `--teammate-*` token in the theme. A teammate whose file sets neither line, such as one you
+hire here, gets its initial on a palette color picked from its id.
 
 Not wired yet:
 
@@ -147,8 +156,8 @@ and on a flow over 200 lines; `--wired` also fails on any fixture.
 <!-- inventory:start -->
 | Kind | Files | Lines |
 |---|---:|---:|
-| Configuration | 16 | 657 |
-| React UI | 25 | 2398 |
+| Configuration | 16 | 678 |
+| React UI | 28 | 2558 |
 | Small flows | 1 | 151 |
-| Checks (not app code) | 10 | 1320 |
+| Checks (not app code) | 10 | 1376 |
 <!-- inventory:end -->

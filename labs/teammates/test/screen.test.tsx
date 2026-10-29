@@ -11,6 +11,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/App";
+import { TEAMMATE_COLORS } from "../src/lib/looks";
 import { createFixtureLab } from "./fake-lab";
 
 // The script runs at a twentieth of real time.
@@ -76,7 +77,7 @@ describe("the teammates screen", () => {
     await waitFor(() => expect(within(talk()).getByRole("region", { name: "with researcher" })).toBeTruthy());
 
     // While Chief of Staff waits, its row says so.
-    await waitFor(() => expect(workerRow("Chief of Staff").querySelector("[data-status]")?.textContent).toBe("waiting on researcher"));
+    await waitFor(() => expect(workerRow("Chief of Staff").querySelector("[data-status]")?.textContent).toBe("Messaging researcher"));
 
     // researcher sees the message as a line from Chief of Staff.
     fireEvent.click(workerRow("researcher"));
@@ -341,6 +342,59 @@ describe("the teammates screen", () => {
     await waitFor(() => expect(card.textContent).toContain("approved"));
     expect(within(card).queryByRole("button", { name: "Approve" })).toBeNull();
     expect(await within(conversation()).findByText("Published.", {}, { timeout: 2000 })).toBeTruthy();
+  });
+
+  it("gives each teammate the icon and color its file sets, the same in the list, the header, a message line and its popup", async () => {
+    render(<App adapter={fast()} />);
+    await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3));
+    const look = (row: HTMLElement) => {
+      const avatar = row.querySelector<HTMLElement>("[data-avatar]")!;
+      return [avatar.textContent, avatar.dataset.avatar];
+    };
+    expect(look(workerRow("Chief of Staff"))).toEqual(["★", "amber"]);
+    expect(look(workerRow("researcher"))).toEqual(["🔎", "teal"]);
+    expect(look(workerRow("writer"))).toEqual(["✎", "violet"]);
+    expect(look(within(conversation()).getByRole("banner"))).toEqual(["★", "amber"]);
+
+    await tell("Chief of Staff", "Ask researcher for our launch date, and help me outline the post.");
+    const line = await within(conversation()).findByRole("button", { name: /^Messaged researcher: / });
+    expect(look(line)).toEqual(["🔎", "teal"]);
+    fireEvent.click(line);
+    expect(look(screen.getByRole("dialog", { name: "Messaged researcher" }))).toEqual(["🔎", "teal"]);
+  });
+
+  it("gives a teammate whose file sets no look its initial, on a color of the palette", async () => {
+    render(<App adapter={fast()} />);
+    await screen.findByLabelText("Message Chief of Staff");
+    fireEvent.click(screen.getByRole("button", { name: "Hire a teammate" }));
+    const form = screen.getByRole("form", { name: "Hire a teammate" });
+    fireEvent.change(within(form).getByLabelText("Teammate name"), { target: { value: "tester" } });
+    fireEvent.change(within(form).getByLabelText("Teammate role"), { target: { value: "Runs the tests." } });
+    await act(async () => fireEvent.click(within(form).getByRole("button", { name: "Hire" })));
+    const avatar = (await waitFor(() => workerRow("tester").querySelector<HTMLElement>("[data-avatar]")!))!;
+    expect(avatar.textContent).toBe("T");
+    expect(TEAMMATE_COLORS).toContain(avatar.dataset.avatar);
+  });
+
+  it("says under each name what the teammate is doing now, live, from its own state", async () => {
+    render(<App adapter={fast()} />);
+    const status = (name: string) => workerRow(name).querySelector("[data-status]")?.textContent;
+    const header = () => conversation().querySelector("[data-header-status]")?.textContent;
+    await waitFor(() => expect(status("Chief of Staff")).toMatch(/^Idle/));
+    expect(header()).toMatch(/^Idle/);
+
+    await tell("Chief of Staff", "Ask researcher for our launch date, and help me outline the post.");
+    await waitFor(() => expect(status("Chief of Staff")).toBe("Replying to you"), { interval: 5 });
+    expect(header()).toBe("Replying to you");
+    // researcher answers the message it was sent, and says whose.
+    await waitFor(() => expect(status("researcher")).toBe("Replying to Chief of Staff"), { interval: 5, timeout: 2000 });
+    await waitFor(() => expect(status("Chief of Staff")).toBe("Messaging researcher"), { interval: 5, timeout: 2000 });
+    // Once the reply is in and read, nothing is running: idle, and nothing made up.
+    await waitFor(() => expect(status("researcher")).toMatch(/^Idle/), { timeout: 3000 });
+
+    await tell("Chief of Staff", "Fix the typo in the README's first line.");
+    await waitFor(() => expect(status("Chief of Staff")).toBe("Running coding task: Fix the typo in the README's first line"), { interval: 5, timeout: 2000 });
+    expect(header()).toBe("Running coding task: Fix the typo in the README's first line");
   });
 
   it("hires a teammate you can talk to, changes its instructions, and fires it; the files' workers can't be", async () => {

@@ -268,6 +268,16 @@ export interface AgentWorkerFlowOptions {
   /** Default model for workers that name none. Defaults to {@link DEFAULT_MODEL}. */
   model?: string;
   /**
+   * The app's own settings a worker on this flow may set in its file, beside
+   * the flow's built-in ones, as a schema shape by key. Pair one with
+   * `showSettings` on the flow's registration and a view reads its value off
+   * the worker's `roster()` row: an icon, a color.
+   *
+   * Refused when the flow is built if a key is one the flow already declares.
+   * Omitted, a worker's file can set only the built-in settings.
+   */
+  settings?: z.ZodRawShape;
+  /**
    * Model the up-front matcher's third tier uses, when a worker opts in. Mirrors
    * `createSkillActivator`'s option of the same name.
    *
@@ -432,7 +442,7 @@ function settingsSchema(
   const catalog = options.catalog ?? {};
   const appSkillNames = new Set((options.skills ?? []).map((skill) => skill.name));
 
-  return workerConfigSchema().extend({
+  const builtIn = workerConfigSchema().extend({
     model: z.string().default(options.model ?? DEFAULT_MODEL),
 
     /**
@@ -611,6 +621,16 @@ function settingsSchema(
      */
     [WORKER_DISCOVER_KEY]: z.array(z.enum(MANIFEST_DOMAINS)).optional()
   });
+  const own = Object.keys(options.settings ?? {});
+  const taken = own.filter((key) => Object.hasOwn(builtIn.shape, key));
+  if (taken.length > 0) {
+    throw new Error(
+      `defineAgentWorkerFlow({ settings }) declares ${taken.map((key) => `"${key}"`).join(", ")}, ` +
+        `which the agent flow already declares: name the app's setting something else`
+    );
+  }
+  // Typed as the built-in schema: the flow reads none of the app's keys, they only ride to the row.
+  return own.length === 0 ? builtIn : (builtIn.extend(options.settings!) as unknown as typeof builtIn);
 }
 
 /**

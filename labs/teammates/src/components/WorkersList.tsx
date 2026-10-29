@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import type { LabAdapter, NewTeammate, WorkerRow } from "../adapter";
 import type { Popup } from "./Popups";
-import { waitingOn } from "../lib/talk";
+import type { Look } from "../lib/looks";
+import { statusLine } from "../lib/status";
 import { useSeen } from "../lib/unread";
-import { age, useNow, useWatch } from "../lib/use-watch";
+import { useNow, useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
+import { Avatar } from "./Avatar";
 import { HireForm } from "./TeammateForms";
 
 /** The entries that count toward unread: everything but your own lines. */
@@ -12,7 +14,7 @@ const unreadable = (entries: { kind: string }[]) => entries.filter((e) => e.kind
 
 /**
  * The left pane: one row per teammate, never a list of sessions. Each row is
- * the teammate's name, what it is doing, a dot while it answers, and how many
+ * the teammate's icon on its color, its name, what it is doing, a dot while it answers, and how many
  * new entries its conversation has since you last looked. Under them, the
  * coding tasks the teammates started, as background items that open their
  * runs in a popup. At the foot, hire a teammate of your own.
@@ -24,6 +26,7 @@ export function WorkersList({
   selected,
   openTask,
   nameOf,
+  lookOf,
   isCoding,
   onSelect,
   onOpen,
@@ -37,6 +40,7 @@ export function WorkersList({
   /** The task open in the popup, if one is. */
   openTask: string | undefined;
   nameOf: (id: string) => string;
+  lookOf: (id: string) => Look;
   isCoding: (id: string) => boolean;
   onSelect: (worker: string) => void;
   onOpen: (popup: Popup) => void;
@@ -55,6 +59,8 @@ export function WorkersList({
                 adapter={adapter}
                 worker={w}
                 nameOf={nameOf}
+                look={lookOf(w.id)}
+                isCoding={isCoding}
                 sessionId={sessions[w.id]}
                 selected={w.id === selected}
                 seen={seen[w.id]}
@@ -97,6 +103,8 @@ function WorkerItem({
   adapter,
   worker,
   nameOf,
+  look,
+  isCoding,
   sessionId,
   selected,
   seen,
@@ -106,6 +114,8 @@ function WorkerItem({
   adapter: LabAdapter;
   worker: WorkerRow;
   nameOf: (id: string) => string;
+  look: Look;
+  isCoding: (id: string) => boolean;
   sessionId: string | undefined;
   selected: boolean;
   seen: number | undefined;
@@ -123,16 +133,8 @@ function WorkerItem({
   }, [count, selected, seen, onSeen]);
   const unread = count !== undefined && seen !== undefined ? Math.max(0, count - seen) : 0;
 
-  const waiting = waitingOn(worker.id, talk);
-  const status = activity?.running
-    ? "working"
-    : waiting.length > 0
-      ? `waiting on ${waiting.map(nameOf).join(", ")}`
-      : activity
-        ? activity.lastActiveAt > 0
-          ? `idle · ${age(activity.lastActiveAt, now)}`
-          : "idle"
-        : "";
+  const tasks = useWatch(adapter.watchTasks, sessionId) ?? [];
+  const status = statusLine(worker.id, { activity, entries: view?.entries ?? [], talk, tasks, now }, nameOf, isCoding);
   return (
     <button
       type="button"
@@ -141,9 +143,7 @@ function WorkerItem({
       onClick={onSelect}
       className={cn("flex w-full items-center gap-3 border-l-2 border-transparent px-4 py-2.5 text-left hover:bg-accent", selected && "border-primary bg-accent")}
     >
-      <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary font-mono text-xs font-bold uppercase">
-        {worker.name.slice(0, 1)}
-      </span>
+      <Avatar look={look} />
       <span className="min-w-0 flex-1">
         <span className={cn("block truncate text-sm", (selected || unread > 0) && "font-semibold")}>{worker.name}</span>
         <span className="block truncate text-xs text-muted-foreground" data-status>
