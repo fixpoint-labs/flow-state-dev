@@ -1673,6 +1673,22 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   `[SET_WORK_PROJECT_ACTION]: setWorkProjectAction` to its `actions`. A project coordinator's
   conversation takes its project from `ensureWorkerSession({ worker, projectId })` instead.
 
+- **`projectTools(blocks)`** and **`setWorkProjectTool`** let a worker make, find and pick a project
+  from its own turn. `projectTools` takes the host's `defineProjectBlocks()` and returns
+  `listProjects`, `createProject`, `setRepository` and `setBrief` as tools, each under the name a
+  `tools:` line spells. `listProjects` adds `forCoding`, a line saying what to do with a coder's
+  task that names no project: file it in the one project with a repository, or ask which one,
+  naming each. `createProject` with a `repository`, and `setRepository`, wait for the user's
+  approval (a stock `user_approval`) before the write; Deny writes nothing, and a host without
+  durable execution refuses. `setWorkProjectTool` is the `setWorkProject` action's block as a
+  tool: the worker puts its own conversation in a project, with the same refusals. Put them in the
+  worker flow's catalog, and name the ones each worker gets in its `tools:`:
+
+  ```ts
+  const projects = defineProjectBlocks();
+  defineAgentWorkerFlow({ installation, model, catalog: { ...projectTools(projects), setWorkProject: setWorkProjectTool } });
+  ```
+
 - **`projectSourceCapability({ workspace })`** lets a worker read the project its session works in,
   with no coding run. Its one preset, `read`, is off until a worker's own file names it
   (`capabilities: { projectSource: [read] }`), and gives that worker three tools:
@@ -1684,7 +1700,10 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   view (`readSource`, from `@flow-state-dev/workspace`) answers: a repository at the remote's default
   branch, at one commit each result names, or the project's files when it has no repository. Results
   are capped (500 paths; 2,000 lines or 256 KB; 200 matches) and say when they were cut. No tool
-  writes. A host with no read view is refused when the capability is built.
+  writes. A host with no read view is refused when the capability is built. For workers that
+  write a `tools:` line, which fences out a preset's tools, put `projectSourceTools(workspace)` in
+  the flow's catalog instead and `uses: [projectWorkspaceCapability]`, whose collections they read;
+  each worker then names the ones it gets.
 
   ```ts
   const workspace = localWorkspaceHost({ root, remotes: { allow: ["github.com"] }, source: projectWorkspace() });
@@ -1888,7 +1907,10 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
   app's client from `createClient` and reads and writes through it, as that client's user and
   over its transport. To send the caller's credential, give `createClient` a `fetcher` that wraps
   `fetch` and adds it, such as an `Authorization` header; every workforce call then carries it
-  too. The server decides who the caller is with `resolvePrincipal` on
+  too. Its `hire`, `fork`, `edit` and `fire` run the roster flow's actions of the same names on the
+  user's roster session, so an app hires, changes and fires the user's own workers with no restart
+  (`hire({ id, flow?, description?, instructions?, skills?, settings? })`, `fork(from, id)`,
+  `edit({ id, ...fields })`, `fire(id)`); each rejects with the action's refusal. The server decides who the caller is with `resolvePrincipal` on
   `createFlowState`. See [Authentication](https://flow-state.dev/docs/server/authentication),
   [Host adapters](https://flow-state.dev/docs/server/host-adapters) for serving it, and
   [Serving it to your users](https://flow-state.dev/docs/workforce/overview#serving-it-to-your-users).
@@ -2534,7 +2556,7 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 | `workerConfigOf(ctx)` | The configuration of the worker the turn loaded, synchronously, for a prompt, a tool list or a step condition. Throws when the turn loaded no worker: call `installation.resolveWorker` in the flow's `request.onStarted`. |
 | `createWorkerHireBlocks(installation)` | `{ hire, fork, edit, fire }`: writes to the caller's own roster, each checked as a turn would check it before anything is written, each refusing a standard worker's id. |
 | `defineWorkerRosterFlow(installation, actions?)` | The roster flow (`workforce-roster`), which declares the two worker collections so a client reads a user's roster through one session of it. Mount the hire blocks on it as actions. |
-| `createWorkforceClient(fsd)` | `roster()`, `findWorkerSession(criteria)`, `ensureWorkerSession(criteria)`, `listWorkerSessions(worker)` (the user's conversations with the worker as `WorkerSessionEntry` rows, `{ session, isDefault }`, the default first, then by latest activity), `standingRules(worker, input)` (see [Standing rules](#standing-rules)) and `setWorkProject(worker, { visibility, id }, { sessionId? })` (see [Projects](#projects)), through the client it is given (any `createClient` client; it reads `userId`, `flow`, `sessions` and `resources`). `criteria` is a `WorkerSessionCriteria`: `worker`, and optional keys such as `projectId`, which finds or starts the user's project coordinator for that project. From `./browser` only. |
+| `createWorkforceClient(fsd)` | `roster()`, `findWorkerSession(criteria)`, `ensureWorkerSession(criteria)`, `listWorkerSessions(worker)` (the user's conversations with the worker as `WorkerSessionEntry` rows, `{ session, isDefault }`, the default first, then by latest activity), `standingRules(worker, input)` (see [Standing rules](#standing-rules)), `setWorkProject(worker, { visibility, id }, { sessionId? })` (see [Projects](#projects)), and `hire`, `fork`, `edit` and `fire` on the user's own workers (see [Workers as data](#workers-as-data)), through the client it is given (any `createClient` client; it reads `userId`, `flow`, `sessions` and `resources`). `criteria` is a `WorkerSessionCriteria`: `worker`, and optional keys such as `projectId`, which finds or starts the user's project coordinator for that project. From `./browser` only. |
 | `RULE_TOOLS`, `MAX_RULES`, `MAX_RULE_CHARS`, `STANDING_RULES_ACTION`, `STANDING_RULES_LINE`, `STANDING_RULES_RESOURCE` | The four rule tools' names, the list's limits (20 and 300), the flow action `standingRules` calls, the `agentName` a rule write's line carries, and the resource the list is kept under. All but `STANDING_RULES_RESOURCE` are also exported from `./browser`. |
 | `SET_WORK_PROJECT_ACTION` / `setWorkProjectAction` / `WORK_PROJECT_STATE_KEY` | The action `setWorkProject` calls (`"setWorkProject"`), the action itself for a worker flow of your own to declare under that name, and the server-owned session-state field it writes (`"workProjectId"`, `<visibility>/<id>`). The two constants are also exported from `./browser`. |
 | `deriveWorkerSessionId({ userId, orgId, flow, criteria })` / `isDerivedWorkerSessionId(id)` | The id `ensureWorkerSession` creates a session at, and the shape a worker flow's create check reserves for the user it derives to. |
@@ -2591,6 +2613,8 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 | `parseWorkstreamEntry(path, state)` | One entry read off its storage key and checked against `workstreamEntrySchema`, with its `project`, `owner` and `id`; `undefined` for a key that isn't an entry. Also from `./browser`, for a browser reading entries through the resource routes. |
 | `projectCoordinatorTools` | `{ readProject }`, the project coordinator's tool, which marks each workstream `yours` when the user it talks to owns it: put it in `defineCoordinatorFlow({ agent: { catalog } })` and name it in the coordinator's `tools:`. Add `setBrief` and `setRepository` from `defineProjectBlocks()` for it to manage its own project. |
 | `linkedProjectOf(state)` | The `{ visibility, id }` a session's state links it to by its `projectId`, or `undefined`. |
+| `projectTools(blocks)` / `setWorkProjectTool` / `listedForCodingSchema` | The project writes and list as a worker's tools (`listProjects` with `forCoding`, `createProject` and `setRepository` behind the user's approval, `setBrief`), and the `setWorkProject` action's block as a tool. See [Projects](#projects). |
+| `projectSourceTools(workspace)` | The `projectSource` capability's three read tools, for a worker flow's catalog when its workers write a `tools:` line. See [Projects](#projects). |
 | `projectSourceCapability({ workspace })` / `PROJECT_SOURCE_CAPABILITY` | The `projectSource` capability: a `read` preset a worker names in its file, with `globProjectSource`, `readProjectSource` and `grepProjectSource`, which read the session's project through the host's run source and read view. The tools' output schemas are exported as `globProjectSourceOutputSchema`, `readProjectSourceOutputSchema` and `grepProjectSourceOutputSchema`. See [Projects](#projects). |
 | `projectWorkspace({ checkouts? })` / `projectWorkspaceCapability` / `ProjectCheckout` | A run source for a coding run on a project: from the workstream its session leads or was filed from, the project its conversation belongs to or was set to, or the project its task names. `checkouts` (`ProjectCheckout[]`: `{ remote, checkout, projects, baseRef? }`) sends the listed shared projects' runs, in their own organization, to a checkout on this machine. The capability holds the collections it reads. See [Projects](#projects). |
 | `createWorkerLookup({ installation })` | Which standard worker a task's name means. Returns `{ find, flowKind, state, filingCheck }`. `find(name)` answers `{ found: true, flowId }`, or `{ found: false, reason, message }` with `reason` `not-found` or `takes-no-tasks` (a worker whose flow declares no `work` task entry). `flowKind` and `state` are a `per-task` dispatcher's targets: the flow of the worker the task's `assignee` names, and a starting state naming that worker. |

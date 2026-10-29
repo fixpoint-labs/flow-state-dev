@@ -1,11 +1,19 @@
-import { Fragment, useEffect, useRef } from "react";
-import type { LabAdapter, ProjectRow, WorkerRow } from "../adapter";
+import { Fragment, useEffect, useRef, useState } from "react";
+import type { LabAdapter, NewProject, ProjectRow, WorkerRow } from "../adapter";
 import { pendingFor } from "../lib/talk";
 import { useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Composer } from "./Composer";
 import { Entry } from "./Entry";
+import { NewProjectForm } from "./NewProjectForm";
 import { TaskCard } from "./TaskCard";
+import { InstructionsForm } from "./TeammateForms";
+
+/** The header select's option that opens the new-project form. */
+const NEW_PROJECT = "__new";
+
+/** A small button in the conversation's header. */
+const HEADER_BUTTON = "rounded-sm border border-border px-2 py-0.5 font-mono text-[10px] tracking-widest uppercase hover:bg-accent";
 
 /** Your line to the worker once you picked its project from a card that asked. */
 export const PICKED_LINE = "I picked a project for you. File the task again.";
@@ -15,7 +23,9 @@ export const PICKED_LINE = "I picked a project for you. File the task again.";
  * the worker reads word for word begin. A message another worker sent that
  * waits for the current answer shows as a pending line until it lands. The
  * header carries the worker's project: none is needed to talk, and the first
- * job that needs files asks for one on its task card.
+ * job that needs files asks for one on its task card. A project can be made
+ * from the header's select, and from a card when there is none to pick. A
+ * teammate the user hired also gets its instructions and a fire control.
  */
 export function Conversation({
   adapter,
@@ -23,6 +33,8 @@ export function Conversation({
   sessionId,
   projects,
   nameOf,
+  onCreateProject,
+  onFire,
   talkOpen,
   onToggleTalk,
 }: {
@@ -31,6 +43,8 @@ export function Conversation({
   sessionId: string;
   projects: ProjectRow[];
   nameOf: (id: string) => string;
+  onCreateProject: (project: NewProject) => Promise<ProjectRow>;
+  onFire: () => Promise<void>;
   talkOpen: boolean;
   onToggleTalk: () => void;
 }) {
@@ -50,6 +64,17 @@ export function Conversation({
     await adapter.setWorkProject(worker.id, project);
     await adapter.send(sessionId, PICKED_LINE);
   };
+  const choose = (project: string) => void (waiting ? pick(project) : adapter.setWorkProject(worker.id, project));
+  const [panel, setPanel] = useState<"project" | "instructions">();
+  // A project made here is the worker's at once: picked, as if chosen from the select.
+  const create = async (project: NewProject) => {
+    const created = await onCreateProject(project);
+    setPanel(undefined);
+    choose(created.id);
+  };
+  const fire = () => {
+    if (window.confirm(`Fire ${worker.name}? It leaves your roster; this conversation stays readable.`)) void onFire();
+  };
 
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -60,7 +85,18 @@ export function Conversation({
   const taskTile = (taskId: string) => {
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return null;
-    return <TaskCard adapter={adapter} task={task} filer={worker.name} workProject={workProject} projects={projects} nameOf={nameOf} onPick={(p) => void pick(p)} />;
+    return (
+      <TaskCard
+        adapter={adapter}
+        task={task}
+        filer={worker.name}
+        workProject={workProject}
+        projects={projects}
+        nameOf={nameOf}
+        onPick={(p) => void pick(p)}
+        onCreateProject={create}
+      />
+    );
   };
 
   const markAt = mark ? entries.findIndex((e) => e.id === mark.firstVerbatimEntryId) : -1;
@@ -72,18 +108,29 @@ export function Conversation({
         <select
           aria-label={`Project for ${worker.name}`}
           value={workProject ?? ""}
-          onChange={(e) => void (waiting ? pick(e.target.value) : adapter.setWorkProject(worker.id, e.target.value))}
+          onChange={(e) => (e.target.value === NEW_PROJECT ? setPanel("project") : choose(e.target.value))}
           className="border border-border bg-card px-1 py-0.5 font-mono text-[10px] tracking-widest uppercase"
         >
           <option value="" disabled>
-            no project
+            {projects.length === 0 ? "no projects yet" : "no project"}
           </option>
           {projects.map((p) => (
             <option key={p.id} value={p.id}>
               in · {p.name}
             </option>
           ))}
+          <option value={NEW_PROJECT}>New project…</option>
         </select>
+        {worker.own ? (
+          <>
+            <button type="button" onClick={() => setPanel((p) => (p === "instructions" ? undefined : "instructions"))} className={HEADER_BUTTON}>
+              Instructions
+            </button>
+            <button type="button" onClick={fire} className={HEADER_BUTTON}>
+              Fire
+            </button>
+          </>
+        ) : null}
         {running ? (
           <span className="flex items-center gap-1.5 font-mono text-[10px] tracking-widest text-info uppercase">
             <span className="size-2 animate-pulse rounded-full bg-info" /> working
@@ -98,6 +145,22 @@ export function Conversation({
           Talk
         </button>
       </header>
+      {panel === "project" ? (
+        <div className="border-b border-border px-6 py-3">
+          <NewProjectForm onCreate={create} onCancel={() => setPanel(undefined)} />
+        </div>
+      ) : panel === "instructions" ? (
+        <div className="border-b border-border px-6 py-3">
+          <InstructionsForm
+            name={worker.name}
+            onSave={async (instructions) => {
+              await adapter.editInstructions(worker.id, instructions);
+              setPanel(undefined);
+            }}
+            onCancel={() => setPanel(undefined)}
+          />
+        </div>
+      ) : null}
       <div className="flex-1 overflow-y-auto px-6 py-4">
         <div className="mx-auto flex max-w-2xl flex-col gap-3">
           {entries.length === 0 ? (
@@ -118,7 +181,12 @@ export function Conversation({
                 {entry.kind === "task" ? (
                   taskTile(entry.taskId)
                 ) : (
-                  <Entry entry={entry} workerName={worker.name} nameOf={nameOf} />
+                  <Entry
+                    entry={entry}
+                    workerName={worker.name}
+                    nameOf={nameOf}
+                    {...(entry.kind === "approval" ? { onAnswer: (approve: boolean) => adapter.answerApproval(sessionId, entry, approve) } : {})}
+                  />
                 )}
               </div>
             </Fragment>

@@ -7,12 +7,19 @@
  * - **lead, researcher and writer** run on the built-in `agent` flow, so each
  *   has `sendMessage` and one conversation where messages land. Memory is
  *   composed in through `uses` (read) and `afterAnswer` (record each turn).
+ *   The flow's tool catalog holds Workforce's project tools, web search and
+ *   fetch, and `uses` adds reading a project's source; each worker's
+ *   `tools:` line picks its own from them.
  * - **coder** runs on the lab's coding flow (`src/flows/coder.ts`), which
- *   takes the tasks lead files and runs each through the harness coder's
- *   `WORKER.md` names, in the project of the conversation that filed it.
- * - **Projects** are the user's Workforce projects. The ones the config names
- *   are created at start, as the lab's user, and a project that names a
- *   checkout on this machine runs its coding work in a worktree of it.
+ *   takes the tasks lead files and runs each through a harness, Claude Code
+ *   or Codex, in the project of the conversation that filed it.
+ * - **Projects** are the user's Workforce projects. lead creates them from
+ *   chat and the page from its header; the ones the config names are created
+ *   at start, as the lab's user. A project whose repository is a `file://`
+ *   remote has its coding work cloned from it, and one the config maps to a
+ *   checkout on this machine works in a worktree of that checkout.
+ * - **Teammates** you hire from the page are rows of your own roster, written
+ *   through the roster flow `hireWorkforce` registers; nothing restarts.
  *
  * Durable, on SQLite: a worker message a busy host turned away is sent again
  * on its session's wake, and a restart keeps every conversation.
@@ -28,23 +35,26 @@ import { system } from "@flow-state-dev/memory";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { defineFlow } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core/types";
+import { fetch, search } from "@flow-state-dev/tools";
 import {
   AGENT_FLOW,
   createWorkerInstallation,
   defineAgentWorkerFlow,
   defineProjectBlocks,
   hireWorkforce,
+  projectSourceTools,
+  projectTools,
+  projectWorkspaceCapability,
   projectWorkspace,
+  setWorkProjectTool,
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { localWorkspaceHost } from "@flow-state-dev/workspace";
 import { CODER_FLOW, coderFlow, type Harness } from "./src/flows/coder.ts";
+import { PROJECTS_FLOW } from "./src/lib/projects-flow.ts";
 
 /** The workers, beside this file. */
 const TEAMMATES_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
-
-/** The flow the lab's projects are created on. */
-const PROJECTS_FLOW = "teammates-projects";
 
 /** One project the lab starts with. */
 export interface LabProject {
@@ -69,6 +79,8 @@ export interface TeammatesOptions {
   tree?: string;
   /** Wall-clock budget for one coding run. Defaults to 20 minutes. */
   runTimeoutMs?: number;
+  /** The harness coder runs on when its row names none. Defaults to `claude-code`. */
+  harness?: string;
 }
 
 /** The harnesses a coding worker may name in `harness:`. Each run gets only the environment its harness needs. */
@@ -112,28 +124,40 @@ export async function openTeammates(options: TeammatesOptions) {
   );
 
   const mem = system({ model: options.model, working: { capacity: 7 }, episodic: true, semantic: true });
+  // One host for coder's runs and the workers' reads, so a read sees the clone a run works from.
+  const workspace = localWorkspaceHost({
+    root: options.runsRoot,
+    remotes: { allow: ["file"] },
+    localRepositories: checkouts.map((c) => c.checkout),
+    source: projectWorkspace({ checkouts }),
+  });
+  const projectBlocks = defineProjectBlocks();
   let flows: Record<string, unknown> = {};
   const installation = createWorkerInstallation({ standardWorkers: roster.workers, workerFlows: () => flows as never });
   flows = {
     [AGENT_FLOW]: defineAgentWorkerFlow({
       installation,
       model: options.model,
-      uses: [mem.capability.presets({ recall: false, connect: false, semantic: true, episodic: true })],
+      catalog: {
+        ...projectTools(projectBlocks),
+        setWorkProject: setWorkProjectTool,
+        ...projectSourceTools(workspace),
+        search: search(),
+        fetch: fetch(),
+      },
+      // The project collections the source reads go through.
+      uses: [mem.capability.presets({ recall: false, connect: false, semantic: true, episodic: true }), projectWorkspaceCapability],
       afterAnswer: mem.captureFromItems,
     }),
     [CODER_FLOW]: coderFlow({
       harnesses: HARNESSES,
-      workspace: localWorkspaceHost({
-        root: options.runsRoot,
-        remotes: { allow: ["file"] },
-        localRepositories: checkouts.map((c) => c.checkout),
-        source: projectWorkspace({ checkouts }),
-      }),
+      defaultHarness: options.harness ?? "claude-code",
+      workspace,
       runTimeoutMs: options.runTimeoutMs ?? 20 * 60_000,
     }),
   };
   const copies = hireWorkforce(installation) as Array<{ id: string }>;
-  const projectsFlow = defineFlow({ kind: PROJECTS_FLOW, actions: defineProjectBlocks().actions } as never) as { id?: string };
+  const projectsFlow = defineFlow({ kind: PROJECTS_FLOW, actions: projectBlocks.actions } as never) as { id?: string };
 
   const state = createFlowState({
     flows: { ...Object.fromEntries(copies.map((copy) => [copy.id, copy])), [PROJECTS_FLOW]: projectsFlow },
