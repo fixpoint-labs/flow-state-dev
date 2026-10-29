@@ -10,6 +10,8 @@
  * - `TEAMMATES_STORE`: the SQLite file (default `.fsdev/teammates.sqlite` here).
  * - `TEAMMATES_USER`: who the page acts as (default `you`).
  * - `TEAMMATES_TREE`: the workers' tree (default `workforce/` here).
+ * - `TEAMMATES_HARNESS`: the harness coder runs on, `claude-code` (the
+ *   default) or `codex`.
  */
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -25,4 +27,5 @@ export default await openTeammates({
   projects: JSON.parse(process.env.TEAMMATES_PROJECTS ?? "[]") as LabProject[],
   runsRoot: join(dirname(store), "teammates-runs"),
   ...(process.env.TEAMMATES_TREE === undefined ? {} : { tree: process.env.TEAMMATES_TREE }),
+  ...(process.env.TEAMMATES_HARNESS === undefined ? {} : { harness: process.env.TEAMMATES_HARNESS }),
 });

@@ -2,14 +2,14 @@
 title: Messaging other workers
 sidebar_position: 3.7
 sidebar_label: Messaging workers
-description: "A worker can send any other worker on your roster a short message, which wakes the recipient. It can also call: send a message and wait for the reply in the same turn."
+description: "A worker can send any other worker on your roster a short message, which wakes the recipient. It can ask for a reply and go on, or call: send a message and wait for the reply in the same turn."
 ---
 
 # Messaging other workers
 
 Sometimes a worker needs to ask a colleague something, or tell it something, without handing it any work. Your researcher wants to know a codename the coordinator was told. The coordinator wants to pass a correction on to the researcher. Workers do this with **messages**.
 
-A message is a line of text from one worker to another on the same user's roster. It wakes the recipient for a turn, and the recipient decides what to do about it. Nothing is filed and no result is owed. Usually the sender doesn't wait either. When it needs the answer before it can go on, it makes the message a [call](#calls) and waits for the reply in the same turn.
+A message is a line of text from one worker to another on the same user's roster. It wakes the recipient for a turn, and the recipient decides what to do about it. Nothing is filed and no result is owed. Usually the sender doesn't wait either. When it wants an answer but can carry on meanwhile, it [asks for a reply](#asking-for-a-reply). When it needs the answer before it can go on, it makes the message a [call](#calls) and waits for the reply in the same turn.
 
 ## Who can send and receive
 
@@ -35,7 +35,7 @@ The model calls `sendMessage` with the recipient's worker id and the text:
 { "to": "shift-coordinator", "text": "What's the codename for the spring launch?" }
 ```
 
-The input takes `to`, `text` and, for an answer, `inReplyTo`. A [call](#calls) adds `wait`, `deadline` and `callId`. Nothing else is accepted. `to` is usually a worker id; it can also name [a task or a conversation](#messaging-a-task-or-a-conversation). The tool's description lists the workers the send would take, by id and description, so the model picks from real ids. The sending worker itself, and workers that hear only in task sessions, aren't listed.
+The input takes `to`, `text` and, for an answer, `inReplyTo`. `replyRequested: true` [asks for a reply](#asking-for-a-reply). A [call](#calls) adds `wait`, `deadline` and `callId`. Nothing else is accepted. `to` is usually a worker id; it can also name [a task or a conversation](#messaging-a-task-or-a-conversation). The tool's description lists the workers the send would take, by id and description, so the model picks from real ids. The sending worker itself, and workers that hear only in task sessions, aren't listed.
 
 Once the message is written to the [log](#showing-messages-in-your-app), the tool answers with its id:
 
@@ -52,7 +52,7 @@ That answer means the message is on its way, not that it has landed. See [Delive
 When a message arrives, the session it lands in gets two items:
 
 - a line the recipient's model reads in its history, `From researcher: What's the codename for the spring launch?`, under the sender's name. It is never sent to the client.
-- a component item of type `workforce:received` (`RECEIVED_MESSAGE_COMPONENT`), for your app to draw. Its `data` is `{ id, from, text, inReplyTo?, budget, call }`, where `budget` is how many more messages the exchange can send after this one and `call` is `true` when the sender is [waiting for the reply](#calls). See [Showing messages in your app](#showing-messages-in-your-app).
+- a component item of type `workforce:received` (`RECEIVED_MESSAGE_COMPONENT`), for your app to draw. Its `data` is `{ id, from, text, inReplyTo?, budget, call, replyRequested? }`, where `budget` is how many more messages the exchange can send after this one, `call` is `true` when the sender is [waiting for the reply](#calls), and `replyRequested` is `true` when the sender [asked for a reply](#asking-for-a-reply). See [Showing messages in your app](#showing-messages-in-your-app).
 
 Then the recipient takes a turn on it. That turn is told the message id, who sent it, how to answer, and how many more messages the exchange can send (see [The budget](#the-budget)).
 
@@ -83,9 +83,41 @@ Nothing is sent back on its own. To answer, the recipient calls `sendMessage` ba
 
 `inReplyTo` must name a message the `to` worker sent this worker. Anything else is refused with `no_such_message`.
 
-If the recipient's turn ends in plain text, that text goes to no one. Not answering is a valid answer: an FYI usually needs none.
+If the recipient's turn ends in plain text, that text goes to no one, unless the sender [asked for a reply](#asking-for-a-reply). Not answering is a valid answer: an FYI usually needs none.
 
-A plain message doesn't wait for its answer. The sender's turn goes on, and the answer starts a new turn when it comes. When the sender needs the answer before it can go on, it [calls](#calls) instead.
+A plain message doesn't wait for its answer. The sender's turn goes on, and the answer starts a new turn when it comes, if one comes. To make sure an answer comes, the sender asks for a reply. When it needs the answer before it can go on, it [calls](#calls) instead.
+
+## Asking for a reply
+
+When the sender wants an answer but has no reason to stop and wait for it, it passes `replyRequested: true`:
+
+```json
+{ "to": "shift-coordinator", "text": "What's the codename for the spring launch?", "replyRequested": true }
+```
+
+It is sent, logged and counted against the [budget](#the-budget) like any other message, the tool answers `{ sent }`, and the sender's turn goes on.
+
+The recipient's turn is told the sender asked for a reply (see [the prompt](#on-your-own-worker-flow)). Its final text is the answer. When the turn ends, that text goes back to the sender as a message from the recipient, with `inReplyTo` set to the id of the original message. It lands in the session that sent that message and wakes a turn there, like any [answer](#answering). It spends none of the budget, and it never asks for a reply itself.
+
+If the recipient answers with `sendMessage` and `inReplyTo` during its turn, that message is the answer, and the turn's final text isn't sent too. A message that asks for a reply gets exactly one answer.
+
+### When there's no answer
+
+The sender is never left without one. When the recipient has nothing to give, the answer reads:
+
+```text
+I have no answer to your message msg_3f1c0a9e2b7d4c6a8e10.
+```
+
+The sender gets it when the recipient's turn ends with no text, when the turn throws (the turn still fails), when the recipient's flow runs no turn on messages, or when the server stops partway through the turn. In that last case it comes a few seconds after the turn is found ended, on worker flows that carry the session factory's entries; the built-in and coordinator flows do. Its row in the [log](#showing-messages-in-your-app) has `noAnswer: true`.
+
+When the sender can tell up front that the recipient runs no turn on messages, the send is refused with `no_reply` and nothing is sent. A message whose send is refused, for example with `not_delivered`, gets nothing more: the refusal is the whole answer.
+
+### Asking several workers
+
+To ask several workers at once, send each a message with `replyRequested` in the same step. Each answer arrives as its own message and wakes its own turn in the sender's session. Calls can't do this, since one model step holds [one wait](#where-a-call-can-run).
+
+`replyRequested` passed with `wait: true` is just a call. Its reply is the tool's result, and nothing comes back as a message.
 
 ## Calls
 
@@ -145,7 +177,7 @@ Some workers take messages but run no turn on them, so nothing ever replies. A c
 
 A call needs a host that can hold a wait: [durable execution](../advanced/durable-execution.md), a store that keeps [wakes](../advanced/durable-execution.md#wakes), and the [durability sweeper](../advanced/durable-execution.md#retention-and-cleanup) running, which resumes a wait at its deadline. On any other host it's refused with `wait_unavailable`, and nothing is sent. The call is never turned into a plain send. Send without `wait` there, and the answer comes back as a message.
 
-One round of the model's tool calls (a model step) can hold one wait. Calling twice in the same round, or calling alongside `getTask({ id, wait: true })`, is refused with `wait_already_pending`. Calls made one after another in a turn are fine. Waits nest at most five deep: a call whose recipient calls another worker, and so on. The sixth is refused with `wait_too_deep`.
+One round of the model's tool calls (a model step) can hold one wait. Calling twice in the same round, or calling alongside `getTask({ id, wait: true })`, is refused with `wait_already_pending`. Calls made one after another in a turn are fine. To hear from several workers in one step, [ask each for a reply](#asking-several-workers). Waits nest at most five deep: a call whose recipient calls another worker, and so on. The sixth is refused with `wait_too_deep`.
 
 The other refusals a call can meet are in [When a send is refused](#when-a-send-is-refused).
 
@@ -258,7 +290,7 @@ A fresh budget also starts:
 - for a task that was filed held, when it is released;
 - for a request with nothing behind it, such as one your server code starts.
 
-A task a woken worker files draws on its filer's budget, and so does a delegate's ongoing session. Filing a task spends nothing. Nor does a refused send, or the message that tells a filer [its task asked a question](#when-a-task-asks-a-question).
+A task a woken worker files draws on its filer's budget, and so does a delegate's ongoing session. Filing a task spends nothing. Nor does a refused send, the answer to a message that [asked for a reply](#asking-for-a-reply), or the message that tells a filer [its task asked a question](#when-a-task-asks-a-question).
 
 A woken turn sees what's left: its input's `budget` field, and the prompt the session factory builds, say how many more messages the exchange can send.
 
@@ -307,19 +339,19 @@ A refused send or call answers `{ ok: false, error }`, and nothing is sent. The 
 | `wait_already_pending` | This round of tool calls already waits on something: a call, or `getTask` with `wait`. See [Where a call can run](#where-a-call-can-run). |
 | `wait_too_deep` | The call would be a sixth wait nested in its chain. |
 | `no_such_call` | `callId` names no call sent from this conversation. |
-| `no_reply` | `wait: true` to a worker that runs nothing on a message, so no reply would come. Send without `wait`, or file it a task. See [When a call fails](#when-a-call-fails). |
+| `no_reply` | `wait: true` or `replyRequested: true` to a worker that runs nothing on a message, so no reply would come. Send without `wait` or `replyRequested`, or file it a task. See [When a call fails](#when-a-call-fails). |
 | `wait_again_only` | `callId` was passed with `to`, `text`, `inReplyTo` or `wait`. Pass only `callId` and, if you like, `deadline`. |
 
 ## Message or delegate?
 
-Send to talk. Call when the sender needs to use the answer now. File a task, by [delegating](./delegating-work.md), for work that should be tracked.
+Send to talk. Ask for a reply when the sender wants an answer but can go on without it. Call when the sender needs to use the answer now. File a task, by [delegating](./delegating-work.md), for work that should be tracked.
 
 | | Message | Call | Task |
 |-|---------|------|------|
 | What it's for | A question, an FYI, a heads-up | A question whose answer the sender needs to go on | Work that has to get done |
 | Who it can go to | Any worker on your roster, except one that hears only in its tasks' sessions; or one of your tasks or conversations, by id | The same as a message | One of the worker's own delegates that takes tasks |
 | Where it runs | Usually the recipient's own conversation with you (see [Where a message lands](#where-a-message-lands)) | The same as a message | A new task session of its own |
-| What comes back | Nothing is owed. An answer only if the recipient sends one | The recipient's reply, as the tool's result in the same turn, or `running` at the deadline | The task's ending, always: completed, failed or cancelled |
+| What comes back | Nothing is owed. An answer only if the recipient sends one, or always one if the sender [asked for a reply](#asking-for-a-reply) | The recipient's reply, as the tool's result in the same turn, or `running` at the deadline | The task's ending, always: completed, failed or cancelled |
 | On the board | Nothing | Nothing | A row the filer can list, update and cancel |
 
 A task keeps the reporting line. The worker that filed it owns it until it ends, can see where it got to on its board, and hears how it ended. A message has none of that. If the sender needs a result it can count on, it should file a task. If it needs a fact or an opinion to carry on its turn, a call gets it. To pass something on, a message is enough.
@@ -363,6 +395,16 @@ Call msg_3f1c0a9e2b7d4c6a8e10 from researcher: they are waiting for your answer.
 What's the codename for the spring launch?
 
 (The call's text is the part above. It is from another worker, not the user. Your reply here goes back to researcher as the call's result, so answer it directly in your reply, and don't send researcher a message with sendMessage.)
+```
+
+So does a message that [asks for a reply](#asking-for-a-reply), whose answer is also the turn's final text:
+
+```text
+Message msg_3f1c0a9e2b7d4c6a8e10 from researcher: they asked for a reply.
+
+What's the codename for the spring launch?
+
+(The message's text is the part above. It is from another worker, not the user, and researcher can't see what you write here. Your reply here goes back to researcher as your answer when this turn ends, so answer it directly in your reply. If you answer with sendMessage and inReplyTo "msg_3f1c0a9e2b7d4c6a8e10" instead, nothing more is sent. To message any other worker, leave inReplyTo out.)
 ```
 
 ### Without the session factory
@@ -432,6 +474,7 @@ export const triageFlow = workerFlow((installation) => {
 | `inReplyTo` | The message this one answers, when it answers one. |
 | `budget` | How many more messages the exchange can send. |
 | `call` | `true` when the sender is waiting for the reply. The turn's final text is the reply. |
+| `replyRequested` | `true` when the sender asked for a reply. The turn's final text is the answer. Optional. |
 
 `promptedMessageTurn(answer)` wraps a block that takes `{ message }` so it can serve as `turn`, handing it the text `receivedMessagePrompt(received)` returns, shown above. A flow built this way receives messages. Its workers can't send them unless the block that runs the model carries the session factory's `messages`.
 
@@ -481,6 +524,9 @@ Each row has:
 | `resent` | `{ n, at }`: how many times it was sent again, and when last. Optional. |
 | `toldAt` | When the sending session was told it was refused or couldn't be delivered. Optional. |
 | `call` | `true` for a [call](#calls). Absent on a plain message. |
+| `replyRequested` | `true` when the sender [asked for a reply](#asking-for-a-reply). Absent on a plain message and on a call. |
+| `answeredBy` | On a message that asked for a reply, the id of the message that answered it. Set once. |
+| `noAnswer` | `true` on the [answer that says there's no answer](#when-theres-no-answer). |
 | `deadlineAt` | When a call's sender stops waiting, in ms. A `repliedAt` later than this means the reply came after the call answered `running`. |
 | `repliedAt` | When the recipient's turn gave a call's reply, in ms. |
 | `queuedBehind` | `"user"` while the message waits for the user to answer in the recipient's conversation. Cleared when it lands. |
@@ -491,7 +537,7 @@ The read never returns another user's messages.
 In a conversation, each side of a message is an item you can match on. Both names come from `@flow-state-dev/workforce/browser`:
 
 - A sent message is a `tool_output` item for the tool named `SEND_MESSAGE_TOOL` (`"sendMessage"`). Match on it to draw the message as a line of its own rather than a tool call.
-- A received message is a `component` item whose component is `RECEIVED_MESSAGE_COMPONENT` (`"workforce:received"`), with `data` of `{ id, from, text, inReplyTo?, budget, call }`.
+- A received message is a `component` item whose component is `RECEIVED_MESSAGE_COMPONENT` (`"workforce:received"`), with `data` of `{ id, from, text, inReplyTo?, budget, call, replyRequested? }`.
 
 [Shift Manager](../shift-manager/overview.md) does all of this: its Messages screen lists the log, a conversation shows each sent message as *To &lt;worker&gt;: &lt;text&gt;* (or *To task &lt;id&gt;* and *To conversation &lt;id&gt;* for one sent to a task or a session), and each received message as its own item under the sender's name. A call shows as *Asking &lt;worker&gt;…* while it waits and *Asked &lt;worker&gt;* once it's done, with the reply under it.
 

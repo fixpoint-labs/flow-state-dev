@@ -24,6 +24,7 @@ import type { HarnessBlock } from "@flow-state-dev/core/types";
 import { createFlowState, createInMemoryStores, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { cursorAgent } from "@flow-state-dev/cursor";
 import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder } from "@flow-state-dev/harness-manager";
+import { taskSettledEntry } from "@flow-state-dev/orchestration";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import {
   defineTaskCollection,
@@ -232,6 +233,15 @@ await runGoal(async (failures) => {
       kind: "steer-goal",
       actions: { seed: { block: seed }, drain: { block: board.drain }, steer: { block: steer } },
       task: { actions: { work: { block: manager } } },
+      internal: {
+        actions: {
+          // A board that hands rows out sends each ending here; the leg reads the
+          // settled row from the board, so the notice carries nothing it needs.
+          onTaskSettled: taskSettledEntry({
+            block: handler({ name: "goal-task-settled", inputSchema: z.unknown(), outputSchema: z.object({}), execute: () => ({}) }),
+          }),
+        },
+      },
     } as never)({ id: "steer-goal" } as never);
     const state = createFlowState({
       flows: { "steer-goal": flow },
