@@ -1,7 +1,7 @@
 /**
  * The lab's server, put together from package pieces: the workers in
  * `workforce/`, the built-in agent flow with memory composed in, the lab's one
- * coding flow, a projects flow, and a store. `fsdev.config.mts` calls
+ * coding flow, and a store. `fsdev.config.mts` calls
  * {@link openTeammates} and default-exports the `FlowState` it returns.
  *
  * - **lead, researcher and writer** run on the built-in `agent` flow, so each
@@ -10,9 +10,9 @@
  *   A history summary keeps what was said before the history window: its
  *   capability goes in `uses` and its fold runs as `beforeAnswer`, so a turn
  *   is summarized before it leaves the window the worker reads word for word.
- *   The flow's tool catalog holds Workforce's project tools, web search and
- *   fetch, and `uses` adds reading a project's source; each worker's
- *   `tools:` line picks its own from them.
+ *   The flow's tool catalog holds web search and fetch, and `uses` adds
+ *   reading the working folder's source; each worker's `tools:` line picks its
+ *   own from them.
  * - **coder** runs on the lab's coding flow (`src/flows/coder.ts`), which
  *   takes the tasks lead files and runs each through a harness, Claude Code
  *   or Codex, in a worktree of the working folder.
@@ -107,7 +107,7 @@ const HARNESSES: Record<string, Harness> = {
  *
  * @throws When `workdir` is unset, missing, or not a git checkout.
  */
-function workingFolder(workdir: string | undefined): string {
+export function workingFolder(workdir: string | undefined): string {
   if (workdir === undefined || workdir.trim() === "") {
     throw new Error("teammates: TEAMMATES_WORKDIR is not set. Set it to the git checkout the team works in.");
   }

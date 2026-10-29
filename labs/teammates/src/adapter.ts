@@ -98,7 +98,6 @@ export type ConversationEntry =
   /** A task it filed ended, as a line under the name of the worker that ran it. */
   | { kind: "result"; id: string; taskId: string; from: string; text: string; failed?: boolean }
 
-
 /** What a conversation shows now. */
 export interface ConversationView {
   entries: ConversationEntry[];
