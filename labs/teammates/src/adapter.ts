@@ -18,6 +18,7 @@
  * | `fire`              | the workforce client's `fire`, on one of the user's own workers               |
  * | `watchTasks`        | the board's rows, as the conversation's stream carries each one (`task-change`) |
  * | `watchRun`          | the items of the session the task's row names as its run                     |
+ * | `watchExchange`     | the receiving worker's conversation: the turn that read one message          |
  *
  * A received message is drawn from its own item (`workforce:received`), which
  * carries its message id, so the pending line joins the log to the
@@ -40,6 +41,7 @@ import {
 } from "@flow-state-dev/workforce/browser";
 import { CODER_FLOW } from "./lib/coder-flow";
 import { sessionFeeds, type SessionFeed } from "./lib/session-feed";
+import { stableList } from "./lib/stable";
 
 /** Stops a watch. */
 export type Unsubscribe = () => void;
@@ -56,6 +58,10 @@ export interface WorkerRow {
   takesTasks?: boolean;
   /** The user hired it: they can change its instructions or fire it. The files' workers can't be. */
   own?: boolean;
+  /** Its file's `icon:`, from the roster row's shown settings. */
+  icon?: string;
+  /** Its file's `color:`, a name from the lab's palette, from the roster row's shown settings. */
+  color?: string;
 }
 
 /** A teammate to hire from the page. */
@@ -80,22 +86,32 @@ export interface BoardTask {
   runSessionId?: string;
 }
 
-/** One step of a task's run, as the harness reported it. */
-export interface RunStep {
+/**
+ * One step of a session as a popup draws it: a line given to the worker (a
+ * task's brief, or a message), what the worker wrote, a message it sent, a
+ * tool it ran, or the harness a coding run went through.
+ */
+export interface SessionStep {
   id: string;
+  kind: "given" | "said" | "sent" | "tool" | "harness";
   text: string;
+  /** For `sent`, the worker it went to. */
+  to?: string;
+  /** For `said`, while it is still being written. */
+  streaming?: boolean;
 }
 
 /** One entry of a worker's conversation, in the order it happened. */
 export type ConversationEntry =
   | { kind: "user"; id: string; text: string; queued?: boolean }
-  | { kind: "assistant"; id: string; text: string }
+  /** `streaming` while the answer is still being written. */
+  | { kind: "assistant"; id: string; text: string; streaming?: boolean }
   /** The worker messaged another worker (`sendMessage`). */
   | { kind: "sent"; id: string; messageId: string; to: string; text: string }
   /** A message another worker sent, as the `receive` turn that read it. */
   | { kind: "received"; id: string; messageId: string; from: string; text: string; inReplyTo?: string }
-  /** The worker filed a task; the card reads the board's row by its id. */
-  | { kind: "task"; id: string; taskId: string }
+  /** The worker filed a task; the card reads the board's row by its id, and draws `title` until the row arrives. */
+  | { kind: "task"; id: string; taskId: string; title: string; to: string }
   /** A task it filed ended, as a line under the name of the worker that ran it. */
   | { kind: "result"; id: string; taskId: string; from: string; text: string; failed?: boolean }
   /** The worker waits for your yes (`waitForUser` with an approval); `resolution` once answered. */
@@ -122,6 +138,8 @@ export interface TalkRow {
   undelivered?: boolean;
   /** The sender asked for a reply and went on: an answer comes back as a message. */
   replyRequested?: boolean;
+  /** A call the recipient answered: its reply was the call's result, never a message of its own. */
+  callAnswered?: boolean;
 }
 
 /** Whether a worker is busy, read from its conversation's requests. */
@@ -163,7 +181,13 @@ export interface LabAdapter {
   /** The tasks a conversation filed, oldest first. */
   watchTasks(sessionId: string, onChange: (tasks: BoardTask[]) => void): Unsubscribe;
   /** A task's run, by the session its row names, read only: the worker that runs it takes no messages. */
-  watchRun(runSessionId: string, onChange: (steps: RunStep[]) => void): Unsubscribe;
+  watchRun(runSessionId: string, onChange: (steps: SessionStep[]) => void): Unsubscribe;
+  /**
+   * What `worker` did with one message it was sent: the turn in its own
+   * conversation that read it, from the message to the turn's end, live.
+   * Empty until the message is read.
+   */
+  watchExchange(worker: string, messageId: string, onChange: (steps: SessionStep[]) => void): Unsubscribe;
 }
 
 /** How often the reads with no stream are read again. */
@@ -300,7 +324,7 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>):
       entries.push({ kind: "result", id: item.id, taskId, from: item.agentName, text: task?.result ?? textOf(item), ...(failed ? { failed: true } : {}) });
     } else if (item.type === "message" && item.role === "assistant") {
       const text = textOf(item);
-      if (text.trim() !== "") entries.push({ kind: "assistant", id: item.id, text });
+      if (text.trim() !== "") entries.push({ kind: "assistant", id: item.id, text, ...(item.status === "in_progress" ? { streaming: true } : {}) });
     } else if (item.type === "tool_output" && item.toolCall?.name === SEND_MESSAGE_TOOL) {
       const args = parseArgs(item);
       const messageId = item.output?.sent ?? item.output?.callId;
@@ -308,7 +332,8 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>):
         entries.push({ kind: "sent", id: item.id, messageId, to: args.to, text: String(args.text ?? "") });
       }
     } else if (item.type === "tool_output" && item.toolCall?.name === CREATE_TASK && item.output?.ok === true) {
-      entries.push({ kind: "task", id: item.id, taskId: item.output.taskId });
+      const args = parseArgs(item);
+      entries.push({ kind: "task", id: item.id, taskId: item.output.taskId, title: String(args.title ?? args.goal ?? ""), to: String(args.assignee ?? "") });
     } else if (item.type === "suspension" && item.reason === "user_approval") {
       entries.push({ kind: "approval", id: item.id, requestId: item.requestId, suspensionId: item.suspensionId, text: item.message });
     } else if (item.type === "suspension_resume") {
@@ -322,6 +347,66 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>):
   return entries;
 }
 
+/**
+ * Whether the worker is answering, from the conversation's items and the
+ * requests the server lists as in progress. The list is read on a timer, so
+ * it trails the items: an item of the newest request still being written is
+ * an answer under way before the list says so, unless the requests already
+ * show that request ended (`ended`): a failed or aborted turn leaves its
+ * half-written item so for good. A finished answer does not end its request
+ * here, since one request can answer more than once (a worker that drains its
+ * own plan answers again); only the list does.
+ */
+export function answeringOf(items: readonly Item[], inProgress: readonly string[], ended: readonly string[] = []): boolean {
+  // Only the newest request, or one the list names: an item a crashed turn left half-written stays so for good.
+  const newest = items[items.length - 1]?.requestId;
+  const live = (requestId: string) => inProgress.includes(requestId) || (requestId === newest && !ended.includes(requestId));
+  return inProgress.length > 0 || items.some((i) => i.status === "in_progress" && live(i.requestId));
+}
+
+/** Who a `sendMessage` output went to, when it sent one: a wait-again or a refused call sent nothing. */
+function sentTo(item: Item): string | undefined {
+  const to = parseArgs(item).to;
+  const messageId = item.output?.sent ?? item.output?.callId;
+  return typeof messageId === "string" && typeof to === "string" ? to : undefined;
+}
+
+/** A session's items as a popup's steps: what it was given, what it wrote, and the tools it ran. */
+export function toSteps(items: readonly Item[]): SessionStep[] {
+  const steps: SessionStep[] = [];
+  for (const item of items) {
+    if (item.type === "message" && textOf(item).trim() !== "") {
+      steps.push({ id: item.id, kind: item.role === "user" ? "given" : "said", text: textOf(item), ...(item.status === "in_progress" ? { streaming: true } : {}) });
+    } else if (item.type === "component" && item.component === RECEIVED_MESSAGE_COMPONENT && typeof item.data?.text === "string") {
+      steps.push({ id: item.id, kind: "given", text: item.data.text });
+    } else if (item.type === "tool_output" && item.toolCall?.name === SEND_MESSAGE_TOOL && sentTo(item) !== undefined) {
+      steps.push({ id: item.id, kind: "sent", text: String(parseArgs(item).text ?? ""), to: sentTo(item) ?? "" });
+    } else if (item.type === "tool_output" && typeof item.toolCall?.name === "string") {
+      steps.push({ id: item.id, kind: "tool", text: item.toolCall.name });
+    }
+  }
+  return steps;
+}
+
+/** The session a message was delivered to, from the message log; undefined while the log doesn't hold it. */
+export function destinationOf(rows: readonly unknown[], messageId: string): string | undefined {
+  for (const row of rows) {
+    const parsed = workerMessageRowSchema.safeParse(row);
+    if (parsed.success && parsed.data.id === messageId) return parsed.data.toSession;
+  }
+  return undefined;
+}
+
+/**
+ * The turn of a conversation that read message `messageId`, as steps: the
+ * message, then all that turn did. The last receipt: a taker that died is
+ * taken over, and the turn that took over is the one that answered.
+ */
+export function exchangeOf(items: readonly Item[], messageId: string): SessionStep[] {
+  const read = [...items].reverse().find((i) => i.type === "component" && i.component === RECEIVED_MESSAGE_COMPONENT && i.data?.id === messageId);
+  return read === undefined ? [] : toSteps(items.filter((i) => i.requestId === read.requestId));
+}
+
 /** A roster entry as the screen lists it. */
 function toWorkerRow(w: RosterEntry): WorkerRow {
   return {
@@ -330,6 +415,8 @@ function toWorkerRow(w: RosterEntry): WorkerRow {
     role: w.description ?? "",
     ...(w.flow === CODER_FLOW ? { takesTasks: true } : {}),
     ...(w.standard ? {} : { own: true }),
+    ...(typeof w.settings?.icon === "string" ? { icon: w.settings.icon } : {}),
+    ...(typeof w.settings?.color === "string" ? { color: w.settings.color } : {}),
   };
 }
 
@@ -397,16 +484,31 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     },
     watchConversation(sessionId, onChange) {
       let entries: ConversationEntry[] = [];
-      let running = false;
-      const emit = () => onChange({ entries, running });
-      const stopFeed = watchFeed(sessionId, (items) => toEntries(items, workerIds), (next) => {
+      let items: Item[] = [];
+      let inProgress: string[] = [];
+      let ended: string[] = [];
+      let shown: ConversationView | undefined;
+      // Unchanged entries keep their objects, so a streamed chunk redraws only the growing one.
+      const reuse = stableList<ConversationEntry>((next) => {
         entries = next;
+      });
+      const emit = () => {
+        const running = answeringOf(items, inProgress, ended);
+        if (shown?.entries === entries && shown.running === running) return;
+        shown = { entries, running };
+        onChange(shown);
+      };
+      const stopFeed = watchFeed(sessionId, (next) => next, (next) => {
+        items = next;
+        reuse(toEntries(items, workerIds));
         emit();
       });
       const stopPoll = poll(
-        () => client.sessions.requests(sessionId, { status: "in_progress" }),
+        () => client.sessions.requests(sessionId, { limit: 20 }),
         (requests) => {
-          running = activityOf(requests).running;
+          const answering = requests.filter((r) => !QUIET_ACTIONS.has(r.actionName));
+          inProgress = answering.filter((r) => r.status === "in_progress").map((r) => r.id);
+          ended = requests.filter((r) => r.status !== "in_progress").map((r) => r.id);
           emit();
         },
       );
@@ -433,6 +535,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
               at: m.at,
               ...(m.inReplyTo === undefined ? {} : { inReplyTo: m.inReplyTo }),
               ...(m.replyRequested === true ? { replyRequested: true } : {}),
+              ...(m.call === true && m.repliedAt !== undefined ? { callAnswered: true } : {}),
               ...(m.status === "refused" || m.status === "undeliverable" ? { undelivered: true } : {}),
             }));
         },
@@ -502,19 +605,31 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       conversations.delete(worker);
     },
     watchTasks(sessionId, onChange) {
-      return watchFeed(sessionId, (items) => [...boardRows(items).values()].map(toBoardTask), onChange);
+      return watchFeed(sessionId, (items) => [...boardRows(items).values()].map(toBoardTask), stableList(onChange));
     },
     watchRun(runSessionId, onChange) {
       return watchFeed(runSessionId, (items) => {
-        const steps: RunStep[] = [];
         const block = items.find((i) => HARNESS_LABEL[i.provenance?.blockName ?? ""] !== undefined)?.provenance?.blockName;
-        if (block !== undefined) steps.push({ id: "harness", text: `on ${HARNESS_LABEL[block]}` });
-        for (const item of items) {
-          if (item.type === "message" && item.role === "assistant" && textOf(item).trim() !== "") steps.push({ id: item.id, text: textOf(item) });
-          else if (item.type === "tool_output" && typeof item.toolCall?.name === "string") steps.push({ id: item.id, text: item.toolCall.name });
-        }
-        return steps;
-      }, onChange);
+        return [...(block === undefined ? [] : [{ id: "harness", kind: "harness" as const, text: `on ${HARNESS_LABEL[block]}` }]), ...toSteps(items)];
+      }, stableList(onChange));
+    },
+    watchExchange(worker, messageId, onChange) {
+      let stop: Unsubscribe | undefined;
+      let live = true;
+      void (async () => {
+        // A reply lands where the message it answers was sent from, a task's session included: the log row says where.
+        // A failed log read falls back to the recipient's conversation rather than leaving the popup unwatched.
+        const rows = await anyConversation()
+          .then(({ sessionId: logSession }) => readEveryCollectionPage(client.resources, logSession, WORKER_MESSAGES_RESOURCE))
+          .catch(() => []);
+        const sessionId = destinationOf(rows.map((row) => row.clientData), messageId) ?? (await conversationOf(worker)).sessionId;
+        if (!live) return;
+        stop = watchFeed(sessionId, (items) => exchangeOf(items, messageId), stableList(onChange));
+      })();
+      return () => {
+        live = false;
+        stop?.();
+      };
     },
   };
 }

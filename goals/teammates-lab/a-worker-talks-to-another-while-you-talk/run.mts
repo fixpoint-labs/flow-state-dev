@@ -10,7 +10,7 @@
  * screen as a person would. Graded, per step:
  *
  *   1  lead answers your first line in its conversation.
- *   2  a card "To researcher" in lead's conversation, a line "From lead" in
+ *   2  a line "Messaged researcher" in lead's conversation, a line "From lead" in
  *      researcher's, the exchange under "with researcher" in the Talk panel,
  *      and a delivered row lead → researcher in the message log.
  *   3  your second line goes in before researcher's reply has landed; the reply
@@ -333,7 +333,7 @@ async function stepFour(
 
   // Asked back, from what lead kept: a fresh message to researcher would answer the date without it.
   const asked = (await log()).filter((r) => r.from === fixture.lead && r.to === fixture.researcher).length;
-  const card = conversation(page).getByRole("button", { name: new RegExp(`^To ${researcher}: `) });
+  const card = conversation(page).getByRole("button", { name: new RegExp(`^Messaged ${researcher}: `) });
   const cards = await card.count();
   if (!(await turnWith(page, lead, fixture.recall))) {
     fail("4", `lead didn't answer the question within ${fixture.answerWithinMs / 1000}s`);
@@ -421,7 +421,7 @@ await runGoal(async (failures, tell_) => {
     // Step 3's second line goes in as soon as lead has messaged researcher, before the reply can land.
     let secondSentAt: number | undefined;
     let replyBeforeSecond = false;
-    const card = conversation(page).getByRole("button", { name: new RegExp(`^To ${researcher}: `) });
+    const card = conversation(page).getByRole("button", { name: new RegExp(`^Messaged ${researcher}: `) });
     for (const until = sentAsk + fixture.answerWithinMs; Date.now() < until; ) {
       if ((await card.count()) > 0) {
         replyBeforeSecond = (await conversation(page).getByRole("region", { name: `From ${researcher}` }).count()) > 0;
@@ -450,7 +450,7 @@ await runGoal(async (failures, tell_) => {
 
     // ---- 2 · lead messages researcher ------------------------------------------
     const cards = await card.count();
-    if (cards === 0) fail("2", `no card "To ${researcher}" in lead's conversation`);
+    if (cards === 0) fail("2", `no line "Messaged ${researcher}" in lead's conversation`);
     const talk = page.getByRole("complementary", { name: "Talk" });
     if ((await talk.count()) === 0) await conversation(page).getByRole("button", { name: "Talk" }).click();
     // A panel just opened reads the log first: wait for it rather than count at once.
@@ -528,16 +528,16 @@ await runGoal(async (failures, tell_) => {
     const said = (await page.locator("body").innerText()).match(/[^\n]*\bprojects?\b[^\n]*/i);
     if (said !== null) fail("5", `the page mentions a project: "${said[0].slice(0, 200)}"`);
     if (run?.status === "done") {
-      // The run, opened on its card: it went through Claude Code.
-      const runCard = tasks.nth(earlier + filed.indexOf(run));
-      await runCard.getByRole("button", { name: /^Coding task: / }).click();
-      const runList = runCard.getByRole("list", { name: /^Run of / });
+      // The run, opened from its line in a popup: it went through Claude Code.
+      await tasks.nth(earlier + filed.indexOf(run)).click();
+      const popup = page.getByRole("dialog", { name: /^Coding task: / });
       let runText: string | null = "";
-      // The run's steps are read once the card opens; give them time to arrive.
+      // The run's steps are read once the popup opens; give them time to arrive.
       for (const until = Date.now() + 30_000; Date.now() < until && !/Claude Code/.test(runText ?? ""); await sleep(500)) {
-        runText = (await runList.count()) > 0 ? await runList.textContent() : "";
+        runText = (await popup.count()) > 0 ? await popup.textContent() : "";
       }
       if (!/Claude Code/.test(runText ?? "")) fail("5", `the run's steps don't show it ran on Claude Code: "${(runText ?? "").slice(0, 200)}"`);
+      await page.keyboard.press("Escape");
 
       const result = await readUntil(page, (es) => es.some((e, i) => i > fixAt(es) && e.kind === "result" && e.label === "From the coding task"), 60_000);
       const resultAt = result.entries.map((e) => e.kind === "result" && e.label === "From the coding task").lastIndexOf(true);

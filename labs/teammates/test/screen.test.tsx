@@ -11,6 +11,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/App";
+import { TEAMMATE_COLORS } from "../src/lib/looks";
 import { createFixtureLab } from "./fake-lab";
 
 // The script runs at a twentieth of real time.
@@ -70,25 +71,60 @@ describe("the teammates screen", () => {
     render(<App adapter={fast()} />);
     await tell("Chief of Staff", "Ask researcher for our launch date, and help me outline the post.");
 
-    // Step 2: a one-line card in Chief of Staff's conversation that opens to its full text.
-    const card = await within(conversation()).findByRole("button", { name: "To researcher: What's our launch date?" });
-    expect(card.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(card);
-    expect(card.getAttribute("aria-expanded")).toBe("true");
+    // Step 2: one line in Chief of Staff's conversation, "Messaged researcher", that opens the exchange.
+    const line = await within(conversation()).findByRole("button", { name: "Messaged researcher: What's our launch date?" });
+    expect(line.getAttribute("aria-expanded")).toBeNull();
     await waitFor(() => expect(within(talk()).getByRole("region", { name: "with researcher" })).toBeTruthy());
 
     // While Chief of Staff waits, its row says so.
-    await waitFor(() => expect(workerRow("Chief of Staff").querySelector("[data-status]")?.textContent).toBe("waiting on researcher"));
+    await waitFor(() => expect(workerRow("Chief of Staff").querySelector("[data-status]")?.textContent).toBe("Messaging researcher"));
 
     // researcher sees the message as a line from Chief of Staff.
     fireEvent.click(workerRow("researcher"));
     expect(await within(conversation()).findByRole("region", { name: "From Chief of Staff" })).toBeTruthy();
   });
 
+  it("opens a message line to the exchange in a popup that fills in live, and closes it with Esc or a click outside", async () => {
+    render(<App adapter={fast()} />);
+    await tell("Chief of Staff", "Ask researcher for our launch date, and help me outline the post.");
+    const line = await within(conversation()).findByRole("button", { name: /^Messaged researcher: / });
+    expect(line.querySelector("[data-sent-status]")?.textContent).toBe("working");
+
+    // Opened from the keyboard: the line has focus when it opens.
+    line.focus();
+    fireEvent.click(line);
+    const popup = screen.getByRole("dialog", { name: "Messaged researcher" });
+    // Focus moves into the popup; the thread under it stays where it was.
+    expect(popup.contains(document.activeElement)).toBe(true);
+    expect(conversation().contains(line)).toBe(true);
+    // Live: researcher's reading of the message, then the reply it sent, arrive while the popup is open.
+    await waitFor(() => expect(popup.querySelector('[data-step="given"]')?.textContent).toMatch(/What's our launch date\?/), { timeout: 2000 });
+    await waitFor(() => expect(popup.querySelector('[data-step="sent"]')?.textContent).toMatch(/Nov 12/), { timeout: 2000 });
+    await waitFor(() => expect(popup.querySelector("[data-popup-status]")?.textContent).toBe("replied"));
+    expect(line.querySelector("[data-sent-status]")?.textContent).toBe("replied");
+
+    // Modal: Tab can't leave it, and focus that strayed behind it comes back in.
+    const close = within(popup).getByRole("button", { name: "Close" });
+    close.focus();
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(popup.contains(document.activeElement)).toBe(true);
+    line.focus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(popup.contains(document.activeElement)).toBe(true);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(line);
+
+    fireEvent.click(line);
+    fireEvent.click(document.querySelector("[data-popup-backdrop]")!);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("holds researcher's reply as pending while Chief of Staff answers you, and lands it after that answer", async () => {
     render(<App adapter={fast()} />);
     await tell("Chief of Staff", "Ask researcher for our launch date, and help me outline the post.");
-    await within(conversation()).findByRole("button", { name: /To researcher/ });
+    await within(conversation()).findByRole("button", { name: /^Messaged researcher/ });
 
     // Step 3: a second line before researcher answers. Chief of Staff takes it, and the reply arrives mid-turn.
     await tell("Chief of Staff", "Make section 2 about pricing.");
@@ -145,21 +181,28 @@ describe("the teammates screen", () => {
     expect(document.body.textContent).not.toMatch(/project/i);
   });
 
-  it("shows a coding task as a background item that opens to its run, read only, with no composer", async () => {
+  it("opens a coding task's run in a popup, read only, from its line in the thread or its background item", async () => {
     render(<App adapter={fast()} />);
     await tell("Chief of Staff", "Fix the typo in the README's first line.");
-    await within(conversation()).findByRole("button", { name: /Coding task/ });
+    const card = await within(conversation()).findByRole("button", { name: "Coding task: Fix the typo in the README's first line" });
 
-    const item = await within(background()).findByRole("button", { name: "Coding task: Fix the typo in the README's first line" });
+    // From the thread: the run fills in live, with no composer, and its result lands in it.
+    fireEvent.click(card);
+    let popup = await screen.findByRole("dialog", { name: "Coding task: Fix the typo in the README's first line" });
+    expect(within(popup).queryByRole("textbox")).toBeNull();
+    await waitFor(() => expect(popup.textContent).toMatch(/on Claude Code/), { timeout: 2000 });
+    await waitFor(() => expect(popup.textContent).toMatch(/Edited line 1/), { timeout: 2000 });
+    expect(await within(popup).findByRole("region", { name: "Result" }, { timeout: 2000 })).toBeTruthy();
+    fireEvent.click(within(popup).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    // From the background list: the same popup, and the item says it's the one open. The conversation stays.
+    const item = within(background()).getByRole("button", { name: "Coding task: Fix the typo in the README's first line" });
     fireEvent.click(item);
-    const runs = await screen.findByRole("main", { name: "Coding tasks" });
+    popup = await screen.findByRole("dialog", { name: "Coding task: Fix the typo in the README's first line" });
     expect(item.getAttribute("aria-current")).toBe("true");
-    expect(within(runs).queryByRole("textbox")).toBeNull();
-    // No Talk panel beside a run, and no empty column held for one.
-    expect(screen.queryByRole("complementary", { name: "Talk" })).toBeNull();
-    expect((runs.parentElement as HTMLElement).style.gridTemplateColumns).toBe("15rem minmax(0,1fr)");
-    const run = await within(runs).findByRole("list", { name: "Run of Fix the typo in the README's first line" });
-    await waitFor(() => expect(run.textContent).toMatch(/Edited line 1/), { timeout: 2000 });
+    expect(conversation()).toBeTruthy();
+    expect(popup.textContent).toMatch(/Edited line 1/);
   });
 
   it("lines the composer up with the message list: one column token, centred, Talk open or closed", async () => {
@@ -177,6 +220,82 @@ describe("the teammates screen", () => {
     // The answer's text takes the column's width; only your own lines are capped, on the right.
     await waitFor(() => expect(entries("assistant").length).toBeGreaterThan(0));
     expect(entries("assistant").every((e) => !/max-w-/.test(e.className))).toBe(true);
+  });
+
+  it("stays put while you read further up: new text and a task card arrive below, and Jump to latest takes you back", async () => {
+    render(<App adapter={fast()} />);
+    await screen.findByLabelText("Message Chief of Staff");
+    const scroller = conversation().querySelector<HTMLElement>("[data-scroller]")!;
+    // happy-dom lays nothing out: give the list a size, and record every scroll it is asked for.
+    Object.defineProperty(scroller, "scrollHeight", { configurable: true, get: () => 5000 });
+    Object.defineProperty(scroller, "clientHeight", { configurable: true, get: () => 500 });
+    let top = 0;
+    Object.defineProperty(scroller, "scrollTop", { configurable: true, get: () => top, set: (value: number) => (top = value) });
+    const scrolls: ScrollToOptions[] = [];
+    scroller.scrollTo = ((options: ScrollToOptions) => scrolls.push(options)) as typeof scroller.scrollTo;
+    // Let any smooth scroll from the first render land before reading starts.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    // At the end, then up to read.
+    scroller.scrollTop = 4500;
+    fireEvent.scroll(scroller);
+    scroller.scrollTop = 1200;
+    fireEvent.scroll(scroller);
+    const jump = await within(conversation()).findByRole("button", { name: "Jump to latest" });
+    // Only what happens from here, while reading, counts: following before it was right.
+    scrolls.length = 0;
+
+    const before = entries("assistant");
+    await tell("Chief of Staff", "Fix the typo in the README's first line.");
+    // The answer streams in and a task card lands, below the reader.
+    await within(conversation()).findByText(/its card shows here\./, {}, { timeout: 2000 });
+    await within(conversation()).findByRole("button", { name: /Coding task/ });
+    expect(conversation().querySelector("[data-scroller]")).toBe(scroller);
+    expect(scrolls).toEqual([]);
+    expect(scroller.scrollTop).toBe(1200);
+    // What was on screen is the same nodes, not redrawn ones.
+    expect(entries("assistant").slice(0, before.length)).toEqual(before);
+    before.forEach((node, i) => expect(entries("assistant")[i]).toBe(node));
+
+    fireEvent.click(jump);
+    expect(scrolls.at(-1)).toEqual({ top: 5000, behavior: "smooth" });
+    expect(within(conversation()).queryByRole("button", { name: "Jump to latest" })).toBeNull();
+  });
+
+  it("follows a streamed answer smoothly while you are at the end, and shows 'answering' only before its text starts", async () => {
+    // Slow enough to look at the answer while it is still being written.
+    render(<App adapter={fast({ speed: 0.5 })} />);
+    await screen.findByLabelText("Message Chief of Staff");
+    const scroller = conversation().querySelector<HTMLElement>("[data-scroller]")!;
+    const scrolls: ScrollToOptions[] = [];
+    scroller.scrollTo = ((options: ScrollToOptions) => scrolls.push(options)) as typeof scroller.scrollTo;
+    await tell("Chief of Staff", "Fix the typo in the README's first line.");
+    const streaming = await waitFor(
+      () => {
+        const last = entries("assistant").at(-1);
+        // Caught part-written: it has begun, and not yet ended.
+        expect(last?.textContent).toMatch(/^Starting a coding task/);
+        expect(last?.textContent).not.toMatch(/its card shows here\./);
+        return last!;
+      },
+      { interval: 5 },
+    );
+    // While its text is being written, the text is the sign it is answering: no second line under it.
+    expect(within(conversation()).queryByRole("status")).toBeNull();
+    const followed = scrolls.length;
+    await within(conversation()).findByText(/its card shows here\./, {}, { timeout: 4000 });
+    // It followed the text as it grew, each time smoothly, and never jumped.
+    expect(scrolls.length).toBeGreaterThan(followed);
+    expect(scrolls.every((s) => s.behavior === "smooth")).toBe(true);
+    // The growing answer was one node all along.
+    expect(entries("assistant").at(-1)).toBe(streaming);
+  });
+
+  it("draws a task card the moment it is filed and fills it in place: the same card from filing to done", async () => {
+    render(<App adapter={fast()} />);
+    await tell("Chief of Staff", "Fix the typo in the README's first line.");
+    const card = (await within(conversation()).findByRole("button", { name: "Coding task: Fix the typo in the README's first line" })).closest("[data-entry=task]")!;
+    await waitFor(() => expect(card.querySelector("[data-task-status]")?.textContent).toBe("done"), { timeout: 3000 });
+    expect(conversation().querySelector("[data-entry=task]")).toBe(card);
   });
 
   it("sizes the composer's box to its draft in CSS, so a column that narrows rewraps and regrows it", async () => {
@@ -223,6 +342,59 @@ describe("the teammates screen", () => {
     await waitFor(() => expect(card.textContent).toContain("approved"));
     expect(within(card).queryByRole("button", { name: "Approve" })).toBeNull();
     expect(await within(conversation()).findByText("Published.", {}, { timeout: 2000 })).toBeTruthy();
+  });
+
+  it("gives each teammate the icon and color its file sets, the same in the list, the header, a message line and its popup", async () => {
+    render(<App adapter={fast()} />);
+    await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3));
+    const look = (row: HTMLElement) => {
+      const avatar = row.querySelector<HTMLElement>("[data-avatar]")!;
+      return [avatar.textContent, avatar.dataset.avatar];
+    };
+    expect(look(workerRow("Chief of Staff"))).toEqual(["★", "amber"]);
+    expect(look(workerRow("researcher"))).toEqual(["🔎", "teal"]);
+    expect(look(workerRow("writer"))).toEqual(["✎", "violet"]);
+    expect(look(within(conversation()).getByRole("banner"))).toEqual(["★", "amber"]);
+
+    await tell("Chief of Staff", "Ask researcher for our launch date, and help me outline the post.");
+    const line = await within(conversation()).findByRole("button", { name: /^Messaged researcher: / });
+    expect(look(line)).toEqual(["🔎", "teal"]);
+    fireEvent.click(line);
+    expect(look(screen.getByRole("dialog", { name: "Messaged researcher" }))).toEqual(["🔎", "teal"]);
+  });
+
+  it("gives a teammate whose file sets no look its initial, on a color of the palette", async () => {
+    render(<App adapter={fast()} />);
+    await screen.findByLabelText("Message Chief of Staff");
+    fireEvent.click(screen.getByRole("button", { name: "Hire a teammate" }));
+    const form = screen.getByRole("form", { name: "Hire a teammate" });
+    fireEvent.change(within(form).getByLabelText("Teammate name"), { target: { value: "tester" } });
+    fireEvent.change(within(form).getByLabelText("Teammate role"), { target: { value: "Runs the tests." } });
+    await act(async () => fireEvent.click(within(form).getByRole("button", { name: "Hire" })));
+    const avatar = (await waitFor(() => workerRow("tester").querySelector<HTMLElement>("[data-avatar]")!))!;
+    expect(avatar.textContent).toBe("T");
+    expect(TEAMMATE_COLORS).toContain(avatar.dataset.avatar);
+  });
+
+  it("says under each name what the teammate is doing now, live, from its own state", async () => {
+    render(<App adapter={fast()} />);
+    const status = (name: string) => workerRow(name).querySelector("[data-status]")?.textContent;
+    const header = () => conversation().querySelector("[data-header-status]")?.textContent;
+    await waitFor(() => expect(status("Chief of Staff")).toMatch(/^Idle/));
+    expect(header()).toMatch(/^Idle/);
+
+    await tell("Chief of Staff", "Ask researcher for our launch date, and help me outline the post.");
+    await waitFor(() => expect(status("Chief of Staff")).toBe("Replying to you"), { interval: 5 });
+    expect(header()).toBe("Replying to you");
+    // researcher answers the message it was sent, and says whose.
+    await waitFor(() => expect(status("researcher")).toBe("Replying to Chief of Staff"), { interval: 5, timeout: 2000 });
+    await waitFor(() => expect(status("Chief of Staff")).toBe("Messaging researcher"), { interval: 5, timeout: 2000 });
+    // Once the reply is in and read, nothing is running: idle, and nothing made up.
+    await waitFor(() => expect(status("researcher")).toMatch(/^Idle/), { timeout: 3000 });
+
+    await tell("Chief of Staff", "Fix the typo in the README's first line.");
+    await waitFor(() => expect(status("Chief of Staff")).toBe("Running coding task: Fix the typo in the README's first line"), { interval: 5, timeout: 2000 });
+    expect(header()).toBe("Running coding task: Fix the typo in the README's first line");
   });
 
   it("hires a teammate you can talk to, changes its instructions, and fires it; the files' workers can't be", async () => {

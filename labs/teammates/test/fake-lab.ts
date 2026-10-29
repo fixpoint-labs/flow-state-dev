@@ -13,7 +13,7 @@
  * worker, waits while the worker is answering, and runs when it is done.
  * Chief of Staff's conversation starts past the 50-turn history window.
  */
-import type { ConversationEntry, LabAdapter, RunStep, TalkRow, BoardTask, Unsubscribe, WindowMark, WorkerRow } from "../src/adapter";
+import type { ConversationEntry, LabAdapter, SessionStep, TalkRow, BoardTask, Unsubscribe, WindowMark, WorkerRow } from "../src/adapter";
 
 /** How the double keeps time, and what it plays. */
 export interface FixtureOptions {
@@ -30,9 +30,9 @@ const WINDOW_TURNS = 50;
 const MINUTE = 60_000;
 
 const ROSTER: WorkerRow[] = [
-  { id: "teammates.chief-of-staff", name: "Chief of Staff", role: "Plans the launch with you, and asks the other workers when it needs a fact or a draft." },
-  { id: "teammates.researcher", name: "researcher", role: "Finds facts for the team, and replies to whoever asked." },
-  { id: "teammates.writer", name: "writer", role: "Drafts and tightens copy when you or another worker asks." },
+  { id: "teammates.chief-of-staff", name: "Chief of Staff", icon: "★", color: "amber", role: "Plans the launch with you, and asks the other workers when it needs a fact or a draft." },
+  { id: "teammates.researcher", name: "researcher", icon: "🔎", color: "teal", role: "Finds facts for the team, and replies to whoever asked." },
+  { id: "teammates.writer", name: "writer", icon: "✎", color: "violet", role: "Drafts and tightens copy when you or another worker asks." },
   { id: "teammates.coder", name: "coder", role: "Where coding tasks run in the background.", takesTasks: true },
 ];
 const LEAD = "teammates.chief-of-staff";
@@ -87,7 +87,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
   const bySession = (sessionId: string) => [...workers.values()].find((w) => w.sessionId === sessionId);
   const fired = new Set<string>();
   let tasks: FixtureTask[] = [];
-  const runs = new Map<string, RunStep[]>();
+  const runs = new Map<string, SessionStep[]>();
   /** The worker each open approval belongs to, by suspension id. */
   const approvals = new Map<string, FixtureWorker>();
 
@@ -106,6 +106,20 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
   };
 
   const say = (w: FixtureWorker, text: string): Step[1] => () => push(w, { kind: "assistant", id: nextId("a"), text });
+
+  /** An answer written word by word, as a streamed send draws it: the same entry, growing, then finished. */
+  const sayStreamed = (w: FixtureWorker, text: string): Step[1] => () => {
+    const id = nextId("a");
+    const words = text.split(" ");
+    const draw = (count: number) => {
+      const entry: ConversationEntry = { kind: "assistant", id, text: words.slice(0, count).join(" "), ...(count < words.length ? { streaming: true } : {}) };
+      const at = w.entries.findIndex((e) => e.id === id);
+      w.entries = at < 0 ? [...w.entries, entry] : w.entries.map((e, i) => (i === at ? entry : e));
+      notify();
+      if (count < words.length) setTimeout(() => draw(count + 1), 60 * speed);
+    };
+    draw(1);
+  };
 
   /**
    * `sendMessage`: a card in the sender's conversation, a row in the log, and a
@@ -126,16 +140,22 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     notify();
   };
   const step = (taskId: string, text: string): Step[1] => () => {
-    runs.set(taskId, [...(runs.get(taskId) ?? []), { id: nextId("step"), text }]);
+    runs.set(taskId, [...(runs.get(taskId) ?? []), { id: nextId("step"), kind: "tool", text }]);
     notify();
   };
 
-  /** `createTask` for coder: a card in the filer's conversation, and a run in the working folder. */
+  /**
+   * `createTask` for coder: a card in the filer's conversation, and a run in the working folder. The
+   * board's row lands a moment after the filing, as the real stream sends it.
+   */
   const fileTask = (w: FixtureWorker, title: string): Step[1] => () => {
     const id = nextId("t");
     const task: FixtureTask = { id, to: CODER, title, status: "running", runSessionId: `run:${id}`, sessionId: w.sessionId };
-    tasks = [...tasks, task];
-    push(w, { kind: "task", id: nextId("k"), taskId: task.id });
+    push(w, { kind: "task", id: nextId("k"), taskId: task.id, title, to: CODER });
+    setTimeout(() => {
+      tasks = [...tasks, task];
+      notify();
+    }, 300 * speed);
     const result = "Fixed the typo in README.md, line 1.";
     let at = 0;
     for (const [delay, run] of [
@@ -171,7 +191,10 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       return [[600, () => push(w, { kind: "approval", id: nextId("ap"), requestId: nextId("req"), suspensionId, text: "Publish the draft to the team page?" })]];
     }
     if (w.row.id === LEAD && /\bfix\b/i.test(job.text)) {
-      return [[800, say(w, "Starting a coding task.")], [400, fileTask(w, "Fix the typo in the README's first line")]];
+      return [
+        [800, sayStreamed(w, "Starting a coding task for that. It runs in the background, and its card shows here.")],
+        [1200, fileTask(w, "Fix the typo in the README's first line")],
+      ];
     }
     if (w.row.id === LEAD && !log.some((m) => m.from === LEAD && m.to === RESEARCHER)) {
       return [
@@ -357,7 +380,28 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     },
 
     watchRun(runSessionId, onChange) {
-      return watch(() => onChange(runs.get(runSessionId.replace(/^run:/, "")) ?? []));
+      const taskId = runSessionId.replace(/^run:/, "");
+      return watch(() => {
+        const steps = runs.get(taskId) ?? [];
+        onChange(steps.length === 0 ? [] : [{ id: "harness", kind: "harness", text: "on Claude Code" }, ...steps]);
+      });
+    },
+
+    watchExchange(workerId, messageId, onChange) {
+      // The recipient's turn that read the message: from its received entry to the next thing it was given.
+      return watch(() => {
+        const entries = worker(workerId).entries;
+        const at = entries.findIndex((e) => e.kind === "received" && e.messageId === messageId);
+        if (at < 0) return onChange([]);
+        const steps: SessionStep[] = [];
+        for (const e of entries.slice(at)) {
+          if (steps.length > 0 && (e.kind === "user" || e.kind === "received")) break;
+          if (e.kind === "received") steps.push({ id: e.id, kind: "given", text: e.text });
+          else if (e.kind === "assistant") steps.push({ id: e.id, kind: "said", text: e.text, ...(e.streaming ? { streaming: true } : {}) });
+          else if (e.kind === "sent") steps.push({ id: e.id, kind: "sent", text: e.text, to: e.to });
+        }
+        onChange(steps);
+      });
     },
   };
 }

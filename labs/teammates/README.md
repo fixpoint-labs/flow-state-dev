@@ -10,17 +10,26 @@ registry's `tokens` item. The other labs take theirs from the design system; thi
 theme on purpose, so it reads as the app it copies.
 
 - **Left:** the teammates, Chief of Staff, researcher and writer. Each row is a teammate with an
-  ongoing role, never a list of sessions. A row shows what the teammate is doing and how many new
-  entries its conversation has since you last looked. Under them, *Background* lists the coding
-  tasks they started; each opens the center to its run, read only.
+  ongoing role, never a list of sessions. A row shows the teammate's icon on its color, a line
+  saying what it is doing now (*Replying to you*, *Messaging writer*, *Running coding task: …*,
+  *Idle*), and how many new entries its conversation has since you last looked. The same icon
+  marks the teammate in the conversation's header, on message lines and in popups; the header
+  carries the same status line. Under them, *Background* lists the coding
+  tasks they started; each opens its run in a popup, read only.
 - **Center:** the chosen worker's one conversation. It goes on for weeks. A divider marks where the
   turns the worker reads word for word begin; it reads *summarized* only when the earlier turns were
-  summarized for the worker.
+  summarized for the worker. New content settles in place: the list follows an answer as it is
+  written only while you are at the end, and offers *Jump to latest* when you have scrolled up; a
+  task's line is drawn the moment it is filed and fills in where it is.
+- **Popup:** a message line or a task line in the conversation opens that piece of work in a popup
+  over it: the other worker's session, read only and live. It closes with Esc, its close button, or
+  a click outside it, and the conversation under it keeps its place.
 - **Right:** Talk, the worker's exchanges with the other workers, grouped by worker, from the
   message log. It closes.
 
-Workers message each other where you can see it. When Chief of Staff messages researcher, a one-line
-card shows in Chief of Staff's conversation and the message lands in researcher's. The reply lands
+Workers message each other where you can see it. When Chief of Staff messages researcher, a line,
+*Messaged researcher*, shows in Chief of Staff's conversation and the message lands in researcher's.
+The line opens researcher's turn on it in a popup: what it read, what it did, and the reply it sent. The reply lands
 in Chief of Staff's conversation under researcher's name. A message never interrupts the turn you
 are in: while Chief of Staff is answering you, researcher's reply shows as a pending line, and Chief
 of Staff reads it right after.
@@ -34,8 +43,8 @@ Every result lands back in Chief of Staff's conversation.
 A code change is a coding task, not a teammate's job. Coding runs in the background, the way a
 coding agent's job does: you watch it, you don't talk to it. Ask Chief of Staff for a code change
 and Chief of Staff starts a coding task, which runs through Claude Code, or Codex, in the working
-folder. A card in Chief of Staff's conversation and an item under *Background* show the task and
-open to its run, and the result lands in Chief of Staff's conversation as the coding task's. To
+folder. A line in Chief of Staff's conversation and an item under *Background* show the task and
+open its run in a popup, and the result lands in Chief of Staff's conversation as the coding task's. To
 change a coding task, tell Chief of Staff, who starts the next one.
 
 There is one working folder, a git checkout you name when you start the lab, and every job that
@@ -56,18 +65,18 @@ no session list. The design and the decisions behind it are in the
 The lab runs on a real model and a durable SQLite store, served by `fsdev dev`:
 
 ```bash
-TEAMMATES_WORKDIR=/path/to/checkout pnpm --filter @flow-state-dev/teammates dev
+pnpm --filter @flow-state-dev/teammates dev
 ```
 
-`TEAMMATES_WORKDIR` names the git checkout the team works in. Then ask Chief of Staff to fix
-something in it.
+The team works in this repository's checkout. To point it at another one, set
+`TEAMMATES_WORKDIR=/path/to/checkout`. Then ask Chief of Staff to fix something in it.
 
 This builds the pages and serves them with the lab's server (`fsdev.config.mts`). It reads:
 
 | Variable | What it sets | Default |
 |---|---|---|
 | `TEAMMATES_MODEL` | the model Chief of Staff, researcher and writer answer on | `openai/gpt-5.4-mini` |
-| `TEAMMATES_WORKDIR` | the working folder: an absolute path to a git checkout on this machine | none: required |
+| `TEAMMATES_WORKDIR` | the working folder: an absolute path to a git checkout on this machine | the root of this repository |
 | `TEAMMATES_HARNESS` | the harness coding tasks run on: `claude-code` or `codex` | `claude-code` |
 | `TEAMMATES_STORE` | the SQLite file | `.fsdev/teammates.sqlite` here |
 | `TEAMMATES_USER` | who the page acts as | `you` |
@@ -78,9 +87,9 @@ Code signed in, or `ANTHROPIC_API_KEY` (Codex: signed in, or `OPENAI_API_KEY`). 
 search needs one search provider's key (`TAVILY_API_KEY`, `EXA_API_KEY`, `BRAVE_API_KEY`, or another
 `@flow-state-dev/tools` takes); fetching a page needs none.
 
-The working folder is required. With `TEAMMATES_WORKDIR` unset, or naming a folder that doesn't
-exist or isn't a git checkout, the lab stops at start with an error that names the setting and the
-path. It never falls back to the current directory or to the lab's own checkout. Each coding run
+With `TEAMMATES_WORKDIR` unset, the working folder is the root of this repository. Naming a folder
+that doesn't exist or isn't a git checkout stops the lab at start with an error that names the
+setting and the path; it never falls back to the current directory. Each coding run
 works in a worktree of the folder, under the lab's `.fsdev/teammates-runs/`, so the checkout's
 `.gitignore` must ignore `**/.fsdev/`, where a run keeps its own notes; a run refuses a checkout
 that doesn't. The checkout's own branch and working tree are never changed.
@@ -112,10 +121,17 @@ names the package call it makes.
 | The worker list, sending, the conversation, busy status | the workforce client's `roster()` and `ensureWorkerSession`, the flow's `respond`, session items, `listSessionRequests` |
 | Workers messaging each other, the Talk panel | `sendMessage`, the received-message item (`workforce:received`), and the message log |
 | Hiring, changing and firing your own teammates | the workforce client's `hire`, `edit` and `fire`, on the roster flow |
-| Task cards | the conversation board's rows |
+| Task lines | the conversation board's rows |
+| A teammate's icon and color | its `WORKER.md`'s `icon:` and `color:` lines, declared on the `agent` flow with `settings` and shown on its `roster()` row with `showSettings` |
+| The status line | the conversation's requests (`listSessionRequests`) and items for what it is answering, the board's rows for a running coding task, the message log for a message waiting on a reply |
+| A message's popup | the recipient's session items: the turn whose received-message item carries the message's id |
 | The working folder | `localWorkspaceHost` with a constant run source, `{ kind: "repo", repo }`, and the folder in `localRepositories`; `projectSourceTools` read it |
 | Coding tasks and their runs | the conversation board's rows assigned to the worker on the coding flow, which the list leaves out; the row's `run` link, read as the run session's items |
 | The divider and its *summarized* label | the last request's `historyStart`, and the session's `historySummary` resource |
+
+`color:` names one of the lab's palette, `blue`, `green`, `amber`, `rose`, `violet` or `teal`,
+each a `--teammate-*` token in the theme. A teammate whose file sets neither line, such as one you
+hire here, gets its initial on a palette color picked from its id.
 
 Not wired yet:
 
@@ -134,14 +150,6 @@ Not wired yet:
 
 ## What this app adds
 
-Every file in the lab, by kind. `node scripts/inventory.mjs` fails on a file that is none of these,
-and on a flow over 200 lines; `--wired` also fails on any fixture.
-
-<!-- inventory:start -->
-| Kind | Files | Lines |
-|---|---:|---:|
-| Configuration | 16 | 652 |
-| React UI | 22 | 2029 |
-| Small flows | 1 | 151 |
-| Checks (not app code) | 9 | 1051 |
-<!-- inventory:end -->
+Configuration, React UI and small flows, plus checks and fixtures. `node scripts/inventory.mjs`
+fails on a file that is none of these, and on a flow over 200 lines; `--wired` also fails on any
+fixture.

@@ -11,6 +11,10 @@
  * restrained to grey steps; `info` and `success` are soft tints for the lines
  * between workers, and `attention` keeps one meaning, a person must act.
  *
+ * `--teammate-<color>` are the colors a teammate's file may name for its
+ * icon (`src/lib/looks.ts`): soft tints of the same weight, so no teammate
+ * shouts and each stays tellable apart on the dark surfaces.
+ *
  * `--thread-width` is the conversation's one column: the message list and the
  * composer both cap at it, so their edges line up, and it stays centred
  * whether the Talk pane is open or not.
@@ -58,6 +62,13 @@
   --radius-sm: 0.375rem;
   --radius-md: 0.625rem;
   --radius-lg: 1.25rem;
+
+  --teammate-blue: #8fb3f0;
+  --teammate-green: #8fd0a4;
+  --teammate-amber: #e5b678;
+  --teammate-rose: #ee9aa8;
+  --teammate-violet: #b9a2ee;
+  --teammate-teal: #7fcfc9;
 
   --thread-width: 46rem;
 
