@@ -85,7 +85,8 @@ let it through, and threads mode shows its verdict on the coding thread's card.
 
 Every task card shows the model its run uses and a token count that rises while the run works,
 and the harness tag names the harness the run reported. Finished rows keep the final total, and a
-task's sheet or thread view splits it into input and output. All of it comes from the `spend` the
+task's sheet or thread view splits it into input and output. A count no run has reported reads
+"no tokens reported yet", never 0, and one still missing a source is marked partial. All of it comes from the `spend` the
 board's `listTasks` rows carry; the lab sums nothing itself.
 
 Both modes are wired. The screen tests run on a test double, `test/fake-lab.ts`, which the app
@@ -130,8 +131,8 @@ and on a flow over 200 lines; `--wired` also fails while a fixture is left in `s
 <!-- inventory:start -->
 | Kind | Files | Lines |
 |---|---:|---:|
-| Configuration | 18 | 499 |
-| React UI | 29 | 2750 |
+| Configuration | 18 | 500 |
+| React UI | 29 | 2754 |
 | Small flows | 3 | 273 |
-| Checks (not app code) | 10 | 1337 |
+| Checks (not app code) | 10 | 1347 |
 <!-- inventory:end -->

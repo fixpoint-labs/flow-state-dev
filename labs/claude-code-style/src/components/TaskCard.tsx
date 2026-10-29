@@ -30,7 +30,7 @@ export function TaskCard({ task, selected, onOpen }: { task: TaskRow; selected: 
           {task.statusNote ? ` · "${task.statusNote}"` : ""}
         </span>
         {task.assignee ? <span className="block text-xs text-muted-foreground">{task.assignee}</span> : null}
-        <Spend task={task} />
+        <Spend task={task} harness />
       </span>
     </button>
   );

@@ -94,7 +94,7 @@ function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter;
       subtitle={
         <>
           {task.goal}
-          <Spend task={task} split />
+          <Spend task={task} split harness />
         </>
       }
       onClose={onClose}
