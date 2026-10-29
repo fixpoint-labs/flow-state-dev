@@ -16,8 +16,9 @@ export function taskLine(task: { title: string; to: string }, coding: boolean, n
   return coding ? `Coding task: ${task.title}` : `Asked ${nameOf(task.to)} to ${lowerFirst(task.title)}`;
 }
 
-/** Whether a message was answered, from the message log. */
-export const repliedIn = (talk: readonly TalkRow[], messageId: string) => talk.some((row) => row.inReplyTo === messageId);
+/** Whether a message was answered, from the message log: by a reply message, or, for a call, by its result. */
+export const repliedIn = (talk: readonly TalkRow[], messageId: string) =>
+  talk.some((row) => row.inReplyTo === messageId || (row.id === messageId && row.callAnswered === true));
 
 /** The open popup, live: it reads what it shows by itself, so it stays current while the work goes on. */
 export function PopupView({ adapter, popup, nameOf, isCoding, onClose }: {

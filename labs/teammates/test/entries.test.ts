@@ -3,10 +3,12 @@
  * `resultTo: "conversation"` ends as the worker's bare answer, with no task id
  * on the line: that is a finished task, never one drawn as failed. A
  * `user_approval` stop is an approval entry, answered once it resumes. In a
- * popup, only a `sendMessage` that sent something is a sent step.
+ * popup, only a `sendMessage` that sent something is a sent step. A sent
+ * message is replied once a reply lands, or, for a call, once it is answered.
  */
 import { describe, expect, it } from "vitest";
 import { toEntries, toSteps } from "../src/adapter";
+import { repliedIn } from "../src/components/Popups";
 
 const CODER = "teammates.coder";
 const line = (id: string, text: string) =>
@@ -56,5 +58,18 @@ describe("a session's steps in a popup", () => {
       { id: "m2", kind: "tool", text: "sendMessage" },
       { id: "m3", kind: "tool", text: "sendMessage" },
     ]);
+  });
+});
+
+describe("whether a sent message was replied", () => {
+  const sent = { id: "msg_1", from: "teammates.chief-of-staff", to: "teammates.researcher", text: "Launch date?", at: 1 };
+
+  it("is replied when a message answers it", () => {
+    expect(repliedIn([sent], "msg_1")).toBe(false);
+    expect(repliedIn([sent, { id: "msg_2", from: sent.to, to: sent.from, text: "Nov 12", at: 2, inReplyTo: "msg_1" }], "msg_1")).toBe(true);
+  });
+
+  it("is replied when it was a call and the call was answered, with no reply message", () => {
+    expect(repliedIn([{ ...sent, callAnswered: true }], "msg_1")).toBe(true);
   });
 });

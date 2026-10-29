@@ -134,6 +134,8 @@ export interface TalkRow {
   undelivered?: boolean;
   /** The sender asked for a reply and went on: an answer comes back as a message. */
   replyRequested?: boolean;
+  /** A call the recipient answered: its reply was the call's result, never a message of its own. */
+  callAnswered?: boolean;
 }
 
 /** Whether a worker is busy, read from its conversation's requests. */
@@ -516,6 +518,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
               at: m.at,
               ...(m.inReplyTo === undefined ? {} : { inReplyTo: m.inReplyTo }),
               ...(m.replyRequested === true ? { replyRequested: true } : {}),
+              ...(m.call === true && m.repliedAt !== undefined ? { callAnswered: true } : {}),
               ...(m.status === "refused" || m.status === "undeliverable" ? { undelivered: true } : {}),
             }));
         },
