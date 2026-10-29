@@ -36,8 +36,8 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
   code comment says not to grow it into a compose helper, registry or type; this is one more
   array entry.
 - **Locks in:** the layer is the built-in flow's, fixed text plus roster facts, not a setting. An
-  app that wants other words registers its own `agent` worker flow (C1's door) and may put the
-  exported identity block first. Configuring it per app, team or org is FIX-1344's remaining part,
+  app that wants other words registers its own `agent` worker flow (C1's door) and can build the
+  same block from the exported recipient list. Configuring it per app, team or org is FIX-1344's remaining part,
   not this issue's. The order promise stays "order, not precedence": a `WORKER.md` that says
   "you are Alex" contradicts the block, and the model decides.
 
@@ -53,7 +53,7 @@ block (FIX-2073, telling the filer about asks after a task is done, is the next 
 - **Self:** `rosterWorker(workerId)`'s `name` (its id when null), `description`, `teamName`
   (omitted for an org worker). The text says the role is how the user reads it, since descriptions
   are written to the user ("runs the team's work with you").
-- **Others:** the shared recipients reader, the filter `sendMessage`'s description uses today:
+- **Others:** the shared recipient list, the filter `sendMessage`'s description uses today:
   roster minus self, minus workers with a `problem`. A worker whose flow hears in `task-sessions`
   only goes on a separate "takes tasks" line, with the `createTask` assignee to use. Each entry
   shows its name and the id a send or task takes. Cut at the same cap the tool uses (25).
@@ -62,7 +62,7 @@ block (FIX-2073, telling the filer about asks after a task is done, is the next 
   hand-written flow refuses.
 - **Instead of** the worker's own team only: the roster is who it can actually reach, across teams
   and the org's workers, and one list matches the refusals a send gives.
-- **Locks in:** the identity and the `sendMessage` list come from one reader. The tool keeps its
+- **Locks in:** the identity and the `sendMessage` list come from one list, formatted twice. The tool keeps its
   list, since a model reads a tool's description where it reads the tool.
 
 ## Decided, not asked
@@ -73,7 +73,7 @@ block (FIX-2073, telling the filer about asks after a task is done, is the next 
 - **E2 · Layer boundary:** all of it is Workforce. Core's prompt slot already resolves async
   entries and drops absent ones.
 - **E3 · Only the built-in worker flow** gets it by default. The error reporter and app flows
-  (the Teammates coder, harness flows) have their own prompts; they can compose the export.
+  (the Teammates coder, harness flows) have their own prompts; they can build from the exported list when one needs it.
 - **E4 · The tool-use rule** is general and short, and names no tool. App-specific "act, don't
   offer" guidance (FIX-2336's Chief of Staff) stays in that worker's file.
 - **E5 · Vocabulary:** the text says worker, team and teammates.
@@ -98,3 +98,9 @@ block (FIX-2073, telling the filer about asks after a task is done, is the next 
   (`read-workforce-directory.ts` validates and keeps it in `declared`); E7.
 - For the implementer: FIX-2336 renames lead to Chief of Staff; check the goal leg against the
   renamed worker. Keep the existing prompt-order tests as they are.
+- Cursor /simplify (2026-10-29, #4198): direction kept. Folded: one recipient list with two
+  formatters, not one formatter; export the list and name helper, not the layer, until a second
+  flow needs it; the tool-use rule's reason for being here is stated. Kept as is: the rule stays
+  in scope (the issue names it). For the implementer: once identity is always present, the
+  `sendMessage` description's list may be slimmed (follow-up, not here); the roster is read once
+  per turn and shared by the layer and the tool (E6), not memoised by the new fields alone.

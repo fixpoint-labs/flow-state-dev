@@ -11,7 +11,7 @@
 | **asks about a worker that takes tasks only** (coder) | It is listed nowhere a model reads as "file it a task" until a send is refused | Listed apart: "takes tasks: file one with `createTask`", never as someone to message |
 | **asks one of their own workers** (hired at run time, no `name:`) | Same "ChatGPT" | Its id stands in for the name; its description is its role |
 | **asks a worker to do something it has a tool for** | It often offers: "I can look that up if you like" | The default layer tells it to use its tools before answering, and not to offer what it can do now |
-| **writes an app on its own worker flow** | Unaffected | Unaffected. The layer is the built-in worker flow's, and exported for a custom flow to put first |
+| **writes an app on its own worker flow** | Unaffected | Unaffected. The layer is the built-in worker flow's; the recipient list it reads is exported for a custom flow |
 | **runs a worker outside an installation** (a bare `hireWorkforce` roster) | No identity | Unchanged: no roster to read, so the layer is absent, not empty |
 
 ## The goal, and how we'll know it's met
@@ -63,12 +63,17 @@ The unit test on the front of the prompt fails, and the goal leg must see "ChatG
   read the same way (`workerDisplayName`, `manifest.teamName`); the server-side row gains them so
   the turn doesn't read files twice. With none, the name and team fall back to the id's segments
   (`parseDeclaredWorkerId`).
-- **One recipients reader.** `sendMessage`'s description and the identity block both list the
-  workers a send would take; that filter moves out of `message-tool.ts` into one function both
-  call, so the two lists can't disagree.
+- **One recipient list, two formatters.** `sendMessage`'s description and the identity block
+  both list the workers a send would take. The filter loop in `recipientsLine` becomes one
+  function that returns `{ messageable, taskOnly }` (the `recipientRefusal` gate, the cap, the
+  `messageHearingOf` split); the tool and the prompt each format it their own way. The roster is
+  read once per turn and shared by both.
 - **The tool-use rule**, a few sentences: use your tools to do what you're asked before you answer;
-  don't offer to do something you can do now, do it.
-- **Exported** for a custom worker flow to put first in its own prompt array.
+  don't offer to do something you can do now, do it. It is in this issue because the issue's
+  scope names it and FIX-2336's "acts instead of offering" builds on it; it is the layer's second
+  line, not a second gate.
+- **Exported:** the recipient list and the display-name helper. The layer itself is exported
+  when a second flow needs it.
 - **Docs:** `docs/architecture/workforce-default-worker-flow.md` (C1, the order paragraph and the
   "owned and shipped elsewhere" line) and the seam comment in `agent-worker-flow.ts` say the
   default layer shipped, what it holds, and that FIX-2334 owns it; the Workforce worker-flow docs
@@ -87,7 +92,7 @@ engine changes.
 | The C1 prompt seam, `[default, team, worker, packages]` (`workforce-default-worker-flow.md`) | **Fills** the reserved front slot. No new seam, no compose helper |
 | FIX-1344 part 3, "default system prompt for all workers" | **Takes over** its first piece. FIX-1344 is Done in Linear with part 3 unshipped; the C1 doc still says "FIX-1344 part 2, not yet landed" (wrong part, and nobody is building it). Corrected here |
 | `installation.roster` / `rosterWorker` (`workers/installation.ts`) | **Extended** with `name`, `teamName` |
-| `recipientsLine` and `recipientRefusal` (`messages/`) | **Reused**: the filter becomes the shared recipients reader |
+| `recipientsLine` and `recipientRefusal` (`messages/`) | **Reused**: the filter loop becomes the shared recipient list |
 | `messageHearingOf` (`received-mark.ts`) | **Reused** to tell a task-only worker apart |
 | `workerDisplayName` (`standard-workers.ts`) | **Reused** for the name |
 | FIX-2332 (coding runs are background tasks) | **Compatible**: whatever coder's row becomes, the task-only line keys off its flow's hearing, not its name |
