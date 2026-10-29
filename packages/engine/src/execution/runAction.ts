@@ -2310,8 +2310,10 @@ async function runActionAttempt<
     stopHeartbeatTimer();
     deregisterAbortController(requestId, registered);
     // The request ends here, never reaching the paths below: hand on what the
-    // startup observers spent. A hook's failure is logged, never in place of
-    // the startup error.
+    // startup observers spent, once the `.sideChain()` work they queued has
+    // settled, as the other endings do. A hook's failure is logged, never in
+    // place of the startup error.
+    await drainRequestSideChainPool(ctx);
     const endFailure = await requestEndRegistryOf(ctx)?.run(
       { status: "failed", error: { message: startupError instanceof Error ? startupError.message : String(startupError) } },
       { requestId, logger }
