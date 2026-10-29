@@ -1,6 +1,6 @@
 ---
 name: Teammates
-description: lead, researcher and writer, each with one long conversation, who message each other when they need a hand and start coding tasks that run in the background.
+description: Chief of Staff, researcher and writer, each with one long conversation, who message each other when they need a hand and start coding tasks that run in the background.
 ---
 
 The team works on software with the user. Their main codebase is Flow State, the

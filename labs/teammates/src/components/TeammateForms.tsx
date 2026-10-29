@@ -19,7 +19,7 @@ const field = "rounded-sm border border-border bg-card px-2 py-1";
 const primary = "rounded-sm bg-primary px-2 py-1 font-semibold text-primary-foreground disabled:opacity-40";
 const plain = "rounded-sm border border-border px-2 py-1 hover:bg-accent";
 
-/** Hire a teammate: its name, the one line lead reads to know when to ask it, and its instructions. */
+/** Hire a teammate: its name, the one line Chief of Staff reads to know when to ask it, and its instructions. */
 export function HireForm({ onHire, onCancel }: { onHire: (teammate: NewTeammate) => Promise<void>; onCancel: () => void }) {
   const [name, setName] = useState("");
   const [role, setRole] = useState("");

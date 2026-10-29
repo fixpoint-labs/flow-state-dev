@@ -4,7 +4,7 @@
  * coding flow, and a store. `fsdev.config.mts` calls
  * {@link openTeammates} and default-exports the `FlowState` it returns.
  *
- * - **lead, researcher and writer** run on the built-in `agent` flow, so each
+ * - **Chief of Staff, researcher and writer** run on the built-in `agent` flow, so each
  *   has `sendMessage` and one conversation where messages land. Memory is
  *   composed in through `uses` (read) and `afterAnswer` (record each turn).
  *   A history summary keeps what was said before the history window: its
@@ -14,7 +14,7 @@
  *   reading the working folder's source; each worker's `tools:` line picks its
  *   own from them.
  * - **coder** runs on the lab's coding flow (`src/flows/coder.ts`), which
- *   takes the tasks lead files and runs each through a harness, Claude Code
+ *   takes the tasks Chief of Staff files and runs each through a harness, Claude Code
  *   or Codex, in a worktree of the working folder.
  * - **The working folder** is one git checkout the operator names. It is the
  *   host's constant run source, so every coding run and every read of the
@@ -59,7 +59,7 @@ const UTILITY_MODEL = "openai/gpt-6-luna";
 export interface TeammatesOptions {
   /** The SQLite file the lab keeps everything in. */
   store: string;
-  /** The model lead, researcher and writer answer on, and memory records with. */
+  /** The model Chief of Staff, researcher and writer answer on, and memory records with. */
   model: string;
   /** The user the page acts as. */
   userId: string;
@@ -168,7 +168,7 @@ export async function openTeammates(options: TeammatesOptions) {
       uses: [
         mem.capability.presets({ recall: false, connect: false, semantic: true, episodic: true }),
         earlier.capability,
-        // Offered to a worker whose file picks `consultSessions: [consult]` (lead).
+        // Offered to a worker whose file picks `consultSessions: [consult]` (Chief of Staff).
         consultSessionsCapability(installation),
       ],
       beforeAnswer: earlier.fold,
