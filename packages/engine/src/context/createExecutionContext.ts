@@ -1164,6 +1164,17 @@ export async function createExecutionContext<
               }
             : {}),
           effectiveRuntimeConfig: options.effectiveRuntimeConfig,
+          // Read when a block reads another session; both are set up below.
+          sessionHistory: {
+            runningRequestId: requestId,
+            tokenCounter: () => tokenCounter,
+            resolveModelId: () => resolvedModelStorage.getStore() ?? "gpt-4o-mini",
+            onGateReadError: (error) =>
+              logRuntimeEvent(options.logger ?? DEFAULT_RUNTIME_LOGGER, "warn", "[flow-state] a session read could not read the gates of interrupted turns", {
+                requestId,
+                error: String(error)
+              })
+          },
           dispatchStamp: readDispatchStamp(options.source, options.metadata),
           liveness: {
             heartbeatIntervalMs: flow.request?.heartbeatIntervalMs,

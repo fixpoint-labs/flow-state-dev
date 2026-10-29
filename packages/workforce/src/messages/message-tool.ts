@@ -98,7 +98,9 @@ const BASE_DESCRIPTION =
   "and nothing is stopped: go on, and pass { callId } later to wait again for the same reply; never send the question " +
   "again. Only one wait per step. Call for an answer now; for work to track, file a task with createTask instead. " +
   "To ask about a task, send to { task: id }: it lands in the session working that task, after its current turn, " +
-  "and doesn't change the task. To reach a conversation the user named, send to { session: id }.";
+  "and doesn't change the task. To reach a conversation the user named, send to { session: id }. " +
+  "If you have consultSessionHistory, a question about what a conversation already holds goes there instead: it " +
+  "reads without waking anyone. A message is for asking a worker to act, decide, or use what it knows.";
 
 /** Who the running worker can message, as the description's list: every roster worker the send would take. */
 async function recipientsLine(ctx: BlockContext, installation: WorkerInstallation, self: string): Promise<string> {

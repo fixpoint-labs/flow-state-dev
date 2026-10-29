@@ -44,6 +44,7 @@
  */
 
 import type { WaitGateBinding, WaitOutcome, WaitRow } from "./wait-gate";
+import type { HistoryTurn, MessageLimit } from "./scope";
 
 /** How a parent-board row is being settled. */
 export type ParentTaskOutcome = "complete" | "fail";
@@ -278,9 +279,42 @@ export type SessionView = {
   readonly state: Readonly<Record<string, unknown>>;
 };
 
+/** Which of another session's settled turns {@link RequestSessions.history} reads. */
+export type SessionHistoryQuery = {
+  /**
+   * How many of the most recent settled turns: a count of turns (`n` or
+   * `{ turns: n }`), or `{ tokens: n }`, which packs whole turns from the newest
+   * back as a history window does. The newest turn is always read, even when
+   * it alone is over a `{ tokens }` limit, so this is not a hard cap on what a
+   * caller hands a model. Defaults to `{ turns: 20 }`; at most 50 turns are read.
+   */
+  limit?: MessageLimit;
+};
+
+/**
+ * Another session's settled turns, as {@link RequestSessions.history} reads
+ * them: what a model may read of that conversation, and how fresh it is.
+ */
+export type SessionHistory = {
+  /** The settled turns read, oldest first. Each carries its messages. */
+  readonly turns: readonly HistoryTurn[];
+  /** The first turn read, when earlier settled turns were left out. */
+  readonly startRequestId?: string;
+  /**
+   * The newest settled turn read, and when it settled. Absent when the session
+   * has no settled turn.
+   */
+  readonly asOf?: { readonly requestId: string; readonly atMs: number };
+  /**
+   * Whether a turn of that session is open now: running, suspended, or
+   * interrupted and parked to run again. What it says is not read.
+   */
+  readonly running: boolean;
+};
+
 /**
  * Sessions of the running principal (FIX-2160 D2): a check on a target session
- * before anything is written to it.
+ * before anything is written to it, and a read of what it has said (FIX-2173).
  */
 export interface RequestSessions {
   /**
@@ -291,6 +325,15 @@ export interface RequestSessions {
    * flow it needs.
    */
   read(sessionId: string): Promise<SessionView | undefined>;
+
+  /**
+   * The settled turns of the session `sessionId`, when it is the running
+   * principal's by the rule of {@link read}; `undefined` for any other session
+   * and for one that doesn't exist. Reads only: nothing is written to the
+   * session and nothing runs in it. A turn the session runs now, a suspended
+   * turn and a parked one are left out, and `running` says one is open.
+   */
+  history(sessionId: string, query?: SessionHistoryQuery): Promise<SessionHistory | undefined>;
 }
 
 /**

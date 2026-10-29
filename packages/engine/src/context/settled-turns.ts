@@ -26,6 +26,12 @@ export type SettledTurnsInputs = {
   runningRequestId?: string;
   /** The running request's metadata, when it is in this session: a retry names the turn it re-runs. */
   runningMetadata?: Record<string, unknown>;
+  /**
+   * The session's turns open now (running or suspended), read by a caller
+   * that is not one of them: a retry still running names the turn it re-runs
+   * as well.
+   */
+  openTurns?: readonly Pick<RequestRecord, "metadata">[];
   /** Where parked gates are read. Without one, nothing is treated as parked. */
   durability?: Pick<DurabilityProvider, "listSuspended" | "loadSuspension">;
   /**
@@ -46,6 +52,8 @@ export type SettledTurns = {
   start?: { requestId: string };
   /** The ids of turns a retry re-ran. */
   retried: Set<string>;
+  /** The ids of interrupted turns in the window that will run again. */
+  parked: Set<string>;
   /** The turns a model reads, oldest first. */
   settled: RequestRecord[];
 };
@@ -73,7 +81,7 @@ export async function readSettledTurns(inputs: SettledTurnsInputs): Promise<Sett
   // before reversing keeps the turn at the edge the same as without the extra row.
   const window = listed.slice(0, turns).reverse();
   const start = listed.length > turns && window[0] !== undefined ? { requestId: window[0].id } : undefined;
-  const retried = retriedIds(window, inputs.runningMetadata);
+  const retried = retriedIds([...window, ...(inputs.openTurns ?? [])], inputs.runningMetadata);
   let parked = new Set<string>();
   try {
     parked = await parkedInterruptedIds(inputs.durability, window);
@@ -86,5 +94,5 @@ export async function readSettledTurns(inputs: SettledTurnsInputs): Promise<Sett
     .map((r) => (r.status === "interrupted" && r.items !== undefined ? { ...r, items: r.items.filter((i) => i.status !== "in_progress") } : r))
     .sort((a, b) => compareTurnsOldestFirst(a.startedAtMs, a.id, b.startedAtMs, b.id));
 
-  return { window, ...(start !== undefined ? { start } : {}), retried, settled };
+  return { window, ...(start !== undefined ? { start } : {}), retried, parked, settled };
 }
