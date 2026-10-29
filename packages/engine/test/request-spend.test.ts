@@ -534,7 +534,7 @@ describe("request spend ledger", () => {
     expect(after?.spentThroughItemIndex).toBe(settled?.spentThroughItemIndex);
   });
 
-  it("counts an interrupted run's observer once when a continuation starts while the observer is still going", async () => {
+  it("counts an interrupted run's observer once, and in the budget, when a continuation starts while the observer is still going", async () => {
     // The continuation reads the log while the older run is alive: the
     // observer's call is that run's to hand on, not unreported crash spend.
     process.env.FSDEV_TRACE_OBSERVABILITY = "true";
@@ -573,7 +573,11 @@ describe("request spend ledger", () => {
       session: { [SESSION_REQUEST_END_HOOK]: () => (ending) => void endings.push(ending) },
       request: { onFinished: sequencer({ name: "notify-seq" }).sideChain(holdFirst).step(ask("notify")) },
       actions: {
-        run: { inputSchema: z.object({}), block: sequencer({ name: "seq", durable: true }).step(ask("first")).step(waitOnce) }
+        run: {
+          inputSchema: z.object({}),
+          block: sequencer({ name: "seq", durable: true }).step(ask("first")).step(waitOnce).step(ask("second")),
+          tokenBudget: { maxTotalTokens: 8, onExceeded: "error" }
+        }
       }
     })({ id: "spend-live-observer" });
     const stores = createInMemoryStores();
@@ -589,12 +593,13 @@ describe("request spend ledger", () => {
     const registry = createFlowRegistry();
     registry.register(flow as never);
     const { finished } = await continueRequest({ requestId: "r-live", stores, flowRegistry: registry, runtimeConfig });
-    await finished;
+    // The older run's observer spent 3 the continuation did not repeat: its
+    // budget still counts them, so 3 + 3 + 3 is over 8.
+    expect((await finished).error?.message).toBe("Token budget exceeded: consumed 9 > 8");
     releaseObserver();
     await older;
 
-    // Every call is 3 tokens, and the endings together hand on each call once
-    // (the continuation replays the observer's step rather than calling again).
+    // Every call is 3 tokens, and the endings together hand on each call once.
     const total = endings.reduce((sum, ending) => sum + (ending.spend.byModel["openai/gpt-6-luna"]?.total ?? 0), 0);
     expect(total).toBe(calls * 3);
   });

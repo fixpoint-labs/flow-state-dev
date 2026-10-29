@@ -512,5 +512,5 @@ const output = ctx.getBlockOutput(validateBlock);
 These APIs resolve only against already-dispatched siblings at the current execution level. They do not walk the ancestor chain.
 
 
-`BlockContext.request` also exposes live `tokenUsage` and `costEstimate` rollups. `tokenUsage` is aggregated by model from emitted generator `block_trace.modelUsage`. `costEstimate` is computed when a flow `costEstimator` is configured.
+`BlockContext.request` also exposes live `tokenUsage` and `costEstimate` rollups. `tokenUsage` reads the request's spend ledger, which counts every model result once, by model, as it arrives: each step of a generator's tool loop, and evaluators called as tools. It counts the same with trace observability on or off. A resumed or continued request starts its ledger from what earlier runs of the request spent (the record's `spentByModel`, plus model usage its log's traces carry past the last settlement when a run died), so `tokenUsage` and an action's token budget cover the whole request. Harness runs are kept apart from it and handed to request-end hooks as `spend`. `costEstimate` is computed when a flow `costEstimator` is configured.
 

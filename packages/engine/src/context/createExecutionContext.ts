@@ -1,5 +1,5 @@
 import { WRITES_OUTLIVE_ABORT, attachRequestEndRegistry, createRequestEndRegistry, type WritesOutliveAbort } from "../execution/request-end-hooks";
-import { createRequestSpendLedger, loggedSpendOf } from "../execution/request-spend-ledger";
+import { createRequestSpendLedger, loggedSpendOf, sumSpend } from "../execution/request-spend-ledger";
 import { isOrgAttributed, UnattributedOrgError } from "./org-attribution";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type {
@@ -3150,12 +3150,13 @@ export async function createExecutionContext<
   // what it spent before it suspended, so its token budget counts both runs.
   // A run whose process died settled nothing: what its log's block traces
   // spent since the last settlement is counted, and handed on at this run's
-  // first ending. Not while the run that settled an interruption may still be
-  // running its observers: that run hands their spend on itself.
-  const requestSpendLedger = createRequestSpendLedger(
-    requestRecord.spentByModel,
-    requestRecord.spendHandedOnByRun === true ? {} : loggedSpendOf(requestRecord.items ?? [], requestRecord.spentThroughItemIndex ?? -1)
-  );
+  // first ending. While the run that settled an interruption may still be
+  // running its observers, their spend counts toward this run's budget but is
+  // that run's to hand on, so it is carried rather than recovered.
+  const loggedSpend = loggedSpendOf(requestRecord.items ?? [], requestRecord.spentThroughItemIndex ?? -1);
+  const requestSpendLedger = requestRecord.spendHandedOnByRun === true
+    ? createRequestSpendLedger(sumSpend(requestRecord.spentByModel ?? {}, loggedSpend))
+    : createRequestSpendLedger(requestRecord.spentByModel, loggedSpend);
   const requestEndRegistry = createRequestEndRegistry(() => requestSpendLedger.takeSinceLastEnding());
   // How this request resumed (FIX-2129), read when a block asks: the
   // resolution is filled in at the checkpoint read, after this context is built.
