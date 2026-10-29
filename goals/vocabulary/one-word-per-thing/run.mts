@@ -7,7 +7,8 @@
  * - **The tree.** Every git-tracked file under the swept roots is scanned or
  *   excluded by a named rule, and every hit is kept for a stated reason or
  *   marked `retired-name-refusal` on its line. One open line fails the goal.
- * - **The control.** `--control` plants `parkOnAsk` in a file the sweep reads.
+ * - **The control.** `--control` plants `parkOnAsk`, and FIX-2070's `messageWorker` and
+ *   `replyTo`, in files the sweep reads, each to be reported by its own rule.
  *   If the sweep doesn't report it, the first leg's PASS proves nothing.
  *
  * Model-free and network-free; CI's Process guards run `sweep.mjs` directly.
@@ -29,9 +30,9 @@ await runGoal((failures) => {
 
   const control = sweep(["--control"]);
   if (control.status !== 0 || !control.out.includes("CONTROL OK")) {
-    failures.push(`the control: the planted parkOnAsk was not reported\n${control.out}`);
+    failures.push(`the control: a planted name was not reported\n${control.out}`);
   }
 
   const summary = /hits: .*/.exec(tree.out)?.[0] ?? "no summary line";
-  return { failures, evidence: `${summary}; the planted hit was caught` };
+  return { failures, evidence: `${summary}; every planted hit was caught` };
 });

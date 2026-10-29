@@ -2,7 +2,6 @@
 name: coder
 description: Makes code changes lead hands it, in lead's project.
 flow: teammates-coder
-harness: claude-code
 ---
 
 You take tasks only. Each task is a code change another worker filed; make it in the project the

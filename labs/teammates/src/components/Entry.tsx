@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ConversationEntry } from "../adapter";
+import { useSubmit } from "../lib/use-submit";
 import { cn } from "../lib/utils";
 import { AgentMarkdown } from "./flow-state/message-response";
 
@@ -8,9 +9,20 @@ import { AgentMarkdown } from "./flow-state/message-response";
  * answers on the left. A message the worker sent another worker is a one-line
  * card that opens to its full text; a message it received, or a task it
  * filed coming back, lands under the sender's name. A worker's text is
- * Markdown; your own lines are shown as typed.
+ * Markdown; your own lines are shown as typed. A tool that waits for your yes
+ * is a card with Approve and Deny until you answer.
  */
-export function Entry({ entry, workerName, nameOf }: { entry: ConversationEntry; workerName: string; nameOf: (id: string) => string }) {
+export function Entry({
+  entry,
+  workerName,
+  nameOf,
+  onAnswer,
+}: {
+  entry: ConversationEntry;
+  workerName: string;
+  nameOf: (id: string) => string;
+  onAnswer?: (approve: boolean) => Promise<void>;
+}) {
   switch (entry.kind) {
     case "user":
       return (
@@ -55,7 +67,45 @@ export function Entry({ entry, workerName, nameOf }: { entry: ConversationEntry;
     case "task":
       // Drawn by the conversation, from the board's row.
       return null;
+    case "approval":
+      return <ApprovalCard workerName={workerName} text={entry.text} resolution={entry.resolution} onAnswer={onAnswer} />;
   }
+}
+
+/** What a worker's tool waits on you for. Once answered it says how. */
+function ApprovalCard({
+  workerName,
+  text,
+  resolution,
+  onAnswer,
+}: {
+  workerName: string;
+  text: string;
+  resolution?: string;
+  onAnswer?: (approve: boolean) => Promise<void>;
+}) {
+  const { error, busy, submit } = useSubmit((approve: boolean) => onAnswer?.(approve) ?? Promise.resolve());
+  return (
+    <section aria-label={`${workerName} asks`} data-entry="approval" className="max-w-[85%] rounded-md border border-attention bg-attention/10 px-3 py-2 text-sm">
+      <div className="font-mono text-[10px] tracking-widest text-attention uppercase">{workerName} asks · {resolution ?? "waiting for you"}</div>
+      <p className="mt-0.5 whitespace-pre-wrap">{text}</p>
+      {resolution === undefined ? (
+        <div className="mt-2 flex gap-2 text-xs">
+          <button type="button" disabled={busy} onClick={() => void submit(undefined, true)} className="rounded-sm bg-primary px-2 py-1 font-semibold text-primary-foreground disabled:opacity-40">
+            Approve
+          </button>
+          <button type="button" disabled={busy} onClick={() => void submit(undefined, false)} className="rounded-sm border border-border px-2 py-1 hover:bg-accent disabled:opacity-40">
+            Deny
+          </button>
+        </div>
+      ) : null}
+      {error ? (
+        <p role="alert" className="mt-1 text-xs text-destructive">
+          {error}
+        </p>
+      ) : null}
+    </section>
+  );
 }
 
 /** A message to another worker: one line until opened. */

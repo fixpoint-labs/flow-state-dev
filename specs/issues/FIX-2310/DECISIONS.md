@@ -116,3 +116,27 @@ worker that needs both before it goes on files tasks or calls.
   - D2's "what would change my mind" (a receiver whose final text is for its own user) is an
     escape hatch, not built here.
   - E4 was raised as heavy; it is now FIX-2300's up-front refusal, so it adds little.
+
+## Notes from build
+
+- **The server-death case moved from the asker's pass to the recipient's.** The spec had the
+  asker's pass tell a line when the landing turn's server died. The asker can't read another
+  session's request state (`requestStates` and `hasEnded` answer only for this session), so it
+  can't tell "died" from "still thinking". The landing request now owes its own session's pass
+  (`workerAsksOwed`, the same wake FIX-2240's delivery uses), and that pass sends the "no answer"
+  through the same `sendMessage({ inReplyTo })` once the landing request reads ended. Still one
+  reply path and one message shape (D2); the asker owes nothing, which also settles Cursor's first
+  note. A recipient flow without the session board has no pass, so this backstop is the board's.
+- **Answer status stays an id.** `answeredBy` on the asked row (written once, guarded) and
+  `noAnswer` on the answer row; one field per fact, no status enum across rows.
+- **Own `inReplyTo` and the turn-end send don't both wake the asker.** The model's own answer
+  writes `answeredBy` first, so the turn's end sends nothing; the test checks the asker heard one
+  message.
+- **"Ask" stays out of the code and docs.** The vocabulary sweep keeps *ask* for a question to a
+  person, so the build says *reply-requested message* and *owed reply* (`wantsReply`,
+  `sendOwedReply`, `workerRepliesOwed`) where this spec says *ask*.
+- **Codex review (#4163), two crash windows closed.** The reply is owed before the message reads
+  delivered, and the pass answers only a delivered one (an undelivered one belongs to the sender's
+  resend, and the request that lands it owes it again). An answer claims `answeredBy` before its
+  dispatch and gives it back on a final refusal, so a death mid-dispatch can't let the pass send a
+  second, contradicting "no answer".

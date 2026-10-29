@@ -567,6 +567,10 @@ On a subscription, Claude Code reports its limit windows while it runs. `claudeC
 
 `readClaudeUsage({ env, timeoutMs?, signal? })` is a `HarnessUsageReader` for who is signed in: `windows` with `plan`, `accountId` and no windows (those come from runs), `api-key`, `signed-out`, or `unavailable` when the SDK isn't installed or Claude Code didn't answer (which keeps a stored reading). It never throws. `usageWindowOf(info)` maps one raw `rate_limit_event` payload to a window, and `CLAUDE_CODE_HARNESS` is `"claude-code"`. Nothing here reads a credentials file, calls a usage endpoint, or uses the SDK's experimental usage call. Guide: [reading usage left](https://flow-state.dev/docs/tools/claude-code-sdk#reading-usage-left).
 
+### Following what a run does
+
+`claudeCodeAgent({ onActivity })` reports what a run is doing: each completed assistant message as `{ kind: "message", text }` and each tool call the run starts as `{ kind: "tool", name, arguments }`, with `arguments` the call's JSON text. The hook isn't awaited, and a throw from it is logged while the run carries on.
+
 ## Running tests
 
 ```bash

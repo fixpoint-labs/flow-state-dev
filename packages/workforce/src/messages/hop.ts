@@ -68,13 +68,17 @@ export const RECEIVED_CALL_STATE = "workforceReceivedCall";
 /** The request-state field saying an `onMessageReceived` request landed its message, so its reply step reads it by construction. */
 export const RECEIVED_LANDED_STATE = "workforceReceivedLanded";
 
+/** The request-state field naming the reply-requested message an `onMessageReceived` request landed (FIX-2310), so its turn's end answers it. */
+export const RECEIVED_REPLY_OWED_STATE = "workforceReplyOwed";
+
 /** The request state the hop and the per-turn count are kept in. */
 export const messageTurnStateSchema = z.object({
   [TURN_HOP_STATE]: z.number().int().nonnegative().optional(),
   [TURN_CHAIN_STATE]: z.string().nullable().optional(),
   [TURN_SENT_STATE]: z.number().int().nonnegative().optional(),
   [RECEIVED_CALL_STATE]: z.string().optional(),
-  [RECEIVED_LANDED_STATE]: z.boolean().optional()
+  [RECEIVED_LANDED_STATE]: z.boolean().optional(),
+  [RECEIVED_REPLY_OWED_STATE]: z.string().optional()
 });
 
 /** A session's current hop count: 0 for one that keeps none. */
