@@ -1,7 +1,7 @@
 /**
- * The working folder check: the lab refuses to start unless `TEAMMATES_WORKDIR`
- * names a git checkout, so a coding run never lands in the current directory or
- * the lab's own checkout by accident.
+ * The working folder check: the host refuses to start unless it is handed a git
+ * checkout (`fsdev.config.mts` defaults `TEAMMATES_WORKDIR` to the repository
+ * root), so a coding run never lands in the current directory by accident.
  */
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
