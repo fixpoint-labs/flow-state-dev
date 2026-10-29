@@ -59,6 +59,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   const isCoding = useCallback((id: string) => workers.some((w) => w.id === id && w.takesTasks), [workers]);
   const teammates = workers.filter((w) => !w.takesTasks);
   const worker = openRun === undefined ? teammates.find((w) => w.id === selected) : undefined;
+  // A run has no Talk panel, so it gets no Talk column either.
+  const talkShown = talkOpen && worker !== undefined;
   const choose = (id: string) => {
     setOpenRun(undefined);
     setSelected(id);
@@ -67,7 +69,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   return (
     <div
       className="grid h-full grid-rows-[minmax(0,1fr)] overflow-hidden"
-      style={{ gridTemplateColumns: talkOpen ? "15rem minmax(0,1fr) 18rem" : "15rem minmax(0,1fr)" }}
+      style={{ gridTemplateColumns: talkShown ? "15rem minmax(0,1fr) 18rem" : "15rem minmax(0,1fr)" }}
     >
       <WorkersList
         adapter={adapter}
@@ -99,7 +101,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
       ) : (
         <main aria-label="Conversation" />
       )}
-      {talkOpen && worker ? <TalkPanel adapter={adapter} worker={worker} nameOf={nameOf} onClose={() => setTalkOpen(false)} /> : null}
+      {talkShown ? <TalkPanel adapter={adapter} worker={worker} nameOf={nameOf} onClose={() => setTalkOpen(false)} /> : null}
     </div>
   );
 }
