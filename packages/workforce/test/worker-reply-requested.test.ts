@@ -16,7 +16,33 @@
  * The sender is the agent worker (Otto), driven step by step. Everything is
  * read from the message log and each session's requests.
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const fault = { dieBeforeDelivered: false, holdOwnAnswers: false };
+let releaseHeld: () => void = () => {};
+
+// A recipient whose process dies between owing a reply and the delivery (the
+// next markDelivered throws, once); and an answer of the model's own whose
+// dispatch hangs, as a process dying mid-dispatch would leave it.
+vi.mock("../src/messages/delivery", async (original) => {
+  const actual = await original<typeof import("../src/messages/delivery")>();
+  return {
+    ...actual,
+    markDelivered: (...args: Parameters<typeof actual.markDelivered>) => {
+      if (fault.dieBeforeDelivered) {
+        fault.dieBeforeDelivered = false;
+        return Promise.reject(new Error("the process died before the delivery"));
+      }
+      return actual.markDelivered(...args);
+    },
+    dispatchMessage: (...args: Parameters<typeof actual.dispatchMessage>) => {
+      if (fault.holdOwnAnswers && args[2] === "scripted-answer") {
+        return new Promise<never>((_, reject) => (releaseHeld = () => reject(new Error("the process died mid-dispatch"))));
+      }
+      return actual.dispatchMessage(...args);
+    }
+  };
+});
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { GeneratorModel, GeneratorModelCallOptions } from "@flow-state-dev/core/types";
 import { mockGenerator } from "@flow-state-dev/testing";
@@ -139,6 +165,9 @@ function quietFlow(installation: WorkerInstallation, flow: string, unmarked = fa
 
 let open: BoardHost | undefined;
 afterEach(async () => {
+  fault.dieBeforeDelivered = false;
+  fault.holdOwnAnswers = false;
+  releaseHeld();
   await open?.dispose();
   open = undefined;
 });
@@ -359,6 +388,45 @@ describe("a message that asks for a reply", { timeout: 40_000 }, () => {
     expect(await answersTo(h, ask!)).toHaveLength(1);
     expect((await h.session(lead)).state?.workerRepliesOwed ?? []).toEqual([]);
   }, 40_000);
+});
+
+describe("a reply-requested message across a process death", { timeout: 40_000 }, () => {
+  // Owed before it reads delivered: a death after the delivery still gets an answer.
+  it("whose recipient died before the delivery is owed from before it, and the resend's turn answers it once", async () => {
+    fault.dieBeforeDelivered = true;
+    const { model } = ottoModel({ "Ask the lead": [{ to: "lead", text: "What is the codename?", replyRequested: true }] });
+    const { h, otto } = await boot(model);
+    await h.post("alice", otto, "respond", { message: "Ask the lead for the codename" }, "agent");
+    const lead = await deriveWorkerSessionId({ userId: "alice", orgId: ORG, flow: "coordinator", criteria: { worker: "lead" } });
+    // The dead landing owed it before the delivery it never wrote.
+    expect(await until(async () => ((await h.session(lead).catch(() => undefined))?.state?.workerRepliesOwed ?? []).length === 1)).toBe(true);
+    expect(await until(async () => (await sentIds(h, otto)).length === 1)).toBe(true);
+    const [sent] = await sentIds(h, otto);
+
+    // The sender's pass sends it again; the request that lands it answers it, once, with the real text.
+    expect(await until(async () => (await answersTo(h, sent!)).length === 1, 20_000)).toBe(true);
+    await h.settled();
+    await sleep(2_500);
+    const answers = await answersTo(h, sent!);
+    expect(answers).toHaveLength(1);
+    expect(answers[0]).toMatchObject({ from: "lead", text: "The codename is Bluebird." });
+    expect((await h.session(lead)).state?.workerRepliesOwed ?? []).toEqual([]);
+  });
+
+  // Claimed before it goes out: a death mid-dispatch leaves no room for a second answer.
+  it("answered by the recipient's own send is marked answered before that send's dispatch", async () => {
+    fault.holdOwnAnswers = true;
+    const { model } = ottoModel({ "Ask the scripted one": [{ to: "scripted", text: "What is the codename? [own]", replyRequested: true }] });
+    const { h, otto } = await boot(model);
+    await h.post("alice", otto, "respond", { message: "Ask the scripted one" }, "agent");
+    expect(await until(async () => (await sentIds(h, otto)).length === 1)).toBe(true);
+    const [sent] = await sentIds(h, otto);
+    expect(await until(async () => (await answersTo(h, sent!)).length === 1)).toBe(true);
+    const [answer] = await answersTo(h, sent!);
+    // Its dispatch hasn't returned, and the message already names it.
+    expect(answer).toMatchObject({ from: "scripted", status: "unconfirmed" });
+    expect((await logRows(h)).find((row) => row.id === sent)!.answeredBy).toBe(answer!.id);
+  });
 });
 
 describe("a reply request to a worker that runs nothing on a message", { timeout: 40_000 }, () => {

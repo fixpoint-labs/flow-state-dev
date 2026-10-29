@@ -368,20 +368,44 @@ export async function sendMessage(
     at: Date.now()
   };
   const ref = await log.getOrCreate(id, row);
-  return markAnswer(ctx, row, await dispatchOnce(ctx, ref, row, from, resends));
+  // An answer claims the message it answers before it goes out, so a crash
+  // after the dispatch can't leave room for a second answer; a refused one
+  // gives the claim back.
+  await claimAnswer(ctx, row);
+  const outcome = await dispatchOnce(ctx, ref, row, from, resends);
+  if (!outcome.ok) await releaseAnswer(ctx, row);
+  return outcome;
 }
 
 /**
- * Record a sent answer on the message it answers, when that one asked for a
- * reply (FIX-2310): `answeredBy`, written once, so the framework's answer at
- * the turn's end sends nothing more. A refused answer answers nothing.
+ * Record an answer on the message it answers, when that one asked for a reply
+ * (FIX-2310): `answeredBy`, written once, so the framework's answer at the
+ * turn's end, or the pass's, sends nothing more.
  */
-async function markAnswer(ctx: BlockContext, row: Pick<WorkerMessageRow, "id" | "inReplyTo">, outcome: SendOutcome): Promise<SendOutcome> {
-  if (!outcome.ok || row.inReplyTo === undefined) return outcome;
+async function claimAnswer(ctx: BlockContext, row: Pick<WorkerMessageRow, "id" | "inReplyTo">): Promise<void> {
+  if (row.inReplyTo === undefined) return;
   const asked = await messageLogOf(ctx).getOptional(row.inReplyTo);
   if (asked?.state.replyRequested === true && asked.state.answeredBy === undefined) {
     await asked.updateState((current) => (current.answeredBy === undefined ? { ...current, answeredBy: row.id } : current));
   }
+}
+
+/** Give back {@link claimAnswer}'s claim when `row`'s send was refused: a refused answer answers nothing. */
+async function releaseAnswer(ctx: BlockContext, row: Pick<WorkerMessageRow, "id" | "inReplyTo">): Promise<void> {
+  if (row.inReplyTo === undefined) return;
+  const asked = await messageLogOf(ctx).getOptional(row.inReplyTo);
+  if (asked?.state.answeredBy === row.id) {
+    await asked.updateState((current) => {
+      if (current.answeredBy !== row.id) return current;
+      const { answeredBy: _answeredBy, ...rest } = current;
+      return rest;
+    });
+  }
+}
+
+/** {@link claimAnswer} for a repeat of a send that went out: the first send's claim, if its process ended before it. */
+async function markAnswer(ctx: BlockContext, row: Pick<WorkerMessageRow, "id" | "inReplyTo">, outcome: SendOutcome): Promise<SendOutcome> {
+  if (outcome.ok) await claimAnswer(ctx, row);
   return outcome;
 }
 

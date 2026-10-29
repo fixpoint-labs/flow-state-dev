@@ -135,3 +135,8 @@ worker that needs both before it goes on files tasks or calls.
 - **"Ask" stays out of the code and docs.** The vocabulary sweep keeps *ask* for a question to a
   person, so the build says *reply-requested message* and *owed reply* (`wantsReply`,
   `sendOwedReply`, `workerRepliesOwed`) where this spec says *ask*.
+- **Codex review (#4163), two crash windows closed.** The reply is owed before the message reads
+  delivered, and the pass answers only a delivered one (an undelivered one belongs to the sender's
+  resend, and the request that lands it owes it again). An answer claims `answeredBy` before its
+  dispatch and gives it back on a final refusal, so a death mid-dispatch can't let the pass send a
+  second, contradicting "no answer".

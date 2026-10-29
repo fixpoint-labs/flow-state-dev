@@ -22,7 +22,7 @@ import { hasEnded, NOTICE_DUE_MS } from "@flow-state-dev/orchestration/tasks";
 import { DISPATCH_ENTRY } from "../conversation-board/board-entries";
 import type { WorkerInstallation } from "../workers/installation";
 import { WORKER_REPLIES_OWED_STATE } from "./keys";
-import { owedRepliesOf } from "./owed-reply-state";
+import { owedRepliesOf, type OwedReply } from "./owed-reply-state";
 import { MAX_MESSAGE_CHARS, messageLogOf, type WorkerMessageRow } from "./message-log";
 import { sendMessage } from "./send-message";
 
@@ -46,8 +46,9 @@ function noAnswerText(messageId: string): string {
 
 /**
  * Owe the running session's pass an answer to `id`, landed by the running
- * request. Only a flow that carries the pass can be owed; a host that keeps
- * no wakes has the list only.
+ * request: one that takes a message over from a request that ended before
+ * delivering it owes it in that one's place. Only a flow that carries the
+ * pass can be owed; a host that keeps no wakes has the list only.
  */
 export async function oweReply(ctx: BlockContext, id: string): Promise<void> {
   try {
@@ -58,16 +59,22 @@ export async function oweReply(ctx: BlockContext, id: string): Promise<void> {
   const by = ctx.request.identity.id;
   await ctx.session.atomicState((state: Readonly<Record<string, unknown>>) => {
     const owed = owedRepliesOf(state);
-    return owed.some((entry) => entry.id === id) ? {} : { [WORKER_REPLIES_OWED_STATE]: [...owed, { id, by }] };
+    if (owed.some((entry) => entry.id === id && entry.by === by)) return {};
+    return { [WORKER_REPLIES_OWED_STATE]: [...owed.filter((entry) => entry.id !== id), { id, by }] };
   });
 }
 
-/** Take `ids` off the running session's owed replies. */
-async function dropOwedReplies(ctx: BlockContext, ids: readonly string[]): Promise<void> {
+/**
+ * Take `ids` off the running session's owed replies; one given with its
+ * request only while that request still owes it, so a take-over that owed it
+ * since keeps it.
+ */
+async function dropOwedReplies(ctx: BlockContext, ids: ReadonlyArray<string | OwedReply>): Promise<void> {
   if (ids.length === 0) return;
+  const goes = (entry: OwedReply) => ids.some((id) => (typeof id === "string" ? id === entry.id : id.id === entry.id && id.by === entry.by));
   await ctx.session.atomicState((state: Readonly<Record<string, unknown>>) => {
     const owed = owedRepliesOf(state);
-    const kept = owed.filter((entry) => !ids.includes(entry.id));
+    const kept = owed.filter((entry) => !goes(entry));
     return kept.length === owed.length ? {} : { [WORKER_REPLIES_OWED_STATE]: kept };
   });
 }
@@ -104,9 +111,11 @@ export async function sendOwedReply(
 
 /**
  * The pass's reply step: for each reply the running session owes, drop it once
- * answered; answer "no answer" for one whose landing request ended without
- * answering (its server died mid-turn); keep the rest, while their turn runs
- * or waits.
+ * answered or once its message can't land; answer "no answer" for one whose
+ * landing request ended after the delivery without answering (its server died
+ * mid-turn); drop one whose request ended before the delivery, since the
+ * sender's resend owns it now and the request that lands it owes it again;
+ * keep the rest, while their turn runs or waits.
  *
  * @returns When the next owed reply should be looked at again, or `undefined` when none is owed.
  */
@@ -114,16 +123,17 @@ export async function payReplyDebts(ctx: BlockContext, installation: WorkerInsta
   const owed = owedRepliesOf(ctx.session.state);
   if (owed.length === 0) return undefined;
   const log = messageLogOf(ctx);
-  const drop: string[] = [];
+  const drop: Array<string | OwedReply> = [];
   let next: number | undefined;
   for (const entry of owed) {
     const row = (await log.getOptional(entry.id))?.state;
-    if (row === undefined || row.answeredBy !== undefined) {
+    if (row === undefined || row.answeredBy !== undefined || row.status === "refused" || row.status === "undeliverable") {
       drop.push(entry.id);
       continue;
     }
     if (await hasEnded(ctx, entry.by)) {
-      await sendOwedReply(ctx, installation, flowKind, entry.id, "");
+      if (row.status === "delivered") await sendOwedReply(ctx, installation, flowKind, entry.id, "");
+      else drop.push(entry);
       continue;
     }
     const at = Date.now() + NOTICE_DUE_MS;

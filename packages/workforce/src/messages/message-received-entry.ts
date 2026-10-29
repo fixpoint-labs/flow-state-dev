@@ -222,9 +222,11 @@ export function messageReceivedEntry(options: {
       // Landed once both are stored: the sending session's pass stops sending
       // it. A taker killed before this is taken over, and the message shows twice.
       await emit.stored();
-      await markDelivered(ctx as never, row.id);
-      // A reply-requested message owes an answer from here (FIX-2310): the pass answers it if this request dies before its end does.
+      // A reply-requested message owes an answer from here (FIX-2310), owed
+      // before it reads delivered: the pass answers it if this request dies
+      // before its end does, even right after the delivery.
       if (wantsReply(row) && carriesPass(options.installation, options.flowKind)) await oweReply(ctx as never, row.id);
+      await markDelivered(ctx as never, row.id);
       await ctx.request.atomicState(() => ({
         [RECEIVED_LANDED_STATE]: true,
         ...(received.call ? { [RECEIVED_CALL_STATE]: row.id } : {}),
