@@ -7,7 +7,8 @@
  * Three teammates, each with one conversation, and coder, the hidden worker
  * coding tasks run on. Your first ask to lead makes it message researcher;
  * researcher looks the fact up and replies. Ask lead to fix something and lead
- * starts a coding task, which runs in the working folder. Each worker
+ * starts a coding task, which runs in the working folder. Ask writer to
+ * publish and it waits for your yes first. Each worker
  * answers one request at a time: a line you send, or a message from another
  * worker, waits while the worker is answering, and runs when it is done.
  * lead's conversation starts past the 50-turn history window.
@@ -87,6 +88,8 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
   const fired = new Set<string>();
   let tasks: FixtureTask[] = [];
   const runs = new Map<string, RunStep[]>();
+  /** The worker each open approval belongs to, by suspension id. */
+  const approvals = new Map<string, FixtureWorker>();
 
   const notify = () => {
     for (const listener of [...listeners]) listener();
@@ -160,6 +163,12 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
         return [[700, say(w, "Looking it up in the plan doc.")], [4000, sendMessage(w, message.from, "Nov 12, per the plan doc.", message.id)]];
       }
       return [[700, say(w, "On it.")], [2000, sendMessage(w, message.from, "Done. It's in the doc.", message.id)]];
+    }
+    // writer waits for your yes before it publishes: `waitForUser` with an approval.
+    if (w.row.id === WRITER && /\bpublish\b/i.test(job.text)) {
+      const suspensionId = nextId("sus");
+      approvals.set(suspensionId, w);
+      return [[600, () => push(w, { kind: "approval", id: nextId("ap"), requestId: nextId("req"), suspensionId, text: "Publish the draft to the team page?" })]];
     }
     if (w.row.id === LEAD && /\bfix\b/i.test(job.text)) {
       return [[800, say(w, "Starting a coding task.")], [400, fileTask(w, "Fix the typo in the README's first line")]];
@@ -290,6 +299,14 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
         if (!w) return;
         onChange({ entries: w.entries, running: w.running });
       });
+    },
+
+    async answerApproval(_sessionId, { suspensionId }, approve) {
+      const w = approvals.get(suspensionId);
+      if (!w) throw new Error(`no approval ${suspensionId}`);
+      approvals.delete(suspensionId);
+      w.entries = w.entries.map((e) => (e.kind === "approval" && e.suspensionId === suspensionId ? { ...e, resolution: approve ? "approved" : "rejected" } : e));
+      say(w, approve ? "Published." : "Left it unpublished.")();
     },
 
     watchTalk(workerId, onChange) {
