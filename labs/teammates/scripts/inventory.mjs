@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /**
- * The lab's inventory: every file this lab adds, by kind, with line counts.
- * It is the "what this app adds" table in the README (the labs epic's rule ER-1).
+ * The lab's inventory: every file this lab adds, by kind (the labs epic's rule ER-1).
  *
  * A lab has three kinds of app code: configuration, React UI, and small
  * flows (each under 200 lines). Two more kinds are allowed and are not app
@@ -9,20 +8,16 @@
  * package until wiring and are deleted then. Any file that fits none of them
  * is an *other* row, and the check fails.
  *
- *   node scripts/inventory.mjs           check: no other row, flows in size, README current
- *   node scripts/inventory.mjs --write   rewrite the README's table
+ *   node scripts/inventory.mjs           check: no other row, flows in size
  *   node scripts/inventory.mjs --wired   also fail while any fixture is left (the closure runs this)
  *   node scripts/inventory.mjs --control plant src/glue.ts; passes only if the check then fails
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const LAB = join(dirname(fileURLToPath(import.meta.url)), "..");
-const README = join(LAB, "README.md");
-const START = "<!-- inventory:start -->";
-const END = "<!-- inventory:end -->";
 const FLOW_LIMIT = 200;
 
 /** Kind rules, first match wins. A path is relative to the lab, with `/`. */
@@ -63,35 +58,6 @@ export function inventory(files, { wired = false, linesOf = lines } = {}) {
   return { rows, problems };
 }
 
-const ORDER = ["config", "ui", "flow", "fixture", "check", "other"];
-const LABEL = {
-  config: "Configuration",
-  ui: "React UI",
-  flow: "Small flows",
-  fixture: "Fixtures (deleted at wiring)",
-  check: "Checks (not app code)",
-  other: "Other",
-};
-
-/** The README table: one row per kind, with its files and lines. */
-export function table(rows) {
-  const out = ["| Kind | Files | Lines |", "|---|---:|---:|"];
-  for (const kind of ORDER) {
-    const of = rows.filter((r) => r.kind === kind);
-    if (of.length === 0 && kind !== "flow") continue;
-    out.push(`| ${LABEL[kind]} | ${of.length} | ${of.reduce((n, r) => n + r.lines, 0)} |`);
-  }
-  return out.join("\n");
-}
-
-function readmeTable() {
-  const text = readFileSync(README, "utf8");
-  const a = text.indexOf(START);
-  const b = text.indexOf(END);
-  if (a < 0 || b < a) return { text, current: undefined };
-  return { text, current: text.slice(a + START.length, b).trim(), a, b };
-}
-
 function main(argv) {
   const files = labFiles();
   if (argv.includes("--control")) {
@@ -103,19 +69,7 @@ function main(argv) {
     console.error("inventory control: the planted src/glue.ts was not caught");
     return 1;
   }
-  // The README counts itself, so it is written twice to settle its own line count.
   const { rows, problems } = inventory(files, { wired: argv.includes("--wired") });
-  const want = table(rows);
-  if (argv.includes("--write")) {
-    for (let i = 0; i < 2; i++) {
-      const { text, a, b } = readmeTable();
-      if (a === undefined) throw new Error(`README.md has no ${START} … ${END} block`);
-      writeFileSync(README, `${text.slice(0, a + START.length)}\n${table(inventory(labFiles()).rows)}\n${text.slice(b)}`);
-    }
-    console.log("inventory: README table written");
-  } else if (readmeTable().current !== want) {
-    problems.push("README.md's inventory is out of date: run node scripts/inventory.mjs --write");
-  }
   if (problems.length > 0) {
     for (const p of problems) console.error(`inventory: ${p}`);
     return 1;
