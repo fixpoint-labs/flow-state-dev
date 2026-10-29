@@ -33,7 +33,7 @@ export function Runs({
         <span className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase">read only</span>
       </header>
       <div className="flex-1 overflow-y-auto px-6 py-4">
-        <div className="mx-auto flex max-w-2xl flex-col gap-3">
+        <div data-column className="mx-auto flex max-w-(--thread-width) flex-col gap-3">
           <p className="text-sm text-muted-foreground">
             A coding task runs in the background. Each shows here and on its card in the conversation that started it. To change one, tell that
             teammate.

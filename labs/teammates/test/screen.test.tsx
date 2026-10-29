@@ -162,6 +162,33 @@ describe("the teammates screen", () => {
     await waitFor(() => expect(run.textContent).toMatch(/Edited line 1/), { timeout: 2000 });
   });
 
+  it("lines the composer up with the message list: one column token, centred, Talk open or closed", async () => {
+    render(<App adapter={fast()} />);
+    const box = await screen.findByLabelText("Message Chief of Staff");
+    const columns = () => [...conversation().querySelectorAll<HTMLElement>("[data-column]")];
+    const capped = (el: HTMLElement) => el.classList.contains("max-w-(--thread-width)") && el.classList.contains("mx-auto");
+    // The list's column and the composer's: the same cap, and the composer's holds the box.
+    expect(columns()).toHaveLength(2);
+    expect(columns().every(capped)).toBe(true);
+    expect(columns()[1].contains(box)).toBe(true);
+    // Closing Talk widens the center, not the column.
+    fireEvent.click(within(conversation()).getByRole("button", { name: "Talk" }));
+    expect(columns().every(capped)).toBe(true);
+    // The answer's text takes the column's width; only your own lines are capped, on the right.
+    await waitFor(() => expect(entries("assistant").length).toBeGreaterThan(0));
+    expect(entries("assistant").every((e) => !/max-w-/.test(e.className))).toBe(true);
+  });
+
+  it("sizes the composer's box to its draft in CSS, so a column that narrows rewraps and regrows it", async () => {
+    render(<App adapter={fast()} />);
+    const box = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
+    // One line to start; the browser grows the box with its text (and its width) up to the cap, then it scrolls.
+    expect(box.getAttribute("rows")).toBe("1");
+    expect(box.classList.contains("field-sizing-content")).toBe(true);
+    expect(box.classList.contains("max-h-48")).toBe(true);
+    expect(box.style.height).toBe("");
+  });
+
   it("doesn't carry a draft to another worker: switching workers starts an empty box", async () => {
     render(<App adapter={fast()} />);
     const leadBox = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
