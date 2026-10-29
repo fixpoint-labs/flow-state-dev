@@ -31,3 +31,4 @@ Steps 2 and 3 have no isolating red state for lead's side: without lead's messag
 | 2026-10-28 | 42fdeb2+ | openai/no-such-model-goal-control | FAIL (expected) | `no-model`: [1] no answer (and CAN'T TELL on 1, nothing drawn), [2], [3], [5] all red |
 | 2026-10-28 | 920da34+ | openai/gpt-5.4-mini, Claude Code | PASS | After FIX-2289's Markdown entries; the goal reads entries as shown (innerText). Typo "servce"; date 5 May; one worktree, README.md only |
 | 2026-10-28 | 7bd40d0+ | openai/gpt-5.4-mini, Claude Code | PASS | Streamed sends. Lead told never to pass `wait`, researcher that only `sendMessage` reaches the asker (earlier runs failed [3] when lead called and when researcher answered in place); step 2 waits for the Talk panel to read the log. Typo "servce"; date 21 April |
+| 2026-10-28 | 600e888+ | openai/gpt-5.4-mini, Claude Code | PASS | Under the lab's own Grok Bot-like theme (FIX-2308). Typo "mesages"; date 10 February |
