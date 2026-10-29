@@ -8,13 +8,17 @@
  *   captures chain up to it), added per model; a report marked
  *   `countsIn: "trace"` is a multi-step run's aggregate whose steps were
  *   already added, and is skipped;
- * - every harness run a harness settles through core's `reportHarnessSpend`,
- *   appended as it was reported.
+ * - every harness report through core's `reportHarnessSpend`: a report with a
+ *   `runId` replaces that run's earlier one (FIX-2288), so a harness that
+ *   reports as it goes counts each run once, at its latest report; a report
+ *   without one is a settled run of its own.
  *
  * `ctx.request.tokenUsage` reads {@link RequestSpendLedger.total}'s `byModel`,
  * so an action's token budget counts model calls in production as in
  * development; a trace row's `modelUsage` is DevTool's and no longer read for
- * it. A request-end hook is handed {@link RequestSpendLedger.takeSinceLastEnding}.
+ * it. A request-end hook is handed {@link RequestSpendLedger.takeSinceLastEnding},
+ * and core's `readRequestSpend` reads {@link RequestSpendLedger.pending}, the
+ * same slice, without taking it (FIX-2288).
  */
 import { cacheTokensOf } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
@@ -25,7 +29,7 @@ import type { GeneratorModelResultPayload, HarnessRunSpend, ModelUsageEntry, Req
 export interface RequestSpendLedger {
   /** Add one model result, unless it is an aggregate the ledger already counted. */
   addModelResult(report: GeneratorModelResultPayload): void;
-  /** Append one settled harness run. */
+  /** Add one harness report: replaces its run's earlier report when it names a `runId`. */
   reportHarnessRun(run: HarnessRunSpend): void;
   /** Everything counted so far. */
   total(): RequestSpend;
@@ -34,6 +38,8 @@ export interface RequestSpendLedger {
    * first), so a request that ends more than once hands each part on once.
    */
   takeSinceLastEnding(): RequestSpend;
+  /** What {@link takeSinceLastEnding} would hand on now, without taking it (FIX-2288). */
+  pending(): RequestSpend;
 }
 
 /**
@@ -51,39 +57,90 @@ export function createRequestSpendLedger(
 ): RequestSpendLedger {
   const byModel: Record<string, ModelUsageEntry> = Object.assign(Object.create(null), copyOf(carried));
   for (const [model, entry] of Object.entries(recovered)) addEntry((byModel[model] ??= emptyEntry()), entry);
-  const harnessRuns: HarnessRunSpend[] = recoveredHarnessRuns.map((run) => ({ ...run }));
+  // One entry per run, as last reported, in the order last reported. A report
+  // with no run id is a run of its own, under a key nothing else reports to;
+  // so is each run the log recovered.
+  const harnessRuns = new Map<string, HarnessRunSpend>(recoveredHarnessRuns.map((run, i) => [`recovered:${i}`, { ...run }]));
+  // Each run as the last ending handed it on.
+  let takenRuns = new Map<string, HarnessRunSpend>();
   let takenByModel: Record<string, ModelUsageEntry> = copyOf(carried);
-  let takenRuns = 0;
+  let settledRuns = 0;
+
+  function since(): RequestSpend {
+    const byModelSince: Record<string, ModelUsageEntry> = {};
+    for (const [model, entry] of Object.entries(byModel)) {
+      const taken = takenByModel[model] ?? emptyEntry();
+      const delta: ModelUsageEntry = {
+        prompt: entry.prompt - taken.prompt,
+        completion: entry.completion - taken.completion,
+        total: entry.total - taken.total,
+        cacheReadTokens: entry.cacheReadTokens - taken.cacheReadTokens,
+        cacheCreationTokens: entry.cacheCreationTokens - taken.cacheCreationTokens
+      };
+      if (Object.values(delta).some((n) => n !== 0)) byModelSince[model] = delta;
+    }
+    const runs: HarnessRunSpend[] = [];
+    for (const [key, run] of harnessRuns) {
+      const taken = takenRuns.get(key);
+      if (taken === undefined) runs.push({ ...run });
+      else if (!sameRun(taken, run)) runs.push(changeOf(taken, run));
+    }
+    return { byModel: byModelSince, harnessRuns: runs };
+  }
 
   return {
     addModelResult(report) {
       if (report.countsIn === "trace" || report.usage === undefined) return;
-      addEntry((byModel[report.model] ??= emptyEntry()), entryOf(report));
+      const entry = byModel[report.model] ?? emptyEntry();
+      addEntry(entry, entryOf(report));
+      // Moved to the end, as a harness run is: the model called last is the last key.
+      delete byModel[report.model];
+      byModel[report.model] = entry;
     },
     reportHarnessRun(run) {
-      harnessRuns.push({ ...run });
+      const key = run.runId === undefined ? `settled:${settledRuns++}` : `run:${run.runId}`;
+      // Moved to the end: the latest report is the last entry.
+      harnessRuns.delete(key);
+      harnessRuns.set(key, { ...run });
     },
     total() {
-      return { byModel: copyOf(byModel), harnessRuns: harnessRuns.map((run) => ({ ...run })) };
+      return { byModel: copyOf(byModel), harnessRuns: [...harnessRuns.values()].map((run) => ({ ...run })) };
     },
     takeSinceLastEnding() {
-      const since: Record<string, ModelUsageEntry> = {};
-      for (const [model, entry] of Object.entries(byModel)) {
-        const taken = takenByModel[model] ?? emptyEntry();
-        const delta: ModelUsageEntry = {
-          prompt: entry.prompt - taken.prompt,
-          completion: entry.completion - taken.completion,
-          total: entry.total - taken.total,
-          cacheReadTokens: entry.cacheReadTokens - taken.cacheReadTokens,
-          cacheCreationTokens: entry.cacheCreationTokens - taken.cacheCreationTokens
-        };
-        if (Object.values(delta).some((n) => n !== 0)) since[model] = delta;
-      }
-      const runs = harnessRuns.slice(takenRuns).map((run) => ({ ...run }));
+      const taken = since();
       takenByModel = copyOf(byModel);
-      takenRuns = harnessRuns.length;
-      return { byModel: since, harnessRuns: runs };
+      takenRuns = new Map([...harnessRuns].map(([key, run]) => [key, { ...run }]));
+      return taken;
+    },
+    pending() {
+      return since();
     }
+  };
+}
+
+/** Whether two reports of one run say the same. */
+function sameRun(a: HarnessRunSpend, b: HarnessRunSpend): boolean {
+  return (
+    a.inputTokens === b.inputTokens &&
+    a.outputTokens === b.outputTokens &&
+    a.costUsd === b.costUsd &&
+    a.billing === b.billing &&
+    a.model === b.model
+  );
+}
+
+/**
+ * A run reported again after an ending handed it on: its change since, so the
+ * run's tokens are handed on once across endings. A count the earlier report
+ * lacked is handed on whole; one the later report lacks stays `null`.
+ */
+function changeOf(taken: HarnessRunSpend, run: HarnessRunSpend): HarnessRunSpend {
+  const minus = (now: number | null, then: number | null) => (now === null ? null : now - (then ?? 0));
+  return {
+    ...run,
+    inputTokens: minus(run.inputTokens, taken.inputTokens),
+    outputTokens: minus(run.outputTokens, taken.outputTokens),
+    costUsd: minus(run.costUsd, taken.costUsd)
   };
 }
 

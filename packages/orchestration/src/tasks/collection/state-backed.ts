@@ -73,6 +73,8 @@ import {
   type EndingRecording,
 } from "./internal";
 import { stampWrite } from "../write-provenance";
+import { spendAfterWrite } from "../spend";
+import { ticketNamesIncarnation } from "../claim-ticket";
 import { generateId } from "../generate-id";
 import { steerWrite, takeSteersPatch, untakenSteers } from "../steers";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
@@ -727,6 +729,21 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
         null,
         () => ({ leaseUntil }),
         { ...renewOptions, ifAllowed: true, refuseWithOpenQuestion: "any" }
+      );
+    },
+
+    async recordSpend(id, write, spendOptions) {
+      requireClaimTicket(spendOptions?.claim, "recordSpend", "of the request whose spend it records. Only a task's run records what it spent.");
+      // Fenced by the row's identity only (FIX-2288): a terminal row and a
+      // lapsed claim still take a spend; a recreated row declines.
+      return patchOne(
+        id,
+        null,
+        (task) => {
+          const spend = spendAfterWrite(task as Task, write);
+          return spend === undefined ? undefined : ({ spend } as Partial<Task<TInput, TOutput>>);
+        },
+        { decline: (task) => (ticketNamesIncarnation(spendOptions.claim, collectionId, task as Task) ? undefined : "not-my-task") }
       );
     },
 

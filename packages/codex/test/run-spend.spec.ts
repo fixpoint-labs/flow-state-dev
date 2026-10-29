@@ -41,7 +41,17 @@ async function runReporting(block: ReturnType<typeof codexAgent>) {
     () => "returned",
     () => "threw",
   );
-  return { reported, outcome };
+  return { reported, outcome, settled: settledOf(reported) };
+}
+
+/** The run's last report (the one that stands), its run id checked and dropped. */
+function settledOf(reported: HarnessRunSpend[]) {
+  const last = reported.at(-1);
+  if (last === undefined) return [];
+  expect(new Set(reported.map((r) => r.runId)).size).toBe(1);
+  expect(typeof last.runId).toBe("string");
+  const { runId: _runId, model: _model, ...rest } = last;
+  return [rest];
 }
 
 const COMPLETED: CodexThreadEvent[] = [
@@ -54,7 +64,7 @@ describe("codexAgent reports its run's spend", () => {
   it("reports Codex's tokens, no cost, and api-key billing when its client was handed a key", async () => {
     const block = codexAgent({ ...GATE_OFF, resolveCodexClient: scripted(COMPLETED) as never, client: { apiKey: "sk-test" }, model: "gpt-5.4-codex" });
 
-    const { reported, outcome } = await runReporting(block);
+    const { settled: reported, outcome } = await runReporting(block);
 
     expect(outcome).toBe("returned");
     expect(reported).toEqual([{ harness: "codex", inputTokens: 1000, outputTokens: 200, costUsd: null, billing: "api-key" }]);
@@ -63,7 +73,7 @@ describe("codexAgent reports its run's spend", () => {
   it("says nothing about billing when no key was handed to its client", async () => {
     const block = codexAgent({ ...GATE_OFF, resolveCodexClient: scripted(COMPLETED) as never });
 
-    const { reported } = await runReporting(block);
+    const { settled: reported } = await runReporting(block);
 
     expect(reported).toEqual([{ harness: "codex", inputTokens: 1000, outputTokens: 200, costUsd: null, billing: null }]);
   });
@@ -74,9 +84,37 @@ describe("codexAgent reports its run's spend", () => {
       resolveCodexClient: scripted([{ type: "thread.started", thread_id: "thr_1" }] as CodexThreadEvent[], new Error("codex exited 1")) as never,
     });
 
-    const { reported, outcome } = await runReporting(block);
+    const { settled: reported, outcome } = await runReporting(block);
 
     expect(outcome).toBe("threw");
     expect(reported).toEqual([{ harness: "codex", inputTokens: null, outputTokens: null, costUsd: null, billing: null }]);
+  });
+});
+
+/**
+ * FIX-2288: a Codex run names its model from the start and says "not
+ * reported" until its turn ends. Why it matters: a task card shows "Codex ·
+ * gpt-5" while the run works, with no tokens rather than 0, and the real total
+ * once Codex reports it.
+ */
+describe("codexAgent reports its spend as the run goes", () => {
+  it("reports the model it was started with and no tokens at the start, then the turn's tokens", async () => {
+    const block = codexAgent({ ...GATE_OFF, resolveCodexClient: scripted(COMPLETED) as never, model: "gpt-5" });
+
+    const { reported } = await runReporting(block);
+
+    expect(reported.map((r) => [r.model, r.inputTokens, r.outputTokens])).toEqual([
+      ["gpt-5", null, null],
+      ["gpt-5", 1000, 200],
+      ["gpt-5", 1000, 200],
+    ]);
+  });
+
+  it("names no model when Codex runs its own default", async () => {
+    const block = codexAgent({ ...GATE_OFF, resolveCodexClient: scripted(COMPLETED) as never });
+
+    const { reported } = await runReporting(block);
+
+    expect(reported[0]).toMatchObject({ model: null, inputTokens: null, outputTokens: null });
   });
 });

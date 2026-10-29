@@ -15,11 +15,13 @@ import { mockEvaluationModel } from "@flow-state-dev/testing";
 import {
   SESSION_REQUEST_END_HOOK,
   onRequestEnded,
+  readRequestSpend,
   reportHarnessSpend,
   type FlowInstance,
   type GeneratorModel,
   type GeneratorModelCallOptions,
   type GeneratorModelResult,
+  type GeneratorModelResultPayload,
   type RequestEnding,
   type SuspensionRecord
 } from "@flow-state-dev/core/types";
@@ -28,6 +30,7 @@ import { z } from "zod";
 import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import { detectInterruptedRequests } from "../src/execution/request-recovery";
+import { createRequestSpendLedger } from "../src/execution/request-spend-ledger";
 
 const previousObservability = process.env.FSDEV_TRACE_OBSERVABILITY;
 afterEach(() => {
@@ -739,6 +742,70 @@ describe("request spend ledger", () => {
   );
 
   it.each(["false", "true"])(
+    "hands on a run that reported as it went, at its latest report, once, at the continuation after its process died (observability %s)",
+    async (observability) => {
+      // A harness that reports as it goes (FIX-2288) reports one run three
+      // times: the log keeps its latest report, not all three.
+      process.env.FSDEV_TRACE_OBSERVABILITY = observability;
+      const endings: RequestEnding[] = [];
+      let harnessRuns = 0;
+      const harnessStep = handler({
+        name: "harness-step",
+        inputSchema: z.any(),
+        execute: (value, ctx) => {
+          harnessRuns += 1;
+          for (const [inputTokens, outputTokens] of [[30, 5], [60, 10], [100, 20]] as const) {
+            reportHarnessSpend(ctx, { runId: "run-1", harness: "codex", inputTokens, outputTokens, costUsd: 0.5, billing: "api-key" });
+          }
+          return value;
+        }
+      });
+      let crashed = true;
+      let stalledOnce = false;
+      let endDeadRun: () => void = () => {};
+      const stall = handler({
+        name: "stall",
+        inputSchema: z.any(),
+        execute: async (value) => {
+          if (!crashed) return value;
+          stalledOnce = true;
+          return new Promise<never>((_resolve, reject) => {
+            endDeadRun = () => reject(new Error("the process died"));
+          });
+        }
+      });
+      const flow = defineFlow({
+        kind: "spend-crash-harness-runs",
+        session: { [SESSION_REQUEST_END_HOOK]: () => (ending) => void endings.push(ending) },
+        actions: {
+          run: { inputSchema: z.object({}), block: sequencer({ name: "seq", durable: true }).step(harnessStep).step(stall) }
+        }
+      })({ id: "spend-crash-harness-runs" });
+      const stores = createInMemoryStores();
+      const provider = createCheckpointDurabilityProvider({ checkpoints: stores.checkpoints, suspensions: stores.suspensions, leases: stores.leases });
+      const runtimeConfig = { durabilityProvider: provider, modelResolver: resolverReporting(usage4x4) };
+
+      const deadRun = runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-crash-harness-runs", stores, runtimeConfig });
+      while (!stalledOnce) await new Promise((resolve) => setTimeout(resolve, 5));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect((await detectInterruptedRequests({ stores, staleThresholdMs: -1 })).map((swept) => swept.entry.requestId)).toEqual(["r-crash-harness-runs"]);
+      crashed = false;
+      const registry = createFlowRegistry();
+      registry.register(flow as never);
+      const { finished } = await continueRequest({ requestId: "r-crash-harness-runs", stores, flowRegistry: registry, runtimeConfig });
+      await finished;
+      const endingsBeforeTeardown = endings.map((ending) => [ending.status, ending.spend.harnessRuns]);
+      endDeadRun();
+      await deadRun.catch(() => undefined);
+
+      expect(harnessRuns).toBe(1);
+      expect(endingsBeforeTeardown).toEqual([
+        ["completed", [{ runId: "run-1", harness: "codex", inputTokens: 100, outputTokens: 20, costUsd: 0.5, billing: "api-key" }]]
+      ]);
+    }
+  );
+
+  it.each(["false", "true"])(
     "keeps counting a request's token budget across a continuation after its process died (observability %s)",
     async (observability) => {
       // A run whose process died settles nothing: what its finished steps
@@ -812,4 +879,105 @@ describe("request spend ledger", () => {
       expect(endingsBeforeTeardown).toEqual([["failed", 11]]);
     }
   );
+});
+
+/**
+ * FIX-2288: a harness reports as its run goes, keyed by run, and a framework
+ * package reads what the request has spent so far. Why it matters: a task card
+ * shows a count that rises while a run works, so the read must see each
+ * report as it lands, a run reported many times must count once (its latest
+ * report, never the sum of its reports), and the ending must still hand on
+ * exactly what the reads showed.
+ */
+describe("request spend read mid-run", () => {
+  it("reads each report as it lands, replaces a run's earlier report, and hands on the run once at the ending", async () => {
+    process.env.FSDEV_TRACE_OBSERVABILITY = "false";
+    const endings: RequestEnding[] = [];
+    const reads: unknown[] = [];
+    const harness = handler({
+      name: "harness",
+      inputSchema: z.any(),
+      execute: (_input, ctx) => {
+        const report = (inputTokens: number | null, outputTokens: number | null) =>
+          reportHarnessSpend(ctx, { runId: "run-1", harness: "claude-code", model: "claude-sonnet-4-5", inputTokens, outputTokens, costUsd: null, billing: "subscription" });
+        report(null, null);
+        reads.push(readRequestSpend(ctx)?.harnessRuns);
+        report(100, 20);
+        reads.push(readRequestSpend(ctx)?.harnessRuns.map((run) => [run.inputTokens, run.outputTokens]));
+        report(1000, 200);
+        reads.push(readRequestSpend(ctx)?.harnessRuns.map((run) => [run.inputTokens, run.outputTokens]));
+        return {};
+      }
+    });
+    const ask = generator({ name: "ask", model: "openai/gpt-6-luna", prompt: () => "p", user: () => "u" });
+    const readModels = handler({
+      name: "read-models",
+      inputSchema: z.any(),
+      execute: (_input, ctx) => {
+        reads.push(readRequestSpend(ctx)?.byModel);
+        return {};
+      }
+    });
+    const flow = defineFlow({
+      kind: "spend-read",
+      actions: { run: { inputSchema: z.object({}), block: sequencer({ name: "seq" }).tap(recordingEnd(endings)).step(ask).step(readModels).step(harness) } }
+    })();
+
+    const result = await run(flow, { modelResolver: resolverReporting(usage4x4) }, "read");
+
+    expect(result.error).toBeUndefined();
+    expect(reads[0]).toEqual({ "openai/gpt-6-luna": { prompt: 4, completion: 4, total: 8, cacheReadTokens: 0, cacheCreationTokens: 0 } });
+    // Before any tokens: the run is there, with its model, and null tokens (never 0).
+    expect(reads[1]).toEqual([{ runId: "run-1", harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: null, outputTokens: null, costUsd: null, billing: "subscription" }]);
+    expect(reads[2]).toEqual([[100, 20]]);
+    // The latest report replaces the earlier ones: 1 000 + 200, never 1 100 + 220.
+    expect(reads[3]).toEqual([[1000, 200]]);
+    expect(endings[0]!.spend.harnessRuns).toEqual([
+      { runId: "run-1", harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: 1000, outputTokens: 200, costUsd: null, billing: "subscription" }
+    ]);
+  });
+
+  it("keeps two runs apart, and a report with no run id as a settled run of its own", async () => {
+    const endings: RequestEnding[] = [];
+    const harness = handler({
+      name: "harness",
+      inputSchema: z.any(),
+      execute: (_input, ctx) => {
+        reportHarnessSpend(ctx, { runId: "a", harness: "codex", model: "gpt-5", inputTokens: 1, outputTokens: 1, costUsd: null, billing: null });
+        reportHarnessSpend(ctx, { runId: "b", harness: "codex", model: "gpt-5", inputTokens: 2, outputTokens: 2, costUsd: null, billing: null });
+        reportHarnessSpend(ctx, { harness: "cursor", inputTokens: 5, outputTokens: 5, costUsd: null, billing: null });
+        reportHarnessSpend(ctx, { harness: "cursor", inputTokens: 5, outputTokens: 5, costUsd: null, billing: null });
+        reportHarnessSpend(ctx, { runId: "a", harness: "codex", model: "gpt-5", inputTokens: 3, outputTokens: 3, costUsd: null, billing: null });
+        return {};
+      }
+    });
+    const flow = defineFlow({ kind: "spend-runs", actions: { run: { inputSchema: z.object({}), block: sequencer({ name: "seq" }).tap(recordingEnd(endings)).step(harness) } } })();
+
+    await run(flow, {}, "runs");
+
+    // Run "a" was reported last, so it is last; the two id-less reports are two runs.
+    expect(endings[0]!.spend.harnessRuns.map((r) => [r.runId ?? "-", r.harness, r.inputTokens])).toEqual([
+      ["b", "codex", 2],
+      ["-", "cursor", 5],
+      ["-", "cursor", 5],
+      ["a", "codex", 3]
+    ]);
+  });
+
+  it("keys model calls in the order each model was last called, so a task names the model it called last", () => {
+    // A task card reads the last key as the request's model: A, then B, then A again must read A.
+    const ledger = createRequestSpendLedger();
+    const call = (model: string) =>
+      ledger.addModelResult({ model, usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } } as GeneratorModelResultPayload);
+    call("model-a");
+    call("model-b");
+    call("model-a");
+    expect(Object.keys(ledger.pending().byModel)).toEqual(["model-b", "model-a"]);
+    expect(Object.keys(ledger.total().byModel)).toEqual(["model-b", "model-a"]);
+    expect(ledger.total().byModel["model-a"]!.total).toBe(4);
+  });
+
+  it("reads undefined outside a request", () => {
+    expect(readRequestSpend({})).toBeUndefined();
+  });
 });

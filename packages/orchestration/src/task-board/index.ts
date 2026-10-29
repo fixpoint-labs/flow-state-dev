@@ -293,7 +293,7 @@ export {
   type TaskLedgersOptions,
 } from "./task-entry";
 export type { TaskGateOptions, TaskDispatchInput } from "./task-entry";
-export { afterTaskCheck, askMidway, noteTaskAnswer, taskRequestAdmission, STEER_TURN_DUE_MS, TaskAdmissionLost } from "./task-request";
+export { afterTaskCheck, askMidway, noteTaskAnswer, taskRequestAdmission, SPEND_TICK_MS, STEER_TURN_DUE_MS, TaskAdmissionLost } from "./task-request";
 export type { MidwayAsk, TaskEndRules, TaskRequestAdmissionOptions } from "./task-request";
 export { createRowDispatch } from "./blocks/dispatch-row";
 export type { RowDispatchOptions } from "./blocks/dispatch-row";

@@ -33,13 +33,8 @@
  */
 import { defineCapability, defineResourceCollection, handler } from "@flow-state-dev/core";
 import { updateStateWith } from "@flow-state-dev/core/helpers";
-import type {
-  BlockContext,
-  HarnessBilling,
-  RequestEndHook,
-  RequestSpend,
-  SessionRequestEndHook
-} from "@flow-state-dev/core/types";
+import { addRequestSpendSource, requestSpendSources } from "@flow-state-dev/core/types";
+import type { BlockContext, RequestEndHook, RequestSpend, SessionRequestEndHook } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { WORKER_ID_STATE_KEY } from "./keys";
 import type { WorkerInstallation, WorkerTurnContext } from "./installation";
@@ -133,53 +128,14 @@ function keyOf(day: string, worker: string): string {
 }
 
 /** Add one source's spend into a list of sources, matched on source, `kind` and billing. */
-function addSource(sources: WorkerSourceSpend[], add: WorkerSourceSpend): WorkerSourceSpend[] {
-  const at = sources.findIndex((s) => s.source === add.source && s.kind === add.kind && s.billing === add.billing);
-  if (at < 0) return [...sources, add];
-  const was = sources[at]!;
-  const merged: WorkerSourceSpend = {
-    ...was,
-    inputTokens: was.inputTokens + add.inputTokens,
-    outputTokens: was.outputTokens + add.outputTokens,
-    costUsd: was.costUsd === null && add.costUsd === null ? null : (was.costUsd ?? 0) + (add.costUsd ?? 0),
-    runs: was.runs + add.runs,
-    unreported: was.unreported + add.unreported
-  };
-  return sources.map((s, i) => (i === at ? merged : s));
-}
+const addSource = (sources: WorkerSourceSpend[], add: WorkerSourceSpend): WorkerSourceSpend[] => addRequestSpendSource(sources, add);
 
-/** What a request spent, as the sources it adds. Empty when it spent nothing. */
-function sourcesOf(spend: RequestSpend): WorkerSourceSpend[] {
-  let sources: WorkerSourceSpend[] = [];
-  for (const [model, entry] of Object.entries(spend.byModel)) {
-    sources = addSource(sources, {
-      source: model,
-      kind: "model",
-      billing: null,
-      inputTokens: entry.prompt,
-      outputTokens: entry.completion,
-      costUsd: null,
-      runs: 1,
-      unreported: 0
-    });
-  }
-  for (const run of spend.harnessRuns) {
-    const reported = run.inputTokens !== null || run.outputTokens !== null;
-    const billing: HarnessBilling | null = run.billing;
-    sources = addSource(sources, {
-      source: run.harness,
-      kind: "harness",
-      billing,
-      inputTokens: run.inputTokens ?? 0,
-      outputTokens: run.outputTokens ?? 0,
-      // D2: a dollar figure only for a billed key, and only when the harness reported one.
-      costUsd: billing === "api-key" && run.costUsd !== null ? run.costUsd : null,
-      runs: 1,
-      unreported: reported ? 0 : 1
-    });
-  }
-  return sources;
-}
+/**
+ * What a request spent, as the sources it adds: core's one conversion, which a
+ * task's spend reads too (FIX-2288), so the two count alike. Empty when it
+ * spent nothing.
+ */
+const sourcesOf = (spend: RequestSpend): WorkerSourceSpend[] => requestSpendSources(spend);
 
 /** The slice of a record ref this module uses. Structural. */
 interface UsageRef {

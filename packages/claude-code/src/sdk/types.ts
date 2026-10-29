@@ -128,6 +128,8 @@ export type SdkMessageLike =
       session_id?: string;
       /** On `init`: every MCP server the run connected to, or tried to. */
       mcp_servers?: Array<{ name: string; status?: string }>;
+      /** On `init`: the model the run uses, as Claude Code names it (FIX-2288). */
+      model?: string;
       /** On `api_retry`: the failed call's retry attempt, its limit and the wait before it. */
       attempt?: number;
       max_retries?: number;
@@ -147,6 +149,19 @@ export type SdkMessageLike =
        */
       parent_tool_use_id?: string | null;
       message?: {
+        /**
+         * The model message's id (FIX-2288). A parallel tool call splits one
+         * model message into several assistant messages that share it, each
+         * repeating its `usage`.
+         */
+        id?: string;
+        /** The model message's token usage, repeated on every assistant message that shares its `id`. */
+        usage?: {
+          input_tokens?: number;
+          output_tokens?: number;
+          cache_read_input_tokens?: number | null;
+          cache_creation_input_tokens?: number | null;
+        } | null;
         content?: Array<
           | { type: "text"; text: string }
           | { type: "thinking"; thinking: string }

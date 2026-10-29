@@ -51,6 +51,7 @@ import {
   reportHarnessActivity,
   type PlanListCollection,
 } from "@flow-state-dev/core";
+import { randomUUID } from "node:crypto";
 import { reportHarnessSpend } from "@flow-state-dev/core/types";
 import type {
   DeclaredResourceEntry,
@@ -489,10 +490,11 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
       let steering: SteerOffer | null = null;
       let sessionId: string | null = null;
       let runModel: CursorModelSelection | undefined;
+      const spendRunId = `cursor:${randomUUID()}`;
       // What the run has spent so far, kept as it streams so a run that is
       // stopped or fails still reports the turns it finished (FIX-2145).
       // `undefined` until a run was sent: nothing was spent before.
-      let spent: { usage: CursorRunUsage | null } | undefined;
+      let spent: RunSpent | undefined;
 
       try {
         // Resolved once, before the agent is opened, beside its directory and conversation.
@@ -514,11 +516,22 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         // aborted never fires `abort` again.
         if (ctx.signal?.aborted) throw new CursorAgentAbortedError(agent.agentId);
         const run = await agent.send(prompt, sendOptions);
-        spent = { usage: null };
+        // Reported from here on as the run goes (FIX-2288), under one id for
+        // the run: its configured model and no tokens at once, then each
+        // finished turn's running total, then the settled total.
+        const runSpent: RunSpent = {
+          usage: null,
+          model: runModel?.id ?? agentOptions?.model?.id ?? null,
+          report: () => reportCursorSpend(ctx, spendRunId, runSpent),
+        };
+        spent = runSpent;
+        runSpent.report();
         steering = offerSteer(run, ctx, onSteerable);
         const mirrored = await mirrorRun(run, ctx, emitState, name, writePlan, spent, onActivity);
         const settled = await settleRun(run, mirrored, ctx.signal);
-        spent.usage = settled.usage;
+        runSpent.usage = settled.usage;
+        // The settled model wins over the configured or streamed one, as on the handle.
+        if (settled.model !== undefined) runSpent.model = settled.model;
         if (steering !== null) {
           steering.withdraw();
           await steering.answered(ctx.signal);
@@ -553,19 +566,36 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         // What the run spent, into the request, however it ended (FIX-2145):
         // tokens only, cached prompt tokens counted as input. Cursor's cost is
         // an estimate and its billing unknown.
-        if (spent !== undefined) {
-          const usage = spent.usage;
-          reportHarnessSpend(ctx, {
-            harness: CURSOR_HARNESS,
-            inputTokens: usage ? usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens : null,
-            outputTokens: usage?.outputTokens ?? null,
-            costUsd: null,
-            billing: null,
-          });
-        }
+        spent?.report();
         closeQuietly(agent);
       }
     },
+  });
+}
+
+/** What a run has spent so far, and how to report it (FIX-2145, FIX-2288). */
+interface RunSpent {
+  usage: CursorRunUsage | null;
+  /** The model the run uses: the configured one, then the one the stream names. */
+  model: string | null;
+  report(): void;
+}
+
+/**
+ * Report a run's spend so far: tokens only, cached prompt tokens counted as
+ * input. Cursor's cost is an estimate and its billing unknown. Each report
+ * replaces the run's last.
+ */
+function reportCursorSpend(ctx: AgentCallbackContext, runId: string, spent: RunSpent): void {
+  const usage = spent.usage;
+  reportHarnessSpend(ctx, {
+    runId,
+    harness: CURSOR_HARNESS,
+    model: spent.model,
+    inputTokens: usage ? usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens : null,
+    outputTokens: usage?.outputTokens ?? null,
+    costUsd: null,
+    billing: null,
   });
 }
 
@@ -794,7 +824,7 @@ async function mirrorRun(
   emitState: ReturnType<typeof createEmitState>,
   blockName: string,
   writePlan: PlanWriter | null,
-  spent: { usage: CursorRunUsage | null },
+  spent: RunSpent,
   onActivity: HarnessActivityHook | undefined,
 ): Promise<MirrorFacts> {
   const stream = run.stream();
@@ -818,8 +848,13 @@ async function mirrorRun(
         if (event.kind === "run_usage") {
           usage = addUsage(usage, event.usage);
           spent.usage = usage;
+          // A finished turn: the run's total so far (FIX-2288).
+          spent.report();
         } else if (event.kind === "model") {
           model = event.model;
+          spent.model = event.model;
+          // The model the run named, on the task before its first turn's tokens (FIX-2288).
+          spent.report();
         } else if (event.kind === "plan_list") {
           // Written in stream order, so the record ends equal to the last list
           // Cursor confirmed. An empty list is still a write: it is what tells

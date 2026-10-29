@@ -191,3 +191,23 @@ export function ticketNamesTask(
     ticket.createdAt === task.createdAt
   );
 }
+
+/**
+ * {@link ticketNamesTask}, and the ticket's `incarnationId` matches the row's
+ * when both carry one (FIX-2288). For a write that lands on a settled row from
+ * a request that may have outlived it, such as a run's spend: a row deleted and
+ * recreated within the same millisecond keeps `createdAt` but not its nonce.
+ * A legacy row or ticket without a nonce falls back to `createdAt` alone.
+ */
+export function ticketNamesIncarnation(
+  ticket: TaskClaimTicket,
+  collectionId: string,
+  task: Task
+): boolean {
+  return (
+    ticketNamesTask(ticket, collectionId, task) &&
+    (ticket.incarnationId === undefined ||
+      task.incarnationId === undefined ||
+      ticket.incarnationId === task.incarnationId)
+  );
+}

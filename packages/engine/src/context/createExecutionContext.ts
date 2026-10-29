@@ -4185,12 +4185,16 @@ export async function createExecutionContext<
         attachRequestEndRegistry(childContext, requestEndRegistry);
         // What this block's own harness runs spent also goes on its completed
         // trace, so a continuation after the process died can hand it on (FIX-2145).
+        // A run that reports as it goes (FIX-2288) is listed once, at its latest report.
         const harnessSpendOfBlock: HarnessRunSpend[] = [];
         (childContext as { [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM] = {
           reportHarnessRun(run) {
             requestSpendLedger.reportHarnessRun(run);
+            const at = run.runId === undefined ? -1 : harnessSpendOfBlock.findIndex((reported) => reported.runId === run.runId);
+            if (at >= 0) harnessSpendOfBlock.splice(at, 1);
             harnessSpendOfBlock.push({ ...run });
-          }
+          },
+          pending: () => requestSpendLedger.pending()
         };
         (childContext as { [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined })[REQUEST_RESUME_SEAM] = readResume;
         // FIX-663: re-attach the background signal on every scope so nested
