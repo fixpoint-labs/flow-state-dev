@@ -386,6 +386,15 @@ export function toSteps(items: readonly Item[]): SessionStep[] {
   return steps;
 }
 
+/** The session a message was delivered to, from the message log; undefined while the log doesn't hold it. */
+export function destinationOf(rows: readonly unknown[], messageId: string): string | undefined {
+  for (const row of rows) {
+    const parsed = workerMessageRowSchema.safeParse(row);
+    if (parsed.success && parsed.data.id === messageId) return parsed.data.toSession;
+  }
+  return undefined;
+}
+
 /** The turn of a conversation that read message `messageId`, as steps: the message, then all that turn did. */
 function exchangeOf(items: readonly Item[], messageId: string): SessionStep[] {
   const read = items.find((i) => i.type === "component" && i.component === RECEIVED_MESSAGE_COMPONENT && i.data?.id === messageId);
@@ -599,10 +608,14 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     watchExchange(worker, messageId, onChange) {
       let stop: Unsubscribe | undefined;
       let live = true;
-      void conversationOf(worker).then(({ sessionId }) => {
+      void (async () => {
+        // A reply lands where the message it answers was sent from, a task's session included: the log row says where.
+        const { sessionId: logSession } = await anyConversation();
+        const rows = await readEveryCollectionPage(client.resources, logSession, WORKER_MESSAGES_RESOURCE);
+        const sessionId = destinationOf(rows.map((row) => row.clientData), messageId) ?? (await conversationOf(worker)).sessionId;
         if (!live) return;
         stop = watchFeed(sessionId, (items) => exchangeOf(items, messageId), stableList(onChange));
-      });
+      })();
       return () => {
         live = false;
         stop?.();

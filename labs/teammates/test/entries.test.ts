@@ -5,9 +5,10 @@
  * `user_approval` stop is an approval entry, answered once it resumes. In a
  * popup, only a `sendMessage` that sent something is a sent step. A sent
  * message is replied once a reply lands, or, for a call, once it is answered.
+ * Its popup reads the session the log says it was delivered to.
  */
 import { describe, expect, it } from "vitest";
-import { toEntries, toSteps } from "../src/adapter";
+import { destinationOf, toEntries, toSteps } from "../src/adapter";
 import { repliedIn } from "../src/components/Popups";
 
 const CODER = "teammates.coder";
@@ -71,5 +72,20 @@ describe("whether a sent message was replied", () => {
 
   it("is replied when it was a call and the call was answered, with no reply message", () => {
     expect(repliedIn([{ ...sent, callAnswered: true }], "msg_1")).toBe(true);
+  });
+});
+
+describe("where a sent message's popup looks", () => {
+  const row = (id: string, toSession: string) => ({
+    id, from: "teammates.researcher", to: "teammates.chief-of-staff", text: "Nov 12", exchange: "msg_1", inReplyTo: "msg_1",
+    fromSession: "sess_researcher", fromFlow: "teammates", toSession, toFlow: "teammates", hop: 1, status: "delivered", at: 2,
+  });
+
+  it("reads the session the log says the message landed in, a task's session included", () => {
+    expect(destinationOf([row("msg_0", "sess_other"), row("msg_2", "sess_task_7")], "msg_2")).toBe("sess_task_7");
+  });
+
+  it("has no answer for a message the log doesn't hold yet", () => {
+    expect(destinationOf([row("msg_0", "sess_other")], "msg_2")).toBeUndefined();
   });
 });
