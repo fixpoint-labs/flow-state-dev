@@ -10,7 +10,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, runGoal } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv } from "../../lib/module-patch.mts";
 import { buildShiftManagerPages, labRoutes, startShiftManager, type LabRoutes, type LabUser, type ServedShiftManager } from "../../lib/shift-manager.mts";
-import { LAB_CROWD, LAB_USERS, PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { LAB_CROWD, PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { LIST_TASKS_ACTION } from "../../../packages/shift-manager/src/lib/conversation-tasks.ts";
 import { SPEND_TICK_MS } from "../../../packages/orchestration/src/task-board/task-request.ts";
 import { CONTROL_NAMES, CONTROLS, sdkSeam, type Control } from "./controls.mts";
