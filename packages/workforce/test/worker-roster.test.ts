@@ -225,3 +225,29 @@ describe("what a worker runs with", () => {
     expect((await h.turn("alice", open.id)).output).toMatchObject({ handbook: true, ledger: true });
   });
 });
+
+describe("hiring, editing and firing from an app", () => {
+  it("the workforce client's hire, edit and fire write the user's roster through their roster session, with no restart", async () => {
+    const h = host();
+    const app = h.client("alice");
+    expect(await app.hire({ id: "scribe", flow: FIXTURE, instructions: "Write it down." })).toEqual({ id: "scribe", flow: FIXTURE });
+    expect((await app.roster()).find((entry) => entry.id === "scribe")).toMatchObject({ standard: false, flow: FIXTURE });
+    const session = await app.ensureWorkerSession({ worker: "scribe" });
+    expect((await h.turn("alice", session.id)).output).toMatchObject({ worker: "scribe", instructions: "Write it down." });
+
+    await app.edit({ id: "scribe", instructions: "Answer in one sentence." });
+    expect((await h.turn("alice", session.id)).output).toMatchObject({ instructions: "Answer in one sentence." });
+
+    expect(await app.fire("scribe")).toEqual({ id: "scribe" });
+    expect((await app.roster()).some((entry) => entry.id === "scribe")).toBe(false);
+    expect(messageOf((await h.turn("alice", session.id)).error)).toContain('Worker "scribe" was fired');
+  });
+
+  it("the client's edit and fire refuse a standard worker, writing nothing", async () => {
+    const h = host();
+    const app = h.client("alice");
+    await expect(app.edit({ id: "researcher", instructions: "x" })).rejects.toThrow(/standard worker/);
+    await expect(app.fire("researcher")).rejects.toThrow(/standard worker/);
+    expect((await app.roster()).filter((entry) => !entry.standard)).toEqual([]);
+  });
+});

@@ -27,7 +27,7 @@ export function Composer({ workerName, running, onSend }: { workerName: string; 
   };
   return (
     <form onSubmit={onSubmit} className="px-6 pb-4">
-      <div className="flex items-end gap-2 rounded-lg border border-border bg-card px-2 py-2 focus-within:border-ring">
+      <div className="flex items-end gap-2 rounded-3xl border border-border bg-card px-3 py-2 focus-within:border-ring">
         <textarea
           aria-label={`Message ${workerName}`}
           rows={2}
@@ -40,7 +40,7 @@ export function Composer({ workerName, running, onSend }: { workerName: string; 
         <button
           type="submit"
           disabled={!text.trim()}
-          className="rounded-md bg-primary px-3 py-1 text-sm font-semibold text-primary-foreground disabled:opacity-40"
+          className="rounded-full bg-primary px-3 py-1 text-sm font-semibold text-primary-foreground disabled:opacity-40"
         >
           Send
         </button>

@@ -92,6 +92,11 @@ const agent = cursorAgent({
 });
 ```
 
+**`onActivity` reports each tool call the run starts**, as `{ kind: "tool", name,
+arguments }` with `arguments` the call's JSON text, so a host can show how the run
+is doing. Assistant text is never reported, because Cursor streams it in pieces.
+The hook isn't awaited, and a throw from it is logged while the run carries on.
+
 ## Option groups
 
 `agent` and `send` are the SDK's own option bags — `AgentOptions` for

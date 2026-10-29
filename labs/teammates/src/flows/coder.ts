@@ -3,10 +3,10 @@
  *
  * coder takes tasks only. A task another worker files for it becomes a
  * supervised coding run, through the harness its own `WORKER.md` names in
- * `harness:`, in the project its task was filed in. The flow builds one
- * `harnessManager` per harness the host offers and routes each task by the
- * worker's setting (the epic's ER-9), so a Codex coder is one more
- * `WORKER.md`, with no new flow.
+ * `harness:`, or the host's default when it names none, in the project its
+ * task was filed in. The flow builds one `harnessManager` per harness the
+ * host offers and routes each task by the worker's setting (the epic's ER-9),
+ * so a Codex coder is one more `WORKER.md`, or a hire, with no new flow.
  *
  * Where a run works comes from the host's workspace, whose source is
  * `projectWorkspace()`: the project of the conversation that filed the task.
@@ -48,6 +48,8 @@ export type Harness = (feeds: HarnessFeeds) => HarnessBlock;
 export interface CoderFlowOptions {
   /** The harnesses a worker may name in `harness:`, by that name. */
   harnesses: Readonly<Record<string, Harness>>;
+  /** The harness a worker that names none runs on: one of {@link harnesses}. */
+  defaultHarness: string;
   /** Where a run works: a host whose source is `projectWorkspace()`. */
   workspace: WorkspaceHost;
   /** Wall-clock budget for one run. */
@@ -78,10 +80,14 @@ const DOOR_REPLY =
  * {@link CODER_FLOW}.
  *
  * @throws At the hire, when a worker names a harness the host doesn't offer.
+ * @throws When the default harness is not one the host offers.
  */
 export function coderFlow(options: CoderFlowOptions) {
   const names = Object.keys(options.harnesses);
   if (names.length === 0) throw new Error(`${CODER_FLOW}: the host offers no harness.`);
+  if (!names.includes(options.defaultHarness)) {
+    throw new Error(`${CODER_FLOW}: the default harness "${options.defaultHarness}" is not one of ${names.join(", ")}.`);
+  }
   return workerFlow(
     (installation: WorkerInstallation) => {
       const managers: Record<string, TaskWorker> = {};
@@ -104,10 +110,8 @@ export function coderFlow(options: CoderFlowOptions) {
         inputSchema: taskWorkerInputSchema.passthrough(),
         routes: Object.values(managers) as never,
         execute: async (_task: unknown, ctx: unknown) => {
-          const { id, config } = await installation.resolveWorker(ctx as never, CODER_FLOW);
-          const harness = (config as { harness?: string }).harness;
-          if (harness === undefined) throw new Error(`${id} names no harness: add \`harness:\` to its WORKER.md.`);
-          return managers[harness]!;
+          const { config } = await installation.resolveWorker(ctx as never, CODER_FLOW);
+          return managers[(config as { harness?: string }).harness ?? options.defaultHarness]!;
         },
       } as never) as BlockDefinition<any, any>;
 

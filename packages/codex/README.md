@@ -68,6 +68,11 @@ Codex refuses leaves the id you already hold untouched. The run then fails with 
 `CodexAgentRunError`. `harnessFailureKind(error)` from `@flow-state-dev/core` returns
 `"unknown-conversation"` for it, and `null` for every other failure.
 
+**`onActivity` reports what the run is doing.** It is called with each completed
+assistant message (`{ kind: "message", text }`) and each tool call the run starts
+(`{ kind: "tool", name, arguments }`, with `arguments` the call's JSON text). The
+hook isn't awaited, and a throw from it is logged while the run carries on.
+
 ## Option groups
 
 `thread` and `client` are the SDK's own option bags, forwarded verbatim. Two keys

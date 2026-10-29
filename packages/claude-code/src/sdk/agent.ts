@@ -28,9 +28,11 @@ import {
   harnessRunNamespace,
   observedPullRequestsCollection,
   recordPullRequests as startPullRequestRecorder,
+  reportHarnessActivity,
 } from "@flow-state-dev/core";
 import { reportHarnessSpend, type BlockContext, type HarnessBilling } from "@flow-state-dev/core/types";
 import type {
+  HarnessActivityHook,
   HarnessCallbackContext,
   HarnessResolver,
   HarnessSessionHook,
@@ -591,6 +593,12 @@ export interface ClaudeCodeAgentOptions {
    * conversation, so it races nothing.
    */
   onUsage?: HarnessUsageHook;
+  /**
+   * Called with each completed assistant message and each tool call the run
+   * starts (FIX-2290), so a host can say how the run is doing. Default: unset.
+   * Not awaited, and a throw is logged and swallowed.
+   */
+  onActivity?: HarnessActivityHook;
   /** Block name. Default `"claude-code-agent"`. */
   name?: string;
 }
@@ -813,6 +821,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     resume: resolveResume,
     onSession,
     onUsage,
+    onActivity,
     settingSources,
     env,
     sandbox,
@@ -1254,6 +1263,20 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
                       `${handedServers.size === 0 ? "no servers" : [...handedServers].map((n) => `"${n}"`).join(", ")}.`,
                     { transient: false },
                   );
+                }
+              }
+
+              // **Activity reads the whole message, in either streaming mode.**
+              // With partial messages on, the translator hands text on only as
+              // deltas, and it turns a sub-agent launch into a container rather
+              // than a tool call, so neither would reach the hook from its events.
+              if (onActivity !== undefined && message.type === "assistant") {
+                for (const block of message.message?.content ?? []) {
+                  if (block.type === "text") {
+                    reportHarnessActivity(onActivity, { kind: "message", text: block.text }, ctx);
+                  } else if (block.type === "tool_use") {
+                    reportHarnessActivity(onActivity, { kind: "tool_call", name: block.name, arguments: JSON.stringify(block.input ?? {}) }, ctx);
+                  }
                 }
               }
 
