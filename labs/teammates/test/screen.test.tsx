@@ -206,7 +206,8 @@ describe("the teammates screen", () => {
   });
 
   it("runs a coding task on the agent you name, and on Claude Code when you name none, and its line says which", async () => {
-    render(<App adapter={fast()} />);
+    // Slower than fast(): the line must be seen before the run reports its model, and fast() leaves that window under one poll.
+    render(<App adapter={fast({ speed: 0.3 })} />);
     const line = () => entries("task").at(-1) as HTMLElement;
     const on = () => line().querySelector("[data-harness]")?.textContent;
 
