@@ -415,7 +415,10 @@ function createEmitComponentAwaited(
  */
 function createEmitMessageAwaited(
   emCtx: EmissionContext
-): (text: string, options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }) => Promise<void> {
+): (
+  text: string,
+  options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean; role?: "user" | "assistant" }
+) => Promise<void> {
   return async function emitMessageAwaited(text, options): Promise<void> {
     const itemIndex = emCtx.nextItemIndex();
     const item: MessageItem = {
@@ -431,7 +434,7 @@ function createEmitMessageAwaited(
       taskId: emCtx.taskId,
       itemVisibility: options?.itemVisibility ?? emCtx.itemVisibility,
       agentName: options?.agentName ?? emCtx.agentName,
-      role: "assistant",
+      role: options?.role ?? "assistant",
       content: [{ type: "output_text", text }]
     };
     await emCtx.response.emitItemAdded(item);

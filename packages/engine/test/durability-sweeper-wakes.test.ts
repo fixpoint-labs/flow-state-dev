@@ -17,7 +17,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 function wake(overrides: Partial<WakeInput> = {}): WakeInput {
   return {
     sessionId: "s1",
-    entry: "runTaskBoard",
+    entry: "dispatch",
     flowKind: "desk",
     userId: "u1",
     orgId: "o1",
@@ -61,7 +61,7 @@ describe("durability sweeper: wakes", () => {
       })
     );
     expect(fired.map((f) => f.wake.sessionId)).toEqual(["due"]);
-    expect(fired[0]!.wake).toMatchObject({ entry: "runTaskBoard", flowKind: "desk", userId: "u1", orgId: "o1" });
+    expect(fired[0]!.wake).toMatchObject({ entry: "dispatch", flowKind: "desk", userId: "u1", orgId: "o1" });
     expect(fired[0]!.storedDueAt).toBeGreaterThanOrEqual(before + WAKE_RETRY_MS);
   });
 
@@ -71,7 +71,7 @@ describe("durability sweeper: wakes", () => {
     await runTick(tickArgs(stores, async () => {
       throw new Error("the host refused");
     }));
-    const kept = await stores.wakes!.get({ sessionId: "s1", entry: "runTaskBoard" });
+    const kept = await stores.wakes!.get({ sessionId: "s1", entry: "dispatch" });
     expect(kept).not.toBeNull();
     // Due again: the next tick fires it.
     await stores.wakes!.move(kept!, kept!.version, Date.now() - 1);
@@ -124,7 +124,7 @@ describe("durability sweeper: wakes", () => {
       maxDebtAgeMs: 86_400_000
     });
     const owedAt = Date.now();
-    await verb.owe({ entry: "runTaskBoard", dueAt: owedAt + 100 });
+    await verb.owe({ entry: "dispatch", dueAt: owedAt + 100 });
     await sleep(1_600);
     expect(fired).toHaveLength(1);
     expect(fired[0]! - owedAt).toBeLessThan(1_500);
@@ -135,7 +135,7 @@ describe("durability sweeper: wakes", () => {
     await stores.wakes!.owe(wake());
     const { fireWake: _none, ...args } = tickArgs(stores, async () => {});
     await runTick(args);
-    expect((await stores.wakes!.get({ sessionId: "s1", entry: "runTaskBoard" }))?.dueAt).toBeLessThan(Date.now());
+    expect((await stores.wakes!.get({ sessionId: "s1", entry: "dispatch" }))?.dueAt).toBeLessThan(Date.now());
     const { wakes: _gone, ...bare } = createInMemoryStores();
     await runTick(tickArgs(bare as StoreRegistry, async () => {
       throw new Error("never fired");

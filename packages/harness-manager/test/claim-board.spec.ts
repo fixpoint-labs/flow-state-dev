@@ -137,8 +137,8 @@ describe("no manager carries a message door (FIX-2086)", () => {
   it("is absent on a manager with a fixed board and on one that reads its board from the claim", () => {
     // A person's words reach a run as steers on its task; a coding flow's own
     // door (`harnessSessionDoor`) writes them. No manager parks or re-queues a row for a line.
-    expect("messageDoor" in claimHost({ mode: "claim" }).manager).toBe(false);
-    expect("messageDoor" in claimHost({ mode: "fixed" }).manager).toBe(false);
+    expect("messageDoor" in claimHost({ mode: "claim" }).manager).toBe(false); // retired-name-refusal: refusal test
+    expect("messageDoor" in claimHost({ mode: "fixed" }).manager).toBe(false); // retired-name-refusal: refusal test
   });
 });
 

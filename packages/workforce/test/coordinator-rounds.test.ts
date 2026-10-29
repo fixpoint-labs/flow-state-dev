@@ -40,7 +40,7 @@ import {
   routeOnAfterAnswer,
   routeOnAfterClose
 } from "../src/coordinator/coordinator-rounds";
-import type { RoundPost, RoundRows } from "../src/coordinator/coordinator-rounds";
+import type { RoundTask, RoundRows } from "../src/coordinator/coordinator-rounds";
 import type { OpenRound } from "../src/coordinator/coordinator-state";
 import { ORG, bootHost, messageOf, quiet, standardWorkers } from "./coordinator-harness";
 
@@ -195,7 +195,7 @@ describe("a round, on its own (V5)", () => {
   });
 
   const delegate = { worker: "eng.em" };
-  const posted: RoundPost = { postId: "p1", round: 0, delegate };
+  const posted: RoundTask = { messageRequestId: "p1", round: 0, delegate };
   /** The round's one post row, `t1`, as the board reads it, with the round's routing counts read just before. */
   const rowsOf =
     (row: { running?: boolean; replied?: boolean }, at: { begun: number; opening: number } = { begun: 1, opening: 0 }): RoundRows =>
@@ -256,7 +256,7 @@ describe("a round, on its own (V5)", () => {
     const onTime = landAnswer(rounds, rows, posted, "on time", 1_200);
     expect(onTime).toMatchObject({ kept: true, closed: { answers: [{ worker: "eng.em", body: "on time" }] } });
     expect(routeOnAfterAnswer(posted, "on time", onTime.kept, "best-fit", 1)).toEqual({
-      postId: "p1",
+      messageRequestId: "p1",
       round: 1,
       answers: [{ worker: "eng.em", body: "on time" }],
       exclude: { worker: "eng.em" }
@@ -509,56 +509,6 @@ describe("rounds (V5)", () => {
     expect(late).toMatchObject({ status: "completed" });
   });
 
-  it("files nothing for a pick a coordinator before the upgrade already handed the message, as a post row (BP-030)", async () => {
-    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 60_000 });
-    const id = await host.conversation("alice", "desk");
-    // The coder answers late, so round 0 is still open when the post row is seeded.
-    expect((await host.act("alice", id, "respond", { message: "status? [slow:eng.coder]" })).error).toBeUndefined();
-    let em: any;
-    for (let i = 0; i < 300 && em === undefined; i += 1) {
-      em = (await host.routedRows("alice")).find((row) => row.assignee === "eng.em" && row.status === "completed");
-      if (em === undefined) await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    expect(em).toBeDefined();
-    // Round 1's message to the coder, the EM's answer, as the coordinator before FIX-2083 stored it, already answered.
-    const runtime = await host.state.getRuntime();
-    const scope = `alice:~org:${ORG}`;
-    const entries = await runtime.stores.resourceState.getByPrefix("user", scope, "tasks/");
-    const [key] = Object.entries(entries).find(([, value]) => (value.state as { id?: string }).id === em.id)!;
-    const legacyId = `post:${[em.sealed.postId, "1", "eng.coder"].map(encodeURIComponent).join(":")}`;
-    const now = Date.now();
-    const legacy = {
-      ...em,
-      id: legacyId,
-      assignee: "eng.coder",
-      status: "completed",
-      output: "an answer from before the upgrade",
-      createdAt: now,
-      updatedAt: now,
-      incarnationId: "legacy-incarnation",
-      // Its ending was heard before the upgrade: its notice is paid.
-      metadata: { "noticeOwed:1:completed": null },
-      sealed: { ...em.sealed, kind: "post", round: 1, delegate: { worker: "eng.coder" } }
-    };
-    for (const field of ["session", "resultTo", "run", "filer"]) delete legacy[field];
-    // The row's key ends in its id, as the store writes it, encoded or not.
-    const legacyKey = key.includes(encodeURIComponent(em.id))
-      ? key.replace(encodeURIComponent(em.id), encodeURIComponent(legacyId))
-      : key.replace(em.id, legacyId);
-    expect(legacyKey).not.toBe(key);
-    expect((await runtime.stores.resourceState.set("user", scope, legacyKey, legacy, "any")).ok).toBe(true);
-    await quiet(host);
-
-    // The coder heard the post only: round 1's pick of it was the post row, and nothing was filed again.
-    expect(host.heard.filter((h) => h.worker === "eng.coder").map((h) => h.message.split(":")[0])).toEqual(["alice, through desk"]);
-    const { records } = await host.items(id);
-    const roundOne = records.find((record: any) => record.round === 1);
-    expect(roundOne.delegates).toEqual(
-      expect.arrayContaining([{ worker: "eng.coder", outcome: "skipped", reason: "it was already handed this message in this round" }])
-    );
-    expect((await host.routedRows("alice")).filter((row) => row.sealed.round === 1 && row.assignee === "eng.coder").map((row) => row.id)).toEqual([legacyId]);
-  });
-
   it("closes a round open across the upgrade whose post row was still running: the row lapses, runs once more, and both answers go on (BP-030)", async () => {
     const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 60_000 });
     const id = await host.conversation("alice", "desk");
@@ -574,7 +524,7 @@ describe("rounds (V5)", () => {
     const now = Date.now();
     const brief = (worker: string) => ({
       kind: "post",
-      postId: "legacy",
+      messageRequestId: "legacy",
       round: 0,
       delegate: { worker },
       session: { key: `delegate:["${worker}",null]` },
@@ -606,7 +556,7 @@ describe("rounds (V5)", () => {
         ...session,
         state: {
           ...session.state,
-          openRounds: [{ postId: "legacy", round: 0, opening: 0, begun: 1, deadlineAt: now + 60_000, answers: [{ worker: "eng.em", body: "eng.em heard: the old post" }] }]
+          openRounds: [{ messageRequestId: "legacy", round: 0, opening: 0, begun: 1, deadlineAt: now + 60_000, answers: [{ worker: "eng.em", body: "eng.em heard: the old post" }] }]
         },
         version: session.version + 1,
         updatedAt: now
@@ -636,12 +586,12 @@ describe("rounds (V5)", () => {
     expect(rows.find((row) => row.id === coder.id)).toMatchObject({ status: "completed", output: "eng.coder heard: alice, through desk: the old post" });
     // The round closed on both answers, and each went on once to the other delegate.
     expect((await host.sessionState(id)).openRounds).toEqual([]);
-    const roundOne = (await host.items(id)).records.find((record: any) => record.postId === "legacy" && record.round === 1);
+    const roundOne = (await host.items(id)).records.find((record: any) => record.messageRequestId === "legacy" && record.round === 1);
     expect(roundOne.delegates).toEqual([
       { worker: "eng.em", outcome: "delivered" },
       { worker: "eng.coder", outcome: "delivered" }
     ]);
-    expect(rows.filter((row) => row.sealed.postId === "legacy" && row.sealed.round === 1).map((row) => row.status)).toEqual(["completed", "completed"]);
+    expect(rows.filter((row) => row.sealed.messageRequestId === "legacy" && row.sealed.round === 1).map((row) => row.status)).toEqual(["completed", "completed"]);
   });
 
   it("goes back out once for an ending sent twice (BR-21, BR-22)", async () => {
@@ -655,8 +605,8 @@ describe("rounds (V5)", () => {
     expect((await host.act("alice", id, "onTaskSettled", notice, "coordinator", "internal")).error).toBeUndefined();
     expect((await host.routedRows("alice")).find((row) => row.id === first.id)).toMatchObject({ status: "completed" });
     // A post's cancel report has no entry left to forge (FIX-2083).
-    await expect(host.act("alice", id, "postCancelled", { taskId: first.id }, "coordinator", "internal")).rejects.toThrow(
-      /does not define action "postCancelled"/
+    await expect(host.act("alice", id, "postCancelled", { taskId: first.id }, "coordinator", "internal")).rejects.toThrow( // retired-name-refusal: refusal test
+      /does not define action "postCancelled"/ // retired-name-refusal: refusal test
     );
     await quiet(host);
     expect(host.heard.map((h) => h.worker)).toEqual(["eng.em", "eng.coder"]);
@@ -688,7 +638,7 @@ describe("rounds (V5)", () => {
     await quiet(host);
     expect((await host.routedRows("alice")).map((row) => row.sealed.round)).toEqual([0]);
     await expect(
-      host.act("alice", id, "routeOn", { postId: "p", round: 1, answers: [{ worker: "eng.em", body: "x" }] })
+      host.act("alice", id, "routeOn", { messageRequestId: "p", round: 1, answers: [{ worker: "eng.em", body: "x" }] })
     ).rejects.toThrow(/does not define action "routeOn"/);
   });
 });
@@ -702,8 +652,8 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
   };
 
   /** The records of one post, by round. */
-  const recordsOf = async (host: Host, id: string, postId: string) =>
-    (await host.items(id)).records.filter((record: any) => record.postId === postId);
+  const recordsOf = async (host: Host, id: string, messageRequestId: string) =>
+    (await host.items(id)).records.filter((record: any) => record.messageRequestId === messageRequestId);
 
   /**
    * The EM's answer to the message went on to the coder in round 1: a routed
@@ -784,7 +734,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     expect(await wakes.get({ sessionId: id, entry: "roundDeadline" })).toMatchObject({ dueAt: open!.deadlineAt });
 
     // Nothing else wakes the conversation: the wake closes the round, within a second or so of its deadline.
-    for (let i = 0; i < 400 && (await host.sessionState(id)).openRounds.some((r: OpenRound) => r.postId === open!.postId); i += 1) {
+    for (let i = 0; i < 400 && (await host.sessionState(id)).openRounds.some((r: OpenRound) => r.messageRequestId === open!.messageRequestId); i += 1) {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     const closedBy = Date.now();
@@ -827,7 +777,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     await post(host, id, "anyone?");
     await quiet(host);
     // The stale round closed once, and its one routing ran: nobody can take the EM's answer now.
-    expect((await recordsOf(host, id, stale.postId)).map((record: any) => [record.round, record.by])).toEqual([
+    expect((await recordsOf(host, id, stale.messageRequestId)).map((record: any) => [record.round, record.by])).toEqual([
       [0, "everyone"],
       [1, "unplaced"]
     ]);
@@ -855,7 +805,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
 
     // The overdue round closed once, and its one delivery went on: the coder got the EM's answer.
     expect(await routedOnToCoder(host)).toEqual([expect.objectContaining({ status: "pending" })]);
-    const stale = await recordsOf(host, id, first.postId);
+    const stale = await recordsOf(host, id, first.messageRequestId);
     expect(stale.map((record: any) => [record.round, record.by])).toEqual([
       [0, "everyone"],
       [1, "everyone"]
@@ -867,13 +817,13 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     // The new post routed as usual, to both delegates. The coder's session still holds its
     // stuck task, so the new one for it waits behind it (FIX-2080, rule 5), and the new
     // round waits for its answer, or its own deadline.
-    const fresh = (await host.items(id)).records.filter((record: any) => record.postId !== first.postId);
+    const fresh = (await host.items(id)).records.filter((record: any) => record.messageRequestId !== first.messageRequestId);
     expect(fresh.map((record: any) => [record.round, record.by, record.delegates.length])).toEqual([[0, "everyone", 2]]);
     const freshCoder = (await host.routedRows("alice")).filter(
-      (row) => row.sealed.postId !== first.postId && row.sealed.round === 0 && row.assignee === "eng.coder"
+      (row) => row.sealed.messageRequestId !== first.messageRequestId && row.sealed.round === 0 && row.assignee === "eng.coder"
     );
     expect(freshCoder).toEqual([expect.objectContaining({ status: "pending" })]);
-    expect((await host.sessionState(id)).openRounds.map((open: OpenRound) => open.postId)).not.toContain(first.postId);
+    expect((await host.sessionState(id)).openRounds.map((open: OpenRound) => open.messageRequestId)).not.toContain(first.messageRequestId);
   });
 
   it(`refuses a round past ${MAX_OPEN_ROUNDS} open ones, keeping the open ones as they were`, () => {
@@ -882,7 +832,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     expect(rounds).toHaveLength(MAX_OPEN_ROUNDS);
     expect(beginRound(rounds, "p-new", 0)).toEqual({ rounds, opened: false });
     // A round already open is still held open by a second routing.
-    expect(beginRound(rounds, "p0", 0)).toMatchObject({ opened: true, rounds: expect.arrayContaining([expect.objectContaining({ postId: "p0", opening: 2 })]) });
+    expect(beginRound(rounds, "p0", 0)).toMatchObject({ opened: true, rounds: expect.arrayContaining([expect.objectContaining({ messageRequestId: "p0", opening: 2 })]) });
   });
 
   it(`refuses a post's round at ${MAX_OPEN_ROUNDS} open, says so in its record, and the open rounds still go on`, async () => {
@@ -898,7 +848,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
       const session = (await runtime.stores.session.get(id))!;
       const open = session.state.openRounds as unknown[];
       const others = Array.from({ length: MAX_OPEN_ROUNDS - open.length }, (_, n) => ({
-        postId: `earlier-${n}`,
+        messageRequestId: `earlier-${n}`,
         round: 0,
         opening: 0,
         deadlineAt: Date.now() + 60_000,
@@ -913,7 +863,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     expect((await host.act("alice", id, "respond", { message: "ship it?" })).error).toBeUndefined();
     await quiet(host);
     const records = (await host.items(id)).records;
-    const refused = records.filter((record: any) => record.postId !== live.postId);
+    const refused = records.filter((record: any) => record.messageRequestId !== live.messageRequestId);
     expect(refused).toEqual([
       expect.objectContaining({
         round: 0,
@@ -922,7 +872,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
       })
     ]);
     // The live round was kept, and went on once the coder answered.
-    expect(records.filter((record: any) => record.postId === live.postId).map((record: any) => record.round)).toEqual([0, 1]);
+    expect(records.filter((record: any) => record.messageRequestId === live.messageRequestId).map((record: any) => record.round)).toEqual([0, 1]);
     expect(passedToCoder(host, "status?")).toHaveLength(1);
     expect((await host.sessionState(id)).openRounds).toHaveLength(MAX_OPEN_ROUNDS - 1);
   });

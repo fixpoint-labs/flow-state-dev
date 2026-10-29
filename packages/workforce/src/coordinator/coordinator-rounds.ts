@@ -56,7 +56,7 @@ export const MAX_OPEN_ROUNDS = 50;
 export const routeOnSchema = z
   .object({
     /** The user's post the answers came from. */
-    postId: z.string().min(1),
+    messageRequestId: z.string().min(1),
     /** The round they go out in. */
     round: z.number().int().min(1).max(MAX_ROUNDS),
     /** The answers, by author. */
@@ -69,7 +69,7 @@ export const routeOnSchema = z
 export type RouteOn = z.infer<typeof routeOnSchema>;
 
 /** A round that just closed: what went out in it and what came back. */
-export type ClosedRound = { postId: string; round: number; deliveries: number; answers: RoundAnswer[] };
+export type ClosedRound = { messageRequestId: string; round: number; deliveries: number; answers: RoundAnswer[] };
 
 /**
  * A round's rows, as the caller read them off the board, read before the
@@ -79,7 +79,7 @@ export type ClosedRound = { postId: string; round: number; deliveries: number; a
  * round open until the reply is among the round's answers: a delegate has
  * one row per post per round, so the reply is matched by its author.
  */
-export type RoundRows = (postId: string, round: number) => RoundRead;
+export type RoundRows = (messageRequestId: string, round: number) => RoundRead;
 
 /** One round's rows as read, with the round as it stood just before the read. */
 export interface RoundRead {
@@ -99,10 +99,10 @@ export interface RoundRead {
 }
 
 /** A post that went out in a round: which post, which round, and to whom. */
-export type RoundPost = { postId: string; round: number; delegate: DelegateRef };
+export type RoundTask = { messageRequestId: string; round: number; delegate: DelegateRef };
 
-const indexOf = (rounds: readonly OpenRound[], postId: string, round: number) =>
-  rounds.findIndex((open) => open.postId === postId && open.round === round);
+const indexOf = (rounds: readonly OpenRound[], messageRequestId: string, round: number) =>
+  rounds.findIndex((open) => open.messageRequestId === messageRequestId && open.round === round);
 
 /**
  * A routing starts adding deliveries to a round below the limit: open it, or
@@ -113,16 +113,16 @@ const indexOf = (rounds: readonly OpenRound[], postId: string, round: number) =>
  */
 export function beginRound(
   rounds: readonly OpenRound[],
-  postId: string,
+  messageRequestId: string,
   round: number
 ): { rounds: OpenRound[]; opened: boolean } {
-  const at = indexOf(rounds, postId, round);
+  const at = indexOf(rounds, messageRequestId, round);
   if (at >= 0) {
     const held = rounds.map((open, i) => (i === at ? { ...open, opening: open.opening + 1, begun: open.begun + 1 } : open));
     return { rounds: held, opened: true };
   }
   if (rounds.length >= MAX_OPEN_ROUNDS) return { rounds: [...rounds], opened: false };
-  return { rounds: [...rounds, { postId, round, opening: 1, begun: 1, answers: [] }], opened: true };
+  return { rounds: [...rounds, { messageRequestId, round, opening: 1, begun: 1, answers: [] }], opened: true };
 }
 
 /**
@@ -132,12 +132,12 @@ export function beginRound(
  */
 export function roundDeadline(
   rounds: readonly OpenRound[],
-  postId: string,
+  messageRequestId: string,
   round: number,
   now: number,
   deadlineMs: number
 ): { rounds: OpenRound[]; deadlineAt?: number } {
-  const at = indexOf(rounds, postId, round);
+  const at = indexOf(rounds, messageRequestId, round);
   if (at < 0) return { rounds: [...rounds] };
   const open = rounds[at]!;
   if (open.deadlineAt !== undefined) return { rounds: [...rounds], deadlineAt: open.deadlineAt };
@@ -146,9 +146,9 @@ export function roundDeadline(
 }
 
 /** A routing finished adding deliveries to a round. */
-export function endRound(rounds: readonly OpenRound[], postId: string, round: number): OpenRound[] {
+export function endRound(rounds: readonly OpenRound[], messageRequestId: string, round: number): OpenRound[] {
   return rounds.map((open) =>
-    open.postId === postId && open.round === round ? { ...open, opening: Math.max(0, open.opening - 1) } : open
+    open.messageRequestId === messageRequestId && open.round === round ? { ...open, opening: Math.max(0, open.opening - 1) } : open
   );
 }
 
@@ -162,9 +162,9 @@ function closeAt(
   return {
     rounds: rounds.filter((_r, i) => i !== at),
     closed: {
-      postId: open.postId,
+      messageRequestId: open.messageRequestId,
       round: open.round,
-      deliveries: rows(open.postId, open.round).ids.length,
+      deliveries: rows(open.messageRequestId, open.round).ids.length,
       answers: open.answers
     }
   };
@@ -183,15 +183,15 @@ const pastDeadline = (open: OpenRound, now: number) => open.deadlineAt !== undef
 export function closeRound(
   rounds: readonly OpenRound[],
   rows: RoundRows,
-  postId: string,
+  messageRequestId: string,
   round: number,
   now: number,
   routing = false
 ): { rounds: OpenRound[]; closed?: ClosedRound } {
-  const at = indexOf(rounds, postId, round);
+  const at = indexOf(rounds, messageRequestId, round);
   if (at < 0) return { rounds: [...rounds] };
   const open = rounds[at]!;
-  const read = rows(postId, round);
+  const read = rows(messageRequestId, round);
   const current = read.begun === open.begun && read.opening === (routing ? 1 : 0);
   const done =
     open.opening === 0 &&
@@ -245,15 +245,15 @@ export function anyOverdue(rounds: readonly OpenRound[], now: number): boolean {
 export function landAnswer(
   rounds: readonly OpenRound[],
   rows: RoundRows,
-  posted: RoundPost,
+  posted: RoundTask,
   body: string,
   now: number
 ): { rounds: OpenRound[]; kept: boolean; again?: true; closed?: ClosedRound } {
-  const at = indexOf(rounds, posted.postId, posted.round);
+  const at = indexOf(rounds, posted.messageRequestId, posted.round);
   if (at < 0) return { rounds: [...rounds], kept: false };
   if (pastDeadline(rounds[at]!, now)) return { ...closeAt(rounds, at, rows), kept: false };
   if (rounds[at]!.answers.some((kept) => sameDelegate(kept, posted.delegate))) {
-    return { ...closeRound(rounds, rows, posted.postId, posted.round, now), kept: false, again: true };
+    return { ...closeRound(rounds, rows, posted.messageRequestId, posted.round, now), kept: false, again: true };
   }
   const answer: RoundAnswer = {
     worker: posted.delegate.worker,
@@ -261,7 +261,7 @@ export function landAnswer(
     body
   };
   const kept = rounds.map((open, i) => (i === at ? { ...open, answers: [...open.answers, answer] } : open));
-  return { ...closeRound(kept, rows, posted.postId, posted.round, now), kept: true };
+  return { ...closeRound(kept, rows, posted.messageRequestId, posted.round, now), kept: true };
 }
 
 /**
@@ -270,7 +270,7 @@ export function landAnswer(
  * limit, or under another policy.
  */
 export function routeOnAfterAnswer(
-  posted: RoundPost,
+  posted: RoundTask,
   body: string,
   kept: boolean,
   policy: CoordinatorRouting,
@@ -281,7 +281,7 @@ export function routeOnAfterAnswer(
     worker: posted.delegate.worker,
     ...(posted.delegate.target === undefined ? {} : { target: posted.delegate.target })
   };
-  return { postId: posted.postId, round: posted.round + 1, answers: [{ ...author, body }], exclude: author };
+  return { messageRequestId: posted.messageRequestId, round: posted.round + 1, answers: [{ ...author, body }], exclude: author };
 }
 
 /**
@@ -293,7 +293,7 @@ export function routeOnAfterClose(closed: ClosedRound, policy: CoordinatorRoutin
   if ((policy !== "everyone" && policy !== "judgment") || closed.deliveries === 0 || closed.round >= limit) {
     return undefined;
   }
-  return { postId: closed.postId, round: closed.round + 1, answers: closed.answers };
+  return { messageRequestId: closed.messageRequestId, round: closed.round + 1, answers: closed.answers };
 }
 
 /** The answers as one delegate is handed them: who said it, and what. */

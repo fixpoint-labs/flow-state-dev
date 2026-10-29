@@ -80,7 +80,7 @@ export const taskNoticeSchema = z
     ending: z.enum(["completed", "errored", "retried", "cancelled"]),
     output: z.unknown().optional(),
     error: z.string().optional(),
-    asked: z.literal(true).optional(),
+    waitedOn: z.literal(true).optional(),
     cancelled: z.array(z.string()).optional()
   })
   .strict();
@@ -380,7 +380,7 @@ export function taskSettledEntry(options: TaskSettledOptions) {
       const row = ref?.get(notice.taskId);
       if (ref === undefined || row === undefined) return { act: "none" };
       await beforeAcknowledge(ctx, notice);
-      if (row.resultTo === "conversation" && notice.ending !== "retried" && notice.asked !== true) {
+      if (row.resultTo === "conversation" && notice.ending !== "retried" && notice.waitedOn !== true) {
         return settleConversationResult(ctx, ref, row, notice);
       }
       // Acknowledged here, once reported and deduped, before what it wakes: the

@@ -48,8 +48,8 @@ async function setup(now = { t: 1_000_000 }) {
 describe("RequestHost.wakes", () => {
   it("owes this session's wake as this request's owner, fenced by its lease", async () => {
     const { stores, wakes } = await setup();
-    expect(await wakes.owe({ entry: "runTaskBoard", dueAt: 1_002_000 })).toBe(true);
-    expect(await stores.wakes!.get({ sessionId: "own", entry: "runTaskBoard" })).toMatchObject({
+    expect(await wakes.owe({ entry: "dispatch", dueAt: 1_002_000 })).toBe(true);
+    expect(await stores.wakes!.get({ sessionId: "own", entry: "dispatch" })).toMatchObject({
       flowKind: "desk",
       userId: "u1",
       orgId: "o1",
@@ -60,76 +60,76 @@ describe("RequestHost.wakes", () => {
 
   it("owes another of its principal's sessions under that session's own flow", async () => {
     const { stores, wakes } = await setup();
-    expect(await wakes.owe({ entry: "runTaskBoard", dueAt: 5, sessionId: "filer" })).toBe(true);
-    expect((await stores.wakes!.get({ sessionId: "filer", entry: "runTaskBoard" }))?.flowKind).toBe("filer-flow");
+    expect(await wakes.owe({ entry: "dispatch", dueAt: 5, sessionId: "filer" })).toBe(true);
+    expect((await stores.wakes!.get({ sessionId: "filer", entry: "dispatch" }))?.flowKind).toBe("filer-flow");
   });
 
   it("refuses a session it may not reach, and writes nothing", async () => {
     const { stores, wakes } = await setup();
     for (const sessionId of ["theirs", "other-org", "missing"]) {
-      expect(await wakes.owe({ entry: "runTaskBoard", dueAt: 5, sessionId })).toBe(false);
-      expect(await stores.wakes!.get({ sessionId, entry: "runTaskBoard" })).toBeNull();
+      expect(await wakes.owe({ entry: "dispatch", dueAt: 5, sessionId })).toBe(false);
+      expect(await stores.wakes!.get({ sessionId, entry: "dispatch" })).toBeNull();
     }
   });
 
   it("settles to the next due time, or clears once past the fence", async () => {
     const { stores, wakes, now } = await setup();
-    await wakes.owe({ entry: "runTaskBoard", dueAt: 1_002_000 });
-    const read = (await wakes.read("runTaskBoard"))!;
-    expect(await wakes.settle("runTaskBoard", read, 1_500_000)).toBe("moved");
-    expect((await stores.wakes!.get({ sessionId: "own", entry: "runTaskBoard" }))?.dueAt).toBe(1_500_000);
+    await wakes.owe({ entry: "dispatch", dueAt: 1_002_000 });
+    const read = (await wakes.read("dispatch"))!;
+    expect(await wakes.settle("dispatch", read, 1_500_000)).toBe("moved");
+    expect((await stores.wakes!.get({ sessionId: "own", entry: "dispatch" }))?.dueAt).toBe(1_500_000);
     now.t = 1_031_000; // past the fence
-    expect(await wakes.settle("runTaskBoard", read, null)).toBe("cleared");
-    expect(await wakes.read("runTaskBoard")).toBeUndefined();
+    expect(await wakes.settle("dispatch", read, null)).toBe("cleared");
+    expect(await wakes.read("dispatch")).toBeUndefined();
   });
 
   it("a clear before the fence moves the wake to the fence instead", async () => {
     const { wakes } = await setup();
-    await wakes.owe({ entry: "runTaskBoard", dueAt: 1_002_000 });
-    const read = (await wakes.read("runTaskBoard"))!;
-    expect(await wakes.settle("runTaskBoard", read, null)).toBe("moved");
-    expect((await wakes.read("runTaskBoard"))?.dueAt).toBe(1_030_000);
+    await wakes.owe({ entry: "dispatch", dueAt: 1_002_000 });
+    const read = (await wakes.read("dispatch"))!;
+    expect(await wakes.settle("dispatch", read, null)).toBe("moved");
+    expect((await wakes.read("dispatch"))?.dueAt).toBe(1_030_000);
   });
 
   it("a wake written during the pass survives its settle", async () => {
     const { wakes, now } = await setup();
-    await wakes.owe({ entry: "runTaskBoard", dueAt: 1_002_000 });
-    const read = (await wakes.read("runTaskBoard"))!;
-    await wakes.owe({ entry: "runTaskBoard", dueAt: 1_003_000 });
+    await wakes.owe({ entry: "dispatch", dueAt: 1_002_000 });
+    const read = (await wakes.read("dispatch"))!;
+    await wakes.owe({ entry: "dispatch", dueAt: 1_003_000 });
     now.t = 1_100_000;
-    expect(await wakes.settle("runTaskBoard", read, null)).toBe("stale");
-    expect((await wakes.read("runTaskBoard"))?.dueAt).toBe(1_002_000);
+    expect(await wakes.settle("dispatch", read, null)).toBe("stale");
+    expect((await wakes.read("dispatch"))?.dueAt).toBe(1_002_000);
   });
 
   it("tells a listener on the store when a wake is owed, so a sweeper can come forward", async () => {
     const { stores, wakes } = await setup();
     const heard: number[] = [];
     const stop = onWakeOwed(stores.wakes!, (dueAt) => heard.push(dueAt));
-    await wakes.owe({ entry: "runTaskBoard", dueAt: 1_002_000 });
+    await wakes.owe({ entry: "dispatch", dueAt: 1_002_000 });
     stop();
-    await wakes.owe({ entry: "runTaskBoard", dueAt: 1_001_000 });
+    await wakes.owe({ entry: "dispatch", dueAt: 1_001_000 });
     expect(heard).toEqual([1_002_000]);
   });
 
   it("tells the listener the due time the wake keeps, so a later owe never delays the sweeper", async () => {
     const { stores, wakes } = await setup();
     const heard: number[] = [];
-    await wakes.owe({ entry: "runTaskBoard", dueAt: 1_001_000 });
+    await wakes.owe({ entry: "dispatch", dueAt: 1_001_000 });
     const stop = onWakeOwed(stores.wakes!, (dueAt) => heard.push(dueAt));
     // Coalesced: the earlier due time still governs.
-    await wakes.owe({ entry: "runTaskBoard", dueAt: 1_009_000 });
+    await wakes.owe({ entry: "dispatch", dueAt: 1_009_000 });
     stop();
     expect(heard).toEqual([1_001_000]);
   });
 
   it("tells the listener where a settle moved the wake, so a sweeper armed later comes forward", async () => {
     const { stores, wakes, now } = await setup();
-    await wakes.owe({ entry: "runTaskBoard", dueAt: 1_002_000 });
-    const read = (await wakes.read("runTaskBoard"))!;
+    await wakes.owe({ entry: "dispatch", dueAt: 1_002_000 });
+    const read = (await wakes.read("dispatch"))!;
     const heard: number[] = [];
     const stop = onWakeOwed(stores.wakes!, (dueAt) => heard.push(dueAt));
     now.t = 1_003_000;
-    expect(await wakes.settle("runTaskBoard", read, 1_007_000)).toBe("moved");
+    expect(await wakes.settle("dispatch", read, 1_007_000)).toBe("moved");
     stop();
     expect(heard).toEqual([1_007_000]);
   });
