@@ -8,7 +8,7 @@
  * Its popup reads the session the log says it was delivered to.
  */
 import { describe, expect, it } from "vitest";
-import { destinationOf, toEntries, toSteps } from "../src/adapter";
+import { destinationOf, exchangeOf, toEntries, toSteps } from "../src/adapter";
 import { repliedIn } from "../src/components/Popups";
 
 const CODER = "teammates.coder";
@@ -87,5 +87,17 @@ describe("where a sent message's popup looks", () => {
 
   it("has no answer for a message the log doesn't hold yet", () => {
     expect(destinationOf([row("msg_0", "sess_other")], "msg_2")).toBeUndefined();
+  });
+});
+
+describe("the turn a message's popup shows", () => {
+  const receipt = (id: string, requestId: string) =>
+    ({ id, type: "component", component: "workforce:received", status: "completed", requestId, data: { id: "msg_1", text: "Launch date?" } });
+  const said = (id: string, requestId: string, text: string) =>
+    ({ id, type: "message", role: "assistant", status: "completed", requestId, content: [{ type: "output_text", text }] });
+
+  it("follows the turn that took a message over after its first taker died", () => {
+    const items = [receipt("c1", "r1"), receipt("c2", "r2"), said("a2", "r2", "Nov 12")];
+    expect(exchangeOf(items, "msg_1").map((s) => s.id)).toEqual(["c2", "a2"]);
   });
 });

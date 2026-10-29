@@ -395,9 +395,13 @@ export function destinationOf(rows: readonly unknown[], messageId: string): stri
   return undefined;
 }
 
-/** The turn of a conversation that read message `messageId`, as steps: the message, then all that turn did. */
-function exchangeOf(items: readonly Item[], messageId: string): SessionStep[] {
-  const read = items.find((i) => i.type === "component" && i.component === RECEIVED_MESSAGE_COMPONENT && i.data?.id === messageId);
+/**
+ * The turn of a conversation that read message `messageId`, as steps: the
+ * message, then all that turn did. The last receipt: a taker that died is
+ * taken over, and the turn that took over is the one that answered.
+ */
+export function exchangeOf(items: readonly Item[], messageId: string): SessionStep[] {
+  const read = [...items].reverse().find((i) => i.type === "component" && i.component === RECEIVED_MESSAGE_COMPONENT && i.data?.id === messageId);
   return read === undefined ? [] : toSteps(items.filter((i) => i.requestId === read.requestId));
 }
 
