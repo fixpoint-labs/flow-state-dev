@@ -117,9 +117,9 @@ const standardWorkers: WorkerManifest[] = [
 ];
 
 /** Boot the host. `checkouts` is handed to `projectWorkspace()`, the source every delegate's turn asks. */
-async function boot(options: { checkouts?: readonly ProjectCheckout[]; needsProject?: boolean } = {}) {
+async function boot(options: { checkouts?: readonly ProjectCheckout[]; needsProject?: boolean; source?: RunSource } = {}) {
   const asked: Asked[] = [];
-  const source = options.checkouts === undefined ? projectWorkspace() : projectWorkspace({ checkouts: options.checkouts });
+  const source = options.source ?? (options.checkouts === undefined ? projectWorkspace() : projectWorkspace({ checkouts: options.checkouts }));
   const projects = defineProjectBlocks();
   const judgment = mockGenerator({ script: [{ when: () => true, then: { text: "Noted." } }] });
   const filerRef = { kind: "filer", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
@@ -359,6 +359,15 @@ describe("a task for a flow that needs a project", () => {
     await h.createProject("alice", { id: "storefront", title: "Storefront", repository: STOREFRONT_REPO });
     const run = await h.file("alice", await h.workstreamConversation("alice", storefront, "checkout"), {}, "filer");
     expect(run.answer).toEqual({ kind: "repo", repo: STOREFRONT_REPO, projectId: "storefront" });
+  });
+
+  // A host whose runs always work in one fixed repository has somewhere to work for every task, so its
+  // coding flow leaves `needsProject` off and is never refused at filing.
+  it("is never refused on a host with one fixed repository, which leaves needsProject off", async () => {
+    const h = await boot({ source: () => ({ kind: "repo", repo: STOREFRONT_REPO }) });
+    const { filed } = await fileFrom(h, await h.plainConversation("alice"));
+    expect(filed).toMatchObject({ ok: true });
+    expect(h.asked.map((run) => run.answer)).toEqual([{ kind: "repo", repo: STOREFRONT_REPO }]);
   });
 
   // A name in the wrong shape still names a project: the run refuses it with what a name looks like.
