@@ -536,3 +536,20 @@ export type HarnessSteer = (text: string) => Promise<"delivered" | "refused">;
  * never steers simply never calls it. The twin of {@link HarnessSessionHook}.
  */
 export type HarnessSteerHook = (steer: HarnessSteer | null, ctx: HarnessCallbackContext) => void;
+
+/**
+ * One thing a run did, as a {@link HarnessActivityHook} is handed it
+ * (FIX-2290): a completed assistant message, or a tool call it started, in the
+ * shapes a harness's translator already produces. Reasoning is never one.
+ */
+export type HarnessActivity =
+  | { kind: "message"; text: string }
+  | { kind: "tool"; name: string; /** The call's arguments, as the JSON text the vendor sent. */ arguments: string };
+
+/**
+ * Called by a harness with each {@link HarnessActivity} of its run, so the host
+ * can say how the run is doing (harness-manager keeps the task's status note
+ * from it). Not awaited, and a throw never fails the run: like usage, it is a
+ * reading, not part of the work. A harness that reports none never calls it.
+ */
+export type HarnessActivityHook = (activity: HarnessActivity, ctx: HarnessCallbackContext) => void;

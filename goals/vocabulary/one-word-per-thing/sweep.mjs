@@ -32,11 +32,16 @@ const tracked = execFileSync("git", ["ls-files", "--", ...ROOTS], { cwd: repo, e
   .split("\n")
   .filter(Boolean);
 
-// The negative control: one planted file, through the same path as every real one.
+// The negative control: planted files, through the same path as every real one. FIX-2242 D2
+// adds one per message row, the `replyTo` one under Workforce, the only place that row reads.
 const planted = args.has("--control")
-  ? { path: "packages/core/src/__planted__.ts", text: "export const x = parkOnAsk;\n" }
+  ? [
+      { path: "packages/core/src/__planted__.ts", text: "export const x = parkOnAsk;\n" },
+      { path: "packages/workforce/src/__planted__.ts", text: "export const y = messageWorker;\nexport const z = { replyTo: 1 };\n" }
+    ]
   : undefined;
-const files = planted ? [...tracked, planted.path] : tracked;
+const plantedText = new Map((planted ?? []).map((p) => [p.path, p.text]));
+const files = planted ? [...tracked, ...planted.map((p) => p.path)] : tracked;
 
 const scanned = [];
 const excluded = new Map();
@@ -59,7 +64,7 @@ for (const path of files) {
 
 const hits = [];
 for (const path of scanned) {
-  const text = planted && path === planted.path ? planted.text : readFileSync(`${repo}/${path}`, "utf8");
+  const text = plantedText.get(path) ?? readFileSync(`${repo}/${path}`, "utf8");
   const lines = text.split("\n");
   for (const rule of RETIRED) {
     if (!inScope(rule.id) || !rule.files.test(path)) continue;
@@ -108,8 +113,15 @@ if (unruled.length > 0) {
 }
 const pass = open.length === 0 && unruled.length === 0;
 if (planted) {
-  const caught = open.some((h) => h.path === planted.path);
-  console.log(caught ? "CONTROL OK: the planted hit was caught" : "CONTROL BROKEN: the planted hit passed");
+  // Each planted line must be caught by its own rule, so a row that reads nothing can't pass.
+  const want = [
+    ["packages/core/src/__planted__.ts", "ask-symbol"],
+    ["packages/workforce/src/__planted__.ts", "message-names"],
+    ["packages/workforce/src/__planted__.ts", "message-reply-to"]
+  ].filter(([, rule]) => inScope(rule));
+  // Under `--only`, only the selected families' plants are expected; none selected proves nothing.
+  const caught = want.length > 0 && want.every(([path, rule]) => open.some((h) => h.path === path && h.rule === rule));
+  console.log(caught ? "CONTROL OK: every planted hit was caught" : "CONTROL BROKEN: a planted hit passed");
   process.exit(caught ? 0 : 1);
 }
 console.log(pass ? "PASS" : "FAIL");

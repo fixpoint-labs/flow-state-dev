@@ -515,6 +515,42 @@ A report without a `runId` counts as one finished run of its own, so a harness t
 
 `reportHarnessSpend` returns `false`, and counts nothing, when the context belongs to no request, such as a hand-built test context.
 
+## What a run is doing
+
+A harness block can report what its run is doing as it goes, through an
+`onActivity` hook, a `HarnessActivityHook`: `(activity, ctx) => void`. Each
+`HarnessActivity` is one of two kinds:
+
+```ts
+type HarnessActivity =
+  | { kind: "message"; text: string }                   // a completed assistant message
+  | { kind: "tool"; name: string; arguments: string };  // a tool call the run started
+```
+
+`arguments` is the JSON text of the call's arguments. Reasoning, streamed
+deltas and tool results are never reported. The hook isn't awaited, and a throw
+from it is logged while the run carries on. Claude Code and Codex report
+messages and tool calls. Cursor reports tool calls only, because it streams
+assistant text in pieces.
+
+```ts
+const agent = codexAgent({
+  cwd,
+  onActivity: (activity) => {
+    if (activity.kind === "tool") console.log(`tool: ${activity.name}`);
+  },
+});
+```
+
+If you write a harness of your own, `reportHarnessActivity(onActivity, event, ctx)`
+from `@flow-state-dev/core` takes one of your translated events and calls the
+hook when it counts as activity: a `message` or `message_complete` event becomes
+a message, a `tool_call` event becomes a tool call, and anything else is
+skipped. It never throws. `harnessActivityOf(event)` is the mapping on its own,
+returning the activity or `null`. The
+[harness manager](/docs/orchestration/harness-manager#how-a-running-task-is-doing)
+uses the hook to keep a running task's status note current.
+
 ## The prompt is the input; everything else is configuration
 
 A harness block takes one thing: the prompt. Where the run works, which

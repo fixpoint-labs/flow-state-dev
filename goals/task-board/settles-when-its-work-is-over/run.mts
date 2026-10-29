@@ -20,7 +20,8 @@
  *   c  a message queued mid-task: the task settles with its work's answer
  *      when the work ends, and the message runs after, outside the task (no
  *      claim, so no checkpoint), never delaying the settle
- *   d  a wait and a person's stop: each still running on attempt 1, no lease,
+ *   d  a wait and a person's stop: each still running on attempt 1, kept open
+ *      by its own stop with no lease, the person's mirrored as a question on its row,
  *      after a pass past the lease the claim committed to; done after the
  *      resume, still attempt 1
  *
@@ -41,7 +42,7 @@ import { dispatchThroughSeam, markDispatcher, type BlockContext } from "@flow-st
 import { continueRequest, createFlowState } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
-import type { Task } from "@flow-state-dev/orchestration/tasks";
+import { isSuspensionQuestion, openQuestions, type Task } from "@flow-state-dev/orchestration/tasks";
 import { TASK_ID_STATE_KEY } from "../../../packages/workforce/src/workers/keys.ts";
 import {
   createWorkerInstallation,
@@ -559,9 +560,10 @@ async function legC(run: Run): Promise<void> {
   run.notes.push(`c: both settled with the work's answer; their messages' turns began ${plain} ms and ${checkpoint} ms after, holding no claim`);
 }
 
+/** Each stop's reason, and whether it waits for a person: mirrored on its row as a suspension question (FIX-2133). */
 const STOPS = [
-  ["user_input", "user"],
-  ["external_event", "wait"]
+  ["user_input", true],
+  ["external_event", false]
 ] as const;
 
 /**
@@ -602,10 +604,14 @@ async function legD(run: Run): Promise<void> {
   const ids = await Promise.all(STOPS.map(([reason]) => file(run, word(`[stop:${reason}] wait for it`))));
   await run.h.idle();
   const claimedAt = Math.max(...(await Promise.all(ids.map(async (id) => (await run.h.byId(id))?.startedAt ?? Date.now()))));
-  for (const [i, [reason, keptOpenBy]] of STOPS.entries()) {
+  for (const [i, [reason, forPerson]] of STOPS.entries()) {
     const row = await run.h.byId(ids[i]!);
-    if (row?.status !== "in_progress" || row.keptOpenBy !== keptOpenBy || row.leaseUntil !== undefined) {
-      run.failures.push(`d:keeps-its-claim — wanted the ${reason} stop running, waiting on "${keptOpenBy}", with no lease; read ${show(row && { status: row.status, keptOpenBy: row.keptOpenBy, leaseUntil: row.leaseUntil })}`);
+    const mirrored = row !== undefined && openQuestions(row).some(isSuspensionQuestion);
+    if (row?.status !== "in_progress" || row.keptOpenBy !== "wait" || row.leaseUntil !== undefined || mirrored !== forPerson) {
+      run.failures.push(
+        `d:keeps-its-claim — wanted the ${reason} stop running, kept open by "wait", with no lease, ${forPerson ? "its stop mirrored as an open suspension question" : "and no suspension question"}; ` +
+          `read ${show(row && { status: row.status, keptOpenBy: row.keptOpenBy, leaseUntil: row.leaseUntil, questions: row.questions })}`
+      );
     }
   }
   // Past the lease the claim committed to, then a pass of the board that filed them.

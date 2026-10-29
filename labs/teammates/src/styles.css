@@ -1,14 +1,14 @@
 /*
- * The lab's stylesheet. Everything the lab draws references a token by name,
- * and the lab holds no colour value of its own: the look is the design-system
- * import, over the registry's `tokens` item.
+ * The lab's stylesheet. Everything the lab draws references a token by name.
+ * The values are the lab's own theme (`lib/theme.css`), over the registry's
+ * `tokens` item: unlike the other labs, this one does not wear the design
+ * system's look.
  *
- * `sidebar` and `inspector` are the design's two shell surfaces (the left
- * pane, and the right one). They fall back to registry tokens in the base
- * layer, so the design-system import's values win.
+ * `sidebar` and `inspector` are the shell's two surfaces (the left pane, and
+ * the right one); the theme sets them.
  */
 @import "tailwindcss" source(none);
-@import "@flow-state-dev/design-system/shift-manager.css";
+@import "./lib/theme.css";
 @import "./components/flow-state/tokens.css";
 @source "./";
 @source "../node_modules/streamdown/dist/*.js";
@@ -20,12 +20,6 @@
 }
 
 @layer base {
-  :root,
-  .dark {
-    --sidebar: var(--muted);
-    --inspector: var(--card);
-  }
-
   * {
     @apply border-border;
     scrollbar-width: thin;

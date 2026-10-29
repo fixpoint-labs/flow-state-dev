@@ -19,7 +19,6 @@
     "inventory:control": "node scripts/inventory.mjs --control"
   },
   "devDependencies": {
-    "@flow-state-dev/design-system": "workspace:*",
     "@tailwindcss/vite": "^4.2.0",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",
@@ -47,6 +46,7 @@
     "@flow-state-dev/memory": "workspace:*",
     "@flow-state-dev/orchestration": "workspace:*",
     "@flow-state-dev/store-sqlite": "workspace:*",
+    "@flow-state-dev/tools": "workspace:*",
     "@flow-state-dev/workforce": "workspace:*",
     "@flow-state-dev/workspace": "workspace:*",
     "@streamdown/cjk": "^1.0.2",

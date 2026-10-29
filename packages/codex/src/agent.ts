@@ -29,9 +29,11 @@ import {
   harnessRunInputSchema,
   observedPullRequestsCollection,
   recordPullRequests as startPullRequestRecorder,
+  reportHarnessActivity,
 } from "@flow-state-dev/core";
 import { reportHarnessSpend } from "@flow-state-dev/core/types";
 import type {
+  HarnessActivityHook,
   HarnessBilling,
   HarnessCallbackContext,
   HarnessResolver,
@@ -114,6 +116,12 @@ export interface CodexAgentOptions {
    * no dead id is ever written back over a good one.
    */
   onSession?: HarnessSessionHook;
+  /**
+   * Called with each assistant message and each tool call the run starts
+   * (FIX-2290), so a host can say how the run is doing. Not awaited, and a
+   * throw is logged and swallowed.
+   */
+  onActivity?: HarnessActivityHook;
   /**
    * Which model the run uses: a fixed id, or a resolver called once per
    * invocation, like `cwd` and `resume`, so one block can run a different
@@ -218,6 +226,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
     cwd: resolveCwd,
     resume: resolveResume,
     onSession,
+    onActivity,
     model,
     thread: threadOptions,
     client: clientOptions,
@@ -387,6 +396,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
                   failureMessage = event.message;
                 }
                 if (event.kind === "stream_error") streamError = event.message;
+                reportHarnessActivity(onActivity, event, ctx);
                 await emitTranslatedEvent(event, ctx, emitState, name);
               }
             }

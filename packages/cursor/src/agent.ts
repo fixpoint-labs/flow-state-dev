@@ -48,12 +48,14 @@ import {
   observedPullRequestsCollection,
   recordPullRequests as startPullRequestRecorder,
   replacePlanList,
+  reportHarnessActivity,
   type PlanListCollection,
 } from "@flow-state-dev/core";
 import { randomUUID } from "node:crypto";
 import { reportHarnessSpend } from "@flow-state-dev/core/types";
 import type {
   DeclaredResourceEntry,
+  HarnessActivityHook,
   HarnessCallbackContext,
   HarnessResolver,
   HarnessRunOutcome,
@@ -166,6 +168,13 @@ export interface CursorAgentOptions {
    * unanswered.
    */
   onSteerable?: HarnessSteerHook;
+  /**
+   * Called with each tool call the run starts (FIX-2290), so a host can say
+   * how the run is doing. Not awaited, and a throw is logged and swallowed.
+   * Assistant text is not reported: Cursor streams it in pieces, and a piece
+   * is not a line a person can read.
+   */
+  onActivity?: HarnessActivityHook;
   /**
    * Which model the run uses: a fixed id, or a resolver called once per
    * invocation, like `cwd` and `resume`, so one block can run a different
@@ -415,6 +424,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
     resume: resolveResume,
     onSession,
     onSteerable,
+    onActivity,
     model,
     agent: agentOptions,
     send: sendOptions,
@@ -517,7 +527,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         spent = runSpent;
         runSpent.report();
         steering = offerSteer(run, ctx, onSteerable);
-        const mirrored = await mirrorRun(run, ctx, emitState, name, writePlan, spent);
+        const mirrored = await mirrorRun(run, ctx, emitState, name, writePlan, spent, onActivity);
         const settled = await settleRun(run, mirrored, ctx.signal);
         runSpent.usage = settled.usage;
         // The settled model wins over the configured or streamed one, as on the handle.
@@ -815,6 +825,7 @@ async function mirrorRun(
   blockName: string,
   writePlan: PlanWriter | null,
   spent: RunSpent,
+  onActivity: HarnessActivityHook | undefined,
 ): Promise<MirrorFacts> {
   const stream = run.stream();
   const iterator = stream[Symbol.asyncIterator]();
@@ -851,6 +862,7 @@ async function mirrorRun(
           // Awaited on purpose: a write left in flight could land after the next list's.
           await writePlan?.(event.items);
         }
+        if (event.kind === "tool_call") reportHarnessActivity(onActivity, event, ctx);
         await emitTranslatedEvent(event, ctx, emitState, blockName);
       }
     }

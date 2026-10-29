@@ -501,6 +501,8 @@ export type { ObservedPullRequestState, PullRequestRef, PullRequestSource } from
 export { reportHarnessSpend } from "./harness";
 export type {
   ClassifiedHarnessError,
+  HarnessActivity,
+  HarnessActivityHook,
   HarnessBilling,
   HarnessBlock,
   HarnessCallbackContext,

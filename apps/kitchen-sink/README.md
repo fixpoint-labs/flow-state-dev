@@ -153,35 +153,35 @@ This app runs as one organization, `kitchen-sink`, and one user, `devuser`. Both
 
 ### Hiring while the app runs
 
-Workers can also be hired while the app is running, which is the other half of the demonstration. The four specialists are declared in files. A worker hired over `workforce-admin`'s `hire` action is written to the database instead, addressed with its organization and the admin user (`kitchen-sink.~workforce-admin.support.new-hire`). Locally it is still there after `pnpm build && pnpm start`, because the default store is a SQLite file at `.fsdev/data/flowstate.db`. Set `STORE_TYPE=memory` for a store that starts empty each time, or point `FSD_DB_URL` at a database.
+Workers can also be hired while the app is running, which is the other half of the demonstration. The four specialists are declared in files. A worker you hire is a row in your own roster, kept in the database, and it belongs to you. Nothing is registered and nothing restarts: its first turn runs on the flow it names, on every process. Locally it is still there after `pnpm build && pnpm start`, because the default store is a SQLite file at `.fsdev/data/flowstate.db`. Set `STORE_TYPE=memory` for a store that starts empty each time, or point `FSD_DB_URL` at a database.
 
-The admin flow is **not registered at all** unless `WORKFORCE_ADMIN_TOKENS` is set. The variable takes `<org>:<token>` pairs, and the organization a hire lands in is the one its token names, never what the request body says:
-
-```bash
-export WORKFORCE_ADMIN_TOKENS="kitchen-sink:dev-token"
-
-curl -X POST localhost:3000/api/flows/workforce-admin/actions/hire \
-  -H 'content-type: application/json' \
-  -H "authorization: Bearer dev-token" \
-  -d '{"userId":"you","input":{"workerId":"support.new-hire","flow":"agent","instructions":"You take refund questions."}}'
-```
-
-The admin hire goes over HTTP because the admin flow checks a token and the CLI carries none.
-
-The admin action has a credential of its own, but not an organization of its own. Every token has to name `kitchen-sink`. An entry naming any other organization is refused when the app starts, and the refusal is logged, so a token can never quietly administer an organization this app doesn't serve. A worker the admin action hires belongs to the operator who hired it.
-
-The admin flow also has a `fire` action, which removes a worker the admin action hired. A hired worker doesn't show in the rail and doesn't join `support.help`: a coordinator's delegates are the ones its file names. The page has no control for hiring.
-
-The worker answers any configured admin token, not only the one that hired it: every token resolves to the same admin principal, and the worker is pinned to that principal. It belongs to the organization and to the admin user, so its address carries both. The worker carries the admin flow's resolver, so a request with no token, or a token it doesn't recognize, gets `401` from that resolver before the pin is checked. Call it with any configured token:
+Hiring goes through the roster flow, `workforce-roster`. Open a session on it, then run its `hire` action there:
 
 ```bash
-curl -X POST localhost:3000/api/flows/kitchen-sink.~workforce-admin.support.new-hire/actions/run \
+curl -X POST localhost:3000/api/flows/workforce-roster/sessions \
   -H 'content-type: application/json' \
-  -H "authorization: Bearer dev-token" \
-  -d '{"userId":"you","input":{"message":"Where is my order?"}}'
+  -d '{"userId":"devuser"}'
+
+curl -X POST localhost:3000/api/flows/workforce-roster/actions/hire \
+  -H 'content-type: application/json' \
+  -d '{"userId":"devuser","sessionId":"<the roster session id>","input":{"id":"refunds","flow":"agent","description":"Takes refund questions.","instructions":"You take refund questions."}}'
 ```
 
-Restart the app and ask the worker something. The reload runs at startup, before the app serves anything, and reports any worker it could not bring back.
+Talk to the new worker the way you talk to a specialist: open a session on its flow, `agent`, naming it, and post to it:
+
+```bash
+curl -X POST localhost:3000/api/flows/agent/sessions \
+  -H 'content-type: application/json' \
+  -d '{"userId":"devuser","state":{"workerId":"refunds"}}'
+
+curl -X POST localhost:3000/api/flows/agent/actions/respond \
+  -H 'content-type: application/json' \
+  -d '{"userId":"devuser","sessionId":"<the session id>","input":{"message":"Where is my refund?"}}'
+```
+
+The same session takes `edit`, which changes the worker's instructions or settings from its next turn on, and `fire`, which takes it off your roster. A fired worker's conversations stay readable, and a new turn in one is refused. The specialists the files declare can't be edited or fired. `fork` copies one to a worker of your own, which you can then edit.
+
+A hired worker doesn't show in the rail and doesn't join `support.help`'s routing: a coordinator's delegates are the ones its file names. The page has no control for hiring.
 
 ## The page (`app/`)
 
@@ -315,7 +315,6 @@ Most are optional. These are the ones you're likely to set:
 | `FSD_DB_URL` | A Postgres connection string. When set, the app stores everything there. `DATABASE_URL` is read if `FSD_DB_URL` isn't set. |
 | `REDIS_URL` | Redis for BullMQ background jobs, local dev only. `docker compose -f docker-compose.dev.yml up -d`, run from `apps/kitchen-sink`, starts one. |
 | `FSD_BULLMQ_DISPATCH` | `1` sends every action dispatch through the BullMQ queue instead of running it in process. Needs `REDIS_URL`. |
-| `WORKFORCE_ADMIN_TOKENS` | `<org>:<token>` pairs. Registers the `workforce-admin` flow. See [Hiring while the app runs](#hiring-while-the-app-runs). |
 
 ### Bash tool provider
 
@@ -381,7 +380,6 @@ apps/kitchen-sink/
       *.ts                   The other actions (approval gate, settings, ...)
     rich-text-component/     Text transformations for the artifact editor
     weekly-digest/           Scheduled actions
-    workforce-admin/         The operator's hire and fire actions
   workforce/                 The support team: teams/, workforce.gen.ts
   components/
     flow-state/              Shared item-renderer UI (installed from @flow-state-dev/ui)
