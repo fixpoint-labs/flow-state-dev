@@ -107,7 +107,7 @@ const HARNESSES: Record<string, Harness> = {
  *
  * @throws When `workdir` is unset, missing, or not a git checkout.
  */
-export function workingFolder(workdir: string | undefined): string {
+function workingFolder(workdir: string | undefined): string {
   if (workdir === undefined || workdir.trim() === "") {
     throw new Error("teammates: TEAMMATES_WORKDIR is not set. Set it to the git checkout the team works in.");
   }
