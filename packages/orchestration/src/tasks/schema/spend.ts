@@ -26,7 +26,7 @@ const taskSpendSourceSchema = z.object({
 
 /** One request admitted for the task, and what it spent. */
 const taskSpendRequestSchema = z.object({
-  /** The request, by id. A resume keeps its request's id, and its entry. */
+  /** The request, by id. A resume in the same process keeps its request's id, and its entry. */
   requestId: z.string(),
   /** What the request's endings handed on, summed per source. */
   settled: z.array(taskSpendSourceSchema).default([]),
@@ -38,8 +38,10 @@ const taskSpendRequestSchema = z.object({
   harnessModel: z.string().nullable().default(null),
   /** The model the request last called, or `null` when it called none. */
   model: z.string().nullable().default(null),
-  /** The admission that wrote `live` last, or `null`: a write from another one finds that run dead. */
+  /** The admission this entry is, or `null` on an older row: a request continued in a new process is admitted again, as a new entry. */
   writer: z.string().nullable().default(null),
+  /** When that admission was made (ms), or `null` on an older row. */
+  admittedAt: z.number().nullable().default(null),
 });
 
 /** `Task.spend`: the task's requests, the one that last reported its harness or model last. */

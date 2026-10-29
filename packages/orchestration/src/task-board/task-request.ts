@@ -134,6 +134,8 @@ interface Admitted {
    * tells that run's writes from the dead one's by it.
    */
   readonly writer: string;
+  /** When this admission was made: a later admission of the same request supersedes this one's unsettled live part. */
+  readonly admittedAt: number;
 }
 
 /**
@@ -264,6 +266,7 @@ export async function admitClaimedTask(
     inline: false,
     own: options.own,
     writer: crypto.randomUUID(),
+    admittedAt: Date.now(),
   };
   // The hook closes over its own record: a resume reuses the request id, so a
   // hook from the run before it must never check (or drop) the resume's record.
@@ -286,7 +289,7 @@ async function writeSpend(record: Admitted, part: "live" | "settle", spend: Requ
   const requestId = requestKey(record.ctx);
   try {
     // Only the task this request was admitted for: two tasks a worker runs at once never share a request's spend.
-    await recordSpend.call(record.ref, record.ticket.taskId, { requestId, part, spend, writer: record.writer }, { claim: record.ticket });
+    await recordSpend.call(record.ref, record.ticket.taskId, { requestId, part, spend, writer: record.writer, admittedAt: record.admittedAt }, { claim: record.ticket });
     return true;
   } catch (error) {
     console.warn(`[task-board] task "${record.ticket.taskId}": what its run spent couldn't be written: ${(error as Error).message}`);

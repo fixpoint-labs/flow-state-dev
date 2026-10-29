@@ -25,6 +25,8 @@ export interface TaskSpendWrite {
   readonly spend: RequestSpend;
   /** The admission writing: a request continued after its process died is admitted again, under a new one. */
   readonly writer?: string;
+  /** When that admission was made: a later one of the same request supersedes an earlier one that never settled. */
+  readonly admittedAt?: number;
 }
 
 /** The harness and model a request's spend names last, if any. */
@@ -39,34 +41,21 @@ function namesOf(spend: RequestSpend): { harness?: string; harnessModel?: string
 }
 
 /**
- * `entry` as a write from `writer` finds it. A live part another admission
- * wrote, never settled, is a run whose process died: its request is continued
- * by a new admission whose ledger recovers the dead run's model calls from the
- * log but not its harness runs. So the dead run's harness part is settled here,
- * and its model part left for the new ledger's report to replace.
- */
-function orphanedLive(entry: TaskSpendRequest, writer: string | undefined): TaskSpendRequest {
-  if (entry.live === null || entry.writer === null || writer === undefined || entry.writer === writer) return entry;
-  const harnessRuns = entry.live.filter((source) => source.kind === "harness");
-  return {
-    ...entry,
-    settled: harnessRuns.reduce<TaskSpendSource[]>((all, source) => addRequestSpendSource(all, source) as TaskSpendSource[], entry.settled),
-    live: null,
-  };
-}
-
-/**
  * The row's `spend` after `write`, or `undefined` when it changes nothing (a
  * live part equal to the one stored). Pure: both backings run it inside their
  * write, against the committed row.
  */
 export function spendAfterWrite(task: Pick<Task, "spend">, write: TaskSpendWrite): TaskSpend | undefined {
   const stored = task.spend == null ? { requests: [] } : taskSpendSchema.parse(task.spend);
-  const at = stored.requests.findIndex((entry) => entry.requestId === write.requestId);
+  // One entry per admission of a request: a request continued in a new process
+  // is admitted again under the same id, and each admission's live part and
+  // ending stay its own, whichever order they land in.
+  const writer = write.writer ?? null;
+  const at = stored.requests.findIndex((entry) => entry.requestId === write.requestId && entry.writer === writer);
   const was: TaskSpendRequest =
     at < 0
-      ? { requestId: write.requestId, settled: [], live: null, harness: null, harnessModel: null, model: null, writer: null }
-      : orphanedLive(stored.requests[at]!, write.writer);
+      ? { requestId: write.requestId, settled: [], live: null, harness: null, harnessModel: null, model: null, writer, admittedAt: write.admittedAt ?? null }
+      : stored.requests[at]!;
   const sources = requestSpendSources(write.spend) as TaskSpendSource[];
   const names = namesOf(write.spend);
   // An ending that spent nothing, for a request that never wrote: no entry.
@@ -75,7 +64,7 @@ export function spendAfterWrite(task: Pick<Task, "spend">, write: TaskSpendWrite
     ...was,
     ...(write.part === "settle"
       ? { settled: sources.reduce<TaskSpendSource[]>((all, source) => addRequestSpendSource(all, source) as TaskSpendSource[], was.settled), live: null }
-      : { live: sources, ...(write.writer !== undefined ? { writer: write.writer } : {}) }),
+      : { live: sources }),
     ...(names.harness !== undefined ? { harness: names.harness, harnessModel: names.harnessModel ?? null } : {}),
     ...(names.model !== undefined ? { model: names.model } : {}),
   };
@@ -97,10 +86,14 @@ export function spendAfterWrite(task: Pick<Task, "spend">, write: TaskSpendWrite
  * never ran in a request of its own. Every request counts, every attempt's
  * included; a request's live part counts until its ending settles it.
  *
- * `live` is never true on a terminal row: a request whose process died keeps
- * its last live part (its tokens were spent, so they still count), and no
- * ending will ever clear it, so the row's status, not the part, says the task
- * stopped running.
+ * An admission whose process died never settles: its live part stays. Once
+ * a later admission of the same request has written, that part is superseded:
+ * its harness runs still count (they were spent, and the continuation's ledger
+ * doesn't recover them), its model calls don't (the continuation's ledger
+ * recovers them from the log and reports them itself), and it no longer reads
+ * as running. A predecessor's ending that is only late replaces its live part
+ * with what it settles, so nothing counts twice. `live` is never true on a
+ * terminal row either.
  */
 export function taskSpendView(task: Pick<Task, "spend"> & Partial<Pick<Task, "status">>): TaskSpendView | null {
   if (task.spend == null) return null;
@@ -110,8 +103,11 @@ export function taskSpendView(task: Pick<Task, "spend"> & Partial<Pick<Task, "st
   let output = 0;
   let reportedAny = false;
   let unreported = false;
+  const superseded = (entry: TaskSpendRequest) =>
+    requests.some((other) => other.requestId === entry.requestId && other.writer !== entry.writer && (other.admittedAt ?? 0) > (entry.admittedAt ?? 0));
   for (const entry of requests) {
-    for (const source of [...entry.settled, ...(entry.live ?? [])]) {
+    const live = entry.live === null ? [] : superseded(entry) ? entry.live.filter((source) => source.kind === "harness") : entry.live;
+    for (const source of [...entry.settled, ...live]) {
       input += source.inputTokens;
       output += source.outputTokens;
       if (source.kind === "model" || source.runs > source.unreported) reportedAny = true;
@@ -126,6 +122,6 @@ export function taskSpendView(task: Pick<Task, "spend"> & Partial<Pick<Task, "st
     inputTokens: reportedAny ? input : null,
     outputTokens: reportedAny ? output : null,
     unreported,
-    live: (task.status === undefined || !isTerminalStatus(task.status)) && requests.some((entry) => entry.live !== null),
+    live: (task.status === undefined || !isTerminalStatus(task.status)) && requests.some((entry) => entry.live !== null && !superseded(entry)),
   };
 }
