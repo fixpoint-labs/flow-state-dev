@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import type { SessionStep } from "../adapter";
 import { AgentMarkdown } from "./flow-state/message-response";
 
-// Framed after the Claude Code-style lab's `Sheet`; one overlay both labs share is the follow-up to FIX-2287 and FIX-2339.
+// Framed after the Claude Code-style lab's `Sheet`; one overlay both labs share is FIX-2340.
 /**
  * A read-only popup over the main thread: another worker's session, live.
  * It closes with its close button, Esc, or a click outside it, and the
