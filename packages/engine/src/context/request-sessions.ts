@@ -33,7 +33,7 @@ import { sessionRequestScope } from "./session-request-scope";
 import { readSettledTurns } from "./settled-turns";
 
 /** The most turns `history` reads from the store, whatever its limit asks. */
-export const SESSION_HISTORY_MAX_TURNS = 50;
+const SESSION_HISTORY_MAX_TURNS = 50;
 const SESSION_HISTORY_DEFAULT_TURNS = 20;
 
 export type RequestSessionsInputs = {
@@ -63,7 +63,7 @@ export type RequestSessionsInputs = {
  * The owner rule both reads share: the session record, when it is the
  * principal's (the same user, tenant and organization); otherwise `undefined`.
  */
-export function principalSession(
+function principalSession(
   record: SessionRecord | undefined,
   identity: RequestSessionsInputs["identity"]
 ): SessionRecord | undefined {
