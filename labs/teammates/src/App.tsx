@@ -4,6 +4,7 @@ import { Conversation } from "./components/Conversation";
 import { PopupView, type Popup } from "./components/Popups";
 import { TalkPanel } from "./components/TalkPanel";
 import { WorkersList } from "./components/WorkersList";
+import { lookOf as lookOfRow } from "./lib/looks";
 
 /**
  * The screen: the teammates on the left, the chosen teammate's one
@@ -56,6 +57,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   // Stable between roster reads, so a memoized entry doesn't redraw for a new function.
   const nameOf = useCallback((id: string) => workers.find((w) => w.id === id)?.name ?? id, [workers]);
   const isCoding = useCallback((id: string) => workers.some((w) => w.id === id && w.takesTasks), [workers]);
+  const lookOf = useCallback((id: string) => lookOfRow(workers.find((w) => w.id === id) ?? { id, name: id }), [workers]);
   const teammates = workers.filter((w) => !w.takesTasks);
   const worker = teammates.find((w) => w.id === selected);
   // No worker chosen, no Talk column held for one.
@@ -74,6 +76,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
         selected={worker?.id}
         openTask={popup?.kind === "task" ? popup.taskId : undefined}
         nameOf={nameOf}
+        lookOf={lookOf}
         isCoding={isCoding}
         onSelect={setSelected}
         onOpen={setPopup}
@@ -87,6 +90,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
           worker={worker}
           sessionId={sessionId}
           nameOf={nameOf}
+          lookOf={lookOf}
           isCoding={isCoding}
           onFire={() => fire(worker.id)}
           onOpen={setPopup}
@@ -97,7 +101,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
         <main aria-label="Conversation" />
       )}
       {talkShown ? <TalkPanel adapter={adapter} worker={worker} nameOf={nameOf} onClose={() => setTalkOpen(false)} /> : null}
-      {popup ? <PopupView adapter={adapter} popup={popup} nameOf={nameOf} isCoding={isCoding} onClose={closePopup} /> : null}
+      {popup ? <PopupView adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} onClose={closePopup} /> : null}
     </div>
   );
 }

@@ -47,6 +47,7 @@ import {
   projectSourceTools,
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { z } from "zod";
 import { localWorkspaceHost } from "@flow-state-dev/workspace";
 import { CODER_FLOW, coderFlow, type Harness } from "./src/flows/coder.ts";
 
@@ -157,23 +158,28 @@ export async function openTeammates(options: TeammatesOptions) {
   let flows: Record<string, unknown> = {};
   const installation = createWorkerInstallation({ standardWorkers: roster.workers, workerFlows: () => flows as never });
   flows = {
-    [AGENT_FLOW]: defineAgentWorkerFlow({
-      installation,
-      model: options.model,
-      catalog: {
-        ...projectSourceTools(workspace),
-        search: search(),
-        fetch: fetch(),
-      },
-      uses: [
-        mem.capability.presets({ recall: false, connect: false, semantic: true, episodic: true }),
-        earlier.capability,
-        // Offered to a worker whose file picks `consultSessions: [consult]` (Chief of Staff).
-        consultSessionsCapability(installation),
-      ],
-      beforeAnswer: earlier.fold,
-      afterAnswer: mem.captureFromItems,
-    }),
+    // Each teammate's `icon:` and `color:` lines ride on its roster row, so the page draws them.
+    [AGENT_FLOW]: {
+      flow: defineAgentWorkerFlow({
+        installation,
+        settings: { icon: z.string().optional(), color: z.string().optional() },
+        model: options.model,
+        catalog: {
+          ...projectSourceTools(workspace),
+          search: search(),
+          fetch: fetch(),
+        },
+        uses: [
+          mem.capability.presets({ recall: false, connect: false, semantic: true, episodic: true }),
+          earlier.capability,
+          // Offered to a worker whose file picks `consultSessions: [consult]` (Chief of Staff).
+          consultSessionsCapability(installation),
+        ],
+        beforeAnswer: earlier.fold,
+        afterAnswer: mem.captureFromItems,
+      }),
+      showSettings: ["icon", "color"],
+    },
     [CODER_FLOW]: coderFlow({
       harnesses: HARNESSES,
       defaultHarness: options.harness ?? "claude-code",

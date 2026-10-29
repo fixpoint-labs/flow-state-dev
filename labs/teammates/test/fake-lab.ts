@@ -30,9 +30,9 @@ const WINDOW_TURNS = 50;
 const MINUTE = 60_000;
 
 const ROSTER: WorkerRow[] = [
-  { id: "teammates.chief-of-staff", name: "Chief of Staff", role: "Plans the launch with you, and asks the other workers when it needs a fact or a draft." },
-  { id: "teammates.researcher", name: "researcher", role: "Finds facts for the team, and replies to whoever asked." },
-  { id: "teammates.writer", name: "writer", role: "Drafts and tightens copy when you or another worker asks." },
+  { id: "teammates.chief-of-staff", name: "Chief of Staff", icon: "★", color: "amber", role: "Plans the launch with you, and asks the other workers when it needs a fact or a draft." },
+  { id: "teammates.researcher", name: "researcher", icon: "🔎", color: "teal", role: "Finds facts for the team, and replies to whoever asked." },
+  { id: "teammates.writer", name: "writer", icon: "✎", color: "violet", role: "Drafts and tightens copy when you or another worker asks." },
   { id: "teammates.coder", name: "coder", role: "Where coding tasks run in the background.", takesTasks: true },
 ];
 const LEAD = "teammates.chief-of-staff";

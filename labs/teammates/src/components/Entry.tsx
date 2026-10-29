@@ -1,5 +1,7 @@
 import { memo } from "react";
 import type { ConversationEntry } from "../adapter";
+import type { Look } from "../lib/looks";
+import { Avatar } from "./Avatar";
 import { useSubmit } from "../lib/use-submit";
 import { AgentMarkdown } from "./flow-state/message-response";
 
@@ -17,6 +19,7 @@ export const Entry = memo(function Entry({
   entry,
   workerName,
   nameOf,
+  lookOf,
   isCoding = () => false,
   replied = false,
   onOpenMessage,
@@ -26,6 +29,8 @@ export const Entry = memo(function Entry({
   entry: ConversationEntry;
   workerName: string;
   nameOf: (id: string) => string;
+  /** A teammate's icon and color, the same as in the list. */
+  lookOf: (id: string) => Look;
   /** The worker coding tasks run on: its results are the task's, not a teammate's. */
   isCoding?: (id: string) => boolean;
   /** For a sent message: it was answered. */
@@ -53,7 +58,7 @@ export const Entry = memo(function Entry({
         </div>
       );
     case "sent":
-      return <SentLine to={nameOf(entry.to)} text={entry.text} replied={replied} onOpen={onOpenMessage ? () => onOpenMessage(entry) : undefined} />;
+      return <SentLine to={nameOf(entry.to)} look={lookOf(entry.to)} text={entry.text} replied={replied} onOpen={onOpenMessage ? () => onOpenMessage(entry) : undefined} />;
     case "received":
       return (
         <section
@@ -61,8 +66,8 @@ export const Entry = memo(function Entry({
           data-entry="received"
           className="max-w-[85%] rounded-md border border-dashed border-info/60 bg-info/5 px-3 py-2"
         >
-          <div className="font-mono text-[10px] tracking-widest text-info uppercase">
-            ← {nameOf(entry.from)}
+          <div className="flex items-center gap-1.5 font-mono text-[10px] tracking-widest text-info uppercase">
+            <Avatar look={lookOf(entry.from)} size="sm" />← {nameOf(entry.from)}
             {entry.inReplyTo ? " · reply" : ""}
           </div>
           <AgentMarkdown className="mt-0.5 text-sm" text={entry.text} />
@@ -132,7 +137,7 @@ function ApprovalCard({
 }
 
 /** A message to another worker: one line, "Messaged researcher", that opens the exchange. */
-function SentLine({ to, text, replied, onOpen }: { to: string; text: string; replied: boolean; onOpen?: () => void }) {
+function SentLine({ to, look, text, replied, onOpen }: { to: string; look: Look; text: string; replied: boolean; onOpen?: () => void }) {
   return (
     <button
       type="button"
@@ -141,9 +146,7 @@ function SentLine({ to, text, replied, onOpen }: { to: string; text: string; rep
       onClick={onOpen}
       className="flex w-full max-w-[85%] items-center gap-2 rounded-md border border-border bg-card/60 px-3 py-1.5 text-left text-sm hover:bg-accent"
     >
-      <span aria-hidden className="shrink-0 text-muted-foreground">
-        ↗
-      </span>
+      <Avatar look={look} size="sm" />
       <span className="shrink-0">Messaged {to}</span>
       <span className="min-w-0 flex-1 truncate text-muted-foreground">{text}</span>
       <span className="shrink-0 text-xs text-muted-foreground" data-sent-status>

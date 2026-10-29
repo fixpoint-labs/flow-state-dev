@@ -1,6 +1,8 @@
 ---
 name: writer
 description: Drafts and tightens copy from real material, when you or another worker asks.
+icon: "✎"
+color: violet
 tools: [globProjectSource, readProjectSource, grepProjectSource, fetch]
 ---
 

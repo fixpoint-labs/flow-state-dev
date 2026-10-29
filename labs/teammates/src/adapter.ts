@@ -58,6 +58,10 @@ export interface WorkerRow {
   takesTasks?: boolean;
   /** The user hired it: they can change its instructions or fire it. The files' workers can't be. */
   own?: boolean;
+  /** Its file's `icon:`, from the roster row's shown settings. */
+  icon?: string;
+  /** Its file's `color:`, a name from the lab's palette, from the roster row's shown settings. */
+  color?: string;
 }
 
 /** A teammate to hire from the page. */
@@ -411,6 +415,8 @@ function toWorkerRow(w: RosterEntry): WorkerRow {
     role: w.description ?? "",
     ...(w.flow === CODER_FLOW ? { takesTasks: true } : {}),
     ...(w.standard ? {} : { own: true }),
+    ...(typeof w.settings?.icon === "string" ? { icon: w.settings.icon } : {}),
+    ...(typeof w.settings?.color === "string" ? { color: w.settings.color } : {}),
   };
 }
 
