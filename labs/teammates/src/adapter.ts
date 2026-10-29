@@ -13,16 +13,13 @@
  * | `watchTalk`         | the user's message log (`workforceMessages`), as `sendMessage` writes it     |
  * | `watchActivity`     | `listSessionRequests` on the worker's conversation                           |
  * | `watchWindow`       | the last answering request's `historyStart`, and the session's `historySummary` |
- * | `listProjects`      | the user's projects, read through their roster session                       |
- * | `watchProjects`     | the same read, again every few seconds, so a project lead made shows          |
- * | `createProject`     | the projects flow's `createProject`, the block lead's tool runs               |
  * | `hire`              | the workforce client's `hire`: a row on the user's roster                     |
  * | `editInstructions`  | the workforce client's `edit`, on one of the user's own workers               |
  * | `fire`              | the workforce client's `fire`, on one of the user's own workers               |
- * | `watchWorkProject`  | the conversation's `workProjectId`, from the session read                    |
- * | `setWorkProject`    | the workforce client's `setWorkProject(worker, project)`                     |
  * | `watchTasks`        | the board's rows, as the conversation's stream carries each one (`task-change`) |
+ * |                     | and `taskSpendView` on a row, for the harness and model its run reported      |
  * | `watchRun`          | the items of the session the task's row names as its run                     |
+ * | `watchExchange`     | the receiving worker's conversation: the turn that read one message          |
  *
  * A received message is drawn from its own item (`workforce:received`), which
  * carries its message id, so the pending line joins the log to the
@@ -31,104 +28,102 @@
  * The page acts as the user `fsdev dev` hands it (the config's `devtool`
  * block), with the bearer token when there is one, on the server it came from.
  */
-import { createClient, readEveryCollectionPage, type Client, type SentRequest, type SessionRequestSummary } from "@flow-state-dev/client";
+import { createClient, readEveryCollectionPage, type Client, type SessionRequestSummary } from "@flow-state-dev/client";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
   createWorkforceClient,
-  parseProjectRef,
   RECEIVED_MESSAGE_COMPONENT,
-  ROSTER_FLOW,
   SEND_MESSAGE_TOOL,
-  SET_WORK_PROJECT_ACTION,
-  WORK_PROJECT_STATE_KEY,
   WORKER_MESSAGES_RESOURCE,
   workerMessageRowSchema,
   type RosterEntry,
   type WorkforceClient,
 } from "@flow-state-dev/workforce/browser";
+import { taskSpendView } from "@flow-state-dev/orchestration/tasks";
 import { CODER_FLOW } from "./lib/coder-flow";
-import { PROJECTS_FLOW } from "./lib/projects-flow";
+import { harnessName } from "./lib/harness";
 import { sessionFeeds, type SessionFeed } from "./lib/session-feed";
+import { stableList } from "./lib/stable";
 
 /** Stops a watch. */
 export type Unsubscribe = () => void;
 
 /** One worker on the roster. */
 export interface WorkerRow {
-  /** The worker's address on the roster, e.g. `teammates.lead`. */
+  /** The worker's address on the roster, e.g. `teammates.chief-of-staff`. */
   id: string;
   /** The name the user reads. */
   name: string;
   /** Its `WORKER.md` description: the ongoing role. */
   role: string;
-  /** It takes tasks only: it has no conversation, and work reaches it as a task. */
+  /** Coding tasks run on it: it is not a teammate, so it is off the list and has no conversation. */
   takesTasks?: boolean;
   /** The user hired it: they can change its instructions or fire it. The files' workers can't be. */
   own?: boolean;
-}
-
-/** A project to create from the page. */
-export interface NewProject {
-  /** A short lowercase slug. */
-  id: string;
-  title: string;
-  /** An absolute path to a git checkout on the server's machine; stored as a `file://` repository. */
-  checkout?: string;
+  /** For a coding worker, its file's `harness:`, from the roster row's shown settings. */
+  harness?: string;
+  /** Its file's `icon:`, from the roster row's shown settings. */
+  icon?: string;
+  /** Its file's `color:`, a name from the lab's palette, from the roster row's shown settings. */
+  color?: string;
 }
 
 /** A teammate to hire from the page. */
 export interface NewTeammate {
   /** Its name, which is its id on the roster: one word, lowercase. */
   name: string;
-  /** One line on what it does: lead reads it to know who to ask. */
+  /** One line on what it does: Chief of Staff reads it to know who to ask. */
   role: string;
   instructions: string;
 }
 
-/** One of the user's projects: where a worker's runs get their files. */
-export interface ProjectRow {
-  id: string;
-  name: string;
-}
-
-/**
- * A task a conversation filed for a worker that takes tasks, from the board's
- * row. `needs-project` is a run refused `no-project` before any file existed.
- */
+/** A task a conversation filed, from the board's row. */
 export interface BoardTask {
   id: string;
   /** The worker it was filed for. */
   to: string;
   title: string;
-  status: "needs-project" | "running" | "done" | "failed";
-  /** The project its run works in; none when it was refused. */
-  project?: string;
+  status: "running" | "done" | "failed";
   /** What the run reported when it ended, or why it failed. */
   result?: string;
   /** The session its run works in, once it started. */
   runSessionId?: string;
+  /** For a coding task, the harness it runs on: the one its run reported, else its worker's `harness:`. */
+  harness?: string;
+  /** The model its run reported, when it reported one; never guessed. */
+  model?: string;
 }
 
-/** One step of a task's run, as the harness reported it. */
-export interface RunStep {
+/**
+ * One step of a session as a popup draws it: a line given to the worker (a
+ * task's brief, or a message), what the worker wrote, a message it sent, a
+ * tool it ran, or the harness a coding run went through.
+ */
+export interface SessionStep {
   id: string;
+  kind: "given" | "said" | "sent" | "tool" | "harness";
   text: string;
+  /** For `sent`, the worker it went to. */
+  to?: string;
+  /** For `said`, while it is still being written. */
+  streaming?: boolean;
 }
 
 /** One entry of a worker's conversation, in the order it happened. */
 export type ConversationEntry =
   | { kind: "user"; id: string; text: string; queued?: boolean }
-  | { kind: "assistant"; id: string; text: string }
+  /** `streaming` while the answer is still being written. */
+  | { kind: "assistant"; id: string; text: string; streaming?: boolean }
   /** The worker messaged another worker (`sendMessage`). */
   | { kind: "sent"; id: string; messageId: string; to: string; text: string }
   /** A message another worker sent, as the `receive` turn that read it. */
   | { kind: "received"; id: string; messageId: string; from: string; text: string; inReplyTo?: string }
-  /** The worker filed a task; the card reads the board's row by its id. */
-  | { kind: "task"; id: string; taskId: string }
+  /** The worker filed a task; the card reads the board's row by its id, and draws `title` until the row arrives. */
+  | { kind: "task"; id: string; taskId: string; title: string; to: string }
   /** A task it filed ended, as a line under the name of the worker that ran it. */
   | { kind: "result"; id: string; taskId: string; from: string; text: string; failed?: boolean }
-  /** A tool of the worker's waits for your yes, such as a project's repository; `resolution` once answered. */
+  /** The worker waits for your yes (`waitForUser` with an approval); `resolution` once answered. */
   | { kind: "approval"; id: string; requestId: string; suspensionId: string; text: string; resolution?: string };
 
 /** What a conversation shows now. */
@@ -152,6 +147,8 @@ export interface TalkRow {
   undelivered?: boolean;
   /** The sender asked for a reply and went on: an answer comes back as a message. */
   replyRequested?: boolean;
+  /** A call the recipient answered: its reply was the call's result, never a message of its own. */
+  callAnswered?: boolean;
 }
 
 /** Whether a worker is busy, read from its conversation's requests. */
@@ -184,38 +181,32 @@ export interface LabAdapter {
   watchActivity(worker: string, onChange: (activity: Activity) => void): Unsubscribe;
   /** `undefined` while the whole conversation is inside the window. */
   watchWindow(sessionId: string, onChange: (mark: WindowMark | undefined) => void): Unsubscribe;
-  listProjects(): Promise<ProjectRow[]>;
-  /** The user's projects, read again until stopped: one a worker creates shows without a reload. */
-  watchProjects(onChange: (projects: ProjectRow[]) => void): Unsubscribe;
-  /** Create a project the user owns. Rejects with the reason, creating nothing. */
-  createProject(project: NewProject): Promise<ProjectRow>;
   /** Hire a teammate onto the user's roster, on the built-in agent flow. */
   hire(teammate: NewTeammate): Promise<WorkerRow>;
   /** Replace one of the user's own teammates' instructions, from its next turn on. */
   editInstructions(worker: string, instructions: string): Promise<void>;
   /** Fire one of the user's own teammates: it leaves the roster, and its conversation stays readable. */
   fire(worker: string): Promise<void>;
-  /** The project `worker`'s runs work in; `undefined` until one is picked. */
-  watchWorkProject(worker: string, onChange: (project: string | undefined) => void): Unsubscribe;
-  setWorkProject(worker: string, project: string): Promise<void>;
   /** The tasks a conversation filed, oldest first. */
   watchTasks(sessionId: string, onChange: (tasks: BoardTask[]) => void): Unsubscribe;
   /** A task's run, by the session its row names, read only: the worker that runs it takes no messages. */
-  watchRun(runSessionId: string, onChange: (steps: RunStep[]) => void): Unsubscribe;
+  watchRun(runSessionId: string, onChange: (steps: SessionStep[]) => void): Unsubscribe;
+  /**
+   * What `worker` did with one message it was sent: the turn in its own
+   * conversation that read it, from the message to the turn's end, live.
+   * Empty until the message is read.
+   */
+  watchExchange(worker: string, messageId: string, onChange: (steps: SessionStep[]) => void): Unsubscribe;
 }
 
 /** How often the reads with no stream are read again. */
 const POLL_MS = 1_500;
-/** How often the project list is read again. */
-const PROJECTS_POLL_MS = 3_000;
-/** The accessor the user's shared projects are read under, on their roster session. */
-const PROJECTS = "projects";
 /** The keyed item a conversation's board emits for each row it changes. */
 const TASK_CHANGE = "task-change";
 /** The tool a worker files a task with. */
 const CREATE_TASK = "createTask";
-/** Requests that are a worker answering: everything but the board's own passes and the project write. */
-const QUIET_ACTIONS = new Set(["dispatch", SET_WORK_PROJECT_ACTION]);
+/** Requests that are a worker answering: everything but the board's own passes. */
+const QUIET_ACTIONS = new Set(["dispatch"]);
 /** The harness a run's items came from, by the block that emitted them. */
 const HARNESS_LABEL: Record<string, string> = { "claude-code-agent": "Claude Code", "codex-agent": "Codex", "cursor-agent": "Cursor" };
 
@@ -309,28 +300,43 @@ function boardRows(items: readonly Item[]): Map<string, Record<string, any>> {
   return rows;
 }
 
-/** A board row as a task card. A run refused `no-project` is one that waits for a project. */
-function toBoardTask(row: Record<string, any>): BoardTask {
-  const filedIn = row.metadata?.filedInProject;
-  const project = typeof filedIn === "string" ? filedIn.slice(filedIn.indexOf("/") + 1) : undefined;
+/** What a row's spend says ran it: the harness and model its run reported, or nothing. */
+function spendOf(row: Record<string, any>): { harness?: string; model?: string } {
+  try {
+    const view = taskSpendView(row as never);
+    return { ...(view?.harness == null ? {} : { harness: view.harness }), ...(view?.model == null ? {} : { model: view.model }) };
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * A board row as a task card.
+ *
+ * @param harnessOf A worker's `harness:` setting, for a coding task whose run hasn't reported one yet.
+ */
+function toBoardTask(row: Record<string, any>, harnessOf: (worker: string) => string | undefined = () => undefined): BoardTask {
   const error = typeof row.error === "string" ? row.error : undefined;
   const status: BoardTask["status"] =
-    row.status === "completed"
-      ? "done"
-      : row.status === "errored" || row.status === "cancelled"
-        ? error?.includes("(no-project)")
-          ? "needs-project"
-          : "failed"
-        : "running";
+    row.status === "completed" ? "done" : row.status === "errored" || row.status === "cancelled" ? "failed" : "running";
   const answer = typeof row.output?.answer === "string" ? row.output.answer : undefined;
   return {
     id: row.id,
     to: row.assignee ?? "",
     title: row.title ?? row.goal ?? row.id,
     status,
-    ...(project === undefined ? {} : { project }),
     ...((answer ?? error) === undefined ? {} : { result: answer ?? error }),
     ...(typeof row.run?.sessionId === "string" ? { runSessionId: row.run.sessionId } : {}),
+    ...harnessAndModel(spendOf(row), harnessOf(row.assignee ?? "")),
+  };
+}
+
+/** The harness by its name (the run's, else the worker's), and the run's model. */
+function harnessAndModel(spend: { harness?: string; model?: string }, setting: string | undefined): { harness?: string; model?: string } {
+  const harness = spend.harness ?? setting;
+  return {
+    ...(harness === undefined ? {} : { harness: harnessName(harness) }),
+    ...(spend.model === undefined ? {} : { model: spend.model }),
   };
 }
 
@@ -351,7 +357,7 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>):
       entries.push({ kind: "result", id: item.id, taskId, from: item.agentName, text: task?.result ?? textOf(item), ...(failed ? { failed: true } : {}) });
     } else if (item.type === "message" && item.role === "assistant") {
       const text = textOf(item);
-      if (text.trim() !== "") entries.push({ kind: "assistant", id: item.id, text });
+      if (text.trim() !== "") entries.push({ kind: "assistant", id: item.id, text, ...(item.status === "in_progress" ? { streaming: true } : {}) });
     } else if (item.type === "tool_output" && item.toolCall?.name === SEND_MESSAGE_TOOL) {
       const args = parseArgs(item);
       const messageId = item.output?.sent ?? item.output?.callId;
@@ -359,7 +365,8 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>):
         entries.push({ kind: "sent", id: item.id, messageId, to: args.to, text: String(args.text ?? "") });
       }
     } else if (item.type === "tool_output" && item.toolCall?.name === CREATE_TASK && item.output?.ok === true) {
-      entries.push({ kind: "task", id: item.id, taskId: item.output.taskId });
+      const args = parseArgs(item);
+      entries.push({ kind: "task", id: item.id, taskId: item.output.taskId, title: String(args.title ?? args.goal ?? ""), to: String(args.assignee ?? "") });
     } else if (item.type === "suspension" && item.reason === "user_approval") {
       entries.push({ kind: "approval", id: item.id, requestId: item.requestId, suspensionId: item.suspensionId, text: item.message });
     } else if (item.type === "suspension_resume") {
@@ -373,6 +380,66 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>):
   return entries;
 }
 
+/**
+ * Whether the worker is answering, from the conversation's items and the
+ * requests the server lists as in progress. The list is read on a timer, so
+ * it trails the items: an item of the newest request still being written is
+ * an answer under way before the list says so, unless the requests already
+ * show that request ended (`ended`): a failed or aborted turn leaves its
+ * half-written item so for good. A finished answer does not end its request
+ * here, since one request can answer more than once (a worker that drains its
+ * own plan answers again); only the list does.
+ */
+export function answeringOf(items: readonly Item[], inProgress: readonly string[], ended: readonly string[] = []): boolean {
+  // Only the newest request, or one the list names: an item a crashed turn left half-written stays so for good.
+  const newest = items[items.length - 1]?.requestId;
+  const live = (requestId: string) => inProgress.includes(requestId) || (requestId === newest && !ended.includes(requestId));
+  return inProgress.length > 0 || items.some((i) => i.status === "in_progress" && live(i.requestId));
+}
+
+/** Who a `sendMessage` output went to, when it sent one: a wait-again or a refused call sent nothing. */
+function sentTo(item: Item): string | undefined {
+  const to = parseArgs(item).to;
+  const messageId = item.output?.sent ?? item.output?.callId;
+  return typeof messageId === "string" && typeof to === "string" ? to : undefined;
+}
+
+/** A session's items as a popup's steps: what it was given, what it wrote, and the tools it ran. */
+export function toSteps(items: readonly Item[]): SessionStep[] {
+  const steps: SessionStep[] = [];
+  for (const item of items) {
+    if (item.type === "message" && textOf(item).trim() !== "") {
+      steps.push({ id: item.id, kind: item.role === "user" ? "given" : "said", text: textOf(item), ...(item.status === "in_progress" ? { streaming: true } : {}) });
+    } else if (item.type === "component" && item.component === RECEIVED_MESSAGE_COMPONENT && typeof item.data?.text === "string") {
+      steps.push({ id: item.id, kind: "given", text: item.data.text });
+    } else if (item.type === "tool_output" && item.toolCall?.name === SEND_MESSAGE_TOOL && sentTo(item) !== undefined) {
+      steps.push({ id: item.id, kind: "sent", text: String(parseArgs(item).text ?? ""), to: sentTo(item) ?? "" });
+    } else if (item.type === "tool_output" && typeof item.toolCall?.name === "string") {
+      steps.push({ id: item.id, kind: "tool", text: item.toolCall.name });
+    }
+  }
+  return steps;
+}
+
+/** The session a message was delivered to, from the message log; undefined while the log doesn't hold it. */
+export function destinationOf(rows: readonly unknown[], messageId: string): string | undefined {
+  for (const row of rows) {
+    const parsed = workerMessageRowSchema.safeParse(row);
+    if (parsed.success && parsed.data.id === messageId) return parsed.data.toSession;
+  }
+  return undefined;
+}
+
+/**
+ * The turn of a conversation that read message `messageId`, as steps: the
+ * message, then all that turn did. The last receipt: a taker that died is
+ * taken over, and the turn that took over is the one that answered.
+ */
+export function exchangeOf(items: readonly Item[], messageId: string): SessionStep[] {
+  const read = [...items].reverse().find((i) => i.type === "component" && i.component === RECEIVED_MESSAGE_COMPONENT && i.data?.id === messageId);
+  return read === undefined ? [] : toSteps(items.filter((i) => i.requestId === read.requestId));
+}
+
 /** A roster entry as the screen lists it. */
 function toWorkerRow(w: RosterEntry): WorkerRow {
   return {
@@ -381,6 +448,9 @@ function toWorkerRow(w: RosterEntry): WorkerRow {
     role: w.description ?? "",
     ...(w.flow === CODER_FLOW ? { takesTasks: true } : {}),
     ...(w.standard ? {} : { own: true }),
+    ...(typeof w.settings?.harness === "string" ? { harness: w.settings.harness } : {}),
+    ...(typeof w.settings?.icon === "string" ? { icon: w.settings.icon } : {}),
+    ...(typeof w.settings?.color === "string" ? { color: w.settings.color } : {}),
   };
 }
 
@@ -398,32 +468,6 @@ function connect(): Client {
   return createClient({ userId: readUserId(), baseUrl: "", fetcher: withBearerToken(readBearerToken()) });
 }
 
-/**
- * The project a conversation works in, as the screen names it: the id of the
- * `workProjectId` its session read shows. The screen lists only shared
- * projects, so it joins on visibility and id both, and a private one names none.
- */
-export function workProjectOf(state: Readonly<Record<string, unknown>> | undefined): string | undefined {
-  const stored = state?.[WORK_PROJECT_STATE_KEY];
-  const ref = typeof stored === "string" ? parseProjectRef(stored) : undefined;
-  return ref?.visibility === "shared" ? ref.id : undefined;
-}
-
-/**
- * `onChange`, called only when the value differs from the one it last passed on. A
- * watch fed both by reads and by a pick made on this page compares with what the
- * screen shows, not with the last read: a change made elsewhere back to that read
- * still reaches the screen.
- */
-export function shownOnChange<T>(onChange: (value: T) => void): (value: T) => void {
-  let shown: { value: T } | undefined;
-  return (value) => {
-    if (shown !== undefined && shown.value === value) return;
-    shown = { value };
-    onChange(value);
-  };
-}
-
 /** The adapter the app runs on: the package, through one client. */
 export function createLabAdapter(client: Client = connect()): LabAdapter {
   const workforce: WorkforceClient = createWorkforceClient(client);
@@ -433,10 +477,8 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   const flowOfSession = new Map<string, string>();
   /** The workers, by id, so a line under a worker's name reads as a task's ending. */
   let workerIds = new Set<string>();
-  /** Each shared project's visibility, as listed. */
-  const visibility = new Map<string, "shared" | "private">();
-  /** Who watches each worker's project, told at once when a pick here is stored. */
-  const projectWatchers = new Map<string, Set<(project: string | undefined) => void>>();
+  /** Each coding worker's `harness:`, from the last roster read. */
+  let harnesses = new Map<string, string>();
 
   const conversationOf = async (worker: string) => {
     const known = conversations.get(worker);
@@ -451,36 +493,6 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   /** Any conversation of the user's: the message log is read through one. */
   const anyConversation = async () => conversations.values().next().value ?? (await conversationOf((await workforce.roster()).find((w) => w.flow !== CODER_FLOW)!.id));
 
-  /** The user's projects: read through their roster session, where they are kept. */
-  const listProjects = async (): Promise<ProjectRow[]> => {
-    // Reading the roster opens the user's roster session.
-    await workforce.roster();
-    const roster = (await client.sessions.list({ flowKind: ROSTER_FLOW, userId: client.userId }))[0];
-    if (roster === undefined) return [];
-    const rows = await readEveryCollectionPage(client.resources, roster.id, PROJECTS);
-    return rows.flatMap((row) => {
-      const project = row.clientData as { id?: string; title?: string; members?: string[] } | undefined;
-      if (typeof project?.id !== "string" || !(project.members ?? []).includes(client.userId)) return [];
-      visibility.set(project.id, "shared");
-      return [{ id: project.id, name: project.title ?? project.id }];
-    });
-  };
-  /** The session the page's project writes run in, opened on the first one. */
-  let projectsSession: Promise<string> | undefined;
-  /** Wait for a request a send started; its output, or its error when it didn't complete. */
-  const finished = async (sent: SentRequest, action: string): Promise<unknown> => {
-    let status: string = sent.response.status;
-    for (const until = Date.now() + 30_000; status === "in_progress"; status = (await sent.status()).status) {
-      if (Date.now() > until) throw new Error(`teammates: ${action} did not finish in time`);
-      await new Promise((resolve) => setTimeout(resolve, 200));
-    }
-    const sessionId = sent.response.session?.id;
-    const requests = sessionId === undefined ? [] : await client.sessions.requests(sessionId, { includeResultOutput: true, limit: 20 });
-    const result = requests.find((r) => r.id === sent.id)?.result;
-    if (status === "completed") return result?.output;
-    throw new Error(result?.error?.message ?? `teammates: ${action} ended ${status}`);
-  };
-
   const watchFeed = <T>(sessionId: string, map: (items: Item[]) => T, onChange: (value: T) => void): Unsubscribe =>
     (feeds(sessionId) as SessionFeed).watch((items: readonly OutputItem[]) => onChange(map(items as unknown as Item[])));
 
@@ -488,6 +500,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     async listWorkers() {
       const roster = await workforce.roster();
       workerIds = new Set(roster.map((w) => w.id));
+      harnesses = new Map(roster.flatMap((w) => (typeof w.settings?.harness === "string" ? [[w.id, w.settings.harness] as const] : [])));
       return roster.map(toWorkerRow);
     },
     async openConversation(worker) {
@@ -508,16 +521,31 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     },
     watchConversation(sessionId, onChange) {
       let entries: ConversationEntry[] = [];
-      let running = false;
-      const emit = () => onChange({ entries, running });
-      const stopFeed = watchFeed(sessionId, (items) => toEntries(items, workerIds), (next) => {
+      let items: Item[] = [];
+      let inProgress: string[] = [];
+      let ended: string[] = [];
+      let shown: ConversationView | undefined;
+      // Unchanged entries keep their objects, so a streamed chunk redraws only the growing one.
+      const reuse = stableList<ConversationEntry>((next) => {
         entries = next;
+      });
+      const emit = () => {
+        const running = answeringOf(items, inProgress, ended);
+        if (shown?.entries === entries && shown.running === running) return;
+        shown = { entries, running };
+        onChange(shown);
+      };
+      const stopFeed = watchFeed(sessionId, (next) => next, (next) => {
+        items = next;
+        reuse(toEntries(items, workerIds));
         emit();
       });
       const stopPoll = poll(
-        () => client.sessions.requests(sessionId, { status: "in_progress" }),
+        () => client.sessions.requests(sessionId, { limit: 20 }),
         (requests) => {
-          running = activityOf(requests).running;
+          const answering = requests.filter((r) => !QUIET_ACTIONS.has(r.actionName));
+          inProgress = answering.filter((r) => r.status === "in_progress").map((r) => r.id);
+          ended = requests.filter((r) => r.status !== "in_progress").map((r) => r.id);
           emit();
         },
       );
@@ -544,6 +572,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
               at: m.at,
               ...(m.inReplyTo === undefined ? {} : { inReplyTo: m.inReplyTo }),
               ...(m.replyRequested === true ? { replyRequested: true } : {}),
+              ...(m.call === true && m.repliedAt !== undefined ? { callAnswered: true } : {}),
               ...(m.status === "refused" || m.status === "undeliverable" ? { undelivered: true } : {}),
             }));
         },
@@ -598,19 +627,6 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         stopPoll();
       };
     },
-    listProjects,
-    watchProjects(onChange) {
-      return poll(listProjects, onChange, PROJECTS_POLL_MS);
-    },
-    async createProject({ id, title, checkout }) {
-      const session = (projectsSession ??= client.flow(PROJECTS_FLOW).createSession().then((s) => s.id));
-      const input = { id, title, ...(checkout === undefined ? {} : { repository: `file://${checkout}` }) };
-      const output = await finished(await client.flow(PROJECTS_FLOW).send("createProject", input, { sessionId: await session }), "createProject");
-      // A project of yours already has this id: the write keeps it as it was, so this one wasn't made.
-      if ((output as { created?: boolean } | undefined)?.created === false) throw new Error(`teammates: a project "${id}" already exists`);
-      visibility.set(id, "shared");
-      return { id, name: title };
-    },
     async hire({ name, role, instructions }) {
       const written = await workforce.hire({ id: name, description: role, instructions });
       const hired = (await workforce.roster()).find((w) => w.id === written.id && !w.standard);
@@ -625,43 +641,32 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       await workforce.fire(worker);
       conversations.delete(worker);
     },
-    watchWorkProject(worker, onChange) {
-      // The project stored on the conversation, whoever set it: the session read shows it, read only.
-      // A pick here shows at once, so each read is checked against what was last shown.
-      const show = shownOnChange(onChange);
-      const watchers = projectWatchers.get(worker) ?? new Set();
-      projectWatchers.set(worker, watchers);
-      watchers.add(show);
-      let reads = 0;
-      const stop = poll(async () => {
-        const { sessionId } = await conversationOf(worker);
-        // Numbered, so `poll` passes every read on rather than only a changed one.
-        return { read: reads++, project: workProjectOf((await client.sessions.get(sessionId)).state) };
-      }, ({ project }) => show(project));
-      return () => {
-        watchers.delete(show);
-        stop();
-      };
-    },
-    async setWorkProject(worker, project) {
-      await workforce.setWorkProject(worker, { visibility: visibility.get(project) ?? "shared", id: project });
-      // Stored: say so now rather than on the next read, which confirms it.
-      for (const watcher of projectWatchers.get(worker) ?? []) watcher(project);
-    },
     watchTasks(sessionId, onChange) {
-      return watchFeed(sessionId, (items) => [...boardRows(items).values()].map(toBoardTask), onChange);
+      return watchFeed(sessionId, (items) => [...boardRows(items).values()].map((row) => toBoardTask(row, (worker) => harnesses.get(worker))), stableList(onChange));
     },
     watchRun(runSessionId, onChange) {
       return watchFeed(runSessionId, (items) => {
-        const steps: RunStep[] = [];
         const block = items.find((i) => HARNESS_LABEL[i.provenance?.blockName ?? ""] !== undefined)?.provenance?.blockName;
-        if (block !== undefined) steps.push({ id: "harness", text: `on ${HARNESS_LABEL[block]}` });
-        for (const item of items) {
-          if (item.type === "message" && item.role === "assistant" && textOf(item).trim() !== "") steps.push({ id: item.id, text: textOf(item) });
-          else if (item.type === "tool_output" && typeof item.toolCall?.name === "string") steps.push({ id: item.id, text: item.toolCall.name });
-        }
-        return steps;
-      }, onChange);
+        return [...(block === undefined ? [] : [{ id: "harness", kind: "harness" as const, text: `on ${HARNESS_LABEL[block]}` }]), ...toSteps(items)];
+      }, stableList(onChange));
+    },
+    watchExchange(worker, messageId, onChange) {
+      let stop: Unsubscribe | undefined;
+      let live = true;
+      void (async () => {
+        // A reply lands where the message it answers was sent from, a task's session included: the log row says where.
+        // A failed log read falls back to the recipient's conversation rather than leaving the popup unwatched.
+        const rows = await anyConversation()
+          .then(({ sessionId: logSession }) => readEveryCollectionPage(client.resources, logSession, WORKER_MESSAGES_RESOURCE))
+          .catch(() => []);
+        const sessionId = destinationOf(rows.map((row) => row.clientData), messageId) ?? (await conversationOf(worker)).sessionId;
+        if (!live) return;
+        stop = watchFeed(sessionId, (items) => exchangeOf(items, messageId), stableList(onChange));
+      })();
+      return () => {
+        live = false;
+        stop?.();
+      };
     },
   };
 }

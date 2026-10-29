@@ -15,7 +15,6 @@
     "typecheck": "node ../../scripts/typecheck.mjs",
     "test": "vitest run --root .",
     "inventory": "node scripts/inventory.mjs",
-    "inventory:write": "node scripts/inventory.mjs --write",
     "inventory:control": "node scripts/inventory.mjs --control"
   },
   "devDependencies": {
@@ -35,10 +34,12 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "@cursor/sdk": "1.0.40",
     "@flow-state-dev/claude-code": "workspace:*",
     "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/codex": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/cursor": "workspace:*",
     "@flow-state-dev/devtool": "workspace:*",
     "@flow-state-dev/engine": "workspace:*",
     "@flow-state-dev/fsdev": "workspace:*",

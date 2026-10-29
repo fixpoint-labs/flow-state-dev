@@ -39,6 +39,8 @@ export interface WorkerFlowBuilder {
   readonly roles: readonly WorkerRole[] | undefined;
   /** The flow's settings a user may see on the roster; empty when it names none. */
   readonly showSettings: readonly string[];
+  /** Whether the flow's tasks work in a project's files, so a task filed with none is refused. */
+  readonly needsProject: boolean;
 }
 
 /**
@@ -51,20 +53,23 @@ export interface WorkerFlowBuilder {
  *   `manager` (runs its delegation board on `dispatch`, from
  *   `defineSessionBoard`). The hire checks each role's entries, and refuses a
  *   role's piece on a flow that doesn't declare it. `showSettings` names the
- *   flow's settings a user may see on the roster.
+ *   flow's settings a user may see on the roster. `needsProject` says its
+ *   tasks work in a project's files, as a coding run does: a task for one of
+ *   its workers filed with no project is refused at filing (`no_project`).
  * @returns An entry for `createWorkerInstallation({ workerFlows })`, and for
  *   the `workerFlows` map `fsdev gen` writes.
  */
 export function workerFlow(
   build: (installation: WorkerInstallation) => unknown,
-  options: { standardOnly?: boolean; roles?: readonly WorkerRole[]; showSettings?: readonly string[] } = {}
+  options: { standardOnly?: boolean; roles?: readonly WorkerRole[]; showSettings?: readonly string[]; needsProject?: boolean } = {}
 ): WorkerFlowBuilder {
   return {
     [BUILDER]: true,
     build,
     standardOnly: options.standardOnly === true,
     roles: options.roles === undefined ? undefined : [...options.roles],
-    showSettings: [...(options.showSettings ?? [])]
+    showSettings: [...(options.showSettings ?? [])],
+    needsProject: options.needsProject === true
   };
 }
 

@@ -46,6 +46,25 @@ export type ProjectWorkspaceRefusalReason =
   | "not-a-member"
   | "other-project";
 
+/**
+ * What a filer does about a task with no project to work in. One wording for
+ * both checks: the board's `no_project` at filing, for a flow that needs a
+ * project (FIX-2333), and this module's `no-project` at the run's start, its
+ * backstop. Never "name one in `input.project`": a filer may be told never to.
+ */
+export const SET_THE_FILERS_PROJECT =
+  "Set the project of the conversation that files it: call listProjects, then setWorkProject with the one to work in " +
+  "(ask the user which when there are several, or create one when there is none), then file the task again.";
+
+/**
+ * Whether a task's input names a project (`input.project`), well formed or
+ * not. The filing check lets such a task through, and the run checks the
+ * name's shape and the project ({@link runProjectOf}).
+ */
+export function namesProject(input: unknown): boolean {
+  return input != null && typeof input === "object" && (input as { project?: unknown }).project != null;
+}
+
 /** The project a run works on, where it lives, and the user the run works for. */
 export interface RunProject {
   readonly kind: "found";
@@ -78,6 +97,8 @@ export async function runProjectOf(ctx: LooseBlockContext): Promise<RunProject |
     return otherProject(named, own) ?? fromProject(ctx, own);
   }
   // The project the held task was filed in (FIX-2161), kept on its row.
+  // The board's filing check (FIX-2333, `assertProjectFor`) asks the same
+  // order before a row exists: a change here belongs there too.
   const stamped = filedProjectOf(held);
   if (stamped !== undefined) {
     const address = parseProjectRef(stamped);
@@ -87,8 +108,7 @@ export async function runProjectOf(ctx: LooseBlockContext): Promise<RunProject |
   if (named.kind === "named") return fromProject(ctx, named.address);
   return refused(
     "no-project",
-    "this run's session works for no workstream or project, and its task names none, so its coding runs have " +
-      'nowhere to keep their files. A task can name one as `input.project`: `{ "visibility": "shared", "id": "<project>" }`.'
+    `this run's session works for no workstream or project, and its task names none, so its coding runs have nowhere to keep their files. ${SET_THE_FILERS_PROJECT}`
   );
 }
 
@@ -106,8 +126,8 @@ type NamedProject =
  * outside a conversation's task session names none.
  */
 function namedProjectOf(held: Task | undefined): NamedProject {
-  const input = held?.input as { project?: unknown } | null | undefined;
-  if (input == null || typeof input !== "object" || input.project == null) return { kind: "none" };
+  if (!namesProject(held?.input)) return { kind: "none" };
+  const input = held!.input as { project: unknown };
   const parsed = projectAddressSchema.safeParse(input.project);
   if (parsed.success) return { kind: "named", address: parsed.data };
   return {

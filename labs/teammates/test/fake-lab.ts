@@ -4,16 +4,17 @@
  * place; the goal check (`goals/teammates-lab/`) proves the package. Nothing
  * in `src/` imports it.
  *
- * Three workers, each with one conversation, and coder, which takes tasks
- * only. Your first ask to lead makes it message researcher; researcher looks
- * the fact up and replies. Ask lead to have coder fix something and lead files
- * a task: with no project picked for lead, the run is refused before it
- * touches a file, and once you pick one lead files it again. Each worker
+ * Three teammates, each with one conversation, and three hidden coding
+ * workers, one per harness (Claude Code, Codex, Cursor). Your first ask to Chief of Staff makes it message researcher;
+ * researcher looks the fact up and replies. Ask Chief of Staff to fix something and Chief of Staff
+ * starts a coding task on the agent you name, or on Claude Code, which runs in the working folder;
+ * one on a harness the double is told isn't set up fails at once, saying so. Ask writer to
+ * publish and it waits for your yes first. Each worker
  * answers one request at a time: a line you send, or a message from another
  * worker, waits while the worker is answering, and runs when it is done.
- * lead's conversation starts past the 50-turn history window.
+ * Chief of Staff's conversation starts past the 50-turn history window.
  */
-import type { ConversationEntry, LabAdapter, ProjectRow, RunStep, TalkRow, BoardTask, Unsubscribe, WindowMark, WorkerRow } from "../src/adapter";
+import type { ConversationEntry, LabAdapter, SessionStep, TalkRow, BoardTask, Unsubscribe, WindowMark, WorkerRow } from "../src/adapter";
 
 /** How the double keeps time, and what it plays. */
 export interface FixtureOptions {
@@ -23,28 +24,34 @@ export interface FixtureOptions {
   now?: () => number;
   /** Turns past the window are summarized for the worker, not dropped. */
   summary?: boolean;
-  /** The user's projects at the start. Defaults to two. */
-  projects?: ProjectRow[];
+  /** Harnesses this machine isn't set up for: a task on one fails at once, saying so. */
+  notSetUp?: string[];
 }
+
+/** Each coding worker's harness, by name, and the model its run reports, if it reports one. */
+const HARNESS: Record<string, { name: string; model?: string }> = {
+  "claude-code": { name: "Claude Code" },
+  codex: { name: "Codex", model: "gpt-5.5-codex" },
+  cursor: { name: "Cursor" },
+};
 
 /** How many turns a worker reads word for word: the agent flow's default. */
 const WINDOW_TURNS = 50;
 const MINUTE = 60_000;
 
 const ROSTER: WorkerRow[] = [
-  { id: "teammates.lead", name: "lead", role: "Plans the launch with you, and asks the other workers when it needs a fact or a draft." },
-  { id: "teammates.researcher", name: "researcher", role: "Finds facts for the team, and replies to whoever asked." },
-  { id: "teammates.writer", name: "writer", role: "Drafts and tightens copy when you or another worker asks." },
-  { id: "teammates.coder", name: "coder", role: "Makes code changes lead hands it, in lead's project.", takesTasks: true },
+  { id: "teammates.chief-of-staff", name: "Chief of Staff", icon: "★", color: "amber", role: "Plans the launch with you, and asks the other workers when it needs a fact or a draft." },
+  { id: "teammates.researcher", name: "researcher", icon: "🔎", color: "teal", role: "Finds facts for the team, and replies to whoever asked." },
+  { id: "teammates.writer", name: "writer", icon: "✎", color: "violet", role: "Drafts and tightens copy when you or another worker asks." },
+  { id: "teammates.claude-code", name: "Claude Code", role: "Runs coding tasks on Claude Code.", takesTasks: true, harness: "claude-code" },
+  { id: "teammates.codex", name: "Codex", role: "Runs coding tasks on Codex.", takesTasks: true, harness: "codex" },
+  { id: "teammates.cursor", name: "Cursor", role: "Runs coding tasks on Cursor.", takesTasks: true, harness: "cursor" },
 ];
-const PROJECTS: ProjectRow[] = [
-  { id: "relay", name: "relay" },
-  { id: "relay-site", name: "relay-site" },
-];
-const LEAD = "teammates.lead";
+const LEAD = "teammates.chief-of-staff";
 const RESEARCHER = "teammates.researcher";
 const WRITER = "teammates.writer";
-const CODER = "teammates.coder";
+/** The coding worker a task that names no harness goes to: Chief of Staff's default. */
+const DEFAULT_CODER = "teammates.claude-code";
 
 type Job = { kind: "user"; entryId: string; text: string } | { kind: "receive"; message: TalkRow } | { kind: "result"; task: BoardTask };
 
@@ -63,7 +70,7 @@ interface FixtureWorker {
 /** A scripted step: wait, then run. */
 type Step = [delayMs: number, run: () => void];
 
-/** Planning chatter for lead's older turns. */
+/** Planning chatter for Chief of Staff's older turns. */
 const OLDER_TURNS: [string, string][] = [
   ["Who is the post for?", "Teams that sync files across offices. I'd write for the person who sets it up."],
   ["List the launch channels.", "The blog, the changelog, and the newsletter a day later."],
@@ -91,15 +98,14 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     return found;
   };
   const bySession = (sessionId: string) => [...workers.values()].find((w) => w.sessionId === sessionId);
-  const workProjects = new Map<string, string>();
-  let projects = options.projects ?? PROJECTS;
   const fired = new Set<string>();
   let tasks: FixtureTask[] = [];
-  const runs = new Map<string, RunStep[]>();
-  /** Refused tasks lead has filed again. */
-  const refiled = new Set<string>();
-  /** The project each of lead's approvals waits to make, by suspension id. */
-  const asked = new Map<string, { w: FixtureWorker; project: ProjectRow }>();
+  const runs = new Map<string, SessionStep[]>();
+  /** The harness each task's run went through, by name. */
+  const runHarness = new Map<string, string>();
+  const notSetUp = new Set(options.notSetUp ?? []);
+  /** The worker each open approval belongs to, by suspension id. */
+  const approvals = new Map<string, FixtureWorker>();
 
   const notify = () => {
     for (const listener of [...listeners]) listener();
@@ -116,6 +122,20 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
   };
 
   const say = (w: FixtureWorker, text: string): Step[1] => () => push(w, { kind: "assistant", id: nextId("a"), text });
+
+  /** An answer written word by word, as a streamed send draws it: the same entry, growing, then finished. */
+  const sayStreamed = (w: FixtureWorker, text: string): Step[1] => () => {
+    const id = nextId("a");
+    const words = text.split(" ");
+    const draw = (count: number) => {
+      const entry: ConversationEntry = { kind: "assistant", id, text: words.slice(0, count).join(" "), ...(count < words.length ? { streaming: true } : {}) };
+      const at = w.entries.findIndex((e) => e.id === id);
+      w.entries = at < 0 ? [...w.entries, entry] : w.entries.map((e, i) => (i === at ? entry : e));
+      notify();
+      if (count < words.length) setTimeout(() => draw(count + 1), 60 * speed);
+    };
+    draw(1);
+  };
 
   /**
    * `sendMessage`: a card in the sender's conversation, a row in the log, and a
@@ -136,29 +156,46 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     notify();
   };
   const step = (taskId: string, text: string): Step[1] => () => {
-    runs.set(taskId, [...(runs.get(taskId) ?? []), { id: nextId("step"), text }]);
+    runs.set(taskId, [...(runs.get(taskId) ?? []), { id: nextId("step"), kind: "tool", text }]);
     notify();
   };
 
-  /** `createTask` for coder: a card in the filer's conversation. The run gets the filer's project, or is refused before it starts. */
-  const fileTask = (w: FixtureWorker, title: string): Step[1] => () => {
-    const project = workProjects.get(w.row.id);
-    const task: FixtureTask = { id: nextId("t"), to: CODER, title, status: project ? "running" : "needs-project", project, sessionId: w.sessionId };
-    if (project) task.runSessionId = `run:${task.id}`;
-    tasks = [...tasks, task];
-    push(w, { kind: "task", id: nextId("k"), taskId: task.id });
-    if (!project) return;
-    const result = "Fixed the typo in README.md, line 1.";
+  /**
+   * `createTask` for coder: a card in the filer's conversation, and a run in the working folder. The
+   * board's row lands a moment after the filing, as the real stream sends it.
+   */
+  const fileTask = (w: FixtureWorker, title: string, to = DEFAULT_CODER): Step[1] => () => {
+    const id = nextId("t");
+    const harness = worker(to).row.harness!;
+    const task: FixtureTask = { id, to, title, status: "running", runSessionId: `run:${id}`, sessionId: w.sessionId, harness: HARNESS[harness]!.name };
+    runHarness.set(id, HARNESS[harness]!.name);
+    push(w, { kind: "task", id: nextId("k"), taskId: task.id, title, to });
+    setTimeout(() => {
+      tasks = [...tasks, task];
+      notify();
+    }, 300 * speed);
+    const end = (status: "done" | "failed", result: string) => () => {
+      updateTask(task.id, { status, result });
+      w.queue.push({ kind: "result", task: { ...task, status, result } });
+      startNext(w);
+    };
+    // A harness this machine isn't set up for: the task fails before any run, naming it.
+    if (notSetUp.has(harness)) {
+      const name = HARNESS[harness]!.name;
+      setTimeout(end("failed", `${name} isn't set up on this machine: no sign-in found. Sign in to ${name}, then start the task again.`), 400 * speed);
+      return;
+    }
+    const model = HARNESS[harness]!.model;
     let at = 0;
     for (const [delay, run] of [
-      [600, step(task.id, "Read README.md")],
+      // The run reports its model, if its harness reports one, once it starts.
+      [600, () => {
+        if (model !== undefined) updateTask(task.id, { model });
+        step(task.id, "Read README.md")();
+      }],
       [1200, step(task.id, 'Edited line 1: "Relay keps" → "Relay keeps"')],
       [800, step(task.id, "Ran the docs check: passed")],
-      [400, () => {
-        updateTask(task.id, { status: "done", result });
-        w.queue.push({ kind: "result", task: { ...task, status: "done", result } });
-        startNext(w);
-      }],
+      [400, end("done", "Fixed the typo in README.md, line 1.")],
     ] as Step[]) {
       at += delay;
       setTimeout(run, at * speed);
@@ -166,7 +203,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
   };
 
   const script = (w: FixtureWorker, job: Job): Step[] => {
-    if (job.kind === "result") return [[900, say(w, `coder is done: "${job.task.result}" That's in ${job.task.project}.`)]];
+    if (job.kind === "result") return [[900, say(w, `The coding task is done: "${job.task.result}"`)]];
     if (job.kind === "receive") {
       const { message } = job;
       const from = worker(message.from).row.name;
@@ -176,22 +213,20 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       }
       return [[700, say(w, "On it.")], [2000, sendMessage(w, message.from, "Done. It's in the doc.", message.id)]];
     }
-    // A folder no project has: lead creates one with it as the repository, which waits for your yes.
-    const folder = /\/\S+/.exec(job.text)?.[0];
-    if (w.row.id === LEAD && folder !== undefined) {
-      const name = folder.slice(folder.lastIndexOf("/") + 1);
+    // writer waits for your yes before it publishes: `waitForUser` with an approval.
+    if (w.row.id === WRITER && /\bpublish\b/i.test(job.text)) {
       const suspensionId = nextId("sus");
-      asked.set(suspensionId, { w, project: { id: name, name } });
-      return [[600, () => push(w, { kind: "approval", id: nextId("ap"), requestId: nextId("req"), suspensionId, text: `Create project "${name}" with repository file://${folder}?` })]];
+      approvals.set(suspensionId, w);
+      return [[600, () => push(w, { kind: "approval", id: nextId("ap"), requestId: nextId("req"), suspensionId, text: "Publish the draft to the team page?" })]];
     }
-    if (w.row.id === LEAD && /\bcoder\b/i.test(job.text)) {
-      return [[800, say(w, "Handing it to coder.")], [400, fileTask(w, "Fix the typo in the README's first line")]];
-    }
-    const project = workProjects.get(w.row.id);
-    const refused = tasks.find((t) => t.sessionId === w.sessionId && t.status === "needs-project" && !refiled.has(t.id));
-    if (w.row.id === LEAD && refused && project) {
-      refiled.add(refused.id);
-      return [[600, say(w, `Filing it again, in ${project}.`)], [300, fileTask(w, refused.title)]];
+    if (w.row.id === LEAD && /\bfix\b/i.test(job.text)) {
+      // The coding agent you name, else the default.
+      const named = ROSTER.find((r) => r.takesTasks && new RegExp(`\\b${r.name}\\b`, "i").test(job.text));
+      const to = named?.id ?? DEFAULT_CODER;
+      return [
+        [800, sayStreamed(w, `Starting a coding task on ${worker(to).row.name} for that. It runs in the background, and its card shows here.`)],
+        [1200, fileTask(w, "Fix the typo in the README's first line", to)],
+      ];
     }
     if (w.row.id === LEAD && !log.some((m) => m.from === LEAD && m.to === RESEARCHER)) {
       return [
@@ -199,7 +234,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
         [600, sendMessage(w, RESEARCHER, "What's our launch date?")],
       ];
     }
-    // lead thinks longer than researcher looks a fact up, so a reply can arrive while you talk to lead.
+    // Chief of Staff thinks longer than researcher looks a fact up, so a reply can arrive while you talk to Chief of Staff.
     return [[w.row.id === LEAD ? 6000 : 900, say(w, `Noted: "${job.text}" I've folded it into the plan.`)]];
   };
 
@@ -233,7 +268,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     startNext(w);
   };
 
-  // Seed: lead's conversation runs two turns past the window, with an exchange with writer near its end.
+  // Seed: Chief of Staff's conversation runs two turns past the window, with an exchange with writer near its end.
   const seed = (w: FixtureWorker, entries: ConversationEntry[], lastActiveAt: number) => {
     w.entries = entries;
     w.lastActiveAt = lastActiveAt;
@@ -322,12 +357,11 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     },
 
     async answerApproval(_sessionId, { suspensionId }, approve) {
-      const ask = asked.get(suspensionId);
-      if (!ask) throw new Error(`no approval ${suspensionId}`);
-      asked.delete(suspensionId);
-      ask.w.entries = ask.w.entries.map((e) => (e.kind === "approval" && e.suspensionId === suspensionId ? { ...e, resolution: approve ? "approved" : "rejected" } : e));
-      if (approve) projects = [...projects, ask.project];
-      say(ask.w, approve ? `Made project ${ask.project.id}.` : "Left it alone.")();
+      const w = approvals.get(suspensionId);
+      if (!w) throw new Error(`no approval ${suspensionId}`);
+      approvals.delete(suspensionId);
+      w.entries = w.entries.map((e) => (e.kind === "approval" && e.suspensionId === suspensionId ? { ...e, resolution: approve ? "approved" : "rejected" } : e));
+      say(w, approve ? "Published." : "Left it unpublished.")();
     },
 
     watchTalk(workerId, onChange) {
@@ -354,22 +388,6 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       });
     },
 
-    async listProjects() {
-      return projects;
-    },
-
-    watchProjects(onChange) {
-      return watch(() => onChange(projects));
-    },
-
-    async createProject({ id, title }) {
-      if (projects.some((p) => p.id === id)) throw new Error(`a project "${id}" already exists`);
-      const row = { id, name: title };
-      projects = [...projects, row];
-      notify();
-      return row;
-    },
-
     async hire({ name, role }) {
       if (workers.has(name) && !fired.has(name)) throw new Error(`"${name}" is already on your roster`);
       const row: WorkerRow = { id: name, name, role, own: true };
@@ -389,21 +407,33 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       notify();
     },
 
-    watchWorkProject(workerId, onChange) {
-      return watch(() => onChange(workProjects.get(workerId)));
-    },
-
-    async setWorkProject(workerId, project) {
-      workProjects.set(workerId, project);
-      notify();
-    },
-
     watchTasks(sessionId, onChange) {
       return watch(() => onChange(tasks.filter((t) => t.sessionId === sessionId).map(({ sessionId: _, ...card }) => card)));
     },
 
     watchRun(runSessionId, onChange) {
-      return watch(() => onChange(runs.get(runSessionId.replace(/^run:/, "")) ?? []));
+      const taskId = runSessionId.replace(/^run:/, "");
+      return watch(() => {
+        const steps = runs.get(taskId) ?? [];
+        onChange(steps.length === 0 ? [] : [{ id: "harness", kind: "harness", text: `on ${runHarness.get(taskId)}` }, ...steps]);
+      });
+    },
+
+    watchExchange(workerId, messageId, onChange) {
+      // The recipient's turn that read the message: from its received entry to the next thing it was given.
+      return watch(() => {
+        const entries = worker(workerId).entries;
+        const at = entries.findIndex((e) => e.kind === "received" && e.messageId === messageId);
+        if (at < 0) return onChange([]);
+        const steps: SessionStep[] = [];
+        for (const e of entries.slice(at)) {
+          if (steps.length > 0 && (e.kind === "user" || e.kind === "received")) break;
+          if (e.kind === "received") steps.push({ id: e.id, kind: "given", text: e.text });
+          else if (e.kind === "assistant") steps.push({ id: e.id, kind: "said", text: e.text, ...(e.streaming ? { streaming: true } : {}) });
+          else if (e.kind === "sent") steps.push({ id: e.id, kind: "sent", text: e.text, to: e.to });
+        }
+        onChange(steps);
+      });
     },
   };
 }

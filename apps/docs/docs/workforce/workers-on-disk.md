@@ -525,6 +525,25 @@ worker that doesn't set a listed key has nothing for it on its row. `hireWorkfor
 the flow doesn't declare in its `configSchema`. It also refuses the keys every worker carries or
 the hire reads itself, such as `instructions` and `description`.
 
+The built-in `agent` flow declares a fixed set of settings, so a worker on it can't set one of
+your own until the flow declares it. Pass it as `settings` when you build the flow, then show it
+like any other:
+
+```ts
+workerFlows: () => ({
+  agent: {
+    flow: defineAgentWorkerFlow({ installation, settings: { icon: z.string().optional() } }),
+    showSettings: ["icon"],
+  },
+}),
+```
+
+Now a `WORKER.md` can carry `icon: 🔎`, and its row shows it. A name the flow already uses, like
+`model`, is refused when the flow is built.
+
+These settings are for your app to read. The `agent` flow never looks at them, so they can't
+change how a worker runs. A setting that should change that has to be one of the flow's own.
+
 #### Where a worker's data lives
 
 Session, request and user state belong to one user. Org scope is shared with every user in the

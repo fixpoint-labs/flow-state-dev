@@ -11,7 +11,7 @@ const script = fileURLToPath(new URL("../scripts/inventory.mjs", import.meta.url
 const run = (...args: string[]) => execFileSync("node", [script, ...args], { encoding: "utf8" });
 
 describe("the inventory", () => {
-  it("passes on the lab as it is, with the README table current", () => {
+  it("passes on the lab as it is", () => {
     expect(run()).toMatch(/PASS/);
   });
 

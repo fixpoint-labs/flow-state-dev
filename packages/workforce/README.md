@@ -1952,6 +1952,25 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
   reads itself (`description`, `resources` and the rest). A worker that doesn't set a shown key
   has none on its row: the flow's default isn't filled in.
 
+  The built-in `agent` flow's own settings are fixed. To give its workers a setting of your
+  app's, such as an icon a screen draws, declare it with `settings` and show it the same way:
+
+  ```ts
+  workerFlows: () => ({
+    agent: {
+      flow: defineAgentWorkerFlow({ installation, settings: { icon: z.string().optional() } }),
+      showSettings: ["icon"],
+    },
+  }),
+  ```
+
+  A worker's file then sets `icon:` beside its other settings. A key the flow already declares,
+  such as `model`, is refused when the flow is built.
+
+  These settings are for your app to read, never the flow: the `agent` flow doesn't look at
+  them, so they can't change how a worker runs. A setting that should change that belongs in the
+  flow's own built-in settings instead.
+
   In React, build the client once with `useMemo` over the same options. `useFlow` creates sessions
   with no starting state, which a worker flow refuses, so find or start the session with the client
   and select it on the hook (`flow.selectSession(session.id)`).
@@ -2596,7 +2615,7 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 | `defineCoordinatorFlow({ installation, routeModel, agent?, roundDeadlineMs? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `respond`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. Its judgment is the agent's turn, built with the `agent` options; `agent.isolateUserState` keys this flow's user-scoped storage by its copy, as it does `agent`'s. `roundDeadlineMs` is how long a round waits for its answers (five minutes by default); a value that isn't a positive whole number of milliseconds throws. |
 | `defineSessionBoard({ installation, flowKind })` | The task-filing factory for a worker flow of your own (see [Delegating work](https://flow-state.dev/docs/workforce/delegating-work)): `tools` for the model block's `uses` (Orchestration's task tools, present only while the session has a delegate that takes tasks), `progress` for the same `uses` (`reportProgress` on a turn working a task), `delegateTools` for the same `uses` (`listDelegates`, plus `addDelegate`, `removeDelegate` and `setFallback` on a worker set to `editsOwnDelegates: true`), `actions` (the task tools as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`), `resources`, `sessionStateShape` for `installation.session(...)`, `serverOwned` for `session.serverOwned`, `messages` for the same `uses` (the `sendMessage` tool; see [Worker messages](#worker-messages)), `entries(turn)` for `internal: { actions }`, which carries `onTaskSettled` (where each ending of a task the session filed arrives, once) and `onMessageReceived` (where a worker message arrives), `planned(turn)` to wrap a turn so the steps its worker files for itself run in its request (use the wrapped turn for `respond`, the task entry and `entries`), and `files(ctx)` / `taskDelegates(ctx)` to read whether the session files and who takes its tasks. |
 | `coordinatorConfigSchema()`, `coordinatorRouteRecordSchema`, `COORDINATOR_FLOW`, `COORDINATOR_ROUTE` | A coordinator's configuration, its routing record, the flow's kind and the record's component name. |
-| `workerFlow(build, { standardOnly?, roles?, showSettings? })` | A worker flow built on its installation, for a flow in its own file: the installation calls `build(installation)` once. `roles` declares what it does beside taking a message (`contributor`, `manager`), checked at hire. `showSettings` names the settings a worker's `roster()` row shows. Goes in `workerFlows`, and is what `fsdev gen`'s `workerFlows` holds. |
+| `workerFlow(build, { standardOnly?, roles?, showSettings?, needsProject? })` | A worker flow built on its installation, for a flow in its own file: the installation calls `build(installation)` once. `roles` declares what it does beside taking a message (`contributor`, `manager`), checked at hire. `showSettings` names the settings a worker's `roster()` row shows. `needsProject` says its tasks work in a project's files: a task for one of its workers filed with no project is refused at filing, `no_project`, before any row or run exists. Goes in `workerFlows`, and is what `fsdev gen`'s `workerFlows` holds. |
 | `WORKER_ROLES` / `WorkerRole` | The roles a worker flow may declare: `contributor`, `manager`, `coordinator`. |
 | `inventoryWorkers(installation)` | The standard workers as `openInventory` takes workers: each worker's id, its flow and that flow's actions. |
 | `workerConfigOf(ctx)` | The configuration of the worker the turn loaded, synchronously, for a prompt, a tool list or a step condition. Throws when the turn loaded no worker: call `installation.resolveWorker` in the flow's `request.onStarted`. |

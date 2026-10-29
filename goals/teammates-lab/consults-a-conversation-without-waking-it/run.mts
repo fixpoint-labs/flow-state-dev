@@ -27,9 +27,9 @@
  *
  * Run: pnpm tsx goals/teammates-lab/consults-a-conversation-without-waking-it/run.mts
  */
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { randomInt } from "node:crypto";
-import { cpSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { createClient, readEveryCollectionPage } from "@flow-state-dev/client";
@@ -94,8 +94,11 @@ type Item = {
   content?: { text?: string }[];
 };
 
-/** The teammates lab, served from a copy of its workers' tree. */
+/** The teammates lab, served from a copy of its workers' tree, over an empty scratch checkout as its working folder. */
 async function startTeammates(dir: string, tree: string, env: Record<string, string>): Promise<{ child: ChildProcess; origin: string }> {
+  const workdir = join(dir, "workdir");
+  mkdirSync(workdir, { recursive: true });
+  execFileSync("git", ["init", "-q", workdir]);
   const port = 46_000 + randomInt(0, 9_000);
   const origin = `http://127.0.0.1:${port}`;
   await refuseIfAnswering(origin);
@@ -109,6 +112,7 @@ async function startTeammates(dir: string, tree: string, env: Record<string, str
       TEAMMATES_STORE: join(dir, "teammates.sqlite"),
       TEAMMATES_TREE: tree,
       TEAMMATES_USER: USER,
+      TEAMMATES_WORKDIR: workdir,
       ...env,
     }),
   });
@@ -255,7 +259,7 @@ await runGoal(async (failures, tell) => {
   const tree = join(goalTmpDir("consults-tree"), "workforce");
   cpSync(join(LAB, "workforce"), tree, { recursive: true });
   if (CONTROL === "no-consult") {
-    const file = join(tree, "teams/teammates/workers/lead/WORKER.md");
+    const file = join(tree, "teams/teammates/workers/chief-of-staff/WORKER.md");
     const original = readFileSync(file, "utf8");
     const stripped = original.replace(/\ncapabilities:\n  consultSessions: \[consult\]\n/, "\n");
     if (stripped === original) throw new Error("setup: lead's file names no consultSessions preset to drop");
