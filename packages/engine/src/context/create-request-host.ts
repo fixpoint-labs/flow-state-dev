@@ -71,6 +71,7 @@ import type {
   ResumeWaitResult,
   SettleParentTaskInput,
   SettleParentTaskResult,
+  TokenCounter,
   WaitDeadlines,
   WaitRow,
 } from "@flow-state-dev/core/types";
@@ -112,7 +113,7 @@ export type RequestHostInputs = {
   // `resourceState` is here for the birth of a newly created child: the
   // tombstone reclamation it owes itself and its flow's create check — see the
   // `birthSession` call below.
-  stores: Pick<StoreRegistry, "session" | "activeRequests" | "resourceState">;
+  stores: Pick<StoreRegistry, "session" | "activeRequests" | "resourceState" | "request">;
   flow: FlowInstance;
   /** Server-derived identity of the running request. Never caller-supplied. */
   identity: {
@@ -193,6 +194,16 @@ export type RequestHostInputs = {
    * caller-written bag is not a sender.
    */
   dispatchStamp?: DispatchStamp;
+  /**
+   * What `sessions.history` needs beyond the stores: the running request, and
+   * how its own history counts tokens. Absent, `history` reads nothing.
+   */
+  sessionHistory?: {
+    runningRequestId: string;
+    tokenCounter: () => TokenCounter;
+    resolveModelId: () => string;
+    onGateReadError: (error: unknown) => void;
+  };
   /** Everything the liveness gate needs. The gate runs here, once. */
   liveness: Omit<LivenessGateInputs, "registry">;
   now?: () => number;
@@ -801,7 +812,20 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     sessions: stores.session,
     identity: { userId: identity.userId, tenantId: identity.tenantId, orgId: identity.orgId },
     flow,
-    ...(inputs.resolveFlow !== undefined ? { resolveFlow: inputs.resolveFlow } : {})
+    ...(inputs.resolveFlow !== undefined ? { resolveFlow: inputs.resolveFlow } : {}),
+    // The read of another session's settled turns (FIX-2173): the same read
+    // as this request's own window, under that session's scope.
+    ...(inputs.sessionHistory !== undefined
+      ? {
+          history: {
+            requests: stores.request,
+            ...inputs.sessionHistory,
+            ...(inputs.effectiveRuntimeConfig?.durabilityProvider !== undefined
+              ? { durability: inputs.effectiveRuntimeConfig.durabilityProvider }
+              : {})
+          }
+        }
+      : {})
   });
 
   // The seventh verb (FIX-2082): a wait parks durably (the resume) and its

@@ -41,6 +41,7 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core/types";
 import { fetch, search } from "@flow-state-dev/tools";
 import {
   AGENT_FLOW,
+  consultSessionsCapability,
   createWorkerInstallation,
   defineAgentWorkerFlow,
   defineProjectBlocks,
@@ -58,6 +59,9 @@ import { PROJECTS_FLOW } from "./src/lib/projects-flow.ts";
 
 /** The workers, beside this file. */
 const TEAMMATES_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
+
+/** The smaller model a consult of another conversation reads on. */
+const UTILITY_MODEL = "openai/gpt-6-luna";
 
 /** One project the lab starts with. */
 export interface LabProject {
@@ -163,7 +167,13 @@ export async function openTeammates(options: TeammatesOptions) {
         fetch: fetch(),
       },
       // The project collections the source reads go through.
-      uses: [mem.capability.presets({ recall: false, connect: false, semantic: true, episodic: true }), projectWorkspaceCapability, earlier.capability],
+      uses: [
+        mem.capability.presets({ recall: false, connect: false, semantic: true, episodic: true }),
+        projectWorkspaceCapability,
+        earlier.capability,
+        // Offered to a worker whose file picks `consultSessions: [consult]` (lead).
+        consultSessionsCapability(installation),
+      ],
       beforeAnswer: earlier.fold,
       afterAnswer: mem.captureFromItems,
     }),
@@ -182,6 +192,8 @@ export async function openTeammates(options: TeammatesOptions) {
     stores: { default: { primary: sqliteStores({ filename: options.store }) } },
     durable: true,
     devtool: { userId: options.userId },
+    // A consult reads on `intent/utility`: a smaller model than the workers answer on.
+    models: { default: options.model, intents: { utility: [UTILITY_MODEL] } },
   } as never);
 
   // The projects, as the lab's user. One the user already has comes back unchanged.

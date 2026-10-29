@@ -142,7 +142,7 @@ export async function recheckRecipient(
  * project coordinator keeps one per project, so it is reached in the one for
  * `project` when the sender works in one.
  */
-async function conversationAddress(
+export async function conversationAddress(
   ctx: BlockContext,
   installation: WorkerInstallation,
   worker: string,

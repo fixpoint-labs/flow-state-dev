@@ -178,6 +178,8 @@ export type BoardHostOptions = {
   agent?: CoordinatorFlowOptions["agent"];
   /** The `agent` flow's `answerAgain` (FIX-2159), which the coordinator flow doesn't take. */
   answerAgain?: AgentWorkerFlowOptions["answerAgain"];
+  /** Capabilities the `agent` flow installs that need the installation (FIX-2173's consult). */
+  agentUses?: (installation: WorkerInstallation) => NonNullable<AgentWorkerFlowOptions["uses"]>;
   stores?: StoreRegistry;
   /** Told the names of the tools each model call is handed, by the calling block's name. */
   observeTools?: (blockName: string | undefined, names: string[], input: unknown) => void;
@@ -283,7 +285,8 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
   const agent = defineAgentWorkerFlow({
     installation,
     ...(options.agent ?? {}),
-    ...(options.answerAgain === undefined ? {} : { answerAgain: options.answerAgain })
+    ...(options.answerAgain === undefined ? {} : { answerAgain: options.answerAgain }),
+    ...(options.agentUses === undefined ? {} : { uses: options.agentUses(installation) })
   });
   const coordinator = defineCoordinatorFlow({
     installation,
