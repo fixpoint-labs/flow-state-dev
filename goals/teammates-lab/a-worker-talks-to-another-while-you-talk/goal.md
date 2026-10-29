@@ -49,3 +49,4 @@ Steps 2 and 3 have no isolating red state for Chief of Staff's side: without Chi
 | 2026-10-29 | 5e1a3f9 | openai/gpt-5.4-mini, Claude Code | PASS | Steps 1 to 5 on the real-tools lab. Step 4: "teal badger 519" and 19 May; divider "Earlier turns summarized" below both. Step 5 filed in relay with no question. Typo "mesages" |
 | 2026-10-29 | dd5f323+ | openai/gpt-5.4-mini, Claude Code | PASS | lead asks researcher with `replyRequested` (FIX-2310); researcher answers in place and the answer comes back. Typo "mesage"; date 8 July; one worktree, README.md only |
 | 2026-10-29 | dd5f323+ | openai/gpt-5.4-mini | FAIL (expected) | `no-reply-back`: only [3] "no reply From researcher within 240s" |
+| 2026-10-29 | e045c07+ | openai/gpt-5.4-mini, Claude Code | PASS | Steps 1 to 5 after merging Chief of Staff (FIX-2336) and no projects (FIX-2335), with `replyRequested`. Step 4: "crimson heron 452" and 26 December above "Earlier turns summarized". Typo "mesage" |
