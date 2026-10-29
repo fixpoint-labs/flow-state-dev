@@ -969,7 +969,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   builtFlows = {
     // The EM takes tasks (its coordinator's routed ones) and files the coder's.
     [EM_FLOW]: { flow: emFlow as never, roles: ["contributor", "manager"] },
-    [CODER_FLOW]: { flow: coderFlow as never, roles: ["contributor"] },
+    // On a projects workspace a coding task needs a project, and one filed with none is refused at
+    // filing (FIX-2333). A lab on one fixed repository always has somewhere to work.
+    [CODER_FLOW]: { flow: coderFlow as never, roles: ["contributor"], needsProject: workspaceHost !== undefined },
     [AGENT_FLOW]: agentFlow as never,
     // The Shift Coordinator's flow. A routed task reaches a delegate on any flow
     // that takes a conversation's tasks: here the Shift Coordinator hands feature

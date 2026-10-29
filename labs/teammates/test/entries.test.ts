@@ -1,9 +1,7 @@
 /**
  * A task's ending as the line under the worker that ran it. A task filed with
  * `resultTo: "conversation"` ends as the worker's bare answer, with no task id
- * on the line: that is a finished task, never one drawn as failed. A filing
- * the board refused for want of a project is a card that asks for one, with
- * no task behind it.
+ * on the line: that is a finished task, never one drawn as failed.
  */
 import { describe, expect, it } from "vitest";
 import { toEntries } from "../src/adapter";
@@ -24,25 +22,5 @@ describe("a task's ending in the conversation", () => {
   it("still draws a named task that errored as failed", () => {
     const [entry] = toEntries([row("task_x", "errored"), line("b", "coder's task (task_x) ended: errored")], new Set([CODER]));
     expect(entry).toMatchObject({ kind: "result", taskId: "task_x", failed: true });
-  });
-});
-
-const filing = (id: string, output: Record<string, unknown>) => ({
-  id,
-  type: "tool_output",
-  status: "completed",
-  requestId: "r1",
-  toolCall: { name: "createTask", arguments: JSON.stringify({ assignee: CODER, title: "Fix the typo", goal: "Fix the README typo" }) },
-  output,
-});
-
-describe("a filing refused for want of a project", () => {
-  it("draws the refusal as a card that asks for a project, naming the worker and the job", () => {
-    const entries = toEntries([filing("f1", { ok: false, error: 'no_project: "teammates.coder" works in a project\'s files.' })], new Set([CODER]));
-    expect(entries).toEqual([{ kind: "needs-project", id: "f1", to: CODER, title: "Fix the typo" }]);
-  });
-
-  it("draws no card for a filing refused for another reason", () => {
-    expect(toEntries([filing("f2", { ok: false, error: "total_task_cap_exceeded" })], new Set([CODER]))).toEqual([]);
   });
 });

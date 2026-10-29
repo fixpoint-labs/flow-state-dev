@@ -353,6 +353,21 @@ describe("a task for a flow that needs a project", () => {
     expect(filed).toMatchObject({ ok: true });
     expect(h.asked.map((run) => run.answer)).toEqual([{ kind: "repo", repo: STOREFRONT_REPO, projectId: "storefront" }]);
   });
+
+  it("files from a workstream's conversation, which works in the workstream's project", async () => {
+    const h = await boot({ needsProject: true });
+    await h.createProject("alice", { id: "storefront", title: "Storefront", repository: STOREFRONT_REPO });
+    const run = await h.file("alice", await h.workstreamConversation("alice", storefront, "checkout"), {}, "filer");
+    expect(run.answer).toEqual({ kind: "repo", repo: STOREFRONT_REPO, projectId: "storefront" });
+  });
+
+  // A name in the wrong shape still names a project: the run refuses it with what a name looks like.
+  it("files a task naming a project by its id alone, and the run refuses it as the backstop", async () => {
+    const h = await boot({ needsProject: true });
+    const { filed } = await fileFrom(h, await h.plainConversation("alice"), { input: { project: "storefront" } });
+    expect(filed).toMatchObject({ ok: true });
+    expect(h.asked.map((run) => run.answer)).toEqual([expect.objectContaining({ kind: "refused", reason: "no-project" })]);
+  });
 });
 
 describe("projectWorkspace with checkouts: a shared project's runs in a checkout on this machine", () => {

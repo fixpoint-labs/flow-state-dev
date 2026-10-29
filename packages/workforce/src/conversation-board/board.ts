@@ -148,6 +148,7 @@ import {
   taskChainResources
 } from "./chain";
 import { projectAddressSchema } from "../projects/collections";
+import { namesProject, SET_THE_FILERS_PROJECT } from "../projects/run-project";
 import { parseProjectRef, projectRef, type ProjectAddressRef } from "../projects/workstream-ref";
 import { filingProjectAddressOf, filingProjectOf, filingSessionIdOf, filingWorkstreamOf, stateBeforeWorkProject } from "./filing-session";
 import {
@@ -1138,9 +1139,13 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
      * A task for a delegate whose flow works in a project's files, filed with
      * no project to work in, is refused here, before anything is reserved or
      * written (FIX-2333), so the app can ask for a project before a task
-     * exists. A project is the filer's workstream, or a target's; the one the
-     * row would be stamped with (a follow-up's root's); or one the task
-     * names. The run's own `no-project` check stays the backstop.
+     * exists. A project is the filer's workstream; a `target`'s (a target
+     * names a workstream a delegate leads, which `withTarget` has already
+     * resolved, and a workstream is always in a project); the one the row
+     * would be stamped with (a follow-up's root's); or one the task names,
+     * whose shape and existence the run checks. The same order as the run's
+     * own lookup (`runProjectOf`), whose `no-project` stays the backstop: a
+     * change to one belongs in the other.
      */
     const assertProjectFor = async (init: TaskInit): Promise<void> => {
       if (options.needsProject === undefined || init.target !== undefined) return;
@@ -1150,12 +1155,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       if (filingWorkstreamOf(ctx.session.state) !== undefined) return;
       const root = init.followUpOf === undefined ? undefined : ref.get(init.followUpOf);
       if ((await filedProjectFor(ctx, root)).stamp !== null) return;
-      if (projectAddressSchema.safeParse((init.input as { project?: unknown } | null | undefined)?.project).success) return;
+      if (namesProject(init.input)) return;
       throw new TaskWriteRefusedError(
         "no_project",
-        `"${assignee}" works in a project's files, and this conversation has no project for it to work in. Nothing was filed. ` +
-          "Set the conversation's project first: call listProjects, then setWorkProject with the one to work in " +
-          "(ask the user which when there are several, or create one when there is none), then file the task again."
+        `"${assignee}" works in a project's files, and this conversation has no project for it to work in. Nothing was filed. ${SET_THE_FILERS_PROJECT}`
       );
     };
     /** The conversation's only task-taking delegate, which a row filed with no assignee goes to; none with none or several. */

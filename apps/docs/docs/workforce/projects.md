@@ -670,6 +670,8 @@ createWorkerInstallation({
 
 A task for one of that flow's workers is then refused when it is filed with nowhere to work: no workstream, no project on the conversation, and none named in `input.project`. Nothing is filed and nothing runs. The filer's `createTask` answers `{ ok: false, error: "no_project: …" }`, and the message tells it to set the conversation's project (`listProjects`, then `setWorkProject`) and file again. An app can watch for that answer and ask the user for a project right there. The run's own `no-project` refusal still catches anything filed some other way.
 
+Set it only where runs find their files through `projectWorkspace`. A host whose runs always work in one fixed folder has somewhere to work for every task, so its coding flow leaves `needsProject` off.
+
 ### Setting the project a conversation works in
 
 A user's own conversation with a worker can be set to work in one of their projects. From then on, its coding runs and every task it files work in that project, so nobody has to name it in `input.project`. Set it from the app with the workforce client's `setWorkProject`:
