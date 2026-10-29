@@ -11,6 +11,10 @@
  * restrained to grey steps; `info` and `success` are soft tints for the lines
  * between workers, and `attention` keeps one meaning, a person must act.
  *
+ * `--thread-width` is the conversation's one column: the message list and the
+ * composer both cap at it, so their edges line up, and it stays centred
+ * whether the Talk pane is open or not.
+ *
  * The radius values are Tailwind's own theme variables: `rounded-sm`,
  * `rounded-md` and `rounded-lg` read `--radius-sm`, `--radius-md` and
  * `--radius-lg` directly, so these set them.
@@ -54,6 +58,8 @@
   --radius-sm: 0.375rem;
   --radius-md: 0.625rem;
   --radius-lg: 1.25rem;
+
+  --thread-width: 46rem;
 
   color-scheme: dark;
 }

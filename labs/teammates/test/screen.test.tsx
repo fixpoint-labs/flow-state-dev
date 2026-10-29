@@ -4,14 +4,13 @@
  * than sessions, worker talk drawn in both conversations and the Talk panel
  * (D1), a reply that waits for your turn and shows as pending (D2), and a
  * divider that never calls a window boundary a summary, and a coding job that
- * asks for a project the first time it needs one (D3) and runs on coder, a
- * worker that takes tasks only (D4). The goal check proves the package at
- * wiring.
+ * runs as a background task, not a teammate (D4, amended by FIX-2332), in the
+ * working folder, with no project anywhere (D3, amended by FIX-2335). The
+ * goal check proves the package at wiring.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/App";
-import { PICKED_LINE } from "../src/components/Conversation";
 import { createFixtureLab } from "./fake-lab";
 
 // The script runs at a twentieth of real time.
@@ -25,6 +24,8 @@ afterEach(() => {
 const workers = () => screen.getByRole("navigation", { name: "Workers" });
 const conversation = () => screen.getByRole("main", { name: "Conversation" });
 const talk = () => screen.getByRole("complementary", { name: "Talk" });
+const teammates = () => within(workers()).getAllByRole("list")[0];
+const background = () => within(workers()).getByRole("list", { name: "Background" });
 const workerRow = (name: string) => workers().querySelector<HTMLElement>(`[data-worker="${name}"]`)!;
 const entries = (kind: string) => [...conversation().querySelectorAll(`[data-entry="${kind}"]`)];
 
@@ -37,16 +38,18 @@ async function tell(worker: string, text: string) {
 }
 
 describe("the teammates screen", () => {
-  it("lists workers, not sessions, and opens on lead's one conversation", async () => {
+  it("lists teammates, not sessions, and opens on Chief of Staff's one conversation", async () => {
     render(<App adapter={fast()} />);
-    await waitFor(() => expect(within(workers()).getAllByRole("listitem")).toHaveLength(4));
-    expect(workerRow("lead").getAttribute("aria-current")).toBe("true");
-    expect(within(conversation()).getByRole("heading", { name: "lead" })).toBeTruthy();
+    await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3));
+    // Coding is a background task, not a teammate: the worker coding tasks run on is not listed.
+    expect(workers().querySelector('[data-worker="coder"]')).toBeNull();
+    expect(workerRow("Chief of Staff").getAttribute("aria-current")).toBe("true");
+    expect(within(conversation()).getByRole("heading", { name: "Chief of Staff" })).toBeTruthy();
     // Grok Bot's sidebar has no session list and no new chat.
     expect(screen.queryByRole("button", { name: /new (chat|session)/i })).toBeNull();
   });
 
-  it("marks where lead's word-for-word turns begin, and calls it out of view, not summarized", async () => {
+  it("marks where Chief of Staff's word-for-word turns begin, and calls it out of view, not summarized", async () => {
     render(<App adapter={fast()} />);
     const divider = await screen.findByRole("separator");
     expect(divider.getAttribute("aria-label")).toBe("Earlier turns out of view");
@@ -63,40 +66,40 @@ describe("the teammates screen", () => {
     expect(divider.getAttribute("aria-label")).toBe("Earlier turns summarized");
   });
 
-  it("draws lead's message to researcher in both conversations and in lead's Talk panel", async () => {
+  it("draws Chief of Staff's message to researcher in both conversations and in Chief of Staff's Talk panel", async () => {
     render(<App adapter={fast()} />);
-    await tell("lead", "Ask researcher for our launch date, and help me outline the post.");
+    await tell("Chief of Staff", "Ask researcher for our launch date, and help me outline the post.");
 
-    // Step 2: a one-line card in lead's conversation that opens to its full text.
+    // Step 2: a one-line card in Chief of Staff's conversation that opens to its full text.
     const card = await within(conversation()).findByRole("button", { name: "To researcher: What's our launch date?" });
     expect(card.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(card);
     expect(card.getAttribute("aria-expanded")).toBe("true");
     await waitFor(() => expect(within(talk()).getByRole("region", { name: "with researcher" })).toBeTruthy());
 
-    // While lead waits, its row says so.
-    await waitFor(() => expect(workerRow("lead").querySelector("[data-status]")?.textContent).toBe("waiting on researcher"));
+    // While Chief of Staff waits, its row says so.
+    await waitFor(() => expect(workerRow("Chief of Staff").querySelector("[data-status]")?.textContent).toBe("waiting on researcher"));
 
-    // researcher sees the message as a line from lead.
+    // researcher sees the message as a line from Chief of Staff.
     fireEvent.click(workerRow("researcher"));
-    expect(await within(conversation()).findByRole("region", { name: "From lead" })).toBeTruthy();
+    expect(await within(conversation()).findByRole("region", { name: "From Chief of Staff" })).toBeTruthy();
   });
 
-  it("holds researcher's reply as pending while lead answers you, and lands it after that answer", async () => {
+  it("holds researcher's reply as pending while Chief of Staff answers you, and lands it after that answer", async () => {
     render(<App adapter={fast()} />);
-    await tell("lead", "Ask researcher for our launch date, and help me outline the post.");
+    await tell("Chief of Staff", "Ask researcher for our launch date, and help me outline the post.");
     await within(conversation()).findByRole("button", { name: /To researcher/ });
 
-    // Step 3: a second line before researcher answers. lead takes it, and the reply arrives mid-turn.
-    await tell("lead", "Make section 2 about pricing.");
-    await waitFor(() => expect(conversation().querySelector("[data-pending]")?.textContent).toBe("← researcher replied · lead reads it after this turn"), {
+    // Step 3: a second line before researcher answers. Chief of Staff takes it, and the reply arrives mid-turn.
+    await tell("Chief of Staff", "Make section 2 about pricing.");
+    await waitFor(() => expect(conversation().querySelector("[data-pending]")?.textContent).toBe("← researcher replied · Chief of Staff reads it after this turn"), {
       interval: 5,
       timeout: 2000,
     });
-    expect(within(conversation()).getByRole("status").textContent).toMatch(/lead is answering/);
+    expect(within(conversation()).getByRole("status").textContent).toMatch(/Chief of Staff is answering/);
     expect(entries("received")).toHaveLength(2); // only writer's two older replies so far
 
-    // The reply lands as its own line after lead's answer to you, and lead's next line uses it.
+    // The reply lands as its own line after Chief of Staff's answer to you, and Chief of Staff's next line uses it.
     const reply = await within(conversation()).findByRole("region", { name: "From researcher" }, { timeout: 2000 });
     expect(conversation().querySelector("[data-pending]")).toBeNull();
     const answer = within(conversation()).getByText(/Noted: "Make section 2 about pricing\."/);
@@ -104,9 +107,9 @@ describe("the teammates screen", () => {
     expect(await within(conversation()).findByText(/researcher answered: "Nov 12, per the plan doc\."/, {}, { timeout: 2000 })).toBeTruthy();
   });
 
-  it("counts what researcher did while you watched lead as unread, and clears it when you open researcher", async () => {
+  it("counts what researcher did while you watched Chief of Staff as unread, and clears it when you open researcher", async () => {
     render(<App adapter={fast()} />);
-    await tell("lead", "Ask researcher for our launch date, and help me outline the post.");
+    await tell("Chief of Staff", "Ask researcher for our launch date, and help me outline the post.");
     await waitFor(() => expect(within(workerRow("researcher")).getByLabelText(/unread/).textContent).toBe("3"), { timeout: 2000 });
     fireEvent.click(workerRow("researcher"));
     await waitFor(() => expect(within(workerRow("researcher")).queryByLabelText(/unread/)).toBeNull());
@@ -121,72 +124,75 @@ describe("the teammates screen", () => {
     expect(within(talk()).getByRole("region", { name: "with writer" })).toBeTruthy();
   });
 
-  it("talks to lead with no project, and asks for one only when a job needs files", async () => {
-    const adapter = fast();
-    render(<App adapter={adapter} />);
-    // Talking needs no project: lead answers with none picked.
-    const chip = (await screen.findByLabelText("Project for lead")) as HTMLSelectElement;
-    expect(chip.value).toBe("");
-    await tell("lead", "Have coder fix the typo in the README's first line.");
+  it("starts a coding task at once, with no project anywhere on the screen, and lands its result as the coding task's", async () => {
+    render(<App adapter={fast()} />);
+    await tell("Chief of Staff", "Fix the typo in the README's first line.");
 
-    // Step 5: lead files a task; with no project its run is refused before any file, and the card asks.
-    const card = await within(conversation()).findByRole("button", { name: "Task for coder: Fix the typo in the README's first line" });
+    // Step 5: the task runs in the working folder straight away: nothing asks where.
+    const card = await within(conversation()).findByRole("button", { name: "Coding task: Fix the typo in the README's first line" });
     const tile = card.closest<HTMLElement>("[data-entry=task]")!;
-    await waitFor(() => expect(tile.querySelector("[data-task-status]")?.textContent).toBe("needs a project"));
-    const prompt = within(tile).getByRole("group", { name: "Pick a project" });
+    expect(tile.querySelector("[data-task-status]")?.textContent).toBe("running");
+    // The lab has no projects: no select, no prompt, no card, and no word for one anywhere.
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.queryByRole("group")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/project/i);
 
-    // Nothing runs while you haven't picked.
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(workerRow("coder").querySelector("[data-status]")?.textContent).toBe("takes tasks");
-    fireEvent.click(card);
-    expect(within(tile).getByRole("list", { name: /Run of/ }).textContent).toMatch(/No run started: lead had no project/);
-
-    // The pick sticks to lead, is said to lead as your line, and lead files the task again in it.
-    fireEvent.change(within(prompt).getByLabelText("Project"), { target: { value: "relay" } });
-    await act(async () => fireEvent.click(within(prompt).getByRole("button", { name: "Use project" })));
-    expect(await within(conversation()).findByText(PICKED_LINE)).toBeTruthy();
-    expect(chip.value).toBe("relay");
-    expect(tile.querySelector("[data-task-status]")?.textContent).toBe("refused · no project");
-    expect(within(tile).queryByRole("group", { name: "Pick a project" })).toBeNull();
-
-    await waitFor(() => expect(within(conversation()).getAllByRole("button", { name: /Task for coder/ })).toHaveLength(2), { timeout: 2000 });
-    const rerun = within(conversation()).getAllByRole("button", { name: /Task for coder/ })[1].closest<HTMLElement>("[data-entry=task]")!;
-    await waitFor(() => expect(rerun.querySelector("[data-task-status]")?.textContent).toBe("running in relay"));
-
-    // The result lands as a line from coder, and lead's next line uses it.
-    expect(await within(conversation()).findByRole("region", { name: "From coder" }, { timeout: 2000 })).toBeTruthy();
-    expect(rerun.querySelector("[data-task-status]")?.textContent).toBe("done in relay");
-    expect(await within(conversation()).findByText(/coder is done: "Fixed the typo in README.md, line 1\." That's in relay\./, {}, { timeout: 2000 })).toBeTruthy();
+    // The result lands as the coding task's, never a teammate's, and Chief of Staff's next line uses it.
+    expect(await within(conversation()).findByRole("region", { name: "From the coding task" }, { timeout: 2000 })).toBeTruthy();
+    expect(within(conversation()).queryByRole("region", { name: "From coder" })).toBeNull();
+    expect(tile.querySelector("[data-task-status]")?.textContent).toBe("done");
+    expect(await within(conversation()).findByText(/The coding task is done: "Fixed the typo in README.md, line 1\."/, {}, { timeout: 2000 })).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/project/i);
   });
 
-  it("shows coder's runs read only, with no composer, since it takes tasks only", async () => {
-    const adapter = fast();
-    await adapter.setWorkProject("teammates.lead", "relay");
-    render(<App adapter={adapter} />);
-    await tell("lead", "Have coder fix the typo in the README's first line.");
-    await within(conversation()).findByRole("button", { name: /Task for coder/ });
+  it("shows a coding task as a background item that opens to its run, read only, with no composer", async () => {
+    render(<App adapter={fast()} />);
+    await tell("Chief of Staff", "Fix the typo in the README's first line.");
+    await within(conversation()).findByRole("button", { name: /Coding task/ });
 
-    fireEvent.click(workerRow("coder"));
-    const runs = await screen.findByRole("main", { name: "Runs" });
-    expect(within(runs).getByRole("heading", { name: "coder" })).toBeTruthy();
-    expect(screen.queryByLabelText("Message coder")).toBeNull();
+    const item = await within(background()).findByRole("button", { name: "Coding task: Fix the typo in the README's first line" });
+    fireEvent.click(item);
+    const runs = await screen.findByRole("main", { name: "Coding tasks" });
+    expect(item.getAttribute("aria-current")).toBe("true");
+    expect(within(runs).queryByRole("textbox")).toBeNull();
+    // No Talk panel beside a run, and no empty column held for one.
+    expect(screen.queryByRole("complementary", { name: "Talk" })).toBeNull();
+    expect((runs.parentElement as HTMLElement).style.gridTemplateColumns).toBe("15rem minmax(0,1fr)");
     const run = await within(runs).findByRole("list", { name: "Run of Fix the typo in the README's first line" });
     await waitFor(() => expect(run.textContent).toMatch(/Edited line 1/), { timeout: 2000 });
   });
 
-  it("files the refused job again when you pick lead's project from the header instead of the card", async () => {
+  it("lines the composer up with the message list: one column token, centred, Talk open or closed", async () => {
     render(<App adapter={fast()} />);
-    await tell("lead", "Have coder fix the typo in the README's first line.");
-    await within(conversation()).findByRole("group", { name: "Pick a project" });
-    await act(async () => fireEvent.change(screen.getByLabelText("Project for lead"), { target: { value: "relay" } }));
-    expect(await within(conversation()).findByText(PICKED_LINE)).toBeTruthy();
-    await waitFor(() => expect(within(conversation()).getAllByRole("button", { name: /Task for coder/ })).toHaveLength(2), { timeout: 2000 });
+    const box = await screen.findByLabelText("Message Chief of Staff");
+    const columns = () => [...conversation().querySelectorAll<HTMLElement>("[data-column]")];
+    const capped = (el: HTMLElement) => el.classList.contains("max-w-(--thread-width)") && el.classList.contains("mx-auto");
+    // The list's column and the composer's: the same cap, and the composer's holds the box.
+    expect(columns()).toHaveLength(2);
+    expect(columns().every(capped)).toBe(true);
+    expect(columns()[1].contains(box)).toBe(true);
+    // Closing Talk widens the center, not the column.
+    fireEvent.click(within(conversation()).getByRole("button", { name: "Talk" }));
+    expect(columns().every(capped)).toBe(true);
+    // The answer's text takes the column's width; only your own lines are capped, on the right.
+    await waitFor(() => expect(entries("assistant").length).toBeGreaterThan(0));
+    expect(entries("assistant").every((e) => !/max-w-/.test(e.className))).toBe(true);
+  });
+
+  it("sizes the composer's box to its draft in CSS, so a column that narrows rewraps and regrows it", async () => {
+    render(<App adapter={fast()} />);
+    const box = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
+    // One line to start; the browser grows the box with its text (and its width) up to the cap, then it scrolls.
+    expect(box.getAttribute("rows")).toBe("1");
+    expect(box.classList.contains("field-sizing-content")).toBe(true);
+    expect(box.classList.contains("max-h-48")).toBe(true);
+    expect(box.style.height).toBe("");
   });
 
   it("doesn't carry a draft to another worker: switching workers starts an empty box", async () => {
     render(<App adapter={fast()} />);
-    const leadBox = (await screen.findByLabelText("Message lead")) as HTMLTextAreaElement;
-    fireEvent.change(leadBox, { target: { value: "For lead only" } });
+    const leadBox = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
+    fireEvent.change(leadBox, { target: { value: "For Chief of Staff only" } });
     fireEvent.click(workerRow("researcher"));
     const researcherBox = (await screen.findByLabelText("Message researcher")) as HTMLTextAreaElement;
     expect(researcherBox.value).toBe("");
@@ -194,7 +200,7 @@ describe("the teammates screen", () => {
 
   it("doesn't send when Enter ends an input method's composition", async () => {
     render(<App adapter={fast()} />);
-    const box = await screen.findByLabelText("Message lead");
+    const box = await screen.findByLabelText("Message Chief of Staff");
     fireEvent.change(box, { target: { value: "日本語" } });
     fireEvent.keyDown(box, { key: "Enter", isComposing: true });
     // Safari: the committing Enter arrives after compositionend, marked only by keyCode 229.
@@ -205,51 +211,23 @@ describe("the teammates screen", () => {
     await waitFor(() => expect(entries("user").some((e) => e.textContent?.includes("日本語"))).toBe(true));
   });
 
-  it("with no projects, never leaves a dead end: the card makes one, and lead then files the job in it", async () => {
-    render(<App adapter={fast({ projects: [] })} />);
-    const chip = (await screen.findByLabelText("Project for lead")) as HTMLSelectElement;
-    expect([...chip.options].map((o) => o.textContent)).toEqual(["no projects yet", "New project…"]);
-    await tell("lead", "Have coder fix the typo in the README's first line.");
-    const prompt = await within(conversation()).findByRole("group", { name: "Create a project" });
-    // Nothing to pick, so no pick button.
-    expect(within(prompt).queryByRole("button", { name: "Use project" })).toBeNull();
-    fireEvent.change(within(prompt).getByLabelText("Project name"), { target: { value: "Relay" } });
-    fireEvent.change(within(prompt).getByLabelText("Project folder"), { target: { value: "/code/relay" } });
-    await act(async () => fireEvent.click(within(prompt).getByRole("button", { name: "Create project" })));
-    expect(await within(conversation()).findByText(PICKED_LINE)).toBeTruthy();
-    expect(chip.value).toBe("relay");
-    await waitFor(() => expect(within(conversation()).getAllByRole("button", { name: /Task for coder/ })).toHaveLength(2), { timeout: 2000 });
-  });
-
-  it("makes a project from the header's select, which lists it at once and puts lead in it", async () => {
+  it("shows what a worker waits for your yes on, and Approve answers it so its turn carries on", async () => {
     render(<App adapter={fast()} />);
-    const chip = (await screen.findByLabelText("Project for lead")) as HTMLSelectElement;
-    await act(async () => fireEvent.change(chip, { target: { value: "__new" } }));
-    const form = screen.getByRole("form", { name: "New project" });
-    fireEvent.change(within(form).getByLabelText("Project name"), { target: { value: "Docs site" } });
-    await act(async () => fireEvent.click(within(form).getByRole("button", { name: "Create project" })));
-    await waitFor(() => expect(chip.value).toBe("docs-site"));
-    expect([...chip.options].map((o) => o.textContent)).toContain("in · Docs site");
-    expect(screen.queryByRole("form", { name: "New project" })).toBeNull();
-  });
-
-  it("asks before lead makes a project of a folder: Approve makes it, and the card then says so", async () => {
-    render(<App adapter={fast({ projects: [] })} />);
-    const chip = (await screen.findByLabelText("Project for lead")) as HTMLSelectElement;
-    await tell("lead", "Fix the typo in /code/relay");
-    const card = await within(conversation()).findByRole("region", { name: "lead asks" });
-    expect(card.textContent).toContain("file:///code/relay");
-    // Until you answer, nothing is made.
-    expect([...chip.options].map((o) => o.textContent)).toEqual(["no projects yet", "New project…"]);
+    await waitFor(() => expect(workerRow("writer")).toBeTruthy());
+    fireEvent.click(workerRow("writer"));
+    await tell("writer", "Publish the draft.");
+    const card = await within(conversation()).findByRole("region", { name: "writer asks" });
+    expect(card.textContent).toContain("Publish the draft to the team page?");
+    expect(card.textContent).toContain("waiting for you");
     await act(async () => fireEvent.click(within(card).getByRole("button", { name: "Approve" })));
     await waitFor(() => expect(card.textContent).toContain("approved"));
     expect(within(card).queryByRole("button", { name: "Approve" })).toBeNull();
-    await waitFor(() => expect([...chip.options].map((o) => o.value)).toContain("relay"));
+    expect(await within(conversation()).findByText("Published.", {}, { timeout: 2000 })).toBeTruthy();
   });
 
   it("hires a teammate you can talk to, changes its instructions, and fires it; the files' workers can't be", async () => {
     render(<App adapter={fast()} />);
-    await screen.findByLabelText("Message lead");
+    await screen.findByLabelText("Message Chief of Staff");
     // A worker from the files has no instructions or fire control.
     expect(within(conversation()).queryByRole("button", { name: "Fire" })).toBeNull();
 
@@ -258,7 +236,7 @@ describe("the teammates screen", () => {
     fireEvent.change(within(form).getByLabelText("Teammate name"), { target: { value: "Tester" } });
     fireEvent.change(within(form).getByLabelText("Teammate role"), { target: { value: "Runs the tests." } });
     await act(async () => fireEvent.click(within(form).getByRole("button", { name: "Hire" })));
-    await waitFor(() => expect(within(workers()).getAllByRole("listitem")).toHaveLength(5));
+    await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(4));
     expect(await screen.findByLabelText("Message tester")).toBeTruthy();
 
     fireEvent.click(within(conversation()).getByRole("button", { name: "Instructions" }));
@@ -269,7 +247,7 @@ describe("the teammates screen", () => {
 
     window.confirm = () => true;
     await act(async () => fireEvent.click(within(conversation()).getByRole("button", { name: "Fire" })));
-    await waitFor(() => expect(within(workers()).getAllByRole("listitem")).toHaveLength(4));
+    await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3));
     expect(workerRow("tester")).toBeNull();
   });
 });

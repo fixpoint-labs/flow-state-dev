@@ -10,26 +10,35 @@ import { HireForm } from "./TeammateForms";
 const unreadable = (entries: { kind: string }[]) => entries.filter((e) => e.kind !== "user").length;
 
 /**
- * The left pane: one row per worker, never a list of sessions. Each row is the
- * worker's name, what it is doing, a dot while it answers, and how many new
- * entries its conversation has since you last looked. At the foot, hire a
- * teammate of your own.
+ * The left pane: one row per teammate, never a list of sessions. Each row is
+ * the teammate's name, what it is doing, a dot while it answers, and how many
+ * new entries its conversation has since you last looked. Under them, the
+ * coding tasks the teammates started, as background items that open to their
+ * runs. At the foot, hire a teammate of your own.
  */
 export function WorkersList({
   adapter,
   workers,
   sessions,
   selected,
+  openRun,
   nameOf,
+  isCoding,
   onSelect,
+  onOpenRun,
   onHire,
 }: {
   adapter: LabAdapter;
+  /** The teammates: the workers you can talk to. */
   workers: WorkerRow[];
   sessions: Record<string, string>;
   selected: string | undefined;
+  /** The coding task the center shows, when one is chosen. */
+  openRun: string | undefined;
   nameOf: (id: string) => string;
+  isCoding: (id: string) => boolean;
   onSelect: (worker: string) => void;
+  onOpenRun: (task: string) => void;
   onHire: (teammate: NewTeammate) => Promise<void>;
 }) {
   const [seen, markSeen] = useSeen();
@@ -37,22 +46,32 @@ export function WorkersList({
   return (
     <nav aria-label="Workers" className="flex h-full min-h-0 flex-col bg-sidebar">
       <div className="px-4 pt-4 pb-2 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">Teammates</div>
-      <ul className="flex-1 overflow-y-auto pb-4">
-        {workers.map((w) => (
-          <li key={w.id}>
-            <WorkerItem
-              adapter={adapter}
-              worker={w}
-              nameOf={nameOf}
-              sessionId={sessions[w.id]}
-              selected={w.id === selected}
-              seen={seen[w.id]}
-              onSelect={() => onSelect(w.id)}
-              onSeen={(count) => markSeen(w.id, count)}
-            />
-          </li>
-        ))}
-      </ul>
+      <div className="flex-1 overflow-y-auto pb-4">
+        <ul>
+          {workers.map((w) => (
+            <li key={w.id}>
+              <WorkerItem
+                adapter={adapter}
+                worker={w}
+                nameOf={nameOf}
+                sessionId={sessions[w.id]}
+                selected={w.id === selected}
+                seen={seen[w.id]}
+                onSelect={() => onSelect(w.id)}
+                onSeen={(count) => markSeen(w.id, count)}
+              />
+            </li>
+          ))}
+        </ul>
+        <div id="background" className="px-4 pt-4 pb-2 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">Background</div>
+        <ul aria-labelledby="background">
+          {workers
+            .filter((w) => sessions[w.id])
+            .map((w) => (
+              <BackgroundItems key={w.id} adapter={adapter} sessionId={sessions[w.id]} isCoding={isCoding} openRun={openRun} onOpen={onOpenRun} />
+            ))}
+        </ul>
+      </div>
       <div className="flex flex-col gap-2 px-4 py-3 text-xs text-muted-foreground">
         {hiring ? (
           <HireForm
@@ -104,9 +123,7 @@ function WorkerItem({
   const unread = count !== undefined && seen !== undefined ? Math.max(0, count - seen) : 0;
 
   const waiting = waitingOn(worker.id, talk);
-  const status = worker.takesTasks
-    ? "takes tasks"
-    : activity?.running
+  const status = activity?.running
     ? "working"
     : waiting.length > 0
       ? `waiting on ${waiting.map(nameOf).join(", ")}`
@@ -142,4 +159,38 @@ function WorkerItem({
       </span>
     </button>
   );
+}
+
+/** The coding tasks one teammate's conversation started, one background item each. */
+function BackgroundItems({
+  adapter,
+  sessionId,
+  isCoding,
+  openRun,
+  onOpen,
+}: {
+  adapter: LabAdapter;
+  sessionId: string;
+  isCoding: (id: string) => boolean;
+  openRun: string | undefined;
+  onOpen: (task: string) => void;
+}) {
+  const tasks = (useWatch(adapter.watchTasks, sessionId) ?? []).filter((t) => isCoding(t.to));
+  return tasks.map((t) => (
+    <li key={t.id}>
+      <button
+        type="button"
+        aria-current={t.id === openRun ? "true" : undefined}
+        aria-label={`Coding task: ${t.title}`}
+        data-background={t.status}
+        onClick={() => onOpen(t.id)}
+        className={cn("flex w-full flex-col border-l-2 border-transparent px-4 py-1.5 text-left hover:bg-accent", t.id === openRun && "border-primary bg-accent")}
+      >
+        <span className="block truncate font-mono text-xs">⚙ {t.title}</span>
+        <span className="block truncate text-xs text-muted-foreground" data-status>
+          {t.status}
+        </span>
+      </button>
+    </li>
+  ));
 }
