@@ -15,6 +15,5 @@
   "rest": "\nIt relays messages between services.\n",
   "answerWithinMs": 180000,
   "replyWithinMs": 240000,
-  "unpickedMs": 30000,
   "runWithinMs": 900000
 }

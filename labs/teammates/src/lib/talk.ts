@@ -15,10 +15,14 @@ export function pendingFor(worker: string, rows: TalkRow[], entries: Conversatio
   return rows.filter((m) => m.to === worker && !m.undelivered && !read.has(m.id));
 }
 
-/** The workers `worker` has messaged and not heard back from, oldest ask first. */
+/**
+ * The workers `worker` asked for a reply and hasn't heard back from, oldest
+ * request first. A message sent without asking owes no answer, and one that never
+ * landed gets none.
+ */
 export function waitingOn(worker: string, rows: TalkRow[]): string[] {
   const answered = new Set(rows.flatMap((m) => (m.inReplyTo ? [m.inReplyTo] : [])));
-  return [...new Set(rows.filter((m) => m.from === worker && !m.inReplyTo && !answered.has(m.id)).map((m) => m.to))];
+  return [...new Set(rows.filter((m) => m.from === worker && m.replyRequested && !m.undelivered && !answered.has(m.id)).map((m) => m.to))];
 }
 
 /** One other worker's exchanges with `worker`. */

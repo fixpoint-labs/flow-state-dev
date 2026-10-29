@@ -158,9 +158,9 @@ describe("a message the worker sent, in its own conversation", () => {
   });
 
   it("says it wasn't sent, and why, when the send was refused", () => {
-    render(<ToolLineGroup items={[call("t1", { to: "eng.coder", text: "hi" }, { ok: false, error: "takes_tasks_only: file a task" })]} />);
+    render(<ToolLineGroup items={[call("t1", { to: "eng.coder", text: "hi" }, { ok: false, error: "task_sessions_only: \"eng.coder\" answers only from its tasks' sessions" })]} />);
     expect(screen.getByTestId("message-call").textContent).toContain("Not sent to eng.coder: hi");
-    expect(screen.getByTestId("message-call-reason").textContent).toContain("takes_tasks_only");
+    expect(screen.getByTestId("message-call-reason").textContent).toContain("task_sessions_only");
   });
 
   it("names a task or a conversation it was sent to, not 'another worker' (FIX-2160)", () => {

@@ -46,6 +46,7 @@
     "@flow-state-dev/memory": "workspace:*",
     "@flow-state-dev/orchestration": "workspace:*",
     "@flow-state-dev/store-sqlite": "workspace:*",
+    "@flow-state-dev/tools": "workspace:*",
     "@flow-state-dev/workforce": "workspace:*",
     "@flow-state-dev/workspace": "workspace:*",
     "@streamdown/cjk": "^1.0.2",
