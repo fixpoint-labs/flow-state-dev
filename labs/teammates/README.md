@@ -8,9 +8,10 @@ Its theme is its own: a dark, chat-first look like Grok Bot's, in `src/lib/theme
 registry's `tokens` item. The other labs take theirs from the design system; this one keeps a local
 theme on purpose, so it reads as the app it copies.
 
-- **Left:** the workers, lead, researcher, writer and coder. Each row is a worker with an ongoing
-  role, never a list of sessions. A row shows what the worker is doing and how many new entries its
-  conversation has since you last looked.
+- **Left:** the teammates, lead, researcher and writer. Each row is a teammate with an ongoing role,
+  never a list of sessions. A row shows what the teammate is doing and how many new entries its
+  conversation has since you last looked. Under them, *Background* lists the coding tasks they
+  started; each opens the center to its run, read only.
 - **Center:** the chosen worker's one conversation. It goes on for weeks. A divider marks where the
   turns the worker reads word for word begin; it reads *summarized* only when the earlier turns were
   summarized for the worker.
@@ -24,14 +25,16 @@ answering you, researcher's reply shows as a pending line, and lead reads it rig
 
 Each worker does real work. researcher reads the project's files and searches the web, writer
 drafts from the project's files and from pages it fetches, and lead hands out the work. lead sends a
-quick ask as a message, and real work as a task: a code change to coder, a job that needs the
-project's files read to researcher or writer, and a job in several parts as several tasks, in order.
-Every result lands back in lead's conversation.
+quick ask as a message, and real work as a task: a job that needs the project's files read to
+researcher or writer, and a job in several parts as several tasks, in order. Every result lands back
+in lead's conversation.
 
-coder is different: it takes tasks only, so it has no conversation and you can't message it. Ask
-lead for a code change and lead files a task for coder, which runs it through Claude Code, or Codex,
-in lead's project. A card in lead's conversation shows the task and opens to its run, and the result
-lands as a line from coder.
+A code change is a coding task, not a teammate's job. Coding runs in the background, the way a
+coding agent's job does: you watch it, you don't talk to it. Ask lead for a code change and lead
+starts a coding task, which runs through Claude Code, or Codex, in lead's project. A card in lead's
+conversation and an item under *Background* show the task and open to its run, and the result lands
+in lead's conversation as the coding task's. To change a coding task, tell lead, who starts the
+next one.
 
 Talking to a worker never needs a project; a job that needs files does. lead lists your projects
 when it files one: with one, it works in it; with several, it asks which; with none, or when you name
@@ -43,8 +46,8 @@ project to offer makes one. A project lead or anyone else creates shows without 
 You can hire teammates of your own (*Hire a teammate*, under the list): a name, one line on what it
 does, and its instructions. It joins the list at once, you can talk to it, and lead can hand it
 tasks. Your own teammates get an *Instructions* control, which replaces their instructions from the
-next turn on, and *Fire*, which takes them off the list; their conversation stays readable. The four
-workers from the files can't be edited or fired.
+next turn on, and *Fire*, which takes them off the list; their conversation stays readable. The three
+teammates from the files can't be edited or fired.
 
 Scope is core messaging and session management. There are no group chats, no new-chat button and
 no session list. The design and the decisions behind it are in the
@@ -66,12 +69,12 @@ This builds the pages and serves them with the lab's server (`fsdev.config.mts`)
 |---|---|---|
 | `TEAMMATES_MODEL` | the model lead, researcher and writer answer on | `openai/gpt-5.4-mini` |
 | `TEAMMATES_PROJECTS` | a JSON list of projects to create at start, each `{ "id", "title", "checkout"? }` | none |
-| `TEAMMATES_HARNESS` | the harness coder runs on: `claude-code` or `codex` | `claude-code` |
+| `TEAMMATES_HARNESS` | the harness coding tasks run on: `claude-code` or `codex` | `claude-code` |
 | `TEAMMATES_STORE` | the SQLite file | `.fsdev/teammates.sqlite` here |
 | `TEAMMATES_USER` | who the page acts as | `you` |
 | `TEAMMATES_TREE` | the workers' tree | `workforce/` here |
 
-The model needs a credential the gateway takes (`AI_GATEWAY_API_KEY`), and coder's runs need Claude
+The model needs a credential the gateway takes (`AI_GATEWAY_API_KEY`), and coding tasks need Claude
 Code signed in, or `ANTHROPIC_API_KEY` (Codex: signed in, or `OPENAI_API_KEY`). researcher's web
 search needs one search provider's key (`TAVILY_API_KEY`, `EXA_API_KEY`, `BRAVE_API_KEY`, or another
 `@flow-state-dev/tools` takes); fetching a page needs none. A project's `checkout` is a git checkout
@@ -90,8 +93,8 @@ into a running summary that lead reads with the turns it still has word for word
 where those begin, labelled *summarized*, so a fact you gave lead a hundred lines ago is above it and
 lead still knows it.
 
-Then ask lead *"Have coder fix the typo in the README's first line."* lead puts its conversation in
-your project and files the task there, coder's run shows its steps, and the result lands in lead's
+Then ask lead *"Fix the typo in the README's first line."* lead puts its conversation in your
+project and starts a coding task there, the run shows its steps, and the result lands in lead's
 conversation.
 
 The goal check drives all of this in a browser:
@@ -111,13 +114,13 @@ names the package call it makes.
 | Approving the repository lead names for a project | the `user_approval` stop of lead's tool, answered with the request's `answer` |
 | Hiring, changing and firing your own teammates | the workforce client's `hire`, `edit` and `fire`, on the roster flow |
 | Task cards, the refusal for want of a project | the conversation board's rows, and `projectWorkspace()`'s `no-project` refusal |
-| coder's runs | the task row's `run` link, read as the run session's items |
+| Coding tasks and their runs | the conversation board's rows assigned to the worker on the coding flow, which the list leaves out; the row's `run` link, read as the run session's items |
 | The divider and its *summarized* label | the last request's `historyStart`, and the session's `historySummary` resource |
 
 Not wired yet:
 
-- **Which harness coder runs on.** The roster doesn't carry a worker's settings, so the screen names
-  the harness from the run's own steps once it starts (FIX-2281).
+- **Which harness a coding task runs on.** The roster doesn't carry a worker's settings, so the
+  screen names the harness from the run's own steps once it starts (FIX-2281).
 - **Editing a worker from the files.** They are read-only on the roster; how a user changes one (a
   fork that stands in for it, or another way) waits on a product call.
 - **Saving writer's drafts.** No package tool writes a project's kept files from a worker's turn
@@ -133,8 +136,8 @@ and on a flow over 200 lines; `--wired` also fails on any fixture.
 <!-- inventory:start -->
 | Kind | Files | Lines |
 |---|---:|---:|
-| Configuration | 16 | 655 |
-| React UI | 24 | 2269 |
-| Small flows | 1 | 152 |
-| Checks (not app code) | 9 | 1097 |
+| Configuration | 16 | 659 |
+| React UI | 24 | 2386 |
+| Small flows | 1 | 156 |
+| Checks (not app code) | 9 | 1106 |
 <!-- inventory:end -->

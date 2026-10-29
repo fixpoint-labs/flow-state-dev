@@ -6,10 +6,12 @@ import { TalkPanel } from "./components/TalkPanel";
 import { WorkersList } from "./components/WorkersList";
 
 /**
- * The screen: the workers on the left, the chosen worker's one conversation
- * in the center, and its talk with the other workers on the right. A worker
- * that takes tasks only has no conversation; the center shows its runs. The
- * app opens on the first worker on the roster.
+ * The screen: the teammates on the left, the chosen teammate's one
+ * conversation in the center, and its talk with the other teammates on the
+ * right. Coding is a background task, not a teammate: the worker coding tasks
+ * run on is off the list, and each coding task is a background item under it
+ * that opens the center to the runs, read only. The app opens on the first
+ * teammate.
  *
  * The roster is read again after a hire or a fire made here, and the projects
  * are watched, so one a worker created shows without a reload.
@@ -19,6 +21,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [sessions, setSessions] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<string>();
+  // A background item chosen on the left: the coding task whose run the center opens to.
+  const [openRun, setOpenRun] = useState<string>();
   const [talkOpen, setTalkOpen] = useState(true);
 
   const loadRoster = useCallback(async () => {
@@ -32,9 +36,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
 
   useEffect(() => {
     let live = true;
-    void loadRoster().then(({ roster, talking }) => {
-      // Open on the first worker you can talk to: one that takes tasks only has no conversation.
-      if (live) setSelected((current) => current ?? talking[0]?.id ?? roster[0]?.id);
+    void loadRoster().then(({ talking }) => {
+      if (live) setSelected((current) => current ?? talking[0]?.id);
     });
     const stopProjects = adapter.watchProjects(setProjects);
     return () => {
@@ -51,6 +54,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   const hire = async (teammate: NewTeammate) => {
     const hired = await adapter.hire(teammate);
     await loadRoster();
+    setOpenRun(undefined);
     setSelected(hired.id);
   };
   const fire = async (worker: string) => {
@@ -60,16 +64,35 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   };
 
   const nameOf = (id: string) => workers.find((w) => w.id === id)?.name ?? id;
-  const worker = workers.find((w) => w.id === selected);
+  const isCoding = (id: string) => workers.some((w) => w.id === id && w.takesTasks);
+  const teammates = workers.filter((w) => !w.takesTasks);
+  const worker = openRun === undefined ? teammates.find((w) => w.id === selected) : undefined;
+  // A run has no Talk panel, so it gets no Talk column either.
+  const talkShown = talkOpen && worker !== undefined;
+  const choose = (id: string) => {
+    setOpenRun(undefined);
+    setSelected(id);
+  };
   const sessionId = selected ? sessions[selected] : undefined;
   return (
     <div
       className="grid h-full grid-rows-[minmax(0,1fr)] overflow-hidden"
-      style={{ gridTemplateColumns: talkOpen ? "15rem minmax(0,1fr) 18rem" : "15rem minmax(0,1fr)" }}
+      style={{ gridTemplateColumns: talkShown ? "15rem minmax(0,1fr) 18rem" : "15rem minmax(0,1fr)" }}
     >
-      <WorkersList adapter={adapter} workers={workers} sessions={sessions} selected={selected} nameOf={nameOf} onSelect={setSelected} onHire={hire} />
-      {worker?.takesTasks ? (
-        <Runs adapter={adapter} worker={worker} workers={workers} sessions={sessions} projects={projects} nameOf={nameOf} />
+      <WorkersList
+        adapter={adapter}
+        workers={teammates}
+        sessions={sessions}
+        selected={worker?.id}
+        openRun={openRun}
+        nameOf={nameOf}
+        isCoding={isCoding}
+        onSelect={choose}
+        onOpenRun={setOpenRun}
+        onHire={hire}
+      />
+      {openRun !== undefined ? (
+        <Runs key={openRun} adapter={adapter} workers={teammates} sessions={sessions} projects={projects} nameOf={nameOf} isCoding={isCoding} openRun={openRun} />
       ) : worker && sessionId ? (
         <Conversation
           // One conversation per session: a draft typed to one worker never carries over to another.
@@ -79,6 +102,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
           sessionId={sessionId}
           projects={projects}
           nameOf={nameOf}
+          isCoding={isCoding}
           onCreateProject={createProject}
           onFire={() => fire(worker.id)}
           talkOpen={talkOpen}
@@ -87,7 +111,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
       ) : (
         <main aria-label="Conversation" />
       )}
-      {talkOpen && worker ? <TalkPanel adapter={adapter} worker={worker} nameOf={nameOf} onClose={() => setTalkOpen(false)} /> : null}
+      {talkShown ? <TalkPanel adapter={adapter} worker={worker} nameOf={nameOf} onClose={() => setTalkOpen(false)} /> : null}
     </div>
   );
 }

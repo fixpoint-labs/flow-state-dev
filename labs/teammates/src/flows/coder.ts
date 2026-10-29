@@ -1,7 +1,9 @@
 /**
  * The lab's one small flow: the coding worker flow `coder` runs on.
  *
- * coder takes tasks only. A task another worker files for it becomes a
+ * Coding is a background task, not a teammate: `coder` is the hidden worker
+ * coding tasks go to, off the screen's list. A coding task a teammate starts
+ * becomes a
  * supervised coding run, through the harness its own `WORKER.md` names in
  * `harness:`, or the host's default when it names none, in the project its
  * task was filed in. The flow builds one `harnessManager` per harness the
@@ -14,8 +16,10 @@
  * before any file exists, and the task ends with that reason.
  *
  * It hears worker messages only in its tasks' sessions, so nobody messages it
- * by name, and its door answers a user's line with where to go instead: in
- * this lab you steer a coding job through the worker that filed it.
+ * by name. The screen opens no conversation with it, so its door is not
+ * reachable from the page; it stays because a worker flow answers `respond`,
+ * and it says where to go instead: you steer a coding task through the
+ * teammate that started it.
  */
 import { z } from "zod";
 import { defineFlow, handler, router } from "@flow-state-dev/core";
@@ -73,7 +77,7 @@ const PHASE: PhaseSpec = {
 
 /** What a user's line in one of coder's sessions is answered with. */
 const DOOR_REPLY =
-  "coder takes tasks only. To change what it is doing, tell the worker that filed the task, and that worker files the next one.";
+  "This is where coding tasks run, not a teammate. To change a coding task, tell the teammate who started it, and they start the next one.";
 
 /**
  * The coding worker flow, as a builder `createWorkerInstallation` takes under

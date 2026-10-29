@@ -33,6 +33,7 @@ export function Conversation({
   sessionId,
   projects,
   nameOf,
+  isCoding,
   onCreateProject,
   onFire,
   talkOpen,
@@ -43,6 +44,8 @@ export function Conversation({
   sessionId: string;
   projects: ProjectRow[];
   nameOf: (id: string) => string;
+  /** The worker is the one coding tasks run on, not a teammate. */
+  isCoding: (id: string) => boolean;
   onCreateProject: (project: NewProject) => Promise<ProjectRow>;
   onFire: () => Promise<void>;
   talkOpen: boolean;
@@ -95,6 +98,7 @@ export function Conversation({
         nameOf={nameOf}
         onPick={(p) => void pick(p)}
         onCreateProject={create}
+        coding={isCoding(task.to)}
       />
     );
   };
@@ -185,6 +189,7 @@ export function Conversation({
                     entry={entry}
                     workerName={worker.name}
                     nameOf={nameOf}
+                    isCoding={isCoding}
                     {...(entry.kind === "approval" ? { onAnswer: (approve: boolean) => adapter.answerApproval(sessionId, entry, approve) } : {})}
                   />
                 )}

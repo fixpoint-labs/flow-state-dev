@@ -1,8 +1,8 @@
 /**
  * Goal check: in the Teammates lab, you talk to lead, lead messages
  * researcher, researcher's reply reaches lead while you are still talking to
- * it, and a coding job lead hands coder runs through Claude Code in lead's
- * project. See goal.md for the contract.
+ * it, and a coding task lead starts runs through Claude Code, in the
+ * background, in lead's project. See goal.md for the contract.
  *
  * Real path, real model, out of CI. The lab's pages are built here and served
  * by `fsdev dev --app` over a fresh SQLite store, with one project, `relay`,
@@ -25,7 +25,7 @@
  *      `relay` and files the task there with no question, the run goes through
  *      Claude Code, a worktree of the checkout gets one commit that changes the
  *      README's first line and nothing else, the checkout itself is untouched,
- *      and the result lands in lead's conversation from coder.
+ *      and the result lands in lead's conversation as the coding task's.
  *
  * Inputs are held out: the launch date is drawn at random and written into the
  * project's README, where researcher reads it, the codename is drawn at random, and the
@@ -62,7 +62,6 @@ interface Fixture {
   port: number;
   lead: string;
   researcher: string;
-  coder: string;
   ask: string;
   second: string;
   fix: string;
@@ -381,7 +380,6 @@ await runGoal(async (failures, tell_) => {
   const runsRoot = join(dir, "teammates-runs");
   const lead = short(fixture.lead);
   const researcher = short(fixture.researcher);
-  const coder = short(fixture.coder);
 
   // The pages, built from this checkout, never assumed.
   execFileSync("npx", ["vite", "build", "--logLevel", "error"], { cwd: LAB, stdio: "inherit" });
@@ -508,7 +506,7 @@ await runGoal(async (failures, tell_) => {
     if (control?.skip?.includes("4")) evidence.push(`4: not run under GOAL_CONTROL=${CONTROL}`);
     else await stepFour(page, log, date, fail, evidence, tell_);
 
-    // ---- 5 · lead hands coder a fix, in the one project ----------------------
+    // ---- 5 · lead starts a coding task for a fix, in the one project ---------
     const before = diskOf(checkout);
     await tell(page, lead, fixture.fix);
     const tasks = conversation(page).locator("[data-entry=task]");
@@ -523,7 +521,7 @@ await runGoal(async (failures, tell_) => {
     );
     const filed = tell_.over("5 · task cards lead filed in this step", cardsNow(ended.entries), { emptyIs: "lead filed nothing, which a control produces" });
     const run = filed.find((e) => e.status !== undefined && /^(done in|failed|refused|needs)/.test(e.status));
-    if (filed.length === 0) fail("5", `lead filed no task for ${coder} within ${fixture.runWithinMs / 1000}s`);
+    if (filed.length === 0) fail("5", `lead started no coding task within ${fixture.runWithinMs / 1000}s`);
     else if (run?.status !== `done in ${fixture.project.id}`) fail("5", `lead's task ended "${run?.status ?? filed[0]!.status}", not "done in ${fixture.project.id}"`);
     // One project: lead files into it without asking which (FIX-2309's check 2), and never sends a card that waits for a pick.
     if (filed.some((e) => e.status === "needs a project")) fail("5", "a task card asked for a project though there is only one");
@@ -532,7 +530,7 @@ await runGoal(async (failures, tell_) => {
     if (run?.status === `done in ${fixture.project.id}`) {
       // The run, opened on its card: it went through Claude Code.
       const runCard = tasks.nth(earlier + filed.indexOf(run));
-      await runCard.getByRole("button", { name: new RegExp(`^Task for ${coder}: `) }).click();
+      await runCard.getByRole("button", { name: /^Coding task: / }).click();
       const runList = runCard.getByRole("list", { name: /^Run of / });
       let runText: string | null = "";
       // The run's steps are read once the card opens; give them time to arrive.
@@ -541,10 +539,10 @@ await runGoal(async (failures, tell_) => {
       }
       if (!/Claude Code/.test(runText ?? "")) fail("5", `the run's steps don't show it ran on Claude Code: "${(runText ?? "").slice(0, 200)}"`);
 
-      const result = await readUntil(page, (es) => es.some((e, i) => i > fixAt(es) && e.kind === "result" && e.label === `From ${coder}`), 60_000);
-      const resultAt = result.entries.map((e) => e.kind === "result" && e.label === `From ${coder}`).lastIndexOf(true);
-      if (resultAt < 0 || resultAt < fixAt(result.entries)) fail("5", `the result never landed in lead's conversation as a line from ${coder}`);
-      else if (/task failed/i.test(result.entries[resultAt]!.text)) fail("5", `${coder}'s last result is a failure: "${result.entries[resultAt]!.text}"`);
+      const result = await readUntil(page, (es) => es.some((e, i) => i > fixAt(es) && e.kind === "result" && e.label === "From the coding task"), 60_000);
+      const resultAt = result.entries.map((e) => e.kind === "result" && e.label === "From the coding task").lastIndexOf(true);
+      if (resultAt < 0 || resultAt < fixAt(result.entries)) fail("5", "the result never landed in lead's conversation as the coding task's");
+      else if (/task failed/i.test(result.entries[resultAt]!.text)) fail("5", `the coding task's last result is a failure: "${result.entries[resultAt]!.text}"`);
     }
     // The disk: the checkout untouched, one worktree of it with one commit that fixes the first line only.
     const after = diskOf(checkout);

@@ -4,10 +4,10 @@
  * place; the goal check (`goals/teammates-lab/`) proves the package. Nothing
  * in `src/` imports it.
  *
- * Three workers, each with one conversation, and coder, which takes tasks
- * only. Your first ask to lead makes it message researcher; researcher looks
- * the fact up and replies. Ask lead to have coder fix something and lead files
- * a task: with no project picked for lead, the run is refused before it
+ * Three teammates, each with one conversation, and coder, the hidden worker
+ * coding tasks run on. Your first ask to lead makes it message researcher;
+ * researcher looks the fact up and replies. Ask lead to fix something and lead
+ * starts a coding task: with no project picked for lead, the run is refused before it
  * touches a file, and once you pick one lead files it again. Each worker
  * answers one request at a time: a line you send, or a message from another
  * worker, waits while the worker is answering, and runs when it is done.
@@ -35,7 +35,7 @@ const ROSTER: WorkerRow[] = [
   { id: "teammates.lead", name: "lead", role: "Plans the launch with you, and asks the other workers when it needs a fact or a draft." },
   { id: "teammates.researcher", name: "researcher", role: "Finds facts for the team, and replies to whoever asked." },
   { id: "teammates.writer", name: "writer", role: "Drafts and tightens copy when you or another worker asks." },
-  { id: "teammates.coder", name: "coder", role: "Makes code changes lead hands it, in lead's project.", takesTasks: true },
+  { id: "teammates.coder", name: "coder", role: "Where coding tasks run in the background.", takesTasks: true },
 ];
 const PROJECTS: ProjectRow[] = [
   { id: "relay", name: "relay" },
@@ -166,7 +166,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
   };
 
   const script = (w: FixtureWorker, job: Job): Step[] => {
-    if (job.kind === "result") return [[900, say(w, `coder is done: "${job.task.result}" That's in ${job.task.project}.`)]];
+    if (job.kind === "result") return [[900, say(w, `The coding task is done: "${job.task.result}" That's in ${job.task.project}.`)]];
     if (job.kind === "receive") {
       const { message } = job;
       const from = worker(message.from).row.name;
@@ -184,8 +184,8 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       asked.set(suspensionId, { w, project: { id: name, name } });
       return [[600, () => push(w, { kind: "approval", id: nextId("ap"), requestId: nextId("req"), suspensionId, text: `Create project "${name}" with repository file://${folder}?` })]];
     }
-    if (w.row.id === LEAD && /\bcoder\b/i.test(job.text)) {
-      return [[800, say(w, "Handing it to coder.")], [400, fileTask(w, "Fix the typo in the README's first line")]];
+    if (w.row.id === LEAD && /\bfix\b/i.test(job.text)) {
+      return [[800, say(w, "Starting a coding task.")], [400, fileTask(w, "Fix the typo in the README's first line")]];
     }
     const project = workProjects.get(w.row.id);
     const refused = tasks.find((t) => t.sessionId === w.sessionId && t.status === "needs-project" && !refiled.has(t.id));
