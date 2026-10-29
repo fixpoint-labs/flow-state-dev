@@ -17,6 +17,7 @@
  * | `editInstructions`  | the workforce client's `edit`, on one of the user's own workers               |
  * | `fire`              | the workforce client's `fire`, on one of the user's own workers               |
  * | `watchTasks`        | the board's rows, as the conversation's stream carries each one (`task-change`) |
+ * |                     | and `taskSpendView` on a row, for the harness and model its run reported      |
  * | `watchRun`          | the items of the session the task's row names as its run                     |
  * | `watchExchange`     | the receiving worker's conversation: the turn that read one message          |
  *
@@ -39,7 +40,9 @@ import {
   type RosterEntry,
   type WorkforceClient,
 } from "@flow-state-dev/workforce/browser";
+import { taskSpendView } from "@flow-state-dev/orchestration/tasks";
 import { CODER_FLOW } from "./lib/coder-flow";
+import { harnessName } from "./lib/harness";
 import { sessionFeeds, type SessionFeed } from "./lib/session-feed";
 import { stableList } from "./lib/stable";
 
@@ -58,6 +61,8 @@ export interface WorkerRow {
   takesTasks?: boolean;
   /** The user hired it: they can change its instructions or fire it. The files' workers can't be. */
   own?: boolean;
+  /** For a coding worker, its file's `harness:`, from the roster row's shown settings. */
+  harness?: string;
   /** Its file's `icon:`, from the roster row's shown settings. */
   icon?: string;
   /** Its file's `color:`, a name from the lab's palette, from the roster row's shown settings. */
@@ -84,6 +89,10 @@ export interface BoardTask {
   result?: string;
   /** The session its run works in, once it started. */
   runSessionId?: string;
+  /** For a coding task, the harness it runs on: the one its run reported, else its worker's `harness:`. */
+  harness?: string;
+  /** The model its run reported, when it reported one; never guessed. */
+  model?: string;
 }
 
 /**
@@ -291,8 +300,22 @@ function boardRows(items: readonly Item[]): Map<string, Record<string, any>> {
   return rows;
 }
 
-/** A board row as a task card. */
-function toBoardTask(row: Record<string, any>): BoardTask {
+/** What a row's spend says ran it: the harness and model its run reported, or nothing. */
+function spendOf(row: Record<string, any>): { harness?: string; model?: string } {
+  try {
+    const view = taskSpendView(row as never);
+    return { ...(view?.harness == null ? {} : { harness: view.harness }), ...(view?.model == null ? {} : { model: view.model }) };
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * A board row as a task card.
+ *
+ * @param harnessOf A worker's `harness:` setting, for a coding task whose run hasn't reported one yet.
+ */
+function toBoardTask(row: Record<string, any>, harnessOf: (worker: string) => string | undefined = () => undefined): BoardTask {
   const error = typeof row.error === "string" ? row.error : undefined;
   const status: BoardTask["status"] =
     row.status === "completed" ? "done" : row.status === "errored" || row.status === "cancelled" ? "failed" : "running";
@@ -304,6 +327,16 @@ function toBoardTask(row: Record<string, any>): BoardTask {
     status,
     ...((answer ?? error) === undefined ? {} : { result: answer ?? error }),
     ...(typeof row.run?.sessionId === "string" ? { runSessionId: row.run.sessionId } : {}),
+    ...harnessAndModel(spendOf(row), harnessOf(row.assignee ?? "")),
+  };
+}
+
+/** The harness by its name (the run's, else the worker's), and the run's model. */
+function harnessAndModel(spend: { harness?: string; model?: string }, setting: string | undefined): { harness?: string; model?: string } {
+  const harness = spend.harness ?? setting;
+  return {
+    ...(harness === undefined ? {} : { harness: harnessName(harness) }),
+    ...(spend.model === undefined ? {} : { model: spend.model }),
   };
 }
 
@@ -415,6 +448,7 @@ function toWorkerRow(w: RosterEntry): WorkerRow {
     role: w.description ?? "",
     ...(w.flow === CODER_FLOW ? { takesTasks: true } : {}),
     ...(w.standard ? {} : { own: true }),
+    ...(typeof w.settings?.harness === "string" ? { harness: w.settings.harness } : {}),
     ...(typeof w.settings?.icon === "string" ? { icon: w.settings.icon } : {}),
     ...(typeof w.settings?.color === "string" ? { color: w.settings.color } : {}),
   };
@@ -443,6 +477,8 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   const flowOfSession = new Map<string, string>();
   /** The workers, by id, so a line under a worker's name reads as a task's ending. */
   let workerIds = new Set<string>();
+  /** Each coding worker's `harness:`, from the last roster read. */
+  let harnesses = new Map<string, string>();
 
   const conversationOf = async (worker: string) => {
     const known = conversations.get(worker);
@@ -464,6 +500,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     async listWorkers() {
       const roster = await workforce.roster();
       workerIds = new Set(roster.map((w) => w.id));
+      harnesses = new Map(roster.flatMap((w) => (typeof w.settings?.harness === "string" ? [[w.id, w.settings.harness] as const] : [])));
       return roster.map(toWorkerRow);
     },
     async openConversation(worker) {
@@ -605,7 +642,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       conversations.delete(worker);
     },
     watchTasks(sessionId, onChange) {
-      return watchFeed(sessionId, (items) => [...boardRows(items).values()].map(toBoardTask), stableList(onChange));
+      return watchFeed(sessionId, (items) => [...boardRows(items).values()].map((row) => toBoardTask(row, (worker) => harnesses.get(worker))), stableList(onChange));
     },
     watchRun(runSessionId, onChange) {
       return watchFeed(runSessionId, (items) => {

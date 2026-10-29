@@ -4,6 +4,7 @@ import { Conversation } from "./components/Conversation";
 import { PopupView, type Popup } from "./components/Popups";
 import { TalkPanel } from "./components/TalkPanel";
 import { WorkersList } from "./components/WorkersList";
+import { harnessName } from "./lib/harness";
 import { lookOf as lookOfRow } from "./lib/looks";
 
 /**
@@ -57,6 +58,11 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   // Stable between roster reads, so a memoized entry doesn't redraw for a new function.
   const nameOf = useCallback((id: string) => workers.find((w) => w.id === id)?.name ?? id, [workers]);
   const isCoding = useCallback((id: string) => workers.some((w) => w.id === id && w.takesTasks), [workers]);
+  // A coding worker's harness, for a task line drawn before its row arrives.
+  const harnessOf = useCallback((id: string) => {
+    const harness = workers.find((w) => w.id === id)?.harness;
+    return harness === undefined ? undefined : harnessName(harness);
+  }, [workers]);
   const lookOf = useCallback((id: string) => lookOfRow(workers.find((w) => w.id === id) ?? { id, name: id }), [workers]);
   const teammates = workers.filter((w) => !w.takesTasks);
   const worker = teammates.find((w) => w.id === selected);
@@ -92,6 +98,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
           nameOf={nameOf}
           lookOf={lookOf}
           isCoding={isCoding}
+          harnessOf={harnessOf}
           onFire={() => fire(worker.id)}
           onOpen={setPopup}
           talkOpen={talkOpen}

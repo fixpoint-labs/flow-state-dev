@@ -1,13 +1,16 @@
 /**
- * The lab's one small flow: the coding worker flow `coder` runs on.
+ * The lab's one small flow: the coding worker flow the coding workers run on.
  *
- * Coding is a background task, not a teammate: `coder` is the hidden worker
- * coding tasks go to, off the screen's list. A coding task a teammate starts
- * becomes a supervised coding run, through the harness its own `WORKER.md`
- * names in `harness:`, or the host's default when it names none. The flow
- * builds one `harnessManager` per harness the host offers and routes each
- * task by the worker's setting (the epic's ER-9), so a Codex coder is one
- * more `WORKER.md`, or a hire, with no new flow.
+ * Coding is a background task, not a teammate: Claude Code, Codex and Cursor
+ * are hidden workers coding tasks go to, off the screen's list, one per
+ * harness. A coding task a teammate starts becomes a supervised coding run,
+ * through the harness the worker's own `WORKER.md` names in `harness:`, or
+ * the host's default when it names none. The flow builds one
+ * `harnessManager` per harness the host offers and routes each task by the
+ * worker's setting (the epic's ER-9), so another harness is one more
+ * `WORKER.md` and one more entry in the host's harnesses, with no new flow.
+ * A harness this machine isn't set up for fails the task at once, saying
+ * why; it never moves to another.
  *
  * Where a run works comes from the host's workspace, whose source is the
  * lab's one working folder: every run gets a worktree of it.
@@ -39,7 +42,7 @@ import type { WorkspaceHost } from "@flow-state-dev/workspace";
 
 import { CODER_FLOW } from "../lib/coder-flow";
 
-/** The flow name coder's `WORKER.md` names in its `flow:` line. */
+/** The flow name each coding worker's `WORKER.md` names in its `flow:` line. */
 export { CODER_FLOW };
 
 /** One coding harness, as the manager's slot takes it. */
@@ -50,6 +53,12 @@ export interface CoderFlowOptions {
   harnesses: Readonly<Record<string, Harness>>;
   /** The harness a worker that names none runs on: one of {@link harnesses}. */
   defaultHarness: string;
+  /**
+   * Why a harness can't run on this machine, asked before each task starts:
+   * a plain sentence that names it, or `undefined` when it can. A task on a
+   * harness that can't run fails with that sentence and never moves to another.
+   */
+  ready?: Readonly<Record<string, () => Promise<string | undefined>>>;
   /** Where a run works: the host over the lab's working folder. */
   workspace: WorkspaceHost;
   /** Wall-clock budget for one run. */
@@ -71,7 +80,7 @@ const PHASE: PhaseSpec = {
   isDone: (run) => run.stopReport === "finished",
 } as PhaseSpec;
 
-/** What a user's line in one of coder's sessions is answered with. */
+/** What a user's line in one of a coding worker's sessions is answered with. */
 const DOOR_REPLY =
   "This is where coding tasks run, not a teammate. To change a coding task, tell the teammate who started it, and they start the next one.";
 
@@ -110,7 +119,10 @@ export function coderFlow(options: CoderFlowOptions) {
         routes: Object.values(managers) as never,
         execute: async (_task: unknown, ctx: unknown) => {
           const { config } = await installation.resolveWorker(ctx as never, CODER_FLOW);
-          return managers[(config as { harness?: string }).harness ?? options.defaultHarness]!;
+          const harness = (config as { harness?: string }).harness ?? options.defaultHarness;
+          const missing = await options.ready?.[harness]?.();
+          if (missing !== undefined) throw new Error(missing);
+          return managers[harness]!;
         },
       } as never) as BlockDefinition<any, any>;
 
@@ -146,6 +158,7 @@ export function coderFlow(options: CoderFlowOptions) {
         },
       } as never);
     },
-    { roles: ["contributor"] },
+    // Each coding worker's `harness:` rides on its roster row, so a task line can name it.
+    { roles: ["contributor"], showSettings: ["harness"] },
   );
 }
