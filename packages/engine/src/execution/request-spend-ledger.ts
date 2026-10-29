@@ -40,16 +40,18 @@ export interface RequestSpendLedger {
  * Build one request's ledger. `carried` is what the request spent before a
  * suspension it resumes from: counted in {@link RequestSpendLedger.total}, and
  * already handed on, so {@link RequestSpendLedger.takeSinceLastEnding} never
- * hands it on again. `recovered` is what a run that never ended (its process
- * died) left in the log: counted, and handed on at this run's first ending.
+ * hands it on again. `recovered` and `recoveredHarnessRuns` are what a run that
+ * never ended (its process died) left in the log: counted, and handed on at
+ * this run's first ending.
  */
 export function createRequestSpendLedger(
   carried: Readonly<Record<string, ModelUsageEntry>> = {},
-  recovered: Readonly<Record<string, ModelUsageEntry>> = {}
+  recovered: Readonly<Record<string, ModelUsageEntry>> = {},
+  recoveredHarnessRuns: readonly HarnessRunSpend[] = []
 ): RequestSpendLedger {
   const byModel: Record<string, ModelUsageEntry> = Object.assign(Object.create(null), copyOf(carried));
   for (const [model, entry] of Object.entries(recovered)) addEntry((byModel[model] ??= emptyEntry()), entry);
-  const harnessRuns: HarnessRunSpend[] = [];
+  const harnessRuns: HarnessRunSpend[] = recoveredHarnessRuns.map((run) => ({ ...run }));
   let takenByModel: Record<string, ModelUsageEntry> = copyOf(carried);
   let takenRuns = 0;
 
@@ -86,16 +88,21 @@ export function createRequestSpendLedger(
 }
 
 /**
- * What the request's log says its model calls spent after item
- * `afterItemIndex`: each block trace's `modelUsage`, by model. A request whose
- * process died mid-run settled no spend, and its continuation replays the
- * blocks the log says finished without calling their models again, so this is
- * what those calls cost.
+ * What the request's log says it spent after item `afterItemIndex`: each block
+ * trace's `modelUsage`, by model, and the harness runs its `harnessSpend`
+ * lists. A request whose process died mid-run settled no spend, and its
+ * continuation replays the blocks the log says finished without running them
+ * again, so this is what those blocks cost.
  */
-export function loggedSpendOf(items: readonly RuntimeItem[], afterItemIndex: number): Record<string, ModelUsageEntry> {
+export function loggedSpendOf(
+  items: readonly RuntimeItem[],
+  afterItemIndex: number
+): { byModel: Record<string, ModelUsageEntry>; harnessRuns: HarnessRunSpend[] } {
   const byModel: Record<string, ModelUsageEntry> = {};
+  const harnessRuns: HarnessRunSpend[] = [];
   for (const item of items) {
     if (item.type !== "block_trace" || item.itemIndex <= afterItemIndex) continue;
+    for (const run of (item as BlockTraceItem).harnessSpend ?? []) harnessRuns.push({ ...run });
     const usage = (item as BlockTraceItem).modelUsage;
     if (usage === undefined) continue;
     addEntry((byModel[usage.model] ??= emptyEntry()), {
@@ -106,7 +113,7 @@ export function loggedSpendOf(items: readonly RuntimeItem[], afterItemIndex: num
       cacheCreationTokens: Number(usage.cacheCreationTokens ?? 0)
     });
   }
-  return byModel;
+  return { byModel, harnessRuns };
 }
 
 /**

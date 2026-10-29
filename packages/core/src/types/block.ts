@@ -75,6 +75,8 @@ export type BlockTraceCapturePayload = {
     generator?: BlockTraceItem["generator"];
     evaluator?: BlockTraceItem["evaluator"];
     modelUsage?: BlockTraceItem["modelUsage"];
+    /** `output` phase: the harness runs the block settled (FIX-2145). */
+    harnessSpend?: BlockTraceItem["harnessSpend"];
     model?: BlockTraceItem["model"];
     /**
      * Accessor keys the block declares at build time (`ownDeclaredResources`),
