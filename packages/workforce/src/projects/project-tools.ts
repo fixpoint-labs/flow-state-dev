@@ -61,7 +61,7 @@ const forCoding = handler({
 });
 
 /** What a repository ask reads off a write's input. */
-const repositoryAskInputSchema = z
+const repositoryApprovalInputSchema = z
   .object({
     id: z.string().optional(),
     project: z.object({ id: z.string() }).passthrough().optional(),
@@ -74,12 +74,12 @@ const repositoryAskInputSchema = z
  * the project and the remote, with any user or password left out of what
  * Inbox shows. Returns on Approve; on Deny the runtime throws out of it.
  */
-function askRepository(projectOf: (input: z.infer<typeof repositoryAskInputSchema>, ctx: BlockContext) => string | undefined) {
+function approveRepository(projectOf: (input: z.infer<typeof repositoryApprovalInputSchema>, ctx: BlockContext) => string | undefined) {
   return handler({
-    name: "project-tools-ask-repository",
-    inputSchema: repositoryAskInputSchema,
+    name: "project-tools-approve-repository",
+    inputSchema: repositoryApprovalInputSchema,
     outputSchema: z.void(),
-    execute: async (input: z.infer<typeof repositoryAskInputSchema>, ctx: BlockContext) => {
+    execute: async (input: z.infer<typeof repositoryApprovalInputSchema>, ctx: BlockContext) => {
       const project = projectOf(input, ctx);
       // No project to name: the write that follows refuses, so there is nothing to approve.
       if (project === undefined) return;
@@ -134,7 +134,7 @@ export function projectTools(blocks: ProjectBlocks) {
       inputSchema: createProjectInputSchema.omit({ mcpServers: true }),
       outputSchema: createProjectOutputSchema
     })
-      .tapIf((input) => input.repository != null, askRepository((input) => input.id))
+      .tapIf((input) => input.repository != null, approveRepository((input) => input.id))
       .step(blocks.createProject),
     setRepository: sequencer({
       name: "setRepository",
@@ -146,7 +146,7 @@ export function projectTools(blocks: ProjectBlocks) {
       outputSchema: setRepositoryOutputSchema
     })
       .tap(
-        askRepository((input, ctx) => {
+        approveRepository((input, ctx) => {
           // Only a project the write can change is asked about: a linked conversation naming another is refused below.
           const linked = linkedProjectOf(ctx.session.state);
           if (linked === undefined) return input.project?.id;
