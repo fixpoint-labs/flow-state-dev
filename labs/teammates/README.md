@@ -64,6 +64,8 @@ in lead's conversation.
 
 The goal check drives all of this in a browser:
 [`goals/teammates-lab/a-worker-talks-to-another-while-you-talk`](../../goals/teammates-lab/a-worker-talks-to-another-while-you-talk/goal.md).
+Asking lead what you told writer, read without waking writer, is checked over HTTP by
+[`goals/teammates-lab/consults-a-conversation-without-waking-it`](../../goals/teammates-lab/consults-a-conversation-without-waking-it/goal.md).
 
 ## What the screen reads
 
@@ -74,6 +76,7 @@ names the package call it makes.
 |---|---|
 | The worker list, sending, the conversation, busy status | the workforce client's `roster()` and `ensureWorkerSession`, the flow's `respond`, session items, `listSessionRequests` |
 | Workers messaging each other, the Talk panel | `sendMessage`, the received-message item (`workforce:received`), and the message log |
+| lead reading what you told researcher or writer, without waking them | `consultSessionsCapability(installation)` on the agent flow, named `consult` in lead's `WORKER.md`; it reads on `models.intents.utility` (`openai/gpt-6-luna`) and shows as a `consultSessionHistory` tool call |
 | A worker's project, and picking it | `setWorkProject`, read back as the conversation's `workProjectId` on the session read |
 | Task cards, the refusal for want of a project | the conversation board's rows, and `projectWorkspace()`'s `no-project` refusal |
 | coder's runs | the task row's `run` link, read as the run session's items |
@@ -95,7 +98,7 @@ and on a flow over 200 lines; `--wired` also fails on any fixture.
 <!-- inventory:start -->
 | Kind | Files | Lines |
 |---|---:|---:|
-| Configuration | 16 | 521 |
+| Configuration | 16 | 539 |
 | React UI | 19 | 1691 |
 | Small flows | 1 | 148 |
 | Checks (not app code) | 8 | 921 |

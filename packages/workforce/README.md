@@ -2462,6 +2462,40 @@ defineFlow({
 `receivedMessagePrompt(received)`: who wrote, the text, how to answer, and the budget left. See
 [Messaging other workers](https://flow-state.dev/docs/workforce/messaging-workers).
 
+### Consulting a conversation
+
+`consultSessionsCapability(installation, { model?, budgetTokens? })` gives a worker a
+`consultSessionHistory` tool that answers a question from another of its user's conversations
+without waking it. The other conversation isn't told, runs nothing, and gains no items, requests or
+message-log rows. Attach it to the built-in flow, and let a worker's file select its one preset,
+`consult`, which is off by default:
+
+```ts
+defineAgentWorkerFlow({ installation, uses: [consultSessionsCapability(installation)] });
+// The answer runs on `intent/utility` unless you pass `model`; say what that is once:
+createFlowState({ flows, stores, models: { default: "openai/gpt-6.1-sol", intents: { utility: ["openai/gpt-6-luna"] } } });
+```
+
+```md
+---
+capabilities:
+  consultSessions: [consult]
+---
+```
+
+The input is `{ of, question }`. `of` is a worker's id (the user's existing conversation with that
+worker; a worker id never opens one), `{ task: id }` (the session that works the task, open or
+finished) or `{ session: id }`. It reads that conversation's finished turns from the newest back,
+up to `budgetTokens` (default 24,000), and answers on one tool-less generator. The result is a
+reading as of a time, `{ reading, of, asOf, turnsRead, earlierTurnsLeftOut, cut, running }`;
+`running: true` means a turn there is open, and what it says isn't read. The reading's own items
+stay out of the asking conversation's history and screen. A refusal is `{ ok: false, error }`, the
+error starting with `self`, `no_worker`, `no_conversation` (the user has no conversation with that
+worker, or it hears only in task sessions), `no_task_session` or `no_session`. Another user's
+session reads as one that doesn't exist. To have a worker act, decide, or use what it knows, send it
+a message; a consult only finds what was already said. See [Consulting a conversation instead of
+messaging it](https://flow-state.dev/docs/workforce/messaging-workers#consulting-a-conversation-instead-of-messaging-it).
+
 ## Error Reporter
 
 A worker that turns each failure that stayed failed into one bug report, previews it to the operator, and files it to a tracker through a project's MCP servers. It takes a request that settled failed (the engine's `errorCapture` event marked `final`), a task, a routed one included, on a conversation board that ended errored (sent with the failure's notice to the filing conversation, and sent again with it if that notice is lost; a cancelled one, a routed task whose run was stopped included, ends `cancelled` and is not reported; a user who cancelled because something went wrong describes it to the reporter instead), a coordinator crash that best fit answered with "Nobody took this message" (sent by the coordinator, since its request completes), and a problem a user describes in its conversation. User docs: [The Error Reporter](https://flow-state.dev/docs/workforce/error-reporter).
@@ -2559,6 +2593,7 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 | `messageReceivedEntry({ installation, flowKind, turn?, hears? })` / `MessageHearing` | The `onMessageReceived` internal entry every worker flow carries (see [Worker messages](#worker-messages)). `turn` runs with a `MessageReceived` after the message lands; left out, nothing runs, the request outputs `{ turnless: true }`, and a call to the flow's workers is refused (or fails) with `no_reply`. `hears: "task-sessions"` (`MessageHearing`) makes the flow's workers hear only in their tasks' sessions, refusing a message by name with `task_sessions_only`. The session kit's `entries(turn)` includes one. |
 | `messageReceivedSchema` / `MessageReceived` / `messageReceivedInputSchema` | What a turn hears, `{ id, from, text, call, inReplyTo?, budget }` (`call` is `true` for a call, whose reply is the turn's final text; `budget` is how many more messages the exchange can send), and what the entry takes, `{ messageId }`. |
 | `promptedMessageTurn(turn)` / `receivedMessagePrompt(received)` | Wrap a block that takes `{ message }` so it can serve as `messageReceivedEntry`'s `turn`, and the text it hands that block: who wrote, which message, how to answer with `sendMessage` and `inReplyTo`, and the budget left; for a call, that the sender is waiting and the reply is the turn's final text. |
+| `consultSessionsCapability(installation, { model?, budgetTokens? })` / `ConsultSessionsOptions` / `consultSessionHistoryInputSchema` / `CONSULT_SESSIONS_CAPABILITY` / `CONSULT_SESSION_HISTORY_TOOL` | The `consultSessions` capability, with one preset, `consult`, off until a worker's file selects it: the `consultSessionHistory` tool (`"consultSessionHistory"`), input `{ of, question }`. See [Consulting a conversation](#consulting-a-conversation). |
 | `mergeWorkerFlows(flows, workers)` | Add the flows `hireWorkforce` returned to your app's flows record under their ids, for `createFlowState({ flows })`. Throws, naming the id, when one is already in `flows`. |
 | `workerFlowProblems(name, flow, roles?)` | Every way `flow`, registered as `name` with `roles`, misses the worker contract: a name that is not its `kind`, a configuration it refuses by key or by value, or takes but rewrites, no `respond` door (or a second door, or its door under another name), a declared role's entry missing, not its factory's or refusing its input, a role's piece on a flow that doesn't declare the role, a resource with `writtenBy` that `sharedResource()` didn't build. `roles` defaults to a built-in flow's own, and none for any other. An empty list for a worker flow. The check `hireWorkforce` runs, exported for a library's own tests. |
 | `sharedResource(pattern, shape)` | An org-scoped collection whose every entry carries a required `writtenBy: { userId, workerId? }` beside the fields of `shape`. An entry written without it is refused by the resource's own schema. The only way to declare a resource with `writtenBy` on a worker flow: the contract refuses one defined by hand, or a copy of this one with its schema replaced. |

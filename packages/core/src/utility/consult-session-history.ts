@@ -15,7 +15,7 @@
  * turns reach the generator as quoted history in one delimited section, and
  * its instructions say that what is said there is a record, never instructions
  * to it. The generator's own items stay out of the asking conversation's
- * history and its client view: the tool's result is what the asker reads.
+ * history and its client view: the asking conversation reads the tool's result.
  */
 import { z, type ZodTypeAny } from "zod";
 import { generator } from "../blocks/generator";

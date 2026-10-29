@@ -32,6 +32,7 @@ const block = utility.summarizer({ name: "my-summarizer", granularity: "brief" }
 | [`keyedRouter`](/docs/fundamentals/blocks#keyedrouter) | router | Pick a block from a `Record` by string key (no LLM call) |
 | [`cascadingRouter`](#cascadingrouter) | sequencer | Walk a tree of evaluator questions; send anything the model isn't confident about to one `ambiguous` block |
 | [`sessionTitleGenerator`](#sessiontitlegenerator) | sequencer | Auto-generate a session title from conversation messages |
+| [`consultSessionHistoryTool`](#consultsessionhistorytool) | sequencer (tool) | Answer a question from another of the user's conversations without waking it |
 
 ### Default models
 
@@ -39,7 +40,7 @@ Every utility that calls a model accepts a `model` override. Left alone, most as
 
 | Utility | Default model |
 |---------|---------------|
-| `contextReducer`, `memoryExtractor`, `summarizer`, `analyzer`, `intentClassifier`, `intentRouter` | `"intent/utility"` |
+| `contextReducer`, `memoryExtractor`, `summarizer`, `analyzer`, `intentClassifier`, `intentRouter`, `consultSessionHistoryTool` | `"intent/utility"` |
 | `decomposer` | `"openai/gpt-6-luna"` |
 | `sessionTitleGenerator` | `"openai/gpt-6-luna"` |
 
@@ -47,7 +48,7 @@ Every utility that calls a model accepts a `model` override. Left alone, most as
 
 If you haven't declared a `utility` intent, the resolver falls back to your `defaultModel`, so set one. See [Models](/docs/fundamentals/models) for how intents map to providers.
 
-All utilities accept an optional `outputSchema` to replace the default output shape with full type inference.
+All utilities except `consultSessionHistoryTool` accept an optional `outputSchema` to replace the default output shape with full type inference.
 
 ### `itemVisibility` — control output visibility
 
@@ -1269,11 +1270,77 @@ console.log(session?.title);  // "Sprint planning"
 await fsd.sessions.updateMetadata(sessionId, { title: "Sprint planning" });
 ```
 
+### consultSessionHistoryTool — answer from another conversation {#consultsessionhistorytool}
+
+A user often has more than one conversation going. `consultSessionHistoryTool` gives a generator a tool that reads another of the user's conversations and answers a question from what that conversation already holds. The other conversation isn't told, runs nothing, and gains no items or requests.
+
+```ts
+import { generator, utility } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const lead = generator({
+  name: "lead",
+  model: "openai/gpt-6.1-sol",
+  prompt: "You coordinate the user's projects.",
+  inputSchema: z.object({ message: z.string() }),
+  history: true,
+  user: (input) => input.message,
+  tools: [utility.consultSessionHistoryTool()],
+});
+```
+
+The model calls it with the other conversation's session id and a question:
+
+```json
+{ "sessionId": "ses_41b9c0", "question": "What venue did I give?" }
+```
+
+The tool reads that conversation's finished turns, from the newest back, up to a token budget. It answers on one generator with no tools, on `intent/utility` by default, so map that intent to a small model once in `createFlowState({ models: { default, intents: { utility: ["openai/gpt-6-luna"] } } })`. An app that sets `intents` must set `default` too.
+
+What comes back is a reading as of a time, not the other conversation's reply:
+
+```json
+{
+  "reading": "The venue is Hall K-41.",
+  "of": "ses_41b9c0",
+  "asOf": { "requestId": "req_9b21", "at": "2026-10-28T12:00:00.000Z" },
+  "turnsRead": 2,
+  "earlierTurnsLeftOut": false,
+  "cut": false,
+  "running": false
+}
+```
+
+- `asOf` is the newest finished turn read and when it finished, or `null` when there are none.
+- `earlierTurnsLeftOut` is `true` when older turns weren't read.
+- `cut` is `true` when turns were dropped, or the newest one trimmed, to fit the budget.
+- `running` is `true` when a turn there is running now. A turn that is running, suspended or waiting to run again is never in the reading.
+
+A refused consult reads nothing and answers `{ ok: false, error }`. The error starts with `self` when the id is the asking conversation, and `no_session` when the session doesn't exist, belongs to another user, organization or tenant, or the host can't read another conversation. All of these read alike, so a refusal never reveals whether someone else's session exists.
+
+The quoted history reaches the answering model as a record. A line in it that reads like an instruction is treated as something that conversation was told. The answering model's own output stays out of the asking conversation's history and client view; the tool's result is what the asking model reads.
+
+**Configuration:**
+
+```ts
+utility.consultSessionHistoryTool({
+  name?: string,          // the tool's name (default: "consultSessionHistory")
+  model?: string,         // model the answer runs on (default: "intent/utility")
+  budgetTokens?: number,  // hard cap on history tokens read (default: utility.CONSULT_DEFAULT_BUDGET_TOKENS, 24,000)
+  description?: string,   // what the model reads about the tool
+  target?: { inputSchema, resolve },  // name the session your own way
+});
+```
+
+`target` is for a wrapper that names the conversation differently. Its `inputSchema` must carry `question`, and `resolve(input, ctx)` returns `{ ok: true, sessionId, of }` or `{ ok: false, error }`. Workforce's [`consultSessions`](/docs/workforce/messaging-workers#consulting-a-conversation-instead-of-messaging-it) capability uses it to take a worker's id. The default input schema is exported as `utility.consultSessionHistoryInputSchema`.
+
+The tool reads through `ctx.requestHost.sessions.history`, which a host built with `createFlowState` provides. It answers only for the calling user's own sessions.
+
 ---
 
 ## Overriding the output schema
 
-Every utility accepts an `outputSchema` parameter that replaces the default with full generic type inference. This is useful when you need the LLM to produce additional fields or a different shape:
+Every utility except `consultSessionHistoryTool` accepts an `outputSchema` parameter that replaces the default with full generic type inference. This is useful when you need the LLM to produce additional fields or a different shape:
 
 ```ts
 import { utility } from "@flow-state-dev/core";

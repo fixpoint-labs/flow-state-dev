@@ -13,7 +13,7 @@ Every hand-over is a **task**: the worker files it on a board, for one of its de
 
 A worker files tasks when one of its delegates can take a task. There's no switch to flip. Who the worker hands work to decides it.
 
-To ask another worker something without handing it work, a worker sends a message instead. See [Messaging other workers](./messaging-workers.md#message-or-delegate).
+To ask another worker something without handing it work, a worker sends a message instead. See [Messaging other workers](./messaging-workers.md#message-consult-or-delegate).
 
 ## Giving a worker the task tools
 

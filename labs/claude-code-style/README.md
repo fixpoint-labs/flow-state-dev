@@ -69,6 +69,7 @@ are read from the environment, all optional:
 | Setting | Default | What it is |
 |---|---|---|
 | `CLAUDE_CODE_STYLE_MODEL` | `openai/gpt-5.4` | The model every worker answers with |
+| `CLAUDE_CODE_STYLE_UTILITY_MODEL` | `openai/gpt-6-luna` | The smaller model a consult of another conversation reads on |
 | `CLAUDE_CODE_STYLE_DATA` | `.fsdev/claude-code-style` | The SQLite file, and each coding run's worktree under `runs/` |
 | `CLAUDE_CODE_STYLE_REPOSITORIES` | the repository the lab starts in | The repositories coding runs work in a worktree of, as paths separated by `:` |
 | `CLAUDE_CODE_STYLE_USER` | `u_lab` | The person the pages are served for |
@@ -99,6 +100,7 @@ a package call:
 | Sending and the thread | the `respond` action, and the session's message and tool items |
 | A result card inside a running turn | `answerAgain: true` on the main worker's flow: the settled task's notice, taken into the turn |
 | The main session reading the project's files | `projectSourceCapability({ workspace })` on the `agent` flow, over the coding runs' host; `desk.main` and `desk.researcher` name its `read` preset in their `WORKER.md` |
+| The main session reading a task's session or another conversation without waking it | `consultSessionsCapability(installation)` on the `agent` flow; `desk.main` names its `consult` preset in its `WORKER.md`. It reads on `models.intents.utility` (`CLAUDE_CODE_STYLE_UTILITY_MODEL`, default `openai/gpt-6-luna`) |
 | Interrupting | aborting the session's running turn; its tasks keep running |
 | The tasks pane and a task's work | `listTasks_tasks`, and the items of the task's run session |
 | Threads mode's sessions | the same, with `desk.lead`, a `coordinator`, as the main worker |
@@ -125,7 +127,7 @@ and on a flow over 200 lines; `--wired` also fails while a fixture is left in `s
 <!-- inventory:start -->
 | Kind | Files | Lines |
 |---|---:|---:|
-| Configuration | 18 | 494 |
+| Configuration | 18 | 503 |
 | React UI | 27 | 2665 |
 | Small flows | 3 | 273 |
 | Checks (not app code) | 8 | 1256 |
