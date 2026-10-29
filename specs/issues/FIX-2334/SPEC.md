@@ -74,6 +74,10 @@ The unit test on the front of the prompt fails, and the goal leg must see "ChatG
   line, not a second gate.
 - **Exported:** the recipient list and the display-name helper. The layer itself is exported
   when a second flow needs it.
+- **The Teammates lab's stopgap lines go.** The build PR removes the hand-written identity lines
+  in `labs/teammates` researcher's and writer's `WORKER.md`, and the "Your teammates are…" line in
+  chief-of-staff's `WORKER.md` (they arrive with FIX-2336, #4207, as a stopgap), so the goal leg
+  proves the layer, not the files.
 - **Docs:** `docs/architecture/workforce-default-worker-flow.md` (C1, the order paragraph and the
   "owned and shipped elsewhere" line) and the seam comment in `agent-worker-flow.ts` say the
   default layer shipped, what it holds, and that FIX-2334 owns it; the Workforce worker-flow docs
