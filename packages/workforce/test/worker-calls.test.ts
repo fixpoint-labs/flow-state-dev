@@ -17,7 +17,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { GeneratorModel, GeneratorModelCallOptions } from "@flow-state-dev/core/types";
-import { inMemoryStores, type StoreAdapter, type StoreRegistry } from "@flow-state-dev/engine";
+import { disposeFlowApiRouter, inMemoryStores, type StoreAdapter, type StoreRegistry } from "@flow-state-dev/engine";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { boardWorkers, bootBoardHost, ORG, type BoardHost, type BoardHostOptions } from "./conversation-board-harness";
@@ -555,6 +555,14 @@ async function callThenDie(dies: (method: string, args: unknown[]) => boolean, o
 }
 
 describe("a call whose process dies before it parks", { timeout: 60_000 }, () => {
+  // The dead host's request still owes its request-end hooks, and that debt is
+  // kept per process, which both hosts share here: the next host's shutdown
+  // would wait its whole drain budget for a run that never ends. Runs before
+  // the file's hook disposes `open`.
+  afterEach(async () => {
+    if (open !== undefined) await disposeFlowApiRouter(await open.state.getRouter(), { drainMs: 100 });
+  });
+
   // The bug (FIX-2269): the caller's request was left `interrupted` behind no
   // gate, so nothing continued it and the call never answered its user, though
   // the recipient could still have answered it.

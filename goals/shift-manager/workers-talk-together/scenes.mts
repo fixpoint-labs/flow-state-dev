@@ -57,6 +57,7 @@ export const RING_TWO = "ring-two";
 /** Leg e's call deadline: long enough for Helper B's question to arrive, and the ring to run, while it is parked. */
 export const PARKED_CALL_MS = 150_000;
 const ENDED = new Set(["completed", "failed", "aborted", "cancelled", "errored", "expired", "interrupted"]);
+const OWED_ENDS = new Set([...ENDED].filter((s) => s !== "interrupted"));
 const TERMINAL = new Set(["completed", "failed", "cancelled", "errored"]);
 const show = (value: unknown) => JSON.stringify(value)?.slice(0, 500);
 const errorOf = (c: Call) => String(c.output?.error ?? "");
@@ -83,8 +84,8 @@ async function sendLine(who: Connected, session: SessionSummary, words: string):
   }
 }
 
-/** A request's status in `sessionId`, polled until it ends or `timeoutMs`: every status seen, with when. */
-async function follow(who: Connected, flowKind: string, requestId: string, timeoutMs: number): Promise<{ status: string; seen: string[]; seenAt: number[] }> {
+/** A request's status in `sessionId`, polled until it ends (`ends`) or `timeoutMs`: every status seen, with when. */
+async function follow(who: Connected, flowKind: string, requestId: string, timeoutMs: number, ends: ReadonlySet<string> = ENDED): Promise<{ status: string; seen: string[]; seenAt: number[] }> {
   const client = who.flow(flowKind);
   const seen: string[] = [];
   const seenAt: number[] = [];
@@ -94,7 +95,7 @@ async function follow(who: Connected, flowKind: string, requestId: string, timeo
       seen.push(now);
       seenAt.push(Date.now());
     }
-    if (now !== undefined && ENDED.has(now)) return { status: now, seen, seenAt };
+    if (now !== undefined && ends.has(now)) return { status: now, seen, seenAt };
   }
   return { status: "timed-out", seen, seenAt };
 }
@@ -175,7 +176,10 @@ export async function sceneAC(world: World, servers: Servers, walked: Walked): P
 
   // a:answer-in-request — the request that made the call, replayed by the host, reads the answer.
   const requestId = line.request ?? asked ?? "";
-  const ended = await follow(world.alice, helperA().flowKind, requestId, 360_000);
+  // `interrupted` is not an end here: a call that died before it parked still owes its park, and the
+  // durability sweep continues it a stale threshold later (FIX-2269). A request that never leaves
+  // interrupted reads timed-out.
+  const ended = await follow(world.alice, helperA().flowKind, requestId, 360_000, OWED_ENDS);
   const calls = (await callsIn(world.alice, helperA().id)).filter((c) => c.requestId === requestId && c.output != null && typeof c.output === "object");
   const call = calls.find((c) => isWait(c) && c.output?.callId === line.id);
   const lines = await linesIn(world.alice, helperA().id);
