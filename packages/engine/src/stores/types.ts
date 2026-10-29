@@ -267,6 +267,14 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * no settlement counted any, so every trace in the log counts.
    */
   spentThroughItemIndex?: number;
+  /**
+   * `true` while the run that settled this record as `interrupted` may still be
+   * running its observers: that run hands on what they spend itself, so a
+   * continuation counts nothing from the log past
+   * {@link RequestRecord.spentThroughItemIndex}. A continuation sets it back to
+   * `false` when it takes the record. Absent on older records: read as `false`.
+   */
+  spendHandedOnByRun?: boolean;
 };
 
 /**

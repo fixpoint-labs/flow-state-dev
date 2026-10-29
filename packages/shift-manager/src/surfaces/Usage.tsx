@@ -24,10 +24,11 @@ import {
   costLabel,
   harnessName,
   levelLabel,
+  noTokensReported,
   percentLabel,
+  reportedTokensLabel,
   resetLabel,
   sourceName,
-  tokensLabel,
   USAGE_PERIODS,
   useHarnessUsage,
   useWorkerUsage,
@@ -137,7 +138,7 @@ function WorkerCard({ row }: { row: WorkerUsage }) {
           </Meta>
         ) : null}
         <Meta role="control" className="ml-auto" testId="worker-usage-tokens">
-          {tokensLabel(row.tokens.input + row.tokens.output)}
+          {reportedTokensLabel(row.tokens.input + row.tokens.output, row.bySource)}
         </Meta>
       </header>
       <ul className="mt-1">
@@ -158,11 +159,13 @@ function WorkerCard({ row }: { row: WorkerUsage }) {
               </span>
               <span className="flex flex-wrap items-baseline gap-x-3">
                 <Meta role="control" testId="worker-usage-source-tokens">
-                  {tokensLabel(source.inputTokens + source.outputTokens)}
+                  {reportedTokensLabel(source.inputTokens + source.outputTokens, [source])}
                 </Meta>
-                <Meta className="text-muted-foreground" testId="worker-usage-source-split">
-                  {source.inputTokens.toLocaleString("en-US")} in, {source.outputTokens.toLocaleString("en-US")} out
-                </Meta>
+                {noTokensReported(source) ? null : (
+                  <Meta className="text-muted-foreground" testId="worker-usage-source-split">
+                    {source.inputTokens.toLocaleString("en-US")} in, {source.outputTokens.toLocaleString("en-US")} out
+                  </Meta>
+                )}
                 <Meta className="text-muted-foreground" testId="worker-usage-cost">
                   {costLabel(source)}
                 </Meta>

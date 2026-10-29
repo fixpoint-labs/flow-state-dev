@@ -2216,7 +2216,10 @@ async function runActionAttempt<
     await patchRequestRecord(options.stores, requestId, {
       status: "in_progress",
       finalizedAtMs: null,
-      heartbeatsUntilFinalized: false
+      heartbeatsUntilFinalized: false,
+      // This run now owns the log: if it dies, the next continuation counts
+      // what it spent past the cursor (FIX-2145).
+      spendHandedOnByRun: false
     });
     ctx.requestRuntime.status = "in_progress";
     await response.emitRequestStatus("in_progress");
@@ -3131,7 +3134,10 @@ async function runActionAttempt<
           items: interruptedItems,
           heartbeatsUntilFinalized: false,
           spentByModel: ctx.request.tokenUsage.byModel,
-          spentThroughItemIndex: lastItemIndexOf(interruptedItems)
+          spentThroughItemIndex: lastItemIndexOf(interruptedItems),
+          // This run is alive and hands on what its observers spend after
+          // this point; a continuation must not count it again from the log.
+          spendHandedOnByRun: true
         });
 
         ctx.requestRuntime.status = "interrupted" as typeof ctx.requestRuntime.status;

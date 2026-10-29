@@ -142,7 +142,7 @@ await runGoal(async () => {
   const runTask = async (served: ServedShiftManager, person: LabUser, tag: string) => {
     const routes = labRoutes(served.origin, person);
     const sessionId = `s-cos-${tag}-${RUN_STAMP}`;
-    const created = await routes.call("POST", "/coordinator/sessions", { userId: person.userId, sessionId, state: { workerId: "chief-of-staff" } });
+    const created = await routes.call("POST", "/coordinator/sessions", { userId: person.userId, sessionId, state: { workerId: "shift-coordinator" } });
     if (created.status !== 201) throw new Error(`${tag}: opening the chief of staff's session answered ${created.status} ${JSON.stringify(created.body)}`);
     const said = await routes.act("coordinator", sessionId, "respond", { message: `Please take this on. [[usage:${tag}]]` });
     if (said.status !== "completed") throw new Error(`${tag}: the chief of staff's turn ended ${said.status}: ${said.error ?? ""}`);

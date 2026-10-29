@@ -10,6 +10,8 @@ import {
   ageLabel,
   billingLabel,
   costLabel,
+  noTokensReported,
+  reportedTokensLabel,
   harnessName,
   levelLabel,
   percentLabel,
@@ -67,6 +69,18 @@ describe("Usage labels", () => {
  * reported one, and nothing that reads as what is left.
  */
 describe("Usage by worker labels", () => {
+  it("says tokens were not reported when no run reported any, never 0", () => {
+    // A harness killed before its result reports no usage: its stored count is
+    // 0, and showing "0 tokens" would claim a measured zero.
+    const silent = { runs: 2, unreported: 2 };
+    const partial = { runs: 2, unreported: 1 };
+    expect(noTokensReported(silent)).toBe(true);
+    expect(noTokensReported(partial)).toBe(false);
+    expect(reportedTokensLabel(0, [silent])).toBe("tokens not reported");
+    expect(reportedTokensLabel(0, [silent, silent])).toBe("tokens not reported");
+    expect(reportedTokensLabel(1_500, [silent, partial])).toBe("1,500 tokens");
+  });
+
   it("shows a cost only where one was reported, and says who reported it", () => {
     expect(costLabel({ source: "claude-code", kind: "harness", costUsd: 0.42 })).toBe("$0.42, reported by Claude Code");
     expect(costLabel({ source: "claude-code", kind: "harness", costUsd: null })).toBe("cost not reported");

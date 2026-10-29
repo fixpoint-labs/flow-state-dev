@@ -32,9 +32,16 @@ function scripted(
 }
 
 /** Run the block in a context that carries a spend ledger, and collect what it reports. */
-async function runReporting(block: ReturnType<typeof claudeCodeAgent>) {
+async function runReporting(block: ReturnType<typeof claudeCodeAgent>, opts: { failErrorItem?: boolean } = {}) {
   const reported: HarnessRunSpend[] = [];
   const runtime = await createTestContext({ declaredResources: block.declaredResources });
+  if (opts.failErrorItem === true) {
+    const emit = runtime.ctx.response.emit.bind(runtime.ctx.response);
+    (runtime.ctx.response as { emit: typeof emit }).emit = async (event: Parameters<typeof emit>[0]) => {
+      if ((event as { item?: { type?: string } }).item?.type === "error") throw new Error("item store unavailable");
+      return emit(event);
+    };
+  }
   (runtime.ctx as unknown as Record<symbol, unknown>)[REQUEST_SPEND_SEAM] = { reportHarnessRun: (run: HarnessRunSpend) => reported.push(run) };
   const outcome = await Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never)).then(
     () => "returned",
@@ -71,6 +78,17 @@ describe("claudeCodeAgent reports its run's spend", () => {
     const { reported } = await runReporting(block);
 
     expect(reported).toEqual([{ harness: "claude-code", inputTokens: 1000, outputTokens: 200, costUsd: 0.42, billing: "subscription" }]);
+  });
+
+  it("reports a failed result's spend even when its error notice could not be written", async () => {
+    // Claude Code emits an error item before the result: losing that item must
+    // not lose the tokens and cost the result already carried.
+    const failed: SdkMessageLike = { ...RESULT, subtype: "error_max_turns", is_error: true, result: undefined };
+    const block = claudeCodeAgent({ resolveClaudeAgent: scripted([failed], { apiKeySource: "ANTHROPIC_API_KEY" }), detached: true });
+
+    const { reported } = await runReporting(block, { failErrorItem: true });
+
+    expect(reported).toEqual([{ harness: "claude-code", inputTokens: 1000, outputTokens: 200, costUsd: 0.42, billing: "api-key" }]);
   });
 
   it("reports a run that failed after its result arrived", async () => {

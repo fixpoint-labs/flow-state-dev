@@ -3176,10 +3176,11 @@ export async function createExecutionContext<
   // what it spent before it suspended, so its token budget counts both runs.
   // A run whose process died settled nothing: what its log's block traces
   // spent since the last settlement is counted, and handed on at this run's
-  // first ending.
+  // first ending. Not while the run that settled an interruption may still be
+  // running its observers: that run hands their spend on itself.
   const requestSpendLedger = createRequestSpendLedger(
     requestRecord.spentByModel,
-    loggedSpendOf(requestRecord.items ?? [], requestRecord.spentThroughItemIndex ?? -1)
+    requestRecord.spendHandedOnByRun === true ? {} : loggedSpendOf(requestRecord.items ?? [], requestRecord.spentThroughItemIndex ?? -1)
   );
   const requestEndRegistry = createRequestEndRegistry(() => requestSpendLedger.takeSinceLastEnding());
   // How this request resumed (FIX-2129), read when a block asks: the
