@@ -22,7 +22,7 @@ import { hasEnded, NOTICE_DUE_MS } from "@flow-state-dev/orchestration/tasks";
 import { DISPATCH_ENTRY } from "../conversation-board/board-entries";
 import type { WorkerInstallation } from "../workers/installation";
 import { WORKER_REPLIES_OWED_STATE } from "./keys";
-import { owedRepliesOf, type OwedReply } from "./owed-reply-state";
+import { owedRepliesOf, type OwedReply } from "./delivery";
 import { MAX_MESSAGE_CHARS, messageLogOf, type WorkerMessageRow } from "./message-log";
 import { sendMessage } from "./send-message";
 
