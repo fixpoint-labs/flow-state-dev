@@ -163,12 +163,3 @@ Not wired yet:
 
 Every file in the lab, by kind. `node scripts/inventory.mjs` fails on a file that is none of these,
 and on a flow over 200 lines; `--wired` also fails on any fixture.
-
-<!-- inventory:start -->
-| Kind | Files | Lines |
-|---|---:|---:|
-| Configuration | 18 | 764 |
-| React UI | 29 | 2664 |
-| Small flows | 1 | 164 |
-| Checks (not app code) | 10 | 1485 |
-<!-- inventory:end -->
