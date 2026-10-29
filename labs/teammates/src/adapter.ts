@@ -322,12 +322,15 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>):
  * it trails the items: a request whose answer the items already show as
  * finished, with nothing of it still being written, is done here at once,
  * and an item of the newest request still being written is an answer under
- * way before the list says so. The "answering" line then comes and goes with the text.
+ * way before the list says so, unless the requests already show that request
+ * ended (`ended`): a failed or aborted turn leaves its half-written item so for
+ * good. The "answering" line then comes and goes with the text.
  */
-export function answeringOf(items: readonly Item[], inProgress: readonly string[]): boolean {
+export function answeringOf(items: readonly Item[], inProgress: readonly string[], ended: readonly string[] = []): boolean {
   // Only the newest request, or one the list names: an item a crashed turn left half-written stays so for good.
   const newest = items[items.length - 1]?.requestId;
-  if (items.some((i) => i.status === "in_progress" && (i.requestId === newest || inProgress.includes(i.requestId)))) return true;
+  const live = (requestId: string) => inProgress.includes(requestId) || (requestId === newest && !ended.includes(requestId));
+  if (items.some((i) => i.status === "in_progress" && live(i.requestId))) return true;
   const answered = new Set(items.filter((i) => i.type === "message" && i.role === "assistant" && i.status === "completed").map((i) => i.requestId));
   return inProgress.some((requestId) => !answered.has(requestId));
 }
@@ -404,13 +407,14 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       let entries: ConversationEntry[] = [];
       let items: Item[] = [];
       let inProgress: string[] = [];
+      let ended: string[] = [];
       let shown: ConversationView | undefined;
       // Unchanged entries keep their objects, so a streamed chunk redraws only the growing one.
       const reuse = stableList<ConversationEntry>((next) => {
         entries = next;
       });
       const emit = () => {
-        const running = answeringOf(items, inProgress);
+        const running = answeringOf(items, inProgress, ended);
         if (shown?.entries === entries && shown.running === running) return;
         shown = { entries, running };
         onChange(shown);
@@ -421,9 +425,11 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         emit();
       });
       const stopPoll = poll(
-        () => client.sessions.requests(sessionId, { status: "in_progress" }),
+        () => client.sessions.requests(sessionId, { limit: 20 }),
         (requests) => {
-          inProgress = requests.filter((r) => !QUIET_ACTIONS.has(r.actionName)).map((r) => r.id);
+          const answering = requests.filter((r) => !QUIET_ACTIONS.has(r.actionName));
+          inProgress = answering.filter((r) => r.status === "in_progress").map((r) => r.id);
+          ended = requests.filter((r) => r.status !== "in_progress").map((r) => r.id);
           emit();
         },
       );

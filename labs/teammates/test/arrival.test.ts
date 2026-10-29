@@ -38,4 +38,9 @@ describe("whether the worker is answering", () => {
   it("ignores an old item a crashed turn left half-written", () => {
     expect(answeringOf([message("r1", "in_progress"), message("r2", "completed")], [])).toBe(false);
   });
+
+  it("is done when the newest request failed with its answer half-written", () => {
+    // A failed stream never finishes its item; without the ended list the worker would read as answering for good.
+    expect(answeringOf([message("r1", "in_progress")], [], ["r1"])).toBe(false);
+  });
 });
