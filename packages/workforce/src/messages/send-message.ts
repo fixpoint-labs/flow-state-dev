@@ -48,7 +48,7 @@ import { filingProjectAddressOf, sessionIdOfFiling } from "../conversation-board
 import { deriveWorkerSessionId, criteriaState, type WorkerSessionCriteria } from "../workers/derive-session-id";
 import type { RosterWorker, WorkerInstallation } from "../workers/installation";
 import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, FILING_WORKER_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
-import { newChainId, TURN_CHAIN_STATE, TURN_SENT_STATE, turnChainOf, turnHopOf } from "./hop";
+import { newChainId, TURN_CHAIN_STATE, TURN_PAID_STATE, TURN_SENT_STATE, turnChainOf, turnHopOf } from "./hop";
 import { carriesPass, dispatchMessage, dropOwed, endMessage, isFinalRefusal, oweMessage } from "./delivery";
 import { messageLimitsOf } from "./message-limits";
 import { messageHearingOf, noReplyError, runsMessageTurn } from "./received-mark";
@@ -142,7 +142,7 @@ export async function recheckRecipient(
  * project coordinator keeps one per project, so it is reached in the one for
  * `project` when the sender works in one.
  */
-async function conversationAddress(
+export async function conversationAddress(
   ctx: BlockContext,
   installation: WorkerInstallation,
   worker: string,
@@ -182,7 +182,9 @@ type Place = { readonly ok: true; readonly id: string; readonly chain: string; r
  * its place in its chain's row, and never less than one past its own turn's. A
  * request with no chain behind it (no user's turn, no session's) starts one
  * here, for all its sends. The per-request count is taken first and given back
- * if the chain has no place left, so a refused send spends nothing.
+ * if the chain has no place left, so a refused send spends nothing. A `given`
+ * id already paid for (a send repeated after a crash, FIX-2269) pays nothing
+ * again: neither count takes it twice.
  */
 async function payPlace(ctx: BlockContext, installation: WorkerInstallation, given: string | undefined): Promise<Place> {
   const limits = messageLimitsOf(installation);
@@ -198,11 +200,18 @@ async function payPlace(ctx: BlockContext, installation: WorkerInstallation, giv
   const placeAfter = (sent: number) => Math.max(floor, sent + 1);
   const known = turnChainOf(ctx);
   const atomicRequest = (mutator: (s: Readonly<Record<string, unknown>>) => Record<string, unknown>) => ctx.request.atomicState(mutator as never);
+  const paidOf = (current: Readonly<Record<string, unknown>>): string[] =>
+    Array.isArray(current[TURN_PAID_STATE]) ? (current[TURN_PAID_STATE] as string[]) : [];
   const reserved = await withOutcome(atomicRequest, (current: Readonly<Record<string, unknown>>) => {
     const sent = typeof current[TURN_SENT_STATE] === "number" ? (current[TURN_SENT_STATE] as number) : 0;
-    if (sent >= limits.perTurn) return { state: {}, result: undefined };
     const turnChain = typeof current[TURN_CHAIN_STATE] === "string" ? (current[TURN_CHAIN_STATE] as string) : (known ?? newChainId());
-    return { state: { [TURN_SENT_STATE]: sent + 1, [TURN_CHAIN_STATE]: turnChain }, result: turnChain };
+    const paid = paidOf(current);
+    if (given !== undefined && paid.includes(given)) return { state: {}, result: turnChain };
+    if (sent >= limits.perTurn) return { state: {}, result: undefined };
+    return {
+      state: { [TURN_SENT_STATE]: sent + 1, [TURN_CHAIN_STATE]: turnChain, ...(given === undefined ? {} : { [TURN_PAID_STATE]: [...paid, given] }) },
+      result: turnChain
+    };
   });
   if (typeof reserved !== "string") {
     return { ok: false, error: `per_request_limit: one request sends at most ${limits.perTurn} messages, and this one has. Nothing was sent.` };
@@ -211,13 +220,13 @@ async function payPlace(ctx: BlockContext, installation: WorkerInstallation, giv
   const id = given ?? newMessageId();
   const chainRow = await chains.getOrCreate(chain, { sent: [] });
   await chainRow.updateState((row) =>
-    placeAfter(row.sent.length) > limits.budget ? row : { ...row, sent: [...row.sent, id] }
+    row.sent.includes(id) || placeAfter(row.sent.length) > limits.budget ? row : { ...row, sent: [...row.sent, id] }
   );
   const place = chainRow.state.sent.indexOf(id);
   if (place < 0) {
     await atomicRequest((current) => {
       const sent = typeof current[TURN_SENT_STATE] === "number" ? (current[TURN_SENT_STATE] as number) : 1;
-      return { [TURN_SENT_STATE]: Math.max(0, sent - 1) };
+      return { [TURN_SENT_STATE]: Math.max(0, sent - 1), [TURN_PAID_STATE]: paidOf(current).filter((paid) => paid !== id) };
     });
     return budgetRefusal(placeAfter(chainRow.state.sent.length));
   }
@@ -245,7 +254,8 @@ function exemptPlace(ctx: BlockContext, given: string | undefined): Place {
  *   one message: when its row is already written, the repeat owes nothing,
  *   pays nothing and answers as the row reads (a refusal stays one). From a
  *   flow with no pass, a repeat finding the row never taken dispatches it
- *   again, since nothing else would. Never a model's input.
+ *   again, since nothing else would; a call's repeat does too, so its caller
+ *   has the request to wait on. Never a model's input.
  * @param options.call The sender waits on the reply until `deadlineAt`
  *   (FIX-2239): the row is marked a call, and the dispatch says the sender
  *   waits on it. Set by the call's own code, never by a model.
@@ -291,9 +301,12 @@ export async function sendMessage(
     }
     // A flow with no pass sends on its own dispatch only, so a repeat finding
     // the row never taken (the first send ended between the write and the
-    // dispatch) sends it again; the take keeps it once.
-    if (written.status === "unconfirmed" && written.takenBy === undefined && !carriesPass(installation, flowKind)) {
-      return markAnswer(ctx, written, await dispatchOnce(ctx, writtenRef, written, from, false));
+    // dispatch) sends it again; the take keeps it once. A call's repeat sends
+    // it again too, pass or not (FIX-2269): its caller waits on the request
+    // that dispatch starts, and a resend from the pass leaves it none to follow.
+    const resends = carriesPass(installation, flowKind);
+    if (written.status === "unconfirmed" && written.takenBy === undefined && (written.call === true || !resends)) {
+      return markAnswer(ctx, written, await dispatchOnce(ctx, writtenRef, written, from, resends));
     }
     return markAnswer(ctx, written, { ok: true, id: written.id });
   }

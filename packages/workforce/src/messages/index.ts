@@ -28,6 +28,14 @@ export {
 } from "./message-log";
 export { DEFAULT_MESSAGE_BUDGET, DEFAULT_MESSAGES_PER_TURN, type MessageLimits } from "./message-limits";
 export { sendMessageInputSchema } from "./message-tool";
+// Reading another conversation without waking it (FIX-2173).
+export {
+  CONSULT_SESSION_HISTORY_TOOL,
+  CONSULT_SESSIONS_CAPABILITY,
+  consultSessionHistoryInputSchema,
+  consultSessionsCapability,
+  type ConsultSessionsOptions
+} from "./consult";
 export { sendMessage, type SendOutcome, type SendMessageInput } from "./send-message";
 // A message to a task or a conversation, checked before anything is written (FIX-2160).
 export { checkTargetSession, checkTaskTarget, type CheckedTarget, type MessageTarget, type TargetCheck } from "./message-target";

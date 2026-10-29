@@ -107,7 +107,23 @@ export async function checkTaskTarget(
   installation: WorkerInstallation,
   taskId: string
 ): Promise<TargetCheck> {
-  const notFound = refuse(`no_task_session: no task "${taskId}" of yours has a session to message. A task that hasn't started has none.`);
+  const found = await taskSessionOf(ctx, taskId);
+  if (found === undefined) {
+    return refuse(`no_task_session: no task "${taskId}" of yours has a session to message. A task that hasn't started has none.`);
+  }
+  return checkTargetSession(ctx, installation, found.sessionId, { task: taskId, ledger: found.ledger });
+}
+
+/**
+ * The session the task `taskId` runs in, as its run named it, with the ledger
+ * that holds the row: `undefined` for no row, no run link (not started, or a
+ * plan step), and an id held in more than one of the user's conversations.
+ * The lookup only: what may be done there is the caller's check.
+ */
+export async function taskSessionOf(
+  ctx: BlockContext,
+  taskId: string
+): Promise<{ readonly sessionId: string; readonly ledger: TaskCollectionRef } | undefined> {
   // Only partitions that hold the row count: a marker is written before its
   // row, so a failed add leaves one behind.
   const held: TaskCollectionRef[] = [];
@@ -115,9 +131,8 @@ export async function checkTaskTarget(
     const ledger = await conversationLedgerAt(ctx, partition);
     if (ledger?.get(taskId) !== undefined) held.push(ledger);
   }
-  if (held.length !== 1) return notFound;
+  if (held.length !== 1) return undefined;
   const ledger = held[0]!;
   const sessionId = ledger.get(taskId)?.run?.sessionId;
-  if (sessionId == null) return notFound;
-  return checkTargetSession(ctx, installation, sessionId, { task: taskId, ledger });
+  return sessionId == null ? undefined : { sessionId, ledger };
 }
