@@ -54,7 +54,12 @@ const consultModel = () =>
 function workers(consults: boolean): WorkerManifest[] {
   return [
     ...boardWorkers(consults ? { otto: { capabilities: { consultSessions: ["consult"] } } } : {}),
-    { id: "wren", declared: { description: "Plans events." }, body: "You plan events.", skills: [] }
+    {
+      id: "wren",
+      declared: { description: "Plans events.", ...(consults ? { capabilities: { consultSessions: ["consult"] } } : {}) },
+      body: "You plan events.",
+      skills: []
+    }
   ];
 }
 
@@ -174,6 +179,27 @@ describe("a worker consults another of its user's conversations", () => {
       await h.settled();
       expect((await consultOutputs(h, otto))[0]).toMatchObject({ ok: false, error: expect.stringMatching(/^no_conversation:/) });
       expect(await h.client("alice").findWorkerSession({ worker: "wren" })).toBeUndefined();
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  // A worker's task or delegate session carries its worker id but is not its
+  // conversation with the user, so naming itself there reads that conversation.
+  it("reads a worker's own conversation with the user from another of its sessions, and refuses only the running one", async () => {
+    const h = boot({
+      script: [
+        ...consultOnce("What venue did I give you?", { of: "wren", question: "What venue did the user give?" }),
+        ...consultOnce("For the record", { of: "wren", question: "venue?" })
+      ]
+    });
+    try {
+      const wren = await tellWren(h);
+      const other = await agentSession(h, "alice", "wren");
+      await h.post("alice", other, "respond", { message: "What venue did I give you?" }, "agent");
+      await h.settled();
+      expect(await consultOutputs(h, other)).toEqual([expect.objectContaining({ reading: "The user told wren the venue is Hall K-41.", of: "wren" })]);
+      expect((await consultOutputs(h, wren))[0]).toMatchObject({ ok: false, error: expect.stringMatching(/^self:/) });
     } finally {
       await h.dispose();
     }
