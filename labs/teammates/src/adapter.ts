@@ -352,7 +352,7 @@ export function answeringOf(items: readonly Item[], inProgress: readonly string[
 }
 
 /** A session's items as a popup's steps: what it was given, what it wrote, and the tools it ran. */
-export function toSteps(items: readonly Item[]): SessionStep[] {
+function toSteps(items: readonly Item[]): SessionStep[] {
   const steps: SessionStep[] = [];
   for (const item of items) {
     if (item.type === "message" && textOf(item).trim() !== "") {
@@ -370,7 +370,7 @@ export function toSteps(items: readonly Item[]): SessionStep[] {
 }
 
 /** The turn of a conversation that read message `messageId`, as steps: the message, then all that turn did. */
-export function exchangeOf(items: readonly Item[], messageId: string): SessionStep[] {
+function exchangeOf(items: readonly Item[], messageId: string): SessionStep[] {
   const read = items.find((i) => i.type === "component" && i.component === RECEIVED_MESSAGE_COMPONENT && i.data?.id === messageId);
   return read === undefined ? [] : toSteps(items.filter((i) => i.requestId === read.requestId));
 }
