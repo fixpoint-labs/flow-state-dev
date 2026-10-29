@@ -23,6 +23,7 @@
 import { createClient, type Client, type SessionSummary } from "@flow-state-dev/client";
 import { readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import { createInboxClient, inboxItems, type InboxAnswer, type InboxQuestion, type InboxRow, type TaskQuestion } from "@flow-state-dev/orchestration/inbox";
+import type { TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 import {
   createWorkforceClient,
   parseProjectRef,
@@ -119,6 +120,8 @@ export interface TaskRow {
   steps?: { done: number; total: number };
   /** When the task last changed, in ms. */
   updatedAt?: number;
+  /** What its runs spent, as the board's `listTasks` reads it (`taskSpendView`): model, harness, tokens; none before it runs. */
+  spend?: TaskSpendView;
 }
 
 /** The read-only work of one task. */
@@ -420,6 +423,7 @@ function createWiredLab(fsd: Client): LabAdapter {
       ...(typeof task.updatedAt === "number" ? { updatedAt: task.updatedAt } : {}),
       ...(task.run?.sessionId === undefined ? {} : { runSessionId: task.run.sessionId, run: task.run }),
       ...(Array.isArray(task.questions) ? { questions: task.questions } : {}),
+      ...(task.spend == null ? {} : { spend: task.spend }),
     }));
   };
 
@@ -484,7 +488,8 @@ function createWiredLab(fsd: Client): LabAdapter {
       listed.map(async (task): Promise<TaskRow> => {
         const { runSessionId: _session, run: _run, questions: _questions, ...row } = task;
         const hold = holds.get(row.id)?.[0];
-        const harness = await harnessOf(task);
+        // The harness its run reported; until one reports, the assignee's `harness` setting.
+        const harness = task.spend?.harness ?? (await harnessOf(task));
         const review = harness !== undefined && row.status === "completed" ? await reviewOf(sessionId, task) : undefined;
         return {
           ...row,

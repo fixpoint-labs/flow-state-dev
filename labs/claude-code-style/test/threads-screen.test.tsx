@@ -133,6 +133,8 @@ describe("the threads-mode screen", () => {
     expect(within(coder).getByText("Claude Code")).toBeTruthy();
     await waitFor(() => expect(coder.dataset.column).toBe("review"));
     expect(coder.textContent).toMatch(/Ready for review · Judge: pass · 1 commit/);
+    // The model and tokens its Claude Code run reported, read off the board's row.
+    expect(within(coder).getByText("claude-sonnet-4-5 · 13.6k tokens")).toBeTruthy();
     expect(rowsIn("Ready for review").join()).toMatch(/Claude Code/);
     fireEvent.click(within(coder).getByRole("button", { name: "Resolve" }));
     await waitFor(() => expect(coder.dataset.column).toBe("resolved"));

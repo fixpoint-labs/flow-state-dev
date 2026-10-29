@@ -5,6 +5,7 @@ import { useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Entry } from "./Entry";
 import { Sheet } from "./Sheet";
+import { Spend } from "./Spend";
 import { TaskCard, TaskDoneRow } from "./TaskCard";
 
 /** The endings a task stays in: these rows move to the pane's *Done* group. */
@@ -90,7 +91,12 @@ function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter;
           </span>
         </span>
       }
-      subtitle={task.goal}
+      subtitle={
+        <>
+          {task.goal}
+          <Spend task={task} split />
+        </>
+      }
       onClose={onClose}
       footer={READ_ONLY_NOTE}
     >

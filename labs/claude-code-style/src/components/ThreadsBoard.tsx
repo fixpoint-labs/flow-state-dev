@@ -3,6 +3,7 @@ import type { LabAdapter, TaskRow } from "../adapter";
 import { COLUMNS, columnOf, type Column } from "../lib/columns";
 import { age, useNow, useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
+import { Spend } from "./Spend";
 import { HarnessTag, statusLine, ThreadIcon } from "./ThreadStatus";
 import { ThreadView } from "./ThreadView";
 
@@ -94,6 +95,7 @@ export function ThreadsBoard({
                               {task.steps ? `${task.steps.done}/${task.steps.total} · ` : ""}
                               {rowNote(task)}
                             </span>
+                            <Spend task={task} />
                           </span>
                           {task.updatedAt !== undefined ? (
                             <span className="shrink-0 font-mono text-[10px] text-muted-foreground">{age(task.updatedAt, now)}</span>

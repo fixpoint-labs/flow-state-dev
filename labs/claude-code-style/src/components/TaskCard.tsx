@@ -1,6 +1,7 @@
 import type { TaskRow } from "../adapter";
 import { TASK_STATUS } from "../lib/task-status";
 import { cn } from "../lib/utils";
+import { Spend } from "./Spend";
 
 /*
  * A background task as a list shows it: a full card while it runs or waits,
@@ -29,12 +30,13 @@ export function TaskCard({ task, selected, onOpen }: { task: TaskRow; selected: 
           {task.statusNote ? ` · "${task.statusNote}"` : ""}
         </span>
         {task.assignee ? <span className="block text-xs text-muted-foreground">{task.assignee}</span> : null}
+        <Spend task={task} />
       </span>
     </button>
   );
 }
 
-/** A finished task, on one line: its mark, title and worker. */
+/** A finished task, on one line: its mark, title, worker and what it spent. */
 export function TaskDoneRow({ task, selected, onOpen }: { task: TaskRow; selected: boolean; onOpen: () => void }) {
   const status = TASK_STATUS[task.status];
   return (
@@ -51,6 +53,7 @@ export function TaskDoneRow({ task, selected, onOpen }: { task: TaskRow; selecte
         {task.title}
       </span>
       {task.assignee ? <span className="shrink-0 text-muted-foreground">{task.assignee}</span> : null}
+      <Spend task={task} className="shrink-0" />
     </button>
   );
 }
