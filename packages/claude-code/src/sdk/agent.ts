@@ -1247,6 +1247,16 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
                 }
               }
 
+              // **Activity reads the whole message, in either streaming mode.**
+              // With partial messages on, the translator hands text on only as
+              // deltas, which aren't activity, so a completed message is read
+              // here; tool calls come from the translated events below.
+              if (onActivity !== undefined && message.type === "assistant") {
+                for (const block of message.message?.content ?? []) {
+                  if (block.type === "text") reportHarnessActivity(onActivity, { kind: "message", text: block.text }, ctx);
+                }
+              }
+
               const events = translateSdkMessage(message, translateState);
               // DELIVERY IS STRUCTURAL, like shutdown. Translation consumed this
               // whole message and cleared its correlation maps for every call in
@@ -1265,7 +1275,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
               for (const event of events) recorder?.observe(event);
               for (const event of events) {
                 if (ctx.signal.aborted) return;
-                reportHarnessActivity(onActivity, event, ctx);
+                if (event.kind === "tool_call") reportHarnessActivity(onActivity, event, ctx);
                 inFlightRef.current = emitTranslatedEvent(event, ctx, emitState, name);
                 try {
                   await inFlightRef.current;
