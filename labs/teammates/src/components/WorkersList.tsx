@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { LabAdapter, NewTeammate, WorkerRow } from "../adapter";
+import type { Popup } from "./Popups";
 import { waitingOn } from "../lib/talk";
 import { useSeen } from "../lib/unread";
 import { age, useNow, useWatch } from "../lib/use-watch";
@@ -13,19 +14,19 @@ const unreadable = (entries: { kind: string }[]) => entries.filter((e) => e.kind
  * The left pane: one row per teammate, never a list of sessions. Each row is
  * the teammate's name, what it is doing, a dot while it answers, and how many
  * new entries its conversation has since you last looked. Under them, the
- * coding tasks the teammates started, as background items that open to their
- * runs. At the foot, hire a teammate of your own.
+ * coding tasks the teammates started, as background items that open their
+ * runs in a popup. At the foot, hire a teammate of your own.
  */
 export function WorkersList({
   adapter,
   workers,
   sessions,
   selected,
-  openRun,
+  openTask,
   nameOf,
   isCoding,
   onSelect,
-  onOpenRun,
+  onOpen,
   onHire,
 }: {
   adapter: LabAdapter;
@@ -33,12 +34,12 @@ export function WorkersList({
   workers: WorkerRow[];
   sessions: Record<string, string>;
   selected: string | undefined;
-  /** The coding task the center shows, when one is chosen. */
-  openRun: string | undefined;
+  /** The task open in the popup, if one is. */
+  openTask: string | undefined;
   nameOf: (id: string) => string;
   isCoding: (id: string) => boolean;
   onSelect: (worker: string) => void;
-  onOpenRun: (task: string) => void;
+  onOpen: (popup: Popup) => void;
   onHire: (teammate: NewTeammate) => Promise<void>;
 }) {
   const [seen, markSeen] = useSeen();
@@ -68,7 +69,7 @@ export function WorkersList({
           {workers
             .filter((w) => sessions[w.id])
             .map((w) => (
-              <BackgroundItems key={w.id} adapter={adapter} sessionId={sessions[w.id]} isCoding={isCoding} openRun={openRun} onOpen={onOpenRun} />
+              <BackgroundItems key={w.id} adapter={adapter} sessionId={sessions[w.id]} isCoding={isCoding} openTask={openTask} onOpen={onOpen} />
             ))}
         </ul>
       </div>
@@ -166,25 +167,25 @@ function BackgroundItems({
   adapter,
   sessionId,
   isCoding,
-  openRun,
+  openTask,
   onOpen,
 }: {
   adapter: LabAdapter;
   sessionId: string;
   isCoding: (id: string) => boolean;
-  openRun: string | undefined;
-  onOpen: (task: string) => void;
+  openTask: string | undefined;
+  onOpen: (popup: Popup) => void;
 }) {
   const tasks = (useWatch(adapter.watchTasks, sessionId) ?? []).filter((t) => isCoding(t.to));
   return tasks.map((t) => (
     <li key={t.id}>
       <button
         type="button"
-        aria-current={t.id === openRun ? "true" : undefined}
+        aria-current={t.id === openTask ? "true" : undefined}
         aria-label={`Coding task: ${t.title}`}
         data-background={t.status}
-        onClick={() => onOpen(t.id)}
-        className={cn("flex w-full flex-col border-l-2 border-transparent px-4 py-1.5 text-left hover:bg-accent", t.id === openRun && "border-primary bg-accent")}
+        onClick={() => onOpen({ kind: "task", sessionId, taskId: t.id })}
+        className={cn("flex w-full flex-col border-l-2 border-transparent px-4 py-1.5 text-left hover:bg-accent", t.id === openTask && "border-primary bg-accent")}
       >
         <span className="block truncate font-mono text-xs">⚙ {t.title}</span>
         <span className="block truncate text-xs text-muted-foreground" data-status>

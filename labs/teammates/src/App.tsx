@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { LabAdapter, NewTeammate, WorkerRow } from "./adapter";
 import { Conversation } from "./components/Conversation";
-import { Runs } from "./components/Runs";
+import { PopupView, type Popup } from "./components/Popups";
 import { TalkPanel } from "./components/TalkPanel";
 import { WorkersList } from "./components/WorkersList";
 
@@ -9,9 +9,9 @@ import { WorkersList } from "./components/WorkersList";
  * The screen: the teammates on the left, the chosen teammate's one
  * conversation in the center, and its talk with the other teammates on the
  * right. Coding is a background task, not a teammate: the worker coding tasks
- * run on is off the list, and each coding task is a background item under it
- * that opens the center to the runs, read only. The app opens on the first
- * teammate.
+ * run on is off the list, and each coding task is a background item under it.
+ * A task or a message between workers, and a coding task, opens in a popup
+ * over the thread, read only and live. The app opens on the first teammate.
  *
  * The roster is read again after a hire or a fire made here.
  */
@@ -19,8 +19,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   const [workers, setWorkers] = useState<WorkerRow[]>([]);
   const [sessions, setSessions] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<string>();
-  // A background item chosen on the left: the coding task whose run the center opens to.
-  const [openRun, setOpenRun] = useState<string>();
+  // A task or a message, open in a popup over the thread.
+  const [popup, setPopup] = useState<Popup>();
   const [talkOpen, setTalkOpen] = useState(true);
 
   const loadRoster = useCallback(async () => {
@@ -45,7 +45,6 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   const hire = async (teammate: NewTeammate) => {
     const hired = await adapter.hire(teammate);
     await loadRoster();
-    setOpenRun(undefined);
     setSelected(hired.id);
   };
   const fire = async (worker: string) => {
@@ -58,13 +57,10 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   const nameOf = useCallback((id: string) => workers.find((w) => w.id === id)?.name ?? id, [workers]);
   const isCoding = useCallback((id: string) => workers.some((w) => w.id === id && w.takesTasks), [workers]);
   const teammates = workers.filter((w) => !w.takesTasks);
-  const worker = openRun === undefined ? teammates.find((w) => w.id === selected) : undefined;
-  // A run has no Talk panel, so it gets no Talk column either.
+  const worker = teammates.find((w) => w.id === selected);
+  // No worker chosen, no Talk column held for one.
   const talkShown = talkOpen && worker !== undefined;
-  const choose = (id: string) => {
-    setOpenRun(undefined);
-    setSelected(id);
-  };
+  const closePopup = useCallback(() => setPopup(undefined), []);
   const sessionId = selected ? sessions[selected] : undefined;
   return (
     <div
@@ -76,16 +72,14 @@ export function App({ adapter }: { adapter: LabAdapter }) {
         workers={teammates}
         sessions={sessions}
         selected={worker?.id}
-        openRun={openRun}
+        openTask={popup?.kind === "task" ? popup.taskId : undefined}
         nameOf={nameOf}
         isCoding={isCoding}
-        onSelect={choose}
-        onOpenRun={setOpenRun}
+        onSelect={setSelected}
+        onOpen={setPopup}
         onHire={hire}
       />
-      {openRun !== undefined ? (
-        <Runs key={openRun} adapter={adapter} workers={teammates} sessions={sessions} nameOf={nameOf} isCoding={isCoding} openRun={openRun} />
-      ) : worker && sessionId ? (
+      {worker && sessionId ? (
         <Conversation
           // One conversation per session: a draft typed to one worker never carries over to another.
           key={sessionId}
@@ -95,6 +89,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
           nameOf={nameOf}
           isCoding={isCoding}
           onFire={() => fire(worker.id)}
+          onOpen={setPopup}
           talkOpen={talkOpen}
           onToggleTalk={() => setTalkOpen((open) => !open)}
         />
@@ -102,6 +97,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
         <main aria-label="Conversation" />
       )}
       {talkShown ? <TalkPanel adapter={adapter} worker={worker} nameOf={nameOf} onClose={() => setTalkOpen(false)} /> : null}
+      {popup ? <PopupView adapter={adapter} popup={popup} nameOf={nameOf} isCoding={isCoding} onClose={closePopup} /> : null}
     </div>
   );
 }

@@ -1,56 +1,42 @@
-import { memo, useState } from "react";
-import type { LabAdapter, BoardTask } from "../adapter";
-import { useWatch } from "../lib/use-watch";
+import { memo } from "react";
+import type { BoardTask } from "../adapter";
+import { cn } from "../lib/utils";
+import { taskLine } from "./Popups";
 
 /**
- * A task a conversation filed: one line with what it is and how it stands,
- * opening to the run, read only. A coding task reads as a background task,
- * never as a task for a teammate. Memoized, like a conversation's entries.
+ * A task a conversation filed, as one line in the thread: what was asked of
+ * whom, or a coding task, and how it stands. It opens the task's run in a
+ * popup, read only. Memoized, like a conversation's entries.
  */
 export const TaskCard = memo(function TaskCard({
-  adapter,
   task,
   nameOf,
   coding = false,
-  defaultOpen = false,
+  onOpen,
 }: {
-  adapter: LabAdapter;
   task: BoardTask;
   nameOf: (id: string) => string;
   /** It is a coding task: a background task, not a teammate's. */
   coding?: boolean;
-  defaultOpen?: boolean;
+  onOpen: (taskId: string) => void;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
-  const steps = useWatch(adapter.watchRun, open ? task.runSessionId : undefined) ?? [];
-  const to = nameOf(task.to);
-  const label = coding ? `Coding task: ${task.title}` : `Task for ${to}: ${task.title}`;
+  const line = taskLine(task, coding, nameOf);
   return (
-    <div data-entry="task" data-status={task.status} className="max-w-[85%] rounded-md border border-dashed border-success/60">
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-label={label}
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-start gap-2 px-3 py-1.5 text-left font-mono text-xs text-success hover:bg-success/5"
-      >
-        <span className="shrink-0">⚙ {coding ? "coding task" : `task for ${to}`} ·</span>
-        <span className="min-w-0 flex-1 truncate text-foreground">{task.title}</span>
-        <span className="shrink-0 text-muted-foreground" data-task-status>
-          {task.status}
-        </span>
-        <span aria-hidden className="shrink-0 text-muted-foreground">
-          {open ? "▾" : "▸"}
-        </span>
-      </button>
-      {open ? (
-        <ol aria-label={`Run of ${task.title}`} className="border-t border-dashed border-border px-3 py-2 font-mono text-xs text-muted-foreground">
-          {steps.map((s) => (
-            <li key={s.id}>· {s.text}</li>
-          ))}
-          {task.result ? <li className="text-foreground">{task.result}</li> : null}
-        </ol>
-      ) : null}
-    </div>
+    <button
+      type="button"
+      data-entry="task"
+      data-status={task.status}
+      aria-label={line}
+      onClick={() => onOpen(task.id)}
+      className="flex w-full max-w-[85%] items-center gap-2 rounded-md border border-border bg-card/60 px-3 py-1.5 text-left text-sm hover:bg-accent"
+    >
+      <span aria-hidden className="shrink-0 text-muted-foreground">
+        {coding ? "⚙" : "↗"}
+      </span>
+      <span className="min-w-0 flex-1 truncate">{line}</span>
+      <span className={cn("shrink-0 text-xs", task.status === "failed" ? "text-destructive" : "text-muted-foreground")} data-task-status>
+        {task.status}
+      </span>
+    </button>
   );
 });

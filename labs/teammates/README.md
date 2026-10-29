@@ -12,17 +12,21 @@ theme on purpose, so it reads as the app it copies.
 - **Left:** the teammates, Chief of Staff, researcher and writer. Each row is a teammate with an
   ongoing role, never a list of sessions. A row shows what the teammate is doing and how many new
   entries its conversation has since you last looked. Under them, *Background* lists the coding
-  tasks they started; each opens the center to its run, read only.
+  tasks they started; each opens its run in a popup, read only.
 - **Center:** the chosen worker's one conversation. It goes on for weeks. A divider marks where the
   turns the worker reads word for word begin; it reads *summarized* only when the earlier turns were
   summarized for the worker. New content settles in place: the list follows an answer as it is
   written only while you are at the end, and offers *Jump to latest* when you have scrolled up; a
-  task card is drawn the moment it is filed and fills in where it is.
+  task's line is drawn the moment it is filed and fills in where it is.
+- **Popup:** a message line or a task line in the conversation opens that piece of work in a popup
+  over it: the other worker's session, read only and live. It closes with Esc, its close button, or
+  a click outside it, and the conversation under it keeps its place.
 - **Right:** Talk, the worker's exchanges with the other workers, grouped by worker, from the
   message log. It closes.
 
-Workers message each other where you can see it. When Chief of Staff messages researcher, a one-line
-card shows in Chief of Staff's conversation and the message lands in researcher's. The reply lands
+Workers message each other where you can see it. When Chief of Staff messages researcher, a line,
+*Messaged researcher*, shows in Chief of Staff's conversation and the message lands in researcher's.
+The line opens researcher's turn on it in a popup: what it read, what it did, and the reply it sent. The reply lands
 in Chief of Staff's conversation under researcher's name. A message never interrupts the turn you
 are in: while Chief of Staff is answering you, researcher's reply shows as a pending line, and Chief
 of Staff reads it right after.
@@ -36,8 +40,8 @@ Every result lands back in Chief of Staff's conversation.
 A code change is a coding task, not a teammate's job. Coding runs in the background, the way a
 coding agent's job does: you watch it, you don't talk to it. Ask Chief of Staff for a code change
 and Chief of Staff starts a coding task, which runs through Claude Code, or Codex, in the working
-folder. A card in Chief of Staff's conversation and an item under *Background* show the task and
-open to its run, and the result lands in Chief of Staff's conversation as the coding task's. To
+folder. A line in Chief of Staff's conversation and an item under *Background* show the task and
+open its run in a popup, and the result lands in Chief of Staff's conversation as the coding task's. To
 change a coding task, tell Chief of Staff, who starts the next one.
 
 There is one working folder, a git checkout you name when you start the lab, and every job that
@@ -114,7 +118,8 @@ names the package call it makes.
 | The worker list, sending, the conversation, busy status | the workforce client's `roster()` and `ensureWorkerSession`, the flow's `respond`, session items, `listSessionRequests` |
 | Workers messaging each other, the Talk panel | `sendMessage`, the received-message item (`workforce:received`), and the message log |
 | Hiring, changing and firing your own teammates | the workforce client's `hire`, `edit` and `fire`, on the roster flow |
-| Task cards | the conversation board's rows |
+| Task lines | the conversation board's rows |
+| A message's popup | the recipient's session items: the turn whose received-message item carries the message's id |
 | The working folder | `localWorkspaceHost` with a constant run source, `{ kind: "repo", repo }`, and the folder in `localRepositories`; `projectSourceTools` read it |
 | Coding tasks and their runs | the conversation board's rows assigned to the worker on the coding flow, which the list leaves out; the row's `run` link, read as the run session's items |
 | The divider and its *summarized* label | the last request's `historyStart`, and the session's `historySummary` resource |
@@ -142,8 +147,8 @@ and on a flow over 200 lines; `--wired` also fails on any fixture.
 <!-- inventory:start -->
 | Kind | Files | Lines |
 |---|---:|---:|
-| Configuration | 16 | 652 |
-| React UI | 24 | 2189 |
+| Configuration | 16 | 662 |
+| React UI | 25 | 2417 |
 | Small flows | 1 | 151 |
-| Checks (not app code) | 10 | 1222 |
+| Checks (not app code) | 10 | 1349 |
 <!-- inventory:end -->

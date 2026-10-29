@@ -1,4 +1,4 @@
-import { Fragment, useRef, useState } from "react";
+import { Fragment, useCallback, useRef, useState } from "react";
 import type { BoardTask, ConversationEntry, LabAdapter, WorkerRow } from "../adapter";
 import { useStickToBottom } from "../lib/stick-to-bottom";
 import { pendingFor } from "../lib/talk";
@@ -6,6 +6,7 @@ import { useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Composer } from "./Composer";
 import { Entry } from "./Entry";
+import { repliedIn, type Popup } from "./Popups";
 import { TaskCard } from "./TaskCard";
 import { InstructionsForm } from "./TeammateForms";
 
@@ -43,6 +44,7 @@ export function Conversation({
   nameOf,
   isCoding,
   onFire,
+  onOpen,
   talkOpen,
   onToggleTalk,
 }: {
@@ -53,6 +55,8 @@ export function Conversation({
   /** The worker is the one coding tasks run on, not a teammate. */
   isCoding: (id: string) => boolean;
   onFire: () => Promise<void>;
+  /** Open a popup over the thread: a task this conversation filed, or a message it sent. */
+  onOpen: (popup: Popup) => void;
   talkOpen: boolean;
   onToggleTalk: () => void;
 }) {
@@ -77,10 +81,17 @@ export function Conversation({
     `${sessionId}:${entries.length}:${last && "text" in last ? last.text.length : 0}:${pending.length}:${answering}`,
   );
 
-  // A card is drawn from the filing until the board's row arrives, then from the row, in the same place.
+  // Stable, so a memoized line doesn't redraw for a new function.
+  const openTask = useCallback((taskId: string) => onOpen({ kind: "task", sessionId, taskId }), [onOpen, sessionId]);
+  const openMessage = useCallback(
+    (sent: Extract<ConversationEntry, { kind: "sent" }>) => onOpen({ kind: "message", from: worker.id, to: sent.to, messageId: sent.messageId, text: sent.text }),
+    [onOpen, worker.id],
+  );
+
+  // A line is drawn from the filing until the board's row arrives, then from the row, in the same place.
   const taskTile = (entry: TaskEntry) => {
     const task = tasks.find((t) => t.id === entry.taskId) ?? placeholderOf(entry);
-    return <TaskCard adapter={adapter} task={task} nameOf={nameOf} coding={isCoding(task.to)} />;
+    return <TaskCard task={task} nameOf={nameOf} coding={isCoding(task.to)} onOpen={openTask} />;
   };
 
   const markAt = mark ? entries.findIndex((e) => e.id === mark.firstVerbatimEntryId) : -1;
@@ -150,6 +161,9 @@ export function Conversation({
                     workerName={worker.name}
                     nameOf={nameOf}
                     isCoding={isCoding}
+                    replied={entry.kind === "sent" && repliedIn(talk, entry.messageId)}
+                    onOpenMessage={openMessage}
+                    onOpenTask={openTask}
                     {...(entry.kind === "approval" ? { onAnswer: (approve: boolean) => adapter.answerApproval(sessionId, entry, approve) } : {})}
                   />
                 )}
