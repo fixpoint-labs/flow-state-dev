@@ -254,8 +254,9 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   result?: RequestActionResult;
   /**
    * What the request's model calls spent before it last suspended, by model
-   * (FIX-2145). Written by the engine when the request suspends or its client
-   * goes away; a resume or continuation starts its spend ledger from it, so
+   * (FIX-2145). Written by the engine when the request suspends, or when its
+   * client went away and that run's ending has handed the spend on; a resume or
+   * continuation starts its spend ledger from it, so
    * `ctx.request.tokenUsage` and the action's token budget count the whole
    * request, while a request-end hook is still handed only what each run spent.
    */
@@ -267,15 +268,6 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * no settlement counted any, so every trace in the log counts.
    */
   spentThroughItemIndex?: number;
-  /**
-   * `true` while the run that settled this record as `interrupted` may still be
-   * running its observers: that run hands on what they spend itself, so a
-   * continuation counts the log's spend past
-   * {@link RequestRecord.spentThroughItemIndex} toward its budget but never
-   * hands it on again. A continuation sets it back to `false` when it takes the
-   * record. Absent on older records: read as `false`.
-   */
-  spendHandedOnByRun?: boolean;
 };
 
 /**

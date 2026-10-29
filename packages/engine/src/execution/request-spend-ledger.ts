@@ -165,6 +165,43 @@ export function loggedSpendOf(items: readonly RuntimeItem[], afterItemIndex: num
   return byModel;
 }
 
+/**
+ * Per request store, the requests whose interrupted run is still ending in
+ * this process, by how many such runs are. While one is, that run hands on
+ * what the request spent through its ending, so a continuation counts that
+ * spend toward its budget but must not hand it on again. A run in another
+ * process, live or dead, is never in here: its continuation hands the spend on,
+ * since a dead run never will.
+ */
+const endingInterruptedRuns = new WeakMap<object, Map<string, number>>();
+
+/**
+ * Mark `requestId`'s interrupted run as ending in this process, before its
+ * record says `interrupted`, so no continuation reads that record unmarked
+ * while the run can still hand its spend on.
+ *
+ * @returns The release, to call once the ending has handed the spend on and
+ *   recorded it.
+ */
+export function holdInterruptedEnding(requestStore: object, requestId: string): () => void {
+  let runs = endingInterruptedRuns.get(requestStore);
+  if (runs === undefined) endingInterruptedRuns.set(requestStore, (runs = new Map()));
+  runs.set(requestId, (runs.get(requestId) ?? 0) + 1);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const left = (runs.get(requestId) ?? 1) - 1;
+    if (left > 0) runs.set(requestId, left);
+    else runs.delete(requestId);
+  };
+}
+
+/** Whether an interrupted run of `requestId` is still ending in this process. */
+export function isInterruptedEndingHeld(requestStore: object, requestId: string): boolean {
+  return endingInterruptedRuns.get(requestStore)?.has(requestId) === true;
+}
+
 /** `a` and `b` added up by model, as a new map; neither is changed. */
 export function sumSpend(
   a: Readonly<Record<string, ModelUsageEntry>>,
