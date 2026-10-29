@@ -3,13 +3,14 @@
  * streamed chunk; handing React the same object for an entry that didn't
  * change lets a memoized row skip its render, so only the growing one draws.
  */
+import { looseDeepEqual } from "@flow-state-dev/core/helpers";
 
 /** `next`, with each value equal to the one `prev` had at its id swapped for that old object. */
 export function reuseById<T extends { id: string }>(prev: readonly T[], next: readonly T[]): T[] {
   const old = new Map(prev.map((value) => [value.id, value]));
   return next.map((value) => {
     const had = old.get(value.id);
-    return had !== undefined && JSON.stringify(had) === JSON.stringify(value) ? had : value;
+    return had !== undefined && looseDeepEqual(had, value) ? had : value;
   });
 }
 

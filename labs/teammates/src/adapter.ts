@@ -95,7 +95,6 @@ export type ConversationEntry =
   | { kind: "sent"; id: string; messageId: string; to: string; text: string }
   /** A message another worker sent, as the `receive` turn that read it. */
   | { kind: "received"; id: string; messageId: string; from: string; text: string; inReplyTo?: string }
-  /** The worker filed a task; the card reads the board's row by its id. */
   /** The worker filed a task; the card reads the board's row by its id, and draws `title` until the row arrives. */
   | { kind: "task"; id: string; taskId: string; title: string; to: string }
   /** A task it filed ended, as a line under the name of the worker that ran it. */

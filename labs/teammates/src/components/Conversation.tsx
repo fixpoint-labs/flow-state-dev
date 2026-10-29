@@ -1,5 +1,5 @@
 import { Fragment, useRef, useState } from "react";
-import type { LabAdapter, WorkerRow } from "../adapter";
+import type { BoardTask, ConversationEntry, LabAdapter, WorkerRow } from "../adapter";
 import { useStickToBottom } from "../lib/stick-to-bottom";
 import { pendingFor } from "../lib/talk";
 import { useWatch } from "../lib/use-watch";
@@ -11,6 +11,18 @@ import { InstructionsForm } from "./TeammateForms";
 
 /** A small button in the conversation's header. */
 const HEADER_BUTTON = "rounded-sm border border-border px-2 py-0.5 font-mono text-[10px] tracking-widest uppercase hover:bg-accent";
+
+type TaskEntry = Extract<ConversationEntry, { kind: "task" }>;
+const placeholders = new WeakMap<TaskEntry, BoardTask>();
+/** The card a filed task shows until its board row arrives: one object per (reused) entry, so the memoized card skips re-renders. */
+function placeholderOf(entry: TaskEntry): BoardTask {
+  let task = placeholders.get(entry);
+  if (task === undefined) {
+    task = { id: entry.taskId, to: entry.to, title: entry.title, status: "running" };
+    placeholders.set(entry, task);
+  }
+  return task;
+}
 
 /**
  * The center: the worker's one conversation. A divider marks where the turns
@@ -66,8 +78,8 @@ export function Conversation({
   );
 
   // A card is drawn from the filing until the board's row arrives, then from the row, in the same place.
-  const taskTile = (entry: Extract<(typeof entries)[number], { kind: "task" }>) => {
-    const task = tasks.find((t) => t.id === entry.taskId) ?? { id: entry.taskId, to: entry.to, title: entry.title, status: "running" as const };
+  const taskTile = (entry: TaskEntry) => {
+    const task = tasks.find((t) => t.id === entry.taskId) ?? placeholderOf(entry);
     return <TaskCard adapter={adapter} task={task} nameOf={nameOf} coding={isCoding(task.to)} />;
   };
 
