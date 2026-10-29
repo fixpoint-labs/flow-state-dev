@@ -17,7 +17,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { GeneratorModel, GeneratorModelCallOptions } from "@flow-state-dev/core/types";
-import { inMemoryStores, type StoreAdapter, type StoreRegistry } from "@flow-state-dev/engine";
+import { disposeFlowApiRouter, inMemoryStores, type StoreAdapter, type StoreRegistry } from "@flow-state-dev/engine";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { boardWorkers, bootBoardHost, ORG, type BoardHost, type BoardHostOptions } from "./conversation-board-harness";
@@ -547,7 +547,16 @@ async function callThenDie(dies: (method: string, args: unknown[]) => boolean, o
   // The dead host is never disposed: its every store call hangs, as a dead process's would.
 
   const next = bootBoardHost({ ...common, judgment: leadAnswers(), stores: shared as never });
-  open = next;
+  // The dead host's request still owes its request-end hooks, and that debt is
+  // kept per process, which both hosts share here: the next host's shutdown
+  // would wait its whole drain budget for a run that never ends.
+  open = {
+    ...next,
+    dispose: async () => {
+      await disposeFlowApiRouter(await next.state.getRouter(), { drainMs: 100 });
+      await next.dispose();
+    }
+  };
   await next.state.getRouter();
   expect(await until(async () => (await (await shared.resolve()).request.get(asked))?.status === "completed", 30_000)).toBe(true);
   await next.settled(20_000);
