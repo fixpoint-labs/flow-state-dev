@@ -191,7 +191,7 @@ async function payPlace(ctx: BlockContext, installation: WorkerInstallation, giv
   const budgetRefusal = (hop: number): Place => ({
     ok: false,
     error:
-      `budget: this would be message ${hop} since the user's last line, and the budget is ${limits.hopLimit}. ` +
+      `budget: this would be message ${hop} since the user's last line, and the budget is ${limits.budget}. ` +
       "Nothing was sent. Stop passing messages on, and say that you stopped; the next line from the user lets the workers go on."
   });
   /** The place a send takes in a chain that already holds `sent`. */
@@ -211,7 +211,7 @@ async function payPlace(ctx: BlockContext, installation: WorkerInstallation, giv
   const id = given ?? newMessageId();
   const chainRow = await chains.getOrCreate(chain, { sent: [] });
   await chainRow.updateState((row) =>
-    placeAfter(row.sent.length) > limits.hopLimit ? row : { ...row, sent: [...row.sent, id] }
+    placeAfter(row.sent.length) > limits.budget ? row : { ...row, sent: [...row.sent, id] }
   );
   const place = chainRow.state.sent.indexOf(id);
   if (place < 0) {

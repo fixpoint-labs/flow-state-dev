@@ -213,12 +213,12 @@ function routedPosts(items: readonly SessionItem[]): Map<string, string[]> {
   for (const item of items) {
     const record = (item.payload as { component?: unknown; data?: unknown } | null | undefined) ?? undefined;
     if (item.type !== "component" || record?.component !== COORDINATOR_ROUTE) continue;
-    const data = record.data as { postId?: unknown; round?: unknown; by?: unknown; delegates?: unknown } | undefined;
-    if (data?.round !== 0 || data.by === "judgment" || data.by === "unplaced" || typeof data.postId !== "string") continue;
+    const data = record.data as { messageRequestId?: unknown; round?: unknown; by?: unknown; delegates?: unknown } | undefined;
+    if (data?.round !== 0 || data.by === "judgment" || data.by === "unplaced" || typeof data.messageRequestId !== "string") continue;
     const reached = (Array.isArray(data.delegates) ? data.delegates : [])
       .filter((d: { outcome?: unknown; worker?: unknown }) => d?.outcome === "delivered" && typeof d.worker === "string")
       .map((d: { worker: string }) => d.worker);
-    if (reached.length > 0) routed.set(data.postId, reached);
+    if (reached.length > 0) routed.set(data.messageRequestId, reached);
   }
   return routed;
 }

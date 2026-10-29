@@ -212,22 +212,22 @@ async function recordOf(
 }
 
 /** The `coordinator-route` records for one post. */
-async function routingOf(who: Connected, sessionId: string, postId: string | null): Promise<Array<Record<string, any>>> {
-  if (postId === null) return [];
+async function routingOf(who: Connected, sessionId: string, messageRequestId: string | null): Promise<Array<Record<string, any>>> {
+  if (messageRequestId === null) return [];
   return (await who.routes.items(sessionId, "component"))
     .filter((i) => (i as { component?: string }).component === "coordinator-route")
     .map((i) => i.data as Record<string, any>)
-    .filter((d) => d?.postId === postId);
+    .filter((d) => d?.messageRequestId === messageRequestId);
 }
 
 /**
  * What the route evaluation's trace row says of one post: the model that
  * answered (`model.actual`) and how long the call took, if the post made one.
  */
-async function routeTraceOf(who: Connected, sessionId: string, postId: string | null): Promise<{ model?: string; ms?: number }> {
-  if (postId === null) return {};
+async function routeTraceOf(who: Connected, sessionId: string, messageRequestId: string | null): Promise<{ model?: string; ms?: number }> {
+  if (messageRequestId === null) return {};
   const row = (await who.routes.items(sessionId, "block_trace")).find(
-    (i) => i.requestId === postId && (i as { blockName?: string }).blockName === "coordinator-route" && (i as { blockKind?: string }).blockKind === "evaluator",
+    (i) => i.requestId === messageRequestId && (i as { blockName?: string }).blockName === "coordinator-route" && (i as { blockKind?: string }).blockKind === "evaluator",
   ) as { model?: { actual?: string }; duration?: number } | undefined;
   return { model: row?.model?.actual, ms: row?.duration };
 }
@@ -356,7 +356,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
     let mine: Delivery[] = [];
     let opened: { at: number; holdsWord: boolean } | undefined;
     for (const until = sent + 120_000; Date.now() < until; await sleep(1_000)) {
-      mine = (await recordOf(o.store, alice, shiftCoordinator.id)).ledger.filter((d) => d.postId === turn.requestId);
+      mine = (await recordOf(o.store, alice, shiftCoordinator.id)).ledger.filter((d) => d.messageRequestId === turn.requestId);
       const toEm = mine.find((d) => d.delegate.worker === em && d.status === "delivered" && d.sessionId !== undefined);
       if (toEm !== undefined) {
         const items = await alice.routes.items(toEm.sessionId!, "message").catch(() => [] as StoredItem[]);
@@ -447,7 +447,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
       if (hire === undefined || !(after1.delegates ?? []).some((d) => d.worker === hire)) {
         r.failures.push(`c:added — the hire is not on this conversation's delegates: ${show(after1.delegates)}`);
       }
-      const firstDeliveries = after1.ledger.filter((d) => d.postId === first.requestId);
+      const firstDeliveries = after1.ledger.filter((d) => d.messageRequestId === first.requestId);
       if (hire === undefined || firstDeliveries.length !== 1 || firstDeliveries[0]!.delegate.worker !== hire || firstDeliveries[0]!.status !== "delivered") {
         r.failures.push(`c:delivered — wanted one delivery of the ask, to the hire; the ledger holds ${show(firstDeliveries)}`);
       }
@@ -465,7 +465,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
       const firstTaskId = firstDeliveries[0]?.taskId;
       const sameWorker = async () => {
         const ledger = (await recordOf(o.store, alice, shiftCoordinator.id)).ledger;
-        const all = ledger.filter((d) => d.postId === again.requestId);
+        const all = ledger.filter((d) => d.messageRequestId === again.requestId);
         const toHire = all.filter((d) => d.delegate.worker === hire);
         const first = ledger.find((d) => d.taskId === firstTaskId);
         const firstOpen = first !== undefined && !["completed", "errored", "cancelled"].includes(first.rowStatus);
@@ -648,7 +648,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
       const turn = await talk(turns, "h", alice, session, words);
       const approved = await approveAll(turn);
       const records = await routingOf(alice, session.id, turn.requestId);
-      const deliveries = (await recordOf(o.store, alice, session.id)).ledger.filter((d) => d.postId === turn.requestId);
+      const deliveries = (await recordOf(o.store, alice, session.id)).ledger.filter((d) => d.messageRequestId === turn.requestId);
       const after = await alice.routes.items(session.id, "tool_output");
       const tools = after.filter((i) => i.requestId === turn.requestId).map((i) => String(i.toolCall?.name ?? ""));
       const trace = await routeTraceOf(alice, session.id, turn.requestId);

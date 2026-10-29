@@ -241,7 +241,7 @@ describe("what an ending does: one decision", () => {
 });
 
 describe("a waited-on row's ending resumes the turn waiting on it, and wakes none (FIX-1816 S9)", () => {
-  const waitedRow = (patch: Partial<Task> = {}) => row({ wait: { gateId: "ask:tasks:t1", deadline: 9 }, ...patch } as Partial<Task>);
+  const waitedRow = (patch: Partial<Task> = {}) => row({ wait: { gateId: "wait:tasks:t1", deadline: 9 }, ...patch } as Partial<Task>);
 
   it("owes no notice for any ending: the turn waiting on it is resumed instead (FIX-2078)", () => {
     const completed = waitedRow({ output: "yes" });
@@ -250,23 +250,23 @@ describe("a waited-on row's ending resumes the turn waiting on it, and wakes non
     expect(recordEnding(cancelled, { kind: "cancelled", reason: "not needed" })).toBe(cancelled);
   });
 
-  it("marks a notice stored before FIX-2078 asked, so the receiving entry resumes rather than wakes", () => {
+  it("marks a notice stored before FIX-2078 waited on, so the receiving entry resumes rather than wakes", () => {
     const stored = waitedRow({ metadata: { "noticeOwed:1:completed": { attempt: 1, ending: "completed" } }, output: "yes" });
     expect(owedNotices(stored, "tasks")).toEqual([
-      { boardId: "tasks", taskId: "t1", attempt: 1, ending: "completed", output: "yes", asked: true }
+      { boardId: "tasks", taskId: "t1", attempt: 1, ending: "completed", output: "yes", waitedOn: true }
     ]);
   });
 
   it("resumes, under either policy, instead of waking the judgment turn or landing a line", () => {
     for (const ending of ["completed", "errored", "cancelled"] as const) {
-      const notice: TaskNotice = { boardId: "tasks", taskId: "t1", attempt: 1, ending, asked: true };
+      const notice: TaskNotice = { boardId: "tasks", taskId: "t1", attempt: 1, ending, waitedOn: true };
       expect(decideNotice(notice, "judgment")).toEqual({ act: "resume-wait" });
       expect(decideNotice(notice, "fixed")).toEqual({ act: "resume-wait" });
     }
   });
 
   it("still runs the board again for a retried attempt: the wait isn't over", () => {
-    const notice: TaskNotice = { boardId: "tasks", taskId: "t1", attempt: 1, ending: "retried", asked: true };
+    const notice: TaskNotice = { boardId: "tasks", taskId: "t1", attempt: 1, ending: "retried", waitedOn: true };
     expect(decideNotice(notice, "judgment")).toEqual({ act: "run-board" });
   });
 });

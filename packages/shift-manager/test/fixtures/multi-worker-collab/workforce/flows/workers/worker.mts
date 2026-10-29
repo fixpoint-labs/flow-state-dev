@@ -128,7 +128,7 @@ export interface WorkerFlowOptions {
 export function defineWorkerFlow(options: WorkerFlowOptions) {
   const { installation, outbox, control } = options;
   // Only for the conversation ledger's declaration: a worker here files
-  // nothing (no `delegates:`), so the flow carries none of the kit's actions.
+  // nothing (no `delegates:`), so the flow carries none of the factory's actions.
   const { resources: ledgerResources } = defineSessionBoard({ installation, flowKind: WORKER_FLOW });
 
   /** The conversation's ledger at the partition this task session was opened for. */

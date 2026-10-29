@@ -41,7 +41,7 @@ export interface HireWorkforceOptions {
    */
   taskChainLimit?: number;
   /**
-   * The limits on worker messages (`sendMessage`): `hopLimit`, the most
+   * The limits on worker messages (`sendMessage`): `budget`, the most
    * messages a chain of workers passes with no user's turn between them
    * (6 when omitted), and `perTurn`, the most one turn sends (3 when omitted).
    */

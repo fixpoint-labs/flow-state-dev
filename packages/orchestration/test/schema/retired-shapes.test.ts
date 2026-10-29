@@ -21,7 +21,7 @@ describe("the retired-shape map", () => {
     const on = Object.entries(RETIRED_SHAPES)
       .filter(([, entry]) => entry.on)
       .map(([shape]) => shape);
-    expect(on.sort()).toEqual(["blocked", "post", "queued", "recorded", "reopened"]);
+    expect(on.sort()).toEqual(["blocked", "post", "queued", "recorded", "reopened"]); // retired-name-refusal: the reopened shape
   });
 
   it("returns a row in no retired shape as the same object", () => {
@@ -74,30 +74,30 @@ describe("the retired-shape map", () => {
   });
 
   it("reopened (on, FIX-2086): a reopened row in flight reads as pending, with one steer pointing at the session's latest line", () => {
-    const reopened = { ...row, status: "pending", attempts: 1, reopened: true, updatedAt: 7 };
+    const reopened = { ...row, status: "pending", attempts: 1, reopened: true, updatedAt: 7 }; // retired-name-refusal: the reopened shape
     const read = withRetiredShapes(reopened) as Record<string, unknown>;
     expect(read).toMatchObject({ status: "pending", attempts: 1 });
-    expect(read).not.toHaveProperty("reopened");
+    expect(read).not.toHaveProperty("reopened"); // retired-name-refusal: the reopened shape
     // Untaken, so the attempt that picks the task up is handed it; from the person who typed the line.
     expect(read.steers).toEqual([
-      { id: "reopened", from: "user", at: 7, message: expect.stringContaining("latest line in this session") },
+      { id: "reopened", from: "user", at: 7, message: expect.stringContaining("latest line in this session") }, // retired-name-refusal: the reopened shape
     ]);
     // A fixed point: a second read returns the same object.
     expect(withRetiredShapes(read)).toBe(read);
   });
 
   it("reopened (on): a reopened row whose attempt is running keeps running, and its request takes the steer", () => {
-    const running = { ...row, status: "in_progress", attempts: 2, reopened: true, leaseUntil: 9 };
+    const running = { ...row, status: "in_progress", attempts: 2, reopened: true, leaseUntil: 9 }; // retired-name-refusal: the reopened shape
     const read = withRetiredShapes(running) as Record<string, unknown>;
     expect(read).toMatchObject({ status: "in_progress", attempts: 2, leaseUntil: 9 });
     expect((read.steers as Array<{ takenBy?: number }>)[0]!.takenBy).toBeUndefined();
   });
 
   it("reopened (on): a reopened row that has finished again only loses the mark: a finished task takes no steer", () => {
-    const finished = { ...row, status: "completed", attempts: 2, reopened: true, output: "again" };
+    const finished = { ...row, status: "completed", attempts: 2, reopened: true, output: "again" }; // retired-name-refusal: the reopened shape
     const read = withRetiredShapes(finished) as Record<string, unknown>;
     expect(read).toMatchObject({ status: "completed", output: "again" });
-    expect(read).not.toHaveProperty("reopened");
+    expect(read).not.toHaveProperty("reopened"); // retired-name-refusal: the reopened shape
     expect(read).not.toHaveProperty("steers");
   });
 

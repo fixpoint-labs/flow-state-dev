@@ -25,7 +25,7 @@ export type StoredTask = {
   /** The session a routed task is worked in, when the coordinator named one (server-written, FIX-2083). */
   targetSessionId?: string;
   /** Server-written; a routed task's brief (see `isRoutedTask`). A row stored before FIX-2083 as a post carries `session`, where the delegate worked it. */
-  sealed?: { postId?: string; delegate?: unknown; session?: { id?: string } };
+  sealed?: { messageRequestId?: string; delegate?: unknown; session?: { id?: string } };
 };
 
 export type StoredSession = {

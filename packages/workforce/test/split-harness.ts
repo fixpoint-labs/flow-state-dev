@@ -1,6 +1,6 @@
 /**
  * A host for the split (FIX-1802 P2): the board host, plus `splitter`, an
- * app's own worker flow carrying the filing kit whose turn runs no model. Its
+ * app's own worker flow carrying the filing factory whose turn runs no model. Its
  * turn does what the test's controls say for the running worker, through the
  * very ref the task tools and actions write through (the board's resolver):
  *
