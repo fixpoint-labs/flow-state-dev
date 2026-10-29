@@ -284,7 +284,7 @@ describe("best fit's own choice and floor (FIX-1833 V3, V4)", () => {
     const { records, messages } = await host.items(id);
     expect(records).toEqual([
       {
-        postId: expect.any(String),
+        messageRequestId: expect.any(String),
         round: 0,
         policy: "best-fit",
         by: "judgment",
@@ -515,7 +515,7 @@ describe("delivery and answers (V4)", () => {
       status: "completed",
       assignee: "eng.coder",
       maxAttempts: 1,
-      sealed: { postId: expect.any(String), round: 0, delegate: { worker: "eng.coder" } }
+      sealed: { messageRequestId: expect.any(String), round: 0, delegate: { worker: "eng.coder" } }
     });
     // The conversation keeps no record of the delivery: the row is the record.
     expect((await host.sessionState(id)).deliveries).toBeUndefined();
@@ -529,7 +529,7 @@ describe("delivery and answers (V4)", () => {
     expect(lines).toEqual([{ agentName: "eng.coder", text: expect.stringContaining("fix it") }]);
     // An answer, or a report of none, for a delivery made before the change has nowhere to land,
     // and neither has a post's own ending or cancel (FIX-2083).
-    for (const action of ["delegateAnswer", "delegateMissed", "onPostSettled", "postCancelled"]) {
+    for (const action of ["delegateAnswer", "delegateMissed", "onPostSettled", "postCancelled"]) { // retired-name-refusal: refusal test
       const old = await host.act("alice", id, action, { token: "from-before", body: "late" }, "coordinator", "internal").catch((error: unknown) => ({ error }));
       expect(old.error).toBeDefined();
     }
@@ -586,7 +586,7 @@ describe("judgment (V7)", () => {
     expect(host.heard[0]!.message).toContain("lantern");
     const [record] = (await host.items(id)).records;
     expect(record).toEqual({
-      postId: expect.any(String),
+      messageRequestId: expect.any(String),
       round: 0,
       policy: "judgment",
       by: "judgment",

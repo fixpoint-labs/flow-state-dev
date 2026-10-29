@@ -479,6 +479,8 @@ export type { ObservedPullRequestState, PullRequestRef, PullRequestSource } from
  */
 export type {
   ClassifiedHarnessError,
+  HarnessActivity,
+  HarnessActivityHook,
   HarnessBlock,
   HarnessCallbackContext,
   HarnessCostBasis,

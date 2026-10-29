@@ -3,11 +3,13 @@
  * as one capability a worker turn composes. Talk, not delegation: no task
  * row, no delegate, no result owed.
  *
- * Its input is strict (`to`, `text`, `inReplyTo`, `wait`, `deadline`,
- * `callId`), so a call can't name a sender, a hop count or that it is a call,
- * and a session only as a target the server checks (FIX-2160). Without `wait`,
- * an answer arrives later as a message of the recipient's own and wakes this
- * worker. With `wait: true` it is a call (FIX-2239, `./call`): the recipient's
+ * Its input is strict (`to`, `text`, `inReplyTo`, `replyRequested`, `wait`,
+ * `deadline`, `callId`), so a call can't name a sender, a hop count or that it
+ * is a call, and a session only as a target the server checks (FIX-2160).
+ * Without `wait`, an answer arrives later as a message of the recipient's own
+ * and wakes this worker; with `replyRequested` (FIX-2310, `./owed-replies`),
+ * one answer is owed and always comes, the recipient's or a "no answer".
+ * With `wait: true` it is a call (FIX-2239, `./call`): the recipient's
  * reply is the tool's result, in the same request, until the deadline; and
  * `{ callId }` waits again on one. Its description lists who the worker can
  * message, read before each model call: the roster's workers that have a
@@ -50,6 +52,10 @@ export const sendMessageInputSchema = z
       .min(1)
       .optional()
       .describe("When this answers a message, that message's id (it starts msg_). Leave it out to start a new one."),
+    replyRequested: z
+      .boolean()
+      .optional()
+      .describe("true to ask for a reply and go on: the answer comes back to you later as a message, and always comes."),
     wait: z
       .boolean()
       .optional()
@@ -93,10 +99,12 @@ const BASE_DESCRIPTION =
   "Send a short message to another worker on your team: a question, an FYI, a heads-up. It lands in that worker's " +
   "conversation and wakes it. This is not a task: nothing is filed and no result is owed. If it answers, it sends " +
   "you a message of its own, which wakes you. To answer a message you were sent, pass its id as inReplyTo. " +
-  "To get an answer now, call: pass wait: true. The reply comes back as this tool's result " +
+  "To ask and go on, pass replyRequested: true: the answer comes back to you later as a message from that worker, " +
+  "and always comes, even if it is that it has no answer. Ask several workers this way in one step. " +
+  "To get an answer in this turn, call: pass wait: true (a call needs no replyRequested). The reply comes back as this tool's result " +
   "({ status: \"answered\", reply }, cut to 8,000 characters), in this turn. If the deadline passes first, you get { status: \"running\", callId } " +
   "and nothing is stopped: go on, and pass { callId } later to wait again for the same reply; never send the question " +
-  "again. Only one wait per step. Call for an answer now; for work to track, file a task with createTask instead. " +
+  "again. One wait per step, so to ask several workers, use replyRequested instead. For work someone owes you, file a task with createTask. " +
   "To ask about a task, send to { task: id }: it lands in the session working that task, after its current turn, " +
   "and doesn't change the task. To reach a conversation the user named, send to { session: id }. " +
   "If you have consultSessionHistory, a question about what a conversation already holds goes there instead: it " +
@@ -133,9 +141,9 @@ export function defineSendMessageCapability(installation: WorkerInstallation, fl
       // The conversation ledger finds a `{ task }` target's row by id (FIX-2160).
       resources: { ...installation.resources, ...workerMessagesResources, ...conversationLedgerResources },
       execute: async (input, ctx) => {
-        const { to, text, inReplyTo, wait, deadline, callId } = input;
+        const { to, text, inReplyTo, replyRequested, wait, deadline, callId } = input;
         if (callId !== undefined) {
-          if (to !== undefined || text !== undefined || inReplyTo !== undefined || wait !== undefined) {
+          if (to !== undefined || text !== undefined || inReplyTo !== undefined || replyRequested !== undefined || wait !== undefined) {
             return { ok: false as const, error: "wait_again_only: with callId, pass nothing but deadline. Nothing was sent." };
           }
           return callAnswer(await waitAgain(ctx as never, callId, deadline));
@@ -152,7 +160,7 @@ export function defineSendMessageCapability(installation: WorkerInstallation, fl
         if (deadline !== undefined) {
           return { ok: false as const, error: "deadline_without_wait: a deadline goes with wait: true or callId. Nothing was sent." };
         }
-        const sent = await sendMessage(ctx as never, installation, flowKind, message, SEND_MESSAGE_TOOL);
+        const sent = await sendMessage(ctx as never, installation, flowKind, message, SEND_MESSAGE_TOOL, replyRequested === true ? { replyRequested: true } : {});
         if (!sent.ok) return { ok: false as const, error: sent.error };
         return { sent: sent.id };
       }

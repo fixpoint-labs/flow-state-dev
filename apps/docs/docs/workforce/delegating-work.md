@@ -111,7 +111,7 @@ export const emFlow = workerFlow((installation) => {
 
 Pass it in `workerFlows` like any worker flow: `createWorkerInstallation({ standardWorkers: workers, workerFlows: { em: emFlow } })`.
 
-What the kit gives you, and where each piece goes:
+What the factory gives you, and where each piece goes:
 
 | Field | Put it in |
 |-------|-----------|
@@ -130,7 +130,7 @@ What the kit gives you, and where each piece goes:
 
 Compose `board.tools` once on a block. A block that also gets the task tools another way, such as Orchestration's `createTaskToolsCapability`, has two tools of the same name, and the turn is refused.
 
-A flow that leaves the kit out gives its workers no task tools, whatever their delegates.
+A flow that leaves the factory out gives its workers no task tools, whatever their delegates.
 
 ## Working in steps
 

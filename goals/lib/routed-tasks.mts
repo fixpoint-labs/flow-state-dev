@@ -21,8 +21,8 @@ import { DatabaseSync } from "node:sqlite";
 
 /** One message routed to one delegate, as a goal grades it. */
 export type RoutedDelivery = {
-  /** The id of the message the coordinator routed (the brief's `postId`). */
-  postId: string;
+  /** The id of the message the coordinator routed (the brief's `messageRequestId`). */
+  messageRequestId: string;
   round: number;
   delegate: { worker: string; target?: string };
   /** `delivered` once the task was worked in a session; `failed` when it ended before one; else `pending`. */
@@ -58,8 +58,8 @@ export function boardRowPrefix(sessionId: string): string {
  * message it carries and the delegate it went to.
  */
 export function isRoutedTask(row: { sealed?: unknown } | null | undefined): boolean {
-  const sealed = row?.sealed as { postId?: unknown; delegate?: unknown } | undefined;
-  return typeof sealed?.postId === "string" && typeof sealed.delegate === "object" && sealed.delegate !== null;
+  const sealed = row?.sealed as { messageRequestId?: unknown; delegate?: unknown } | undefined;
+  return typeof sealed?.messageRequestId === "string" && typeof sealed.delegate === "object" && sealed.delegate !== null;
 }
 
 /** Board rows as graded deliveries: the routed tasks among them, oldest first. */
@@ -70,7 +70,7 @@ export function toRoutedDeliveries(rows: ReadonlyArray<Record<string, any>>): Ro
     .map((row): RoutedDelivery => {
       const sessionWorked = row.run?.sessionId as string | undefined;
       return {
-        postId: row.sealed.postId,
+        messageRequestId: row.sealed.messageRequestId,
         round: row.sealed.round,
         delegate: row.sealed.delegate,
         status: sessionWorked !== undefined ? "delivered" : row.status === "errored" ? "failed" : "pending",

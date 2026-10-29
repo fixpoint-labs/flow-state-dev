@@ -263,7 +263,7 @@ describe("a resolved wait survives a SQLite cold restart (BR-16c, BR-11a)", () =
       ...gate,
       status: "submitted",
       resolvedAt: Date.now(),
-      resolvedBy: `ask:${SESSION}`,
+      resolvedBy: `wait:${SESSION}`,
       resumeData: { answered: false, error: { code: "wait_task_cancelled", message: "The waited-on task was cancelled." } }
     });
     await before.dispose();
@@ -308,7 +308,7 @@ describe("a resolved wait survives a SQLite cold restart (BR-16c, BR-11a)", () =
       ...gate,
       status: "submitted",
       resolvedAt: Date.now(),
-      resolvedBy: `ask:${SESSION}`,
+      resolvedBy: `wait:${SESSION}`,
       resumeData: { answered: true, answer: "Yes, renewed 2026-08" }
     });
     await before.dispose();

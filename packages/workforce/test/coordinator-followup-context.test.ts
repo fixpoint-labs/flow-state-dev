@@ -255,7 +255,7 @@ async function openDesk(routing: "best-fit" | "round-robin", options: DeskOption
   const postRows = async (): Promise<any[]> =>
     Object.values(await runtime.stores.resourceState.getByPrefix("user", "alice:~org:acme", "tasks/"))
       .map((value) => value.state as any)
-      .filter((row) => typeof row?.sealed?.postId === "string");
+      .filter((row) => typeof row?.sealed?.messageRequestId === "string");
 
   /** The session each delegate worked its post in, from the conversation's post rows. */
   const delegateSession = async (worker: string) =>

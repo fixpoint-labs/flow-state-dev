@@ -240,9 +240,9 @@ const flowstate = createFlowState({
   },
 });
 
-// The workforce's stored-work upgrades run before the first router (`lib/stored-work-upgrade.ts`).
+// The workforce's stored-work upgrade runs before the first router (`lib/stored-work-upgrade.ts`).
 // Every caller gets this handle; only the HMR slot below keeps the raw one, to dispose it.
-const upgradedFlowstate = afterStoredWorkUpgrade(flowstate, workforce.copies);
+const upgradedFlowstate = afterStoredWorkUpgrade(flowstate);
 export default upgradedFlowstate;
 
 // `next dev` re-evaluates this module on every HMR edit, building a fresh

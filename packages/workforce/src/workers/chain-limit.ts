@@ -1,7 +1,7 @@
 /**
  * The chain limit an app sets through `hireWorkforce` (FIX-1802 BR-21a): the
  * most tasks one top task may have under it, at any depth, for every chain on
- * an installation's flows. A leaf module, so the filing kit reads it without
+ * an installation's flows. A leaf module, so the filing factory reads it without
  * importing the installation.
  */
 
@@ -10,7 +10,7 @@ const taskChainLimits = new WeakMap<object, number>();
 
 /**
  * Set the chain limit for `installation`. `hireWorkforce`'s `taskChainLimit`
- * calls it; the filing kit reads it on every filing.
+ * calls it; the filing factory reads it on every filing.
  *
  * @throws When `limit` isn't a whole number of at least one.
  */

@@ -17,7 +17,7 @@
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { StateRef } from "@flow-state-dev/core/types";
 import { withOutcome } from "@flow-state-dev/core/helpers";
-import { withMigratedWait, type Task, type TaskClaimIdentity, type TaskStatus } from "../schema/task";
+import { type Task, type TaskClaimIdentity, type TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import {
   assertTransitionAllowed,
@@ -170,10 +170,10 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
 
   /**
    * The read boundary for this backing — same job as the resource backing's
-   * `readTaskState`. Atomic state is stored, not parsed, so a row written
-   * before the wait rename arrives carrying its legacy wait mark, and one in
-   * a shape the retired-shape map reads (`withRetiredShapes`, FIX-2080); both
-   * are mapped forward here, before any filter or the transition guard sees it.
+   * `readTaskState`. Atomic state is stored, not parsed, so a row in a shape
+   * the retired-shape map reads (`withRetiredShapes`, FIX-2080) arrives as
+   * stored; it is mapped forward here, before any filter or the transition
+   * guard sees it.
    *
    * The map is rebuilt only when a legacy row is actually present, so the
    * common path returns the stored object itself.
@@ -183,7 +183,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     const stored = slot as Record<string, Task<TInput, TOutput>>;
     let migrated: Record<string, Task<TInput, TOutput>> | undefined;
     for (const [id, task] of Object.entries(stored)) {
-      const next = withRetiredShapes(withMigratedWait(task));
+      const next = withRetiredShapes(task);
       if (next === task) continue;
       migrated ??= { ...stored };
       migrated[id] = next;

@@ -129,7 +129,12 @@ export async function readProjectSourceFor(
   }
 }
 
-/** The three read tools over `workspace`. Exported for its tests; an app installs them through the capability. */
+/**
+ * The three read tools over `workspace`. An app installs them through the
+ * capability, or, for workers that write a `tools:` line, puts them in its
+ * worker flow's catalog and `uses` {@link projectWorkspaceCapability}, whose
+ * collections they read.
+ */
 export function projectSourceTools(workspace: WorkspaceHost) {
   const globProjectSource = handler({
     name: "globProjectSource",

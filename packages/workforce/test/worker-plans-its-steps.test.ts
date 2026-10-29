@@ -5,7 +5,7 @@
  * the worker answers once more, told how every step ended, and that answer is
  * the request's result.
  *
- * The flow here is an app's own worker flow carrying the filing kit, whose
+ * The flow here is an app's own worker flow carrying the filing factory, whose
  * turn runs no model: it files what the test's controls say through the ref
  * the model's task tools read (`turnResolver`), and answers a step with a
  * value only that step produced. Every turn is recorded.

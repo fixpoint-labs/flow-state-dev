@@ -4,8 +4,8 @@
  * each appends a line to the run's fault log (`GOAL_FAULT_LOG`) when it fires,
  * so a sub-leg whose fault never fired is a setup failure, not a grade.
  *
- * Every fault touches only the herald's messages, so the rest of the install
- * runs as shipped. Fault patches keep the line they anchor on, so a control
+ * Every fault touches only one sender's messages (the herald's here; FIX-2242's
+ * closure names its own), so the rest of the install runs as shipped. Fault patches keep the line they anchor on, so a control
  * patching the same line still finds it: the runner applies the faults first.
  */
 import { existsSync, readFileSync } from "node:fs";
@@ -98,9 +98,10 @@ export const FAULTS: Record<FaultName, { does: string; patches: ModulePatch[] }>
   },
 };
 
-/** The patches for `faults`, in order. */
-export function faultPatches(faults: readonly FaultName[]): ModulePatch[] {
-  return faults.flatMap((f) => FAULTS[f].patches);
+/** The patches for `faults`, in order, each firing only on messages from `sender`. */
+export function faultPatches(faults: readonly FaultName[], sender = "herald"): ModulePatch[] {
+  const from = JSON.stringify(sender);
+  return faults.flatMap((f) => FAULTS[f].patches.map((p) => ({ ...p, to: p.to.replaceAll('"herald"', from) })));
 }
 
 /** One line of the fault log. */

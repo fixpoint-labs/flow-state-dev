@@ -20,6 +20,8 @@
 
 export {
   createWorkforceClient,
+  type EditWorkerInput,
+  type HireWorkerInput,
   type RosterEntry,
   type WorkerSessionEntry,
   type WorkforceClient,

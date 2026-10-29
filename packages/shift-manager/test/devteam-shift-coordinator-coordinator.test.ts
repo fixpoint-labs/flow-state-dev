@@ -360,14 +360,14 @@ describe("the Shift Coordinator as a coordinator (S10)", () => {
     }
     expect(running, "the EM's routed task never started").toBeDefined();
     // The user cancels the routed task from the conversation's board, while the EM's turn still runs.
-    const [routed] = Object.values(await stored(lab, "tasks/")).filter((row: any) => typeof row.sealed?.postId === "string") as any[];
+    const [routed] = Object.values(await stored(lab, "tasks/")).filter((row: any) => typeof row.sealed?.messageRequestId === "string") as any[];
     expect((await act(lab, id, "updateTask_tasks", { id: routed.id, status: "cancelled" })).output).toEqual({ ok: true });
     // The held write gives up, as a store call does when its request is cancelled under it.
     abandon(new Error("the write was abandoned: its request was cancelled"));
     await settledItems(lab, id);
 
     // The EM's routed task ended with the cancel, and the round closed on it.
-    const ended = Object.values(await stored(lab, "tasks/")).filter((row: any) => typeof row.sealed?.postId === "string");
+    const ended = Object.values(await stored(lab, "tasks/")).filter((row: any) => typeof row.sealed?.messageRequestId === "string");
     expect(ended).toEqual([expect.objectContaining({ assignee: "eng.em", status: "cancelled" })]);
     expect(((await runtime.stores.session.get(id))?.state as { openRounds: unknown[] }).openRounds).toEqual([]);
   });
