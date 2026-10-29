@@ -441,9 +441,7 @@ export const taskSchema = z.object({
    * the filer's notice). Never a model-facing field.
    *
    * **Absent** on every row nobody waits on (BP-030). A slot written by a
-   * filing before FIX-2082 has no `requestId` and reads as live, as it did. A
-   * row stored before the rename carries it as `ask`; {@link withMigratedWait}
-   * reads that as this.
+   * filing before FIX-2082 has no `requestId` and reads as live, as it did.
    */
   wait: z
     .object({
@@ -630,22 +628,6 @@ export const taskSchema = z.object({
   startedAt: z.number().optional(),
   completedAt: z.number().optional(),
 });
-
-/**
- * A stored row with its wait mark read under the current name: a row written
- * before the rename carries `ask` where it now carries `wait`, and reads as
- * waited on all the same (BP-030). The one reader of that mark: both backings'
- * read boundaries and the parse paths call it, so no consumer sees the old
- * name. A row with no old mark is returned as-is, so the common path
- * allocates nothing.
- */
-export function withMigratedWait<T>(row: T): T {
-  if (row === null || typeof row !== "object") return row;
-  const stored = row as Record<string, unknown>;
-  if (stored.ask == null) return row; // retired-name-refusal: WR-8, a row stored before the rename
-  const { ask: legacy, ...rest } = stored;
-  return (stored.wait != null ? rest : { ...rest, wait: legacy }) as T;
-}
 
 /**
  * Generic Task type. Pattern code typically narrows `TInput` / `TOutput`

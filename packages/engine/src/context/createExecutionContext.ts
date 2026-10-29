@@ -104,6 +104,7 @@ import {
   SUSPENSION_SKIPPED,
   isUserSuspension,
   waitForUserOn,
+  type HarnessRunSpend,
   type RequestResume,
   type RequestSpendSeam,
   type WaitForUser
@@ -425,7 +426,10 @@ function createEmitComponentAwaited(
  */
 function createEmitMessageAwaited(
   emCtx: EmissionContext
-): (text: string, options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }) => Promise<void> {
+): (
+  text: string,
+  options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean; role?: "user" | "assistant" }
+) => Promise<void> {
   return async function emitMessageAwaited(text, options): Promise<void> {
     const itemIndex = emCtx.nextItemIndex();
     const item: MessageItem = {
@@ -441,7 +445,7 @@ function createEmitMessageAwaited(
       taskId: emCtx.taskId,
       itemVisibility: options?.itemVisibility ?? emCtx.itemVisibility,
       agentName: options?.agentName ?? emCtx.agentName,
-      role: "assistant",
+      role: options?.role ?? "assistant",
       content: [{ type: "output_text", text }]
     };
     await emCtx.response.emitItemAdded(item);
@@ -3159,8 +3163,8 @@ export async function createExecutionContext<
   // that run's to hand on, so it is carried rather than recovered.
   const loggedSpend = loggedSpendOf(requestRecord.items ?? [], requestRecord.spentThroughItemIndex ?? -1);
   const requestSpendLedger = interruptedEndingLive
-    ? createRequestSpendLedger(sumSpend(requestRecord.spentByModel ?? {}, loggedSpend))
-    : createRequestSpendLedger(requestRecord.spentByModel, loggedSpend);
+    ? createRequestSpendLedger(sumSpend(requestRecord.spentByModel ?? {}, loggedSpend.byModel))
+    : createRequestSpendLedger(requestRecord.spentByModel, loggedSpend.byModel, loggedSpend.harnessRuns);
   const requestEndRegistry = createRequestEndRegistry(() => requestSpendLedger.takeSinceLastEnding());
   // How this request resumed (FIX-2129), read when a block asks: the
   // resolution is filled in at the checkpoint read, after this context is built.
@@ -3512,6 +3516,7 @@ export async function createExecutionContext<
             // What the block's model calls spent, so a continuation after the
             // process died still counts them (FIX-2145).
             modelUsage: leanModelUsageOf(payload.data.modelUsage),
+            harnessSpend: payload.data.harnessSpend,
             completedAt,
             duration: payload.data.duration,
             rescued: payload.data.rescued,
@@ -4178,7 +4183,19 @@ export async function createExecutionContext<
         // request executor drains. See `request-side-chain-pool.ts`.
         (childContext as { _requestSideChainPool?: unknown })._requestSideChainPool = requestSideChainPool;
         attachRequestEndRegistry(childContext, requestEndRegistry);
-        (childContext as { [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM] = requestSpendLedger;
+        // What this block's own harness runs spent also goes on its completed
+        // trace, so a continuation after the process died can hand it on (FIX-2145).
+        // A run that reports as it goes (FIX-2288) is listed once, at its latest report.
+        const harnessSpendOfBlock: HarnessRunSpend[] = [];
+        (childContext as { [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM] = {
+          reportHarnessRun(run) {
+            requestSpendLedger.reportHarnessRun(run);
+            const at = run.runId === undefined ? -1 : harnessSpendOfBlock.findIndex((reported) => reported.runId === run.runId);
+            if (at >= 0) harnessSpendOfBlock.splice(at, 1);
+            harnessSpendOfBlock.push({ ...run });
+          },
+          pending: () => requestSpendLedger.pending()
+        };
         (childContext as { [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined })[REQUEST_RESUME_SEAM] = readResume;
         // FIX-663: re-attach the background signal on every scope so nested
         // `.sideChain()` dispatches can read it (the dispatch site reads
@@ -4302,6 +4319,7 @@ export async function createExecutionContext<
                   completedAt,
                   duration: completedAt - traceStartedAt,
                   modelUsage: generatorModelUsage,
+                  harnessSpend: harnessSpendOfBlock.length > 0 ? harnessSpendOfBlock : undefined,
                   model: generatorModelIdentity,
                   rescued: siblingEntry.result.rescued === true ? true : undefined,
                 },

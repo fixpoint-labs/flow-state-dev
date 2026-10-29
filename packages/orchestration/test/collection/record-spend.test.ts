@@ -138,11 +138,22 @@ describe.each([
     expect(view(collection)).toMatchObject({ inputTokens: 1200, outputTokens: 250, live: false });
   });
 
-  it("keeps a dead run's harness tokens when its request is continued in a new process", async () => {
-    // The continuation's ledger recovers model calls from the log, not harness runs: the row is their only record.
+  it("counts a dead run's harness run once whether or not its block finished, when its request is continued", async () => {
+    // A finished block's harness runs are in the log, so the continuation recovers and reports them; an unfinished one's are only on the row.
     const { collection, claim } = await claimed();
     const first = { writer: "first", admittedAt: 1 };
-    const second = { writer: "second", admittedAt: 2, recovered: modelCalls(4, 4).byModel };
+    const logged = harnessRun(100, 10);
+    const second = { writer: "second", admittedAt: 2, recovered: logged };
+    await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: { byModel: {}, harnessRuns: [...logged.harnessRuns, { ...harnessRun(300, 60).harnessRuns[0]!, runId: "unfinished" }] }, ...first }, { claim });
+    await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: logged, ...second }, { claim });
+    expect(view(collection)).toMatchObject({ inputTokens: 400, outputTokens: 70, live: true });
+  });
+
+  it("keeps a dead run's harness tokens when its request is continued in a new process", async () => {
+    // A harness run whose block never finished isn't in the log, so the continuation doesn't recover it: the row is its only record.
+    const { collection, claim } = await claimed();
+    const first = { writer: "first", admittedAt: 1 };
+    const second = { writer: "second", admittedAt: 2, recovered: modelCalls(4, 4) };
     await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: { byModel: modelCalls(4, 4).byModel, harnessRuns: harnessRun(300, 60).harnessRuns }, ...first }, { claim });
     // The continuation reports the recovered model calls itself: they count once.
     await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: modelCalls(4, 4), ...second }, { claim });
@@ -156,7 +167,7 @@ describe.each([
     // finishes: the continuation recovers the 4 a finished block logged, not the 6 the unfinished one spent, and calls again.
     const { collection, claim } = await claimed();
     const first = { writer: "first", admittedAt: 1 };
-    const second = { writer: "second", admittedAt: 2, recovered: modelCalls(4, 4).byModel };
+    const second = { writer: "second", admittedAt: 2, recovered: modelCalls(4, 4) };
     await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: modelCalls(10, 10), ...first }, { claim });
     await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: modelCalls(9, 9), ...second }, { claim });
     expect(view(collection)).toMatchObject({ inputTokens: 15, outputTokens: 15, live: true });

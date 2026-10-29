@@ -368,22 +368,22 @@ async function rowsNow(sessionId: string): Promise<Array<Record<string, any>>> {
   return rows.map((row) => row.state).filter(isRoutedTask);
 }
 
-type OpenRound = { postId: string; round: number; deadlineAt: number | null };
+type OpenRound = { messageRequestId: string; round: number; deadlineAt: number | null };
 
 /** The conversation's open rounds now, with their deadlines, from its stored record: a read only. */
 async function openRoundsNow(sessionId: string): Promise<OpenRound[]> {
   const runtime = await state.getRuntime();
   const stored = await runtime.stores.session.get(sessionId);
-  return ((stored?.state?.openRounds ?? []) as Array<{ postId: string; round: number; deadlineAt?: number }>).map((r) => ({
-    postId: r.postId,
+  return ((stored?.state?.openRounds ?? []) as Array<{ messageRequestId: string; round: number; deadlineAt?: number }>).map((r) => ({
+    messageRequestId: r.messageRequestId,
     round: r.round,
     deadlineAt: r.deadlineAt ?? null,
   }));
 }
 
-/** The deadline of round `round` of message `postId`, while it is open. */
-async function deadlineOf(sessionId: string, postId: string, round = 0): Promise<number | undefined> {
-  const open = (await openRoundsNow(sessionId)).find((r) => r.postId === postId && r.round === round);
+/** The deadline of round `round` of message `messageRequestId`, while it is open. */
+async function deadlineOf(sessionId: string, messageRequestId: string, round = 0): Promise<number | undefined> {
+  const open = (await openRoundsNow(sessionId)).find((r) => r.messageRequestId === messageRequestId && r.round === round);
   return open?.deadlineAt ?? undefined;
 }
 
@@ -482,8 +482,8 @@ if (PHASE === "kill") {
     // wake closes an overdue round, so the round's own deadline would go untested.
     const ready = await until(async () => {
       const rows = await rowsNow(restart.id);
-      const firstRow = rows.find((r) => r.sealed.postId === sent.requestId && r.sealed.round === 0 && r.assignee === first);
-      const secondRow = rows.find((r) => r.sealed.postId === sent.requestId && r.sealed.round === 0 && r.assignee === second);
+      const firstRow = rows.find((r) => r.sealed.messageRequestId === sent.requestId && r.sealed.round === 0 && r.assignee === first);
+      const secondRow = rows.find((r) => r.sealed.messageRequestId === sent.requestId && r.sealed.round === 0 && r.assignee === second);
       const owed = Object.entries((secondRow?.metadata ?? {}) as Record<string, unknown>).some(([key, value]) => key.startsWith("noticeOwed") && value != null);
       const landed = (await itemsOf(restart.id)).lines.some((l) => l.agentName === second && l.text.includes(w));
       return firstRow?.status === "in_progress" && secondRow?.status === "completed" && !owed && landed ? firstRow : undefined;
@@ -516,7 +516,7 @@ if (PHASE === "restart") {
     const openAtRestart = await openRoundsNow(killed.sessionId);
     const deadlineAt = killed.deadlineAt ?? restartAt;
     const closedAt = await until(
-      async () => ((await openRoundsNow(killed.sessionId!)).some((r) => r.postId === killed.post!.requestId && r.round === 0) ? undefined : Date.now()),
+      async () => ((await openRoundsNow(killed.sessionId!)).some((r) => r.messageRequestId === killed.post!.requestId && r.round === 0) ? undefined : Date.now()),
       Math.max(0, deadlineAt - Date.now()) + WATCH_MS,
       50,
     );
@@ -565,7 +565,7 @@ try {
   const judge = await conversation("desk.judge");
   const twicePost = await judge.act("respond", { message: `[judge] ${words.twice} hand this on.` });
   await quiet();
-  const judgedRows = (await rowsNow(judge.id)).filter((r) => r.sealed.postId === twicePost.requestId);
+  const judgedRows = (await rowsNow(judge.id)).filter((r) => r.sealed.messageRequestId === twicePost.requestId);
   const judgedReads = await Promise.all(judgedRows.map((r) => taskRead(judge, r.id)));
   // ... and one asking for three attempts.
   const threePost = await judge.act("respond", { message: `[judge-3] ${words.three} hand this on, and try hard.` });
@@ -574,13 +574,13 @@ try {
   // Leg a. A busy delegate: a second message waits in Alice's list, then starts in the same session; a third is cancelled while it waits.
   const one = await conversation("desk.one");
   const busyA = await one.send("respond", { message: `[slow:${third}] ${words.busy} first` });
-  const aWorking = await until(async () => (await rowsNow(one.id)).find((r) => r.sealed.postId === busyA.requestId && r.status === "in_progress"), 10_000);
+  const aWorking = await until(async () => (await rowsNow(one.id)).find((r) => r.sealed.messageRequestId === busyA.requestId && r.status === "in_progress"), 10_000);
   const busyB = await one.send("respond", { message: `${words.busy} second` });
   const busyC = await one.send("respond", { message: `${words.busy} third` });
   const waiting = await until(async () => {
     const rows = await rowsNow(one.id);
-    const b = rows.find((r) => r.sealed.postId === busyB.requestId);
-    const c = rows.find((r) => r.sealed.postId === busyC.requestId);
+    const b = rows.find((r) => r.sealed.messageRequestId === busyB.requestId);
+    const c = rows.find((r) => r.sealed.messageRequestId === busyC.requestId);
     return b !== undefined && c !== undefined ? { b: b.status as string, c: c.status as string, cId: c.id as string } : undefined;
   }, 10_000);
   const listedWaiting = ((await one.act("listTasks_tasks", {})).output?.tasks ?? []) as Array<{ id: string; status: string }>;
@@ -593,13 +593,13 @@ try {
   const rounds = await conversation("desk.rounds");
   // The first delegate holds its answer past the cancel, so it still finishes, and its late settle is refused.
   const cancelPost = await rounds.send("respond", { message: `[slow:${first}] ${words.cancel} what do you both say?` });
-  const hung = await until(async () => (await rowsNow(rounds.id)).find((r) => r.sealed.postId === cancelPost.requestId && r.assignee === first && r.status === "in_progress"), 10_000);
+  const hung = await until(async () => (await rowsNow(rounds.id)).find((r) => r.sealed.messageRequestId === cancelPost.requestId && r.assignee === first && r.status === "in_progress"), 10_000);
   const otherLanded = await until(async () => ((await itemsOf(rounds.id)).lines.some((l) => l.agentName === second && l.text.includes(words.cancel)) ? true : undefined), 10_000);
   const cancelDeadline = await deadlineOf(rounds.id, cancelPost.requestId);
   const cancelled = hung === undefined ? undefined : await rounds.act("updateTask_tasks", { id: hung.id, status: "cancelled" });
   const cancelledAt = Date.now();
   const cancelClosedAt = await until(
-    async () => ((await openRoundsNow(rounds.id)).some((r) => r.postId === cancelPost.requestId && r.round === 0) ? undefined : Date.now()),
+    async () => ((await openRoundsNow(rounds.id)).some((r) => r.messageRequestId === cancelPost.requestId && r.round === 0) ? undefined : Date.now()),
     10_000,
   );
   await quiet();
@@ -609,7 +609,7 @@ try {
   const failsPost = await fails.send("respond", { message: `[fail:${third}] ${words.fails} what do you both say?` });
   const failsDeadline = await until(() => deadlineOf(fails.id, failsPost.requestId), 10_000);
   const failsClosedAt = await until(
-    async () => ((await openRoundsNow(fails.id)).some((r) => r.postId === failsPost.requestId && r.round === 0) ? undefined : Date.now()),
+    async () => ((await openRoundsNow(fails.id)).some((r) => r.messageRequestId === failsPost.requestId && r.round === 0) ? undefined : Date.now()),
     10_000,
   );
   await quiet();
@@ -617,12 +617,12 @@ try {
   // Leg b. A late delegate: its round closes at the deadline, before its answer.
   const late = await conversation("desk.late");
   const latePost = await late.send("respond", { message: `[slow:${second}] ${words.late} what do you both say?` });
-  const lateRow = await until(async () => (await rowsNow(late.id)).find((r) => r.sealed.postId === latePost.requestId && r.sealed.round === 0 && r.assignee === second), 10_000);
+  const lateRow = await until(async () => (await rowsNow(late.id)).find((r) => r.sealed.messageRequestId === latePost.requestId && r.sealed.round === 0 && r.assignee === second), 10_000);
   const deadlineAt = await until(() => deadlineOf(late.id, latePost.requestId), 10_000);
   // Watched from the deadline: when the round closes, and whether the late delegate still works then.
   let lateRowAtClose: string | null = null;
   const lateClosedAt = await until(async () => {
-    if ((await openRoundsNow(late.id)).some((r) => r.postId === latePost.requestId && r.round === 0)) return undefined;
+    if ((await openRoundsNow(late.id)).some((r) => r.messageRequestId === latePost.requestId && r.round === 0)) return undefined;
     lateRowAtClose = (await rowsNow(late.id)).find((r) => r.id === lateRow?.id)?.status ?? null;
     return Date.now();
   }, (deadlineAt ?? Date.now()) - Date.now() + WATCH_MS, 20);
@@ -646,7 +646,7 @@ try {
   const runtime = await state.getRuntime();
   const scope = `${ALICE}:~org:${ORG}`;
   const entries = (await runtime.stores.resourceState.getByPrefix("user", scope, boardRowPrefix(legacy.id))) as Record<string, { state: Record<string, any> }>;
-  const warm = Object.entries(entries).find(([, value]) => typeof value.state?.sealed?.postId === "string");
+  const warm = Object.entries(entries).find(([, value]) => typeof value.state?.sealed?.messageRequestId === "string");
   let seeded: { id: string; ok: boolean } | undefined;
   if (warm !== undefined) {
     const [key, entry] = warm;
@@ -667,7 +667,7 @@ try {
       incarnationId: `legacy-${hex(4)}`,
       sealed: {
         kind: "post",
-        postId: `legacy-${hex(4)}`,
+        messageRequestId: `legacy-${hex(4)}`,
         round: 0,
         delegate: { worker: fourth },
         session: { key: `delegate:${JSON.stringify([fourth, null])}` },

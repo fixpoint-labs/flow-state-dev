@@ -39,7 +39,7 @@ export const routedBriefSchema = z.object({
   /** The conversation's recent lines before the message, oldest first. Present only when there are any. */
   recent: z.array(conversationLineSchema).optional(),
   /** The user's message this hands on, by the request that routed it. Answers going back out keep its id. */
-  postId: z.string().min(1),
+  messageRequestId: z.string().min(1),
   /** The round it was routed in: 0 for a user's message. */
   round: z.number().int().min(0),
   /** The delegate record it went to. */

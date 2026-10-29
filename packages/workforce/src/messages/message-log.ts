@@ -59,7 +59,7 @@ export function messageLogOf(ctx: BlockContext): ResourceCollectionRef<WorkerMes
   const ref = (ctx.resources as Record<string, unknown> | undefined)?.[WORKER_MESSAGES_RESOURCE];
   if (ref === undefined) {
     throw new Error(
-      `The running flow doesn't declare the message log ("${WORKER_MESSAGES_RESOURCE}"). Spread the session kit's \`resources\` into the flow.`
+      `The running flow doesn't declare the message log ("${WORKER_MESSAGES_RESOURCE}"). Spread the session factory's \`resources\` into the flow.`
     );
   }
   return ref as unknown as ResourceCollectionRef<WorkerMessageRow>;
@@ -70,7 +70,7 @@ export function messageChainsOf(ctx: BlockContext): ResourceCollectionRef<Messag
   const ref = (ctx.resources as Record<string, unknown> | undefined)?.[MESSAGE_CHAINS_RESOURCE];
   if (ref === undefined) {
     throw new Error(
-      `The running flow doesn't declare the message chains ("${MESSAGE_CHAINS_RESOURCE}"). Spread the session kit's \`resources\` into the flow.`
+      `The running flow doesn't declare the message chains ("${MESSAGE_CHAINS_RESOURCE}"). Spread the session factory's \`resources\` into the flow.`
     );
   }
   return ref as unknown as ResourceCollectionRef<MessageChainRow>;

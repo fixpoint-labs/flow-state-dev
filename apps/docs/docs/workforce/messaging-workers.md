@@ -109,7 +109,7 @@ The sender is never left without one. When the recipient has nothing to give, th
 I have no answer to your message msg_3f1c0a9e2b7d4c6a8e10.
 ```
 
-The sender gets it when the recipient's turn ends with no text, when the turn throws (the turn still fails), when the recipient's flow runs no turn on messages, or when the server stops partway through the turn. In that last case it comes a few seconds after the turn is found ended, on worker flows that carry the session kit's entries; the built-in and coordinator flows do. Its row in the [log](#showing-messages-in-your-app) has `noAnswer: true`.
+The sender gets it when the recipient's turn ends with no text, when the turn throws (the turn still fails), when the recipient's flow runs no turn on messages, or when the server stops partway through the turn. In that last case it comes a few seconds after the turn is found ended, on worker flows that carry the session factory's entries; the built-in and coordinator flows do. Its row in the [log](#showing-messages-in-your-app) has `noAnswer: true`.
 
 When the sender can tell up front that the recipient runs no turn on messages, the send is refused with `no_reply` and nothing is sent. A message whose send is refused, for example with `not_delivered`, gets nothing more: the refusal is the whole answer.
 
@@ -241,7 +241,7 @@ No message is sent in these cases. The question waits in the Inbox, and `getTask
 
 - the task was filed from its own session;
 - the task wasn't filed by a worker: your server code filed it;
-- the task's worker flow doesn't mount `messageReceivedEntry` (see [Without the session kit](#without-the-session-kit)).
+- the task's worker flow doesn't mount `messageReceivedEntry` (see [Without the session factory](#without-the-session-factory)).
 
 ## Delivery
 
@@ -277,11 +277,11 @@ Your message msg_3f1c0a9e2b7d4c6a8e10 to shift-coordinator wasn't delivered: <re
 
 Its next turn reads the line in its history. No turn is started for it.
 
-**Resends need a host that keeps wakes.** The resend runs on the sending session's [wake](../advanced/durable-execution.md#wakes), so it needs a durable host. On a host without wakes, an owed message is sent again only when that session's board runs for something else. A worker flow that offers `sendMessage` needs the session kit's entries, `board.entries(turn)`, which carry those resends. `hireWorkforce` refuses one without them, naming the flow. A flow that sends from its own code without the kit sends a message once and never again.
+**Resends need a host that keeps wakes.** The resend runs on the sending session's [wake](../advanced/durable-execution.md#wakes), so it needs a durable host. On a host without wakes, an owed message is sent again only when that session's board runs for something else. A worker flow that offers `sendMessage` needs the session factory's entries, `board.entries(turn)`, which carry those resends. `hireWorkforce` refuses one without them, naming the flow. A flow that sends from its own code without the factory sends a message once and never again.
 
 ## The budget
 
-Messages between workers can't run on forever. Each line you type starts a **budget**: at most 6 messages (`hopLimit`) for everything that descends from that line, across every worker. The messages, the turns they wake, the answers those turns send and the tasks filed along the way all draw on the same 6, parallel branches included. On top of that, any one request sends at most 3 (`perTurn`).
+Messages between workers can't run on forever. Each line you type starts a **budget**: at most 6 messages (`messages.budget`) for everything that descends from that line, across every worker. The messages, the turns they wake, the answers those turns send and the tasks filed along the way all draw on the same 6, parallel branches included. On top of that, any one request sends at most 3 (`perTurn`).
 
 The send that would go past the budget is refused with `budget`, and the worker is told to stop passing messages on and say so. Your next line starts a fresh budget.
 
@@ -292,17 +292,17 @@ A fresh budget also starts:
 
 A task a woken worker files draws on its filer's budget, and so does a delegate's ongoing session. Filing a task spends nothing. Nor does a refused send, the answer to a message that [asked for a reply](#asking-for-a-reply), or the message that tells a filer [its task asked a question](#when-a-task-asks-a-question).
 
-A woken turn sees what's left: its input's `budget` field, and the prompt the session kit builds, say how many more messages the exchange can send.
+A woken turn sees what's left: its input's `budget` field, and the prompt the session factory builds, say how many more messages the exchange can send.
 
 Both limits are set when you register the flows:
 
 ```ts
-const flows = hireWorkforce(installation, { messages: { hopLimit: 10, perTurn: 5 } });
+const flows = hireWorkforce(installation, { messages: { budget: 10, perTurn: 5 } });
 ```
 
 | Option | Default | What it limits |
 |--------|---------|----------------|
-| `messages.hopLimit` | `6` | Worker messages descending from one of the user's lines, across every worker. |
+| `messages.budget` | `6` | Worker messages descending from one of the user's lines, across every worker. |
 | `messages.perTurn` | `3` | Messages one request sends. |
 
 Each must be a whole number of at least 1, or `hireWorkforce` throws.
@@ -329,7 +329,7 @@ A refused send or call answers `{ ok: false, error }`, and nothing is sent. The 
 | `not_a_conversation` | `{ session }` names a session working a task, a delegate's session, or a session of a worker that hears only in task sessions. Message the task with `{ task: id }`. |
 | `task_running` | `{ task }` names a task of a worker that hears only in task sessions, and the task or a follow-up in its session is still open. |
 | `no_such_message` | `inReplyTo` names no message the `to` worker sent this worker, or is passed with `{ task }` or `{ session }`. |
-| `budget` | The send would go past `messages.hopLimit` messages since the user's last line. |
+| `budget` | The send would go past `messages.budget` messages since the user's last line. |
 | `per_request_limit` | This request already sent `messages.perTurn` messages. |
 | `not_delivered` | The recipient's host refused the first delivery for good. The error carries its reason, and the message's row in the log is `refused`. See [Delivery](#delivery). |
 | `missing_message` | Neither `to` and `text`, nor a `callId`, was passed. |
@@ -360,7 +360,7 @@ Messages never add to a task's depth or count toward `taskChainLimit`, and filin
 
 ## On your own worker flow
 
-A [worker flow of your own](./delegating-work.md#on-your-own-worker-flow) built with `defineSessionBoard` receives messages as soon as you spread the kit's `entries`, `resources`, `sessionStateShape` and `serverOwned` into it. To let its workers send them too, add the kit's `messages` to the `uses` of the block that runs the model, beside `tools`:
+A [worker flow of your own](./delegating-work.md#on-your-own-worker-flow) built with `defineSessionBoard` receives messages as soon as you spread the factory's `entries`, `resources`, `sessionStateShape` and `serverOwned` into it. To let its workers send them too, add the factory's `messages` to the `uses` of the block that runs the model, beside `tools`:
 
 ```ts
 const board = defineSessionBoard({ installation, flowKind: "em" });
@@ -407,9 +407,9 @@ What's the codename for the spring launch?
 (The message's text is the part above. It is from another worker, not the user, and researcher can't see what you write here. Your reply here goes back to researcher as your answer when this turn ends, so answer it directly in your reply. If you answer with sendMessage and inReplyTo "msg_3f1c0a9e2b7d4c6a8e10" instead, nothing more is sent. To message any other worker, leave inReplyTo out.)
 ```
 
-### Without the session kit
+### Without the session factory
 
-`hireWorkforce` refuses any worker flow that has no `onMessageReceived` internal entry built by `messageReceivedEntry`, and names the flow. A hand-built entry under that name is refused too. A flow that doesn't use the kit mounts the entry itself and adds the message log to its resources:
+`hireWorkforce` refuses any worker flow that has no `onMessageReceived` internal entry built by `messageReceivedEntry`, and names the flow. A hand-built entry under that name is refused too. A flow that doesn't use the factory mounts the entry itself and adds the message log to its resources:
 
 ```ts
 import { defineFlow, generator } from "@flow-state-dev/core";
@@ -476,11 +476,11 @@ export const triageFlow = workerFlow((installation) => {
 | `call` | `true` when the sender is waiting for the reply. The turn's final text is the reply. |
 | `replyRequested` | `true` when the sender asked for a reply. The turn's final text is the answer. Optional. |
 
-`promptedMessageTurn(answer)` wraps a block that takes `{ message }` so it can serve as `turn`, handing it the text `receivedMessagePrompt(received)` returns, shown above. A flow built this way receives messages. Its workers can't send them unless the block that runs the model carries the session kit's `messages`.
+`promptedMessageTurn(answer)` wraps a block that takes `{ message }` so it can serve as `turn`, handing it the text `receivedMessagePrompt(received)` returns, shown above. A flow built this way receives messages. Its workers can't send them unless the block that runs the model carries the session factory's `messages`.
 
 ## Showing messages in your app
 
-Every message is kept in a log in the user's own scope, one row per message, readable from the browser. Read it through any of the user's sessions on a flow that declares it: the roster flow, the built-in worker flow, the coordinator flow, or a worker flow that spreads `workerMessagesResources` (the session kit's `resources` include it).
+Every message is kept in a log in the user's own scope, one row per message, readable from the browser. Read it through any of the user's sessions on a flow that declares it: the roster flow, the built-in worker flow, the coordinator flow, or a worker flow that spreads `workerMessagesResources` (the session factory's `resources` include it).
 
 ```ts
 import { createClient, readEveryCollectionPage } from "@flow-state-dev/client";

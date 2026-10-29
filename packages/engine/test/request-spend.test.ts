@@ -680,6 +680,132 @@ describe("request spend ledger", () => {
   });
 
   it.each(["false", "true"])(
+    "hands on a harness run a step finished before its process died, once, at the continuation (observability %s)",
+    async (observability) => {
+      // The continuation replays the finished harness step without running it
+      // again, so the log is the only record of what that run spent.
+      process.env.FSDEV_TRACE_OBSERVABILITY = observability;
+      const endings: RequestEnding[] = [];
+      let harnessRuns = 0;
+      const harnessStep = handler({
+        name: "harness-step",
+        inputSchema: z.any(),
+        execute: (value, ctx) => {
+          harnessRuns += 1;
+          reportHarnessSpend(ctx, { harness: "codex", inputTokens: 100, outputTokens: 20, costUsd: 0.5, billing: "api-key" });
+          return value;
+        }
+      });
+      let crashed = true;
+      let stalledOnce = false;
+      let endDeadRun: () => void = () => {};
+      const stall = handler({
+        name: "stall",
+        inputSchema: z.any(),
+        execute: async (value) => {
+          if (!crashed) return value;
+          stalledOnce = true;
+          return new Promise<never>((_resolve, reject) => {
+            endDeadRun = () => reject(new Error("the process died"));
+          });
+        }
+      });
+      const flow = defineFlow({
+        kind: "spend-crash-harness",
+        session: { [SESSION_REQUEST_END_HOOK]: () => (ending) => void endings.push(ending) },
+        actions: {
+          run: { inputSchema: z.object({}), block: sequencer({ name: "seq", durable: true }).step(harnessStep).step(stall) }
+        }
+      })({ id: "spend-crash-harness" });
+      const stores = createInMemoryStores();
+      const provider = createCheckpointDurabilityProvider({ checkpoints: stores.checkpoints, suspensions: stores.suspensions, leases: stores.leases });
+      const runtimeConfig = { durabilityProvider: provider, modelResolver: resolverReporting(usage4x4) };
+
+      const deadRun = runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-crash-harness", stores, runtimeConfig });
+      while (!stalledOnce) await new Promise((resolve) => setTimeout(resolve, 5));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect((await detectInterruptedRequests({ stores, staleThresholdMs: -1 })).map((swept) => swept.entry.requestId)).toEqual(["r-crash-harness"]);
+      crashed = false;
+      const registry = createFlowRegistry();
+      registry.register(flow as never);
+      const { finished } = await continueRequest({ requestId: "r-crash-harness", stores, flowRegistry: registry, runtimeConfig });
+      await finished;
+      const endingsBeforeTeardown = endings.map((ending) => [ending.status, ending.spend.harnessRuns]);
+      endDeadRun();
+      await deadRun.catch(() => undefined);
+
+      expect(harnessRuns).toBe(1);
+      expect(endingsBeforeTeardown).toEqual([
+        ["completed", [{ harness: "codex", inputTokens: 100, outputTokens: 20, costUsd: 0.5, billing: "api-key" }]]
+      ]);
+    }
+  );
+
+  it.each(["false", "true"])(
+    "hands on a run that reported as it went, at its latest report, once, at the continuation after its process died (observability %s)",
+    async (observability) => {
+      // A harness that reports as it goes (FIX-2288) reports one run three
+      // times: the log keeps its latest report, not all three.
+      process.env.FSDEV_TRACE_OBSERVABILITY = observability;
+      const endings: RequestEnding[] = [];
+      let harnessRuns = 0;
+      const harnessStep = handler({
+        name: "harness-step",
+        inputSchema: z.any(),
+        execute: (value, ctx) => {
+          harnessRuns += 1;
+          for (const [inputTokens, outputTokens] of [[30, 5], [60, 10], [100, 20]] as const) {
+            reportHarnessSpend(ctx, { runId: "run-1", harness: "codex", inputTokens, outputTokens, costUsd: 0.5, billing: "api-key" });
+          }
+          return value;
+        }
+      });
+      let crashed = true;
+      let stalledOnce = false;
+      let endDeadRun: () => void = () => {};
+      const stall = handler({
+        name: "stall",
+        inputSchema: z.any(),
+        execute: async (value) => {
+          if (!crashed) return value;
+          stalledOnce = true;
+          return new Promise<never>((_resolve, reject) => {
+            endDeadRun = () => reject(new Error("the process died"));
+          });
+        }
+      });
+      const flow = defineFlow({
+        kind: "spend-crash-harness-runs",
+        session: { [SESSION_REQUEST_END_HOOK]: () => (ending) => void endings.push(ending) },
+        actions: {
+          run: { inputSchema: z.object({}), block: sequencer({ name: "seq", durable: true }).step(harnessStep).step(stall) }
+        }
+      })({ id: "spend-crash-harness-runs" });
+      const stores = createInMemoryStores();
+      const provider = createCheckpointDurabilityProvider({ checkpoints: stores.checkpoints, suspensions: stores.suspensions, leases: stores.leases });
+      const runtimeConfig = { durabilityProvider: provider, modelResolver: resolverReporting(usage4x4) };
+
+      const deadRun = runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-crash-harness-runs", stores, runtimeConfig });
+      while (!stalledOnce) await new Promise((resolve) => setTimeout(resolve, 5));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect((await detectInterruptedRequests({ stores, staleThresholdMs: -1 })).map((swept) => swept.entry.requestId)).toEqual(["r-crash-harness-runs"]);
+      crashed = false;
+      const registry = createFlowRegistry();
+      registry.register(flow as never);
+      const { finished } = await continueRequest({ requestId: "r-crash-harness-runs", stores, flowRegistry: registry, runtimeConfig });
+      await finished;
+      const endingsBeforeTeardown = endings.map((ending) => [ending.status, ending.spend.harnessRuns]);
+      endDeadRun();
+      await deadRun.catch(() => undefined);
+
+      expect(harnessRuns).toBe(1);
+      expect(endingsBeforeTeardown).toEqual([
+        ["completed", [{ runId: "run-1", harness: "codex", inputTokens: 100, outputTokens: 20, costUsd: 0.5, billing: "api-key" }]]
+      ]);
+    }
+  );
+
+  it.each(["false", "true"])(
     "keeps counting a request's token budget across a continuation after its process died (observability %s)",
     async (observability) => {
       // A run whose process died settles nothing: what its finished steps

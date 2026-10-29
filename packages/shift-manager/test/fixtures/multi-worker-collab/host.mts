@@ -11,7 +11,7 @@
  * ## The three things that are the lab's rather than the framework's
  *
  * 1. **The two flows** (`workforce/flows/workers/`): the planner's, which
- *    carries the filing kit, and the workers'.
+ *    carries the filing factory, and the workers'.
  * 2. **The desk -> delegate map** ({@link ROUTES}). It is the app's: whoever
  *    files through the planner's conversation reads it to pick a row's
  *    assignee, and nothing reads it off the tree. That is what lets

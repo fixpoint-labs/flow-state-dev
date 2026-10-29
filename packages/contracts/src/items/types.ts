@@ -272,6 +272,19 @@ export type BlockTraceItem = OutputItemBase & {
     cacheCreationTokens?: number;
   };
   /**
+   * The harness runs this block settled, each as its harness reported it
+   * (FIX-2145). Present only on a completed block that settled one: a
+   * continuation replays the block without running it again, so this is how
+   * that run's spend still reaches the request's ending after its process died.
+   */
+  harnessSpend?: Array<{
+    harness: string;
+    inputTokens: number | null;
+    outputTokens: number | null;
+    costUsd: number | null;
+    billing: "api-key" | "subscription" | null;
+  }>;
+  /**
    * Resource loads attributable to this block's dispatch window: wave-3
    * eager preloads of `ownDeclaredResources`, plus lazy reads issued inside
    * `execute()`. On the request's entry block_trace this also carries the

@@ -137,13 +137,12 @@ interface Admitted {
   /** When this admission was made: a later admission of the same request supersedes this one's unsettled live part. */
   readonly admittedAt: number;
   /**
-   * The model calls the request's ledger held, not yet handed on, when it was
-   * admitted: what a continuation recovered from the run before it's log. The
-   * row counts that run's live model calls less these, so a block that never
-   * finished (and so logged nothing) still counts once. `undefined` without a
-   * ledger.
+   * What the request's ledger held, not yet handed on, when it was admitted:
+   * what a continuation recovered from the run before it's log. The row counts
+   * that run's live part less this, so a block that never finished (and so
+   * logged nothing) still counts once. `undefined` without a ledger.
    */
-  readonly recovered: RequestSpend["byModel"] | undefined;
+  readonly recovered: RequestSpend | undefined;
 }
 
 /**
@@ -275,7 +274,7 @@ export async function admitClaimedTask(
     own: options.own,
     writer: crypto.randomUUID(),
     admittedAt: Date.now(),
-    recovered: readRequestSpend(ctx)?.byModel,
+    recovered: readRequestSpend(ctx),
   };
   // The hook closes over its own record: a resume reuses the request id, so a
   // hook from the run before it must never check (or drop) the resume's record.

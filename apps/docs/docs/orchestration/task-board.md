@@ -1381,10 +1381,6 @@ The question is answered with `updateTask({ id, answers, message })`, which repl
 A block asks for a review with `ctx.waitForUser({ kind: "review", prompt })` instead of `awaitReview`, and the Inbox answers it, so `unpark` and `unparkAndDrain` have no replacement to mount. {/* retired-name-refusal: migration note */}
 A board built with `onReview` is refused: a board whose open tasks only wait on a person stops `blocked` on its own. {/* retired-name-refusal: migration note */}
 
-**Reading older logs.** A stored `task-board-meta` item may use another name for the [`"dispatched"`](#termination-onidle-modes) termination reason.
-
-Older logs report `"handed-off"` for the same thing.
-
 ## See also
 
 - [Configuration](./configuration): every `taskBoard` field, including defaults.

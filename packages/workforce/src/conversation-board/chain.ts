@@ -143,7 +143,7 @@ function chainsOf(ctx: BlockContext): ResourceCollectionRef<ChainRecord> {
   if (ref === undefined) {
     throw new Error(
       `The running flow doesn't declare the task chain records ("${TASK_CHAINS_RESOURCE}"), so a split task's pieces can't be counted. ` +
-        "Spread the filing kit's `resources` into the flow."
+        "Spread the filing factory's `resources` into the flow."
     );
   }
   return ref as unknown as ResourceCollectionRef<ChainRecord>;

@@ -37,8 +37,6 @@ import { SuspensionError, type SuspendOptions } from "../errors/suspension-error
 /** The suspension reason a wait gate carries. */
 export const WAIT_GATE_REASON = "wait" as const;
 
-const LEGACY_WAIT_GATE_REASON = "ask"; // retired-name-refusal: WR-9, a gate parked before the rename
-
 /**
  * The internal entry a wait's deadline wake names (FIX-2082 D1). The engine
  * fires it itself: no flow declares it. One wake per session carries the
@@ -53,9 +51,9 @@ export const WAIT_DEADLINE_ENTRY = "waitDeadline";
  */
 export const MAX_WAIT_DEPTH = 5;
 
-/** The one test of a gate's kind, including a gate stored before the rename. */
+/** The one test of a gate's kind. */
 export function isWaitGate(suspension: { readonly reason: string }): boolean {
-  return suspension.reason === WAIT_GATE_REASON || suspension.reason === LEGACY_WAIT_GATE_REASON;
+  return suspension.reason === WAIT_GATE_REASON;
 }
 
 /**

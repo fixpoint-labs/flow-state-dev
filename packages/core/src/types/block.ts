@@ -75,6 +75,8 @@ export type BlockTraceCapturePayload = {
     generator?: BlockTraceItem["generator"];
     evaluator?: BlockTraceItem["evaluator"];
     modelUsage?: BlockTraceItem["modelUsage"];
+    /** `output` phase: the harness runs the block settled (FIX-2145). */
+    harnessSpend?: BlockTraceItem["harnessSpend"];
     model?: BlockTraceItem["model"];
     /**
      * Accessor keys the block declares at build time (`ownDeclaredResources`),
@@ -759,10 +761,12 @@ export interface BlockContext<
    * {@link _emitComponentAwaited}, settling once the item has been added and
    * completed and rejecting rather than swallowing. Absent in a hand-built
    * context; a caller that depends on it treats absence as a failure.
+   * `role` defaults to `assistant`; `user` records input the flow received
+   * from someone else, such as another worker's message.
    */
   _emitMessageAwaited?(
     text: string,
-    options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }
+    options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean; role?: "user" | "assistant" }
   ): Promise<void>;
 
   /**

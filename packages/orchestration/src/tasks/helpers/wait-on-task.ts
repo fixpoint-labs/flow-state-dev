@@ -87,7 +87,7 @@ import { TASK_SESSION_TASK_KEY } from "../../task-board/task-turn";
  * gate from `row.wait.gateId`, never by rebuilding it.
  */
 export function waitGateId(collectionId: string, taskId: string): string {
-  return `ask:${collectionId}:${taskId}`;
+  return `wait:${collectionId}:${taskId}`;
 }
 
 /** Whether the running request's host can hold a wait: core's check, re-exported where the board's wait lives. */

@@ -27,8 +27,8 @@ export interface TaskSpendWrite {
   readonly writer?: string;
   /** When that admission was made: a later one of the same request supersedes an earlier one that never settled. */
   readonly admittedAt?: number;
-  /** What that admission's ledger recovered from the request's log when it was admitted: its pending model calls then. */
-  readonly recovered?: RequestSpend["byModel"];
+  /** What that admission's ledger recovered from the request's log when it was admitted: its pending spend then. */
+  readonly recovered?: RequestSpend;
 }
 
 /** The harness and model a request's spend names last, if any. */
@@ -56,7 +56,7 @@ export function spendAfterWrite(task: Pick<Task, "spend">, write: TaskSpendWrite
   const at = stored.requests.findIndex((entry) => entry.requestId === write.requestId && entry.writer === writer);
   const was: TaskSpendRequest =
     at < 0
-      ? { requestId: write.requestId, settled: [], live: null, harness: null, harnessModel: null, model: null, writer, admittedAt: write.admittedAt ?? null, recovered: write.recovered === undefined ? null : (requestSpendSources({ byModel: write.recovered, harnessRuns: [] }) as TaskSpendSource[]) }
+      ? { requestId: write.requestId, settled: [], live: null, harness: null, harnessModel: null, model: null, writer, admittedAt: write.admittedAt ?? null, recovered: write.recovered === undefined ? null : (requestSpendSources(write.recovered) as TaskSpendSource[]) }
       : stored.requests[at]!;
   const sources = requestSpendSources(write.spend) as TaskSpendSource[];
   const names = namesOf(write.spend);
@@ -90,12 +90,11 @@ export function spendAfterWrite(task: Pick<Task, "spend">, write: TaskSpendWrite
  *
  * An admission whose process died never settles: its live part stays. Once
  * a later admission of the same request has written, that part is superseded:
- * its harness runs still count (they were spent, and the continuation's ledger
- * doesn't recover them), its model calls count less what the next admission
- * recovered from the log (that one reports those itself; a block that never
- * finished logged nothing, so its calls are only here), and it no longer
- * reads as running. An older next admission that recorded nothing recovered
- * drops them all. A predecessor's ending that is only late replaces its live part
+ * it counts less what the next admission recovered from the log (that one
+ * reports those itself; a block that never finished logged nothing, so what
+ * it spent is only here), and it no longer reads as running. An older next
+ * admission that recorded nothing recovered drops its model calls and keeps
+ * its harness runs whole. A predecessor's ending that is only late replaces its live part
  * with what it settles, so nothing counts twice. `live` is never true on a
  * terminal row either.
  */
@@ -136,17 +135,24 @@ export function taskSpendView(task: Pick<Task, "spend"> & Partial<Pick<Task, "st
 }
 
 /**
- * A superseded admission's live part, less the model calls its continuation
- * recovered from the log: harness runs whole, model calls only what was never
- * logged. With nothing recorded as recovered (an older row), no model calls.
+ * A superseded admission's live part, less what its continuation recovered
+ * from the log, source by source: only what was never logged. With nothing
+ * recorded as recovered (an older row), its harness runs whole and no model
+ * calls, as the continuation then recovered model calls only.
  */
 function unrecovered(live: TaskSpendSource[], recovered: TaskSpendSource[] | null): TaskSpendSource[] {
   return live.flatMap((source) => {
-    if (source.kind === "harness") return [source];
-    if (recovered === null) return [];
-    const logged = recovered.find((other) => other.kind === "model" && other.source === source.source);
-    const inputTokens = Math.max(0, source.inputTokens - (logged?.inputTokens ?? 0));
-    const outputTokens = Math.max(0, source.outputTokens - (logged?.outputTokens ?? 0));
-    return inputTokens === 0 && outputTokens === 0 ? [] : [{ ...source, inputTokens, outputTokens }];
+    if (recovered === null) return source.kind === "harness" ? [source] : [];
+    const logged = recovered.find((other) => other.kind === source.kind && other.source === source.source && other.billing === source.billing);
+    if (logged === undefined) return [source];
+    const left = (now: number, then: number) => Math.max(0, now - then);
+    const kept = {
+      ...source,
+      inputTokens: left(source.inputTokens, logged.inputTokens),
+      outputTokens: left(source.outputTokens, logged.outputTokens),
+      runs: left(source.runs, logged.runs),
+      unreported: left(source.unreported, logged.unreported),
+    };
+    return kept.inputTokens === 0 && kept.outputTokens === 0 && (source.kind === "model" || kept.runs === 0) ? [] : [kept];
   });
 }
