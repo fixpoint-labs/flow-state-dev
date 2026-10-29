@@ -75,6 +75,8 @@ const lab = await openLab({
   stores: sqliteStores({ filename: storeFile }),
   harness: recordingHarness,
   runTimeoutMs: RUN_TIMEOUT_MS,
+  // The recording harness's abort ends its run at once, so a steer may stop it.
+  stopsOnAbort: true,
   workspace: { root: scratch.root, sourceRepo: scratch.sourceRepo, baseRef: BASE_REF },
   coderWorkerId,
   modelResolver,
