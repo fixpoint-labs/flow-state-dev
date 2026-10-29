@@ -329,6 +329,11 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
       if (shown === undefined) failures.push("6: the coding thread's row isn't under Ready for review");
       const card = (await snapshot(page)).cards.find((c) => c.taskId === coding.id);
       if (!/judge/i.test(card?.text ?? "")) failures.push(`6: the card doesn't show the judge's verdict: ${JSON.stringify(card?.text ?? "")}`);
+      // What the run spent, read off the board's row: its model and a token count, never a 0 or a lab sum.
+      const spend = ((await board(sessionId, "listTasks_tasks", {}))?.tasks ?? []).find((t: any) => t.id === coding.id)?.spend;
+      if (spend?.harness !== "claude-code" || !spend.model) failures.push(`6: the board's row doesn't carry the run's harness and model: ${JSON.stringify(spend ?? null)}`);
+      else if (!card?.text.includes(spend.model) || !/\d(\.\d)?[kM]? tokens/.test(card.text)) failures.push(`6: the card doesn't show the run's model and tokens: ${JSON.stringify(card?.text ?? "")}`);
+      else notes.push(`6: the card shows ${spend.model}, ${(spend.inputTokens ?? 0) + (spend.outputTokens ?? 0)} tokens on the row`);
       await cardFor(coding.id).getByRole("button", { name: "Resolve" }).click();
       const done = await until(async () => {
         const read = await taskOf(sessionId, coding.id);

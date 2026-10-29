@@ -1,5 +1,6 @@
 import type { LabAdapter, TaskRow } from "../adapter";
 import { cn } from "../lib/utils";
+import { Spend } from "./Spend";
 import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus";
 
 /**
@@ -50,6 +51,7 @@ export function ThreadCard({
           <HarnessTag task={task} />
         </div>
         <div className="truncate text-xs text-muted-foreground">{statusLine(task)}</div>
+        <Spend task={task} />
         {column === "waiting" || column === "review" ? (
           <div className="mt-1.5 flex gap-1.5">
             {column === "waiting" && task.status !== "errored" ? (
