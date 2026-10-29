@@ -275,6 +275,10 @@ export interface AgentWorkerFlowOptions {
    *
    * Refused when the flow is built if a key is one the flow already declares.
    * Omitted, a worker's file can set only the built-in settings.
+   *
+   * The flow never reads one of these to change how it runs: they only ride to
+   * the row. A setting that should change the flow's behaviour is a new
+   * built-in setting instead.
    */
   settings?: z.ZodRawShape;
   /**

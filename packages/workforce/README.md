@@ -1967,6 +1967,10 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
   A worker's file then sets `icon:` beside its other settings. A key the flow already declares,
   such as `model`, is refused when the flow is built.
 
+  These settings are for your app to read, never the flow: the `agent` flow doesn't look at
+  them, so they can't change how a worker runs. A setting that should change that belongs in the
+  flow's own built-in settings instead.
+
   In React, build the client once with `useMemo` over the same options. `useFlow` creates sessions
   with no starting state, which a worker flow refuses, so find or start the session with the client
   and select it on the hook (`flow.selectSession(session.id)`).

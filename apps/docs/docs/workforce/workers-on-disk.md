@@ -541,6 +541,9 @@ workerFlows: () => ({
 Now a `WORKER.md` can carry `icon: 🔎`, and its row shows it. A name the flow already uses, like
 `model`, is refused when the flow is built.
 
+These settings are for your app to read. The `agent` flow never looks at them, so they can't
+change how a worker runs. A setting that should change that has to be one of the flow's own.
+
 #### Where a worker's data lives
 
 Session, request and user state belong to one user. Org scope is shared with every user in the
