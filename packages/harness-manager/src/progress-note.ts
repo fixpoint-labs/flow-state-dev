@@ -59,8 +59,8 @@ export interface ProgressNotes {
  * Throttle one step's notes onto `write`: the first at once, then the latest
  * once per {@link PROGRESS_NOTE_MS}, never the same text twice in a row.
  * `write` answers `false` when the row declined it (the attempt no longer
- * holds it), and nothing more is written then. A throw writes nothing and
- * stops nothing.
+ * holds it), and nothing more is written then. A throw stops nothing, and
+ * the note it failed to write may be written again in the next window.
  */
 export function throttledNotes(write: (note: string) => Promise<boolean>): ProgressNotes {
   let pending: string | null = null;
@@ -74,13 +74,17 @@ export function throttledNotes(write: (note: string) => Promise<boolean>): Progr
     const note = pending;
     pending = null;
     if (stopped || note === null || note === written) return;
+    const before = written;
     written = note;
     lastWriteAt = Date.now();
     write(note).then(
       (kept) => {
         if (!kept) stopped = true;
       },
-      () => undefined,
+      // Not on the row, so the same note may be written again next window.
+      () => {
+        if (written === note) written = before;
+      },
     );
   };
 

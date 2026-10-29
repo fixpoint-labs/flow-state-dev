@@ -89,6 +89,24 @@ describe("how often a note reaches the row", () => {
     expect(written).toEqual(["Edit: src/a.ts"]);
   });
 
+  it("writes a note again after a write of it failed, so a blip doesn't leave the row stale", async () => {
+    const written: string[] = [];
+    let fail = true;
+    const notes = throttledNotes(async (note) => {
+      written.push(note);
+      if (fail) {
+        fail = false;
+        throw new Error("board unreachable");
+      }
+      return true;
+    });
+    notes.report("Bash: pnpm test");
+    await vi.advanceTimersByTimeAsync(PROGRESS_NOTE_MS);
+    notes.report("Bash: pnpm test");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(written).toEqual(["Bash: pnpm test", "Bash: pnpm test"]);
+  });
+
   it("drops what's pending when the step ends", async () => {
     const { written, notes } = recorder();
     notes.report("Edit: src/a.ts");
