@@ -547,16 +547,7 @@ async function callThenDie(dies: (method: string, args: unknown[]) => boolean, o
   // The dead host is never disposed: its every store call hangs, as a dead process's would.
 
   const next = bootBoardHost({ ...common, judgment: leadAnswers(), stores: shared as never });
-  // The dead host's request still owes its request-end hooks, and that debt is
-  // kept per process, which both hosts share here: the next host's shutdown
-  // would wait its whole drain budget for a run that never ends.
-  open = {
-    ...next,
-    dispose: async () => {
-      await disposeFlowApiRouter(await next.state.getRouter(), { drainMs: 100 });
-      await next.dispose();
-    }
-  };
+  open = next;
   await next.state.getRouter();
   expect(await until(async () => (await (await shared.resolve()).request.get(asked))?.status === "completed", 30_000)).toBe(true);
   await next.settled(20_000);
@@ -564,6 +555,14 @@ async function callThenDie(dies: (method: string, args: unknown[]) => boolean, o
 }
 
 describe("a call whose process dies before it parks", { timeout: 60_000 }, () => {
+  // The dead host's request still owes its request-end hooks, and that debt is
+  // kept per process, which both hosts share here: the next host's shutdown
+  // would wait its whole drain budget for a run that never ends. Runs before
+  // the file's hook disposes `open`.
+  afterEach(async () => {
+    if (open !== undefined) await disposeFlowApiRouter(await open.state.getRouter(), { drainMs: 100 });
+  });
+
   // The bug (FIX-2269): the caller's request was left `interrupted` behind no
   // gate, so nothing continued it and the call never answered its user, though
   // the recipient could still have answered it.
