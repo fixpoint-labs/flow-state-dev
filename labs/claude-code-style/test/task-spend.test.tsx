@@ -42,6 +42,7 @@ describe("a task's spend", () => {
 
   it("marks a count that is still missing a source", () => {
     expect(spendLine(spend({ unreported: true }))).toBe("claude-code · claude-sonnet · 12.3k tokens so far reported");
+    expect(spendTotal(spend({ unreported: true }))).toBe("12.3k (partial)");
   });
 
   it("leaves out a harness or model nobody named", () => {

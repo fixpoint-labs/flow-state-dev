@@ -25,10 +25,10 @@ export function spendLine(spend: TaskSpendView): string {
   return [spend.harness, spend.model, total(spend)].filter((part): part is string => part !== null).join(" · ");
 }
 
-/** A finished row's tokens in total, or nothing while none are reported. */
+/** A finished row's tokens in total, marked partial when a source never reported, or nothing while none are reported. */
 export function spendTotal(spend: TaskSpendView): string | undefined {
   if (spend.inputTokens === null && spend.outputTokens === null) return undefined;
-  return tokens((spend.inputTokens ?? 0) + (spend.outputTokens ?? 0));
+  return `${tokens((spend.inputTokens ?? 0) + (spend.outputTokens ?? 0))}${spend.unreported ? " (partial)" : ""}`;
 }
 
 /** The sheet's line: harness · model · input and output, each as reported. */
