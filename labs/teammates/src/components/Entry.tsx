@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import type { ConversationEntry } from "../adapter";
 import { cn } from "../lib/utils";
 import { AgentMarkdown } from "./flow-state/message-response";
@@ -8,9 +8,10 @@ import { AgentMarkdown } from "./flow-state/message-response";
  * answers on the left. A message the worker sent another worker is a one-line
  * card that opens to its full text; a message it received, or a task it
  * filed coming back, lands under the sender's name. A worker's text is
- * Markdown; your own lines are shown as typed.
+ * Markdown; your own lines are shown as typed. Memoized: a streamed chunk
+ * redraws only the entry that changed.
  */
-export function Entry({
+export const Entry = memo(function Entry({
   entry,
   workerName,
   nameOf,
@@ -70,7 +71,7 @@ export function Entry({
       // Drawn by the conversation, from the board's row.
       return null;
   }
-}
+});
 
 /** A message to another worker: one line until opened. */
 function SentCard({ to, text }: { to: string; text: string }) {

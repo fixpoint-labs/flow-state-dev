@@ -54,8 +54,9 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     setSelected(talking[0]?.id);
   };
 
-  const nameOf = (id: string) => workers.find((w) => w.id === id)?.name ?? id;
-  const isCoding = (id: string) => workers.some((w) => w.id === id && w.takesTasks);
+  // Stable between roster reads, so a memoized entry doesn't redraw for a new function.
+  const nameOf = useCallback((id: string) => workers.find((w) => w.id === id)?.name ?? id, [workers]);
+  const isCoding = useCallback((id: string) => workers.some((w) => w.id === id && w.takesTasks), [workers]);
   const teammates = workers.filter((w) => !w.takesTasks);
   const worker = openRun === undefined ? teammates.find((w) => w.id === selected) : undefined;
   const choose = (id: string) => {

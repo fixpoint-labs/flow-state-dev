@@ -39,6 +39,7 @@ import {
 } from "@flow-state-dev/workforce/browser";
 import { CODER_FLOW } from "./lib/coder-flow";
 import { sessionFeeds, type SessionFeed } from "./lib/session-feed";
+import { stableList } from "./lib/stable";
 
 /** Stops a watch. */
 export type Unsubscribe = () => void;
@@ -88,13 +89,15 @@ export interface RunStep {
 /** One entry of a worker's conversation, in the order it happened. */
 export type ConversationEntry =
   | { kind: "user"; id: string; text: string; queued?: boolean }
-  | { kind: "assistant"; id: string; text: string }
+  /** `streaming` while the answer is still being written. */
+  | { kind: "assistant"; id: string; text: string; streaming?: boolean }
   /** The worker messaged another worker (`sendMessage`). */
   | { kind: "sent"; id: string; messageId: string; to: string; text: string }
   /** A message another worker sent, as the `receive` turn that read it. */
   | { kind: "received"; id: string; messageId: string; from: string; text: string; inReplyTo?: string }
   /** The worker filed a task; the card reads the board's row by its id. */
-  | { kind: "task"; id: string; taskId: string }
+  /** The worker filed a task; the card reads the board's row by its id, and draws `title` until the row arrives. */
+  | { kind: "task"; id: string; taskId: string; title: string; to: string }
   /** A task it filed ended, as a line under the name of the worker that ran it. */
   | { kind: "result"; id: string; taskId: string; from: string; text: string; failed?: boolean }
 
@@ -296,7 +299,7 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>):
       entries.push({ kind: "result", id: item.id, taskId, from: item.agentName, text: task?.result ?? textOf(item), ...(failed ? { failed: true } : {}) });
     } else if (item.type === "message" && item.role === "assistant") {
       const text = textOf(item);
-      if (text.trim() !== "") entries.push({ kind: "assistant", id: item.id, text });
+      if (text.trim() !== "") entries.push({ kind: "assistant", id: item.id, text, ...(item.status === "in_progress" ? { streaming: true } : {}) });
     } else if (item.type === "tool_output" && item.toolCall?.name === SEND_MESSAGE_TOOL) {
       const args = parseArgs(item);
       const messageId = item.output?.sent ?? item.output?.callId;
@@ -304,13 +307,30 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>):
         entries.push({ kind: "sent", id: item.id, messageId, to: args.to, text: String(args.text ?? "") });
       }
     } else if (item.type === "tool_output" && item.toolCall?.name === CREATE_TASK && item.output?.ok === true) {
-      entries.push({ kind: "task", id: item.id, taskId: item.output.taskId });
+      const args = parseArgs(item);
+      entries.push({ kind: "task", id: item.id, taskId: item.output.taskId, title: String(args.title ?? args.goal ?? ""), to: String(args.assignee ?? "") });
     } else if (item.type === "component" && item.component === RECEIVED_MESSAGE_COMPONENT) {
       const { id, from, text, inReplyTo } = item.data ?? {};
       entries.push({ kind: "received", id: item.id, messageId: id, from, text, ...(inReplyTo === undefined ? {} : { inReplyTo }) });
     }
   }
   return entries;
+}
+
+/**
+ * Whether the worker is answering, from the conversation's items and the
+ * requests the server lists as in progress. The list is read on a timer, so
+ * it trails the items: a request whose answer the items already show as
+ * finished, with nothing of it still being written, is done here at once,
+ * and an item of the newest request still being written is an answer under
+ * way before the list says so. The "answering" line then comes and goes with the text.
+ */
+export function answeringOf(items: readonly Item[], inProgress: readonly string[]): boolean {
+  // Only the newest request, or one the list names: an item a crashed turn left half-written stays so for good.
+  const newest = items[items.length - 1]?.requestId;
+  if (items.some((i) => i.status === "in_progress" && (i.requestId === newest || inProgress.includes(i.requestId)))) return true;
+  const answered = new Set(items.filter((i) => i.type === "message" && i.role === "assistant" && i.status === "completed").map((i) => i.requestId));
+  return inProgress.some((requestId) => !answered.has(requestId));
 }
 
 /** A roster entry as the screen lists it. */
@@ -383,16 +403,28 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     },
     watchConversation(sessionId, onChange) {
       let entries: ConversationEntry[] = [];
-      let running = false;
-      const emit = () => onChange({ entries, running });
-      const stopFeed = watchFeed(sessionId, (items) => toEntries(items, workerIds), (next) => {
+      let items: Item[] = [];
+      let inProgress: string[] = [];
+      let shown: ConversationView | undefined;
+      // Unchanged entries keep their objects, so a streamed chunk redraws only the growing one.
+      const reuse = stableList<ConversationEntry>((next) => {
         entries = next;
+      });
+      const emit = () => {
+        const running = answeringOf(items, inProgress);
+        if (shown?.entries === entries && shown.running === running) return;
+        shown = { entries, running };
+        onChange(shown);
+      };
+      const stopFeed = watchFeed(sessionId, (next) => next, (next) => {
+        items = next;
+        reuse(toEntries(items, workerIds));
         emit();
       });
       const stopPoll = poll(
         () => client.sessions.requests(sessionId, { status: "in_progress" }),
         (requests) => {
-          running = activityOf(requests).running;
+          inProgress = requests.filter((r) => !QUIET_ACTIONS.has(r.actionName)).map((r) => r.id);
           emit();
         },
       );
@@ -488,7 +520,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       conversations.delete(worker);
     },
     watchTasks(sessionId, onChange) {
-      return watchFeed(sessionId, (items) => [...boardRows(items).values()].map(toBoardTask), onChange);
+      return watchFeed(sessionId, (items) => [...boardRows(items).values()].map(toBoardTask), stableList(onChange));
     },
     watchRun(runSessionId, onChange) {
       return watchFeed(runSessionId, (items) => {

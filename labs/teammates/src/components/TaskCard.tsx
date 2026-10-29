@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import type { LabAdapter, BoardTask } from "../adapter";
 import { useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
@@ -6,9 +6,9 @@ import { cn } from "../lib/utils";
 /**
  * A task a conversation filed: one line with what it is and how it stands,
  * opening to the run, read only. A coding task reads as a background task,
- * never as a task for a teammate.
+ * never as a task for a teammate. Memoized, like a conversation's entries.
  */
-export function TaskCard({
+export const TaskCard = memo(function TaskCard({
   adapter,
   task,
   nameOf,
@@ -54,4 +54,4 @@ export function TaskCard({
       ) : null}
     </div>
   );
-}
+});
