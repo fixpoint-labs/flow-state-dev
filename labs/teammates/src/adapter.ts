@@ -9,6 +9,7 @@
  * | `openConversation`  | `ensureWorkerSession({ worker })`: the worker's default conversation         |
  * | `send`              | the worker's door, `respond`, streamed, so its answer shows as it is written  |
  * | `watchConversation` | the session's items, from its snapshot and then its stream                   |
+ * | `answerApproval`    | the request's `answer`: approve or reject a `user_approval` stop             |
  * | `watchTalk`         | the user's message log (`workforceMessages`), as `sendMessage` writes it     |
  * | `watchActivity`     | `listSessionRequests` on the worker's conversation                           |
  * | `watchWindow`       | the last answering request's `historyStart`, and the session's `historySummary` |
@@ -109,7 +110,8 @@ export type ConversationEntry =
   | { kind: "task"; id: string; taskId: string; title: string; to: string }
   /** A task it filed ended, as a line under the name of the worker that ran it. */
   | { kind: "result"; id: string; taskId: string; from: string; text: string; failed?: boolean }
-
+  /** The worker waits for your yes (`waitForUser` with an approval); `resolution` once answered. */
+  | { kind: "approval"; id: string; requestId: string; suspensionId: string; text: string; resolution?: string };
 
 /** What a conversation shows now. */
 export interface ConversationView {
@@ -157,6 +159,8 @@ export interface LabAdapter {
   openConversation(worker: string): Promise<string>;
   send(sessionId: string, text: string): Promise<void>;
   watchConversation(sessionId: string, onChange: (view: ConversationView) => void): Unsubscribe;
+  /** Say yes or no to what an approval entry asks; the worker's turn carries on. */
+  answerApproval(sessionId: string, approval: { requestId: string; suspensionId: string }, approve: boolean): Promise<void>;
   /** Every message to or from `worker`, oldest first. */
   watchTalk(worker: string, onChange: (rows: TalkRow[]) => void): Unsubscribe;
   watchActivity(worker: string, onChange: (activity: Activity) => void): Unsubscribe;
@@ -324,6 +328,11 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>):
     } else if (item.type === "tool_output" && item.toolCall?.name === CREATE_TASK && item.output?.ok === true) {
       const args = parseArgs(item);
       entries.push({ kind: "task", id: item.id, taskId: item.output.taskId, title: String(args.title ?? args.goal ?? ""), to: String(args.assignee ?? "") });
+    } else if (item.type === "suspension" && item.reason === "user_approval") {
+      entries.push({ kind: "approval", id: item.id, requestId: item.requestId, suspensionId: item.suspensionId, text: item.message });
+    } else if (item.type === "suspension_resume") {
+      const asked = entries.find((e) => e.kind === "approval" && e.suspensionId === item.suspensionId);
+      if (asked?.kind === "approval") asked.resolution = item.resolution;
     } else if (item.type === "component" && item.component === RECEIVED_MESSAGE_COMPONENT) {
       const { id, from, text, inReplyTo } = item.data ?? {};
       entries.push({ kind: "received", id: item.id, messageId: id, from, text, ...(inReplyTo === undefined ? {} : { inReplyTo }) });
@@ -442,6 +451,11 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       const response = await client.flow(flow).send("respond", { message: text }, { sessionId, stream: true });
       if (!response.ok) throw new Error(`teammates: the send was refused (${response.status})`);
       if (response.headers.get("content-type")?.includes("text/event-stream")) feeds(sessionId).followResponse(response);
+    },
+    async answerApproval(sessionId, approval, approve) {
+      const flow = flowOfSession.get(sessionId);
+      if (flow === undefined) throw new Error(`teammates: ${sessionId} is not an open conversation`);
+      await client.flow(flow).request(approval.requestId).answer({ suspensionId: approval.suspensionId, action: approve ? "approve" : "reject" });
     },
     watchConversation(sessionId, onChange) {
       let entries: ConversationEntry[] = [];

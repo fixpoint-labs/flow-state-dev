@@ -164,6 +164,7 @@ export function Conversation({
                     replied={entry.kind === "sent" && repliedIn(talk, entry.messageId)}
                     onOpenMessage={openMessage}
                     onOpenTask={openTask}
+                    {...(entry.kind === "approval" ? { onAnswer: (approve: boolean) => adapter.answerApproval(sessionId, entry, approve) } : {})}
                   />
                 )}
               </div>
