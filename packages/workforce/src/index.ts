@@ -1,8 +1,8 @@
 /**
  * `@flow-state-dev/workforce` — the worker factory and its persona helpers.
  *
- * The package supplies `hireWorkforce`, which turns worker records into one
- * configured, addressable flow copy each, and declares `WorkerManifest`, the
+ * The package supplies `hireWorkforce`, which registers one copy of each
+ * worker flow and the roster flow, and declares `WorkerManifest`, the
  * record those workers are made of, whether described in files or written by
  * hand. Reading that description off disk is the `./loader` subpath's job, kept
  * out of the root so importing this package does not pull a consumer onto
@@ -32,15 +32,16 @@
  * collections.ts` is canonical for what it holds and how it joins back to the
  * declared records.
  *
- * And beside the inventory sits the **roster**: the durable record of workers
- * hired while the app was running, which files cannot hold because a runtime
- * hire writes no file. `roster/collections.ts` owns the row,
- * `roster/reload.ts` owns reading a whole roster back at the next boot, and
- * the two are a different contract from the inventory's on purpose — a roster
- * row is deletable because firing a worker is half of what a roster is for,
- * while an inventory row means *was registered here*. A declared worker's
- * inventory row is never removed; a runtime-hired worker's is removed by its
- * fire, and only while it carries the incarnation fired.
+ * And beside the inventory sits the **roster**: each user's own workers,
+ * hired while the app runs, which files cannot hold because a hire writes no
+ * file. A worker of the user's own is a row of their worker collection
+ * (`workers/worker-row.ts`), and the roster flow `hireWorkforce` registers
+ * carries the four writes to it, `hire`, `fork`, `edit` and `fire`
+ * (`workers/hire-blocks.ts`); an app calls them through the workforce client.
+ * Nothing is registered by a write: each worker flow loads its turn's worker
+ * from the row when the turn starts, so a hire, an edit or a fire reaches the
+ * next turn on every host, with no restart. Standard workers, the ones the
+ * files declare, are read-only; a user forks one to get a copy of their own.
  */
 
 export { AGENT_FLOW, defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "./agent-worker-flow";

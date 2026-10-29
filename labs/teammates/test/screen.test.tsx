@@ -204,4 +204,72 @@ describe("the teammates screen", () => {
     fireEvent.keyDown(box, { key: "Enter" });
     await waitFor(() => expect(entries("user").some((e) => e.textContent?.includes("日本語"))).toBe(true));
   });
+
+  it("with no projects, never leaves a dead end: the card makes one, and lead then files the job in it", async () => {
+    render(<App adapter={fast({ projects: [] })} />);
+    const chip = (await screen.findByLabelText("Project for lead")) as HTMLSelectElement;
+    expect([...chip.options].map((o) => o.textContent)).toEqual(["no projects yet", "New project…"]);
+    await tell("lead", "Have coder fix the typo in the README's first line.");
+    const prompt = await within(conversation()).findByRole("group", { name: "Create a project" });
+    // Nothing to pick, so no pick button.
+    expect(within(prompt).queryByRole("button", { name: "Use project" })).toBeNull();
+    fireEvent.change(within(prompt).getByLabelText("Project name"), { target: { value: "Relay" } });
+    fireEvent.change(within(prompt).getByLabelText("Project folder"), { target: { value: "/code/relay" } });
+    await act(async () => fireEvent.click(within(prompt).getByRole("button", { name: "Create project" })));
+    expect(await within(conversation()).findByText(PICKED_LINE)).toBeTruthy();
+    expect(chip.value).toBe("relay");
+    await waitFor(() => expect(within(conversation()).getAllByRole("button", { name: /Task for coder/ })).toHaveLength(2), { timeout: 2000 });
+  });
+
+  it("makes a project from the header's select, which lists it at once and puts lead in it", async () => {
+    render(<App adapter={fast()} />);
+    const chip = (await screen.findByLabelText("Project for lead")) as HTMLSelectElement;
+    await act(async () => fireEvent.change(chip, { target: { value: "__new" } }));
+    const form = screen.getByRole("form", { name: "New project" });
+    fireEvent.change(within(form).getByLabelText("Project name"), { target: { value: "Docs site" } });
+    await act(async () => fireEvent.click(within(form).getByRole("button", { name: "Create project" })));
+    await waitFor(() => expect(chip.value).toBe("docs-site"));
+    expect([...chip.options].map((o) => o.textContent)).toContain("in · Docs site");
+    expect(screen.queryByRole("form", { name: "New project" })).toBeNull();
+  });
+
+  it("asks before lead makes a project of a folder: Approve makes it, and the card then says so", async () => {
+    render(<App adapter={fast({ projects: [] })} />);
+    const chip = (await screen.findByLabelText("Project for lead")) as HTMLSelectElement;
+    await tell("lead", "Fix the typo in /code/relay");
+    const card = await within(conversation()).findByRole("region", { name: "lead asks" });
+    expect(card.textContent).toContain("file:///code/relay");
+    // Until you answer, nothing is made.
+    expect([...chip.options].map((o) => o.textContent)).toEqual(["no projects yet", "New project…"]);
+    await act(async () => fireEvent.click(within(card).getByRole("button", { name: "Approve" })));
+    await waitFor(() => expect(card.textContent).toContain("approved"));
+    expect(within(card).queryByRole("button", { name: "Approve" })).toBeNull();
+    await waitFor(() => expect([...chip.options].map((o) => o.value)).toContain("relay"));
+  });
+
+  it("hires a teammate you can talk to, changes its instructions, and fires it; the files' workers can't be", async () => {
+    render(<App adapter={fast()} />);
+    await screen.findByLabelText("Message lead");
+    // A worker from the files has no instructions or fire control.
+    expect(within(conversation()).queryByRole("button", { name: "Fire" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Hire a teammate" }));
+    const form = screen.getByRole("form", { name: "Hire a teammate" });
+    fireEvent.change(within(form).getByLabelText("Teammate name"), { target: { value: "Tester" } });
+    fireEvent.change(within(form).getByLabelText("Teammate role"), { target: { value: "Runs the tests." } });
+    await act(async () => fireEvent.click(within(form).getByRole("button", { name: "Hire" })));
+    await waitFor(() => expect(within(workers()).getAllByRole("listitem")).toHaveLength(5));
+    expect(await screen.findByLabelText("Message tester")).toBeTruthy();
+
+    fireEvent.click(within(conversation()).getByRole("button", { name: "Instructions" }));
+    const edit = screen.getByRole("form", { name: "Instructions for tester" });
+    fireEvent.change(within(edit).getByLabelText("New instructions for tester"), { target: { value: "Answer in one sentence." } });
+    await act(async () => fireEvent.click(within(edit).getByRole("button", { name: "Save instructions" })));
+    await waitFor(() => expect(screen.queryByRole("form", { name: "Instructions for tester" })).toBeNull());
+
+    window.confirm = () => true;
+    await act(async () => fireEvent.click(within(conversation()).getByRole("button", { name: "Fire" })));
+    await waitFor(() => expect(within(workers()).getAllByRole("listitem")).toHaveLength(4));
+    expect(workerRow("tester")).toBeNull();
+  });
 });
