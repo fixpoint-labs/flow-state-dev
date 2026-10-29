@@ -1320,6 +1320,15 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
               // separates the `ctx.signal.aborted` check above from this line, so
               // nothing can flip it in between.
               for (const event of events) recorder?.observe(event);
+              // What the run spent, taken from its result before any event is
+              // written: a failed write below must not lose known spend (FIX-2145).
+              for (const event of events) {
+                if (event.kind !== "result") continue;
+                if (event.spentTokens !== null) spentTokens = event.spentTokens;
+                if (event.costUsd !== null) costUsd = event.costUsd;
+                // The whole query's count replaces the running sum (FIX-2288).
+                reportSpend();
+              }
               for (const event of events) {
                 if (ctx.signal.aborted) return;
                 inFlightRef.current = emitTranslatedEvent(event, ctx, emitState, name);
@@ -1337,10 +1346,6 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
                   if (event.finalMessage !== null)
                     finalMessage = event.finalMessage;
                   if (event.usage !== null) usage = event.usage;
-                  if (event.spentTokens !== null) spentTokens = event.spentTokens;
-                  if (event.costUsd !== null) costUsd = event.costUsd;
-                  // The whole query's count replaces the running sum.
-                  reportSpend();
                 }
               }
               if (ctx.signal.aborted) return;

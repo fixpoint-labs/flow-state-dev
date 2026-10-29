@@ -230,6 +230,19 @@ export function tokensLabel(tokens: number): string {
   return `${tokens.toLocaleString("en-US")} tokens`;
 }
 
+/** True when no run of `source` reported tokens: its zero is unknown, not measured. */
+export function noTokensReported(source: Pick<WorkerSourceUsage, "runs" | "unreported">): boolean {
+  return source.runs > 0 && source.unreported === source.runs;
+}
+
+/**
+ * A source's or worker's token figure in words: "tokens not reported" when
+ * none of `sources` reported any, so an unknown count never reads as 0.
+ */
+export function reportedTokensLabel(tokens: number, sources: ReadonlyArray<Pick<WorkerSourceUsage, "runs" | "unreported">>): string {
+  return sources.length > 0 && sources.every(noTokensReported) ? "tokens not reported" : tokensLabel(tokens);
+}
+
 /** A source's name: a harness by name (`Claude Code`), a model by its id. */
 export function sourceName(source: Pick<WorkerSourceUsage, "source" | "kind">): string {
   return source.kind === "harness" ? harnessName(source.source) : source.source;
