@@ -131,8 +131,12 @@ export async function payReplyDebts(ctx: BlockContext, installation: WorkerInsta
       drop.push(entry.id);
       continue;
     }
-    if (await hasEnded(ctx, entry.by)) {
-      if (row.status === "delivered") await sendOwedReply(ctx, installation, flowKind, entry.id, "");
+    // A take-over may have delivered it since this pass read the list: then
+    // the request that owes it is the one that delivered it, looked at again
+    // next time, never the dead one's end.
+    const delivered = row.status === "delivered";
+    if ((!delivered || row.deliveredAs === entry.by) && (await hasEnded(ctx, entry.by))) {
+      if (delivered) await sendOwedReply(ctx, installation, flowKind, entry.id, "");
       else drop.push(entry);
       continue;
     }
