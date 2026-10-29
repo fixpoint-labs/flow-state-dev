@@ -34,7 +34,7 @@ export function Entry({
       );
     case "assistant":
       return (
-        <div className="max-w-[85%] py-1 text-sm leading-relaxed" data-entry="assistant">
+        <div className="py-1 text-sm leading-relaxed" data-entry="assistant">
           <AgentMarkdown text={entry.text} />
         </div>
       );

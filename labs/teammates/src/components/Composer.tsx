@@ -1,11 +1,21 @@
-import { useState, type FormEvent, type KeyboardEvent } from "react";
+import { useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
 /**
  * Where you type to the open worker. Enter sends, Shift+Enter is a new line.
- * A line sent while the worker answers waits for that answer.
+ * A line sent while the worker answers waits for that answer. It sits in the
+ * conversation's column (`--thread-width`), and the box grows with what you
+ * type up to a cap, then scrolls.
  */
 export function Composer({ workerName, running, onSend }: { workerName: string; running: boolean; onSend: (text: string) => void }) {
   const [text, setText] = useState("");
+  const box = useRef<HTMLTextAreaElement>(null);
+  // Fit the box to its text: shrink to one line, then grow to the content (the CSS caps it).
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [text]);
   const send = () => {
     const line = text.trim();
     if (!line) return;
@@ -27,25 +37,28 @@ export function Composer({ workerName, running, onSend }: { workerName: string; 
   };
   return (
     <form onSubmit={onSubmit} className="px-6 pb-4">
-      <div className="flex items-end gap-2 rounded-3xl border border-border bg-card px-3 py-2 focus-within:border-ring">
-        <textarea
-          aria-label={`Message ${workerName}`}
-          rows={2}
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder={`Message ${workerName}…`}
-          className="block flex-1 resize-none bg-transparent px-1 text-sm outline-none placeholder:text-muted-foreground"
-        />
-        <button
-          type="submit"
-          disabled={!text.trim()}
-          className="rounded-full bg-primary px-3 py-1 text-sm font-semibold text-primary-foreground disabled:opacity-40"
-        >
-          Send
-        </button>
+      <div data-column className="mx-auto max-w-(--thread-width)">
+        <div className="flex items-end gap-2 rounded-3xl border border-border bg-card px-3 py-2 focus-within:border-ring">
+          <textarea
+            ref={box}
+            aria-label={`Message ${workerName}`}
+            rows={1}
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder={`Message ${workerName}…`}
+            className="block max-h-48 flex-1 resize-none overflow-y-auto bg-transparent px-1 py-1 text-sm outline-none placeholder:text-muted-foreground"
+          />
+          <button
+            type="submit"
+            disabled={!text.trim()}
+            className="rounded-full bg-primary px-3 py-1 text-sm font-semibold text-primary-foreground disabled:opacity-40"
+          >
+            Send
+          </button>
+        </div>
+        {running ? <p className="mt-1 text-xs text-muted-foreground">{workerName} is answering · a line you send now waits for it</p> : null}
       </div>
-      {running ? <p className="mt-1 text-xs text-muted-foreground">{workerName} is answering · a line you send now waits for it</p> : null}
     </form>
   );
 }
