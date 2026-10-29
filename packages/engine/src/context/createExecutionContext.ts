@@ -1,5 +1,5 @@
 import { WRITES_OUTLIVE_ABORT, attachRequestEndRegistry, createRequestEndRegistry, type WritesOutliveAbort } from "../execution/request-end-hooks";
-import { createRequestSpendLedger, loggedSpendOf, sumSpend } from "../execution/request-spend-ledger";
+import { createRequestSpendLedger, isInterruptedEndingHeld, loggedSpendOf, sumSpend } from "../execution/request-spend-ledger";
 import { isOrgAttributed, UnattributedOrgError } from "./org-attribution";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type {
@@ -734,6 +734,9 @@ export async function createExecutionContext<
   // request. `runAction` makes the same check ahead of its registration; this
   // is the direct-entry half, and the one that sees the record actually
   // adopted.
+  // Asked before the read: a run that stops ending after this has already
+  // recorded what it handed on, so the read below sees it (FIX-2145).
+  const interruptedEndingLive = isInterruptedEndingHeld(stores.request, requestId);
   const [loadedSession, loadedRequest] = await Promise.all([
     stores.session.get(sessionKey),
     stores.request.get(requestId)
@@ -3150,11 +3153,12 @@ export async function createExecutionContext<
   // what it spent before it suspended, so its token budget counts both runs.
   // A run whose process died settled nothing: what its log's block traces
   // spent since the last settlement is counted, and handed on at this run's
-  // first ending. While the run that settled an interruption may still be
-  // running its observers, their spend counts toward this run's budget but is
+  // first ending; so is what an interrupted run spent, since its record holds
+  // the count only once its ending has handed it on. While that run is still
+  // ending in this process, its spend counts toward this run's budget but is
   // that run's to hand on, so it is carried rather than recovered.
   const loggedSpend = loggedSpendOf(requestRecord.items ?? [], requestRecord.spentThroughItemIndex ?? -1);
-  const requestSpendLedger = requestRecord.spendHandedOnByRun === true
+  const requestSpendLedger = interruptedEndingLive
     ? createRequestSpendLedger(sumSpend(requestRecord.spentByModel ?? {}, loggedSpend))
     : createRequestSpendLedger(requestRecord.spentByModel, loggedSpend);
   const requestEndRegistry = createRequestEndRegistry(() => requestSpendLedger.takeSinceLastEnding());

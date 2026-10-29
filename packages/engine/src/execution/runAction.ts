@@ -85,6 +85,7 @@ import { ownRowOf, resumeIfChildEnded, resumeRequestWaiters } from "../durabilit
 import { stopSuspendedRequest } from "../durability/stop-suspended";
 import { noteSuspensionDeadline } from "../durability/suspension-deadlines";
 import { WRITES_OUTLIVE_ABORT, requestEndRegistryOf, type WritesOutliveAbort } from "./request-end-hooks";
+import { holdInterruptedEnding } from "./request-spend-ledger";
 import { WAIT_DEADLINE_ENTRY, isUserSuspension, isWaitGate, continuesAtExpiry, waitGateDataOf } from "@flow-state-dev/core/types";
 
 type RunActionInternalOptions<
@@ -1406,6 +1407,8 @@ async function runActionAttempt<
   // Incarnation of the record this run's terminal patch wrote, so the final
   // `finalizedAtMs` stamp lands on that record and no other.
   let terminalRecordIncarnation: string | undefined;
+  // Set while an interrupted ending still owes its spend (FIX-2145).
+  let releaseInterruptedEnding: (() => void) | undefined;
   attempt.trackTerminal(() => terminalRecordIncarnation);
 
   /**
@@ -2216,10 +2219,7 @@ async function runActionAttempt<
     await patchRequestRecord(options.stores, requestId, {
       status: "in_progress",
       finalizedAtMs: null,
-      heartbeatsUntilFinalized: false,
-      // This run now owns the log: if it dies, the next continuation counts
-      // what it spent past the cursor (FIX-2145).
-      spendHandedOnByRun: false
+      heartbeatsUntilFinalized: false
     });
     ctx.requestRuntime.status = "in_progress";
     await response.emitRequestStatus("in_progress");
@@ -3126,19 +3126,21 @@ async function runActionAttempt<
         await flushCheckpoints();
         await flushTraces();
 
-        // A continuation resumes from here: what was spent so far goes with
-        // it, as on a suspension (FIX-2145).
-        const interruptedItems = itemsToPersist();
-        terminalRecordIncarnation = await settleRequestRecord(options.stores, requestId, { status: "interrupted" }, {
-          interruptedAt: Date.now(),
-          items: interruptedItems,
-          heartbeatsUntilFinalized: false,
-          spentByModel: ctx.request.tokenUsage.byModel,
-          spentThroughItemIndex: lastItemIndexOf(interruptedItems),
-          // This run is alive and hands on what its observers spend after
-          // this point; a continuation must not count it again from the log.
-          spendHandedOnByRun: true
-        });
+        // What this run spent is recorded only once its ending has handed it
+        // on, below, so a continuation after this process died recovers it
+        // from the log. Until then a continuation in this process carries it
+        // instead, since this run still hands it on (FIX-2145).
+        releaseInterruptedEnding = holdInterruptedEnding(options.stores.request, requestId);
+        try {
+          terminalRecordIncarnation = await settleRequestRecord(options.stores, requestId, { status: "interrupted" }, {
+            interruptedAt: Date.now(),
+            items: itemsToPersist(),
+            heartbeatsUntilFinalized: false
+          });
+        } catch (settleError) {
+          releaseInterruptedEnding();
+          throw settleError;
+        }
 
         ctx.requestRuntime.status = "interrupted" as typeof ctx.requestRuntime.status;
 
@@ -3239,11 +3241,15 @@ async function runActionAttempt<
     // counts it again from the log (FIX-2145). Only while the record is still
     // this settlement's: a continuation that already took it, or settled past
     // this cursor, holds newer accounting.
-    if (ending.status === "interrupted" && terminalRecordIncarnation !== undefined) {
-      await recordSettledSpend(options.stores, requestId, terminalRecordIncarnation, {
-        spentByModel: ctx.request.tokenUsage.byModel,
-        spentThroughItemIndex: lastItemIndexOf(itemsToPersist())
-      });
+    try {
+      if (ending.status === "interrupted" && terminalRecordIncarnation !== undefined) {
+        await recordSettledSpend(options.stores, requestId, terminalRecordIncarnation, {
+          spentByModel: ctx.request.tokenUsage.byModel,
+          spentThroughItemIndex: lastItemIndexOf(itemsToPersist())
+        });
+      }
+    } finally {
+      releaseInterruptedEnding?.();
     }
     const writesSettled = await settlePendingWrites(options.stores, requestId, logger);
     await resumeWaitingParent(options, requestId, logger);
