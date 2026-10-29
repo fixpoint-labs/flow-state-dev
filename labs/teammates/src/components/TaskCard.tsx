@@ -1,7 +1,6 @@
 import { useState } from "react";
 import type { LabAdapter, BoardTask } from "../adapter";
 import { useWatch } from "../lib/use-watch";
-import { cn } from "../lib/utils";
 
 /**
  * A task a conversation filed: one line with what it is and how it stands,
