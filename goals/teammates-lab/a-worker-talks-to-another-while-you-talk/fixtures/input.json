@@ -2,10 +2,9 @@
   "port": 4620,
   "lead": "teammates.lead",
   "researcher": "teammates.researcher",
-  "coder": "teammates.coder",
   "ask": "Ask researcher for our launch date, and help me outline the post.",
   "second": "Make section 2 about pricing.",
-  "fix": "Have coder fix the typo in the README's first line.",
+  "fix": "Fix the typo in the README's first line.",
   "remember": "By the way, the draft of the launch post is filed under the codename \"{code}\". Nothing to do about it, just say OK.",
   "recall": "What codename did I give the launch post, and what is our launch date? Answer from what you already know, without asking anyone.",
   "codename": {

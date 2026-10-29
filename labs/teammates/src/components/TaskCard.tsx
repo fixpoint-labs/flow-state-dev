@@ -5,8 +5,9 @@ import { cn } from "../lib/utils";
 import { NewProjectForm } from "./NewProjectForm";
 
 /**
- * A task a conversation filed for a worker that takes tasks: one line with
- * what it is and where it runs, opening to the run, read only. A run refused
+ * A task a conversation filed: one line with what it is and where it runs,
+ * opening to the run, read only. A coding task reads as a background task,
+ * never as a task for a teammate. A run refused
  * for want of a project asks for one on the card; picking it is the only
  * thing that starts a run. With no project to pick, the card makes one.
  */
@@ -19,6 +20,7 @@ export function TaskCard({
   nameOf,
   onPick,
   onCreateProject,
+  coding = false,
   defaultOpen = false,
 }: {
   adapter: LabAdapter;
@@ -33,11 +35,14 @@ export function TaskCard({
   onPick?: (project: string) => void;
   /** Make a project, which the filer then works in. Shown where a pick can be made and there is none. */
   onCreateProject?: (project: NewProject) => Promise<void>;
+  /** It is a coding task: a background task, not a teammate's. */
+  coding?: boolean;
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const steps = useWatch(adapter.watchRun, open ? task.runSessionId : undefined) ?? [];
-  const to = nameOf(task.to);
+  const to = coding ? "The coding task" : nameOf(task.to);
+  const label = coding ? `Coding task: ${task.title}` : `Task for ${to}: ${task.title}`;
   const status =
     task.status === "needs-project"
       ? workProject
@@ -58,11 +63,11 @@ export function TaskCard({
       <button
         type="button"
         aria-expanded={open}
-        aria-label={`Task for ${to}: ${task.title}`}
+        aria-label={label}
         onClick={() => setOpen((o) => !o)}
         className="flex w-full items-start gap-2 px-3 py-1.5 text-left font-mono text-xs text-success hover:bg-success/5"
       >
-        <span className="shrink-0">⚙ task for {to} ·</span>
+        <span className="shrink-0">⚙ {coding ? "coding task" : `task for ${to}`} ·</span>
         <span className="min-w-0 flex-1 truncate text-foreground">{task.title}</span>
         <span className={cn("shrink-0", asking ? "font-semibold text-foreground" : "text-muted-foreground")} data-task-status>
           {status}

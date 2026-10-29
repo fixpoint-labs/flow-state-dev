@@ -16,11 +16,14 @@ export function Entry({
   entry,
   workerName,
   nameOf,
+  isCoding = () => false,
   onAnswer,
 }: {
   entry: ConversationEntry;
   workerName: string;
   nameOf: (id: string) => string;
+  /** The worker coding tasks run on: its results are the task's, not a teammate's. */
+  isCoding?: (id: string) => boolean;
   onAnswer?: (approve: boolean) => Promise<void>;
 }) {
   switch (entry.kind) {
@@ -55,15 +58,18 @@ export function Entry({
           <AgentMarkdown className="mt-0.5 text-sm" text={entry.text} />
         </section>
       );
-    case "result":
+    case "result": {
+      // A coding task's result is the task's, not a teammate's.
+      const from = isCoding(entry.from) ? "the coding task" : nameOf(entry.from);
       return (
-        <section aria-label={`From ${nameOf(entry.from)}`} data-entry="result" className="max-w-[85%] rounded-md border border-dashed border-success/60 bg-success/5 px-3 py-2">
+        <section aria-label={`From ${from}`} data-entry="result" className="max-w-[85%] rounded-md border border-dashed border-success/60 bg-success/5 px-3 py-2">
           <div className="font-mono text-[10px] tracking-widest text-success uppercase">
-            ← {nameOf(entry.from)} · {entry.failed ? "task failed" : "task done"}
+            ← {isCoding(entry.from) ? "coding task" : nameOf(entry.from)} · {entry.failed ? "task failed" : "task done"}
           </div>
           <AgentMarkdown className="mt-0.5 text-sm" text={entry.text} />
         </section>
       );
+    }
     case "task":
       // Drawn by the conversation, from the board's row.
       return null;

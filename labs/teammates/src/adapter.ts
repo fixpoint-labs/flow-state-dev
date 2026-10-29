@@ -62,7 +62,7 @@ export interface WorkerRow {
   name: string;
   /** Its `WORKER.md` description: the ongoing role. */
   role: string;
-  /** It takes tasks only: it has no conversation, and work reaches it as a task. */
+  /** Coding tasks run on it: it is not a teammate, so it is off the list and has no conversation. */
   takesTasks?: boolean;
   /** The user hired it: they can change its instructions or fire it. The files' workers can't be. */
   own?: boolean;

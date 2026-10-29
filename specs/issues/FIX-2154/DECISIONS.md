@@ -100,6 +100,19 @@ It comes down to D2: the turn messages land in has to stay ours.
 **What would change my mind:** Grok Bot letting a person talk to a coding bot as one of the
 teammates. Then the harness gets the epic's mid-turn path (the Claude lab's D2), a separate design.
 
+> **Amended 2026-10-29 ([FIX-2332](https://linear.app/fixpoint-labs/issue/FIX-2332)).** In Jake's
+> test, coder on the list of teammates read as a broken teammate: it was listed like the others, and
+> a line to it got the door's reply. Jake chose to make coding a **background task, not a
+> teammate**, the way Grok Bot hands a coding agent a job you watch rather than talk to. The
+> decision stands: only coder runs a harness, the workers you talk to stay on our generator, and a
+> person never types to a harness. What changed is how it shows. coder stays on the roster as the
+> hidden worker coding tasks go to, and is off the screen's list. Each coding task is a background
+> item under the teammates, and a card in the conversation that started it; both open to the run,
+> read only, and its result lands as the coding task's, not as a line from coder. lead's
+> instructions say *start a coding task*, never *give it to coder*. The *Instead of* row is
+> unchanged; in *Because*, "lists coder as a delegate" and "a line from coder" no longer describe
+> the screen. Making coder messageable stays out of scope (FIX-1990).
+
 ## Decided, not asked
 
 - **No session list, no new chat.** Choosing a worker opens its one conversation,
