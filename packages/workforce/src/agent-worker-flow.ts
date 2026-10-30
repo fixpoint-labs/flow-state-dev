@@ -1162,7 +1162,11 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
         if ((own === undefined || own.length === 0) && extra.length === 0) return named;
         return [...named, ...(own ?? []), ...extra];
       },
-      user: (input) => input.message
+      user: (input) => input.message,
+      // A worker still looking things up when its steps run out answers with
+      // what it found, rather than ending its turn with nothing said: a sender
+      // waiting on its reply would otherwise hear "no answer" (FIX-2347).
+      loop: { answerOnLastStep: true }
     });
 
   // The answer's two generator names, which its messages carry as `agentName`.

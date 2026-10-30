@@ -51,6 +51,8 @@ A worker's own settings can still put a **control** on it. A control is a piece 
 
 The four [standing rules](./standing-rules.md) tools, `rules/read`, `rules/add`, `rules/change` and `rules/remove`, sit outside `tools:` too. Every worker on `agent` gets them on a turn a user's own message started, and no worker gets them on any other turn.
 
+A worker's turn has a fixed number of model steps, the generator's default of eight. On the last one the worker is offered no tools, so a worker still looking things up when its steps run out answers in text with what it found rather than ending the turn with nothing said. This holds for every turn on `agent`: a user's message, a message from another worker, and a task.
+
 A skill cannot widen the catalog. Declaring a tool under a skill's `allowed-tools` does not grant it. Holding a package gives a worker with no `tools:` line that package's blocks; they are not added to the catalog. See [Packages on disk](./packages-on-disk.md#its-tools).
 
 Checking `tools:` against a catalog is the built-in worker flow's rule, not a rule of `hireWorkforce`. A worker flow you write yourself declares its own settings, so what a `tools:` name is checked against is that flow's business. So is whether it declares `tools` at all.

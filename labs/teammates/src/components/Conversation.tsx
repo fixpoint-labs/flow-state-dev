@@ -9,7 +9,7 @@ import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { Composer } from "./Composer";
 import { Entry } from "./Entry";
-import { repliedIn, type Popup } from "./Popups";
+import { answerIn, type Popup } from "./Popups";
 import { TaskCard } from "./TaskCard";
 import { InstructionsForm } from "./TeammateForms";
 
@@ -177,7 +177,7 @@ export function Conversation({
                     nameOf={nameOf}
                     lookOf={lookOf}
                     isCoding={isCoding}
-                    replied={entry.kind === "sent" && repliedIn(talk, entry.messageId)}
+                    answer={entry.kind === "sent" ? answerIn(talk, entry.messageId) : undefined}
                     onOpenMessage={openMessage}
                     onOpenTask={openTask}
                     {...(entry.kind === "approval" ? { onAnswer: (approve: boolean) => adapter.answerApproval(sessionId, entry, approve) } : {})}

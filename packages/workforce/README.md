@@ -625,6 +625,9 @@ through `defineAgentWorkerFlow({ skills })`. It sees the earlier turns of the co
 in, up to the session's history window (the last 50 by default), and nothing from any other
 conversation. `workerFlows` is therefore optional. A `flow:` that is present but empty or whitespace-only
 refuses, because it names no flow — only an absent key means the built-in.
+A turn on `agent` has the generator's default of 8 model steps, and the last one offers no tools,
+so a worker still looking things up when its steps run out answers in text with what it found
+(every turn: user messages, worker messages, tasks).
 
 A worker on `agent` is talked to through the flow's `respond` action, which takes `{ message }`, in a
 session that names the worker. A message that names a worker is refused: the session already does.
@@ -2372,9 +2375,13 @@ Send to talk; ask for a reply when the worker wants an answer but can go on; cal
   message's id, from the recipient), landing in the sending session and waking a turn there. It spends no
   budget and never asks for a reply itself. If the recipient answers with `sendMessage` and that
   `inReplyTo` during the turn, that is the answer and the final text isn't sent: one answer per message.
-  An empty final text, a turn that throws (it still fails), a recipient that runs no turn, or a
+  When there is no answer, the framework sends one, with `noAnswer: true` on its row and a reason:
+  an empty final text answers `No answer came back: the turn ended without saying anything.`, a
+  turn that throws (it still fails) `No answer came back: the turn failed before it could answer.`,
+  a recipient that runs no turn `No answer came back: this worker doesn't answer messages.`, and a
   server that stops mid-turn (picked up a few seconds later on flows with the session factory's
-  entries) answers `I have no answer to your message <id>.`, with `noAnswer: true` on its row. A
+  entries) `No answer came back: the turn stopped before it finished.` The server logs a console
+  warning when a turn that ran gives no answer to send. A
   send the sender can tell won't be answered is refused with `no_reply`; a refused send gets nothing
   more. To ask several workers, send each one with `replyRequested` in the same step; each answer is its own
   turn. With `wait: true` it is just a call.
