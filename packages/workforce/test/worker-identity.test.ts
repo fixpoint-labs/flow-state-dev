@@ -13,7 +13,7 @@ import { mockGenerator, type MockGeneratorInstance } from "@flow-state-dev/testi
 import type { WorkerManifest } from "../src";
 import { rosterDisplayName, rosterTeamName, workerRecipients } from "../src/messages/recipients";
 import type { RosterWorker, WorkerInstallation } from "../src/workers/installation";
-import { TOOL_USE_RULE } from "../src/messages/worker-identity";
+import { DELEGATE_MARK, DELEGATE_RULE, TOOL_USE_RULE } from "../src/messages/worker-identity";
 import { bootBoardHost, type BoardHost } from "./conversation-board-harness";
 
 const worker = (id: string, declared: Record<string, unknown>, body = "", teamName?: string): WorkerManifest => ({
@@ -25,9 +25,10 @@ const worker = (id: string, declared: Record<string, unknown>, body = "", teamNa
 });
 
 const roster = (): WorkerManifest[] => [
-  worker("eng.ana", { name: "Ana", description: "Runs the team's work with you.", delegates: ["eng.tasker"] }, "Ana's own instructions.", "Engineering"),
+  worker("eng.ana", { name: "Ana", description: "Runs the team's work with you.", delegates: ["eng.tasker", "eng.cy"] }, "Ana's own instructions.", "Engineering"),
   worker("eng.bo", { description: "Knows colours." }, "You help.", "Engineering"),
-  worker("eng.tasker", { flow: "tasker", description: "Does tasks." }, "", "Engineering")
+  worker("eng.tasker", { flow: "tasker", description: "Does tasks." }, "", "Engineering"),
+  worker("eng.cy", { description: "Researches." }, "You research.", "Engineering")
 ];
 
 /** The system message of each model call the agent turn made, in order. */
@@ -91,6 +92,36 @@ describe("what a worker is told first", () => {
       const system = systemsOf(agentAnswer)[0]!;
       expect(system).not.toContain("File one a task with createTask");
       expect(system).toContain("filed by the workers they report to, not by you:\n- tasker (eng.tasker)");
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  // A delegate listed only as someone to message got whole pieces of work as
+  // messages: the Claude Code-style lab's main session filed no task, so no
+  // row showed and nothing could be stopped or reviewed.
+  it("marks a teammate that is also its delegate as one that takes its tasks, and says work goes as a task", async () => {
+    const agentAnswer = mockGenerator({ script: [{ when: () => true, then: { text: "Hi." } }] });
+    const h = bootBoardHost({ standard: roster(), agentAnswer, judgment: mockGenerator({ script: [{ when: () => true, then: { text: "" } }] }) });
+    try {
+      await turnOf(h, "eng.ana");
+      const [teammates] = systemsOf(agentAnswer)[0]!.split("Workers that take tasks only");
+      expect(teammates).toContain(`- cy (eng.cy): Researches. ${DELEGATE_MARK}`);
+      expect(teammates).toContain("- bo (eng.bo): Knows colours.\n");
+      expect(teammates).toContain(DELEGATE_RULE);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("gives a worker with no messageable delegate no delegate rule", async () => {
+    const agentAnswer = mockGenerator({ script: [{ when: () => true, then: { text: "Hi." } }] });
+    const h = bootBoardHost({ standard: roster(), agentAnswer, judgment: mockGenerator({ script: [{ when: () => true, then: { text: "" } }] }) });
+    try {
+      await turnOf(h, "eng.bo");
+      const system = systemsOf(agentAnswer)[0]!;
+      expect(system).not.toContain(DELEGATE_MARK);
+      expect(system).not.toContain(DELEGATE_RULE);
     } finally {
       await h.dispose();
     }

@@ -20,6 +20,13 @@ const MAX_DESCRIPTION = 160;
 export const TOOL_USE_RULE =
   "Use your tools to do what you're asked before you answer. Don't offer to do something you can do now: do it.";
 
+/** Marks a teammate that is also the worker's delegate. */
+export const DELEGATE_MARK = "(your delegate: takes your tasks too)";
+
+/** How a worker splits a delegate's work between a message and a task. */
+export const DELEGATE_RULE =
+  "A message to a delegate is for a quick question. A piece of work for one, or anything to run in the background, goes as a task: createTask, its id as the assignee.";
+
 const oneLine = (text: string | null): string => {
   const flat = (text ?? "").replace(/\s+/g, " ").trim();
   return flat.length > MAX_DESCRIPTION ? `${flat.slice(0, MAX_DESCRIPTION - 1)}…` : flat;
@@ -44,22 +51,26 @@ export async function workerIdentityPrompt(ctx: BlockContext, installation: Work
     `When someone asks who you are, answer as ${name}, with this role. Your worker id, ${me.id}, is the address others reach you by, not your name.`
   ];
 
-  const entry = (worker: (typeof messageable)[number]) => {
-    const description = oneLine(worker.description);
-    return `- ${rosterDisplayName(worker)} (${worker.id})${description === "" ? "" : `: ${description}`}`;
-  };
-  lines.push(
-    "",
-    messageable.length === 0
-      ? "No other worker on your roster can be messaged now."
-      : `Your teammates, read from your roster this turn (asked who they are, answer from this list), whom you can message with ${SEND_MESSAGE_TOOL} by id:\n${messageable.map(entry).join("\n")}`
-  );
   // Only a worker's delegates take its tasks (the board checks an assignee
   // against them), so only they are named as ones to file a task with.
   // `createTask` unsuffixed: Workforce's conversation board mounts the task
   // tools with no `nameSuffix`, so a worker on this flow always sees that name.
   const delegates = me.delegates;
   const isDelegate = (worker: (typeof taskOnly)[number]) => delegates === "all" || delegates.includes(worker.id);
+  const entry = (worker: (typeof messageable)[number]) => {
+    const description = oneLine(worker.description);
+    return `- ${rosterDisplayName(worker)} (${worker.id})${description === "" ? "" : `: ${description}`}`;
+  };
+  // A messageable delegate takes tasks too. Listed only as one to message, it
+  // gets whole pieces of work as messages, which no board row tracks.
+  const teammate = (worker: (typeof messageable)[number]) => (isDelegate(worker) ? `${entry(worker)} ${DELEGATE_MARK}` : entry(worker));
+  lines.push(
+    "",
+    messageable.length === 0
+      ? "No other worker on your roster can be messaged now."
+      : `Your teammates, read from your roster this turn (asked who your teammates or delegates are, answer from this list: it is current, so no tool call is needed), whom you can message with ${SEND_MESSAGE_TOOL} by id:\n${messageable.map(teammate).join("\n")}`
+  );
+  if (messageable.some(isDelegate)) lines.push("", DELEGATE_RULE);
   const fileable = taskOnly.filter(isDelegate);
   const others = taskOnly.filter((worker) => !isDelegate(worker));
   if (fileable.length > 0) {
