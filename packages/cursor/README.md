@@ -48,6 +48,14 @@ const agent = cursorAgent({
 `createCursorAgentCapability(options)` takes the same options and exposes the
 block to a generator as a tool.
 
+**Deep directories work.** Cursor keeps each workspace's state in a folder under
+`~/.cursor/projects` named after the whole working directory, and a folder name
+can't be longer than 255 bytes. When the directory `cwd` names is too deep for
+that, the block gives Cursor a short link to it instead, under
+`<tmpdir>/fsd-cursor/`. The agent still reads, writes and commits in your
+directory; its tool calls just show the link's path. The same directory always
+gets the same link, so resuming an agent finds its earlier state.
+
 **A model is required.** Cursor's SDK refuses to create a local agent without one.
 Name it with `model`: an id, a model with its settings
 (`{ id, params: [{ id, value }] }`, Cursor's own parameter list, such as a
