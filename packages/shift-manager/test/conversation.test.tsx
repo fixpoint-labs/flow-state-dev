@@ -10,6 +10,7 @@
  */
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { SessionSummary } from "@flow-state-dev/client";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GAPS } from "../src/gaps";
 import type { Worker } from "../src/lib/reads";
@@ -64,19 +65,20 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
+const drawnElement = (sessions: SessionSummary[], over: Partial<Parameters<typeof Conversation>[0]> = {}) => (
+  <Conversation
+    worker={worker}
+    sessions={sessions}
+    gaps={GAPS}
+    name="Reviewer"
+    testId="rev"
+    emptyText="Nothing said to the reviewer yet."
+    renderItem={(it) => <span data-testid="mine">{(it as unknown as { text: string }).text}</span>}
+    {...over}
+  />
+);
 const drawn = (sessions: SessionSummary[], over: Partial<Parameters<typeof Conversation>[0]> = {}) =>
-  render(
-    <Conversation
-      worker={worker}
-      sessions={sessions}
-      gaps={GAPS}
-      name="Reviewer"
-      testId="rev"
-      emptyText="Nothing said to the reviewer yet."
-      renderItem={(it) => <span data-testid="mine">{(it as unknown as { text: string }).text}</span>}
-      {...over}
-    />,
-  );
+  render(drawnElement(sessions, over));
 
 /** Type a line and press send, once the composer has let go of "Reading the conversation first…". */
 async function send(line: string) {
@@ -315,9 +317,27 @@ describe("sending", () => {
   it("sends a line handed in from elsewhere once, as if typed", async () => {
     sendTurn.mockResolvedValue(delivered);
     const taken = vi.fn();
-    drawn([session(s1)], { autoSend: "from the palette", onAutoSend: taken });
+    // As the Shift Coordinator hands it in: the line is held until taken, then cleared.
+    function Handing() {
+      const [line, setLine] = useState<string | null>("from the palette");
+      return (
+        <>
+          {drawnElement([session(s1)], {
+            autoSend: line,
+            onAutoSend: () => {
+              taken();
+              setLine(null);
+            },
+          })}
+        </>
+      );
+    }
+    render(<Handing />);
     await waitFor(() => expect(sendTurn).toHaveBeenCalledTimes(1));
     expect(sendTurn.mock.calls[0]![2]).toBe("from the palette");
+    // Settled, the composer is free again: the line is not taken a second time.
+    await waitFor(() => expect((screen.getByTestId("rev-composer-input") as HTMLInputElement).value).toBe(""));
     expect(taken).toHaveBeenCalledTimes(1);
+    expect(sendTurn).toHaveBeenCalledTimes(1);
   });
 });
