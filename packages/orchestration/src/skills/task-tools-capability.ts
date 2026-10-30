@@ -1093,14 +1093,26 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
 
   /**
    * The refusal for filing work a task still open already holds: the same
-   * goal, ignoring case and spacing, for the same worker. Names the open task
+   * goal, ignoring case and spacing, for the same worker and workstream target. Names the open task
    * by its title, so a reply can name it the same way.
    */
-  function openSameWork(collection: TaskCollectionRef, assignee: string, goal: string): { taskId: string; error: string } | undefined {
+  function openSameWork(
+    collection: TaskCollectionRef,
+    assignee: string,
+    target: string | undefined,
+    goal: string,
+  ): { taskId: string; error: string } | undefined {
     const same = (text: string) => text.trim().replace(/\s+/g, " ").toLowerCase();
     const open = collection
       .list()
-      .find((row) => row.assignee === assignee && !isTerminalStatus(row.status) && same(row.goal) === same(goal));
+      .find(
+        (row) =>
+          row.assignee === assignee &&
+          // A workstream is its own work: the same worker leads each one it targets.
+          row.target === target &&
+          !isTerminalStatus(row.status) &&
+          same(row.goal) === same(goal),
+      );
     if (open === undefined) return undefined;
     return {
       taskId: open.id,
@@ -1178,7 +1190,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     const open =
       followUp === undefined && worker !== undefined && input.resultTo !== "conversation"
         ? await decideOnce(ctx, memoize, "same-work", async () => {
-            const refusal = openSameWork(collection, worker, input.goal);
+            const refusal = openSameWork(collection, worker, input.target, input.goal);
             // A call an older build filed has its id recorded and no decision:
             // the open row is its own, found again by `fileReady`.
             return refusal === undefined || (memoize && refusal.taskId === (await recordedFiling(ctx))) ? null : refusal.error;

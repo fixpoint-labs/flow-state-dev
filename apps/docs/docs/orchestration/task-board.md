@@ -557,7 +557,7 @@ Each sugar call re-resolves the collection, so reads always reflect the latest s
 
 A model works a board through five task tools. Four belong to whoever files the work:
 
-- `createTask` files a task. It starts as its start setting says: at once, once its `deps` have finished, filed with `held: true`, when you release it, or, filed with `questions`, once the user has [answered them](#a-tasks-questions). Filing the same goal for the same assignee while a task for it is still open is refused with `already_open`, so a model that calls twice, or retries a call, doesn't start the same work twice.
+- `createTask` files a task. It starts as its start setting says: at once, once its `deps` have finished, filed with `held: true`, when you release it, or, filed with `questions`, once the user has [answered them](#a-tasks-questions). Filing the same goal for the same assignee and workstream target while a task for it is still open is refused with `already_open`, so a model that calls twice, or retries a call, doesn't start the same work twice.
 - `getTask({ id })` reads one task whole: its brief, every field you can edit, how it stands, and its output.
 - `listTasks` lists tasks without their output. Each row carries its worker's latest status note.
 - `updateTask({ id, ... })` changes one, each field by its own rule.

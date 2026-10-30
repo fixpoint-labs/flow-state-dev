@@ -136,6 +136,15 @@ describe("one piece of work makes one task", () => {
     expect(second.error).toMatch(/^already_open: /);
   });
 
+  it("files the same work for the same worker in two workstreams: each target is its own work", async () => {
+    const collection = await board();
+    const tool = createTool(collection, true);
+    expect((await run(tool, { ...FIX, target: "billing" })).ok).toBe(true);
+    expect((await run(tool, { ...FIX, target: "search" })).ok).toBe(true);
+    expect((await run(tool, { ...FIX, target: "search" })).error).toMatch(/^already_open: /);
+    expect(collection.list().map((t) => t.target)).toEqual(["billing", "search"]);
+  });
+
   it("files different work for the same worker", async () => {
     const collection = await board();
     const tool = createTool(collection, true);
