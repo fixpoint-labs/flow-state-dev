@@ -29,7 +29,7 @@ import type { ProjectCheckout } from "@flow-state-dev/workforce";
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { LIST_TASKS_ACTION } from "../src/lib/conversation-tasks";
 import { commitScriptedWork } from "../teams/devteam/harness.mts";
-import { harnessStub, type HarnessStub } from "../teams/devteam/harness-stub.mts";
+import { harnessStub, type HarnessStub } from "@flow-state-dev/harness-manager";
 import { CHECKOUTS } from "../teams/devteam/fsd-checkouts.mts";
 import { CODER_BRIEF, FSD_DOCUMENTS, FSD_SKILLS } from "../teams/devteam/fsd-projects.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";

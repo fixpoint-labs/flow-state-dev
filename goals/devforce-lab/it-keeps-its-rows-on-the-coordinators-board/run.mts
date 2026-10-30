@@ -43,7 +43,7 @@ import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
 import { readProject } from "../../../packages/shift-manager/src/lib/projects.ts";
 import { createLabReader, PROJECT_READER_FLOW, readerSessionId } from "../../../packages/shift-manager/src/lib/reads.ts";
 import { LAB_ORG_ID, LAB_TREE, LAB_USERS, openLab } from "../../../packages/shift-manager/teams/devteam/host.mts";
-import { harnessStub, type StubRun } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
+import { harnessStub, type StubRun } from "@flow-state-dev/harness-manager";
 import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { DRAIN_ENTRY, EM_FLOW, FILE_ENTRY } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 

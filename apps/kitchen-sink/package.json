@@ -32,6 +32,7 @@
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/cursor": "workspace:*",
     "@flow-state-dev/devtool": "workspace:*",
+    "@flow-state-dev/harness-manager": "workspace:*",
     "@flow-state-dev/memory": "workspace:*",
     "@flow-state-dev/patterns": "workspace:*",
     "@flow-state-dev/react": "workspace:*",

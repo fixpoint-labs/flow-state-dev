@@ -34,7 +34,7 @@ import { defineSessionBoard, filingConversationBoard, workerConfigSchema, worker
 import { TASK_ID_STATE_KEY } from "../../../../packages/workforce/src/workers/keys.ts";
 import { steerOrTalk } from "../../../../packages/workforce/src/conversation-board/steer.ts";
 import { claudeCodeHarness } from "../../../../packages/shift-manager/teams/devteam/harness.mts";
-import { harnessStub } from "../../../../packages/shift-manager/teams/devteam/harness-stub.mts";
+import { harnessStub } from "@flow-state-dev/harness-manager";
 import { openLab } from "../../../../packages/shift-manager/teams/devteam/host.mts";
 
 const need = (name: string): string => {

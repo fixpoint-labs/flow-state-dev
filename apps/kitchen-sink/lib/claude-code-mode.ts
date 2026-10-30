@@ -33,7 +33,9 @@ import {
 } from "@flow-state-dev/claude-code/sdk";
 
 import { goalControl } from "./goal-control";
-import { harnessSessionFlow, type HarnessBlock, type HarnessFeeds } from "./harness-session-flow";
+import type { HarnessSessionFeeds } from "@flow-state-dev/harness-manager";
+import type { HarnessBlock } from "@flow-state-dev/core/types";
+import { kitchenSinkHarnessFlow } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import { flowKindOf, modeById } from "./modes";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";
@@ -70,7 +72,7 @@ export interface ClaudeCodeSeams {
  * Code's own preset. A plain string there would turn off its planning tool,
  * and the plan panel would never fill.
  */
-export function claudeCodeBlock(feeds: HarnessFeeds, seams: ClaudeCodeSeams = {}): HarnessBlock {
+export function claudeCodeBlock(feeds: HarnessSessionFeeds, seams: ClaudeCodeSeams = {}): HarnessBlock {
   const resolveClaudeAgent = seams.resolveClaudeAgent ?? (claudeCodeIsScripted() ? scriptedClaudeCode() : undefined);
   return claudeCodeAgent({
     cwd: feeds.cwd,
@@ -101,7 +103,7 @@ export function claudeCodeBlock(feeds: HarnessFeeds, seams: ClaudeCodeSeams = {}
 export function claudeCodeSessionFlow(seams: ClaudeCodeSeams = {}) {
   // No `defaultModel`: a session from before models could be picked runs on
   // Claude Code's own default, as it did.
-  return harnessSessionFlow({ kind: CLAUDE_CODE_SESSION, agent: (feeds) => claudeCodeBlock(feeds, seams) });
+  return kitchenSinkHarnessFlow({ kind: CLAUDE_CODE_SESSION, agent: (feeds) => claudeCodeBlock(feeds, seams) });
 }
 
 /** The model the scripted Claude Code offers. It runs no model; the id only travels. */

@@ -38,7 +38,7 @@ import {
 } from "@flow-state-dev/workforce";
 import type { HarnessBlock } from "@flow-state-dev/core/types";
 import type { HarnessFeeds as ManagerHarnessFeeds } from "@flow-state-dev/harness-manager";
-import { harnessStub, type StubRun } from "./harness-stub.mts";
+import { harnessStub, type StubRun } from "@flow-state-dev/harness-manager";
 import { commitAll, hasChanges } from "./scratch-repo.mts";
 
 /** The environment variable that picks the harness. */
@@ -194,6 +194,7 @@ export function scriptedHarness(stepEveryMs: number = SCRIPTED_STEP_MS) {
     ],
     stepEveryMs,
     duringRun: commitScriptedWork,
+    mcpUses: [projectWorkspaceCapability],
     // What a conversation's task reads back: an answer task is done only with one.
     finalMessage: "A scripted run, no model: it wrote SCRIPTED-RUN.md.",
   });

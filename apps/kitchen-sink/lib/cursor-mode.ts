@@ -37,7 +37,9 @@ import {
 } from "@flow-state-dev/cursor";
 
 import { goalControl } from "./goal-control";
-import { harnessSessionFlow, type HarnessBlock, type HarnessFeeds } from "./harness-session-flow";
+import type { HarnessSessionFeeds } from "@flow-state-dev/harness-manager";
+import type { HarnessBlock } from "@flow-state-dev/core/types";
+import { kitchenSinkHarnessFlow } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";
 import type { HarnessModel, ModelChoices } from "./harness-models";
@@ -102,7 +104,7 @@ export interface CursorSeams {
  * Sink passes options and nothing else: the plan record, the child process and
  * the classification of a refused agent are the Cursor package's.
  */
-export function cursorBlockOptions(feeds: HarnessFeeds, seams: CursorSeams = {}): CursorAgentOptions {
+export function cursorBlockOptions(feeds: HarnessSessionFeeds, seams: CursorSeams = {}): CursorAgentOptions {
   const resolveCursorClient = seams.resolveCursorClient ?? (cursorIsScripted() ? scriptedCursor() : undefined);
   return {
     cwd: feeds.cwd,
@@ -134,13 +136,13 @@ export function cursorBlockOptions(feeds: HarnessFeeds, seams: CursorSeams = {})
  * neutral `HarnessBlock` (core's own note on that type). Claude Code mode casts
  * the same way.
  */
-export function cursorBlock(feeds: HarnessFeeds, seams: CursorSeams = {}): HarnessBlock {
+export function cursorBlock(feeds: HarnessSessionFeeds, seams: CursorSeams = {}): HarnessBlock {
   return cursorAgent(cursorBlockOptions(feeds, seams)) as unknown as HarnessBlock;
 }
 
 /** Cursor mode's session flow. `seams` is for tests. */
 export function cursorSessionFlow(seams: CursorSeams = {}) {
-  return harnessSessionFlow({
+  return kitchenSinkHarnessFlow({
     kind: CURSOR_SESSION,
     agent: (feeds) => cursorBlock(feeds, seams),
     defaultModel: CURSOR_DEFAULT_MODEL,
