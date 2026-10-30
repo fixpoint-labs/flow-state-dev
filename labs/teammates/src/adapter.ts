@@ -124,7 +124,7 @@ export type ConversationEntry =
   /** The worker messaged another worker (`sendMessage`). */
   | { kind: "sent"; id: string; messageId: string; to: string; text: string }
   /** A message another worker sent, as the `receive` turn that read it. */
-  | { kind: "received"; id: string; messageId: string; from: string; text: string; inReplyTo?: string }
+  | { kind: "received"; id: string; messageId: string; from: string; text: string; inReplyTo?: string; noAnswer?: boolean }
   /** The worker filed a task; the card reads the board's row by its id, and draws `title` until the row arrives. */
   | { kind: "task"; id: string; taskId: string; title: string; to: string }
   /** A task it filed ended, as a line under the name of the worker that ran it. */
@@ -155,6 +155,8 @@ export interface TalkRow {
   replyRequested?: boolean;
   /** A call the recipient answered: its reply was the call's result, never a message of its own. */
   callAnswered?: boolean;
+  /** The framework's "no answer" to the message it replies to: the recipient's turn gave none. */
+  noAnswer?: boolean;
 }
 
 /** Whether a worker is busy, read from its conversation's requests. */
@@ -379,8 +381,8 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>):
       const asked = entries.find((e) => e.kind === "approval" && e.suspensionId === item.suspensionId);
       if (asked?.kind === "approval") asked.resolution = item.resolution;
     } else if (item.type === "component" && item.component === RECEIVED_MESSAGE_COMPONENT) {
-      const { id, from, text, inReplyTo } = item.data ?? {};
-      entries.push({ kind: "received", id: item.id, messageId: id, from, text, ...(inReplyTo === undefined ? {} : { inReplyTo }) });
+      const { id, from, text, inReplyTo, noAnswer } = item.data ?? {};
+      entries.push({ kind: "received", id: item.id, messageId: id, from, text, ...(inReplyTo === undefined ? {} : { inReplyTo }), ...(noAnswer === true ? { noAnswer: true } : {}) });
     }
   }
   return entries;
@@ -596,6 +598,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
               ...(m.inReplyTo === undefined ? {} : { inReplyTo: m.inReplyTo }),
               ...(m.replyRequested === true ? { replyRequested: true } : {}),
               ...(m.call === true && m.repliedAt !== undefined ? { callAnswered: true } : {}),
+              ...(m.noAnswer === true ? { noAnswer: true } : {}),
               ...(m.status === "refused" || m.status === "undeliverable" ? { undelivered: true } : {}),
             }));
         },

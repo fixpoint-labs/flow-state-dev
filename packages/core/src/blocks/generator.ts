@@ -402,6 +402,13 @@ export interface GeneratorLoopState<TInput = unknown> {
 export interface GeneratorLoopConfig<TInput = unknown, TCtx = BlockContext> {
   maxIterations?: number;
   runTools?: boolean;
+  /**
+   * The loop's last step offers the model no framework tools, so a model
+   * still looking things up when its steps run out answers in text with what
+   * it found, rather than ending on a tool call with nothing said. Off by
+   * default: without it, the last step offers every tool, as the others do.
+   */
+  answerOnLastStep?: boolean;
 }
 
 export interface GeneratorToolResult {
@@ -3191,6 +3198,15 @@ export function generator<
 
       const runTools = normalizedConfig.loop?.runTools !== false;
       const maxSteps = resolveMaxIterations(normalizedConfig);
+      if (normalizedConfig.loop?.answerOnLastStep === true && runTools && maxSteps > 1) {
+        // The last step answers: no framework tools, after whatever the
+        // dynamic-slot rebuild above returns for it.
+        const rebuild = prepareStepFn;
+        prepareStepFn = async (args) => {
+          const prep = await rebuild?.(args);
+          return args.stepNumber === maxSteps - 1 ? { ...(prep ?? {}), activeTools: [] } : prep;
+        };
+      }
 
       // Visibility: generators without `itemVisibility` produce no auto-emitted
       // items (only block_trace output via graph edges). When set, `agentName`

@@ -149,9 +149,10 @@ Generator slots stay `prompt` / `context` / `history` / `user`. Instructions com
 `prompt: [default, teamInstructions, instructions, package instructions]` — the framework's default
 first, then the worker's team, then the worker's own, then the instructions of the packages it holds
 (joined by a blank line, its own packages first), with absent layers dropped rather than joined as
-blanks. (The
-default is still unshipped; the slot is three entries today and gains the fourth at the front when
-it lands.)
+blanks. The default layer is the worker's identity, read from the roster each request (its
+name, team and `description`, the workers a message reaches and the task-only ones), then one
+rule on using tools. It is present on an installation only; off one there is no roster, and the
+entry is absent (FIX-2334).
 
 **What that order buys, and what it does not.** The position is fixed and checkable: a worker's own
 text always follows its team's, and the packages it holds follow both. That is the whole promise. It is **not** a precedence rule. Assembly on this
@@ -210,9 +211,10 @@ can still be reasonable defaults on cost or behaviour grounds, but a worker's `t
 depends on them for safety. Do not add a per-consumer fence: core is the one structural
 enforcement point, and a second would be another door to forget.
 
-The shared `default` prompt is owned and shipped elsewhere (FIX-1344 part 2, not yet landed).
-Until it does, the worker flow ships against `instructions` alone with an explicit seam for `default`
-to drop into, and **defines no second default-prompt configuration anywhere in this epic.**
+The shared `default` prompt is owned by FIX-2334 (FIX-1344 carried it and closed without it). It
+is fixed framework text, not a setting: later default text joins it as a line, not a second entry,
+and an app that wants other words registers its own `agent` worker flow. A configurable org-wide
+default is the point at which this seam should be re-decided rather than widened.
 
 ### C1a — Settings are a default layer, not the only layer
 

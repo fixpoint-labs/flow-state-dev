@@ -103,13 +103,16 @@ If the recipient answers with `sendMessage` and `inReplyTo` during its turn, tha
 
 ### When there's no answer
 
-The sender is never left without one. When the recipient has nothing to give, the answer reads:
+The sender is never left without one. When the recipient has nothing to give, the framework sends the answer itself, and its text says why:
 
-```text
-I have no answer to your message msg_3f1c0a9e2b7d4c6a8e10.
-```
+| What happened | The answer reads |
+| --- | --- |
+| The recipient's turn ended with no text | `No answer came back: the turn ended without saying anything.` |
+| The turn threw (the turn still fails) | `No answer came back: the turn failed before it could answer.` |
+| The recipient's flow runs no turn on messages | `No answer came back: this worker doesn't answer messages.` |
+| The server stopped partway through the turn | `No answer came back: the turn stopped before it finished.` |
 
-The sender gets it when the recipient's turn ends with no text, when the turn throws (the turn still fails), when the recipient's flow runs no turn on messages, or when the server stops partway through the turn. In that last case it comes a few seconds after the turn is found ended, on worker flows that carry the session factory's entries; the built-in and coordinator flows do. Its row in the [log](#showing-messages-in-your-app) has `noAnswer: true`.
+The last one comes a few seconds after the turn is found ended, on worker flows that carry the session factory's entries; the built-in and coordinator flows do. Like any answer, it has `inReplyTo` set to the original message's id, and its row in the [log](#showing-messages-in-your-app) has `noAnswer: true`. When a turn that ran gives no answer to send, the server also logs a warning to the console.
 
 When the sender can tell up front that the recipient runs no turn on messages, the send is refused with `no_reply` and nothing is sent. A message whose send is refused, for example with `not_delivered`, gets nothing more: the refusal is the whole answer.
 

@@ -75,7 +75,7 @@ const LEAD = "teammates.chief-of-staff";
 const RESEARCHER = "teammates.researcher";
 const WRITER = "teammates.writer";
 /** The coding worker a task that names no harness goes to: Chief of Staff's default. */
-const DEFAULT_CODER = "teammates.claude-code";
+const DEFAULT_CODER = "teammates.cursor";
 
 type Job = { kind: "user"; entryId: string; text: string } | { kind: "receive"; message: TalkRow } | { kind: "result"; task: BoardTask };
 

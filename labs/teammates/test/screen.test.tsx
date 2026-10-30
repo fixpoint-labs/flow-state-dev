@@ -165,7 +165,7 @@ describe("the teammates screen", () => {
     await tell("Chief of Staff", "Fix the typo in the README's first line.");
 
     // Step 5: the task runs in the working folder straight away: nothing asks where.
-    const card = await within(conversation()).findByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Claude Code" });
+    const card = await within(conversation()).findByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" });
     const tile = card.closest<HTMLElement>("[data-entry=task]")!;
     expect(tile.querySelector("[data-task-status]")?.textContent).toBe("running");
     // The lab has no projects: no select, no prompt, no card, and no word for one anywhere.
@@ -175,7 +175,7 @@ describe("the teammates screen", () => {
 
     // The result lands as the coding task's, never a teammate's, and Chief of Staff's next line uses it.
     expect(await within(conversation()).findByRole("region", { name: "From the coding task" }, { timeout: 2000 })).toBeTruthy();
-    expect(within(conversation()).queryByRole("region", { name: "From Claude Code" })).toBeNull();
+    expect(within(conversation()).queryByRole("region", { name: "From Cursor" })).toBeNull();
     expect(tile.querySelector("[data-task-status]")?.textContent).toBe("done");
     expect(await within(conversation()).findByText(/The coding task is done: "Fixed the typo in README.md, line 1\."/, {}, { timeout: 2000 })).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/project/i);
@@ -184,20 +184,20 @@ describe("the teammates screen", () => {
   it("opens a coding task's run in a popup, read only, from its line in the thread or its background item", async () => {
     render(<App adapter={fast()} />);
     await tell("Chief of Staff", "Fix the typo in the README's first line.");
-    const card = await within(conversation()).findByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Claude Code" });
+    const card = await within(conversation()).findByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" });
 
     // From the thread: the run fills in live, with no composer, and its result lands in it.
     fireEvent.click(card);
     let popup = await screen.findByRole("dialog", { name: "Coding task: Fix the typo in the README's first line" });
     expect(within(popup).queryByRole("textbox")).toBeNull();
-    await waitFor(() => expect(popup.textContent).toMatch(/on Claude Code/), { timeout: 2000 });
+    await waitFor(() => expect(popup.textContent).toMatch(/on Cursor/), { timeout: 2000 });
     await waitFor(() => expect(popup.textContent).toMatch(/Edit \/work\/README\.md/), { timeout: 2000 });
     expect(await within(popup).findByRole("region", { name: "Result" }, { timeout: 2000 })).toBeTruthy();
     fireEvent.click(within(popup).getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).toBeNull();
 
     // From the background list: the same popup, and the item says it's the one open. The conversation stays.
-    const item = within(background()).getByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Claude Code" });
+    const item = within(background()).getByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" });
     fireEvent.click(item);
     popup = await screen.findByRole("dialog", { name: "Coding task: Fix the typo in the README's first line" });
     expect(item.getAttribute("aria-current")).toBe("true");
@@ -205,17 +205,17 @@ describe("the teammates screen", () => {
     expect(popup.textContent).toMatch(/Edit \/work\/README\.md/);
   });
 
-  it("runs a coding task on the agent you name, and on Claude Code when you name none, and its line says which", async () => {
+  it("runs a coding task on the agent you name, and on Cursor when you name none, and its line says which", async () => {
     // Slower than fast(): the line must be seen before the run reports its model, and fast() leaves that window under one poll.
     render(<App adapter={fast({ speed: 0.3 })} />);
     const line = () => entries("task").at(-1) as HTMLElement;
     const on = () => line().querySelector("[data-harness]")?.textContent;
 
-    // No agent named: the default runs, with no question first. Claude Code reports no model, so none shows.
+    // No agent named: the default, Cursor, runs with no question first. Cursor reports no model, so none shows.
     await tell("Chief of Staff", "Fix the typo in the README's first line.");
-    await waitFor(() => expect(on()).toBe("Claude Code"), { timeout: 2000 });
+    await waitFor(() => expect(on()).toBe("Cursor"), { timeout: 2000 });
     await waitFor(() => expect(line().querySelector("[data-task-status]")?.textContent).toBe("done"), { timeout: 3000 });
-    expect(on()).toBe("Claude Code");
+    expect(on()).toBe("Cursor");
 
     // Named: that one runs. Codex reports its model once its run starts, and only then is it shown.
     await tell("Chief of Staff", "Have Codex fix the typo in the README's first line.");
@@ -230,9 +230,9 @@ describe("the teammates screen", () => {
     fireEvent.keyDown(document, { key: "Escape" });
 
     await waitFor(() => expect(line().querySelector("[data-task-status]")?.textContent).toBe("done"), { timeout: 3000 });
-    await tell("Chief of Staff", "Have Cursor fix the typo in the README's first line.");
+    await tell("Chief of Staff", "Have Claude Code fix the typo in the README's first line.");
     await waitFor(() => expect(entries("task")).toHaveLength(3), { timeout: 3000 });
-    await waitFor(() => expect(on()).toBe("Cursor"), { timeout: 2000 });
+    await waitFor(() => expect(on()).toBe("Claude Code"), { timeout: 2000 });
     // All three are tasks, never teammates.
     for (const coder of ["Claude Code", "Codex", "Cursor"]) expect(workers().querySelector(`[data-worker="${coder}"]`), coder).toBeNull();
   });
@@ -242,7 +242,7 @@ describe("the teammates screen", () => {
     const BARE = /^(Bash|Read|Edit|Write|command_execution|file_change|shell|read|edit)$/;
     render(<App adapter={fast({ speed: 0.3 })} />);
     for (const [ask, harness, check] of [
-      ["Fix the typo in the README's first line.", "Claude Code", "Run the docs check"],
+      ["Have Claude Code fix the typo in the README's first line.", "Claude Code", "Run the docs check"],
       ["Have Codex fix the typo in the README's first line.", "Codex", "pnpm docs:check"],
       ["Have Cursor fix the typo in the README's first line.", "Cursor", "pnpm docs:check"],
     ] as const) {
@@ -378,7 +378,7 @@ describe("the teammates screen", () => {
   it("draws a task card the moment it is filed and fills it in place: the same card from filing to done", async () => {
     render(<App adapter={fast()} />);
     await tell("Chief of Staff", "Fix the typo in the README's first line.");
-    const card = (await within(conversation()).findByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Claude Code" })).closest("[data-entry=task]")!;
+    const card = (await within(conversation()).findByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" })).closest("[data-entry=task]")!;
     await waitFor(() => expect(card.querySelector("[data-task-status]")?.textContent).toBe("done"), { timeout: 3000 });
     expect(conversation().querySelector("[data-entry=task]")).toBe(card);
   });

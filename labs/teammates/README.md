@@ -43,8 +43,8 @@ Every result lands back in Chief of Staff's conversation.
 A code change is a coding task, not a teammate's job. Coding runs in the background, the way a
 coding agent's job does: you watch it, you don't talk to it. Ask Chief of Staff for a code change
 and Chief of Staff starts a coding task in the working folder, on one of three coding agents:
-Claude Code, Codex or Cursor. Name one ("have Codex do it") and that one runs; name none and Claude
-Code does, with no question first. Each agent is a worker of its own, off the list and never
+Claude Code, Codex or Cursor. Name one ("have Codex do it") and that one runs; name none and Cursor
+does, with no question first. Each agent is a worker of its own, off the list and never
 messaged, whose `WORKER.md` names its `harness:`. A line in Chief of Staff's conversation and an
 item under *Background* show the task, tagged with the agent it runs on (and the model, once the
 run reports one), and open its run in a popup. The result lands in Chief of Staff's conversation as
@@ -93,7 +93,7 @@ This builds the pages and serves them with the lab's server (`fsdev.config.mts`)
 |---|---|---|
 | `TEAMMATES_MODEL` | the model Chief of Staff, researcher and writer answer on | `openai/gpt-5.4-mini` |
 | `TEAMMATES_WORKDIR` | the working folder: an absolute path to a git checkout on this machine | the root of this repository |
-| `TEAMMATES_HARNESS` | the harness a coding worker whose file names none runs on: `claude-code`, `codex` or `cursor` | `claude-code` |
+| `TEAMMATES_HARNESS` | the harness a coding worker whose file names none runs on: `claude-code`, `codex` or `cursor` | `cursor` |
 | `TEAMMATES_STORE` | the SQLite file | `.fsdev/teammates.sqlite` here |
 | `TEAMMATES_USER` | who the page acts as | `you` |
 | `TEAMMATES_TREE` | the workers' tree | `workforce/` here |
