@@ -389,7 +389,7 @@ function createWiredLab(fsd: Client): LabAdapter {
       fsd.sessions.get(session.id),
       runningTurns(session.id),
       titleOf(session.id),
-      waitingIn(session.id),
+      waitingCountFor(session.id),
     ]);
     const project = (detail.state as Record<string, unknown> | undefined)?.[WORK_PROJECT_STATE_KEY];
     return {
@@ -406,14 +406,13 @@ function createWiredLab(fsd: Client): LabAdapter {
   /**
    * How many of a session's tasks wait on you, read as the board reads them (its tasks and their
    * open holds), without the harness and review reads the board's cards add. A board that can't be
-   * read counts none, so the list never fails on it.
+   * read counts none and says why in the console, so the list never fails on it.
    */
-  const waitingIn = async (sessionId: string): Promise<number> => {
+  const waitingCountFor = async (sessionId: string): Promise<number> => {
     try {
-      const listed = await tasksOf(sessionId);
-      const holds = await holdsOf(sessionId, listed);
-      return waitingOnYou(listed.map((task) => ({ ...task, ...waitingOnOf(holds.get(task.id)?.[0]) })));
-    } catch {
+      return waitingOnYou(await listedWithWaitingOn(sessionId));
+    } catch (cause) {
+      console.warn(`[claude-code-style] couldn't count what session ${sessionId} waits on you for:`, cause);
       return 0;
     }
   };
@@ -472,9 +471,17 @@ function createWiredLab(fsd: Client): LabAdapter {
     return new Map(items.flatMap((item) => (item.task === null ? [] : [[item.task.taskId, [...item.questions]] as const])));
   };
 
-  /** What a task's first open hold waits on you for, as a row's `waitingOn`; nothing when it holds none. */
-  const waitingOnOf = (hold: InboxQuestion | undefined): Pick<TaskRow, "waitingOn"> =>
-    hold === undefined ? {} : { waitingOn: { kind: hold.ask.kind === "confirm" ? "input" : hold.ask.kind, prompt: hold.ask.prompt } };
+  /** A session's tasks, each with what its first open hold waits on you for: the one place a hold becomes a row's `waitingOn`. */
+  const listedWithWaitingOn = async (sessionId: string): Promise<Listed[]> => {
+    const listed = await tasksOf(sessionId);
+    const holds = await holdsOf(sessionId, listed);
+    return listed.map((task) => {
+      const hold = holds.get(task.id)?.[0];
+      return hold === undefined
+        ? task
+        : { ...task, waitingOn: { kind: hold.ask.kind === "confirm" ? "input" : hold.ask.kind, prompt: hold.ask.prompt } };
+    });
+  };
 
   /** The harness each coding worker runs through, asked once of a run session of it. */
   const harnesses = new Map<string, Promise<string | undefined>>();
@@ -504,8 +511,7 @@ function createWiredLab(fsd: Client): LabAdapter {
 
   /** A session's board as the screen draws it: each row with what it waits on you for, its harness and its review. */
   const boardOf = async (sessionId: string) => {
-    const listed = await tasksOf(sessionId);
-    const holds = await holdsOf(sessionId, listed);
+    const listed = await listedWithWaitingOn(sessionId);
     const rows = await Promise.all(
       listed.map(async (task): Promise<TaskRow> => {
         const { runSessionId: _session, run: _run, questions: _questions, ...row } = task;
@@ -514,7 +520,6 @@ function createWiredLab(fsd: Client): LabAdapter {
         const review = harness !== undefined && row.status === "completed" ? await reviewOf(sessionId, task) : undefined;
         return {
           ...row,
-          ...waitingOnOf(holds.get(row.id)?.[0]),
           ...(harness === undefined ? {} : { harness }),
           ...(review === undefined ? {} : { review }),
         };

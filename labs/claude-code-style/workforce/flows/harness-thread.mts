@@ -69,6 +69,9 @@ const DEFAULT_PERMISSION_MODE: PermissionMode = "acceptEdits";
 /** Each mode's part of its managers' names. The default has none, so its names are the ones runs were recorded under before modes. */
 const MODE_SEGMENT: Record<PermissionMode, string> = { acceptEdits: "", plan: "-plan" };
 
+/** The model a Cursor run uses: Cursor's own pick ("Auto"), as Kitchen Sink's Cursor mode offers it. */
+const CURSOR_MODEL = "default";
+
 /** One harness as the flow builds it: Claude Code once per permission mode, every other harness once. */
 interface HarnessVariant {
   harness: string;
@@ -100,7 +103,15 @@ const VARIANTS: readonly HarnessVariant[] = [
   {
     harness: "cursor",
     build: (feeds) =>
-      cursorAgent({ cwd: feeds.cwd, resume: feeds.resume, onSession: feeds.onSession, onActivity: feeds.onActivity, name: "cursor" } as never) as unknown as HarnessBlock,
+      cursorAgent({
+        cwd: feeds.cwd,
+        resume: feeds.resume,
+        onSession: feeds.onSession,
+        onActivity: feeds.onActivity,
+        // Cursor's SDK refuses a local agent with no model. "default" is Cursor's own pick, which every account's catalog has.
+        model: CURSOR_MODEL,
+        name: "cursor",
+      } as never) as unknown as HarnessBlock,
   },
 ];
 
