@@ -22,6 +22,14 @@ describe("resultSummary", () => {
     expect(resultSummary(JSON.stringify({ answer: 'Said "done".\nTwo lines.' }))).toBe('Said "done".\nTwo lines.');
   });
 
+  it("reads only the result's own answer, never one nested inside it", () => {
+    const rows = JSON.stringify({ rows: [{ answer: "one" }, { answer: "two" }], total: 2 });
+    expect(resultSummary(rows)).toBe(rows);
+    expect(resultSummary(`${rows.slice(0, 40)}…`)).toBe(`${rows.slice(0, 40)}…`);
+    expect(resultSummary(JSON.stringify({ steps: [{ answer: "draft" }], answer: "final" }))).toBe("final");
+    expect(resultSummary(`${JSON.stringify({ steps: [{ answer: "draft" }], answer: "final", branch: "b" }).slice(0, 60)}…`)).toBe("final");
+  });
+
   it("leaves a researcher's prose, and JSON with no answer, as they came", () => {
     expect(resultSummary("Acme ships **weekly**.")).toBe("Acme ships **weekly**.");
     expect(resultSummary('{"rows":3}')).toBe('{"rows":3}');
