@@ -127,3 +127,4 @@ Session mode's `desk.coder` has no review line, since that mode has no review to
 
 Every file in the lab, by kind. `node scripts/inventory.mjs` fails on a file that is none of these,
 and on a flow over 200 lines; `--wired` also fails while a fixture is left in `src/`.
+
