@@ -37,7 +37,7 @@ project assembles but other projects own, and the bottom band is what no epic he
 | [FIX-2071](https://linear.app/fixpoint-labs/issue/FIX-2071) · **coordination renames** | One term, one thing | **done** · wrapped Oct 30 | [PR #3985](https://github.com/fixpoint-labs/flow-state-dev/pull/3985) · `specs/epics/FIX-2071/` · closure [#4244](https://github.com/fixpoint-labs/flow-state-dev/pull/4244) · lessons draft [#4245](https://github.com/fixpoint-labs/flow-state-dev/pull/4245) |
 | [FIX-2092](https://linear.app/fixpoint-labs/issue/FIX-2092) · **phased workflows** | A worker runs a feature's lifecycle as phases of tasks: a view over task rows plus a template that files them | *in flight* · epic spec in review | [PR #3970](https://github.com/fixpoint-labs/flow-state-dev/pull/3970) |
 
-9 done · 2 in flight · 0 filed, not started. FIX-2071 wrapped Oct 30 with its seven children merged and its closure ([#4244](https://github.com/fixpoint-labs/flow-state-dev/pull/4244)) green; what it left open is follow-up, not a change of shape ([Plan](PLAN.md)). Canceled, kept because the cancel is the decision:
+9 done · 2 in flight · 0 filed, not started. FIX-2071 wrapped Oct 30 with every child merged; what it left open is follow-up, not a change of shape ([Plan](PLAN.md)). Canceled, kept because the cancel is the decision:
 [FIX-1197](https://linear.app/fixpoint-labs/issue/FIX-1197) Relay and
 [FIX-1169](https://linear.app/fixpoint-labs/issue/FIX-1169) Strands ([*decided once*](DECISIONS.md)),
 and [FIX-1870](https://linear.app/fixpoint-labs/issue/FIX-1870) dispatchTask, canceled Oct 21 after

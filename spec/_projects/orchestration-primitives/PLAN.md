@@ -28,7 +28,7 @@ is today.
 | FIX-2071 · coordination renames | FIX-2058, FIX-2070 | One term per thing, *hold* and `updateTask`'s `question` field included; FIX-2056's read for retired rows removed no earlier than here |
 
 FIX-2071 built once FIX-2070's builds had landed and wrapped Oct 30, ahead of FIX-2070's closure
-(FIX-2242), which is still running. FIX-2070 and FIX-2092 are in flight.
+(FIX-2242).
 
 FIX-2056's wrap recommended fixing FIX-2182 (a dispatcher's `wait` restates the board's `mode`)
 and FIX-2183 ("hold" names four things) before FIX-2058 built on them. Neither was done, and
@@ -76,20 +76,13 @@ docs polish [#3954](https://github.com/fixpoint-labs/flow-state-dev/pull/3954).
 
 ## What FIX-2071 left open
 
-Seven children merged ([#4077](https://github.com/fixpoint-labs/flow-state-dev/pull/4077),
-[#4092](https://github.com/fixpoint-labs/flow-state-dev/pull/4092),
-[#4098](https://github.com/fixpoint-labs/flow-state-dev/pull/4098),
-[#4093](https://github.com/fixpoint-labs/flow-state-dev/pull/4093),
-[#4095](https://github.com/fixpoint-labs/flow-state-dev/pull/4095),
-[#4128](https://github.com/fixpoint-labs/flow-state-dev/pull/4128),
-[#4090](https://github.com/fixpoint-labs/flow-state-dev/pull/4090)), and the closure, FIX-2249,
-merged Oct 30 ([#4244](https://github.com/fixpoint-labs/flow-state-dev/pull/4244)). The renames
-are four calls *decided once* ([Decisions](DECISIONS.md)).
+The closure, FIX-2249, merged Oct 30
+([#4244](https://github.com/fixpoint-labs/flow-state-dev/pull/4244)).
 
-| Carried forward | What it is |
-|---|---|
-| Lessons draft [#4245](https://github.com/fixpoint-labs/flow-state-dev/pull/4245) | Two owner asks: give the second-look review its own identity, and one BP-030 sentence (a store reset does not excuse refusing a renamed key a caller passes) |
-| Fold candidates F1–F7 | Listed in #4245's cycle file for filing, `budget` naming both a cap and what is left of it among them |
+Lessons are draft [#4245](https://github.com/fixpoint-labs/flow-state-dev/pull/4245): two owner
+asks, give the second-look review its own identity, and one BP-030 sentence (a store reset does
+not excuse refusing a renamed key a caller passes). Fold candidates F1–F7 are in that draft's
+cycle file for filing; `budget` names both a cap and what is left of it.
 
 ## Milestones
 
