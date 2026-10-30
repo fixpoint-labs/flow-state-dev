@@ -13,7 +13,7 @@
  *   them down. They follow again once they scroll back to the end, or when
  *   {@link FollowLatest.follow} is called.
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 
 /** How close to the end, in pixels, still counts as at the end. */
 const AT_END_SLACK = 32;
