@@ -64,7 +64,7 @@ Narrative: [Flows](/docs/fundamentals/flows), [Actions](/docs/fundamentals/actio
 | `mcp` | `McpConfig` | off | Opt-in MCP exposure for this flow. Definition-only: you cannot override it on the instance. |
 | `webhooks` | `WebhookConfig` | — | Webhook event bindings. Definition-only. |
 | `schedules` | `SchedulesConfig` | — | Static and dynamic scheduled actions. Definition-only. |
-| `tokenCounter` | `TokenCounter` | `estimateTokenCounter` | Custom token accounting. History windows and blocks (`ctx.tokenCounter`) count with it. |
+| `tokenCounter` | `TokenCounter` | `estimateTokenCounter` | Custom token accounting. [Token-aware history limits](/docs/advanced/generator-context#token-aware-limit) (`{ limit: { tokens: N } }`) and blocks (`ctx.tokenCounter`) count with it. |
 | `costEstimator` | `CostEstimator` | — | Custom USD cost estimate from model usage. |
 | `isolateUserState` | `boolean` | `false` | Key user state (and the default for user resources) per flow instance — each named copy of a definition gets its own. A resource's own `flowIsolation` always wins. |
 | `isolateOrgState` | `boolean` | `false` | Org-scope equivalent of `isolateUserState`. |
