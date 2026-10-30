@@ -298,7 +298,7 @@ An app that polls a session, say to keep a task list on screen, shouldn't leave 
 ```ts
 const board = defineFlow({
   kind: "board",
-  actions: { addTask: { block: addTask } },
+  actions: { createTask: { block: createTask } },
   reads: {
     tasks: { block: listTasks },
   },
