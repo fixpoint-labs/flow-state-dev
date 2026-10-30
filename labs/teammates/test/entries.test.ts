@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { destinationOf, exchangeOf, toEntries, toSteps } from "../src/adapter";
-import { repliedIn } from "../src/components/Popups";
+import { answerIn } from "../src/components/Popups";
 
 const CODER = "teammates.claude-code";
 const line = (id: string, text: string) =>
@@ -61,22 +61,28 @@ describe("a session's steps in a popup", () => {
     const waitAgain = send("m2", { callId: "msg_1" }, { callId: "msg_1", answered: false });
     const refused = send("m3", { to: "teammates.writer" }, { ok: false, error: "missing_message: Nothing was sent." });
     expect(toSteps([waitAgain, refused])).toEqual([
-      { id: "m2", kind: "tool", text: "sendMessage" },
-      { id: "m3", kind: "tool", text: "sendMessage" },
+      { id: "m2", kind: "tool", tool: "sendMessage", text: "Used sendMessage" },
+      { id: "m3", kind: "tool", tool: "sendMessage", text: "Used sendMessage" },
     ]);
   });
 });
 
-describe("whether a sent message was replied", () => {
+describe("how a sent message stands", () => {
   const sent = { id: "msg_1", from: "teammates.chief-of-staff", to: "teammates.researcher", text: "Launch date?", at: 1 };
+  const reply = { id: "msg_2", from: sent.to, to: sent.from, text: "Nov 12", at: 2, inReplyTo: "msg_1" };
 
   it("is replied when a message answers it", () => {
-    expect(repliedIn([sent], "msg_1")).toBe(false);
-    expect(repliedIn([sent, { id: "msg_2", from: sent.to, to: sent.from, text: "Nov 12", at: 2, inReplyTo: "msg_1" }], "msg_1")).toBe(true);
+    expect(answerIn([sent], "msg_1")).toBe("working");
+    expect(answerIn([sent, reply], "msg_1")).toBe("replied");
   });
 
   it("is replied when it was a call and the call was answered, with no reply message", () => {
-    expect(repliedIn([{ ...sent, callAnswered: true }], "msg_1")).toBe(true);
+    expect(answerIn([{ ...sent, callAnswered: true }], "msg_1")).toBe("replied");
+  });
+
+  // The framework's "no answer" is a reply row too: it must not read as an answer.
+  it("is no answer when the reply is the framework's no answer", () => {
+    expect(answerIn([sent, { ...reply, text: "No answer came back: the turn ended without saying anything.", noAnswer: true }], "msg_1")).toBe("no answer");
   });
 });
 

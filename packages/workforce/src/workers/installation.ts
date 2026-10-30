@@ -73,7 +73,7 @@ import {
   workstreamsAccessor
 } from "../projects/workstream-collections";
 import { parseProjectRef, parseWorkstreamRef } from "../projects/workstream-ref";
-import { defineStandardWorkerCollection, standardWorkerFlow } from "./standard-workers";
+import { defineStandardWorkerCollection, standardWorkerFlow, workerDisplayName } from "./standard-workers";
 import { defineWorkerCollection, parseWorkerRow, type WorkerRow } from "./worker-row";
 import { grantedAccessOf, markVerifiedWorker, type GrantedAccess } from "./verified-worker";
 import { ALL_DELEGATES } from "../delegates/delegate-keys";
@@ -189,6 +189,10 @@ export interface RosterWorker {
   flow: string;
   /** Its description, or `null`. */
   description: string | null;
+  /** Its display name, its file's `name:`, or `null` when it has none (a user's own worker never does). */
+  name: string | null;
+  /** Its team's display name, its `TEAM.md` `name:`, or `null` when it has none or no team. */
+  teamName: string | null;
   /**
    * The delegates its configuration lists (`delegates:`), by worker id; empty
    * when it lists none. `"all"` when its file says `delegates: all`: the
@@ -867,7 +871,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
   const rosterEntry = (workerId: string, found: ReturnType<typeof lookupWorker>): RosterWorker | undefined => {
     if (found.found === "none") return undefined;
     if (found.found === "unreadable") {
-      return { id: workerId, standard: false, flow: "", description: null, delegates: [], problem: found.problem };
+      return { id: workerId, standard: false, flow: "", description: null, name: null, teamName: null, delegates: [], problem: found.problem };
     }
     if (found.found === "own") {
       return {
@@ -875,6 +879,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
         standard: false,
         flow: found.flow,
         description: found.row.description,
+        name: null,
+        teamName: null,
         delegates: declaredDelegates(found.row.settings),
         ...(found.standardOnly ? { problem: standardOnlyReason(found.flow, false) } : {})
       };
@@ -885,6 +891,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       standard: true,
       flow: found.flow,
       description: typeof declaredDescription === "string" ? declaredDescription : null,
+      name: workerDisplayName(found.manifest),
+      teamName: found.manifest.teamName ?? null,
       delegates: declaredDelegates(found.manifest.declared)
     };
   };

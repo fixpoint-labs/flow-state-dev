@@ -638,13 +638,21 @@ describe("judgment (V7)", () => {
     expect(read.output.delegates.map(({ takes: _takes, description: _description, ...record }: any) => record)).toEqual(
       (await host.sessionState(id)).delegates
     );
-    // Never in its prompt: the turn's system text names no delegate. The
-    // tool list is left out: sendMessage's names every roster worker it
-    // could message, delegate or not.
+    // Never in its prompt: the turn's system text names no delegate. Two
+    // lists are left out because they name every roster worker the
+    // coordinator could message, delegate or not: sendMessage's tool list,
+    // and the identity layer's (FIX-2334), which leads the system message.
     const messages = judgment.calls[0]!.input as Array<{ role: string; content: unknown }>;
-    const prompt = JSON.stringify(messages.filter((m) => !(typeof m.content === "string" && m.content.startsWith("<tools>"))));
+    const identity = /^You are [\s\S]*?do it\.\n/;
+    const prompt = JSON.stringify(
+      messages
+        .filter((m) => !(typeof m.content === "string" && m.content.startsWith("<tools>")))
+        .map((m) => (typeof m.content === "string" ? { ...m, content: m.content.replace(identity, "") } : m))
+    );
     expect(prompt).toContain("Route the work.");
     expect(prompt).not.toContain("eng.coder");
+    // Nor a delegate record's note, which only the delegate list carries.
+    expect(JSON.stringify(messages)).not.toContain("the build");
   });
 
   it("refuses a filing for a worker that isn't a delegate here", async () => {

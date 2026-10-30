@@ -30,9 +30,15 @@ const installation = createWorkerInstallation({ standardWorkers: workers });
 flowRegistry.registerMany(hireWorkforce(installation));
 ```
 
-No `workerFlows` argument, no flow of your own. Every worker that runs on `agent` shares its one registered copy, and each turn runs as the worker its session names. The body becomes the worker's instructions and steers its answers; `description` is a label for the roster and never reaches the model.
+No `workerFlows` argument, no flow of your own. Every worker that runs on `agent` shares its one registered copy, and each turn runs as the worker its session names. The body becomes the worker's instructions and steers its answers. The `name:` and `description` say who the worker is, to people and to the model: see [What a worker is told first](#what-a-worker-is-told-first).
 
 The settings a worker writes for itself are `instructions`, `model`, `tools`, the `skills` switches below, `capabilities` — which picks presets from the capabilities the worker flow carries, covered in [Capabilities on disk](./capabilities-on-disk.md) — and `packages`, which takes [packages](./packages-on-disk.md) from its team's or the org's library. Four more reach the worker in the same bag, put there by the installation rather than by the file: the team's instructions, the skills the worker's folders hold, the blocks its `tools:` resolved out of its own levels, and the instructions and blocks of the packages it holds. A file that declares one of those four is refused by name. `flow: agent` names the same flow explicitly, and hires the same way.
+
+## What a worker is told first
+
+Before its team's instructions and its own, every worker on `agent` is told who it is. The prompt opens with its name, its team and its `description`, then lists the workers it can message, by name and id, and the workers that take only tasks, which it reaches by filing one. A worker with no `name:` goes by the last part of its id. One rule follows: use your tools to do what you're asked, and don't offer to do what you can do now.
+
+The list is read from the roster on every turn, so a worker the user hires or fires shows up, or drops off, on the next turn. A worker whose own body says "You are Alex" contradicts that opening, and the model decides between them. To word it differently, register your own `agent` flow.
 
 ## Tools
 
@@ -50,6 +56,8 @@ A worker's own settings can still put a **control** on it. A control is a piece 
 - **The controls a capability preset declares**, when the worker selects that preset in its [`capabilities:`](./capabilities-on-disk.md#a-preset-carrying-a-tool) key. A preset's `controlTools` reach the worker even with `tools: []`.
 
 The four [standing rules](./standing-rules.md) tools, `rules/read`, `rules/add`, `rules/change` and `rules/remove`, sit outside `tools:` too. Every worker on `agent` gets them on a turn a user's own message started, and no worker gets them on any other turn.
+
+A worker's turn has a fixed number of model steps: eight by default, or what `defineAgentWorkerFlow({ maxSteps })` sets. Raise it for workers that dig, such as one that reads a large repository a file at a time. On the last one the worker is offered no tools, so a worker still looking things up when its steps run out answers in text with what it found rather than ending the turn with nothing said. This holds for every turn on `agent`: a user's message, a message from another worker, and a task.
 
 A skill cannot widen the catalog. Declaring a tool under a skill's `allowed-tools` does not grant it. Holding a package gives a worker with no `tools:` line that package's blocks; they are not added to the catalog. See [Packages on disk](./packages-on-disk.md#its-tools).
 

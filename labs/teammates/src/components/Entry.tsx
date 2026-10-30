@@ -2,6 +2,7 @@ import { memo } from "react";
 import type { ConversationEntry } from "../adapter";
 import type { Look } from "../lib/looks";
 import { Avatar } from "./Avatar";
+import type { AnswerState } from "./Popups";
 import { useSubmit } from "../lib/use-submit";
 import { AgentMarkdown } from "./flow-state/message-response";
 
@@ -22,7 +23,7 @@ export const Entry = memo(function Entry({
   nameOf,
   lookOf,
   isCoding = () => false,
-  replied = false,
+  answer = "working",
   onOpenMessage,
   onOpenTask,
   onAnswer,
@@ -34,8 +35,8 @@ export const Entry = memo(function Entry({
   lookOf: (id: string) => Look;
   /** The worker coding tasks run on: its results are the task's, not a teammate's. */
   isCoding?: (id: string) => boolean;
-  /** For a sent message: it was answered. */
-  replied?: boolean;
+  /** For a sent message: how it stands. */
+  answer?: AnswerState;
   /** Open the exchange a sent message started. */
   onOpenMessage?: (entry: Extract<ConversationEntry, { kind: "sent" }>) => void;
   /** Open the task a result came from. */
@@ -59,7 +60,7 @@ export const Entry = memo(function Entry({
         </div>
       );
     case "sent":
-      return <SentLine to={nameOf(entry.to)} look={lookOf(entry.to)} text={entry.text} replied={replied} onOpen={onOpenMessage ? () => onOpenMessage(entry) : undefined} />;
+      return <SentLine to={nameOf(entry.to)} look={lookOf(entry.to)} text={entry.text} answer={answer} onOpen={onOpenMessage ? () => onOpenMessage(entry) : undefined} />;
     case "received":
       return (
         <section
@@ -69,7 +70,7 @@ export const Entry = memo(function Entry({
         >
           <div className="flex items-center gap-1.5 font-mono text-[10px] tracking-widest text-info uppercase">
             <Avatar look={lookOf(entry.from)} size="sm" />← {nameOf(entry.from)}
-            {entry.inReplyTo ? " · reply" : ""}
+            {entry.noAnswer ? " · no answer" : entry.inReplyTo ? " · reply" : ""}
           </div>
           <AgentMarkdown className="mt-0.5 text-sm" text={entry.text} />
         </section>
@@ -175,7 +176,7 @@ function ResultLine({ who, look, entry, onOpen }: { who: string; look?: Look; en
 }
 
 /** A message to another worker: one line, "Messaged researcher", that opens the exchange. */
-function SentLine({ to, look, text, replied, onOpen }: { to: string; look: Look; text: string; replied: boolean; onOpen?: () => void }) {
+function SentLine({ to, look, text, answer, onOpen }: { to: string; look: Look; text: string; answer: AnswerState; onOpen?: () => void }) {
   return (
     <button
       type="button"
@@ -188,7 +189,7 @@ function SentLine({ to, look, text, replied, onOpen }: { to: string; look: Look;
       <span className="shrink-0">Messaged {to}</span>
       <span className="min-w-0 flex-1 truncate text-muted-foreground">{text}</span>
       <span className="shrink-0 text-xs text-muted-foreground" data-sent-status>
-        {replied ? "replied" : "working"}
+        {answer}
       </span>
     </button>
   );

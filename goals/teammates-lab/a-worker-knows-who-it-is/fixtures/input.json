@@ -1,0 +1,14 @@
+{
+  "workers": [
+    { "id": "teammates.chief-of-staff", "name": "Chief of Staff" },
+    { "id": "teammates.researcher", "name": "researcher" },
+    { "id": "teammates.writer", "name": "writer" }
+  ],
+  "lead": "teammates.chief-of-staff",
+  "teammates": ["researcher", "writer"],
+  "whoAreYou": ["Who are you, and what's your role on this team?", "Quick one: what's your name and what do you do here?"],
+  "whoAreYourTeammates": [
+    "Who are your teammates? Answer from what you already know, without asking anyone or looking anything up.",
+    "Without messaging anyone, list the teammates you work with and what each one does."
+  ]
+}
