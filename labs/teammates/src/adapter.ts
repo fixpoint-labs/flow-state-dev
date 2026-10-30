@@ -17,6 +17,7 @@
  * | `editInstructions`  | the workforce client's `edit`, on one of the user's own workers               |
  * | `fire`              | the workforce client's `fire`, on one of the user's own workers               |
  * | `watchTasks`        | the board's rows, as the conversation's stream carries each one (`task-change`) |
+ * |                     | and, while a running row names no run, the board's `listTasks` read for its run |
  * |                     | and `taskSpendView` on a row, for the harness and model its run reported      |
  * | `watchRun`          | the items of the session the task's row names as its run, each tool call      |
  * |                     | named by the UI registry's `tool-naming` (`components/flow-state/`)           |
@@ -213,6 +214,8 @@ const POLL_MS = 1_500;
 const TASK_CHANGE = "task-change";
 /** The tool a worker files a task with. */
 const CREATE_TASK = "createTask";
+/** The board's read of its rows, on a conversation's flow. */
+const LIST_TASKS = "listTasks_tasks";
 /** Requests that are a worker answering: everything but the board's own passes. */
 const QUIET_ACTIONS = new Set(["dispatch"]);
 /** The harness a run's items came from, by the block that emitted them: each harness block's own name, which the host keeps. */
@@ -676,7 +679,44 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       conversations.delete(worker);
     },
     watchTasks(sessionId, onChange) {
-      return watchFeed(sessionId, (items) => [...boardRows(items).values()].map((row) => toBoardTask(row, (worker) => harnesses.get(worker))), stableList(onChange));
+      const show = stableList(onChange);
+      let rows = new Map<string, Record<string, any>>();
+      /** The run each running row's last board read named, by task id. */
+      const runs = new Map<string, unknown>();
+      let stopRead: Unsubscribe | undefined;
+      const publish = () => show([...rows.values()].map((row) => toBoardTask(row.run == null && runs.has(row.id) ? { ...row, run: runs.get(row.id) } : row, (worker) => harnesses.get(worker))));
+      // A run links itself on its own session, so the conversation hears of it only when the task ends:
+      // while a running row names no run, the board is read until it does, and the run's steps show as they happen.
+      const readWhileUnlinked = () => {
+        const unlinked = [...rows.values()].some((row) => row.status !== "completed" && row.status !== "errored" && row.status !== "cancelled" && row.run == null && !runs.has(row.id));
+        if (!unlinked) {
+          stopRead?.();
+          stopRead = undefined;
+        } else if (stopRead === undefined) {
+          stopRead = poll(
+            async () => {
+              const flow = flowOfSession.get(sessionId) ?? (await client.sessions.get(sessionId)).flowKind;
+              const listed = await client.flow(flow).read<{ ok: boolean; error?: string; tasks: Array<Record<string, any>> }>(LIST_TASKS, {}, { sessionId });
+              if (!listed.ok) throw new Error(listed.error);
+              return listed.tasks.flatMap((task) => (task.run?.sessionId === undefined ? [] : [[task.id as string, task.run] as const]));
+            },
+            (linked) => {
+              for (const [id, run] of linked) runs.set(id, run);
+              publish();
+              readWhileUnlinked();
+            },
+          );
+        }
+      };
+      const stopFeed = watchFeed(sessionId, boardRows, (read) => {
+        rows = read;
+        publish();
+        readWhileUnlinked();
+      });
+      return () => {
+        stopFeed();
+        stopRead?.();
+      };
     },
     watchRun(runSessionId, onChange) {
       return watchFeed(runSessionId, runSteps, stableList(onChange));
