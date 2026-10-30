@@ -57,8 +57,6 @@ A worker's own settings can still put a **control** on it. A control is a piece 
 
 The four [standing rules](./standing-rules.md) tools, `rules/read`, `rules/add`, `rules/change` and `rules/remove`, sit outside `tools:` too. Every worker on `agent` gets them on a turn a user's own message started, and no worker gets them on any other turn.
 
-A worker's turn has a fixed number of model steps: eight by default, or what `defineAgentWorkerFlow({ maxSteps })` sets. Raise it for workers that dig, such as one that reads a large repository a file at a time. On the last one the worker is offered no tools, so a worker still looking things up when its steps run out answers in text with what it found rather than ending the turn with nothing said. This holds for every turn on `agent`: a user's message, a message from another worker, and a task.
-
 A skill cannot widen the catalog. Declaring a tool under a skill's `allowed-tools` does not grant it. Holding a package gives a worker with no `tools:` line that package's blocks; they are not added to the catalog. See [Packages on disk](./packages-on-disk.md#its-tools).
 
 Checking `tools:` against a catalog is the built-in worker flow's rule, not a rule of `hireWorkforce`. A worker flow you write yourself declares its own settings, so what a `tools:` name is checked against is that flow's business. So is whether it declares `tools` at all.
@@ -95,6 +93,8 @@ const flows = hireWorkforce(installation);
 | `catalog` | The tools every worker on this flow may name in `tools:`, by key — `workforce.gen.ts`'s `blocks` export goes straight in. Left out, the only names a worker can resolve are the ones its own folders register. Whatever a catalog tool declares as a resource is installed on the flow, for every worker on it. |
 | `skills` | Skills every worker on this flow holds, on top of the ones its own folders hold. A name that collides with a skill a worker already holds is refused at the hire. |
 | `model` | The model a worker uses when its own file names none. |
+| `maxSteps` | How many model steps one turn may take. Defaults to `8`. See [below](#when-a-turn-runs-out-of-steps). |
+| `settings` | Settings of your app's own that a worker's file may set, such as an icon your screen draws. The flow never reads them. See [Settings a user can see](./workers-on-disk.md#settings-a-user-can-see). |
 | `classifierModel` | The model behind `skills.enableLlmClassifier`, an optional per-turn check that decides whether a skill applies. [Using them](#using-them) covers what it costs. |
 | `confidenceThreshold` | How sure that check must be before it counts a skill as matching. Defaults to `0.65`. |
 | `uses` | Capabilities every worker on this flow carries, attached to the generator that answers. |
@@ -104,6 +104,10 @@ const flows = hireWorkforce(installation);
 `classifierModel` and `confidenceThreshold` belong to the worker flow: nothing reads either until a worker turns `skills.enableLlmClassifier` on, and a `WORKER.md` that names one is refused at the hire, by name, along with any other setting the flow does not declare. `uses` and `afterAnswer` are what [Giving workers memory](#giving-workers-memory) uses.
 
 A replacement declares `kind: "agent"`, like any other flow passed under its own name.
+
+### When a turn runs out of steps
+
+Each model call in a turn is a step, and a step that calls tools leads to another. On the last step the worker is offered no tools, so a worker still looking things up when its steps run out answers in text with what it found rather than ending the turn with nothing said. That holds for every turn on `agent`: a user's message, a message from another worker, and a task. Raise `maxSteps` for workers that dig, such as one that reads a large repository a file at a time.
 
 ## Taking a task
 

@@ -51,7 +51,7 @@ store. One command builds the pages and serves them with the lab's workers:
 pnpm --filter @flow-state-dev/claude-code-style dev
 ```
 
-That builds the pages and serves them on `fsdev dev`, from the repository root:
+It is the same as running these two from the repository root:
 
 ```bash
 pnpm --filter @flow-state-dev/claude-code-style build
