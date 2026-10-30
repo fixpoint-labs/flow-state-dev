@@ -4,7 +4,7 @@
 
 **Outcome:** A person opening any Lab in Shift Manager lands on Shift Coordinator. They see a summary of what waits on them and what is running that agrees with the store, can answer those asks there, and can talk to the Lab's shift-coordinator seat, with every line and reply being what that seat's session holds. A Lab with no Shift Coordinator still lands there, on the summary and a line saying how to add one.
 
-**Input:** two Labs, each served by Shift Manager's command.
+**Input:** three Labs, each served by Shift Manager's command.
 
 - The fixture desk (`lab/`): one team, `desk`, with a seat that asks a person (the turn goal's `asker` kind) and a seat named `shift-coordinator` on the built-in `agent` kind with a real model, both delegates of `front`, a worker on Workforce's `coordinator` flow (`routing: everyone`). Nothing files a task, so no conversation board holds a row. The check raises two approvals through the asker's own action route before the page opens, so the Lab reopens them when they are answered.
 - The same desk with no Shift Coordinator (`lab-no-shift-coordinator/`): the `asker` seat, `front`'s one delegate, for **no Shift Coordinator**. DevTeam declares a Shift Coordinator since FIX-1719, so it can no longer stand in for a Lab without one.
