@@ -106,10 +106,10 @@ a package call:
 | A result card inside a running turn | `answerAgain: true` on the main worker's flow: the settled task's notice, taken into the turn |
 | The main session reading the project's files | `projectSourceCapability({ workspace })` on the `agent` flow, over the coding runs' host; `desk.main` and `desk.researcher` name its `read` preset in their `WORKER.md` |
 | Interrupting | aborting the session's running turn; its tasks keep running |
-| The tasks pane and a task's work | `listTasks_tasks`, and the items of the task's run session |
+| The tasks pane and a task's work | the `listTasks_tasks` read (stores nothing per poll), and the items of the task's run session |
 | Threads mode's sessions | the same, with `desk.lead`, a `coordinator`, as the main worker |
 | A thread card, and *Sent to a thread* | the lead's `createTask` call in the session's items |
-| The board's columns | each `listTasks_tasks` row's status and its open holds, read with `inboxItems` from `@flow-state-dev/orchestration/inbox` |
+| The board's columns | the status of each row the `listTasks_tasks` read returns, and its open holds, read with `inboxItems` from `@flow-state-dev/orchestration/inbox` |
 | A coding thread's tag | the `harness` action of the coding flow, asked in the thread's run session |
 | *Not reviewed* | a finished coding thread's output, `review: "deadline"`, through `getTask_tasks` |
 | Answering in a thread | the Inbox client's `answerHold` on its open question; with none, `updateTask_tasks` with your line as a steer |

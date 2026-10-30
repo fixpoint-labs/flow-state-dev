@@ -1,7 +1,8 @@
 /**
  * TASKS, at Shift Coordinator (FIX-1794 S11): the tasks the user's
  * conversation filed for its delegates, as the conversation's own
- * `listTasks` answers them (`lib/conversation-tasks.ts`). Each conversation
+ * `listTasks` read answers them (`lib/conversation-tasks.ts`), which stores
+ * nothing, so a poll costs no request (FIX-2286). Each conversation
  * keeps a board of its own, so this reads that one board and nothing else.
  *
  * It reads when it opens and again each time the Lab is read again

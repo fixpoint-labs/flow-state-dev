@@ -117,6 +117,8 @@ export {
   type AssigneeRosterSource,
   // The task tools as flow actions, and the board qualifier they are named by.
   taskToolActions,
+  // The task list as a flow read, stored nowhere (FIX-2286).
+  taskToolReads,
   taskToolSuffix,
   type TaskToolActionsBoard,
   // A task turn's question and a turn's stop for the user, and the rules for

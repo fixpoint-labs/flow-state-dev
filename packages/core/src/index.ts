@@ -377,6 +377,7 @@ export type {
   CostEstimate,
   CostEstimator,
   ActionConfig,
+  ReadConfig,
   ActionCore,
   ActionMcpConfig,
   ClientDataComputeFn,
