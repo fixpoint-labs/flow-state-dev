@@ -1418,6 +1418,9 @@ importers:
       '@flow-state-dev/engine':
         specifier: workspace:*
         version: link:../engine
+      '@flow-state-dev/harness-manager':
+        specifier: workspace:*
+        version: link:../harness-manager
       '@flow-state-dev/node':
         specifier: workspace:*
         version: link:../node
