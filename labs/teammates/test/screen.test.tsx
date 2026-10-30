@@ -191,7 +191,7 @@ describe("the teammates screen", () => {
     let popup = await screen.findByRole("dialog", { name: "Coding task: Fix the typo in the README's first line" });
     expect(within(popup).queryByRole("textbox")).toBeNull();
     await waitFor(() => expect(popup.textContent).toMatch(/on Claude Code/), { timeout: 2000 });
-    await waitFor(() => expect(popup.textContent).toMatch(/Edited line 1/), { timeout: 2000 });
+    await waitFor(() => expect(popup.textContent).toMatch(/Edit \/work\/README\.md/), { timeout: 2000 });
     expect(await within(popup).findByRole("region", { name: "Result" }, { timeout: 2000 })).toBeTruthy();
     fireEvent.click(within(popup).getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -202,7 +202,7 @@ describe("the teammates screen", () => {
     popup = await screen.findByRole("dialog", { name: "Coding task: Fix the typo in the README's first line" });
     expect(item.getAttribute("aria-current")).toBe("true");
     expect(conversation()).toBeTruthy();
-    expect(popup.textContent).toMatch(/Edited line 1/);
+    expect(popup.textContent).toMatch(/Edit \/work\/README\.md/);
   });
 
   it("runs a coding task on the agent you name, and on Claude Code when you name none, and its line says which", async () => {
@@ -236,6 +236,43 @@ describe("the teammates screen", () => {
     // All three are tasks, never teammates.
     for (const coder of ["Claude Code", "Codex", "Cursor"]) expect(workers().querySelector(`[data-worker="${coder}"]`), coder).toBeNull();
   });
+
+  it("shows a coding run as plain steps, the same on every harness: the result first, what it said as text, and no bare tool name", async () => {
+    // Each harness reports its own tools (Claude Code's Bash and Edit, Codex's command_execution and file_change, Cursor's shell and edit).
+    const BARE = /^(Bash|Read|Edit|Write|command_execution|file_change|shell|read|edit)$/;
+    render(<App adapter={fast({ speed: 0.3 })} />);
+    for (const [ask, harness, check] of [
+      ["Fix the typo in the README's first line.", "Claude Code", "Run the docs check"],
+      ["Have Codex fix the typo in the README's first line.", "Codex", "pnpm docs:check"],
+      ["Have Cursor fix the typo in the README's first line.", "Cursor", "pnpm docs:check"],
+    ] as const) {
+      const count = entries("task").length;
+      await tell("Chief of Staff", ask);
+      await waitFor(() => expect(entries("task")).toHaveLength(count + 1), { timeout: 3000 });
+      const line = entries("task").at(-1) as HTMLElement;
+      fireEvent.click(line);
+      const popup = await screen.findByRole("dialog", { name: "Coding task: Fix the typo in the README's first line" });
+      // The first signal: what it starts on, before its run reports a step.
+      await waitFor(() => expect(popup.textContent).toContain(`Starting on ${harness}…`), { timeout: 2000 });
+      await waitFor(() => expect(line.querySelector("[data-task-status]")?.textContent).toBe("done"), { timeout: 4000 });
+      await within(popup).findByRole("region", { name: "Result" }, { timeout: 2000 });
+
+      const body = popup.querySelector("[data-step=result]")!.parentElement!;
+      const kinds = [...body.children].map((el) => el.getAttribute("data-step"));
+      // The result leads; under it, the harness, then what the run did in order.
+      expect(kinds).toEqual(["result", "harness", "tool", "said", "tools"]);
+      expect(popup.querySelector("[data-step=harness]")?.textContent).toBe(`Started on ${harness}`);
+      expect(popup.querySelector("[data-step=said]")?.textContent).toContain('The typo is on line 1: "Relay keps".');
+      // A run of steps folds into one line, in the same words on every harness, and opens to each one.
+      const fold = popup.querySelector("[data-step=tools]")!;
+      expect(fold.querySelector("summary")?.textContent).toBe("Edited a file and ran a command");
+      expect([...fold.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["· Edit /work/README.md", `· ${check}`]);
+      // Nothing on any line is a tool's bare name.
+      const lines = [...popup.querySelectorAll("[data-step=tool], [data-step=tools] summary, [data-step=tools] li")].map((el) => el.textContent!.replace(/^· /, ""));
+      for (const text of lines) expect(text, harness).not.toMatch(BARE);
+      fireEvent.keyDown(document, { key: "Escape" });
+    }
+  }, 20_000);
 
   it("fails a task on a harness this machine isn't set up for at once, naming it, and runs nothing else in its place", async () => {
     render(<App adapter={fast({ notSetUp: ["cursor"] })} />);

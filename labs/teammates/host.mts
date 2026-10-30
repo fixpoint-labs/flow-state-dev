@@ -94,6 +94,9 @@ const HARNESSES: Record<string, Harness> = {
       recordWork: true,
       allowedTools: ["Read", "Write", "Edit", "Bash"],
       permissionMode: "acceptEdits",
+      // The working folder's own Claude Code settings and CLAUDE.md, never this machine's user
+      // settings: an output style there (Explanatory's "★ Insight" boxes) would show in the run's steps.
+      settingSources: ["project"],
     } as never) as unknown as HarnessBlock,
   codex: ({ cwd, resume, onSession, onActivity }) =>
     codexAgent({
@@ -115,7 +118,6 @@ const HARNESSES: Record<string, Harness> = {
       model: "composer-2.5",
       // Its sandbox is off, as Kitchen Sink runs it: the run works in its own worktree.
       agent: { mode: "agent", local: { sandboxOptions: { enabled: false } } },
-      name: "cursor",
     } as never) as unknown as HarnessBlock,
 };
 

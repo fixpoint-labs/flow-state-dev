@@ -66,6 +66,14 @@ describe("composeToolGroupLabel", () => {
     );
   });
 
+  it("reads each coding harness's tools the same: a command is a command on Claude Code, Codex and Cursor", () => {
+    expect(composeToolGroupLabel(["Bash", "command_execution", "shell"])).toBe("Ran 3 commands");
+    expect(composeToolGroupLabel(["Edit", "edit", "MultiEdit"])).toBe("Edited 3 files");
+    expect(composeToolGroupLabel(["Read", "read"])).toBe("Read 2 files");
+    expect(composeToolGroupLabel(["Grep", "grep"])).toBe("Searched the code 2 times");
+    expect(composeToolGroupLabel(["Edit", "file_change", "edit"])).toBe("Edited 3 files");
+  });
+
   it("capitalises only the first word", () => {
     const label = composeToolGroupLabel(["web_search", "write_file"]);
     expect(label.charAt(0)).toBe(label.charAt(0).toUpperCase());
@@ -77,7 +85,7 @@ describe("composeToolCallsLabel", () => {
   it("is the name-based label when no call stated an intent", () => {
     const calls = [{ name: "web_search" }, { name: "write_file" }];
     expect(composeToolCallsLabel(calls)).toBe("Ran a search and wrote a file");
-    expect(composeToolCallsLabel([{ name: "Bash" }, { name: "Bash" }])).toBe("Ran `Bash` 2 times");
+    expect(composeToolCallsLabel([{ name: "Bash" }, { name: "Bash" }])).toBe("Ran 2 commands");
   });
 
   it("labels a run with what each call said it was doing", () => {

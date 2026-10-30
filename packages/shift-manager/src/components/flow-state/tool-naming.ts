@@ -55,10 +55,19 @@ const SUBJECT_MAX = 80;
 /** One or more `cd <dir> &&` (or `;`) at the front of a command line. */
 const LEADING_CD = /^(?:cd\s+(?:"[^"]*"|'[^']*'|\S+)\s*(?:&&|;|$)\s*)+/;
 
-/** A path as its last three segments, so a deep one still fits on a line. */
+/**
+ * A path as its last three segments, so a deep one still fits on a line;
+ * fewer when a long segment (a worktree's hashed folder) would push the
+ * file's own name past the line's end.
+ */
 function shortPath(path: string): string {
   const parts = path.split("/").filter((part) => part !== "");
-  return parts.length > 3 ? `…/${parts.slice(-3).join("/")}` : path;
+  if (parts.length <= 3 && path.length <= SUBJECT_MAX / 2) return path;
+  for (const keep of [3, 2]) {
+    const shown = `…/${parts.slice(-keep).join("/")}`;
+    if (parts.length > keep && shown.length <= SUBJECT_MAX / 2) return shown;
+  }
+  return parts.length > 1 ? `…/${parts[parts.length - 1]}` : path;
 }
 
 function clip(text: string): string {
@@ -92,6 +101,14 @@ export function toolSubject(toolName: string, args: unknown): ToolSubject | unde
     const worked = lines.map((l) => l.replace(LEADING_CD, "")).filter((l) => l !== "");
     const line = (worked[0] ?? lines[0])?.replace(/\s+/g, " ");
     return line === undefined ? undefined : { text: clip(line), code: true };
+  }
+
+  // Codex reports a file change as the list of files it touched: an edit, as the other harnesses name theirs.
+  if (lower === "file_change" && Array.isArray(record.changes)) {
+    const paths = record.changes.map((c: { path?: unknown }) => c?.path).filter((p): p is string => typeof p === "string" && p !== "");
+    if (paths.length === 0) return undefined;
+    const more = paths.length > 1 ? ` and ${paths.length - 1} more` : "";
+    return { text: clip(`Edit ${shortPath(paths[0]!)}${more}`), code: false };
   }
 
   const key = SUBJECT_ARGS.find((k) => typeof record[k] === "string" && (record[k] as string).trim() !== "");

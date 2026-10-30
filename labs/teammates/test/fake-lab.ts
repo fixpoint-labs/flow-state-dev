@@ -8,13 +8,15 @@
  * workers, one per harness (Claude Code, Codex, Cursor). Your first ask to Chief of Staff makes it message researcher;
  * researcher looks the fact up and replies. Ask Chief of Staff to fix something and Chief of Staff
  * starts a coding task on the agent you name, or on Claude Code, which runs in the working folder;
- * one on a harness the double is told isn't set up fails at once, saying so. Ask writer to
+ * one on a harness the double is told isn't set up fails at once, saying so. A run reports
+ * items in its harness's own shape (its tool names and arguments), read into steps by the
+ * adapter's own `runSteps`. Ask writer to
  * publish and it waits for your yes first. Each worker
  * answers one request at a time: a line you send, or a message from another
  * worker, waits while the worker is answering, and runs when it is done.
  * Chief of Staff's conversation starts past the 50-turn history window.
  */
-import type { ConversationEntry, LabAdapter, SessionStep, TalkRow, BoardTask, Unsubscribe, WindowMark, WorkerRow } from "../src/adapter";
+import { runSteps, type ConversationEntry, type LabAdapter, type SessionStep, type TalkRow, type BoardTask, type Unsubscribe, type WindowMark, type WorkerRow } from "../src/adapter";
 
 /** How the double keeps time, and what it plays. */
 export interface FixtureOptions {
@@ -33,6 +35,28 @@ const HARNESS: Record<string, { name: string; model?: string }> = {
   "claude-code": { name: "Claude Code" },
   codex: { name: "Codex", model: "gpt-5.5-codex" },
   cursor: { name: "Cursor" },
+};
+
+/**
+ * The tools each harness's run calls to fix the typo, under their own names
+ * and arguments: it reads the file, edits it, and runs the docs check.
+ */
+const RUN_TOOLS: Record<string, Record<"read" | "edit" | "check", [string, Record<string, unknown>]>> = {
+  "claude-code": {
+    read: ["Read", { file_path: "/work/README.md" }],
+    edit: ["Edit", { file_path: "/work/README.md", old_string: "Relay keps", new_string: "Relay keeps" }],
+    check: ["Bash", { command: "pnpm docs:check", description: "Run the docs check" }],
+  },
+  codex: {
+    read: ["command_execution", { command: "sed -n 1p README.md" }],
+    edit: ["file_change", { changes: [{ path: "/work/README.md", kind: "update" }] }],
+    check: ["command_execution", { command: "cd /work && pnpm docs:check" }],
+  },
+  cursor: {
+    read: ["read", { path: "/work/README.md" }],
+    edit: ["edit", { path: "/work/README.md" }],
+    check: ["shell", { command: "pnpm docs:check" }],
+  },
 };
 
 /** How many turns a worker reads word for word: the agent flow's default. */
@@ -100,9 +124,8 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
   const bySession = (sessionId: string) => [...workers.values()].find((w) => w.sessionId === sessionId);
   const fired = new Set<string>();
   let tasks: FixtureTask[] = [];
-  const runs = new Map<string, SessionStep[]>();
-  /** The harness each task's run went through, by name. */
-  const runHarness = new Map<string, string>();
+  /** Each task's run, as the items its harness reports. */
+  const runs = new Map<string, Record<string, unknown>[]>();
   const notSetUp = new Set(options.notSetUp ?? []);
   /** The worker each open approval belongs to, by suspension id. */
   const approvals = new Map<string, FixtureWorker>();
@@ -155,10 +178,13 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     tasks = tasks.map((t) => (t.id === id ? { ...t, ...patch } : t));
     notify();
   };
-  const step = (taskId: string, text: string): Step[1] => () => {
-    runs.set(taskId, [...(runs.get(taskId) ?? []), { id: nextId("step"), kind: "tool", text }]);
+  /** One item of a run, as its harness's block reports it. */
+  const report = (taskId: string, harness: string, item: Record<string, unknown>): Step[1] => () => {
+    runs.set(taskId, [...(runs.get(taskId) ?? []), { id: nextId("item"), status: "completed", provenance: { blockName: `${harness}-agent` }, ...item }]);
     notify();
   };
+  const tool = (name: string, args: Record<string, unknown>) => ({ type: "tool_output", toolCall: { name, arguments: JSON.stringify(args) } });
+  const said = (text: string) => ({ type: "message", role: "assistant", content: [{ type: "output_text", text }] });
 
   /**
    * `createTask` for coder: a card in the filer's conversation, and a run in the working folder. The
@@ -168,7 +194,6 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     const id = nextId("t");
     const harness = worker(to).row.harness!;
     const task: FixtureTask = { id, to, title, status: "running", runSessionId: `run:${id}`, sessionId: w.sessionId, harness: HARNESS[harness]!.name };
-    runHarness.set(id, HARNESS[harness]!.name);
     push(w, { kind: "task", id: nextId("k"), taskId: task.id, title, to });
     setTimeout(() => {
       tasks = [...tasks, task];
@@ -186,15 +211,18 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       return;
     }
     const model = HARNESS[harness]!.model;
+    const calls = RUN_TOOLS[harness]!;
+    const call = (which: "read" | "edit" | "check") => report(task.id, harness, tool(...calls[which]));
     let at = 0;
     for (const [delay, run] of [
       // The run reports its model, if its harness reports one, once it starts.
       [600, () => {
         if (model !== undefined) updateTask(task.id, { model });
-        step(task.id, "Read README.md")();
+        call("read")();
       }],
-      [1200, step(task.id, 'Edited line 1: "Relay keps" → "Relay keeps"')],
-      [800, step(task.id, "Ran the docs check: passed")],
+      [600, report(task.id, harness, said('The typo is on line 1: "Relay keps".'))],
+      [600, call("edit")],
+      [800, call("check")],
       [400, end("done", "Fixed the typo in README.md, line 1.")],
     ] as Step[]) {
       at += delay;
@@ -414,8 +442,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     watchRun(runSessionId, onChange) {
       const taskId = runSessionId.replace(/^run:/, "");
       return watch(() => {
-        const steps = runs.get(taskId) ?? [];
-        onChange(steps.length === 0 ? [] : [{ id: "harness", kind: "harness", text: `on ${runHarness.get(taskId)}` }, ...steps]);
+        onChange(runSteps((runs.get(taskId) ?? []) as never));
       });
     },
 

@@ -100,7 +100,7 @@ describe("a stretch of thinking and tool calls as one line", () => {
     const items = [reasoningItem({ text: "Check the log." }), shell(), reasoningItem({ text: "Now the diff." }), shell()];
     render(<ToolGroup items={items} />);
     expect(screen.getAllByTestId("tool-group")).toHaveLength(1);
-    expect(screen.getByRole("button", { name: /^Ran `shell` 2 times$/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Ran 2 commands$/ })).toBeTruthy();
     // Collapsed: neither the thoughts nor the calls are on screen.
     expect(screen.queryByText("Check the log.")).toBeNull();
     expect(screen.queryAllByTestId("tool-row")).toHaveLength(0);
@@ -109,7 +109,7 @@ describe("a stretch of thinking and tool calls as one line", () => {
   it("opens to each step in order, thoughts included", () => {
     const items = [reasoningItem({ text: "Check the log." }), shell()];
     render(<ToolGroup items={items} />);
-    fireEvent.click(screen.getByRole("button", { name: /Ran `shell`/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Ran a command/ }));
     const rows = screen.getAllByTestId("tool-row");
     expect(rows.map((row) => row.textContent)).toEqual([expect.stringContaining("Thought"), expect.stringContaining("git log")]);
     fireEvent.click(within(rows[0]!).getByRole("button"));
@@ -147,7 +147,7 @@ describe("a stretch of thinking and tool calls as one line", () => {
   // opened run they must read at one size.
   it("sets a tool's name and a thought at the same size when a run is opened", () => {
     render(<ToolGroup items={[reasoningItem({ text: "Check." }), shell()]} />);
-    fireEvent.click(screen.getByRole("button", { name: /Ran `shell`/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Ran a command/ }));
     const [thought, call] = screen.getAllByTestId("tool-row").map((row) => within(row).getByRole("button").firstElementChild!);
     expect(call.className).toContain("font-mono");
     expect(call.className).not.toMatch(/\btext-(xs|base|lg)\b/);
@@ -173,7 +173,7 @@ describe("a stretch of thinking and tool calls as one line", () => {
     expect(screen.getByRole("button", { name: /^Grep "ToolGroup"$/ })).toBeTruthy();
     cleanup();
     render(<ToolGroup items={[shell(), read, grep]} />);
-    expect(screen.getByRole("button", { name: /^Ran `shell`, read a file, and ran `grep`$/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Ran a command, read a file, and searched the code$/ })).toBeTruthy();
     cleanup();
     render(<ToolGroup items={[shell(), reasoningItem()]} live />);
     expect(screen.getByRole("button", { name: /^Thought$/ })).toBeTruthy();
