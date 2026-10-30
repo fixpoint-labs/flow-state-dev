@@ -815,26 +815,32 @@ the delegate's name:
 Task "Look up the code" (t-1) completed by scout: The code is rc-4f2a.
 ```
 
-The worker is then told:
+The worker's model reads each of those tasks as a `getTask` call for its id and the result
+`getTask` gives: `{ ok: true, task }` with the whole row (goal, status, assignee, output, error and
+the rest), plus `cancelled` naming the dependents a failure or cancel took with it. An output over
+20,000 characters as JSON is cut, with `outputCut: true`. The worker is then told:
 
 ```text
-These tasks you handed out finished while you answered:
+These tasks you handed out finished while you answered; their getTask reads are just above:
 
-- Task "Look up the code" (t-1) completed by scout: The code is rc-4f2a.
+- t-1 (scout): completed
 
 Use their results now: answer again, building on what you already said.
 ```
 
-Its next text comes after the line, in the same request. A task that ends during that answer is
-picked up the same way once it finishes. A result handed over inside the turn isn't said again
-after it, and wakes no extra turn.
+Each entry is `- <taskId> (<worker>): <ending>`, where `<ending>` is `completed`, `errored` or
+`cancelled`. A task with no assignee drops the `(<worker>)` part. Its next text comes after the
+line, in the same request. A task that ends during that answer is picked up the same way once it
+finishes. A result handed over inside the turn isn't said again after it, and wakes no extra turn.
 
 The endings handed over are completions, final failures, cancels the worker didn't make itself,
 and parks that ask a question, for a task whose result goes back to the filer (the default). A task
 filed with `resultTo: "conversation"`, a retry, and a task some request waits on with
 `getTask({ wait: true })` keep their usual path.
 
-To change the wording, pass `finishedTasksAnswerAgain({ message })` instead of `true`:
+To change the wording, pass `finishedTasksAnswerAgain({ message })` instead of `true`. `message`
+gets each finished task's `taskId`, `ending`, `worker` and `line`. A worker whose turn isn't the
+built-in generator gets no `getTask` reads, so hand it the lines:
 
 ```ts
 import { defineAgentWorkerFlow, finishedTasksAnswerAgain } from "@flow-state-dev/workforce";
@@ -2604,7 +2610,7 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 | `defineAgentWorkerFlow(options?)` | Build the `agent` worker flow, the one the framework ships. With `installation` it is the copy every worker on `agent` shares: it declares the installation's session and documents, loads the turn's worker in `request.onStarted`, and refuses a turn whose input names a worker; called with factory options (`AgentWorkerFlowOptions`) it is the replacement you register under `agent`. Its flow declares `respond` (public) and a `work` task entry that takes the tasks a conversation files for its workers. |
 | `AGENT_FLOW` | The kind name (`"agent"`) the hire step defaults to, and the key a replacement registers under. |
 | `takeFinishedTasks` / `finishedTaskSchema` / `FinishedTask` | A handler block that takes the tasks this conversation filed whose endings haven't been heard yet, says each as a line under its delegate's name, and returns them as `{ taskId, ending, worker?, line }[]`. Input is ignored. `[]` outside a turn a user's own message started (see [Answering again with finished tasks](#answering-again-with-finished-tasks)). |
-| `finishedTasksAnswerAgain({ message? })` / `FinishedTasksAnswerAgainOptions` | The block `answerAgain: true` uses: `takeFinishedTasks`, then `{ message }` built from the lines, or `{}` when nothing finished. `message(finished)` replaces the default wording. |
+| `finishedTasksAnswerAgain({ message? })` / `FinishedTasksAnswerAgainOptions` | The block `answerAgain: true` uses: `takeFinishedTasks`, then `{ message }` naming each finished task and how it ended, or `{}` when nothing finished. `message(finished)` replaces the default wording. |
 | `MAX_ANSWERS_AGAIN` | `3`, the most times one request answers again after its turn, the answer after a plan included. |
 | `definePersona(config)` | Declare a persona resource or collection. |
 | `createWorkforceCapability({ roster, inventory, sources? })` | The discovery door. Installs the `workers` source plus whatever other domains' sources you pass, and contributes one control tool, `discover`, which lists the standard workers the files declare. |

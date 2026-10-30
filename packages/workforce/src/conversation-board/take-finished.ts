@@ -11,7 +11,9 @@
  *   failure reported, deduped and acknowledged. It then says the line under
  *   the delegate's name in this request, and hands the line back. The copy
  *   `onTaskSettled` queued for after the turn finds the notice cleared and
- *   does nothing, so each ending is heard once.
+ *   does nothing, so each ending is heard once. The answer again reads each
+ *   ending as a `getTask` call and its result, the row in full
+ *   (`./task-ending-read`, FIX-2345), as a turn a notice wakes does.
  * - **{@link finishedTasksAnswerAgain}** is the pre-built source for the
  *   answer-again step (`defineAgentWorkerFlow({ answerAgain: true })`): the
  *   take, then the lines as the message the worker answers again about.
@@ -50,6 +52,7 @@ import { isUserTurn } from "../standing-rules/user-turn";
 import { taskChainResources } from "./chain";
 import { CONVERSATION_LEDGER_ID, conversationLedgerResources, ownConversationLedger } from "./ledger";
 import { conversationBoardStateShape, settleTakenNotice } from "./task-settled";
+import { noteTaskEndingRead, taskEndingReadsStateSchema } from "./task-ending-read";
 
 /** One task that finished while the turn ran, as {@link takeFinishedTasks} hands it back. */
 export const finishedTaskSchema = z.object({
@@ -85,6 +88,7 @@ export const takeFinishedTasks = handler({
   inputSchema: z.unknown(),
   outputSchema: z.array(finishedTaskSchema),
   sessionStateSchema: z.object(conversationBoardStateShape),
+  requestStateSchema: taskEndingReadsStateSchema,
   resources: { ...conversationLedgerResources, ...taskChainResources },
   execute: async (_input, rawCtx): Promise<FinishedTask[]> => {
     const ctx = rawCtx as unknown as BlockContext;
@@ -116,6 +120,8 @@ export const takeFinishedTasks = handler({
           continue;
         }
         if (!first) continue;
+        // The answer again reads the ending as its getTask read (FIX-2345).
+        await noteTaskEndingRead(ctx, ref, row, notice);
         const line = noticeText(notice, row);
         ctx.emit.message(line, row.assignee !== undefined ? { agentName: row.assignee } : {});
         finished.push({
@@ -139,11 +145,15 @@ export interface FinishedTasksAnswerAgainOptions {
   readonly message?: (finished: readonly FinishedTask[]) => string;
 }
 
-/** The default message: the lines, and what to do with them. */
+/**
+ * The default message: which tasks finished, and what to do with them. Their
+ * results are the `getTask` reads the turn is handed just before it, so it
+ * names each task without its result.
+ */
 function finishedMessage(finished: readonly FinishedTask[]): string {
   return [
-    "These tasks you handed out finished while you answered:",
-    finished.map((task) => `- ${task.line}`).join("\n"),
+    "These tasks you handed out finished while you answered; their getTask reads are just above:",
+    finished.map((task) => `- ${task.taskId}${task.worker !== undefined ? ` (${task.worker})` : ""}: ${task.ending}`).join("\n"),
     "Use their results now: answer again, building on what you already said."
   ].join("\n\n");
 }

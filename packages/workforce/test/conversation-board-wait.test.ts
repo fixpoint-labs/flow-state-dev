@@ -384,7 +384,10 @@ describe("a wait beside the notice turn of the task it waits on (FIX-2123)", { t
         const lastUser = messages.map((m) => m.role).lastIndexOf("user");
         const asked = JSON.stringify(messages[lastUser]?.content ?? "");
         const since = toolResults(messages.slice(lastUser + 1));
-        if (asked.includes("completed by eng.tasker")) {
+        // The notice turn reads the ending as a getTask read of the completed task (FIX-2345).
+        const last = JSON.stringify(messages.at(-1)?.content ?? "");
+        const ending = messages.at(-1)?.role === "tool" && last.includes('"toolName":"getTask"') && last.includes('"status":"completed"');
+        if (ending) {
           noticeTurns += 1;
           await noticeHeld;
           return { text: "Nine laptops, I hear.", finishReason: "stop" };
