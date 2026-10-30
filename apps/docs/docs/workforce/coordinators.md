@@ -463,7 +463,7 @@ A task's `deps` must name tasks on this conversation's board that haven't failed
 
 ### Following a task
 
-How the conversation hears a task end, managing its tasks from your app, answering a task's questions, steering it while it runs and following it up work the same for every worker that files. They're under [Following a filed task](./delegating-work.md#following-a-filed-task), with examples sent from a coordinator conversation like the one above.
+The rest of a task's life works the same for every worker that files: hearing how it ended, managing it from your app, answering its questions, steering it and following it up. See [Following a filed task](./delegating-work.md#following-a-filed-task), whose examples are sent from a coordinator conversation like the one above.
 
 ## Making your own flow a delegate
 

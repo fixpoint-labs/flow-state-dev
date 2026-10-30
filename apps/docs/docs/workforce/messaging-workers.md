@@ -58,7 +58,7 @@ Then the recipient takes a turn on it. That turn is told the message id, who sen
 
 A recipient in the middle of a turn hears the message after that turn ends. If the same message is delivered twice, the recipient wakes once.
 
-A message also waits while the conversation it's going to waits on the user: the conversation is stopped for the user's approval or input, or, in a task's session, the task waits on the user's stop or a question. The message lands once that wait ends. While it waits, its row in the [log](#showing-messages-in-your-app) has `queuedBehind: "user"`.
+A message also waits while its recipient's conversation is waiting on the user: the conversation is stopped for the user's approval or input, or, in a task's session, the task waits on the user's stop or a question. The message lands once that wait ends. While it waits, its row in the [log](#showing-messages-in-your-app) has `queuedBehind: "user"`.
 
 You see all of it. Both workers' sessions are yours, and the message, the turn it started and any answer are in them like anything else.
 

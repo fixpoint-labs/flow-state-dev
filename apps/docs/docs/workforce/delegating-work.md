@@ -181,7 +181,7 @@ Both settings are for a conversation's own board. A worker filing from a task se
 
 ## Following a filed task
 
-Once a task is filed, the session that filed it hears how it ends, and your app can read it, change it before it starts, answer its questions, steer it and follow it up. The examples send the board's tools as actions on the filing session, here a conversation with a coordinator: `help` is `fsd.flow(session.flowKind)`, as in [Talking to it](./coordinators.md#talking-to-it). Filing, and what a filing is refused for, are under [Handing out tasks](./coordinators.md#handing-out-tasks).
+Once a task is filed, the session that filed it hears how it ends, and your app can read it, change it before it starts, answer its questions, steer it and follow it up. The examples send the board's tools as actions on the filing session, here a conversation with a coordinator. They use the `fsd`, `workforce`, `session` and `help` set up in [Talking to it](./coordinators.md#talking-to-it): `help` is `fsd.flow(session.flowKind)`, sent on the filing session. Filing, and what a filing is refused for, are under [Handing out tasks](./coordinators.md#handing-out-tasks).
 
 ### Hearing how it went
 
@@ -191,7 +191,7 @@ The conversation that filed a task hears once when it ends, in a line under the 
 Task "Audit our dependencies' licenses" (task_…) completed by licenses: All 214 dependencies are MIT or Apache-2.0.
 ```
 
-It hears when a task completes, with what came back; when it fails for good, with the error; when it stops on a question, with the question; and when it's cancelled, unless the coordinator cancelled it itself. A failure or a cancel that took dependent tasks with it names them in the same line, and they send no line of their own. When the line arrives, a coordinator that routes by `judgment` or `best-fit` takes a turn to read it and decide what to do next, such as filing a failed task again. Its model reads the ending as a `getTask` call for that task and its result, not as the line: the task whole, as `getTask_tasks` returns it, with `cancelled` naming any dependents it took with it. One that routes by `round-robin` or `everyone` has no turn of its own, so it shows the line and nothing more. If the coordinator is in the middle of a reply to you, the line starts a second turn at once, and both replies appear in the conversation, each as its own message. Every task gets two attempts, a number you can't change, and a first failure just runs it again without a word. A task whose result goes to the conversation, such as a routed task or its follow-up, gets one.
+It hears when a task completes, with what came back; when it fails for good, with the error; when it stops on a question, with the question; and when it's cancelled, unless it was cancelled from the filing session itself. A failure or a cancel that took dependent tasks with it names them in the same line, and they send no line of their own. When the line arrives, a coordinator that routes by `judgment` or `best-fit` takes a turn to read it and decide what to do next, such as filing a failed task again. Its model reads the ending as a `getTask` call for that task and its result, not as the line: the task whole, as `getTask_tasks` returns it, with `cancelled` naming any dependents it took with it. One that routes by `round-robin` or `everyone` has no turn of its own, so it shows the line and nothing more. If the coordinator is in the middle of a reply to you, the line starts a second turn at once, and both replies appear in the conversation, each as its own message. Every task gets two attempts, a number you can't change, and a first failure just runs it again without a word. A task whose result goes to the conversation, such as a routed task or its follow-up, gets one.
 
 The filing session hears each ending once, even if the server stops just after the task ends. On a host with durable execution, an ending whose notice didn't go out is heard within seconds, without anyone opening the conversation: about two seconds after the ending, or as soon as the server is running again. See [Hearing how a task ended](../orchestration/task-board.md#hearing-how-a-task-ended) for the guarantee and what it needs from the host.
 
@@ -199,12 +199,12 @@ The filing session hears each ending once, even if the server stops just after t
 
 | Action | What it does |
 | --- | --- |
-| `listTasks_tasks` | This conversation's tasks only, even when another conversation has the same coordinator and the same delegates |
+| `listTasks_tasks` | This session's tasks only, even when another session has the same worker and the same delegates |
 | `getTask_tasks` | One task whole: its brief, its fields, how it stands, its delegate's status note, and its output |
 | `createTask_tasks` | Files a task: it starts at once, after its `deps`, or, with `held: true`, when you release it |
 | `updateTask_tasks` | Before the task starts: changes any of its fields, its delegate included, holds it (`status: "held"`) or releases it (`status: "pending"`). Until it finishes: sends it a `message`, or cancels it (`status: "cancelled"`), with nothing said in the conversation |
 
-A task that has started can't be changed, only steered with a message or cancelled: `updateTask_tasks` answers `field_locked_after_start`, naming the fields. A running task keeps its delegate; to move it, cancel it and file it again. Cancelling one does land: when its delegate finishes, the result is turned away. A finished task, a failed one included, changes no more, and `updateTask_tasks` answers `task_finished`. To have someone take on a failed task, file it again (`createTask_tasks`).
+A task that has started can't be changed, only steered with a message or cancelled: `updateTask_tasks` answers `field_locked_after_start`, naming the fields. A running task keeps its delegate; to move it, cancel it and file it again. Cancelling a running task takes effect: when its delegate finishes, the result is turned away. A finished task, a failed one included, changes no more, and `updateTask_tasks` answers `task_finished`. To have someone take on a failed task, file it again (`createTask_tasks`).
 
 To open the session working a task, look it up by the task's id and the conversation's `filingSessionId`, which `listDelegates` returns:
 
