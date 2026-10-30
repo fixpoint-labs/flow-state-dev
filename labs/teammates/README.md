@@ -167,9 +167,3 @@ Not wired yet:
 - **A task whose input has an `issue` field** is refused by the coding run as half a feature payload
   (FIX-2282). Chief of Staff's `WORKER.md` tells it to leave `input` empty, which only lowers the
   odds.
-
-## What this app adds
-
-Configuration, React UI and small flows, plus checks and fixtures. `node scripts/inventory.mjs`
-fails on a file that is none of these, and on a flow over 200 lines; `--wired` also fails on any
-fixture.

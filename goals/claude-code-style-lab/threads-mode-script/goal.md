@@ -64,7 +64,6 @@ failed.
   closed and asks, and no run clones anything.
 - `no-mapping`: the lab started with no repository to cut worktrees from. Must FAIL signal 6: the
   run works in a clone.
-- `planted-glue`: a planted `src/glue.ts`. The inventory must FAIL.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
