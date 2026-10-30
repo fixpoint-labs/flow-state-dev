@@ -2,12 +2,13 @@ import type { SessionRow } from "../adapter";
 import { cn } from "../lib/utils";
 import { age, useNow } from "../lib/use-watch";
 import { MODES, type ModeId } from "../modes";
+import { ThemeToggle } from "./ThemeToggle";
 
 /**
  * The left pane: the view switch (Sessions or Projects) on top, then
  * *New session*, then the view's sessions, newest first. The view sets the
  * mode, so *New session* opens one in the view's mode. Each row is a title,
- * its age, and a dot while its turn runs.
+ * its age, and a dot while its turn runs. The foot carries the theme mark.
  */
 export function SessionsList({
   view,
@@ -91,7 +92,10 @@ export function SessionsList({
           );
         })}
       </ul>
-      <div className="px-4 py-3 text-xs text-muted-foreground">One main worker, many sessions</div>
+      <div className="flex items-center justify-between gap-2 px-4 py-3 text-xs text-muted-foreground">
+        <span className="min-w-0 truncate">One main worker, many sessions</span>
+        <ThemeToggle />
+      </div>
     </nav>
   );
 }
