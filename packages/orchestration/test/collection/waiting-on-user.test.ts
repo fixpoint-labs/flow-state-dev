@@ -73,12 +73,12 @@ describe.each([
 
   it("mirrors the stop it waits on in the write that drops the lease, and the run's own resume closes it", async () => {
     const { collection, claim } = await waiting();
-    expect(collection.get("t")).toMatchObject({ status: "in_progress", keptOpenBy: "suspended", questions: [STOP] });
+    expect(collection.get("t")).toMatchObject({ status: "in_progress", keptOpenBy: "suspended", holds: [STOP] });
     expect(openHolds(collection.get("t")!)).toEqual([STOP]);
     expect(collection.get("t")!.leaseUntil).toBeUndefined();
     // A later request admitted while the run stays parked keeps it; the run's own resume closes it.
     await collection.setKeptOpenBy!("t", null, { claim, leaseUntil: 50_000 });
-    expect(collection.get("t")).toMatchObject({ questions: [STOP] });
+    expect(collection.get("t")).toMatchObject({ holds: [STOP] });
     expect(collection.get("t")!.keptOpenBy).toBeUndefined();
     await collection.setKeptOpenBy!("t", null, { claim, leaseUntil: 50_000, resume: true });
     expect(collection.get("t")!.holds).toBeUndefined();
@@ -98,7 +98,7 @@ describe.each([
     await collection.cancel("t", "no longer needed");
     const ended = collection.get("t")!;
     // Closed with the row (no open hold), its address kept for the debt.
-    expect(ended).toMatchObject({ status: "cancelled", resumeOwed: true, questions: [STOP] });
+    expect(ended).toMatchObject({ status: "cancelled", resumeOwed: true, holds: [STOP] });
     expect(openHolds(ended)).toEqual([]);
     expect(ended.keptOpenBy).toBeUndefined();
     // A later write to the ended row keeps the debt's address.
@@ -158,7 +158,7 @@ describe.each([
     const { collection } = await waiting();
     const host = hostThat(async () => ({ ok: false, refused: "busy", detail: "held" }));
     await cancelAndResume(host.ctx, collection, "t");
-    expect(collection.get("t")).toMatchObject({ status: "cancelled", resumeOwed: true, questions: [STOP] });
+    expect(collection.get("t")).toMatchObject({ status: "cancelled", resumeOwed: true, holds: [STOP] });
   });
 
   it("refuses a filing by a task that is already cancelled, on the same board", async () => {

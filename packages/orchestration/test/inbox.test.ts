@@ -131,12 +131,12 @@ describe("inboxItems: one item type", () => {
 
   it("names a run's flow from the stop the reader found when no listed session does", () => {
     const [item] = inboxItems({ rows: [stopped("t1", "sp1")], suspensions: [found("sp1", { flowId: "worker-flow" })], flowOf: () => undefined });
-    expect(item).toMatchObject({ answerable: true, questions: [{ source: { flowId: "worker-flow" } }] });
+    expect(item).toMatchObject({ answerable: true, holds: [{ source: { flowId: "worker-flow" } }] });
   });
 
   it("an item whose session names no flow is listed, unanswerable, saying why, on its hold and on the item", () => {
     const [item] = inboxItems({ rows: [stopped("t1", "sp1")], suspensions: [], flowOf: () => null });
-    expect(item).toMatchObject({ answerable: false, unanswerable: NO_FLOW_UNANSWERABLE, questions: [{ answerable: false, unanswerable: NO_FLOW_UNANSWERABLE }] });
+    expect(item).toMatchObject({ answerable: false, unanswerable: NO_FLOW_UNANSWERABLE, holds: [{ answerable: false, unanswerable: NO_FLOW_UNANSWERABLE }] });
   });
 
   it("an item is answerable when any of its holds is", () => {
@@ -380,7 +380,7 @@ describe("a task held on questions (row holds, FIX-2133)", () => {
     });
 
     it("control drop-row-holds: a list that drops the questions misses their task's item", () => {
-      const dropped = inboxItems({ rows: rows.map((r) => ({ ...r, questions: (r.holds ?? []).filter((h) => h.source.kind !== "row") })), suspensions: [], flowOf: flows });
+      const dropped = inboxItems({ rows: rows.map((r) => ({ ...r, holds: (r.holds ?? []).filter((h) => h.source.kind !== "row") })), suspensions: [], flowOf: flows });
       const result = reconcileInbox(dropped, truth);
       expect(result.green).toBe(false);
       expect(result.missing).toEqual([taskItemId(BOARD, "t1")]);

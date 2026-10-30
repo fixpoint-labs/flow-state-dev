@@ -533,7 +533,7 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
     const visit = (node) => {
       // Any syntax that can give the literal an item's `holds`: assigned, shorthand, quoted or computed, or a spread.
       const mayHoldHolds = (p) =>
-        ts.isSpreadAssignment(p) || (p.name !== undefined && (ts.isComputedPropertyName(p.name) || p.name.getText(sf).replace(/["']/g, "") === "questions"));
+        ts.isSpreadAssignment(p) || (p.name !== undefined && (ts.isComputedPropertyName(p.name) || p.name.getText(sf).replace(/["']/g, "") === "holds"));
       if (inboxItemDecl !== undefined && ts.isObjectLiteralExpression(node) && node.properties.some(mayHoldHolds) && isInboxItem(node)) {
         inboxScanned.items++;
         const key = `${packageOf(path)}:${recorderOf(node)}`;

@@ -27,7 +27,7 @@ describe("control broken-list-helper", () => {
       id: "t1",
       status: "cancelled",
       run: { sessionId: "run_t1", requestId: "req_t1" },
-      questions: [
+      holds: [
         {
           id: "sp1",
           actor: "user" as const,

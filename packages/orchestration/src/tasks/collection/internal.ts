@@ -1198,7 +1198,7 @@ export function requireClaimTicket(
 export function waitingOnPatch(
   task: Task,
   keptOpenBy: Task["keptOpenBy"],
-  options: { leaseUntil?: number; answer?: { output: unknown }; question?: SuspensionHold; resume?: boolean; owesTurn?: boolean }
+  options: { leaseUntil?: number; answer?: { output: unknown }; hold?: SuspensionHold; resume?: boolean; owesTurn?: boolean }
 ): Partial<Task> {
   if (keptOpenBy == null) {
     assertValidLeaseDeadline(options.leaseUntil ?? Number.NaN);
@@ -1222,7 +1222,7 @@ export function waitingOnPatch(
     }
   }
   // A stop for a person, mirrored in the same write (FIX-2133); any other wait mirrors nothing.
-  const mirrored = options.question === undefined ? "unchanged" : holdWrite(task, { op: "mirror", hold: options.question });
+  const mirrored = options.hold === undefined ? "unchanged" : holdWrite(task, { op: "mirror", hold: options.hold });
   return {
     keptOpenBy: keptOpenBy,
     leaseUntil: options.leaseUntil,

@@ -26,7 +26,7 @@ function heldRow(questionTurn: number, filer: string | null = "conv_a"): Task {
     attempts: 1,
     turn: 2,
     askedInTurn: questionTurn,
-    questions: newRowHolds([{ kind: "question", prompt: "which region?" }], 0, { midway: true }),
+    holds: newRowHolds([{ kind: "question", prompt: "which region?" }], 0, { midway: true }),
     ...(filer !== null ? { filer: { sessionId: filer } } : {}),
   } as unknown as Task;
 }

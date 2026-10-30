@@ -83,7 +83,7 @@ describe("the Inbox against a real Lab", () => {
     for (const item of items) {
       expect(item.task).not.toBeNull();
       expect(item.id).toBe(taskItemId(item.task!.board, item.task!.taskId));
-      expect(item).toMatchObject({ answerable: true, unanswerable: null, questions: [expect.objectContaining({ source: expect.objectContaining({ kind: "suspension" }), answerable: true })] });
+      expect(item).toMatchObject({ answerable: true, unanswerable: null, holds: [expect.objectContaining({ source: expect.objectContaining({ kind: "suspension" }), answerable: true })] });
       // Drawn with the pending ask the run's session holds, though it lists from the row.
       expect(item.holds[0]!.detail?.item.suspensionId).toBe(item.holds[0]!.id);
     }
@@ -127,7 +127,7 @@ describe("the Inbox against a real Lab", () => {
     await client.flow(ASKER_FLOW).send("ask", { what: "ship it" }, { sessionId });
     const snapshot = await settled(client, 1);
     const items = snapshot.inbox.ok ? snapshot.inbox.value : [];
-    expect(items[0]).toMatchObject({ task: null, answerable: true, questions: [expect.objectContaining({ source: expect.objectContaining({ kind: "suspension" }) })] });
+    expect(items[0]).toMatchObject({ task: null, answerable: true, holds: [expect.objectContaining({ source: expect.objectContaining({ kind: "suspension" }) })] });
     const truth = await readTruth(client, await boardRows(client, sessionId));
     expect(reconcileInbox(items, truth)).toMatchObject({ green: true });
   });

@@ -416,7 +416,7 @@ function createWiredLab(fsd: Client): LabAdapter {
       ...(task.statusNote == null ? {} : { statusNote: task.statusNote }),
       ...(typeof task.updatedAt === "number" ? { updatedAt: task.updatedAt } : {}),
       ...(task.run?.sessionId === undefined ? {} : { runSessionId: task.run.sessionId, run: task.run }),
-      ...(Array.isArray(task.questions) ? { questions: task.questions } : {}),
+      ...(Array.isArray(task.holds) ? { holds: task.holds } : {}),
       ...(task.spend == null ? {} : { spend: task.spend }),
     }));
   };
@@ -441,7 +441,7 @@ function createWiredLab(fsd: Client): LabAdapter {
       assignee: task.assignee ?? null,
       status: task.status,
       run: task.run ?? null,
-      questions: task.holds ?? [],
+      holds: task.holds ?? [],
       holder: { sessionId, action: UPDATE_TASK_ACTION },
     }));
     const items = inboxItems({ rows, suspensions: [], flowOf: (id) => runFlows.get(id) });

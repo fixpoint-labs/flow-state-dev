@@ -52,9 +52,9 @@ describe("createTask's questions", () => {
       { kind: "confirm", prompt: "Run it against prod?", onNo: "cancel" },
     ]);
     const read = await b.call("getTask", { id: filed.taskId });
-    expect(read.task.questions.map((hold: { ask: unknown }) => hold.ask)).toEqual(openHolds(row).map((hold) => hold.ask));
+    expect(read.task.holds.map((hold: { ask: unknown }) => hold.ask)).toEqual(openHolds(row).map((hold) => hold.ask));
     const listed = await b.call("listTasks", {});
-    expect(listed.tasks[0].questions).toHaveLength(2);
+    expect(listed.tasks[0].holds).toHaveLength(2);
   });
 
   // Smaller models send `questions: []` even when told to leave it out; a refusal there makes
@@ -92,7 +92,7 @@ describe("updateTask's answers", () => {
     expect(openHolds(b.get(b.id)!).map((hold) => hold.id)).toEqual([b.column]);
     const read = await b.call("getTask", { id: b.id });
     expect(read.task.steers).toEqual([expect.objectContaining({ message: "The March export", from: "user", by: "u1", answers: b.csv })]);
-    expect(read.task.questions.map((hold: { id: string }) => hold.id)).toEqual([b.column]);
+    expect(read.task.holds.map((hold: { id: string }) => hold.id)).toEqual([b.column]);
   });
 
   it("refuses the old question field by name, so an answer sent with it is never kept as a plain message", async () => {

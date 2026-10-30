@@ -444,14 +444,14 @@ describe("the claim gate settles a task when its work is over", () => {
       });
       const first = await h.run();
       // The stop for a person is mirrored on the row as its suspension hold (FIX-2133).
-      expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "suspended", questions: [{ source: { kind: "suspension" } }] });
+      expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "suspended", holds: [{ source: { kind: "suspension" } }] });
 
       // A piece of the task ends (or a check runs) while its own turn waits on the person.
       h.setLaterTurn(async () => "an answer while it waits");
       await h.runLater(later);
 
       // The later request keeps the mirror: the task's own run is still parked on it.
-      expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "suspended", attempts: 1, questions: [{ source: { kind: "suspension" } }] });
+      expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "suspended", attempts: 1, holds: [{ source: { kind: "suspension" } }] });
       expect((await h.row())?.leaseUntil).toBeUndefined();
 
       const resumed = await h.resume(first.requestId!, { ok: true });
@@ -464,7 +464,7 @@ describe("the claim gate settles a task when its work is over", () => {
     const h = await harness();
     h.setBehaviour(async (ctx) => ctx.suspend!({ reason: "user_input", message: "which one?" }));
     const first = await h.run();
-    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "suspended", questions: [{ ask: { kind: "input", prompt: "which one?" } }] });
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "suspended", holds: [{ ask: { kind: "input", prompt: "which one?" } }] });
 
     expect(await h.stop(first.requestId!)).toBe("stopped");
 

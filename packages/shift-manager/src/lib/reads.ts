@@ -510,7 +510,7 @@ export function toBoardRow(boardRef: string, ownerSessionId: string, topic: stri
     deps: strings(field(data, "deps")),
     run: toRunLink(field(data, "run")),
     error: field(data, "error") == null ? null : String(field(data, "error")),
-    holds: toHolds(field(data, "questions")),
+    holds: toHolds(field(data, "holds")),
     steers: toSteerAnswers(field(data, "steers")),
     createdAt: time(field(data, "createdAt")),
     updatedAt: time(field(data, "updatedAt")),
