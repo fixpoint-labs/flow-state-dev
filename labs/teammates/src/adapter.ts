@@ -121,8 +121,8 @@ export type ConversationEntry =
   | { kind: "received"; id: string; messageId: string; from: string; text: string; inReplyTo?: string }
   /** The worker filed a task; the card reads the board's row by its id, and draws `title` until the row arrives. */
   | { kind: "task"; id: string; taskId: string; title: string; to: string }
-  /** A task it filed ended, as a line under the name of the worker that ran it. */
-  | { kind: "result"; id: string; taskId: string; from: string; text: string; failed?: boolean }
+  /** A task it filed ended, as a line under the name of the worker that ran it; `title` is the task's, once its row is read. */
+  | { kind: "result"; id: string; taskId: string; from: string; text: string; title?: string; failed?: boolean }
   /** The worker waits for your yes (`waitForUser` with an approval); `resolution` once answered. */
   | { kind: "approval"; id: string; requestId: string; suspensionId: string; text: string; resolution?: string };
 
@@ -354,7 +354,15 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>):
       const task = row === undefined ? undefined : toBoardTask(row);
       // A line with no task id is a completed task's answer, said as is (`resultTo: "conversation"`).
       const failed = taskId !== "" && task?.status !== "done";
-      entries.push({ kind: "result", id: item.id, taskId, from: item.agentName, text: task?.result ?? textOf(item), ...(failed ? { failed: true } : {}) });
+      entries.push({
+        kind: "result",
+        id: item.id,
+        taskId,
+        from: item.agentName,
+        text: task?.result ?? textOf(item),
+        ...(task?.title === undefined ? {} : { title: task.title }),
+        ...(failed ? { failed: true } : {}),
+      });
     } else if (item.type === "message" && item.role === "assistant") {
       const text = textOf(item);
       if (text.trim() !== "") entries.push({ kind: "assistant", id: item.id, text, ...(item.status === "in_progress" ? { streaming: true } : {}) });

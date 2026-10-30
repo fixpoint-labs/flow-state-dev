@@ -24,6 +24,11 @@ describe("a task's ending in the conversation", () => {
     expect(entry).not.toHaveProperty("failed");
   });
 
+  it("names a filed task's ending by the task's title, read from its row", () => {
+    const [entry] = toEntries([row("task_y", "completed"), line("c", "Task \"task_y\" (task_y) completed by teammates.claude-code: Fixed.")], new Set([CODER]));
+    expect(entry).toMatchObject({ kind: "result", taskId: "task_y", title: "task_y" });
+  });
+
   it("still draws a named task that errored as failed", () => {
     const [entry] = toEntries([row("task_x", "errored"), line("b", "Claude Code's task (task_x) ended: errored")], new Set([CODER]));
     expect(entry).toMatchObject({ kind: "result", taskId: "task_x", failed: true });
