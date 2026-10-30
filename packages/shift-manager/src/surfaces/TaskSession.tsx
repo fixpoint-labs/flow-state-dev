@@ -137,6 +137,14 @@ function RunItems({ run }: { run: OpenRun }) {
   // something to merge into, and re-read the session once when it leaves in_progress.
   // A settled request is never followed again: a new send reopens only the open ones.
   const { sent } = task;
+  // Each line sent from the task's composer takes the session to its end, to show it.
+  const showSent = feed.sent;
+  const sentSeen = useRef(sent.length);
+  useEffect(() => {
+    if (sentSeen.current === sent.length) return;
+    sentSeen.current = sent.length;
+    showSent();
+  }, [sent.length, showSent]);
   const loaded = stored !== undefined;
   const settled = useRef(new Set<string>());
   useEffect(() => {
