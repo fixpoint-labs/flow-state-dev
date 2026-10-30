@@ -14,7 +14,9 @@
  * - the recipient hears messages by name: a worker whose `onMessageReceived`
  *   hears only in its tasks' sessions (the coder) is refused here,
  *   `task_sessions_only`;
- * - an answer (`inReplyTo`) names a message the recipient sent this worker;
+ * - an answer (`inReplyTo`) names a message the recipient sent this worker,
+ *   and asks for no reply while that message's sender still waits for it
+ *   (`reply_to_waiting`, FIX-2318);
  * - a message that asks for a reply (FIX-2310), waited on or not, lands
  *   where a turn runs on it: one to a flow whose entry runs nothing is
  *   refused, `no_reply` (FIX-2300);
@@ -307,7 +309,7 @@ export async function sendMessage(
     // to follow. An answer its sender still waits for is held, not sent.
     const resends = carriesPass(installation, flowKind);
     if (written.status === "unconfirmed" && written.takenBy === undefined && (written.deadlineAt !== undefined || !resends)) {
-      if (await claimAnswer(ctx, written, true)) return holdForWait(ctx, writtenRef, resends);
+      if (await claimAnswer(ctx, written)) return holdForWait(ctx, writtenRef, resends);
       return markAnswer(ctx, written, await dispatchOnce(ctx, writtenRef, written, from, resends));
     }
     return markAnswer(ctx, written, { ok: true, id: written.id });
@@ -337,6 +339,14 @@ export async function sendMessage(
         return refuse(`no_such_message: inReplyTo "${input.inReplyTo}" names no message "${to}" sent you. Leave inReplyTo out to start a new one.`);
       }
       if (answered.fromSession === ctx.session.identity.id) return refuse("not_yourself: that message came from this session.");
+      // An answer its sender still waits for is held as that wait's result and lands nowhere
+      // (FIX-2318), so nothing would owe a reply to it: one that asks for a reply is refused.
+      if (options.replyRequested !== undefined && answered.replyRequested === true && answered.deadlineAt !== undefined && answered.waitEndedAt === undefined && answered.answeredBy === undefined) {
+        return refuse(
+          `reply_to_waiting: "${to}" is waiting for this answer as its tool's result, so the answer can't ask for a reply. ` +
+            "Nothing was sent. Answer without replyRequested or wait, then send a new message to ask."
+        );
+      }
       // In the session that sent the original, even after its task ended.
       destination = { sessionId: answered.fromSession, flow: answered.fromFlow };
       exchange = answered.exchange;
@@ -386,25 +396,18 @@ export async function sendMessage(
   // after the dispatch can't leave room for a second answer; a refused one
   // gives the claim back. One its sender still waits for is held for that
   // wait instead (FIX-2318).
-  if (await claimAnswer(ctx, row, true)) return holdForWait(ctx, ref, resends);
+  if (await claimAnswer(ctx, row)) return holdForWait(ctx, ref, resends);
   const outcome = await dispatchOnce(ctx, ref, row, from, resends);
   if (!outcome.ok) await releaseAnswer(ctx, row);
   return outcome;
 }
 
 /**
- * Record an answer on the message it answers, when that one asked for a reply
- * (FIX-2310): `answeredBy`, written once, so the framework's answer at the
- * turn's end, or the pass's, sends nothing more.
- *
- * @param mayHold The answer hasn't gone out yet, so it may be held for a wait.
- * @returns Whether the answer is the claim's and its sender still waits for
- *   it (FIX-2318): the asked message has a deadline and its wait hasn't
- *   ended. The sender's end of the wait writes `waitEndedAt` only while
- *   nothing answered, so once the claim is this answer's, the wait can't end
- *   without it.
+ * Claim `row` as the one answer (FIX-2310): `answeredBy`, written once.
+ * True when that claim is `row`'s and the sender still waits (FIX-2318;
+ * `waitEndedAt` is written only while `answeredBy` is unset).
  */
-async function claimAnswer(ctx: BlockContext, row: Pick<WorkerMessageRow, "id" | "inReplyTo">, mayHold = false): Promise<boolean> {
+async function claimAnswer(ctx: BlockContext, row: Pick<WorkerMessageRow, "id" | "inReplyTo">): Promise<boolean> {
   if (row.inReplyTo === undefined) return false;
   const asked = await messageLogOf(ctx).getOptional(row.inReplyTo);
   if (asked?.state.replyRequested !== true) return false;
@@ -412,7 +415,7 @@ async function claimAnswer(ctx: BlockContext, row: Pick<WorkerMessageRow, "id" |
     await asked.updateState((current) => (current.answeredBy === undefined ? { ...current, answeredBy: row.id } : current));
   }
   const now = asked.state;
-  return mayHold && now.answeredBy === row.id && now.deadlineAt !== undefined && now.waitEndedAt === undefined;
+  return now.answeredBy === row.id && now.deadlineAt !== undefined && now.waitEndedAt === undefined;
 }
 
 /**

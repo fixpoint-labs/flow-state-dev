@@ -20,6 +20,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const fault = { dieBeforeDelivered: false, holdOwnAnswers: false };
+/** What the scripted worker's own answers that ask back came to. */
+const askedBack: unknown[] = [];
 let releaseHeld: () => void = () => {};
 
 // A recipient whose process dies between owing a reply and the delivery (the
@@ -128,6 +130,10 @@ function scriptedFlow(installation: WorkerInstallation) {
     resources: { ...workerMessagesResources },
     execute: async (message, ctx) => {
       if (message.text.includes("[throw]")) throw new Error("the turn broke");
+      if (message.text.includes("[ask-back]")) {
+        const sent = await sendMessage(ctx as never, installation, "scripted", { to: message.from, text: "Which codename, the old or the new?", inReplyTo: message.id }, "scripted-answer", { replyRequested: {} });
+        askedBack.push(sent);
+      }
       if (message.text.includes("[own]")) {
         const sent = await sendMessage(ctx as never, installation, "scripted", { to: message.from, text: "Bluebird, said myself.", inReplyTo: message.id }, "scripted-answer");
         if (!sent.ok) throw new Error(sent.error);
@@ -508,27 +514,24 @@ describe("a reply request to a worker that runs nothing on a message", { timeout
   });
 });
 
+// The lead's turn-end answer held for a wait is `worker-reply-wait.test.ts`'s first case.
 describe("a reply request whose sender waits for it", { timeout: 40_000 }, () => {
-  // One contract (FIX-2318): waiting changes where the one answer goes, never how it is made.
-  it("is the same reply request, and its one answer is the tool's result instead of a message", async () => {
-    const { model } = ottoModel({ "Wait on the lead": [{ to: "lead", text: "What is the codename?", wait: true }] });
+
+  // A held answer is a tool result and lands nowhere, so nothing would ever owe a reply to it: its question would be lost.
+  it("refuses an answer to it that asks for a reply itself, before anything is written, and still gets the turn's answer", async () => {
+    askedBack.length = 0;
+    const { model } = ottoModel({ "Wait on the scripted one": [{ to: "scripted", text: "What is the codename? [ask-back]", wait: true }] });
     const { h, otto } = await boot(model);
-    await h.post("alice", otto, "respond", { message: "Wait on the lead for the codename" }, "agent");
+    await h.post("alice", otto, "respond", { message: "Wait on the scripted one" }, "agent");
     await h.settled();
     await sleep(2_500);
 
+    expect(askedBack).toEqual([{ ok: false, error: expect.stringMatching(/^reply_to_waiting: /) }]);
     const [output] = await toolOutputs(h, otto);
-    expect(output).toEqual({ status: "answered", sent: expect.stringMatching(/^msg_/), reply: "The codename is Bluebird." });
-    // The recipient read the reply-request prompt (the judgment above answers only that one),
-    // and answered through the one reply path: an answer row naming the message it answers.
-    const asked = (await logRows(h)).find((row) => row.id === output!.sent)!;
-    expect(asked).toMatchObject({ replyRequested: true, deadlineAt: expect.any(Number) });
-    expect(asked.waitEndedAt).toBeUndefined();
-    const answers = await answersTo(h, asked.id);
+    expect(output).toEqual({ status: "answered", sent: expect.stringMatching(/^msg_/), reply: "And some closing words." });
+    const answers = await answersTo(h, output!.sent);
     expect(answers).toHaveLength(1);
-    expect(answers[0]).toMatchObject({ from: "lead", to: "otto", text: "The codename is Bluebird.", status: "delivered" });
-    expect(asked.answeredBy).toBe(answers[0]!.id);
-    // Held for the wait: it never lands in Otto's conversation as well.
+    expect(answers[0]!.replyRequested).toBeUndefined();
     expect(await heardIn(h, otto)).toEqual([]);
   });
 

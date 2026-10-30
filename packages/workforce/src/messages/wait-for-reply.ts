@@ -1,47 +1,16 @@
 /**
  * Waiting for a reply (FIX-2239, folded into the reply request by FIX-2318):
- * `sendMessage({ to, text, wait: true })` is a message that asks for a reply
- * (`./owed-replies`), whose sender waits for that answer in the same request
- * until it comes or the deadline passes, whichever is first. Not a task: the
- * epic's decision (FIX-2070 D1). There is one answer and one way it is sent,
- * `sendMessage({ inReplyTo })`: while the sender still waits, the send holds
- * it for this wait and it is the tool's result; once the wait has ended, it
- * reaches the sender as a message, like any reply.
- *
- * - **Every check before anything is written**, orchestration's
- *   `checkWaitable`, the one `getTask`'s wait makes: the host can hold a wait
- *   (`wait_unavailable`, never turned into a send); the deadline is within
- *   the host's bounds (`wait_deadline_out_of_range`, never clamped), the
- *   host's default when unset; the chain of waits stays within
- *   `MAX_WAIT_DEPTH` (`wait_too_deep`); and one wait per model step
- *   (`wait_already_pending`), claimed last.
- * - **The send** is the send's, reply-requested with the deadline on its row,
- *   under a server-chosen id kept by `runOnce`, so the replay after the park
- *   writes nothing again. The park is owed before it (`RequestWaits.owingPark`,
- *   FIX-2269): a process that dies after the row and before the park leaves
- *   the request for the engine to continue, and its replay sends under the
- *   same id and parks. Its dispatch says the sender waits on it.
- * - **The wait** parks on the one wait gate (`waitOnRequest`), bound to the
- *   request that acts on the message: first the one its own dispatch became,
- *   then the row's taker while it is unconfirmed, then the request it was
- *   delivered in. A request that ended without acting on it (a copy, or a
- *   taker that died) sends the wait to the row again.
- * - **The result** is the answer the row's `answeredBy` names: the
- *   recipient's own, or the framework's "no answer" (`noAnswer: true`). When
- *   the deadline comes first, or the request ends with no answer yet, the
- *   wait ends in one guarded write, `waitEndedAt`, taken only while nothing
- *   answered: the call answers `running`, nothing is stopped, and the answer
- *   that comes later reaches the sender as a message.
- *
- * The user stopping the waiting request ends the wait the same way, except an
- * answer held for it in that moment: it is on the log, and never lands in the
- * sender's conversation.
+ * `sendMessage({ to, text, wait: true })` asks for a reply and parks in this
+ * request until that answer or the deadline. The answer is `sendMessage({ inReplyTo })`.
+ * While the sender still waits, that send is held and is the tool's result.
+ * Once the wait has ended, at the deadline with no answer yet, the tool answers
+ * `running` and the same answer arrives later as a message.
  */
 import { waitOnRequest } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { checkWaitable, toolCallOf } from "@flow-state-dev/orchestration/task-board";
 import type { WorkerInstallation } from "../workers/installation";
-import { messageLogOf, newMessageId, type WorkerMessageRow } from "./message-log";
+import { messageLogOf, newMessageId } from "./message-log";
 import { sendMessage, type SendMessageInput } from "./send-message";
 
 /** What a wait came to, once its checks passed. `sent` is the message's id. */
@@ -95,7 +64,8 @@ export async function sendAndWaitForReply(
   const checked = await checkWait(ctx, input.deadline);
   if ("ok" in checked) return checked;
   const once = ctx.runOnce!.bind(ctx);
-  // The `fsd.call.*` keys are recorded in requests already parked: kept, so their replay sends nothing again.
+  // `fsd.call.*` (and the `call:` gate prefix below) are historical idempotency names from before
+  // FIX-2318: requests parked before it recorded them, so they are kept and a replay sends nothing again.
   const deadlineAt = await once(`fsd.call.deadline:${checked.key}`, async () => Date.now() + checked.deadlineMs);
   const id = await once(`fsd.call.id:${checked.key}`, async () => newMessageId());
   const { deadline: _deadline, ...message } = input;
@@ -110,17 +80,6 @@ export async function sendAndWaitForReply(
   // the row and the park leaves the request for the engine to continue.
   const waits = ctx.requestHost?.waits;
   return waits?.owingPark !== undefined ? waits.owingPark(sendThenWait) : sendThenWait();
-}
-
-/** The request acting on the message now: the one it was delivered in, else its taker. */
-function actingRequest(row: Pick<WorkerMessageRow, "deliveredAs" | "takenBy">): string | undefined {
-  return row.deliveredAs ?? row.takenBy;
-}
-
-/** Why the row ended without landing, or `undefined` while it can still land. */
-function endedReason(row: Pick<WorkerMessageRow, "status" | "to" | "reason">): string | undefined {
-  if (row.status !== "refused" && row.status !== "undeliverable") return undefined;
-  return `not_delivered: the message to "${row.to}" was ${row.status} (${row.reason ?? "no reason was given"}).`;
 }
 
 /** The answer `answeredBy` names, as the wait's result. */
@@ -144,9 +103,11 @@ async function awaitAnswer(
       const row = (await log.getOptional(id))?.state;
       if (row === undefined) return { ended: `no_such_message: message "${id}" has no record.` };
       if (row.answeredBy !== undefined) return { answeredBy: row.answeredBy };
-      const ended = endedReason(row);
-      if (ended !== undefined) return { ended };
-      const target = actingRequest(row);
+      if (row.status === "refused" || row.status === "undeliverable") {
+        return { ended: `not_delivered: the message to "${row.to}" was ${row.status} (${row.reason ?? "no reason was given"}).` };
+      }
+      // The request acting on the message now: the one it was delivered in, else its taker.
+      const target = row.deliveredAs ?? row.takenBy;
       return target === undefined ? {} : { target };
     });
   // End the wait unless an answer claimed the row first: the one guarded write

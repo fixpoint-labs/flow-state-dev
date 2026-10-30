@@ -11,7 +11,7 @@ import { CONTROLS as CHILD } from "../workers-message-each-other/controls.mts";
 export const SCENES = ["ac", "ed", "b", "sweep", "j1"] as const;
 export type Scene = (typeof SCENES)[number];
 
-export const CONTROL_NAMES = ["no-debt", "send-again", "task-to-conversation", "no-question-message", "no-hop-cap", "call-holds-session"] as const;
+export const CONTROL_NAMES = ["no-debt", "held-after-wait", "task-to-conversation", "no-question-message", "no-hop-cap", "call-holds-session"] as const;
 export type ControlName = (typeof CONTROL_NAMES)[number];
 
 /** One control: the scenes it runs, the assertion that must fail, its patches and what it breaks. */
@@ -26,8 +26,14 @@ export interface Control {
 export const CONTROLS: Record<ControlName, Control> = {
   // FIX-2240's: the send owes no wake, so the crashed call is never sent again.
   "no-debt": { name: "no-debt", scenes: ["ac"], assertion: "c:lands-once", patches: CHILD["no-debt"].patches, does: CHILD["no-debt"].does },
-  // FIX-2239's: waiting again sends the call again, as a new call.
-  "send-again": { name: "send-again", scenes: ["ed"], assertion: "e:kept-once", patches: CHILD["send-again"].patches, does: CHILD["send-again"].does },
+  // FIX-2318's: a wait that ends at its deadline doesn't say so, so its late answer never lands.
+  "held-after-wait": {
+    name: "held-after-wait",
+    scenes: ["ed"],
+    assertion: "e:kept-once",
+    patches: CHILD["held-after-wait"].patches,
+    does: CHILD["held-after-wait"].does,
+  },
   // FIX-2160's: a { task } message lands in the conversation that filed the task.
   "task-to-conversation": {
     name: "task-to-conversation",
@@ -59,7 +65,7 @@ export const CONTROLS: Record<ControlName, Control> = {
     assertion: "e:heard-while-calling",
     patches: [
       {
-        module: "packages/workforce/src/messages/call.ts",
+        module: "packages/workforce/src/messages/wait-for-reply.ts",
         from: String.raw`const outcome = await waitOnRequest\(ctx, \{`,
         to: "await new Promise((resolve) => setTimeout(resolve, Math.max(0, deadlineAt - Date.now()))); $&",
       },
