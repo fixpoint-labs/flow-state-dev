@@ -1,3 +1,4 @@
+import { useFollowLatest } from "@flow-state-dev/react";
 import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { SessionStep } from "../adapter";
@@ -22,6 +23,8 @@ export function SessionPopup({ label, title, status, onClose, children }: {
 }) {
   const close = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLElement>(null);
+  // Opens on the session's latest turn, and follows it while the reader stays there.
+  const feed = useFollowLatest();
   useEffect(() => {
     // Focus moves in, stays in while it is open, and goes back to whatever opened it on close.
     const opener = document.activeElement as HTMLElement | null;
@@ -57,7 +60,9 @@ export function SessionPopup({ label, title, status, onClose, children }: {
             ×
           </button>
         </header>
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 py-4">{children}</div>
+        <div ref={feed.ref} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 py-4">
+          {children}
+        </div>
       </section>
     </div>,
     document.body,

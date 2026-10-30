@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useFollowLatest } from "@flow-state-dev/react";
 import type { LabAdapter, ProjectRow, SessionRow, TaskRow } from "../adapter";
 import { elapsed, useNow, useWatch } from "../lib/use-watch";
 import { modeOfWorker } from "../modes";
@@ -34,11 +34,8 @@ export function Thread({
     ) ?? [];
   const running = view?.running ?? false;
   const now = useNow(running);
-  const end = useRef<HTMLDivElement>(null);
   const count = view?.entries.length ?? 0;
-  useEffect(() => {
-    end.current?.scrollIntoView?.({ block: "end" });
-  }, [count, running]);
+  const feed = useFollowLatest({ resetKey: session.id });
 
   return (
     <main aria-label="Main thread" className="flex h-full min-h-0 min-w-0 flex-col">
@@ -53,7 +50,7 @@ export function Thread({
           {mode?.label ?? session.worker}
         </span>
       </header>
-      <div className="flex-1 overflow-y-auto px-6 py-4">
+      <div ref={feed.ref} className="flex-1 overflow-y-auto px-6 py-4">
         {count === 0 ? (
           <div className="mx-auto mt-24 max-w-sm text-center text-sm text-muted-foreground">
             {mode?.pane === "board"
@@ -84,7 +81,6 @@ export function Thread({
                 working · {elapsed(view.turnStartedAt, now)}
               </div>
             ) : null}
-            <div ref={end} />
           </div>
         )}
       </div>
@@ -96,7 +92,11 @@ export function Thread({
       ) : (
         <Composer
           running={running}
-          onSend={(text) => void adapter.send(session.id, text)}
+          onSend={(text) => {
+            // Your own line brings you back to the end, wherever you had scrolled to.
+            feed.follow();
+            void adapter.send(session.id, text);
+          }}
           onStop={() => void adapter.interrupt(session.id)}
         />
       )}

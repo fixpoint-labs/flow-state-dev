@@ -9,7 +9,7 @@
  * goal check proves the package at wiring.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import { App } from "../src/App";
 import { TEAMMATE_COLORS } from "../src/lib/looks";
 import { createFixtureLab } from "./fake-lab";
@@ -36,6 +36,44 @@ async function tell(worker: string, text: string) {
     fireEvent.change(box, { target: { value: text } });
     fireEvent.keyDown(box, { key: "Enter" });
   });
+}
+
+
+/**
+ * Lay the scrolling feeds out as a browser would (happy-dom lays nothing out): the conversation's
+ * list and a popup's body, each 5000px of content in a 500px view. Every scroll they are asked
+ * for is recorded with how it moves, and lands at once. Undone by the returned function.
+ */
+function layOutFeeds() {
+  const isFeed = (el: HTMLElement) =>
+    el.matches("[data-scroller]") || (el.parentElement?.getAttribute("role") === "dialog" && el.classList.contains("overflow-y-auto"));
+  const names = ["scrollHeight", "clientHeight", "scrollTop", "scrollTo"] as const;
+  const saved = names.map((name) => [name, Object.getOwnPropertyDescriptor(HTMLElement.prototype, name) ?? Object.getOwnPropertyDescriptor(Element.prototype, name)] as const);
+  const tops = new WeakMap<HTMLElement, number>();
+  const scrolls: { feed: HTMLElement; behavior: ScrollBehavior | undefined }[] = [];
+  Object.defineProperties(HTMLElement.prototype, {
+    scrollHeight: { configurable: true, get(this: HTMLElement) { return isFeed(this) ? 5000 : 0; } },
+    clientHeight: { configurable: true, get(this: HTMLElement) { return isFeed(this) ? 500 : 0; } },
+    scrollTop: {
+      configurable: true,
+      get(this: HTMLElement) { return tops.get(this) ?? 0; },
+      set(this: HTMLElement, value: number) { tops.set(this, isFeed(this) ? Math.max(0, Math.min(value, 4500)) : 0); },
+    },
+    scrollTo: {
+      configurable: true,
+      value(this: HTMLElement, options: ScrollToOptions) {
+        if (isFeed(this)) scrolls.push({ feed: this, behavior: options.behavior });
+        this.scrollTop = options.top ?? 0;
+      },
+    },
+  });
+  const restore = () => {
+    for (const [name, was] of saved) {
+      if (was === undefined) delete (HTMLElement.prototype as unknown as Record<string, unknown>)[name];
+      else Object.defineProperty(HTMLElement.prototype, name, was);
+    }
+  };
+  return { scrolls, restore };
 }
 
 describe("the teammates screen", () => {
@@ -361,13 +399,61 @@ describe("the teammates screen", () => {
     expect(within(conversation()).queryByRole("button", { name: "Jump to latest" })).toBeNull();
   });
 
+  it("opens a worker's conversation already at its end, with no scroll to watch, and switching workers does the same", async () => {
+    const feeds = layOutFeeds();
+    try {
+      render(<App adapter={fast()} />);
+      await screen.findByLabelText("Message Chief of Staff");
+      await screen.findByRole("separator");
+      const first = conversation().querySelector<HTMLElement>("[data-scroller]")!;
+      expect(first.scrollTop).toBe(4500);
+      // Up to read, then over to another worker: it opens on its own latest turn, not where you were.
+      first.scrollTop = 1200;
+      fireEvent.scroll(first);
+      fireEvent.click(workerRow("researcher"));
+      await screen.findByLabelText("Message researcher");
+      const second = conversation().querySelector<HTMLElement>("[data-scroller]")!;
+      expect(second.scrollTop).toBe(4500);
+      // Opening is never an animation: every move to the end so far was instant.
+      expect(feeds.scrolls.length).toBeGreaterThan(0);
+      expect(feeds.scrolls.filter((s) => s.behavior !== "instant")).toEqual([]);
+    } finally {
+      feeds.restore();
+    }
+  });
+
+  it("opens a message's popup already at its latest step, and follows what arrives there smoothly", async () => {
+    const feeds = layOutFeeds();
+    try {
+      render(<App adapter={fast()} />);
+      await tell("Chief of Staff", "Ask researcher for our launch date, and help me outline the post.");
+      const line = await within(conversation()).findByRole("button", { name: /^Messaged researcher: / });
+      feeds.scrolls.length = 0;
+      fireEvent.click(line);
+      const popup = screen.getByRole("dialog", { name: "Messaged researcher" });
+      const body = popup.querySelector<HTMLElement>(".overflow-y-auto")!;
+      expect(body.scrollTop).toBe(4500);
+      const opening = feeds.scrolls.filter((s) => s.feed === body);
+      expect(opening.length).toBeGreaterThan(0);
+      expect(opening.every((s) => s.behavior === "instant")).toBe(true);
+      // The reply lands after it opened: that one glides.
+      await waitFor(() => expect(popup.querySelector('[data-step="sent"]')?.textContent).toMatch(/Nov 12/), { timeout: 2000 });
+      expect(feeds.scrolls.filter((s) => s.feed === body).at(-1)?.behavior).toBe("smooth");
+    } finally {
+      feeds.restore();
+    }
+  });
+
   it("follows a streamed answer smoothly while you are at the end, and shows 'answering' only before its text starts", async () => {
     // Slow enough to look at the answer while it is still being written.
+    const feeds = layOutFeeds();
+    onTestFinished(feeds.restore);
     render(<App adapter={fast({ speed: 0.5 })} />);
     await screen.findByLabelText("Message Chief of Staff");
-    const scroller = conversation().querySelector<HTMLElement>("[data-scroller]")!;
-    const scrolls: ScrollToOptions[] = [];
-    scroller.scrollTo = ((options: ScrollToOptions) => scrolls.push(options)) as typeof scroller.scrollTo;
+    // It opened at the end; only what arrives from here on is a live follow.
+    await act(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+    const scrolls = feeds.scrolls;
+    scrolls.length = 0;
     await tell("Chief of Staff", "Fix the typo in the README's first line.");
     const streaming = await waitFor(
       () => {
