@@ -18,10 +18,10 @@ Where the three top-level app folders sit:
 
 | Directory | Purpose |
 |-----------|---------|
-| [`claude-code-style/`](claude-code-style) | A Claude Code-style app on the workforce package: sessions on the left, the main thread in the center, background tasks on the right. Built from configuration, React UI and small flows only, with an inventory that fails on anything else. Session mode runs on the real packages with a real model; threads mode waits on its wiring. |
+| [`claude-code-style/`](claude-code-style) | A Claude Code-style app on the workforce package: sessions on the left, the main thread in the center, background tasks on the right. Built from configuration, React UI and small flows only. Session mode runs on the real packages with a real model; threads mode waits on its wiring. |
 | [`design-system/`](design-system) | The light and dark theme Shift Manager loads over FSD's component tokens. Values only, no components; a check keeps its values out of FSD's own packages. |
 | [`knowledge-hub/`](knowledge-hub) | Incubation for the Knowledge Hub (FIX-882–884): typed capture into working-memory staging, a cron sweeper/manager that routes staged items into long-term OKF memory, and a personal workforce roster. The capture layer exists — `logActivity` into a user-scoped inbox with a deterministic mailroom pass (883/884 pending). The finished simple-wiki predecessor moved to [`examples/knowledge-base`](../examples/knowledge-base). |
-| [`teammates/`](teammates) | A Grok Bot-style app on the workforce package: a list of workers on the left, each with one long conversation, and workers that message each other where you can see it. Built from configuration, React UI and small flows only, with an inventory that fails on anything else. Session mode runs on the real packages with a real model; threads mode waits on its wiring. |
+| [`teammates/`](teammates) | A Grok Bot-style app on the workforce package: a list of workers on the left, each with one long conversation, and workers that message each other where you can see it. Built from configuration, React UI and small flows only. Session mode runs on the real packages with a real model; threads mode waits on its wiring. |
 
 Shift Manager, the app a Workforce team is worked through, is published as
 [`@flow-state-dev/shift-manager`](../packages/shift-manager).

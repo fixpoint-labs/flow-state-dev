@@ -13,9 +13,7 @@
     "build": "vite build",
     "fsdev": "tsx ../../packages/cli/bin/fsdev.ts",
     "typecheck": "node ../../scripts/typecheck.mjs",
-    "test": "vitest run --root .",
-    "inventory": "node scripts/inventory.mjs",
-    "inventory:control": "node scripts/inventory.mjs --control"
+    "test": "vitest run --root ."
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.0",

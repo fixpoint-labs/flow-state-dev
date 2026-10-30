@@ -122,17 +122,3 @@ a package call:
 `review: true`, as threads mode's `desk.thread-coder` is, runs on the manager built with
 `reviewChanges: true`: a run that committed waits for your review before its task completes.
 Session mode's `desk.coder` has no review line, since that mode has no review to answer.
-
-## What this app adds
-
-Every file in the lab, by kind. `node scripts/inventory.mjs` fails on a file that is none of these,
-and on a flow over 200 lines; `--wired` also fails while a fixture is left in `src/`.
-
-<!-- inventory:start -->
-| Kind | Files | Lines |
-|---|---:|---:|
-| Configuration | 18 | 508 |
-| React UI | 29 | 2754 |
-| Small flows | 3 | 273 |
-| Checks (not app code) | 10 | 1347 |
-<!-- inventory:end -->
