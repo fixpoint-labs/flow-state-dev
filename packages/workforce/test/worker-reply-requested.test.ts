@@ -276,6 +276,58 @@ describe("a message that asks for a reply", { timeout: 40_000 }, () => {
     expect(await logRows(h)).toHaveLength(2);
   });
 
+  it.each([
+    ["the generator's own cap", {}],
+    ["the flow's maxSteps", { maxSteps: 12 }]
+  ] as const)("to an agent worker that is still looking things up when its steps run out (%s) is answered with what it found", async (_cap, agentOptions: { maxSteps?: number }) => {
+    // Ada, an agent worker on the built-in flow, looks the doc up again for as
+    // long as she is offered a tool, and answers only once she isn't: a
+    // researcher that would rather read one more file than reply. Her steps
+    // run out mid-lookup, and the sender must still hear her answer, never
+    // "no answer".
+    const { model } = ottoModel({ "Ask Ada": [{ to: "ada", text: "What does the doc say?", replyRequested: true }] });
+    const lookups: string[] = [];
+    const lookup = handler({
+      name: "lookup",
+      description: "Read the doc.",
+      inputSchema: z.object({ q: z.string() }),
+      outputSchema: z.object({ found: z.string() }),
+      execute: async (input) => {
+        lookups.push(input.q);
+        return { found: "The doc says Bluebird." };
+      }
+    });
+    const digging: GeneratorModel = {
+      ...model,
+      async generateStep(options) {
+        const line = textOf([...((options.messages ?? []) as Array<Record<string, unknown>>)].reverse().find((m) => m.role === "user")?.content ?? "");
+        if (!line.includes("they asked for a reply")) return model.generateStep(options);
+        if (options.tools?.some((tool) => tool.name === "lookup")) {
+          return { toolCalls: [{ toolCallId: `look-${lookups.length}`, toolName: "lookup", args: { q: "the doc" } }], finishReason: "tool-calls" } as Step;
+        }
+        return { text: "The doc says Bluebird.", finishReason: "stop" } as Step;
+      }
+    };
+    const { h, otto } = await boot(digging, {
+      agent: { catalog: { lookup }, ...agentOptions },
+      standard: [...boardWorkers(), { id: "ada", declared: { description: "Looks things up.", tools: ["lookup"] }, body: "You answer questions.", skills: [] }]
+    });
+    await h.post("alice", otto, "respond", { message: "Ask Ada what the doc says" }, "agent");
+    await h.settled();
+    const [ask] = await sentIds(h, otto);
+    expect(ask).toMatch(/^msg_/);
+    expect(await until(async () => (await answersTo(h, ask!)).length === 1)).toBe(true);
+    await h.settled();
+
+    // She spent every step but the last on lookups (the generator's cap of 8, or the flow's maxSteps), then answered.
+    expect(lookups.length).toBe((agentOptions.maxSteps ?? 8) - 1);
+    const [answer] = await answersTo(h, ask!);
+    expect(answer).toMatchObject({ from: "ada", to: "otto", text: "The doc says Bluebird.", toSession: otto, status: "delivered" });
+    expect(answer!.noAnswer).toBeUndefined();
+    // It woke Otto with her answer.
+    expect(await heardIn(h, otto)).toEqual([answer!.id]);
+  });
+
   it("to two workers gets two answers, each its own message and its own turn in the asking session", async () => {
     const { model } = ottoModel({
       "Ask both": [
@@ -308,7 +360,9 @@ describe("a message that asks for a reply", { timeout: 40_000 }, () => {
     const [ask] = await sentIds(h, otto);
     expect(await until(async () => (await answersTo(h, ask!)).length === 1)).toBe(true);
     const [answer] = await answersTo(h, ask!);
-    expect(answer).toMatchObject({ from: "lead", noAnswer: true, text: `I have no answer to your message ${ask}.` });
+    expect(answer).toMatchObject({ from: "lead", noAnswer: true, text: "No answer came back: the turn ended without saying anything." });
+    // In plain words: never the message's id, which the row carries in inReplyTo.
+    expect(answer!.text).not.toContain(ask!);
     expect(sentByTurnEnd((await logRows(h)).find((row) => row.id === ask)!, answer!)).toBe(true);
   });
 
@@ -338,7 +392,7 @@ describe("a message that asks for a reply", { timeout: 40_000 }, () => {
     expect(await until(async () => (await answersTo(h, ask!)).length === 1)).toBe(true);
     await h.settled();
     const [answer] = await answersTo(h, ask!);
-    expect(answer).toMatchObject({ from: "scripted", noAnswer: true });
+    expect(answer).toMatchObject({ from: "scripted", noAnswer: true, text: "No answer came back: the turn failed before it could answer." });
     expect(sentByTurnEnd((await logRows(h)).find((row) => row.id === ask)!, answer!)).toBe(true);
 
     // The rescue answered and let the error go on: the landing request failed.
@@ -378,7 +432,7 @@ describe("a message that asks for a reply", { timeout: 40_000 }, () => {
     }) as typeof store.get;
 
     expect(await until(async () => (await answersTo(h, ask!)).length === 1, 20_000)).toBe(true);
-    expect((await answersTo(h, ask!))[0]).toMatchObject({ from: "lead", noAnswer: true, toSession: otto });
+    expect((await answersTo(h, ask!))[0]).toMatchObject({ from: "lead", noAnswer: true, toSession: otto, text: "No answer came back: the turn stopped before it finished." });
     store.get = get;
 
     // The turn comes back after all: it answers nothing more.
@@ -449,7 +503,7 @@ describe("a reply request to a worker that runs nothing on a message", { timeout
     await h.settled();
     const [ask] = await sentIds(h, otto);
     expect(await until(async () => (await answersTo(h, ask!)).length === 1)).toBe(true);
-    expect((await answersTo(h, ask!))[0]).toMatchObject({ from: "oldquiet", noAnswer: true, toSession: otto });
+    expect((await answersTo(h, ask!))[0]).toMatchObject({ from: "oldquiet", noAnswer: true, toSession: otto, text: "No answer came back: this worker doesn't answer messages." });
   });
 });
 

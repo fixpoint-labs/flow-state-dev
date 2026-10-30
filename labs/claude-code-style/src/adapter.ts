@@ -33,6 +33,7 @@ import {
 } from "@flow-state-dev/workforce/browser";
 import { modeById, modeOfWorker, MODES, type ModeId } from "./modes";
 import { projectIdOf, refuseExisting } from "./lib/new-project";
+import { resultSummary } from "./lib/result-summary";
 
 /** Stops a watch. */
 export type Unsubscribe = () => void;
@@ -278,7 +279,7 @@ function entriesOf(items: readonly Item[], threads = false): ThreadEntry[] {
         taskId: taskId!,
         title: title!,
         status,
-        summary: summary ?? text,
+        summary: resultSummary(summary ?? text),
         duringTurn: userTurns.has(requestId),
         requestId,
       });

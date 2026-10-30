@@ -85,4 +85,16 @@ describe("toolSubject", () => {
     expect(out?.text.length).toBe(80);
     expect(out?.text.endsWith("…")).toBe(true);
   });
+
+  it("keeps the file's own name when a long folder (a run's worktree) is on its path", () => {
+    const hash = `tasks--h${"5".repeat(64)}`;
+    expect(toolSubject("edit", { path: `/tmp/r/t0/${hash}/README.md` })?.text).toBe("Edit …/README.md");
+    expect(toolSubject("edit", { path: `/tmp/r/${hash}/src/components/Conversation.tsx` })?.text).toBe("Edit …/src/components/Conversation.tsx");
+  });
+
+  it("names a Codex file change by the files it touched", () => {
+    expect(toolSubject("file_change", { changes: [{ path: "/w/src/components/Conversation.tsx", kind: "update" }] })?.text).toBe("Edit …/src/components/Conversation.tsx");
+    expect(toolSubject("file_change", { changes: [{ path: "a.ts" }, { path: "b.ts" }, { path: "c.ts" }] })?.text).toBe("Edit a.ts and 2 more");
+    expect(toolSubject("file_change", { changes: [] })).toBeUndefined();
+  });
 });

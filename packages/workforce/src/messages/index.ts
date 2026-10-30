@@ -28,6 +28,7 @@ export {
 } from "./message-log";
 export { DEFAULT_MESSAGE_BUDGET, DEFAULT_MESSAGES_PER_TURN, type MessageLimits } from "./message-limits";
 export { sendMessageInputSchema } from "./message-tool";
+export { MAX_LISTED_RECIPIENTS, rosterDisplayName, rosterTeamName, workerRecipients, type WorkerRecipients } from "./recipients";
 // Reading another conversation without waking it (FIX-2173).
 export {
   CONSULT_SESSION_HISTORY_TOOL,

@@ -19,10 +19,38 @@
  * in CI. What CAN be held here is held here.
  */
 import { describe, it, expect } from "vitest";
+import { execFile } from "node:child_process";
+import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { readInstalledCursorSdkVersion } from "../src/cursor-client";
 import { createDefaultResolveCursorClient } from "../src/cursor-client";
 import { CursorSdkNotInstalledError } from "../src/errors";
 import { TESTED_SDK_VERSION } from "../src/types";
+import { cursorProjectName, cursorWorkingDirectory } from "../src/workspace-alias";
+
+const PACKAGE_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+/**
+ * `Agent.create` on the real SDK in a child whose home is `home`, with a key
+ * the SDK refuses locally: it opens its state directory for `cwd` first, so
+ * the message says whether that directory could be made, and nothing reaches
+ * the network. A child, so this process's home is never changed.
+ */
+async function createIn(home: string, cwd: string): Promise<string> {
+  const script =
+    'import { Agent } from "@cursor/sdk";' +
+    "try { await Agent.create({ model: { id: 'composer-2.5' }, apiKey: 'not-a-key', local: { cwd: process.argv[1] } }); console.log('created'); }" +
+    " catch (e) { console.log(String(e?.message ?? e)); } process.exit(0);";
+  const { stdout } = await promisify(execFile)(process.execPath, ["--input-type=module", "-e", script, cwd], {
+    cwd: PACKAGE_DIR,
+    env: { ...process.env, HOME: home, USERPROFILE: home, CURSOR_DATA_DIR: "" },
+    timeout: 30_000,
+  });
+  return stdout.trim();
+}
 
 describe("the installed SDK", () => {
   it("reads exactly the pinned version off the SDK installed in this workspace", async () => {
@@ -61,4 +89,28 @@ describe("the installed SDK", () => {
     const resolve = createDefaultResolveCursorClient(async () => ({ Agent: {} }));
     await expect(resolve({} as never)).rejects.toThrow(/does not export an `Agent`/);
   });
+
+  it("opens its state for a checkout too deep to name only through the block's short link", async () => {
+    // The premise and the fix in one place. The real SDK names its state
+    // directory after the whole working directory, so a deep checkout fails
+    // before any work (the control), and the link the block hands it instead
+    // gets past that to the SDK's next check. The state directory it made is
+    // the name this package predicts, so the prediction tracks the SDK.
+    const base = await mkdtemp(join(tmpdir(), "cursor-sdk-deep-"));
+    const home = join(base, "home");
+    const deep = join(base, "r".repeat(100), "u".repeat(100), "n".repeat(60));
+    await mkdir(home);
+    await mkdir(deep, { recursive: true });
+    try {
+      expect(await createIn(home, deep)).toMatch(/ENAMETOOLONG/);
+
+      const link = await cursorWorkingDirectory(deep);
+      const outcome = await createIn(home, link);
+      expect(outcome).not.toMatch(/ENAMETOOLONG/);
+      expect(outcome).toMatch(/API key/i);
+      expect(await readdir(join(home, ".cursor", "projects"))).toEqual([cursorProjectName(link)]);
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  }, 60_000);
 });

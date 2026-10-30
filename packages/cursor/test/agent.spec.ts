@@ -9,6 +9,9 @@
  * `installed-sdk.spec.ts`.
  */
 import { describe, it, expect, vi } from "vitest";
+import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
 import { harnessFailureKind, harnessRunHandleSchema } from "@flow-state-dev/core";
 import type { HarnessSteer } from "@flow-state-dev/core/types";
@@ -30,6 +33,7 @@ import {
   type CursorSendOptions,
   type ResolvedCursorClient,
 } from "../src/types";
+import { CURSOR_PROJECT_NAME_LIMIT, cursorProjectName } from "../src/workspace-alias";
 
 /** Every spec below builds against a stubbed version gate; slice 1 owns the gate itself. */
 const GATE_OFF = {
@@ -226,6 +230,38 @@ describe("cursorAgent — what it hands the SDK", () => {
     expect(rec.created).toHaveLength(0);
     expect(rec.resumed[0].id).toBe("agent_saved_42");
     expect(rec.resumed[0].options).toMatchObject({ local: { cwd: "/work/checkout" } });
+  });
+
+  it("hands the SDK a short link to a checkout too deep for Cursor's state directory, on create and resume alike", async () => {
+    // Cursor names its state directory after the whole working directory, and a
+    // harness-manager checkout under an ordinary runs folder flattens to more
+    // than a filesystem name holds: the SDK fails with ENAMETOOLONG before the
+    // run does anything. The block must hand it a path whose name fits, that is
+    // still the checkout, and that is the same on the turn that resumes.
+    const base = await mkdtemp(join(tmpdir(), "cursor-deep-"));
+    const deep = join(base, "r".repeat(100), "u".repeat(100), "n".repeat(60));
+    await mkdir(deep, { recursive: true });
+    try {
+      expect(cursorProjectName(deep).length).toBeGreaterThan(CURSOR_PROJECT_NAME_LIMIT);
+
+      const first = scripted(OK_STREAM);
+      await testBlock(
+        cursorAgent({ ...GATE_OFF, resolveCursorClient: first.resolve, cwd: () => deep }),
+        { input: { prompt: "fix it" } },
+      );
+      const handed = first.rec.created[0].local?.cwd as string;
+      expect(cursorProjectName(handed).length).toBeLessThanOrEqual(CURSOR_PROJECT_NAME_LIMIT);
+      expect(await realpath(handed)).toBe(await realpath(deep));
+
+      const second = scripted(OK_STREAM);
+      await testBlock(
+        cursorAgent({ ...GATE_OFF, resolveCursorClient: second.resolve, cwd: () => deep, resume: () => "agent_1" }),
+        { input: { prompt: "continue" } },
+      );
+      expect(second.rec.resumed[0].options.local?.cwd).toBe(handed);
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
   });
 
   it.each([

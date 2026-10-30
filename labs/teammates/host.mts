@@ -80,7 +80,7 @@ export interface TeammatesOptions {
   tree?: string;
   /** Wall-clock budget for one coding run. Defaults to 20 minutes. */
   runTimeoutMs?: number;
-  /** The harness a coding worker runs on when its file names none. Defaults to `claude-code`. */
+  /** The harness a coding worker runs on when its file names none. Defaults to `cursor`. */
   harness?: string;
 }
 
@@ -94,6 +94,9 @@ const HARNESSES: Record<string, Harness> = {
       recordWork: true,
       allowedTools: ["Read", "Write", "Edit", "Bash"],
       permissionMode: "acceptEdits",
+      // The working folder's own Claude Code settings and CLAUDE.md, never this machine's user
+      // settings: an output style there (Explanatory's "★ Insight" boxes) would show in the run's steps.
+      settingSources: ["project"],
     } as never) as unknown as HarnessBlock,
   codex: ({ cwd, resume, onSession, onActivity }) =>
     codexAgent({
@@ -115,7 +118,6 @@ const HARNESSES: Record<string, Harness> = {
       model: "composer-2.5",
       // Its sandbox is off, as Kitchen Sink runs it: the run works in its own worktree.
       agent: { mode: "agent", local: { sandboxOptions: { enabled: false } } },
-      name: "cursor",
     } as never) as unknown as HarnessBlock,
 };
 
@@ -222,12 +224,14 @@ export async function openTeammates(options: TeammatesOptions) {
         ],
         beforeAnswer: earlier.fold,
         afterAnswer: mem.captureFromItems,
+        // researcher reads a whole repository a file at a time: room to dig before it answers.
+        maxSteps: 100,
       }),
       showSettings: ["icon", "color"],
     },
     [CODER_FLOW]: coderFlow({
       harnesses: HARNESSES,
-      defaultHarness: options.harness ?? "claude-code",
+      defaultHarness: options.harness ?? "cursor",
       ready: READY,
       workspace,
       runTimeoutMs: options.runTimeoutMs ?? 20 * 60_000,
