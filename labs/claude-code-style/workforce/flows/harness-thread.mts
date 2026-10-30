@@ -61,67 +61,43 @@ const RUN_TIMEOUT_MS = 20 * 60_000;
  * check; that belongs to an operator, on a run inside an isolation boundary.
  */
 const PERMISSION_MODES = ["acceptEdits", "plan"] as const;
-type PermissionMode = (typeof PERMISSION_MODES)[number];
 
-/** The mode a Claude Code worker with no `permissionMode:` line runs in. */
-const DEFAULT_PERMISSION_MODE: PermissionMode = "acceptEdits";
-
-/** Each mode's part of its managers' names. The default has none, so its names are the ones runs were recorded under before modes. */
-const MODE_SEGMENT: Record<PermissionMode, string> = { acceptEdits: "", plan: "-plan" };
+/**
+ * Claude Code for one permission mode. `acceptEdits` is keyed `claude-code`, so its manager names
+ * stay the ones runs were recorded under.
+ */
+const claudeCode = (permissionMode: (typeof PERMISSION_MODES)[number]) => (feeds: HarnessFeeds) =>
+  claudeCodeAgent({
+    ...feeds,
+    detached: true,
+    recordWork: true,
+    allowedTools: ["Read", "Write", "Edit", "Bash"],
+    permissionMode,
+  } as never) as unknown as HarnessBlock;
 
 /** The model a Cursor run uses: Cursor's own pick ("Auto"), as Kitchen Sink's Cursor mode offers it. */
 const CURSOR_MODEL = "default";
 
-/** One harness as the flow builds it: Claude Code once per permission mode, every other harness once. */
-interface HarnessVariant {
-  harness: string;
-  permissionMode?: PermissionMode;
-  build: (feeds: HarnessFeeds) => HarnessBlock;
-}
-
-/** The harnesses a worker's `harness:` line may name, each built from the manager's feeds. */
-const VARIANTS: readonly HarnessVariant[] = [
-  ...PERMISSION_MODES.map(
-    (permissionMode): HarnessVariant => ({
-      harness: "claude-code",
-      permissionMode,
-      build: (feeds) =>
-        claudeCodeAgent({
-          ...feeds,
-          detached: true,
-          recordWork: true,
-          allowedTools: ["Read", "Write", "Edit", "Bash"],
-          permissionMode,
-        } as never) as unknown as HarnessBlock,
-    }),
-  ),
-  {
-    harness: "codex",
-    build: (feeds) =>
-      codexAgent({ cwd: feeds.cwd, resume: feeds.resume, onSession: feeds.onSession, onActivity: feeds.onActivity, name: "codex" }) as unknown as HarnessBlock,
-  },
-  {
-    harness: "cursor",
-    build: (feeds) =>
-      cursorAgent({
-        cwd: feeds.cwd,
-        resume: feeds.resume,
-        onSession: feeds.onSession,
-        onActivity: feeds.onActivity,
-        // Cursor's SDK refuses a local agent with no model. "default" is Cursor's own pick, which every account's catalog has.
-        model: CURSOR_MODEL,
-        name: "cursor",
-      } as never) as unknown as HarnessBlock,
-  },
-];
-
-/** The names a worker's `harness:` line may use. */
-const HARNESS_NAMES = [...new Set(VARIANTS.map((variant) => variant.harness))] as [string, ...string[]];
-
-/** A variant's key, and its managers' names: the harness, then its mode's segment. */
-function variantKey(harness: string, permissionMode?: PermissionMode): string {
-  return `${harness}${permissionMode === undefined ? "" : MODE_SEGMENT[permissionMode]}`;
-}
+/**
+ * One builder per manager the flow builds. `claude-code-plan` is Claude Code in `plan` mode; it is
+ * not a name a worker's `harness:` line may use.
+ */
+const HARNESSES: Record<string, (feeds: HarnessFeeds) => HarnessBlock> = {
+  "claude-code": claudeCode("acceptEdits"),
+  "claude-code-plan": claudeCode("plan"),
+  codex: (feeds) =>
+    codexAgent({ cwd: feeds.cwd, resume: feeds.resume, onSession: feeds.onSession, onActivity: feeds.onActivity, name: "codex" }) as unknown as HarnessBlock,
+  cursor: (feeds) =>
+    cursorAgent({
+      cwd: feeds.cwd,
+      resume: feeds.resume,
+      onSession: feeds.onSession,
+      onActivity: feeds.onActivity,
+      // Cursor's SDK refuses a local agent with no model. "default" is Cursor's own pick, which every account's catalog has.
+      model: CURSOR_MODEL,
+      name: "cursor",
+    } as never) as unknown as HarnessBlock,
+};
 
 /** The one phase: the task as the main session wrote it, a question or a change, done when the harness says it finished. */
 const phase: PhaseSpec = {
@@ -164,20 +140,17 @@ export function defineHarnessThreadFlow({ installation, workspace }: HarnessThre
       judge: goalJudge({ name: `harness-thread-${name}${reviewChanges ? "-reviewed" : ""}-judge` }),
       uses: [projectWorkspaceCapability],
     } as never) as unknown as BlockDefinition<any, any>;
-  // Per variant: the managers that run a task, and the door a line typed in its run's session takes.
+  // Per builder: the managers that run a task, and the door a line typed in its run's session takes.
   const built = Object.fromEntries(
-    VARIANTS.map(({ harness: name, permissionMode, build }) => {
-      const key = variantKey(name, permissionMode);
-      return [
-        key,
-        {
-          manager: manager(key, build, false),
-          reviewed: manager(key, build, true),
-          door: harnessSessionDoor({ name: `harness-thread-${key}`, harness: build, board, onSteered: startOwedSteerTurn }),
-          talk: harnessTalkTurn({ name: `harness-thread-${key}-message`, harness: build, board }),
-        },
-      ];
-    }),
+    Object.entries(HARNESSES).map(([name, harness]) => [
+      name,
+      {
+        manager: manager(name, harness, false),
+        reviewed: manager(name, harness, true),
+        door: harnessSessionDoor({ name: `harness-thread-${name}`, harness, board, onSteered: startOwedSteerTurn }),
+        talk: harnessTalkTurn({ name: `harness-thread-${name}-message`, harness, board }),
+      },
+    ]),
   );
 
   /**
@@ -189,11 +162,11 @@ export function defineHarnessThreadFlow({ installation, workspace }: HarnessThre
   const harnessOf = async (ctx: Parameters<WorkerInstallation["resolveWorker"]>[0]) => {
     const worker = await installation.resolveWorker(ctx, HARNESS_THREAD_FLOW);
     const name = String(worker.config.harness);
-    const named = worker.config.permissionMode as PermissionMode | undefined;
+    const named = worker.config.permissionMode;
     if (named !== undefined && name !== "claude-code") {
       throw new Error(`worker "${worker.id}" names \`permissionMode:\`, which only a \`harness: claude-code\` worker takes`);
     }
-    const found = built[variantKey(name, name === "claude-code" ? (named ?? DEFAULT_PERMISSION_MODE) : undefined)];
+    const found = built[name === "claude-code" && named === "plan" ? "claude-code-plan" : name];
     if (found === undefined) throw new Error(`worker "${worker.id}" names no \`harness:\` in its WORKER.md`);
     return { ...found, name, manager: worker.config.review === true ? found.reviewed : found.manager };
   };
@@ -215,7 +188,7 @@ export function defineHarnessThreadFlow({ installation, workspace }: HarnessThre
     // A worker names its harness in its `WORKER.md`; one this flow builds no manager for is refused at
     // hire. Optional only because the flow's own copy is built with no worker's settings.
     configSchema: workerConfigSchema().extend({
-      harness: z.enum(HARNESS_NAMES).optional(),
+      harness: z.enum(["claude-code", "codex", "cursor"]).optional(),
       permissionMode: z.enum(PERMISSION_MODES).optional(),
       review: z.boolean().optional(),
     }),
