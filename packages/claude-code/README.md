@@ -106,7 +106,7 @@ conversation. The wait lasts at most 5 seconds; past that the block rejects anyw
 
 ### Stopping a run for a message
 
-The block declares `stopsOnAbort: true` (core's `HarnessBlock` field): when its signal fires, it settles only once the agent's process has exited, or after a bounded grace. A harness manager reads that, so a line typed into a running Claude Code task stops the run and the same request continues its session with the line. A block rebuilt from it, through `connectInput` or a wrapping sequencer, doesn't carry the field.
+The block declares `stopsOnAbort: true` (core's `HarnessBlock` field): when its abort signal fires, the block returns only after its agent process has exited. The process gets 5 seconds to exit on its own; if it is still running then, the block kills it with `SIGKILL` and waits for it to exit. A process the agent started, such as a `Bash` tool command, can outlive that kill, so keep the run's working directory sandboxed. A harness manager reads the field, so a line typed into a running Claude Code task stops the run and the same request continues its session with the line. A block rebuilt from it, through `connectInput` or a wrapping sequencer, doesn't carry the field; build the manager with `stopsOnAbort: true` to keep the stop for a wrapped block.
 
 ### Giving a run its own working directory
 

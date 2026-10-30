@@ -207,8 +207,8 @@ export const harnessRunHandleSchema = harnessRunEnvelopeSchema.extend({
  */
 export type HarnessBlock = BlockDefinition<any, any, HarnessRunInput, HarnessRunHandle> & {
   /**
-   * The harness's own word that its abort settles only once its run's process
-   * has exited, or a bounded grace has run out, so a host may stop a run and
+   * The harness's own word that when its abort signal fires, the block
+   * returns only after its process has exited, so a host may stop a run and
    * start the next one in the same working directory (FIX-2312). A host that
    * drives harnesses, such as harness-manager, reads it unless it was told
    * otherwise. Absent means no. Stamped on the block the harness factory
