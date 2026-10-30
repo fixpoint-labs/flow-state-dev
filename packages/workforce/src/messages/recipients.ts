@@ -20,6 +20,8 @@ export const MAX_LISTED_RECIPIENTS = 25;
 
 /** Who a worker can reach, by how it hears. */
 export interface WorkerRecipients {
+  /** The running worker's own roster entry, from the same read; `undefined` when it isn't on the roster. */
+  readonly self: RosterWorker | undefined;
   /** Workers a message by name reaches. */
   readonly messageable: readonly RosterWorker[];
   /** Workers that hear only in their tasks' sessions: reached by filing a task. */
@@ -28,14 +30,22 @@ export interface WorkerRecipients {
 
 const TASK_SESSIONS_ONLY = "task_sessions_only:";
 
-/** One read per request, by request id. Bounded: a request's entry is only read during it. */
+/**
+ * One read per request, keyed by request id and incarnation: a deleted
+ * request's id can name a new request, another user's, and must not inherit
+ * this roster. Bounded: a request's entry is only read during it.
+ */
 const byRequest = new Map<string, { installation: WorkerInstallation; self: string; list: Promise<WorkerRecipients> }>();
 
 async function readRecipients(ctx: BlockContext, installation: WorkerInstallation, self: string): Promise<WorkerRecipients> {
   const messageable: RosterWorker[] = [];
   const taskOnly: RosterWorker[] = [];
+  let me: RosterWorker | undefined;
   for (const worker of await installation.roster(ctx as never)) {
-    if (worker.id === self) continue;
+    if (worker.id === self) {
+      me = worker;
+      continue;
+    }
     const refusal = recipientRefusal(installation, self, worker.id, worker);
     if (refusal === undefined) {
       if (messageable.length < MAX_LISTED_RECIPIENTS) messageable.push(worker);
@@ -43,7 +53,7 @@ async function readRecipients(ctx: BlockContext, installation: WorkerInstallatio
       if (taskOnly.length < MAX_LISTED_RECIPIENTS) taskOnly.push(worker);
     }
   }
-  return { messageable, taskOnly };
+  return { self: me, messageable, taskOnly };
 }
 
 /**
@@ -52,8 +62,11 @@ async function readRecipients(ctx: BlockContext, installation: WorkerInstallatio
  * @param self The running worker's id. Never listed.
  */
 export function workerRecipients(ctx: BlockContext, installation: WorkerInstallation, self: string): Promise<WorkerRecipients> {
-  const requestId = (ctx as { request?: { identity?: { id?: unknown } } }).request?.identity?.id;
-  if (typeof requestId !== "string") return readRecipients(ctx, installation, self);
+  const request = (ctx as { request?: { identity?: { id?: unknown }; incarnation?: unknown } }).request;
+  const id = request?.identity?.id;
+  const incarnation = request?.incarnation;
+  if (typeof id !== "string" || typeof incarnation !== "string") return readRecipients(ctx, installation, self);
+  const requestId = JSON.stringify([id, incarnation]);
   const known = byRequest.get(requestId);
   if (known !== undefined && known.installation === installation && known.self === self) return known.list;
   if (byRequest.size > 256) byRequest.clear();

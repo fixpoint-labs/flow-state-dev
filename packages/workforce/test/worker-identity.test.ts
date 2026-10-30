@@ -11,7 +11,8 @@
 import { describe, expect, it } from "vitest";
 import { mockGenerator, type MockGeneratorInstance } from "@flow-state-dev/testing";
 import type { WorkerManifest } from "../src";
-import { rosterDisplayName, rosterTeamName } from "../src/messages/recipients";
+import { rosterDisplayName, rosterTeamName, workerRecipients } from "../src/messages/recipients";
+import type { RosterWorker, WorkerInstallation } from "../src/workers/installation";
 import { TOOL_USE_RULE } from "../src/messages/worker-identity";
 import { bootBoardHost, type BoardHost } from "./conversation-board-harness";
 
@@ -102,5 +103,32 @@ describe("a roster worker's display name and team", () => {
     expect(rosterTeamName({ id: "eng.bo", teamName: null })).toBe("eng");
     expect(rosterTeamName({ id: "eng.bo", teamName: "Engineering" })).toBe("Engineering");
     expect(rosterTeamName({ id: "shift-coordinator", teamName: null })).toBeUndefined();
+  });
+});
+
+describe("one roster read per request", () => {
+  // A request id can be reused once its record is deleted, by another user;
+  // the read must not carry over to the new request (its incarnation differs).
+  const rosterOf = (ids: string[]) => {
+    let reads = 0;
+    const installation = {
+      workerFlows: () => ({}),
+      roster: async () => {
+        reads += 1;
+        return ids.map((id): RosterWorker => ({ id, name: null, teamName: null, description: null, flow: "agent", delegates: [] }) as unknown as RosterWorker);
+      }
+    } as unknown as WorkerInstallation;
+    return { installation, reads: () => reads };
+  };
+  const ctxOf = (incarnation: string) => ({ request: { identity: { id: "req_reused" }, incarnation } }) as never;
+
+  it("reads once within a request, and again under a reused id's new incarnation", async () => {
+    const first = rosterOf(["eng.ana", "eng.bo"]);
+    await workerRecipients(ctxOf("inc-1"), first.installation, "eng.ana");
+    await workerRecipients(ctxOf("inc-1"), first.installation, "eng.ana");
+    expect(first.reads()).toBe(1);
+    const second = await workerRecipients(ctxOf("inc-2"), first.installation, "eng.ana");
+    expect(first.reads()).toBe(2);
+    expect(second.self?.id).toBe("eng.ana");
   });
 });
