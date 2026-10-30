@@ -9,7 +9,8 @@
  * own command over two Labs: this goal's desk (`lab/fsdev.config.mts`),
  * whose `desk.shift-coordinator` seat runs the built-in `agent` kind on
  * `openai/gpt-5.4-mini`, and the same desk with no Shift Coordinator
- * (`lab-no-shift-coordinator/`).
+ * (`lab-no-shift-coordinator/`), and the same desk whose point of contact
+ * carries the retired id `chief-of-staff` (`lab-old-name/`).
  * Chromium drives the page. What happened is read from the store, through each
  * Lab's routes with this script's own requests. Never from Shift Manager's state.
  *
@@ -84,6 +85,7 @@ const SCRATCH = goalTmpDir("shift-manager-shift-coordinator");
 const LABS = {
   desk: { config: join(HERE, "lab", "fsdev.config.mts"), tree: join(HERE, "lab", "workforce") },
   "no-shift-coordinator": { config: join(HERE, "lab-no-shift-coordinator", "fsdev.config.mts"), tree: join(HERE, "lab-no-shift-coordinator", "workforce") },
+  "old-name": { config: join(HERE, "lab-old-name", "fsdev.config.mts"), tree: join(HERE, "lab-old-name", "workforce") },
 } as const;
 type LabName = keyof typeof LABS;
 /** The seat Shift Manager talks to (D2's rule, read off the fixture tree below, never assumed). */
@@ -277,10 +279,19 @@ await runGoal(async (failures) => {
   const shiftCoordinatorSeat = desk.workers.find((w) => w.id.split(".").at(-1) === SHIFT_COORDINATOR_NAME);
   const asker = desk.workers.find((w) => w.declared.flow === "asker");
   if (shiftCoordinatorSeat === undefined || asker === undefined) throw new Error("the desk tree declares no Shift Coordinator or asker");
+  // The old-name desk must hold the retired id as a live worker, or its leg would pass on an empty desk.
+  const oldName = await readDeclaredRoster(LABS["old-name"].tree);
+  if (!oldName.workers.some((w) => w.id === "desk.chief-of-staff") || oldName.workers.some((w) => w.id.split(".").at(-1) === SHIFT_COORDINATOR_NAME)) {
+    throw new Error("the old-name desk must declare desk.chief-of-staff and no shift-coordinator");
+  }
 
   const pages = process.env.GOAL_PAGES ?? (await buildShiftManager(CONTROL));
   const evidence: string[] = [];
-  const served = { desk: await startLab("desk", pages), "no-shift-coordinator": await startLab("no-shift-coordinator", pages) };
+  const served = {
+    desk: await startLab("desk", pages),
+    "no-shift-coordinator": await startLab("no-shift-coordinator", pages),
+    "old-name": await startLab("old-name", pages),
+  };
   const browser = await launchChromium();
   try {
     const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
@@ -410,14 +421,15 @@ await runGoal(async (failures) => {
       }
     });
 
-    // ---- A Lab with no Shift Coordinator --------------------------------------------
-    await leg("no-shift-coordinator", async (fail) => {
-      await open(page, served["no-shift-coordinator"].origin, "/");
+    // ---- A Lab with no Shift Coordinator, and one whose worker has the old id ---------
+    // The old id is a worker like any other: Shift Manager draws no Shift Coordinator for it.
+    for (const lab of ["no-shift-coordinator", "old-name"] as const) await leg(lab, async (fail) => {
+      await open(page, served[lab].origin, "/");
       if ((await page.getByTestId("centre").getAttribute("data-level")) !== "shift-coordinator") fail("no Shift Coordinator", "/ does not draw Shift Coordinator");
       if (!(await visible(page, "shift-coordinator-summary"))) fail("no Shift Coordinator", "the summary is not drawn");
       if (!(await visible(page, "shift-coordinator-none"))) fail("no Shift Coordinator", "no named state says the Lab declares no Shift Coordinator");
       if ((await page.getByTestId("shift-coordinator-composer").count()) !== 0) fail("no Shift Coordinator", "a composer is drawn with no Shift Coordinator to talk to");
-      evidence.push(`no Shift Coordinator: lands on Shift Coordinator, summary and "${(await page.getByTestId("shift-coordinator-none").textContent().catch(() => ""))?.slice(0, 40)}…"`);
+      evidence.push(`${lab === "old-name" ? "old name" : "no Shift Coordinator"}: lands on Shift Coordinator, summary and "${(await page.getByTestId("shift-coordinator-none").textContent().catch(() => ""))?.slice(0, 40)}…"`);
     });
 
     if (pageErrors.length > 0) failures.push(`[page] reach: the page threw: ${pageErrors.join(" | ")}`);
@@ -428,6 +440,6 @@ await runGoal(async (failures) => {
   }
   return {
     failures: CONTROL === "" ? failures : failures.map((f) => `[control ${CONTROL}] ${f}`),
-    evidence: `Shift Manager built with Vite and served by its command over the desk (${shiftCoordinatorSeat.id} on the agent kind, a real model) and the desk with no Shift Coordinator; driven in Chromium and graded against the store through each Lab's routes. ${evidence.join("; ")}`,
+    evidence: `Shift Manager built with Vite and served by its command over the desk (${shiftCoordinatorSeat.id} on the agent kind, a real model) the desk with no Shift Coordinator, and the desk under the old id; driven in Chromium and graded against the store through each Lab's routes. ${evidence.join("; ")}`,
   };
 });
