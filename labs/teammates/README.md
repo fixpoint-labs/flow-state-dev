@@ -42,10 +42,18 @@ Every result lands back in Chief of Staff's conversation.
 
 A code change is a coding task, not a teammate's job. Coding runs in the background, the way a
 coding agent's job does: you watch it, you don't talk to it. Ask Chief of Staff for a code change
-and Chief of Staff starts a coding task, which runs through Claude Code, or Codex, in the working
-folder. A line in Chief of Staff's conversation and an item under *Background* show the task and
-open its run in a popup, and the result lands in Chief of Staff's conversation as the coding task's. To
-change a coding task, tell Chief of Staff, who starts the next one.
+and Chief of Staff starts a coding task in the working folder, on one of three coding agents:
+Claude Code, Codex or Cursor. Name one ("have Codex do it") and that one runs; name none and Claude
+Code does, with no question first. Each agent is a worker of its own, off the list and never
+messaged, whose `WORKER.md` names its `harness:`. A line in Chief of Staff's conversation and an
+item under *Background* show the task, tagged with the agent it runs on (and the model, once the
+run reports one), and open its run in a popup. The result lands in Chief of Staff's conversation as
+the coding task's. To change a coding task, tell Chief of Staff, who starts the next one.
+
+Before a task starts, its agent's own sign-in check runs. An agent this machine isn't set up for
+fails the task at once, with a line that names it and what's missing, such as "Codex isn't set up on
+this machine: Not logged in. Sign in with `codex login`, then start the task again." It never runs
+on another agent instead.
 
 There is one working folder, a git checkout you name when you start the lab, and every job that
 needs files works in it. Nothing on the page picks a folder, and no worker can name another one.
@@ -77,13 +85,14 @@ This builds the pages and serves them with the lab's server (`fsdev.config.mts`)
 |---|---|---|
 | `TEAMMATES_MODEL` | the model Chief of Staff, researcher and writer answer on | `openai/gpt-5.4-mini` |
 | `TEAMMATES_WORKDIR` | the working folder: an absolute path to a git checkout on this machine | the root of this repository |
-| `TEAMMATES_HARNESS` | the harness coding tasks run on: `claude-code` or `codex` | `claude-code` |
+| `TEAMMATES_HARNESS` | the harness a coding worker whose file names none runs on: `claude-code`, `codex` or `cursor` | `claude-code` |
 | `TEAMMATES_STORE` | the SQLite file | `.fsdev/teammates.sqlite` here |
 | `TEAMMATES_USER` | who the page acts as | `you` |
 | `TEAMMATES_TREE` | the workers' tree | `workforce/` here |
 
-The model needs a credential the gateway takes (`AI_GATEWAY_API_KEY`), and coding tasks need Claude
-Code signed in, or `ANTHROPIC_API_KEY` (Codex: signed in, or `OPENAI_API_KEY`). researcher's web
+The model needs a credential the gateway takes (`AI_GATEWAY_API_KEY`). Each coding agent needs its
+own sign-in: Claude Code signed in, or `ANTHROPIC_API_KEY`; Codex signed in (`codex login`), or
+`CODEX_API_KEY`; Cursor signed in, or `CURSOR_API_KEY`. Cursor runs on `composer-2.5`. researcher's web
 search needs one search provider's key (`TAVILY_API_KEY`, `EXA_API_KEY`, `BRAVE_API_KEY`, or another
 `@flow-state-dev/tools` takes); fetching a page needs none.
 
@@ -135,8 +144,10 @@ hire here, gets its initial on a palette color picked from its id.
 
 Not wired yet:
 
-- **Which harness a coding task runs on.** The roster doesn't carry a worker's settings, so the
-  screen names the harness from the run's own steps once it starts (FIX-2281).
+- **Cursor under a long runs folder.** Cursor's SDK names a folder of its own after the run's whole
+  worktree path, and the worktree path `harness-manager` makes is long, so under the lab's default
+  runs folder a Cursor run fails with `ENAMETOOLONG` (FIX-2344). A short `runsRoot`, such as
+  `/tmp/r`, works today.
 - **Editing a worker from the files.** They are read-only on the roster; how a user changes one (a
   fork that stands in for it, or another way) waits on a product call.
 - **Saving writer's drafts.** No package tool writes files from a worker's turn yet, so writer

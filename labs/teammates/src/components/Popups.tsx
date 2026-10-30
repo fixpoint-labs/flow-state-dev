@@ -18,6 +18,18 @@ export function taskLine(task: { title: string; to: string }, coding: boolean, n
   return coding ? `Coding task: ${task.title}` : `Asked ${nameOf(task.to)} to ${lowerFirst(task.title)}`;
 }
 
+/** What a coding task runs on, as its line names it: the harness, and the model when its run reported one. */
+export function runsOn(task: { harness?: string; model?: string }): string | undefined {
+  if (task.harness === undefined) return undefined;
+  return task.model === undefined ? task.harness : `${task.harness} · ${task.model}`;
+}
+
+/** A coding task line's accessible name: its line, and what it runs on. */
+export const taskLabel = (line: string, task: { harness?: string; model?: string }) => {
+  const on = runsOn(task);
+  return on === undefined ? line : `${line}, on ${on}`;
+};
+
 /** Whether a message was answered, from the message log: by a reply message, or, for a call, by its result. */
 export const repliedIn = (talk: readonly TalkRow[], messageId: string) =>
   talk.some((row) => row.inReplyTo === messageId || (row.id === messageId && row.callAnswered === true));
@@ -51,7 +63,16 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, onClose }: {
   const steps = useWatch(adapter.watchRun, task?.runSessionId) ?? [];
   const line = task ? taskLine(task, isCoding(task.to), nameOf) : "Task";
   // A teammate's task carries its look; a coding task is nobody's.
-  const title = task && !isCoding(task.to) ? <Titled look={lookOf(task.to)} line={line} /> : line;
+  const on = task ? runsOn(task) : undefined;
+  const title =
+    task && !isCoding(task.to) ? (
+      <Titled look={lookOf(task.to)} line={line} />
+    ) : (
+      <span className="flex items-center gap-2">
+        {line}
+        {on === undefined ? null : <RunsOn on={on} />}
+      </span>
+    );
   return (
     <SessionPopup label={line} title={title} status={task?.status} onClose={onClose}>
       <Steps steps={steps} nameOf={nameOf} empty={task?.runSessionId ? "Starting…" : "Not started yet."} />
@@ -93,6 +114,15 @@ function Titled({ look, line }: { look: Look; line: string }) {
     <span className="flex items-center gap-2">
       <Avatar look={look} size="sm" />
       {line}
+    </span>
+  );
+}
+
+/** What a coding task runs on, as a small tag after its line. */
+export function RunsOn({ on }: { on: string }) {
+  return (
+    <span className="shrink-0 rounded-sm border border-border px-1.5 py-0.5 font-mono text-[10px] font-normal text-muted-foreground" data-harness>
+      {on}
     </span>
   );
 }

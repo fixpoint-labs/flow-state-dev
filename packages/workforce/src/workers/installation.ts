@@ -430,7 +430,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
         flow: entry.build(installation) as never,
         standardOnly: entry.standardOnly,
         ...(entry.roles === undefined ? {} : { roles: entry.roles }),
-        showSettings: entry.showSettings
+        showSettings: entry.showSettings,
+        needsProject: entry.needsProject
       };
       built.set(entry, flow);
     }

@@ -42,6 +42,9 @@ import { PHASE } from "../teams/devteam/phase.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
 import { EM_TURN } from "../teams/devteam/workforce/flows/workers/em.mts";
 
+/** A project the EM names on the coder's task: the coder's flow refuses a task filed with none (FIX-2333). */
+const STOREFRONT = { visibility: "shared", id: "storefront" } as const;
+
 /** The EM's description, as its `WORKER.md` writes it: what a coordinator picks it by. */
 const EM_DESCRIPTION =
   "Files each feature as a task for the coder, and keeps the workstream it leads current; never does the work itself.";
@@ -270,7 +273,7 @@ describe("the Shift Coordinator as a coordinator (S10)", () => {
     model = scripted([{ toolName: "createTask", args: { goal: "Take this", assignee: "eng.em", session: "ongoing", resultTo: "conversation" } }], { choice: "eng.em", confidence: 0.9 }, [
       {
         toolName: "createTask",
-        args: { goal: "show a badge on the cart", assignee: "eng.coder", input: { issue, phase: PHASE } },
+        args: { goal: "show a badge on the cart", assignee: "eng.coder", input: { issue, phase: PHASE, project: STOREFRONT } },
       },
     ]);
     const post = `Get this filed for the team:\n${issue}: show a badge on the cart`;
@@ -299,7 +302,7 @@ describe("the Shift Coordinator as a coordinator (S10)", () => {
     // and the phase, for the coder.
     const filed = Object.values(await stored(lab, "tasks/")).filter((row: any) => row.input?.issue === issue);
     expect(filed).toEqual([
-      expect.objectContaining({ goal: "show a badge on the cart", assignee: "eng.coder", input: { issue, phase: PHASE } }),
+      expect.objectContaining({ goal: "show a badge on the cart", assignee: "eng.coder", input: { issue, phase: PHASE, project: STOREFRONT } }),
     ]);
     // The EM's answer lands under its name, once.
     const answers = items.filter((item) => item.type === "message" && item.agentName === "eng.em").map(textOf);
@@ -349,7 +352,7 @@ describe("the Shift Coordinator as a coordinator (S10)", () => {
     const id = `s-desk-${globalThis.crypto.randomUUID()}`;
     expect((await lab.door("POST", "coordinator/sessions", { body: { userId: LAB_USER_ID, sessionId: id, state: { workerId: "release-desk" } } })).status).toBe(201);
     model = scripted([{ toolName: "createTask", args: { goal: "Take this", assignee: "eng.em", session: "ongoing", resultTo: "conversation" } }], undefined, [
-      { toolName: "createTask", args: { goal: "the release notes", assignee: "eng.coder", input: { issue, phase: PHASE } } },
+      { toolName: "createTask", args: { goal: "the release notes", assignee: "eng.coder", input: { issue, phase: PHASE, project: STOREFRONT } } },
     ]);
     expect((await act(lab, id, "respond", { message: `${issue}: the release notes` })).error).toBeUndefined();
 

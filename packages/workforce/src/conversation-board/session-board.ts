@@ -146,6 +146,8 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     // A worker's step filed `session: "new"` runs through its own `work` entry (FIX-2082 D2).
     takesOwnTasks: () => takesTasks(options.installation.workerFlows()[options.flowKind]),
     chainLimit: () => taskChainLimitOf(options.installation),
+    // A coding flow's task is refused when it is filed with no project (FIX-2333).
+    needsProject: (flow) => options.installation.workerFlows()[flow]?.needsProject === true,
     // The messages the session sent that haven't landed (FIX-2240): the pass sends them again.
     // And the reply-requested messages it landed that its turns never answered (FIX-2310): the pass says "no answer".
     messages: {

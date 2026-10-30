@@ -90,7 +90,8 @@ const installation = createWorkerInstallation({ standardWorkers: tree.workers, w
 flows = {
   agent: defineAgentWorkerFlow({ installation, model, ...answerAgain, uses: [projectSourceCapability({ workspace }), consultSessionsCapability(installation)] }),
   coordinator: defineCoordinatorFlow({ installation, routeModel: model, agent: { model } }),
-  [HARNESS_THREAD_FLOW]: { flow: defineHarnessThreadFlow({ installation, workspace }), roles: ["contributor"] },
+  // Its runs work in the session's project: a task filed with none is refused at filing (FIX-2333).
+  [HARNESS_THREAD_FLOW]: { flow: defineHarnessThreadFlow({ installation, workspace }), roles: ["contributor"], needsProject: true },
 };
 const workers = hireWorkforce(installation) as { id: string }[];
 const projects = defineProjectsFlow()({ id: PROJECTS_FLOW }) as { id: string };

@@ -428,16 +428,24 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     expect(failed[0]!.text).toContain(boom);
   });
 
-  it("refuses a task that names no project after one attempt, without running, and says it can name one", async () => {
+  // The coder's flow needs a project (FIX-2333): a task with none is refused when it is filed, before any row or run.
+  it("refuses a task that names no project when it is filed, with no row and no run, saying to set the conversation's project", async () => {
     const stub = readsMarker();
     const { lab } = await openCoderLab(scriptedCoder([fileForCoder("look at our repo")]), stub);
-    const { id, task, taskId } = await fileAndSettle(lab);
+    const id = await conversation(lab);
+    expect((await act(lab, id, "respond", { message: "the coder should take a look at our repo" })).error).toBeUndefined();
+    await quiet(lab);
 
-    expect(task).toMatchObject({ status: "errored", attempts: 1 });
+    expect(((await act(lab, id, LIST_TASKS_ACTION, {})).output as { tasks: unknown[] }).tasks).toEqual([]);
     expect(stub.runs).toHaveLength(0);
-    const failed = (await coderLines(lab, id, taskId)).filter((m) => m.text.includes("failed for good"));
-    expect(failed).toHaveLength(1);
-    expect(failed[0]!.text).toContain("input.project");
+    const runtime = await lab.state.getRuntime();
+    const outputs = (await runtime.stores.request.list({ sessionId: id, withItems: true }))
+      .flatMap((r) => ((r as unknown as { items?: any[] }).items ?? []))
+      .filter((item) => item.type === "tool_output" && item.toolCall?.name === "createTask")
+      .map((item) => item.output);
+    expect(outputs).toEqual([{ ok: false, error: expect.stringMatching(/^no_project: /) }]);
+    expect(outputs[0].error).toContain("setWorkProject");
+    expect(outputs[0].error).not.toContain("input.project");
   });
 
   it("refuses a project named by its id alone, saying a project is named by its visibility and id", async () => {

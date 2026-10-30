@@ -547,7 +547,16 @@ async function callThenDie(dies: (method: string, args: unknown[]) => boolean, o
   // The dead host is never disposed: its every store call hangs, as a dead process's would.
 
   const next = bootBoardHost({ ...common, judgment: leadAnswers(), stores: shared as never });
-  open = next;
+  // The dead host's request still owes its request-end hooks, and that debt is
+  // kept per process, which both hosts share here: the next host's shutdown
+  // would wait its whole drain budget for a run that never ends.
+  open = {
+    ...next,
+    dispose: async () => {
+      await disposeFlowApiRouter(await next.state.getRouter(), { drainMs: 100 });
+      await next.dispose();
+    }
+  };
   await next.state.getRouter();
   expect(await until(async () => (await (await shared.resolve()).request.get(asked))?.status === "completed", 30_000)).toBe(true);
   await next.settled(20_000);
