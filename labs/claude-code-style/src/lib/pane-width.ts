@@ -13,7 +13,7 @@ export const PANE_MIN = 280;
 export const PANE_MAX = 720;
 
 /** The width the main thread keeps beside the pane when the window narrows, in px. */
-export const THREAD_MIN = 360;
+const THREAD_MIN = 360;
 
 /**
  * The pane's grid column: its width, but never more than leaves the main
