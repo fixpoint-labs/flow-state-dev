@@ -58,7 +58,7 @@ Then the recipient takes a turn on it. That turn is told the message id, who sen
 
 A recipient in the middle of a turn hears the message after that turn ends. If the same message is delivered twice, the recipient wakes once.
 
-A message also waits while the user holds the conversation it's going to: the conversation is stopped for the user's approval or input, or, in a task's session, the task is held on the user's stop or a question. The message lands once nothing holds it. While it waits, its row in the [log](#showing-messages-in-your-app) has `queuedBehind: "user"`.
+A message also waits while its recipient's conversation is waiting on the user: the conversation is stopped for the user's approval or input, or, in a task's session, the task waits on the user's stop or a question. The message lands once that wait ends. While it waits, its row in the [log](#showing-messages-in-your-app) has `queuedBehind: "user"`.
 
 You see all of it. Both workers' sessions are yours, and the message, the turn it started and any answer are in them like anything else.
 
@@ -158,7 +158,7 @@ Nothing is stopped. The recipient keeps working, and its reply is kept. The send
 
 Waiting again sends nothing: no new message, no row in the log, no budget spent. It answers the same way a call does. The model should never send the question again to get its answer.
 
-A call waits behind whatever the recipient is doing. A recipient in the middle of a turn takes the call after that turn ends. A conversation [held by the user](#what-the-recipient-sees) takes it once nothing holds it, and a `running` answer in that case says so:
+A call waits behind whatever the recipient is doing. A recipient in the middle of a turn takes the call after that turn ends. A conversation [waiting on the user](#what-the-recipient-sees) takes it once that wait ends, and a `running` answer in that case says so:
 
 ```json
 { "status": "running", "callId": "msg_3f1c0a9e2b7d4c6a8e10", "recipient": "waiting_on_person" }
