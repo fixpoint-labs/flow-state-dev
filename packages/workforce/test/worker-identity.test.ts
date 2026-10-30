@@ -123,12 +123,13 @@ describe("the delegates the layer marks", () => {
   // The board takes a task for the conversation's own list once an add or a
   // remove has set it, so the mark follows that list, not the worker's file.
   const installation = {
-    workerFlows: () => ({}),
+    workerFlows: () => ({ agent: { roles: ["contributor"] }, chat: { roles: [] } }),
     roster: async () =>
       [
-        { id: "eng.ana", name: null, teamName: null, description: null, flow: "agent", delegates: ["eng.cy"] },
+        { id: "eng.ana", name: null, teamName: null, description: null, flow: "agent", delegates: ["eng.cy", "eng.di"] },
         { id: "eng.bo", name: null, teamName: null, description: null, flow: "agent", delegates: [] },
-        { id: "eng.cy", name: null, teamName: null, description: null, flow: "agent", delegates: [] }
+        { id: "eng.cy", name: null, teamName: null, description: null, flow: "agent", delegates: [] },
+        { id: "eng.di", name: null, teamName: null, description: null, flow: "chat", delegates: [] }
       ] as unknown as RosterWorker[]
   } as unknown as WorkerInstallation;
   const layerFor = (state: Record<string, unknown>) =>
@@ -138,6 +139,14 @@ describe("the delegates the layer marks", () => {
     const layer = (await layerFor({}))!;
     expect(layer).toContain(`- cy (eng.cy) ${DELEGATE_MARK}`);
     expect(layer).not.toContain(`- bo (eng.bo) ${DELEGATE_MARK}`);
+  });
+
+  // The board refuses a task for a worker whose flow takes none, so naming one
+  // as taking tasks sends the model to a createTask that fails.
+  it("doesn't mark a delegate whose flow takes no task", async () => {
+    const layer = (await layerFor({}))!;
+    expect(layer).toContain("- di (eng.di)\n");
+    expect(layer).not.toContain(`- di (eng.di) ${DELEGATE_MARK}`);
   });
 
   it("marks the conversation's own list once it is set: an added one marked, a removed one not", async () => {
