@@ -50,7 +50,7 @@ function requireRecords(ctx: BlockContext): ResourceCollectionRef<RoutedSessionH
   if (records === undefined) {
     throw new Error(
       `The running flow doesn't declare the routed-session records ("${ROUTED_SESSIONS_RESOURCE}"), so a routed task ` +
-        "can't hold its session. Spread the session kit's `resources` into the flow."
+        "can't hold its session. Spread the session factory's `resources` into the flow."
     );
   }
   return records;

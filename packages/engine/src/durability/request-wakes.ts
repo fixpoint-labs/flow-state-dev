@@ -42,7 +42,8 @@ export function onWakeOwed(store: WakeStore, listener: Listener): () => void {
   };
 }
 
-function noteWakeOwed(store: WakeStore, dueAt: number): void {
+/** Tell the sweepers listening on `store` in this process that a wake is owed at `dueAt`. */
+export function noteWakeOwed(store: WakeStore, dueAt: number): void {
   for (const listener of listeners.get(store) ?? []) listener(dueAt);
 }
 

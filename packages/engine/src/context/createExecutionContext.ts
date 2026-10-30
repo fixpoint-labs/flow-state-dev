@@ -1,4 +1,5 @@
-import { attachRequestEndRegistry, createRequestEndRegistry } from "../execution/request-end-hooks";
+import { WRITES_OUTLIVE_ABORT, attachRequestEndRegistry, createRequestEndRegistry, type WritesOutliveAbort } from "../execution/request-end-hooks";
+import { createRequestSpendLedger, isInterruptedEndingHeld, loggedSpendOf, sumSpend } from "../execution/request-spend-ledger";
 import { isOrgAttributed, UnattributedOrgError } from "./org-attribution";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type {
@@ -99,10 +100,13 @@ import { SuspensionError, SuspensionRejectedError, SuspensionTimeoutError, resol
 import {
   DISPATCH_SEAM,
   REQUEST_RESUME_SEAM,
+  REQUEST_SPEND_SEAM,
   SUSPENSION_SKIPPED,
   isUserSuspension,
   waitForUserOn,
+  type HarnessRunSpend,
   type RequestResume,
+  type RequestSpendSeam,
   type WaitForUser
 } from "@flow-state-dev/core/types";
 import { generateId } from "../utils/generate-id";
@@ -182,6 +186,13 @@ const SUSPEND_NEEDS_DURABILITY =
   "This host has none: it sets `durable: false`, runs on in-memory stores, or is a router given no " +
   "durability provider. Remove `durable: false`, or set `durable: true` to hold stops in memory " +
   "(tests only: they are lost when the process ends). Nothing was held.";
+
+/** A block's model usage as its lean trace records it: the counts, without provider metadata. */
+function leanModelUsageOf(usage: BlockTraceItem["modelUsage"]): BlockTraceItem["modelUsage"] {
+  if (usage === undefined) return undefined;
+  const { providerMetadata: _providerMetadata, ...counts } = usage;
+  return counts;
+}
 
 /**
  * Whether the run's task was cancelled with one of its stops (FIX-2129):
@@ -415,7 +426,10 @@ function createEmitComponentAwaited(
  */
 function createEmitMessageAwaited(
   emCtx: EmissionContext
-): (text: string, options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }) => Promise<void> {
+): (
+  text: string,
+  options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean; role?: "user" | "assistant" }
+) => Promise<void> {
   return async function emitMessageAwaited(text, options): Promise<void> {
     const itemIndex = emCtx.nextItemIndex();
     const item: MessageItem = {
@@ -431,7 +445,7 @@ function createEmitMessageAwaited(
       taskId: emCtx.taskId,
       itemVisibility: options?.itemVisibility ?? emCtx.itemVisibility,
       agentName: options?.agentName ?? emCtx.agentName,
-      role: "assistant",
+      role: options?.role ?? "assistant",
       content: [{ type: "output_text", text }]
     };
     await emCtx.response.emitItemAdded(item);
@@ -724,6 +738,9 @@ export async function createExecutionContext<
   // request. `runAction` makes the same check ahead of its registration; this
   // is the direct-entry half, and the one that sees the record actually
   // adopted.
+  // Asked before the read: a run that stops ending after this has already
+  // recorded what it handed on, so the read below sees it (FIX-2145).
+  const interruptedEndingLive = isInterruptedEndingHeld(stores.request, requestId);
   const [loadedSession, loadedRequest] = await Promise.all([
     stores.session.get(sessionKey),
     stores.request.get(requestId)
@@ -792,6 +809,7 @@ export async function createExecutionContext<
       ...(options.effectiveRuntimeConfig?.durabilityProvider !== undefined
         ? { durability: options.effectiveRuntimeConfig.durabilityProvider }
         : {}),
+      ...(stores.wakes !== undefined ? { wakes: stores.wakes } : {}),
       // A gate read that fails costs this turn a view that may show a parked
       // turn, never the turn itself: nothing is treated as parked, and it is logged.
       onGateReadError: (error) =>
@@ -1164,6 +1182,17 @@ export async function createExecutionContext<
               }
             : {}),
           effectiveRuntimeConfig: options.effectiveRuntimeConfig,
+          // Read when a block reads another session; both are set up below.
+          sessionHistory: {
+            runningRequestId: requestId,
+            tokenCounter: () => tokenCounter,
+            resolveModelId: () => resolvedModelStorage.getStore() ?? "gpt-4o-mini",
+            onGateReadError: (error) =>
+              logRuntimeEvent(options.logger ?? DEFAULT_RUNTIME_LOGGER, "warn", "[flow-state] a session read could not read the gates of interrupted turns", {
+                requestId,
+                error: String(error)
+              })
+          },
           dispatchStamp: readDispatchStamp(options.source, options.metadata),
           liveness: {
             heartbeatIntervalMs: flow.request?.heartbeatIntervalMs,
@@ -1746,6 +1775,10 @@ export async function createExecutionContext<
     recordWavePreload("org", orgFlowLevelConfigs, "flow-eager", wave1PerRecord);
   }
 
+  // How many writes now running record how the request ended (FIX-2145):
+  // theirs outlive an explicit abort. See `WRITES_OUTLIVE_ABORT`.
+  let writesOutlivingAbort = 0;
+
   const requestRef: { current: RequestRecord } = {
     current: requestRecord
   };
@@ -2233,7 +2266,9 @@ export async function createExecutionContext<
             container,
             mutator,
             intent,
-            signal: options.sideChainSignal,
+            // A write that records how the request ended, an explicit abort
+            // included, doesn't stop on it (FIX-2145).
+            signal: writesOutlivingAbort > 0 ? undefined : options.sideChainSignal,
             persist: (next, expectedVersion) =>
               stores.resourceState.set(storageScopeOf(scope, scopeId), scopeId, key, next, expectedVersion),
             reread: () => stores.resourceState.get(storageScopeOf(scope, scopeId), scopeId, key)
@@ -2760,30 +2795,11 @@ export async function createExecutionContext<
     return requestRef.current.items ?? [];
   };
 
+  // The request's model count reads its spend ledger (FIX-2145), never trace
+  // items: a lean trace (observability off, the production default) carries
+  // no usage, and a trace row keeps only its block's last call.
   const computeTokenUsage = () => {
-    const byModel: Record<string, { prompt: number; completion: number; total: number; cacheReadTokens: number; cacheCreationTokens: number }> = {};
-    for (const item of readLiveItems()) {
-      if (item.type !== "block_trace") {
-        continue;
-      }
-      const modelUsage = item.modelUsage;
-      if (modelUsage === undefined) {
-        continue;
-      }
-      const existing = byModel[modelUsage.model] ?? {
-        prompt: 0,
-        completion: 0,
-        total: 0,
-        cacheReadTokens: 0,
-        cacheCreationTokens: 0
-      };
-      existing.prompt += Number(modelUsage.promptTokens ?? 0);
-      existing.completion += Number(modelUsage.completionTokens ?? 0);
-      existing.total += Number(modelUsage.totalTokens ?? 0);
-      existing.cacheReadTokens += Number(modelUsage.cacheReadTokens ?? 0);
-      existing.cacheCreationTokens += Number(modelUsage.cacheCreationTokens ?? 0);
-      byModel[modelUsage.model] = existing;
-    }
+    const { byModel } = requestSpendLedger.total();
 
     const totalConsumed = Object.values(byModel).reduce((acc, model) => acc + model.total, 0);
     const maxBudget = resolveActionCore(
@@ -3147,7 +3163,21 @@ export async function createExecutionContext<
   // Per-request request-end registry (FIX-2077), attached beside the pool on
   // every scope so a hook added from any block reaches the one list the
   // request executor runs after its last drain.
-  const requestEndRegistry = createRequestEndRegistry();
+  // Per-request spend ledger (FIX-2145): every model result and every settled
+  // harness run, counted once. The request-end registry hands each ending
+  // what the ledger counted since the last one. A resumed request starts from
+  // what it spent before it suspended, so its token budget counts both runs.
+  // A run whose process died settled nothing: what its log's block traces
+  // spent since the last settlement is counted, and handed on at this run's
+  // first ending; so is what an interrupted run spent, since its record holds
+  // the count only once its ending has handed it on. While that run is still
+  // ending in this process, its spend counts toward this run's budget but is
+  // that run's to hand on, so it is carried rather than recovered.
+  const loggedSpend = loggedSpendOf(requestRecord.items ?? [], requestRecord.spentThroughItemIndex ?? -1);
+  const requestSpendLedger = interruptedEndingLive
+    ? createRequestSpendLedger(sumSpend(requestRecord.spentByModel ?? {}, loggedSpend.byModel))
+    : createRequestSpendLedger(requestRecord.spentByModel, loggedSpend.byModel, loggedSpend.harnessRuns);
+  const requestEndRegistry = createRequestEndRegistry(() => requestSpendLedger.takeSinceLastEnding());
   // How this request resumed (FIX-2129), read when a block asks: the
   // resolution is filled in at the checkpoint read, after this context is built.
   // A crash's continuation names no resolution: the log's latest is how the
@@ -3292,6 +3322,9 @@ export async function createExecutionContext<
   };
 
   const _runtimeHooks: ExecutionContext["_runtimeHooks"] = {
+    // The base handler every per-block capture chains up to (FIX-2145): the
+    // one place a model result reaches the request's spend ledger.
+    onGeneratorModelResult: (payload) => requestSpendLedger.addModelResult(payload),
     onBlockStart: logger
       ? (blockName, blockKind, input, transient) => {
           // Transient blocks (e.g. task-board's poll loop) fire hundreds
@@ -3492,6 +3525,10 @@ export async function createExecutionContext<
             ...baseBlockTraceFromIdentity(identity, { status: "completed", ts: completedAt }),
             lean: true,
             output: payload.data.output,
+            // What the block's model calls spent, so a continuation after the
+            // process died still counts them (FIX-2145).
+            modelUsage: leanModelUsageOf(payload.data.modelUsage),
+            harnessSpend: payload.data.harnessSpend,
             completedAt,
             duration: payload.data.duration,
             rescued: payload.data.rescued,
@@ -4158,6 +4195,19 @@ export async function createExecutionContext<
         // request executor drains. See `request-side-chain-pool.ts`.
         (childContext as { _requestSideChainPool?: unknown })._requestSideChainPool = requestSideChainPool;
         attachRequestEndRegistry(childContext, requestEndRegistry);
+        // What this block's own harness runs spent also goes on its completed
+        // trace, so a continuation after the process died can hand it on (FIX-2145).
+        // A run that reports as it goes (FIX-2288) is listed once, at its latest report.
+        const harnessSpendOfBlock: HarnessRunSpend[] = [];
+        (childContext as { [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM] = {
+          reportHarnessRun(run) {
+            requestSpendLedger.reportHarnessRun(run);
+            const at = run.runId === undefined ? -1 : harnessSpendOfBlock.findIndex((reported) => reported.runId === run.runId);
+            if (at >= 0) harnessSpendOfBlock.splice(at, 1);
+            harnessSpendOfBlock.push({ ...run });
+          },
+          pending: () => requestSpendLedger.pending()
+        };
         (childContext as { [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined })[REQUEST_RESUME_SEAM] = readResume;
         // FIX-663: re-attach the background signal on every scope so nested
         // `.sideChain()` dispatches can read it (the dispatch site reads
@@ -4281,6 +4331,7 @@ export async function createExecutionContext<
                   completedAt,
                   duration: completedAt - traceStartedAt,
                   modelUsage: generatorModelUsage,
+                  harnessSpend: harnessSpendOfBlock.length > 0 ? harnessSpendOfBlock : undefined,
                   model: generatorModelIdentity,
                   rescued: siblingEntry.result.rescued === true ? true : undefined,
                 },
@@ -4524,6 +4575,15 @@ export async function createExecutionContext<
   // identity is preserved across the entire request scope.
   (rootContext as { _requestSideChainPool?: unknown })._requestSideChainPool = requestSideChainPool;
   attachRequestEndRegistry(rootContext, requestEndRegistry);
+  (rootContext as { [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM] = requestSpendLedger;
+  (rootContext as { [WRITES_OUTLIVE_ABORT]?: WritesOutliveAbort })[WRITES_OUTLIVE_ABORT] = async (write) => {
+    writesOutlivingAbort += 1;
+    try {
+      return await write();
+    } finally {
+      writesOutlivingAbort -= 1;
+    }
+  };
   (rootContext as { [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined })[REQUEST_RESUME_SEAM] = readResume;
   // FIX-751: bind the live context so reactive dispatchers can run blocks
   // in-session via `executeBlock`. Set after construction since the handlers

@@ -20,7 +20,9 @@ function registering(endings: RequestEnding[]) {
     inputSchema: z.any(),
     execute: (_input, ctx) => {
       onRequestEnded(ctx, (ending) => {
-        endings.push(ending);
+        // What the request spent is request-spend.test.ts's; these read how it ended.
+        const { spend: _spend, ...ended } = ending;
+        endings.push(ended as RequestEnding);
       });
     }
   });

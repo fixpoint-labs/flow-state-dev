@@ -1,6 +1,8 @@
 /**
  * How much of each coding harness's subscription the user has used: the Lab's
- * one `harnessUsage` query, read on the flow that answers it.
+ * one `harnessUsage` query, read on the flow that answers it. And how many
+ * tokens each of the user's workers used over a period: the `workerUsage`
+ * query, on the same flow (FIX-2145).
  *
  * Opening Usage asks for a fresh reading (`refresh: true`). The Lab asks a
  * harness at most once a minute, so a view that re-renders or re-reads costs
@@ -17,6 +19,9 @@ import type { Client } from "@flow-state-dev/client";
 
 /** The query's name, on whichever of the Lab's flows answers it. */
 const HARNESS_USAGE_ACTION = "harnessUsage";
+
+/** The per-worker query's name, answered by the same flow. */
+const WORKER_USAGE_ACTION = "workerUsage";
 
 /** One window as the query returns it. */
 export type UsageWindow = {
@@ -47,17 +52,20 @@ export type HarnessUsage = {
   refreshError: string | null;
 };
 
-/** The Lab flow that answers the query, read once per connection. `null`: this Lab has none. */
-const usageFlows = new WeakMap<Client, Promise<string | null>>();
+/** The Lab flow that answers each query, read once per connection and query. `null`: this Lab has none. */
+const usageFlows = new WeakMap<Client, Map<string, Promise<string | null>>>();
 
-function usageFlowOf(client: Client): Promise<string | null> {
-  let found = usageFlows.get(client);
+function usageFlowOf(client: Client, action: string = HARNESS_USAGE_ACTION): Promise<string | null> {
+  let byAction = usageFlows.get(client);
+  if (byAction === undefined) {
+    byAction = new Map();
+    usageFlows.set(client, byAction);
+  }
+  let found = byAction.get(action);
   if (found === undefined) {
-    found = client
-      .flows()
-      .then((flows) => flows.find((flow) => flow.actions.includes(HARNESS_USAGE_ACTION))?.id ?? null);
-    found.catch(() => usageFlows.delete(client));
-    usageFlows.set(client, found);
+    found = client.flows().then((flows) => flows.find((flow) => flow.actions.includes(action))?.id ?? null);
+    found.catch(() => byAction.delete(action));
+    byAction.set(action, found);
   }
   return found;
 }
@@ -72,10 +80,15 @@ const USAGE_SESSION_PREFIX = "usage-own";
  * listing), it runs on this organization's own usage session instead, opened
  * on first use and found again by its prefix.
  */
-export async function runUsageQuery(client: Client, flow: string): Promise<unknown> {
+export async function runUsageQuery(
+  client: Client,
+  flow: string,
+  action: string = HARNESS_USAGE_ACTION,
+  input: unknown = { refresh: true },
+): Promise<unknown> {
   const reader = readerSessionId(client.userId, flow);
   try {
-    return (await runAction(client, flow, reader, HARNESS_USAGE_ACTION, { refresh: true })).output;
+    return (await runAction(client, flow, reader, action, input)).output;
   } catch (error) {
     if (!(error instanceof ActionRefused)) throw error;
     const listed = await client.sessions.list({ userId: client.userId });
@@ -83,7 +96,7 @@ export async function runUsageQuery(client: Client, flow: string): Promise<unkno
     const own = listed.find(
       (session) => session.parentSessionId == null && session.flowKind === flow && session.id.startsWith(`${USAGE_SESSION_PREFIX}-`),
     )?.id;
-    return (await runAction(client, flow, own ?? newSessionId(USAGE_SESSION_PREFIX), HARNESS_USAGE_ACTION, { refresh: true })).output;
+    return (await runAction(client, flow, own ?? newSessionId(USAGE_SESSION_PREFIX), action, input)).output;
   }
 }
 
@@ -129,6 +142,127 @@ export function useHarnessUsage(readAt: number): {
   }, [client, readAt, reads]);
   const reread = useCallback(() => setReads((n) => n + 1), []);
   return { rows, failure, reread };
+}
+
+/** One source of a worker's spend, as the query returns it: a model, or a harness billed one way. */
+export type WorkerSourceUsage = {
+  source: string;
+  kind: "model" | "harness";
+  billing: "api-key" | "subscription" | null;
+  inputTokens: number;
+  outputTokens: number;
+  /** A cost the harness reported on an API key. `null`: none was, never shown as $0. */
+  costUsd: number | null;
+  runs: number;
+  /** Runs that reported no tokens. */
+  unreported: number;
+};
+
+/** One worker as the query returns it. */
+export type WorkerUsage = {
+  worker: string;
+  /** No longer on the user's roster. */
+  gone: boolean;
+  tokens: { input: number; output: number };
+  costUsd: number | null;
+  bySource: WorkerSourceUsage[];
+};
+
+/** The periods the view offers, in UTC days ending today. */
+export const USAGE_PERIODS = [
+  { days: 1, label: "Today" },
+  { days: 7, label: "7 days" },
+  { days: 30, label: "30 days" },
+] as const;
+
+/** The query's worker rows, as sent. A row that isn't one is left out. */
+export function toWorkerUsage(output: unknown): WorkerUsage[] {
+  const rows = (output as { workers?: unknown } | null | undefined)?.workers;
+  return Array.isArray(rows) ? rows.filter((row): row is WorkerUsage => typeof (row as WorkerUsage)?.worker === "string") : [];
+}
+
+/**
+ * Each worker's usage over the last `days` UTC days, read when the view opens,
+ * on each Lab read (`readAt`), and when the period changes. `rows` is `null`
+ * when this Lab answers no per-worker query. A read that fails keeps the last
+ * rows for the same period and reports `failure` beside them; rows read for
+ * another period are never returned, so one period's totals never stand
+ * under another's tab.
+ */
+export function useWorkerUsage(
+  readAt: number,
+  days: number,
+): {
+  rows: WorkerUsage[] | null | undefined;
+  failure: Failure | undefined;
+  reread: () => void;
+} {
+  const { client } = useLab();
+  const [read, setRead] = useState<{ days: number; rows?: WorkerUsage[] | null; failure?: Failure } | undefined>(undefined);
+  const [reads, setReads] = useState(0);
+  useEffect(() => {
+    let closed = false;
+    usageFlowOf(client, WORKER_USAGE_ACTION)
+      .then(async (flow) => {
+        if (flow === null) return null;
+        return toWorkerUsage(await runUsageQuery(client, flow, WORKER_USAGE_ACTION, { days }));
+      })
+      .then((rows) => {
+        if (!closed) setRead({ days, rows });
+      })
+      .catch((error: unknown) => {
+        if (!closed) setRead((last) => ({ days, rows: last?.days === days ? last.rows : undefined, failure: describeFailure(error) }));
+      });
+    return () => {
+      closed = true;
+    };
+  }, [client, readAt, reads, days]);
+  const reread = useCallback(() => setReads((n) => n + 1), []);
+  const current = read?.days === days ? read : undefined;
+  return { rows: current?.rows, failure: current?.failure, reread };
+}
+
+/** A token count for a user: `840 tokens`, `12.5 K tokens`, `1.2 M tokens`. */
+export function tokensLabel(tokens: number): string {
+  const short = (n: number) => n.toFixed(1).replace(/\.0$/, "");
+  if (tokens >= 1_000_000) return `${short(tokens / 1_000_000)} M tokens`;
+  if (tokens >= 10_000) return `${short(tokens / 1_000)} K tokens`;
+  return `${tokens.toLocaleString("en-US")} tokens`;
+}
+
+/** True when no run of `source` reported tokens: its zero is unknown, not measured. */
+export function noTokensReported(source: Pick<WorkerSourceUsage, "runs" | "unreported">): boolean {
+  return source.runs > 0 && source.unreported === source.runs;
+}
+
+/**
+ * A source's or worker's token figure in words: "tokens not reported" when
+ * none of `sources` reported any, so an unknown count never reads as 0.
+ */
+export function reportedTokensLabel(tokens: number, sources: ReadonlyArray<Pick<WorkerSourceUsage, "runs" | "unreported">>): string {
+  return sources.length > 0 && sources.every(noTokensReported) ? "tokens not reported" : tokensLabel(tokens);
+}
+
+/** A source's name: a harness by name (`Claude Code`), a model by its id. */
+export function sourceName(source: Pick<WorkerSourceUsage, "source" | "kind">): string {
+  return source.kind === "harness" ? harnessName(source.source) : source.source;
+}
+
+/**
+ * What a source cost, in words: the dollar figure and who reported it when a
+ * harness reported one on an API key, otherwise "cost not reported". Never a
+ * figure nobody reported.
+ */
+export function costLabel(source: Pick<WorkerSourceUsage, "source" | "kind" | "costUsd">): string {
+  if (source.costUsd === null) return "cost not reported";
+  return `$${source.costUsd.toFixed(2)}, reported by ${sourceName(source)}`;
+}
+
+/** How a harness run was paid for, in words, or `null` for a model or a harness that didn't say. */
+export function billingLabel(billing: WorkerSourceUsage["billing"]): string | null {
+  if (billing === "api-key") return "API key";
+  if (billing === "subscription") return "subscription";
+  return null;
 }
 
 /** A window's percent as the vendor gave it, fractions kept: `7.5% used`. */

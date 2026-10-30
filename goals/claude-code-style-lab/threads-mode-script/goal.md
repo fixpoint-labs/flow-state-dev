@@ -33,7 +33,8 @@ worktrees from (`CLAUDE_CODE_STYLE_REPOSITORIES`).
   under *Resolved*.
 - **6** you ask for a code change: a task to `desk.thread-coder` is filed; its card and row are
   tagged *Claude Code*; it waits on your review (answering a question first, in its thread, if
-  the run asks), under *Ready for review*, with the judge's line on its card; *Resolve* completes
+  the run asks), under *Ready for review*, with the judge's line on its card and the model and
+  token count its row's `spend` carries (harness `claude-code`); *Resolve* completes
   it with output `review: "accepted"` and moves it under *Resolved*. The run worked in a worktree
   of the project's repository under the lab's data folder, whose branch, also in the repository,
   holds the CHANGELOG line; the repository's checked-out branch and files and the lab's checkout
@@ -79,3 +80,4 @@ failed.
 | 2026-10-28 | 29bd1b9 | openai/gpt-5.4 | FAIL | Signal 6: the review column was read before the page's next 2s read; the worktree and its branch were right. The check now waits for the page (10ed30d) |
 | 2026-10-28 | 10ed30d | openai/gpt-5.4 | PASS | Attempt 1 of 3. Worktrees and the judge: the coding thread ran in a worktree of the project's repository under the data folder, its branch in the repository holding the CHANGELOG line, its card showed the judge's verdict, and *Resolve* completed it `review: "accepted"` |
 | 2026-10-28 | 10ed30d | openai/gpt-5.4 | FAIL (control `no-mapping`) | Signal 6: `the run didn't work in a worktree of the project's repository (1 clone(s) under the data folder)` |
+| 2026-10-29 | (this change, on 9af8ce53) | openai/gpt-5.4 | PASS | Attempt 1 of 3. The coding card showed `claude-sonnet-5 · 291.2k tokens`, the model and count its row's `spend` carried; the run's harness read `claude-code` |

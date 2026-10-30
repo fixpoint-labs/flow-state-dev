@@ -171,7 +171,7 @@ export async function applyRetentionPolicy(
             history.filter((r) => r.status === "interrupted" && !heldAnyway(r)).map((r) => stores.request.get(r.id))
           )
         ).filter((r): r is RequestRecord => r !== undefined);
-  const parked = await parkedInterruptedIds(provider, interruptedLogs);
+  const parked = await parkedInterruptedIds(provider, interruptedLogs, stores.wakes);
   const isProtected = (r: RequestRecord): boolean => heldAnyway(r) || parked.has(r.id);
   const protectedIds = history.filter(isProtected).map((r) => r.id);
   const sorted = history

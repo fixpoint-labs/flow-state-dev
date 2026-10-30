@@ -1,0 +1,760 @@
+# The mechanism list: one row per way of doing a job in the framework.
+#
+# A spec, a reuse review and a PR cite these ids when they say what a change
+# builds on. A mechanism's pieces (the five block kinds, the sequencer verbs, a
+# store's adapters) live under its one row, not in rows of their own. Apps are
+# not rows. Before adding a row, look for the row your job already has.
+#
+# Fields
+#   id        kebab-case, stable. Specs and PRs cite it.
+#   job       what the mechanism is for, in plain words.            (author)
+#   package   the package that exports the anchor.                  (mechanical)
+#   anchor    one exported name that stands for the mechanism.      (mechanical)
+#   file      the file that declares the anchor.                    (mechanical)
+#   adapters  optional: packages that are adapters of this seam.    (author)
+#   builtOn   ids of the rows this one composes.                    (author)
+#   overlaps  rows it can be mistaken for: { id, relation, note }.  (author)
+#             relation: distinct-jobs (names rhyme, jobs differ) |
+#             near-duplicate (same job twice; neither is marked for a merge)
+#   status    canonical | legacy | unconfirmed. `unconfirmed` means the
+#             row was read off the code, and nobody who owns it has
+#             confirmed its job and its boundaries yet.
+#   doc       where the mechanism is explained.
+#
+# Who fills what. CI owns only the mechanical fields. The anchor check
+# (scripts/check-mechanism-anchors.mjs) fails when an anchor is no longer
+# exported from its package, or when `file` no longer declares it, and prints
+# the right value. The PR classifier (scripts/classify-mechanism-pr.mjs)
+# proposes a stub row for an export that matches no row, with the mechanical
+# fields filled in. The judgment fields (`job`, `builtOn`, `overlaps`) belong
+# to the author of the spec or PR. CI never writes them.
+#
+# Graft is optional. Both scripts read the TypeScript exports directly. The
+# review skills can use graft to go from an id's anchor to its callers.
+mechanisms:
+  # ── Contracts and core primitives ─────────────────────────────────────────
+  - id: contracts
+    job: Zero-dependency leaf types and helpers that core, engine and client share, so those packages don't import each other for a leaf shape.
+    package: "@flow-state-dev/contracts"
+    anchor: buildBlockInstanceId
+    file: packages/contracts/src/block-instance-id.ts
+    builtOn: []
+    overlaps: []
+    status: canonical
+    doc: docs/architecture/overview.md
+
+  - id: block
+    job: The unit a flow runs. Exactly five block kinds (handler, generator, evaluator, sequencer, router); a sixth would be a new mechanism.
+    package: "@flow-state-dev/core"
+    anchor: handler
+    file: packages/core/src/blocks/handler.ts
+    builtOn: [contracts]
+    overlaps:
+      - { id: workforce, relation: distinct-jobs, note: "workforce/codegen exports a value named `generator`: the hook `fsdev gen` calls, not the block kind." }
+    status: canonical
+    doc: docs/architecture/blocks.md
+
+  - id: sequencer-dsl
+    job: The composition verbs on a sequencer (step, stepIf, tap, parallel, forEach, doUntil, sideChain, rescue, waitForCondition and the rest). A new verb extends this row, not the block kinds.
+    package: "@flow-state-dev/core"
+    anchor: SequencerDefinition
+    file: packages/core/src/blocks/sequencer-methods.ts
+    builtOn: [block]
+    overlaps: []
+    status: canonical
+    doc: docs/architecture/sequencer-dsl.md
+
+  - id: utility-block
+    job: Ready-made blocks for small jobs (summarize, route, extract, decompose, classify intent), published as the `utility` namespace. A new factory there is named under this row.
+    package: "@flow-state-dev/core"
+    anchor: utility
+    file: packages/core/src/utility/index.ts
+    builtOn: [block]
+    overlaps:
+      - { id: memory, relation: distinct-jobs, note: "utility.memoryExtractor is a one-shot block; the memory package is cross-turn tiers." }
+      - { id: response-auditor, relation: distinct-jobs, note: "utility.analyzer, responseAuditor and thought-fabric's biasAnalyzer share a name shape and judge different things." }
+    status: canonical
+    doc: docs/architecture/utility-blocks.md
+
+  - id: flow
+    job: Bundle blocks, actions, state and resources into the unit a caller starts. Actions are declared on the flow, not on a block.
+    package: "@flow-state-dev/core"
+    anchor: defineFlow
+    file: packages/core/src/flow/defineFlow.ts
+    builtOn: [block]
+    overlaps: []
+    status: canonical
+    doc: docs/architecture/flows-and-actions.md
+
+  - id: scope
+    job: The four places state and resources live (request, session, user, org). A block reads them; it does not invent another scope.
+    package: "@flow-state-dev/core"
+    anchor: SessionConfig
+    file: packages/core/src/types/flow.ts
+    builtOn: [flow]
+    overlaps: []
+    status: canonical
+    doc: docs/architecture/state-and-scopes.md
+
+  - id: resource
+    job: Named durable state a block reads and writes. Client data is a projection of it, not a second store.
+    package: "@flow-state-dev/core"
+    anchor: defineResource
+    file: packages/core/src/types/resource.ts
+    builtOn: [scope]
+    overlaps: []
+    status: canonical
+    doc: docs/architecture/resources-and-client-data.md
+
+  - id: collection
+    job: A resource that holds many keyed items. Faceted and projected collections are variants of it, not new stores.
+    package: "@flow-state-dev/core"
+    anchor: defineResourceCollection
+    file: packages/core/src/types/resource-collection.ts
+    builtOn: [resource]
+    overlaps: []
+    status: canonical
+    doc: docs/architecture/resource-collections.md
+
+  - id: resource-tools
+    job: Tools a model uses to read, write and search resource content by path or URI.
+    package: "@flow-state-dev/core"
+    anchor: resourceTools
+    file: packages/core/src/tools/resource-tools.ts
+    builtOn: [resource, capability]
+    overlaps: []
+    status: unconfirmed
+    doc: docs/architecture/resources-and-client-data.md
+
+  - id: capability
+    job: Bundle tools, context and resources so a block opts in with `uses` instead of spreading that plumbing by hand.
+    package: "@flow-state-dev/core"
+    anchor: defineCapability
+    file: packages/core/src/capability/define-capability.ts
+    builtOn: [block, resource]
+    overlaps: []
+    status: canonical
+    doc: docs/architecture/capabilities.md
+
+  - id: item
+    job: One unit on the stream and in the log (messages, tool calls, traces). Packages share the taxonomy through contracts.
+    package: "@flow-state-dev/contracts"
+    anchor: isBlockValue
+    file: packages/contracts/src/items/resolve-value.ts
+    builtOn: [contracts]
+    overlaps: []
+    status: canonical
+    doc: docs/architecture/items.md
+
+  - id: model
+    job: Turn a model id into a provider client, with fallback. Engine re-exports it; there is no second resolver.
+    package: "@flow-state-dev/core"
+    anchor: createModelResolver
+    file: packages/core/src/models/createModelResolver.ts
+    builtOn: []
+    overlaps:
+      - { id: execution, relation: distinct-jobs, note: "core's isRetryableError (model fallback) and engine's isRetryableError (execution) are two functions with one name." }
+    status: canonical
+    doc: docs/architecture/generator-identity.md
+
+  - id: token-estimate
+    job: Count or estimate tokens and price a model call. One place for it; a private estimator copy in another package is a duplicate.
+    package: "@flow-state-dev/core"
+    anchor: modelPricingEstimator
+    file: packages/core/src/adapters/model-lookup.ts
+    builtOn: [model]
+    overlaps: []
+    status: unconfirmed
+    doc: packages/core/README.md
+
+  - id: prompt
+    job: A prompt kept in a file beside the code that uses it. Core defines it; engine loads it from disk.
+    package: "@flow-state-dev/core"
+    anchor: definePromptFile
+    file: packages/core/src/prompt/prompt-file.ts
+    builtOn: [block]
+    overlaps: []
+    status: canonical
+    doc: packages/core/README.md
+
+  - id: graph
+    job: Typed edges between nodes and pure functions that walk them. No dependency on the memory package.
+    package: "@flow-state-dev/core"
+    anchor: nodeRef
+    file: packages/core/src/graph/edge.ts
+    builtOn: []
+    overlaps: []
+    status: canonical
+    doc: packages/core/README.md
+
+  - id: manifest
+    job: A registry of blocks, workers, skills and resources a host can discover. The domain list lives in contracts; the registry in core.
+    package: "@flow-state-dev/core"
+    anchor: createManifestRegistry
+    file: packages/core/src/manifest/registry.ts
+    builtOn: [block, contracts]
+    overlaps: []
+    status: canonical
+    doc: packages/core/README.md
+
+  # ── Waiting, dispatch and execution ───────────────────────────────────────
+  - id: suspension
+    job: Park a request until the user answers. The call site is ctx.waitForUser; the exported function is waitForUserOn.
+    package: "@flow-state-dev/core"
+    anchor: waitForUserOn
+    file: packages/core/src/types/wait-for-user.ts
+    builtOn: [execution]
+    overlaps:
+      - { id: task, relation: distinct-jobs, note: "A suspension parks the request. The task row's `holds` list says what the user holds the row on, and mirrors a suspension hold. One wait, two records; don't add a third." }
+    status: canonical
+    doc: docs/architecture/execution-and-errors.md
+
+  - id: wait-gate
+    job: Park a request on a named gate until another part of the system releases it.
+    package: "@flow-state-dev/core"
+    anchor: parkOnWait
+    file: packages/core/src/types/wait-gate.ts
+    builtOn: [suspension]
+    overlaps:
+      - { id: suspension, relation: distinct-jobs, note: "waitForUser parks for the user; parkOnWait parks on a gate something else releases. The answer shapes differ." }
+    status: canonical
+    doc: docs/architecture/execution-and-errors.md
+
+  - id: dispatch
+    job: Deliver every arrival at a flow (public, schedule, task, internal) as one envelope addressed by (type, name), through one door.
+    package: "@flow-state-dev/core"
+    anchor: dispatchThroughSeam
+    file: packages/core/src/types/dispatch.ts
+    builtOn: [flow, execution]
+    overlaps:
+      - { id: dispatcher, relation: distinct-jobs, note: "dispatch is the protocol every arrival uses. dispatcher() is a block that sends work to another session over it." }
+    status: unconfirmed
+    doc: docs/architecture/dispatched-work.md
+
+  - id: dispatcher
+    job: A handler block that sends work to another session of this runtime. Not a task claim order and not a queue worker.
+    package: "@flow-state-dev/core"
+    anchor: dispatcher
+    file: packages/core/src/blocks/dispatcher.ts
+    builtOn: [block, dispatch]
+    overlaps:
+      - { id: task, relation: distinct-jobs, note: "fifo, priority and topological claim orders pick a pending task row; dispatcher() sends work to a session." }
+    status: canonical
+    doc: docs/architecture/dispatched-work.md
+
+  - id: execution
+    job: Run one action. createExecutionContext is the bag of stores, streams and scope that run closes over.
+    package: "@flow-state-dev/engine"
+    anchor: runAction
+    file: packages/engine/src/execution/runAction.ts
+    builtOn: [flow, scope, streaming]
+    overlaps: []
+    status: canonical
+    doc: docs/architecture/execution-and-errors.md
+
+  - id: durability
+    job: Keep a run recoverable across a process loss (checkpoints, and the sweeper that resumes what was left).
+    package: "@flow-state-dev/engine"
+    anchor: createDurabilitySweeper
+    file: packages/engine/src/durability/durability-sweeper.ts
+    builtOn: [execution, store]
+    overlaps: []
+    status: unconfirmed
+    doc: docs/architecture/internal-execution-seams.md
+
+  - id: lease
+    job: Hold a place for one run at a time on a key, and plan how a second arrival waits (defer or queue). Redis is the BullMQ adapter.
+    package: "@flow-state-dev/engine"
+    anchor: createInMemoryLeaseBackend
+    file: packages/engine/src/transports/concurrency/lease-backend.ts
+    builtOn: [inbound-transport, store]
+    overlaps:
+      - { id: workspace, relation: distinct-jobs, note: "workspace's claim registry and file lock hold a projected path, not a run." }
+    status: unconfirmed
+    doc: docs/architecture/inbound-transports.md
+
+  - id: streaming
+    job: Send the item log to a caller as a server-sent event stream. Resume uses a cursor, not a second protocol.
+    package: "@flow-state-dev/engine"
+    anchor: encodeStreamEvent
+    file: packages/engine/src/streaming/encode-event.ts
+    builtOn: [item]
+    overlaps: []
+    status: canonical
+    doc: docs/architecture/streaming.md
+
+  - id: store
+    job: The persistence seam for sessions, resources and requests. Memory, filesystem, SQLite, Postgres and Vercel Postgres are adapters of one seam.
+    package: "@flow-state-dev/engine"
+    anchor: createInMemoryStores
+    file: packages/engine/src/stores/index.ts
+    adapters: ["@flow-state-dev/store-sqlite", "@flow-state-dev/store-postgres"]
+    builtOn: []
+    overlaps: []
+    status: canonical
+    doc: packages/engine/README.md
+
+  # ── Transports and hosts ──────────────────────────────────────────────────
+  - id: inbound-transport
+    job: Turn an outside request into a run of an action. HTTP is the built-in adapter; the router mounts adapters.
+    package: "@flow-state-dev/engine"
+    anchor: createInboundTransportHost
+    file: packages/engine/src/transports/host/createInboundTransportHost.ts
+    builtOn: [execution, store]
+    overlaps: []
+    status: canonical
+    doc: docs/architecture/inbound-transports.md
+
+  - id: authentication
+    job: Resolve the principal a transport carries. The host checks credentials; a flow never reads a caller-supplied user id as identity.
+    package: "@flow-state-dev/engine"
+    anchor: createBearerSecretPrincipalResolver
+    file: packages/engine/src/transports/auth/createBearerSecretPrincipalResolver.ts
+    builtOn: [inbound-transport]
+    overlaps: []
+    status: canonical
+    doc: docs/architecture/authentication.md
+
+  - id: webhook
+    job: An event-addressed action on the flow. The transport adapter verifies the provider and dispatches that binding.
+    package: "@flow-state-dev/core"
+    anchor: defineWebhookBinding
+    file: packages/core/src/types/webhooks.ts
+    builtOn: [flow, inbound-transport]
+    overlaps: []
+    status: canonical
+    doc: docs/architecture/webhook-transport.md
+
+  - id: schedule
+    job: Fire an event-addressed action on a cron. ScheduleIndex is the contract; SQLite, Postgres, Vercel and BullMQ are adapters, and BullMQ fires the job itself.
+    package: "@flow-state-dev/scheduled"
+    anchor: ScheduleIndex
+    file: packages/scheduled/src/scheduleIndex.ts
+    builtOn: [flow, inbound-transport]
+    overlaps: []
+    status: canonical
+    doc: docs/architecture/scheduled-actions.md
+
+  - id: mcp-transport
+    job: Expose this runtime's actions as an MCP server over HTTP. Inbound.
+    package: "@flow-state-dev/mcp"
+    anchor: createMcpTransportAdapter
+    file: packages/mcp/src/createMcpTransportAdapter.ts
+    builtOn: [inbound-transport]
+    overlaps:
+      - { id: mcp-client, relation: distinct-jobs, note: "This adapter exposes our actions as MCP tools; mcp-client calls someone else's MCP server. Opposite directions." }
+    status: canonical
+    doc: docs/architecture/mcp-server.md
+
+  - id: host
+    job: The process that holds createFlowState and answers a platform. Node, Next, Vercel and Lambda are adapters.
+    package: "@flow-state-dev/engine"
+    anchor: createFlowState
+    file: packages/engine/src/flowstate/createFlowState.ts
+    adapters: ["@flow-state-dev/node", "@flow-state-dev/next", "@flow-state-dev/vercel"]
+    builtOn: [inbound-transport, store]
+    overlaps: []
+    status: canonical
+    doc: docs/architecture/server-and-client.md
+
+  - id: bullmq
+    job: A queue-backed host. Flows run as jobs; schedules are the schedule row's BullMQ adapter.
+    package: "@flow-state-dev/bullmq"
+    anchor: createBullmqRuntime
+    file: packages/bullmq/src/runtime.ts
+    builtOn: [host, schedule, lease]
+    overlaps:
+      - { id: dispatcher, relation: distinct-jobs, note: "The queue's worker dispatch, dispatcher() and task claim orders are three uses of one word." }
+    status: canonical
+    doc: packages/bullmq/README.md
+
+  - id: voice
+    job: Speak and hear through a flow. Engine owns the sentence buffer and TTS pipeline; OpenAI is the provider package.
+    package: "@flow-state-dev/engine"
+    anchor: createTTSPipeline
+    file: packages/engine/src/voice/tts-pipeline.ts
+    adapters: ["@flow-state-dev/voice-openai"]
+    builtOn: [streaming]
+    overlaps: []
+    status: canonical
+    doc: docs/architecture/voice.md
+
+  # ── Callers ───────────────────────────────────────────────────────────────
+  - id: client
+    job: The isomorphic caller of a hosted flow. Starts actions, reads sessions, resumes streams.
+    package: "@flow-state-dev/client"
+    anchor: createClient
+    file: packages/client/src/client.ts
+    builtOn: [streaming]
+    overlaps: []
+    status: canonical
+    doc: docs/architecture/server-and-client.md
+
+  - id: react
+    job: Hooks and renderers that wrap the client. No transport of its own.
+    package: "@flow-state-dev/react"
+    anchor: useFlow
+    file: packages/react/src/hooks/useFlow.ts
+    builtOn: [client]
+    overlaps: []
+    status: canonical
+    doc: packages/react/README.md
+
+  - id: generative-ui
+    job: A starter pack of component renderers and the tool factories that emit them.
+    package: "@flow-state-dev/ui"
+    anchor: generativeRenderers
+    file: packages/ui/src/generative/renderers.ts
+    builtOn: [react, block]
+    overlaps: []
+    status: canonical
+    doc: packages/ui/README.md
+
+  # ── Tools ─────────────────────────────────────────────────────────────────
+  - id: bundled-tools
+    job: Search, fetch, crawl and bash, shipped as tools a flow can use, each with provider adapters.
+    package: "@flow-state-dev/tools"
+    anchor: tools
+    file: packages/tools/src/index.ts
+    builtOn: [capability]
+    overlaps: []
+    status: canonical
+    doc: packages/tools/README.md
+
+  - id: mcp-client
+    job: A capability that calls external MCP servers and exposes their tools to a generator.
+    package: "@flow-state-dev/tools"
+    anchor: createMcpCapability
+    file: packages/tools/src/mcp/capability.ts
+    builtOn: [capability]
+    overlaps: []
+    status: canonical
+    doc: packages/tools/README.md
+
+  # ── Orchestration ─────────────────────────────────────────────────────────
+  - id: task
+    job: One row of work on a board. Claim orders (fifo, priority, topological) pick a pending row; the row carries status, attempts and holds.
+    package: "@flow-state-dev/orchestration"
+    anchor: defineTaskCollection
+    file: packages/orchestration/src/tasks/collection/define-task-collection.ts
+    builtOn: [collection]
+    overlaps: []
+    status: canonical
+    doc: packages/orchestration/README.md
+
+  - id: task-notice
+    job: Turn a delegated task's ending into one notice to the session that filed it. The row is the outbox. Its records (held, taken, deferred, lapsed slot) are four jobs, not four names for one reservation.
+    package: "@flow-state-dev/orchestration"
+    anchor: recordEnding
+    file: packages/orchestration/src/tasks/notice/task-notice.ts
+    builtOn: [task]
+    overlaps: []
+    status: canonical
+    doc: packages/orchestration/README.md
+
+  - id: task-flow-policy
+    job: Keep an observation ledger of every tool call in a board run, and pick which observations a new worker sees as prior work.
+    package: "@flow-state-dev/orchestration"
+    anchor: flowPolicy
+    file: packages/orchestration/src/tasks/flow-policy/index.ts
+    builtOn: [task, capability]
+    overlaps: []
+    status: unconfirmed
+    doc: packages/orchestration/README.md
+
+  - id: task-board
+    job: Drain a task collection with workers. Task tools are how a model drives that board; they are not a second board.
+    package: "@flow-state-dev/orchestration"
+    anchor: taskBoard
+    file: packages/orchestration/src/task-board/index.ts
+    builtOn: [task, sequencer-dsl]
+    overlaps: []
+    status: canonical
+    doc: packages/orchestration/README.md
+
+  - id: goal-seek-loop
+    job: A judge-gated loop around a board drain. parallelTasks and planAndExecute are recipes on it; supervisor is not.
+    package: "@flow-state-dev/orchestration"
+    anchor: goalSeekLoop
+    file: packages/orchestration/src/task-board/goal-seek-loop.ts
+    builtOn: [task-board, sequencer-dsl]
+    overlaps:
+      - { id: supervisor, relation: distinct-jobs, note: "goalSeekLoop asks one judge after a drain; supervisor reviews each task and does not call goalSeekLoop." }
+    status: canonical
+    doc: packages/orchestration/README.md
+
+  - id: skills
+    job: A catalog of skills a generator can bind. createSkillsLibrary is the surface to build on; createSkillsCapability is still exported and is the legacy entry.
+    package: "@flow-state-dev/orchestration"
+    anchor: createSkillsLibrary
+    file: packages/orchestration/src/skills/library.ts
+    builtOn: [capability, collection]
+    overlaps: []
+    status: canonical
+    doc: packages/orchestration/README.md
+
+  - id: inbox
+    job: One read of what holds work for the user (a task row's open holds, or a suspension with no row) and the one call that answers it.
+    package: "@flow-state-dev/orchestration"
+    anchor: createInboxClient
+    file: packages/orchestration/src/inbox/client.ts
+    builtOn: [task, suspension]
+    overlaps:
+      - { id: harness-manager, relation: distinct-jobs, note: "The harness manager's ask marker is a question a coding run raised; the Inbox is the read the user answers from. Same word, different record." }
+    status: canonical
+    doc: packages/orchestration/README.md
+
+  # ── Patterns ──────────────────────────────────────────────────────────────
+  - id: supervisor
+    job: Per-task review on a task board. Each worker is wrapped with a reviewer; it drains the board itself.
+    package: "@flow-state-dev/patterns"
+    anchor: supervisor
+    file: packages/patterns/src/supervisor/index.ts
+    builtOn: [task-board]
+    overlaps:
+      - { id: routed-specialists, relation: distinct-jobs, note: "Both coordinate several workers. Routed specialists is a controller over a shared workspace; supervisor reviews each task on a board." }
+    status: canonical
+    doc: packages/patterns/README.md
+
+  - id: routed-specialists
+    job: A controller picks the next specialist; each iteration is a task on a collection plus a shared workspace. Not a board drain.
+    package: "@flow-state-dev/patterns"
+    anchor: routedSpecialists
+    file: packages/patterns/src/routedSpecialists/index.ts
+    builtOn: [task, sequencer-dsl]
+    overlaps: []
+    status: canonical
+    doc: packages/patterns/README.md
+
+  - id: event-actors
+    job: Actors watch an entry log; a matching entry becomes a task, and a task board drains those tasks.
+    package: "@flow-state-dev/patterns"
+    anchor: eventActors
+    file: packages/patterns/src/eventActors/index.ts
+    builtOn: [task-board]
+    overlaps: []
+    status: canonical
+    doc: packages/patterns/README.md
+
+  - id: debate
+    job: A fixed-order argument with assigned stances, an optional moderator and one judge at the end. A sequencer loop.
+    package: "@flow-state-dev/patterns"
+    anchor: debate
+    file: packages/patterns/src/debate/index.ts
+    builtOn: [sequencer-dsl]
+    overlaps:
+      - { id: round-robin, relation: near-duplicate, note: "Both are fixed-order sequencer loops. Debate ends in a judge and stances; round-robin uses a referee and a synthesizer. Neither is marked for a merge." }
+    status: canonical
+    doc: packages/patterns/README.md
+
+  - id: round-robin
+    job: A fixed roster speaks in order each round, an optional referee critiques, and a synthesizer runs at the end.
+    package: "@flow-state-dev/patterns"
+    anchor: roundRobin
+    file: packages/patterns/src/round-robin/index.ts
+    builtOn: [sequencer-dsl]
+    overlaps:
+      - { id: debate, relation: near-duplicate, note: "See debate." }
+    status: canonical
+    doc: packages/patterns/README.md
+
+  - id: response-auditor
+    job: Audit a response after it is written.
+    package: "@flow-state-dev/patterns"
+    anchor: responseAuditor
+    file: packages/patterns/src/response-auditor/index.ts
+    builtOn: [block]
+    overlaps:
+      - { id: thought-fabric, relation: distinct-jobs, note: "biasAnalyzer is a metacognition block, not a response audit." }
+    status: canonical
+    doc: packages/patterns/README.md
+
+  # ── Workforce ─────────────────────────────────────────────────────────────
+  - id: workforce
+    job: Register worker flows from an installation (hireWorkforce). The define* factories beside it are the records and flows a workforce app composes, not separate frameworks.
+    package: "@flow-state-dev/workforce"
+    anchor: hireWorkforce
+    file: packages/workforce/src/workers/register.ts
+    builtOn: [flow, task-board]
+    overlaps: []
+    status: canonical
+    doc: docs/architecture/workforce-default-worker-flow.md
+
+  - id: worker-loader
+    job: Read a workforce from files (WORKER.md, teams, references, resources) into records hireWorkforce takes. Node-only.
+    package: "@flow-state-dev/workforce"
+    anchor: readWorkforce
+    file: packages/workforce/src/loader/read-workforce.ts
+    builtOn: [workforce]
+    overlaps: []
+    status: canonical
+    doc: packages/workforce/README.md
+
+  - id: persona
+    job: Define a worker persona a workforce hires.
+    package: "@flow-state-dev/workforce"
+    anchor: definePersona
+    file: packages/workforce/src/define-persona.ts
+    builtOn: [workforce]
+    overlaps: []
+    status: unconfirmed
+    doc: packages/workforce/README.md
+
+  - id: session-board
+    job: A board for one conversation session, and the filing and finished-task turns that run on it.
+    package: "@flow-state-dev/workforce"
+    anchor: defineSessionBoard
+    file: packages/workforce/src/conversation-board/session-board.ts
+    builtOn: [workforce, task-board, sequencer-dsl]
+    overlaps: []
+    status: canonical
+    doc: packages/workforce/README.md
+
+  - id: coordinator
+    job: A coordinator flow that routes a request to the worker who should take it, and keeps the routed history.
+    package: "@flow-state-dev/workforce"
+    anchor: defineCoordinatorFlow
+    file: packages/workforce/src/coordinator/coordinator-flow.ts
+    builtOn: [workforce, task]
+    overlaps:
+      - { id: routed-specialists, relation: distinct-jobs, note: "Both pick who works next. The coordinator routes across a workforce's workers; routed specialists is a pattern loop inside one flow." }
+    status: unconfirmed
+    doc: packages/workforce/README.md
+
+  - id: worker-messages
+    job: Let one worker message another on its user's roster. Talk, not delegation; no task row.
+    package: "@flow-state-dev/workforce"
+    anchor: sendMessage
+    file: packages/workforce/src/messages/send-message.ts
+    builtOn: [workforce, dispatch]
+    overlaps:
+      - { id: task, relation: distinct-jobs, note: "Delegation files a task row; a message files nothing. A second way to reach a worker would be a third." }
+    status: canonical
+    doc: packages/workforce/README.md
+
+  - id: projects
+    job: Shared and private project rows, their files, and the workstream entries a project's progress is worked out from.
+    package: "@flow-state-dev/workforce"
+    anchor: defineProjectsCollection
+    file: packages/workforce/src/projects/collections.ts
+    builtOn: [collection, workforce]
+    overlaps: []
+    status: unconfirmed
+    doc: packages/workforce/README.md
+
+  - id: error-reporter
+    job: A worker that turns a failure that stayed failed, or a problem a user describes, into one reproducible bug report filed through the project's tracker.
+    package: "@flow-state-dev/workforce"
+    anchor: createErrorReporter
+    file: packages/workforce/src/error-reporter/reporter.ts
+    builtOn: [workforce, inbox]
+    overlaps: []
+    status: unconfirmed
+    doc: packages/workforce/README.md
+
+  - id: workforce-codegen
+    job: Discover a workforce's blocks and render the generated module `fsdev gen` writes.
+    package: "@flow-state-dev/workforce"
+    anchor: discoverWorkforceCode
+    file: packages/workforce/src/codegen/discover.ts
+    builtOn: [workforce, fsdev]
+    overlaps: []
+    status: unconfirmed
+    doc: packages/workforce/README.md
+
+  - id: worker-inventory
+    job: The collection of workers registered for a user, and the actions that write it.
+    package: "@flow-state-dev/workforce"
+    anchor: openInventory
+    file: packages/workforce/src/inventory/open-inventory.ts
+    builtOn: [collection, workforce]
+    overlaps: []
+    status: unconfirmed
+    doc: packages/workforce/README.md
+
+  # ── Coding harnesses ──────────────────────────────────────────────────────
+  - id: coding-harness
+    job: Drive a coding agent as a block. Core owns the neutral handle; Claude Code, Codex and Cursor are adapters. Each adapter still keeps its own copy of the event-to-item emit helper.
+    package: "@flow-state-dev/core"
+    anchor: harnessRunHandleSchema
+    file: packages/core/src/types/harness.ts
+    adapters: ["@flow-state-dev/claude-code", "@flow-state-dev/codex", "@flow-state-dev/cursor"]
+    builtOn: [block]
+    overlaps: []
+    status: canonical
+    doc: packages/core/README.md
+
+  - id: harness-steering
+    job: Send a line typed into a harness session into the running turn when the harness takes it, or as the next turn.
+    package: "@flow-state-dev/core"
+    anchor: harnessSteering
+    file: packages/core/src/helpers/harness-steering.ts
+    builtOn: [coding-harness, flow]
+    overlaps:
+      - { id: harness-manager, relation: distinct-jobs, note: "The harness manager's session door routes a line to a board-run coding task; harnessSteering is the flow-level steer/turn pair any harness flow declares." }
+    status: unconfirmed
+    doc: packages/core/README.md
+
+  - id: harness-manager
+    job: Turn a task-board row into a supervised coding run (own checkout, verdict before settlement, question channel, the harness as a slot).
+    package: "@flow-state-dev/harness-manager"
+    anchor: harnessManager
+    file: packages/harness-manager/src/manager.ts
+    builtOn: [task-board, coding-harness, workspace]
+    overlaps:
+      - { id: workspace, relation: distinct-jobs, note: "The checkout subpath runs git through the workspace host and re-exports run. It is not a second workspace implementation." }
+    status: canonical
+    doc: packages/harness-manager/README.md
+
+  - id: workspace
+    job: Project file content between resource collections and the directory an agent works in, and run commands there. localWorkspaceHost is the host.
+    package: "@flow-state-dev/workspace"
+    anchor: localWorkspaceHost
+    file: packages/workspace/src/local-host.ts
+    builtOn: [collection]
+    overlaps: []
+    status: canonical
+    doc: packages/workspace/README.md
+
+  # ── Memory and cognition ──────────────────────────────────────────────────
+  - id: memory
+    job: Cross-turn memory in working, episodic, semantic and digest tiers, wired into one capability.
+    package: "@flow-state-dev/memory"
+    anchor: createMemoryCapability
+    file: packages/memory/src/memory-capability.ts
+    builtOn: [capability, resource, graph]
+    overlaps:
+      - { id: thought-fabric, relation: distinct-jobs, note: "memory's system() assembles the tiers; thought-fabric identity's system() assembles a perspective constitution. One export name, two functions." }
+    status: canonical
+    doc: packages/memory/README.md
+
+  - id: thought-fabric
+    job: Attention, identity and metacognition blocks for a cognitive architecture.
+    package: "@thought-fabric/core"
+    anchor: perspectiveObserve
+    file: packages/thought-fabric-core/src/identity/perspective-blocks.ts
+    builtOn: [block, capability]
+    overlaps: []
+    status: canonical
+    doc: packages/thought-fabric-core/README.md
+
+  # ── Testing and tooling ───────────────────────────────────────────────────
+  - id: testing
+    job: Run blocks and flows without a provider (testBlock, testFlow, mockGenerator), score them (evalBlock and scorers), and benchmark patterns.
+    package: "@flow-state-dev/testing"
+    anchor: testBlock
+    file: packages/testing/src/test-utilities/testBlock.ts
+    builtOn: [block, flow]
+    overlaps: []
+    status: canonical
+    doc: packages/testing/README.md
+
+  - id: fsdev
+    job: The terminal interface. fsdev run executes a flow, fsdev dev serves it with the DevTool, fsdev gen calls a package's generator hook.
+    package: "@flow-state-dev/fsdev"
+    anchor: program
+    file: packages/cli/src/cli.ts
+    builtOn: [execution, host]
+    overlaps: []
+    status: canonical
+    doc: packages/cli/README.md

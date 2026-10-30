@@ -59,6 +59,8 @@ import {
   isTerminalStatus,
   lockedFields,
   taskSchema,
+  taskSpendView,
+  taskSpendViewSchema,
   TaskCapExceededError,
   TaskWriteRefusedError,
   TaskFilingRefusedError,
@@ -1621,6 +1623,12 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
             // The run working the task, or the one that last worked it: a
             // reader opens it from here (FIX-1668). Absent until a run starts.
             run: taskSchema.shape.run,
+            /**
+             * What the task's runs spent (FIX-2288): the harness and model
+             * running it and its tokens, `null` when it never ran in a request
+             * of its own. On the board's action only: a model's tool reads none.
+             */
+            spend: taskSpendViewSchema.nullable().optional(),
             /** A request is waiting on this task's ending (`getTask` with `wait`). */
             waitedOn: z.literal(true).optional(),
             ...waitingShape,
@@ -1654,6 +1662,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           ...(t.statusNote !== undefined ? { statusNote: t.statusNote } : {}),
           ...(t.filedByTask !== undefined ? { filedByTask: t.filedByTask } : {}),
           ...(t.run != null ? { run: t.run } : {}),
+          // A client's read, never a model's (FIX-2288): the action carries it, the tool doesn't.
+          ...(claimless ? { spend: taskSpendView(t) } : {}),
           ...(t.wait != null && t.wait.lapsed !== true && !isTerminalStatus(t.status) ? { waitedOn: true as const } : {}),
           ...waitingOf(t),
           ...withCurrentId(currentFor(t, latest.get(t.followUpOf ?? t.id))),

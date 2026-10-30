@@ -12,7 +12,7 @@ const routed = { worker: "eng.reviewer", outcome: "delivered" } as PostState["di
 
 function post(fields: Record<string, unknown>): PostState {
   return {
-    postId: "p1",
+    messageRequestId: "p1",
     body: "review this",
     from: "alice",
     round: 0,

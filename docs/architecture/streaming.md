@@ -333,5 +333,5 @@ This document is authoritative for the streaming model and event contracts. For 
 
 ### Generator usage metadata on `block_trace`
 
-Generator `block_trace` items may include `modelUsage` metadata with `model`, `promptTokens`, `completionTokens`, `totalTokens`, optional `providerMetadata`, and Anthropic cache convenience fields (`cacheReadTokens`, `cacheCreationTokens`). This metadata represents only that generator call; summing across `block_trace` items gives total request usage.
+Generator `block_trace` items may include `modelUsage` metadata with `model`, `promptTokens`, `completionTokens`, `totalTokens`, optional `providerMetadata`, and Anthropic cache convenience fields (`cacheReadTokens`, `cacheCreationTokens`). This metadata represents only that generator call. It is a record of the call, not the request's count: `ctx.request.tokenUsage` reads the request's spend ledger (see `blocks.md`), which also counts steps a generator finished before it suspended or failed, and what earlier runs of a resumed request spent. With trace observability off, a lean trace still carries these counts, without `providerMetadata`. A completed block that settled a harness run also lists it under `harnessSpend` (harness, input and output tokens, cost, billing), lean traces included, so a continuation after a crash can still hand that run's spend on.
 

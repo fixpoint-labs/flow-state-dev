@@ -3,7 +3,7 @@ import { COLUMNS, columnOf } from "../lib/columns";
 import { cn } from "../lib/utils";
 
 /** A harness's name as a card and row tag it. */
-const HARNESS_LABEL: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex", cursor: "Cursor" };
+export const HARNESS_LABEL: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex", cursor: "Cursor" };
 
 /** The thread's column, ignoring pins: a pinned thread keeps its status icon and line. */
 export const statusColumn = (task: TaskRow) => columnOf(task, false);

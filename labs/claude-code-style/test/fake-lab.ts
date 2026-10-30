@@ -61,6 +61,9 @@ interface FixtureSession {
 type Step = [delayMs: number, run: () => void, background?: "background"];
 
 const MINUTE = 60_000;
+/** The models the fake's runs report: a researcher's, and Claude Code's. */
+const RESEARCH_MODEL = "openai/gpt-6-luna";
+const CODE_MODEL = "claude-sonnet-4-5";
 
 /** fake: stands in for the whole package until wiring. */
 export function createFakeLab(options: FakeOptions = {}): LabAdapter {
@@ -151,8 +154,18 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
     setTask(s, task.id, { ...patch, work });
   };
 
+  /** A row's `spend`, as the board's `listTasks` reads it. */
+  const spent = (model: string, inputTokens: number | null, outputTokens: number | null, live: boolean, harness: string | null = null): FixtureTask["spend"] => ({
+    harness,
+    model,
+    inputTokens,
+    outputTokens,
+    unreported: inputTokens === null,
+    live,
+  });
+
   const file = (s: FixtureSession, title: string, goal: string, note: string): Step[1] => () => {
-    const task = startTask(title, goal, note, { assignee: "desk.researcher" });
+    const task = startTask(title, goal, note, { assignee: "desk.researcher", spend: spent(RESEARCH_MODEL, 1200, 300, true) });
     s.tasks = [...s.tasks, task];
     push(s, { kind: "tool", id: nextId("tool"), name: "createTask", summary: `${title} → researcher` });
   };
@@ -163,7 +176,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
   const settle = (s: FixtureSession, title: string, summary: string): Step[1] => () => {
     const task = s.tasks.find((t) => t.title === title);
     if (!task || task.status !== "in_progress") return;
-    writeStep(s, task, { status: "completed", statusNote: undefined }, summary);
+    writeStep(s, task, { status: "completed", statusNote: undefined, spend: spent(RESEARCH_MODEL, 5400, 900, false) }, summary);
     // fake: stands in for the main worker's `answerAgain: true` (FIX-2159): the take shows as an item in the running request.
     push(s, {
       kind: "result",
@@ -250,11 +263,11 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
   const codeScript = (s: FixtureSession, text: string, origin: string): Step[] => {
     const ref: Ref = {};
     return [
-      [600, fileThread(s, origin, ref, text.split("\n")[0].slice(0, 60), text, "Editing CHANGELOG.md", { assignee: "desk.coder", harness: "claude-code" })],
+      [600, fileThread(s, origin, ref, text.split("\n")[0].slice(0, 60), text, "Editing CHANGELOG.md", { assignee: "desk.coder", harness: "claude-code", spend: spent(CODE_MODEL, null, null, true, "claude-code") })],
       [400, say(s, "I've started a Claude Code thread for it, in this session's project.")],
       [200, () => endTurn(s)],
-      [1200, advance(s, ref, { statusNote: "Committing" }, "Committing: docs: note the vendor pick"), "background"],
-      [800, advance(s, ref, review("Judge: pass · 1 commit · adds the vendor line to CHANGELOG.md"), "One commit, CHANGELOG.md only."), "background"],
+      [1200, advance(s, ref, { statusNote: "Committing", spend: spent(CODE_MODEL, 8200, 1100, true, "claude-code") }, "Committing: docs: note the vendor pick"), "background"],
+      [800, advance(s, ref, { ...review("Judge: pass · 1 commit · adds the vendor line to CHANGELOG.md"), spend: spent(CODE_MODEL, 12000, 1600, true, "claude-code") }, "One commit, CHANGELOG.md only."), "background"],
     ];
   };
 

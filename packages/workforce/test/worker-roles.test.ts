@@ -56,7 +56,7 @@ function flowOn(installation: WorkerInstallation | undefined, flowName: string, 
   } as never) as never;
 }
 
-/** A flow carrying the manager kit, built with the kit's own session and resources. */
+/** A flow carrying the manager factory, built with the factory's own session and resources. */
 function managerFlow(installation: WorkerInstallation, flowName: string, pick: (entries: Record<string, unknown>) => Record<string, unknown>, actions = true) {
   const board = defineSessionBoard({ installation, flowKind: flowName });
   return defineFlow({
@@ -137,10 +137,10 @@ describe("a piece of a role's factory on a flow that doesn't declare the role", 
     expect(problems[0]).toContain("roles");
   });
 
-  it("refuses the manager kit spread with its `onTaskSettled` but neither `dispatch` nor `roles`", () => {
+  it("refuses the manager factory spread with its `onTaskSettled` but neither `dispatch` nor `roles`", () => {
     const installation = createWorkerInstallation();
-    const flow = managerFlow(installation, "half-kit", (entries) => ({ onTaskSettled: entries.onTaskSettled }), false);
-    const problems = workerFlowProblems("half-kit", flow, []);
+    const flow = managerFlow(installation, "half-factory", (entries) => ({ onTaskSettled: entries.onTaskSettled }), false);
+    const problems = workerFlowProblems("half-factory", flow, []);
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain('"manager"');
     expect(problems[0]).toContain('"onTaskSettled"');
@@ -211,8 +211,8 @@ describe("every hire path reads the roles a flow is registered with", () => {
   // registrations of it with different roles must not share one.
   it("judges one flow under two registrations by each one's roles", () => {
     const flow = flowOn(undefined, "clerk", { task: { actions: { work: workEntry() } } });
-    expect(refusalOf(() => checkWorkerFlows({ clerk: { flow, standardOnly: false, roles: ["contributor"], showSettings: [] } }))).toBe("");
-    expect(refusalOf(() => checkWorkerFlows({ clerk: { flow, standardOnly: false, roles: [], showSettings: [] } }))).toContain('"contributor"');
+    expect(refusalOf(() => checkWorkerFlows({ clerk: { flow, standardOnly: false, roles: ["contributor"], showSettings: [], needsProject: false } }))).toBe("");
+    expect(refusalOf(() => checkWorkerFlows({ clerk: { flow, standardOnly: false, roles: [], showSettings: [], needsProject: false } }))).toContain('"contributor"');
   });
 });
 
