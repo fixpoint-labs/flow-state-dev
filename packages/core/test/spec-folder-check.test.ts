@@ -1,5 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -201,6 +209,38 @@ describe("retained specs through the guard CLI", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("spec/FIX-123");
     expect(result.stderr).toContain("spec-poc/ordering");
+  });
+
+  /**
+   * Node resolves symlinks for the main module, so a guard that recognises
+   * itself by comparing `process.argv[1]` literally runs nothing when invoked
+   * through a link — exiting 0 in silence, which reads as a pass. The symlink
+   * here is explicit so the case holds on every platform, not only where the
+   * system temp directory happens to be one.
+   */
+  it("runs when invoked through a symlinked path, rather than passing in silence", () => {
+    const real = realpathSync(mkdtempSync(join(tmpdir(), "spec-folder-real-")));
+    roots.push(real);
+    mkdirSync(join(real, "scripts"));
+    copyFileSync(
+      new URL("../../../scripts/validate-spec-folder.mjs", import.meta.url),
+      join(real, "scripts/validate-spec-folder.mjs"),
+    );
+    mkdirSync(join(real, "spec/_projects/streaming"), { recursive: true });
+    writeFileSync(join(real, "spec/_projects/streaming/SPEC.md"), "# Project direction");
+
+    const linkRoot = realpathSync(mkdtempSync(join(tmpdir(), "spec-folder-link-")));
+    roots.push(linkRoot);
+    const link = join(linkRoot, "repo");
+    symlinkSync(real, link, "dir");
+
+    const result = spawnSync(process.execPath, [join(link, "scripts/validate-spec-folder.mjs")], {
+      cwd: real,
+      encoding: "utf8",
+    });
+    if (result.error) throw result.error;
+    expect(result.status, `stdout: ${result.stdout}\nstderr: ${result.stderr}`).toBe(1);
+    expect(result.stderr).toContain("spec/_projects");
   });
 });
 

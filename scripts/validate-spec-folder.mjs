@@ -16,7 +16,7 @@
  * runs it without an install.
  */
 
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, realpathSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -206,6 +206,26 @@ function main() {
   process.exit(1);
 }
 
-if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+/**
+ * True when this file is the entry point. Node resolves symlinks for the main
+ * module, so `import.meta.url` is the real path while `process.argv[1]` keeps
+ * the symlinked one it was invoked through — on macOS every path under the
+ * system temp directory is such a link. Comparing the two literally made the
+ * guard skip `main()` and exit 0 without printing, the one failure mode a CI
+ * gate must never have. Compare the resolved path too, and keep the literal
+ * comparison so `--preserve-symlinks-main` still matches.
+ */
+function invokedAsMain() {
+  const entry = process.argv[1];
+  if (entry === undefined) return false;
+  if (import.meta.url === pathToFileURL(entry).href) return true;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(entry)).href;
+  } catch {
+    return false; // Entry resolved to nothing readable; not this module.
+  }
+}
+
+if (invokedAsMain()) {
   main();
 }
