@@ -6,7 +6,7 @@
 .fs-landing a{color:#1b1a15}
 .fs-landing a:hover{color:#3d3a32}
 .fs-landing .fs-root{position:relative;background:#f0ece1;min-height:100vh;overflow:hidden}
-.fs-landing .fs-page{position:relative;z-index:1;background:#f0ece1}
+.fs-landing .fs-page{position:relative;z-index:1;background:transparent}
 .fs-landing .fs-sheet{display:flex;flex-wrap:wrap;border-top:1px solid #1b1a15}
 .fs-landing .fs-rail{flex:0 0 52px;box-sizing:border-box;border-right:1px solid rgba(27,26,21,.45);writing-mode:vertical-rl;transform:rotate(180deg);display:flex;align-items:center;justify-content:flex-end;padding:34px 0;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:10px;font-weight:500;letter-spacing:.18em;color:#57544a;text-transform:uppercase}
 .fs-landing .fs-body{flex:999 1 560px;min-width:0;box-sizing:border-box;padding:34px}
@@ -79,17 +79,34 @@ body:has(main.fs-landing) {
 .fs-landing > .fs-root > .fs-page > footer {
   padding-inline: max(0px, calc((100% - 1240px) / 2));
 }
-.fs-landing .fs-features{grid-template-columns:repeat(4,minmax(0,1fr)) !important}
-.fs-landing .fs-also{grid-template-columns:repeat(4,minmax(0,1fr)) !important}
+.fs-landing .fs-features{display:grid;gap:14px;grid-template-columns:repeat(4,minmax(0,1fr))}
+.fs-landing .fs-also{margin:0;padding:0;list-style:none;display:grid;gap:14px 22px;grid-template-columns:repeat(4,minmax(0,1fr))}
 @media (max-width:1000px){
-.fs-landing .fs-features,.fs-landing .fs-also{grid-template-columns:repeat(2,minmax(0,1fr)) !important}
+.fs-landing .fs-features,.fs-landing .fs-also{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @media (max-width:760px){
-.fs-landing .fs-features,.fs-landing .fs-also{grid-template-columns:1fr !important}
+.fs-landing .fs-features,.fs-landing .fs-also{grid-template-columns:1fr}
 }
 
-.fs-landing .fs-page{background:transparent}
-.fs-landing .fs-sheet:not([style*="background"]){
+.fs-landing .fs-tint{background:#e7e2d5}
+.fs-landing .fs-kicker{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#57544a}
+.fs-landing .fs-card{background:#f8f6f0;border:1px solid rgba(27,26,21,.25);padding:16px;display:flex;flex-direction:column;gap:10px}
+.fs-landing .fs-card svg{display:block;width:100%;max-width:200px;height:auto}
+.fs-landing .fs-card h3{margin:0;font-size:17px;letter-spacing:-0.02em;font-weight:700}
+.fs-landing .fs-card p{margin:0;font-size:13.5px;line-height:1.6;color:#3d3a32}
+.fs-landing .fs-also li{display:flex;flex-direction:column;gap:8px;padding:14px 0 0;border-top:1px solid rgba(27,26,21,.3)}
+.fs-landing .fs-also svg{display:block;width:40px;height:26px}
+.fs-landing .fs-also h3{margin:0;font-size:15px;letter-spacing:-0.02em;font-weight:700}
+.fs-landing .fs-also p{margin:0;font-size:13px;line-height:1.55;color:#3d3a32}
+.fs-landing .fs-use{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px 34px;align-items:baseline;padding:22px 0;border-bottom:1px solid rgba(27,26,21,.3)}
+.fs-landing .fs-use-who{display:flex;gap:14px;align-items:baseline}
+.fs-landing .fs-num{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:13px;font-weight:600;color:#1b1a15}
+.fs-landing .fs-use h3{margin:0;font-size:26px;line-height:1.1;letter-spacing:-0.03em;font-weight:700;text-wrap:pretty}
+.fs-landing .fs-use-body{display:flex;flex-direction:column;gap:8px}
+.fs-landing .fs-use p{margin:0;font-size:14.5px;line-height:1.6;color:#3d3a32}
+.fs-landing .fs-tag{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:#57544a}
+
+.fs-landing .fs-sheet:not(.fs-tint){
   background-image:linear-gradient(#f0ece1,#f0ece1);
   background-repeat:no-repeat;
   background-size:min(100%,1240px) 100%;
