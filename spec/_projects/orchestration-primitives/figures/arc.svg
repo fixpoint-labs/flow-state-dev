@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 636" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The arc: twelve lanes from Apr 15 to Oct 31, bars running from filed to wrapped. The Plan/Task series landed Apr 28 to May 1. The delegation substrate ran Jul 23 to Jul 29, durable jobs Jul 24 to Aug 12, the honest task substrate Jul 29 to Oct 10, flow instances Sep 7 to Oct 6 and the dispatch protocol Sep 5 to Oct 12, all done. dispatchTask, FIX-1870, ran Oct 11 to Oct 21 and was canceled, superseded by FIX-2056. One task primitive, FIX-2056, ran Oct 15 to Oct 24 and is done, wrapped Oct 24. One Inbox, FIX-2058, filed Oct 15, ran to Oct 27 and is done, wrapped Oct 27. Messages (FIX-2070) and coordination renames (FIX-2071, both filed Oct 21) are filed and not started, so their lanes carry no bar, as is phased workflows (FIX-2092, filed Oct 21). The now line is Oct 27.">
+     aria-label="The arc: twelve lanes from Apr 15 to Oct 31, bars running from filed to wrapped. The Plan/Task series landed Apr 28 to May 1. The delegation substrate ran Jul 23 to Jul 29, durable jobs Jul 24 to Aug 12, the honest task substrate Jul 29 to Oct 10, flow instances Sep 7 to Oct 6 and the dispatch protocol Sep 5 to Oct 12, all done. dispatchTask, FIX-1870, ran Oct 11 to Oct 21 and was canceled, superseded by FIX-2056. One task primitive, FIX-2056, ran Oct 15 to Oct 24 and is done, wrapped Oct 24. One Inbox, FIX-2058, filed Oct 15, ran to Oct 27 and is done, wrapped Oct 27. Messages (FIX-2070, filed Oct 21) is in flight with its closure running. Coordination renames (FIX-2071, filed Oct 21) is done, wrapped Oct 30. Phased workflows (FIX-2092, filed Oct 21) is in flight with its epic spec in review. The now line is Oct 30.">
   <style>
     :root { --surface:#FCFCFA; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -21,7 +21,7 @@
     .t-now  { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:10px; }
   </style>
 
-  <!-- x = 180 + (720/199) * (days since Apr 15 2026). Axis ends Oct 31 = 900. Now Oct 27 = 885.5 -->
+  <!-- x = 180 + (720/199) * (days since Apr 15 2026). Axis ends Oct 31 = 900. Now Oct 30 = 896.4 -->
   <g id="axis">
     <text class="t-lbl" x="16" y="20">EPIC</text>
     <text class="t-lbl" x="180" y="20">APR 15</text>
@@ -100,24 +100,27 @@
 
   <g id="messages">
     <text class="t-lane" x="16" y="488">messages</text>
-    <text class="t-s"    x="16" y="502">FIX-2070 · not started</text>
-    <text class="t-s" x="834.1" y="491" text-anchor="end">filed Oct 21 · free to start</text>
+    <text class="t-s"    x="16" y="502">FIX-2070 · in flight</text>
+    <rect class="flight" x="863.8" y="474" width="32.6" height="26" rx="3"/>
+    <text class="t-s" x="855.8" y="491" text-anchor="end">filed Oct 21 · closure running</text>
   </g>
 
   <g id="renames">
     <text class="t-lane" x="16" y="536">coordination renames</text>
-    <text class="t-s"    x="16" y="550">FIX-2071 · not started</text>
-    <text class="t-s" x="834.1" y="539" text-anchor="end">filed Oct 21 · waits on FIX-2070</text>
+    <text class="t-s"    x="16" y="550">FIX-2071 · done</text>
+    <rect class="done" x="863.8" y="522" width="32.6" height="26" rx="3"/>
+    <text class="t-s" x="855.8" y="539" text-anchor="end">filed Oct 21 · wrapped Oct 30</text>
   </g>
 
   <g id="phased">
     <text class="t-lane" x="16" y="584">phased workflows</text>
-    <text class="t-s"    x="16" y="598">FIX-2092 · not started</text>
-    <text class="t-s" x="834.1" y="587" text-anchor="end">filed Oct 21 · free to start, POC first</text>
+    <text class="t-s"    x="16" y="598">FIX-2092 · in flight</text>
+    <rect class="flight" x="863.8" y="570" width="32.6" height="26" rx="3"/>
+    <text class="t-s" x="855.8" y="587" text-anchor="end">filed Oct 21 · epic spec in review</text>
   </g>
 
   <g id="now">
-    <path class="now" d="M885.5 30 V608"/>
-    <text class="t-now" x="879.5" y="624" text-anchor="end">now · Oct 27</text>
+    <path class="now" d="M896.4 30 V608"/>
+    <text class="t-now" x="890.4" y="624" text-anchor="end">now · Oct 30</text>
   </g>
 </svg>
