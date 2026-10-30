@@ -15,8 +15,9 @@
    selection only; red is the danger admonition only. Corners are
    square and nothing casts a shadow.
 
-   `shift-manager.css` (the app register) is still imported for the
-   landing page, which reads its tokens; no rule in this file does.
+   `shift-manager.css` (the app register) is still imported, but no rule
+   in this file reads its tokens, and the landing page (src/components/
+   Landing) carries its own colours. Dropping the import is a follow-up.
    ══════════════════════════════════════════════════════════════ */
 
 @import "@flow-state-dev/design-system/shift-manager.css";
