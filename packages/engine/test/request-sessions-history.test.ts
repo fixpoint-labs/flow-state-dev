@@ -11,6 +11,7 @@
  */
 import type { MessageItem, OutputItem, ToolOutputItem } from "@flow-state-dev/core/items";
 import type { FlowInstance } from "@flow-state-dev/core/types";
+import { estimateTokenCounter } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "../src/stores";
 import { createRequestSessions } from "../src/context/request-sessions";
@@ -19,11 +20,8 @@ import type { RequestRecord } from "../src/stores/types";
 
 const provenance = { blockName: "gen", blockInstanceId: "gen_1", phase: "main" as const };
 const deskFlow = { id: "desk", kind: "desk" } as unknown as FlowInstance;
-const counter = {
-  count: async (text: string) => Math.ceil(text.length / 4),
-  countMessages: async (messages: { content: unknown }[]) =>
-    Math.ceil(messages.reduce((n, m) => n + JSON.stringify(m.content).length, 0) / 4)
-};
+// Model "m" matches no lookup entry, so this counts 4 characters a token.
+const counter = estimateTokenCounter;
 
 function message(requestId: string, role: "user" | "assistant", text: string, ts: number, itemIndex: number): OutputItem {
   const item: MessageItem = { id: `${requestId}_${itemIndex}`, type: "message", role, content: [{ type: "output_text", text }], status: "completed", requestId, itemIndex, provenance, ts };

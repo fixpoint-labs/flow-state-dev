@@ -158,13 +158,13 @@ mechanisms:
     doc: docs/architecture/generator-identity.md
 
   - id: token-estimate
-    job: Count or estimate tokens and price a model call. One place for it; a private estimator copy in another package is a duplicate.
+    job: Count or estimate tokens and price a model call. One place for it; a private estimator copy in another package is a duplicate. The engine counts with `estimateTokenCounter` when a flow sets no `tokenCounter`, and hands blocks the flow's counter as `ctx.tokenCounter`.
     package: "@flow-state-dev/core"
-    anchor: modelPricingEstimator
-    file: packages/core/src/adapters/model-lookup.ts
+    anchor: estimateTokenCounter
+    file: packages/core/src/adapters/token-counter.ts
     builtOn: [model]
     overlaps: []
-    status: unconfirmed
+    status: canonical
     doc: packages/core/README.md
 
   - id: prompt

@@ -1326,7 +1326,7 @@ The quoted history reaches the answering model as a record. A line in it that re
 utility.consultSessionHistoryTool({
   name?: string,          // the tool's name (default: "consultSessionHistory")
   model?: string,         // model the answer runs on (default: "intent/utility")
-  budgetTokens?: number,  // hard cap on history tokens read (default: utility.CONSULT_DEFAULT_BUDGET_TOKENS, 24,000)
+  budgetTokens?: number,  // hard cap on history tokens read, counted by the flow's tokenCounter (default: utility.CONSULT_DEFAULT_BUDGET_TOKENS, 24,000)
   description?: string,   // what the model reads about the tool
   target?: { inputSchema, resolve },  // name the session your own way
 });
