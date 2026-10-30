@@ -92,7 +92,7 @@ export const Entry = memo(function Entry({
         <section aria-label={`From ${from}`} data-entry="result" className="max-w-[85%] rounded-md border border-dashed border-success/60 bg-success/5 px-3 py-2">
           <div className="flex items-center gap-2 font-mono text-[10px] tracking-widest text-success uppercase">
             <span className="flex-1">
-              ← {isCoding(entry.from) ? "coding task" : nameOf(entry.from)} · {entry.failed ? "task failed" : "task done"}
+              ← {isCoding(entry.from) ? "coding task" : nameOf(entry.from)} · {entry.failed ? "task failed" : entry.cancelled ? "task cancelled" : "task done"}
             </span>
             {entry.taskId !== "" && onOpenTask ? (
               <button type="button" onClick={() => onOpenTask(entry.taskId)} className="text-muted-foreground normal-case hover:text-foreground">
@@ -150,14 +150,14 @@ function ApprovalCard({
 
 /** A filed task coming back: one line, "researcher finished: Draft the post", that opens its popup. */
 function ResultLine({ who, look, entry, onOpen }: { who: string; look?: Look; entry: Extract<ConversationEntry, { kind: "result" }>; onOpen: () => void }) {
-  const said = `${who} ${entry.failed ? "couldn't finish" : "finished"}`;
+  const said = `${who} ${entry.failed ? "couldn't finish" : entry.cancelled ? "was cancelled" : "finished"}`;
   const line = entry.title === undefined ? said : `${said}: ${entry.title}`;
   return (
     <button
       type="button"
       aria-label={line}
       data-entry="result"
-      data-status={entry.failed ? "failed" : "done"}
+      data-status={entry.failed ? "failed" : entry.cancelled ? "cancelled" : "done"}
       onClick={onOpen}
       className="flex w-full max-w-[85%] items-center gap-2 rounded-md border border-dashed border-success/60 bg-success/5 px-3 py-1.5 text-left text-sm hover:bg-accent"
     >

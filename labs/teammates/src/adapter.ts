@@ -86,8 +86,9 @@ export interface BoardTask {
   /** The worker it was filed for. */
   to: string;
   title: string;
-  status: "running" | "done" | "failed";
-  /** What the run reported when it ended, or why it failed. */
+  /** `cancelled` is its own ending: a task someone withdrew did not fail. */
+  status: "running" | "done" | "failed" | "cancelled";
+  /** What the run reported when it ended, or why it failed or was cancelled. */
   result?: string;
   /** The session its run works in, once it started. */
   runSessionId?: string;
@@ -128,7 +129,7 @@ export type ConversationEntry =
   /** The worker filed a task; the card reads the board's row by its id, and draws `title` until the row arrives. */
   | { kind: "task"; id: string; taskId: string; title: string; to: string }
   /** A task it filed ended, as a line under the name of the worker that ran it; `title` is the task's, once its row is read. */
-  | { kind: "result"; id: string; taskId: string; from: string; text: string; title?: string; failed?: boolean }
+  | { kind: "result"; id: string; taskId: string; from: string; text: string; title?: string; failed?: boolean; cancelled?: boolean }
   /** The worker waits for your yes (`waitForUser` with an approval); `resolution` once answered. */
   | { kind: "approval"; id: string; requestId: string; suspensionId: string; text: string; resolution?: string };
 
@@ -319,14 +320,14 @@ function spendOf(row: Record<string, any>): { harness?: string; model?: string }
 }
 
 /**
- * A board row as a task card.
+ * A board row as a task card. Exported for its tests.
  *
  * @param harnessOf A worker's `harness:` setting, for a coding task whose run hasn't reported one yet.
  */
-function toBoardTask(row: Record<string, any>, harnessOf: (worker: string) => string | undefined = () => undefined): BoardTask {
+export function toBoardTask(row: Record<string, any>, harnessOf: (worker: string) => string | undefined = () => undefined): BoardTask {
   const error = typeof row.error === "string" ? row.error : undefined;
   const status: BoardTask["status"] =
-    row.status === "completed" ? "done" : row.status === "errored" || row.status === "cancelled" ? "failed" : "running";
+    row.status === "completed" ? "done" : row.status === "errored" ? "failed" : row.status === "cancelled" ? "cancelled" : "running";
   const answer = typeof row.output?.answer === "string" ? row.output.answer : undefined;
   return {
     id: row.id,
@@ -361,7 +362,8 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>):
       const row = rows.get(taskId);
       const task = row === undefined ? undefined : toBoardTask(row);
       // A line with no task id is a completed task's answer, said as is (`resultTo: "conversation"`).
-      const failed = taskId !== "" && task?.status !== "done";
+      const cancelled = task?.status === "cancelled";
+      const failed = taskId !== "" && task?.status !== "done" && !cancelled;
       entries.push({
         kind: "result",
         id: item.id,
@@ -370,6 +372,7 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>):
         text: task?.result ?? textOf(item),
         ...(task?.title === undefined ? {} : { title: task.title }),
         ...(failed ? { failed: true } : {}),
+        ...(cancelled ? { cancelled: true } : {}),
       });
     } else if (item.type === "message" && item.role === "assistant") {
       const text = textOf(item);

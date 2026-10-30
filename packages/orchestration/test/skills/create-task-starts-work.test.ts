@@ -124,6 +124,21 @@ describe("createTask replayed after the team changed (BR-15)", () => {
     expect(collection.list().map((task) => task.id)).toEqual([replay.taskId]);
   });
 
+  it("a call filed before the same-work check existed finds its own row on the replay, never refused as a duplicate (FIX-2350)", async () => {
+    const collection = await board();
+    const dying = dyingOnce(collection, "createTask");
+    const t = team(["eng.a"]);
+    const memo = new Map<string, unknown>();
+    const input = { goal: "Draft the release note", assignee: "eng.a" };
+    await expect(run(createTool(dying, t.roster), input, turnCtx(memo))).rejects.toThrow("the process died");
+    // The record an older build left: the call's id, and no same-work decision.
+    for (const key of [...memo.keys()]) if (key.startsWith("fsd.decide.same-work:")) memo.delete(key);
+
+    const replay = await run(createTool(dying, t.roster), input, turnCtx(memo));
+    expect(replay).toMatchObject({ ok: true, taskId: collection.list()[0]!.id });
+    expect(collection.list()).toHaveLength(1);
+  });
+
   it("keeps the call that filed a row out of a caller's reach: metadata naming another call is not written", async () => {
     const collection = await board();
     const t = team(["eng.a"]);

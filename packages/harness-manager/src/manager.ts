@@ -2945,13 +2945,16 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   });
 
   /**
-   * Poll the row while the step runs. A run that offers a live steer is handed
+   * Poll the row while the step runs. A row this attempt no longer holds
+   * (cancelled, settled, claimed again) stops the harness at once: its run
+   * can record nothing, so it must not go on working, and the lease's own
+   * stop comes only at its next renewal. A run that offers a live steer is handed
    * each untaken steer (taken first, so it is taken once); otherwise, with
    * `stopsOnAbort`, the step is stopped (not the request) for it. Without
-   * either, nothing is read: the step's own end takes the steer.
+   * either, the step's own end takes the steer.
    */
   const steerWatches = new Map<string, SteerWatch>();
-  const watchForSteers = (ctx: BlockContext): AbortSignal | undefined => {
+  const watchForSteers = (ctx: BlockContext): AbortSignal => {
     const requestId = ctx.request.identity.id;
     const controller = new AbortController();
     const watch: SteerWatch = { stopped: false, timer: undefined, steer: null, handed: 0, polling: false, kick: () => {} };
@@ -2962,8 +2965,6 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       watch.stopped = true;
       controller.abort(new Error("[harness-manager] stopped for a steer"));
     };
-    // Polled only while there is something to do: a stop to make, or a live steer to hand.
-    const wanted = () => options.stopsOnAbort === true || watch.steer !== null;
     const schedule = () => {
       if (live() && !controller.signal.aborted && watch.timer === undefined && !watch.polling) {
         watch.timer = setTimeout(() => void poll(), STEER_POLL_MS);
@@ -2973,21 +2974,27 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       watch.timer = undefined;
       watch.polling = true;
       try {
-        if (!wanted()) return;
         const state = managerState(harnessCtxState(ctx));
+        if (state.taskId === null) return;
         const row = await committedRow(ctx);
         if (!live()) return;
-        const owed =
+        const ours =
           row !== undefined &&
           row.status === "in_progress" &&
           row.attempts === state.attempt &&
           // This turn's own row (FIX-2133 D3): a later turn of the attempt is another run's.
-          (state.ticket == null || (row.turn ?? 0) === state.ticket.turn) &&
-          untakenSteers(row).length > 0;
+          (state.ticket == null || (row.turn ?? 0) === state.ticket.turn);
+        if (!ours) {
+          // Not a steer's stop: the step fails, and the fence refuses whatever it would record.
+          controller.abort(new HarnessAttemptSuperseded(`its run ended (the task is ${row?.status ?? "gone"})`));
+          return;
+        }
+        const owed = untakenSteers(row).length > 0;
         // Stopped only once the harness confirmed a session to resume: a stop
         // before that would cost the attempt the steer must not use. A line
         // handed live needs one too, for the step a refusal falls back to.
-        const confirmed = owed && (await readConfirmedSession(ctx, state.topic!, state.attempt!)) !== null;
+        const wanted = options.stopsOnAbort === true || watch.steer !== null;
+        const confirmed = wanted && owed && (await readConfirmedSession(ctx, state.topic!, state.attempt!)) !== null;
         if (!live() || !confirmed) return;
         const steer = watch.steer;
         if (steer !== null) {
@@ -3017,19 +3024,20 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           }
           return;
         }
-        stop();
+        if (options.stopsOnAbort === true) stop();
         return;
       } catch {
         // A read that fails stops nothing: the step's own end takes the steer.
       } finally {
         watch.polling = false;
-        if (wanted()) schedule();
+        // Always: the row is read every poll while a step runs, steer or none, to catch its end.
+        schedule();
       }
     };
     watch.kick = schedule;
     steerWatches.set(requestId, watch);
-    if (wanted()) schedule();
-    return options.stopsOnAbort === true ? controller.signal : undefined;
+    schedule();
+    return controller.signal;
   };
 
   /**
@@ -3104,14 +3112,14 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     .step(harnessBlock, {
       // The cancellable-under-a-deadline obligation, met by a primitive core
       // already has: this composes into the block's own signal, which the SDK
-      // path forwards into the query's abort controller. A steer's watch
-      // composes in beside it.
+      // path forwards into the query's abort controller. The row's watch
+      // (a steer's stop, or the task's end) composes in beside it.
       abortSignal: (ctx) => {
         const deadline = AbortSignal.timeout(runTimeoutMs);
         // Armed for every step: a run may offer a live steer once it starts.
         const steer = watchForSteers(ctx);
         startProgressNotes(ctx);
-        return steer === undefined ? deadline : AbortSignal.any([deadline, steer]);
+        return AbortSignal.any([deadline, steer]);
       },
       // Fires on every exit from the dispatch — returned, threw, or
       // suspended. The tree is only written by the agent, so releasing the

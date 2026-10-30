@@ -426,7 +426,7 @@ the coding flow gives its turn a `sendMessage` of its own.
 
 By default a running step finishes first, and the next step takes the steer. Build the manager with `stopsOnAbort: true` when your harness's abort resolves only once its process has exited. The manager then reads its row every `STEER_POLL_MS` (one second) while a step runs, and once the harness has confirmed a coding session to resume, a new message stops the running step, and the next step starts at once with it. The stop ends the step, not the request, and the checkout keeps what the stopped step wrote. A message that arrives before the session is confirmed waits for the step's own end. Leave the option off for a harness whose abort can return while its process still runs.
 
-A step never runs for a task its attempt no longer holds: if the task is cancelled, finishes, or is claimed again while a step runs, the request takes no further step.
+A step never runs for a task its attempt no longer holds. The manager reads the task's row every `STEER_POLL_MS` while a step runs, and if the task is cancelled, finishes, or is claimed again, it aborts the running step's harness within that second and the request takes no further step. A cancelled task's harness doesn't keep working on a run that can record nothing.
 
 A message taken mid-run shows in the run's session as a line from its sender.
 

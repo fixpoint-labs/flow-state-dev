@@ -202,6 +202,33 @@ function waitingOf(t: Task) {
   };
 }
 
+/** A new row's id, in the board's own shape: twenty hex characters, unique across processes. */
+const mintTaskId = (): string => `task_${crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`;
+
+/**
+ * The filing each board is running, so the next waits for it (FIX-2350). In
+ * process, and keyed by the request too: a step's sibling calls share one
+ * request, while another request's board of the same name may be another
+ * board altogether, and must not wait on this one.
+ */
+const filings = new Map<string, Promise<unknown>>();
+
+/** Run `file` once every earlier filing on the same board has ended. */
+async function oneFilingAtATime<T>(board: string, file: () => Promise<T>): Promise<T> {
+  const before = filings.get(board) ?? Promise.resolve();
+  const mine = before.then(file, file);
+  const settled = mine.then(
+    () => undefined,
+    () => undefined
+  );
+  filings.set(board, settled);
+  try {
+    return await mine;
+  } finally {
+    if (filings.get(board) === settled) filings.delete(board);
+  }
+}
+
 /**
  * One task as `getTask` reads it: every field it returns, with its input,
  * output and metadata each cut to {@link READ_OUTPUT_LIMIT} and flagged when
@@ -1058,6 +1085,49 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
    * reaches its own write instead of a refusal (FIX-1875 BR-15). `null`
    * stands for "nothing to refuse" in the record, which holds JSON only.
    */
+  /**
+   * The id this call recorded for the row it files, as `fileReady` records
+   * it: read back on a replay, minted and recorded now otherwise. `undefined`
+   * where the turn carries no tool call or no `runOnce`.
+   */
+  async function recordedFiling(ctx: BlockContext): Promise<string | undefined> {
+    const call = toolCallOf(ctx);
+    if (call === undefined || ctx.runOnce === undefined) return undefined;
+    return ctx.runOnce(`fsd.dispatch.plan:${call.logicalId}`, async () => mintTaskId());
+  }
+
+  /**
+   * The refusal for filing work a task still open already holds: the same
+   * goal, ignoring case and spacing, for the same worker and workstream target. Names the open task
+   * by its title, so a reply can name it the same way.
+   */
+  function openSameWork(
+    collection: TaskCollectionRef,
+    assignee: string,
+    target: string | undefined,
+    goal: string,
+  ): { taskId: string; error: string } | undefined {
+    const same = (text: string) => text.trim().replace(/\s+/g, " ").toLowerCase();
+    const open = collection
+      .list()
+      .find(
+        (row) =>
+          row.assignee === assignee &&
+          // A workstream is its own work: the same worker leads each one it targets.
+          row.target === target &&
+          !isTerminalStatus(row.status) &&
+          same(row.goal) === same(goal),
+      );
+    if (open === undefined) return undefined;
+    return {
+      taskId: open.id,
+      error:
+        `already_open: task "${open.title ?? open.goal}" (${open.id}) is this same work for ${assignee}, and it is still ` +
+        `${open.status}. Nothing was filed. Say that task is on it. To change it, send it a message with updateTask; ` +
+        `to replace it, cancel it first.`,
+    };
+  }
+
   async function decideOnce<T>(
     ctx: BlockContext,
     memoize: boolean,
@@ -1115,6 +1185,23 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         ? undefined
         : await decideOnce(ctx, memoize, "assignee", async () => checkAssignee(assignee, await rosterFor(roster, ctx)) ?? null);
     if (bad) return bad;
+    // One piece of work, one task (FIX-2350): the same goal for the same
+    // worker while a task for it is open is a second start, from a call sent
+    // twice or retried. Decided once per call, so a replay finds its own row.
+    // A message handed on (`resultTo: "conversation"`) keeps its own rule:
+    // one task per delegate a round, recorded by the routing that files it.
+    // A task with no assignee goes to the roster's one worker, when it has one.
+    const worker = assignee ?? (await rosterFor(roster, ctx))?.soleAssignee?.();
+    const open =
+      followUp === undefined && worker !== undefined && input.resultTo !== "conversation"
+        ? await decideOnce(ctx, memoize, "same-work", async () => {
+            const refusal = openSameWork(collection, worker, input.target, input.goal);
+            // A call an older build filed has its id recorded and no decision:
+            // the open row is its own, found again by `fileReady`.
+            return refusal === undefined || (memoize && refusal.taskId === (await recordedFiling(ctx))) ? null : refusal.error;
+          })
+        : null;
+    if (open) return { ok: false as const, error: open };
     // The task whose request files this one: the task the worker's request
     // works, claimed or not (a cancelled task's run that goes on has no
     // claim, and is still its filer, so its filing is refused). Server-set,
@@ -1205,17 +1292,23 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       }
       const collection = await resolve(ctx);
       if (!collection) return noBoardError;
-      // Recorded with the call on a board that starts work, so a replay decides as the first call did.
-      const checked = await checkNewTask(ctx, collection, input, dispatches);
-      if ("error" in checked) return checked;
-      return fileNewTask(checked.followUp, async () => {
-        // On a board that starts a ready row at once, a filing starts work:
-        // once per call, so a replay finds its own row (BR-15).
-        const filed = dispatches
-          ? await fileReady(ctx, collection, checked.init)
-          : { ok: true as const, taskId: (await collection.createTask(checked.init)).id };
-        return input.held === true ? { ...filed, status: "held" as const } : filed;
-      });
+      // One filing at a time per board where the same-work check runs: a
+      // step's sibling calls run at once, and the check must see the row the
+      // other call filed. A follow-up keeps its own race rule (BR-25).
+      const file = async () => {
+        // Recorded with the call on a board that starts work, so a replay decides as the first call did.
+        const checked = await checkNewTask(ctx, collection, input, dispatches);
+        if ("error" in checked) return checked;
+        return fileNewTask(checked.followUp, async () => {
+          // On a board that starts a ready row at once, a filing starts work:
+          // once per call, so a replay finds its own row (BR-15).
+          const filed = dispatches
+            ? await fileReady(ctx, collection, checked.init)
+            : { ok: true as const, taskId: (await collection.createTask(checked.init)).id };
+          return input.held === true ? { ...filed, status: "held" as const } : filed;
+        });
+      };
+      return input.followUpOf === undefined ? oneFilingAtATime(`${ctx.request?.identity?.id ?? ""}\u0000${collection.collectionId}\u0000${collection.partition ?? ""}`, file) : file();
     },
   });
 
@@ -1235,8 +1328,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     let recordedNow = false;
     const id = await ctx.runOnce(`fsd.dispatch.plan:${call.logicalId}`, async () => {
       recordedNow = true;
-      // The board's own id shape: twenty hex characters, unique across processes.
-      return init.id ?? `task_${crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`;
+      return init.id ?? mintTaskId();
     });
     // An id minted here is this call's alone, so a row with it is its own. A
     // follow-up's id is picked from the board, so another call can have
