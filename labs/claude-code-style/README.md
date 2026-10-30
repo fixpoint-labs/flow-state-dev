@@ -21,10 +21,10 @@ needs is a gap filed against the package.
 ## Threads mode
 
 In the Projects view, the main session is a coordinator, `desk.lead`. It hands each request to
-threads, each a task in a session of its own, and the right pane is the status board, *Threads*.
+threads, each a task in a session of its own, and the right pane is the status board, *Tasks*.
 
-- **Center:** your line is marked *Sent to a thread*, and each thread is a compact card where the
-  lead filed it, with *View thread*, *Answer* when it asks you something, and *Resolve* and
+- **Center:** your line is marked *Sent to a task*, and each thread is a compact card where the
+  lead filed it, with *View task*, *Answer* when it asks you something, and *Resolve* and
   *Request changes* when it is ready for review.
 - **Right:** the board groups threads by what you owe them: *Pinned*, *Working*, *Waiting on you*,
   *Ready for review* and *Resolved*, collapsed to a count. A column is read from the task's
@@ -108,7 +108,7 @@ a package call:
 | Interrupting | aborting the session's running turn; its tasks keep running |
 | The tasks pane and a task's work | the `listTasks_tasks` read (stores nothing per poll), and the items of the task's run session |
 | Threads mode's sessions | the same, with `desk.lead`, a `coordinator`, as the main worker |
-| A thread card, and *Sent to a thread* | the lead's `createTask` call in the session's items |
+| A thread card, and *Sent to a task* | the lead's `createTask` call in the session's items |
 | The board's columns | the status of each row the `listTasks_tasks` read returns, and its open holds, read with `inboxItems` from `@flow-state-dev/orchestration/inbox` |
 | A coding thread's tag | the `harness` action of the coding flow, asked in the thread's run session |
 | *Not reviewed* | a finished coding thread's output, `review: "deadline"`, through `getTask_tasks` |

@@ -34,7 +34,7 @@ export function Entry({ entry }: { entry: ThreadEntry }) {
             {entry.text}
             {entry.queued ? <span className="mt-1 block text-xs text-muted-foreground">queued · runs when this turn ends</span> : null}
           </div>
-          {entry.sentToThread ? <span className="text-xs text-muted-foreground">↳ Sent to a thread</span> : null}
+          {entry.sentToThread ? <span className="text-xs text-muted-foreground">↳ Sent to a task</span> : null}
         </div>
       );
     case "assistant":

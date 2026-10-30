@@ -13,9 +13,9 @@ import { createFakeLab } from "./fake-lab";
 afterEach(cleanup);
 
 const thread = () => screen.getByRole("main", { name: "Main thread" });
-const board = () => screen.getByRole("complementary", { name: "Threads" });
+const board = () => screen.getByRole("complementary", { name: "Tasks" });
 const group = (label: string) => within(board()).getByRole("region", { name: label });
-const card = (title: string) => within(thread()).getByRole("region", { name: `Thread: ${title}` });
+const card = (title: string) => within(thread()).getByRole("region", { name: `Task: ${title}` });
 const rowsIn = (label: string) => within(group(label)).getAllByRole("listitem").map((li) => li.textContent ?? "");
 
 async function ask(text: string) {
@@ -39,18 +39,18 @@ async function startThreadsSession(speed: number) {
 describe("the threads-mode screen", () => {
   it("starts a session in the Projects view with the lead and the threads board", async () => {
     await startThreadsSession(0.01);
-    expect(within(thread()).getByText("Threads")).toBeTruthy();
+    expect(within(thread()).getByText("Tasks")).toBeTruthy();
     expect(within(thread()).getByText("in project: vendor-notes")).toBeTruthy();
-    expect(within(board()).getByRole("heading", { name: "Threads" })).toBeTruthy();
+    expect(within(board()).getByRole("heading", { name: "Tasks" })).toBeTruthy();
     expect(screen.queryByRole("complementary", { name: "Background tasks" })).toBeNull();
   });
 
-  it("marks your line Sent to a thread, shows a card per thread, and three rows under Working", async () => {
+  it("marks your line Sent to a task, shows a card per thread, and three rows under Working", async () => {
     // A fifth of real time: three rows stay under Working for about 300ms before one asks.
     await startThreadsSession(0.2);
     await ask("Research three vendors for a status page, one thread each.");
-    await waitFor(() => expect(within(thread()).getAllByRole("region", { name: /^Thread: / })).toHaveLength(3));
-    expect(within(thread()).getByText(/Sent to a thread/)).toBeTruthy();
+    await waitFor(() => expect(within(thread()).getAllByRole("region", { name: /^Task: / })).toHaveLength(3));
+    expect(within(thread()).getByText(/Sent to a task/)).toBeTruthy();
     expect(within(board()).getByRole("button", { name: /Working · 3/ })).toBeTruthy();
     expect(rowsIn("Working").join("\n")).toMatch(/0\/7 · Reading pricing pages/);
   });
@@ -61,15 +61,15 @@ describe("the threads-mode screen", () => {
     await waitFor(() => expect(rowsIn("Waiting on you").join()).toMatch(/Which region matters, EU or US\?/));
     // The card offers Answer; answering happens in the thread's view, which replaces the board.
     fireEvent.click(within(card("Vendor B · regions")).getByRole("button", { name: "Answer" }));
-    const view = screen.getByRole("complementary", { name: "Thread: Vendor B · regions" });
+    const view = screen.getByRole("complementary", { name: "Task: Vendor B · regions" });
     expect(within(view).getByRole("note").textContent).toMatch(/Waiting on you · Which region matters/);
-    fireEvent.change(within(view).getByLabelText("Message this thread"), { target: { value: "EU" } });
+    fireEvent.change(within(view).getByLabelText("Message this task"), { target: { value: "EU" } });
     fireEvent.click(within(view).getByRole("button", { name: "Answer" }));
     await waitFor(() => expect(card("Vendor B · regions").dataset.column).toBe("working"));
     // It comes back for review with what the answer asked for.
     await waitFor(() => expect(card("Vendor B · regions").dataset.column).toBe("review"));
     expect(card("Vendor B · regions").textContent).toMatch(/Summary for EU ready/);
-    fireEvent.click(within(view).getByRole("button", { name: "Back to threads" }));
+    fireEvent.click(within(view).getByRole("button", { name: "Back to tasks" }));
     expect(rowsIn("Ready for review").join()).toMatch(/Vendor B · regions/);
   });
 
@@ -92,10 +92,10 @@ describe("the threads-mode screen", () => {
     await ask("Research three vendors for a status page, one thread each.");
     await waitFor(() => expect(card("Vendor C · summary").dataset.column).toBe("review"));
     fireEvent.click(within(card("Vendor C · summary")).getByRole("button", { name: "Request changes" }));
-    const view = screen.getByRole("complementary", { name: "Thread: Vendor C · summary" });
+    const view = screen.getByRole("complementary", { name: "Task: Vendor C · summary" });
     const change = within(view).getByRole("button", { name: "Request changes" }) as HTMLButtonElement;
     expect(change.disabled).toBe(true);
-    fireEvent.change(within(view).getByLabelText("Message this thread"), { target: { value: "Add their support hours." } });
+    fireEvent.change(within(view).getByLabelText("Message this task"), { target: { value: "Add their support hours." } });
     fireEvent.click(change);
     await waitFor(() => expect(card("Vendor C · summary").dataset.column).toBe("working"));
     expect(within(view).getByText("Add their support hours.")).toBeTruthy();
@@ -117,10 +117,10 @@ describe("the threads-mode screen", () => {
     expect(rowsIn("Resolved").filter((row) => /Not reviewed/.test(row))).toHaveLength(1);
 
     fireEvent.click(within(group("Pinned")).getByRole("button", { name: /Weekly uptime digest/ }));
-    const view = screen.getByRole("complementary", { name: "Thread: Weekly uptime digest" });
+    const view = screen.getByRole("complementary", { name: "Task: Weekly uptime digest" });
     fireEvent.click(within(view).getByRole("button", { name: "Unpin" }));
     await within(view).findByRole("button", { name: "Pin" });
-    fireEvent.click(within(view).getByRole("button", { name: "Back to threads" }));
+    fireEvent.click(within(view).getByRole("button", { name: "Back to tasks" }));
     expect(within(board()).queryByRole("region", { name: "Pinned" })).toBeNull();
     expect(rowsIn("Working").join()).toMatch(/Weekly uptime digest/);
   });
@@ -128,7 +128,7 @@ describe("the threads-mode screen", () => {
   it("runs a code change as a thread tagged Claude Code, ready for review with the judge's verdict", async () => {
     await startThreadsSession(0.01);
     await ask("Add a CHANGELOG line for the vendor pick");
-    await waitFor(() => expect(within(thread()).getAllByRole("region", { name: /^Thread: / })).toHaveLength(1));
+    await waitFor(() => expect(within(thread()).getAllByRole("region", { name: /^Task: / })).toHaveLength(1));
     const coder = card("Add a CHANGELOG line for the vendor pick");
     expect(within(coder).getByText("Claude Code")).toBeTruthy();
     await waitFor(() => expect(coder.dataset.column).toBe("review"));
@@ -144,11 +144,11 @@ describe("the threads-mode screen", () => {
     await startThreadsSession(0.01);
     await ask("Research three vendors for a status page, one thread each.");
     await waitFor(() => expect(card("Vendor C · summary").dataset.column).toBe("review"));
-    fireEvent.click(within(card("Vendor C · summary")).getByRole("button", { name: "View thread" }));
-    const view = screen.getByRole("complementary", { name: "Thread: Vendor C · summary" });
-    expect(within(view).getByLabelText("Message this thread")).toBeTruthy();
+    fireEvent.click(within(card("Vendor C · summary")).getByRole("button", { name: "View task" }));
+    const view = screen.getByRole("complementary", { name: "Task: Vendor C · summary" });
+    expect(within(view).getByLabelText("Message this task")).toBeTruthy();
     fireEvent.click(within(view).getByRole("button", { name: "Resolve" }));
-    await waitFor(() => expect(within(view).queryByLabelText("Message this thread")).toBeNull());
-    expect(within(view).getByText(/This thread is finished/)).toBeTruthy();
+    await waitFor(() => expect(within(view).queryByLabelText("Message this task")).toBeNull());
+    expect(within(view).getByText(/This task is finished/)).toBeTruthy();
   });
 });

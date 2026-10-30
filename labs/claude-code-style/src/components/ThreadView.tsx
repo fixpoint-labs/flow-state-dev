@@ -7,11 +7,11 @@ import { Spend } from "./Spend";
 import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus";
 
 /**
- * One thread, in place of the board. Its work reads the task's run session.
- * You can talk inside a thread (spec D3): your line is a steer on its task,
- * and answers its open question when it has one. When it is ready for
+ * One task, in place of the board. Its work reads the task's run session.
+ * You can talk inside a task (spec D3): your line is a steer on it, and
+ * answers its open question when it has one. When it is ready for
  * review, *Resolve* accepts it and *Request changes* sends your words back.
- * A finished thread's composer is off: you ask the main session to follow up.
+ * A finished task's composer is off: you ask the main session to follow up.
  */
 export function ThreadView({
   adapter,
@@ -50,9 +50,9 @@ export function ThreadView({
   };
 
   return (
-    <aside aria-label={`Thread: ${task.title}`} className="flex h-full min-h-0 flex-col bg-inspector">
+    <aside aria-label={`Task: ${task.title}`} className="flex h-full min-h-0 flex-col bg-inspector">
       <div className="flex items-center gap-2 border-b border-border px-3 py-3">
-        <button type="button" aria-label="Back to threads" onClick={onBack} className="px-1 text-sm hover:bg-accent">
+        <button type="button" aria-label="Back to tasks" onClick={onBack} className="px-1 text-sm hover:bg-accent">
           ←
         </button>
         <ThreadIcon task={task} />
@@ -84,16 +84,16 @@ export function ThreadView({
       ) : null}
       {finished ? (
         <p role="note" className="px-4 py-3 text-xs text-muted-foreground">
-          This thread is finished. To follow up or retry, ask the main session.
+          This task is finished. To follow up or retry, ask the main session.
         </p>
       ) : (
         <form onSubmit={say} className="px-3 py-3">
           <textarea
-            aria-label="Message this thread"
+            aria-label="Message this task"
             rows={2}
             value={text}
             onChange={(event) => setText(event.target.value)}
-            placeholder={question ? "Answer the thread…" : column === "review" ? "What should change…" : "Say something in this thread…"}
+            placeholder={question ? "Answer the task…" : column === "review" ? "What should change…" : "Say something in this task…"}
             className="block w-full resize-none border border-border bg-card px-3 py-2 text-sm outline-none focus:border-ring"
           />
           <div className="mt-2 flex justify-end gap-1.5">
