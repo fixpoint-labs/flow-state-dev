@@ -363,20 +363,27 @@ import { SuspensionResolverProvider } from "@flow-state-dev/react";
 
 Explicit `onApprove`/`onReject` props still take precedence; with neither a provider nor handlers, the card falls back to a self-contained non-streaming resume (requires `flowKind` on `<FlowProvider>`).
 
-### `useFollowLatest(options?)`
+### `useJumpToLatest(options?)`
 
-Keeps a conversation's newest content in view. Attach `ref` to the scrolling element.
+Keeps a conversation where the reader put it, and offers the way to its newest content. Attach `ref` to the scrolling element.
 
 ```tsx
-const feed = useFollowLatest({ resetKey: sessionId });
-return <div ref={feed.ref} className="overflow-y-auto">{/* the turns */}</div>;
+const feed = useJumpToLatest({ resetKey: sessionId });
+return (
+  <div ref={feed.ref} className="overflow-y-auto">
+    {/* the turns */}
+    {feed.atEnd ? null : <button onClick={feed.jump}>Jump to latest</button>}
+  </div>
+);
 ```
 
-A feed that opens is already at its end on the first frame: on mount, when `resetKey` changes (switching to another session), and when its first read fills it. Nothing animates there. Content that arrives after that while the reader is at the end scrolls into view smoothly. A reader who scrolled up stays where they are, and `atEnd` is `false` so you can offer a way back.
+New content never scrolls the feed, even when the reader is at the end, because they may be reading. When something arrives below what is on screen, `atEnd` turns `false`: show a jump-to-latest button that calls `jump()`. It turns `true` again once the reader is back at the end.
 
-- `startAtEnd` (default `true`): `false` opens where the element starts and follows once the reader reaches the end.
-- `follow()`: back to the newest content, smoothly, following again. Call it when the person sends a line.
-- `stay()`: stop following, before you load earlier history above what is shown.
+A feed that opens is already at its end on the first frame: on mount, when `resetKey` changes (switching to another session), and when its first read fills it. Nothing animates there.
+
+- `startAtEnd` (default `true`): `false` opens where the element starts, such as a feed with a lead above its turns.
+- `jump()`: to the end, smoothly.
+- `sent()`: call when the person sends a line. It jumps to the end and brings the next content that lands below into view, which is the line they sent. What arrives after that stays below.
 
 ## Voice playback
 

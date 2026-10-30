@@ -1,8 +1,9 @@
-import { useFollowLatest } from "@flow-state-dev/react";
+import { useJumpToLatest } from "@flow-state-dev/react";
 import type { LabAdapter, ProjectRow, SessionRow, TaskRow } from "../adapter";
 import { elapsed, useNow, useWatch } from "../lib/use-watch";
 import { modeOfWorker } from "../modes";
 import { Composer } from "./Composer";
+import { JumpToLatestButton } from "./JumpToLatest";
 import { Entry } from "./Entry";
 import { ThreadCard } from "./ThreadCard";
 
@@ -35,7 +36,7 @@ export function Thread({
   const running = view?.running ?? false;
   const now = useNow(running);
   const count = view?.entries.length ?? 0;
-  const feed = useFollowLatest({ resetKey: session.id });
+  const feed = useJumpToLatest({ resetKey: session.id });
 
   return (
     <main aria-label="Main thread" className="flex h-full min-h-0 min-w-0 flex-col">
@@ -83,6 +84,7 @@ export function Thread({
             ) : null}
           </div>
         )}
+        <JumpToLatestButton feed={feed} />
       </div>
       {session.projectId === null ? (
         <div role="note" className="border-t border-border px-6 py-4 text-sm">
@@ -94,7 +96,7 @@ export function Thread({
           running={running}
           onSend={(text) => {
             // Your own line brings you back to the end, wherever you had scrolled to.
-            feed.follow();
+            feed.sent();
             void adapter.send(session.id, text);
           }}
           onStop={() => void adapter.interrupt(session.id)}
