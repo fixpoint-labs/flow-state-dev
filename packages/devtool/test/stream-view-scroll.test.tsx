@@ -2,10 +2,12 @@
  * The stream view opens on a session's newest request, already there: a
  * session's history arriving in an empty view lands at the end with no
  * animation, rather than scrolling down from the top every time a session is
- * opened. Only a request that arrives while the reader is at the end glides.
+ * opened. After that, what arrives never moves the view, even at the end, since
+ * the reader may be reading: a jump-to-latest arrow offers it instead. Only an
+ * action the person sends takes the stream to its end.
  */
 import { afterEach, describe, it, expect } from "vitest";
-import { act, render } from "@testing-library/react";
+import { act, fireEvent, render, within } from "@testing-library/react";
 import React from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 
@@ -13,11 +15,11 @@ import { StreamView, type RequestGroup } from "../src/react/components/workspace
 import { DebugProvider } from "../src/react/context/debug-context";
 import { SelectionProvider } from "../src/react/context/selection-context";
 
-function view(requestGroups: RequestGroup[]) {
+function view(requestGroups: RequestGroup[], sends?: number) {
   return (
     <DebugProvider>
       <SelectionProvider>
-        <StreamView requestGroups={requestGroups} streamStatus="completed" />
+        <StreamView requestGroups={requestGroups} streamStatus="completed" sends={sends} />
       </SelectionProvider>
     </DebugProvider>
   );
@@ -52,12 +54,13 @@ afterEach(() => {
 
 /**
  * Lay the stream's scrolling column out as a browser would (happy-dom lays nothing out):
- * 200px per request in a 500px view. Every scroll it is asked for is recorded, and lands at once.
+ * 200px per request in a 500px view (the jump-to-latest arrow takes none). Every scroll it is asked
+ * for is recorded, and lands at once.
  */
 function layOut() {
   const isStream = (el: HTMLElement) => el.classList.contains("overflow-auto") && el.classList.contains("bg-fs-surface");
   const tops = new WeakMap<HTMLElement, number>();
-  const height = (el: HTMLElement) => el.childElementCount * 200;
+  const height = (el: HTMLElement) => [...el.children].filter((child) => !child.classList.contains("sticky")).length * 200;
   const scrolls: (ScrollBehavior | undefined)[] = [];
   Object.defineProperties(HTMLElement.prototype, {
     scrollHeight: { configurable: true, get(this: HTMLElement) { return isStream(this) ? height(this) : 0; } },
@@ -97,25 +100,41 @@ describe("StreamView — where it opens, and how it follows", () => {
     expect(scrolls.filter((s) => s !== "instant")).toEqual([]);
   });
 
-  it("glides to a request that arrives while the reader is at the end, and leaves a reader who scrolled up alone", async () => {
+  it("leaves the stream where it is when a request arrives, even at the end, and offers the jump to it", async () => {
     const scrolls = layOut();
     const groups = Array.from({ length: 20 }, (_, i) => group(i));
     const { container, rerender } = render(view(groups));
     await settle();
     await nextFrame();
+    const el = stream(container);
+    expect(within(el).queryByRole("button", { name: "Jump to latest" })).toBeNull();
     scrolls.length = 0;
     rerender(view([...groups, group(20)]));
     await settle();
-    expect(scrolls.at(-1)).toBe("smooth");
-    expect(stream(container).scrollTop).toBe(21 * 200 - 500);
+    expect(scrolls).toEqual([]);
+    expect(el.scrollTop).toBe(20 * 200 - 500);
 
+    fireEvent.click(within(el).getByRole("button", { name: "Jump to latest" }));
+    expect(scrolls).toEqual(["smooth"]);
+    expect(el.scrollTop).toBe(21 * 200 - 500);
+    expect(within(el).queryByRole("button", { name: "Jump to latest" })).toBeNull();
+  });
+
+  it("goes to the end for an action the person sends, from wherever they had scrolled to", async () => {
+    const scrolls = layOut();
+    const groups = Array.from({ length: 20 }, (_, i) => group(i));
+    const { container, rerender } = render(view(groups, 0));
+    await settle();
+    await nextFrame();
     const el = stream(container);
     el.scrollTop = 400;
     el.dispatchEvent(new Event("scroll"));
     scrolls.length = 0;
-    rerender(view([...groups, group(20), group(21)]));
+    rerender(view(groups, 1));
+    rerender(view([...groups, group(20)], 1));
     await settle();
-    expect(scrolls).toEqual([]);
-    expect(el.scrollTop).toBe(400);
+    expect(scrolls.length).toBeGreaterThan(0);
+    expect(scrolls.every((s) => s === "smooth")).toBe(true);
+    expect(el.scrollTop).toBe(21 * 200 - 500);
   });
 });

@@ -8,7 +8,7 @@ Generic chat and content primitives. They take primitive props and have no runti
 
 ## Conversation
 
-Container for message threads with auto-scroll and stick-to-bottom behavior.
+Container for message threads, with a scroll-to-bottom button that shows while there is more below.
 
 ```bash
 fsdev ui add conversation

@@ -1,4 +1,4 @@
-import { useFollowLatest } from "@flow-state-dev/react";
+import { useJumpToLatest } from "@flow-state-dev/react";
 import { Fragment, useCallback, useState } from "react";
 import type { BoardTask, ConversationEntry, LabAdapter, WorkerRow } from "../adapter";
 import type { Look } from "../lib/looks";
@@ -8,6 +8,7 @@ import { useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { Composer } from "./Composer";
+import { JumpToLatestButton } from "./JumpToLatest";
 import { Entry } from "./Entry";
 import { answerIn, type Popup } from "./Popups";
 import { TaskCard } from "./TaskCard";
@@ -84,7 +85,7 @@ export function Conversation({
   const last = entries[entries.length - 1];
   // An answer on screen, written or being written, is the sign it is answering; the line shows only before one starts.
   const answering = running && last?.kind !== "assistant";
-  const feed = useFollowLatest({ resetKey: sessionId });
+  const feed = useJumpToLatest({ resetKey: sessionId });
 
   // Stable, so a memoized line doesn't redraw for a new function.
   const openTask = useCallback((taskId: string) => onOpen({ kind: "task", sessionId, taskId }), [onOpen, sessionId]);
@@ -197,17 +198,14 @@ export function Conversation({
             </div>
           ))}
         </div>
-        {feed.atEnd ? null : (
-          <button
-            type="button"
-            onClick={feed.follow}
-            className="sticky bottom-2 mx-auto block rounded-full border border-border bg-card px-3 py-1 text-xs shadow hover:bg-accent"
-          >
-            Jump to latest
-          </button>
-        )}
+        <JumpToLatestButton feed={feed} />
       </div>
-      <Composer workerName={worker.name} running={running} onSend={(text) => void adapter.send(sessionId, text)} />
+      <Composer workerName={worker.name} running={running} onSend={(text) => {
+          // Your own line takes you to the end, wherever you had scrolled to.
+          feed.sent();
+          void adapter.send(sessionId, text);
+        }}
+      />
     </main>
   );
 }

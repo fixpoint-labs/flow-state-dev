@@ -1,8 +1,9 @@
-import { useFollowLatest } from "@flow-state-dev/react";
+import { useJumpToLatest } from "@flow-state-dev/react";
 import { useState, type FormEvent } from "react";
 import type { LabAdapter, TaskRow } from "../adapter";
 import { useWatch } from "../lib/use-watch";
 import { Entry } from "./Entry";
+import { JumpToLatestButton } from "./JumpToLatest";
 import { Spend } from "./Spend";
 import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus";
 
@@ -31,7 +32,7 @@ export function ThreadView({
     [adapter, sessionId, task.id],
   );
   const [text, setText] = useState("");
-  const feed = useFollowLatest({ resetKey: task.id });
+  const feed = useJumpToLatest({ resetKey: task.id });
   const column = statusColumn(task);
   const question = task.waitingOn && task.waitingOn.kind !== "review" ? task.waitingOn : undefined;
   const words = text.trim();
@@ -41,11 +42,13 @@ export function ThreadView({
     event.preventDefault();
     if (!words) return;
     setText("");
+    feed.sent();
     void adapter.sayInThread(sessionId, task.id, words);
   };
   const requestChanges = () => {
     if (!words) return;
     setText("");
+    feed.sent();
     void adapter.requestChanges(sessionId, task.id, words);
   };
 
@@ -71,6 +74,7 @@ export function ThreadView({
       <Spend task={task} split className="px-4" />
       <div ref={feed.ref} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-2">
         {work?.entries.map((entry) => <Entry key={entry.id} entry={entry} />)}
+        <JumpToLatestButton feed={feed} />
       </div>
       {question ? (
         <div role="note" className="mx-3 border border-attention bg-attention/10 px-3 py-2 text-sm">
