@@ -11,7 +11,8 @@
  * user, or to ask several workers at once) heard nothing back. The answer was
  * the recipient's final text, which only a waiting call reads, so it was lost.
  * Such a message must get exactly one answer, attributed to the recipient, and never
- * silence; and a call must stay a call, not also be answered as a message.
+ * silence; and a sender that waits for it (FIX-2318) gets that same answer as its
+ * tool's result, never also as a message.
  *
  * The sender is the agent worker (Otto), driven step by step. Everything is
  * read from the message log and each session's requests.
@@ -507,26 +508,42 @@ describe("a reply request to a worker that runs nothing on a message", { timeout
   });
 });
 
-describe("a call", { timeout: 40_000 }, () => {
-  it("is never also reply-requested: its reply is the tool's result, and no message answers it", async () => {
-    const { model } = ottoModel({ "Call the lead": [{ to: "lead", text: "What is the codename?", wait: true, replyRequested: true }] });
-    const { h, otto } = await boot(model, {
-      judgment: mockGenerator({
-        script: [
-          { when: (input) => textOf(input).includes("they are waiting for your answer"), then: { text: "The codename is Bluebird." } },
-          { when: () => true, then: { text: "" } }
-        ]
-      })
-    });
-    await h.post("alice", otto, "respond", { message: "Call the lead" }, "agent");
+describe("a reply request whose sender waits for it", { timeout: 40_000 }, () => {
+  // One contract (FIX-2318): waiting changes where the one answer goes, never how it is made.
+  it("is the same reply request, and its one answer is the tool's result instead of a message", async () => {
+    const { model } = ottoModel({ "Wait on the lead": [{ to: "lead", text: "What is the codename?", wait: true }] });
+    const { h, otto } = await boot(model);
+    await h.post("alice", otto, "respond", { message: "Wait on the lead for the codename" }, "agent");
     await h.settled();
     await sleep(2_500);
+
     const [output] = await toolOutputs(h, otto);
-    expect(output).toMatchObject({ status: "answered", reply: "The codename is Bluebird." });
-    const rows = await logRows(h);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ call: true });
-    expect(rows[0]!.replyRequested).toBeUndefined();
+    expect(output).toEqual({ status: "answered", sent: expect.stringMatching(/^msg_/), reply: "The codename is Bluebird." });
+    // The recipient read the reply-request prompt (the judgment above answers only that one),
+    // and answered through the one reply path: an answer row naming the message it answers.
+    const asked = (await logRows(h)).find((row) => row.id === output!.sent)!;
+    expect(asked).toMatchObject({ replyRequested: true, deadlineAt: expect.any(Number) });
+    expect(asked.waitEndedAt).toBeUndefined();
+    const answers = await answersTo(h, asked.id);
+    expect(answers).toHaveLength(1);
+    expect(answers[0]).toMatchObject({ from: "lead", to: "otto", text: "The codename is Bluebird.", status: "delivered" });
+    expect(asked.answeredBy).toBe(answers[0]!.id);
+    // Held for the wait: it never lands in Otto's conversation as well.
+    expect(await heardIn(h, otto)).toEqual([]);
+  });
+
+  it("answered by the recipient's own sendMessage gets that answer as its result, and nothing else is sent", async () => {
+    const { model } = ottoModel({ "Wait on the scripted one": [{ to: "scripted", text: "What is the codename? [own]", wait: true }] });
+    const { h, otto } = await boot(model);
+    await h.post("alice", otto, "respond", { message: "Wait on the scripted one" }, "agent");
+    await h.settled();
+    await sleep(2_500);
+
+    const [output] = await toolOutputs(h, otto);
+    expect(output).toEqual({ status: "answered", sent: expect.stringMatching(/^msg_/), reply: "Bluebird, said myself." });
+    const answers = await answersTo(h, output!.sent);
+    expect(answers).toHaveLength(1);
+    expect((await logRows(h)).find((row) => row.id === output!.sent)!.answeredBy).toBe(answers[0]!.id);
     expect(await heardIn(h, otto)).toEqual([]);
   });
 });

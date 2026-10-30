@@ -4,14 +4,15 @@
  * row, no delegate, no result owed.
  *
  * Its input is strict (`to`, `text`, `inReplyTo`, `replyRequested`, `wait`,
- * `deadline`, `callId`), so a call can't name a sender, a hop count or that it
- * is a call, and a session only as a target the server checks (FIX-2160).
- * Without `wait`, an answer arrives later as a message of the recipient's own
- * and wakes this worker; with `replyRequested` (FIX-2310, `./owed-replies`),
- * one answer is owed and always comes, the recipient's or a "no answer".
- * With `wait: true` it is a call (FIX-2239, `./call`): the recipient's
- * reply is the tool's result, in the same request, until the deadline; and
- * `{ callId }` waits again on one. Its description lists who the worker can
+ * `deadline`), so a send can't name a sender or a hop count, and a session
+ * only as a target the server checks (FIX-2160). One contract for getting an
+ * answer (FIX-2318): `replyRequested: true` asks for a reply (FIX-2310,
+ * `./owed-replies`), and one answer is owed and always comes, the recipient's
+ * or a "no answer", as a message that wakes this worker. `wait: true` asks
+ * the same way and waits for that answer in this request until the deadline
+ * (`./wait-for-reply`): given in time, it is the tool's result and no message;
+ * after, it comes as a message. A plain send owes nothing: an answer, if any,
+ * is the recipient's own message. Its description lists who the worker can
  * message, read before each model call: the roster's workers that have a
  * conversation, by id and description.
  */
@@ -26,7 +27,7 @@ import { MAX_MESSAGE_CHARS, workerMessagesResources } from "./message-log";
 import { conversationLedgerResources } from "../conversation-board/ledger";
 import { sendMessage } from "./send-message";
 import { workerRecipients } from "./recipients";
-import { callWorker, waitAgain, type CallOutcome } from "./call";
+import { sendAndWaitForReply, type WaitOutcome } from "./wait-for-reply";
 
 /** The longest description the list quotes for one worker. */
 const MAX_DESCRIPTION = 160;
@@ -40,13 +41,12 @@ export const sendMessageInputSchema = z
         z.object({ task: z.string().min(1) }).strict(),
         z.object({ session: z.string().min(1) }).strict()
       ])
-      .optional()
       .describe(
         "Who to message: a worker's id, as the list below names it; { task: id } for the session that works a task; " +
-          "or { session: id } for one of the user's conversations, when the user gives you its id. Leave it out with callId."
+          "or { session: id } for one of the user's conversations, when the user gives you its id."
       ),
     // Something other than blank space: the send refuses a blank message too.
-    text: z.string().max(MAX_MESSAGE_CHARS).regex(/\S/, "say something").optional().describe("What to say. Leave it out with callId."),
+    text: z.string().max(MAX_MESSAGE_CHARS).regex(/\S/, "say something").describe("What to say."),
     inReplyTo: z
       .string()
       .min(1)
@@ -59,39 +59,39 @@ export const sendMessageInputSchema = z
     wait: z
       .boolean()
       .optional()
-      .describe("true to wait for the reply: it comes back as this tool's result, in this turn, until the deadline."),
+      .describe(
+        "true to ask for a reply and wait for it: it comes back as this tool's result, in this turn, until the deadline. " +
+          "After the deadline it comes back as a message instead. Needs no replyRequested."
+      ),
     deadline: z
       .number()
       .int()
       .positive()
       .optional()
-      .describe("With wait or callId: how long to wait, in milliseconds. The host's default when left out."),
-    callId: z
-      .string()
-      .min(1)
-      .optional()
-      .describe("To wait again on a call that answered running: its callId. Nothing is sent again. Pass nothing else but deadline.")
+      .describe("With wait: how long to wait, in milliseconds. The host's default when left out.")
   })
   .strict();
 
-/** A call's result (FIX-2239): its reply, or `running` at the deadline, or why it failed. */
-const callResultSchema = z.object({
+/** A waited send's result (FIX-2318): the answer, or `running` at the deadline, or why it failed. */
+const waitResultSchema = z.object({
   status: z.enum(["answered", "running", "failed"]),
-  callId: z.string(),
+  sent: z.string(),
   reply: z.string().optional(),
+  /** The answer is the framework's "no answer": the recipient's turn gave none. */
+  noAnswer: z.literal(true).optional(),
   error: z.string().optional(),
-  /** Why a call still runs: the recipient waits on the user (epic D3). */
+  /** Why the answer isn't in yet: the recipient waits on the user (epic D3). */
   recipient: z.literal("waiting_on_person").optional()
 });
 
 const sendMessageOutputSchema = z.union([
+  waitResultSchema,
   z.object({ sent: z.string() }),
-  callResultSchema,
   z.object({ ok: z.literal(false), error: z.string() })
 ]);
 
-/** What the tool answers for a call: a refusal reads as any send's. */
-function callAnswer(outcome: CallOutcome) {
+/** What the tool answers for a waited send: a refusal reads as any send's. */
+function waitAnswer(outcome: WaitOutcome) {
   return "ok" in outcome ? { ok: false as const, error: outcome.error } : outcome;
 }
 
@@ -101,9 +101,9 @@ const BASE_DESCRIPTION =
   "you a message of its own, which wakes you. To answer a message you were sent, pass its id as inReplyTo. " +
   "To ask and go on, pass replyRequested: true: the answer comes back to you later as a message from that worker, " +
   "and always comes, even if it is that it has no answer. Ask several workers this way in one step. " +
-  "To get an answer in this turn, call: pass wait: true (a call needs no replyRequested). The reply comes back as this tool's result " +
-  "({ status: \"answered\", reply }, cut to 8,000 characters), in this turn. If the deadline passes first, you get { status: \"running\", callId } " +
-  "and nothing is stopped: go on, and pass { callId } later to wait again for the same reply; never send the question " +
+  "To get the answer in this turn, pass wait: true instead. It asks the same way, and the answer comes back as this tool's result " +
+  "({ status: \"answered\", reply }, cut to 8,000 characters), in this turn. If the deadline passes first, you get { status: \"running\" } " +
+  "and nothing is stopped: go on, and the answer comes back to you later as a message; never send the question " +
   "again. One wait per step, so to ask several workers, use replyRequested instead. For work someone owes you, file a task with createTask. " +
   "To ask about a task, send to { task: id }: it lands in the session working that task, after its current turn, " +
   "and doesn't change the task. To reach a conversation the user named, send to { session: id }. " +
@@ -138,26 +138,17 @@ export function defineSendMessageCapability(installation: WorkerInstallation, fl
       // The conversation ledger finds a `{ task }` target's row by id (FIX-2160).
       resources: { ...installation.resources, ...workerMessagesResources, ...conversationLedgerResources },
       execute: async (input, ctx) => {
-        const { to, text, inReplyTo, replyRequested, wait, deadline, callId } = input;
-        if (callId !== undefined) {
-          if (to !== undefined || text !== undefined || inReplyTo !== undefined || replyRequested !== undefined || wait !== undefined) {
-            return { ok: false as const, error: "wait_again_only: with callId, pass nothing but deadline. Nothing was sent." };
-          }
-          return callAnswer(await waitAgain(ctx as never, callId, deadline));
-        }
-        if (to === undefined || text === undefined) {
-          return { ok: false as const, error: "missing_message: pass to and text, or callId to wait again on a call. Nothing was sent." };
-        }
+        const { to, text, inReplyTo, replyRequested, wait, deadline } = input;
         const message = { to, text, ...(inReplyTo === undefined ? {} : { inReplyTo }) };
         if (wait === true) {
-          return callAnswer(
-            await callWorker(ctx as never, installation, flowKind, { ...message, ...(deadline === undefined ? {} : { deadline }) }, SEND_MESSAGE_TOOL)
+          return waitAnswer(
+            await sendAndWaitForReply(ctx as never, installation, flowKind, { ...message, ...(deadline === undefined ? {} : { deadline }) }, SEND_MESSAGE_TOOL)
           );
         }
         if (deadline !== undefined) {
-          return { ok: false as const, error: "deadline_without_wait: a deadline goes with wait: true or callId. Nothing was sent." };
+          return { ok: false as const, error: "deadline_without_wait: a deadline goes with wait: true. Nothing was sent." };
         }
-        const sent = await sendMessage(ctx as never, installation, flowKind, message, SEND_MESSAGE_TOOL, replyRequested === true ? { replyRequested: true } : {});
+        const sent = await sendMessage(ctx as never, installation, flowKind, message, SEND_MESSAGE_TOOL, replyRequested === true ? { replyRequested: {} } : {});
         if (!sent.ok) return { ok: false as const, error: sent.error };
         return { sent: sent.id };
       }

@@ -15,9 +15,9 @@
  *   hears only in its tasks' sessions (the coder) is refused here,
  *   `task_sessions_only`;
  * - an answer (`inReplyTo`) names a message the recipient sent this worker;
- * - a call, or a message that asks for a reply (FIX-2310), lands where a
- *   turn runs on it: one to a flow whose entry runs nothing is refused,
- *   `no_reply` (FIX-2300);
+ * - a message that asks for a reply (FIX-2310), waited on or not, lands
+ *   where a turn runs on it: one to a flow whose entry runs nothing is
+ *   refused, `no_reply` (FIX-2300);
  * - the budget: one per message a user types (`hop.ts`), at most `perTurn`
  *   per request.
  *
@@ -34,7 +34,9 @@
  * session that filed it; any other in the recipient's own conversation (the
  * worker's derived address, opened by the dispatch when absent; the project
  * coordinator's for the sender's project). A final refusal of that dispatch
- * marks the row refused, and the send says so. Anything else (accepted,
+ * marks the row refused, and the send says so. An answer whose sender still
+ * waits for it (FIX-2318) is not dispatched: it is the sender's tool result
+ * (`./wait-for-reply`), and lands nowhere else. Anything else (accepted,
  * thrown, refused for now) leaves the row `unconfirmed` until the recipient
  * takes it, and the sending session's board pass sends it again until then.
  * A session whose flow carries no pass sends on that one dispatch only.
@@ -254,16 +256,15 @@ function exemptPlace(ctx: BlockContext, given: string | undefined): Place {
  *   one message: when its row is already written, the repeat owes nothing,
  *   pays nothing and answers as the row reads (a refusal stays one). From a
  *   flow with no pass, a repeat finding the row never taken dispatches it
- *   again, since nothing else would; a call's repeat does too, so its caller
- *   has the request to wait on. Never a model's input.
- * @param options.call The sender waits on the reply until `deadlineAt`
- *   (FIX-2239): the row is marked a call, and the dispatch says the sender
- *   waits on it. Set by the call's own code, never by a model.
+ *   again, since nothing else would; a waited send's repeat does too, so its
+ *   sender has the request to wait on. Never a model's input.
  * @param options.exempt The server's own message (a task's midway question,
  *   FIX-2241, or the framework's answer to a reply-requested message, FIX-2310): it costs no
  *   budget and no spent one refuses it. Never a model's input.
- * @param options.replyRequested The sender asks for a reply and goes on
- *   (FIX-2310): the row says so, and the recipient's turn owes one answer.
+ * @param options.replyRequested The sender asks for a reply (FIX-2310): the
+ *   row says so, and the recipient's turn owes one answer. With `deadlineAt`
+ *   the sender waits for it until then (FIX-2318, `./wait-for-reply`), and
+ *   the dispatch says the sender waits on it. Set by server code, never by a model.
  * @param options.noAnswer The framework's "no answer" to the message this one
  *   answers (FIX-2310): the row says so, for an app to draw.
  */
@@ -275,9 +276,8 @@ export async function sendMessage(
   from: string,
   options: {
     readonly id?: string;
-    readonly call?: { readonly deadlineAt: number };
     readonly exempt?: true;
-    readonly replyRequested?: true;
+    readonly replyRequested?: { readonly deadlineAt?: number };
     readonly noAnswer?: true;
   } = {}
 ): Promise<SendOutcome> {
@@ -301,11 +301,13 @@ export async function sendMessage(
     }
     // A flow with no pass sends on its own dispatch only, so a repeat finding
     // the row never taken (the first send ended between the write and the
-    // dispatch) sends it again; the take keeps it once. A call's repeat sends
-    // it again too, pass or not (FIX-2269): its caller waits on the request
-    // that dispatch starts, and a resend from the pass leaves it none to follow.
+    // dispatch) sends it again; the take keeps it once. A waited send's repeat
+    // sends it again too, pass or not (FIX-2269): its sender waits on the
+    // request that dispatch starts, and a resend from the pass leaves it none
+    // to follow. An answer its sender still waits for is held, not sent.
     const resends = carriesPass(installation, flowKind);
-    if (written.status === "unconfirmed" && written.takenBy === undefined && (written.call === true || !resends)) {
+    if (written.status === "unconfirmed" && written.takenBy === undefined && (written.deadlineAt !== undefined || !resends)) {
+      if (await claimAnswer(ctx, written, true)) return holdForWait(ctx, writtenRef, resends);
       return markAnswer(ctx, written, await dispatchOnce(ctx, writtenRef, written, from, resends));
     }
     return markAnswer(ctx, written, { ok: true, id: written.id });
@@ -343,10 +345,10 @@ export async function sendMessage(
     }
   }
 
-  // ---- a call, or a reply request, needs a turn to answer it ---------------
+  // ---- a reply request needs a turn to answer it ---------------------------
   // The flow it lands on, which for an answer is the original sender's.
-  if ((options.call !== undefined || options.replyRequested === true) && runsMessageTurn(installation.workerFlows()[destination.flow]?.flow) === false) {
-    return refuse(`${noReplyError(recipient.id, options.call !== undefined ? "wait" : "replyRequested")} Nothing was sent.`);
+  if (options.replyRequested !== undefined && runsMessageTurn(installation.workerFlows()[destination.flow]?.flow) === false) {
+    return refuse(`${noReplyError(recipient.id)} Nothing was sent.`);
   }
 
   // ---- the budget ----------------------------------------------------------
@@ -373,9 +375,8 @@ export async function sendMessage(
     ...(destination.state === undefined ? {} : { toState: destination.state }),
     hop,
     chain,
-    ...(options.call === undefined ? {} : { call: true as const, deadlineAt: options.call.deadlineAt }),
-    // A call's reply is its tool's result, so a call is never also reply-requested.
-    ...(options.replyRequested === true && options.call === undefined ? { replyRequested: true as const } : {}),
+    ...(options.replyRequested === undefined ? {} : { replyRequested: true as const }),
+    ...(options.replyRequested?.deadlineAt === undefined ? {} : { deadlineAt: options.replyRequested.deadlineAt }),
     ...(options.noAnswer === true ? { noAnswer: true as const } : {}),
     status: "unconfirmed",
     at: Date.now()
@@ -383,8 +384,9 @@ export async function sendMessage(
   const ref = await log.getOrCreate(id, row);
   // An answer claims the message it answers before it goes out, so a crash
   // after the dispatch can't leave room for a second answer; a refused one
-  // gives the claim back.
-  await claimAnswer(ctx, row);
+  // gives the claim back. One its sender still waits for is held for that
+  // wait instead (FIX-2318).
+  if (await claimAnswer(ctx, row, true)) return holdForWait(ctx, ref, resends);
   const outcome = await dispatchOnce(ctx, ref, row, from, resends);
   if (!outcome.ok) await releaseAnswer(ctx, row);
   return outcome;
@@ -394,13 +396,34 @@ export async function sendMessage(
  * Record an answer on the message it answers, when that one asked for a reply
  * (FIX-2310): `answeredBy`, written once, so the framework's answer at the
  * turn's end, or the pass's, sends nothing more.
+ *
+ * @param mayHold The answer hasn't gone out yet, so it may be held for a wait.
+ * @returns Whether the answer is the claim's and its sender still waits for
+ *   it (FIX-2318): the asked message has a deadline and its wait hasn't
+ *   ended. The sender's end of the wait writes `waitEndedAt` only while
+ *   nothing answered, so once the claim is this answer's, the wait can't end
+ *   without it.
  */
-async function claimAnswer(ctx: BlockContext, row: Pick<WorkerMessageRow, "id" | "inReplyTo">): Promise<void> {
-  if (row.inReplyTo === undefined) return;
+async function claimAnswer(ctx: BlockContext, row: Pick<WorkerMessageRow, "id" | "inReplyTo">, mayHold = false): Promise<boolean> {
+  if (row.inReplyTo === undefined) return false;
   const asked = await messageLogOf(ctx).getOptional(row.inReplyTo);
-  if (asked?.state.replyRequested === true && asked.state.answeredBy === undefined) {
+  if (asked?.state.replyRequested !== true) return false;
+  if (asked.state.answeredBy === undefined) {
     await asked.updateState((current) => (current.answeredBy === undefined ? { ...current, answeredBy: row.id } : current));
   }
+  const now = asked.state;
+  return mayHold && now.answeredBy === row.id && now.deadlineAt !== undefined && now.waitEndedAt === undefined;
+}
+
+/**
+ * Hold an answer for the wait its sender is parked in (FIX-2318): the row is
+ * the sender's tool result, read off the log, so it is never dispatched, and
+ * reads `delivered` with nothing owed.
+ */
+async function holdForWait(ctx: BlockContext, ref: ResourceRef<WorkerMessageRow>, resends: boolean): Promise<SendOutcome> {
+  await ref.patchState({ status: "delivered", deliveredAt: Date.now() });
+  if (resends) await dropOwed(ctx, [ref.state.id]);
+  return { ok: true, id: ref.state.id };
 }
 
 /** Give back {@link claimAnswer}'s claim when `row`'s send was refused: a refused answer answers nothing. */
@@ -439,7 +462,7 @@ async function dispatchOnce(
   const { id } = row;
   let outcome: DispatchOutcome | undefined;
   try {
-    outcome = await dispatchMessage(ctx, row, from, row.call === true);
+    outcome = await dispatchMessage(ctx, row, from, row.deadlineAt !== undefined);
   } catch (error) {
     // It may have started: the pass sends it again, and the take keeps it once.
     await ref.patchState({ reason: error instanceof Error ? error.message : String(error) });
