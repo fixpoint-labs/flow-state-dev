@@ -6,7 +6,22 @@ import { describe, expect, it } from "vitest";
 import { ClientHttpError } from "@flow-state-dev/client";
 import type { Client } from "@flow-state-dev/client";
 import { readerSessionId } from "../src/lib/reads";
-import { ageLabel, harnessName, levelLabel, percentLabel, runUsageQuery, toHarnessUsage, windowName } from "../src/lib/usage";
+import {
+  ageLabel,
+  billingLabel,
+  costLabel,
+  noTokensReported,
+  reportedTokensLabel,
+  harnessName,
+  levelLabel,
+  percentLabel,
+  runUsageQuery,
+  tokensLabel,
+  toHarnessUsage,
+  toWorkerUsage,
+  USAGE_PERIODS,
+  windowName,
+} from "../src/lib/usage";
 
 describe("Usage labels", () => {
   it("names a window by its length, after its limit's name when it has one", () => {
@@ -46,6 +61,59 @@ describe("Usage labels", () => {
     expect(harnessName("claude-code")).toBe("Claude Code");
     expect(toHarnessUsage({ harnesses: [{ harness: "codex" }, null, "x"] })).toEqual([{ harness: "codex" }]);
     expect(toHarnessUsage(undefined)).toEqual([]);
+  });
+});
+
+/**
+ * The worker section's labels (FIX-2145): a dollar figure only where a harness
+ * reported one, and nothing that reads as what is left.
+ */
+describe("Usage by worker labels", () => {
+  it("says tokens were not reported when no run reported any, never 0", () => {
+    // A harness killed before its result reports no usage: its stored count is
+    // 0, and showing "0 tokens" would claim a measured zero.
+    const silent = { runs: 2, unreported: 2 };
+    const partial = { runs: 2, unreported: 1 };
+    expect(noTokensReported(silent)).toBe(true);
+    expect(noTokensReported(partial)).toBe(false);
+    expect(reportedTokensLabel(0, [silent])).toBe("tokens not reported");
+    expect(reportedTokensLabel(0, [silent, silent])).toBe("tokens not reported");
+    expect(reportedTokensLabel(1_500, [silent, partial])).toBe("1,500 tokens");
+  });
+
+  it("shows a cost only where one was reported, and says who reported it", () => {
+    expect(costLabel({ source: "claude-code", kind: "harness", costUsd: 0.42 })).toBe("$0.42, reported by Claude Code");
+    expect(costLabel({ source: "claude-code", kind: "harness", costUsd: null })).toBe("cost not reported");
+    expect(costLabel({ source: "openai/gpt-6-luna", kind: "model", costUsd: null })).not.toMatch(/\$/);
+  });
+
+  it("counts tokens in words a user reads at a glance", () => {
+    expect(tokensLabel(16)).toBe("16 tokens");
+    expect(tokensLabel(1_500)).toBe("1,500 tokens");
+    expect(tokensLabel(12_500)).toBe("12.5 K tokens");
+    expect(tokensLabel(1_200_000)).toBe("1.2 M tokens");
+  });
+
+  it("names how a run was paid for, and nothing when nobody said", () => {
+    expect(billingLabel("api-key")).toBe("API key");
+    expect(billingLabel("subscription")).toBe("subscription");
+    expect(billingLabel(null)).toBeNull();
+  });
+
+  it("offers today, 7 and 30 days, and keeps only rows that are rows", () => {
+    expect(USAGE_PERIODS.map((p) => p.days)).toEqual([1, 7, 30]);
+    expect(toWorkerUsage({ workers: [{ worker: "coder" }, null, 3] })).toEqual([{ worker: "coder" }]);
+    expect(toWorkerUsage(undefined)).toEqual([]);
+  });
+
+  it("never labels a total as left, remaining or a limit", () => {
+    const words = [
+      costLabel({ source: "claude-code", kind: "harness", costUsd: 1 }),
+      costLabel({ source: "codex", kind: "harness", costUsd: null }),
+      tokensLabel(42),
+      ...USAGE_PERIODS.map((p) => p.label),
+    ].join(" ");
+    expect(words).not.toMatch(/left|remaining|limit/i);
   });
 });
 

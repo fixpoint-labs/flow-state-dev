@@ -34,7 +34,7 @@ open the run row  →  build the prompt, take the checkout  →  run the harness
 
 ## Choosing the harness
 
-The harness is a slot. You pass a factory; the manager calls it once and hands it four things.
+The harness is a slot. You pass a factory; the manager calls it once and hands it the feeds described below.
 
 ```ts
 import { harnessManager } from "@flow-state-dev/harness-manager";
@@ -47,8 +47,8 @@ const manager = harnessManager({
   phase: implementPhase(),
   workspace: { root, sourceRepo, baseRef },
   runTimeoutMs: 30 * 60_000,
-  harness: ({ cwd, resume, onSession, onUsage }) =>
-    claudeCodeAgent({ cwd, resume, onSession, onUsage, detached: true, recordWork: true }),
+  harness: ({ cwd, resume, onSession, onUsage, onActivity }) =>
+    claudeCodeAgent({ cwd, resume, onSession, onUsage, onActivity, detached: true, recordWork: true }),
 });
 ```
 
@@ -58,8 +58,8 @@ manager never learns which agent it is driving:
 ```ts
 import { codexAgent } from "@flow-state-dev/codex";
 
-harness: ({ cwd, resume, onSession }) =>
-  codexAgent({ cwd, resume, onSession, thread: { sandboxMode: "workspace-write" } }),
+harness: ({ cwd, resume, onSession, onActivity }) =>
+  codexAgent({ cwd, resume, onSession, onActivity, thread: { sandboxMode: "workspace-write" } }),
 ```
 
 What the factory passes on differs, because that part belongs to the agent. Claude
@@ -67,7 +67,7 @@ Code needs `detached: true`: it keeps session state by default, and a dispatched
 row refuses a block that does. Codex keeps none, so it needs no equivalent. Each
 spells its sandbox its own way. None of it reaches the manager.
 
-**What the manager hands down.** `cwd` says where this run works: the checkout the manager derived and provisioned. `resume` says which conversation this attempt continues, or `null` for a fresh one. `onSession` is what the harness calls when it names its session, so the manager can record it. `onUsage` is what the harness calls with each subscription usage window its run reports, so the manager can store it in the run owner's [usage record](#subscription-usage). A harness that reports no usage, such as Codex, has no use for it. `onSteerable`, which is optional, is what a harness whose run can take a message mid-turn calls to offer the manager a way in; see [Steering a run](#steering-a-run).
+**What the manager hands down.** `cwd` says where this run works: the checkout the manager derived and provisioned. `resume` says which conversation this attempt continues, or `null` for a fresh one. `onSession` is what the harness calls when it names its session, so the manager can record it. `onUsage` is what the harness calls with each subscription usage window its run reports, so the manager can store it in the run owner's [usage record](#subscription-usage). A harness that reports no usage, such as Codex, has no use for it. `onSteerable`, which is optional, is what a harness whose run can take a message mid-turn calls to offer the manager a way in; see [Steering a run](#steering-a-run). `onActivity`, also optional, is what the harness calls with each assistant message and tool call of its run, so the manager can keep the task's [progress note](#how-a-running-task-is-doing) current.
 
 **What the manager never does.** It does not read anything vendor-specific off the handle, and it does not tell the harness what model to use, what tools to allow, or how to sandbox itself. Those are yours, written inside the factory.
 
@@ -216,6 +216,16 @@ A message that arrives after the run's last step, even while its result is being
 **A run that takes a message live.** Some harnesses can hand a message to the turn already running. Cursor can today; Claude Code and Codex can't yet. Pass the slot's `onSteerable` through to such a harness and the manager checks the task about once a second while the step runs, handing each new message straight to the running turn. The step keeps going with it: no stop, no extra step, no new attempt. If the run turns a message away, the message isn't lost. The next step takes it, as if it had arrived after this one, or at once under `stopsOnAbort: true`. A message whose delivery was still unanswered when the step ended goes to the next step too, with a note to the agent that it may already have it. Messages owed that way are held in the server's memory, so a server that dies mid-step loses them.
 
 If the task is cancelled, finishes, or is claimed again while a step runs, the request runs no further step for it.
+
+### How a running task is doing
+
+While a step runs, the manager keeps the task's `statusNote` set to what the run did last. That's the one-line note `getTask`, `listTasks` and task views show, so a coordinator asked "how is it going?" reads it with `getTask`. Messaging a running coding task won't get an answer: a worker's message to it is refused until it finishes.
+
+A message the agent wrote reads as its first non-empty line. A tool call reads as `<name>: <detail>`, where the detail is the file, path, command, pattern, query or URL it was called with, and as the name alone when it has none of those, for example `Bash: pnpm test`. Notes are cut to 280 characters.
+
+The first note of a step is written at once, then at most one every 30 seconds (`PROGRESS_NOTE_MS`), always the latest. A run that has lost its task writes no more notes. Nothing clears the note when the step ends, so a finished task keeps its last one beside its status. A board without `reportProgress` gets no note, and the run is unaffected.
+
+The notes come from the slot's `onActivity` feed, so pass it to your harness as the examples above do. Claude Code and Codex report messages and tool calls. Cursor reports tool calls only, since it streams its text in pieces.
 
 ### The session door
 

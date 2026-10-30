@@ -12,7 +12,7 @@ import { getOrCreateTaskCollection } from "../../src/tasks";
 import type { TaskCollectionResolver } from "../../src/skills/task-tools-capability";
 
 /** The own-state field these tests keep their board on. */
-export const BOARD_FIELD = "delegationBoard";
+export const BOARD_FIELD = "ownBoard";
 
 /** Host board on `ctx.parent`. No parent, or no field, means no board. */
 export const ownStateResolver: TaskCollectionResolver = async (ctx) => {

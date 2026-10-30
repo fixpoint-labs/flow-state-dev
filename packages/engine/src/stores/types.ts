@@ -5,7 +5,7 @@ import type {
   SuspensionFilter,
   SuspensionRecord
 } from "@flow-state-dev/core/types";
-import type { JsonObject } from "@flow-state-dev/core/types";
+import type { JsonObject, ModelUsageEntry } from "@flow-state-dev/core/types";
 import type { ExpectedVersion as SharedExpectedVersion } from "@flow-state-dev/core/helpers";
 import type {
   BlockTraceItem,
@@ -252,6 +252,22 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * such as `{ ok: false }` belongs to whoever reads it).
    */
   result?: RequestActionResult;
+  /**
+   * What the request's model calls spent before it last suspended, by model
+   * (FIX-2145). Written by the engine when the request suspends, or when its
+   * client went away and that run's ending has handed the spend on; a resume or
+   * continuation starts its spend ledger from it, so
+   * `ctx.request.tokenUsage` and the action's token budget count the whole
+   * request, while a request-end hook is still handed only what each run spent.
+   */
+  spentByModel?: Record<string, ModelUsageEntry>;
+  /**
+   * The last item index {@link RequestRecord.spentByModel} accounts for. A
+   * continuation after the process died counts the model usage its log's
+   * block traces carry past this index, since that run settled none. Absent:
+   * no settlement counted any, so every trace in the log counts.
+   */
+  spentThroughItemIndex?: number;
 };
 
 /**

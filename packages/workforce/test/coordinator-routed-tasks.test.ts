@@ -279,13 +279,12 @@ describe("the judgment turn's filing on a turn routing a message", () => {
       assignee: "eng.em",
       session: "ongoing",
       resultTo: "conversation",
-      metadata: { pieceOf: "task_someone_elses", retryOf: "task_other", note: "kept" }
+      metadata: { pieceOf: "task_someone_elses", note: "kept" }
     });
     expect(outputs).toEqual([{ ok: true, taskId: expect.stringMatching(/^routed:/) }]);
     const [row] = await host.routedRows("alice");
     expect(row.metadata?.note).toBe("kept");
     expect(row.metadata).not.toHaveProperty("pieceOf");
-    expect(row.metadata).not.toHaveProperty("retryOf");
   });
 });
 
@@ -443,7 +442,7 @@ describe("a post row stored before the upgrade", () => {
       incarnationId: "legacy-incarnation",
       sealed: {
         kind: "post",
-        postId: "legacy",
+        messageRequestId: "legacy",
         round: 0,
         delegate: { worker: "eng.coder" },
         session: { key: 'delegate:["eng.coder",null]' },
@@ -512,7 +511,7 @@ describe("a conversation saved before messages were tasks (FIX-1872 BR-13)", () 
     const runtime = await host.state.getRuntime();
     for (let written = false; !written; ) {
       const session = (await runtime.stores.session.get(id))!;
-      const deliveries = [{ token: "t-old", postId: "p-old", round: 0, delegate: { worker: "eng.coder" }, answered: false }];
+      const deliveries = [{ token: "t-old", messageRequestId: "p-old", round: 0, delegate: { worker: "eng.coder" }, answered: false }];
       written = (await runtime.stores.session.set(id, { ...session, state: { ...session.state, deliveries } } as never, session.version as never))
         .ok;
     }

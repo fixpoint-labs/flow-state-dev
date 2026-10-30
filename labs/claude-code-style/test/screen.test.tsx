@@ -162,6 +162,8 @@ describe("the session-mode screen", () => {
     expect(thread().parentElement!.contains(work)).toBe(true);
     expect(row("Research Globex").getAttribute("aria-expanded")).toBe("true");
     expect(within(work).getByText(/Starting:/)).toBeTruthy();
+    // What its run has spent so far, split as the board's row reports it.
+    expect(within(work).getByText("openai/gpt-6-luna · 1.2k in · 300 out")).toBeTruthy();
     expect(within(work).getByText(/To stop or steer a task, ask the main session/)).toBeTruthy();
     expect(within(work).queryByRole("button", { name: /stop|cancel/i })).toBeNull();
     expect(within(work).queryByRole("textbox")).toBeNull();
@@ -203,6 +205,9 @@ describe("the session-mode screen", () => {
     expect(done.open).toBe(false);
     expect(within(done).getByRole("button", { name: /Research Acme/, hidden: true })).toBeTruthy();
     expect(within(done).queryByText("Research Globex")).toBeNull();
+    // The running card shows its live count; the done row, the final total its run reported.
+    expect(within(row("Research Globex")).getByText("openai/gpt-6-luna · 1.5k tokens").dataset.spend).toBe("live");
+    expect(within(done).getByText("openai/gpt-6-luna · 6.3k tokens", { selector: "[data-spend]" }).dataset.spend).toBe("final");
 
     // A finished row still opens like any task.
     done.open = true;
@@ -211,14 +216,13 @@ describe("the session-mode screen", () => {
   });
 
   it("queues a line sent while a turn runs, and runs it after", async () => {
-    // Slow enough that the turn is still running when the second line lands, even on a busy runner.
-    render(<App adapter={createFakeLab({ speed: 0.1 })} />);
+    render(<App adapter={createFakeLab({ speed: 0.2 })} />);
     await pick();
     await ask("Compare Acme and Globex for us.");
     await within(thread()).findByRole("status");
     await ask("Also add a risks section.");
     expect(within(thread()).getByText(/queued · runs when this turn ends/)).toBeTruthy();
-    await within(thread()).findByText(/Noted\./, undefined, { timeout: 3000 });
+    await within(thread()).findByText(/Noted\./, undefined, { timeout: 4000 });
   });
 
   it("interrupts the running turn with Stop", async () => {

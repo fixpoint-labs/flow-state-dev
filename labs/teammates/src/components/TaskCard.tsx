@@ -1,109 +1,52 @@
-import { useState } from "react";
-import type { LabAdapter, ProjectRow, BoardTask } from "../adapter";
-import { useWatch } from "../lib/use-watch";
+import { memo } from "react";
+import type { BoardTask } from "../adapter";
 import { cn } from "../lib/utils";
+import type { Look } from "../lib/looks";
+import { Avatar } from "./Avatar";
+import { RunsOn, runsOn, taskLabel, taskLine } from "./Popups";
 
 /**
- * A task a conversation filed for a worker that takes tasks: one line with
- * what it is and where it runs, opening to the run, read only. A run refused
- * for want of a project asks for one on the card; picking it is the only
- * thing that starts a run.
+ * A task a conversation filed, as one line in the thread: what was asked of
+ * whom, or a coding task, and how it stands. It opens the task's run in a
+ * popup, read only. Memoized, like a conversation's entries.
  */
-export function TaskCard({
-  adapter,
+export const TaskCard = memo(function TaskCard({
   task,
-  filer,
-  workProject,
-  projects,
   nameOf,
-  onPick,
-  defaultOpen = false,
+  lookOf,
+  coding = false,
+  onOpen,
 }: {
-  adapter: LabAdapter;
   task: BoardTask;
-  /** The worker whose conversation filed it. */
-  filer: string;
-  /** The filer's project, once picked. */
-  workProject: string | undefined;
-  projects: ProjectRow[];
   nameOf: (id: string) => string;
-  /** Present where a pick can be made: the filer's own conversation. */
-  onPick?: (project: string) => void;
-  defaultOpen?: boolean;
+  lookOf: (id: string) => Look;
+  /** It is a coding task: a background task, not a teammate's. */
+  coding?: boolean;
+  onOpen: (taskId: string) => void;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
-  const steps = useWatch(adapter.watchRun, open ? task.runSessionId : undefined) ?? [];
-  const to = nameOf(task.to);
-  const status =
-    task.status === "needs-project"
-      ? workProject
-        ? "refused · no project"
-        : "needs a project"
-      : task.status === "running"
-        ? task.project ? `running in ${task.project}` : "running"
-        : task.status === "failed"
-          ? "failed"
-          : `done in ${task.project}`;
-  const asking = task.status === "needs-project" && !workProject && onPick;
+  const line = taskLine(task, coding, nameOf);
+  const on = coding ? runsOn(task) : undefined;
   return (
-    <div
+    <button
+      type="button"
       data-entry="task"
       data-status={task.status}
-      className={cn("max-w-[85%] rounded-md border border-dashed", asking ? "border-attention bg-attention/10" : "border-success/60")}
+      aria-label={coding ? taskLabel(line, task) : line}
+      onClick={() => onOpen(task.id)}
+      className="flex w-full max-w-[85%] items-center gap-2 rounded-md border border-border bg-card/60 px-3 py-1.5 text-left text-sm hover:bg-accent"
     >
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-label={`Task for ${to}: ${task.title}`}
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-start gap-2 px-3 py-1.5 text-left font-mono text-xs text-success hover:bg-success/5"
-      >
-        <span className="shrink-0">⚙ task for {to} ·</span>
-        <span className="min-w-0 flex-1 truncate text-foreground">{task.title}</span>
-        <span className={cn("shrink-0", asking ? "font-semibold text-foreground" : "text-muted-foreground")} data-task-status>
-          {status}
-        </span>
+      {coding ? (
         <span aria-hidden className="shrink-0 text-muted-foreground">
-          {open ? "▾" : "▸"}
+          ⚙
         </span>
-      </button>
-      {asking ? <ProjectPrompt filer={filer} to={to} projects={projects} onPick={onPick} /> : null}
-      {open ? (
-        <ol aria-label={`Run of ${task.title}`} className="border-t border-dashed border-border px-3 py-2 font-mono text-xs text-muted-foreground">
-          {task.status === "needs-project" ? <li>No run started: {filer} had no project.</li> : null}
-          {steps.map((s) => (
-            <li key={s.id}>· {s.text}</li>
-          ))}
-          {task.result ? <li className="text-foreground">{task.result}</li> : null}
-        </ol>
-      ) : null}
-    </div>
-  );
-}
-
-/** The ask for a project, the first time a job needs files. */
-function ProjectPrompt({ filer, to, projects, onPick }: { filer: string; to: string; projects: ProjectRow[]; onPick: (project: string) => void }) {
-  const [project, setProject] = useState(projects[0]?.id ?? "");
-  return (
-    <div role="group" aria-label="Pick a project" className="flex flex-wrap items-center gap-2 border-t border-dashed border-attention/60 px-3 py-2 text-xs">
-      <span className="text-foreground">
-        {to} needs a project to work in. Pick one for {filer}; it sticks to {filer}.
+      ) : (
+        <Avatar look={lookOf(task.to)} size="sm" />
+      )}
+      <span className="min-w-0 flex-1 truncate">{line}</span>
+      {on === undefined ? null : <RunsOn on={on} />}
+      <span className={cn("shrink-0 text-xs", task.status === "failed" ? "text-destructive" : "text-muted-foreground")} data-task-status>
+        {task.status}
       </span>
-      <select aria-label="Project" value={project} onChange={(e) => setProject(e.target.value)} className="border border-border bg-card px-1 py-0.5">
-        {projects.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name}
-          </option>
-        ))}
-      </select>
-      <button
-        type="button"
-        disabled={!project}
-        onClick={() => onPick(project)}
-        className="rounded-md bg-primary px-2 py-0.5 font-semibold text-primary-foreground disabled:opacity-40"
-      >
-        Use project
-      </button>
-    </div>
+    </button>
   );
-}
+});

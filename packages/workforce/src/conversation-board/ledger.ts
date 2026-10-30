@@ -43,7 +43,7 @@ import {
   taskLedgerResources,
   withoutNoticeMarkers
 } from "@flow-state-dev/orchestration/tasks";
-import { FILED_HOP, FILED_MARKER, FILED_PROJECT, PIECE_OF, RETRY_OF, SPLIT_MARKER } from "./board-entries";
+import { FILED_HOP, FILED_MARKER, FILED_PROJECT, PIECE_OF, SPLIT_MARKER } from "./board-entries";
 import { filedCascadeOver } from "./cascade";
 import { filingSessionIdOf } from "./filing-session";
 import { withoutReportMarkers } from "./report-owed";
@@ -165,7 +165,7 @@ export async function ownConversationLedger(ctx: BlockContext): Promise<TaskColl
 /**
  * Metadata a caller hands in, without any marker this board keeps: a filing
  * or a patch can't forge an owed notice or an owed report, or clear one, or
- * make a row a piece of a task or another piece's retry, or point a row at a
+ * make a row a piece of a task, or point a row at a
  * session as its split (FIX-1802 S4) or as the session that filed its work
  * (FIX-2080), or set the hop count its turn starts at (FIX-2106), or the
  * project it was filed in (FIX-2161).
@@ -176,6 +176,6 @@ export function callerMetadata(
   const unmarked = withoutNoticeMarkers(metadata);
   if (unmarked === undefined) return unmarked;
   const kept = withoutReportMarkers(unmarked);
-  const { [SPLIT_MARKER]: _split, [PIECE_OF]: _piece, [RETRY_OF]: _retry, [FILED_MARKER]: _filed, [FILED_HOP]: _hop, [FILED_PROJECT]: _project, ...rest } = kept;
+  const { [SPLIT_MARKER]: _split, [PIECE_OF]: _piece, [FILED_MARKER]: _filed, [FILED_HOP]: _hop, [FILED_PROJECT]: _project, ...rest } = kept;
   return rest;
 }

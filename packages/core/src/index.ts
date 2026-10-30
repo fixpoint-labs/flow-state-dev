@@ -141,6 +141,8 @@ export type {
   ResumeWaitResult,
   RequestWaits,
   RequestSessions,
+  SessionHistory,
+  SessionHistoryQuery,
   SessionView,
   RequestWakes,
   SettleParentTaskInput,
@@ -240,6 +242,7 @@ export { mapLimit } from "./helpers/concurrency";
 export { SLASH_COMMAND_PATTERN } from "./helpers/slash-command";
 export { lifecycleSchema } from "./helpers/lifecycle-schema";
 export { isTraceObservabilityEnabled } from "./helpers/trace-observability";
+export { cacheTokensOf } from "./helpers/cache-tokens";
 export { resolveTracingLevel } from "./helpers/tracing-level";
 export type { TracingLevel } from "./helpers/tracing-level";
 export { transientSlot } from "./helpers/transient-slot";
@@ -668,5 +671,6 @@ export { harnessEnv } from "./helpers/harness-env";
 export type { HarnessEnvOptions } from "./helpers/harness-env";
 /** One flow's live steering: the hook its harness is handed, and the action that hands a line in. */
 export { harnessSteering } from "./helpers/harness-steering";
+export { harnessActivityOf, reportHarnessActivity } from "./helpers/harness-activity";
 export type { HarnessSteerActionOptions, HarnessSteerAnswer, HarnessSteering } from "./helpers/harness-steering";
 export { formatRunDuration } from "./helpers/run-duration";

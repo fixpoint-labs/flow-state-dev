@@ -123,9 +123,34 @@ Each key in `actions` is a public name. Clients call it with `sendAction("chat",
 | `userMessage` | `(input) => string` | — | User-visible message recorded for the turn. |
 | `concurrency` | `ConcurrencyConfig` | flow `request.concurrency`, else `"allow"` | What happens if another request on the same key is in flight. See [Concurrency policies](/docs/advanced/concurrency-policies). |
 | `durable` | `boolean` | `false` | Clears the request's suspension records and lease when it completes. A request that resumed from a suspension, or ran a checkpointing sequencer, is cleared on completion without it, so most actions don't need it. Suspending and crash recovery don't need it either: they need a host with durable execution (on by default wherever stores persist), and sequencers checkpoint unless they set `durable: false`. |
-| `tokenBudget` | `{ maxTotalTokens, warnAt?, onExceeded? }` | — | Cap tokens for the action. `onExceeded` is `"error"`, `"stop"`, or `"warn"`. |
+| `tokenBudget` | `{ maxTotalTokens, warnAt?, onExceeded? }` | — | Cap the model tokens a request of this action spends. See [Token budgets](#token-budgets). |
 | `onCompleted` / `onErrored` | `BlockDefinition` | — | Action-level hooks after the root block finishes or throws. |
 | `mcp` | `ActionMcpConfig` | exposed when the flow enables MCP | Per-action MCP overrides. |
+
+### Token budgets
+
+A request counts every model result its generators and evaluators report: each step of a tool loop as it finishes, an evaluator a generator calls as a tool, and a schema-repair call. The count is `ctx.request.tokenUsage` (`totalConsumed`, plus `byModel`). A request that suspends and resumes keeps one count: the calls made before it suspended still count after it resumes.
+
+`tokenBudget` checks that count once, after the action's block returns. It doesn't cut work short: a request can go past its budget mid-run.
+
+```ts
+actions: {
+  chat: {
+    block: chatPipeline,
+    tokenBudget: { maxTotalTokens: 20_000, warnAt: 0.8, onExceeded: "stop" },
+  },
+},
+```
+
+| `onExceeded` | Over budget |
+|---|---|
+| `"error"` (default) | The request fails with `Token budget exceeded: consumed <n> > <max>`. |
+| `"stop"` | A transient `status` item says the budget was exceeded, and the request ends `incomplete`. `onCompleted` hooks don't run. |
+| `"warn"` | The same `status` item, and the request completes. |
+
+`warnAt` is a fraction of `maxTotalTokens`. A request at or past that share, but under the budget, gets the warning item and completes. Warning items carry `detail.code: "system.token_budget_warning"`.
+
+Runs of a [coding agent](/docs/tools/coding-agents#what-a-run-spent) aren't model calls. They don't count toward `tokenUsage` or the budget.
 
 ### `action.mcp`
 

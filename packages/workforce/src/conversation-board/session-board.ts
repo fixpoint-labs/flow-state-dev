@@ -1,5 +1,5 @@
 /**
- * `defineSessionBoard`: the filing kit a worker flow carries so its workers
+ * `defineSessionBoard`: the filing factory a worker flow carries so its workers
  * file tasks for their delegates (FIX-1802 S1 to S3).
  *
  * A worker files when its session's delegate list holds one that takes a task
@@ -34,7 +34,7 @@
  *     configSchema: workerConfigSchema().extend({ ... }),
  *     session: { ...installation.session(board.sessionStateShape), serverOwned: board.serverOwned },
  *     resources: { ...installation.resources, ...board.resources },
- *     actions: { run: { ... }, ...board.actions },
+ *     actions: { respond: { ... }, ...board.actions },
  *     internal: { actions: board.entries(answer) }
  *   });
  * });
@@ -51,6 +51,7 @@ import { workerMessagesResources } from "../messages/message-log";
 import { defineSendMessageCapability } from "../messages/message-tool";
 import { MESSAGE_RECEIVED_ENTRY } from "../messages/keys";
 import { messageDeliveryStateShape, payMessageDebts } from "../messages/delivery";
+import { payReplyDebts } from "../messages/owed-replies";
 import { messageReceivedEntry, promptedMessageTurn } from "../messages/message-received-entry";
 import { recheckRecipient } from "../messages/send-message";
 import { fileScheduledTaskEntry } from "../schedules/file-scheduled-task";
@@ -91,7 +92,7 @@ const SCREEN_FILING_ACTION = "createTask_tasks";
 export const WORKER_MESSAGE_SERVER_OWNED: readonly string[] = Object.keys(workerMessageStateShape);
 
 /**
- * The session-state fields this kit's delegate list and board write, and only
+ * The session-state fields this factory's delegate list and board write, and only
  * they: what a flow declares as `session.serverOwned`. `installation.session()`
  * declares the same set, so every worker flow refuses them on a caller's create.
  */
@@ -133,7 +134,7 @@ export interface SessionBoardOptions {
 }
 
 /**
- * Build the filing kit for one worker flow.
+ * Build the filing factory for one worker flow.
  *
  * @param options The installation, the flow's name, its seed and its routing.
  */
@@ -145,10 +146,19 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     // A worker's step filed `session: "new"` runs through its own `work` entry (FIX-2082 D2).
     takesOwnTasks: () => takesTasks(options.installation.workerFlows()[options.flowKind]),
     chainLimit: () => taskChainLimitOf(options.installation),
+    // A coding flow's task is refused when it is filed with no project (FIX-2333).
+    needsProject: (flow) => options.installation.workerFlows()[flow]?.needsProject === true,
     // The messages the session sent that haven't landed (FIX-2240): the pass sends them again.
+    // And the reply-requested messages it landed that its turns never answered (FIX-2310): the pass says "no answer".
     messages: {
       resources: { ...options.installation.resources, ...workerMessagesResources },
-      payDebts: (ctx) => payMessageDebts(ctx, (inner, row) => recheckRecipient(inner, options.installation, row))
+      payDebts: async (ctx) => {
+        const sends = await payMessageDebts(ctx, (inner, row) => recheckRecipient(inner, options.installation, row));
+        const replies = await payReplyDebts(ctx, options.installation, options.flowKind);
+        // The earlier of the two next looks, if either owes one.
+        const due = [sends, replies].filter((at): at is number => at !== undefined);
+        return due.length === 0 ? undefined : Math.min(...due);
+      }
     },
     ...(options.routes === undefined ? {} : { routes: options.routes })
   });
@@ -213,7 +223,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     resources: { ...board.resources, ...workerMessagesResources },
     /** The session state the delegates, the board and worker messages keep, for `installation.session(...)`. */
     sessionStateShape: { ...delegateStateShape, ...conversationBoardStateShape, ...workerMessageStateShape },
-    /** The session-state fields only this kit writes, for the flow's `session.serverOwned`. */
+    /** The session-state fields only this factory writes, for the flow's `session.serverOwned`. */
     serverOwned: SESSION_BOARD_SERVER_OWNED,
     /**
      * The internal entries the board needs on its flow, in this order: a run

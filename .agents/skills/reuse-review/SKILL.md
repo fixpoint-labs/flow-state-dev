@@ -75,7 +75,12 @@ table. An Adds item with no existing-piece column is already a finding.
    on an implementation diff — every new hook, cap, marker, record, path, or public
    method the diff introduces. The Adds list should be as short as possible; a long
    list is itself a smell.
-2. **Search the code for each item.** Search by what the code *does*, not where the
+2. **Resolve each item against the mechanism list first.** Find the row in
+   [`docs/mechanisms/mechanisms.yaml`](../../../docs/mechanisms/mechanisms.yaml) whose
+   `job` the item does, and cite its id in the verdict (`extend wait-gate`). Read the
+   row's `overlaps` before calling anything new. Go from the row's `anchor` to its
+   callers with `graft`. An item that matches no row still needs the search below.
+3. **Search the code for each item.** Search by what the code *does*, not where the
    spec says to look: `graft` for callers and similar signatures, then the item's
    nouns and verbs across `packages/` (for a new cap: `cap`, `limit`, `max`, `bound`;
    for a reservation: `held`, `taken`, `deferred`, `lapsed`, `reserved`). The package
@@ -83,10 +88,10 @@ table. An Adds item with no existing-piece column is already a finding.
    Inside an epic, also search the other children's specs (open spec PRs and merged
    `specs/issues/<ID>/`): sibling Adds count as existing
    ([`orchestration.md`](../../../docs/contributing/orchestration.md#compose-existing-pieces)).
-3. **Compare to the closest existing piece.** Prefer composition from the five block
+4. **Compare to the closest existing piece.** Prefer composition from the five block
    kinds (`handler`, `generator`, `evaluator`, `sequencer`, `router`) and from
    sequencer control (`step`, `stepIf`, `tap`, `doWhile`) over a new hook or loop.
-4. **Give each item one verdict** (below). Then emit the report.
+5. **Give each item one verdict** (below). Then emit the report.
 
 ## Verdicts
 
@@ -186,7 +191,7 @@ is **extend `holds[]`**.
 
 | Adds | Closest existing piece | Verdict | Why |
 |------|------------------------|---------|-----|
-| 1 | <symbol or "none; searched …"> | reuse X / extend X / genuinely new | <one line> |
+| 1 | <mechanism id, then symbol; or "none; searched …"> | reuse X / extend X / genuinely new | <one line> |
 
 ### Findings
 **1. <title>** (`path`) — <the existing piece, the search that found it, what the spec should do instead>.

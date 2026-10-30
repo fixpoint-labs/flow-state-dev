@@ -82,6 +82,20 @@ It comes down to the box's own refusal: a task with no project doesn't run.
 **What would change my mind:** people missing the prompt, so coding jobs sit waiting. Then lead
 says in its conversation that it is waiting for a project, as well as the screen asking.
 
+> **Amended 2026-10-29 ([FIX-2335](https://linear.app/fixpoint-labs/issue/FIX-2335), with the epic's
+> [ER-8 amendment](../../epics/FIX-2152/DECISIONS.md#who-owns-what)).** Superseded in this lab: Jake
+> took projects out of it, because making one first was in the way and choosing between them is an
+> unsolved UX problem, and the lab should prove projects aren't required. The lab now has one
+> working folder, a git checkout the operator names at start (`TEAMMATES_WORKDIR`); unset or
+> missing, the lab doesn't start. The host's run source is the existing constant one, so every
+> coding run gets a worktree of that folder and researcher's and writer's reads read it. Nothing
+> asks where, nothing is refused `no-project`, and no worker has a project tool: the header's
+> project select, the task card's prompt and the *New project* form are gone, and task cards say
+> *running* and *done*. The approval card stays: it now shows any worker's `waitForUser`
+> approval, not only lead's project creation. Locks in, instead: a person never picks a folder in the
+> lab, and no model can name one. Projects may come back later as an example of configuring the app
+> beyond what Grok Bot does.
+
 <a name="d4"></a>
 ## D4 · Only a task-taking coder runs a harness; the workers you talk to stay on our generator
 
@@ -99,6 +113,19 @@ It comes down to D2: the turn messages land in has to stay ours.
 
 **What would change my mind:** Grok Bot letting a person talk to a coding bot as one of the
 teammates. Then the harness gets the epic's mid-turn path (the Claude lab's D2), a separate design.
+
+> **Amended 2026-10-29 ([FIX-2332](https://linear.app/fixpoint-labs/issue/FIX-2332)).** In Jake's
+> test, coder on the list of teammates read as a broken teammate: it was listed like the others, and
+> a line to it got the door's reply. Jake chose to make coding a **background task, not a
+> teammate**, the way Grok Bot hands a coding agent a job you watch rather than talk to. The
+> decision stands: only coder runs a harness, the workers you talk to stay on our generator, and a
+> person never types to a harness. What changed is how it shows. coder stays on the roster as the
+> hidden worker coding tasks go to, and is off the screen's list. Each coding task is a background
+> item under the teammates, and a card in the conversation that started it; both open to the run,
+> read only, and its result lands as the coding task's, not as a line from coder. lead's
+> instructions say *start a coding task*, never *give it to coder*. The *Instead of* row is
+> unchanged; in *Because*, "lists coder as a delegate" and "a line from coder" no longer describe
+> the screen. Making coder messageable stays out of scope (FIX-1990).
 
 ## Decided, not asked
 

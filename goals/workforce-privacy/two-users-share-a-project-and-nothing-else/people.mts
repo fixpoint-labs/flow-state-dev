@@ -150,17 +150,17 @@ export async function act(who: Connected, flowKind: string, sessionId: string, a
   return { status, requestId, output: found?.result?.output, error: found?.result?.error?.message };
 }
 
-/** The delegates a coordinator's routing record for post `postId` delivered it to, among a request's items. */
-function routedDelegates(items: readonly StoredItem[], postId: string): string[] {
+/** The delegates a coordinator's routing record for post `messageRequestId` delivered it to, among a request's items. */
+function routedDelegates(items: readonly StoredItem[], messageRequestId: string): string[] {
   return items
     .filter((i) => i.type === "component" && (i as { component?: unknown }).component === "coordinator-route")
-    .map((i) => i.data as { postId?: unknown; delegates?: Array<{ worker?: unknown; outcome?: unknown }> } | undefined)
-    .filter((d) => d?.postId === postId)
+    .map((i) => i.data as { messageRequestId?: unknown; delegates?: Array<{ worker?: unknown; outcome?: unknown }> } | undefined)
+    .filter((d) => d?.messageRequestId === messageRequestId)
     .flatMap((d) => (d?.delegates ?? []).filter((x) => x.outcome === "delivered").map((x) => String(x.worker)));
 }
 
 /**
- * The answer one of `delegates` gave post `postId` in `sessionId`: the first
+ * The answer one of `delegates` gave post `messageRequestId` in `sessionId`: the first
  * assistant message after the post's own that names one of them as its
  * `agentName` (a delegate's first message is the one graded), read once
  * nothing runs in the session and its items stopped changing.
@@ -171,12 +171,12 @@ function routedDelegates(items: readonly StoredItem[], postId: string): string[]
  * not "the board is done": a board pass due later can still write items
  * after this returns, which m2's exception for her board's own passes covers.
  */
-async function delegateAnswer(who: Connected, sessionId: string, postId: string, delegates: readonly string[], timeoutMs: number): Promise<StoredItem | undefined> {
+async function delegateAnswer(who: Connected, sessionId: string, messageRequestId: string, delegates: readonly string[], timeoutMs: number): Promise<StoredItem | undefined> {
   let answer: StoredItem | undefined;
   let seen = -1;
   for (const until = Date.now() + timeoutMs; Date.now() < until; await sleep(500)) {
     const items = await who.routes.items(sessionId, "");
-    const from = items.findIndex((i) => i.type === "message" && i.role === "user" && i.requestId === postId);
+    const from = items.findIndex((i) => i.type === "message" && i.role === "user" && i.requestId === messageRequestId);
     if (from < 0) continue;
     answer = items.slice(from + 1).find((i) => i.type === "message" && i.role === "assistant" && delegates.includes(String((i as { agentName?: unknown }).agentName)));
     const running = (await who.routes.requests(sessionId)).some((r) => RUNNING.has(String(r.status)));

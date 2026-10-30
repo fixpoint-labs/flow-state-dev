@@ -52,7 +52,7 @@ describe("filing a task for one of this conversation's delegates (BR-1, BR-10)",
       expect(host.runs[0]).toMatchObject({ worker: "eng.tasker", userId: "alice", taskId: filed.taskId });
       const actions = (await host.requestsOf(conv)).map((request) => request.actionName);
       expect(actions).toContain("dispatch");
-      expect(actions).not.toContain("runTaskBoard");
+      expect(actions).not.toContain("runTaskBoard"); // retired-name-refusal: refusal test
     } finally {
       await host.dispose();
     }

@@ -8,7 +8,7 @@
  *   `NOTICE_DUE_MS`), puts the id on the session's owed list beside the
  *   sending request's id, writes the row, and dispatches once
  *   (`send-message.ts`). A session whose flow carries no pass (a server-sent
- *   message from a flow without the session kit) sends on that one dispatch
+ *   message from a flow without the session factory) sends on that one dispatch
  *   only, and owes nothing.
  * - **The take** is the recipient's: `onMessageReceived` records `takenBy` on
  *   the row in one guarded write while it is `unconfirmed`, by orchestration's
@@ -35,34 +35,47 @@ import { decideTake, hasEnded, nextResendAt, NOTICE_DUE_MS } from "@flow-state-d
 import { z } from "zod";
 import { DISPATCH_ENTRY } from "../conversation-board/board-entries";
 import type { WorkerInstallation } from "../workers/installation";
-import { MESSAGE_RECEIVED_ENTRY, SEND_MESSAGE_TOOL, SENDS_MESSAGES_MARK, WORKER_MESSAGES_OWED_STATE } from "./keys";
+import { MESSAGE_RECEIVED_ENTRY, SEND_MESSAGE_TOOL, SENDS_MESSAGES_MARK, WORKER_MESSAGES_OWED_STATE, WORKER_REPLIES_OWED_STATE } from "./keys";
 import { messageLogOf, type WorkerMessageRow } from "./message-log";
 
 /** The host's debt age when it keeps no wakes to say one: a day. */
 const DEFAULT_DEBT_AGE_MS = 24 * 60 * 60 * 1000;
 
-/** One message a session owes: its id, and the request that sent it. */
-const owedMessageSchema = z.object({ id: z.string().min(1), by: z.string().min(1) });
+/** One id a session owes, and the request beside it. Both owed lists use it. */
+const owedEntrySchema = z.object({ id: z.string().min(1), by: z.string().min(1) });
 
-type OwedMessage = z.infer<typeof owedMessageSchema>;
+type OwedEntry = z.infer<typeof owedEntrySchema>;
 
-/** The session state the owed list is kept in. Server-owned. */
+/** One reply the session owes: the message id, and the request that landed it. */
+export type OwedReply = OwedEntry;
+
+/** The session state the owed lists are kept in: messages sent and not landed, and reply-requested messages landed and not answered (FIX-2310). Server-owned. */
 export const messageDeliveryStateShape = {
-  [WORKER_MESSAGES_OWED_STATE]: z.array(owedMessageSchema).default([])
+  [WORKER_MESSAGES_OWED_STATE]: z.array(owedEntrySchema).default([]),
+  [WORKER_REPLIES_OWED_STATE]: z.array(owedEntrySchema).default([])
 } as const;
 
 /** The block name a resend is dispatched from: a resend's request record names it as its sender. */
 export const MESSAGE_RESEND_FROM = "worker-message-resend";
 
-/** The owed list in a session's state. */
-function owedOf(state: unknown): OwedMessage[] {
-  const list = (state as Record<string, unknown> | undefined)?.[WORKER_MESSAGES_OWED_STATE];
+/** The owed entries under `key`. An entry that doesn't parse is skipped, never run. */
+function readOwed(state: unknown, key: string): OwedEntry[] {
+  const list = (state as Record<string, unknown> | undefined)?.[key];
   if (!Array.isArray(list)) return [];
-  // An entry that doesn't parse is skipped, never run.
   return list.flatMap((entry) => {
-    const parsed = owedMessageSchema.safeParse(entry);
+    const parsed = owedEntrySchema.safeParse(entry);
     return parsed.success ? [parsed.data] : [];
   });
+}
+
+/** The messages a session sent that haven't landed. */
+function owedOf(state: unknown): OwedEntry[] {
+  return readOwed(state, WORKER_MESSAGES_OWED_STATE);
+}
+
+/** The reply-requested messages a session landed and hasn't answered (FIX-2310). */
+export function owedRepliesOf(state: unknown): OwedReply[] {
+  return readOwed(state, WORKER_REPLIES_OWED_STATE);
 }
 
 /** Whether `flowKind`'s flow carries the board's pass, which sends an owed message again. */
@@ -115,7 +128,7 @@ export function sendWithoutPassProblem(name: string, flow: unknown): string | un
   if (flowCarriesPass(flow) || !offersSendMessage(flow)) return undefined;
   return (
     `worker flow "${name}" offers "${SEND_MESSAGE_TOOL}" but has no "${DISPATCH_ENTRY}" pass, so a message whose own dispatch ` +
-    "fails would never be sent again. Spread the session kit's `board.entries(turn)` into `internal.actions`, and declare the `manager` role."
+    "fails would never be sent again. Spread the session factory's `board.entries(turn)` into `internal.actions`, and declare the `manager` role."
   );
 }
 

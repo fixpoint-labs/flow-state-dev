@@ -71,6 +71,7 @@ import type {
   ResumeWaitResult,
   SettleParentTaskInput,
   SettleParentTaskResult,
+  TokenCounter,
   WaitDeadlines,
   WaitRow,
 } from "@flow-state-dev/core/types";
@@ -98,6 +99,7 @@ import { readLiveness } from "./liveness-read";
 import type { WaitResumeOperation } from "./wait-resume-operation";
 import { createRequestWakes } from "../durability/request-wakes";
 import { createRequestWaits, type WaiterOf } from "../durability/wait-chain";
+import { createOwingPark } from "../durability/park-owed";
 import { createRequestSessions } from "./request-sessions";
 import type { DurabilityProvider } from "../durability/types";
 import type { WakeStore } from "../stores/types";
@@ -112,7 +114,7 @@ export type RequestHostInputs = {
   // `resourceState` is here for the birth of a newly created child: the
   // tombstone reclamation it owes itself and its flow's create check — see the
   // `birthSession` call below.
-  stores: Pick<StoreRegistry, "session" | "activeRequests" | "resourceState">;
+  stores: Pick<StoreRegistry, "session" | "activeRequests" | "resourceState" | "request">;
   flow: FlowInstance;
   /** Server-derived identity of the running request. Never caller-supplied. */
   identity: {
@@ -184,7 +186,7 @@ export type RequestHostInputs = {
     /** The request that dispatched this one and waits on it, read off its trusted dispatch stamp. */
     waitedBy?: WaiterOf;
     /** A request's record with its item log, for `waits.ended`. */
-    readRequest: (requestId: string) => Promise<Pick<RequestRecord, "id" | "status" | "sessionId" | "items"> | undefined>;
+    readRequest: (requestId: string) => Promise<Pick<RequestRecord, "id" | "status" | "sessionId" | "tenantId" | "items"> | undefined>;
   };
   /**
    * The running request's trusted dispatch stamp, already read through
@@ -193,6 +195,16 @@ export type RequestHostInputs = {
    * caller-written bag is not a sender.
    */
   dispatchStamp?: DispatchStamp;
+  /**
+   * What `sessions.history` needs beyond the stores: the running request, and
+   * how its own history counts tokens. Absent, `history` reads nothing.
+   */
+  sessionHistory?: {
+    runningRequestId: string;
+    tokenCounter: () => TokenCounter;
+    resolveModelId: () => string;
+    onGateReadError: (error: unknown) => void;
+  };
   /** Everything the liveness gate needs. The gate runs here, once. */
   liveness: Omit<LivenessGateInputs, "registry">;
   now?: () => number;
@@ -801,7 +813,20 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     sessions: stores.session,
     identity: { userId: identity.userId, tenantId: identity.tenantId, orgId: identity.orgId },
     flow,
-    ...(inputs.resolveFlow !== undefined ? { resolveFlow: inputs.resolveFlow } : {})
+    ...(inputs.resolveFlow !== undefined ? { resolveFlow: inputs.resolveFlow } : {}),
+    // The read of another session's settled turns (FIX-2173): the same read
+    // as this request's own window, under that session's scope.
+    ...(inputs.sessionHistory !== undefined
+      ? {
+          history: {
+            requests: stores.request,
+            ...inputs.sessionHistory,
+            ...(inputs.effectiveRuntimeConfig?.durabilityProvider !== undefined
+              ? { durability: inputs.effectiveRuntimeConfig.durabilityProvider }
+              : {})
+          }
+        }
+      : {})
   });
 
   // The seventh verb (FIX-2082): a wait parks durably (the resume) and its
@@ -822,7 +847,17 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       own: inputs.waits.own,
       ...(inputs.waits.waitedBy !== undefined ? { waitedBy: inputs.waits.waitedBy } : {}),
       sessionId: identity.sessionId,
-      readRequest: inputs.waits.readRequest
+      readRequest: inputs.waits.readRequest,
+      wakes: inputs.wakes.store,
+      // A wait that starts its own work owes its park as a wake (FIX-2269).
+      owingPark: createOwingPark({
+        store: inputs.wakes.store,
+        requestId: inputs.waits.requestId,
+        identity: { userId: identity.userId, tenantId: identity.tenantId, orgId: identity.orgId, sessionId: identity.sessionId },
+        flowId: flow.id,
+        fenceMs: inputs.wakes.fenceMs,
+        now: nowMs
+      })
     });
   }
 

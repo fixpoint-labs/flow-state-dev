@@ -1,12 +1,41 @@
 {
   "port": 4620,
-  "lead": "teammates.lead",
+  "lead": "teammates.chief-of-staff",
+  "leadName": "Chief of Staff",
   "researcher": "teammates.researcher",
-  "coder": "teammates.coder",
   "ask": "Ask researcher for our launch date, and help me outline the post.",
   "second": "Make section 2 about pricing.",
-  "fix": "Have coder fix the typo in the README's first line.",
-  "project": { "id": "relay", "title": "Relay" },
+  "fix": "Fix the typo in the README's first line.",
+  "remember": "By the way, the draft of the launch post is filed under the codename \"{code}\". Nothing to do about it, just say OK.",
+  "recall": "What codename did I give the launch post, and what is our launch date? Answer from what you already know, without asking anyone.",
+  "codename": {
+    "colours": ["amber", "cobalt", "crimson", "jade", "ochre", "violet", "silver", "teal", "umber", "saffron"],
+    "animals": ["heron", "otter", "lynx", "badger", "falcon", "marmot", "gecko", "walrus", "ibis", "tapir"],
+    "numbers": [214, 377, 452, 519, 608, 731, 846, 903, 128, 265]
+  },
+  "fillers": [
+    "In one sentence, why does bread go stale?",
+    "Give me one tip for keeping houseplants alive.",
+    "In one sentence, how does a bicycle stay upright?",
+    "Name a good stretch for a stiff neck, briefly.",
+    "In one sentence, what makes a sourdough starter work?",
+    "Suggest a name for a small black cat.",
+    "In one sentence, why is the sea salty?",
+    "What is a quick way to chill a drink?",
+    "In one sentence, how do noise-cancelling headphones work?",
+    "Give me a one-line idea for a rainy Sunday.",
+    "In one sentence, why do onions make you cry?",
+    "What is one way to remember people's names?",
+    "In one sentence, how does a heat pump heat a house?",
+    "Suggest a simple breakfast with eggs, in one line.",
+    "In one sentence, why do leaves change colour in autumn?",
+    "Give me one tip for writing a clear email.",
+    "In one sentence, what does a thermostat do?",
+    "Name one board game for two players, briefly.",
+    "In one sentence, why does ice float?",
+    "What is a good habit for better sleep, in one line?"
+  ],
+  "pastWindow": 60,
   "typos": [
     { "readme": "# Relay — a tiny relay servce", "wrong": "servce", "right": "service" },
     { "readme": "# Relay — passes mesages along", "wrong": "mesages", "right": "messages" },
@@ -15,6 +44,5 @@
   "rest": "\nIt relays messages between services.\n",
   "answerWithinMs": 180000,
   "replyWithinMs": 240000,
-  "unpickedMs": 30000,
   "runWithinMs": 900000
 }

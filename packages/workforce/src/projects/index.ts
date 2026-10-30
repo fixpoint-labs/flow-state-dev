@@ -184,11 +184,14 @@ export {
   type SetWorkProjectOutput
 } from "./work-project";
 
+export { listedForCodingSchema, projectTools, setWorkProjectTool } from "./project-tools";
+
 export {
   globProjectSourceOutputSchema,
   grepProjectSourceOutputSchema,
   PROJECT_SOURCE_CAPABILITY,
   projectSourceCapability,
+  projectSourceTools,
   readProjectSourceOutputSchema,
   type ProjectSourceCapabilityOptions
 } from "./project-source";

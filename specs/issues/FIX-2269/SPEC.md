@@ -2,12 +2,21 @@
 
 **Spec** · [Decisions](DECISIONS.md)
 
+> **Amended while building: the worker's call only.** Review found that the dispatcher can't be
+> replayed safely yet: `runOnce` records a result only after its function returns, and the dispatch
+> seam takes no stable request id, so a continued dispatcher could start a second child. This issue
+> ships the owed park for the worker's call, and the dispatcher keeps today's behaviour (left
+> `interrupted` for a hand continue). Giving the dispatcher a dispatch identity kept before the send,
+> and then owing its park, is [FIX-2322](https://linear.app/fixpoint-labs/issue/FIX-2322). The
+> engine verb is unchanged and ready for it. See DECISIONS.md, "The dispatcher does not owe a park
+> yet".
+
 ## Who feels it, before and after
 
 | Someone who… | Today | After |
 |---|---|---|
 | **asks a worker something that needs a call to another worker, and the server dies between the call's row and its park** | The message lands once and the other worker answers, but the asking request reads `interrupted` and stays there. The reply is lost to the caller and to the user | After the restart, the engine continues the asking request. Its call reads `answered` with the same call id and the reply, and its line to the user holds it |
-| **builds a flow with `dispatcher({ wait: true })`, and the server dies between the dispatch and the park** | Same gap: the child request runs and ends, and the parent stays `interrupted` | The parent is continued, parks on the child it already started, and returns the child's output |
+| **builds a flow with `dispatcher({ wait: true })`, and the server dies between the dispatch and the park** | Same gap: the child request runs and ends, and the parent stays `interrupted` | **Not in this issue** ([FIX-2322](https://linear.app/fixpoint-labs/issue/FIX-2322)): the parent stays `interrupted` until a hand continue, as today |
 | **operates the host** | Has to find the request and press Continue in the DevTool, or call the continue route | Nothing to do. The log says the engine continued a request that promised to park |
 | **builds a request that dies anywhere else** (no wait in flight) | Stays `interrupted` until someone continues it | Unchanged. The engine never guesses that a request is safe to replay |
 
@@ -19,7 +28,7 @@ engine and gets the answer once, the same as a request that died after it parked
 This is the promise FIX-2070's legs a and c make: "a call outstanding across a crash still returns
 its answer, once, to the request that asked".
 
-- **Smaller, and rejected:** fix only Workforce's call. `dispatcher({ wait: true })` in core has
+- **Smaller, and rejected at the gate, then taken while building (see the note at the top):** fix only Workforce's call. `dispatcher({ wait: true })` in core has
   the same send-then-park window (`sendAndWait`), and a second recovery path in Workforce would
   copy the engine's lease, replay and sweep.
 - **Bigger, and not this issue's:** continue every `interrupted` request. Most requests are not
@@ -44,9 +53,10 @@ stops at `interrupted`.
 **How we verify.** One engine test and one Workforce test, each with a fault between the work's
 start and the park, a restart on the same store, and a sweep:
 
-- engine: a durable action calls `dispatcher({ wait: true })`; the fault throws after the
-  dispatch; the request is marked `interrupted`; the sweep continues it and it completes with the
-  child's output, with one child request.
+- engine: a durable action owes its park, starts its work under `runOnce` and parks; the fault
+  comes after the work; the request is marked `interrupted`; the sweep continues it, it parks on
+  the work it already started, and the work ran once. (Written against the dispatcher at the gate;
+  built against a plain owing wait once the dispatcher was left out.)
 - Workforce: a call with `exit-after-row` (FIX-2240's fault); after the restart the calling
   request completes, its call reads `{ status: "answered", callId: <same>, reply }`, and the row
   was taken once.
@@ -70,8 +80,8 @@ FIX-2242's scene ac (`a:answer-in-request`) is rerun by the closure once this me
   way `onWakeOwed` arms it for wakes), so recovery takes about one stale threshold, not a stale
   threshold plus a sweep interval. Session history and retention read such a request as one that
   will run again, as they read one parked behind a gate.
-- **Core `dispatcher({ wait: true })` and Workforce's call** each owe the park after their checks
-  pass and before they send. Nothing else in Workforce changes: the send's `runOnce` keys already
+- **Workforce's call** owes the park after its checks pass and before it sends. (The dispatcher
+  was cut while building; [FIX-2322](https://linear.app/fixpoint-labs/issue/FIX-2322).) Nothing else in Workforce changes: the send's `runOnce` keys already
   keep the id and the send across the replay (the issue's hand continue showed it).
 - **Docs:** the durability page's crash section and the wait gate's file header say a wait that
   dies before it parks is continued.

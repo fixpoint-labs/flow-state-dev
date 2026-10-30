@@ -92,6 +92,11 @@ const agent = cursorAgent({
 });
 ```
 
+**`onActivity` reports each tool call the run starts**, as `{ kind: "tool", name,
+arguments }` with `arguments` the call's JSON text, so a host can show how the run
+is doing. Assistant text is never reported, because Cursor streams it in pieces.
+The hook isn't awaited, and a throw from it is logged while the run carries on.
+
 ## Option groups
 
 `agent` and `send` are the SDK's own option bags — `AgentOptions` for
@@ -215,6 +220,10 @@ run, its per-turn entries are keyed by a usage UUID that cannot be correlated to
 the run just observed, and the SDK documents the figure as eventually consistent.
 Read at the moment a run ends it can say `0` for a run whose billing has not
 landed, and `0` reads as "this was free".
+
+## What a run spent
+
+`cursorAgent` reports its spend to the request with `reportHarnessSpend` as the run goes, under one `runId` for the run, each report replacing the last: once the run is sent, with the configured `model` and `null` tokens; at the end of each turn, with the tokens so far; and when the run ends, however it ends. `harness: "cursor"`, the tokens Cursor reported, added up turn by turn so a stopped run keeps the turns it finished, and `costUsd` and `billing` both `null`. A run that failed before any turn reports `null` tokens. Guide: [what a run spent](https://flow-state.dev/docs/tools/coding-agents#what-a-run-spent).
 
 ## Tests
 

@@ -178,6 +178,8 @@ export type BoardHostOptions = {
   agent?: CoordinatorFlowOptions["agent"];
   /** The `agent` flow's `answerAgain` (FIX-2159), which the coordinator flow doesn't take. */
   answerAgain?: AgentWorkerFlowOptions["answerAgain"];
+  /** Capabilities the `agent` flow installs that need the installation (FIX-2173's consult). */
+  agentUses?: (installation: WorkerInstallation) => NonNullable<AgentWorkerFlowOptions["uses"]>;
   stores?: StoreRegistry;
   /** Told the names of the tools each model call is handed, by the calling block's name. */
   observeTools?: (blockName: string | undefined, names: string[], input: unknown) => void;
@@ -218,6 +220,8 @@ export type BoardHostOptions = {
   errorCapture?: (event: any) => void;
   /** Inbound transport adapters for the router, such as the scheduled-dispatch one. */
   adapters?: unknown[];
+  /** The host's stale sweep: how often it runs and when a request with no heartbeat counts as dead. */
+  staleSweep?: { intervalMs: number; thresholdMs: number };
 };
 
 /**
@@ -283,7 +287,8 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
   const agent = defineAgentWorkerFlow({
     installation,
     ...(options.agent ?? {}),
-    ...(options.answerAgain === undefined ? {} : { answerAgain: options.answerAgain })
+    ...(options.answerAgain === undefined ? {} : { answerAgain: options.answerAgain }),
+    ...(options.agentUses === undefined ? {} : { uses: options.agentUses(installation) })
   });
   const coordinator = defineCoordinatorFlow({
     installation,
@@ -319,6 +324,9 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     ...(options.waitDeadlines === undefined ? {} : { waitDeadlines: options.waitDeadlines }),
     ...(options.errorCapture === undefined ? {} : { errorCapture: options.errorCapture }),
     ...(options.adapters === undefined ? {} : { adapters: options.adapters }),
+    ...(options.staleSweep === undefined
+      ? {}
+      : { staleSweepIntervalMs: options.staleSweep.intervalMs, staleSweepThresholdMs: options.staleSweep.thresholdMs }),
     modelResolver: withJudgmentModel(
       options.observeTools === undefined && options.afterModelCall === undefined
         ? models

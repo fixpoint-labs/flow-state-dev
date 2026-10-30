@@ -52,6 +52,7 @@ export interface TaskProgress {
   readonly output?: unknown;
 }
 import type { TaskWriteToken } from "../write-provenance";
+import type { TaskSpendWrite } from "../spend";
 
 /**
  * Why a write was refused (FIX-976; `not-my-task` added by FIX-981;
@@ -768,6 +769,27 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   reportProgress?(
     id: string,
     progress: TaskProgress,
+    options: { claim: TaskClaimTicket }
+  ): Promise<TaskWriteOutcome>;
+  /**
+   * Record what a request admitted for the task has spent (FIX-2288): its
+   * live part while it runs, or what an ending handed on, settled into the
+   * request's settled part with its live part cleared, in one write. Only the
+   * task's run calls it (`task-board/task-request.ts`); read it folded with
+   * `taskSpendView`.
+   *
+   * **Fenced by the row's identity only**: `options.claim` is required and a
+   * recreated row declines `not-my-task`, but a terminal row and a lapsed or
+   * moved-on claim still take it. A spend is history: a failed attempt's
+   * tokens land after its row may have settled, and they count. `unchanged`
+   * when the write changes nothing. Publishes no `task-change`.
+   *
+   * Optional, so a ref written before it keeps compiling (BP-030); a task on a
+   * board without it shows no spend.
+   */
+  recordSpend?(
+    id: string,
+    write: TaskSpendWrite,
     options: { claim: TaskClaimTicket }
   ): Promise<TaskWriteOutcome>;
   linkRun(
