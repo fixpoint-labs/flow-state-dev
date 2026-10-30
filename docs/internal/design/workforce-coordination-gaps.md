@@ -17,7 +17,7 @@ purpose, so the model stays readable.
 
 Changed, by rule:
 
-- Rule 6: when a task is done; only `waitForUser` makes it waiting on a person.
+- Rule 6: when a task is done; only `suspendForUser` makes it waiting on a person.
 - Rule 7: every ending, a failure included, reaches the filer.
 - Rule 8: the durability sweeper pays what a board owes.
 - Rule 9: waiting on a task with `getTask`; a deadline doesn't cancel the task.
@@ -92,7 +92,7 @@ things today (two README examples it cites no longer hold, so they are left out)
 | -- | -- | -- |
 | Coordinator | The coordinator flow, the Shift Coordinator worker and the project coordinator | A worker that routes a user's messages |
 | Delegates | Workers, for the Shift Coordinator; workstreams (a lead and a target), for a project coordinator | The workers a session may file tasks with. A project coordinator's are its workstreams' leads |
-| Question | Inbox's "Questions" filter means `human_input` suspensions (`shift-manager/src/surfaces/Inbox.tsx:37`), never a task's question | One of `waitForUser`'s kinds, an Inbox item like the others |
+| Question | Inbox's "Questions" filter means `human_input` suspensions (`shift-manager/src/surfaces/Inbox.tsx:37`), never a task's question | One of `suspendForUser`'s kinds, an Inbox item like the others |
 | Hold | A filer's hold before a start (status `held`), a task's open questions (`Task.holds`), what keeps a running task open (`waitingOn`, `filedWorkHolds`) and a request's claim (`heldTask`) | The filer's hold only. A task's open asks are its `questions`, what keeps it open is `keptOpenBy`, and a request's right on its task is its claim (FIX-2183) |
 | Stream | The project Stream tab (a coordinator conversation), the Tasks screen's STREAM grouping (workstreams, `shift-manager/src/surfaces/Tasks.tsx:69`) | Not a model word: say conversation for the tab and workstream for the grouping |
 
@@ -132,7 +132,7 @@ deploy is a known risk, deferred.
 | 1 · One task | A task's request may wait on a task it filed, up to 5 waits deep | Every task request is refused a wait (`orchestration/src/tasks/helpers/wait-for-response.ts:222-230`) |
 | 1 · One task | A request waits on a task it filed, just now or earlier, with `getTask({ id, wait: true, deadline? })`; `createTask` only files | The wait is an option on `dispatchTask`: `dispatchTask({ wait })`, with `timeoutMs` (the `wait` field at `orchestration/src/skills/task-tools-capability.ts:1151`, the tool at `:1210`, served by `orchestration/src/tasks/helpers/wait-for-response.ts`). `readTask`, which becomes `getTask`, can't wait (`task-tools-capability.ts:1563`) |
 | 1 · One task | A wait's deadline leaves the task running | It cancels the row (`orchestration/src/tasks/helpers/wait-for-response.ts`) |
-| 1 · One task | A request suspended by `waitForUser` makes its task waiting on a person; any other suspension (a wait on a task, a call or a condition) leaves it running | The gate hears one `"suspended"` outcome for every suspension (`core/src/blocks/sequencer.ts:1319`), whatever its reason, a person or an `external_event` (`contracts/src/types/suspension.ts:27-31`), and handles them alike: it stops renewing the claim (`orchestration/src/task-board/task-entry.ts:533-537`). It sets no status either way; the row stays `in_progress` and lapses. Nothing tells a person from a wait |
+| 1 · One task | A request suspended by `suspendForUser` makes its task waiting on a person; any other suspension (a wait on a task, a call or a condition) leaves it running | The gate hears one `"suspended"` outcome for every suspension (`core/src/blocks/sequencer.ts:1319`), whatever its reason, a person or an `external_event` (`contracts/src/types/suspension.ts:27-31`), and handles them alike: it stops renewing the claim (`orchestration/src/task-board/task-entry.ts:533-537`). It sets no status either way; the row stays `in_progress` and lapses. Nothing tells a person from a wait |
 | 1 · One task | A message to an open task's session is conversation: it doesn't hold the task and isn't part of it (while the task's turn is running, it's answered after), holds no claim, and can't delay the settle or fail the attempt | Met as written (the row settles when the entry's run ends, with no look at the session's queue); the queued-message hold that phase 1 first built is removed |
 | 1 · One task | The row settles only after the request's background work ends | Read, not run: the recorders are steps inside the entry's block (`task-entry.ts:539-540`), so the row settles when the worker step returns. Background `.sideChain()` work goes to the request's pool, which the engine drains after the block, before terminal status (`engine/src/execution/runAction.ts:2436-2447`), so a task can settle while its background work still writes. There is no `.work()` method; the name survives only in a comment (`core/src/blocks/sequencer.ts:1860`) |
 | 1 · One task | Splits use delegates and stay running | Pieces go to any roster worker (`board.ts:280-296`). The parent parks until `settleSplitTask` (`workforce/src/conversation-board/split.ts`) |

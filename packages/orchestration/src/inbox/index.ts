@@ -25,16 +25,16 @@
 export { createInboxClient, type InboxClient } from "./client";
 export { inboxItems } from "./list";
 // What a row's holds are, for a reader that parses a published row (FIX-2133).
-export { taskQuestionSchema, type TaskQuestion } from "../tasks/schema/question";
+export { taskHoldSchema, type TaskHold } from "../tasks/schema/hold";
 export type {
   InboxAnswer,
   InboxAnswerFor,
   InboxAskKind,
-  InboxQuestion,
+  InboxHold,
   InboxItem,
   InboxRow,
   InboxSuspension,
   InboxTask,
-  RowQuestionSource,
-  SuspensionQuestionSource,
+  RowHoldSource,
+  SuspensionHoldSource,
 } from "./types";

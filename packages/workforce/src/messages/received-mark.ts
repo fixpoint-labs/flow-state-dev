@@ -6,7 +6,7 @@
  * FIX-2241).
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
-import type { RowQuestion, Task } from "@flow-state-dev/orchestration/tasks";
+import type { RowHold, Task } from "@flow-state-dev/orchestration/tasks";
 import { MESSAGE_RECEIVED_ENTRY } from "./keys";
 
 /**
@@ -17,7 +17,7 @@ import { MESSAGE_RECEIVED_ENTRY } from "./keys";
 export type MessageHearing = "task-sessions";
 
 /** Tell a task's filer its open midway questions, from the asking request (FIX-2241). */
-export type MidwayQuestionTeller = (ctx: BlockContext, row: Task, questions: readonly RowQuestion[]) => Promise<void>;
+export type MidwayQuestionTeller = (ctx: BlockContext, row: Task, questions: readonly RowHold[]) => Promise<void>;
 
 /**
  * The mark `messageReceivedEntry` puts on what it builds.

@@ -103,11 +103,11 @@ import {
   REQUEST_SPEND_SEAM,
   SUSPENSION_SKIPPED,
   isUserSuspension,
-  waitForUserOn,
+  suspendForUserOn,
   type HarnessRunSpend,
   type RequestResume,
   type RequestSpendSeam,
-  type WaitForUser
+  type SuspendForUser
 } from "@flow-state-dev/core/types";
 import { generateId } from "../utils/generate-id";
 import {
@@ -210,7 +210,7 @@ function taskCancelledInRun(resumeCtx: ResumeContext | undefined, replayLog: Rep
  * What `ctx.suspend()` throws for a gate resolved without an answer (a
  * rejection, an expiry or a cancel), on the live continuation and on replay
  * alike. An expiry of a suspension that is not an approval (one that allows
- * no `reject`, or a review's or an input's `waitForUser`) throws
+ * no `reject`, or a review's or an input's `suspendForUser`) throws
  * `SuspensionTimeoutError` (FIX-2129 D1); an approval's reads as a rejection
  * marked expired (FIX-1846).
  */
@@ -3989,14 +3989,14 @@ export async function createExecutionContext<
       // FIX-2129: built on this scope's `suspend`, with the host's deadline
       // for a user's stop: the request host's, else the runtime config's, so
       // a caller that runs the action with no request host keeps the one it set.
-      waitForUser: ((waitOptions: Parameters<WaitForUser>[0]) =>
-        waitForUserOn(
+      suspendForUser: ((waitOptions: Parameters<SuspendForUser>[0]) =>
+        suspendForUserOn(
           {
             suspend: context.suspend,
             requestHost: { userDeadlineMs: context.requestHost?.userDeadlineMs ?? options.effectiveRuntimeConfig?.userDeadlineMs }
           },
           waitOptions
-        )) as WaitForUser,
+        )) as SuspendForUser,
       saveCheckpoint: undefined,
       // Task attribution (FIX-658): mark the nearest enclosing sequencer scope
       // as running `taskId`. The task-board worker body calls this once per

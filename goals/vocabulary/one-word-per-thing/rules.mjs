@@ -94,15 +94,23 @@ export const RETIRED = [
   {
     id: "hold-names",
     files: CODE_OR_PUBLISHED,
-    // FIX-2183: hold keeps one meaning, the filer's hold before a start. A task's open asks are its
-    // questions, what keeps a running task open is keptOpenBy, a request's right on its task is its claim.
-    pattern: /\b(TaskHold|taskHoldSchema|RowHold|rowHoldSchema|SuspensionHold|suspensionHoldSchema|RowHoldSource|SuspensionHoldSource|InboxHold|HoldAsk|HoldReleaser|HoldAnswer|MAX_HOLD_PROMPT|openHolds|hasOpenHold|openRowHolds|isRowHold|isSuspensionHold|suspensionHoldOf|holdsDue|nextHoldDue|newRowHolds|holdWrite|HoldChange|HoldWriteResult|payHoldDeadlines|holdDueMs|holdOfSuspension|openUserHolds|whileHoldOpen|refuseWhenHeld|answerHold|done_without_question|waitingOn|TaskWaitingOn|setWaitingOn|filedWorkHolds|holdsItsFiler|heldTask|heldTaskId|heldRowOf|ticketHoldsRow|holderSessionId|holderOf)\b|\bno-such-hold\b/
+    // FIX-2183: what keeps a running task open is keptOpenBy, a request's right on its task is its claim.
+    // FIX-2317 brought a task's holds back (a question is one kind of hold), so only the names neither
+    // change kept stay retired here.
+    pattern: /\b(HoldAsk|HoldReleaser|HoldAnswer|MAX_HOLD_PROMPT|refuseWhenHeld|answerHold|done_without_question|waitingOn|TaskWaitingOn|setWaitingOn|filedWorkHolds|holdsItsFiler|heldTask|heldTaskId|heldRowOf|ticketHoldsRow|holderSessionId|holderOf)\b|\bno-such-hold\b/
   },
   {
     id: "hold-prose",
     files: PUBLISHED,
-    // FIX-2183: a task waits on its questions; no question holds it.
-    pattern: /\bheld on (a|its|the) questions?\b|\bheld on questions\b|\bquestions? holds?\b|\b(a|the|one|its|open) (row|suspension) holds?\b|\bopen holds\b/i
+    // FIX-2183: no task is "held on questions"; FIX-2317: a question is one kind of hold on its task.
+    pattern: /\bheld on (a|its|the) questions?\b|\bheld on questions\b/i
+  },
+  {
+    id: "question-hold-names",
+    files: CODE_OR_PUBLISHED,
+    // FIX-2317: a question is one kind of task hold. The row's list is `holds`, a request's stop for a
+    // person is `suspendForUser`, and a worker's question is `holdTaskForUser`.
+    pattern: /\b(TaskQuestion|taskQuestionSchema|RowQuestion|rowQuestionSchema|SuspensionQuestion|suspensionQuestionSchema|RowQuestionSource|SuspensionQuestionSource|InboxQuestion|QuestionCloser|QuestionChange|QuestionWriteResult|openQuestions|hasOpenQuestion|openRowQuestions|isRowQuestion|isSuspensionQuestion|suspensionQuestionOf|questionsDue|nextQuestionDue|newRowQuestions|questionWrite|payQuestionDeadlines|questionDueMs|questionOfSuspension|openUserQuestions|whileQuestionOpen|refuseWithOpenQuestion|createAskQuestion|createWaitForUserTool|waitForUser\w*|WaitForUser\w*|askQuestion)\b|wait-for-user/
   },
   {
     id: "task-tool-names",
@@ -330,12 +338,12 @@ export const KEEP = [
   {
     path: /^packages\/orchestration\/(src\/inbox\/|test\/inbox(-truth-control)?\.test\.ts$)/,
     rules: ["ask-prose", "ask-symbol", "ask-symbol-in-docs", "ask-mark"],
-    why: "the Inbox read (FIX-2133): a question's `ask`, what it asks the user, as FIX-2058's TaskQuestion names it"
+    why: "the Inbox read (FIX-2133): a question's `ask`, what it asks the user, as its `TaskHold` names it"
   },
   {
-    path: /^packages\/orchestration\/(src\/tasks\/(schema\/question|collection\/questions)\.ts|test\/(collection\/(questions|waiting-on-user)|skills\/questions-tools)\.test\.ts)$/,
+    path: /^packages\/orchestration\/(src\/tasks\/(schema\/hold|collection\/holds)\.ts|test\/(collection\/(questions|waiting-on-user)|skills\/questions-tools)\.test\.ts)$/,
     rules: ["ask-prose", "ask-symbol", "ask-symbol-in-docs", "ask-mark"],
-    why: "a task's questions (FIX-2133): a question's `ask`, a question to the user, and the collection's `ask` that opens one midway, as FIX-2058's TaskQuestion names them"
+    why: "a task's questions (FIX-2133): a question's `ask`, a question to the user, and the collection's `ask` that opens one midway, as its `TaskHold` names them"
   },
   {
     path: /^(packages\/orchestration\/(src|test)\/|packages\/integration-tests\/src\/scenarios\/|packages\/workforce\/src\/conversation-board\/board\.ts$|apps\/docs\/docs\/orchestration\/task-board\.md$)/,
@@ -347,16 +355,16 @@ export const KEEP = [
   {
     path: /^(packages\/(orchestration|workforce)\/(src|test)\/|apps\/docs\/(docs|guides)\/|packages\/(orchestration|workforce)\/README\.md$)/,
     // The worker's question tool and the one-wait-per-turn rule's names only: a question to the user.
-    line: /\b(askQuestion|createAskQuestion|turnAsked|askMidway)\b|\.ask(\.(kind|prompt)\b|\)\.toMatchObject)/,
+    line: /\b(turnAsked|askMidway)\b|\.ask(\.(kind|prompt)\b|\)\.toMatchObject)/,
     rules: ["ask-symbol", "ask-symbol-in-docs", "ask-mark"],
-    why: "FIX-2131: the worker's `askQuestion`, a question to the user that its task waits on, and the turn-asked fact it is refused on"
+    why: "FIX-2131: the worker's question, which holds its task for the user, and the turn-asked fact it is refused on"
   },
   {
     path: /^packages\/devtool\/(src\/react\/lib\/task-collection-state\.ts|test\/task-collections-reason\.test\.tsx)$/,
     // The DevTool's wire mirror of a question's `ask` only, and the reason slot reading its prompt.
     line: /^\s*ask: \{ kind: string|\bask: \{ kind: "(question|review)"|\)\?\.ask\.prompt;$/,
     rules: ["ask-mark"],
-    why: "FIX-2131: the DevTool's mirror of a task's questions (FIX-2133's TaskQuestion), whose `ask` is what the user was asked"
+    why: "FIX-2131: the DevTool's mirror of a task's questions (FIX-2133's `TaskHold`), whose `ask` is what the user was asked"
   },
   {
     path: /^packages\/harness-manager\//,

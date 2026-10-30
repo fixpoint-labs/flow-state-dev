@@ -564,7 +564,7 @@ stirs into an exit check that no longer calls the board drained.
 
 The routing exclusion above is not the only way a row drops out of a count. A
 running row waiting on a person — an open question on it, a question or a
-suspension mirrored from a `waitForUser` stop (FIX-2131) — is excused from
+suspension mirrored from a `suspendForUser` stop (FIX-2131) — is excused from
 `activeWorkerCount`, though `inFlightCount` keeps it. Both live in
 `countWaitable` as separate predicates rather than one widened predicate,
 because they answer different questions:

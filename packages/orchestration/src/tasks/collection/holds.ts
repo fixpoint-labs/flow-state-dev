@@ -2,11 +2,11 @@
  * The one question write, and the one predicate every reader asks of it, *open
  * questions* (FIX-2133 D2, the epic FIX-2058's ER-8).
  *
- * Both backings call {@link questionWrite} for every change to `Task.questions`, decided
+ * Both backings call {@link holdWrite} for every change to `Task.questions`, decided
  * on the committed row inside their write: a filing or a midway ask opens row
  * questions, an answer or a deadline releases one, the claim gate's stop arm opens
  * a task run's mirror and its resume closes it. Cancel closes every question with
- * the row: an ended row has no open question ({@link openQuestions}), and its mirror
+ * the row: an ended row has no open question ({@link openHolds}), and its mirror
  * stays only as the address of the `cancelled` resume it owes
  * ({@link keptOnEnding}).
  *
@@ -17,7 +17,7 @@
 import { generateId } from "../generate-id";
 import type { Task } from "../schema/task";
 import { isTerminalStatus } from "../schema/task-status";
-import { MAX_QUESTION_PROMPT, type QuestionInit, type RowQuestion, type SuspensionQuestion, type TaskQuestion } from "../schema/question";
+import { MAX_QUESTION_PROMPT, type QuestionInit, type RowHold, type SuspensionHold, type TaskHold } from "../schema/hold";
 import { MAX_STEERS, type TaskSteer } from "../schema/steer";
 import type { TaskWriteDeclineReason } from "./types";
 
@@ -25,12 +25,12 @@ import type { TaskWriteDeclineReason } from "./types";
 export const NO_ANSWER_CAME = "No answer came before this question's deadline. Go on from your brief without it.";
 
 /** Whether `hold` is a row question (a question or a confirm). */
-export function isRowQuestion(hold: TaskQuestion): hold is RowQuestion {
+export function isRowHold(hold: TaskHold): hold is RowHold {
   return hold.source.kind === "row";
 }
 
 /** Whether `hold` mirrors a task run's stop. */
-export function isSuspensionQuestion(hold: TaskQuestion): hold is SuspensionQuestion {
+export function isSuspensionHold(hold: TaskHold): hold is SuspensionHold {
   return hold.source.kind === "suspension";
 }
 
@@ -44,9 +44,9 @@ export function answerOf(row: Pick<Task, "steers">, questionId: string): TaskSte
  * first. None on an ended row: a cancel closes every question. A row question is open
  * while no steer carries its id; a suspension question, while it is on the row.
  */
-export function openQuestions(row: Pick<Task, "status" | "questions" | "steers">): TaskQuestion[] {
-  if (row.questions === undefined || row.questions.length === 0 || isTerminalStatus(row.status)) return [];
-  return row.questions.filter((hold) => !isRowQuestion(hold) || answerOf(row, hold.id) === undefined);
+export function openHolds(row: Pick<Task, "status" | "holds" | "steers">): TaskHold[] {
+  if (row.holds === undefined || row.holds.length === 0 || isTerminalStatus(row.status)) return [];
+  return row.holds.filter((hold) => !isRowHold(hold) || answerOf(row, hold.id) === undefined);
 }
 
 /**
@@ -60,13 +60,13 @@ export function askedOnTicket(row: Pick<Task, "askedInTurn" | "attempts"> | unde
 }
 
 /** Whether `row` waits on anything now. */
-export function hasOpenQuestion(row: Pick<Task, "status" | "questions" | "steers">): boolean {
-  return openQuestions(row).length > 0;
+export function hasOpenHold(row: Pick<Task, "status" | "holds" | "steers">): boolean {
+  return openHolds(row).length > 0;
 }
 
 /** The row's open questions and confirms, oldest first. */
-export function openRowQuestions(row: Pick<Task, "status" | "questions" | "steers">): RowQuestion[] {
-  return openQuestions(row).filter(isRowQuestion);
+export function openRowHolds(row: Pick<Task, "status" | "holds" | "steers">): RowHold[] {
+  return openHolds(row).filter(isRowHold);
 }
 
 /**
@@ -74,13 +74,13 @@ export function openRowQuestions(row: Pick<Task, "status" | "questions" | "steer
  * runs, and kept on an ended row until the resume it owes is paid. A row's
  * open questions come from one source at a time, so it has at most one.
  */
-export function suspensionQuestionOf(row: Pick<Task, "questions">): SuspensionQuestion | undefined {
-  return row.questions?.find(isSuspensionQuestion);
+export function suspensionHoldOf(row: Pick<Task, "holds">): SuspensionHold | undefined {
+  return row.holds?.find(isSuspensionHold);
 }
 
 /** How many steer places `row` has taken or reserved: its steers, and one per open row question (its answer's). */
-export function steerPlacesTaken(row: Pick<Task, "status" | "questions" | "steers">): number {
-  return (row.steers?.length ?? 0) + openRowQuestions(row).length;
+export function steerPlacesTaken(row: Pick<Task, "status" | "holds" | "steers">): number {
+  return (row.steers?.length ?? 0) + openRowHolds(row).length;
 }
 
 /**
@@ -113,7 +113,7 @@ export function askProblem(asks: readonly QuestionInit[]): string | undefined {
 }
 
 /** The row questions `asks` open, each with a fresh id, from `at`, due `dueMs` later when a deadline is set. */
-export function newRowQuestions(asks: readonly QuestionInit[], at: number, options: { readonly dueMs?: number; readonly midway?: boolean } = {}): RowQuestion[] {
+export function newRowHolds(asks: readonly QuestionInit[], at: number, options: { readonly dueMs?: number; readonly midway?: boolean } = {}): RowHold[] {
   return asks.map((ask) => ({
     id: generateId("question"),
     actor: "user" as const,
@@ -148,29 +148,29 @@ export interface QuestionAnswer {
 }
 
 /** Every change to `Task.questions`. */
-export type QuestionChange =
+export type HoldChange =
   /** A midway ask: the turn holding the claim opens questions. The caller fences it on the claim. */
-  | { readonly op: "ask"; readonly questions: readonly RowQuestion[] }
+  | { readonly op: "ask"; readonly holds: readonly RowHold[] }
   /** An answer, kept as the user's steer carrying the question's id; `steerId` is minted once, outside the write. */
   | { readonly op: "answer"; readonly answer: QuestionAnswer; readonly steerId: string; readonly at: number }
   /** A touch of the board at `at`: every open row question past its due time closes "no answer came". */
   | { readonly op: "deadline"; readonly at: number }
   /** The claim gate's stop arm mirrors its run's stop. */
-  | { readonly op: "mirror"; readonly hold: SuspensionQuestion }
+  | { readonly op: "mirror"; readonly hold: SuspensionHold }
   /** The write that admits the run's resume closes the mirror. */
   | { readonly op: "resume" };
 
 /** What a question write decided: the patch, nothing to write, or why it is refused. */
-export type QuestionWriteResult = { readonly patch: Partial<Task> } | "unchanged" | { readonly decline: TaskWriteDeclineReason };
+export type HoldWriteResult = { readonly patch: Partial<Task> } | "unchanged" | { readonly decline: TaskWriteDeclineReason };
 
 /**
  * The patch that follows a write closing row questions on `next`: none left open
  * on a running row owes one more turn on its same attempt (D3). A pending row
  * needs nothing: with no open question it is claimable, its first attempt a start.
  */
-function released(before: Task, next: Pick<Task, "status" | "questions" | "steers">): Partial<Task> {
-  const wasHeld = openRowQuestions(before).length > 0;
-  if (!wasHeld || openRowQuestions(next).length > 0 || before.status !== "in_progress") return {};
+function released(before: Task, next: Pick<Task, "status" | "holds" | "steers">): Partial<Task> {
+  const wasHeld = openRowHolds(before).length > 0;
+  if (!wasHeld || openRowHolds(next).length > 0 || before.status !== "in_progress") return {};
   return { turnOwed: true };
 }
 
@@ -191,13 +191,13 @@ function released(before: Task, next: Pick<Task, "status" | "questions" | "steer
  *   same stop already mirrored.
  * - `resume`: drops the mirror.
  */
-export function questionWrite(task: Task, change: QuestionChange): QuestionWriteResult {
+export function holdWrite(task: Task, change: HoldChange): HoldWriteResult {
   switch (change.op) {
     case "ask": {
       if (isTerminalStatus(task.status)) return { decline: "terminal" };
-      if (openQuestions(task).some(isSuspensionQuestion)) return { decline: "open-question" };
-      if (steerPlacesTaken(task) + change.questions.length > MAX_STEERS) return { decline: "steer-limit" };
-      return { patch: { questions: [...(task.questions ?? []), ...change.questions], leaseUntil: undefined, askedInTurn: task.turn ?? 0 } };
+      if (openHolds(task).some(isSuspensionHold)) return { decline: "open-question" };
+      if (steerPlacesTaken(task) + change.holds.length > MAX_STEERS) return { decline: "steer-limit" };
+      return { patch: { holds: [...(task.holds ?? []), ...change.holds], leaseUntil: undefined, askedInTurn: task.turn ?? 0 } };
     }
     case "answer": {
       const { answer } = change;
@@ -210,8 +210,8 @@ export function questionWrite(task: Task, change: QuestionChange): QuestionWrite
         return same ? "unchanged" : { decline: "answered" };
       }
       if (isTerminalStatus(task.status)) return { decline: "terminal" };
-      const hold = task.questions?.find((h) => h.id === answer.questionId);
-      if (hold === undefined || !isRowQuestion(hold)) return { decline: "no-such-question" };
+      const hold = task.holds?.find((h) => h.id === answer.questionId);
+      if (hold === undefined || !isRowHold(hold)) return { decline: "no-such-question" };
       const steer: TaskSteer = {
         id: answer.key ?? change.steerId,
         message: answer.message,
@@ -224,7 +224,7 @@ export function questionWrite(task: Task, change: QuestionChange): QuestionWrite
       return { patch: { steers: next.steers, ...released(task, next) } };
     }
     case "deadline": {
-      const due = questionsDue(task, change.at);
+      const due = holdsDue(task, change.at);
       if (due.length === 0) return "unchanged";
       const closing: TaskSteer[] = due.map((hold) => ({
         id: `deadline:${hold.id}`,
@@ -237,21 +237,21 @@ export function questionWrite(task: Task, change: QuestionChange): QuestionWrite
       return { patch: { steers: next.steers, ...released(task, next) } };
     }
     case "mirror": {
-      if (openRowQuestions(task).length > 0) return { decline: "open-question" };
-      const kept = suspensionQuestionOf(task);
+      if (openRowHolds(task).length > 0) return { decline: "open-question" };
+      const kept = suspensionHoldOf(task);
       if (kept?.source.suspensionId === change.hold.source.suspensionId) return "unchanged";
-      return { patch: { questions: [...(task.questions ?? []).filter((h) => !isSuspensionQuestion(h)), change.hold] } };
+      return { patch: { holds: [...(task.holds ?? []).filter((h) => !isSuspensionHold(h)), change.hold] } };
     }
     case "resume": {
-      if (suspensionQuestionOf(task) === undefined) return "unchanged";
-      return { patch: { questions: withoutMirror(task.questions) } };
+      if (suspensionHoldOf(task) === undefined) return "unchanged";
+      return { patch: { holds: withoutMirror(task.holds) } };
     }
   }
 }
 
 /** `questions` with the mirror taken out; `undefined` when nothing is left. */
-function withoutMirror(holds: Task["questions"]): Task["questions"] {
-  const rest = (holds ?? []).filter((hold) => !isSuspensionQuestion(hold));
+function withoutMirror(holds: Task["holds"]): Task["holds"] {
+  const rest = (holds ?? []).filter((hold) => !isSuspensionHold(hold));
   return rest.length === 0 ? undefined : rest;
 }
 
@@ -264,7 +264,7 @@ function withoutMirror(holds: Task["questions"]): Task["questions"] {
  */
 export function keptOnEnding(prev: Task, next: Task): Partial<Task> | undefined {
   if (isTerminalStatus(prev.status) || !isTerminalStatus(next.status)) return undefined;
-  const mirror = openQuestions(prev).find(isSuspensionQuestion);
+  const mirror = openHolds(prev).find(isSuspensionHold);
   return mirror === undefined ? undefined : { resumeOwed: true };
 }
 
@@ -274,19 +274,19 @@ export function keptOnEnding(prev: Task, next: Task): Partial<Task> | undefined 
  * record of what was asked; a closed one is closed by its answer or the row's end.
  */
 export function droppedMirror(row: Task): Partial<Task> | undefined {
-  if (suspensionQuestionOf(row) === undefined || row.status === "in_progress" || row.resumeOwed === true) return undefined;
-  return { questions: withoutMirror(row.questions) };
+  if (suspensionHoldOf(row) === undefined || row.status === "in_progress" || row.resumeOwed === true) return undefined;
+  return { holds: withoutMirror(row.holds) };
 }
 
 /** The row questions a touch at `at` closes "no answer came": open, with a due time passed. */
-export function questionsDue(row: Pick<Task, "status" | "questions" | "steers">, at: number): RowQuestion[] {
-  return openRowQuestions(row).filter((hold) => hold.due !== undefined && hold.due <= at);
+export function holdsDue(row: Pick<Task, "status" | "holds" | "steers">, at: number): RowHold[] {
+  return openRowHolds(row).filter((hold) => hold.due !== undefined && hold.due <= at);
 }
 
 /** The earliest due time of `row`'s open row questions, or `undefined` when none has one. */
-export function nextQuestionDue(row: Pick<Task, "status" | "questions" | "steers">): number | undefined {
+export function nextHoldDue(row: Pick<Task, "status" | "holds" | "steers">): number | undefined {
   let next: number | undefined;
-  for (const hold of openRowQuestions(row)) if (hold.due !== undefined) next = next === undefined ? hold.due : Math.min(next, hold.due);
+  for (const hold of openRowHolds(row)) if (hold.due !== undefined) next = next === undefined ? hold.due : Math.min(next, hold.due);
   return next;
 }
 
@@ -298,7 +298,7 @@ export function nextQuestionDue(row: Pick<Task, "status" | "questions" | "steers
  * `"steer"` is also what a later request parked after the task answered
  * leaves, with that request still to resume.
  */
-export function owesTurn(row: Pick<Task, "status" | "questions" | "steers" | "leaseUntil" | "turnOwed">): boolean {
-  if (row.status !== "in_progress" || row.leaseUntil != null || hasOpenQuestion(row)) return false;
+export function owesTurn(row: Pick<Task, "status" | "holds" | "steers" | "leaseUntil" | "turnOwed">): boolean {
+  if (row.status !== "in_progress" || row.leaseUntil != null || hasOpenHold(row)) return false;
   return row.turnOwed === true;
 }

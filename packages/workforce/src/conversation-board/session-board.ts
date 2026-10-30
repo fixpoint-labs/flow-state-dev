@@ -180,7 +180,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     /** The model's task tools, granted per call: one entry for the model block's `uses`. */
     tools: board.tools,
     /**
-     * `askQuestion` on a task turn, and `waitForUser` for an approval, a review
+     * `holdTaskForUser` on a task turn, and `suspendForUser` for an approval, a review
      * or (with no task row) input (FIX-2131): one entry for the model block's
      * `uses`, beside `tools`.
      */

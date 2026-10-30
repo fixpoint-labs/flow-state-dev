@@ -49,32 +49,32 @@ export {
 // predicate every reader asks of it, open holds.
 export {
   MAX_QUESTION_PROMPT,
-  taskQuestionSchema,
-  rowQuestionSchema,
-  suspensionQuestionSchema,
+  taskHoldSchema,
+  rowHoldSchema,
+  suspensionHoldSchema,
   type ConfirmOnNo,
   type QuestionInit,
-  type QuestionCloser,
-  type RowQuestion,
-  type SuspensionQuestion,
-  type TaskQuestion,
-} from "./schema/question";
+  type HoldCloser,
+  type RowHold,
+  type SuspensionHold,
+  type TaskHold,
+} from "./schema/hold";
 export {
   NO_ANSWER_CAME,
   answerOf,
   askProblem,
-  hasOpenQuestion,
-  questionsDue,
-  isRowQuestion,
-  isSuspensionQuestion,
-  nextQuestionDue,
-  openQuestions,
-  openRowQuestions,
+  hasOpenHold,
+  holdsDue,
+  isRowHold,
+  isSuspensionHold,
+  nextHoldDue,
+  openHolds,
+  openRowHolds,
   owesTurn,
   steerPlacesTaken,
-  suspensionQuestionOf,
+  suspensionHoldOf,
   type QuestionAnswer,
-} from "./collection/questions";
+} from "./collection/holds";
 
 // Filing settings and dependencies (FIX-2080): what a board refuses at filing,
 // and the edit a filing takes until it starts.

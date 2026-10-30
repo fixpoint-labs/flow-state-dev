@@ -131,7 +131,7 @@ export type ConversationEntry =
   | { kind: "task"; id: string; taskId: string; title: string; to: string }
   /** A task it filed ended, as a line under the name of the worker that ran it; `title` is the task's, once its row is read. */
   | { kind: "result"; id: string; taskId: string; from: string; text: string; title?: string; failed?: boolean; cancelled?: boolean }
-  /** The worker waits for your yes (`waitForUser` with an approval); `resolution` once answered. */
+  /** The worker waits for your yes (`suspendForUser` with an approval); `resolution` once answered. */
   | { kind: "approval"; id: string; requestId: string; suspensionId: string; text: string; resolution?: string };
 
 /** What a conversation shows now. */

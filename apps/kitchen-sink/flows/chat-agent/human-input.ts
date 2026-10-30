@@ -4,8 +4,8 @@
  * Where `approval-gate.ts` showcases the binary approve/reject pause, these
  * actions showcase the richer resolution shapes a durable flow can pause for:
  *
- *   askQuestion   — a clarifying question. Suspends for a free-text answer and
- *                   threads the typed string back into the run.
+ *   clarifyingQuestion — a clarifying question. Suspends for a free-text answer
+ *                   and threads the typed string back into the run.
  *   collectForm   — a small structured form (a flat object of a free-text field,
  *                   a single-choice enum, and a checkbox). The submitted payload
  *                   is validated against the schema before it re-enters the run.
@@ -22,14 +22,14 @@ import { handler, sequencer, SUSPENSION_SKIPPED } from "@flow-state-dev/core";
 import { z } from "zod";
 
 // ---------------------------------------------------------------------------
-// askQuestion — clarifying question (free-text answer)
+// clarifyingQuestion — clarifying question (free-text answer)
 // ---------------------------------------------------------------------------
 
-const askQuestionInput = z.object({ question: z.string().min(1) });
+const clarifyingQuestionInput = z.object({ question: z.string().min(1) });
 
-const askQuestionStep = handler({
-  name: "ask-question",
-  inputSchema: askQuestionInput,
+const clarifyingQuestionStep = handler({
+  name: "clarifying-question",
+  inputSchema: clarifyingQuestionInput,
   outputSchema: z.object({ answer: z.string() }),
   execute: async (input, ctx) => {
     // The `message` IS the question — it renders once as the card heading. Don't
@@ -46,12 +46,12 @@ const askQuestionStep = handler({
   },
 });
 
-export const askQuestionInputSchema = askQuestionInput;
-export const askQuestion = sequencer({
-  name: "ask-question-seq",
-  inputSchema: askQuestionInput,
+export const clarifyingQuestionInputSchema = clarifyingQuestionInput;
+export const clarifyingQuestion = sequencer({
+  name: "clarifying-question-seq",
+  inputSchema: clarifyingQuestionInput,
   durable: true,
-}).step(askQuestionStep);
+}).step(clarifyingQuestionStep);
 
 // ---------------------------------------------------------------------------
 // collectForm — flat form, optional (skippable)

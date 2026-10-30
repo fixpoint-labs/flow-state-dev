@@ -199,13 +199,13 @@ mechanisms:
 
   # ── Waiting, dispatch and execution ───────────────────────────────────────
   - id: suspension
-    job: Park a request until the user answers. The call site is ctx.waitForUser; the exported function is waitForUserOn.
+    job: Suspend a request (the turn) until the user answers, and resume it with the answer. The call site is ctx.suspendForUser (a model's suspendForUser tool); the exported function is suspendForUserOn.
     package: "@flow-state-dev/core"
-    anchor: waitForUserOn
-    file: packages/core/src/types/wait-for-user.ts
+    anchor: suspendForUserOn
+    file: packages/core/src/types/suspend-for-user.ts
     builtOn: [execution]
     overlaps:
-      - { id: task, relation: distinct-jobs, note: "A suspension parks the request. The task row's `holds` list says what the user holds the row on, and mirrors a suspension hold. One wait, two records; don't add a third." }
+      - { id: task, relation: distinct-jobs, note: "A suspension stops the request; a hold stops the task. A task run's suspension is mirrored as one hold in the row's `holds`, beside its question holds (holdTaskForUser). One stop, two records; don't add a third." }
     status: canonical
     doc: docs/architecture/execution-and-errors.md
 
@@ -216,7 +216,7 @@ mechanisms:
     file: packages/core/src/types/wait-gate.ts
     builtOn: [suspension]
     overlaps:
-      - { id: suspension, relation: distinct-jobs, note: "waitForUser parks for the user; parkOnWait parks on a gate something else releases. The answer shapes differ." }
+      - { id: suspension, relation: distinct-jobs, note: "suspendForUser parks for the user; parkOnWait parks on a gate something else releases. The answer shapes differ." }
     status: canonical
     doc: docs/architecture/execution-and-errors.md
 
@@ -433,7 +433,7 @@ mechanisms:
 
   # ── Orchestration ─────────────────────────────────────────────────────────
   - id: task
-    job: One row of work on a board. Claim orders (fifo, priority, topological) pick a pending row; the row carries status, attempts and holds.
+    job: One row of work on a board. Claim orders (fifo, priority, topological) pick a pending row; the row carries status, attempts and holds. A hold keeps a row from being claimed, the filer's (status held) or a person's (`holds`, a question, a confirm, or a run's suspension mirrored). isClaimable is the one claim predicate over both.
     package: "@flow-state-dev/orchestration"
     anchor: defineTaskCollection
     file: packages/orchestration/src/tasks/collection/define-task-collection.ts

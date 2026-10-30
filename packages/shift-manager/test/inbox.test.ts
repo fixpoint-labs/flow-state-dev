@@ -85,7 +85,7 @@ describe("the Inbox against a real Lab", () => {
       expect(item.id).toBe(taskItemId(item.task!.board, item.task!.taskId));
       expect(item).toMatchObject({ answerable: true, unanswerable: null, questions: [expect.objectContaining({ source: expect.objectContaining({ kind: "suspension" }), answerable: true })] });
       // Drawn with the pending ask the run's session holds, though it lists from the row.
-      expect(item.questions[0]!.detail?.item.suspensionId).toBe(item.questions[0]!.id);
+      expect(item.holds[0]!.detail?.item.suspensionId).toBe(item.holds[0]!.id);
     }
     const rows = await boardRows(client, "ops.desk");
     const truth = await readTruth(client, rows);
@@ -95,7 +95,7 @@ describe("the Inbox against a real Lab", () => {
 
     // Control duplicate-item: red.
     // The item twice, and with it the stop it shows.
-    expect(reconcileInbox([...items, items[0]!], truth)).toMatchObject({ green: false, duplicate: [items[0]!.id, items[0]!.questions[0]!.id] });
+    expect(reconcileInbox([...items, items[0]!], truth)).toMatchObject({ green: false, duplicate: [items[0]!.id, items[0]!.holds[0]!.id] });
     // Control drop-row-holds: the same reads listed without the boards. Red: the tasks' items are missing.
     const dropped = inboxSection(snapshot.asks, {}, snapshot.sessions);
     const droppedResult = reconcileInbox(dropped.ok ? dropped.value : [], truth);
@@ -113,11 +113,11 @@ describe("the Inbox against a real Lab", () => {
     const left = after.inbox.ok ? after.inbox.value : [];
     const rowsAfter = await boardRows(client, "ops.desk");
     const truthAfter = await readTruth(client, rowsAfter);
-    expect(reconcileInbox(left, { ...truthAfter, closed: [answered.questions[0]!.id] })).toMatchObject({ green: true });
+    expect(reconcileInbox(left, { ...truthAfter, closed: [answered.holds[0]!.id] })).toMatchObject({ green: true });
     // Control mirror-skips-close: the row as it was before the resume, against the stops as they are now. Red.
     const stale = reconcileInbox(left, { ...truthAfter, rows: truth.rows });
     expect(stale.green).toBe(false);
-    expect(stale.drift).toEqual([`question ${answered.questions[0]!.id} on ${answered.task!.board}:${answered.task!.taskId}: no live stop`]);
+    expect(stale.drift).toEqual([`question ${answered.holds[0]!.id} on ${answered.task!.board}:${answered.task!.taskId}: no live stop`]);
   });
 
   it("a user's own ask, with no task row: listed once, on its own, answerable and green", async () => {

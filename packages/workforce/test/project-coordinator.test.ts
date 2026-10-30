@@ -151,7 +151,7 @@ async function boot(
           execute: async (input, ctx) => {
             const worker = await installation.resolveWorker(ctx, "lead");
             heard.push({ worker: worker.id, message: input.message, sessionId: ctx.session.identity.id });
-            // `[ask]` asks one question midway, once: the lead's model calling askQuestion.
+            // `[ask]` asks one question midway, once: the lead's model calling holdTaskForUser.
             const claim = input.message.includes("[ask]") ? currentWorkerClaim(ctx as never) : undefined;
             if (claim !== undefined) {
               const [partition] = await findTaskPartitions(ctx as never, CONVERSATION_LEDGER_ID, claim.taskId);

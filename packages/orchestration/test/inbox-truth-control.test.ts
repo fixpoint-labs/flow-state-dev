@@ -6,13 +6,13 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../src/inbox/questions", async (importOriginal) => {
-  const real = await importOriginal<typeof import("../src/inbox/questions")>();
+vi.mock("../src/inbox/holds", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../src/inbox/holds")>();
   return {
     ...real,
     // The broken helper: any row's holds are open, whatever its status.
-    openUserQuestions: (row: Parameters<typeof real.openUserQuestions>[0], ...rest: unknown[]) =>
-      (real.openUserQuestions as (...args: unknown[]) => unknown)({ ...row, status: "in_progress" }, ...rest),
+    openUserHolds: (row: Parameters<typeof real.openUserHolds>[0], ...rest: unknown[]) =>
+      (real.openUserHolds as (...args: unknown[]) => unknown)({ ...row, status: "in_progress" }, ...rest),
   };
 });
 

@@ -2272,14 +2272,14 @@ five boards deep and 100 tasks under one top task; a filing past either is answe
 
 ### Questions, messages and follow-ups
 
-A worker on a task turn has `askQuestion`: the task waits on its question, which the user's
+A worker on a task turn has `holdTaskForUser`: the task waits on its question, which the user's
 Inbox lists. The answer is a message naming the question, `updateTask_tasks({ id, question,
 message })`, from the Inbox, a line typed in the task's session, or the coordinator's `updateTask`
 tool. The coordinator answers a question only when the task runs in a session of its own. When the task runs in the delegate's ongoing session, you answer it. The task takes one more turn in its own
 session, on the same attempt, with the answer, without spending a retry. The worker that filed
 the task hears each midway question as a message naming the task and the question's id, so it can
 answer without `getTask` first (see [Worker messages](#worker-messages) → A task's question). The worker also has
-`waitForUser`, which stops its turn for the user's approval or review; only the user answers that,
+`suspendForUser`, which stops its turn for the user's approval or review; only the user answers that,
 in the Inbox.
 
 `updateTask_tasks({ id, message })`, or the coordinator's `updateTask` tool, steers a task that
@@ -2416,7 +2416,7 @@ Send to talk; ask for a reply when the worker wants an answer but can go on; cal
 - **Hearing only in task sessions.** A worker flow whose entry is built with
   `hears: "task-sessions"` hears messages only in its tasks' sessions. A message to one of its
   workers by name is refused with `task_sessions_only`, and nothing is sent.
-- **A task's question.** When a task asks midway (`askQuestion`, `askMidway(ctx, board,
+- **A task's question.** When a task asks midway (`holdTaskForUser`, `askMidway(ctx, board,
   [{ prompt }])`, or a coding run's own question in Shift Manager's `devteam` Lab), its filer
   gets one message per question, from the task's worker, in the conversation that filed the task;
   it wakes that worker's `onMessageReceived` turn like any message. The text is

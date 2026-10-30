@@ -19,7 +19,7 @@
  * - `held`: a task its run is working, narrating a step a second, until it
  *   is aborted;
  * - `asked`: a task its run holds on a question for a person
- *   (`askQuestion`), then ends its turn;
+ *   (`holdTaskForUser`), then ends its turn;
  * - `queued`: a task that waits on another task the spread holds or asks on,
  *   so nothing ever starts it;
  * - `ask`: a pending approval in a session of its own, on the flow it runs on,
@@ -130,10 +130,10 @@ const parkingModel: GeneratorModel = {
   },
   generateStep: async ({ messages, tools }) => {
     if ((messages.at(-1) as { role?: string } | undefined)?.role === "tool") return { text: "Waiting on your answer.", finishReason: "stop" };
-    if (!(tools ?? []).some((tool) => tool.name === "askQuestion")) {
-      throw new Error("the asked task's turn was not offered askQuestion");
+    if (!(tools ?? []).some((tool) => tool.name === "holdTaskForUser")) {
+      throw new Error("the asked task's turn was not offered holdTaskForUser");
     }
-    return { toolCalls: [{ toolCallId: "ask", toolName: "askQuestion", args: { question: QUESTION } }], finishReason: "tool-calls" };
+    return { toolCalls: [{ toolCallId: "ask", toolName: "holdTaskForUser", args: { question: QUESTION } }], finishReason: "tool-calls" };
   },
 };
 

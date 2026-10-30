@@ -8,7 +8,7 @@
  */
 import { ClientHttpError, type Client } from "@flow-state-dev/client";
 import type { RequestStatus, ResumeAction } from "@flow-state-dev/core/types";
-import type { InboxAnswer, InboxAskKind, InboxQuestion, InboxItem, RowQuestionSource } from "./types";
+import type { InboxAnswer, InboxAskKind, InboxHold, InboxItem, RowHoldSource } from "./types";
 
 /** The engine's resume action and data for a suspension hold's answer. */
 function resumeOf(kind: InboxAskKind, answer: InboxAnswer): { action: ResumeAction; data?: unknown } {
@@ -39,7 +39,7 @@ const ANSWER_POLL_MS = 150;
  * question already answered, the task finished), which rejects here with its
  * words.
  */
-async function answerRowQuestion(client: Client, source: RowQuestionSource, questionId: string, update: { message?: string; done?: boolean }): Promise<void> {
+async function answerRowQuestion(client: Client, source: RowHoldSource, questionId: string, update: { message?: string; done?: boolean }): Promise<void> {
   const { flowId, sessionId, action } = source;
   if (flowId === null || sessionId === null || action === null) throw new Error(`Inbox question "${questionId}" names no board to answer through`);
   const flow = client.flow(flowId);
@@ -73,7 +73,7 @@ export type InboxClient = {
    */
   answer(item: InboxItem<unknown>, answer: InboxAnswer, questionId?: string): Promise<void>;
   /** Answer one hold, as an item's are answered: for a hold drawn on its own, such as an ask in a task's session view. */
-  answerOne(hold: InboxQuestion<unknown>, answer: InboxAnswer): Promise<void>;
+  answerOne(hold: InboxHold<unknown>, answer: InboxAnswer): Promise<void>;
 };
 
 /** The Inbox's client over one connection. */
@@ -92,7 +92,7 @@ export function createInboxClient(client: Client): InboxClient {
   return {
     answerOne,
     async answer(item, answer, questionId) {
-      const hold = questionId === undefined ? item.questions[0] : item.questions.find((h) => h.id === questionId);
+      const hold = questionId === undefined ? item.holds[0] : item.holds.find((h) => h.id === questionId);
       if (hold === undefined) throw new Error(`Inbox item "${item.id}" holds no "${questionId}"`);
       await answerOne(hold, answer);
     },

@@ -62,7 +62,7 @@ import {
   answerOf,
   getOrCreateTaskCollection,
   hasFrozenLedgerAssignee,
-  isRowQuestion,
+  isRowHold,
   MAX_STEERS,
   readCommittedTask,
   resolveResourceCollection,
@@ -468,7 +468,7 @@ export interface ManagerOptions {
    *
    * On, a run the phase's check passed (and the {@link judge}, when one read
    * it, found done or was under its floor) that has commits over its base
-   * waits through `ctx.waitForUser({ kind: "review" })`, its prompt naming the
+   * waits through `ctx.suspendForUser({ kind: "review" })`, its prompt naming the
    * commits and the judge's verdict as information. The answer is
    * `{ verdict: "accepted" }`, which completes the task with no further
    * harness run, or `{ verdict: "revise", words }`, whose words become the
@@ -1413,7 +1413,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   if ("announce" in (options as object)) {
     throw new Error(
       "[harness-manager] `announce` was removed: a run's question now keeps its task waiting on the board, " +
-        "where the Inbox lists it. Read held tasks from the board (`openRowQuestions`) instead of being told.",
+        "where the Inbox lists it. Read held tasks from the board (`openRowHolds`) instead of being told.",
     );
   }
 
@@ -2917,9 +2917,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const reviewed = async (outcome: "accepted" | "deadline" | "revise" | "cancelled") =>
         ctx.sequencer!.patchState({ decided: { ...decision, reviewed: outcome } });
 
-      let asked: Awaited<ReturnType<BlockContext["waitForUser"]>>;
+      let asked: Awaited<ReturnType<BlockContext["suspendForUser"]>>;
       try {
-        asked = await ctx.waitForUser({
+        asked = await ctx.suspendForUser({
           kind: "review",
           title: "Review the run's changes",
           prompt: reviewPrompt(changes, decision.output.branch, read),
@@ -3409,10 +3409,10 @@ function heldTicket(
 }
 
 /** Whether `steer` answers one of `row`'s questions for a person: a steer a deadline wrote is a message, not an answer. */
-function isAnswer(row: Pick<Task, "questions">, steer: Pick<TaskSteer, "answers" | "from">): boolean {
+function isAnswer(row: Pick<Task, "holds">, steer: Pick<TaskSteer, "answers" | "from">): boolean {
   if (steer.answers === undefined || steer.from === "board") return false;
-  const hold = row.questions?.find((h) => h.id === steer.answers);
-  return hold !== undefined && isRowQuestion(hold);
+  const hold = row.holds?.find((h) => h.id === steer.answers);
+  return hold !== undefined && isRowHold(hold);
 }
 
 /**
@@ -3423,8 +3423,8 @@ function isAnswer(row: Pick<Task, "questions">, steer: Pick<TaskSteer, "answers"
 function answeredQuestions(row: Task | undefined): AnsweredQuestion[] {
   if (row === undefined) return [];
   const answered: AnsweredQuestion[] = [];
-  for (const hold of row.questions ?? []) {
-    if (!isRowQuestion(hold)) continue;
+  for (const hold of row.holds ?? []) {
+    if (!isRowHold(hold)) continue;
     const steer = answerOf(row, hold.id);
     if (steer === undefined || !isAnswer(row, steer)) continue;
     answered.push({ question: hold.ask.prompt, answer: steer.message });

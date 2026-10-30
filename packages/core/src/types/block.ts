@@ -557,9 +557,9 @@ export interface BlockContext<
    * it throws `SuspensionTimeoutError`, and an approval reads as a no. A stop
    * with no `deadline` takes the host's setting for a user's stop, else waits
    * until answered, stopped or cancelled. Needs durable execution, as
-   * `suspend` does. See `types/wait-for-user.ts`.
+   * `suspend` does. See `types/suspend-for-user.ts`.
    */
-  waitForUser: import("./wait-for-user").WaitForUser;
+  suspendForUser: import("./suspend-for-user").SuspendForUser;
 
   /**
    * Manually save a checkpoint at the current execution point. Normally

@@ -12,17 +12,17 @@ import {
   cancelAndResume,
   createResourceBackedTaskCollection,
   createStateBackedTaskCollection,
-  openQuestions,
+  openHolds,
   ticketForClaim,
   TaskFilingRefusedError,
-  type SuspensionQuestion,
+  type SuspensionHold,
   type TaskClaimTicket,
   type TaskCollectionRef,
 } from "../../src/tasks";
 import { payOwedResumes } from "../../src/tasks/helpers/wait-on-task";
 import { createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 
-const STOP: SuspensionQuestion = {
+const STOP: SuspensionHold = {
   id: "susp_1",
   actor: "user",
   openedAt: 1000,
@@ -67,30 +67,30 @@ describe.each([
     await collection.createTask({ id: "t", goal: "t" });
     const task = (await collection.claim("w", { leaseDurationMs: 10_000 }))!;
     const claim = ticketForClaim(collection.collectionId, task);
-    await collection.setKeptOpenBy!("t", "wait", { claim, question: STOP });
+    await collection.setKeptOpenBy!("t", "suspended", { claim, hold: STOP });
     return { collection, claim };
   }
 
   it("mirrors the stop it waits on in the write that drops the lease, and the run's own resume closes it", async () => {
     const { collection, claim } = await waiting();
-    expect(collection.get("t")).toMatchObject({ status: "in_progress", keptOpenBy: "wait", questions: [STOP] });
-    expect(openQuestions(collection.get("t")!)).toEqual([STOP]);
+    expect(collection.get("t")).toMatchObject({ status: "in_progress", keptOpenBy: "suspended", questions: [STOP] });
+    expect(openHolds(collection.get("t")!)).toEqual([STOP]);
     expect(collection.get("t")!.leaseUntil).toBeUndefined();
     // A later request admitted while the run stays parked keeps it; the run's own resume closes it.
     await collection.setKeptOpenBy!("t", null, { claim, leaseUntil: 50_000 });
     expect(collection.get("t")).toMatchObject({ questions: [STOP] });
     expect(collection.get("t")!.keptOpenBy).toBeUndefined();
     await collection.setKeptOpenBy!("t", null, { claim, leaseUntil: 50_000, resume: true });
-    expect(collection.get("t")!.questions).toBeUndefined();
+    expect(collection.get("t")!.holds).toBeUndefined();
   });
 
   it("refuses to mirror a stop on a row a question holds: one wait per turn", async () => {
     const { collection, claim } = await waiting();
     await collection.setKeptOpenBy!("t", null, { claim, leaseUntil: 50_000, resume: true });
     expect((await collection.ask!("t", [{ kind: "question", prompt: "Which date column?" }], { claim })).outcome).toBe("recorded");
-    const refused = await collection.setKeptOpenBy!("t", "wait", { claim, question: STOP });
+    const refused = await collection.setKeptOpenBy!("t", "suspended", { claim, hold: STOP });
     expect(refused).toMatchObject({ outcome: "declined", reason: "open-question" });
-    expect(openQuestions(collection.get("t")!).map((hold) => hold.source.kind)).toEqual(["row"]);
+    expect(openHolds(collection.get("t")!).map((hold) => hold.source.kind)).toEqual(["row"]);
   });
 
   it("a cancel owes the parked run its resume in the same write, keeping the stop it is owed to; the clear drops both", async () => {
@@ -99,14 +99,14 @@ describe.each([
     const ended = collection.get("t")!;
     // Closed with the row (no open hold), its address kept for the debt.
     expect(ended).toMatchObject({ status: "cancelled", resumeOwed: true, questions: [STOP] });
-    expect(openQuestions(ended)).toEqual([]);
+    expect(openHolds(ended)).toEqual([]);
     expect(ended.keptOpenBy).toBeUndefined();
     // A later write to the ended row keeps the debt's address.
     await collection.patchMetadata("t", { note: "x" });
-    expect(collection.get("t")!.questions).toEqual([STOP]);
+    expect(collection.get("t")!.holds).toEqual([STOP]);
     await collection.clearResumeOwed!("t");
     expect(collection.get("t")!.resumeOwed).toBeUndefined();
-    expect(collection.get("t")!.questions).toBeUndefined();
+    expect(collection.get("t")!.holds).toBeUndefined();
   });
 
   it("an ending of a row that waits on nothing owes nothing", async () => {
@@ -127,7 +127,7 @@ describe.each([
     const paid = hostThat(async () => ({ ok: true }));
     expect((await payOwedResumes(paid.ctx, collection)).resumed).toEqual(["t"]);
     expect(collection.get("t")!.resumeOwed).toBeUndefined();
-    expect(collection.get("t")!.questions).toBeUndefined();
+    expect(collection.get("t")!.holds).toBeUndefined();
   });
 
   it("cancelAndResume writes the cancel under the stop's fence, then the resume is paid and nothing stays owed", async () => {

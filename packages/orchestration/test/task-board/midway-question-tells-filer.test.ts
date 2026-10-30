@@ -11,7 +11,7 @@ import { askMidway } from "../../src/task-board";
 import { openWorkerClaimScope, stampCurrentClaim } from "../../src/task-board/flow-policy-wiring";
 import type { TaskClaimTicket } from "../../src/tasks/claim-ticket";
 import type { TaskCollectionRef } from "../../src/tasks";
-import { newRowQuestions } from "../../src/tasks/collection/questions";
+import { newRowHolds } from "../../src/tasks/collection/holds";
 import { createDelivery } from "../../src/tasks/notice/delivery";
 import type { Task } from "../../src/tasks/schema/task";
 
@@ -26,7 +26,7 @@ function heldRow(questionTurn: number, filer: string | null = "conv_a"): Task {
     attempts: 1,
     turn: 2,
     askedInTurn: questionTurn,
-    questions: newRowQuestions([{ kind: "question", prompt: "which region?" }], 0, { midway: true }),
+    questions: newRowHolds([{ kind: "question", prompt: "which region?" }], 0, { midway: true }),
     ...(filer !== null ? { filer: { sessionId: filer } } : {}),
   } as unknown as Task;
 }

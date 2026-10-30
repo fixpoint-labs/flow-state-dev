@@ -163,7 +163,7 @@ describe("the agent flow as a delegate (S9)", () => {
     const answer = mockGenerator({
       name: "agent-answer",
       script: [
-        { toolCalls: [{ toolCallId: "q1", toolName: "askQuestion", args: { question: "Which policy?" } }] },
+        { toolCalls: [{ toolCallId: "q1", toolName: "holdTaskForUser", args: { question: "Which policy?" } }] },
         { text: "Waiting on your answer." }
       ]
     });

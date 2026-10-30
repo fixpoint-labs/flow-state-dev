@@ -7,7 +7,7 @@ import { z } from "zod";
 import {
   createResourceBackedTaskCollection,
   createStateBackedTaskCollection,
-  openQuestions,
+  openHolds,
   type TaskCollectionRef,
   type TaskWorker,
 } from "../../src/tasks";
@@ -59,7 +59,7 @@ describe.each([
     expect(attempts).toEqual([1]);
     const held = await collection.get("t");
     expect(held).toMatchObject({ status: "in_progress", attempts: 1 });
-    const [hold] = openQuestions(held!);
+    const [hold] = openHolds(held!);
     expect(hold).toBeDefined();
 
     expect(await collection.answer!("t", { questionId: hold!.id, message: "signup_date", from: "user", by: "u1" })).toEqual({

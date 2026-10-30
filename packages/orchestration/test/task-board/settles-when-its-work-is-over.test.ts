@@ -29,12 +29,12 @@ import {
   taskWorkerInputSchema,
 } from "../../src/task-board";
 import { runningTaskOf, takeRunningSteers, type ShownSteer } from "../../src/skills/steer-context";
-import { createAskQuestion, createWaitForUserTool } from "../../src/skills/task-tools-capability";
+import { createHoldTaskForUser, createSuspendForUserTool } from "../../src/skills/task-tools-capability";
 import { runForTest } from "@flow-state-dev/testing";
 import {
   createResourceBackedTaskCollection,
   filedWorkKeepsOpen,
-  openQuestions,
+  openHolds,
   type Task,
   type TaskChangeEvent,
   type TaskCollectionRef,
@@ -444,14 +444,14 @@ describe("the claim gate settles a task when its work is over", () => {
       });
       const first = await h.run();
       // The stop for a person is mirrored on the row as its suspension hold (FIX-2133).
-      expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "wait", questions: [{ source: { kind: "suspension" } }] });
+      expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "suspended", questions: [{ source: { kind: "suspension" } }] });
 
       // A piece of the task ends (or a check runs) while its own turn waits on the person.
       h.setLaterTurn(async () => "an answer while it waits");
       await h.runLater(later);
 
       // The later request keeps the mirror: the task's own run is still parked on it.
-      expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "wait", attempts: 1, questions: [{ source: { kind: "suspension" } }] });
+      expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "suspended", attempts: 1, questions: [{ source: { kind: "suspension" } }] });
       expect((await h.row())?.leaseUntil).toBeUndefined();
 
       const resumed = await h.resume(first.requestId!, { ok: true });
@@ -464,7 +464,7 @@ describe("the claim gate settles a task when its work is over", () => {
     const h = await harness();
     h.setBehaviour(async (ctx) => ctx.suspend!({ reason: "user_input", message: "which one?" }));
     const first = await h.run();
-    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "wait", questions: [{ ask: { kind: "input", prompt: "which one?" } }] });
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "suspended", questions: [{ ask: { kind: "input", prompt: "which one?" } }] });
 
     expect(await h.stop(first.requestId!)).toBe("stopped");
 
@@ -487,9 +487,9 @@ describe("the claim gate settles a task when its work is over", () => {
 
     const first = await h.run();
 
-    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "wait", attempts: 1 });
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "suspended", attempts: 1 });
     // Only a stop for a person is mirrored on the row (FIX-2133).
-    expect((await h.row())?.questions?.map((hold) => hold.source.kind)).toEqual(forPerson ? ["suspension"] : undefined);
+    expect((await h.row())?.holds?.map((hold) => hold.source.kind)).toEqual(forPerson ? ["suspension"] : undefined);
     expect((await h.row())?.leaseUntil).toBeUndefined();
     h.advance(60_000);
     expect(await h.reclaim()).toBeNull();
@@ -500,7 +500,7 @@ describe("the claim gate settles a task when its work is over", () => {
     expect(await h.row()).toMatchObject({ status: "completed", attempts: 1 });
     expect((await h.row())?.keptOpenBy).toBeUndefined();
     // The resume's admission closed the mirror.
-    expect((await h.row())?.questions).toBeUndefined();
+    expect((await h.row())?.holds).toBeUndefined();
   });
 });
 
@@ -522,7 +522,7 @@ describe("a task held on its questions midway (FIX-2133)", () => {
     h.advance(60_000);
     expect(await h.reclaim()).toBeNull();
 
-    const hold = openQuestions(held)[0]!.id;
+    const hold = openHolds(held)[0]!.id;
     await (await h.ledger()).answer!("t1", { questionId: hold, message: "signup_date", from: "user", by: "u1" });
     h.setBehaviour(async () => "the whole answer");
     const turn = (await h.reclaim())!;
@@ -557,11 +557,11 @@ describe("a task held on its questions midway (FIX-2133)", () => {
       const asked = await askMidway(ctx, ledger, [{ prompt: "Which date column?" }]);
       if (asked.ok) await ledger.answer!("t1", { questionId: asked.questions[0]!, message: "signup_date", from: "user", by: "u1" });
       // The same turn now stops for the user: one wait per turn, though its question is answered.
-      return ctx.waitForUser({ kind: "approval", prompt: "Ship it now?" });
+      return ctx.suspendForUser({ kind: "approval", prompt: "Ship it now?" });
     });
     const first = await h.run();
     const row = (await h.row())!;
-    expect(openQuestions(row)).toEqual([]);
+    expect(openHolds(row)).toEqual([]);
     expect(row).toMatchObject({ status: "in_progress", attempts: 1, turn: 1, turnOwed: true });
     expect(row.keptOpenBy).toBeUndefined();
     // The asking turn's own resume (its stop answered anyway, this harness having no cancel) takes neither the
@@ -589,7 +589,7 @@ describe("a task held on its questions midway (FIX-2133)", () => {
       return "a partial answer";
     });
     await h.run();
-    expect(openQuestions((await h.row())!)).toHaveLength(1);
+    expect(openHolds((await h.row())!)).toHaveLength(1);
     expect(asked[1]).toEqual(asked[0]);
   });
 
@@ -599,12 +599,12 @@ describe("a task held on its questions midway (FIX-2133)", () => {
     const h = await harness();
     h.setBehaviour(async (ctx, ledger) => {
       await askMidway(ctx, ledger, [{ prompt: "Which date column?" }]);
-      return ctx.waitForUser({ kind: "approval", prompt: "Ship it now?" });
+      return ctx.suspendForUser({ kind: "approval", prompt: "Ship it now?" });
     });
     await h.run();
     const row = (await h.row())!;
     // The row holds its question alone: no mirror, no wait recorded, not settled.
-    expect(openQuestions(row).map((hold) => hold.source.kind)).toEqual(["row"]);
+    expect(openHolds(row).map((hold) => hold.source.kind)).toEqual(["row"]);
     expect(row).toMatchObject({ status: "in_progress", attempts: 1 });
     expect(row.keptOpenBy).toBeUndefined();
   });
@@ -779,7 +779,7 @@ describe("a steer no request took gives the task one more turn before it settles
     // The task's own turn asks which region; the user's answer owes it one more turn.
     h.setBehaviour(async (ctx, ledger) => askMidway(ctx, ledger, [{ prompt: "Which region?" }]));
     await h.run();
-    const question = openQuestions((await h.row())!)[0]!.id;
+    const question = openHolds((await h.row())!)[0]!.id;
     await (await h.ledger()).answer!("t1", { questionId: question, message: "EU", from: "user", by: "u1" });
     // That owed turn asks the user to review its work before it finishes, as a thread does.
     h.setSteerTurn(async (_steers, ctx) => {
@@ -787,15 +787,15 @@ describe("a steer no request took gives the task one more turn before it settles
       return { reviewed: resolution };
     });
     const turn = await h.runLater("steerTurn");
-    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "wait" });
-    expect(openQuestions((await h.row())!).map((open) => open.source)).toEqual([expect.objectContaining({ kind: "suspension", requestId: turn.requestId })]);
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "suspended" });
+    expect(openHolds((await h.row())!).map((open) => open.source)).toEqual([expect.objectContaining({ kind: "suspension", requestId: turn.requestId })]);
 
     const resumed = await h.resume(turn.requestId!, { verdict: "accepted" });
 
     expect(resumed.error).toBeUndefined();
     // Its own resume: the task was waiting on this request, so the request's end settles it.
     expect(await h.row()).toMatchObject({ status: "completed", attempts: 1 });
-    expect(openQuestions((await h.row())!)).toEqual([]);
+    expect(openHolds((await h.row())!)).toEqual([]);
     expect(h.events.filter((e) => e.kind === "completed")).toHaveLength(1);
   });
 
@@ -915,17 +915,17 @@ describe("a task's background error fails its attempt", () => {
 
 /**
  * The model's two ways to wait on a person from a task turn (FIX-2131):
- * `askQuestion` holds the task, `waitForUser` suspends its run for an
+ * `holdTaskForUser` holds the task, `suspendForUser` suspends its run for an
  * approval or a review, and a turn opens one of them, never both. The tools
  * run inside the gate's real request, so their claim is the gate's.
  */
 describe("a task turn's model waits on a person one way per turn (FIX-2131)", () => {
   const tools = (ledger: TaskCollectionRef) => ({
-    question: createAskQuestion({ resolve: async () => ledger }).tool,
-    wait: createWaitForUserTool({ resolve: async () => ledger }).tool,
+    question: createHoldTaskForUser({ resolve: async () => ledger }).tool,
+    wait: createSuspendForUserTool({ resolve: async () => ledger }).tool,
   });
 
-  it("askQuestion holds the task on the question: the turn ends unsettled, and the answer owes one more turn on the same attempt", async () => {
+  it("holdTaskForUser holds the task on the question: the turn ends unsettled, and the answer owes one more turn on the same attempt", async () => {
     const h = await harness();
     const said: unknown[] = [];
     h.setBehaviour(async (ctx, ledger) => {
@@ -937,10 +937,10 @@ describe("a task turn's model waits on a person one way per turn (FIX-2131)", ()
     const held = (await h.row())!;
     expect(held).toMatchObject({ status: "in_progress", attempts: 1 });
     expect(held.leaseUntil).toBeUndefined();
-    expect(openQuestions(held).map((hold) => hold.ask)).toEqual([{ kind: "question", prompt: "Which region?" }]);
+    expect(openHolds(held).map((hold) => hold.ask)).toEqual([{ kind: "question", prompt: "Which region?" }]);
     expect(h.events.filter((e) => e.kind === "completed")).toHaveLength(0);
 
-    await (await h.ledger()).answer!("t1", { questionId: openQuestions(held)[0]!.id, message: "EU", from: "user", by: "u1" });
+    await (await h.ledger()).answer!("t1", { questionId: openHolds(held)[0]!.id, message: "EU", from: "user", by: "u1" });
     h.setBehaviour(async () => "the EU answer");
     const turn = (await h.reclaim())!;
     expect(turn).toMatchObject({ attempts: 1 });
@@ -948,7 +948,7 @@ describe("a task turn's model waits on a person one way per turn (FIX-2131)", ()
     expect(await h.row()).toMatchObject({ status: "completed", attempts: 1, output: "the EU answer" });
   });
 
-  it("waitForUser refuses input on a task turn, naming askQuestion, and writes nothing", async () => {
+  it("suspendForUser refuses input on a task turn, naming holdTaskForUser, and writes nothing", async () => {
     const h = await harness();
     const said: unknown[] = [];
     h.setBehaviour(async (ctx, ledger) => {
@@ -956,13 +956,13 @@ describe("a task turn's model waits on a person one way per turn (FIX-2131)", ()
       return "done without asking";
     });
     await h.run();
-    expect(said).toEqual([{ ok: false, error: expect.stringMatching(/^input_is_a_question: .*askQuestion/) }]);
+    expect(said).toEqual([{ ok: false, error: expect.stringMatching(/^input_is_a_question: .*holdTaskForUser/) }]);
     const row = (await h.row())!;
-    expect(row.questions ?? []).toEqual([]);
+    expect(row.holds ?? []).toEqual([]);
     expect(row).toMatchObject({ status: "completed", output: "done without asking" });
   });
 
-  it("askQuestion and waitForUser in one step: the question, first, holds; the review is refused naming it, and the row has one source of holds", async () => {
+  it("holdTaskForUser and suspendForUser in one step: the question, first, holds; the review is refused naming it, and the row has one source of holds", async () => {
     const h = await harness();
     const said: unknown[] = [];
     h.setBehaviour(async (ctx, ledger) => {
@@ -977,13 +977,13 @@ describe("a task turn's model waits on a person one way per turn (FIX-2131)", ()
     await h.run();
     expect(said).toEqual([
       { ok: true, taskId: "t1", questionId: expect.any(String) },
-      { ok: false, error: expect.stringMatching(/^one_wait_per_turn: .*askQuestion/) },
+      { ok: false, error: expect.stringMatching(/^one_wait_per_turn: .*holdTaskForUser/) },
     ]);
     const row = (await h.row())!;
-    expect(openQuestions(row).map((hold) => hold.source.kind)).toEqual(["row"]);
+    expect(openHolds(row).map((hold) => hold.source.kind)).toEqual(["row"]);
   });
 
-  it("waitForUser and askQuestion in one step: the review, first, suspends the run; the question is refused naming it, and no question is kept", async () => {
+  it("suspendForUser and holdTaskForUser in one step: the review, first, suspends the run; the question is refused naming it, and no question is kept", async () => {
     const h = await harness();
     const said: unknown[] = [];
     h.setBehaviour(async (ctx, ledger) => {
@@ -997,9 +997,9 @@ describe("a task turn's model waits on a person one way per turn (FIX-2131)", ()
       return settled[0]!.value;
     });
     const first = await h.run();
-    expect(said).toEqual([{ ok: false, error: expect.stringMatching(/^one_wait_per_turn: .*waitForUser/) }]);
+    expect(said).toEqual([{ ok: false, error: expect.stringMatching(/^one_wait_per_turn: .*suspendForUser/) }]);
     const row = (await h.row())!;
-    expect(openQuestions(row).map((hold) => [hold.source.kind, hold.ask.kind])).toEqual([["suspension", "review"]]);
+    expect(openHolds(row).map((hold) => [hold.source.kind, hold.ask.kind])).toEqual([["suspension", "review"]]);
 
     // The review's verdict resumes the block on its attempt, which settles with it.
     await h.resume(first.requestId!, "looks right");

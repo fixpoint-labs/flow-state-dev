@@ -193,7 +193,7 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
         scanned.tools++;
         tools.push(name);
         if (!TOOLS_ALLOWED.has(name) && !isMarked(lineText(sf, node))) {
-          findings.push({ rule: "tools", where: `${rel(sf)}:${lineOf(sf, node)}`, what: `the task surface offers "${name}", which is not one of the five, askQuestion or waitForUser` });
+          findings.push({ rule: "tools", where: `${rel(sf)}:${lineOf(sf, node)}`, what: `the task surface offers "${name}", which is not one of the five, holdTaskForUser or suspendForUser` });
         }
       }
       ts.forEachChild(node, visit);
@@ -519,7 +519,7 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
   // A tree with no Inbox read (a commit from before it, swept with `--at`) has a second list by
   // definition: a finding, not a rule that read nothing.
   if (inboxItemDecl === undefined) findings.push({ rule: "inbox", where: INBOX_MODULE, what: "no InboxItem type: there is no one Inbox read, so every list of what waits on the user is its own" });
-  const ITEM_SHAPE = ["task", "questions", "answerable"];
+  const ITEM_SHAPE = ["task", "holds", "answerable"];
   // A literal typed `any` or `unknown` (a spread of an `any` value) is no item: every slot accepts it.
   const isInboxItem = (node) => {
     if (typeDeclaredIn(checker.getContextualType(node), INBOX_MODULE, "InboxItem")) return true;

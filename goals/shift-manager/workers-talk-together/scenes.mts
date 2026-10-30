@@ -215,7 +215,7 @@ export async function sceneAC(world: World, servers: Servers, walked: Walked): P
 }
 
 /** The midway questions a row has ever had, answered or not. */
-const everAsked = (row: TaskRow | undefined): TaskRow[] => ((row?.questions ?? []) as TaskRow[]).filter((h) => h.source?.kind === "row" && h.midway === true);
+const everAsked = (row: TaskRow | undefined): TaskRow[] => ((row?.holds ?? []) as TaskRow[]).filter((h) => h.source?.kind === "row" && h.midway === true);
 
 /** Scene ed: a call parked while a midway question reaches its filer, and a ring runs on its own line. */
 export async function sceneED(world: World, walked: Walked, run: { ring: boolean; question: boolean }): Promise<LegResult> {
@@ -229,7 +229,7 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
 
   // Researcher's conversation stops for Alice, so the call to it parks until its deadline.
   const stopTurn = await act(alice, researcher.flowKind, researcher.id, "respond", {
-    message: `Before anything else, call waitForUser with kind "approval" and prompt "May I publish the ${fyi} report?", and wait for my answer.`,
+    message: `Before anything else, call suspendForUser with kind "approval" and prompt "May I publish the ${fyi} report?", and wait for my answer.`,
   });
   const stop = await until(async () => {
     const stops = (await alice.routes.items(researcher.id, "suspension")).filter((i) => i.requestId === stopTurn.requestId && i.reason === "user_approval");
@@ -250,7 +250,7 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
   const logBefore = new Set((await logOf(alice)).map((m) => m.id));
   const words =
     `Do these in order, in this one turn. First, start ${HELPER_B} on a task with createTask, leaving the questions field out entirely (the task asks its own while it works), whose goal is, word for word: ` +
-    `"Write a one-line welcome for the ${topic} gala that names its venue. You don't know the venue. Your first step is to call the askQuestion tool, asking the worker who filed this task for the venue; never finish without that tool call. Then write the line." ` +
+    `"Write a one-line welcome for the ${topic} gala that names its venue. You don't know the venue. Your first step is to call the holdTaskForUser tool, asking the worker who filed this task for the venue; never finish without that tool call. Then write the line." ` +
     `Second, call sendMessage with to "${RESEARCHER}", text "What is seven times six? Answer with the number only.", wait: true and deadline: ${PARKED_CALL_MS}. ` +
     `Then tell me what you got. The ${topic} gala's venue is ${venue}. When ${HELPER_B}'s task asks you for it, answer only by calling updateTask with that task's id, the question's id as answers, and the venue as message. Don't message or call anyone about it.`;
   const requestId = (await alice.flow(helperA.flowKind).send("respond", { message: words }, { sessionId: helperA.id })).id;
@@ -307,7 +307,7 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
     r.notes.push(`e: task ${filed.id} ended ${final?.status} on attempt ${final?.attempts}; question ${question?.id ?? "none"}; ${heard.length} received item(s) about it, the first at ${tsOf(heardItem)} in ${heardAction ?? "?"}`);
     if (question === undefined) {
       // Nothing for e's other assertions to grade either: each says so, so none reads as a pass.
-      for (const a of ["e:filer-hears", "e:heard-while-calling", "e:steer-releases"]) r.failures.push(`${a} — setup: Helper B's task never asked midway: ${final?.status}, questions ${show(final?.questions)}`);
+      for (const a of ["e:filer-hears", "e:heard-while-calling", "e:steer-releases"]) r.failures.push(`${a} — setup: Helper B's task never asked midway: ${final?.status}, questions ${show(final?.holds)}`);
     } else {
       // e:filer-hears — one received item from Helper B naming the task and the question, on onMessageReceived, in the filing session.
       if (heard.length !== 1 || !heard[0]!.text.includes(String(question.id)) || heardAction !== "onMessageReceived") {

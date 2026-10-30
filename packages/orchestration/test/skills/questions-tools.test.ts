@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 import type { GeneratorTool } from "@flow-state-dev/core";
 import { runForTest } from "@flow-state-dev/testing";
 import { buildTaskToolsList, taskToolActions } from "../../src/skills/task-tools-capability";
-import { MAX_STEERS, openQuestions, ticketForClaim, type Task } from "../../src/tasks";
+import { MAX_STEERS, openHolds, ticketForClaim, type Task } from "../../src/tasks";
 import { buildDelegationCtx, ownStateResolver } from "./delegation-ctx";
 
 function toolNamed(tools: readonly unknown[], name: string): GeneratorTool {
@@ -47,12 +47,12 @@ describe("createTask's questions", () => {
     expect(filed).toMatchObject({ ok: true });
     const row = b.get(filed.taskId)!;
     expect(row).toMatchObject({ status: "pending", attempts: 0 });
-    expect(openQuestions(row).map((hold) => hold.ask)).toEqual([
+    expect(openHolds(row).map((hold) => hold.ask)).toEqual([
       { kind: "question", prompt: CSV },
       { kind: "confirm", prompt: "Run it against prod?", onNo: "cancel" },
     ]);
     const read = await b.call("getTask", { id: filed.taskId });
-    expect(read.task.questions.map((hold: { ask: unknown }) => hold.ask)).toEqual(openQuestions(row).map((hold) => hold.ask));
+    expect(read.task.questions.map((hold: { ask: unknown }) => hold.ask)).toEqual(openHolds(row).map((hold) => hold.ask));
     const listed = await b.call("listTasks", {});
     expect(listed.tasks[0].questions).toHaveLength(2);
   });
@@ -64,8 +64,8 @@ describe("createTask's questions", () => {
     const filed = await b.call("createTask", { goal: "Write the adoption script", questions: [] });
     expect(filed).toMatchObject({ ok: true });
     const row = b.get(filed.taskId)!;
-    expect(openQuestions(row)).toEqual([]);
-    expect(row.questions ?? []).toEqual([]);
+    expect(openHolds(row)).toEqual([]);
+    expect(row.holds ?? []).toEqual([]);
     const plain = await b.call("createTask", { goal: "Write the adoption script" });
     expect(row.status).toBe(b.get(plain.taskId)!.status);
   });
@@ -82,14 +82,14 @@ describe("updateTask's answers", () => {
   async function held() {
     const b = await board();
     const filed = await b.call("createTask", { goal: "Write the adoption script", questions: [CSV, COLUMN] });
-    const [csv, column] = openQuestions(b.get(filed.taskId)!).map((hold) => hold.id);
+    const [csv, column] = openHolds(b.get(filed.taskId)!).map((hold) => hold.id);
     return { ...b, id: filed.taskId as string, csv: csv!, column: column! };
   }
 
   it("from a screen, answers a question as the user: kept as a steer naming it, the others left open", async () => {
     const b = await held();
     expect(await b.act("updateTask", { id: b.id, answers: b.csv, message: "The March export" })).toEqual({ ok: true });
-    expect(openQuestions(b.get(b.id)!).map((hold) => hold.id)).toEqual([b.column]);
+    expect(openHolds(b.get(b.id)!).map((hold) => hold.id)).toEqual([b.column]);
     const read = await b.call("getTask", { id: b.id });
     expect(read.task.steers).toEqual([expect.objectContaining({ message: "The March export", from: "user", by: "u1", answers: b.csv })]);
     expect(read.task.questions.map((hold: { id: string }) => hold.id)).toEqual([b.column]);
@@ -102,7 +102,7 @@ describe("updateTask's answers", () => {
       error: expect.stringMatching(/^answers_not_question:/),
     });
     expect(b.get(b.id)!.steers ?? []).toEqual([]);
-    expect(openQuestions(b.get(b.id)!).map((hold) => hold.id)).toEqual([b.csv, b.column]);
+    expect(openHolds(b.get(b.id)!).map((hold) => hold.id)).toEqual([b.csv, b.column]);
   });
 
   it("a retried answer is a success; other words are refused as answered", async () => {
@@ -126,7 +126,7 @@ describe("updateTask's answers", () => {
     (ctx as any).request.identity.orgId = "org-a";
     const filed = await runForTest(toolNamed(buildTaskToolsList(ownStateResolver), "createTask"), { goal: "g", questions: [CSV] } as never, ctx) as any;
     const ref = (await ownStateResolver(ctx as never))!;
-    const hold = openQuestions(ref.get(filed.taskId)!)[0]!.id;
+    const hold = openHolds(ref.get(filed.taskId)!)[0]!.id;
     const actions = taskToolActions("desk", ownStateResolver);
     const asOrg = (orgId: string) => ({ ...(ctx as object), request: { ...(ctx as any).request, identity: { id: "r9", userId: "u1", orgId } }, user: { identity: { userId: "u1" } } });
     expect(await runForTest(actions["updateTask_desk"]!.block as never, { id: filed.taskId, answers: hold, message: "x" } as never, asOrg("org-b") as never)).toMatchObject({ ok: false, error: "task_not_found" });
@@ -137,20 +137,20 @@ describe("updateTask's answers", () => {
   it("a confirm takes done, with an optional note; words alone are refused", async () => {
     const b = await board();
     const filed = await b.call("createTask", { goal: "Ship v2", questions: [{ kind: "confirm", prompt: "Ship once it builds?" }] });
-    const hold = openQuestions(b.get(filed.taskId)!)[0]!.id;
+    const hold = openHolds(b.get(filed.taskId)!)[0]!.id;
     expect(await b.act("updateTask", { id: filed.taskId, answers: hold, message: "yes please" })).toMatchObject({
       ok: false,
       error: expect.stringMatching(/^confirm_takes_done:/),
     });
     expect(await b.act("updateTask", { id: filed.taskId, answers: hold, done: true, message: "after lunch" })).toEqual({ ok: true });
     expect(b.get(filed.taskId)!.steers).toEqual([expect.objectContaining({ message: "Yes, go ahead. after lunch", answers: hold })]);
-    expect(openQuestions(b.get(filed.taskId)!)).toEqual([]);
+    expect(openHolds(b.get(filed.taskId)!)).toEqual([]);
   });
 
   it("a No on a confirm cancels the task by default, the No and its note its reason; the same No again is a success", async () => {
     const b = await board();
     const filed = await b.call("createTask", { goal: "Ship v2", questions: [{ kind: "confirm", prompt: "Ship once it builds?" }] });
-    const hold = openQuestions(b.get(filed.taskId)!)[0]!.id;
+    const hold = openHolds(b.get(filed.taskId)!)[0]!.id;
     expect(await b.act("updateTask", { id: filed.taskId, answers: hold, done: false, message: "not this week" })).toEqual({ ok: true });
     const row = b.get(filed.taskId)!;
     expect(row).toMatchObject({ status: "cancelled", attempts: 0, error: 'No to "Ship once it builds?": not this week', cancelledVia: "action" });
@@ -163,7 +163,7 @@ describe("updateTask's answers", () => {
   it("a No sent after the yes is refused as answered, and the task stays as the yes left it", async () => {
     const b = await board();
     const filed = await b.call("createTask", { goal: "Ship v2", questions: [{ kind: "confirm", prompt: "Ship once it builds?" }] });
-    const hold = openQuestions(b.get(filed.taskId)!)[0]!.id;
+    const hold = openHolds(b.get(filed.taskId)!)[0]!.id;
     expect(await b.act("updateTask", { id: filed.taskId, answers: hold, done: true })).toEqual({ ok: true });
     expect(await b.act("updateTask", { id: filed.taskId, answers: hold, done: false })).toMatchObject({ ok: false, error: expect.stringMatching(/^question_answered:/) });
     expect(b.get(filed.taskId)).toMatchObject({ status: "pending" });
@@ -172,7 +172,7 @@ describe("updateTask's answers", () => {
   it("a confirm filed with onNo: continue goes on after a No, with the No in its brief", async () => {
     const b = await board();
     const filed = await b.call("createTask", { goal: "Ship v2", questions: [{ kind: "confirm", prompt: "Ship once it builds?", onNo: "continue" }] });
-    const hold = openQuestions(b.get(filed.taskId)!)[0]!;
+    const hold = openHolds(b.get(filed.taskId)!)[0]!;
     expect(hold.ask).toEqual({ kind: "confirm", prompt: "Ship once it builds?", onNo: "continue" });
     expect(await b.act("updateTask", { id: filed.taskId, answers: hold.id, done: false })).toEqual({ ok: true });
     expect(b.get(filed.taskId)!.steers).toEqual([expect.objectContaining({ message: "No.", answers: hold.id })]);
@@ -220,7 +220,7 @@ describe("updateTask's answers", () => {
         error: expect.stringMatching(/^question_is_the_users: .*, since the task runs in a workstream/),
       });
       expect(b.get("t5")!.steers).toBeUndefined();
-      expect(openQuestions(b.get("t5")!).map((h) => h.id)).toEqual([hold]);
+      expect(openHolds(b.get("t5")!).map((h) => h.id)).toEqual([hold]);
     }
   });
 

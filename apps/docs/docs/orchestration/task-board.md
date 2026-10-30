@@ -646,9 +646,9 @@ createTask({
 
 A plain string is a question, answered in words. A `confirm` asks for a yes or a no. A No cancels the task, with the No and any note as the cancel's reason. File it with `onNo: "continue"` instead and the work goes on after a No, with "No." in its brief. The task stays `pending`, and nothing starts it, until every one is answered. Each answer joins the brief its first attempt gets, after the goal and beside the question it answers. Questions are set only when filing, up to 20, each up to 1,000 characters.
 
-A worker can also ask midway, from the turn working the task. A model asks with its `askQuestion({ question })` tool. Code asks with `askMidway(ctx, board, [{ prompt }])` from `@flow-state-dev/orchestration/task-board`, or `[{ kind: "confirm", prompt, onNo }]` for a yes or a no. The turn ends there without settling the task: it keeps its attempt and everything the turn wrote. The task isn't handed out again while it waits, however long that takes. Once the user answers, the task takes one more turn on the same attempt, which starts from its brief, its last checkpoint and the answer. That turn isn't charged against `maxAttempts`.
+A worker can also ask midway, from the turn working the task. A model asks with its `holdTaskForUser({ question })` tool. Code asks with `askMidway(ctx, board, [{ prompt }])` from `@flow-state-dev/orchestration/task-board`, or `[{ kind: "confirm", prompt, onNo }]` for a yes or a no. The turn ends there without settling the task: it keeps its attempt and everything the turn wrote. The task isn't handed out again while it waits, however long that takes. Once the user answers, the task takes one more turn on the same attempt, which starts from its brief, its last checkpoint and the answer. That turn isn't charged against `maxAttempts`.
 
-A Workforce worker has `askQuestion` on every task turn. For a worker flow of your own, build it with `createAskQuestion({ resolve })` from `@flow-state-dev/orchestration`, which takes the task list the turn's task is on, and offer its `tool` while its `offered(ctx)` check says so: on a turn working a running task. After calling it, the model ends its turn with a short note. Nothing it answers in that turn becomes the task's result.
+A Workforce worker has `holdTaskForUser` on every task turn. For a worker flow of your own, build it with `createHoldTaskForUser({ resolve })` from `@flow-state-dev/orchestration`, which takes the task list the turn's task is on, and offer its `tool` while its `offered(ctx)` check says so: on a turn working a running task. After calling it, the model ends its turn with a short note. Nothing it answers in that turn becomes the task's result.
 
 The worker that filed the task can hear a midway question too. Declare `onMidwayQuestion(ctx, row, questions)` in the task list's `delivery` and the board calls it after each question asked midway, from the request that asked it, with the row and its open midway questions. It's called again if the asking turn is replayed, so make it safe to repeat for the same question. A Workforce board uses it to send the question to its filer [as a message](../workforce/messaging-workers.md#when-a-task-asks-a-question). Without it, the filer reads the question with `getTask`.
 
@@ -667,7 +667,7 @@ A question has no deadline unless the host sets [`userDeadlineMs`](/docs/configu
 
 A line the user types into a held task's session answers its oldest open question. A confirm is never answered that way: it takes a yes or a no. With no question open, the line is a message to the task as usual.
 
-While its questions are open, a task settles only by a cancel, which closes every question; an answer closes its own question and the work goes on. A turn waits once. A worker that asks midway while its run waits for the user is refused: the call is declined `held`, and nothing is asked. A run that stops for the user while its own questions are open resumes at once with `{ cancelled: true }`. Between a model's own tools the first to start waiting wins: `askQuestion` and `waitForUser` called in the same step open one wait, and the other comes back as a tool error naming it.
+While its questions are open, a task settles only by a cancel, which closes every question; an answer closes its own question and the work goes on. A turn waits once. A worker that asks midway while its run waits for the user is refused: the call is declined `held`, and nothing is asked. A run that stops for the user while its own questions are open resumes at once with `{ cancelled: true }`. Between a model's own tools the first to start waiting wins: `holdTaskForUser` and `suspendForUser` called in the same step open one wait, and the other comes back as a tool error naming it.
 
 ### Progress from the worker
 
@@ -675,7 +675,7 @@ While its questions are open, a task settles only by a cancel, which closes ever
 
 The latest checkpoint is the task's output. When the task completes, a checkpoint stays, and the worker's final answer becomes the output only when it never reported one. So report the whole result so far each time. A failed attempt keeps its checkpoint for the next one. Once the task has finished, `reportProgress` is refused and nothing changes.
 
-For a worker flow of your own, build the tool with `createReportProgress({ resolve })`, which takes the task list the turn's task is on, as [`createAskQuestion`](#a-tasks-questions) does. `reportProgress` is not an action: a screen doesn't report a worker's progress.
+For a worker flow of your own, build the tool with `createReportProgress({ resolve })`, which takes the task list the turn's task is on, as [`createHoldTaskForUser`](#a-tasks-questions) does. `reportProgress` is not an action: a screen doesn't report a worker's progress.
 
 ## What a task's run spent
 
@@ -841,33 +841,33 @@ Until then the task stays `in_progress`, and its row's `keptOpenBy` says what it
 | `keptOpenBy` | The task is waiting on | Lease |
 | --- | --- | --- |
 | `"filed"` | tasks it filed that haven't ended, or whose ending the run's session hasn't heard yet | none |
-| `"wait"` | a stop: `ctx.waitForUser()`, `ctx.suspend()`, or an external event | none |
+| `"wait"` | a stop: `ctx.suspendForUser()`, `ctx.suspend()`, or an external event | none |
 
-A stop that waits for a user (`ctx.waitForUser()`, or `ctx.suspend()` with `user_approval` or `user_input`) is also listed in the task's `questions`.
+A stop that waits for a user (`ctx.suspendForUser()`, or `ctx.suspend()` with `user_approval` or `user_input`) is also listed in the task's `questions`.
 
 A task with no lease stays with its run. It isn't handed out again however long the wait lasts, including across a server restart.
 
 #### A task waiting on a user
 
-When the run stops to ask the user something (`ctx.waitForUser`), reading the task shows it. `getTask` and `listTasks` list the stop in the task's `questions`, with `source.kind: "suspension"`: its `ask` (`kind` is `approval`, `review` or `input`, beside the `prompt`), and its `due` time if it has one. The answer comes from the user's [Inbox](#building-an-inbox), through the [answer call](/docs/api/client#answerbody), and the same attempt carries on. Only that user can answer it.
+When the run stops to ask the user something (`ctx.suspendForUser`), reading the task shows it. `getTask` and `listTasks` list the stop in the task's `questions`, with `source.kind: "suspension"`: its `ask` (`kind` is `approval`, `review` or `input`, beside the `prompt`), and its `due` time if it has one. The answer comes from the user's [Inbox](#building-an-inbox), through the [answer call](/docs/api/client#answerbody), and the same attempt carries on. Only that user can answer it.
 
 The stop can end three other ways, and each ends it once:
 
-- **The task is cancelled.** The run picks up where it stopped, with `waitForUser` returning `{ cancelled: true }`, and runs to its end. Nothing it writes to the task or returns is kept, and a task it tries to file is refused. Anything it does elsewhere, like a call to another service, still happens, so check `cancelled` before work you'd rather skip. An answer sent at the same moment as the cancel is told the stop is already resolved.
+- **The task is cancelled.** The run picks up where it stopped, with `suspendForUser` returning `{ cancelled: true }`, and runs to its end. Nothing it writes to the task or returns is kept, and a task it tries to file is refused. Anything it does elsewhere, like a call to another service, still happens, so check `cancelled` before work you'd rather skip. An answer sent at the same moment as the cancel is told the stop is already resolved.
 - **The run is stopped.** The task is cancelled rather than failed, so it isn't retried and the user isn't asked the same thing again.
 - **Its deadline passes.** A stop has no deadline unless the call passes one, or the host sets [`userDeadlineMs`](/docs/configuration/runtime#createflowstate-fields). At the deadline an approval reads as a no. A review or an input fails the attempt unless the run catches `SuspensionTimeoutError`.
 
 A block asks for a review the same way it asks for an approval:
 
 ```ts
-const review = await ctx.waitForUser({ kind: "review", prompt: "Does this draft read right?" });
+const review = await ctx.suspendForUser({ kind: "review", prompt: "Does this draft read right?" });
 if (review.cancelled) return { skipped: true };
 // review.answer is the user's verdict.
 ```
 
 The Inbox lists the review as one item, named a review, and the user's verdict resumes the block on the same attempt: `review.answer` is what they sent.
 
-A model asks with its `waitForUser({ kind, prompt })` tool, an approval or a review. Its result is the user's answer. The tool takes no deadline: the host's `userDeadlineMs` applies, and at it the tool comes back with `answered: false` (an approval with `approved: false`) rather than an error. On a turn working a task, `waitForUser` refuses `input` and points at `askQuestion`. On a turn working no task, `waitForUser` takes `input`, and the answer is the tool's result. A Workforce worker has the tool; for a flow of your own, build it with `createWaitForUserTool({ resolve })`.
+A model asks with its `suspendForUser({ kind, prompt })` tool, an approval or a review. Its result is the user's answer. The tool takes no deadline: the host's `userDeadlineMs` applies, and at it the tool comes back with `answered: false` (an approval with `approved: false`) rather than an error. On a turn working a task, `suspendForUser` refuses `input` and points at `holdTaskForUser`. On a turn working no task, `suspendForUser` takes `input`, and the answer is the tool's result. A Workforce worker has the tool; for a flow of your own, build it with `createSuspendForUserTool({ resolve })`.
 
 A message sent into a task while it waits on an approval or a review doesn't answer it.
 
@@ -1080,7 +1080,7 @@ Each arriving task gets the same checks a board's own entry runs: same attempt, 
 
 `taskLedgers` also takes `uses` (capabilities that declare the ledgers as resources, in place of `resources` on the flow), `onError` (`"skip"` by default, as on a board), `endRules` (what else [holds a task open](#when-a-dispatched-task-is-done)), and `allowSessionState`, which accepts an entry whose blocks keep session state. Leave that off unless the entry is handed tasks `per-task`, or its session state has the same shape for every task.
 
-Each run of the entry is a task turn: the run gets [`reportProgress`](#progress-from-the-worker), [`askQuestion`](#a-tasks-questions), whose question the task waits on until the user answers, and [`waitForUser`](#a-task-waiting-on-a-user). The entry runs only if its claim on the task is still current, and `reportProgress` from the run can touch only the task it holds.
+Each run of the entry is a task turn: the run gets [`reportProgress`](#progress-from-the-worker), [`holdTaskForUser`](#a-tasks-questions), whose question the task waits on until the user answers, and [`suspendForUser`](#a-task-waiting-on-a-user). The entry runs only if its claim on the task is still current, and `reportProgress` from the run can touch only the task it holds.
 
 A worker reads the claim it holds with `currentWorkerClaim(ctx)`, from `@flow-state-dev/orchestration/task-board`. Pass the block's own `ctx`. It returns the claim ticket, carrying `taskId` and `attempt` among others, in a worker the board runs inline and in one reached through a task entry, and `undefined` everywhere else: a coordinator, a block wired directly, or any other request the worker starts or resumes. A worker's task-tool writes are limited to the task it holds. A write naming a different task is refused with `task_write_declined: you hold task "<held>", not "<named>"`.
 
@@ -1376,9 +1376,9 @@ one with `updateTask({ id, status: "pending" })`. To wait on it, call `getTask({
 
 **Moving from `waitForResponse`.** `createTask` doesn't wait. It refuses `waitForResponse`, `wait` and `timeoutMs` with `create_task_does_not_wait`, and files nothing. File the task, then wait with `getTask`. {/* retired-name-refusal: migration note */}
 
-**Moving from the question and review parks.** A task waiting on a person is never parked. A worker's model asks with `askQuestion` instead of `parkOnQuestion`, and the task waits on the question. {/* retired-name-refusal: migration note */}
+**Moving from the question and review parks.** A task waiting on a person is never parked. A worker's model asks with `holdTaskForUser` instead of `parkOnQuestion`, and the task waits on the question. {/* retired-name-refusal: migration note */}
 The question is answered with `updateTask({ id, answers, message })`, which replaces `answerTask` and its action. {/* retired-name-refusal: migration note */}
-A block asks for a review with `ctx.waitForUser({ kind: "review", prompt })` instead of `awaitReview`, and the Inbox answers it, so `unpark` and `unparkAndDrain` have no replacement to mount. {/* retired-name-refusal: migration note */}
+A block asks for a review with `ctx.suspendForUser({ kind: "review", prompt })` instead of `awaitReview`, and the Inbox answers it, so `unpark` and `unparkAndDrain` have no replacement to mount. {/* retired-name-refusal: migration note */}
 A board built with `onReview` is refused: a board whose open tasks only wait on a person stops `blocked` on its own. {/* retired-name-refusal: migration note */}
 
 ## See also

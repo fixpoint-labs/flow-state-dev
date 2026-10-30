@@ -104,7 +104,7 @@ import {
   hasStarted,
   isClaimable,
   isTerminalStatus,
-  nextQuestionDue,
+  nextHoldDue,
   NOTICE_DUE_MS,
   noticeDueAt,
   filerResolver,
@@ -767,7 +767,7 @@ function hasPastDue(rows: readonly Task[], now: number): boolean {
     if (row.cascadeOwed != null && row.cascadeOwed.due <= now) return true;
     if ((row.resumeOwed === true || row.cancelOwed === true) && row.updatedAt + NOTICE_DUE_MS <= now) return true;
     // A held question past a deadline the host set (FIX-2133): the pass closes it.
-    const held = nextQuestionDue(row);
+    const held = nextHoldDue(row);
     if (held !== undefined && held <= now) return true;
     // A report owed by a row stored before FIX-2078: due at once (BP-030).
     return owedReports(row).length > 0;
@@ -1332,11 +1332,11 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
               return outcome;
             }
           }),
-      ...(ref.payQuestionDeadlines === undefined
+      ...(ref.payHoldDeadlines === undefined
         ? {}
         : {
-            async payQuestionDeadlines() {
-              const paid = await ref.payQuestionDeadlines!();
+            async payHoldDeadlines() {
+              const paid = await ref.payHoldDeadlines!();
               // Only the rows whose questions just closed go on.
               for (const id of paid) await goOnAfterAnswer(id);
               return paid;
