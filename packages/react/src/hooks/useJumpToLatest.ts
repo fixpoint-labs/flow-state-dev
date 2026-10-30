@@ -66,9 +66,14 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
   // Armed by `sent`: the next element that lands in the feed is brought into view, once.
   const bringNext = useRef(false);
 
-  /** End the opening a frame after the feed first overflows. */
+  /** End the opening a frame after the feed overflows; a feed emptied before then, such as one switching conversations, keeps opening. */
   const closeOpening = useCallback((el: HTMLElement) => {
-    if (el.scrollHeight <= el.clientHeight || frame.current !== undefined) return;
+    if (el.scrollHeight <= el.clientHeight) {
+      if (frame.current !== undefined) cancelAnimationFrame(frame.current);
+      frame.current = undefined;
+      return;
+    }
+    if (frame.current !== undefined) return;
     frame.current = requestAnimationFrame(() => {
       frame.current = undefined;
       opening.current = false;
@@ -145,11 +150,11 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
     opening.current = true;
     bringNext.current = false;
     setAtEnd(true);
-    if (node !== null) {
-      toEnd(node, "instant");
-      closeOpening(node);
-    }
-  }, [options.resetKey, startAtEnd, node, closeOpening]);
+    // Not closed here: what the element holds may still be the last conversation. The new one's content closes it.
+    if (frame.current !== undefined) cancelAnimationFrame(frame.current);
+    frame.current = undefined;
+    if (node !== null) toEnd(node, "instant");
+  }, [options.resetKey, startAtEnd, node]);
 
   const jump = useCallback(() => {
     setAtEnd(true);

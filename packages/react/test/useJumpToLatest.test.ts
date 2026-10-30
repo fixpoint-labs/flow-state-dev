@@ -221,6 +221,21 @@ describe("opening a conversation", () => {
     expect(moves).toEqual([]);
   });
 
+  it("opens at the end of a conversation switched to that loads after the switch, even a frame or more later", async () => {
+    const { rerender } = await opened(20, { resetKey: "a" });
+    // The key moves while the old lines are still shown; then the feed empties while the new one is read.
+    rerender(feedElement({ lines: 20, resetKey: "b" }));
+    await settle();
+    rerender(feedElement({ lines: 0, resetKey: "b" }));
+    await settle();
+    await nextFrame();
+    await nextFrame();
+    rerender(feedElement({ lines: 30, resetKey: "b" }));
+    await settle();
+    expect(screen.getByTestId("feed").scrollTop).toBe(30 * LINE - VIEW);
+    expect(moves.every((m) => m.behavior === "instant")).toBe(true);
+  });
+
   it("leaves a user who scrolled up where they are when only the scrolling element is replaced", async () => {
     const { rerender } = await opened(5, { resetKey: "a", elementKey: "one" });
     scrollTo(0);
