@@ -859,7 +859,11 @@ Claude Code sends an update whenever its limits change, and at least once per ru
 | `usedPercent` | 0 to 100, only when Claude Code sends one, which it does near a limit. Otherwise `null`, never 0 |
 | `resetsAt` | When the window resets, in epoch ms |
 
-The report around it also carries `harness` (`"claude-code"`, exported as `CLAUDE_CODE_HARNESS`), `observedAt`, `runStartedAt`, and `accountId`, the signed-in email or `null`. A run on an API key reports nothing. `onUsage` is awaited, but a throw from it doesn't fail the run: a warning is logged and the run carries on. It works on in-session and detached blocks alike. `usageWindowOf(info)` maps one raw event payload to a window, or `null`, if you read the SDK stream yourself.
+The report around it also carries `harness` (`"claude-code"`, exported as `CLAUDE_CODE_HARNESS`), `observedAt`, `runStartedAt`, and `accountId`, the signed-in email or `null`.
+
+A run on an API key reports nothing. `onUsage` is awaited, but a throw from it doesn't fail the run: a warning is logged and the run carries on. It works on in-session and detached blocks alike.
+
+If you read the SDK stream yourself, `usageWindowOf(info)` maps one raw event payload to a window, or `null`.
 
 To show who is signed in before any run, `readClaudeUsage({ env })` is a [usage reader](./coding-agents.md#subscription-usage). It never throws:
 
@@ -868,11 +872,11 @@ To show who is signed in before any run, `readClaudeUsage({ env })` is a [usage 
 | `windows` | Signed in, or running on an OAuth token. Carries `plan` and `accountId`, and **no windows**: those arrive from runs. |
 | `api-key` | Claude Code runs on an API key, which has no subscription limit. |
 | `signed-out` | Nobody is signed in. |
-| `unavailable` | `@anthropic-ai/claude-agent-sdk` isn't installed, or Claude Code couldn't be asked or didn't answer within `timeoutMs` (10 seconds by default) or before `signal` aborted. The usage query keeps the last good reading and shows why the refresh failed. |
+| `unavailable` | `@anthropic-ai/claude-agent-sdk` isn't installed, or Claude Code couldn't be asked or didn't answer within `timeoutMs` (10 seconds by default) or before `signal` aborted. |
 
 Pass the same `env` as your runs. To keep run windows and readings together and serve them to a page or a worker, register `readClaudeUsage` as the `claude-code` reader of the [harness manager's usage query](/docs/orchestration/harness-manager#subscription-usage) and pass `onUsage` through from the manager's harness slot.
 
-**Where the numbers come from.** Only from Claude Code's own run events and its account answer. Nothing here reads a credentials file, calls a usage endpoint, or uses the SDK's experimental usage call.
+The numbers come only from Claude Code's run events and its account answer. Neither `onUsage` nor `readClaudeUsage` reads a credentials file or calls a usage endpoint.
 
 ## Error handling
 

@@ -428,21 +428,26 @@ A reading is one of four:
 | `signed-out` | `reason`. Nobody is signed in. |
 | `unavailable` | `reason`. The read couldn't be made. |
 
-Each window has an `id` unique within the reading, the vendor's `label` for its
-limit, its length in `minutes`, `usedPercent` from 0 to 100, `level`, and
-`resetsAt` in epoch ms. `label`, `minutes` and `resetsAt` are `null` when the
-vendor didn't say. `level` (`HarnessUsageLevel`) is how close the window is to
-its limit, when the vendor says: `"ok"` (under its warning line), `"warning"`
-(near the limit) or `"reached"`, and `null` for a vendor that sends only a
-percent, as Codex does. `usedPercent` is `null` when the vendor sent no
-percent; show the `level` instead. `harnessUsageWindowSchema` reads a window
-stored with no `level` as `level: null`. The numbers are the vendor's own: a
-fraction is scaled to a percent and nothing else is derived. Only `windows`
-carries a number: show the `reason` for the other three, never 0%.
+Only `windows` carries a number: show the `reason` for the other three, never
+0%. A reader returns these states rather than throwing.
 
-A reader returns those states rather than throwing. Codex ships one,
-[`readCodexUsage`](./codex.md#reading-usage-left), and Claude Code ships
-[`readClaudeUsage`](./claude-code-sdk.md#reading-usage-left).
+Each window holds:
+
+| Field | What it holds |
+|---|---|
+| `id` | The window's id, unique within the reading. |
+| `label` | The vendor's name for the limit, or `null`. |
+| `minutes` | The window's length, or `null`. |
+| `usedPercent` | 0 to 100, or `null` when the vendor sent no percent. Show the `level` instead. |
+| `level` | A `HarnessUsageLevel`: `"ok"` (under its warning line), `"warning"` (near the limit) or `"reached"`. `null` for a vendor that sends only a percent, as Codex does. |
+| `resetsAt` | When the window resets, in epoch ms, or `null`. |
+
+The numbers are the vendor's own: a fraction is scaled to a percent and nothing
+else is derived. To validate a window you stored yourself, parse it with
+`harnessUsageWindowSchema`; a window without a `level` parses as `level: null`.
+
+Codex ships a reader, [`readCodexUsage`](./codex.md#reading-usage-left), and
+Claude Code ships [`readClaudeUsage`](./claude-code-sdk.md#reading-usage-left).
 
 Some agents report usage only while they run. A harness block that does takes an
 `onUsage` hook, a `HarnessUsageHook`: `(report, ctx) => void | Promise<void>`.
@@ -511,7 +516,7 @@ try {
 }
 ```
 
-A report without a `runId` counts as one finished run of its own, so a harness that reports once, from its `finally`, still counts correctly; a task then shows its tokens only once the run ends.
+A report without a `runId` counts as one finished run of its own, so a harness that reports once, from its `finally`, counts correctly; a task then shows its tokens only once the run ends.
 
 `reportHarnessSpend` returns `false`, and counts nothing, when the context belongs to no request, such as a hand-built test context.
 
