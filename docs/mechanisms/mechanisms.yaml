@@ -199,7 +199,7 @@ mechanisms:
 
   # ── Waiting, dispatch and execution ───────────────────────────────────────
   - id: suspension
-    job: Suspend a request (the turn) until the user answers, and resume it with the answer. The call site is ctx.suspendForUser (a model's suspendForUser tool); the exported function is suspendForUserOn.
+    job: Suspend a request (the turn) until the user answers, and resume it with the answer. The call site is ctx.suspendForUser (a model's suspendForUser tool); the exported function is suspendForUserOn; suspendForUserKindOf reads which stop it is.
     package: "@flow-state-dev/core"
     anchor: suspendForUserOn
     file: packages/core/src/types/suspend-for-user.ts

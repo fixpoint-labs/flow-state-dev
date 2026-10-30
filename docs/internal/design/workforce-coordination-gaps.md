@@ -93,7 +93,7 @@ things today (two README examples it cites no longer hold, so they are left out)
 | Coordinator | The coordinator flow, the Shift Coordinator worker and the project coordinator | A worker that routes a user's messages |
 | Delegates | Workers, for the Shift Coordinator; workstreams (a lead and a target), for a project coordinator | The workers a session may file tasks with. A project coordinator's are its workstreams' leads |
 | Question | Inbox's "Questions" filter means `human_input` suspensions (`shift-manager/src/surfaces/Inbox.tsx:37`), never a task's question | One of `suspendForUser`'s kinds, an Inbox item like the others |
-| Hold | A filer's hold before a start (status `held`), a task's open questions (`Task.holds`), what keeps a running task open (`waitingOn`, `filedWorkHolds`) and a request's claim (`heldTask`) | The filer's hold only. A task's open asks are its `questions`, what keeps it open is `keptOpenBy`, and a request's right on its task is its claim (FIX-2183) |
+| Hold | A filer's hold before a start (status `held`), a task's open questions (`Task.holds`), what keeps a running task open (`waitingOn`, `filedWorkHolds`) and a request's claim (`heldTask`) | What stops a task being claimed: the filer's hold (status `held`) or a hold for the user (`Task.holds`, a question, a confirm or a run's suspension). What keeps a running task open is `keptOpenBy`, and a request's right on its task is its claim (FIX-2183, FIX-2317) |
 | Stream | The project Stream tab (a coordinator conversation), the Tasks screen's STREAM grouping (workstreams, `shift-manager/src/surfaces/Tasks.tsx:69`) | Not a model word: say conversation for the tab and workstream for the grouping |
 
 ## Where today's code differs

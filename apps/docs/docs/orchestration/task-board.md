@@ -631,7 +631,7 @@ A finished task takes no message, because its output never changes. To correct i
 
 ### A task's questions
 
-Some work can't start until a person decides something. File it with the questions, and it waits for the answers:
+Some work can't start until a person decides something. File it with the questions, and each one holds the task until it's answered. A question is one kind of hold: the filer's hold (`held: true`) is another, and the board claims a task only once nothing holds it.
 
 ```ts
 createTask({
@@ -646,13 +646,13 @@ createTask({
 
 A plain string is a question, answered in words. A `confirm` asks for a yes or a no. A No cancels the task, with the No and any note as the cancel's reason. File it with `onNo: "continue"` instead and the work goes on after a No, with "No." in its brief. The task stays `pending`, and nothing starts it, until every one is answered. Each answer joins the brief its first attempt gets, after the goal and beside the question it answers. Questions are set only when filing, up to 20, each up to 1,000 characters.
 
-A worker can also ask midway, from the turn working the task. A model asks with its `holdTaskForUser({ question })` tool. Code asks with `askMidway(ctx, board, [{ prompt }])` from `@flow-state-dev/orchestration/task-board`, or `[{ kind: "confirm", prompt, onNo }]` for a yes or a no. The turn ends there without settling the task: it keeps its attempt and everything the turn wrote. The task isn't handed out again while it waits, however long that takes. Once the user answers, the task takes one more turn on the same attempt, which starts from its brief, its last checkpoint and the answer. That turn isn't charged against `maxAttempts`.
+A worker can also ask midway, from the turn working the task. A model holds the task on a question with its `holdTaskForUser({ question })` tool. Code asks with `askMidway(ctx, board, [{ prompt }])` from `@flow-state-dev/orchestration/task-board`, or `[{ kind: "confirm", prompt, onNo }]` for a yes or a no. The turn ends there without settling the task: it keeps its attempt and everything the turn wrote. The task isn't handed out again while it waits, however long that takes. Once the user answers, the task takes one more turn on the same attempt, which starts from its brief, its last checkpoint and the answer. That turn isn't charged against `maxAttempts`.
 
 A Workforce worker has `holdTaskForUser` on every task turn. For a worker flow of your own, build it with `createHoldTaskForUser({ resolve })` from `@flow-state-dev/orchestration`, which takes the task list the turn's task is on, and offer its `tool` while its `offered(ctx)` check says so: on a turn working a running task. After calling it, the model ends its turn with a short note. Nothing it answers in that turn becomes the task's result.
 
 The worker that filed the task can hear a midway question too. Declare `onMidwayQuestion(ctx, row, questions)` in the task list's `delivery` and the board calls it after each question asked midway, from the request that asked it, with the row and its open midway questions. It's called again if the asking turn is replayed, so make it safe to repeat for the same question. A Workforce board uses it to send the question to its filer [as a message](../workforce/messaging-workers.md#when-a-task-asks-a-question). Without it, the filer reads the question with `getTask`.
 
-`getTask` and `listTasks` show what a task waits on as `questions`. Each has an `id`, its `ask` (`kind` and `prompt`), when it was opened, and its `due` time when it has one. A question stays listed until it's answered. The same list carries a stop the task's run waits on, with `source.kind: "suspension"`; see [A task waiting on a user](#a-task-waiting-on-a-user).
+`getTask` and `listTasks` show what a task waits on as `holds`. Each has an `id`, its `ask` (`kind` and `prompt`), when it was opened, and its `due` time when it has one. A question stays listed until it's answered. The same list carries a stop the task's run is suspended on, with `source.kind: "suspension"`; see [A task waiting on a user](#a-task-waiting-on-a-user).
 
 The user answers from their [Inbox](#building-an-inbox). A screen of your own answers with the board's `updateTask` action, naming the question:
 
@@ -735,7 +735,7 @@ These are public actions. Anyone who can call your flow can call them, so add th
 
 Each task in a `listTasks` result can carry a `run` link, `{ sessionId, requestId }`, that names the run working it, or the run that last did. A finished or failed task keeps its link, so a task list can open the run that produced the result. A task has no link until a run starts on it, and claiming it again clears the link until the next run starts. The link says which run, not whether it is still going: read `status` for that. Only the session's owner can open it.
 
-`getTask` returns one task whole: its goal, context and input, the fields `updateTask` edits, its status, its worker's status note, what it came back with, meaning its `output` or its `error`, and the `questions` it waits on. A task with a completed follow-up also carries `current`: the latest one's `id` and `output`. An `input`, `metadata` or `output` longer than 20,000 characters as JSON comes back as that text cut to 20,000 characters, with `inputCut`, `metadataCut` or `outputCut` set. An `id` the board doesn't hold answers `{ ok: false, error: "task_not_found", taskId }`.
+`getTask` returns one task whole: its goal, context and input, the fields `updateTask` edits, its status, its worker's status note, what it came back with, meaning its `output` or its `error`, and the `holds` it waits on. A task with a completed follow-up also carries `current`: the latest one's `id` and `output`. An `input`, `metadata` or `output` longer than 20,000 characters as JSON comes back as that text cut to 20,000 characters, with `inputCut`, `metadataCut` or `outputCut` set. An `id` the board doesn't hold answers `{ ok: false, error: "task_not_found", taskId }`.
 
 ### Building an Inbox
 
@@ -752,7 +752,7 @@ const items = inboxItems({
 await createInboxClient(client).answer(items[0], { approved: true });
 ```
 
-`inboxItems` returns one item per task that waits on the user, however many questions it has, with its `questions` oldest first. A stop in that task's run lists under the task, never a second time on its own. A suspension no open task's run holds, such as a user's ask in a session of their own, is an item by itself. An item is `answerable` when one of its questions is.
+`inboxItems` returns one item per task that waits on the user, however many questions it has, with its `holds` oldest first. A stop in that task's run lists under the task, never a second time on its own. A suspension no open task's run holds, such as a user's ask in a session of their own, is an item by itself. An item is `answerable` when one of its questions is.
 
 The answer is typed by what the question asks: an approval takes `{ approved, data? }`, an input or a review `{ value }` (or `{ skipped: true }`), a question `{ text }`, and a confirm `{ done, note? }`. The client sends each where it belongs: a stop to the [answer call](/docs/api/client#answerbody), and a question or a confirm to its board's `updateTask` action, as the signed-in user. There a question's `text` becomes the `message`, and a confirm's `note` becomes the `message` beside `done`. The package README's [Inbox section](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/orchestration/README.md#inbox) has the full call list.
 
@@ -841,15 +841,15 @@ Until then the task stays `in_progress`, and its row's `keptOpenBy` says what it
 | `keptOpenBy` | The task is waiting on | Lease |
 | --- | --- | --- |
 | `"filed"` | tasks it filed that haven't ended, or whose ending the run's session hasn't heard yet | none |
-| `"wait"` | a stop: `ctx.suspendForUser()`, `ctx.suspend()`, or an external event | none |
+| `"suspended"` | its request is suspended: `ctx.suspendForUser()`, `ctx.suspend()`, or an external event | none |
 
-A stop that waits for a user (`ctx.suspendForUser()`, or `ctx.suspend()` with `user_approval` or `user_input`) is also listed in the task's `questions`.
+A stop that waits for a user (`ctx.suspendForUser()`, or `ctx.suspend()` with `user_approval` or `user_input`) is also listed in the task's `holds`.
 
 A task with no lease stays with its run. It isn't handed out again however long the wait lasts, including across a server restart.
 
 #### A task waiting on a user
 
-When the run stops to ask the user something (`ctx.suspendForUser`), reading the task shows it. `getTask` and `listTasks` list the stop in the task's `questions`, with `source.kind: "suspension"`: its `ask` (`kind` is `approval`, `review` or `input`, beside the `prompt`), and its `due` time if it has one. The answer comes from the user's [Inbox](#building-an-inbox), through the [answer call](/docs/api/client#answerbody), and the same attempt carries on. Only that user can answer it.
+When the run stops to ask the user something (`ctx.suspendForUser`), reading the task shows it. `getTask` and `listTasks` list the stop in the task's `holds`, with `source.kind: "suspension"`: its `ask` (`kind` is `approval`, `review` or `input`, beside the `prompt`), and its `due` time if it has one. The answer comes from the user's [Inbox](#building-an-inbox), through the [answer call](/docs/api/client#answerbody), and the same attempt carries on. Only that user can answer it.
 
 The stop can end three other ways, and each ends it once:
 

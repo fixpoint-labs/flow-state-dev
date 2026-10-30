@@ -46,7 +46,6 @@ const clarifyingQuestionStep = handler({
   },
 });
 
-export const clarifyingQuestionInputSchema = clarifyingQuestionInput;
 export const clarifyingQuestion = sequencer({
   name: "clarifying-question-seq",
   inputSchema: clarifyingQuestionInput,

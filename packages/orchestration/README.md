@@ -28,7 +28,8 @@ import { taskSchema, type Task } from "@flow-state-dev/orchestration";
 A `Task` is the unified work-unit record: `id`, `goal`, `status`, `deps`, `lease`,
 `attempts`, `retryLedger`, optional typed `input`/`output`. Status enum:
 `pending | in_progress | held | completed | errored | cancelled`. A task waiting on a
-person is `in_progress`: what it waits on is in its `questions`.
+person is `in_progress`: what holds it is in its `holds`. A question is one kind of hold,
+beside the filer's (status `held`); the claim takes a task only once nothing holds it.
 
 ```
 pending ─┬─→ in_progress ─┬─→ completed
@@ -764,18 +765,18 @@ session. Until then the row stays `in_progress`, and `keptOpenBy` says why:
 | `keptOpenBy` | Waiting on | Lease |
 | --- | --- | --- |
 | `"filed"` | tasks it filed that are open, or whose ending is still owed to the child's session | none |
-| `"wait"` | a suspension, a stop for a person included | none |
+| `"suspended"` | its request is suspended, a stop for a person included | none |
 
 A row with no lease is never reclaimed, so a waiting task isn't run twice. A resume
 continues the same attempt. A stop for a person (a `ctx.suspendForUser()`, or a `ctx.suspend()`
-for `user_approval` or `user_input`) is also mirrored on the row as a question.
+for `user_approval` or `user_input`) is also mirrored on the row as a hold.
 
 **A task waiting on a user.** `getTask` and `listTasks` show `keptOpenBy` on a running
-task, and its `questions`. A stop for a person is one with `source.kind: "suspension"`: its
+task, and its `holds`. A stop for a person is one with `source.kind: "suspension"`: its
 `ask` (`kind` is `approval`, `review` or `input`, with the `prompt` and `title`), its `due`
 (epoch ms, absent when it has none), and the `requestId` and `suspensionId` a screen
 answers it by. A screen answers it through the engine's answer route (a request handle's
-`answer` in `@flow-state-dev/client`); `questions` is a read convenience, never where a screen
+`answer` in `@flow-state-dev/client`); `holds` is a read convenience, never where a screen
 lists what waits for a user (that is the Inbox read, below). Three other endings:
 
 - **Cancelled.** `updateTask({ id, status: "cancelled" })` cancels the row under the stop's
@@ -938,7 +939,7 @@ the latest completed follow-up of the task's chain, `{ id, output, outputCut? }`
 A `listTasks` row names it by id only (`current: { id }`).
 `output` is the result as the worker recorded it. A result longer than 20,000 characters as JSON
 comes back as that text cut to 20,000 characters, with `outputCut: true`; an `input` or
-`metadata` that long is cut the same way, with `inputCut` or `metadataCut`. `questions` lists what the
+`metadata` that long is cut the same way, with `inputCut` or `metadataCut`. `holds` lists what the
 task waits on. `run` is the same link `listTasks` carries. A task the
 board doesn't hold answers `{ ok: false, error: "task_not_found", taskId }`.
 
@@ -1320,7 +1321,7 @@ await createInboxClient(client).answer(items[0], { approved: true });
 - **One item per task row** that waits on the user. A stop in that task's run lists under the row, never a second time on its own.
 - **One item per suspension** that no open task's run holds, such as a user's ask in a session of their own.
 - **Each question** says what it asks, where its answer goes, and whether the Inbox can answer it. An item is `answerable` when one of its questions is.
-- **One item per task, however many questions it has.** A task's questions and confirms, asked at filing or midway, list oldest first as its `questions`, beside a stop in its run.
+- **One item per task, however many questions it has.** A task's questions and confirms, asked at filing or midway, list oldest first as its `holds`, beside a stop in its run.
 - **The answer is typed by what the question asks:** an approval takes `{ approved, data? }`, an input or a review `{ value }` (or `{ skipped: true }`), a question `{ text }`, a confirm `{ done, note? }` (a No cancels the task unless the confirm was filed with `onNo: "continue"`). `answer(item, value, questionId?)` answers the item's first question, or the one named; `answerOne(question, value)` answers one question directly. A task run's stop goes to the engine's answer route, which records who answered. A question or a confirm goes to its board's `updateTask` action, as the signed-in user, in the session that board lives in, and the call rejects with the board's refusal. A question on a board the reader can't reach says so in `unanswerable`.
 
 ## Documentation

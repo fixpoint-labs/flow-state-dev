@@ -40,7 +40,7 @@ A `Task` is one unit of work. It carries what to do, where it is in its lifecycl
 | `leaseUntil` | `number?` | When the current claim expires. The worker holding the task pushes this out while it works. |
 | `leaseDurationMs` | `number?` | How long the current claim was granted, as the claim wrote it. Read it with `committedLeaseSpan(task)` rather than subtracting the stamps yourself — every other write to the task moves `updatedAt`. |
 | `abandonments` | `number?` | How many times this task was handed back out after its worker stopped renewing the lease. |
-| `questions` | `TaskHold[]?` | What the task is waiting on a person for: its questions and confirms, and a stop its run waits on. See [waiting on questions](#waiting-on-questions). |
+| `holds` | `TaskHold[]?` | What holds the task for a person: its questions and confirms, and a stop its run is suspended on. See [waiting on questions](#waiting-on-questions). |
 | `turn` | `number?` | Counts the turns the task has run. Every claim advances it, so two turns of one attempt hold different claims. |
 | `labels` | `string[]?` | Free-form tags, filterable via `hasLabel` / `hasAllLabels`. |
 | `metadata` | `Record<string, unknown>?` | Arbitrary structured data. |
@@ -105,7 +105,7 @@ A held task keeps a board from finishing: nothing will start it, so a [task boar
 
 ### Waiting on questions
 
-A task can also wait on a person's answers. Its `questions` list what it waits on, each with an `id`, the `ask` (`kind` and `prompt`), when it was opened (`openedAt`), and a `due` time when a deadline applies. `openHolds(task)` returns the ones still open. A task with an open question starts no turn: no claim takes it, and nothing renews or reclaims its lease.
+A task can also wait on a person's answers. Each question is a hold on the task, beside the filer's hold (`held`). Its `holds` list what it waits on, each with an `id`, the `ask` (`kind` and `prompt`), when it was opened (`openedAt`), and a `due` time when a deadline applies. `openHolds(task)` returns the ones still open. A task with an open question starts no turn: no claim takes it, and nothing renews or reclaims its lease.
 
 There are two kinds, told apart by `source.kind`:
 
