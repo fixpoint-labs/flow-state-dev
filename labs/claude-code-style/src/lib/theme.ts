@@ -1,55 +1,29 @@
 import { useSyncExternalStore } from "react";
 
 /**
- * The page's look, light or dark. `.dark` on the root element is what the
- * design-system theme and Tailwind's `dark:` variant key on.
- *
- * Which look the page is in, in order:
- *
- * 1. The one a user picked with the sidebar's toggle. It's kept in this
- *    browser's storage, so it holds across reloads.
- * 2. The system's setting, which the page follows as it changes.
- *
- * A pick ends the following: from then on the page stays in the look the user
- * chose, whatever the system does. Browser storage can be missing or throw (a
- * private window, blocked site data); then a pick still changes the look, it
- * just isn't kept.
+ * Light or dark, as `dark` on the root element. A stored pick wins over the
+ * system setting. Storage that throws still applies the pick for this page.
  */
-
-/** A look the page can be in. */
 export type Theme = "light" | "dark";
 
 /** The browser storage key a user's pick is kept under. */
 const KEY = "claude-code-style.theme";
 
-const isTheme = (value: unknown): value is Theme => value === "light" || value === "dark";
-
 const listeners = new Set<() => void>();
-/** The pick while storage is blocked, so a blocked store only forgets at the next reload. */
-let held: Theme | undefined;
-/** Set once storage has refused us, by either verb: from then on `held` is the pick. */
-let blocked = false;
+/** The pick. `bootTheme` reads it from storage; `chooseTheme` writes it. */
+let pick: Theme | undefined;
+/** The look last painted, so a subscribe does not notify when nothing moved. */
 let shown: Theme | undefined;
 let started = false;
 
-/** The look a user picked, or `undefined` when they haven't picked one. */
-function readPick(): Theme | undefined {
-  if (blocked) return held;
-  try {
-    const kept = window.localStorage.getItem(KEY);
-    return isTheme(kept) ? kept : undefined;
-  } catch {
-    blocked = true;
-    return held;
-  }
-}
+const isTheme = (value: unknown): value is Theme => value === "light" || value === "dark";
 
-const systemTheme = (): Theme => (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+const systemTheme = (): Theme =>
+  window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 
 /** The look the page shows now: the pick if there is one, else the system's. */
-export const currentTheme = (): Theme => readPick() ?? systemTheme();
+export const currentTheme = (): Theme => pick ?? systemTheme();
 
-/** Put the look on the root element, telling the listeners only when it moved. */
 function paint(): void {
   const next = currentTheme();
   document.documentElement.classList.toggle("dark", next === "dark");
@@ -58,29 +32,34 @@ function paint(): void {
   for (const listener of listeners) listener();
 }
 
-/**
- * Put the look on the page and follow the system until a pick. Safe to call
- * more than once; the system is listened to on the first call only.
- */
+function followSystem(): void {
+  if (started) return;
+  started = true;
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", paint);
+}
+
+/** Apply the look and follow the system until a pick. Safe to call more than once. */
 export function bootTheme(): void {
-  if (!started) {
-    started = true;
-    // A pick wins, so `paint` is right to run on a system change either way.
-    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", paint);
+  followSystem();
+  try {
+    const kept = window.localStorage.getItem(KEY);
+    pick = isTheme(kept) ? kept : undefined;
+  } catch {
+    // Blocked read: keep the in-memory pick.
   }
   paint();
 }
 
-/** A user's pick: shown at once and kept for this browser. */
+/** A user's pick: shown at once, and kept for this browser when storage allows. */
 export function chooseTheme(next: Theme): void {
-  held = next;
+  pick = next;
   try {
     window.localStorage.setItem(KEY, next);
   } catch {
     // Storage blocked: the pick holds for this page only.
-    blocked = true;
   }
-  bootTheme();
+  followSystem();
+  paint();
 }
 
 function subscribe(listener: () => void): () => void {
@@ -89,7 +68,7 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-/** The look the page shows, and the way to pick another. Re-renders on either source changing. */
+/** The look the page shows, and the way to pick another. */
 export function useTheme(): [Theme, (next: Theme) => void] {
   return [useSyncExternalStore(subscribe, currentTheme, () => "light"), chooseTheme];
 }

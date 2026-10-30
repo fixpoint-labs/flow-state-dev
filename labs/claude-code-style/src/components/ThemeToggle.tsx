@@ -1,11 +1,7 @@
 import { MoonIcon, SunIcon } from "lucide-react";
 import { useTheme } from "../lib/theme";
 
-/**
- * The sidebar's theme mark: one button that flips the page between light and
- * dark. It names the look it moves to, and the pick is kept for this browser
- * (`lib/theme`).
- */
+/** The sidebar's theme mark. It names the look a press moves to. */
 export function ThemeToggle() {
   const [theme, choose] = useTheme();
   const dark = theme === "dark";
