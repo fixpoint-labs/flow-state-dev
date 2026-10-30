@@ -19,6 +19,7 @@ import { createInMemoryStores } from "../stores";
 import type { StoreRegistry } from "../stores/types";
 import { generateId } from "../utils/generate-id";
 import { executeBlock } from "./executeBlock";
+import { requestEndRegistryOf } from "./request-end-hooks";
 
 /** What {@link runRead} needs: the flow, the read, the caller and the session. */
 export type RunReadOptions = {
@@ -214,13 +215,21 @@ export async function runRead(options: RunReadOptions): Promise<unknown> {
     }
   });
 
-  const result = await executeBlock({
-    block: read.block,
-    input,
-    ctx,
-    metadata: { scope: "request" },
-    logger: options.runtimeConfig?.logger
-  });
+  const logger = options.runtimeConfig?.logger;
+  let result: Awaited<ReturnType<typeof executeBlock>> | undefined;
+  try {
+    result = await executeBlock({ block: read.block, input, ctx, metadata: { scope: "request" }, logger });
+  } finally {
+    // A read ends like any request: the hooks its block added run now, and
+    // a host's shutdown stops waiting on it.
+    const error = result === undefined ? new Error("the read threw") : result.error;
+    await requestEndRegistryOf(ctx)?.run(
+      error === undefined
+        ? { status: "completed" }
+        : { status: "failed", error: { message: error instanceof Error ? error.message : String(error) } },
+      { requestId, logger }
+    );
+  }
   if (result.error !== undefined) throw result.error;
   return result.output;
 }

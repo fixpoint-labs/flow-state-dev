@@ -7,7 +7,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, defineResourceCollection, dispatcher, handler } from "@flow-state-dev/core";
+import { onRequestEnded } from "@flow-state-dev/core/types";
 import { createFlowApiRouter, createFlowRegistry, createInMemoryStores, disposeFlowApiRouter } from "../src";
+import { drainRequestEnds } from "../src/execution/request-end-hooks";
 import type { StoreRegistry } from "../src";
 
 const notes = defineResourceCollection({
@@ -66,6 +68,19 @@ const writesUser = handler({
   }
 });
 
+const ended: string[] = [];
+const cleansUp = handler({
+  name: "read-that-cleans-up",
+  inputSchema: z.object({ fail: z.boolean().default(false) }),
+  execute: async (input, ctx) => {
+    onRequestEnded(ctx, (ending) => {
+      ended.push(ending.status);
+    });
+    if (input.fail) throw new Error("the read failed");
+    return { ok: true };
+  }
+});
+
 const dispatches = dispatcher({
   name: "read-that-dispatches",
   type: "internal",
@@ -84,6 +99,7 @@ function build() {
       writes: { block: writes },
       writesState: { block: writesState },
       writesUser: { block: writesUser },
+      cleansUp: { block: cleansUp },
       dispatches: { block: dispatches }
     }
   })();
@@ -169,6 +185,18 @@ describe("a flow's reads", () => {
     const write = await post(router, ["board", session.id, "reads", "writesUser"], { userId: "alice", input: {} });
     expect(write.status).toBe(409);
     expect(JSON.stringify({ users: await stores.user.list(), orgs: await stores.org.list(), at: await snapshot(stores) })).toBe(before);
+  });
+
+  it("runs its request-end hooks when it ends, and owes nothing after", async () => {
+    const { router, sessionId } = await seeded();
+    ended.length = 0;
+    const ok = await post(router, ["board", sessionId, "reads", "cleansUp"], { userId: "alice", input: {} });
+    expect(ok.status, await ok.clone().text()).toBe(200);
+    const failed = await post(router, ["board", sessionId, "reads", "cleansUp"], { userId: "alice", input: { fail: true } });
+    expect(failed.status).toBe(422);
+    expect(ended).toEqual(["completed", "failed"]);
+    // A host's shutdown would otherwise wait on every read that added a hook.
+    expect(await drainRequestEnds(0)).toBe(0);
   });
 
   it("parses its input against the block's schema", async () => {
