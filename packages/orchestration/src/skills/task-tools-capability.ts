@@ -202,6 +202,9 @@ function waitingOf(t: Task) {
   };
 }
 
+/** A new row's id, in the board's own shape: twenty hex characters, unique across processes. */
+const mintTaskId = (): string => `task_${crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`;
+
 /** The filing each board is running, so the next waits for it (FIX-2350). In process: a step's calls share one. */
 const filings = new Map<string, Promise<unknown>>();
 
@@ -1078,18 +1081,29 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
    * stands for "nothing to refuse" in the record, which holds JSON only.
    */
   /**
+   * The id this call recorded for the row it files, as `fileReady` records
+   * it: read back on a replay, minted and recorded now otherwise. `undefined`
+   * where the turn carries no tool call or no `runOnce`.
+   */
+  async function recordedFiling(ctx: BlockContext): Promise<string | undefined> {
+    const call = toolCallOf(ctx);
+    if (call === undefined || ctx.runOnce === undefined) return undefined;
+    return ctx.runOnce(`fsd.dispatch.plan:${call.logicalId}`, async () => mintTaskId());
+  }
+
+  /**
    * The refusal for filing work a task still open already holds: the same
    * goal, ignoring case and spacing, for the same worker. Names the open task
    * by its title, so a reply can name it the same way.
    */
-  function openSameWork(collection: TaskCollectionRef, assignee: string, goal: string): { ok: false; error: string } | undefined {
+  function openSameWork(collection: TaskCollectionRef, assignee: string, goal: string): { taskId: string; error: string } | undefined {
     const same = (text: string) => text.trim().replace(/\s+/g, " ").toLowerCase();
     const open = collection
       .list()
       .find((row) => row.assignee === assignee && !isTerminalStatus(row.status) && same(row.goal) === same(goal));
     if (open === undefined) return undefined;
     return {
-      ok: false as const,
+      taskId: open.id,
       error:
         `already_open: task "${open.title ?? open.goal}" (${open.id}) is this same work for ${assignee}, and it is still ` +
         `${open.status}. Nothing was filed. Say that task is on it. To change it, send it a message with updateTask; ` +
@@ -1161,9 +1175,14 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     // one task per delegate a round, recorded by the routing that files it.
     const open =
       followUp === undefined && assignee !== undefined && input.resultTo !== "conversation"
-        ? await decideOnce(ctx, memoize, "same-work", async () => openSameWork(collection, assignee, input.goal) ?? null)
+        ? await decideOnce(ctx, memoize, "same-work", async () => {
+            const refusal = openSameWork(collection, assignee, input.goal);
+            // A call an older build filed has its id recorded and no decision:
+            // the open row is its own, found again by `fileReady`.
+            return refusal === undefined || (memoize && refusal.taskId === (await recordedFiling(ctx))) ? null : refusal.error;
+          })
         : null;
-    if (open) return open;
+    if (open) return { ok: false as const, error: open };
     // The task whose request files this one: the task the worker's request
     // works, claimed or not (a cancelled task's run that goes on has no
     // claim, and is still its filer, so its filing is refused). Server-set,
@@ -1290,8 +1309,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     let recordedNow = false;
     const id = await ctx.runOnce(`fsd.dispatch.plan:${call.logicalId}`, async () => {
       recordedNow = true;
-      // The board's own id shape: twenty hex characters, unique across processes.
-      return init.id ?? `task_${crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`;
+      return init.id ?? mintTaskId();
     });
     // An id minted here is this call's alone, so a row with it is its own. A
     // follow-up's id is picked from the board, so another call can have
