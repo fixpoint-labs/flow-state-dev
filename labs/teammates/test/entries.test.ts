@@ -8,7 +8,7 @@
  * Its popup reads the session the log says it was delivered to.
  */
 import { describe, expect, it } from "vitest";
-import { destinationOf, exchangeOf, toEntries, toSteps } from "../src/adapter";
+import { destinationOf, exchangeOf, toBoardTask, toEntries, toSteps } from "../src/adapter";
 import { answerIn } from "../src/components/Popups";
 
 const CODER = "teammates.claude-code";
@@ -32,6 +32,14 @@ describe("a task's ending in the conversation", () => {
   it("still draws a named task that errored as failed", () => {
     const [entry] = toEntries([row("task_x", "errored"), line("b", "Claude Code's task (task_x) ended: errored")], new Set([CODER]));
     expect(entry).toMatchObject({ kind: "result", taskId: "task_x", failed: true });
+  });
+
+  // FIX-2349: a task Chief of Staff cancelled read "failed" while its run was still going.
+  it("draws a cancelled task as cancelled, never as failed", () => {
+    expect(toBoardTask({ id: "task_c", status: "cancelled", assignee: CODER, title: "Misc bug fix" }).status).toBe("cancelled");
+    const [entry] = toEntries([row("task_c", "cancelled"), line("d", "Claude Code's task (task_c) ended: cancelled")], new Set([CODER]));
+    expect(entry).toMatchObject({ kind: "result", taskId: "task_c", cancelled: true });
+    expect(entry).not.toHaveProperty("failed");
   });
 });
 

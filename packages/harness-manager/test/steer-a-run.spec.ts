@@ -873,3 +873,36 @@ describe("a message about a coding task, through the talk turn (FIX-2160)", () =
     }
   }, 60_000);
 });
+
+describe("a cancelled coding run (FIX-2349)", () => {
+  it("stops the harness soon after its running task is cancelled, not at the lease's next renewal or the run's deadline", async () => {
+    // The harness works until its signal fires, like a Claude Code run that
+    // keeps running commands. The lease's own stop comes only at its next
+    // renewal (a third of 120 s) and the deadline at 20 s: both past the bound.
+    const h = host({ script: ["until-stopped", "finished"], stopsOnAbort: false });
+    try {
+      let stoppedAt = 0;
+      h.whenStopped.push(async () => {
+        stoppedAt = Date.now();
+      });
+      await h.act("seed");
+      const first = h.stepStarted();
+      await h.act("drain");
+      await first;
+
+      const cancelledAt = Date.now();
+      await h.act("cancel");
+      const bound = 3 * STEER_POLL_MS;
+      while (stoppedAt === 0 && Date.now() - cancelledAt < bound + 2_000) await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(stoppedAt).not.toBe(0);
+      expect(stoppedAt - cancelledAt).toBeLessThan(bound);
+      // Past a poll: the stopped run took no further step, and the cancel stands.
+      await new Promise((resolve) => setTimeout(resolve, 2 * STEER_POLL_MS));
+      expect(h.seen).toHaveLength(1);
+      expect((await h.row()).status).toBe("cancelled");
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+});
