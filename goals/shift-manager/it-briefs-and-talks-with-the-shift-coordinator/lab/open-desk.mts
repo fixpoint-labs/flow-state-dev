@@ -15,9 +15,10 @@
  * check posts nothing to `desk.front`. A post to it would reach the Shift
  * Coordinator, whose `agent` flow takes routed tasks.
  *
- * Two configs open it: `lab/fsdev.config.mts` over the desk with its
- * `shift-coordinator` worker, and `lab-no-shift-coordinator/fsdev.config.mts` over a desk that
- * declares none.
+ * Three configs open it: `lab/fsdev.config.mts` over the desk with its
+ * `shift-coordinator` worker, `lab-no-shift-coordinator/fsdev.config.mts` over a desk that
+ * declares none, and `lab-old-name/fsdev.config.mts` over a desk whose worker has the retired
+ * id `chief-of-staff`.
  *
  * The model is resolved by the framework's resolver from the environment
  * (`AI_GATEWAY_API_KEY` routes `openai/gpt-5.4-mini` through the gateway).

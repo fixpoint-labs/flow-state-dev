@@ -4,10 +4,11 @@
 
 **Outcome:** A person opening any Lab in Shift Manager lands on Shift Coordinator. They see a summary of what waits on them and what is running that agrees with the store, can answer those asks there, and can talk to the Lab's shift-coordinator seat, with every line and reply being what that seat's session holds. A Lab with no Shift Coordinator still lands there, on the summary and a line saying how to add one.
 
-**Input:** two Labs, each served by Shift Manager's command.
+**Input:** three Labs, each served by Shift Manager's command.
 
 - The fixture desk (`lab/`): one team, `desk`, with a seat that asks a person (the turn goal's `asker` kind) and a seat named `shift-coordinator` on the built-in `agent` kind with a real model, both delegates of `front`, a worker on Workforce's `coordinator` flow (`routing: everyone`). Nothing files a task, so no conversation board holds a row. The check raises two approvals through the asker's own action route before the page opens, so the Lab reopens them when they are answered.
 - The same desk with no Shift Coordinator (`lab-no-shift-coordinator/`): the `asker` seat, `front`'s one delegate, for **no Shift Coordinator**. DevTeam declares a Shift Coordinator since FIX-1719, so it can no longer stand in for a Lab without one.
+- The same desk with its point of contact under the retired id (`lab-old-name/`): the `asker` worker and a worker named `chief-of-staff`, both `front`'s delegates, for **old name**. The check first reads that tree and requires `desk.chief-of-staff` in it and no `shift-coordinator`, so the leg can't pass on an empty desk.
 
 The seat names are read from the tree at run time. Tokens are fresh per run.
 
@@ -20,6 +21,7 @@ The seat names are read from the tree at run time. Tokens are fresh per run.
 - **talk**: a fresh token typed to the Shift Coordinator is a user item in one of that seat's direct sessions the moment *delivered* is drawn, and the reply on screen is that session's next assistant item, by id. No reply is drawn that the session doesn't hold.
 - **again**: a reload draws the same line and reply.
 - **no Shift Coordinator**: the Lab with no Shift Coordinator lands on the view with its summary and the named state in place of the composer.
+- **old name**: the desk whose worker is named `chief-of-staff` lands the same way as the Lab with none. The old id is an ordinary worker, never the Shift Coordinator.
 - **reach**: the pages throw nothing.
 
 **Anti-game:** the check never reads Shift Manager's state. Its oracles are each Lab's store, read through the Lab's routes with the check's own requests: the asks' suspension items, the conversation boards' rows, the person's session listing and the Shift Coordinator's session items. The model's words aren't graded, only that the screen shows the item the session stored. *Delivered* is graded at the instant it is drawn.
@@ -56,3 +58,5 @@ The seat names are read from the tree at run time. Tokens are fresh per run.
 | 2026-10-10 | same (control `optimistic-reply`) | openai/gpt-5.4-mini (vercel gateway) | FAIL (expected) | Only `[desk] talk`: delivered was drawn while no session of desk.chief-of-staff held a user item with the token. |
 | 2026-10-10 | same (control `static-brief`) | openai/gpt-5.4-mini (vercel gateway) | FAIL (expected) | Only `[desk] inline`: after Approve the summary says 2 need you while the store holds 1, and still lists the answered ask. |
 | 2026-10-11 | FIX-1792 P4 on 617aeabb + uncommitted | openai/gpt-5.4-mini (vercel gateway) | PASS | Converted: the declared roster no longer lists mailboxes and Shift Manager no longer draws the STREAMS rail, so the summary's rail count is dropped (see summary). Summary 2 need you / 2 pending, 0 running / 0 in the store; Approve from the summary: store 2 → 1, summary 2 → 1, Inbox 1; the token delivered into the chief of staff's conversation (held when drawn), its reply drawn by id; a reload draws both; the Lab with no chief of staff lands on Chief of Staff with its summary and named state. |
+| 2026-10-30 | 961d392c3+uncommitted (FIX-2249, FIX-2071's closure) | openai/gpt-5.4-mini (vercel gateway) | PASS | Leg b of the epic's closure. The desk lands on its `desk.shift-coordinator`: summary 2 need you / 2 pending, Approve 2 → 1, line and reply drawn by id, again after a reload. The Lab with no Shift Coordinator and the new `lab-old-name/` desk (a live `desk.chief-of-staff`) each land on the summary and the named no-coordinator state. |
+| 2026-10-30 | same, pages built from 3d6f5b88b^ (the commit before FIX-2244) via `GOAL_PAGES` | openai/gpt-5.4-mini (vercel gateway) | FAIL (control, expected) | `[desk] landing`, `[desk] reach`, and `no Shift Coordinator` on both `[no-shift-coordinator]` and `[old-name]`: the old pages have no `shift-coordinator` view, and they read `chief-of-staff` as the coordinator. |
