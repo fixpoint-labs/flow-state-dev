@@ -631,7 +631,7 @@ A finished task takes no message, because its output never changes. To correct i
 
 ### A task's questions
 
-Some work can't start until a person decides something. File it with the questions, and each one holds the task until it's answered. A question is one kind of hold: the filer's hold (`held: true`) is another, and the board claims a task only once nothing holds it.
+Some work can't start until a person decides something. File it with the questions, and each one holds the task until it's answered.
 
 ```ts
 createTask({
@@ -652,7 +652,7 @@ A Workforce worker has `holdTaskForUser` on every task turn. For a worker flow o
 
 The worker that filed the task can hear a midway question too. Declare `onMidwayQuestion(ctx, row, questions)` in the task list's `delivery` and the board calls it after each question asked midway, from the request that asked it, with the row and its open midway questions. It's called again if the asking turn is replayed, so make it safe to repeat for the same question. A Workforce board uses it to send the question to its filer [as a message](../workforce/messaging-workers.md#when-a-task-asks-a-question). Without it, the filer reads the question with `getTask`.
 
-`getTask` and `listTasks` show what a task waits on as `holds`. Each has an `id`, its `ask` (`kind` and `prompt`), when it was opened, and its `due` time when it has one. A question stays listed until it's answered. The same list carries a stop the task's run is suspended on, with `source.kind: "suspension"`; see [A task waiting on a user](#a-task-waiting-on-a-user).
+`getTask` and `listTasks` show what a task waits on as `holds`. `holds` lists the task's questions and confirms and any stop its run is suspended on; the filer's hold is separate, the `held` status. Each has an `id`, its `ask` (`kind` and `prompt`), when it was opened, and its `due` time when it has one. A question stays listed until it's answered. The same list carries a stop the task's run is suspended on, with `source.kind: "suspension"`; see [A task waiting on a user](#a-task-waiting-on-a-user).
 
 The user answers from their [Inbox](#building-an-inbox). A screen of your own answers with the board's `updateTask` action, naming the question:
 
@@ -665,9 +665,9 @@ The answer is kept on the task as one of its messages, from the user, so it coun
 
 A question has no deadline unless the host sets [`userDeadlineMs`](/docs/configuration/runtime#createflowstate-fields). Then, on the board's first touch past it, the question closes with "No answer came before this question's deadline. Go on from your brief without it." and the work goes on as if it had been answered.
 
-A line the user types into a held task's session answers its oldest open question. A confirm is never answered that way: it takes a yes or a no. With no question open, the line is a message to the task as usual.
+A line the user types into the session of a task with an open question answers its oldest open question. A confirm is never answered that way: it takes a yes or a no. With no question open, the line is a message to the task as usual.
 
-While its questions are open, a task settles only by a cancel, which closes every question; an answer closes its own question and the work goes on. A turn waits once. A worker that asks midway while its run waits for the user is refused: the call is declined `held`, and nothing is asked. A run that stops for the user while its own questions are open resumes at once with `{ cancelled: true }`. Between a model's own tools the first to start waiting wins: `holdTaskForUser` and `suspendForUser` called in the same step open one wait, and the other comes back as a tool error naming it.
+While its questions are open, a task settles only by a cancel, which closes every question; an answer closes its own question and the work goes on. A turn waits once. A worker that asks midway while its run waits for the user is refused (`open-question`): the task already waits on the user, and nothing is asked. A run that stops for the user while its own questions are open resumes at once with `{ cancelled: true }`. Between a model's own tools the first to start waiting wins: `holdTaskForUser` and `suspendForUser` called in the same step open one wait, and the other comes back as a tool error naming it.
 
 ### Progress from the worker
 
@@ -1377,6 +1377,8 @@ one with `updateTask({ id, status: "pending" })`. To wait on it, call `getTask({
 **Moving from `waitForResponse`.** `createTask` doesn't wait. It refuses `waitForResponse`, `wait` and `timeoutMs` with `create_task_does_not_wait`, and files nothing. File the task, then wait with `getTask`. {/* retired-name-refusal: migration note */}
 
 **Moving from the question and review parks.** A task waiting on a person is never parked. A worker's model asks with `holdTaskForUser` instead of `parkOnQuestion`, and the task waits on the question. {/* retired-name-refusal: migration note */}
+The worker's `askQuestion` tool is `holdTaskForUser`, built with `createHoldTaskForUser` instead of `createAskQuestion`, and the model's `waitForUser` tool is `suspendForUser`, built with `createSuspendForUserTool` instead of `createWaitForUserTool`. A block calls `ctx.suspendForUser` instead of `ctx.waitForUser`. {/* retired-name-refusal: migration note */}
+A task's `questions` are its `holds`, on the row, `getTask`, `listTasks` and an Inbox item, and `keptOpenBy: "wait"` is `"suspended"`. A row stored with the old names still reads. {/* retired-name-refusal: migration note */}
 The question is answered with `updateTask({ id, answers, message })`, which replaces `answerTask` and its action. {/* retired-name-refusal: migration note */}
 A block asks for a review with `ctx.suspendForUser({ kind: "review", prompt })` instead of `awaitReview`, and the Inbox answers it, so `unpark` and `unparkAndDrain` have no replacement to mount. {/* retired-name-refusal: migration note */}
 A board built with `onReview` is refused: a board whose open tasks only wait on a person stops `blocked` on its own. {/* retired-name-refusal: migration note */}

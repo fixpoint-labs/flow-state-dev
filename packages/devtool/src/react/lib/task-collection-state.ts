@@ -96,6 +96,20 @@ export type TaskHoldWire = {
 const SETTLED: ReadonlySet<string> = new Set(["completed", "errored", "cancelled"]);
 
 /**
+ * A `task-change` item logged before FIX-2317 carries the row's holds as
+ * `questions`. A session's item log replays it as stored, so the fold reads it
+ * under `holds`, as the server's retired-shape map (`withRetiredShapes`, its
+ * `questions` entry) reads a stored row. Without it, an old session's task
+ * shows no open question while the board still holds it (BP-030).
+ */
+function withHoldsUnderTheirName(task: Task): Task {
+  const legacy = (task as Task & { questions?: TaskHoldWire[] }).questions;
+  if (!Array.isArray(legacy)) return task;
+  const { questions: _questions, ...rest } = task as Task & { questions?: TaskHoldWire[] };
+  return task.holds === undefined ? { ...rest, holds: legacy } : rest;
+}
+
+/**
  * What a running task waits on a person for, as the person was asked: the
  * prompt of its oldest open hold. A question is open while no steer answers
  * it; a stop is open while it is on the row. `undefined` when nothing holds
@@ -282,7 +296,7 @@ export function groupCollections(
       }
       bucket.tsById.set(change.taskId, ts);
       bucket.tasksById.set(change.taskId, {
-        task: change.task,
+        task: withHoldsUnderTheirName(change.task),
         kind: change.kind,
         prevStatus: change.prevStatus,
         changeCount,

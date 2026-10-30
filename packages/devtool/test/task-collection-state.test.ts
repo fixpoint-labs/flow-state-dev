@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   flattenTaskItems,
   groupCollections,
+  waitPrompt,
 } from "../src/react/lib/task-collection-state";
 import type { TaskStreamItem } from "../src/react/lib/task-collection-state";
 
@@ -281,3 +282,20 @@ describe("the two folds composed — a tie across requests", () => {
   });
 });
 
+
+// FIX-2317: a session's item log replays a task-change logged before the rename as stored, with
+// the row's holds under `questions`. Read as they are, the task would show no open question
+// while the board still holds it.
+describe("groupCollections — a task-change logged before holds had their name", () => {
+  const question = { id: "q1", actor: "user", openedAt: 1, source: { kind: "row" }, ask: { kind: "question", prompt: "Which region?" } };
+
+  it("reads a logged row's questions as its holds, and its open question as the reason it waits", () => {
+    const item = change({ requestId: "req_1", ts: 1_000, taskId: "task-a" });
+    (item as unknown as { data: { task: Record<string, unknown> } }).data.task.questions = [question];
+    const [collection] = groupCollections([item]);
+    const task = collection!.tasks[0]!.task;
+    expect(task.holds).toEqual([question]);
+    expect(task).not.toHaveProperty("questions");
+    expect(waitPrompt(task)).toBe("Which region?");
+  });
+});

@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { readEveryCollectionPage, type Client } from "@flow-state-dev/client";
 import { createInboxClient } from "@flow-state-dev/orchestration/inbox";
 import { reconcileInbox, rowTruthOf, suspensionTruthOf, taskItemId, type InboxTruth } from "@flow-state-dev/orchestration/inbox/check";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { COORDINATOR_FLOW } from "@flow-state-dev/workforce";
 import { connect } from "../src/lib/connection";
 import {
@@ -33,10 +34,14 @@ afterEach(async () => {
 });
 
 async function lab() {
+  return (await labWithState()).client;
+}
+
+async function labWithState() {
   const opened = await openAskLab();
   const s = await serveLab(opened.flowState);
   served.push(s);
-  return connect({ baseUrl: s.baseUrl, userId: ASK_LAB_USER_ID });
+  return { client: await connect({ baseUrl: s.baseUrl, userId: ASK_LAB_USER_ID }), flowState: opened.flowState };
 }
 
 type Loaded = Exclude<LabSnapshot, { refused: object } | { unreachable: object }>;
@@ -130,5 +135,29 @@ describe("the Inbox against a real Lab", () => {
     expect(items[0]).toMatchObject({ task: null, answerable: true, holds: [expect.objectContaining({ source: expect.objectContaining({ kind: "suspension" }) })] });
     const truth = await readTruth(client, await boardRows(client, sessionId));
     expect(reconcileInbox(items, truth)).toMatchObject({ green: true });
+  });
+
+  // FIX-2317: a row stored before the rename keeps its holds as `questions`. The server's claim
+  // still reads them, so a browser list that dropped them would leave the task waiting on a
+  // question nobody could answer. A run's stop would still list from its session; a question
+  // kept on the row lists only from the row, so the check is on one.
+  it("a row stored with its holds under questions still lists its question, answerable, through the resource route", async () => {
+    const { client, flowState } = await labWithState();
+    await client.flow(COORDINATOR_FLOW).send("respond", { message: "ship it" }, { sessionId: "ops.desk" });
+    await settled(client, 2);
+    const store = (await flowState.getRuntime()).stores.resourceState;
+    const cell = `${ASK_LAB_USER_ID}:~org:${DEFAULT_ORG_ID}`;
+    const stored = Object.entries(await store.getByPrefix("user", cell, "tasks/")).filter(([, value]) => Array.isArray((value.state as { holds?: unknown }).holds));
+    expect(stored).toHaveLength(2);
+    const [key, value] = stored[0]!;
+    const { holds, ...rest } = value.state as Record<string, unknown>;
+    const question = { id: "q_legacy", actor: "user", openedAt: 1, source: { kind: "row", closedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which region?" } };
+    expect((await store.set("user", cell, key, { ...rest, questions: [...(holds as unknown[]), question] } as never, value.version)).ok).toBe(true);
+    const legacy = await eventually(async () => {
+      const snapshot = (await createLabReader(client).read()) as Loaded;
+      const listed = (snapshot.inbox?.ok ? snapshot.inbox.value : []).flatMap((item) => item.holds).find((hold) => hold.id === "q_legacy");
+      return listed?.answerable === true ? listed : undefined;
+    }, "the legacy row's question listed, answerable");
+    expect(legacy).toMatchObject({ source: { kind: "row" }, ask: { kind: "question", prompt: "Which region?" } });
   });
 });

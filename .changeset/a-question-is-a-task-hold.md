@@ -17,4 +17,4 @@ A question is one kind of task hold (FIX-2317). The two ways to stop for the use
 - **What keeps a task open.** `keptOpenBy: "wait"` is `"suspended"`: its own request is suspended.
 - **Unchanged:** the filer's hold (status `held`, `hold()`, `release()`), filing with `questions`, `QuestionInit`, `updateTask({ answers })`, the Inbox client's `answerOne` and `questionId`, and the decline reasons `open-question` and `no-such-question`.
 
-A row stored before this release still reads: its `questions` read as `holds`, and `keptOpenBy: "wait"` reads as `"suspended"`.
+A row stored before this release still reads: its `questions` read as `holds`, and `keptOpenBy: "wait"` reads as `"suspended"`. A reader of raw stored rows, such as a browser's list of a board, maps a row the same way with `withRetiredShapes` from `@flow-state-dev/orchestration/tasks`. The conversation board's browser fields include `questions`, so a stored row keeps them on the way there. Shift Manager and the DevTool read them as holds.

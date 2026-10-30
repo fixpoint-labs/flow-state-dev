@@ -65,6 +65,7 @@ import { ROSTER_FLOW, sessionIdOfFiling, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_K
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import type { Client } from "@flow-state-dev/client";
 import { createInboxClient, inboxItems, taskHoldSchema, type InboxAnswer, type InboxHold, type InboxItem, type InboxRow, type TaskHold } from "@flow-state-dev/orchestration/inbox";
+import { withRetiredShapes } from "@flow-state-dev/orchestration/tasks";
 
 /** Why a read did not load. */
 export type Failure = { message: string; httpStatus?: number };
@@ -496,7 +497,9 @@ function toSteerAnswers(value: unknown): Array<{ id: string; answers?: string }>
  * Brief's `distinctTitle` (`lib/tasks.ts`) is written against that, and shows
  * a title only when it differs from `goal`.
  */
-export function toBoardRow(boardRef: string, ownerSessionId: string, topic: string, data: unknown): BoardRow {
+export function toBoardRow(boardRef: string, ownerSessionId: string, topic: string, stored: unknown): BoardRow {
+  // A row stored in an older shape (its holds under `questions`, say) reads in the current one (BP-030).
+  const data = withRetiredShapes(stored);
   return {
     boardRef,
     ownerSessionId,

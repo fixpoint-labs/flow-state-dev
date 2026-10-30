@@ -105,7 +105,7 @@ A held task keeps a board from finishing: nothing will start it, so a [task boar
 
 ### Waiting on questions
 
-A task can also wait on a person's answers. Each question is a hold on the task, beside the filer's hold (`held`). Its `holds` list what it waits on, each with an `id`, the `ask` (`kind` and `prompt`), when it was opened (`openedAt`), and a `due` time when a deadline applies. `openHolds(task)` returns the ones still open. A task with an open question starts no turn: no claim takes it, and nothing renews or reclaims its lease.
+A task can also wait on a person's answers. `holds` lists the task's questions and confirms and any stop its run is suspended on; the filer's hold is separate, the `held` status. The task's `holds` list what it waits on, each with an `id`, the `ask` (`kind` and `prompt`), when it was opened (`openedAt`), and a `due` time when a deadline applies. `openHolds(task)` returns the ones still open. A task with an open question starts no turn: no claim takes it, and nothing renews or reclaims its lease.
 
 There are two kinds, told apart by `source.kind`:
 

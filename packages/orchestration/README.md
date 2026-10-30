@@ -28,8 +28,10 @@ import { taskSchema, type Task } from "@flow-state-dev/orchestration";
 A `Task` is the unified work-unit record: `id`, `goal`, `status`, `deps`, `lease`,
 `attempts`, `retryLedger`, optional typed `input`/`output`. Status enum:
 `pending | in_progress | held | completed | errored | cancelled`. A task waiting on a
-person is `in_progress`: what holds it is in its `holds`. A question is one kind of hold,
-beside the filer's (status `held`); the claim takes a task only once nothing holds it.
+person is `pending` when it was filed with questions, and `in_progress` when it asked midway or
+its run stopped for the user. `holds` lists the task's questions and confirms and any stop its
+run is suspended on; the filer's hold is separate, the `held` status. No worker claims a task
+while anything holds it.
 
 ```
 pending ─┬─→ in_progress ─┬─→ completed
@@ -1108,6 +1110,8 @@ host's person-stop deadline (`userDeadlineMs`) and none otherwise, and at a dead
 `suspendForUser` in the same step open one wait, and the other is refused with a tool error naming it.
 
 **Moving from the question and review parks.** `createParkOnQuestion` and `parkOnQuestion` are gone: build `createHoldTaskForUser`. <!-- retired-name-refusal: migration note -->
+`askQuestion` and `createAskQuestion` are `holdTaskForUser` and `createHoldTaskForUser`; `waitForUser` and `createWaitForUserTool` are `suspendForUser` and `createSuspendForUserTool`, and `ctx.waitForUser` is `ctx.suspendForUser`. <!-- retired-name-refusal: migration note -->
+`Task.questions` and an Inbox item's `questions` are `holds` (`TaskQuestion` is `TaskHold`, `openQuestions` is `openHolds`, and so on), and `keptOpenBy: "wait"` is `"suspended"`. A row stored with the old names still reads. <!-- retired-name-refusal: migration note -->
 `answerTask` and its action are gone: answer with `updateTask({ id, answers, message })`. <!-- retired-name-refusal: migration note -->
 `TaskCollectionRef.awaitReview` and `unpark`, `board.unparkAndDrain` and a board's `onReview` are gone: a block asks for a review with `ctx.suspendForUser({ kind: "review", prompt })`. <!-- retired-name-refusal: migration note -->
 The `parked` status, `counts.parked`, the `parked-for-review` termination reason and the `parked` notice ending are gone. <!-- retired-name-refusal: migration note -->
