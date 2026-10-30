@@ -91,7 +91,7 @@ export interface ScratchRepoOptions {
  * Run git in a repository, returning stdout.
  *
  * Bounded by `GIT_TIMEOUT_MS`, the same budget the harness manager gives its own
- * git calls and the same one `it-commits-from-the-seats-own-file` already uses.
+ * git calls and the same one `it-commits-from-the-workers-own-file` already uses.
  * A goal that hangs forever because git wedged is worse than one that fails: the
  * verdict never arrives, so nobody learns anything, and a check whose failure
  * mode is silence is the shape this whole lab exists to refuse.

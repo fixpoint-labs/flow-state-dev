@@ -235,28 +235,6 @@ export const EXCEPTIONS = [
   },
 ];
 
-/**
- * Goal folders and files keep their names (BR-9), so a path or a slug that
- * names one strips, never the words around it. Built from the tree's own
- * `goals/` paths, so a goal that is renamed or removed stops stripping.
- * @param {string[]} paths
- */
-export function goalNamesException(paths) {
-  const names = new Set();
-  for (const path of paths) {
-    if (!path.startsWith("goals/")) continue;
-    for (const part of path.split("/").slice(1)) if (part.includes("-")) names.add(part);
-  }
-  const escaped = [...names].sort((a, b) => b.length - a.length).map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  const strip = new RegExp(`goals\\/[\\w.\\/-]*|${escaped.length > 0 ? `(?<![\\w-])(?:${escaped.join("|")})(?![\\w-])` : "(?!)"}`, "g");
-  return {
-    id: "goal-names",
-    terms: TERMS.map((t) => t.id),
-    strip,
-    why: "a goal's path or folder name keeps its words (BR-9)",
-  };
-}
-
 const TERM_IDS = new Set(TERMS.map((t) => t.id));
 for (const e of EXCEPTIONS) for (const t of e.terms) if (!TERM_IDS.has(t)) throw new Error(`exception ${e.id} names unknown term ${t}`);
 
@@ -350,7 +328,7 @@ export function checkGlossary(text) {
  * @param {{ extraExceptions?: object[] }} [options]
  */
 export function census({ files, paths }, { extraExceptions = [] } = {}) {
-  const exceptions = [...EXCEPTIONS, goalNamesException(paths), ...extraExceptions];
+  const exceptions = [...EXCEPTIONS, ...extraExceptions];
   const unscoped = [];
   const areaCounts = {};
   const stripped = {};
@@ -398,14 +376,15 @@ export function readTrackedTree(root = ROOT) {
 
 /**
  * Lines planted into a tree, each hiding a retired word beside a token an
- * exception strips. Every one must be refused. A line goes on the end of the
+ * exception strips, or in a goal's path (a goal's name has no exception).
+ * Every one must be refused. A line goes on the end of the
  * file when the tree already has it.
  */
 export const PLANTS = [
   { path: "packages/workforce/src/zz-planted.ts", line: "// The researcher runs on the agent kind of flow; its flowKind is unchanged.", term: "kind" },
-  { path: "packages/workforce/src/zz-planted.ts", line: "// as goals/workforce-mailboxes/agent-replies-in-the-mailbox/ shows, post it to the mailbox", term: "mailbox" },
+  { path: "packages/workforce/src/zz-planted.ts", line: "// as goals/workforce-seats/a-seat-shows/ proves", term: "seat" },
   { path: "packages/workforce/src/zz-planted.ts", line: "const leaseAtClaim = 1; // each seat is listed", term: "seat" },
-  { path: "packages/workforce/src/zz-planted.ts", line: 'const note = "goals/workforce-seats/x belongs to this mailbox";', term: "mailbox" },
+  { path: "apps/docs/docs/zz-planted.md", line: "Run `goals/mailbox-boards/it-drains/run.mts`.", term: "mailbox" },
   { path: "packages/workforce/src/zz-planted.ts", line: "export const roomLineSchema = z.object({});", term: "room" },
   { path: "packages/workforce/src/zz-planted.ts", line: "// wakeMemberWorkers remembers the thread", term: "member" },
   { path: "packages/workforce/src/zz-planted.ts", line: "// a project member wakes each member of the mailbox's thread", term: "thread" },
@@ -455,7 +434,7 @@ export function control(tree) {
 function print(r) {
   console.log(`tracked files: ${r.files}`);
   console.log("areas: " + AREAS.map((a) => `${a.id}${a.scope ? "" : " (kept)"} ${r.areaCounts[a.id] ?? 0}`).join(" · "));
-  for (const e of [...EXCEPTIONS.map((x) => x.id), "goal-names"]) console.log(`exception ${e}: ${r.stripped[e] ?? 0} stripped`);
+  for (const e of EXCEPTIONS.map((x) => x.id)) console.log(`exception ${e}: ${r.stripped[e] ?? 0} stripped`);
   const byTerm = {};
   for (const h of r.hits) byTerm[h.term] = (byTerm[h.term] ?? 0) + 1;
   for (const t of TERMS) if (byTerm[t.id]) console.log(`  ${t.id}: ${byTerm[t.id]} counted (say ${t.say})`);

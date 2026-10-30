@@ -90,13 +90,13 @@ describe("the guard refuses a retired word wherever it isn't kept on purpose", (
     expect(counted(r)).toEqual(["packages/workforce/src/mailbox/entry.ts:0:mailbox"]);
   });
 
-  it("still counts a second retired word on a line an exception strips", () => {
-    // The goal path is kept (goals keep their words); the mailbox beside it is not.
+  it("counts a goal's name, so a goal named for a seat cannot be cited", () => {
+    // The goal's own folder is kept (goals keep their words); citing it from a page or a package is not.
     const r = run({
-      "goals/workforce-seats/x/goal.md": "# x\n",
-      "packages/workforce/src/zz.ts": "// see goals/workforce-seats/x/ for the mailbox\n",
+      "goals/workforce-seats/x/goal.md": "# x\n", // retired-name-refusal: a planted goal name
+      "packages/workforce/src/zz.ts": "// see goals/workforce-seats/x/ for the worker\n", // retired-name-refusal
     });
-    expect(counted(r)).toEqual(["packages/workforce/src/zz.ts:1:mailbox"]);
+    expect(counted(r)).toEqual(["packages/workforce/src/zz.ts:1:seat"]);
   });
 
   it("strips a pinned non-user person and counts any other person on the line", () => {

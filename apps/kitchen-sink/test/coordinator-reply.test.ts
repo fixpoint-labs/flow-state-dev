@@ -22,7 +22,7 @@
  * which its session keeps.
  *
  * These run on the default wiring only. The controls' red states are graded
- * in `goals/kitchen-sink-talk/agent-replies-in-the-mailbox/run.mts`, not here.
+ * in `goals/kitchen-sink-talk/agent-replies-in-the-coordinator/run.mts`, not here.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createInProcessFetch, type FlowState } from "@flow-state-dev/engine";

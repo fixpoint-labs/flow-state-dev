@@ -8,7 +8,7 @@
  *
  * Two goals carry their own copy of {@link preinstalledChromium}
  * (`flow-instances/devtool-shows-the-selected-copy` and
- * `multi-seat-collab/it-hands-a-row-between-two-seats-in-view`). This is the
+ * `multi-worker-collab/it-hands-a-row-between-two-workers-in-view`). This is the
  * one a new goal imports; moving those two onto it is a separate change.
  */
 import { existsSync, readdirSync } from "node:fs";

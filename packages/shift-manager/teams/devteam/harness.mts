@@ -16,7 +16,7 @@
  *   with no step and no commit, and the row went back to pending with nothing
  *   left to run it.
  * - **`claude-code`**: a real coding agent, Claude Code through its Agent SDK,
- *   set up exactly as the honesty check (`it-commits-from-the-seats-own-file`)
+ *   set up exactly as the honesty check (`it-commits-from-the-workers-own-file`)
  *   sets it up. Needs a signed-in SDK or an Anthropic key. Nothing falls back
  *   to the stub when it is not there: a run that quietly used the stub would be
  *   reported as a model's. At start, {@link startHarness} asks Claude Code for

@@ -37,7 +37,7 @@ import {
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { installWorkers } from "../../../lib/workers.mts";
-import { ASKER_FLOW, defineAskerFlow } from "../../it-sends-a-turn-into-a-seat-session/lab/asker/asker.mts";
+import { ASKER_FLOW, defineAskerFlow } from "../../it-sends-a-turn-into-a-worker-session/lab/asker/asker.mts";
 
 /** The one person this Lab runs as. */
 export const USER_ID = "u_cos_goal";

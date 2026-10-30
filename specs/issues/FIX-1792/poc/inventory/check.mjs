@@ -200,7 +200,7 @@ const FILES = {
     { done: "P3", target: "session", boards: ["work"], use: "the landing summary counts what waits on the person and what runs" },
   "goals/shift-manager/it-draws-v2s-look/lab/workforce/teams/desk/mailboxes/front/MAILBOX.md":
     { done: "P3", target: "session", boards: ["work"], use: "every screen draws the board's rows in v2's look" },
-  "goals/shift-manager/it-sends-a-turn-into-a-seat-session/lab/asker/workforce/teams/desk/mailboxes/front/MAILBOX.md":
+  "goals/shift-manager/it-sends-a-turn-into-a-worker-session/lab/asker/workforce/teams/desk/mailboxes/front/MAILBOX.md":
     { done: "P1", target: "coordinator", boards: [], use: "a person's line lands in a worker's session" },
   "goals/shift-manager/it-shows-who-is-on-shift/lab/workforce/teams/eng/mailboxes/desk/MAILBOX.md":
     { done: "P3", target: "session", boards: ["work"], use: "the roster shows the tasks each worker holds; the lead drains it" },
@@ -208,15 +208,15 @@ const FILES = {
     { done: "P3", target: "coordinator", boards: [], use: "a team that talks and keeps no board" },
   "goals/task-run-link/it-names-the-run-working-each-task/fixtures/workforce/teams/lab/mailboxes/desk/MAILBOX.md":
     { done: "P2", target: "session", boards: ["work"], use: "each handed-off row links the run working it" },
-  "goals/workforce-mailboxes/a-fresh-host-wakes-its-member-agents/fixtures/workforce/teams/desk/mailboxes/front/MAILBOX.md":
+  "goals/workforce-coordinators/a-fresh-host-wakes-its-member-agents/fixtures/workforce/teams/desk/mailboxes/front/MAILBOX.md":
     { done: "P1", target: "coordinator", boards: [], use: "a post wakes each agent member once, never on its own post" },
   "goals/workforce-mailboxes/a-pre-rename-lab-is-refused-by-name/fixtures/tree/teams/desk/mailboxes/front/MAILBOX.md":
     { target: "removed", boards: [], use: "the pre-rename goal's renamed tree; it goes with the goal, whose refusal is removed (D2)" },
   "goals/workforce-mailboxes/a-pre-rename-lab-is-refused-by-name/fixtures/tree/teams/desk/mailboxes/notices/MAILBOX.md":
     { target: "removed", boards: [], use: "the pre-rename goal's mailbox on a kind of its own; it goes with the goal (D2)" },
-  "goals/workforce-mailboxes/a-routed-post-gets-one-answer/fixtures/workforce/teams/support/mailboxes/help/MAILBOX.md":
+  "goals/workforce-coordinators/a-routed-post-gets-one-answer/fixtures/workforce/teams/support/mailboxes/help/MAILBOX.md":
     { done: "P1", had: { routing: 1 }, target: "coordinator", boards: [], use: "a routed post gets one specialist's answer" },
-  "goals/workforce-mailboxes/a-routed-post-gets-one-answer/fixtures/workforce/teams/support/mailboxes/lounge/MAILBOX.md":
+  "goals/workforce-coordinators/a-routed-post-gets-one-answer/fixtures/workforce/teams/support/mailboxes/lounge/MAILBOX.md":
     { done: "P1", target: "coordinator", boards: [], use: "a mailbox without routing behaves as before" },
   "packages/shift-manager/teams/devteam/workforce/teams/eng/mailboxes/feature/MAILBOX.md":
     { done: "P3", target: "workstream", boards: ["work"], use: "the DevTeam builds a feature; the storefront project claims it, and its coding runs find the project through the claim. A Storefront workstream the EM leads and files on" },
@@ -437,7 +437,7 @@ const FILE_CLASS = {
   "packages/workforce/test/mailbox-board-actions.test.ts": "R · S9 · tests of boardActions",
   "packages/workforce/test/mailbox-board-attendance.test.ts": "R · S9 · tests of the unattended-board warning",
   "packages/workforce/test/mailbox-board-tools.test.ts": "R · S9 · tests of mailbox board tools",
-  "packages/workforce/test/mailbox-boards.test.ts": "R · S9 · tests of mailbox boards",
+  "packages/workforce/test/coordinator-boards.test.ts": "R · S9 · tests of mailbox boards",
   "packages/workforce/test/mailbox-concurrency.test.ts": "R · S9 · tests of the mailbox flow",
   "packages/workforce/test/mailbox-fan-out.test.ts": "R · S9 · tests of the mailbox flow",
   "packages/workforce/test/mailbox-flow.test.ts": "R · S9 · tests of the mailbox flow",
@@ -484,33 +484,33 @@ const GOALS = {
   "goals/agent-discovery/an-orchestrator-routes-a-task-by-asking": "EDIT · a roster literal's mailboxes field",
   "goals/design-system/skins-reused-components-from-one-token-set": "EDIT · a rail label in a demo host",
   "goals/devforce-lab/it-answers-a-conversations-task": "CONVERT · the lab opens with no mailbox; its feature-board control goes with the board",
-  "goals/devforce-lab/it-commits-from-the-seats-own-file": "EDIT · its row is read by issue off the EM's own board",
+  "goals/devforce-lab/it-commits-from-the-workers-own-file": "EDIT · its row is read by issue off the EM's own board",
   "goals/devforce-lab/it-names-the-project-a-coders-task-works-in": "EDIT · its Lab is opened with no mailbox and no eng.feature workstream",
   "goals/devforce-lab/it-codes-in-the-projects-repository": "CONVERT · the run finds its project through the feature workstream",
-  "goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board": "REWRITE · the org sees the workstream's entry; only its owner sees the rows (epic ER-7)",
-  "goals/devforce-lab/it-ships-an-artifact-a-person-can-open": "CONVERT · posts to the feature workstream",
+  "goals/devforce-lab/it-keeps-its-rows-on-the-coordinators-board": "REWRITE · the org sees the workstream's entry; only its owner sees the rows (epic ER-7)",
+  "goals/devforce-lab/it-ships-an-artifact-a-user-can-open": "CONVERT · posts to the feature workstream",
   "goals/devforce-lab/it-waits-for-a-person-before-it-files": "CONVERT · the EM asks before it files, with the task tools its delegates give it",
-  "goals/devforce-lab/it-wakes-the-seat-a-file-declared": "CONVERT · a filed row wakes the delegate it names",
+  "goals/devforce-lab/it-wakes-the-worker-a-file-declared": "CONVERT · a filed row wakes the delegate it names",
   "goals/devtool-workforce-visibility/the-checklist-rows": "REWRITE · row 5 reads every worker and a coordinator's delegates",
   "goals/devtool-workforce-visibility/works-a-task-from-its-row": "CONVERT · the task is on a conversation's board",
   "goals/hire-plane/discover-survives-an-unaddressable-row": "EDIT · a roster literal's mailboxes field",
-  "goals/kitchen-sink-talk/a-person-talks-to-a-seat-a-mailbox-and-back": "REWRITE · legs a to c on the help coordinator; leg e and the no-filing control go with the escalation feature",
+  "goals/kitchen-sink-talk/a-user-talks-to-a-worker-a-coordinator-and-back": "REWRITE · legs a to c on the help coordinator; leg e and the no-filing control go with the escalation feature",
   "goals/kitchen-sink-talk/a-post-runs-each-member-agent-once": "CONVERT · best fit runs one delegate",
-  "goals/kitchen-sink-talk/agent-replies-in-the-mailbox": "CONVERT · the delegate's answer lands in the conversation",
+  "goals/kitchen-sink-talk/agent-replies-in-the-coordinator": "CONVERT · the delegate's answer lands in the conversation",
   "goals/kitchen-sink-talk/answers-a-clerk-note-or-files-it": "REWRITE · the answer half on the help coordinator; the filing half goes with the escalation feature",
   "goals/kitchen-sink-talk/keeps-both-sides-across-a-reload": "CONVERT · the help coordinator",
   "goals/kitchen-sink-talk/lists-a-filed-case-without-a-reload": "RETIRE · the escalation feature is removed (product owner, 2026-10-06); nothing files a case (BR-24)",
   "goals/kitchen-sink-talk/shows-the-reply-without-a-reload": "CONVERT · the help coordinator",
   "goals/mailbox-boards/it-hands-a-task-to-a-fresh-hire": "CONVERT · hire, add as a delegate, file",
-  "goals/mailbox-boards/it-runs-a-row-a-file-declared-board-holds": "CONVERT · a worker whose delegates take tasks files a row that its board runs; the FIX-1611 extras go",
-  "goals/manager-queue-lab/it-routes-a-queue-to-the-seats-their-files-name": "REWRITE · the manager files for its delegates, which give it the task tools; a row names its delegate, not a desk",
+  "goals/coordinator-boards/it-runs-a-row-a-file-declared-board-holds": "CONVERT · a worker whose delegates take tasks files a row that its board runs; the FIX-1611 extras go",
+  "goals/manager-queue-lab/it-routes-a-queue-to-the-workers-their-files-name": "REWRITE · the manager files for its delegates, which give it the task tools; a row names its delegate, not a desk",
   "goals/manager-queue-lab/it-stands-the-team-and-its-board-up-from-files": "REWRITE · the team stands up from WORKER.md files; the board-in-a-seat-folder leg goes with its trees, since no file declares a board",
   "goals/manager-queue-lab/lab": "REWRITE · the lab both manager-queue goals share",
-  "goals/multi-seat-collab/it-hands-a-row-between-two-seats-in-view": "REWRITE · the planner files for its delegates, which give it the task tools, not desks",
-  "goals/multi-seat-collab/run-scenario.mts": "REWRITE · the scenario that goal runs",
+  "goals/multi-worker-collab/it-hands-a-row-between-two-workers-in-view": "REWRITE · the planner files for its delegates, which give it the task tools, not desks",
+  "goals/multi-worker-collab/run-scenario.mts": "REWRITE · the scenario that goal runs",
   "goals/org-seats/cos-changes-the-roster": "REWRITE · who is on a coordinator is its delegate read, not discover",
-  "goals/pentest-lab/a-post-reaches-both-declared-seats": "REWRITE · BR-10's unknown member is refused at load, not skipped",
-  "goals/pentest-lab/a-seat-answers-from-its-own-document": "CONVERT · posts to the findings coordinator",
+  "goals/pentest-lab/a-post-reaches-both-declared-workers": "REWRITE · BR-10's unknown member is refused at load, not skipped",
+  "goals/pentest-lab/a-worker-answers-from-its-own-document": "CONVERT · posts to the findings coordinator",
   "goals/pentest-lab/lab": "CONVERT · the lab both pentest goals share",
   "goals/shift-manager/a-lab-is-worked-through-one-skinned-shell": "CONVERT · the shell on converted labs",
   "goals/shift-manager/it-briefs-and-talks-with-the-chief-of-staff": "CONVERT · the summary counts conversation boards",
@@ -519,7 +519,7 @@ const GOALS = {
   "goals/shift-manager/it-hands-a-run-the-work-it-approved": "CONVERT · posts on the feature workstream",
   "goals/shift-manager/it-opens-a-lab": "REWRITE · a workstream shows its entry; its owner sees the lead's board",
   "goals/shift-manager/it-runs-from-an-install": "CONVERT · finds the coordinator whose conversation holds a board",
-  "goals/shift-manager/it-sends-a-turn-into-a-seat-session": "CONVERT · @worker in a workstream",
+  "goals/shift-manager/it-sends-a-turn-into-a-worker-session": "CONVERT · @worker in a workstream",
   "goals/shift-manager/it-shows-and-stops-a-task-run": "CONVERT · finds the coordinator whose conversation holds a board",
   "goals/shift-manager/it-shows-who-is-on-shift": "CONVERT · the roster reads conversation boards",
   "goals/shift-manager/it-takes-its-look-from-the-design-system": "CONVERT · finds the coordinator whose conversation holds a board",
@@ -530,9 +530,9 @@ const GOALS = {
   "goals/workforce-conventions/a-mailbox-holds-the-work-a-seat-drains": "RETIRE · its subjects are gone (an unattended file board, a kind of its own, two boards on one mailbox); FIX-1791's and FIX-1794's goal checks and kitchen-sink-talk prove the rest",
   "goals/workforce-conventions/capabilities-come-from-files-alone": "EDIT · a generated module's empty mailboxKinds",
   "goals/workforce-conventions/code-comes-from-files-alone": "REWRITE · its flows/mailboxes leg goes with the slot",
-  "goals/workforce-mailboxes/a-fresh-host-wakes-its-member-agents": "CONVERT · routing: everyone",
+  "goals/workforce-coordinators/a-fresh-host-wakes-its-member-agents": "CONVERT · routing: everyone",
   "goals/workforce-mailboxes/a-pre-rename-lab-is-refused-by-name": "RETIRE · the pre-rename refusal is removed (D2); none of its legs has a subject left",
-  "goals/workforce-mailboxes/a-routed-post-gets-one-answer": "CONVERT · routing: best-fit, one answer",
+  "goals/workforce-coordinators/a-routed-post-gets-one-answer": "CONVERT · routing: best-fit, one answer",
   "goals/workforce-packages/a-held-package-reaches-one-worker": "EDIT · a generated module's empty mailboxKinds",
 };
 

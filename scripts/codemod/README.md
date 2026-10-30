@@ -58,3 +58,15 @@ pnpm tsx scripts/codemod/rename-chief-of-staff.ts
 
 It leaves retained specs, changelogs, `docs/internal` and a goal's dated verdict
 rows alone: they are history.
+
+## `rename-seat-mailbox-goals.mjs`
+
+Moves the goal folders whose names say seat or mailbox (and the one that says
+person for the signed-in user) to worker / coordinator / user names, with
+`git mv`, and rewrites every reference to them (FIX-2248). History (`specs/`,
+`docs/internal/`, changelogs) and each `goal.md`'s `## Verdict log` keep the
+names they ran under, and a goal retired before the move keeps its old path.
+
+```bash
+node scripts/codemod/rename-seat-mailbox-goals.mjs
+```

@@ -10,7 +10,7 @@ Row 5 means **registered in this organization**, not **working now** ([FIX-1502 
 
 **Input:** `fixtures/input.json` holds the piece of work and the question the seat will ask. It is held out. The hire is `packages/shift-manager/test/fixtures/multi-worker-collab/`, and its desks, worker ids and the coordinator's delegates are read off its tree at run time. The fixture's desk is checked against the desks that tree declares before anything runs. The reason is then graded against the question the ledger holds the row on, not against the fixture's sentence, so swapping the sentence still passes a correct view. Row 5 needs no fixture: its expected rows are derived from the tree, and its foreign organization's ids are generated per run.
 
-**Which hire each row is read on:** both rows are read on `multi-seat-collab` (FIX-1497), served by that lab's own `fsdev.config.mts` through the shipped `fsdev dev` and DevTool, in one Chromium. They are two serves of the same config, because they need the debug endpoints in opposite states:
+**Which hire each row is read on:** both rows are read on `multi-worker-collab` (FIX-1497), served by that lab's own `fsdev.config.mts` through the shipped `fsdev dev` and DevTool, in one Chromium. They are two serves of the same config, because they need the debug endpoints in opposite states:
 
 - **Row 4** is read on a serve with `fsdev dev`'s default debug setting. The planner files the row on its own conversation's board, and the builder holds it on a question by design; nothing here makes it ask. The lab's driver finds the held row in the server's SQLite file.
 - **Row 5** is read on a serve with **`FSDEV_DEBUG_ENDPOINTS=0`**, because row 5 must be green on the production read alone. The lab's config opens its inventory at boot, in-process, the way the inventory docs show any app doing it (`openInventory`, writing through the lab's own `inventory-writer` flow), and refuses to serve if that reports a problem. The inventory rows exist because the app booted; the only thing driven is the coordinator's own `listDelegates`.
@@ -24,7 +24,7 @@ Row 5 means **registered in this organization**, not **working now** ([FIX-1502 
   - the slot is actually in view **on both axes**: after every clipping ancestor and the window are applied, at least 40px of its width and at least one line of its height (10px, or the whole cell if it is shorter) can be seen. A row scrolled above or below the pane fails with its own message;
   - when the text is clamped, the slot's title carries the whole reason.
 
-  Graded at a 1600×1000 window, the same one `multi-seat-collab`'s own check uses for this screen. Widths of 1440px and 1280px are measured and noted, not graded (see Findings).
+  Graded at a 1600×1000 window, the same one `multi-worker-collab`'s own check uses for this screen. Widths of 1440px and 1280px are measured and noted, not graded (see Findings).
 - **Row 5**, in six steps (`row5.mts`). Every failure line names its step.
   1. **Plant a foreign organization.** Before the server starts, one worker row is written under a second organization into the lab's database through the store's own API, with ids generated for the run and checked against the tree. It is read back before anything else.
   2. **Serve** the lab with `FSDEV_DEBUG_ENDPOINTS=0`.
@@ -45,7 +45,7 @@ So the row-4 check reads the collapsed row's reason slot (`[data-slot="reason"]`
 
 **Model:** n/a. The seat bodies are deterministic.
 
-**Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/devtool-workforce-visibility/the-checklist-rows/run.mts`. The run builds the DevTool bundle first. On a clean checkout, run `pnpm --filter @flow-state-dev/devtool build` once before it. The run reads the hire in `goals/multi-seat-collab/` (FIX-1497). Every served run goes through `goals/lib/env.mts`'s `intentFreeEnv`.
+**Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/devtool-workforce-visibility/the-checklist-rows/run.mts`. The run builds the DevTool bundle first. On a clean checkout, run `pnpm --filter @flow-state-dev/devtool build` once before it. The run reads the hire in `goals/multi-worker-collab/` (FIX-1497). Every served run goes through `goals/lib/env.mts`'s `intentFreeEnv`.
 
 **Controls:** Each one runs as `GOAL_CONTROL=<name>` on the same command. The lab's config reads the same variable. Each control must fail at exactly the legs named, and the run checks that itself. The row-6 line is the same under every control and is left out of that self-check.
 

@@ -31,7 +31,7 @@ Both drive the same host, the same tree and the same hire. They differ by who fi
 | Check | What it proves |
 |---|---|
 | `it-stands-the-team-and-its-board-up-from-files` | Model-free. No file declares a board; four workers from one tree; the task tools on the manager's live turn coming from its delegates, with its `tools:` neither granting nor fencing them; the board's filing check, both arms; the queue as a read; the manager settling a task its worker is running; the status set. |
-| `it-routes-a-queue-to-the-seats-their-files-name` | **The gate.** More work than workers, a manager choosing who gets what, every row on the worker it names and carrying that worker's own file, each in its own session, a second row for one worker neither re-routed nor dropped, and a row for a stranger refused by name. |
+| `it-routes-a-queue-to-the-workers-their-files-name` | **The gate.** More work than workers, a manager choosing who gets what, every row on the worker it names and carrying that worker's own file, each in its own session, a second row for one worker neither re-routed nor dropped, and a row for a stranger refused by name. |
 
 ## The one idea worth carrying away
 

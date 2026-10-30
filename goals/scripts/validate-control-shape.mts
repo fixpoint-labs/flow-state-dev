@@ -72,7 +72,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
  */
 const PAIRS = [
   {
-    file: "goals/workforce-seats/a-non-agent-seat-receives-its-skills/fixtures/flows.ts",
+    file: "goals/workforce-workers/a-non-agent-worker-receives-its-skills/fixtures/flows.ts",
     control: "noContractFlow",
     twin: "handRolledFlow"
   }

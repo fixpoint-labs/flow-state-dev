@@ -4,7 +4,7 @@
  *
  * Real path, no model, out of CI. See goal.md for the contract.
  *
- * Both rows are read on the `multi-seat-collab` hire, served by the ordinary
+ * Both rows are read on the `multi-worker-collab` hire, served by the ordinary
  * `fsdev dev` over that lab's own config, so nothing here stands a workforce
  * up or shapes one for the inspection.
  *
@@ -35,7 +35,7 @@ import { taskStatusSchema } from "@flow-state-dev/orchestration/tasks";
 import { REPO_ROOT, goalTmpDir, loadFixture, runGoal, type Tell } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { readLabTree, routesFor } from "../../../packages/shift-manager/test/fixtures/multi-worker-collab/host.mts";
-import { Scenario, serveLab, type BoardRow } from "../../multi-seat-collab/run-scenario.mts";
+import { Scenario, serveLab, type BoardRow } from "../../multi-worker-collab/run-scenario.mts";
 import { WORKER_FLOW } from "../../../packages/shift-manager/test/fixtures/multi-worker-collab/workforce/flows/workers/worker.mts";
 import { gradeRow5 } from "./row5.mts";
 
@@ -346,7 +346,7 @@ async function main(tell: Tell): Promise<{ failures: string[]; evidence: string 
             );
           }
           row4Evidence =
-            `row 4 read on the multi-seat-collab hire: ${owner} held row ${parked.id} on its question on its own, and its run ` +
+            `row 4 read on the multi-worker-collab hire: ${owner} held row ${parked.id} on its question on its own, and its run ` +
             `${parkLine.session}, opened from the navigator, showed it \`in_progress\` with "${reason}" in the row's reason slot, ` +
             `nothing expanded`;
         }
