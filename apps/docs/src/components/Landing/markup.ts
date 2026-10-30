@@ -5,7 +5,7 @@
  * The hero animation is inline SVG (SMIL), so it needs no client script.
  */
 export const landingMarkup = String.raw`<div class="fs-root" style="font-family: 'Space Grotesk', system-ui, sans-serif; color: #1b1a15;">
-<div class="fs-page" style="max-width: 1240px; margin: 0 auto; border-left: 1px solid rgba(27,26,21,.45); border-right: 1px solid rgba(27,26,21,.45);">
+<div class="fs-page">
 
 <div class="fs-dark">
 <header style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 24px; padding: 18px 28px;">
@@ -54,10 +54,10 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 <div class="fs-body" style="display: flex; flex-direction: column; gap: 22px;">
 <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px 24px; border-bottom: 1px solid #1b1a15; padding-bottom: 12px;">
 <h2 id="caps-title" style="margin: 0; font-size: 30px; line-height: 1.1; letter-spacing: -0.03em; font-weight: 700;">Everything a workforce needs, already running.</h2>
-<span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: #6e6a5e;">16 parts · 0 to wire</span>
+
 </div>
 <p style="margin: 0; font-size: 14.5px; line-height: 1.6; color: #3d3a32; max-width: 660px;">Most new features are configuration, not plumbing. The SDK ships ready-made blocks and flows, and you set them up in your app.</p>
-<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px;"><article style="background: #f8f6f0; border: 1px solid rgba(27,26,21,.25); padding: 16px; display: flex; flex-direction: column; gap: 10px;">
+<div class="fs-features" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px;"><article style="background: #f8f6f0; border: 1px solid rgba(27,26,21,.25); padding: 16px; display: flex; flex-direction: column; gap: 10px;">
 <svg viewBox="0 0 160 64" aria-hidden="true" style="display: block; width: 100%; max-width: 200px; height: auto;"><rect x="4" y="22" width="36" height="20" fill="none" stroke="#1b1a15" stroke-width="1.4"></rect><path d="M40 32 H58" stroke="#1b1a15" stroke-width="1.2"></path><rect x="58" y="22" width="36" height="20" fill="rgba(27,26,21,.09)" stroke="#1b1a15" stroke-width="1.4"></rect><path d="M94 32 H112" stroke="#1b1a15" stroke-width="1.2"></path><rect x="112" y="22" width="36" height="20" fill="none" stroke="#1b1a15" stroke-width="1.2" stroke-dasharray="5 4"></rect></svg>
 <h3 style="margin: 0; font-size: 17px; letter-spacing: -0.02em; font-weight: 700;">Blocks</h3>
 <p style="margin: 0; font-size: 13.5px; line-height: 1.6; color: #3d3a32;">Five kinds of building block, from model calls to plain code, checks and routing. Compose them into any flow.</p>
@@ -92,7 +92,7 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 </article></div>
 <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 8px;">
 <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: #57544a;">Also included</span>
-<ul style="margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px 22px;"><li style="display: flex; flex-direction: column; gap: 8px; padding: 14px 0 0; border-top: 1px solid rgba(27,26,21,.3);">
+<ul class="fs-also" style="margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px 22px;"><li style="display: flex; flex-direction: column; gap: 8px; padding: 14px 0 0; border-top: 1px solid rgba(27,26,21,.3);">
 <svg viewBox="0 0 40 26" aria-hidden="true" style="display: block; width: 40px; height: 26px;"><rect x="2" y="2" width="36" height="22" fill="none" stroke="#1b1a15" stroke-width="1.3"></rect><path d="M2 8 H38" stroke="#1b1a15"></path><path d="M6 13 H20 M10 17 H26 M14 21 H30" stroke="#1b1a15" stroke-width="1.1"></path></svg>
 <h3 style="margin: 0; font-size: 15px; letter-spacing: -0.02em; font-weight: 700;">DevTools</h3>
 <p style="margin: 0; font-size: 13px; line-height: 1.55; color: #3d3a32;">See every run, step, message and state change as it happens.</p>
@@ -177,20 +177,20 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 
 </div>
 <article style="background: transparent; border: 1.2px dashed #1b1a15; display: flex; flex-wrap: wrap;">
-<div aria-hidden="true" style="flex: 1 1 340px; min-width: 0; padding: 16px; background: rgba(252,251,247,.6); border-right: 1px dashed rgba(27,26,21,.45); font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; display: flex; flex-direction: column; gap: 8px; color: #57544a;">
-<div style="display: flex; justify-content: space-between; color: #1b1a15; font-weight: 600;"><span>SHIFT COORDINATOR</span><span>DAY SHIFT</span></div>
+<div style="flex: 1 1 340px; min-width: 0; box-sizing: border-box; padding: 18px; display: flex; flex-direction: column; gap: 10px;">
+<div style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 10.5px; font-weight: 500; letter-spacing: .14em; color: #57544a;">COMING SOON · SHIFT MANAGER</div>
+<div style="display: flex; align-items: center; gap: 12px;"><svg viewBox="0 0 150 90" aria-hidden="true" style="display: block; width: 64px; height: auto; overflow: visible; flex: none;"><path d="M31 24 Q75 -4 119 24" fill="none" stroke="rgba(27,26,21,.4)" stroke-width="1.4" stroke-dasharray="2 3"></path><path d="M31 45 Q53 7 75 45 Q53 83 31 45 Z" fill="#f8f6f0"></path><path d="M53 45 Q75 7 97 45 Q75 83 53 45 Z" fill="#d9cfb2"></path><path d="M75 45 Q97 7 119 45 Q97 83 75 45 Z" fill="#16150f"></path><g fill="none" stroke="#1b1a15" stroke-width="4"><path d="M31 45 Q53 7 75 45 Q53 83 31 45 Z"></path><path d="M53 45 Q75 7 97 45 Q75 83 53 45 Z"></path><path d="M75 45 Q97 7 119 45 Q97 83 75 45 Z"></path></g><circle r="5" fill="#1b1a15"><animateMotion dur="24s" repeatCount="indefinite" path="M31 24 Q75 -4 119 24"></animateMotion></circle></svg><h3 style="margin: 0; font-size: 19px; letter-spacing: -0.02em; font-weight: 700;">Our full-featured software factory</h3></div>
+<p style="margin: 0; font-size: 14px; line-height: 1.6; color: #3d3a32;">Make the decisions during the day shift; the fleet runs overnight, and any calls it had to make itself are ready for review in the morning. Built on the same backend as the starters.</p>
+<div style="margin-top: auto; padding-top: 6px;"><a class="fs-btn fs-btn-line" href="https://github.com/fixpoint-labs/flow-state-dev">Follow along on GitHub ↗</a></div>
+</div>
+<div aria-hidden="true" style="flex: 1 1 340px; min-width: 0; padding: 16px; background: rgba(252,251,247,.6); border-left: 1px dashed rgba(27,26,21,.45); font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; display: flex; flex-direction: column; gap: 8px; color: #57544a;">
+
 <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px;">
 <div class="fs-p fs-l0" style="border: 1px solid #1b1a15; padding: 6px;"><div style="color: #1b1a15; font-weight: 600;">3</div>waiting on you</div>
 <div class="fs-p fs-l1" style="border: 1px solid rgba(27,26,21,.45); padding: 6px;"><div style="color: #1b1a15; font-weight: 600;">42</div>running</div>
 <div class="fs-p fs-l2" style="border: 1px dashed #1b1a15; padding: 6px;"><div style="color: #1b1a15; font-weight: 600;">118</div>queued tonight</div>
 </div>
 <div class="fs-p fs-l3" style="border-top: 1px solid rgba(27,26,21,.25); padding-top: 8px;">overnight: 2 two-way-door calls made · ready for review</div>
-</div>
-<div style="flex: 1 1 340px; min-width: 0; box-sizing: border-box; padding: 18px; display: flex; flex-direction: column; gap: 10px;">
-<div style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 10.5px; font-weight: 500; letter-spacing: .14em; color: #57544a;">COMING SOON · SHIFT MANAGER</div>
-<div style="display: flex; align-items: center; gap: 12px;"><svg viewBox="0 0 150 90" aria-hidden="true" style="display: block; width: 64px; height: auto; overflow: visible; flex: none;"><path d="M31 24 Q75 -4 119 24" fill="none" stroke="rgba(27,26,21,.4)" stroke-width="1.4" stroke-dasharray="2 3"></path><path d="M31 45 Q53 7 75 45 Q53 83 31 45 Z" fill="#f8f6f0"></path><path d="M53 45 Q75 7 97 45 Q75 83 53 45 Z" fill="#d9cfb2"></path><path d="M75 45 Q97 7 119 45 Q97 83 75 45 Z" fill="#16150f"></path><g fill="none" stroke="#1b1a15" stroke-width="4"><path d="M31 45 Q53 7 75 45 Q53 83 31 45 Z"></path><path d="M53 45 Q75 7 97 45 Q75 83 53 45 Z"></path><path d="M75 45 Q97 7 119 45 Q97 83 75 45 Z"></path></g><circle r="5" fill="#1b1a15"><animateMotion dur="24s" repeatCount="indefinite" path="M31 24 Q75 -4 119 24"></animateMotion></circle></svg><h3 style="margin: 0; font-size: 19px; letter-spacing: -0.02em; font-weight: 700;">Our full-featured software factory</h3></div>
-<p style="margin: 0; font-size: 14px; line-height: 1.6; color: #3d3a32;">Make the decisions during the day shift; the fleet runs overnight, and any calls it had to make itself are ready for review in the morning. Built on the same backend as the starters.</p>
-<div style="margin-top: auto; padding-top: 6px;"><a class="fs-btn fs-btn-line" href="https://github.com/fixpoint-labs/flow-state-dev">Follow along on GitHub ↗</a></div>
 </div>
 </article>
 <div><a class="fs-btn fs-btn-line" href="/docs/intro">See what else you can build →</a></div>
@@ -313,7 +313,7 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 </section>
 
 <section class="fs-sheet" aria-labelledby="cta-title">
-<div class="fs-rail" aria-hidden="true">Sheet 05 — Start</div>
+<div class="fs-rail" aria-hidden="true">Sheet 06 — Start</div>
 <div class="fs-body" style="display: flex; flex-direction: column; gap: 22px; padding-top: 56px; padding-bottom: 56px;">
 <h2 id="cta-title" style="margin: 0; font-size: 46px; line-height: 1.02; letter-spacing: -0.04em; font-weight: 700; max-width: 720px; text-wrap: pretty;">Pick a starter. Ship the app. The backend's already there.</h2>
 <div style="display: flex; flex-wrap: wrap; gap: 10px;">
