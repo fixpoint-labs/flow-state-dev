@@ -27,7 +27,7 @@ import { MAX_MESSAGE_CHARS, workerMessagesResources } from "./message-log";
 import { conversationLedgerResources } from "../conversation-board/ledger";
 import { sendMessage } from "./send-message";
 import { workerRecipients } from "./recipients";
-import { sendAndWaitForReply, type WaitOutcome } from "./wait-for-reply";
+import { sendAndWaitForReply } from "./wait-for-reply";
 
 /** The longest description the list quotes for one worker. */
 const MAX_DESCRIPTION = 160;
@@ -90,11 +90,6 @@ const sendMessageOutputSchema = z.union([
   z.object({ ok: z.literal(false), error: z.string() })
 ]);
 
-/** What the tool answers for a waited send: a refusal reads as any send's. */
-function waitAnswer(outcome: WaitOutcome) {
-  return "ok" in outcome ? { ok: false as const, error: outcome.error } : outcome;
-}
-
 const BASE_DESCRIPTION =
   "Send a short message to another worker on your team: a question, an FYI, a heads-up. It lands in that worker's " +
   "conversation and wakes it. This is not a task: nothing is filed and no result is owed. If it answers, it sends " +
@@ -141,9 +136,8 @@ export function defineSendMessageCapability(installation: WorkerInstallation, fl
         const { to, text, inReplyTo, replyRequested, wait, deadline } = input;
         const message = { to, text, ...(inReplyTo === undefined ? {} : { inReplyTo }) };
         if (wait === true) {
-          return waitAnswer(
-            await sendAndWaitForReply(ctx as never, installation, flowKind, { ...message, ...(deadline === undefined ? {} : { deadline }) }, SEND_MESSAGE_TOOL)
-          );
+          const outcome = await sendAndWaitForReply(ctx as never, installation, flowKind, { ...message, ...(deadline === undefined ? {} : { deadline }) }, SEND_MESSAGE_TOOL);
+          return "ok" in outcome ? { ok: false as const, error: outcome.error } : outcome;
         }
         if (deadline !== undefined) {
           return { ok: false as const, error: "deadline_without_wait: a deadline goes with wait: true. Nothing was sent." };

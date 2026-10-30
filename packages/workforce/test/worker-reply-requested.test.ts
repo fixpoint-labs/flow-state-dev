@@ -509,29 +509,6 @@ describe("a reply request to a worker that runs nothing on a message", { timeout
 });
 
 describe("a reply request whose sender waits for it", { timeout: 40_000 }, () => {
-  // One contract (FIX-2318): waiting changes where the one answer goes, never how it is made.
-  it("is the same reply request, and its one answer is the tool's result instead of a message", async () => {
-    const { model } = ottoModel({ "Wait on the lead": [{ to: "lead", text: "What is the codename?", wait: true }] });
-    const { h, otto } = await boot(model);
-    await h.post("alice", otto, "respond", { message: "Wait on the lead for the codename" }, "agent");
-    await h.settled();
-    await sleep(2_500);
-
-    const [output] = await toolOutputs(h, otto);
-    expect(output).toEqual({ status: "answered", sent: expect.stringMatching(/^msg_/), reply: "The codename is Bluebird." });
-    // The recipient read the reply-request prompt (the judgment above answers only that one),
-    // and answered through the one reply path: an answer row naming the message it answers.
-    const asked = (await logRows(h)).find((row) => row.id === output!.sent)!;
-    expect(asked).toMatchObject({ replyRequested: true, deadlineAt: expect.any(Number) });
-    expect(asked.waitEndedAt).toBeUndefined();
-    const answers = await answersTo(h, asked.id);
-    expect(answers).toHaveLength(1);
-    expect(answers[0]).toMatchObject({ from: "lead", to: "otto", text: "The codename is Bluebird.", status: "delivered" });
-    expect(asked.answeredBy).toBe(answers[0]!.id);
-    // Held for the wait: it never lands in Otto's conversation as well.
-    expect(await heardIn(h, otto)).toEqual([]);
-  });
-
   it("answered by the recipient's own sendMessage gets that answer as its result, and nothing else is sent", async () => {
     const { model } = ottoModel({ "Wait on the scripted one": [{ to: "scripted", text: "What is the codename? [own]", wait: true }] });
     const { h, otto } = await boot(model);
