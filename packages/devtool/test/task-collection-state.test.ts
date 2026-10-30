@@ -287,7 +287,13 @@ describe("the two folds composed — a tie across requests", () => {
 // the row's holds under `questions`. Read as they are, the task would show no open question
 // while the board still holds it.
 describe("groupCollections — a task-change logged before holds had their name", () => {
-  const question = { id: "q1", actor: "user", openedAt: 1, source: { kind: "row" }, ask: { kind: "question", prompt: "Which region?" } };
+  const question = {
+    id: "q1",
+    actor: "user",
+    openedAt: 1,
+    source: { kind: "row" },
+    ask: { kind: "question", prompt: "Which region?" },
+  };
 
   it("reads a logged row's questions as its holds, and its open question as the reason it waits", () => {
     const item = change({ requestId: "req_1", ts: 1_000, taskId: "task-a" });

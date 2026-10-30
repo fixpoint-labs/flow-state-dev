@@ -360,7 +360,7 @@ export const KEEP = [
     why: "FIX-2131: the worker's question, which holds its task for the user, and the turn-asked fact it is refused on"
   },
   {
-    path: /^packages\/devtool\/(src\/react\/lib\/task-collection-state\.ts|test\/task-collections-reason\.test\.tsx)$/,
+    path: /^packages\/devtool\/(src\/react\/lib\/task-collection-state\.ts|test\/(task-collections-reason\.test\.tsx|task-collection-state\.test\.ts))$/,
     // The DevTool's wire mirror of a question's `ask` only, and the reason slot reading its prompt.
     line: /^\s*ask: \{ kind: string|\bask: \{ kind: "(question|review)"|\)\?\.ask\.prompt;$/,
     rules: ["ask-mark"],
