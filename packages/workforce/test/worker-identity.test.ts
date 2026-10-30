@@ -13,7 +13,8 @@ import { mockGenerator, type MockGeneratorInstance } from "@flow-state-dev/testi
 import type { WorkerManifest } from "../src";
 import { rosterDisplayName, rosterTeamName, workerRecipients } from "../src/messages/recipients";
 import type { RosterWorker, WorkerInstallation } from "../src/workers/installation";
-import { DELEGATE_MARK, DELEGATE_RULE, TOOL_USE_RULE } from "../src/messages/worker-identity";
+import { DELEGATE_MARK, DELEGATE_RULE, TOOL_USE_RULE, workerIdentityPrompt } from "../src/messages/worker-identity";
+import { DELEGATES_STATE } from "../src/delegates/delegate-keys";
 import { bootBoardHost, type BoardHost } from "./conversation-board-harness";
 
 const worker = (id: string, declared: Record<string, unknown>, body = "", teamName?: string): WorkerManifest => ({
@@ -138,6 +139,35 @@ describe("what a worker is told first", () => {
     } finally {
       await h.dispose();
     }
+  });
+});
+
+describe("the delegates the layer marks", () => {
+  // The board takes a task for the conversation's own list once an add or a
+  // remove has set it, so the mark follows that list, not the worker's file.
+  const installation = {
+    workerFlows: () => ({}),
+    roster: async () =>
+      [
+        { id: "eng.ana", name: null, teamName: null, description: null, flow: "agent", delegates: ["eng.cy"] },
+        { id: "eng.bo", name: null, teamName: null, description: null, flow: "agent", delegates: [] },
+        { id: "eng.cy", name: null, teamName: null, description: null, flow: "agent", delegates: [] }
+      ] as unknown as RosterWorker[]
+  } as unknown as WorkerInstallation;
+  const layerFor = (state: Record<string, unknown>) =>
+    workerIdentityPrompt({ session: { state: { workerId: "eng.ana", ...state } } } as never, installation);
+
+  it("marks the file's delegates while the conversation has set none", async () => {
+    const layer = (await layerFor({}))!;
+    expect(layer).toContain(`- cy (eng.cy) ${DELEGATE_MARK}`);
+    expect(layer).not.toContain(`- bo (eng.bo) ${DELEGATE_MARK}`);
+  });
+
+  it("marks the conversation's own list once it is set: an added one marked, a removed one not", async () => {
+    const layer = (await layerFor({ [DELEGATES_STATE]: [{ worker: "eng.bo" }] }))!;
+    expect(layer).toContain(`- bo (eng.bo) ${DELEGATE_MARK}`);
+    expect(layer).toContain("- cy (eng.cy)\n");
+    expect(layer).not.toContain(`- cy (eng.cy) ${DELEGATE_MARK}`);
   });
 });
 

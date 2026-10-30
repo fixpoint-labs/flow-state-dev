@@ -10,6 +10,8 @@
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { WorkerInstallation } from "../workers/installation";
 import { WORKER_ID_STATE_KEY } from "../workers/keys";
+import { DELEGATES_STATE } from "../delegates/delegate-keys";
+import { currentDelegates } from "../delegates/delegate-list";
 import { SEND_MESSAGE_TOOL } from "./keys";
 import { rosterDisplayName, rosterTeamName, workerRecipients } from "./recipients";
 
@@ -52,10 +54,15 @@ export async function workerIdentityPrompt(ctx: BlockContext, installation: Work
   ];
 
   // Only a worker's delegates take its tasks (the board checks an assignee
-  // against them), so only they are named as ones to file a task with.
-  // `createTask` unsuffixed: Workforce's conversation board mounts the task
-  // tools with no `nameSuffix`, so a worker on this flow always sees that name.
-  const delegates = me.delegates;
+  // against them), so only they are named as ones to file a task with: the
+  // conversation's own list once an add or a remove has set it, as the board
+  // reads it, else the worker's file. `createTask` unsuffixed: Workforce's
+  // conversation board mounts the task tools with no `nameSuffix`, so a
+  // worker on this flow always sees that name.
+  const state = (ctx.session.state ?? {}) as Record<string, unknown>;
+  const delegates: readonly string[] | "all" = Array.isArray(state[DELEGATES_STATE])
+    ? currentDelegates(state, { delegates: [] }).delegates.map((record) => record.worker)
+    : me.delegates;
   const isDelegate = (worker: (typeof taskOnly)[number]) => delegates === "all" || delegates.includes(worker.id);
   const entry = (worker: (typeof messageable)[number]) => {
     const description = oneLine(worker.description);
