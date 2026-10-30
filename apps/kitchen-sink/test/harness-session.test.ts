@@ -28,7 +28,8 @@ import type { ClaudeAgentQueryOptions, ResolveClaudeAgent } from "@flow-state-de
 
 import { claudeCodeSessionFlow, CLAUDE_CODE_SESSION } from "@/lib/claude-code-mode";
 import { availableHarnessFlows, resetModeAvailabilityForTests } from "@/lib/harness-gate";
-import { turnNotice, UNKNOWN_CONVERSATION, type HarnessSessionState } from "@/lib/harness-turn";
+import type { HarnessSessionState } from "@flow-state-dev/harness-manager";
+import { turnNotice, UNKNOWN_CONVERSATION } from "@/lib/harness-turn";
 import { sessionBranch, worktreeRoot } from "@/lib/harness-worktree";
 import { scriptedClaudeCode, scriptedPauses } from "@/lib/scripted-claude-code";
 

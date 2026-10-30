@@ -975,6 +975,8 @@ Core exports:
 
 Use a shared lookup table to keep token-ratio and pricing resolution consistent across counters and cost estimation.
 
+A flow that sets no `tokenCounter` counts with `estimateTokenCounter`. Blocks read the flow's counter as `ctx.tokenCounter`, so a block that budgets tokens counts them the way history windows do; `utility.consultSessionHistoryTool` counts its `budgetTokens` with it.
+
 
 ## Errors
 

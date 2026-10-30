@@ -158,13 +158,13 @@ mechanisms:
     doc: docs/architecture/generator-identity.md
 
   - id: token-estimate
-    job: Count or estimate tokens and price a model call. One place for it; a private estimator copy in another package is a duplicate.
+    job: Count or estimate tokens and price a model call. One place for it; a private estimator copy in another package is a duplicate. The engine counts with `estimateTokenCounter` when a flow sets no `tokenCounter`, and hands blocks the flow's counter as `ctx.tokenCounter`.
     package: "@flow-state-dev/core"
-    anchor: modelPricingEstimator
-    file: packages/core/src/adapters/model-lookup.ts
+    anchor: estimateTokenCounter
+    file: packages/core/src/adapters/token-counter.ts
     builtOn: [model]
     overlaps: []
-    status: unconfirmed
+    status: canonical
     doc: packages/core/README.md
 
   - id: prompt
@@ -696,11 +696,11 @@ mechanisms:
     doc: packages/core/README.md
 
   - id: harness-manager
-    job: Turn a task-board row into a supervised coding run (own checkout, verdict before settlement, question channel, the harness as a slot).
+    job: Turn a task-board row into a supervised coding run (own checkout, verdict before settlement, question channel, the harness as a slot). Also runs a harness as one long-lived session a user talks to (harnessSessionFlow), and ships the scripted harness model-free checks put in the slot (harnessStub).
     package: "@flow-state-dev/harness-manager"
     anchor: harnessManager
     file: packages/harness-manager/src/manager.ts
-    builtOn: [task-board, coding-harness, workspace]
+    builtOn: [task-board, coding-harness, harness-steering, workspace]
     overlaps:
       - { id: workspace, relation: distinct-jobs, note: "The checkout subpath runs git through the workspace host and re-exports run. It is not a second workspace implementation." }
     status: canonical

@@ -1,38 +1,34 @@
 /**
- * The scripted run the contract gate puts in the harness slot.
+ * A scripted harness for the slot: no model, no network, no vendor SDK.
  *
- * No model, no network, no vendor SDK. It records the two things the gate
- * grades — the prompt it was handed and the directory it was told to work in —
- * optionally does some real work in that directory, and returns a handle that
- * parses against the neutral contract.
+ * It records the two things a check grades — the prompt it was handed and the
+ * directory it was told to work in — optionally does some real work in that
+ * directory, and returns a handle that parses against core's neutral contract.
+ * A host's model-free checks put it where a coding agent would go, so a
+ * change that hard-codes a harness inside a coding flow breaks the check, not
+ * just a test.
  *
- * **Modelled on `fakeHarness` in `packages/harness-manager/test/slot.spec.ts`**,
- * which is the cheapest existing proof that the manager drives any conforming
- * harness. Deliberately not `claudeCodeAgent` and deliberately nothing out of
- * a live coding agent: those belong to the model-backed sibling check, and a stub
- * that reached for one would make the gate's model-freedom an accident.
- *
- * The slot is the whole of D2. Two checks drive the same tree, the same hire
- * and the same wiring and differ by this one expression — so a future change
- * that hard-codes a harness inside the `coder` worker flow breaks the gate, not just a
- * test.
+ * Its slot takes the manager's {@link HarnessFeeds}, plus an optional
+ * `mcpTools` feed a host relays MCP servers through. The stub takes no relayed
+ * tools: handed one, it says in the run's session which servers it runs
+ * without.
  */
 
 import { handler, harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
-import { projectWorkspaceCapability, type ProjectMcpToolsResolver } from "@flow-state-dev/workforce";
+import type { CapabilityRef } from "@flow-state-dev/core";
 import type {
   HarnessBlock,
   HarnessCallbackContext,
   HarnessRunOutcome,
   HarnessRunStatus,
-  HarnessUsageHook,
 } from "@flow-state-dev/core/types";
+import type { HarnessFeeds } from "./manager";
 
 /** One run the stub was asked to perform, exactly as it arrived. */
 export interface StubRun {
-  /** The prompt the manager built — BR-10's evidence, and the only evidence for it. */
+  /** The prompt the manager built. */
   prompt: string;
-  /** The directory the `cwd` feed resolved for this attempt — BR-11's. */
+  /** The directory the `cwd` feed resolved for this attempt. */
   cwd: string;
   /** The session id the `resume` feed offered, or null on a cold attempt. */
   resume: string | null;
@@ -42,10 +38,10 @@ export interface HarnessStubOptions {
   /**
    * What the run "did" in its checkout, if anything.
    *
-   * The gate's whole point is that the directory is real: the honest way to
+   * A check's point is often that the directory is real: the honest way to
    * show a run was given its own checkout is to have it write there and then
    * read the result out of git. Absent means a run that produced nothing —
-   * which is the red half of BR-13/BR-14.
+   * which is what a check's red half needs.
    */
   duringRun?: (run: StubRun) => void | Promise<void>;
   /**
@@ -58,8 +54,7 @@ export interface HarnessStubOptions {
    *
    * Note what this does **not** do on its own: the manager reads `status` for
    * success and then asks the phase's done-condition, so the outcome word is
-   * recorded rather than decisive. BR-12 is graded on that seam, not on this
-   * field.
+   * recorded rather than decisive.
    */
   outcome?: HarnessRunOutcome | null;
   /**
@@ -76,7 +71,7 @@ export interface HarnessStubOptions {
   /**
    * Lines the run says as it works, each emitted as a message in the run's own
    * session before `duringRun`. Absent means a run that says nothing, which is
-   * what the gate's checks grade. A Lab someone watches passes them, so the
+   * what a model-free check grades. A host someone watches passes them, so the
    * task's Session has steps to show.
    */
   steps?: readonly string[];
@@ -86,6 +81,17 @@ export interface HarnessStubOptions {
    * Default 0.
    */
   stepEveryMs?: number;
+  /**
+   * The capabilities `mcpTools.named` reads through, held only when the slot
+   * is handed `mcpTools`: workforce's `projectWorkspaceCapability`, for its
+   * `projectMcpTools`.
+   */
+  mcpUses?: readonly CapabilityRef[];
+}
+
+/** The part of a host's MCP relay the stub asks: which servers a run's project names. */
+export interface HarnessStubMcpTools {
+  named(ctx: HarnessCallbackContext): Promise<readonly string[]>;
 }
 
 /** Wait `ms`, or reject as soon as `signal` aborts. */
@@ -105,20 +111,12 @@ function pause(ms: number, signal: AbortSignal | undefined): Promise<void> {
   });
 }
 
-/** The slot, plus the log the gate grades. */
+/** The slot, plus the log of what each run was handed. */
 export interface HarnessStub {
   /** Every run, in order. Empty means the harness was never reached. */
   runs: StubRun[];
   /** The factory to hand `harnessManager({ harness })`. */
-  slot: (feeds: {
-    cwd: (ctx: HarnessCallbackContext) => string | Promise<string>;
-    resume: (ctx: HarnessCallbackContext) => string | null | Promise<string | null>;
-    onSession: (sessionId: string, ctx: HarnessCallbackContext) => void | Promise<void>;
-    /** Where a run's usage windows go. The stub reports none. */
-    onUsage: HarnessUsageHook;
-    /** The Lab's relayed MCP servers. The stub takes none, and says so when the project names some. */
-    mcpTools?: ProjectMcpToolsResolver;
-  }) => HarnessBlock;
+  slot: (feeds: HarnessFeeds & { mcpTools?: HarnessStubMcpTools }) => HarnessBlock;
 }
 
 /**
@@ -135,11 +133,11 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
     runs,
     slot: ({ cwd, resume, onSession, mcpTools }) =>
       handler({
-        name: "devforce-lab-harness-stub",
+        name: "harness-stub",
         inputSchema: harnessRunInputSchema,
         outputSchema: harnessRunHandleSchema,
-        // The project read `named` makes, only when the Lab offers MCP servers.
-        ...(mcpTools === undefined ? {} : { uses: [projectWorkspaceCapability] }),
+        // What `named` reads through, only when the host relays MCP servers.
+        ...(mcpTools === undefined || options.mcpUses === undefined ? {} : { uses: [...options.mcpUses] }),
         execute: async (input: { prompt: string }, ctx) => {
           const context = ctx as unknown as HarnessCallbackContext;
           const run: StubRun = {
@@ -174,7 +172,7 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
           await options.duringRun?.(run);
 
           return {
-            source: "devforce-lab/stub",
+            source: "harness-manager/stub",
             status: options.statusOf?.(run) ?? options.status ?? ("completed" as const),
             sessionId: `sess_stub_${sessions}`,
             url: null,

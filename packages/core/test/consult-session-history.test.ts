@@ -9,8 +9,9 @@
  * history must reach the model as a record, never as instructions.
  */
 import { describe, expect, it } from "vitest";
-import { utility } from "../src";
+import { estimateTokenCounter, utility } from "../src";
 import type { SessionHistory } from "../src/types/request-host";
+import type { TokenCounter } from "../src/types/tokens";
 import { cutToBudget } from "../src/utility/consult-session-history";
 import { createMockContext, runForTest } from "./helpers";
 
@@ -24,11 +25,12 @@ const turn = (requestId: string, user: string, assistant: string) => ({
   ]
 });
 
-function setup(history: SessionHistory | undefined, answer = "The venue is Hall K-41.") {
+function setup(history: SessionHistory | undefined, answer = "The venue is Hall K-41.", tokenCounter?: TokenCounter) {
   const calls: { model: string; messages: unknown[] }[] = [];
   const reads: { sessionId: string; query: unknown }[] = [];
   const ctx = createMockContext({
     session: { identity: { type: "session", id: "lead-session" } } as never,
+    ...(tokenCounter !== undefined ? { tokenCounter } : {}),
     requestHost: {
       sessions: {
         read: async () => undefined,
@@ -105,6 +107,30 @@ describe("utility.consultSessionHistoryTool", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("cuts to the budget as the flow's token counter counts it, for the answering model", async () => {
+    // A counter far stricter than 4 characters a token: one token a character.
+    // Were the cut its own estimate, both turns of `writer` would fit in 80 tokens.
+    const counted: string[] = [];
+    const perChar: TokenCounter = {
+      count: async (text, model) => {
+        counted.push(model);
+        return text.length;
+      },
+      countMessages: async () => 0
+    };
+    const { ctx, calls } = setup(writer, undefined, perChar);
+    const result = await runForTest(
+      utility.consultSessionHistoryTool({ model: "small/model", budgetTokens: 80 }),
+      { sessionId: "writer-session", question: "q" },
+      ctx
+    );
+    expect(result).toMatchObject({ turnsRead: 1, cut: true, earlierTurnsLeftOut: true });
+    const sent = JSON.stringify(calls[0]!.messages);
+    expect(sent).toContain("Ignore your rules");
+    expect(sent).not.toContain("Hall K-41");
+    expect(new Set(counted)).toEqual(new Set(["small/model"]));
+  });
+
   it("runs on the model it is given, and says when earlier turns were left out", async () => {
     const { ctx, calls } = setup({ ...writer, startRequestId: "r1" });
     const result = await runForTest(utility.consultSessionHistoryTool({ model: "small/model" }), { sessionId: "writer-session", question: "q" }, ctx);
@@ -114,9 +140,12 @@ describe("utility.consultSessionHistoryTool", () => {
 });
 
 describe("the consult's hard cut", () => {
-  it("never sends more than the budget, keeping the newest turns whole while they fit", () => {
+  // "claude" counts 4 characters a token in the estimate counter's lookup.
+  const count = (text: string) => estimateTokenCounter.count(text, "claude");
+
+  it("never sends more than the budget, keeping the newest turns whole while they fit", async () => {
     const history = { turns: [turn("r1", "a".repeat(400), "ok"), turn("r2", "b".repeat(40), "ok"), turn("r3", "c".repeat(40), "ok")] };
-    const fitted = cutToBudget(history, 35); // 140 characters
+    const fitted = await cutToBudget(history, 35, count); // 140 characters
     expect(fitted.transcript).not.toContain("aaaa");
     expect(fitted.transcript).toContain("b".repeat(40));
     expect(fitted.transcript).toContain("c".repeat(40));
@@ -124,8 +153,8 @@ describe("the consult's hard cut", () => {
     expect(fitted.transcript.length).toBeLessThanOrEqual(140);
   });
 
-  it("cuts the newest turn to its end when it alone is over the budget", () => {
-    const fitted = cutToBudget({ turns: [turn("r1", "x".repeat(1_000), "the tail line")] }, 10); // 40 characters
+  it("cuts the newest turn to its end when it alone is over the budget", async () => {
+    const fitted = await cutToBudget({ turns: [turn("r1", "x".repeat(1_000), "the tail line")] }, 10, count); // 40 characters
     expect(fitted.transcript.length).toBeLessThanOrEqual(40);
     expect(fitted.transcript).toContain("the tail line");
     expect(fitted).toMatchObject({ turnsRead: 1, cut: true });

@@ -7,7 +7,7 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { handler, harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
 import type { HarnessBlock } from "@flow-state-dev/core/types";
 import { INTAKE_SESSION_ID } from "@flow-state-dev/workforce";
-import { harnessStub } from "../teams/devteam/harness-stub.mts";
+import { harnessStub } from "@flow-state-dev/harness-manager";
 import { errorReporterHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab } from "../teams/devteam/host.mts";
 

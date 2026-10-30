@@ -36,7 +36,7 @@ import { createModelResolver } from "@flow-state-dev/core";
 import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { DEFAULT_MODEL, gatewayModel, keysServing, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
-import { harnessStub } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
+import { harnessStub } from "@flow-state-dev/harness-manager";
 import { deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
 import { LAB_ORG_ID, LAB_USERS, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";

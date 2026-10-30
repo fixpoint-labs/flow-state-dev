@@ -84,7 +84,7 @@ function waitedByStamp(source: string | undefined, metadata: unknown) {
 import { ensureSessionRecord, refuseReadonlyStateChange } from "./session-birth";
 import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 import { resolveActionCore } from "../execution/resolve-action-core";
-import { isTraceObservabilityEnabled, errorDetailsWithCause, isValidOrgId } from "@flow-state-dev/core";
+import { isTraceObservabilityEnabled, errorDetailsWithCause, estimateTokenCounter, isValidOrgId } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
 import { cloneValue, getTransientKeys, getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
@@ -2758,15 +2758,7 @@ export async function createExecutionContext<
 
 
   const modelResolver = options.modelResolver ?? createModelResolver();
-  const tokenCounter: TokenCounter = flow.tokenCounter ?? {
-    async count(text: string): Promise<number> {
-      return Math.ceil(text.length / 4);
-    },
-    async countMessages(messages: LLMMessage[]): Promise<number> {
-      const total = messages.reduce((acc, message) => acc + JSON.stringify(message.content).length, 0);
-      return Math.ceil(total / 4);
-    }
-  };
+  const tokenCounter: TokenCounter = flow.tokenCounter ?? estimateTokenCounter;
   const resolvedModelStorage = new AsyncLocalStorage<string>();
   const resolveModel = ((modelId: string, blockName?: string) => {
     resolvedModelStorage.enterWith(modelId);
@@ -3721,6 +3713,7 @@ export async function createExecutionContext<
       response: responseRef.current as ExecutionContext["response"],
       signal: signalOverride ?? options.signal ?? new AbortController().signal,
       resolveModel,
+      tokenCounter,
       targets: new Proxy({}, {
         get(_target, prop) {
           if (typeof prop !== "string") {

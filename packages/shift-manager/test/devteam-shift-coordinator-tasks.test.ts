@@ -33,7 +33,7 @@ import { LIST_TASKS_ACTION } from "../src/lib/conversation-tasks";
 import { UPDATE_TASK_ACTION } from "../src/lib/reads";
 import { selectHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
-import { harnessStub, type HarnessStub, type HarnessStubOptions, type StubRun } from "../teams/devteam/harness-stub.mts";
+import { harnessStub, type HarnessStub, type HarnessStubOptions, type StubRun } from "@flow-state-dev/harness-manager";
 import { commitAll, createBareRemote } from "../teams/devteam/scratch-repo.mts";
 
 /** The capability's tool list as a turn with no ask host gets it: the list is chosen per turn (FIX-1816). */

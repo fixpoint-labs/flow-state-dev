@@ -30,8 +30,9 @@ import { CodexAgentAbortedError } from "@flow-state-dev/codex";
 
 import { claudeCodeSessionFlow } from "@/lib/claude-code-mode";
 import { CODEX_SESSION, codexBlockOptions, codexClient, codexClientOptions, codexSessionFlow, type CodexMcpServer } from "@/lib/codex-mode";
-import { harnessFeeds } from "@/lib/harness-session-flow";
-import { turnNotice, UNKNOWN_CONVERSATION, type HarnessSessionState } from "@/lib/harness-turn";
+import { kitchenSinkHarnessFeeds } from "@/lib/harness-session-flow";
+import type { HarnessSessionState } from "@flow-state-dev/harness-manager";
+import { turnNotice, UNKNOWN_CONVERSATION } from "@/lib/harness-turn";
 import { sessionBranch, worktreeRoot } from "@/lib/harness-worktree";
 import { scriptedCodex, scriptedCodexPauses } from "@/lib/scripted-codex";
 
@@ -265,7 +266,7 @@ describe("what Kitchen Sink hands the Codex block (S1, BR-10, BR-12)", () => {
     vi.stubEnv("KITCHEN_SINK_PLANTED_SECRET", "do-not-hand-this-over");
     vi.stubEnv("CODEX_API_KEY", "sk-key");
     vi.stubEnv("CODEX_HOME", "/codex-home");
-    const options = codexBlockOptions(harnessFeeds(CODEX_SESSION));
+    const options = codexBlockOptions(kitchenSinkHarnessFeeds(CODEX_SESSION));
     // The SDK's own client, built once Codex has listed its MCP servers (`codexClient`).
     expect(options.resolveCodexClient).toBeTypeOf("function");
     expect(options.client).toBeUndefined();
@@ -341,7 +342,7 @@ describe("what Kitchen Sink hands the Codex block (S1, BR-10, BR-12)", () => {
 
   it("test mode runs the scripted Codex", () => {
     vi.stubEnv("KITCHEN_SINK_TEST_MODE", "1");
-    expect(codexBlockOptions(harnessFeeds(CODEX_SESSION)).resolveCodexClient).toBeDefined();
+    expect(codexBlockOptions(kitchenSinkHarnessFeeds(CODEX_SESSION)).resolveCodexClient).toBeDefined();
   });
 
   it("nothing the caller sends reaches the thread's options", async () => {

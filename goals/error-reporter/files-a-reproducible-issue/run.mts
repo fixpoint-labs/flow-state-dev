@@ -8,7 +8,7 @@ import type { FlowInstance, GeneratorModel, HarnessBlock, ModelResolver } from "
 import { createModelResolver, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { serve } from "@flow-state-dev/node";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { deriveWorkerSessionId, ERROR_REPORTER_FLOW, ERROR_REPORTER_INTAKE_FLOW, INTAKE_SESSION_ID, type ReportRow } from "@flow-state-dev/workforce";
+import { deriveWorkerSessionId, ERROR_REPORTER_FLOW, ERROR_REPORTER_INTAKE_FLOW, INTAKE_SESSION_ID, projectWorkspaceCapability, type ReportRow } from "@flow-state-dev/workforce";
 import { z } from "zod";
 import {
   assertPatched,
@@ -21,7 +21,7 @@ import {
   stripIntentOverrides,
   type ModulePatch,
 } from "../../lib/index.mts";
-import { harnessStub } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
+import { harnessStub } from "@flow-state-dev/harness-manager";
 import { errorReporterHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab, type LabErrorReporter } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { workerSessionId } from "../../../packages/shift-manager/teams/devteam/ask.mts";
@@ -254,7 +254,7 @@ async function open(options: {
   mkdirSync(join(SCRATCH, "runs"), { recursive: true });
   const lab = await openLab({
     stores: options.store === "memory" ? inMemoryStores() : sqliteStores({ filename: options.store }),
-    harness: harnessStub({ duringRun: plantedCoderRun, statusOf: plantedCoderStatus, outcomeOf: (run) => (plantedCoderStatus(run) === "errored" ? "failed" : "finished"), finalMessage: "Done." }).slot,
+    harness: harnessStub({ duringRun: plantedCoderRun, statusOf: plantedCoderStatus, outcomeOf: (run) => (plantedCoderStatus(run) === "errored" ? "failed" : "finished"), finalMessage: "Done.", mcpUses: [projectWorkspaceCapability] }).slot,
     runTimeoutMs: 60_000,
     workspace: { root: join(SCRATCH, "runs"), remotes: { allow: ["file"] } },
     coderWorkerId: CODER,

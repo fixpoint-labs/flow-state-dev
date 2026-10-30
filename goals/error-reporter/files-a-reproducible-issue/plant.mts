@@ -3,7 +3,7 @@
  */
 import type { GeneratorModel } from "@flow-state-dev/core/types";
 import { commitScriptedWork } from "../../../packages/shift-manager/teams/devteam/harness.mts";
-import type { StubRun } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
+import type { StubRun } from "@flow-state-dev/harness-manager";
 
 /** A project as the Shift Coordinator's model sees it. */
 export interface KnownProject {

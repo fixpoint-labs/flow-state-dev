@@ -45,7 +45,7 @@ import { serve } from "@flow-state-dev/node";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createInboxClient, type InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, loadFixture, modulePatchEnv, runGoal, silentLogger, stripIntentOverrides, type ModulePatch } from "../../lib/index.mts";
-import { harnessStub, type StubRun } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
+import { harnessStub, type StubRun } from "@flow-state-dev/harness-manager";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { commitAll, createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { LIST_TASKS_ACTION } from "../../../packages/shift-manager/src/lib/conversation-tasks.ts";

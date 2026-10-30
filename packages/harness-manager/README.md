@@ -227,6 +227,45 @@ Any block that takes the feeds and returns a run handle conforming to `@flow-sta
 
 Claude Code needs `detached: true`. Leave it out and your flow fails to build, naming the entry. Codex and Cursor need no equivalent.
 
+### A scripted harness for checks
+
+`harnessStub` is a harness you can put in the slot when a check should run no model. It records the prompt and the working directory each run was handed (`runs`), can do some real work there (`duringRun`), and returns a handle that parses against the harness contract. Use it to prove your wiring drives whatever harness sits in the slot.
+
+```ts
+import { harnessManager, harnessStub } from "@flow-state-dev/harness-manager";
+
+const stub = harnessStub({ finalMessage: "done" });
+const manager = harnessManager({ /* ... */ harness: stub.slot });
+// later: stub.runs[0].cwd is the checkout the first run was given
+```
+
+The stub connects to no MCP servers. If your host hands it an `mcpTools` feed, each run writes a status line into its session naming the servers it skipped, so a user watching that session sees which ones the run went without. That feed reads the run's project, so the block needs the capability that holds it. If the feed comes from a capability such as workforce's `projectWorkspaceCapability`, pass that capability in `mcpUses`. If neither the stub nor the manager (`harnessManager({ uses })`) holds it, the run fails with an error that names the capability.
+
+## A harness as a session
+
+The manager runs a harness for a task on a board. `harnessSessionFlow` runs one for a user instead: one session, many turns, one continuing conversation. It is the flow behind a coding chat, where each turn is a prompt and the harness picks up where it left off.
+
+```ts
+import { harnessSessionFlow } from "@flow-state-dev/harness-manager";
+import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+
+export const claudeCodeSession = harnessSessionFlow({
+  kind: "claude-code-session",
+  workspace, // where each session works; see below
+  agent: (feeds) => claudeCodeAgent({ ...feeds, detached: true, permissionMode: "bypassPermissions" }),
+});
+```
+
+`agent` builds the harness block from the feeds the flow hands it: `cwd`, `resume`, `onSession`, `model`, `worktree` and `onSteerable`. These are the session flow's own feeds. It has no `onUsage` or `onActivity`, which feed the manager's task records. `workspace` says where each session works: `provision` makes a session's directory on its first turn, `locate` finds it without making it, and `branch` names the branch whose pull requests the flow checks when a turn ends (`null` skips the check). A session is keyed by its flow kind, tenant and id, never by anything the caller sent.
+
+The flow handles the rest:
+
+- **Continuity.** `resume` hands the harness the conversation it last confirmed, and `onSession` is the only thing that records a new one. If the harness refuses to continue that conversation, the session stays bound to it, and each later turn fails the same way. To recover, start a new session.
+- **The model.** A session is created with the model it runs (`state.model`), which never changes after that. Creating one without a model is refused with `HARNESS_SESSION_MODEL_REQUIRED`. `defaultModel` is the model used for a stored session that has none recorded.
+- **Actions.** `turn` takes a prompt and waits for any running turn to finish first (`concurrency: "defer"`). `steer` hands a line to the running turn if its harness offered to take one, and answers `{ taken, live }`.
+- **A record per turn.** `state.turns` keeps the latest 20 turns, by request id. Each record holds the conversation the turn tried to resume, the one the harness confirmed, and how the turn failed: core's failure class, the harness's error text, and whether it was stopped. Read it to show a user why a turn failed. The schema is `harnessSessionStateSchema`.
+- **A title.** The session takes its title from its first prompt (`harnessSessionTitle`).
+
 ## What a phase supplies
 
 ```ts
@@ -497,7 +536,7 @@ The record is `harnessUsageCollection` (`HARNESS_USAGE`, `harness-usage/**`, use
 
 ## The export surface, in two halves
 
-**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `harnessTalkTurn` with `harnessTalkInputSchema` and `harnessTalkOutputSchema`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer` for [answering a review](#reviewing-a-runs-changes), `upgradeKeptTurns`, `STEER_POLL_MS`, `PROGRESS_NOTE_MS` and `progressNoteOf` for [progress notes](#how-a-running-task-is-doing), `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerClaimOrder` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
+**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `harnessTalkTurn` with `harnessTalkInputSchema` and `harnessTalkOutputSchema`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer` for [answering a review](#reviewing-a-runs-changes), `harnessSessionFlow` with `harnessSessionFeeds`, `harnessSessionStateSchema` and their types for [a harness as a session](#a-harness-as-a-session), `harnessStub` for [checks that run no model](#a-scripted-harness-for-checks), `upgradeKeptTurns`, `STEER_POLL_MS`, `PROGRESS_NOTE_MS` and `progressNoteOf` for [progress notes](#how-a-running-task-is-doing), `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerClaimOrder` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
 
 **`@flow-state-dev/harness-manager/checkout`** is how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. `run` and the git timeouts it re-exports come from `@flow-state-dev/workspace`. It is outside the versioned contract, so a host should not import from it. Everything in it is specific to git worktrees. Adopt `harnessManager({ harness })` and let it own the checkout.
 

@@ -53,7 +53,7 @@ import { createInboxClient, type InboxItem } from "@flow-state-dev/orchestration
 import { reconcileInbox, rowTruthOf, suspensionTruthOf } from "@flow-state-dev/orchestration/inbox/check";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, loadFixture, modulePatchEnv, runGoal, silentLogger, stripIntentOverrides, type ModulePatch } from "../../lib/index.mts";
 import { claudeCodeEnv, claudeCodeHarness, selectHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
-import { harnessStub, type HarnessStubOptions, type StubRun } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
+import { harnessStub, type HarnessStubOptions, type StubRun } from "@flow-state-dev/harness-manager";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { commitAll, createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { LIST_TASKS_ACTION } from "../../../packages/shift-manager/src/lib/conversation-tasks.ts";

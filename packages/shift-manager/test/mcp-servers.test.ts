@@ -23,7 +23,7 @@ import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { mcpCredentialsCapability, projectWorkspaceCapability, type ProjectMcpServers } from "@flow-state-dev/workforce";
 import { commitScriptedWork, type HarnessFeeds } from "../teams/devteam/harness.mts";
-import { harnessStub } from "../teams/devteam/harness-stub.mts";
+import { harnessStub } from "@flow-state-dev/harness-manager";
 import { LAB_USER_ID, openLab, type Lab, type OpenLabOptions } from "../teams/devteam/host.mts";
 
 const CODER = "eng.coder";
@@ -315,7 +315,7 @@ describe("the harness a Lab runs", () => {
   });
 
   it("says in its session that the scripted coder runs without the project's servers (BR-24)", async () => {
-    const stub = harnessStub({ duringRun: commitScriptedWork, finalMessage: "done" });
+    const stub = harnessStub({ duringRun: commitScriptedWork, finalMessage: "done", mcpUses: [projectWorkspaceCapability] });
     const { lab } = await open({ slot: stub.slot });
     await lab.door("POST", "mcp-credentials/linear", { body: { value: SENTINEL } });
     mcp.keys.length = 0;
