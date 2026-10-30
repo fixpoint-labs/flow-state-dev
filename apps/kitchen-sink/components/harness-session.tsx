@@ -68,11 +68,11 @@ import {
   planSource,
   turnNotice,
   turnNumbers,
-  type HarnessSessionState,
   type PlanMarkerItem,
   type PlanRowItem,
   type TurnNotice,
 } from "@/lib/harness-turn";
+import type { HarnessSessionState } from "@flow-state-dev/harness-manager";
 import { useSessionDraft } from "@/lib/use-session-draft";
 
 export interface HarnessSessionViewProps {

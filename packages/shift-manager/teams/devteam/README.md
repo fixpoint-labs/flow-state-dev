@@ -87,8 +87,8 @@ no opinion at that spot — not because a convention is missing.
 | the bare clone in `scratch-repo.mts` | Where an artifact has to survive to is the lab's question, not the framework's. A temp-directory repository plus a bare repository at a declared path the work is published to keeps the check re-runnable with no credential while still giving the artifact an address that outlives the process. |
 | `acceptance-check.mjs`, with `acceptance.mts` | The requester's half of the brief. It names the module, the export and the behaviour, and is spawned from here against the produced tree — never copied into a checkout, because a check the run can reach is a check the run can satisfy by rewriting it. |
 
-`harness-stub.mts`, `harness.mts`, `phase.mts` and `worker-config.mts` are
-supporting parts of those.
+`harness.mts`, `phase.mts` and `worker-config.mts` are supporting parts of
+those. The scripted coder is `harnessStub` from `@flow-state-dev/harness-manager`.
 
 ## What it works around
 

@@ -190,6 +190,9 @@ importers:
       '@flow-state-dev/engine':
         specifier: workspace:*
         version: link:../../packages/engine
+      '@flow-state-dev/harness-manager':
+        specifier: workspace:*
+        version: link:../../packages/harness-manager
       '@flow-state-dev/memory':
         specifier: workspace:*
         version: link:../../packages/memory
