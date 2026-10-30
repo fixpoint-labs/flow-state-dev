@@ -127,7 +127,7 @@ import {
   defineEmWorkerFlow,
   featureIssueOf,
 } from "./workforce/flows/workers/em.mts";
-import type { HarnessStub } from "./harness-stub.mts";
+import type { HarnessFeeds as LabHarnessFeeds } from "./harness.mts";
 import { mcpCredentialsAdapter, statusOf } from "./mcp-credentials.mts";
 import { coordinatorMemory } from "./memory.mts";
 import { withWriteLatency } from "./write-latency.mts";
@@ -380,7 +380,7 @@ export interface OpenLabOptions {
   /** The store adapter this lab runs over — `inMemoryStores()` is enough. */
   stores: unknown;
   /** The harness the `coder` worker flow runs. The one thing the two checks differ by. */
-  harness: HarnessStub["slot"];
+  harness: (feeds: LabHarnessFeeds) => HarnessBlock;
   /**
    * Where each coding run works.
    *

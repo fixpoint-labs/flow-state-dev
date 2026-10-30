@@ -241,13 +241,38 @@ const parseArgs = (item: Item): Record<string, unknown> => {
 const HISTORY_SUMMARY = "historySummary";
 
 /** What the screen reads of where the worker's last turn began reading word for word. */
-interface WindowRead {
+export interface WindowRead {
   /** The first turn the window held, when earlier turns had left it. */
   historyStart?: string;
   /** The newest turn folded into the summary, once one was. */
   summarizedThrough?: string;
   /** Whether the summary covers every turn before its mark; one with a hole can't be called that. */
   summaryComplete?: boolean;
+}
+
+/** The public face of the session's history summary resource. */
+export interface HistorySummaryFace {
+  clientData?: { throughRequestId?: string | null; complete?: boolean };
+}
+
+/**
+ * Where the worker's last turn began reading word for word, from the
+ * session's requests and its history summary.
+ *
+ * @param requests The session's recent requests, any order.
+ * @param summary The session's history summary resource, when it has one.
+ */
+export function windowReadOf(requests: readonly SessionRequestSummary[], summary: HistorySummaryFace | undefined): WindowRead {
+  // The latest turn of the worker's own that read a window, by when it started: the one the worker read last.
+  // A turn still starting has no mark yet; the window only moves forward, so the one before it still holds.
+  const answering = requests.filter((r) => !QUIET_ACTIONS.has(r.actionName) && r.historyStart != null);
+  const latest = answering.reduce<SessionRequestSummary | undefined>((a, r) => (a === undefined || (r.startedAtMs ?? 0) > (a.startedAtMs ?? 0) ? r : a), undefined);
+  const through = summary?.clientData?.throughRequestId;
+  return {
+    ...(latest?.historyStart == null ? {} : { historyStart: latest.historyStart.requestId }),
+    // The worker reads after the mark whether or not the summary has a hole; a hole only changes the label.
+    ...(through == null ? {} : { summarizedThrough: through, summaryComplete: summary?.clientData?.complete === true }),
+  };
 }
 
 /**
@@ -641,18 +666,11 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       });
       const stopPoll = poll(
         async (): Promise<WindowRead> => {
-          // The latest turn of the worker's own, by when it started: its window is the one the worker read last.
-          const answering = (await client.sessions.requests(sessionId, { limit: 20 })).filter((r) => !QUIET_ACTIONS.has(r.actionName));
-          const latest = answering.reduce<SessionRequestSummary | undefined>((a, r) => (a === undefined || (r.startedAtMs ?? 0) > (a.startedAtMs ?? 0) ? r : a), undefined);
+          const requests = await client.sessions.requests(sessionId, { limit: 20 });
           const summary = (await client.sessions.state(sessionId, { includeItems: false })).resources?.session?.[HISTORY_SUMMARY] as
-            | { clientData?: { throughRequestId?: string | null; complete?: boolean } }
+            | HistorySummaryFace
             | undefined;
-          const through = summary?.clientData?.throughRequestId;
-          return {
-            ...(latest?.historyStart == null ? {} : { historyStart: latest.historyStart.requestId }),
-            // The worker reads after the mark whether or not the summary has a hole; a hole only changes the label.
-            ...(through == null ? {} : { summarizedThrough: through, summaryComplete: summary?.clientData?.complete === true }),
-          };
+          return windowReadOf(requests, summary);
         },
         (next) => {
           read = next;

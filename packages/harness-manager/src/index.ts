@@ -25,6 +25,10 @@
  *   in a run's session: a steer while its task is open, talk once it has
  *   finished. `harnessTalkTurn` is its talk half, which a coder also runs for
  *   a message about a finished task.
+ * - `harnessSessionFlow`, a coding harness as one long-lived session a
+ *   person talks to: the host says where sessions work and which harness
+ *   runs. `harnessStub`, a scripted harness for the slot, for checks that run
+ *   no model.
  * - `upgradeKeptTurns`, the upgrade's one-off step that writes a line the
  *   coding door kept before FIX-2086 onto its task as a steer.
  * - `runOwnerClaimOrder`, for a board kept per organization: a run belongs to
@@ -113,6 +117,30 @@ export {
   type SessionDoorRefusalReason,
 } from "./session-door";
 
+// ── A coding harness as a long-lived session a person talks to ────────────
+export {
+  harnessSessionFlow,
+  harnessSessionFeeds,
+  harnessSessionTitle,
+  harnessSessionStateSchema,
+  harnessTurnRecordSchema,
+  HARNESS_SESSION_FAILED_OUTCOME,
+  HARNESS_SESSION_MODEL_REQUIRED,
+  type HarnessSessionFeeds,
+  type HarnessSessionFlowOptions,
+  type HarnessSessionPlace,
+  type HarnessSessionState,
+  type HarnessSessionWorkspace,
+  type HarnessTurnRecord,
+} from "./session-flow";
+// ── A scripted harness for model-free checks ────────────────────────────────
+export {
+  harnessStub,
+  type HarnessStub,
+  type HarnessStubMcpTools,
+  type HarnessStubOptions,
+  type StubRun,
+} from "./harness-stub";
 // ── The upgrade's one-off step for lines the coding door kept ───────────────
 export { upgradeKeptTurns, type KeptTurnUpgradeOptions, type KeptTurnUpgradeStores } from "./upgrade-kept-turns";
 

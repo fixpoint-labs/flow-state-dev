@@ -39,7 +39,7 @@ import type { ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { listProjectsOutputSchema } from "@flow-state-dev/workforce";
 import { DEFAULT_MODEL, gatewayModel, keysServing, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
-import { harnessStub } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
+import { harnessStub } from "@flow-state-dev/harness-manager";
 import { LAB_USERS, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 
