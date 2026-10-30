@@ -162,11 +162,17 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
   }, [node]);
 
   const sent = useCallback(() => {
+    // No scrolling element yet, such as a view drawing an empty state until the first request:
+    // it opens at its end when it mounts, which shows the line.
+    if (node === null) {
+      opening.current = true;
+      return;
+    }
     // A feed short enough never to have overflowed is still opening; the person writing in it ends that.
     opening.current = false;
     bringNext.current = true;
     jump();
-  }, [jump]);
+  }, [node, jump]);
 
   return { ref: setNode, atEnd, jump, sent };
 }

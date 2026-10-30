@@ -46,25 +46,27 @@ function Feed({
     {
       key: elementKey,
       "data-testid": "feed",
-      ref: (node: HTMLDivElement | null) => {
-        if (node !== null && !Object.getOwnPropertyDescriptor(node, "scrollHeight")) {
-          let top = 0;
-          Object.defineProperties(node, {
-            clientHeight: { get: () => VIEW },
-            scrollHeight: { get: () => Math.max(VIEW, node.querySelectorAll("p").length * LINE) },
-            scrollTop: { get: () => top, set: (v: number) => (top = Math.max(0, Math.min(v, node.scrollHeight - VIEW))) },
-          });
-          // A smooth scroll lands at once here: what the tests read is how it was asked for.
-          node.scrollTo = ((options: ScrollToOptions) => {
-            moves.push({ behavior: options.behavior, top: options.top ?? 0 });
-            node.scrollTop = options.top ?? 0;
-          }) as typeof node.scrollTo;
-        }
-        ref(node);
-      },
+      ref: (node: HTMLDivElement | null) => ref(node && layOut(node)),
     },
     Array.from({ length: lines }, (_, i) => createElement("p", { key: i }, `line ${i}`)),
   );
+}
+
+/** Size `node` as a browser would: each `p` 40px in a 100px view. Every scroll it is asked for is recorded. */
+function layOut(node: HTMLElement): HTMLElement {
+  if (Object.getOwnPropertyDescriptor(node, "scrollHeight")) return node;
+  let top = 0;
+  Object.defineProperties(node, {
+    clientHeight: { get: () => VIEW },
+    scrollHeight: { get: () => Math.max(VIEW, node.querySelectorAll("p").length * LINE) },
+    scrollTop: { get: () => top, set: (v: number) => (top = Math.max(0, Math.min(v, node.scrollHeight - VIEW))) },
+  });
+  // A smooth scroll lands at once here: what the tests read is how it was asked for.
+  node.scrollTo = ((options: ScrollToOptions) => {
+    moves.push({ behavior: options.behavior, top: options.top ?? 0 });
+    node.scrollTop = options.top ?? 0;
+  }) as typeof node.scrollTo;
+  return node;
 }
 
 const feedElement = (props: Parameters<typeof Feed>[0]) => createElement(Feed, props);
@@ -172,6 +174,24 @@ describe("new content in a conversation", () => {
     expect(moves).toEqual([]);
     expect(screen.getByTestId("feed").scrollTop).toBe(0);
     expect(feed.atEnd).toBe(false);
+  });
+
+  it("shows the line sent before the feed existed, once the feed mounts with it", async () => {
+    // An empty state in place of the feed until the first request: the hook runs, the element doesn't.
+    function Late({ lines }: { lines: number }) {
+      feed = useJumpToLatest();
+      if (lines === 0) return createElement("span", null, "nothing yet");
+      return createElement(
+        "div",
+        { "data-testid": "feed", ref: (node: HTMLDivElement | null) => feed.ref(node && layOut(node)) },
+        Array.from({ length: lines }, (_, i) => createElement("p", { key: i }, `line ${i}`)),
+      );
+    }
+    const { rerender } = render(createElement(Late, { lines: 0 }));
+    act(() => feed.sent());
+    rerender(createElement(Late, { lines: 30 }));
+    await settle();
+    expect(screen.getByTestId("feed").scrollTop).toBe(30 * LINE - VIEW);
   });
 
   it("forgets the line it was to bring in once the reader scrolls up to read", async () => {
