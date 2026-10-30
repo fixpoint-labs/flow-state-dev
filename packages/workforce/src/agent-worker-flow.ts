@@ -370,6 +370,14 @@ export interface AgentWorkerFlowOptions {
    */
   afterAnswer?: BlockDefinition<any, any>;
   /**
+   * How many model steps a turn may take: each step is one model call, and a
+   * step that calls tools leads to another. The last one offers no tools, so a
+   * worker still looking things up answers with what it found. Defaults to
+   * the generator's own cap (8). Raise it for workers that dig: a researcher
+   * reading a large repository spends a step per lookup.
+   */
+  maxSteps?: number;
+  /**
    * A block run on every turn just before the worker answers, the mirror of
    * {@link afterAnswer}. It runs as a `.tap`: it sees the turn's input and
    * cannot change it, and its output is dropped. Unlike `afterAnswer`, a
@@ -1165,7 +1173,11 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
         if ((own === undefined || own.length === 0) && extra.length === 0) return named;
         return [...named, ...(own ?? []), ...extra];
       },
-      user: (input) => input.message
+      user: (input) => input.message,
+      // A worker still looking things up when its steps run out answers with
+      // what it found, rather than ending its turn with nothing said: a sender
+      // waiting on its reply would otherwise hear "no answer" (FIX-2347).
+      loop: { answerOnLastStep: true, ...(options.maxSteps === undefined ? {} : { maxIterations: options.maxSteps }) }
     });
 
   // The answer's two generator names, which its messages carry as `agentName`.

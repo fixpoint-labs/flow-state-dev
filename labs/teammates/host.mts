@@ -222,6 +222,8 @@ export async function openTeammates(options: TeammatesOptions) {
         ],
         beforeAnswer: earlier.fold,
         afterAnswer: mem.captureFromItems,
+        // researcher reads a whole repository a file at a time: room to dig before it answers.
+        maxSteps: 100,
       }),
       showSettings: ["icon", "color"],
     },

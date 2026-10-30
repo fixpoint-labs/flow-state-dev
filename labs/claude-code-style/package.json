@@ -14,7 +14,6 @@
     "typecheck": "node ../../scripts/typecheck.mjs",
     "test": "vitest run --root .",
     "inventory": "node scripts/inventory.mjs",
-    "inventory:write": "node scripts/inventory.mjs --write",
     "inventory:control": "node scripts/inventory.mjs --control"
   },
   "devDependencies": {

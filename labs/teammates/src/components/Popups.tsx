@@ -30,9 +30,19 @@ export const taskLabel = (line: string, task: { harness?: string; model?: string
   return on === undefined ? line : `${line}, on ${on}`;
 };
 
-/** Whether a message was answered, from the message log: by a reply message, or, for a call, by its result. */
-export const repliedIn = (talk: readonly TalkRow[], messageId: string) =>
-  talk.some((row) => row.inReplyTo === messageId || (row.id === messageId && row.callAnswered === true));
+/** How a sent message stands. */
+export type AnswerState = "working" | "replied" | "no answer";
+
+/**
+ * How a message stands, from the message log: `replied` by a reply message
+ * or, for a call, by its result; `no answer` when the reply is the
+ * framework's "no answer"; `working` until then.
+ */
+export const answerIn = (talk: readonly TalkRow[], messageId: string): AnswerState => {
+  const reply = talk.find((row) => row.inReplyTo === messageId);
+  if (reply !== undefined) return reply.noAnswer === true ? "no answer" : "replied";
+  return talk.some((row) => row.id === messageId && row.callAnswered === true) ? "replied" : "working";
+};
 
 /** The open popup, live: it reads what it shows by itself, so it stays current while the work goes on. */
 export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, onClose }: {
@@ -99,7 +109,7 @@ function MessagePopup({ adapter, popup, nameOf, lookOf, onClose }: {
   const to = nameOf(popup.to);
   const line = `Messaged ${to}`;
   return (
-    <SessionPopup label={line} title={<Titled look={lookOf(popup.to)} line={line} />} status={repliedIn(talk, popup.messageId) ? "replied" : "working"} onClose={onClose}>
+    <SessionPopup label={line} title={<Titled look={lookOf(popup.to)} line={line} />} status={answerIn(talk, popup.messageId)} onClose={onClose}>
       <p className="font-mono text-xs text-muted-foreground">
         {nameOf(popup.from)} → {to}
       </p>
