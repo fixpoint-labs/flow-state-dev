@@ -23,4 +23,22 @@ describe("a harness run's activity", () => {
     expect(hook).toHaveBeenCalledOnce();
     warn.mockRestore();
   });
+
+  it("never fails the run when the host's async hook rejects: it logs, and the run goes on", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      const hook = vi.fn(async () => {
+        throw new Error("board unreachable");
+      });
+      expect(() => reportHarnessActivity(hook, { kind: "tool_call", name: "Bash", arguments: "{}" }, {} as never)).not.toThrow();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(unhandled).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("board unreachable"));
+    } finally {
+      process.off("unhandledRejection", unhandled);
+      warn.mockRestore();
+    }
+  });
 });
