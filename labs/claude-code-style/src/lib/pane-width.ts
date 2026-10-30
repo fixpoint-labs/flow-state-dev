@@ -12,6 +12,16 @@ export const PANE_MIN = 280;
 /** The widest it goes, in px. */
 export const PANE_MAX = 720;
 
+/** The room the main thread keeps beside the pane when the window narrows, in px. */
+export const THREAD_MIN = 360;
+
+/**
+ * The pane's grid column: its width, but never more than leaves the main
+ * thread `THREAD_MIN` beside the 15rem sessions list, and never under the
+ * floor. A narrow window shrinks the pane without forgetting your width.
+ */
+export const paneColumn = (width: number) => `min(${width}px, max(${PANE_MIN}px, 100vw - 15rem - ${THREAD_MIN}px))`;
+
 const KEY = "claude-code-style:pane-width";
 
 /** A width kept within the floor and the ceiling, in whole px. */

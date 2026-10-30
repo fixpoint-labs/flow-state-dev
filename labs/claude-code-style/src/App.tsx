@@ -7,7 +7,7 @@ import { SessionsList } from "./components/SessionsList";
 import { TasksPane } from "./components/TasksPane";
 import { ThreadsBoard } from "./components/ThreadsBoard";
 import { Thread } from "./components/Thread";
-import { usePaneWidth } from "./lib/pane-width";
+import { paneColumn, usePaneWidth } from "./lib/pane-width";
 import { useWatch } from "./lib/use-watch";
 import { modeOfWorker, type ModeId } from "./modes";
 
@@ -50,7 +50,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     <SheetProvider>
       <div
         className="grid h-full grid-rows-[minmax(0,1fr)] overflow-hidden"
-        style={{ gridTemplateColumns: `15rem minmax(0,1fr) ${paneWidth}px` }}
+        style={{ gridTemplateColumns: `15rem minmax(0,1fr) ${paneColumn(paneWidth)}` }}
       >
         <SessionsList
           view={view}
