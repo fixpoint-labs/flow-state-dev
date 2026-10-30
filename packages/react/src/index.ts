@@ -180,6 +180,12 @@ export {
   type ReadFence
 } from "./hooks/useReadFence";
 
+export {
+  useFollowLatest,
+  type FollowLatest,
+  type FollowLatestOptions
+} from "./hooks/useFollowLatest";
+
 export type {
   BlockComponentType,
   RendererRegistry

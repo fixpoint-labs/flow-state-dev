@@ -1,3 +1,4 @@
+import { useFollowLatest } from "@flow-state-dev/react";
 import { useState, type FormEvent } from "react";
 import type { LabAdapter, TaskRow } from "../adapter";
 import { useWatch } from "../lib/use-watch";
@@ -30,6 +31,7 @@ export function ThreadView({
     [adapter, sessionId, task.id],
   );
   const [text, setText] = useState("");
+  const feed = useFollowLatest({ resetKey: task.id });
   const column = statusColumn(task);
   const question = task.waitingOn && task.waitingOn.kind !== "review" ? task.waitingOn : undefined;
   const words = text.trim();
@@ -67,7 +69,7 @@ export function ThreadView({
       </div>
       <div className="px-4 pt-2 text-xs text-muted-foreground">{statusLine(task)}</div>
       <Spend task={task} split className="px-4" />
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-2">
+      <div ref={feed.ref} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-2">
         {work?.entries.map((entry) => <Entry key={entry.id} entry={entry} />)}
       </div>
       {question ? (

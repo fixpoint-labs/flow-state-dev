@@ -779,6 +779,9 @@ importers:
       '@flow-state-dev/orchestration':
         specifier: workspace:*
         version: link:../../packages/orchestration
+      '@flow-state-dev/react':
+        specifier: workspace:*
+        version: link:../../packages/react
       '@flow-state-dev/store-sqlite':
         specifier: workspace:*
         version: link:../../packages/store-sqlite
@@ -974,6 +977,9 @@ importers:
       '@flow-state-dev/orchestration':
         specifier: workspace:*
         version: link:../../packages/orchestration
+      '@flow-state-dev/react':
+        specifier: workspace:*
+        version: link:../../packages/react
       '@flow-state-dev/store-sqlite':
         specifier: workspace:*
         version: link:../../packages/store-sqlite
