@@ -22,7 +22,6 @@ import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { claudeCodeAgent, type ResolveClaudeAgent, type SdkMessageLike } from "@flow-state-dev/claude-code/sdk";
 import {
-  ASK_MARKER_IGNORE_RULE,
   harnessManager,
   harnessTaskInputSchema,
   runOwnerClaimOrder,
@@ -56,7 +55,8 @@ function seedRepo(dir: string): void {
   git("config", "user.email", "steer@example.test");
   git("config", "user.name", "Steer Test");
   writeFileSync(join(dir, "tracked.txt"), "content\n");
-  writeFileSync(join(dir, ".gitignore"), `${ASK_MARKER_IGNORE_RULE}\n`);
+  // The manager refuses a checkout whose repository doesn't ignore its `.fsdev/` files.
+  writeFileSync(join(dir, ".gitignore"), "**/.fsdev/\n");
   git("add", "tracked.txt", ".gitignore");
   git("commit", "-m", "root");
   git("remote", "add", "origin", "https://github.com/fixpoint-labs/steer-fixture.git");
