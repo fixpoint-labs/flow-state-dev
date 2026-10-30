@@ -49,6 +49,7 @@ import { MAX_MESSAGE_CHARS, messageChainsOf, workerMessagesResources } from "./m
 import { queueBehindUser } from "./queue";
 import { messageHearingOf, RECEIVED_MARK, type MessageHearing, type ReceivedMark } from "./received-mark";
 import { sendQuestionToFiler } from "./midway-question";
+import { wakeHeldWait } from "./wait-for-reply";
 
 /** What the entry takes: the message's id, and nothing a sender could shape. */
 export const messageReceivedInputSchema = z.object({ messageId: z.string().min(1) }).strict();
@@ -171,6 +172,15 @@ export function messageReceivedEntry(options: {
       // for), and only by the request that took it.
       const row = await takeMessage(ctx as never, input.messageId);
       if (row === undefined) return { act: "none" };
+      // The answer a wait in this session still holds (FIX-2318): it wakes that wait, as the
+      // wait's result, and lands as nothing here. Not woken yet: left taken by this request,
+      // which ends, so the answer's sender's pass sends it again.
+      const wake = await wakeHeldWait(ctx as never, row);
+      if (wake === "retry") return { act: "none" };
+      if (wake === "woken") {
+        await markDelivered(ctx as never, row.id);
+        return { act: "none" };
+      }
       // Queued behind the user's stop, before anything lands. Not admitted:
       // this request ends with the take, and a resend takes it over.
       if ((await queueBehindUser(ctx as never, row)) === "not_admitted") return { act: "none" };

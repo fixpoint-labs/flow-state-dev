@@ -22,6 +22,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const fault = { dieBeforeDelivered: false, holdOwnAnswers: false };
 /** What the scripted worker's own answers that ask back came to. */
 const askedBack: unknown[] = [];
+/** A scripted turn that answers and then keeps working holds here until a test lets it go. */
+let releaseTurn: () => void = () => {};
+let turnHeld: Promise<void> = Promise.resolve();
 let releaseHeld: () => void = () => {};
 
 // A recipient whose process dies between owing a reply and the delivery (the
@@ -130,6 +133,12 @@ function scriptedFlow(installation: WorkerInstallation) {
     resources: { ...workerMessagesResources },
     execute: async (message, ctx) => {
       if (message.text.includes("[throw]")) throw new Error("the turn broke");
+      if (message.text.includes("[own-then-work]")) {
+        const sent = await sendMessage(ctx as never, installation, "scripted", { to: message.from, text: "Bluebird, said myself.", inReplyTo: message.id }, "scripted-answer");
+        if (!sent.ok) throw new Error(sent.error);
+        // Keeps working long after it answered.
+        await turnHeld;
+      }
       if (message.text.includes("[ask-back]")) {
         const sent = await sendMessage(ctx as never, installation, "scripted", { to: message.from, text: "Which codename, the old or the new?", inReplyTo: message.id }, "scripted-answer", { replyRequested: {} });
         askedBack.push(sent);
@@ -175,6 +184,7 @@ afterEach(async () => {
   fault.dieBeforeDelivered = false;
   fault.holdOwnAnswers = false;
   releaseHeld();
+  releaseTurn();
   await open?.dispose();
   open = undefined;
 });
@@ -532,6 +542,33 @@ describe("a reply request whose sender waits for it", { timeout: 40_000 }, () =>
     const answers = await answersTo(h, output!.sent);
     expect(answers).toHaveLength(1);
     expect(answers[0]!.replyRequested).toBeUndefined();
+    expect(await heardIn(h, otto)).toEqual([]);
+  });
+
+  // The wait used to follow only the recipient's request: an answer given mid-turn kept the sender
+  // parked until that turn ended, or its deadline, which is exactly the sequence reply_to_waiting advises.
+  it("answered mid-turn by the recipient's own sendMessage gets that answer while the recipient's turn is still running", async () => {
+    turnHeld = new Promise<void>((resolve) => (releaseTurn = resolve));
+    const { model } = ottoModel({ "Wait on the scripted one": [{ to: "scripted", text: "What is the codename? [own-then-work]", wait: true, deadline: 60_000 }] });
+    const { h, otto } = await boot(model);
+    const asking = Date.now();
+    await h.post("alice", otto, "respond", { message: "Wait on the scripted one" }, "agent");
+    const ottoDone = async () => ((await h.requestsOf(otto)) as any[]).some((r) => r.actionName === "respond" && r.status === "completed");
+    expect(await until(ottoDone, 20_000)).toBe(true);
+    expect(Date.now() - asking).toBeLessThan(20_000);
+
+    const [output] = await toolOutputs(h, otto);
+    expect(output).toEqual({ status: "answered", sent: expect.stringMatching(/^msg_/), reply: "Bluebird, said myself." });
+    // The recipient's turn is still working: the answer woke the wait, not the turn's end.
+    const scripted = (await logRows(h)).find((row) => row.id === output!.sent)!.toSession as string;
+    const landing = ((await h.requestsOf(scripted)) as any[]).find((r) => r.actionName === MESSAGE_RECEIVED_ENTRY && r.status === "in_progress");
+    expect(landing).toBeDefined();
+    // One answer, as the wait's result: it never landed in Otto's conversation.
+    expect(await answersTo(h, output!.sent)).toHaveLength(1);
+    expect(await heardIn(h, otto)).toEqual([]);
+    releaseTurn();
+    await h.settled();
+    expect(await answersTo(h, output!.sent)).toHaveLength(1);
     expect(await heardIn(h, otto)).toEqual([]);
   });
 

@@ -94,6 +94,13 @@ export const workerMessageRowSchema = z.object({
    * goes to it as a message and never into a wait that ended.
    */
   waitEndedAt: z.number().optional(),
+  /**
+   * The wait gate the waiting sender parks on now, and its request (FIX-2318),
+   * written before each park: the answer, landing in the sender's session,
+   * resumes it there, so a turn that answers and goes on doesn't keep the
+   * sender waiting.
+   */
+  waitGate: z.object({ gateId: z.string().min(1), requestId: z.string().min(1) }).optional(),
   /** The message that answered this one, once one did (FIX-2310): set once, so a second answer is never sent. */
   answeredBy: z.string().min(1).optional(),
   /** This message is the framework's "no answer" to the one it answers (FIX-2310): its recipient's turn ended with nothing to say, or failed. */

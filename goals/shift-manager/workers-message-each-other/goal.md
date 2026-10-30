@@ -62,7 +62,7 @@
 - `GOAL_CONTROL=ignore-deadline`: a call waits for the reply an hour past its deadline (`messages/wait-for-reply.ts`). Leg 10b must fail **`10b:queued`**.
 - `GOAL_CONTROL=no-default-deadline`: a call with no deadline waits the host's maximum (`tasks/helpers/wait-on-task.ts`). Leg 10b must fail **`10:default-deadline`**.
 - `GOAL_CONTROL=held-after-wait` (FIX-2318; was `send-again`, whose wait-again path is gone): a wait that ends at its deadline doesn't say so, so its late answer is held for a wait that is gone (`messages/wait-for-reply.ts`). Leg 10b must fail **`10b:kept`**.
-- `GOAL_CONTROL=relay-the-wait` (FIX-2318; was `relay-the-call`): an answer held for its sender's wait is also dispatched as a message (`messages/send-message.ts`). Leg 10 must fail **`10:no-second-line`**.
+- `GOAL_CONTROL=relay-the-wait` (FIX-2318; was `relay-the-call`): the answer to a wait never wakes it, so it also lands as a message (`messages/wait-for-reply.ts`). Leg 10 must fail **`10:no-second-line`**.
 - `GOAL_CONTROL=no-step-guard`: a model step may hold two waits (`tasks/helpers/wait-on-task.ts`). Leg 10c must fail **`10c:one-wait-per-step`**.
 
 The spec's other-organization signals (`6:other-org`, and another org's session in `7:refusals`) and its `no-org-check` control are not run here: DevTeam verifies every bearer into its one organization, so no person here has a second one. The engine's `request-sessions.test.ts` covers that refusal.

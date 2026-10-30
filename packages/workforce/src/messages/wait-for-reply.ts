@@ -9,8 +9,9 @@
 import { waitOnRequest } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { checkWaitable, toolCallOf } from "@flow-state-dev/orchestration/task-board";
+import { hasEnded } from "@flow-state-dev/orchestration/tasks";
 import type { WorkerInstallation } from "../workers/installation";
-import { messageLogOf, newMessageId } from "./message-log";
+import { messageLogOf, newMessageId, type WorkerMessageRow } from "./message-log";
 import { sendMessage, type SendMessageInput } from "./send-message";
 
 /** What a wait came to, once its checks passed. `sent` is the message's id. */
@@ -21,6 +22,10 @@ export type WaitResult =
 
 /** A wait's outcome: its result, or a refusal before anything was written. */
 export type WaitOutcome = WaitResult | { readonly ok: false; readonly error: string };
+
+/** How often an answer tries to wake its wait in one landing, and how far apart, before its sender's pass sends it again. */
+const WAKE_TRIES = 5;
+const WAKE_RETRY_MS = 200;
 
 /** The most requests one wait follows to its answer: a taker that died, and the one that took over. */
 const MAX_FOLLOWS = 5;
@@ -82,6 +87,44 @@ export async function sendAndWaitForReply(
   return waits?.owingPark !== undefined ? waits.owingPark(sendThenWait) : sendThenWait();
 }
 
+/**
+ * In the waiting sender's session, `row`'s landing: when it is the answer a
+ * wait there still holds (the message it answers names it in `answeredBy`,
+ * has a deadline, and no `waitEndedAt`), resume that wait's gate with it
+ * (`RequestHost.resumeWait`), so the sender has it as soon as it is given, not
+ * at the end of the turn that gave it. Such an answer is the wait's result and
+ * never lands as a message.
+ *
+ * @returns `"not-held"` for any other message; `"woken"` once the gate took
+ *   it or had already ended (the wait reads the answer off the log either way);
+ *   `"retry"` while the sender hasn't parked yet, or the gate is busy, so the
+ *   answer stays undelivered and its sender's pass sends it again.
+ */
+export async function wakeHeldWait(ctx: BlockContext, row: Pick<WorkerMessageRow, "id" | "inReplyTo">): Promise<"not-held" | "woken" | "retry"> {
+  if (row.inReplyTo === undefined) return "not-held";
+  const log = messageLogOf(ctx);
+  for (let tries = 0; tries < WAKE_TRIES; tries += 1) {
+    if (tries > 0) await new Promise((resolve) => setTimeout(resolve, WAKE_RETRY_MS));
+    const asked = (await log.getOptional(row.inReplyTo))?.state;
+    if (asked === undefined || asked.answeredBy !== row.id || asked.deadlineAt === undefined || asked.waitEndedAt !== undefined) return "not-held";
+    if (asked.fromSession !== ctx.session.identity.id) return "not-held";
+    const resumeWait = ctx.requestHost?.resumeWait;
+    // No host that resumes waits holds none: the wait read the answer at its request's end.
+    if (resumeWait === undefined) return "woken";
+    // Not parked yet: look again shortly.
+    if (asked.waitGate === undefined) continue;
+    const { gateId, requestId } = asked.waitGate;
+    const result = await resumeWait({ gateId, outcome: { answered: true, answer: { answeredBy: row.id } } });
+    if (result.ok || result.refused === "already-resolved") return "woken";
+    // Busy: another resume holds the turn (the engine's, at the recipient's request end, which
+    // reads the answer off the log too) or it hasn't finished parking. Not found: the waiting
+    // request finished, or hasn't parked on this gate yet, or moved on to a later one.
+    if (result.refused !== "busy" && (await hasEnded(ctx, requestId))) return "woken";
+  }
+  // Still not woken: left for the answer's sender's pass to send again.
+  return "retry";
+}
+
 /** The answer `answeredBy` names, as the wait's result. */
 async function answered(ctx: BlockContext, id: string, answeredBy: string): Promise<WaitResult> {
   const answer = (await messageLogOf(ctx).getOptional(answeredBy))?.state;
@@ -131,20 +174,23 @@ async function awaitAnswer(
       if (next.target === undefined) return end();
       target = next.target;
     }
+    // A nonce of this wait's own: a later wait on the same request parks on a gate of its own.
+    // Kept under runOnce, so a replay records and parks on the same gate.
+    const gateId = await ctx.runOnce!(`fsd.call.gate:${key}:${round}`, async () => `call:${id}#${globalThis.crypto.randomUUID()}`);
+    // Recorded before the park: an answer given while this request still runs resumes this
+    // gate from this session (`wakeHeldWait`), not only the request's end.
+    await (await log.getOptional(id))?.patchState({ waitGate: { gateId, requestId: ctx.request.identity.id } });
     const outcome = await waitOnRequest(ctx, {
       requestId: target,
-      // A nonce of this wait's own: a later wait on the same request parks on a gate of its own.
-      // The fresh UUID is safe on replay: `planKey` keeps the first plan under runOnce, so a
-      // replay parks on the stored gate and deadline, not this one.
-      gateId: `call:${id}#${globalThis.crypto.randomUUID()}`,
+      gateId,
       planKey: `fsd.call.wait:${key}:${round}`,
       deadlineAt,
       message: `Waiting on the reply to message ${id}`
     });
     if (outcome.status === "running") return end();
-    // The request ended: its turn answered (held for this wait), or it acted on
-    // nothing (a copy, or a taker that died before it landed), and the row
-    // names who acts on it now.
+    // The answer woke it (`wakeHeldWait`), or the request ended: its turn
+    // answered, or it acted on nothing (a copy, or a taker that died before it
+    // landed), and the row names who acts on it now.
     const next = await read(round + 1);
     if (next.answeredBy !== undefined) return answered(ctx, id, next.answeredBy);
     if (next.ended !== undefined) return { status: "failed", sent: id, error: next.ended };

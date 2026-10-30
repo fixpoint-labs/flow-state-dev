@@ -332,12 +332,12 @@ export const CONTROLS: Record<ControlName, Control> = {
     assertion: "10:no-second-line",
     patches: [
       {
-        module: SEND,
-        from: String.raw`if \(await claimAnswer\(ctx, row\)\) return holdForWait\(ctx, ref, resends\);`,
-        to: "if (await claimAnswer(ctx, row)) await holdForWait(ctx, ref, resends).then(() => ref.patchState({ status: \"unconfirmed\" }));",
+        module: CALL,
+        from: String.raw`if \(row\.inReplyTo === undefined\) return "not-held";`,
+        to: 'return "not-held";',
       },
     ],
-    does: "an answer held for its sender's wait is also dispatched, so it lands as a message too",
+    does: "the answer to a wait never wakes it, so it lands as a message too (and the wait reads it at its request's end)",
   },
   "no-step-guard": {
     name: "no-step-guard",

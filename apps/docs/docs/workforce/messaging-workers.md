@@ -52,7 +52,7 @@ That answer means the message is on its way, not that it has landed. See [Delive
 When a message arrives, the session it lands in gets two items:
 
 - a line the recipient's model reads in its history, `From researcher: What's the codename for the spring launch?`, under the sender's name. It is never sent to the client.
-- a component item of type `workforce:received` (`RECEIVED_MESSAGE_COMPONENT`), for your app to draw. Its `data` is `{ id, from, text, inReplyTo?, budget, replyRequested?, noAnswer? }`, where `budget` is how many more messages the exchange can send after this one, `call` is `true` when the sender is [waiting for the reply](#calls), and `replyRequested` is `true` when the sender [asked for a reply](#asking-for-a-reply). See [Showing messages in your app](#showing-messages-in-your-app).
+- a component item of type `workforce:received` (`RECEIVED_MESSAGE_COMPONENT`), for your app to draw. Its `data` is `{ id, from, text, inReplyTo?, budget, replyRequested?, noAnswer? }`, where `budget` is how many more messages the exchange can send after this one, `replyRequested` is `true` when the sender [asked for a reply](#asking-for-a-reply), and `noAnswer` is `true` when the message is the framework's [answer that says there's no answer](#when-theres-no-answer). See [Showing messages in your app](#showing-messages-in-your-app).
 
 Then the recipient takes a turn on it. That turn is told the message id, who sent it, how to answer, and how many more messages the exchange can send (see [The budget](#the-budget)).
 
@@ -138,7 +138,9 @@ The recipient sees the same prompt as for any message that asks for a reply, and
 { "status": "answered", "sent": "msg_3f1c0a9e2b7d4c6a8e10", "reply": "It's Bluebird." }
 ```
 
-`sent` is the id of the message that asked. A reply holds up to 8,000 characters; a longer final text is cut. The answer still has its own row in the [log](#showing-messages-in-your-app), so an app can show the exchange, but it doesn't land in the sender's conversation as a message as well.
+`sent` is the id of the message that asked. A reply holds up to 8,000 characters; a longer final text is cut. The answer gets its own row in the [log](#showing-messages-in-your-app), but it doesn't land in the sender's conversation as a message.
+
+The tool returns as soon as the answer is given, even when the recipient's turn goes on working afterwards, for example when it answers with `sendMessage` and then carries on.
 
 When the framework has to answer for the recipient ([When there's no answer](#when-theres-no-answer)), the result says so with `noAnswer: true`, and `reply` holds the reason:
 
@@ -332,12 +334,12 @@ A refused send answers `{ ok: false, error }`, and nothing is sent. The error st
 | `per_request_limit` | This request already sent `messages.perTurn` messages. |
 | `not_delivered` | The recipient's host refused the first delivery for good. The error carries its reason, and the message's row in the log is `refused`. See [Delivery](#delivery). |
 | `deadline_without_wait` | `deadline` was passed without `wait: true`. |
-| `reply_to_waiting` | An answer passed `replyRequested` or `wait`, but the message it answers is one its sender is still [waiting for](#waiting-for-the-reply). That answer becomes the wait's result and lands nowhere, so nothing could answer it. Answer without them, then ask in a new message. |
+| `reply_to_waiting` | An answer passed `replyRequested` or `wait`, but the message it answers is one its sender is still [waiting for](#waiting-for-the-reply). That answer goes back as the wait's result, not as a message, so a question in it would never be answered. Answer without them, then ask in a new message. |
 | `wait_unavailable` | `wait: true` on a host that can't hold a wait. Send with `replyRequested` instead. See [Where a wait can run](#where-a-wait-can-run). |
 | `wait_deadline_out_of_range` | `deadline` is outside the host's bounds, one second to 24 hours by default. |
 | `wait_already_pending` | This round of tool calls already waits on something: another `wait: true`, or `getTask` with `wait`. See [Where a wait can run](#where-a-wait-can-run). |
 | `wait_too_deep` | The wait would be a sixth wait nested in its chain. |
-| `no_reply` | `wait: true` or `replyRequested: true` to a worker that runs nothing on a message, so no reply would come. Send without `wait` or `replyRequested`, or file it a task. |
+| `no_reply` | `wait: true` or `replyRequested: true` to a worker that runs nothing on a message, so no reply would come. Refused only when the sender can tell this before it sends; otherwise the message is sent and its answer is the framework's [no answer](#when-theres-no-answer). Send without `wait` or `replyRequested`, or file it a task. |
 
 ## Consulting a conversation instead of messaging it
 
@@ -628,6 +630,7 @@ Each row has:
 | `noAnswer` | `true` on the [answer that says there's no answer](#when-theres-no-answer). |
 | `deadlineAt` | When a sender that [waits](#waiting-for-the-reply) stops waiting, in ms. Absent when it doesn't wait. |
 | `waitEndedAt` | When that wait ended with no answer yet, in ms. The answer then came as a message. |
+| `waitGate` | `{ gateId, requestId }`: the wait the sender is parked on now. Its answer resumes it. Server-written. |
 | `queuedBehind` | `"user"` while the message waits for the user to answer in the recipient's conversation. Cleared when it lands. |
 | `at` | When it was sent, in ms. |
 
@@ -638,7 +641,7 @@ In a conversation, each side of a message is an item you can match on. Both name
 - A sent message is a `tool_output` item for the tool named `SEND_MESSAGE_TOOL` (`"sendMessage"`). Match on it to draw the message as a line of its own rather than a tool call.
 - A received message is a `component` item whose component is `RECEIVED_MESSAGE_COMPONENT` (`"workforce:received"`), with `data` of `{ id, from, text, inReplyTo?, budget, replyRequested?, noAnswer? }`.
 
-[Shift Manager](../shift-manager/overview.md) does all of this: its Messages screen lists the log, a conversation shows each sent message as *To &lt;worker&gt;: &lt;text&gt;* (or *To task &lt;id&gt;* and *To conversation &lt;id&gt;* for one sent to a task or a session), and each received message as its own item under the sender's name. A message that asks for a reply shows as *Asking &lt;worker&gt;…* while it is sent and *Asked &lt;worker&gt;* once it's done. A waited one shows the answer under it.
+[Shift Manager](../shift-manager/overview.md) does all of this: its Messages screen lists the log, a conversation shows each sent message as *To &lt;worker&gt;: &lt;text&gt;* (or *To task &lt;id&gt;* and *To conversation &lt;id&gt;* for one sent to a task or a session), and each received message as its own item under the sender's name. A message that asks for a reply shows as *Asking &lt;worker&gt;…* until the send completes, or, for one sent with `wait: true`, until the wait ends; then it reads *Asked &lt;worker&gt;*. A waited one shows the answer under it.
 
 ## Related pages
 
