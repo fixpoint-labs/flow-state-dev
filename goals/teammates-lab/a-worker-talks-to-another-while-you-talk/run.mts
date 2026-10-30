@@ -32,7 +32,7 @@
  * README's typo is one of several.
  *
  * Run:      pnpm tsx goals/teammates-lab/a-worker-talks-to-another-while-you-talk/run.mts
- * Controls: GOAL_CONTROL=no-model | no-lead-send | no-reply-tool | no-summary | no-memory (see goal.md)
+ * Controls: GOAL_CONTROL=no-model | no-lead-send | no-reply-back | no-summary | no-memory (see goal.md)
  */
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import { writeFileSync, mkdirSync } from "node:fs";
@@ -111,8 +111,18 @@ const CONTROLS: Record<string, { patches?: ModulePatch[]; model?: string; steps:
   // Step 5 may go red too: with no way to message, lead files its research ask as a task instead
   // (seen in 2 of 2 runs before the lab dropped projects). That is the model, not a leak.
   "no-lead-send": { patches: [dropSendFor(fixture.lead)], steps: ["2", "3"], mayAlso: ["5"], skip: ["4"] },
-  // researcher hears lead but can't answer it.
-  "no-reply-tool": { patches: [dropSendFor(fixture.researcher)], steps: ["3"], skip: ["4"] },
+  // lead asks with a reply requested, and researcher's answer never goes back to it.
+  "no-reply-back": {
+    patches: [
+      {
+        module: "packages/workforce/src/messages/owed-replies.ts",
+        from: String.raw`if \(row !== undefined && wantsReply\(row\) && row\.answeredBy === undefined\) \{`,
+        to: "if (false) { /* goal control no-reply-back: the owed reply is never sent */",
+      },
+    ],
+    steps: ["3"],
+    skip: ["4"],
+  },
   // Step 3 may go red under both of these: researcher sometimes answers lead in its own conversation
   // instead of with `sendMessage`, so no reply lands (2 of 3 runs on 2026-10-28). Neither patch
   // touches messaging; that is the model, not a leak.
@@ -485,8 +495,11 @@ await runGoal(async (failures, tell_) => {
       if (!date.isIn(drawn3[replyAt]!.text)) fail("3", `researcher's reply doesn't carry the launch date ${date.text}: "${drawn3[replyAt]!.text}"`);
       const used = drawn3.slice(replyAt + 1).find((e) => e.kind === "assistant" && date.isIn(e.text));
       if (used === undefined) fail("3", `no line of lead's after the reply states the launch date ${date.text}`);
-      const replies = (await log()).filter((r) => r.from === fixture.researcher && r.to === fixture.lead && r.inReplyTo !== undefined);
+      const rows3 = await log();
+      const replies = rows3.filter((r) => r.from === fixture.researcher && r.to === fixture.lead && r.inReplyTo !== undefined);
       if (!replies.some((r) => r.status === "delivered")) fail("3", "no delivered reply row researcher → lead in the message log");
+      const asked3 = rows3.filter((r) => r.from === fixture.lead && r.to === fixture.researcher);
+      if (!asked3.some((r) => r.replyRequested === true)) fail("3", "lead's message to researcher didn't ask for a reply (no replyRequested row)");
       if (used !== undefined) evidence.push(`3: reply landed after lead's answer; lead's next line says ${date.text}`);
     }
 

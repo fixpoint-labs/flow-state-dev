@@ -161,5 +161,6 @@ Not wired yet:
 
 ## What this app adds
 
-Every file in the lab, by kind. `node scripts/inventory.mjs` fails on a file that is none of these,
-and on a flow over 200 lines; `--wired` also fails on any fixture.
+Configuration, React UI and small flows, plus checks and fixtures. `node scripts/inventory.mjs`
+fails on a file that is none of these, and on a flow over 200 lines; `--wired` also fails on any
+fixture.
