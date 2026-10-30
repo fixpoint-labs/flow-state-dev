@@ -130,7 +130,13 @@ describe("the retired-shape map", () => {
 
   // FIX-2317: a question is one kind of hold, so a row FIX-2183 stored with its
   // holds under `questions` still blocks its claim once read.
-  const stop = { id: "s1", actor: "user", openedAt: 1, source: { kind: "suspension", requestId: "r", suspensionId: "s1" }, ask: { kind: "review", prompt: "Look?" } };
+  const stop = {
+    id: "s1",
+    actor: "user",
+    openedAt: 1,
+    source: { kind: "suspension", requestId: "r", suspensionId: "s1" },
+    ask: { kind: "review", prompt: "Look?" },
+  };
 
   it("questions: a row's holds stored as questions read as holds", () => {
     const read = withRetiredShapes({ ...row, status: "in_progress", questions: [stop] });
