@@ -160,7 +160,11 @@ the convention derives them, the last two because the body is already the instru
 A hired worker then receives **two** instruction settings, never merged: `instructions` (its own
 body) and `teamInstructions` (its team's). Both are absent rather than empty when there are none.
 The [built-in worker flow](../../docs/architecture/workforce-default-worker-flow.md) composes them
-into its prompt in a fixed order — the team's first, the worker's own last.
+into its prompt in a fixed order — the team's first, the worker's own last — after one layer of
+its own: who the worker is (its `name:`, team and `description`) and who it can reach, read from
+the roster on every request, then one rule on using tools. `workerRecipients` returns that list
+of who a worker can reach (the same one `sendMessage`'s description reads), and
+`rosterDisplayName` / `rosterTeamName` name a roster worker as a user reads it.
 
 The reader builds nothing: no flow, no agent, no registry entry. It throws only when `root` itself
 cannot be read or is a symlink — a folder that produces no worker lands in `errors`, keyed by its

@@ -24,11 +24,11 @@ import { messageTurnStateSchema } from "./hop";
 import { SEND_MESSAGE_TOOL, SENDS_MESSAGES_MARK } from "./keys";
 import { MAX_MESSAGE_CHARS, workerMessagesResources } from "./message-log";
 import { conversationLedgerResources } from "../conversation-board/ledger";
-import { recipientRefusal, sendMessage } from "./send-message";
+import { sendMessage } from "./send-message";
+import { workerRecipients } from "./recipients";
 import { callWorker, waitAgain, type CallOutcome } from "./call";
 
-/** The most workers the description lists, and the longest description it quotes for one. */
-const MAX_LISTED = 25;
+/** The longest description the list quotes for one worker. */
 const MAX_DESCRIPTION = 160;
 
 /** What the model passes. Strict: nothing else is taken. */
@@ -112,15 +112,12 @@ const BASE_DESCRIPTION =
 
 /** Who the running worker can message, as the description's list: every roster worker the send would take. */
 async function recipientsLine(ctx: BlockContext, installation: WorkerInstallation, self: string): Promise<string> {
-  const roster = await installation.roster(ctx as never);
-  const listed = roster
-    .filter((worker) => recipientRefusal(installation, self, worker.id, worker) === undefined)
-    .slice(0, MAX_LISTED)
-    .map((worker) => {
-      const description = (worker.description ?? "").replace(/\s+/g, " ").trim();
-      const short = description.length > MAX_DESCRIPTION ? `${description.slice(0, MAX_DESCRIPTION - 1)}…` : description;
-      return `- ${worker.id}${short === "" ? "" : `: ${short}`}`;
-    });
+  const { messageable } = await workerRecipients(ctx, installation, self);
+  const listed = messageable.map((worker) => {
+    const description = (worker.description ?? "").replace(/\s+/g, " ").trim();
+    const short = description.length > MAX_DESCRIPTION ? `${description.slice(0, MAX_DESCRIPTION - 1)}…` : description;
+    return `- ${worker.id}${short === "" ? "" : `: ${short}`}`;
+  });
   return listed.length === 0 ? "\n\nNo other worker on your roster can be messaged now." : `\n\nWorkers you can message:\n${listed.join("\n")}`;
 }
 
