@@ -243,7 +243,7 @@ If your host relays MCP servers to its harness, the stub takes none. Handed an `
 
 ## A harness as a session
 
-The manager runs a harness for a task on a board. `harnessSessionFlow` runs one for a person instead: one session, many turns, one continuing conversation. It is the flow behind a coding chat, where each turn is a prompt and the harness picks up where it left off.
+The manager runs a harness for a task on a board. `harnessSessionFlow` runs one for a user instead: one session, many turns, one continuing conversation. It is the flow behind a coding chat, where each turn is a prompt and the harness picks up where it left off.
 
 ```ts
 import { harnessSessionFlow } from "@flow-state-dev/harness-manager";
@@ -263,7 +263,7 @@ The flow handles the rest:
 - **Continuity.** `resume` hands the harness the conversation it last confirmed, and `onSession` is the only thing that records a new one. A conversation the harness refuses to continue stays bound, so the session keeps failing visibly instead of moving on quietly.
 - **The model.** A session is created with the model it runs (`state.model`), which never changes after that. Creating one without a model is refused with `HARNESS_SESSION_MODEL_REQUIRED`. `defaultModel` covers sessions stored before a model was required.
 - **Two actions.** `turn` takes a prompt and waits for any running turn to finish first (`concurrency: "defer"`). `steer` hands a line to the running turn if its harness offered to take one, and answers `{ taken, live }`.
-- **A record per turn.** `state.turns` holds what each recent turn asked to continue, what the harness confirmed, and how it failed, classified with core's `harnessFailureKind`. A page derives its notices from that record. The schema is `harnessSessionStateSchema`.
+- **A record per turn.** `state.turns` holds what each recent turn asked to continue, what the harness confirmed, and how it failed, in core's neutral failure classes rather than a harness's own words. A page derives its notices from that record. The schema is `harnessSessionStateSchema`.
 - **A title.** The session takes its title from its first prompt (`harnessSessionTitle`).
 
 ## What a phase supplies
