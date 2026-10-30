@@ -14,7 +14,7 @@ import { DELEGATES_STATE } from "../delegates/delegate-keys";
 import { flowTakes } from "../delegates/delegate-check";
 import { currentDelegates } from "../delegates/delegate-list";
 import { SEND_MESSAGE_TOOL } from "./keys";
-import { rosterDisplayName, rosterTeamName, workerRecipients } from "./recipients";
+import { MAX_LISTED_RECIPIENTS, rosterDisplayName, rosterTeamName, workerRecipients } from "./recipients";
 
 /** The longest description the layer quotes for one worker. */
 const MAX_DESCRIPTION = 160;
@@ -75,11 +75,16 @@ export async function workerIdentityPrompt(ctx: BlockContext, installation: Work
   const takesYourTasks = (worker: (typeof messageable)[number]) =>
     isDelegate(worker) && flowTakes(installation, worker.flow) === "tasks";
   const teammate = (worker: (typeof messageable)[number]) => (takesYourTasks(worker) ? `${entry(worker)} ${DELEGATE_MARK}` : entry(worker));
+  // The lists stop at MAX_LISTED_RECIPIENTS; a cut list can't stand in for listDelegates.
+  const cut = messageable.length >= MAX_LISTED_RECIPIENTS || taskOnly.length >= MAX_LISTED_RECIPIENTS;
+  const listNote = cut
+    ? `(the first ${MAX_LISTED_RECIPIENTS}; asked who your teammates or delegates are, call listDelegates for the rest)`
+    : "(asked who your teammates or delegates are, answer from this list: it is current, so no tool call is needed)";
   lines.push(
     "",
     messageable.length === 0
       ? "No other worker on your roster can be messaged now."
-      : `Your teammates, read from your roster this turn (asked who your teammates or delegates are, answer from this list: it is current, so no tool call is needed), whom you can message with ${SEND_MESSAGE_TOOL} by id:\n${messageable.map(teammate).join("\n")}`
+      : `Your teammates, read from your roster this turn ${listNote}, whom you can message with ${SEND_MESSAGE_TOOL} by id:\n${messageable.map(teammate).join("\n")}`
   );
   if (messageable.some(takesYourTasks)) lines.push("", DELEGATE_RULE);
   const fileable = taskOnly.filter(isDelegate);

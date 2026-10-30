@@ -157,6 +157,21 @@ describe("the delegates the layer marks", () => {
   });
 });
 
+describe("a teammate list cut at its cap", () => {
+  // Past the cap a delegate can be missing from the list, so the layer must
+  // not tell the model the list is complete and no lookup is needed.
+  it("sends the model to listDelegates for the rest instead of calling the list current", async () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({ id: `eng.w${i}`, name: null, teamName: null, description: null, flow: "agent", delegates: [] }));
+    const installation = {
+      workerFlows: () => ({ agent: { roles: ["contributor"] } }),
+      roster: async () => [{ id: "eng.ana", name: null, teamName: null, description: null, flow: "agent", delegates: [] }, ...many] as unknown as RosterWorker[]
+    } as unknown as WorkerInstallation;
+    const layer = (await workerIdentityPrompt({ session: { state: { workerId: "eng.ana" } } } as never, installation))!;
+    expect(layer).toContain("call listDelegates for the rest");
+    expect(layer).not.toContain("no tool call is needed");
+  });
+});
+
 describe("a roster worker's display name and team", () => {
   it("falls back to the id's segments, and an org worker has no team", () => {
     expect(rosterDisplayName({ id: "eng.bo", name: null })).toBe("bo");
