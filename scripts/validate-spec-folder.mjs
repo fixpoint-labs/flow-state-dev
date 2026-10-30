@@ -207,13 +207,8 @@ function main() {
 }
 
 /**
- * True when this file is the entry point. Node resolves symlinks for the main
- * module, so `import.meta.url` is the real path while `process.argv[1]` keeps
- * the symlinked one it was invoked through — on macOS every path under the
- * system temp directory is such a link. Comparing the two literally made the
- * guard skip `main()` and exit 0 without printing, the one failure mode a CI
- * gate must never have. Compare the resolved path too, and keep the literal
- * comparison so `--preserve-symlinks-main` still matches.
+ * Literal argv href, then realpath, so a symlink still runs and
+ * `--preserve-symlinks-main` still matches.
  */
 function invokedAsMain() {
   const entry = process.argv[1];
@@ -222,7 +217,7 @@ function invokedAsMain() {
   try {
     return import.meta.url === pathToFileURL(realpathSync(entry)).href;
   } catch {
-    return false; // Entry resolved to nothing readable; not this module.
+    return false;
   }
 }
 
