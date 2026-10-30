@@ -138,7 +138,7 @@ function serializeAbortReason(reason: unknown): string {
  * — success and the abort/disconnect/error paths alike — see callers in
  * runActionInternal.
  */
-async function drainRequestSideChainPool(ctx: ExecutionContext): Promise<void> {
+export async function drainRequestSideChainPool(ctx: ExecutionContext): Promise<void> {
   const pool = getRequestSideChainPool(ctx);
   if (pool === undefined) {
     return;

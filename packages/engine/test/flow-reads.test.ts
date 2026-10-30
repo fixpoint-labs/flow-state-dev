@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineFlow, defineResourceCollection, dispatcher, handler } from "@flow-state-dev/core";
+import { defineFlow, defineResourceCollection, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import { onRequestEnded } from "@flow-state-dev/core/types";
 import { createFlowApiRouter, createFlowRegistry, createInMemoryStores, disposeFlowApiRouter } from "../src";
 import { drainRequestEnds } from "../src/execution/request-end-hooks";
@@ -81,6 +81,22 @@ const cleansUp = handler({
   }
 });
 
+// A side chain that adds its hook only after the read's own step has answered.
+const lateCleanup = handler({
+  name: "late-cleanup",
+  inputSchema: z.unknown(),
+  execute: async (_input, ctx) => {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    onRequestEnded(ctx, (ending) => {
+      ended.push(`late:${ending.status}`);
+    });
+    return {};
+  }
+});
+const sideChains = sequencer({ name: "read-with-side-chain", inputSchema: z.object({}) })
+  .sideChain(lateCleanup)
+  .step(handler({ name: "answer", inputSchema: z.unknown(), execute: () => ({ ok: true }) }));
+
 const dispatches = dispatcher({
   name: "read-that-dispatches",
   type: "internal",
@@ -100,6 +116,7 @@ function build() {
       writesState: { block: writesState },
       writesUser: { block: writesUser },
       cleansUp: { block: cleansUp },
+      sideChains: { block: sideChains },
       dispatches: { block: dispatches }
     }
   })();
@@ -196,6 +213,15 @@ describe("a flow's reads", () => {
     expect(failed.status).toBe(422);
     expect(ended).toEqual(["completed", "failed"]);
     // A host's shutdown would otherwise wait on every read that added a hook.
+    expect(await drainRequestEnds(0)).toBe(0);
+  });
+
+  it("waits for its side chains before it ends, so their hooks run too", async () => {
+    const { router, sessionId } = await seeded();
+    ended.length = 0;
+    const res = await post(router, ["board", sessionId, "reads", "sideChains"], { userId: "alice", input: {} });
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect(ended).toEqual(["late:completed"]);
     expect(await drainRequestEnds(0)).toBe(0);
   });
 

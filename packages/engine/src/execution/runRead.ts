@@ -20,6 +20,7 @@ import type { StoreRegistry } from "../stores/types";
 import { generateId } from "../utils/generate-id";
 import { executeBlock } from "./executeBlock";
 import { requestEndRegistryOf } from "./request-end-hooks";
+import { drainRequestSideChainPool } from "./runAction";
 
 /** What {@link runRead} needs: the flow, the read, the caller and the session. */
 export type RunReadOptions = {
@@ -220,8 +221,9 @@ export async function runRead(options: RunReadOptions): Promise<unknown> {
   try {
     result = await executeBlock({ block: read.block, input, ctx, metadata: { scope: "request" }, logger });
   } finally {
-    // A read ends like any request: the hooks its block added run now, and
-    // a host's shutdown stops waiting on it.
+    // A read ends like any request: its `.sideChain()` work settles, then the
+    // hooks its blocks added run, and a host's shutdown stops waiting on it.
+    await drainRequestSideChainPool(ctx);
     const error = result === undefined ? new Error("the read threw") : result.error;
     await requestEndRegistryOf(ctx)?.run(
       error === undefined
