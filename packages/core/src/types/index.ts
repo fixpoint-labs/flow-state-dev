@@ -156,6 +156,7 @@ export {
 
 export type {
   ActionConfig,
+  ReadConfig,
   TypedEntries,
   ActionCore,
   ActionMcpConfig,

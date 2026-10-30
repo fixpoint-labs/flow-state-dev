@@ -452,9 +452,11 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     act(() => fireEvent.click(screen.getByRole("tab", { name: /board/i })));
     const lanes = await screen.findAllByTestId("project-lane");
     expect(lanes.map((lane) => lane.getAttribute("data-session-id"))).toEqual([own.sessionId]);
-    await eventually(async () => (seen.slice(boardFrom).some((r) => r.path.includes("/actions/listTasks_tasks")) ? true : undefined), "a task read");
-    const taskReads = seen.slice(boardFrom).filter((r) => r.path.includes("/actions/listTasks_tasks"));
-    expect(taskReads.every((r) => r.body.includes(own.sessionId!))).toBe(true);
+    await eventually(async () => (seen.slice(boardFrom).some((r) => r.path.includes("/reads/listTasks_tasks")) ? true : undefined), "a task read");
+    const taskReads = seen.slice(boardFrom).filter((r) => r.path.includes("/reads/listTasks_tasks"));
+    expect(taskReads.every((r) => r.path.includes(own.sessionId!))).toBe(true);
+    // A read, never the action: a poll stores no request (FIX-2286).
+    expect(seen.some((r) => r.path.includes("/actions/listTasks_tasks"))).toBe(false);
     expect(seen.some((r) => r.path.includes(his.sessionId!) || r.body.includes(his.sessionId!))).toBe(false);
 
     // Bob's entry: its details and report, never his session.

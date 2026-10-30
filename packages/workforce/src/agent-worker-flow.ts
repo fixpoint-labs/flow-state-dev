@@ -1447,6 +1447,8 @@ function defineAgentFlowAround(
       // session whose delegates take no task answers `no_delegation_board`.
       ...(board?.actions ?? {})
     },
+    // On an installation: the task list, read with nothing stored (FIX-2286).
+    ...(board !== undefined ? { reads: board.reads } : {}),
     internal: {
       actions: {
         // A workstream's open: creates the lead's workstream session, linked

@@ -125,6 +125,14 @@ const ROUTES_BY_KIND: { [K in CoveredKind]: RouteEntry<K>[] } = {
       actionName: p.actionName
     }))
   ],
+  run_read: [
+    entry("POST", "/:flowKind/:sessionId/reads/:readName", (p) => ({
+      kind: "run_read",
+      flowKind: p.flowKind,
+      sessionId: p.sessionId,
+      readName: p.readName
+    }))
+  ],
   request_stream: [
     entry("GET", "/:flowKind/requests/:requestId/stream", (p) => ({
       kind: "request_stream",

@@ -51,7 +51,7 @@
  */
 
 import { defineCapability, handler, SuspensionTimeoutError, type DefinedCapability } from "@flow-state-dev/core";
-import type { ActionConfig, BlockContext } from "@flow-state-dev/core/types";
+import type { ActionConfig, BlockContext, ReadConfig } from "@flow-state-dev/core/types";
 import type { GeneratorTool } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
@@ -2185,4 +2185,29 @@ export function taskToolActions(
       { block: tool, description: tool.description },
     ]),
   );
+}
+
+/**
+ * A durable ledger's task list as a flow `reads` map (FIX-2286):
+ * `listTasks_<suffix>`, answering exactly what the `listTasks_<suffix>` action
+ * answers for the same board, from the same list code, and storing nothing.
+ * Spread it into `defineFlow`'s `reads` so an app can watch a session's board
+ * without a request per look.
+ *
+ * `resolve` is the read's own resolver: it must reach the board the action's
+ * does and write nothing on the way, since a read's context refuses every
+ * write. A resolver that repairs or starts rows as it goes (a board's touch)
+ * is the action's, not this one's. Only the list is a read: `getTask` can
+ * wait, which holds a wait slot on the row.
+ */
+export function taskToolReads(
+  collectionId: string,
+  resolve: TaskCollectionResolver,
+): Record<string, ReadConfig> {
+  const listTasks = buildTaskTools(resolve, {
+    nameSuffix: taskToolSuffix(collectionId),
+    claimless: true,
+  }).find((tool) => tool.name === `listTasks_${taskToolSuffix(collectionId)}`);
+  if (listTasks === undefined) throw new Error(`taskToolReads("${collectionId}"): the task tools built no listTasks`);
+  return { [listTasks.name]: { block: listTasks, description: listTasks.description } };
 }

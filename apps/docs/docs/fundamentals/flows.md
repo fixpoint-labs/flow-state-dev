@@ -291,6 +291,25 @@ const documents = defineFlow({
 
 Each map is looked up on its own. An action named `summarize` does not satisfy a dispatcher whose action is the internal entry `summarize`, and `defineFlow()` throws at definition time when a reachable dispatcher names an entry its map does not hold. Both maps nest under `actions`; the flat spelling `internal: { summarize: { block } }` is refused by name.
 
+### Reads: looking without storing
+
+An app that polls a session, say to keep a task list on screen, shouldn't leave a request behind every few seconds. A flow's `reads` are for that. Each one runs a block on the session and hands back its output, and nothing is stored: no request record, no item, no history entry.
+
+```ts
+const board = defineFlow({
+  kind: "board",
+  actions: { createTask: { block: createTask } },
+  reads: {
+    tasks: { block: listTasks },
+  },
+});
+
+// In the app
+const { tasks } = await client.flow("board").read("tasks", {}, { sessionId });
+```
+
+A read sees the session, its resources, and its user the same way an action does, and it is fenced the same way: another user's session answers as one that doesn't exist. What it can't do is change anything. A resource write, a session state write, or a dispatch inside a read fails with `read_only`. If the thing you want to run should change state or show up in the session's history, make it an action.
+
 ## Session configuration
 
 Sessions carry state and a `client` block that persist across requests in a conversation. Resources live on the flow as a flat `resources` map — each resource's own `scope` decides where it is stored:

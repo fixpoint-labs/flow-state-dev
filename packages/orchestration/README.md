@@ -414,6 +414,9 @@ declare the collection; none claims or drains; a transition the task cannot make
 you resolve yourself. Both take an optional roster last, the same one
 `createTaskToolsCapability` takes. These are **public** actions: anyone who can call the flow can settle
 or reassign its tasks. See the docs, "Changing tasks from outside a run".
+`taskToolReads(collectionId, resolve)` returns the same `listTasks_<suffix>` listing as a
+flow `reads` map, for an app that polls the board: it answers what the action answers and
+stores nothing. Spread it into `defineFlow({ reads })`.
 Omission reapplies the default on all three. They apply only when the board
 constructs its own collection — a supplied `collection` is left alone and passing
 any of them is a construction error, so configure caps on

@@ -85,6 +85,7 @@ import {
   settlePassWake,
   taskToolsForTurn,
   taskToolActions,
+  taskToolReads,
   type TaskCollectionResolver,
   type AssigneeRoster,
   type AssigneeRosterSource
@@ -1648,7 +1649,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
    * session's own board, guarded, with its steps beside it when the worker
    * works steps (FIX-2076). `undefined` while the caller may file nothing.
    */
-  const reachBoard = async (ctx: BlockContext, routesSelf: boolean): Promise<TaskCollectionRef | undefined> => {
+  const reachBoard = async (ctx: BlockContext, routesSelf: boolean, touch = true): Promise<TaskCollectionRef | undefined> => {
     const partition = await filingSessionIdOf(ctx.session);
     const ref = await conversationLedgerAt(ctx, partition);
     if (ref === undefined) return undefined;
@@ -1656,8 +1657,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // the pass pays it, one at a time. A touch resends nothing itself. Don't
     // narrow it to writes, or to a session that files now: rows filed before
     // it lost its last task-taking delegate still run and are heard (FIX-1802 BR-5).
-    if (hasPastDue(ref.list(), ref.now())) await triggerPass(ctx);
-    else if (hasStartable(ref)) await triggerPass(ctx, { touch: true });
+    // A read never touches (FIX-2286 D2): the pass writes, and a row's start is
+    // owed by the wake its writer sent, not by a look.
+    if (touch && hasPastDue(ref.list(), ref.now())) await triggerPass(ctx);
+    else if (touch && hasStartable(ref)) await triggerPass(ctx, { touch: true });
     // No board to act on while the session doesn't file: none of its
     // delegates takes a task now, so an action answers `no_delegation_board`.
     // A turn of a worker that works steps files them whatever its delegates.
@@ -1673,6 +1676,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
 
   /** The model's every tool call reaches the board here: the worker's own turn, which may file its steps. */
   const turnResolver: TaskCollectionResolver = (ctx) => reachBoard(ctx, true);
+
+  /** A read reaches the board here: an action's reach, with no touch (FIX-2286 D2). */
+  const readResolver: TaskCollectionResolver = (ctx) => reachBoard(ctx, false, false);
 
   /** The repairs a pass runs before its drain, and again after (`payBoardDebts`). */
   const delivery = conversationDelivery(CONVERSATION_LEDGER_ID);
@@ -1918,6 +1924,11 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     planned: planning.planned,
     /** The task tools as public actions, `<tool>_tasks`. */
     actions: taskToolActions(CONVERSATION_LEDGER_ID, resolver, roster, { dispatches: true }),
+    /**
+     * The task list as a read, `listTasks_tasks` (FIX-2286): the action's rows,
+     * stored nowhere. Spread into the flow's `reads` beside `actions`.
+     */
+    reads: taskToolReads(CONVERSATION_LEDGER_ID, readResolver),
     /** The ledger, the plan ledger, the chain records and the routed-session records, for the flow's `resources`. */
     resources: { ...conversationLedgerResources, ...planLedgerResources, ...taskChainResources, ...routedSessionResources }
   };

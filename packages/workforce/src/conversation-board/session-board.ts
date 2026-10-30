@@ -15,6 +15,8 @@
  *   `<tool>_tasks`, which answer `no_delegation_board` while the session
  *   doesn't file, and the four delegate actions (`addDelegate`,
  *   `removeDelegate`, `setFallback`, `listDelegates`).
+ * - **The reads**: `reads`, the task list as a read named `listTasks_tasks`,
+ *   which an app watches without storing a request per look (FIX-2286).
  * - **The entries**: `entries(turn)`, the internal entries the board runs on
  *   (a run of the board), its notices arrive on (`onTaskSettled`), and a
  *   worker's message arrives on, and the session state they keep
@@ -35,6 +37,7 @@
  *     session: { ...installation.session(board.sessionStateShape), serverOwned: board.serverOwned },
  *     resources: { ...installation.resources, ...board.resources },
  *     actions: { respond: { ... }, ...board.actions },
+ *     reads: board.reads,
  *     internal: { actions: board.entries(answer) }
  *   });
  * });
@@ -219,6 +222,8 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     fileRouted: board.fileRouted,
     /** The task actions (`<tool>_tasks`) and the four delegate actions, for the flow's `actions`. A manager's. */
     actions: managerActions,
+    /** The task list as a read, `listTasks_tasks`, stored nowhere (FIX-2286), for the flow's `reads`. */
+    reads: board.reads,
     /** The ledger, the chain records and the message log, for the flow's `resources`. */
     resources: { ...board.resources, ...workerMessagesResources },
     /** The session state the delegates, the board and worker messages keep, for `installation.session(...)`. */

@@ -1729,6 +1729,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       [STANDING_RULES_ACTION]: standingRulesAction,
       [SET_WORK_PROJECT_ACTION]: setWorkProjectAction
     },
+    // The task list, read with nothing stored (FIX-2286).
+    reads: sessionBoard.reads,
     internal: {
       actions: {
         // The round-deadline wake (D2), or a host's in-process timer, with
