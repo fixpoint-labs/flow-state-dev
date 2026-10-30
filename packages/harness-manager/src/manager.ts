@@ -2954,7 +2954,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * either, the step's own end takes the steer.
    */
   const steerWatches = new Map<string, SteerWatch>();
-  const watchForSteers = (ctx: BlockContext): AbortSignal | undefined => {
+  const watchForSteers = (ctx: BlockContext): AbortSignal => {
     const requestId = ctx.request.identity.id;
     const controller = new AbortController();
     const watch: SteerWatch = { stopped: false, timer: undefined, steer: null, handed: 0, polling: false, kick: () => {} };
@@ -3030,6 +3030,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // A read that fails stops nothing: the step's own end takes the steer.
       } finally {
         watch.polling = false;
+        // Always: the row is read every poll while a step runs, steer or none, to catch its end.
         schedule();
       }
     };
@@ -3111,14 +3112,14 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     .step(harnessBlock, {
       // The cancellable-under-a-deadline obligation, met by a primitive core
       // already has: this composes into the block's own signal, which the SDK
-      // path forwards into the query's abort controller. A steer's watch
-      // composes in beside it.
+      // path forwards into the query's abort controller. The row's watch
+      // (a steer's stop, or the task's end) composes in beside it.
       abortSignal: (ctx) => {
         const deadline = AbortSignal.timeout(runTimeoutMs);
         // Armed for every step: a run may offer a live steer once it starts.
         const steer = watchForSteers(ctx);
         startProgressNotes(ctx);
-        return steer === undefined ? deadline : AbortSignal.any([deadline, steer]);
+        return AbortSignal.any([deadline, steer]);
       },
       // Fires on every exit from the dispatch — returned, threw, or
       // suspended. The tree is only written by the agent, so releasing the
