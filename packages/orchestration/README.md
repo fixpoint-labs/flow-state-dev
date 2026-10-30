@@ -886,6 +886,10 @@ answers it when a task has one, and a task filed without one is labelled by its 
 `createTask` also takes `context`, `labels`, `maxAttempts` and `held: true`, which files the task
 without starting it until `updateTask` releases it. A task filed from a turn that is working a
 task is stamped `filedByTask` with that task's id; `listTasks({ filedByTask })` lists them.
+`createTask` files one task for one piece of work: the same `goal` (ignoring case and spacing) for
+the same assignee, while a task for it is still open, is refused with `already_open`, naming the
+open task by its title, and nothing is filed. A follow-up, and a message handed on with
+`resultTo: "conversation"`, keep their own rules.
 
 For a graph fixed in code (seeded `initialTasks`, custom collection, tuned
 dispatcher), put a `taskBoard(...).drain` or a `goalSeekLoop` in the generator's

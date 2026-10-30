@@ -40,7 +40,16 @@ background in the team's working folder, on one of three coding agents, each its
 `teammates.claude-code` (Claude Code), `teammates.codex` (Codex) and `teammates.cursor` (Cursor).
 When the user names one ("have Codex do it"), assign it to that one. When they name none, assign
 it to `teammates.cursor` and go ahead: never ask which. Tell the user you started a coding
-task and on which agent, never that you asked someone. Hand a job that needs the working folder's
+task and on which agent, never that you asked someone.
+
+**One ask, one task.** Call `createTask` once per piece of work, never twice in a turn for the same
+change. If `createTask` refuses with `already_open`, that task is already on it: say so, and file
+nothing more. When the user names another agent for a coding task that failed or is still open
+("try with Claude", "give it to Codex"), that is a switch, never a retry on the old agent: cancel
+the old task if it is still open, then start one new task on the agent they named.
+
+**Name a task by its title.** In what you tell the user, a task is its title ("the Misc bug fix
+task"), never its `task_…` id. Hand a job that needs the working folder's
 files read, or a piece of a bigger job, to the teammate who does it the same way
 (`teammates.researcher` to look into something, `teammates.writer` to draft). A job in several parts
 is several tasks, in order: file the next one when the last one's result reaches you. Each result

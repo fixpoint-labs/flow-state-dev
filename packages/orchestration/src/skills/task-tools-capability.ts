@@ -1058,6 +1058,26 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
    * reaches its own write instead of a refusal (FIX-1875 BR-15). `null`
    * stands for "nothing to refuse" in the record, which holds JSON only.
    */
+  /**
+   * The refusal for filing work a task still open already holds: the same
+   * goal, ignoring case and spacing, for the same worker. Names the open task
+   * by its title, so a reply can name it the same way.
+   */
+  function openSameWork(collection: TaskCollectionRef, assignee: string, goal: string): { ok: false; error: string } | undefined {
+    const same = (text: string) => text.trim().replace(/\s+/g, " ").toLowerCase();
+    const open = collection
+      .list()
+      .find((row) => row.assignee === assignee && !isTerminalStatus(row.status) && same(row.goal) === same(goal));
+    if (open === undefined) return undefined;
+    return {
+      ok: false as const,
+      error:
+        `already_open: task "${open.title ?? open.goal}" (${open.id}) is this same work for ${assignee}, and it is still ` +
+        `${open.status}. Nothing was filed. Say that task is on it. To change it, send it a message with updateTask; ` +
+        `to replace it, cancel it first.`,
+    };
+  }
+
   async function decideOnce<T>(
     ctx: BlockContext,
     memoize: boolean,
@@ -1115,6 +1135,16 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         ? undefined
         : await decideOnce(ctx, memoize, "assignee", async () => checkAssignee(assignee, await rosterFor(roster, ctx)) ?? null);
     if (bad) return bad;
+    // One piece of work, one task (FIX-2350): the same goal for the same
+    // worker while a task for it is open is a second start, from a call sent
+    // twice or retried. Decided once per call, so a replay finds its own row.
+    // A message handed on (`resultTo: "conversation"`) keeps its own rule:
+    // one task per delegate a round, recorded by the routing that files it.
+    const open =
+      followUp === undefined && assignee !== undefined && input.resultTo !== "conversation"
+        ? await decideOnce(ctx, memoize, "same-work", async () => openSameWork(collection, assignee, input.goal) ?? null)
+        : null;
+    if (open) return open;
     // The task whose request files this one: the task the worker's request
     // works, claimed or not (a cancelled task's run that goes on has no
     // claim, and is still its filer, so its filing is refused). Server-set,

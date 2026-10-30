@@ -112,7 +112,8 @@ const listRows = async (state: Awaited<ReturnType<typeof host>>, flow: FlowInsta
 const call =
   (toolCallId: string, toolName: string, args: () => Record<string, unknown>): StepFn =>
   () => ({ toolCalls: [{ toolCallId, toolName, args: args() }], finishReason: "tool-calls" });
-const createTask = (id: string) => call(id, "createTask", () => ({ goal: "Is ACME's SOC 2 current?", assignee: "researcher" }));
+/** Each call files its own work: the same goal while one is open is refused as a second start (FIX-2350). */
+const createTask = (id: string) => call(id, "createTask", () => ({ goal: `Is ACME's SOC 2 current? (${id})`, assignee: "researcher" }));
 const finalAnswer: StepFn = (opts) => ({ text: `final: ${toolResults(opts.messages)}`, finishReason: "stop" });
 
 /** The id `createTask` answered with, from the results the model was sent on `step`. */
