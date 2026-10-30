@@ -56,8 +56,8 @@ describe("a session's steps in a popup", () => {
     const waitAgain = send("m2", { callId: "msg_1" }, { callId: "msg_1", answered: false });
     const refused = send("m3", { to: "teammates.writer" }, { ok: false, error: "missing_message: Nothing was sent." });
     expect(toSteps([waitAgain, refused])).toEqual([
-      { id: "m2", kind: "tool", text: "sendMessage" },
-      { id: "m3", kind: "tool", text: "sendMessage" },
+      { id: "m2", kind: "tool", tool: "sendMessage", text: "Used sendMessage" },
+      { id: "m3", kind: "tool", tool: "sendMessage", text: "Used sendMessage" },
     ]);
   });
 });

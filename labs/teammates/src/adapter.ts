@@ -18,7 +18,8 @@
  * | `fire`              | the workforce client's `fire`, on one of the user's own workers               |
  * | `watchTasks`        | the board's rows, as the conversation's stream carries each one (`task-change`) |
  * |                     | and `taskSpendView` on a row, for the harness and model its run reported      |
- * | `watchRun`          | the items of the session the task's row names as its run                     |
+ * | `watchRun`          | the items of the session the task's row names as its run, each tool call      |
+ * |                     | named by the UI registry's `tool-naming` (`components/flow-state/`)           |
  * | `watchExchange`     | the receiving worker's conversation: the turn that read one message          |
  *
  * A received message is drawn from its own item (`workforce:received`), which
@@ -42,6 +43,7 @@ import {
 } from "@flow-state-dev/workforce/browser";
 import { taskSpendView } from "@flow-state-dev/orchestration/tasks";
 import { CODER_FLOW } from "./lib/coder-flow";
+import { toolIntent, toolSubject } from "./components/flow-state/tool-naming";
 import { harnessName } from "./lib/harness";
 import { sessionFeeds, type SessionFeed } from "./lib/session-feed";
 import { stableList } from "./lib/stable";
@@ -106,6 +108,10 @@ export interface SessionStep {
   text: string;
   /** For `sent`, the worker it went to. */
   to?: string;
+  /** For `tool`, the tool's own name, which a run of steps is summed up by. */
+  tool?: string;
+  /** For `tool`, the step is a shell command, shown as code. */
+  code?: boolean;
   /** For `said`, while it is still being written. */
   streaming?: boolean;
 }
@@ -209,7 +215,7 @@ const TASK_CHANGE = "task-change";
 const CREATE_TASK = "createTask";
 /** Requests that are a worker answering: everything but the board's own passes. */
 const QUIET_ACTIONS = new Set(["dispatch"]);
-/** The harness a run's items came from, by the block that emitted them. */
+/** The harness a run's items came from, by the block that emitted them: each harness block's own name, which the host keeps. */
 const HARNESS_LABEL: Record<string, string> = { "claude-code-agent": "Claude Code", "codex-agent": "Codex", "cursor-agent": "Cursor" };
 
 /** An item, read loosely: each read below checks the fields it uses. */
@@ -406,6 +412,17 @@ function sentTo(item: Item): string | undefined {
   return typeof messageId === "string" && typeof to === "string" ? to : undefined;
 }
 
+/**
+ * A tool call as a step, in the UI registry's words: what it said it was doing,
+ * else what it acted on ("Read …/src/a.ts", the command it ran), else the tool
+ * it used. The same on every harness, since the registry names each one's tools.
+ */
+function toolStep(id: string, tool: string, args: Record<string, unknown>): SessionStep {
+  const intent = toolIntent(tool, args);
+  const subject = intent === undefined ? toolSubject(tool, args) : undefined;
+  return { id, kind: "tool", tool, text: intent ?? subject?.text ?? `Used ${tool}`, ...(subject?.code ? { code: true } : {}) };
+}
+
 /** A session's items as a popup's steps: what it was given, what it wrote, and the tools it ran. */
 export function toSteps(items: readonly Item[]): SessionStep[] {
   const steps: SessionStep[] = [];
@@ -417,10 +434,16 @@ export function toSteps(items: readonly Item[]): SessionStep[] {
     } else if (item.type === "tool_output" && item.toolCall?.name === SEND_MESSAGE_TOOL && sentTo(item) !== undefined) {
       steps.push({ id: item.id, kind: "sent", text: String(parseArgs(item).text ?? ""), to: sentTo(item) ?? "" });
     } else if (item.type === "tool_output" && typeof item.toolCall?.name === "string") {
-      steps.push({ id: item.id, kind: "tool", text: item.toolCall.name });
+      steps.push(toolStep(item.id, item.toolCall.name, parseArgs(item)));
     }
   }
   return steps;
+}
+
+/** A coding run's items as steps: the harness it started on, once it reports, then what it did. */
+export function runSteps(items: readonly Item[]): SessionStep[] {
+  const block = items.find((i) => HARNESS_LABEL[i.provenance?.blockName ?? ""] !== undefined)?.provenance?.blockName;
+  return [...(block === undefined ? [] : [{ id: "harness", kind: "harness" as const, text: `Started on ${HARNESS_LABEL[block]}` }]), ...toSteps(items)];
 }
 
 /** The session a message was delivered to, from the message log; undefined while the log doesn't hold it. */
@@ -648,10 +671,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       return watchFeed(sessionId, (items) => [...boardRows(items).values()].map((row) => toBoardTask(row, (worker) => harnesses.get(worker))), stableList(onChange));
     },
     watchRun(runSessionId, onChange) {
-      return watchFeed(runSessionId, (items) => {
-        const block = items.find((i) => HARNESS_LABEL[i.provenance?.blockName ?? ""] !== undefined)?.provenance?.blockName;
-        return [...(block === undefined ? [] : [{ id: "harness", kind: "harness" as const, text: `on ${HARNESS_LABEL[block]}` }]), ...toSteps(items)];
-      }, stableList(onChange));
+      return watchFeed(runSessionId, runSteps, stableList(onChange));
     },
     watchExchange(worker, messageId, onChange) {
       let stop: Unsubscribe | undefined;

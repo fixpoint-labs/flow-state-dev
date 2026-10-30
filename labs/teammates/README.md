@@ -50,6 +50,14 @@ item under *Background* show the task, tagged with the agent it runs on (and the
 run reports one), and open its run in a popup. The result lands in Chief of Staff's conversation as
 the coding task's. To change a coding task, tell Chief of Staff, who starts the next one.
 
+A coding task's popup says *Starting on Codex…* from the moment the task is filed. Once it ends,
+the result is at the top, with the run under it in plain steps: what the agent wrote, as text,
+and what it did, such as *Read …/src/session-feed.ts*, *Edit README.md* or the command it ran.
+A run of steps folds into one line, *Ran 3 commands and edited a file*, that opens to each one.
+The steps read the same on all three agents, though each names its tools its own way. A Claude
+Code run loads the working folder's own Claude Code settings and `CLAUDE.md`, never this
+machine's, so an output style set there doesn't show in its steps.
+
 Before a task starts, its agent's own sign-in check runs. An agent this machine isn't set up for
 fails the task at once, with a line that names it and what's missing, such as "Codex isn't set up on
 this machine: Not logged in. Sign in with `codex login`, then start the task again." It never runs
@@ -136,6 +144,7 @@ names the package call it makes.
 | A message's popup | the recipient's session items: the turn whose received-message item carries the message's id |
 | The working folder | `localWorkspaceHost` with a constant run source, `{ kind: "repo", repo }`, and the folder in `localRepositories`; `projectSourceTools` read it |
 | Coding tasks and their runs | the conversation board's rows assigned to the worker on the coding flow, which the list leaves out; the row's `run` link, read as the run session's items |
+| A run's steps in plain words | the UI registry's `tool-naming` and `tool-grouping`, installed in `src/components/flow-state/`, over each tool call's name and arguments |
 | The divider and its *summarized* label | the last request's `historyStart`, and the session's `historySummary` resource |
 
 `color:` names one of the lab's palette, `blue`, `green`, `amber`, `rose`, `violet` or `teal`,
