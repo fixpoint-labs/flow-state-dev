@@ -10,15 +10,21 @@ import { describe, expect, it } from "vitest";
 import { runForTest } from "@flow-state-dev/testing";
 import type { GeneratorTool } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { getOrCreateTaskCollection, type TaskCollectionRef } from "../../src/tasks";
-import { taskToolsForTurn, type AssigneeRoster } from "../../src/skills/task-tools-capability";
+import {
+  getOrCreateTaskCollection,
+  type TaskCollectionRef,
+} from "../../src/tasks";
+import {
+  taskToolsForTurn,
+  type AssigneeRoster,
+} from "../../src/skills/task-tools-capability";
 import { createFakeSequencerState } from "../helpers";
 
 function boardCtx(): BlockContext {
   return {
     emit: { component: () => undefined },
     session: { identity: { type: "session", id: "s_1", userId: "alice" } },
-    request: { identity: { type: "request", id: "r_1" } }
+    request: { identity: { type: "request", id: "r_1" } },
   } as unknown as BlockContext;
 }
 
@@ -27,17 +33,25 @@ const board = () =>
     ctx: boardCtx(),
     backing: "state",
     state: createFakeSequencerState<Record<string, unknown>>({ tasks: {} }),
-    collectionId: "desk"
+    collectionId: "desk",
   });
 
 const roster: AssigneeRoster = {
-  has: (name) => name === "teammates.claude-code" || name === "teammates.cursor",
-  describe: () => "teammates.claude-code, teammates.cursor"
+  has: (name) =>
+    name === "teammates.claude-code" || name === "teammates.cursor",
+  describe: () => "teammates.claude-code, teammates.cursor",
 };
 
-function createTool(collection: TaskCollectionRef, dispatches: boolean): GeneratorTool {
-  const tools = taskToolsForTurn(async () => collection, roster, { dispatches })({});
-  const found = tools.find((t) => (t as { name?: string }).name === "createTask");
+function createTool(
+  collection: TaskCollectionRef,
+  dispatches: boolean,
+): GeneratorTool {
+  const tools = taskToolsForTurn(async () => collection, roster, {
+    dispatches,
+  })({});
+  const found = tools.find(
+    (t) => (t as { name?: string }).name === "createTask",
+  );
   if (found === undefined) throw new Error("createTask is not offered");
   return found;
 }
@@ -46,11 +60,17 @@ type Result = { ok: boolean; taskId?: string; error?: string };
 const run = (t: GeneratorTool, input: Record<string, unknown>) =>
   runForTest(t as never, input as never, boardCtx()) as Promise<Result>;
 
-const FIX = { title: "Misc bug fix", goal: "Fix the typo in README.md: 'Relay keps' should read 'Relay keeps'.", assignee: "teammates.claude-code" };
+const FIX = {
+  title: "Misc bug fix",
+  goal: "Fix the typo in README.md: 'Relay keps' should read 'Relay keeps'.",
+  assignee: "teammates.claude-code",
+};
 
 describe("one piece of work makes one task", () => {
   for (const dispatches of [true, false]) {
-    const where = dispatches ? "a board that dispatches" : "a board a drain runs";
+    const where = dispatches
+      ? "a board that dispatches"
+      : "a board a drain runs";
 
     it(`refuses a second filing of the same work for the same worker while the first is open, naming it by title, on ${where}`, async () => {
       // What Jake saw: one ask ("give the task to Claude") filed twice in one turn.
@@ -60,10 +80,22 @@ describe("one piece of work makes one task", () => {
       expect(first.ok).toBe(true);
 
       // The same goal, with its spacing and case changed, as a retried call may send it.
-      const second = await run(tool, { ...FIX, goal: `  ${FIX.goal.toUpperCase()} ` });
+      const second = await run(tool, {
+        ...FIX,
+        goal: `  ${FIX.goal.toUpperCase()} `,
+      });
       expect(second.ok).toBe(false);
       expect(second.error).toMatch(/^already_open: /);
       expect(second.error).toContain('"Misc bug fix"');
+      expect(collection.list()).toHaveLength(1);
+    });
+
+    it(`files one task for two calls of the same work sent together in one step, on ${where}`, async () => {
+      // A generator runs a step's sibling tool calls at once: the check and the filing must not interleave.
+      const collection = await board();
+      const tool = createTool(collection, dispatches);
+      const results = await Promise.all([run(tool, FIX), run(tool, FIX)]);
+      expect(results.map((r) => r.ok).sort()).toEqual([false, true]);
       expect(collection.list()).toHaveLength(1);
     });
 
@@ -80,16 +112,29 @@ describe("one piece of work makes one task", () => {
   it("files the same work for another worker: a switch of coding agent is one new task", async () => {
     const collection = await board();
     const tool = createTool(collection, true);
-    expect((await run(tool, { ...FIX, assignee: "teammates.cursor" })).ok).toBe(true);
+    expect((await run(tool, { ...FIX, assignee: "teammates.cursor" })).ok).toBe(
+      true,
+    );
     expect((await run(tool, FIX)).ok).toBe(true);
-    expect(collection.list().map((t) => t.assignee)).toEqual(["teammates.cursor", "teammates.claude-code"]);
+    expect(collection.list().map((t) => t.assignee)).toEqual([
+      "teammates.cursor",
+      "teammates.claude-code",
+    ]);
   });
 
   it("files different work for the same worker", async () => {
     const collection = await board();
     const tool = createTool(collection, true);
     expect((await run(tool, FIX)).ok).toBe(true);
-    expect((await run(tool, { ...FIX, title: "Changelog", goal: "Add a changelog line for the typo fix." })).ok).toBe(true);
+    expect(
+      (
+        await run(tool, {
+          ...FIX,
+          title: "Changelog",
+          goal: "Add a changelog line for the typo fix.",
+        })
+      ).ok,
+    ).toBe(true);
     expect(collection.list()).toHaveLength(2);
   });
 });

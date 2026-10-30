@@ -202,6 +202,25 @@ function waitingOf(t: Task) {
   };
 }
 
+/** The filing each board is running, so the next waits for it (FIX-2350). In process: a step's calls share one. */
+const filings = new Map<string, Promise<unknown>>();
+
+/** Run `file` once every earlier filing on the same board has ended. */
+async function oneFilingAtATime<T>(board: string, file: () => Promise<T>): Promise<T> {
+  const before = filings.get(board) ?? Promise.resolve();
+  const mine = before.then(file, file);
+  const settled = mine.then(
+    () => undefined,
+    () => undefined
+  );
+  filings.set(board, settled);
+  try {
+    return await mine;
+  } finally {
+    if (filings.get(board) === settled) filings.delete(board);
+  }
+}
+
 /**
  * One task as `getTask` reads it: every field it returns, with its input,
  * output and metadata each cut to {@link READ_OUTPUT_LIMIT} and flagged when
@@ -1235,17 +1254,23 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       }
       const collection = await resolve(ctx);
       if (!collection) return noBoardError;
-      // Recorded with the call on a board that starts work, so a replay decides as the first call did.
-      const checked = await checkNewTask(ctx, collection, input, dispatches);
-      if ("error" in checked) return checked;
-      return fileNewTask(checked.followUp, async () => {
-        // On a board that starts a ready row at once, a filing starts work:
-        // once per call, so a replay finds its own row (BR-15).
-        const filed = dispatches
-          ? await fileReady(ctx, collection, checked.init)
-          : { ok: true as const, taskId: (await collection.createTask(checked.init)).id };
-        return input.held === true ? { ...filed, status: "held" as const } : filed;
-      });
+      // One filing at a time per board where the same-work check runs: a
+      // step's sibling calls run at once, and the check must see the row the
+      // other call filed. A follow-up keeps its own race rule (BR-25).
+      const file = async () => {
+        // Recorded with the call on a board that starts work, so a replay decides as the first call did.
+        const checked = await checkNewTask(ctx, collection, input, dispatches);
+        if ("error" in checked) return checked;
+        return fileNewTask(checked.followUp, async () => {
+          // On a board that starts a ready row at once, a filing starts work:
+          // once per call, so a replay finds its own row (BR-15).
+          const filed = dispatches
+            ? await fileReady(ctx, collection, checked.init)
+            : { ok: true as const, taskId: (await collection.createTask(checked.init)).id };
+          return input.held === true ? { ...filed, status: "held" as const } : filed;
+        });
+      };
+      return input.followUpOf === undefined ? oneFilingAtATime(`${collection.collectionId}\u0000${collection.partition ?? ""}`, file) : file();
     },
   });
 
