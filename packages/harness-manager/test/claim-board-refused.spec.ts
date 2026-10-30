@@ -11,6 +11,7 @@
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { localWorkspaceHost, type RunSourceAnswer } from "@flow-state-dev/workspace";
+import { HARNESS_FEATURE_KEY } from "../src";
 import { CONVERSATIONS, FIXED_BOARD, PHASE, claimHost, cleanUpHosts } from "./claim-host";
 
 afterAll(cleanUpHosts);
@@ -28,13 +29,13 @@ function refusingWorkspace(dir: string) {
 describe("a refused run on a board read from the claim", () => {
   it("ends a row naming only an issue errored after one attempt, and runs nothing", async () => {
     const lab = claimHost({ mode: "claim" });
-    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "half a feature", input: { issue: "FIX-1" }, maxAttempts: 2 });
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "half a feature", input: { [HARNESS_FEATURE_KEY]: { issue: "FIX-1" } }, maxAttempts: 2 });
 
     await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
 
     const row = await lab.row(CONVERSATIONS, "t1", "conv-a");
     expect(row).toMatchObject({ status: "errored", attempts: 1 });
-    expect(row.error).toContain("names only part of a feature payload");
+    expect(row.error).toContain("names only part of a feature payload: harnessFeature.phase");
     expect(lab.seen).toHaveLength(0);
   }, 60_000);
 
@@ -53,7 +54,7 @@ describe("a refused run on a board read from the claim", () => {
 
   it("cancels a task that depends on the refused row, as any failed task's dependent is", async () => {
     const lab = claimHost({ mode: "claim" });
-    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "half a feature", input: { issue: "FIX-1" }, maxAttempts: 2 });
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "half a feature", input: { [HARNESS_FEATURE_KEY]: { issue: "FIX-1" } }, maxAttempts: 2 });
     await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t2", goal: "after it", input: {}, deps: ["t1"] });
 
     await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");

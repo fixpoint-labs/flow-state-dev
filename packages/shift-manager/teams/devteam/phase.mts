@@ -30,7 +30,7 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { ASK_MARKER_DIR, assertBaseRefExists } from "@flow-state-dev/harness-manager";
+import { ASK_MARKER_DIR, assertBaseRefExists, HARNESS_FEATURE_KEY, harnessFeatureOf } from "@flow-state-dev/harness-manager";
 import type {
   CompletionRunContext,
   PhaseSpec,
@@ -44,6 +44,20 @@ import type { WorkerOf } from "./worker-config.mts";
 
 /** The phase segment of every run record's topic, and of every row filed here. */
 export const PHASE = "implement";
+
+/**
+ * A feature row's `input`: its issue in {@link PHASE}, under the manager's
+ * feature key. Here rather than in the EM's file, which imports no harness
+ * package: the EM files rows, it never runs one.
+ */
+export function featureInput(issue: string): Record<string, unknown> {
+  return { [HARNESS_FEATURE_KEY]: { issue, phase: PHASE } };
+}
+
+/** The issue a row's `input` names as feature work, or `undefined` for none. */
+export function featureIssueOfInput(input: unknown): string | undefined {
+  return harnessFeatureOf(input)?.issue;
+}
 
 /**
  * What {@link defineImplementPhase}'s `validate` learned, handed back to `isDone`:
@@ -172,15 +186,15 @@ function cappedJson(value: unknown): string {
  * so without this line the prompt names the row and never the issue.
  */
 function issueLine(run: PromptRunContext): string[] {
-  const issue = (run.task.input as { issue?: unknown } | undefined)?.issue;
-  return typeof issue === "string" && issue !== run.issue ? [`Issue ${issue}.`] : [];
+  const issue = harnessFeatureOf(run.task.input)?.issue;
+  return issue !== undefined && issue !== run.issue ? [`Issue ${issue}.`] : [];
 }
 
 /**
  * The task's section, as the board packed it: the goal, then what the row adds.
  *
  * `input` is deliberately not rendered: this team's rows carry only
- * `{ issue, phase }`, which the run's terms already name ({@link issueLine}
+ * `{ harnessFeature: { issue, phase } }`, which the run's terms already name ({@link issueLine}
  * covers the one case where they don't).
  */
 function taskSection(task: PromptRunContext["task"]): string[] {
@@ -377,7 +391,7 @@ export function defineImplementPhase(options: ImplementPhaseOptions): PhaseSpec 
 }
 
 
-/** The phase segment of an answer task's run record: a task a conversation filed with no `issue` or `phase`. */
+/** The phase segment of an answer task's run record: a task a conversation filed naming no feature work. */
 export const ANSWER_PHASE = "answer";
 
 /** What the answer phase is built from. */
@@ -424,8 +438,8 @@ export async function buildAnswerPrompt(run: PromptRunContext, options: AnswerPh
 }
 
 /**
- * Build the answer phase: the phase of a task that names no `issue` and no
- * `phase`. Done means the run didn't stop at its limit and ended with an
+ * Build the answer phase: the phase of a task that names no feature work
+ * (no `harnessFeature`). Done means the run didn't stop at its limit and ended with an
  * answer; a commit is reported in the output, never required.
  *
  * @param options How the run's worker is loaded.

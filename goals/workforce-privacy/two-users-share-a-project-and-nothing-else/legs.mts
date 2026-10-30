@@ -15,6 +15,7 @@
  */
 import { randomBytes, randomInt } from "node:crypto";
 import type { Browser } from "playwright";
+import { harnessFeatureOf } from "@flow-state-dev/harness-manager";
 import type { Install } from "./install.mts";
 import { rowsOf, sessionOn } from "./milestone.mts";
 import { act, everythingIn, refusal, talk, textOf, type Connected, type Person, type RosterEntry, type SessionSummary } from "./people.mts";
@@ -635,7 +636,7 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
         if (filed.length === 0) r.fail("b5", "no task row sits on the workstream session's board");
         const coderish = filed.filter((t) => t.assignee === "eng.coder" || t.assignee === "eng.reviewer");
         if (coderish.length !== filed.length) r.fail("b5", `a task's assignee isn't a DevTeam standard worker: ${show(filed.map((t) => t.assignee))}`);
-        const named = filed.filter((t) => t.input !== undefined && "issue" in t.input && "phase" in t.input);
+        const named = filed.filter((t) => harnessFeatureOf(t.input) !== undefined);
         if (named.length !== filed.length) r.fail("b5", `a task names no issue and phase: ${show(filed.map((t) => t.input))}`);
         const unsettled = filed.filter((t) => !["completed", "errored", "cancelled", "failed"].includes(t.status));
         if (unsettled.length > 0) r.fail("b5", `task(s) never ended: ${show(unsettled.map((t) => `${t.id}:${t.status}`))}`);

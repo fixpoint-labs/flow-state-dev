@@ -273,7 +273,7 @@ describe("the Shift Coordinator as a coordinator (S10)", () => {
     model = scripted([{ toolName: "createTask", args: { goal: "Take this", assignee: "eng.em", session: "ongoing", resultTo: "conversation" } }], { choice: "eng.em", confidence: 0.9 }, [
       {
         toolName: "createTask",
-        args: { goal: "show a badge on the cart", assignee: "eng.coder", input: { issue, phase: PHASE, project: STOREFRONT } },
+        args: { goal: "show a badge on the cart", assignee: "eng.coder", input: { harnessFeature: { issue, phase: PHASE }, project: STOREFRONT } },
       },
     ]);
     const post = `Get this filed for the team:\n${issue}: show a badge on the cart`;
@@ -300,9 +300,9 @@ describe("the Shift Coordinator as a coordinator (S10)", () => {
     expect(record.data).toMatchObject({ by: "evaluated", delegates: [{ worker: "eng.em", outcome: "delivered" }] });
     // The coder's task, on the board of the EM session the post reached: feature work, naming the issue
     // and the phase, for the coder.
-    const filed = Object.values(await stored(lab, "tasks/")).filter((row: any) => row.input?.issue === issue);
+    const filed = Object.values(await stored(lab, "tasks/")).filter((row: any) => row.input?.harnessFeature?.issue === issue);
     expect(filed).toEqual([
-      expect.objectContaining({ goal: "show a badge on the cart", assignee: "eng.coder", input: { issue, phase: PHASE, project: STOREFRONT } }),
+      expect.objectContaining({ goal: "show a badge on the cart", assignee: "eng.coder", input: { harnessFeature: { issue, phase: PHASE }, project: STOREFRONT } }),
     ]);
     // The EM's answer lands under its name, once.
     const answers = items.filter((item) => item.type === "message" && item.agentName === "eng.em").map(textOf);
@@ -352,7 +352,7 @@ describe("the Shift Coordinator as a coordinator (S10)", () => {
     const id = `s-desk-${globalThis.crypto.randomUUID()}`;
     expect((await lab.door("POST", "coordinator/sessions", { body: { userId: LAB_USER_ID, sessionId: id, state: { workerId: "release-desk" } } })).status).toBe(201);
     model = scripted([{ toolName: "createTask", args: { goal: "Take this", assignee: "eng.em", session: "ongoing", resultTo: "conversation" } }], undefined, [
-      { toolName: "createTask", args: { goal: "the release notes", assignee: "eng.coder", input: { issue, phase: PHASE, project: STOREFRONT } } },
+      { toolName: "createTask", args: { goal: "the release notes", assignee: "eng.coder", input: { harnessFeature: { issue, phase: PHASE }, project: STOREFRONT } } },
     ]);
     expect((await act(lab, id, "respond", { message: `${issue}: the release notes` })).error).toBeUndefined();
 

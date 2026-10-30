@@ -479,7 +479,7 @@ await runGoal(async (failures) => {
       if (filedTaskId === undefined || filedRow?.id !== filedTaskId) {
         note(`the EM seat filed row "${filedTaskId}", and the row naming ${fixture.row.issue} is "${filedRow?.id}"`);
       }
-      if (JSON.stringify(filedRow?.input) !== JSON.stringify({ issue: fixture.row.issue, phase: fixture.row.phase })) {
+      if (JSON.stringify(filedRow?.input) !== JSON.stringify({ harnessFeature: { issue: fixture.row.issue, phase: fixture.row.phase } })) {
         note(`the filed row's payload is ${JSON.stringify(filedRow?.input)}, wanted its issue and phase`);
       }
 

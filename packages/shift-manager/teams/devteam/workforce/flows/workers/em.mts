@@ -24,8 +24,8 @@
  * - **The turn**: a model, with the nine task tools and the lead's
  *   `updateWorkstream`. It takes a user's line, the project coordinator's
  *   delegated post, and each task's notice. Its own file tells it to name the
- *   feature's `issue` and `phase` on every coder task: a task naming both is
- *   feature work and must end in a commit.
+ *   feature's `issue` and `phase` under `harnessFeature` on every coder task:
+ *   a task naming both there is feature work and must end in a commit.
  * - **The lab's doors** (`file`, `askToFile`, `drain`): deterministic, no
  *   model, for the checks that grade the board rather than a model's
  *   judgement. They file through the same board, one row per feature, under
@@ -57,7 +57,7 @@ import {
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
 
-import { PHASE } from "../../../phase.mts";
+import { featureInput, featureIssueOfInput } from "../../../phase.mts";
 import {
   ASK_ENTRY,
   defineReadOwnFacts,
@@ -127,8 +127,7 @@ export const askInputSchema = z.object({
  * for a row that names none.
  */
 export function featureIssueOf(row: { input?: unknown }): string | undefined {
-  const issue = (row.input as { issue?: unknown } | undefined)?.issue;
-  return typeof issue === "string" ? issue : undefined;
+  return featureIssueOfInput(row.input);
 }
 
 /** What the turn reads off the worker it runs as: its file's settings. */
@@ -225,7 +224,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     if (filed !== undefined) return { taskId: filed.id, existed: true };
     const added = await tasks.createTask({
       goal: input.goal,
-      input: { issue: input.issue, phase: PHASE, ...(input.project === undefined ? {} : { project: input.project }) },
+      input: { ...featureInput(input.issue), ...(input.project === undefined ? {} : { project: input.project }) },
       assignee: options.coderWorker,
       maxAttempts: input.maxAttempts,
     });
