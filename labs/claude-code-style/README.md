@@ -9,7 +9,9 @@ needs is a gap filed against the package.
   session mode, and Projects is threads mode. Each session in the view is with the view's main
   worker. *New session* asks which project the session works in, with no
   default, offering only projects you may work in (a member of a shared one, or the owner of a
-  private one), then opens it in the view's mode.
+  private one), then opens it in the view's mode. The foot carries the theme mark, which flips the
+  page between light and dark and keeps the pick for this browser; until you pick, the page follows
+  the system's setting.
 - **Center:** the main thread. It is the only place you type. The main session does part of the
   work itself and starts background tasks for the long pieces. It reads the project's files itself,
   so a question about the code is answered in the same turn, and a code change goes to `desk.coder`.
