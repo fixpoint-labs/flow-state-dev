@@ -205,7 +205,12 @@ function waitingOf(t: Task) {
 /** A new row's id, in the board's own shape: twenty hex characters, unique across processes. */
 const mintTaskId = (): string => `task_${crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`;
 
-/** The filing each board is running, so the next waits for it (FIX-2350). In process: a step's calls share one. */
+/**
+ * The filing each board is running, so the next waits for it (FIX-2350). In
+ * process, and keyed by the request too: a step's sibling calls share one
+ * request, while another request's board of the same name may be another
+ * board altogether, and must not wait on this one.
+ */
 const filings = new Map<string, Promise<unknown>>();
 
 /** Run `file` once every earlier filing on the same board has ended. */
@@ -1303,7 +1308,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           return input.held === true ? { ...filed, status: "held" as const } : filed;
         });
       };
-      return input.followUpOf === undefined ? oneFilingAtATime(`${collection.collectionId}\u0000${collection.partition ?? ""}`, file) : file();
+      return input.followUpOf === undefined ? oneFilingAtATime(`${ctx.request?.identity?.id ?? ""}\u0000${collection.collectionId}\u0000${collection.partition ?? ""}`, file) : file();
     },
   });
 

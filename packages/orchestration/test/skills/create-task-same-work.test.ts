@@ -124,9 +124,16 @@ describe("one piece of work makes one task", () => {
 
   it("refuses the same work filed twice with no assignee, when the roster's one worker takes both", async () => {
     const collection = await board();
-    const sole: AssigneeRoster = { ...roster, soleAssignee: () => "teammates.claude-code" };
-    const tools = taskToolsForTurn(async () => collection, sole, { dispatches: true })({});
-    const tool = tools.find((t) => (t as { name?: string }).name === "createTask")!;
+    const sole: AssigneeRoster = {
+      ...roster,
+      soleAssignee: () => "teammates.claude-code",
+    };
+    const tools = taskToolsForTurn(async () => collection, sole, {
+      dispatches: true,
+    })({});
+    const tool = tools.find(
+      (t) => (t as { name?: string }).name === "createTask",
+    )!;
     const { assignee: _assignee, ...unassigned } = FIX;
     // The board's own write fills the sole worker in, as a conversation board does.
     const first = await run(tool, unassigned);
@@ -141,8 +148,13 @@ describe("one piece of work makes one task", () => {
     const tool = createTool(collection, true);
     expect((await run(tool, { ...FIX, target: "billing" })).ok).toBe(true);
     expect((await run(tool, { ...FIX, target: "search" })).ok).toBe(true);
-    expect((await run(tool, { ...FIX, target: "search" })).error).toMatch(/^already_open: /);
-    expect(collection.list().map((t) => t.target)).toEqual(["billing", "search"]);
+    expect((await run(tool, { ...FIX, target: "search" })).error).toMatch(
+      /^already_open: /,
+    );
+    expect(collection.list().map((t) => t.target)).toEqual([
+      "billing",
+      "search",
+    ]);
   });
 
   it("files different work for the same worker", async () => {
@@ -159,5 +171,50 @@ describe("one piece of work makes one task", () => {
       ).ok,
     ).toBe(true);
     expect(collection.list()).toHaveLength(2);
+  });
+});
+
+describe("one filing at a time is per board, never across unrelated requests", () => {
+  it("files on one request's board while another request's board, under the same name, is still writing", async () => {
+    // Two requests, each with its own board named "desk". Alice's write hangs.
+    const alice = await board();
+    const bob = await board();
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    const slow = Object.assign(
+      Object.create(Object.getPrototypeOf(alice)),
+      alice,
+      {
+        createTask: async (...args: unknown[]) => {
+          await held;
+          return (alice.createTask as (...a: unknown[]) => Promise<unknown>)(
+            ...args,
+          );
+        },
+      },
+    ) as TaskCollectionRef;
+    const inRequest = (id: string) =>
+      ({
+        ...boardCtx(),
+        request: { identity: { type: "request", id } },
+      }) as unknown as BlockContext;
+
+    const alicesCall = runForTest(
+      createTool(slow, false) as never,
+      FIX as never,
+      inRequest("r_alice"),
+    );
+    const bobsCall = runForTest(
+      createTool(bob, false) as never,
+      FIX as never,
+      inRequest("r_bob"),
+    ) as Promise<Result>;
+    const first = await Promise.race([
+      bobsCall,
+      new Promise((r) => setTimeout(() => r("stalled"), 500)),
+    ]);
+    release();
+    await alicesCall;
+    expect(first).toMatchObject({ ok: true });
   });
 });
