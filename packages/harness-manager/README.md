@@ -239,7 +239,7 @@ const manager = harnessManager({ /* ... */ harness: stub.slot });
 // later: stub.runs[0].cwd is the checkout the first run was given
 ```
 
-If your host relays MCP servers to its harness, the stub takes none. Handed an `mcpTools` feed, it says in the run's session which servers it runs without. Pass `mcpUses` with the capabilities that feed reads through (workforce's `projectWorkspaceCapability`, for its `projectMcpTools`).
+The stub connects to no MCP servers. If your host hands it an `mcpTools` feed, each run writes a status line into its session naming the servers it skipped, so a user watching that session sees which ones the run went without. That feed reads the run's project, so the block needs the capability that holds it. If the feed comes from a capability such as workforce's `projectWorkspaceCapability`, pass that capability in `mcpUses`. If neither the stub nor the manager (`harnessManager({ uses })`) holds it, the run fails with an error that names the capability.
 
 ## A harness as a session
 
@@ -252,18 +252,18 @@ import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 export const claudeCodeSession = harnessSessionFlow({
   kind: "claude-code-session",
   workspace, // where each session works; see below
-  agent: (feeds) => claudeCodeAgent({ ...feeds, permissionMode: "bypassPermissions" }),
+  agent: (feeds) => claudeCodeAgent({ ...feeds, detached: true, permissionMode: "bypassPermissions" }),
 });
 ```
 
-You supply two things. `agent` builds the harness block from the feeds the flow hands it (`cwd`, `resume`, `onSession`, `model`, `worktree`, `onSteerable`). `workspace` says where each session works: `provision` makes a session's directory on its first turn, `locate` finds it without making it, and `branch` names the branch whose pull requests the flow checks when a turn ends (`null` skips the check). A session is keyed by its flow kind, tenant and id, never by anything the caller sent.
+`agent` builds the harness block from the feeds the flow hands it: `cwd`, `resume`, `onSession`, `model`, `worktree` and `onSteerable`. These are the session flow's own feeds. It has no `onUsage` or `onActivity`, which feed the manager's task records. `workspace` says where each session works: `provision` makes a session's directory on its first turn, `locate` finds it without making it, and `branch` names the branch whose pull requests the flow checks when a turn ends (`null` skips the check). A session is keyed by its flow kind, tenant and id, never by anything the caller sent.
 
 The flow handles the rest:
 
-- **Continuity.** `resume` hands the harness the conversation it last confirmed, and `onSession` is the only thing that records a new one. A conversation the harness refuses to continue stays bound, so the session keeps failing visibly instead of moving on quietly.
-- **The model.** A session is created with the model it runs (`state.model`), which never changes after that. Creating one without a model is refused with `HARNESS_SESSION_MODEL_REQUIRED`. `defaultModel` covers sessions stored before a model was required.
-- **Two actions.** `turn` takes a prompt and waits for any running turn to finish first (`concurrency: "defer"`). `steer` hands a line to the running turn if its harness offered to take one, and answers `{ taken, live }`.
-- **A record per turn.** `state.turns` holds what each recent turn asked to continue, what the harness confirmed, and how it failed, in core's neutral failure classes rather than a harness's own words. A page derives its notices from that record. The schema is `harnessSessionStateSchema`.
+- **Continuity.** `resume` hands the harness the conversation it last confirmed, and `onSession` is the only thing that records a new one. If the harness refuses to continue that conversation, the session stays bound to it, and each later turn fails the same way. To recover, start a new session.
+- **The model.** A session is created with the model it runs (`state.model`), which never changes after that. Creating one without a model is refused with `HARNESS_SESSION_MODEL_REQUIRED`. `defaultModel` is the model used for a stored session that has none recorded.
+- **Actions.** `turn` takes a prompt and waits for any running turn to finish first (`concurrency: "defer"`). `steer` hands a line to the running turn if its harness offered to take one, and answers `{ taken, live }`.
+- **A record per turn.** `state.turns` keeps the latest 20 turns, by request id. Each record holds the conversation the turn tried to resume, the one the harness confirmed, and how the turn failed: core's failure class, the harness's error text, and whether it was stopped. Read it to show a user why a turn failed. The schema is `harnessSessionStateSchema`.
 - **A title.** The session takes its title from its first prompt (`harnessSessionTitle`).
 
 ## What a phase supplies
