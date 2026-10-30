@@ -173,8 +173,8 @@ main:not(.fs-landing)::before {
   background-image:
     repeating-linear-gradient(var(--grid-line) 0 1px, transparent 1px 24px),
     repeating-linear-gradient(90deg, var(--grid-line) 0 1px, transparent 1px 24px);
-  -webkit-mask-image: radial-gradient(ellipse 680px 460px at 0 0, rgba(0, 0, 0, 0.9), transparent);
-  mask-image: radial-gradient(ellipse 680px 460px at 0 0, rgba(0, 0, 0, 0.9), transparent);
+  -webkit-mask-image: radial-gradient(ellipse 680px 460px at 0 0, color-mix(in oklab, var(--ink1) 90%, transparent), transparent);
+  mask-image: radial-gradient(ellipse 680px 460px at 0 0, color-mix(in oklab, var(--ink1) 90%, transparent), transparent);
 }
 
 /* ── Labels: one style for every label Docusaurus draws ── */
