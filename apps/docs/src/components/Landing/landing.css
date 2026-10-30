@@ -1,0 +1,44 @@
+/**
+ * Landing page styles for flow-state.dev, ported from the "Landing · agent backend"
+ * design canvas. Every rule is scoped under `.fs-landing` so it can't leak into docs pages.
+ */
+.fs-landing{margin:0;background:#f0ece1}
+.fs-landing a{color:#1b1a15}
+.fs-landing a:hover{color:#3d3a32}
+.fs-landing .fs-root{position:relative;background:#f0ece1;min-height:100vh;overflow:hidden}
+.fs-landing .fs-root::before{content:"";position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(rgba(27,26,21,.09) 1px,transparent 1px),linear-gradient(90deg,rgba(27,26,21,.09) 1px,transparent 1px);background-size:24px 24px;-webkit-mask-image:radial-gradient(ellipse 55% 30% at 0% 8%,#000 0%,transparent 100%),radial-gradient(ellipse 55% 30% at 100% 38%,#000 0%,transparent 100%),radial-gradient(ellipse 55% 30% at 0% 68%,#000 0%,transparent 100%),radial-gradient(ellipse 55% 30% at 100% 96%,#000 0%,transparent 100%);mask-image:radial-gradient(ellipse 55% 30% at 0% 8%,#000 0%,transparent 100%),radial-gradient(ellipse 55% 30% at 100% 38%,#000 0%,transparent 100%),radial-gradient(ellipse 55% 30% at 0% 68%,#000 0%,transparent 100%),radial-gradient(ellipse 55% 30% at 100% 96%,#000 0%,transparent 100%)}
+.fs-landing .fs-page{position:relative;z-index:1;background:#f0ece1}
+.fs-landing .fs-sheet{display:flex;flex-wrap:wrap;border-top:1px solid #1b1a15}
+.fs-landing .fs-rail{flex:0 0 52px;box-sizing:border-box;border-right:1px solid rgba(27,26,21,.45);writing-mode:vertical-rl;transform:rotate(180deg);display:flex;align-items:center;justify-content:flex-end;padding:34px 0;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:10px;font-weight:500;letter-spacing:.18em;color:#57544a;text-transform:uppercase}
+.fs-landing .fs-body{flex:999 1 560px;min-width:0;box-sizing:border-box;padding:34px}
+.fs-landing .fs-btn{display:inline-flex;align-items:center;min-height:44px;box-sizing:border-box;padding:13px 21px;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;text-decoration:none;border:1px solid #1b1a15}
+.fs-landing .fs-btn:focus-visible, .fs-landing .fs-nav a:focus-visible{outline:2px solid #1b1a15;outline-offset:2px}
+.fs-landing .fs-btn-ink{background:#1b1a15;color:#f8f6f0}
+.fs-landing .fs-btn-ink:hover{background:#e8f551;color:#1b1a15;border-color:#1b1a15}
+.fs-landing .fs-btn-line{background:transparent;color:#1b1a15}
+.fs-landing .fs-btn-line:hover{background:#e8f551;color:#1b1a15}
+.fs-landing .fs-btn-mark{box-shadow:4px 4px 0 #e8f551}
+.fs-landing .fs-nav a{color:#57544a;text-decoration:none}
+.fs-landing .fs-nav a:hover{color:#1b1a15}
+.fs-landing .fs-band a{color:#f4f1e4}
+.fs-landing .fs-use .fs-use-mark{transition:background .15s}
+.fs-landing .fs-use:hover .fs-use-mark{background:#e8f551;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.fs-landing .fs-dark{background:#141310;color:#f4f1e4}
+.fs-landing .fs-dark .fs-rail{color:#a6a08f;border-color:rgba(236,231,218,.3)}
+.fs-landing .fs-dark .fs-sheet{border-top-color:rgba(236,231,218,.45)}
+.fs-landing .fs-dark .fs-nav a{color:#a6a08f}
+.fs-landing .fs-dark .fs-nav a:hover{color:#f4f1e4}
+.fs-landing .fs-dark a:focus-visible{outline-color:#f4f1e4}
+.fs-landing .fs-btn-bone{background:#f4f1e4;color:#141310;border-color:#f4f1e4}
+.fs-landing .fs-btn-bone:hover{background:#e8f551;color:#1b1a15;border-color:#e8f551}
+.fs-landing .fs-btn-ghost{background:transparent;color:#f4f1e4;border-color:rgba(244,241,228,.6)}
+.fs-landing .fs-btn-ghost:hover{background:#e8f551;color:#1b1a15;border-color:#e8f551}
+@media (max-width:760px){
+.fs-landing .fs-rail{flex-basis:100%;writing-mode:horizontal-tb;transform:none;border-right:0;border-bottom:1px solid rgba(27,26,21,.45);padding:12px 20px;justify-content:flex-start}
+.fs-landing .fs-body{padding:24px 20px}
+.fs-landing .fs-h1{font-size:40px !important}
+.fs-landing .fs-loud{font-size:44px !important}
+}
+
+/* The docs theme styles `code` as an inline chip; the install box draws its own frame. */
+.fs-landing code{background:none;border:0;padding:0;margin:0;color:inherit;font-size:inherit;box-shadow:none;vertical-align:baseline}
