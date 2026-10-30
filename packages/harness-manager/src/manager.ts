@@ -538,6 +538,10 @@ export interface ManagerOptions {
    * checkout. Off: the steer waits for the step's own end. The row is polled
    * ({@link STEER_POLL_MS}) while a step runs.
    *
+   * Absent: what the harness block declares (`HarnessBlock.stopsOnAbort`,
+   * FIX-2312), so Claude Code's runs are stopped and other harnesses' aren't.
+   * Set it to override the harness either way.
+   *
    * A run that offers a live steer (`onSteerable`) takes the line into its
    * turn instead, and is never stopped for one it took; the row is polled
    * while it offers one, with or without this.
@@ -2761,6 +2765,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       if (note !== null) progressNotes.get(ctx.request.identity.id)?.report(note);
     },
   });
+  /** The host's word, else what the harness declares (FIX-2312). */
+  const stopsOnAbort = options.stopsOnAbort ?? harnessBlock.stopsOnAbort === true;
 
   /**
    * Each running step's progress notes (FIX-2290), by request. Written through
@@ -3025,7 +3031,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // Stopped only once the harness confirmed a session to resume: a stop
         // before that would cost the attempt the steer must not use. A line
         // handed live needs one too, for the step a refusal falls back to.
-        const wanted = options.stopsOnAbort === true || watch.steer !== null;
+        const wanted = stopsOnAbort || watch.steer !== null;
         const confirmed = wanted && owed && (await readConfirmedSession(ctx, state.topic!, state.attempt!)) !== null;
         if (!live() || !confirmed) return;
         const steer = watch.steer;
@@ -3045,7 +3051,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
               return;
             }
             handLive(ctx, steer, take.steers, () => {
-              if (options.stopsOnAbort === true && live() && !controller.signal.aborted) stop();
+              if (stopsOnAbort && live() && !controller.signal.aborted) stop();
             });
           })();
           nextStep.taking.add(taking);
@@ -3056,7 +3062,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           }
           return;
         }
-        if (options.stopsOnAbort === true) stop();
+        if (stopsOnAbort) stop();
         return;
       } catch {
         // A read that fails stops nothing: the step's own end takes the steer.

@@ -407,7 +407,8 @@ export interface OpenLabOptions {
   /**
    * Stop a running coding run for a user's steer and continue its session
    * with the line (the `coder` worker flow's `stopsOnAbort`). Only for a
-   * harness whose abort waits for its process to exit. Default off.
+   * harness whose abort waits for its process to exit. Default: what the
+   * harness declares (Claude Code stops; the stub doesn't).
    */
   stopsOnAbort?: boolean;
   /**
@@ -922,7 +923,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       ...(options.dropTask === true ? { dropTask: true } : {}),
     }),
     runTimeoutMs: options.runTimeoutMs ?? 60_000,
-    ...(options.stopsOnAbort === true ? { stopsOnAbort: true } : {}),
+    ...(options.stopsOnAbort === undefined ? {} : { stopsOnAbort: options.stopsOnAbort }),
     resources,
   });
 

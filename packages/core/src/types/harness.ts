@@ -46,7 +46,9 @@
  *
  * **Abort is not a field.** A conforming harness forwards the block's own
  * `ctx.signal` into whatever cancels its run, and a cancelled run surfaces as a
- * throw — not as a handle status. No code here enforces that.
+ * throw — not as a handle status. No code here enforces that. Whether that
+ * abort waits for the run's process is the harness's to declare, on the block
+ * ({@link HarnessBlock}'s `stopsOnAbort`).
  */
 import { z } from "zod";
 import type { BlockContext, BlockDefinition } from "./block";
@@ -203,7 +205,18 @@ export const harnessRunHandleSchema = harnessRunEnvelopeSchema.extend({
  * cheap half. This is a type, not an installation point: nothing in the
  * framework asks for a `HarnessBlock` slot.
  */
-export type HarnessBlock = BlockDefinition<any, any, HarnessRunInput, HarnessRunHandle>;
+export type HarnessBlock = BlockDefinition<any, any, HarnessRunInput, HarnessRunHandle> & {
+  /**
+   * The harness's own word that its abort settles only once its run's process
+   * has exited, or a bounded grace has run out, so a host may stop a run and
+   * start the next one in the same working directory (FIX-2312). A host that
+   * drives harnesses, such as harness-manager, reads it unless it was told
+   * otherwise. Absent means no. Stamped on the block the harness factory
+   * returns, so a block rebuilt from it (`connectInput`, a wrapping sequencer)
+   * doesn't carry it.
+   */
+  readonly stopsOnAbort?: boolean;
+};
 
 /**
  * The block context a harness feed is handed — **loose in three slots and

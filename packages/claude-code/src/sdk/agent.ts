@@ -859,7 +859,10 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     );
   }
 
-  return handler({
+  // Declares `stopsOnAbort` (core's harness contract, FIX-2312): an abort
+  // settles only once the agent's process has exited or `abortExitGrace` ran
+  // out, so a host may stop this run and start the next in its checkout.
+  return Object.assign(handler({
     name,
     description:
       "Run the Claude Code Agent SDK in-process, translating its streamed messages into FSD items.",
@@ -1557,7 +1560,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         await closeMcpTools(handedTools);
       }
     },
-  });
+  }), { stopsOnAbort: true as const });
 }
 
 /**

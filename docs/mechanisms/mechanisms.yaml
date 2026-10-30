@@ -674,7 +674,7 @@ mechanisms:
 
   # ── Coding harnesses ──────────────────────────────────────────────────────
   - id: coding-harness
-    job: Drive a coding agent as a block. Core owns the neutral handle; Claude Code, Codex and Cursor are adapters. Each adapter still keeps its own copy of the event-to-item emit helper.
+    job: Drive a coding agent as a block. Core owns the neutral handle and what a harness declares about its abort (`stopsOnAbort`, read by harness-manager); Claude Code, Codex and Cursor are adapters. Each adapter still keeps its own copy of the event-to-item emit helper.
     package: "@flow-state-dev/core"
     anchor: harnessRunHandleSchema
     file: packages/core/src/types/harness.ts

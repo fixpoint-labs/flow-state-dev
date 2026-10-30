@@ -104,6 +104,10 @@ its process to exit before it rejects. The agent writes the session's transcript
 until it exits, so a run you cancel and resume straight away finds its
 conversation. The wait lasts at most 5 seconds; past that the block rejects anyway.
 
+### Stopping a run for a message
+
+The block declares `stopsOnAbort: true` (core's `HarnessBlock` field): when its signal fires, it settles only once the agent's process has exited, or after a bounded grace. A harness manager reads that, so a line typed into a running Claude Code task stops the run and the same request continues its session with the line. A block rebuilt from it, through `connectInput` or a wrapping sequencer, doesn't carry the field.
+
 ### Giving a run its own working directory
 
 By default a run works in whatever directory the server process is running in.
