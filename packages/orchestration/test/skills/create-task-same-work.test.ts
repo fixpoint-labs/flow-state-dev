@@ -122,6 +122,20 @@ describe("one piece of work makes one task", () => {
     ]);
   });
 
+  it("refuses the same work filed twice with no assignee, when the roster's one worker takes both", async () => {
+    const collection = await board();
+    const sole: AssigneeRoster = { ...roster, soleAssignee: () => "teammates.claude-code" };
+    const tools = taskToolsForTurn(async () => collection, sole, { dispatches: true })({});
+    const tool = tools.find((t) => (t as { name?: string }).name === "createTask")!;
+    const { assignee: _assignee, ...unassigned } = FIX;
+    // The board's own write fills the sole worker in, as a conversation board does.
+    const first = await run(tool, unassigned);
+    await collection.setAssignee?.(first.taskId!, "teammates.claude-code");
+    const second = await run(tool, unassigned);
+    expect(second.ok).toBe(false);
+    expect(second.error).toMatch(/^already_open: /);
+  });
+
   it("files different work for the same worker", async () => {
     const collection = await board();
     const tool = createTool(collection, true);

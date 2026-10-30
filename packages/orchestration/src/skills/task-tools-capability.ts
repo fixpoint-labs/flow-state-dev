@@ -1173,10 +1173,12 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     // twice or retried. Decided once per call, so a replay finds its own row.
     // A message handed on (`resultTo: "conversation"`) keeps its own rule:
     // one task per delegate a round, recorded by the routing that files it.
+    // A task with no assignee goes to the roster's one worker, when it has one.
+    const worker = assignee ?? (await rosterFor(roster, ctx))?.soleAssignee?.();
     const open =
-      followUp === undefined && assignee !== undefined && input.resultTo !== "conversation"
+      followUp === undefined && worker !== undefined && input.resultTo !== "conversation"
         ? await decideOnce(ctx, memoize, "same-work", async () => {
-            const refusal = openSameWork(collection, assignee, input.goal);
+            const refusal = openSameWork(collection, worker, input.goal);
             // A call an older build filed has its id recorded and no decision:
             // the open row is its own, found again by `fileReady`.
             return refusal === undefined || (memoize && refusal.taskId === (await recordedFiling(ctx))) ? null : refusal.error;
