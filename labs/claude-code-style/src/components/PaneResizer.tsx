@@ -10,11 +10,13 @@ const STEP = 16;
  * right, so dragging left widens it.
  */
 export function PaneResizer({ width, onResize }: { width: number; onResize: (width: number) => void }) {
+  // A narrow window draws the pane narrower than its remembered width; moving the edge starts from what you see.
+  const shown = (handle: HTMLElement) => handle.parentElement?.getBoundingClientRect().width || width;
   const start = (event: PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     const handle = event.currentTarget;
     const fromX = event.clientX;
-    const fromWidth = width;
+    const fromWidth = shown(handle);
     handle.setPointerCapture(event.pointerId);
     const move = (moved: globalThis.PointerEvent) => onResize(fromWidth + (fromX - moved.clientX));
     const end = () => {
@@ -27,8 +29,8 @@ export function PaneResizer({ width, onResize }: { width: number; onResize: (wid
     handle.addEventListener("pointercancel", end);
   };
   const key = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "ArrowLeft") onResize(width + STEP);
-    else if (event.key === "ArrowRight") onResize(width - STEP);
+    if (event.key === "ArrowLeft") onResize(shown(event.currentTarget) + STEP);
+    else if (event.key === "ArrowRight") onResize(shown(event.currentTarget) - STEP);
     else return;
     event.preventDefault();
   };
