@@ -10,6 +10,7 @@
  */
 import { generator, type GeneratorConfig } from "../blocks/generator";
 import { mergeDeclaredResources } from "../blocks/internal/build-block";
+import { isBlockDefinition } from "../blocks/internal/utils";
 import type { AuthenticationConfig } from "../types/auth";
 import type { BlockDefinition, DeclaredResourceEntry, DeclaredResources } from "../types/block";
 import {
@@ -23,6 +24,7 @@ import {
 import type {
   FlowCardinality,
   ActionConfig,
+  ReadConfig,
   FlowDefinition,
   FlowInstance,
   FlowInstanceOptions,
@@ -174,6 +176,7 @@ const DEFINITION_ONLY_INSTANCE_OPTIONS = [
   "mcp",
   "internal",
   "task",
+  "reads",
 ] as const;
 
 /**
@@ -738,6 +741,27 @@ function typedEntries<TEntry>(
     );
   }
   return value.actions;
+}
+
+/**
+ * Validate the flow's `reads` at definition time (FIX-2286): each is an object
+ * with a block, so a read with none fails here by name rather than as a
+ * property read on `undefined` when an app calls it.
+ */
+function validateReads(
+  kind: string,
+  reads: Record<string, ReadConfig> | undefined
+): Record<string, ReadConfig> | undefined {
+  if (reads === undefined) return undefined;
+  if (typeof reads !== "object" || reads === null) {
+    throw new Error(`Flow "${kind}" declares "reads" that is not a map of name to \`{ block }\`.`);
+  }
+  for (const [name, read] of Object.entries(reads)) {
+    if (typeof read !== "object" || read === null || !isBlockDefinition(read.block)) {
+      throw new Error(`Flow "${kind}" read "${name}" has no block. A read is \`{ block }\`.`);
+    }
+  }
+  return reads;
 }
 
 /**
@@ -1341,6 +1365,11 @@ function normalizeFlowConfig(
   validateEntryMaps(kind, declaredInternal, declaredTaskEntries);
   const internal = withFlowToolsEntries(declaredInternal, tools);
   const declaredTasks = withFlowToolsEntries(declaredTaskEntries, tools);
+  const reads = validateReads(kind, definition.reads);
+  // A read's block is a root like an action's: its resources register on the
+  // flow, and a dispatcher it reaches is checked. It never dispatches (its
+  // context refuses), but an unknown address is still a definition error.
+  const readBlocks = Object.values(reads ?? {}).map((read) => read.block);
 
   // Enumerated once by `actionBlocks` and walked by one `walkBlockGraph`, so
   // no collector can see a different edge set (three hand-rolled walks was how
@@ -1362,9 +1391,10 @@ function normalizeFlowConfig(
   // behind the claim gate of the board whose dispatch addresses it. The roots
   // below are then collected from THAT map, so the gate's own declarations
   // (the board's ledger) count.
-  const reachable = walkBlockGraph(
-    actionBlocks(actions, internal, declaredTasks, webhooks, schedules, requestMerged)
-  );
+  const reachable = walkBlockGraph([
+    ...actionBlocks(actions, internal, declaredTasks, webhooks, schedules, requestMerged),
+    ...readBlocks
+  ]);
 
   const task = resolveDispatchTargets(kind, reachable, internal, declaredTasks);
 
@@ -1377,14 +1407,10 @@ function normalizeFlowConfig(
     definition.configSchema !== undefined
   );
 
-  const declaredBlocks = actionBlocks(
-    actions,
-    internal,
-    task,
-    webhooks,
-    schedules,
-    requestMerged
-  );
+  const declaredBlocks = [
+    ...actionBlocks(actions, internal, task, webhooks, schedules, requestMerged),
+    ...readBlocks
+  ];
 
   // Resources are collected off the same walk, taken from `declaredBlocks`
   // (the rebuilt task map, so a board's claim gate and its ledger count).
@@ -1449,6 +1475,7 @@ function normalizeFlowConfig(
     actions,
     ...(internal !== undefined ? { internal: { actions: internal } } : {}),
     ...(task !== undefined ? { task: { actions: task } } : {}),
+    ...(reads !== undefined ? { reads } : {}),
     session,
     request: requestMerged,
     user,
@@ -1536,6 +1563,7 @@ export function defineFlow<
     // unmirrored one.
     ...(baseInstance.internal !== undefined ? { internal: baseInstance.internal } : {}),
     ...(baseInstance.task !== undefined ? { task: baseInstance.task } : {}),
+    ...(baseInstance.reads !== undefined ? { reads: baseInstance.reads } : {}),
     session: baseInstance.session as TSession,
     request: baseInstance.request as TRequest,
     user: baseInstance.user as TUser,

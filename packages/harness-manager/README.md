@@ -28,8 +28,8 @@ const manager = harnessManager({
   // reviewChanges: true,   // optional: a user reviews a run's commits before its task completes
 
   // The slot. Called once; the manager hands down its feeds.
-  harness: ({ cwd, resume, onSession, onUsage }) =>
-    claudeCodeAgent({ cwd, resume, onSession, onUsage, detached: true, recordWork: true }),
+  harness: ({ cwd, resume, onSession, onUsage, onActivity }) =>
+    claudeCodeAgent({ cwd, resume, onSession, onUsage, onActivity, detached: true, recordWork: true }),
 });
 ```
 
@@ -194,7 +194,7 @@ picture.
 
 ## The slot
 
-The manager calls your factory once, with five feeds (`HarnessFeeds`):
+The manager calls your factory once, with six feeds (`HarnessFeeds`):
 
 | Feed | What it does |
 |---|---|
@@ -203,6 +203,7 @@ The manager calls your factory once, with five feeds (`HarnessFeeds`):
 | `onSession` | Called by the harness when it names its session, so the manager records it. |
 | `onSteerable` | Called by a harness whose run can take a line mid-turn, with the run's `steer` while it can and `null` after, so a steer reaches the step [as it runs](#a-run-that-takes-a-steer-live). Optional; a harness that can't steer ignores it. |
 | `onUsage` | Called by the harness with each subscription usage window its run reports, so the manager stores it in the run owner's [usage record](#subscription-usage). A harness that reports no usage ignores it. |
+| `onActivity` | Called by the harness with each assistant message and tool call of its run, so the manager keeps the task's [progress note](#how-a-running-task-is-doing) current. Optional; a harness that reports no activity ignores it. |
 
 They are the harness contract's own signatures, declared in `@flow-state-dev/core`. Each is handed the block's context, not the run's prompt.
 
@@ -211,15 +212,15 @@ Everything else about the agent (model, tools, permissions, sandbox) you write i
 ```ts
 import { codexAgent } from "@flow-state-dev/codex";
 
-harness: ({ cwd, resume, onSession }) =>
-  codexAgent({ cwd, resume, onSession, thread: { sandboxMode: "workspace-write" } }),
+harness: ({ cwd, resume, onSession, onActivity }) =>
+  codexAgent({ cwd, resume, onSession, onActivity, thread: { sandboxMode: "workspace-write" } }),
 ```
 
 ```ts
 import { cursorAgent } from "@flow-state-dev/cursor";
 
-harness: ({ cwd, resume, onSession, onSteerable }) =>
-  cursorAgent({ cwd, resume, onSession, onSteerable, agent: { model: { id: "composer-2.5" } } }),
+harness: ({ cwd, resume, onSession, onSteerable, onActivity }) =>
+  cursorAgent({ cwd, resume, onSession, onSteerable, onActivity, agent: { model: { id: "composer-2.5" } } }),
 ```
 
 Any block that takes the feeds and returns a run handle conforming to `@flow-state-dev/core`'s harness contract is one this manager can drive.
@@ -429,7 +430,7 @@ the coding flow gives its turn a `sendMessage` of its own.
 
 By default a running step finishes first, and the next step takes the steer. Build the manager with `stopsOnAbort: true` when your harness's abort resolves only once its process has exited. The manager then reads its row every `STEER_POLL_MS` (one second) while a step runs, and once the harness has confirmed a coding session to resume, a new message stops the running step, and the next step starts at once with it. The stop ends the step, not the request, and the checkout keeps what the stopped step wrote. A message that arrives before the session is confirmed waits for the step's own end. Leave the option off for a harness whose abort can return while its process still runs.
 
-A step never runs for a task its attempt no longer holds: if the task is cancelled, finishes, or is claimed again while a step runs, the request takes no further step.
+A step never runs for a task its attempt no longer holds. The manager reads the task's row every `STEER_POLL_MS` while a step runs, and if the task is cancelled, finishes, or is claimed again, it aborts the running step's harness within that second and the request takes no further step. A cancelled task's harness doesn't keep working on a run that can record nothing.
 
 A message taken mid-run shows in the run's session as a line from its sender.
 
@@ -438,6 +439,16 @@ A message taken mid-run shows in the run's session as a line from its sender.
 A harness whose run can take a line mid-turn (Cursor, passed the `onSteerable` feed) offers the manager a way in while a step runs. The manager then reads the task's row every `STEER_POLL_MS` while the step runs, and hands each new message to the running turn as it arrives. The step carries on, with no stop, no new step and no new attempt. A message taken this way shows in the run's session as a line from its sender.
 
 A line the run refuses is not lost. The next step the request runs takes it, as if it had arrived after the step: by default when the step ends, or at once under `stopsOnAbort: true`, which stops the step for it. A line still waiting on the run's answer when the step ends is taken by the next step too, with a note to the agent that it may already have acted on it. Lines owed this way are held in the server's memory for the request, so a server that dies mid-step loses them.
+
+### How a running task is doing
+
+While a step runs, the manager keeps the task's `statusNote` (the one-line note `getTask`, `listTasks` and task views show) set to the run's latest activity, from the slot's `onActivity` feed. A message reads as its first non-empty line. A tool call reads as `<name>: <detail>`, where the detail is the first of `file_path`, `path`, `command`, `pattern`, `query` or `url` in its arguments, or as the name alone when none is there. Whitespace is collapsed and the note is cut to 280 characters; `progressNoteOf(activity)` returns the note an activity reads as, or `null` for one that says nothing.
+
+The first activity of a step is written at once. After that the manager writes at most once per `PROGRESS_NOTE_MS` (30 seconds), always the latest, and never the same text twice in a row. A write needs the claim the run holds, so an attempt that lost its task writes nothing more. Nothing is written after the step ends, and nothing clears the note: a finished task keeps its last one beside its status. A board without `reportProgress` gets no note, and the run is unaffected.
+
+The feed reaches the harness only if your slot passes it on, as in the examples above (spreading the feeds into the harness's options does it too). Claude Code and Codex report messages and tool calls; Cursor reports tool calls only.
+
+A worker's message to a coding task that is still running is refused (`task-running`, see [Answering a worker's message](#answering-a-workers-message)), so a coordinator that wants to know how the task is doing reads its `statusNote` with `getTask`.
 
 ### Upgrading from `messageDoor`
 
@@ -486,7 +497,7 @@ The record is `harnessUsageCollection` (`HARNESS_USAGE`, `harness-usage/**`, use
 
 ## The export surface, in two halves
 
-**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `harnessTalkTurn` with `harnessTalkInputSchema` and `harnessTalkOutputSchema`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer` for [answering a review](#reviewing-a-runs-changes), `upgradeKeptTurns`, `STEER_POLL_MS`, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerClaimOrder` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
+**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `harnessTalkTurn` with `harnessTalkInputSchema` and `harnessTalkOutputSchema`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer` for [answering a review](#reviewing-a-runs-changes), `upgradeKeptTurns`, `STEER_POLL_MS`, `PROGRESS_NOTE_MS` and `progressNoteOf` for [progress notes](#how-a-running-task-is-doing), `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerClaimOrder` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
 
 **`@flow-state-dev/harness-manager/checkout`** is how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. `run` and the git timeouts it re-exports come from `@flow-state-dev/workspace`. It is outside the versioned contract, so a host should not import from it. Everything in it is specific to git worktrees. Adopt `harnessManager({ harness })` and let it own the checkout.
 

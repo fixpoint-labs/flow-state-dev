@@ -15,12 +15,15 @@ fsdev ui add conversation
 ```
 
 ```tsx
-import { Conversation } from "@/components/flow-state/conversation";
+import { Conversation, ScrollOnNewRequest } from "@/components/flow-state/conversation";
 
 <Conversation>
+  <ScrollOnNewRequest items={items} />
   {/* messages */}
 </Conversation>
 ```
+
+Put `ScrollOnNewRequest` inside to bring each new request into view. When a conversation opens, on its first load or when you switch to another session, it lands at the bottom before the first paint, with no animation. Only a request that follows one already on screen scrolls smoothly.
 
 ## Message
 

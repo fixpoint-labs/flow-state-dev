@@ -85,6 +85,7 @@ import {
   settlePassWake,
   taskToolsForTurn,
   taskToolActions,
+  taskToolReads,
   type TaskCollectionResolver,
   type AssigneeRoster,
   type AssigneeRosterSource
@@ -148,6 +149,7 @@ import {
   taskChainResources
 } from "./chain";
 import { projectAddressSchema } from "../projects/collections";
+import { namesProject, SET_THE_FILERS_PROJECT } from "../projects/run-project";
 import { parseProjectRef, projectRef, type ProjectAddressRef } from "../projects/workstream-ref";
 import { filingProjectAddressOf, filingProjectOf, filingSessionIdOf, filingWorkstreamOf, stateBeforeWorkProject } from "./filing-session";
 import {
@@ -195,6 +197,12 @@ export interface ConversationBoardOptions {
   takesOwnTasks?: () => boolean;
   /** The most tasks under one top task, read on every filing. Omitted, {@link DEFAULT_TASK_CHAIN_LIMIT}. */
   chainLimit?: () => number | undefined;
+  /**
+   * Whether a delegate's flow works in a project's files (FIX-2333): a task
+   * for it filed with no project to work in is refused `no_project` before
+   * anything is reserved or written. Omitted, no flow needs one.
+   */
+  needsProject?: (flowKind: string) => boolean;
   /**
    * How a session that routes messages files a routed task from its model's
    * turn (FIX-2083): on a turn routing one, a filing whose result goes to the
@@ -1128,6 +1136,35 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       }
       return { ...init, assignee, targetSessionId: resolved.sessionId };
     };
+    /**
+     * A task for a delegate whose flow works in a project's files, filed with
+     * no project to work in, is refused here, before anything is reserved or
+     * written (FIX-2333), so the app can ask for a project before a task
+     * exists. A project is the filer's workstream; a `target`'s (a target
+     * names a workstream a delegate leads, which `withTarget` has already
+     * resolved, and a workstream is always in a project); the one the row
+     * would be stamped with (a follow-up's root's); or one the task names,
+     * whose shape and existence the run checks. The same order as the run's
+     * own lookup (`runProjectOf`), whose `no-project` stays the backstop: a
+     * change to one belongs in the other.
+     */
+    const assertProjectFor = async (init: TaskInit): Promise<void> => {
+      if (options.needsProject === undefined || init.target !== undefined) return;
+      // A follow-up runs where its root ran, with its worker and its target (`withFollowUpPlacement`).
+      const named = init.followUpOf === undefined ? undefined : ref.get(init.followUpOf);
+      const root = named?.followUpOf === undefined ? named : ref.get(named.followUpOf);
+      if (root?.target !== undefined) return;
+      const assignee = root?.assignee ?? init.assignee ?? (await soleDelegate());
+      const flow = assignee === undefined ? undefined : (await reach(ctx)).available.get(assignee);
+      if (flow === undefined || !options.needsProject(flow)) return;
+      if (filingWorkstreamOf(ctx.session.state) !== undefined) return;
+      if ((await filedProjectFor(ctx, named)).stamp !== null) return;
+      if (namesProject(init.input)) return;
+      throw new TaskWriteRefusedError(
+        "no_project",
+        `"${assignee}" works in a project's files, and this conversation has no project for it to work in. Nothing was filed. ${SET_THE_FILERS_PROJECT}`
+      );
+    };
     /** The conversation's only task-taking delegate, which a row filed with no assignee goes to; none with none or several. */
     const soleDelegate = async (): Promise<string | undefined> => {
       return soleTaskDelegate(await options.delegates(ctx));
@@ -1209,6 +1246,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // One at a time: a batch on such a turn files plain tasks.
       if (init.resultTo === "conversation" && options.routes?.routing(ctx) === true) return options.routes.file(ctx, init);
       const targeted = await withTarget(init);
+      await assertProjectFor(targeted);
       await refuseUnderCancelledTask();
       return fileReserved(targeted, await reserveFiling(ctx, ref, partition, targeted, true));
     };
@@ -1334,6 +1372,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         for (const init of ordered) checkFiling(init, filedWith);
         const batch: Array<TaskInit & { id: string }> = [];
         for (const init of ordered) batch.push({ ...(await withTarget(init)), id: init.id });
+        for (const init of batch) await assertProjectFor(init);
         // As stored now, so one another request ended is refused before reserveFiling (FIX-2114).
         // A backing with no `refresh` must serve `get` committed across requests.
         const filed = new Set(batch.map((init) => init.id));
@@ -1610,7 +1649,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
    * session's own board, guarded, with its steps beside it when the worker
    * works steps (FIX-2076). `undefined` while the caller may file nothing.
    */
-  const reachBoard = async (ctx: BlockContext, routesSelf: boolean): Promise<TaskCollectionRef | undefined> => {
+  const reachBoard = async (ctx: BlockContext, routesSelf: boolean, touch = true): Promise<TaskCollectionRef | undefined> => {
     const partition = await filingSessionIdOf(ctx.session);
     const ref = await conversationLedgerAt(ctx, partition);
     if (ref === undefined) return undefined;
@@ -1618,8 +1657,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // the pass pays it, one at a time. A touch resends nothing itself. Don't
     // narrow it to writes, or to a session that files now: rows filed before
     // it lost its last task-taking delegate still run and are heard (FIX-1802 BR-5).
-    if (hasPastDue(ref.list(), ref.now())) await triggerPass(ctx);
-    else if (hasStartable(ref)) await triggerPass(ctx, { touch: true });
+    // A read never touches (FIX-2286 D2): the pass writes, and a row's start is
+    // owed by the wake its writer sent, not by a look.
+    if (touch && hasPastDue(ref.list(), ref.now())) await triggerPass(ctx);
+    else if (touch && hasStartable(ref)) await triggerPass(ctx, { touch: true });
     // No board to act on while the session doesn't file: none of its
     // delegates takes a task now, so an action answers `no_delegation_board`.
     // A turn of a worker that works steps files them whatever its delegates.
@@ -1635,6 +1676,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
 
   /** The model's every tool call reaches the board here: the worker's own turn, which may file its steps. */
   const turnResolver: TaskCollectionResolver = (ctx) => reachBoard(ctx, true);
+
+  /** A read reaches the board here: an action's reach, with no touch (FIX-2286 D2). */
+  const readResolver: TaskCollectionResolver = (ctx) => reachBoard(ctx, false, false);
 
   /** The repairs a pass runs before its drain, and again after (`payBoardDebts`). */
   const delivery = conversationDelivery(CONVERSATION_LEDGER_ID);
@@ -1880,6 +1924,11 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     planned: planning.planned,
     /** The task tools as public actions, `<tool>_tasks`. */
     actions: taskToolActions(CONVERSATION_LEDGER_ID, resolver, roster, { dispatches: true }),
+    /**
+     * The task list as a read, `listTasks_tasks` (FIX-2286): the action's rows,
+     * stored nowhere. Spread into the flow's `reads` beside `actions`.
+     */
+    reads: taskToolReads(CONVERSATION_LEDGER_ID, readResolver),
     /** The ledger, the plan ledger, the chain records and the routed-session records, for the flow's `resources`. */
     resources: { ...conversationLedgerResources, ...planLedgerResources, ...taskChainResources, ...routedSessionResources }
   };

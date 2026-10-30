@@ -41,7 +41,7 @@ import { delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createFlowState } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { createWorkerInstallation, defineAgentWorkerFlow, defineCoordinatorFlow, hireWorkforce, projectSourceCapability, projectWorkspace } from "@flow-state-dev/workforce";
+import { consultSessionsCapability, createWorkerInstallation, defineAgentWorkerFlow, defineCoordinatorFlow, hireWorkforce, projectSourceCapability, projectWorkspace } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { localWorkspaceHost } from "@flow-state-dev/workspace";
 import { defineHarnessThreadFlow, HARNESS_THREAD_FLOW } from "./workforce/flows/harness-thread.mts";
@@ -88,9 +88,10 @@ if (tree.errors.length > 0) throw new Error(`workforce/ did not load: ${tree.err
 let flows = {};
 const installation = createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => flows });
 flows = {
-  agent: defineAgentWorkerFlow({ installation, model, ...answerAgain, uses: [projectSourceCapability({ workspace })] }),
+  agent: defineAgentWorkerFlow({ installation, model, ...answerAgain, uses: [projectSourceCapability({ workspace }), consultSessionsCapability(installation)] }),
   coordinator: defineCoordinatorFlow({ installation, routeModel: model, agent: { model } }),
-  [HARNESS_THREAD_FLOW]: { flow: defineHarnessThreadFlow({ installation, workspace }), roles: ["contributor"] },
+  // Its runs work in the session's project: a task filed with none is refused at filing (FIX-2333).
+  [HARNESS_THREAD_FLOW]: { flow: defineHarnessThreadFlow({ installation, workspace }), roles: ["contributor"], needsProject: true },
 };
 const workers = hireWorkforce(installation) as { id: string }[];
 const projects = defineProjectsFlow()({ id: PROJECTS_FLOW }) as { id: string };
@@ -102,4 +103,6 @@ export default createFlowState({
   // A coding run's review and a thread's question wait on you across a restart.
   durable: true,
   devtool: { userId },
+  // A consult of another conversation reads on `intent/utility`, a smaller model.
+  models: { default: model, intents: { utility: [process.env.CLAUDE_CODE_STYLE_UTILITY_MODEL ?? "openai/gpt-6-luna"] } },
 } as never);

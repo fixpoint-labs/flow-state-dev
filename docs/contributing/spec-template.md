@@ -381,8 +381,9 @@ has four parts, in order. The compose-existing-pieces rule those parts enforce i
      retained file, cite its real PR or Linear source; never invent a local path.
 2. **Builds on / Adds** — a table, one row per item this spec adds to a package (a hook, a
    cap, a marker, a record, a path, a public method): **Adds** · **Existing piece considered** ·
-   **Why that doesn't fit, or how this is composed from it**. The Adds list is as short as
-   possible. An empty table is allowed when the spec only removes or extends; "none" still
+   **Why that doesn't fit, or how this is composed from it**. The existing piece cites its
+   [mechanism id](../mechanisms/mechanisms.yaml) first, then the symbol (`wait-gate` ·
+   `parkOnWait`). The Adds list is as short as possible. An empty table is allowed when the spec only removes or extends; "none" still
    carries the searches. A dedicated [`reuse-review`](../../.agents/skills/reuse-review/SKILL.md)
    checks each row against the code.
 3. **The debt** — a table with three rows, each a list:

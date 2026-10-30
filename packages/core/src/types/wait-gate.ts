@@ -16,6 +16,11 @@
  *   the work as it stands.
  * - **with a stop**, when a person stops the parked request.
  *
+ * A wait that starts its work itself, with an identity it kept first (a
+ * worker's call: its message id), owes its park first, through `RequestWaits.owingPark`: a request that dies
+ * after starting the work and before this gate is written is continued by the
+ * engine's durability sweep, and its replay parks here on the work it started.
+ *
  * **The gate's data is the wait binding**, its deadline and the waiting
  * request's own work, and nothing else. The gate fences on the work's identity
  * and its single ending, not on a per-attempt claim ticket, and it is pending
@@ -37,8 +42,6 @@ import { SuspensionError, type SuspendOptions } from "../errors/suspension-error
 /** The suspension reason a wait gate carries. */
 export const WAIT_GATE_REASON = "wait" as const;
 
-const LEGACY_WAIT_GATE_REASON = "ask"; // retired-name-refusal: WR-9, a gate parked before the rename
-
 /**
  * The internal entry a wait's deadline wake names (FIX-2082 D1). The engine
  * fires it itself: no flow declares it. One wake per session carries the
@@ -53,9 +56,9 @@ export const WAIT_DEADLINE_ENTRY = "waitDeadline";
  */
 export const MAX_WAIT_DEPTH = 5;
 
-/** The one test of a gate's kind, including a gate stored before the rename. */
+/** The one test of a gate's kind. */
 export function isWaitGate(suspension: { readonly reason: string }): boolean {
-  return suspension.reason === WAIT_GATE_REASON || suspension.reason === LEGACY_WAIT_GATE_REASON;
+  return suspension.reason === WAIT_GATE_REASON;
 }
 
 /**

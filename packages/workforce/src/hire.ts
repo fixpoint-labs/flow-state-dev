@@ -120,10 +120,21 @@ const builtInAgentWorkerFlow = defineAgentWorkerFlow() as unknown as AnyFlowType
  * `showSettings` names the flow's settings a user may see: each worker's
  * value for them rides on its `roster()` row. Every other setting stays on
  * the server. Omitted, none shows.
+ *
+ * `needsProject` says the flow's tasks work in a project's files, as a coding
+ * run does: a board refuses a task for one of its workers that is filed with
+ * no project to work in, before any row or run exists (`no_project`), so the
+ * app can ask for a project first. Omitted, a task files without one.
  */
 export type WorkerFlowEntry =
   | AnyFlowType
-  | { flow: AnyFlowType; standardOnly?: boolean; roles?: readonly WorkerRole[]; showSettings?: readonly string[] }
+  | {
+      flow: AnyFlowType;
+      standardOnly?: boolean;
+      roles?: readonly WorkerRole[];
+      showSettings?: readonly string[];
+      needsProject?: boolean;
+    }
   | WorkerFlowBuilder;
 
 /** One worker flow as a hire resolves a `flow:` against it. */
@@ -132,6 +143,7 @@ export type ResolvedWorkerFlow = {
   standardOnly: boolean;
   roles: readonly WorkerRole[];
   showSettings: readonly string[];
+  needsProject: boolean;
 };
 
 /**
@@ -158,12 +170,13 @@ export function resolveWorkerFlows(
     }
     resolved[name] =
       typeof entry === "function"
-        ? { flow: entry, standardOnly: false, roles: builtInRolesOf(entry) ?? [], showSettings: [] }
+        ? { flow: entry, standardOnly: false, roles: builtInRolesOf(entry) ?? [], showSettings: [], needsProject: false }
         : {
             flow: entry.flow,
             standardOnly: entry.standardOnly === true,
             roles: entry.roles ?? builtInRolesOf(entry.flow) ?? [],
-            showSettings: [...(entry.showSettings ?? [])]
+            showSettings: [...(entry.showSettings ?? [])],
+            needsProject: entry.needsProject === true
           };
   }
   return resolved;

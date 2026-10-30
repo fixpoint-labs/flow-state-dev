@@ -86,6 +86,17 @@ export const workerMessageRowSchema = z.object({
   /** When a call's reply was given: the recipient's turn ended. */
   repliedAt: z.number().optional(),
   /**
+   * The sender asked for a reply and goes on without waiting (FIX-2310): the
+   * recipient owes one answer, which reaches the sender as a message. From the
+   * tool's `replyRequested`. Absent on a plain message and on a call, whose
+   * reply is its tool's result.
+   */
+  replyRequested: z.literal(true).optional(),
+  /** The message that answered this one, once one did (FIX-2310): set once, so a second answer is never sent. */
+  answeredBy: z.string().min(1).optional(),
+  /** This message is the framework's "no answer" to the one it answers (FIX-2310): its recipient's turn ended with nothing to say, or failed. */
+  noAnswer: z.literal(true).optional(),
+  /**
    * Why a taken message waits before it lands (FIX-2239): its session is
    * stopped for the user, or its task is held on one. Cleared when it lands.
    */

@@ -83,6 +83,12 @@ under the data folder instead. Before a run settles, a judge (harness-manager's 
 its answer and commits against the task's goal: it can send the run back, ask you a question, or
 let it through, and threads mode shows its verdict on the coding thread's card.
 
+Every task card shows the model its run uses and a token count that rises while the run works,
+and the harness tag names the harness the run reported. Finished rows keep the final total, and a
+task's sheet or thread view splits it into input and output. A count no run has reported reads
+"no tokens reported yet", never 0, and one still missing a source is marked partial. All of it comes from the `spend` the
+board's `listTasks` rows carry; the lab sums nothing itself.
+
 Both modes are wired. The screen tests run on a test double, `test/fake-lab.ts`, which the app
 never imports.
 
@@ -100,10 +106,10 @@ a package call:
 | A result card inside a running turn | `answerAgain: true` on the main worker's flow: the settled task's notice, taken into the turn |
 | The main session reading the project's files | `projectSourceCapability({ workspace })` on the `agent` flow, over the coding runs' host; `desk.main` and `desk.researcher` name its `read` preset in their `WORKER.md` |
 | Interrupting | aborting the session's running turn; its tasks keep running |
-| The tasks pane and a task's work | `listTasks_tasks`, and the items of the task's run session |
+| The tasks pane and a task's work | the `listTasks_tasks` read (stores nothing per poll), and the items of the task's run session |
 | Threads mode's sessions | the same, with `desk.lead`, a `coordinator`, as the main worker |
 | A thread card, and *Sent to a thread* | the lead's `createTask` call in the session's items |
-| The board's columns | each `listTasks_tasks` row's status and its open holds, read with `inboxItems` from `@flow-state-dev/orchestration/inbox` |
+| The board's columns | the status of each row the `listTasks_tasks` read returns, and its open holds, read with `inboxItems` from `@flow-state-dev/orchestration/inbox` |
 | A coding thread's tag | the `harness` action of the coding flow, asked in the thread's run session |
 | *Not reviewed* | a finished coding thread's output, `review: "deadline"`, through `getTask_tasks` |
 | Answering in a thread | the Inbox client's `answerHold` on its open question; with none, `updateTask_tasks` with your line as a steer |
@@ -116,17 +122,3 @@ a package call:
 `review: true`, as threads mode's `desk.thread-coder` is, runs on the manager built with
 `reviewChanges: true`: a run that committed waits for your review before its task completes.
 Session mode's `desk.coder` has no review line, since that mode has no review to answer.
-
-## What this app adds
-
-Every file in the lab, by kind. `node scripts/inventory.mjs` fails on a file that is none of these,
-and on a flow over 200 lines; `--wired` also fails while a fixture is left in `src/`.
-
-<!-- inventory:start -->
-| Kind | Files | Lines |
-|---|---:|---:|
-| Configuration | 18 | 494 |
-| React UI | 27 | 2665 |
-| Small flows | 3 | 273 |
-| Checks (not app code) | 8 | 1256 |
-<!-- inventory:end -->

@@ -72,7 +72,7 @@ export const AREAS = [
   { id: "apps", scope: true, re: /^apps\// },
   { id: "labs", scope: true, re: /^labs\// },
   { id: "examples", scope: true, re: /^examples\// },
-  { id: "reference-docs", scope: true, re: /^docs\/architecture\/|^README\.md$/ },
+  { id: "reference-docs", scope: true, re: /^docs\/architecture\/|^docs\/mechanisms\/|^README\.md$/ },
 ];
 
 /** The area a path falls in, or undefined when none names it. */

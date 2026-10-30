@@ -209,7 +209,7 @@ describe("the EM files from the workstream it leads", () => {
     // The EM filed one task per part, from the workstream session, on that session's board; each ran and completed.
     const settled = await eventually(async () => {
       // The routed task to the EM is a row on the project coordinator's board, its brief sealed on it; the coder's tasks are the rest.
-      const rows = (Object.values(await lab!.stored("user", "tasks/")) as Array<Record<string, any>>).filter((r) => r.sealed?.postId === undefined);
+      const rows = (Object.values(await lab!.stored("user", "tasks/")) as Array<Record<string, any>>).filter((r) => r.sealed?.messageRequestId === undefined);
       return rows.length === ISSUES.length && rows.every((r) => r.status === "completed") ? rows : undefined;
     }, "both tasks completed", 60_000);
     expect(settled.map((r) => r.input.harnessFeature).sort((a, b) => a.issue.localeCompare(b.issue))).toEqual(
@@ -245,7 +245,7 @@ describe("the EM files from the workstream it leads", () => {
     // so the EM's answer lands in her project coordinator conversation and the workstream session is free
     // for her next ask.
     const routed = await eventually(async () => {
-      const rows = (Object.values(await lab!.stored("user", "tasks/")) as Array<Record<string, any>>).filter((r) => r.sealed?.postId !== undefined);
+      const rows = (Object.values(await lab!.stored("user", "tasks/")) as Array<Record<string, any>>).filter((r) => r.sealed?.messageRequestId !== undefined);
       return rows.length === 1 && rows[0]!.status === "completed" ? rows[0]! : undefined;
     }, "the routed task completed", 30_000);
     expect(routed.targetSessionId).toBe(workstream);

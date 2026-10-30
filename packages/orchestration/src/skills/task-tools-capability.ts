@@ -51,7 +51,7 @@
  */
 
 import { defineCapability, handler, SuspensionTimeoutError, type DefinedCapability } from "@flow-state-dev/core";
-import type { ActionConfig, BlockContext } from "@flow-state-dev/core/types";
+import type { ActionConfig, BlockContext, ReadConfig } from "@flow-state-dev/core/types";
 import type { GeneratorTool } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
@@ -59,6 +59,8 @@ import {
   isTerminalStatus,
   lockedFields,
   taskSchema,
+  taskSpendView,
+  taskSpendViewSchema,
   TaskCapExceededError,
   TaskWriteRefusedError,
   TaskFilingRefusedError,
@@ -186,6 +188,110 @@ function readable(value: unknown): { value: unknown; cut: boolean } {
   const text = typeof value === "string" ? value : (JSON.stringify(value) ?? String(value));
   if (text.length <= READ_OUTPUT_LIMIT) return { value, cut: false };
   return { value: text.slice(0, READ_OUTPUT_LIMIT), cut: true };
+}
+
+/**
+ * What a running task waits on while no worker holds it (FIX-2077's
+ * `keptOpenBy`), and what holds it for the user (FIX-2133): its open holds.
+ */
+function waitingOf(t: Task) {
+  const open = openQuestions(t);
+  return {
+    ...(t.keptOpenBy != null && t.status === "in_progress" ? { keptOpenBy: t.keptOpenBy } : {}),
+    ...(open.length > 0 ? { questions: open } : {}),
+  };
+}
+
+/** A new row's id, in the board's own shape: twenty hex characters, unique across processes. */
+const mintTaskId = (): string => `task_${crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`;
+
+/**
+ * The filing each board is running, so the next waits for it (FIX-2350). In
+ * process, and keyed by the request too: a step's sibling calls share one
+ * request, while another request's board of the same name may be another
+ * board altogether, and must not wait on this one.
+ */
+const filings = new Map<string, Promise<unknown>>();
+
+/** Run `file` once every earlier filing on the same board has ended. */
+async function oneFilingAtATime<T>(board: string, file: () => Promise<T>): Promise<T> {
+  const before = filings.get(board) ?? Promise.resolve();
+  const mine = before.then(file, file);
+  const settled = mine.then(
+    () => undefined,
+    () => undefined
+  );
+  filings.set(board, settled);
+  try {
+    return await mine;
+  } finally {
+    if (filings.get(board) === settled) filings.delete(board);
+  }
+}
+
+/**
+ * One task as `getTask` reads it: every field it returns, with its input,
+ * output and metadata each cut to {@link READ_OUTPUT_LIMIT} and flagged when
+ * cut. `rows` is the board it is on, read for the latest completed follow-up
+ * in its chain (`current`). A read built here is the same read the tool
+ * returns, so a framework that hands a model a task's ending as a `getTask`
+ * result (workforce's woken turn, FIX-2345) shows the shape the tool would.
+ */
+export function readTaskView(t: Task, rows: readonly Task[]) {
+  const taskInput = t.input === undefined ? undefined : readable(t.input);
+  const output = t.output === undefined ? undefined : readable(t.output);
+  const metadata = t.metadata === undefined ? undefined : readable(t.metadata);
+  const current = currentFor(t, latestCompletedByRoot(rows).get(t.followUpOf ?? t.id));
+  const currentOutput = current?.output === undefined ? undefined : readable(current.output);
+  return {
+    id: t.id,
+    goal: t.goal,
+    ...(t.title !== undefined ? { title: t.title } : {}),
+    status: t.status,
+    ...(t.assignee !== undefined ? { assignee: t.assignee } : {}),
+    ...(t.context !== undefined ? { context: t.context } : {}),
+    ...(t.deps !== undefined ? { deps: t.deps } : {}),
+    ...(t.priority !== undefined ? { priority: t.priority } : {}),
+    ...(t.labels !== undefined ? { labels: t.labels } : {}),
+    ...(metadata !== undefined ? { metadata: metadata.value, ...(metadata.cut ? { metadataCut: true as const } : {}) } : {}),
+    attempts: t.attempts,
+    ...(t.maxAttempts !== undefined ? { maxAttempts: t.maxAttempts } : {}),
+    ...(t.session !== undefined ? { session: t.session } : {}),
+    ...(t.resultTo !== undefined ? { resultTo: t.resultTo } : {}),
+    ...(t.target !== undefined ? { target: t.target } : {}),
+    ...(taskInput !== undefined ? { input: taskInput.value, ...(taskInput.cut ? { inputCut: true as const } : {}) } : {}),
+    ...(output !== undefined ? { output: output.value, ...(output.cut ? { outputCut: true as const } : {}) } : {}),
+    ...(t.checkpointed === true ? { checkpoint: true as const } : {}),
+    ...(t.statusNote !== undefined ? { statusNote: t.statusNote } : {}),
+    ...(t.error !== undefined ? { error: t.error } : {}),
+    ...waitingOf(t),
+    ...(t.followUpOf !== undefined ? { followUpOf: t.followUpOf } : {}),
+    ...(t.filedByTask !== undefined ? { filedByTask: t.filedByTask } : {}),
+    ...(t.run != null ? { run: t.run } : {}),
+    ...(t.completedAt != null ? { completedAt: t.completedAt } : {}),
+    ...(t.steers !== undefined && t.steers.length > 0
+      ? {
+          steers: t.steers.map((steer) => ({
+            message: steer.message,
+            from: steer.from,
+            ...(steer.by !== undefined ? { by: steer.by } : {}),
+            at: steer.at,
+            ...(steer.answers !== undefined ? { answers: steer.answers } : {}),
+            taken: steer.takenBy === t.attempts,
+          })),
+        }
+      : {}),
+    ...(current !== undefined
+      ? {
+          current: {
+            id: current.id,
+            ...(currentOutput !== undefined
+              ? { output: currentOutput.value, ...(currentOutput.cut ? { outputCut: true as const } : {}) }
+              : {}),
+          },
+        }
+      : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -979,6 +1085,49 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
    * reaches its own write instead of a refusal (FIX-1875 BR-15). `null`
    * stands for "nothing to refuse" in the record, which holds JSON only.
    */
+  /**
+   * The id this call recorded for the row it files, as `fileReady` records
+   * it: read back on a replay, minted and recorded now otherwise. `undefined`
+   * where the turn carries no tool call or no `runOnce`.
+   */
+  async function recordedFiling(ctx: BlockContext): Promise<string | undefined> {
+    const call = toolCallOf(ctx);
+    if (call === undefined || ctx.runOnce === undefined) return undefined;
+    return ctx.runOnce(`fsd.dispatch.plan:${call.logicalId}`, async () => mintTaskId());
+  }
+
+  /**
+   * The refusal for filing work a task still open already holds: the same
+   * goal, ignoring case and spacing, for the same worker and workstream target. Names the open task
+   * by its title, so a reply can name it the same way.
+   */
+  function openSameWork(
+    collection: TaskCollectionRef,
+    assignee: string,
+    target: string | undefined,
+    goal: string,
+  ): { taskId: string; error: string } | undefined {
+    const same = (text: string) => text.trim().replace(/\s+/g, " ").toLowerCase();
+    const open = collection
+      .list()
+      .find(
+        (row) =>
+          row.assignee === assignee &&
+          // A workstream is its own work: the same worker leads each one it targets.
+          row.target === target &&
+          !isTerminalStatus(row.status) &&
+          same(row.goal) === same(goal),
+      );
+    if (open === undefined) return undefined;
+    return {
+      taskId: open.id,
+      error:
+        `already_open: task "${open.title ?? open.goal}" (${open.id}) is this same work for ${assignee}, and it is still ` +
+        `${open.status}. Nothing was filed. Say that task is on it. To change it, send it a message with updateTask; ` +
+        `to replace it, cancel it first.`,
+    };
+  }
+
   async function decideOnce<T>(
     ctx: BlockContext,
     memoize: boolean,
@@ -1036,6 +1185,23 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         ? undefined
         : await decideOnce(ctx, memoize, "assignee", async () => checkAssignee(assignee, await rosterFor(roster, ctx)) ?? null);
     if (bad) return bad;
+    // One piece of work, one task (FIX-2350): the same goal for the same
+    // worker while a task for it is open is a second start, from a call sent
+    // twice or retried. Decided once per call, so a replay finds its own row.
+    // A message handed on (`resultTo: "conversation"`) keeps its own rule:
+    // one task per delegate a round, recorded by the routing that files it.
+    // A task with no assignee goes to the roster's one worker, when it has one.
+    const worker = assignee ?? (await rosterFor(roster, ctx))?.soleAssignee?.();
+    const open =
+      followUp === undefined && worker !== undefined && input.resultTo !== "conversation"
+        ? await decideOnce(ctx, memoize, "same-work", async () => {
+            const refusal = openSameWork(collection, worker, input.target, input.goal);
+            // A call an older build filed has its id recorded and no decision:
+            // the open row is its own, found again by `fileReady`.
+            return refusal === undefined || (memoize && refusal.taskId === (await recordedFiling(ctx))) ? null : refusal.error;
+          })
+        : null;
+    if (open) return { ok: false as const, error: open };
     // The task whose request files this one: the task the worker's request
     // works, claimed or not (a cancelled task's run that goes on has no
     // claim, and is still its filer, so its filing is refused). Server-set,
@@ -1126,17 +1292,23 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       }
       const collection = await resolve(ctx);
       if (!collection) return noBoardError;
-      // Recorded with the call on a board that starts work, so a replay decides as the first call did.
-      const checked = await checkNewTask(ctx, collection, input, dispatches);
-      if ("error" in checked) return checked;
-      return fileNewTask(checked.followUp, async () => {
-        // On a board that starts a ready row at once, a filing starts work:
-        // once per call, so a replay finds its own row (BR-15).
-        const filed = dispatches
-          ? await fileReady(ctx, collection, checked.init)
-          : { ok: true as const, taskId: (await collection.createTask(checked.init)).id };
-        return input.held === true ? { ...filed, status: "held" as const } : filed;
-      });
+      // One filing at a time per board where the same-work check runs: a
+      // step's sibling calls run at once, and the check must see the row the
+      // other call filed. A follow-up keeps its own race rule (BR-25).
+      const file = async () => {
+        // Recorded with the call on a board that starts work, so a replay decides as the first call did.
+        const checked = await checkNewTask(ctx, collection, input, dispatches);
+        if ("error" in checked) return checked;
+        return fileNewTask(checked.followUp, async () => {
+          // On a board that starts a ready row at once, a filing starts work:
+          // once per call, so a replay finds its own row (BR-15).
+          const filed = dispatches
+            ? await fileReady(ctx, collection, checked.init)
+            : { ok: true as const, taskId: (await collection.createTask(checked.init)).id };
+          return input.held === true ? { ...filed, status: "held" as const } : filed;
+        });
+      };
+      return input.followUpOf === undefined ? oneFilingAtATime(`${ctx.request?.identity?.id ?? ""}\u0000${collection.collectionId}\u0000${collection.partition ?? ""}`, file) : file();
     },
   });
 
@@ -1156,8 +1328,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     let recordedNow = false;
     const id = await ctx.runOnce(`fsd.dispatch.plan:${call.logicalId}`, async () => {
       recordedNow = true;
-      // The board's own id shape: twenty hex characters, unique across processes.
-      return init.id ?? `task_${crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`;
+      return init.id ?? mintTaskId();
     });
     // An id minted here is this call's alone, so a row with it is its own. A
     // follow-up's id is picked from the board, so another call can have
@@ -1580,13 +1751,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     /** What the task waits on now, oldest first; absent when nothing does. Answer a question with `updateTask({ id, answers, message })`. */
     questions: z.array(taskQuestionSchema).optional(),
   };
-  const waitingOf = (t: Task) => {
-    const open = openQuestions(t);
-    return {
-      ...(t.keptOpenBy != null && t.status === "in_progress" ? { keptOpenBy: t.keptOpenBy } : {}),
-      ...(open.length > 0 ? { questions: open } : {}),
-    };
-  };
 
   const listTasks = defineTool({
     name: named("listTasks"),
@@ -1621,6 +1785,12 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
             // The run working the task, or the one that last worked it: a
             // reader opens it from here (FIX-1668). Absent until a run starts.
             run: taskSchema.shape.run,
+            /**
+             * What the task's runs spent (FIX-2288): the harness and model
+             * running it and its tokens, `null` when it never ran in a request
+             * of its own. On the board's action only: a model's tool reads none.
+             */
+            spend: taskSpendViewSchema.nullable().optional(),
             /** A request is waiting on this task's ending (`getTask` with `wait`). */
             waitedOn: z.literal(true).optional(),
             ...waitingShape,
@@ -1654,6 +1824,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           ...(t.statusNote !== undefined ? { statusNote: t.statusNote } : {}),
           ...(t.filedByTask !== undefined ? { filedByTask: t.filedByTask } : {}),
           ...(t.run != null ? { run: t.run } : {}),
+          // A client's read, never a model's (FIX-2288): the action carries it, the tool doesn't.
+          ...(claimless ? { spend: taskSpendView(t) } : {}),
           ...(t.wait != null && t.wait.lapsed !== true && !isTerminalStatus(t.status) ? { waitedOn: true as const } : {}),
           ...waitingOf(t),
           ...withCurrentId(currentFor(t, latest.get(t.followUpOf ?? t.id))),
@@ -1849,62 +2021,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         }
         cancelled = cancelledDependents(t, collection.list(), collection.filerOf?.bind(collection));
       }
-      const taskInput = t.input === undefined ? undefined : readable(t.input);
-      const output = t.output === undefined ? undefined : readable(t.output);
-      const metadata = t.metadata === undefined ? undefined : readable(t.metadata);
-      const current = currentFor(t, latestCompletedByRoot(collection.list()).get(t.followUpOf ?? t.id));
-      const currentOutput = current?.output === undefined ? undefined : readable(current.output);
       return {
         ok: true as const,
-        task: {
-          id: t.id,
-          goal: t.goal,
-          ...(t.title !== undefined ? { title: t.title } : {}),
-          status: t.status,
-          ...(t.assignee !== undefined ? { assignee: t.assignee } : {}),
-          ...(t.context !== undefined ? { context: t.context } : {}),
-          ...(t.deps !== undefined ? { deps: t.deps } : {}),
-          ...(t.priority !== undefined ? { priority: t.priority } : {}),
-          ...(t.labels !== undefined ? { labels: t.labels } : {}),
-          ...(metadata !== undefined ? { metadata: metadata.value, ...(metadata.cut ? { metadataCut: true as const } : {}) } : {}),
-          attempts: t.attempts,
-          ...(t.maxAttempts !== undefined ? { maxAttempts: t.maxAttempts } : {}),
-          ...(t.session !== undefined ? { session: t.session } : {}),
-          ...(t.resultTo !== undefined ? { resultTo: t.resultTo } : {}),
-          ...(t.target !== undefined ? { target: t.target } : {}),
-          ...(taskInput !== undefined ? { input: taskInput.value, ...(taskInput.cut ? { inputCut: true as const } : {}) } : {}),
-          ...(output !== undefined ? { output: output.value, ...(output.cut ? { outputCut: true as const } : {}) } : {}),
-          ...(t.checkpointed === true ? { checkpoint: true as const } : {}),
-          ...(t.statusNote !== undefined ? { statusNote: t.statusNote } : {}),
-          ...(t.error !== undefined ? { error: t.error } : {}),
-          ...waitingOf(t),
-          ...(t.followUpOf !== undefined ? { followUpOf: t.followUpOf } : {}),
-          ...(t.filedByTask !== undefined ? { filedByTask: t.filedByTask } : {}),
-          ...(t.run != null ? { run: t.run } : {}),
-          ...(t.completedAt != null ? { completedAt: t.completedAt } : {}),
-          ...(t.steers !== undefined && t.steers.length > 0
-            ? {
-                steers: t.steers.map((steer) => ({
-                  message: steer.message,
-                  from: steer.from,
-                  ...(steer.by !== undefined ? { by: steer.by } : {}),
-                  at: steer.at,
-                  ...(steer.answers !== undefined ? { answers: steer.answers } : {}),
-                  taken: steer.takenBy === t.attempts,
-                })),
-              }
-            : {}),
-          ...(current !== undefined
-            ? {
-                current: {
-                  id: current.id,
-                  ...(currentOutput !== undefined
-                    ? { output: currentOutput.value, ...(currentOutput.cut ? { outputCut: true as const } : {}) }
-                    : {}),
-                },
-              }
-            : {}),
-        },
+        task: readTaskView(t, collection.list()),
         ...(cancelled.length > 0 ? { cancelled } : {}),
       };
     },
@@ -2175,4 +2294,29 @@ export function taskToolActions(
       { block: tool, description: tool.description },
     ]),
   );
+}
+
+/**
+ * A durable ledger's task list as a flow `reads` map (FIX-2286):
+ * `listTasks_<suffix>`, answering exactly what the `listTasks_<suffix>` action
+ * answers for the same board, from the same list code, and storing nothing.
+ * Spread it into `defineFlow`'s `reads` so an app can watch a session's board
+ * without a request per look.
+ *
+ * `resolve` is the read's own resolver: it must reach the board the action's
+ * does and write nothing on the way, since a read's context refuses every
+ * write. A resolver that repairs or starts rows as it goes (a board's touch)
+ * is the action's, not this one's. Only the list is a read: `getTask` can
+ * wait, which holds a wait slot on the row.
+ */
+export function taskToolReads(
+  collectionId: string,
+  resolve: TaskCollectionResolver,
+): Record<string, ReadConfig> {
+  const listTasks = buildTaskTools(resolve, {
+    nameSuffix: taskToolSuffix(collectionId),
+    claimless: true,
+  }).find((tool) => tool.name === `listTasks_${taskToolSuffix(collectionId)}`);
+  if (listTasks === undefined) throw new Error(`taskToolReads("${collectionId}"): the task tools built no listTasks`);
+  return { [listTasks.name]: { block: listTasks, description: listTasks.description } };
 }

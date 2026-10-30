@@ -123,7 +123,7 @@ Returns:
   )}
   ```
 - `continueRequest(requestId)` — Continue a crash-interrupted request under its OWN id and stream the re-entry's items back into `session.items`. Unlike `resumeLatestRequest` (which re-dispatches the most recent request via `/retry` under a new id), this targets a specific `requestId` — the caller resolves which interrupted request to continue rather than assuming "latest". POSTs inline with `Accept: text/event-stream`; on a 202 fallback it reconnects via GET rather than re-POSTing.
-- `followRequest(requestId)` — Follow a request of this session that was sent without the hook: stream its items into `session.items` from the start, and make it the request `abortRequest` stops. Closes the stream followed now and sends nothing. For a request sent beside the one the page follows, such as a turn that waits for the running one: send it through the client, and follow it once the running turn ends. `useHarnessLines` does this for a harness session's lines.
+- `followRequest(requestId)` — Follow a request of this session that was sent without the hook: stream its items into `session.items` from the start, and make it the request `abortRequest` stops. Closes the stream followed now and sends nothing. Followed again after its stream dropped, it picks up after the last event the view had, so a state change is not applied twice. Returns `false` and follows nothing for a request the person stopped or dismissed, even while the server still lists it as running. For a request sent beside the one the page follows, such as a turn that waits for the running one: send it through the client, and follow it once the running turn ends. `useHarnessLines` does this for a harness session's lines.
 - `getOwnedItems(ownedBy)` — Items owned by a container scope (O(1) indexed lookup)
 - `refresh()` — Manually refetch
 
@@ -137,7 +137,7 @@ const lines = useHarnessLines(session);
 const outcome = await lines.send(text);
 ```
 
-A turn sent while one runs goes through the client, so the session view stays on the running turn: its stream, its Stop, its timing. The hook follows each waiting turn once the one before it has ended, and only then, so a dropped stream does not move the view off a turn that still runs. While a turn it sent still waits, no line steers, so a later line never reaches the agent ahead of an earlier one. A view opened while turns wait follows the oldest running turn first.
+A turn sent while one runs goes through the client, so the session view stays on the running turn: its stream, its Stop, its timing. The hook follows each waiting turn once the one before it has ended, and only then. When the running turn's stream drops while the turn still runs, the hook follows that turn again, up to three times, so its end still moves the view on to the waiting turn. While a turn it sent still waits, no line steers, so a later line never reaches the agent ahead of an earlier one. A view opened while turns wait follows the oldest running turn first.
 
 Declare the `turn` action `concurrency: "defer"`, so a waiting turn waits as long as the running one takes. Options: `turnAction` (default `"turn"`, takes `{ prompt }`), `steerAction` (default `"steer"`), and `sendOne` to replace the client's `sendHarnessLine` for one line.
 
@@ -362,6 +362,21 @@ import { SuspensionResolverProvider } from "@flow-state-dev/react";
 ```
 
 Explicit `onApprove`/`onReject` props still take precedence; with neither a provider nor handlers, the card falls back to a self-contained non-streaming resume (requires `flowKind` on `<FlowProvider>`).
+
+### `useFollowLatest(options?)`
+
+Keeps a conversation's newest content in view. Attach `ref` to the scrolling element.
+
+```tsx
+const feed = useFollowLatest({ resetKey: sessionId });
+return <div ref={feed.ref} className="overflow-y-auto">{/* the turns */}</div>;
+```
+
+A feed that opens is already at its end on the first frame: on mount, when `resetKey` changes (switching to another session), and when its first read fills it. Nothing animates there. Content that arrives after that while the reader is at the end scrolls into view smoothly. A reader who scrolled up stays where they are, and `atEnd` is `false` so you can offer a way back.
+
+- `startAtEnd` (default `true`): `false` opens where the element starts and follows once the reader reaches the end.
+- `follow()`: back to the newest content, smoothly, following again. Call it when the person sends a line.
+- `stay()`: stop following, before you load earlier history above what is shown.
 
 ## Voice playback
 

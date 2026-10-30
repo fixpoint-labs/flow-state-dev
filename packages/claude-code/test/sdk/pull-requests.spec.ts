@@ -60,7 +60,7 @@ async function run(messages: SdkMessageLike[], options: Partial<ClaudeCodeAgentO
   };
   ctx[REQUEST_END_SEAM] = { add: (hook: RequestEndHook) => hooks.push(hook) };
   await block.config.execute?.({ prompt: "open a pull request" }, runtime.ctx as never);
-  for (const hook of hooks) await hook({ status: "completed" });
+  for (const hook of hooks) await hook({ status: "completed", spend: { byModel: {}, harnessRuns: [] } });
   return rows;
 }
 

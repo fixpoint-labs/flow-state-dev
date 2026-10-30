@@ -341,7 +341,7 @@ Every routing decision leaves one `coordinator-route` item in the conversation. 
 
 ```json
 {
-  "postId": "req_…",
+  "messageRequestId": "req_…",
   "round": 0,
   "policy": "judgment",
   "by": "judgment",
@@ -354,7 +354,7 @@ Every routing decision leaves one `coordinator-route` item in the conversation. 
 
 | Field | What it holds |
 | --- | --- |
-| `postId` | The message: the id of the request that carried it. Answers going back out keep it. |
+| `messageRequestId` | The message: the id of the request that carried it. Answers going back out keep it. |
 | `round` | `0` for the user's message, one more each time answers go back out. |
 | `policy` | The conversation's `routing:`. |
 | `by` | How the delegates were found: `judgment` (the coordinator's own turn, chosen by `routing: judgment` or handed the message by best fit), `held` (best fit, still on your last message), `evaluated` (best fit's call), `fallback`, `round-robin`, `everyone`, or `unplaced` (nobody took it). |
@@ -368,7 +368,7 @@ A message best fit gave to the coordinator's own turn because its pick was below
 
 ```json
 {
-  "postId": "req_…",
+  "messageRequestId": "req_…",
   "round": 0,
   "policy": "best-fit",
   "by": "judgment",
@@ -419,7 +419,7 @@ const records = requests
   );
 ```
 
-Without `includeItems: true` a request carries no `items`, so you get no records. Each request a conversation runs carries the records made during it, so reading all of them gives you every decision. They come back most recently updated first, so sort them by `startedAtMs` before flattening if you want the decisions in the order they were made. `postId` and `round` say which message and round each record belongs to. In server code, `coordinatorRouteRecordSchema.parse(item.data)` from the package root checks the shape and returns a typed record, in place of the cast. See [`fsd.sessions.requests`](../api/client.md#sessionsrequestssessionid-options) for its other options.
+Without `includeItems: true` a request carries no `items`, so you get no records. Each request a conversation runs carries the records made during it, so reading all of them gives you every decision. They come back most recently updated first, so sort them by `startedAtMs` before flattening if you want the decisions in the order they were made. `messageRequestId` and `round` say which message and round each record belongs to. In server code, `coordinatorRouteRecordSchema.parse(item.data)` from the package root checks the shape and returns a typed record, in place of the cast. See [`fsd.sessions.requests`](../api/client.md#sessionsrequestssessionid-options) for its other options.
 
 ## Handing out tasks
 
@@ -469,7 +469,7 @@ The conversation that filed a task hears once when it ends, in a line under the 
 Task "Audit our dependencies' licenses" (task_…) completed by licenses: All 214 dependencies are MIT or Apache-2.0.
 ```
 
-It hears when a task completes, with what came back; when it fails for good, with the error; when it stops on a question, with the question; and when it's cancelled, unless the coordinator cancelled it itself. A failure or a cancel that took dependent tasks with it names them in the same line, and they send no line of their own. When the line arrives, a coordinator that routes by `judgment` or `best-fit` takes a turn to read it and decide what to do next, such as filing a failed task again. One that routes by `round-robin` or `everyone` has no turn of its own, so it shows the line and nothing more. If the coordinator is in the middle of a reply to you, the line starts a second turn at once, and both replies appear in the conversation, each as its own message. Every task gets two attempts, a number you can't change, and a first failure just runs it again without a word. A task whose result goes to the conversation, such as a routed task or its follow-up, gets one.
+It hears when a task completes, with what came back; when it fails for good, with the error; when it stops on a question, with the question; and when it's cancelled, unless the coordinator cancelled it itself. A failure or a cancel that took dependent tasks with it names them in the same line, and they send no line of their own. When the line arrives, a coordinator that routes by `judgment` or `best-fit` takes a turn to read it and decide what to do next, such as filing a failed task again. Its model reads the ending as a `getTask` call for that task and its result, not as the line: the task whole, as `getTask_tasks` returns it, with `cancelled` naming any dependents it took with it. One that routes by `round-robin` or `everyone` has no turn of its own, so it shows the line and nothing more. If the coordinator is in the middle of a reply to you, the line starts a second turn at once, and both replies appear in the conversation, each as its own message. Every task gets two attempts, a number you can't change, and a first failure just runs it again without a word. A task whose result goes to the conversation, such as a routed task or its follow-up, gets one.
 
 ### Managing tasks
 

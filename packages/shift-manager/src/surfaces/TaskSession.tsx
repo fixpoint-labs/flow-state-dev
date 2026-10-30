@@ -15,7 +15,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { buildItemRenderStream, FlowProvider, ItemRenderer, useFlowContext } from "@flow-state-dev/react";
+import { buildItemRenderStream, FlowProvider, ItemRenderer, useFlowContext, useFollowLatest } from "@flow-state-dev/react";
 import { AskCard } from "../components/AskCard";
 import { shiftManagerRenderers } from "../components/ToolLine";
 import { SessionItemsProvider } from "../components/flow-state/session-items-context";
@@ -24,7 +24,6 @@ import { asksOfTask, waitsOnYou } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { collectionOfBoard, describeFailure, type Ask, type Failure } from "../lib/reads";
 import { navigate } from "../lib/routes";
-import { useFollowLatest } from "../lib/follow";
 import { followRequest, mergeItems, readSessionItems, RunReadError, taskItems, type OpenRun } from "../lib/run";
 import { useTask } from "../lib/task";
 

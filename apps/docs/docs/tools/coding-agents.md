@@ -457,6 +457,100 @@ To keep readings and run windows and serve them with their age, hand your reader
 to the [harness manager's usage query](/docs/orchestration/harness-manager#subscription-usage)
 and let the manager feed your harness its `onUsage`.
 
+## What a run spent
+
+A harness block reports what its run has spent to the request it runs in, as the run goes: when it starts, each time the agent reports usage, and when the run ends, however it ends. Each report is a `HarnessRunSpend` carrying the whole run so far, and a later report for the same run replaces the earlier one, so a run counts once. A [task board](/docs/orchestration/task-board#what-a-tasks-run-spent) shows these reports on the task while it runs.
+
+| Field | What it holds |
+|---|---|
+| `runId` | The harness's own id for the run. Reports with the same id replace each other. |
+| `harness` | `claude-code`, `codex` or `cursor`. |
+| `model` | The model the run uses: the one the agent named, else the one the run was started with. `null` when neither is known. |
+| `inputTokens` / `outputTokens` | The tokens the agent reported, or `null` when it reported none, as for a run killed before its usage arrived. |
+| `costUsd` | The cost the agent reported, in US dollars, or `null`. Never an estimate. |
+| `billing` | `"api-key"`, `"subscription"`, or `null` when the harness can't tell. |
+
+What each harness fills in:
+
+| Harness | Tokens | `model` | `costUsd` | `billing` |
+|---|---|---|---|---|
+| Claude Code | Rising with each model message while it runs, then the whole query's count from its result | The one its first message names | The cost Claude Code reported | From Claude Code's own account info: `api-key` when it runs on a key, `subscription` when it is signed in to a plan, otherwise `null` |
+| Codex | At the end of each turn, `null` until then | The model you started the run with; `null` when Codex picks its own default | Always `null` | `api-key` when you hand its client an `apiKey`, otherwise `null` |
+| Cursor | Added up at the end of each turn, so a stopped run keeps the turns it finished; `null` until the first ends | The model you configured, or the one the run names | Always `null` | Always `null` |
+
+A failed run reports the tokens it got before it failed. A run that failed before any usage arrived reports `null` tokens.
+
+The report is a count kept apart from the request's model tokens: it never adds to `ctx.request.tokenUsage` or an action's [token budget](/docs/configuration/flow#token-budgets). Workforce records it per worker; see [Worker usage](/docs/workforce/worker-usage).
+
+### Reporting from a harness of your own
+
+Pick one `runId` per run, then call `reportHarnessSpend` when the run starts, each time the agent reports usage, and from a `finally`. Each call carries the run's total so far, never the change since the last one:
+
+```ts
+import { randomUUID } from "node:crypto";
+import { reportHarnessSpend } from "@flow-state-dev/core/types";
+
+const runId = `my-agent:${randomUUID()}`;
+let usage: { input: number; output: number } | null = null;
+const report = () =>
+  reportHarnessSpend(ctx, {
+    runId,
+    harness: "my-agent",
+    model: "my-model",
+    inputTokens: usage?.input ?? null,
+    outputTokens: usage?.output ?? null,
+    costUsd: null,
+    billing: null,
+  });
+
+report(); // the model, before any tokens
+try {
+  // ... run the agent; each time it reports usage, set `usage` to its total and call report()
+} finally {
+  report();
+}
+```
+
+A report without a `runId` counts as one finished run of its own, so a harness that reports once, from its `finally`, still counts correctly; a task then shows its tokens only once the run ends.
+
+`reportHarnessSpend` returns `false`, and counts nothing, when the context belongs to no request, such as a hand-built test context.
+
+## What a run is doing
+
+A harness block can report what its run is doing as it goes, through an
+`onActivity` hook, a `HarnessActivityHook`: `(activity, ctx) => void`. Each
+`HarnessActivity` is one of two kinds:
+
+```ts
+type HarnessActivity =
+  | { kind: "message"; text: string }                   // a completed assistant message
+  | { kind: "tool"; name: string; arguments: string };  // a tool call the run started
+```
+
+`arguments` is the JSON text of the call's arguments. Reasoning, streamed
+deltas and tool results are never reported. The hook isn't awaited, and a throw
+from it is logged while the run carries on. Claude Code and Codex report
+messages and tool calls. Cursor reports tool calls only, because it streams
+assistant text in pieces.
+
+```ts
+const agent = codexAgent({
+  cwd,
+  onActivity: (activity) => {
+    if (activity.kind === "tool") console.log(`tool: ${activity.name}`);
+  },
+});
+```
+
+If you write a harness of your own, `reportHarnessActivity(onActivity, event, ctx)`
+from `@flow-state-dev/core` takes one of your translated events and calls the
+hook when it counts as activity: a `message` or `message_complete` event becomes
+a message, a `tool_call` event becomes a tool call, and anything else is
+skipped. It never throws. `harnessActivityOf(event)` is the mapping on its own,
+returning the activity or `null`. The
+[harness manager](/docs/orchestration/harness-manager#how-a-running-task-is-doing)
+uses the hook to keep a running task's status note current.
+
 ## The prompt is the input; everything else is configuration
 
 A harness block takes one thing: the prompt. Where the run works, which

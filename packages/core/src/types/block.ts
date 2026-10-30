@@ -13,8 +13,8 @@ import type { ModelResolver } from "./model";
 import type { RequestHost } from "./request-host";
 import type { DispatchAddress, DispatchSeam } from "./dispatch";
 import { DISPATCH_SEAM } from "./dispatch";
-import type { RequestEndSeam } from "./request-end";
-import { REQUEST_END_SEAM } from "./request-end";
+import type { RequestEndSeam, RequestSpendSeam } from "./request-end";
+import { REQUEST_END_SEAM, REQUEST_SPEND_SEAM } from "./request-end";
 import { REQUEST_RESUME_SEAM, type RequestResume } from "./request-resume";
 import type { TracingLevel } from "../helpers/tracing-level";
 import type { Content } from "../items/content";
@@ -75,6 +75,8 @@ export type BlockTraceCapturePayload = {
     generator?: BlockTraceItem["generator"];
     evaluator?: BlockTraceItem["evaluator"];
     modelUsage?: BlockTraceItem["modelUsage"];
+    /** `output` phase: the harness runs the block settled (FIX-2145). */
+    harnessSpend?: BlockTraceItem["harnessSpend"];
     model?: BlockTraceItem["model"];
     /**
      * Accessor keys the block declares at build time (`ownDeclaredResources`),
@@ -261,6 +263,28 @@ export type InferFlowConfigFromSchema<TSchema extends ZodTypeAny | undefined> =
       ? Readonly<z.infer<TSchema>>
       : Readonly<Record<string, unknown>>
     : Readonly<Record<string, unknown>>;
+
+/**
+ * One model result as `onGeneratorModelResult` reports it.
+ */
+export interface GeneratorModelResultPayload {
+  model: string;
+  usage?: GeneratorModelUsage;
+  providerMetadata?: GeneratorModelResult["providerMetadata"];
+  /** Resolved identity of the model that produced this result. */
+  identity?: ModelIdentity;
+  /**
+   * Where this report counts (FIX-2145). Absent: both on the reporting
+   * block's trace row and in the request's spend ledger, as one model
+   * call. `"ledger"`: the ledger only. A finished step of a multi-step
+   * run, counted when the step ends so a run that later suspends or fails
+   * keeps it; or an evaluator called as a tool, which must not overwrite
+   * its caller's row. `"trace"`: the trace row only. A multi-step run's
+   * aggregate, whose steps the ledger already counted. A capture that
+   * records the row ignores `"ledger"` reports and forwards every report.
+   */
+  countsIn?: "ledger" | "trace";
+}
 
 export interface BlockContext<
   TRequestState extends object = Record<string, unknown>,
@@ -584,6 +608,13 @@ export interface BlockContext<
   [REQUEST_END_SEAM]?: RequestEndSeam;
 
   /**
+   * @internal The running request's spend ledger (FIX-2145), under a symbol
+   * key. Read only by `reportHarnessSpend`, which a harness calls when a run
+   * ends. See `types/request-end.ts`.
+   */
+  [REQUEST_SPEND_SEAM]?: RequestSpendSeam;
+
+  /**
    * @internal How the running request resumed (FIX-2129), under a symbol key.
    * Read only by `requestResumeOf`. See `types/request-resume.ts`.
    */
@@ -601,13 +632,7 @@ export interface BlockContext<
      * the chosen branch can never persist before its decision anchor (FIX-814).
      */
     onRouteSelected?: (routerName: string, selectedBlockName: string, blockInstanceId?: string) => void | Promise<void>;
-    onGeneratorModelResult?: (payload: {
-      model: string;
-      usage?: GeneratorModelUsage;
-      providerMetadata?: GeneratorModelResult["providerMetadata"];
-      /** Resolved identity of the model that produced this result. */
-      identity?: ModelIdentity;
-    }) => void;
+    onGeneratorModelResult?: (payload: GeneratorModelResultPayload) => void;
     /**
      * Unified block-lifecycle capture hook. Fires four phases per block:
      * `added` (at start), `input` (post-connectInput, only on transform),
@@ -736,10 +761,12 @@ export interface BlockContext<
    * {@link _emitComponentAwaited}, settling once the item has been added and
    * completed and rejecting rather than swallowing. Absent in a hand-built
    * context; a caller that depends on it treats absence as a failure.
+   * `role` defaults to `assistant`; `user` records input the flow received
+   * from someone else, such as another worker's message.
    */
   _emitMessageAwaited?(
     text: string,
-    options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }
+    options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean; role?: "user" | "assistant" }
   ): Promise<void>;
 
   /**

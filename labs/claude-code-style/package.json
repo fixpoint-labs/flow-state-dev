@@ -12,10 +12,7 @@
     "dev": "vite build && cd ../.. && tsx packages/cli/bin/fsdev.ts dev --config labs/claude-code-style/fsdev.config.mts --app @flow-state-dev/claude-code-style",
     "build": "vite build",
     "typecheck": "node ../../scripts/typecheck.mjs",
-    "test": "vitest run --root .",
-    "inventory": "node scripts/inventory.mjs",
-    "inventory:write": "node scripts/inventory.mjs --write",
-    "inventory:control": "node scripts/inventory.mjs --control"
+    "test": "vitest run --root ."
   },
   "devDependencies": {
     "@flow-state-dev/claude-code": "workspace:*",
@@ -28,6 +25,7 @@
     "@flow-state-dev/fsdev": "workspace:*",
     "@flow-state-dev/harness-manager": "workspace:*",
     "@flow-state-dev/orchestration": "workspace:*",
+    "@flow-state-dev/react": "workspace:*",
     "@flow-state-dev/store-sqlite": "workspace:*",
     "@flow-state-dev/workforce": "workspace:*",
     "@flow-state-dev/workspace": "workspace:*",

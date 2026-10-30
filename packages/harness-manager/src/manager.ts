@@ -48,6 +48,7 @@ import type {
   BlockContext,
   BlockDefinition,
   DeclaredResourceEntry,
+  HarnessActivityHook,
   HarnessBlock,
   HarnessResolver,
   HarnessSessionHook,
@@ -121,6 +122,7 @@ import { askMarkerPath, readAskMarker } from "./ask";
 import { HeldOnQuestion, askStep } from "./ask-step";
 import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
 import { readRunCommits, type RunCommits } from "./commits";
+import { progressNoteOf, throttledNotes, type ProgressNotes } from "./progress-note";
 import {
   HARNESS_RUN_OWNER_KEY,
   foreignRunMessage,
@@ -506,7 +508,7 @@ export interface ManagerOptions {
   /**
    * **The slot.** How this manager is pointed at a coding harness.
    *
-   * Called ONCE, at construction, with the five feeds the harness contract
+   * Called ONCE, at construction, with the feeds the harness contract
    * declares — and the harness package closes over the ones it takes. That is the whole
    * coupling: this package imports no harness, names no vendor, and a second
    * harness needs no edit here.
@@ -561,9 +563,9 @@ export interface ManagerOptions {
 }
 
 /**
- * The five feeds a manager hands its harness, in one call.
+ * The feeds a manager hands its harness, in one call.
  *
- * All five are **declared in `@flow-state-dev/core`** and imported
+ * All of them are **declared in `@flow-state-dev/core`** and imported
  * here rather than restated: what this package picks is the slot that bundles
  * them, not the callbacks' names or their signatures.
  *
@@ -609,6 +611,16 @@ export interface HarnessFeeds {
    * own keeps compiling; the manager always hands one.
    */
   onSteerable?: HarnessSteerHook;
+  /**
+   * Called by the harness with each assistant message and tool call of its
+   * run (FIX-2290). The manager keeps the task's `statusNote` from it: the
+   * first at once, then the latest at most once per `PROGRESS_NOTE_MS`,
+   * fenced by the run's claim. A harness that reports none ignores it.
+   *
+   * Optional only so a host that wraps the manager's feeds in a slot of its
+   * own keeps compiling; the manager always hands one.
+   */
+  onActivity?: HarnessActivityHook;
 }
 
 /**
@@ -2743,7 +2755,43 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       watch.steer = steer;
       if (steer !== null) watch.kick();
     },
+    // The step's notes, throttled, onto the task's `statusNote`.
+    onActivity: (activity, ctx) => {
+      const note = progressNoteOf(activity);
+      if (note !== null) progressNotes.get(ctx.request.identity.id)?.report(note);
+    },
   });
+
+  /**
+   * Each running step's progress notes (FIX-2290), by request. Written through
+   * the board's `reportProgress` with the claim this run holds, so a replaced
+   * attempt's note declines rather than land on its replacement's row; a
+   * decline stops that step's notes. Dropped when the step ends, so a step a
+   * steer adds starts its own window. Started with the step, from the step's
+   * own context, like the steer watch.
+   */
+  const progressNotes = new Map<string, ProgressNotes>();
+  const startProgressNotes = (ctx: BlockContext): void => {
+    progressNotes.get(ctx.request.identity.id)?.stop();
+    progressNotes.set(
+      ctx.request.identity.id,
+      throttledNotes(async (statusNote) => {
+        const state = harnessCtxState(ctx);
+        const claim = state?.ticket ?? null;
+        const taskId = managerState(state).taskId;
+        if (claim === null || taskId === null) return false;
+        const board = await runBoard(ctx);
+        if (board.reportProgress === undefined) return false;
+        const outcome = await board.reportProgress(taskId, { statusNote }, { claim });
+        return outcome.outcome !== "declined";
+      }),
+    );
+  };
+  const stopProgressNotes = (ctx: BlockContext): void => {
+    const requestId = ctx.request.identity.id;
+    progressNotes.get(requestId)?.stop();
+    progressNotes.delete(requestId);
+  };
 
   /**
    * **The judge, as a step, never failing the run by failing itself.** Its
@@ -2929,13 +2977,16 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   });
 
   /**
-   * Poll the row while the step runs. A run that offers a live steer is handed
+   * Poll the row while the step runs. A row this attempt no longer holds
+   * (cancelled, settled, claimed again) stops the harness at once: its run
+   * can record nothing, so it must not go on working, and the lease's own
+   * stop comes only at its next renewal. A run that offers a live steer is handed
    * each untaken steer (taken first, so it is taken once); otherwise, with
    * `stopsOnAbort`, the step is stopped (not the request) for it. Without
-   * either, nothing is read: the step's own end takes the steer.
+   * either, the step's own end takes the steer.
    */
   const steerWatches = new Map<string, SteerWatch>();
-  const watchForSteers = (ctx: BlockContext): AbortSignal | undefined => {
+  const watchForSteers = (ctx: BlockContext): AbortSignal => {
     const requestId = ctx.request.identity.id;
     const controller = new AbortController();
     const watch: SteerWatch = { stopped: false, timer: undefined, steer: null, handed: 0, polling: false, kick: () => {} };
@@ -2946,8 +2997,6 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       watch.stopped = true;
       controller.abort(new Error("[harness-manager] stopped for a steer"));
     };
-    // Polled only while there is something to do: a stop to make, or a live steer to hand.
-    const wanted = () => options.stopsOnAbort === true || watch.steer !== null;
     const schedule = () => {
       if (live() && !controller.signal.aborted && watch.timer === undefined && !watch.polling) {
         watch.timer = setTimeout(() => void poll(), STEER_POLL_MS);
@@ -2957,21 +3006,27 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       watch.timer = undefined;
       watch.polling = true;
       try {
-        if (!wanted()) return;
         const state = managerState(harnessCtxState(ctx));
+        if (state.taskId === null) return;
         const row = await committedRow(ctx);
         if (!live()) return;
-        const owed =
+        const ours =
           row !== undefined &&
           row.status === "in_progress" &&
           row.attempts === state.attempt &&
           // This turn's own row (FIX-2133 D3): a later turn of the attempt is another run's.
-          (state.ticket == null || (row.turn ?? 0) === state.ticket.turn) &&
-          untakenSteers(row).length > 0;
+          (state.ticket == null || (row.turn ?? 0) === state.ticket.turn);
+        if (!ours) {
+          // Not a steer's stop: the step fails, and the fence refuses whatever it would record.
+          controller.abort(new HarnessAttemptSuperseded(`its run ended (the task is ${row?.status ?? "gone"})`));
+          return;
+        }
+        const owed = untakenSteers(row).length > 0;
         // Stopped only once the harness confirmed a session to resume: a stop
         // before that would cost the attempt the steer must not use. A line
         // handed live needs one too, for the step a refusal falls back to.
-        const confirmed = owed && (await readConfirmedSession(ctx, state.topic!, state.attempt!)) !== null;
+        const wanted = options.stopsOnAbort === true || watch.steer !== null;
+        const confirmed = wanted && owed && (await readConfirmedSession(ctx, state.topic!, state.attempt!)) !== null;
         if (!live() || !confirmed) return;
         const steer = watch.steer;
         if (steer !== null) {
@@ -3001,19 +3056,20 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           }
           return;
         }
-        stop();
+        if (options.stopsOnAbort === true) stop();
         return;
       } catch {
         // A read that fails stops nothing: the step's own end takes the steer.
       } finally {
         watch.polling = false;
-        if (wanted()) schedule();
+        // Always: the row is read every poll while a step runs, steer or none, to catch its end.
+        schedule();
       }
     };
     watch.kick = schedule;
     steerWatches.set(requestId, watch);
-    if (wanted()) schedule();
-    return options.stopsOnAbort === true ? controller.signal : undefined;
+    schedule();
+    return controller.signal;
   };
 
   /**
@@ -3088,13 +3144,14 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     .step(harnessBlock, {
       // The cancellable-under-a-deadline obligation, met by a primitive core
       // already has: this composes into the block's own signal, which the SDK
-      // path forwards into the query's abort controller. A steer's watch
-      // composes in beside it.
+      // path forwards into the query's abort controller. The row's watch
+      // (a steer's stop, or the task's end) composes in beside it.
       abortSignal: (ctx) => {
         const deadline = AbortSignal.timeout(runTimeoutMs);
         // Armed for every step: a run may offer a live steer once it starts.
         const steer = watchForSteers(ctx);
-        return steer === undefined ? deadline : AbortSignal.any([deadline, steer]);
+        startProgressNotes(ctx);
+        return AbortSignal.any([deadline, steer]);
       },
       // Fires on every exit from the dispatch — returned, threw, or
       // suspended. The tree is only written by the agent, so releasing the
@@ -3102,6 +3159,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // the request runs next for a steer takes it again.
       onSettled: (ctx) => {
         stopWatching(ctx);
+        stopProgressNotes(ctx);
         releaseLeaseFromState(ctx);
       },
     })

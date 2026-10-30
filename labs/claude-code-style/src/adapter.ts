@@ -13,7 +13,7 @@
  * | `send`          | the worker's door, `respond`, in that session                             |
  * | `interrupt`     | aborting the session's running request                                     |
  * | `watchThread`   | the session's items, read again while it is open                          |
- * | `watchTasks`    | the conversation board's `listTasks_tasks` rows, and their open holds      |
+ * | `watchTasks`    | the conversation board's `listTasks_tasks` read, and the rows' open holds  |
  * | `watchTaskWork` | the items of a task's run session, read only                               |
  * | `sayInThread`   | the Inbox client's answer to the thread's open question, else `updateTask_tasks` with your line |
  * | `resolve`       | the Inbox client's answer to the thread's review: `{ verdict: "accepted" }` |
@@ -23,6 +23,7 @@
 import { createClient, type Client, type SessionSummary } from "@flow-state-dev/client";
 import { readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import { createInboxClient, inboxItems, type InboxAnswer, type InboxQuestion, type InboxRow, type TaskQuestion } from "@flow-state-dev/orchestration/inbox";
+import type { TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 import {
   createWorkforceClient,
   parseProjectRef,
@@ -31,6 +32,8 @@ import {
   WORKER_ID_STATE_KEY,
 } from "@flow-state-dev/workforce/browser";
 import { modeById, modeOfWorker, MODES, type ModeId } from "./modes";
+import { projectIdOf, refuseExisting } from "./lib/new-project";
+import { resultSummary } from "./lib/result-summary";
 
 /** Stops a watch. */
 export type Unsubscribe = () => void;
@@ -118,6 +121,8 @@ export interface TaskRow {
   steps?: { done: number; total: number };
   /** When the task last changed, in ms. */
   updatedAt?: number;
+  /** What its runs spent, as the board's `listTasks` reads it (`taskSpendView`): model, harness, tokens; none before it runs. */
+  spend?: TaskSpendView;
 }
 
 /** The read-only work of one task. */
@@ -153,16 +158,6 @@ export interface LabAdapter {
 
 /** How often an open view reads again, in ms. */
 const READ_EVERY_MS = 1500;
-
-/**
- * How long the tasks pane keeps listing after the board last could move. `listTasks` is an
- * action, so each list is a request the server records; the pane lists only while a turn
- * runs or a task is open, and for this long after.
- */
-const TASKS_TAIL_MS = 10_000;
-
-/** The statuses a task can still move from. */
-const OPEN_TASK = new Set<TaskStatus>(["pending", "in_progress", "held"]);
 
 /** The requests that are a turn of the main session: a user's line, or a background result after the turn. */
 const TURN_ACTIONS = new Set(["respond", "onTaskSettled"]);
@@ -274,7 +269,7 @@ function entriesOf(items: readonly Item[], threads = false): ThreadEntry[] {
         taskId: taskId!,
         title: title!,
         status,
-        summary: summary ?? text,
+        summary: resultSummary(summary ?? text),
         duringTurn: userTurns.has(requestId),
         requestId,
       });
@@ -405,9 +400,12 @@ function createWiredLab(fsd: Client): LabAdapter {
   /** Each listed task's run session, by task id, as the last list saw it. */
   const runSessionOf = new Map<string, string>();
 
-  /** A session's tasks, as its board's `listTasks` answers them. */
+  /** A session's tasks, as its board's `listTasks` read answers them: a read, so a list stores no request. */
   const tasksOf = async (sessionId: string): Promise<Listed[]> => {
-    const listed = await run(await flowOfSession(sessionId), sessionId, "listTasks_tasks", {});
+    const listed = await fsd
+      .flow(await flowOfSession(sessionId))
+      .read<{ ok: boolean; error?: string; tasks: any[] }>("listTasks_tasks", {}, { sessionId });
+    if (!listed.ok) throw new Error(listed.error);
     for (const task of listed.tasks as any[]) if (task.run?.sessionId !== undefined) runSessionOf.set(task.id, task.run.sessionId);
     return (listed.tasks as any[]).map((task) => ({
       id: task.id,
@@ -419,6 +417,7 @@ function createWiredLab(fsd: Client): LabAdapter {
       ...(typeof task.updatedAt === "number" ? { updatedAt: task.updatedAt } : {}),
       ...(task.run?.sessionId === undefined ? {} : { runSessionId: task.run.sessionId, run: task.run }),
       ...(Array.isArray(task.questions) ? { questions: task.questions } : {}),
+      ...(task.spend == null ? {} : { spend: task.spend }),
     }));
   };
 
@@ -483,7 +482,8 @@ function createWiredLab(fsd: Client): LabAdapter {
       listed.map(async (task): Promise<TaskRow> => {
         const { runSessionId: _session, run: _run, questions: _questions, ...row } = task;
         const hold = holds.get(row.id)?.[0];
-        const harness = await harnessOf(task);
+        // The harness its run reported; until one reports, the assignee's `harness` setting.
+        const harness = task.spend?.harness ?? (await harnessOf(task));
         const review = harness !== undefined && row.status === "completed" ? await reviewOf(sessionId, task) : undefined;
         return {
           ...row,
@@ -533,8 +533,8 @@ function createWiredLab(fsd: Client): LabAdapter {
       }));
     },
     createProject: async (name, repository) => {
-      const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-      const created = await run("projects", await projects(), "createProject", { id, title: name, visibility: "private", repository });
+      const created = await run("projects", await projects(), "createProject", { id: projectIdOf(name), title: name, visibility: "private", repository });
+      refuseExisting(created, name);
       return { id: projectRef({ visibility: created.visibility, id: created.project.id }), name: created.project.title };
     },
     openSession: async (mode, projectId) => {
@@ -565,26 +565,8 @@ function createWiredLab(fsd: Client): LabAdapter {
           ...(turn === undefined ? {} : { requestId: turn.id }),
         };
       }, onChange),
-    watchTasks: (sessionId, onChange) => {
-      // Only a turn files or changes a task, and a task settling starts a turn, so the board
-      // can move only while a turn runs or a task is open. Otherwise the last list stands.
-      // A turn that started and ended between two reads still counts: its id is new.
-      let rows: TaskRow[] | undefined;
-      let turnsSeen: string | undefined;
-      let listUntil = 0;
-      return every(async () => {
-        const turns = (await fsd.sessions.requests(sessionId, { limit: 50 }))
-          .filter((request) => TURN_ACTIONS.has(request.actionName))
-          .map((request) => `${request.id}:${request.status}`)
-          .sort()
-          .join(",");
-        const live = rows === undefined || rows.some((row) => OPEN_TASK.has(row.status)) || turns !== turnsSeen || turns.includes(":in_progress");
-        turnsSeen = turns;
-        if (live) listUntil = Date.now() + TASKS_TAIL_MS;
-        if (Date.now() < listUntil) rows = await boardOf(sessionId);
-        return rows!;
-      }, onChange, 2000);
-    },
+    // The board is a read, so listing it every tick while the pane is open stores nothing.
+    watchTasks: (sessionId, onChange) => every(() => boardOf(sessionId), onChange, 2000),
     // Shown only inside the tasks pane or the threads board, whose watch keeps `runSessionOf` current.
     watchTaskWork: (_sessionId, taskId, onChange) =>
       every(async () => {

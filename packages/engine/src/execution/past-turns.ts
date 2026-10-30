@@ -30,7 +30,7 @@ export const PAST_TURN_STATUSES: readonly RequestRecord["status"][] = ["complete
  * The ids of requests a retry re-ran: each `metadata.retryOf` among `records`,
  * plus the running request's own, when it is a retry.
  */
-export function retriedIds(records: readonly RequestRecord[], currentMetadata: Record<string, unknown> | undefined): Set<string> {
+export function retriedIds(records: readonly Pick<RequestRecord, "metadata">[], currentMetadata: Record<string, unknown> | undefined): Set<string> {
   const retried = new Set<string>();
   for (const metadata of [...records.map((r) => r.metadata), currentMetadata]) {
     const retryOf = metadata?.retryOf;

@@ -30,7 +30,7 @@ describe.each([
 ] as const)("a row's sealed payload (%s)", (_name, makeBacking) => {
   it("keeps the payload as filed, and only a filed one", async () => {
     const tasks = await makeBacking();
-    const sealed = { kind: "post", postId: "p1", round: 0, delegate: { worker: "eng.a" } };
+    const sealed = { kind: "post", messageRequestId: "p1", round: 0, delegate: { worker: "eng.a" } };
     await tasks.createTask({ id: "post-1", goal: "post", sealed });
     await tasks.createTask({ id: "plain", goal: "plain" });
     expect(tasks.get("post-1")?.sealed).toEqual(sealed);
@@ -39,13 +39,13 @@ describe.each([
 
   it("matches list({ sealed }) on every key it names, and nothing on a row without one", async () => {
     const tasks = await makeBacking();
-    await tasks.createTask({ id: "a", goal: "a", sealed: { kind: "post", postId: "p1", round: 0 } });
-    await tasks.createTask({ id: "b", goal: "b", sealed: { kind: "post", postId: "p1", round: 1 } });
-    await tasks.createTask({ id: "c", goal: "c", sealed: { kind: "post", postId: "p2", round: 0 } });
+    await tasks.createTask({ id: "a", goal: "a", sealed: { kind: "post", messageRequestId: "p1", round: 0 } });
+    await tasks.createTask({ id: "b", goal: "b", sealed: { kind: "post", messageRequestId: "p1", round: 1 } });
+    await tasks.createTask({ id: "c", goal: "c", sealed: { kind: "post", messageRequestId: "p2", round: 0 } });
     await tasks.createTask({ id: "d", goal: "d" });
     const ids = (filter: Record<string, string | number | boolean>) => tasks.list({ sealed: filter }).map((task) => task.id).sort();
     expect(ids({ kind: "post" })).toEqual(["a", "b", "c"]);
-    expect(ids({ kind: "post", postId: "p1", round: 0 })).toEqual(["a"]);
+    expect(ids({ kind: "post", messageRequestId: "p1", round: 0 })).toEqual(["a"]);
     expect(ids({ round: 1 })).toEqual(["b"]);
     expect(ids({ kind: "task" })).toEqual([]);
   });

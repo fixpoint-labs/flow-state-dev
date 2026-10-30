@@ -13,13 +13,9 @@
     "build": "vite build",
     "fsdev": "tsx ../../packages/cli/bin/fsdev.ts",
     "typecheck": "node ../../scripts/typecheck.mjs",
-    "test": "vitest run --root .",
-    "inventory": "node scripts/inventory.mjs",
-    "inventory:write": "node scripts/inventory.mjs --write",
-    "inventory:control": "node scripts/inventory.mjs --control"
+    "test": "vitest run --root ."
   },
   "devDependencies": {
-    "@flow-state-dev/design-system": "workspace:*",
     "@tailwindcss/vite": "^4.2.0",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",
@@ -36,17 +32,21 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "@cursor/sdk": "1.0.40",
     "@flow-state-dev/claude-code": "workspace:*",
     "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/codex": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/cursor": "workspace:*",
     "@flow-state-dev/devtool": "workspace:*",
     "@flow-state-dev/engine": "workspace:*",
     "@flow-state-dev/fsdev": "workspace:*",
     "@flow-state-dev/harness-manager": "workspace:*",
     "@flow-state-dev/memory": "workspace:*",
     "@flow-state-dev/orchestration": "workspace:*",
+    "@flow-state-dev/react": "workspace:*",
     "@flow-state-dev/store-sqlite": "workspace:*",
+    "@flow-state-dev/tools": "workspace:*",
     "@flow-state-dev/workforce": "workspace:*",
     "@flow-state-dev/workspace": "workspace:*",
     "@streamdown/cjk": "^1.0.2",

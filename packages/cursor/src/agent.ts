@@ -48,10 +48,14 @@ import {
   observedPullRequestsCollection,
   recordPullRequests as startPullRequestRecorder,
   replacePlanList,
+  reportHarnessActivity,
   type PlanListCollection,
 } from "@flow-state-dev/core";
+import { randomUUID } from "node:crypto";
+import { reportHarnessSpend } from "@flow-state-dev/core/types";
 import type {
   DeclaredResourceEntry,
+  HarnessActivityHook,
   HarnessCallbackContext,
   HarnessResolver,
   HarnessRunOutcome,
@@ -70,6 +74,7 @@ import { createChildProcessResolveCursorClient } from "./child-runtime";
 import { closeOpenText, createEmitState, emitTranslatedEvent, finalizeOpenItems } from "./emit";
 import { addUsage, normalizeUsage, translateCursorMessage } from "./translate";
 import { estimateCursorCost } from "./cost";
+import { cursorWorkingDirectory } from "./workspace-alias";
 import {
   CursorAgentAbortedError,
   CursorAgentConfigError,
@@ -113,6 +118,9 @@ function selectionOf(choice: ModelChoice | null | undefined): CursorModelSelecti
   const selection = typeof choice === "string" ? { id: choice } : choice;
   return selection.id === "" ? undefined : selection;
 }
+
+/** The name Cursor's spend is kept under. */
+const CURSOR_HARNESS = "cursor";
 
 /** Options for {@link cursorAgent}. */
 export interface CursorAgentOptions {
@@ -161,6 +169,13 @@ export interface CursorAgentOptions {
    * unanswered.
    */
   onSteerable?: HarnessSteerHook;
+  /**
+   * Called with each tool call the run starts (FIX-2290), so a host can say
+   * how the run is doing. Not awaited, and a throw is logged and swallowed.
+   * Assistant text is not reported: Cursor streams it in pieces, and a piece
+   * is not a line a person can read.
+   */
+  onActivity?: HarnessActivityHook;
   /**
    * Which model the run uses: a fixed id, or a resolver called once per
    * invocation, like `cwd` and `resume`, so one block can run a different
@@ -410,6 +425,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
     resume: resolveResume,
     onSession,
     onSteerable,
+    onActivity,
     model,
     agent: agentOptions,
     send: sendOptions,
@@ -475,6 +491,11 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
       let steering: SteerOffer | null = null;
       let sessionId: string | null = null;
       let runModel: CursorModelSelection | undefined;
+      const spendRunId = `cursor:${randomUUID()}`;
+      // What the run has spent so far, kept as it streams so a run that is
+      // stopped or fails still reports the turns it finished (FIX-2145).
+      // `undefined` until a run was sent: nothing was spent before.
+      let spent: RunSpent | undefined;
 
       try {
         // Resolved once, before the agent is opened, beside its directory and conversation.
@@ -496,9 +517,22 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         // aborted never fires `abort` again.
         if (ctx.signal?.aborted) throw new CursorAgentAbortedError(agent.agentId);
         const run = await agent.send(prompt, sendOptions);
+        // Reported from here on as the run goes (FIX-2288), under one id for
+        // the run: its configured model and no tokens at once, then each
+        // finished turn's running total, then the settled total.
+        const runSpent: RunSpent = {
+          usage: null,
+          model: runModel?.id ?? agentOptions?.model?.id ?? null,
+          report: () => reportCursorSpend(ctx, spendRunId, runSpent),
+        };
+        spent = runSpent;
+        runSpent.report();
         steering = offerSteer(run, ctx, onSteerable);
-        const mirrored = await mirrorRun(run, ctx, emitState, name, writePlan);
+        const mirrored = await mirrorRun(run, ctx, emitState, name, writePlan, spent, onActivity);
         const settled = await settleRun(run, mirrored, ctx.signal);
+        runSpent.usage = settled.usage;
+        // The settled model wins over the configured or streamed one, as on the handle.
+        if (settled.model !== undefined) runSpent.model = settled.model;
         if (steering !== null) {
           steering.withdraw();
           await steering.answered(ctx.signal);
@@ -530,9 +564,39 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         throw failure;
       } finally {
         steering?.withdraw();
+        // What the run spent, into the request, however it ended (FIX-2145):
+        // tokens only, cached prompt tokens counted as input. Cursor's cost is
+        // an estimate and its billing unknown.
+        spent?.report();
         closeQuietly(agent);
       }
     },
+  });
+}
+
+/** What a run has spent so far, and how to report it (FIX-2145, FIX-2288). */
+interface RunSpent {
+  usage: CursorRunUsage | null;
+  /** The model the run uses: the configured one, then the one the stream names. */
+  model: string | null;
+  report(): void;
+}
+
+/**
+ * Report a run's spend so far: tokens only, cached prompt tokens counted as
+ * input. Cursor's cost is an estimate and its billing unknown. Each report
+ * replaces the run's last.
+ */
+function reportCursorSpend(ctx: AgentCallbackContext, runId: string, spent: RunSpent): void {
+  const usage = spent.usage;
+  reportHarnessSpend(ctx, {
+    runId,
+    harness: CURSOR_HARNESS,
+    model: spent.model,
+    inputTokens: usage ? usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens : null,
+    outputTokens: usage?.outputTokens ?? null,
+    costUsd: null,
+    billing: null,
   });
 }
 
@@ -620,7 +684,10 @@ async function openAgent(args: {
   const resumeId = resumeIdRaw === undefined || resumeIdRaw === "" ? null : resumeIdRaw;
 
   const client = await args.resolveCursorClient(args.ctx);
-  const createOptions = mergeCreateOptions(args.agentOptions, workingDirectory);
+  // A deep directory reaches the SDK through a short link: Cursor names its
+  // state directory after the whole path, and a long one does not fit.
+  const sdkDirectory = workingDirectory === undefined ? undefined : await cursorWorkingDirectory(workingDirectory);
+  const createOptions = mergeCreateOptions(args.agentOptions, sdkDirectory);
   const agent =
     resumeId === null ? await client.create(createOptions) : await resumeAgent(client, resumeId, createOptions);
 
@@ -741,6 +808,8 @@ function mergeCreateOptions(
 
 /**
  * Drain `run.stream()`, racing each `next()` against the block's own signal.
+ * The usage summed so far is also kept on `spent` as each turn reports it, so
+ * the caller can report it when the run is stopped mid-way.
  *
  * The SDK is still told about cancel via {@link cancelQuietly} when the race
  * loses or the stream throws — that is what stops the local runtime — even
@@ -759,6 +828,8 @@ async function mirrorRun(
   emitState: ReturnType<typeof createEmitState>,
   blockName: string,
   writePlan: PlanWriter | null,
+  spent: RunSpent,
+  onActivity: HarnessActivityHook | undefined,
 ): Promise<MirrorFacts> {
   const stream = run.stream();
   const iterator = stream[Symbol.asyncIterator]();
@@ -780,8 +851,14 @@ async function mirrorRun(
       for (const event of translateCursorMessage(next.value)) {
         if (event.kind === "run_usage") {
           usage = addUsage(usage, event.usage);
+          spent.usage = usage;
+          // A finished turn: the run's total so far (FIX-2288).
+          spent.report();
         } else if (event.kind === "model") {
           model = event.model;
+          spent.model = event.model;
+          // The model the run named, on the task before its first turn's tokens (FIX-2288).
+          spent.report();
         } else if (event.kind === "plan_list") {
           // Written in stream order, so the record ends equal to the last list
           // Cursor confirmed. An empty list is still a write: it is what tells
@@ -789,6 +866,7 @@ async function mirrorRun(
           // Awaited on purpose: a write left in flight could land after the next list's.
           await writePlan?.(event.items);
         }
+        if (event.kind === "tool_call") reportHarnessActivity(onActivity, event, ctx);
         await emitTranslatedEvent(event, ctx, emitState, blockName);
       }
     }

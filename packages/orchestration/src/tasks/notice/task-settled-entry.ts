@@ -56,7 +56,7 @@ export const taskSettledInputSchema = z
     output: z.unknown().optional(),
     error: z.string().optional(),
     question: z.string().optional(),
-    asked: z.literal(true).optional(),
+    waitedOn: z.literal(true).optional(),
     /** On a failure or a cancel: the dependents its ending cancelled that share its filer (D2). */
     cancelled: z.array(z.string()).optional()
   })

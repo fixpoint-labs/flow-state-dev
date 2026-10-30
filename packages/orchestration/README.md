@@ -159,6 +159,20 @@ client-visible, unlike `claimedBy`, and no write surface a caller reaches can se
 If you implement `TaskCollectionRef` yourself, implement `linkRun` too: a board that
 dispatches calls it on every attempt.
 
+**What a task's run spent.** A dispatched task carries `spend: { requests }`: one entry
+per request its runs made, on every attempt, each with its model calls and harness runs
+(`settled`), what the running request has reported so far (`live`, `null` once it ends),
+and the harness and model it ran on. The board writes it from the task's own request
+only: every 2 s while the request runs (`SPEND_TICK_MS`), and once more as it ends,
+before the task is checked. The write is `recordSpend(id, { requestId, part, spend },
+{ claim })`, fenced by the row's identity only, so a failed attempt's tokens land even
+after its row settled; it emits no `task-change`. A row written before this field reads
+`spend: null`. `taskSpendView(task)` folds it to `{ harness, model, inputTokens,
+outputTokens, unreported, live }`, the shape `listTasks` returns from
+`taskToolActions` (never to a model): tokens are `null` until something reports one,
+never 0. If you implement `TaskCollectionRef` yourself, implement `recordSpend` too, or
+the board writes no spend.
+
 `rowsInSession(ledger, sessionId)` returns the rows that run in a session, in ledger
 order: each row whose run link names it, with every row of its follow-up chain. Follow-ups
 run in the root's session one at a time, so the list includes one that hasn't started yet.
@@ -400,6 +414,9 @@ declare the collection; none claims or drains; a transition the task cannot make
 you resolve yourself. Both take an optional roster last, the same one
 `createTaskToolsCapability` takes. These are **public** actions: anyone who can call the flow can settle
 or reassign its tasks. See the docs, "Changing tasks from outside a run".
+`taskToolReads(collectionId, resolve)` returns the same `listTasks_<suffix>` listing as a
+flow `reads` map, for an app that polls the board: it answers what the action answers and
+stores nothing. Spread it into `defineFlow({ reads })`.
 Omission reapplies the default on all three. They apply only when the board
 constructs its own collection — a supplied `collection` is left alone and passing
 any of them is a construction error, so configure caps on
@@ -869,6 +886,10 @@ answers it when a task has one, and a task filed without one is labelled by its 
 `createTask` also takes `context`, `labels`, `maxAttempts` and `held: true`, which files the task
 without starting it until `updateTask` releases it. A task filed from a turn that is working a
 task is stamped `filedByTask` with that task's id; `listTasks({ filedByTask })` lists them.
+`createTask` files one task for one piece of work: the same `goal` (ignoring case and spacing) for
+the same assignee and workstream `target`, while a task for it is still open, is refused with `already_open`, naming the
+open task by its title, and nothing is filed. A follow-up, and a message handed on with
+`resultTo: "conversation"`, keep their own rules.
 
 For a graph fixed in code (seeded `initialTasks`, custom collection, tuned
 dispatcher), put a `taskBoard(...).drain` or a `goalSeekLoop` in the generator's

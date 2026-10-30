@@ -106,6 +106,55 @@ jobs:
         if: ${{ !cancelled() }}
         run: node goals/workforce-coordination/runs-on-one-task/sweep.mjs --at HEAD
 
+      # The mechanism list (FIX-2315): every row's anchor is still exported from
+      # its package, by the file the row names. Here rather than in Process
+      # guards for the same reason as the task-surface sweep: it parses
+      # TypeScript, so it needs this job's install. The list's header owns the rest.
+      - name: Mechanism list anchors are exported
+        run: node scripts/check-mechanism-anchors.mjs
+
+      # A removed export must still fail the check above, and the classifier
+      # job below must still label a planted duplicate mechanism.
+      - name: The mechanism checks refuse their plants
+        if: ${{ !cancelled() }}
+        run: node --test scripts/mechanisms.test.mjs
+
+  # Advisory, never required (FIX-2315): maps the PR's new public exports to rows
+  # of docs/mechanisms/mechanisms.yaml, labels `new-mechanism` and
+  # `mechanism-overlap`, and keeps one comment. The script catches its own errors
+  # and the job is continue-on-error, so it cannot fail a run. A fork PR's token
+  # is read-only, so the script posts nothing there. Its header owns the rules.
+  mechanisms:
+    name: Mechanism classifier (advisory)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+
+    steps:
+      # Depth 2: the checkout is the PR merged into its base, and the base is
+      # the merge's first parent (`HEAD^1`), as in the fallow job.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Classify new exports against the mechanism list
+        run: node scripts/classify-mechanism-pr.mjs HEAD^1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
   # The package tests, split across runners by scripts/test-shards.mjs. Each
   # shard runs its packages one at a time, as `pnpm test` does: two at once on
   # one runner oversubscribe it and tests start timing out.
@@ -329,8 +378,8 @@ jobs:
       - name: One word per thing
         run: node goals/vocabulary/one-word-per-thing/sweep.mjs
 
-      # The planted parkOnAsk must still be reported, or the sweep above could
-      # pass because it stopped reading a file.
+      # The planted parkOnAsk, messageWorker and replyTo must still be reported,
+      # or the sweep above could pass because it stopped reading a file.
       - name: The vocabulary sweep reports its plant
         run: node goals/vocabulary/one-word-per-thing/sweep.mjs --control
 

@@ -888,7 +888,7 @@ describe("generator owned step loop — non-streaming", () => {
     expect(step2).toContainEqual(rawAssistant1);
   });
 
-  it("aggregates per-step usage into one onGeneratorModelResult report", async () => {
+  it("reports each step to the spend ledger as it ends, and the aggregate once for the trace row", async () => {
     const echo = handler({
       name: "echo",
       inputSchema: z.object({}),
@@ -922,8 +922,18 @@ describe("generator owned step loop — non-streaming", () => {
     });
 
     await expect(runForTest(block, {}, ctx)).resolves.toBe("done");
-    expect(onGeneratorModelResult).toHaveBeenCalledTimes(1);
-    expect(onGeneratorModelResult.mock.calls[0]![0].usage).toEqual({
+    // Each step counts in the request's spend when it ends, so a run that
+    // later suspends or fails keeps what it finished (FIX-2145).
+    const reports = onGeneratorModelResult.mock.calls.map(([payload]) => payload);
+    expect(reports.filter((p) => p.countsIn === "ledger").map((p) => p.usage)).toEqual([
+      { promptTokens: 10, completionTokens: 5, totalTokens: 15, cacheReadInputTokens: 4 },
+      { promptTokens: 20, completionTokens: 10, totalTokens: 30 },
+    ]);
+    // The aggregate is the trace row's, marked so the ledger doesn't count it again.
+    const traced = reports.filter((p) => p.countsIn !== "ledger");
+    expect(traced).toHaveLength(1);
+    expect(traced[0]!.countsIn).toBe("trace");
+    expect(traced[0]!.usage).toEqual({
       promptTokens: 30,
       completionTokens: 15,
       totalTokens: 45,
@@ -1240,9 +1250,17 @@ describe("generator owned step loop — streaming", () => {
     expect(toolOutputs).toHaveLength(1);
     expect(toolOutputs[0]!.item!.status).toBe("completed");
 
-    // Aggregate usage reported once.
-    expect(onGeneratorModelResult).toHaveBeenCalledTimes(1);
-    expect(onGeneratorModelResult.mock.calls[0]![0].usage).toEqual({
+    // Each step reaches the spend ledger as it ends; the aggregate is
+    // reported once, for the trace row only (FIX-2145).
+    const reports = onGeneratorModelResult.mock.calls.map(([payload]) => payload);
+    expect(reports.filter((p) => p.countsIn === "ledger").map((p) => p.usage)).toEqual([
+      { promptTokens: 5, completionTokens: 2, totalTokens: 7 },
+      { promptTokens: 8, completionTokens: 4, totalTokens: 12 },
+    ]);
+    const traced = reports.filter((p) => p.countsIn !== "ledger");
+    expect(traced).toHaveLength(1);
+    expect(traced[0]!.countsIn).toBe("trace");
+    expect(traced[0]!.usage).toEqual({
       promptTokens: 13,
       completionTokens: 6,
       totalTokens: 19,
@@ -1651,5 +1669,49 @@ describe("createFallbackModel — step-method forwarding (FIX-814 PR3)", () => {
     const result = await fallback.generate({ messages: [] });
     expect(result.text).toBe("WIN-legacy");
     expect(resolved).toEqual(["good"]);
+  });
+});
+
+describe("generator loop — answerOnLastStep", () => {
+  // A model that looks something up whenever it is offered a tool, and answers
+  // only when it isn't: left alone, it spends every step on lookups.
+  function diggingModel() {
+    const offered: Array<string[] | undefined> = [];
+    const model: GeneratorModel = {
+      modelId: "digging",
+      async generate() {
+        throw new Error("legacy generate must not be called on a step-capable model");
+      },
+      async generateStep(options) {
+        offered.push(options.tools?.map((tool) => tool.name));
+        if (options.tools !== undefined && options.tools.length > 0) {
+          return { toolCalls: [{ toolCallId: `c${offered.length}`, toolName: "lookup", args: { q: "more" } }], finishReason: "tool-calls" };
+        }
+        return { text: "The doc says 42.", finishReason: "stop" };
+      },
+    };
+    return { model, offered };
+  }
+  const lookup = handler({
+    name: "lookup",
+    inputSchema: z.object({ q: z.string() }),
+    outputSchema: z.object({ answer: z.string() }),
+    execute: () => ({ answer: "42" }),
+  });
+
+  it("answers in text on the last step, with no tools offered there, when the steps run out mid-lookup", async () => {
+    const { model, offered } = diggingModel();
+    const block = generator({ name: "answers-last", model, prompt: "p", tools: [lookup], loop: { maxIterations: 3, answerOnLastStep: true } });
+
+    await expect(runForTest(block, {}, createMockContext())).resolves.toBe("The doc says 42.");
+    expect(offered).toEqual([["lookup"], ["lookup"], undefined]);
+  });
+
+  it("without it, the last step still offers the tools, so the turn ends on a lookup with nothing said", async () => {
+    const { model, offered } = diggingModel();
+    const block = generator({ name: "digs-last", model, prompt: "p", tools: [lookup], loop: { maxIterations: 3 } });
+
+    await expect(runForTest(block, {}, createMockContext())).rejects.toThrow(/did not produce output after 3 step/);
+    expect(offered).toEqual([["lookup"], ["lookup"], ["lookup"]]);
   });
 });

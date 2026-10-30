@@ -8,10 +8,35 @@
  * that failed) says why, with no percent at all. A window the harness sent no
  * percent for (Claude Code below its warning line, or at its limit) says how
  * close it is instead, and a window a run reported says so, with its own age.
+ *
+ * Under the windows (FIX-2145): how many tokens each of the user's workers
+ * used, today or over 7 or 30 UTC days, by model and harness. It is usage,
+ * not what is left: a cost shows only where a harness reported one on an API
+ * key, and every other source says its cost was not reported.
  */
+import { useState } from "react";
 import { EmptyState, Meta, ScreenTitle, SectionFailure } from "../components/ui";
 import type { LoadedSnapshot } from "../lib/derive";
-import { ageLabel, harnessName, levelLabel, percentLabel, resetLabel, useHarnessUsage, windowName, type HarnessUsage, type UsageWindow } from "../lib/usage";
+import { cn } from "../lib/utils";
+import {
+  ageLabel,
+  billingLabel,
+  costLabel,
+  harnessName,
+  levelLabel,
+  noTokensReported,
+  percentLabel,
+  reportedTokensLabel,
+  resetLabel,
+  sourceName,
+  USAGE_PERIODS,
+  useHarnessUsage,
+  useWorkerUsage,
+  windowName,
+  type HarnessUsage,
+  type UsageWindow,
+  type WorkerUsage,
+} from "../lib/usage";
 
 function WindowLine({ window, harness }: { window: UsageWindow; harness: string }) {
   return (
@@ -102,6 +127,110 @@ function HarnessCard({ row }: { row: HarnessUsage }) {
   );
 }
 
+function WorkerCard({ row }: { row: WorkerUsage }) {
+  return (
+    <section className="border-b border-foreground/20 py-3" data-testid="worker-usage-row" data-worker={row.worker} data-gone={row.gone}>
+      <header className="flex flex-wrap items-baseline gap-x-3">
+        <h3 className="text-sm font-semibold">{row.worker}</h3>
+        {row.gone ? (
+          <Meta className="text-muted-foreground" testId="worker-usage-gone">
+            no longer on your roster
+          </Meta>
+        ) : null}
+        <Meta role="control" className="ml-auto" testId="worker-usage-tokens">
+          {reportedTokensLabel(row.tokens.input + row.tokens.output, row.bySource)}
+        </Meta>
+      </header>
+      <ul className="mt-1">
+        {row.bySource.map((source) => {
+          const billing = billingLabel(source.billing);
+          return (
+            <li
+              key={`${source.kind}:${source.source}:${source.billing ?? ""}`}
+              className="grid grid-cols-[minmax(9rem,max-content)_1fr] items-baseline gap-x-4 border-b border-foreground/10 py-2"
+              data-testid="worker-usage-source"
+              data-source={source.source}
+              data-kind={source.kind}
+              data-billing={source.billing ?? undefined}
+            >
+              <span className="text-sm" data-testid="worker-usage-source-name">
+                {sourceName(source)}
+                {billing === null ? null : <span className="text-muted-foreground"> · {billing}</span>}
+              </span>
+              <span className="flex flex-wrap items-baseline gap-x-3">
+                <Meta role="control" testId="worker-usage-source-tokens">
+                  {reportedTokensLabel(source.inputTokens + source.outputTokens, [source])}
+                </Meta>
+                {noTokensReported(source) ? null : (
+                  <Meta className="text-muted-foreground" testId="worker-usage-source-split">
+                    {source.inputTokens.toLocaleString("en-US")} in, {source.outputTokens.toLocaleString("en-US")} out
+                  </Meta>
+                )}
+                <Meta className="text-muted-foreground" testId="worker-usage-cost">
+                  {costLabel(source)}
+                </Meta>
+                {source.unreported === 0 ? null : (
+                  <Meta className="text-muted-foreground" testId="worker-usage-unreported">
+                    {source.unreported} of {source.runs} {source.runs === 1 ? "run" : "runs"} reported no tokens
+                  </Meta>
+                )}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+function WorkerUsageSection({ readAt }: { readAt: number }) {
+  const [days, setDays] = useState<number>(7);
+  const { rows, failure, reread } = useWorkerUsage(readAt, days);
+  // A Lab that answers no per-worker query shows nothing here.
+  if (rows === null) return null;
+  return (
+    <section className="mt-5" data-testid="worker-usage" data-days={days}>
+      <header className="flex flex-wrap items-center gap-3 border-b border-foreground/20 pb-2">
+        <h2 className="text-sm font-semibold">Usage by worker</h2>
+        <div role="tablist" aria-label="Period" className="ml-auto flex border border-foreground font-mono text-[11.5px] font-medium" data-testid="worker-usage-period">
+          {USAGE_PERIODS.map((period, i) => (
+            <button
+              key={period.days}
+              type="button"
+              role="tab"
+              aria-selected={period.days === days}
+              data-days={period.days}
+              onClick={() => setDays(period.days)}
+              className={cn("px-3 py-[5px]", i > 0 && "border-l border-foreground", period.days === days && "bg-foreground text-background")}
+            >
+              {period.label}
+            </button>
+          ))}
+        </div>
+      </header>
+      <Meta className="mt-1 block text-muted-foreground" testId="worker-usage-note">
+        Tokens each worker used for you, by model and coding harness. Days are UTC.
+      </Meta>
+      {failure === undefined ? null : (
+        <SectionFailure what="Usage by worker" failure={failure} onRetry={reread} testId="worker-usage-failure" />
+      )}
+      {rows === undefined ? (
+        failure === undefined ? (
+          <p className="py-3 text-sm text-muted-foreground" data-testid="worker-usage-reading">
+            Reading usage by worker…
+          </p>
+        ) : null
+      ) : rows.length === 0 ? (
+        <p className="py-3 text-sm text-muted-foreground" data-testid="worker-usage-empty">
+          No worker used any tokens in this period.
+        </p>
+      ) : (
+        rows.map((row) => <WorkerCard key={row.worker} row={row} />)
+      )}
+    </section>
+  );
+}
+
 export function Usage({ snapshot }: { snapshot: LoadedSnapshot }) {
   const { rows, failure, reread } = useHarnessUsage(snapshot.readAt);
   return (
@@ -129,6 +258,7 @@ export function Usage({ snapshot }: { snapshot: LoadedSnapshot }) {
         ) : (
           rows.map((row) => <HarnessCard key={row.harness} row={row} />)
         )}
+        <WorkerUsageSection readAt={snapshot.readAt} />
       </div>
     </div>
   );

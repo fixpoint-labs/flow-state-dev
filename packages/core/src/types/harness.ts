@@ -34,6 +34,9 @@
  *   {@link HarnessUsageReport} and {@link HarnessUsageHook} — a
  *   subscription's usage windows as a vendor reports them, and the on-demand
  *   read a host registers per harness.
+ * - {@link HarnessRunSpend}, {@link HarnessBilling} and
+ *   {@link reportHarnessSpend} — what one run spent, reported into the
+ *   running request as the run goes and when it ends (FIX-2145, FIX-2288).
  * - {@link HarnessSteer} and {@link HarnessSteerHook} — how a run that can take
  *   a line into its turn in flight offers that to the host.
  *
@@ -48,6 +51,7 @@
 import { z } from "zod";
 import type { BlockContext, BlockDefinition } from "./block";
 import type { AnyResourceRef } from "./resource";
+import { REQUEST_SPEND_SEAM, type RequestSpendSeam } from "./request-end";
 
 /**
  * Which harness, and which of its doors, produced a handle.
@@ -449,6 +453,69 @@ export interface HarnessUsageReport {
 export type HarnessUsageHook = (report: HarnessUsageReport, ctx: HarnessCallbackContext) => void | Promise<void>;
 
 /**
+ * How a harness run was paid for, as the harness knows it from its own
+ * sign-in (FIX-2145): `api-key`, billed per token; `subscription`, drawn from
+ * a plan's windows. `null` when the harness can't tell.
+ */
+export type HarnessBilling = "api-key" | "subscription";
+
+/**
+ * What one harness run has spent, as its harness reports it (FIX-2145): at
+ * the run's start, on each usage event its vendor sends, and when the run
+ * ends, however it ends (FIX-2288). Only what the vendor reported: a token
+ * count or a cost the vendor never sent is `null`, never 0 and never an
+ * estimate.
+ */
+export interface HarnessRunSpend {
+  /**
+   * The harness's own id for this run (FIX-2288). A later report with the same
+   * id replaces the earlier one, so a harness reports its running total, never
+   * an increment. Absent: the report is one settled run of its own.
+   */
+  runId?: string;
+  /** The harness, by the name a usage record is kept under (`claude-code`, `codex`, `cursor`). */
+  harness: string;
+  /**
+   * The model the run uses, as the harness knows it (FIX-2288): the one its
+   * vendor named, else the one the run was started with. `null` when neither
+   * is known (the vendor picked its default and never said which). Absent on
+   * a report made before it existed (BP-030).
+   */
+  model?: string | null;
+  /** Input tokens the vendor reported, or `null` when it reported none (a run killed before its usage arrived). */
+  inputTokens: number | null;
+  /** Output tokens the vendor reported, or `null` when it reported none. */
+  outputTokens: number | null;
+  /** The cost the vendor reported, in US dollars, or `null` when it reported none. Never a price-table estimate. */
+  costUsd: number | null;
+  /** How the run was paid for, or `null` when the harness can't tell. */
+  billing: HarnessBilling | null;
+}
+
+/**
+ * Report a harness run's spend to the running request (FIX-2145). It is
+ * counted in the request's spend, which request-end hooks are handed and
+ * `readRequestSpend` reads; it is not a model call, so `ctx.request.tokenUsage`
+ * and an action's token budget never see it.
+ *
+ * **A later report for the same run replaces the earlier one** (FIX-2288).
+ * With a `runId`, a harness reports as its run goes: at its start (its model,
+ * tokens `null`), on each usage event its vendor sends (the run's total so
+ * far), and from its `finally` when the run ends however it ends (the final
+ * total). Each report carries the whole run so far, never an increment, and
+ * the run counts once. Without a `runId`, each call is one settled run.
+ *
+ * @returns `false` when the context carries no spend ledger: a hand-built
+ *   test context, or a block run outside a request. Nothing is counted then.
+ */
+export function reportHarnessSpend(ctx: object, spend: HarnessRunSpend): boolean {
+  const seam = (ctx as { readonly [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM];
+  if (seam == null) return false;
+  seam.reportHarnessRun(spend);
+  return true;
+}
+
+/**
  * Hands one line to a run's turn in flight. Resolves `"delivered"` only when
  * the turn has the words; anything less (the run refused, the turn ended, the
  * call threw) is `"refused"`, and the caller sends the line some other way.
@@ -469,3 +536,21 @@ export type HarnessSteer = (text: string) => Promise<"delivered" | "refused">;
  * never steers simply never calls it. The twin of {@link HarnessSessionHook}.
  */
 export type HarnessSteerHook = (steer: HarnessSteer | null, ctx: HarnessCallbackContext) => void;
+
+/**
+ * One thing a run did, as a {@link HarnessActivityHook} is handed it
+ * (FIX-2290): a completed assistant message, or a tool call it started, in the
+ * shapes a harness's translator already produces. Reasoning is never one.
+ */
+export type HarnessActivity =
+  | { kind: "message"; text: string }
+  | { kind: "tool"; name: string; /** The call's arguments, as the JSON text the vendor sent. */ arguments: string };
+
+/**
+ * Called by a harness with each {@link HarnessActivity} of its run, so the host
+ * can say how the run is doing (harness-manager keeps the task's status note
+ * from it). Not awaited, and a throw or a rejection never fails the run: like
+ * usage, it is a reading, not part of the work. A harness that reports none
+ * never calls it.
+ */
+export type HarnessActivityHook = (activity: HarnessActivity, ctx: HarnessCallbackContext) => void;

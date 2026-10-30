@@ -80,7 +80,7 @@ vi.mock("../../src/tasks/collection/resource-backed", async (importOriginal) => 
           fault.takeSlotOnLapse = false;
           // Another request in the filing session waits on the row now.
           await markWait!.call(ref, id, {
-            gateId: `ask:${ref.collectionId}:${id}#another`,
+            gateId: `wait:${ref.collectionId}:${id}#another`,
             deadline: Date.now() + 600_000,
             requestId: "req_another"
           });

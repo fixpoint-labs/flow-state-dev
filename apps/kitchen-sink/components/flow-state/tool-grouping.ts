@@ -49,12 +49,20 @@ export const TOOL_VERB_MAP: Record<string, ToolVerbs> = {
   delete_file:{ singular: "deleted a file", plural: (n) => `deleted ${n} files` },
   bash:       { singular: "ran a command", plural: (n) => `ran ${n} commands` },
   run_command:{ singular: "ran a command", plural: (n) => `ran ${n} commands` },
+  // A coding harness's own tools: Claude Code's, Codex's and Cursor's.
+  shell:      { singular: "ran a command", plural: (n) => `ran ${n} commands` },
+  command_execution: { singular: "ran a command", plural: (n) => `ran ${n} commands` },
+  multiedit:  { singular: "edited a file", plural: (n) => `edited ${n} files` },
+  // Codex's one tool for changing files: an edit, as Claude Code's and Cursor's are.
+  file_change:{ singular: "edited a file", plural: (n) => `edited ${n} files` },
+  grep:       { singular: "searched the code", plural: (n) => `searched the code ${n} times` },
+  glob:       { singular: "looked for files", plural: (n) => `looked for files ${n} times` },
   load_tools: { singular: "loaded tools", plural: () => "loaded tools" },
 };
 
-/** Look up verbs for a tool name, falling back to a generic phrase. */
+/** Look up verbs for a tool name, in any case (Claude Code says `Bash`), falling back to a generic phrase. */
 function verbsFor(toolName: string): ToolVerbs {
-  const entry = TOOL_VERB_MAP[toolName];
+  const entry = TOOL_VERB_MAP[toolName] ?? TOOL_VERB_MAP[toolName.toLowerCase()];
   if (entry !== undefined) return entry;
   return {
     singular: `ran \`${toolName}\``,

@@ -284,7 +284,7 @@ describe("best fit's own choice and floor (FIX-1833 V3, V4)", () => {
     const { records, messages } = await host.items(id);
     expect(records).toEqual([
       {
-        postId: expect.any(String),
+        messageRequestId: expect.any(String),
         round: 0,
         policy: "best-fit",
         by: "judgment",
@@ -515,7 +515,7 @@ describe("delivery and answers (V4)", () => {
       status: "completed",
       assignee: "eng.coder",
       maxAttempts: 1,
-      sealed: { postId: expect.any(String), round: 0, delegate: { worker: "eng.coder" } }
+      sealed: { messageRequestId: expect.any(String), round: 0, delegate: { worker: "eng.coder" } }
     });
     // The conversation keeps no record of the delivery: the row is the record.
     expect((await host.sessionState(id)).deliveries).toBeUndefined();
@@ -529,7 +529,7 @@ describe("delivery and answers (V4)", () => {
     expect(lines).toEqual([{ agentName: "eng.coder", text: expect.stringContaining("fix it") }]);
     // An answer, or a report of none, for a delivery made before the change has nowhere to land,
     // and neither has a post's own ending or cancel (FIX-2083).
-    for (const action of ["delegateAnswer", "delegateMissed", "onPostSettled", "postCancelled"]) {
+    for (const action of ["delegateAnswer", "delegateMissed", "onPostSettled", "postCancelled"]) { // retired-name-refusal: refusal test
       const old = await host.act("alice", id, action, { token: "from-before", body: "late" }, "coordinator", "internal").catch((error: unknown) => ({ error }));
       expect(old.error).toBeDefined();
     }
@@ -586,7 +586,7 @@ describe("judgment (V7)", () => {
     expect(host.heard[0]!.message).toContain("lantern");
     const [record] = (await host.items(id)).records;
     expect(record).toEqual({
-      postId: expect.any(String),
+      messageRequestId: expect.any(String),
       round: 0,
       policy: "judgment",
       by: "judgment",
@@ -638,13 +638,21 @@ describe("judgment (V7)", () => {
     expect(read.output.delegates.map(({ takes: _takes, description: _description, ...record }: any) => record)).toEqual(
       (await host.sessionState(id)).delegates
     );
-    // Never in its prompt: the turn's system text names no delegate. The
-    // tool list is left out: sendMessage's names every roster worker it
-    // could message, delegate or not.
+    // Never in its prompt: the turn's system text names no delegate. Two
+    // lists are left out because they name every roster worker the
+    // coordinator could message, delegate or not: sendMessage's tool list,
+    // and the identity layer's (FIX-2334), which leads the system message.
     const messages = judgment.calls[0]!.input as Array<{ role: string; content: unknown }>;
-    const prompt = JSON.stringify(messages.filter((m) => !(typeof m.content === "string" && m.content.startsWith("<tools>"))));
+    const identity = /^You are [\s\S]*?do it\.\n/;
+    const prompt = JSON.stringify(
+      messages
+        .filter((m) => !(typeof m.content === "string" && m.content.startsWith("<tools>")))
+        .map((m) => (typeof m.content === "string" ? { ...m, content: m.content.replace(identity, "") } : m))
+    );
     expect(prompt).toContain("Route the work.");
     expect(prompt).not.toContain("eng.coder");
+    // Nor a delegate record's note, which only the delegate list carries.
+    expect(JSON.stringify(messages)).not.toContain("the build");
   });
 
   it("refuses a filing for a worker that isn't a delegate here", async () => {

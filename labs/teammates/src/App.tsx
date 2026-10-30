@@ -1,68 +1,114 @@
-import { useEffect, useState } from "react";
-import type { LabAdapter, ProjectRow, WorkerRow } from "./adapter";
+import { useCallback, useEffect, useState } from "react";
+import type { LabAdapter, NewTeammate, WorkerRow } from "./adapter";
 import { Conversation } from "./components/Conversation";
-import { Runs } from "./components/Runs";
+import { PopupView, type Popup } from "./components/Popups";
 import { TalkPanel } from "./components/TalkPanel";
 import { WorkersList } from "./components/WorkersList";
+import { harnessName } from "./lib/harness";
+import { lookOf as lookOfRow } from "./lib/looks";
 
 /**
- * The screen: the workers on the left, the chosen worker's one conversation
- * in the center, and its talk with the other workers on the right. A worker
- * that takes tasks only has no conversation; the center shows its runs. The
- * app opens on the first worker on the roster.
+ * The screen: the teammates on the left, the chosen teammate's one
+ * conversation in the center, and its talk with the other teammates on the
+ * right. Coding is a background task, not a teammate: the worker coding tasks
+ * run on is off the list, and each coding task is a background item under it.
+ * A task or a message between workers, and a coding task, opens in a popup
+ * over the thread, read only and live. The app opens on the first teammate.
+ *
+ * The roster is read again after a hire or a fire made here.
  */
 export function App({ adapter }: { adapter: LabAdapter }) {
   const [workers, setWorkers] = useState<WorkerRow[]>([]);
-  const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [sessions, setSessions] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<string>();
+  // A task or a message, open in a popup over the thread.
+  const [popup, setPopup] = useState<Popup>();
   const [talkOpen, setTalkOpen] = useState(true);
+
+  const loadRoster = useCallback(async () => {
+    const roster = await adapter.listWorkers();
+    const talking = roster.filter((w) => !w.takesTasks);
+    const ids = await Promise.all(talking.map((w) => adapter.openConversation(w.id)));
+    setWorkers(roster);
+    setSessions(Object.fromEntries(talking.map((w, i) => [w.id, ids[i]])));
+    return { roster, talking };
+  }, [adapter]);
 
   useEffect(() => {
     let live = true;
-    void (async () => {
-      const [roster, projectRows] = await Promise.all([adapter.listWorkers(), adapter.listProjects()]);
-      const talking = roster.filter((w) => !w.takesTasks);
-      const ids = await Promise.all(talking.map((w) => adapter.openConversation(w.id)));
-      if (!live) return;
-      setWorkers(roster);
-      setProjects(projectRows);
-      setSessions(Object.fromEntries(talking.map((w, i) => [w.id, ids[i]])));
-      // Open on the first worker you can talk to: one that takes tasks only has no conversation.
-      setSelected((current) => current ?? talking[0]?.id ?? roster[0]?.id);
-    })();
+    void loadRoster().then(({ talking }) => {
+      if (live) setSelected((current) => current ?? talking[0]?.id);
+    });
     return () => {
       live = false;
     };
-  }, [adapter]);
+  }, [adapter, loadRoster]);
 
-  const nameOf = (id: string) => workers.find((w) => w.id === id)?.name ?? id;
-  const worker = workers.find((w) => w.id === selected);
+  const hire = async (teammate: NewTeammate) => {
+    const hired = await adapter.hire(teammate);
+    await loadRoster();
+    setSelected(hired.id);
+  };
+  const fire = async (worker: string) => {
+    await adapter.fire(worker);
+    const { talking } = await loadRoster();
+    setSelected(talking[0]?.id);
+  };
+
+  // Stable between roster reads, so a memoized entry doesn't redraw for a new function.
+  const nameOf = useCallback((id: string) => workers.find((w) => w.id === id)?.name ?? id, [workers]);
+  const isCoding = useCallback((id: string) => workers.some((w) => w.id === id && w.takesTasks), [workers]);
+  // A coding worker's harness, for a task line drawn before its row arrives.
+  const harnessOf = useCallback((id: string) => {
+    const harness = workers.find((w) => w.id === id)?.harness;
+    return harness === undefined ? undefined : harnessName(harness);
+  }, [workers]);
+  const lookOf = useCallback((id: string) => lookOfRow(workers.find((w) => w.id === id) ?? { id, name: id }), [workers]);
+  const teammates = workers.filter((w) => !w.takesTasks);
+  const worker = teammates.find((w) => w.id === selected);
+  // No worker chosen, no Talk column held for one.
+  const talkShown = talkOpen && worker !== undefined;
+  const closePopup = useCallback(() => setPopup(undefined), []);
   const sessionId = selected ? sessions[selected] : undefined;
   return (
     <div
       className="grid h-full grid-rows-[minmax(0,1fr)] overflow-hidden"
-      style={{ gridTemplateColumns: talkOpen ? "15rem minmax(0,1fr) 18rem" : "15rem minmax(0,1fr)" }}
+      style={{ gridTemplateColumns: talkShown ? "15rem minmax(0,1fr) 18rem" : "15rem minmax(0,1fr)" }}
     >
-      <WorkersList adapter={adapter} workers={workers} sessions={sessions} selected={selected} nameOf={nameOf} onSelect={setSelected} />
-      {worker?.takesTasks ? (
-        <Runs adapter={adapter} worker={worker} workers={workers} sessions={sessions} projects={projects} nameOf={nameOf} />
-      ) : worker && sessionId ? (
+      <WorkersList
+        adapter={adapter}
+        workers={teammates}
+        sessions={sessions}
+        selected={worker?.id}
+        openTask={popup?.kind === "task" ? popup.taskId : undefined}
+        nameOf={nameOf}
+        lookOf={lookOf}
+        isCoding={isCoding}
+        onSelect={setSelected}
+        onOpen={setPopup}
+        onHire={hire}
+      />
+      {worker && sessionId ? (
         <Conversation
           // One conversation per session: a draft typed to one worker never carries over to another.
           key={sessionId}
           adapter={adapter}
           worker={worker}
           sessionId={sessionId}
-          projects={projects}
           nameOf={nameOf}
+          lookOf={lookOf}
+          isCoding={isCoding}
+          harnessOf={harnessOf}
+          onFire={() => fire(worker.id)}
+          onOpen={setPopup}
           talkOpen={talkOpen}
           onToggleTalk={() => setTalkOpen((open) => !open)}
         />
       ) : (
         <main aria-label="Conversation" />
       )}
-      {talkOpen && worker ? <TalkPanel adapter={adapter} worker={worker} nameOf={nameOf} onClose={() => setTalkOpen(false)} /> : null}
+      {talkShown ? <TalkPanel adapter={adapter} worker={worker} nameOf={nameOf} onClose={() => setTalkOpen(false)} /> : null}
+      {popup ? <PopupView adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} onClose={closePopup} /> : null}
     </div>
   );
 }

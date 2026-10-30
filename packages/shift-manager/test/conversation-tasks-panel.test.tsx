@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 /**
  * TASKS, at Shift Coordinator (FIX-1794 S11): the tasks the user's
- * conversation filed, read through the conversation's own `listTasks` action.
+ * conversation filed, read through the conversation's own `listTasks` read.
  *
  * What it lists is what that read answered: the conversation's own board, never
  * a store or a Lab-wide walk. It reads again each time the Lab is read again,

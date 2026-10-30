@@ -86,7 +86,7 @@ import type { JsonObject } from "@flow-state-dev/core";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 import { readCommitted, updateStateWith } from "@flow-state-dev/core/helpers";
-import { withMigratedWait, type Task, type TaskClaimIdentity, type TaskStatus } from "../schema/task";
+import { type Task, type TaskClaimIdentity, type TaskStatus } from "../schema/task";
 import type { TaskFilter } from "../schema/task-init";
 import {
   assertTransitionAllowed,
@@ -142,6 +142,8 @@ import {
 } from "./internal";
 import { assertAskable, hasOpenQuestion, questionWrite, questionsDue, newRowQuestions, type QuestionChange } from "./questions";
 import { stampWrite } from "../write-provenance";
+import { spendAfterWrite } from "../spend";
+import { ticketNamesIncarnation } from "../claim-ticket";
 import { generateId } from "../generate-id";
 import { steerWrite, takeSteersPatch, untakenSteers } from "../steers";
 import type { TaskEndingRecorder } from "./ending";
@@ -290,10 +292,9 @@ export interface ResourceBackedOptions {
 
 /**
  * The read boundary for this backing. Collection instances are stored, not
- * parsed, so a row written before the wait rename arrives carrying its legacy
- * wait mark, and one in a shape the retired-shape map reads (FIX-2080); both
- * are mapped forward here (see `withMigratedWait` and
- * `withRetiredShapes`), before any filter or the transition guard sees it.
+ * parsed, so a row in a shape the retired-shape map reads (FIX-2080) arrives
+ * as stored; it is mapped forward here (see `withRetiredShapes`), before any
+ * filter or the transition guard sees it.
  *
  * Every read of committed task state goes through this — `readTaskState` for
  * a ref, and directly for the `current` a CAS updater is handed, since that
@@ -302,7 +303,7 @@ export interface ResourceBackedOptions {
 function readTaskStateOf<TInput, TOutput>(
   state: JsonObject
 ): Task<TInput, TOutput> {
-  return withRetiredShapes(withMigratedWait(state)) as unknown as Task<TInput, TOutput>;
+  return withRetiredShapes(state) as unknown as Task<TInput, TOutput>;
 }
 
 function readTaskState<TInput, TOutput>(
@@ -1100,6 +1101,17 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         () => ({ leaseUntil }),
         { ...renewOptions, ifAllowed: true, refuseWithOpenQuestion: "any" }
       );
+    },
+
+    async recordSpend(id, write, spendOptions) {
+      requireClaimTicket(spendOptions?.claim, "recordSpend", "of the request whose spend it records. Only a task's run records what it spent.");
+      // Fenced by the row's identity only (FIX-2288): a terminal row and a
+      // lapsed claim still take a spend; a recreated row declines.
+      return patchRef(id, null, (task) => {
+        if (!ticketNamesIncarnation(spendOptions.claim, options.collectionId, task as Task)) throw new WriteDeclined("not-my-task", task.status);
+        const spend = spendAfterWrite(task as Task, write);
+        return spend === undefined ? undefined : ({ spend } as Partial<Task<TInput, TOutput>>);
+      });
     },
 
     async linkRun(id, run, linkOptions) {

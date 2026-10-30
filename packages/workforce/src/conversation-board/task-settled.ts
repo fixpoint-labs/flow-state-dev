@@ -8,7 +8,9 @@
  *   attempt and ending, then the one decision (`decideNotice`): any ending
  *   lands as a line under the delegate's name and, when its coordinator has a
  *   turn of its own (judgment or best-fit routing), wakes that turn to read it
- *   and decide. A task that failed for good is reported to the Error Reporter
+ *   and decide. The turn reads the ending as a `getTask` call and its result
+ *   for the task, the row in full, never as a user's message (FIX-2345,
+ *   `./task-ending-read`). A task that failed for good is reported to the Error Reporter
  *   first, before the notice is acknowledged, so a report the intake didn't
  *   take goes again with the notice (epic decision (f)). A notice stored before
  *   FIX-2078 for a retry, or for a waited-on row, runs the board's pass, which
@@ -70,6 +72,7 @@ import { sendTaskReport } from "./report-owed";
 import { noteTaskAnswer } from "@flow-state-dev/orchestration/task-board";
 import { admitOwnTask } from "./task-admission";
 import { anotherTurnWaitsOnItsPlan } from "./plan";
+import { noteTaskEndingRead, taskEndingReadsStateSchema } from "./task-ending-read";
 
 /** A notice, as the entries take it. */
 export const taskNoticeSchema = z
@@ -80,7 +83,7 @@ export const taskNoticeSchema = z
     ending: z.enum(["completed", "errored", "retried", "cancelled"]),
     output: z.unknown().optional(),
     error: z.string().optional(),
-    asked: z.literal(true).optional(),
+    waitedOn: z.literal(true).optional(),
     cancelled: z.array(z.string()).optional()
   })
   .strict();
@@ -113,7 +116,11 @@ type Settled = z.infer<typeof settledSchema>;
 
 /** What the entries are built from. */
 export interface TaskSettledOptions {
-  /** The coordinator's turn, woken with the notice as its message. */
+  /**
+   * The coordinator's turn, woken with the notice's line as its message. The
+   * built-in turn reads the ending as a `getTask` read in the line's place
+   * (`withTaskEndingReads`); a turn of your own gets the line.
+   */
   readonly turn: BlockDefinition<any, any>;
   /** Whether the running conversation's coordinator has a turn that reads a notice, or hears it as a line only. */
   readonly policy: (ctx: BlockContext) => NoticePolicy;
@@ -372,6 +379,7 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     inputSchema: taskNoticeSchema,
     outputSchema: settledSchema,
     sessionStateSchema: z.object(conversationBoardStateShape),
+    requestStateSchema: taskEndingReadsStateSchema,
     resources: { ...taskChainResources },
     execute: async (notice: TaskNotice, rawCtx): Promise<Settled> => {
       const ctx = rawCtx as unknown as BlockContext;
@@ -380,7 +388,7 @@ export function taskSettledEntry(options: TaskSettledOptions) {
       const row = ref?.get(notice.taskId);
       if (ref === undefined || row === undefined) return { act: "none" };
       await beforeAcknowledge(ctx, notice);
-      if (row.resultTo === "conversation" && notice.ending !== "retried" && notice.asked !== true) {
+      if (row.resultTo === "conversation" && notice.ending !== "retried" && notice.waitedOn !== true) {
         return settleConversationResult(ctx, ref, row, notice);
       }
       // Acknowledged here, once reported and deduped, before what it wakes: the
@@ -392,9 +400,12 @@ export function taskSettledEntry(options: TaskSettledOptions) {
       // resumes it or starts it. Every copy runs it; the pass is one at a time.
       if (decision.act === "resume-wait" || decision.act === "run-board") return { act: "run-board" };
       if (!first) return { act: "none" };
+      const text = noticeText(notice, row);
+      // The turn reads the ending as its getTask read, in the line's place (FIX-2345).
+      if (decision.act === "wake-turn") await noteTaskEndingRead(ctx, ref, row, notice, text);
       return {
         act: decision.act,
-        text: noticeText(notice, row),
+        text,
         ...(row.assignee !== undefined ? { worker: row.assignee } : {})
       };
     }

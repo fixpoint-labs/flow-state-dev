@@ -1,3 +1,4 @@
+import { useFollowLatest } from "@flow-state-dev/react";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
@@ -43,6 +44,8 @@ export function Sheet({ label, title, subtitle, onClose, children, footer }: {
   footer?: ReactNode;
 }) {
   const { host } = useContext(SheetHost);
+  // Opens on the latest of the work it shows, and follows it while the reader stays there.
+  const feed = useFollowLatest();
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => event.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
@@ -66,7 +69,9 @@ export function Sheet({ label, title, subtitle, onClose, children, footer }: {
             ×
           </button>
         </header>
-        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-5 py-4">{children}</div>
+        <div ref={feed.ref} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-5 py-4">
+          {children}
+        </div>
         {footer ? <footer className="border-t border-border px-5 py-3 text-xs text-muted-foreground">{footer}</footer> : null}
       </section>
     </div>,

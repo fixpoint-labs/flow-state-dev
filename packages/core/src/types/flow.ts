@@ -17,6 +17,7 @@ import type { SchedulesConfig } from "./schedules";
 import type { ConcurrencyConfig } from "./concurrency";
 import type { WebhookConfig } from "./webhooks";
 import type { InternalEntry, TaskEntry } from "./dispatch";
+import { SESSION_REQUEST_END_HOOK, type SessionRequestEndHook } from "./request-end";
 import type { CASOptions } from "./state";
 import type { TokenCounter } from "./tokens";
 import type { JsonObject, JsonValue } from "../schema/common";
@@ -274,6 +275,24 @@ export type ActionConfig<
 };
 
 /**
+ * A read (FIX-2286): a block an app runs on a session to watch a view the flow
+ * computes, such as a conversation's task list. It is answered in the HTTP
+ * response and stored nowhere: no request record, no items, no concurrency
+ * slot. Its context refuses every write (resource, content and session state,
+ * and dispatch) with code `read_only`, so a read cannot change what it reads.
+ *
+ * The one hook for watching a computed view: an app polls it, or calls it when
+ * a push tells it something changed. Anything that changes state is an action.
+ */
+export type ReadConfig<TBlock extends BlockDefinition = BlockDefinition> = {
+  block: TBlock;
+  /** Overrides `block.inputSchema` for the read's input, as on an action. */
+  inputSchema?: TBlock["inputSchema"];
+  /** Human-readable description, for tooling. */
+  description?: string;
+};
+
+/**
  * The entries of one dispatch type, nested under the type so a per-type
  * setting has a home beside them when one arrives. `flow.internal.actions` and
  * `flow.task.actions` are the two an author declares here; the caller-facing
@@ -366,6 +385,12 @@ export type SessionConfig = {
    * other session state.
    */
   serverOwned?: readonly string[];
+  /**
+   * Framework-facing, not a flow-author field: a request-end hook the package
+   * that built this session config adds to every request of the flow (see
+   * `SESSION_REQUEST_END_HOOK` in `./request-end`).
+   */
+  readonly [SESSION_REQUEST_END_HOOK]?: SessionRequestEndHook;
 };
 
 export type RequestConfig = {
@@ -567,6 +592,13 @@ export type FlowDefinition<
    */
   task?: TypedEntries<TaskEntry>;
 
+  /**
+   * The flow's reads: blocks an app runs on a session to watch a view the
+   * flow computes, answered in the response and stored nowhere. See
+   * {@link ReadConfig}. A read may share a name with an action.
+   */
+  reads?: Record<string, ReadConfig>;
+
   session?: TSession;
   request?: TRequest;
   user?: TUser;
@@ -743,6 +775,8 @@ export type FlowInstance<
    * a `task` dispatch can only ever reach the worker through that gate.
    */
   task?: TypedEntries<TaskEntry>;
+  /** See {@link FlowDefinition.reads}. Absent when the flow declares none. */
+  reads?: Record<string, ReadConfig>;
   session?: TSession;
   request?: TRequest;
   user?: TUser;
@@ -809,6 +843,8 @@ export type FlowType<
   internal?: TypedEntries<InternalEntry>;
   /** Mirror of `FlowInstance.task`. */
   task?: TypedEntries<TaskEntry>;
+  /** See {@link FlowDefinition.reads}. Absent when the flow declares none. */
+  reads?: Record<string, ReadConfig>;
   session?: TSession;
   request?: TRequest;
   user?: TUser;

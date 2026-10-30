@@ -48,6 +48,14 @@ const agent = cursorAgent({
 `createCursorAgentCapability(options)` takes the same options and exposes the
 block to a generator as a tool.
 
+**Deep directories work.** Cursor keeps each workspace's state in a folder under
+`~/.cursor/projects` named after the whole working directory, and a folder name
+can't be longer than 255 bytes. When the directory `cwd` names is too deep for
+that, the block gives Cursor a short link to it instead, under
+`<tmpdir>/fsd-cursor-<uid>/`, a folder private to your OS user. The agent still reads, writes and commits in your
+directory; its tool calls just show the link's path. The same directory always
+gets the same link, so resuming an agent finds its earlier state.
+
 **A model is required.** Cursor's SDK refuses to create a local agent without one.
 Name it with `model`: an id, a model with its settings
 (`{ id, params: [{ id, value }] }`, Cursor's own parameter list, such as a
@@ -91,6 +99,11 @@ const agent = cursorAgent({
   onSteerable: (steer, ctx) => (steer ? holdSteer(ctx, steer) : dropSteer(ctx)),
 });
 ```
+
+**`onActivity` reports each tool call the run starts**, as `{ kind: "tool", name,
+arguments }` with `arguments` the call's JSON text, so a host can show how the run
+is doing. Assistant text is never reported, because Cursor streams it in pieces.
+The hook isn't awaited, and a throw from it is logged while the run carries on.
 
 ## Option groups
 
@@ -215,6 +228,10 @@ run, its per-turn entries are keyed by a usage UUID that cannot be correlated to
 the run just observed, and the SDK documents the figure as eventually consistent.
 Read at the moment a run ends it can say `0` for a run whose billing has not
 landed, and `0` reads as "this was free".
+
+## What a run spent
+
+`cursorAgent` reports its spend to the request with `reportHarnessSpend` as the run goes, under one `runId` for the run, each report replacing the last: once the run is sent, with the configured `model` and `null` tokens; at the end of each turn, with the tokens so far; and when the run ends, however it ends. `harness: "cursor"`, the tokens Cursor reported, added up turn by turn so a stopped run keeps the turns it finished, and `costUsd` and `billing` both `null`. A run that failed before any turn reports `null` tokens. Guide: [what a run spent](https://flow-state.dev/docs/tools/coding-agents#what-a-run-spent).
 
 ## Tests
 

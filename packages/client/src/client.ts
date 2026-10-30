@@ -361,6 +361,16 @@ export interface FlowHandle<TFlow extends TypedFlow = UntypedFlow> {
     input: ActionInputOf<TFlow, TAction>,
     options: SendOptions & StreamOption
   ): Promise<Response>;
+  /**
+   * Run one of the flow's reads (`defineFlow({ reads })`) on a session, as the
+   * client's user, and resolve to its answer. Nothing is stored: no request,
+   * no items, no write. For watching a view the flow computes, polled or
+   * called when a push says something changed. Rejects with a
+   * `ClientHttpError`: 404 for an unknown read or a session the user can't
+   * run in, 400 for input its schema refuses, 409 `read_only` for a read
+   * that tried to write.
+   */
+  read<TOutput = unknown>(name: string, input: unknown, options: { sessionId: string }): Promise<TOutput>;
   /** Start a session on this flow, as the client's user. */
   createSession(options?: CreateSessionOptions): Promise<SessionDetail>;
   /** A request of this flow, by id. Reads nothing until a method is called. */
@@ -695,6 +705,15 @@ function flowHandle<TFlow extends TypedFlow>(t: Transport, userId: string, addre
   return {
     address: flow,
     send: send as FlowHandle<TFlow>["send"],
+    read: async <TOutput>(name: string, input: unknown, readOptions: { sessionId: string }) => {
+      const readName = requireValue(name, "read");
+      const sessionId = requireValue(readOptions?.sessionId, "sessionId");
+      const response = await t.json<{ output: TOutput }>(
+        `/api/flows/${seg(flow)}/${seg(sessionId)}/reads/${seg(readName)}`,
+        { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ input, userId }) }
+      );
+      return response.output;
+    },
     createSession: async (create = {}) =>
       (
         await t.json<{ session: SessionDetail }>(`/api/flows/${seg(flow)}/sessions`, {

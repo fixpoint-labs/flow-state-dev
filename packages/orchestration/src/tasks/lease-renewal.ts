@@ -194,50 +194,45 @@ export function startLeaseRenewal(options: LeaseRenewalOptions): LeaseRenewalDri
   // dispatch again until its lease expires. An explicit `options.now` is a
   // plain function by contract and is used as given.
   const now = options.now ?? (() => collection.now());
-  const timer = options.timer ?? defaultTimer;
 
   const lost = new AbortController();
-  let stopped = false;
-  let cancelTimer: (() => void) | undefined;
-  /** Single-flight: a tick whose predecessor is still in flight is skipped. */
-  let inFlight = false;
-
   const leaseUntil = claimedTask.leaseUntil;
   const span = committedLeaseSpan(claimedTask);
-
-  function stop(): void {
-    if (stopped) return;
-    stopped = true;
-    cancelTimer?.();
-    cancelTimer = undefined;
-    options.signal?.removeEventListener("abort", stop);
-  }
-
-  // A cancelled request is not a live worker, so stop renewing rather than
-  // keeping a lease open for work that will never be recorded.
-  if (options.signal?.aborted === true) stopped = true;
-  else options.signal?.addEventListener("abort", stop, { once: true });
 
   // Nothing to renew: a row with no lease is not one this driver can keep, and
   // a non-positive span means the claim wrote something this driver cannot
   // reason about. Both are inert rather than fatal — the caller's work runs,
-  // and an unrenewed lease is exactly today's behaviour.
-  if (span === undefined || span <= 0 || stopped) {
-    return { signal: lost.signal, stop };
+  // and an unrenewed lease is exactly today's behaviour. A cancelled request is
+  // not a live worker either, so a signal already aborted starts nothing.
+  if (span === undefined || span <= 0 || options.signal?.aborted === true) {
+    return { signal: lost.signal, stop: () => {} };
   }
 
-  const cadence = Math.max(1, Math.floor(span / RENEWAL_DIVISOR));
+  const ticker = startTicker({
+    cadenceMs: Math.max(1, Math.floor(span / RENEWAL_DIVISOR)),
+    // The span sets the cadence; the lease that is left sets the phase (see
+    // above). Below the floor a timer's own jitter is thicker than the margin
+    // it is trying to beat, so the ticker renews at once: on a lease that is
+    // already gone this is what makes the loss prompt — the write is declined
+    // on the driver's first instruction and the worker stops at once, instead
+    // of running another two-thirds of what was left before finding out.
+    firstDelayMs: Math.floor((leaseUntil! - now()) / RENEWAL_DIVISOR),
+    now,
+    timer: options.timer,
+    // A cancelled request is not a live worker, so stop renewing rather than
+    // keeping a lease open for work that will never be recorded.
+    signal: options.signal,
+    tick: renew,
+  });
 
   async function renew(): Promise<void> {
-    if (stopped || inFlight) return;
-    inFlight = true;
     try {
       const outcome = await collection.renewLease(
         claimedTask.id,
         now() + span!,
         { ifAllowed: true, claim: ticket }
       );
-      if (stopped) return;
+      if (ticker.stopped) return;
       if (outcome.outcome !== "declined") return;
       // A decline is the only stop condition — a throw below is the unknown
       // case, not the dead case. But there are two kinds of decline and they
@@ -250,12 +245,12 @@ export function startLeaseRenewal(options: LeaseRenewalOptions): LeaseRenewalDri
         // liveness on a row the lease no longer speaks for, and leave the
         // worker alone: aborting it would fail a turn that did what it meant
         // to.
-        stop();
+        ticker.stop();
         return;
       }
       // Every other decline means the row is not ours any more. Stop paying
       // for work we can no longer record.
-      stop();
+      ticker.stop();
       lost.abort(
         new Error(
           `[tasks] lost the claim on task "${claimedTask.id}" (${outcome.reason}) — ` +
@@ -266,26 +261,80 @@ export function startLeaseRenewal(options: LeaseRenewalOptions): LeaseRenewalDri
       // A store that threw tells us nothing about who holds the row, and the
       // fence refuses whatever this worker writes if it turns out to be gone.
       // So: do not extend, do not abort, try again next tick.
-    } finally {
-      inFlight = false;
     }
   }
 
-  /**
-   * When the tick that is currently scheduled was DUE, on the collection's
-   * clock. The next one is phased against this rather than against the moment
-   * the previous write happened to finish.
-   *
-   * A renewal is a network write, and a slow one eats the interval that was
-   * supposed to carry the retry. Scheduling `cadence` from *settle* time pushes
-   * every subsequent tick out by however long the failure took, so the
-   * tolerance this driver advertises — `RENEWAL_DIVISOR - 2` consecutive
-   * failures survived — silently does not hold for the failure mode most likely
-   * to need it. Worked through: a 3 s lease renews every 1 s; a write issued at
-   * 1 s that rejects at 2.5 s schedules the retry for 3.5 s, half a second
-   * after the lease it was meant to save has already gone. Phased against the
-   * due time instead, the retry goes out immediately with 500 ms of lease left.
-   */
+  return { signal: lost.signal, stop: ticker.stop };
+}
+
+/** What {@link startTicker} runs. */
+export interface TickerOptions {
+  /** The interval between ticks, on the grid the first tick starts. */
+  cadenceMs: number;
+  /** When the first tick falls; below {@link MIN_RENEWAL_DELAY_MS}, it runs at once. */
+  firstDelayMs: number;
+  /** One tick. Never run while the previous one is in flight. */
+  tick: () => Promise<void>;
+  /** Stops the ticker when it aborts. */
+  signal?: AbortSignal;
+  /** The clock the grid is phased on. */
+  now: () => number;
+  /** Timer injection for tests. Default: an unref'd `setTimeout`. */
+  timer?: RenewalTimer;
+}
+
+/** A running {@link startTicker}. */
+export interface Ticker {
+  /** Stop ticking. Idempotent; a tick already in flight runs to its end. */
+  stop(): void;
+  /** Whether {@link stop} ran, or the signal aborted. */
+  readonly stopped: boolean;
+  /** Settles once no tick is in flight: after `stop()`, nothing writes once it has. */
+  idle(): Promise<void>;
+}
+
+/**
+ * The lease driver's timing, for any write a running request repeats while it
+ * works (FIX-2288: a task's live spend rides it too): ticks on a fixed grid
+ * phased from the first, single-flight (a tick whose predecessor is still in
+ * flight is skipped), stopped on {@link Ticker.stop} or the signal, on an
+ * unref'd timer that never holds the process open.
+ *
+ * Each tick's successor is phased against when that tick was DUE, not when it
+ * finished: a slow write would otherwise push every later tick out by however
+ * long it took. Worked through for the lease: a 3 s lease renews every 1 s; a
+ * write issued at 1 s that rejects at 2.5 s would schedule the retry for
+ * 3.5 s, half a second after the lease it was meant to save has already gone.
+ * Phased against the due time, the retry goes out immediately with 500 ms of
+ * lease left.
+ */
+export function startTicker(options: TickerOptions): Ticker {
+  const { cadenceMs, now } = options;
+  const timer = options.timer ?? defaultTimer;
+  let stopped = false;
+  let cancelTimer: (() => void) | undefined;
+  let inFlight: Promise<void> | undefined;
+
+  function stop(): void {
+    if (stopped) return;
+    stopped = true;
+    cancelTimer?.();
+    cancelTimer = undefined;
+    options.signal?.removeEventListener("abort", stop);
+  }
+
+  if (options.signal?.aborted === true) stopped = true;
+  else options.signal?.addEventListener("abort", stop, { once: true });
+
+  function run(): Promise<void> {
+    if (stopped || inFlight !== undefined) return Promise.resolve();
+    const current = options.tick().finally(() => {
+      inFlight = undefined;
+    });
+    inFlight = current;
+    return current;
+  }
+
   let dueAt = now();
 
   function schedule(delayMs: number): void {
@@ -293,34 +342,33 @@ export function startLeaseRenewal(options: LeaseRenewalOptions): LeaseRenewalDri
     dueAt = now() + delayMs;
     cancelTimer = timer(() => {
       cancelTimer = undefined;
-      void renew().then(() => {
+      void run().then(() => {
         // The grid position this tick's successor should land on, then the wait
-        // that gets there. Floored rather than clamped at zero: a driver that
-        // is already past due should retry at once, but a store failing
+        // that gets there. Floored rather than clamped at zero: a ticker that
+        // is already past due should go at once, but a write failing
         // instantly would otherwise spin, and `MIN_RENEWAL_DELAY_MS` is exactly
         // the interval below which a timer cannot be trusted to mean anything.
-        const nextDueAt = dueAt + cadence;
+        const nextDueAt = dueAt + cadenceMs;
         schedule(Math.max(nextDueAt - now(), MIN_RENEWAL_DELAY_MS));
       });
     }, delayMs);
   }
 
-  const remaining = leaseUntil! - now();
-  const firstDelay = Math.floor(remaining / RENEWAL_DIVISOR);
-  if (firstDelay < MIN_RENEWAL_DELAY_MS) {
-    // Below the floor a timer's own jitter is thicker than the margin it is
-    // trying to beat, so set none: renew now. On a lease that is already gone
-    // this is what makes the loss prompt — the write is declined on the
-    // driver's first instruction and the worker stops at once, instead of
-    // running another two-thirds of what was left before finding out.
-    void renew().then(() =>
-      schedule(Math.max(dueAt + cadence - now(), MIN_RENEWAL_DELAY_MS))
-    );
-  } else {
-    schedule(firstDelay);
+  if (!stopped) {
+    if (options.firstDelayMs < MIN_RENEWAL_DELAY_MS) {
+      void run().then(() => schedule(Math.max(dueAt + cadenceMs - now(), MIN_RENEWAL_DELAY_MS)));
+    } else {
+      schedule(options.firstDelayMs);
+    }
   }
 
-  return { signal: lost.signal, stop };
+  return {
+    stop,
+    get stopped() {
+      return stopped;
+    },
+    idle: () => inFlight ?? Promise.resolve(),
+  };
 }
 
 /**

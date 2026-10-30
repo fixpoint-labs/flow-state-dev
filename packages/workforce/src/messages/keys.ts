@@ -21,3 +21,11 @@ export const RECEIVED_MESSAGE_COMPONENT = "workforce:received";
 
 /** Server-written session state: the messages a session sent that haven't landed or ended yet, with the request that sent each (FIX-2240). */
 export const WORKER_MESSAGES_OWED_STATE = "workerMessagesOwed";
+
+/**
+ * Server-written session state: the reply-requested messages this session
+ * landed and hasn't answered yet, with the request that landed each
+ * (FIX-2310). The pass answers "no answer" for one whose request ended
+ * without answering it.
+ */
+export const WORKER_REPLIES_OWED_STATE = "workerRepliesOwed";

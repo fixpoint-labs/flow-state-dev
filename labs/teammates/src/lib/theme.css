@@ -1,0 +1,76 @@
+/*
+ * The lab's own theme: a dark, quiet, chat-first look in the manner of a
+ * desktop assistant like Grok Bot, rather than Shift Manager's. Labs take their
+ * theme from the design system; this one keeps its own on purpose (see the
+ * README), so it sets the same token names the registry's `tokens` item and the
+ * lab's components read, plus the lab's two shell surfaces, the radius scale
+ * and the fonts. Values only. Unlayered, so they win over the registry's base
+ * layer.
+ *
+ * One look, dark: the values sit on `:root` and `.dark` alike. Colour is
+ * restrained to grey steps; `info` and `success` are soft tints for the lines
+ * between workers, and `attention` keeps one meaning, a person must act.
+ *
+ * `--teammate-<color>` are the colors a teammate's file may name for its
+ * icon (`src/lib/looks.ts`): soft tints of the same weight, so no teammate
+ * shouts and each stays tellable apart on the dark surfaces.
+ *
+ * `--thread-width` is the conversation's one column: the message list and the
+ * composer both cap at it, so their edges line up, and it stays centred
+ * whether the Talk pane is open or not.
+ *
+ * The radius values are Tailwind's own theme variables: `rounded-sm`,
+ * `rounded-md` and `rounded-lg` read `--radius-sm`, `--radius-md` and
+ * `--radius-lg` directly, so these set them.
+ */
+:root,
+.dark {
+  --background: #141415;
+  --foreground: #ececee;
+  --card: #1c1c1e;
+  --card-foreground: #ececee;
+  --popover: #1c1c1e;
+  --popover-foreground: #ececee;
+  --primary: #ececee;
+  --primary-foreground: #141415;
+  --secondary: #26262a;
+  --secondary-foreground: #ececee;
+  --muted: #1c1c1e;
+  --muted-foreground: #8e8e93;
+  --accent: #26262a;
+  --accent-foreground: #ececee;
+  --destructive: #f0716a;
+  --destructive-foreground: #141415;
+  --border: #2a2a2e;
+  --input: #2a2a2e;
+  --ring: #5f5f66;
+  --success: #8fcfa6;
+  --success-foreground: #141415;
+  --warning: #e3ac74;
+  --warning-foreground: #141415;
+  --info: #93b4ec;
+  --info-foreground: #141415;
+  --attention: #e6c47c;
+  --attention-foreground: #141415;
+
+  --sidebar: #0f0f10;
+  --inspector: #111112;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 1.25rem;
+
+  --teammate-blue: #8fb3f0;
+  --teammate-green: #8fd0a4;
+  --teammate-amber: #e5b678;
+  --teammate-rose: #ee9aa8;
+  --teammate-violet: #b9a2ee;
+  --teammate-teal: #7fcfc9;
+
+  --thread-width: 46rem;
+
+  color-scheme: dark;
+}

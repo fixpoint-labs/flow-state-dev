@@ -96,6 +96,7 @@ export {
   type AnsweredQuestion,
   type RequestIdentityContext,
 } from "./manager";
+export { PROGRESS_NOTE_MS, progressNoteOf } from "./progress-note";
 
 // ── A line typed in a run's session: a steer, or talk once finished ─────────
 export {

@@ -415,8 +415,8 @@ A worker flow must:
   readonly `workerId`, checked when the session is created. A flow without it is refused. Load the worker with `installation.resolveWorker` on
   every turn: in the flow's `request.onStarted`, or in the block that reads it.
 - **Receive messages from other workers.** Mount an `onMessageReceived` internal action built by
-  `messageReceivedEntry`, as [Messaging other workers](./messaging-workers.md#without-the-session-kit)
-  shows. A flow built with `defineSessionBoard` gets it from the kit's `entries(turn)`.
+  `messageReceivedEntry`, as [Messaging other workers](./messaging-workers.md#without-the-session-factory)
+  shows. A flow built with `defineSessionBoard` gets it from the factory's `entries(turn)`.
 - **Declare any resource with `writtenBy` through `sharedResource()`.** A resource that has a
   `writtenBy` field is declared with [`sharedResource()`](#sharing-something-from-a-worker), which
   adds the field itself. A resource you define by hand with a `writtenBy` field is refused, even
@@ -524,6 +524,25 @@ Only the names you list show, so a setting you add later stays private until you
 worker that doesn't set a listed key has nothing for it on its row. `hireWorkforce` refuses a name
 the flow doesn't declare in its `configSchema`. It also refuses the keys every worker carries or
 the hire reads itself, such as `instructions` and `description`.
+
+The built-in `agent` flow declares a fixed set of settings, so a worker on it can't set one of
+your own until the flow declares it. Pass it as `settings` when you build the flow, then show it
+like any other:
+
+```ts
+workerFlows: () => ({
+  agent: {
+    flow: defineAgentWorkerFlow({ installation, settings: { icon: z.string().optional() } }),
+    showSettings: ["icon"],
+  },
+}),
+```
+
+Now a `WORKER.md` can carry `icon: 🔎`, and its row shows it. A name the flow already uses, like
+`model`, is refused when the flow is built.
+
+These settings are for your app to read. The `agent` flow never looks at them, so they can't
+change how a worker runs. A setting that should change that has to be one of the flow's own.
 
 #### Where a worker's data lives
 

@@ -391,7 +391,12 @@ Marking it is where the framework stops. Nothing continues or re-runs the work
 on your behalf, deliberately: restarting a request nobody asked to restart is
 how the same job runs twice. So the row keeps reading `active` — an
 `interrupted` run is unfinished and still continuable — until a client resumes
-or retries it, or a later run supersedes it. The sweep waits
+or retries it, or a later run supersedes it. The one exception is a request
+interrupted inside a worker's call that had sent its message but not yet parked:
+the durability sweeper continues it, and the replay waits on the message already
+sent instead of sending a second one (see
+[a wait that died before it
+parked](../advanced/durable-execution.md#retention-and-cleanup)). The sweep waits
 until a record's heartbeat has been quiet longer than the staleness threshold,
 so a job that has simply gone quiet for a second is never mistaken for an
 abandoned one.

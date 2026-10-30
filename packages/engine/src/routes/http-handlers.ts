@@ -26,6 +26,7 @@ import { handleAbortRequest } from "./abort-routes";
 import { handleAnswerSuspension } from "./answer-routes";
 import { handleResumeSuspension } from "./resume-routes";
 import { handleGetRequestStatus } from "./request-status-routes";
+import { handleRunRead } from "./read-routes";
 import { handleExecuteAction } from "./action-routes";
 import {
   handleCheckInterruptedRequests,
@@ -496,6 +497,16 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           seams,
           bootstrapMetadata,
           requestContext,
+          tenantIdHeader: options.tenantIdHeader
+        });
+      }
+
+      if (route.kind === "run_read") {
+        return await handleRunRead(request, route, {
+          host,
+          registry: options.registry,
+          stores,
+          runtimeConfig,
           tenantIdHeader: options.tenantIdHeader
         });
       }

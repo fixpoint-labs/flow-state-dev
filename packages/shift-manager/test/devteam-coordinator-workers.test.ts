@@ -24,6 +24,9 @@ import { PHASE } from "../teams/devteam/phase.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
 import { EM_TURN } from "../teams/devteam/workforce/flows/workers/em.mts";
 
+/** A project the EM names on the coder's task: the coder's flow refuses a task filed with none (FIX-2333). */
+const STOREFRONT = { visibility: "shared", id: "storefront" } as const;
+
 let opened: Lab | undefined;
 afterEach(async () => {
   await opened?.dispose();
@@ -50,7 +53,7 @@ function emTurn(): GeneratorModel {
       const said = JSON.stringify(call.messages ?? []);
       const [, issue, goal] = /(report-[a-f0-9]{6}): ([^"\\]+)/.exec(said) ?? [];
       return {
-        toolCalls: [{ toolCallId: "em-1", toolName: "createTask", args: { goal, assignee: "eng.coder", input: { harnessFeature: { issue, phase: PHASE } } } }],
+        toolCalls: [{ toolCallId: "em-1", toolName: "createTask", args: { goal, assignee: "eng.coder", input: { harnessFeature: { issue, phase: PHASE }, project: STOREFRONT } } }],
         finishReason: "tool-calls",
       };
     },

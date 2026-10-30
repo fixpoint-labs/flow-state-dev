@@ -72,7 +72,7 @@ export const ROLE_PROBES = Object.freeze({
   },
   [DISPATCH_ENTRY]: {},
   [TASK_SETTLED_ENTRY]: { boardId: "tasks", taskId: "worker-role-probe", attempt: 0, ending: "completed" },
-  [ROUTE_ON_ACTION]: { postId: "worker-role-probe", round: 1, answers: [] },
+  [ROUTE_ON_ACTION]: { messageRequestId: "worker-role-probe", round: 1, answers: [] },
   [ROUND_DEADLINE_ACTION]: {},
   [WORKSTREAM_DELEGATE_ACTION]: { change: "add", worker: "worker-role-probe", target: "worker-role-probe" }
 } as const);

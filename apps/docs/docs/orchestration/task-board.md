@@ -557,7 +557,7 @@ Each sugar call re-resolves the collection, so reads always reflect the latest s
 
 A model works a board through five task tools. Four belong to whoever files the work:
 
-- `createTask` files a task. It starts as its start setting says: at once, once its `deps` have finished, filed with `held: true`, when you release it, or, filed with `questions`, once the user has [answered them](#a-tasks-questions).
+- `createTask` files a task. It starts as its start setting says: at once, once its `deps` have finished, filed with `held: true`, when you release it, or, filed with `questions`, once the user has [answered them](#a-tasks-questions). Filing the same goal for the same assignee and workstream target while a task for it is still open is refused with `already_open`, so a model that calls twice, or retries a call, doesn't start the same work twice.
 - `getTask({ id })` reads one task whole: its brief, every field you can edit, how it stands, and its output.
 - `listTasks` lists tasks without their output. Each row carries its worker's latest status note.
 - `updateTask({ id, ... })` changes one, each field by its own rule.
@@ -676,6 +676,31 @@ While its questions are open, a task settles only by a cancel, which closes ever
 The latest checkpoint is the task's output. When the task completes, a checkpoint stays, and the worker's final answer becomes the output only when it never reported one. So report the whole result so far each time. A failed attempt keeps its checkpoint for the next one. Once the task has finished, `reportProgress` is refused and nothing changes.
 
 For a worker flow of your own, build the tool with `createReportProgress({ resolve })`, which takes the task list the turn's task is on, as [`createAskQuestion`](#a-tasks-questions) does. `reportProgress` is not an action: a screen doesn't report a worker's progress.
+
+## What a task's run spent
+
+A dispatched task's row carries what its runs spent: which harness and model ran it, and how many tokens it has used. A screen reads it from `listTasks` through [`taskToolActions`](#changing-tasks-from-outside-a-run), as `spend` on each row:
+
+```ts
+{ id: "t1", title: "Fix the login form", status: "in_progress",
+  run: { sessionId: "…", requestId: "…", attempt: 1 },
+  spend: { harness: "claude-code", model: "claude-sonnet-4-5",
+           inputTokens: 11_200, outputTokens: 1_240, unreported: false, live: true } }
+```
+
+| Field | What it holds |
+|---|---|
+| `harness` | The [coding agent](../tools/coding-agents.md) of the task's latest harness run, or `null` when none ran. |
+| `model` | That run's model, as the harness reported it. A task with no harness run shows the model its worker last called. `null` until either is known. |
+| `inputTokens` / `outputTokens` | Every request that worked the task, every attempt included: model calls and harness runs. `null` while nothing has reported tokens yet, never 0. |
+| `unreported` | `true` while some harness run hasn't reported its tokens yet. Codex and Cursor report at the end of a turn, so a one-turn run shows its model from the start and its tokens only when the turn ends. |
+| `live` | `true` while a request for the task is running. |
+
+`spend` is `null` on a task that never ran in a request of its own.
+
+The count rises while the run works. The request working the task writes what it has spent so far every two seconds while that changes, and writes the final figure when the request ends, however it ends. A failed or cancelled attempt keeps what it spent, and the next attempt adds to it. A worker's [usage](../workforce/worker-usage.md) is counted from the same figures, so a task's tokens and its worker's agree.
+
+`spend` is on the action's rows only. The model's `listTasks` tool leaves it out, and nothing a model or a caller writes can change it. A task store of your own shows it once it implements `recordSpend`; without it, a task has no spend.
 
 ## Changing tasks from outside a run
 
@@ -1355,10 +1380,6 @@ one with `updateTask({ id, status: "pending" })`. To wait on it, call `getTask({
 The question is answered with `updateTask({ id, answers, message })`, which replaces `answerTask` and its action. {/* retired-name-refusal: migration note */}
 A block asks for a review with `ctx.waitForUser({ kind: "review", prompt })` instead of `awaitReview`, and the Inbox answers it, so `unpark` and `unparkAndDrain` have no replacement to mount. {/* retired-name-refusal: migration note */}
 A board built with `onReview` is refused: a board whose open tasks only wait on a person stops `blocked` on its own. {/* retired-name-refusal: migration note */}
-
-**Reading older logs.** A stored `task-board-meta` item may use another name for the [`"dispatched"`](#termination-onidle-modes) termination reason.
-
-Older logs report `"handed-off"` for the same thing.
 
 ## See also
 

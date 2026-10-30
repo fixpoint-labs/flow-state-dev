@@ -128,6 +128,8 @@ export type SdkMessageLike =
       session_id?: string;
       /** On `init`: every MCP server the run connected to, or tried to. */
       mcp_servers?: Array<{ name: string; status?: string }>;
+      /** On `init`: the model the run uses, as Claude Code names it (FIX-2288). */
+      model?: string;
       /** On `api_retry`: the failed call's retry attempt, its limit and the wait before it. */
       attempt?: number;
       max_retries?: number;
@@ -147,6 +149,19 @@ export type SdkMessageLike =
        */
       parent_tool_use_id?: string | null;
       message?: {
+        /**
+         * The model message's id (FIX-2288). A parallel tool call splits one
+         * model message into several assistant messages that share it, each
+         * repeating its `usage`.
+         */
+        id?: string;
+        /** The model message's token usage, repeated on every assistant message that shares its `id`. */
+        usage?: {
+          input_tokens?: number;
+          output_tokens?: number;
+          cache_read_input_tokens?: number | null;
+          cache_creation_input_tokens?: number | null;
+        } | null;
         content?: Array<
           | { type: "text"; text: string }
           | { type: "thinking"; thinking: string }
@@ -215,8 +230,18 @@ export type SdkMessageLike =
        */
       is_error?: boolean;
       session_id?: string;
-      /** `NonNullableUsage` carries `input_tokens`/`output_tokens` (+ cache). */
-      usage?: { input_tokens?: number; output_tokens?: number } | null;
+      /** `NonNullableUsage` carries `input_tokens`/`output_tokens` (+ cache). Main agent loop only. */
+      usage?: {
+        input_tokens?: number;
+        output_tokens?: number;
+        cache_read_input_tokens?: number | null;
+        cache_creation_input_tokens?: number | null;
+      } | null;
+      /** The whole query's tokens by model: sub-agents and auxiliary calls included. */
+      modelUsage?: Record<
+        string,
+        { inputTokens?: number; outputTokens?: number; cacheReadInputTokens?: number; cacheCreationInputTokens?: number }
+      > | null;
       total_cost_usd?: number | null;
     };
 
@@ -348,6 +373,12 @@ export type TranslatedEvent =
       finalMessage: string | null;
       sessionId: string | null;
       usage: { inputTokens: number; outputTokens: number } | null;
+      /**
+       * What the whole query spent, cached input included: `modelUsage`
+       * summed when the SDK sends it, else `usage` with its cache tokens.
+       * `usage` stays the main loop's, as the handle has always read it.
+       */
+      spentTokens: { inputTokens: number; outputTokens: number } | null;
       costUsd: number | null;
     };
 

@@ -151,12 +151,12 @@ async function quiet(store: string, timeoutMs = 240_000, graceMs = 5_000): Promi
 }
 
 /** The `coordinator-route` records for one post. */
-async function routingOf(who: Connected, sessionId: string, postId: string | null): Promise<Array<Record<string, any>>> {
-  if (postId === null) return [];
+async function routingOf(who: Connected, sessionId: string, messageRequestId: string | null): Promise<Array<Record<string, any>>> {
+  if (messageRequestId === null) return [];
   return (await who.routes.items(sessionId, "component"))
     .filter((i) => (i as { component?: string }).component === "coordinator-route")
     .map((i) => i.data as Record<string, any>)
-    .filter((d) => d?.postId === postId);
+    .filter((d) => d?.messageRequestId === messageRequestId);
 }
 
 /** Each session must be `owner`'s and, when it names a worker, name one on `owner`'s roster. */
@@ -326,7 +326,7 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
         let answer: { session: string; text: string } | undefined;
         const waited = Date.now();
         for (const until = waited + 180_000; Date.now() < until; await sleep(1_500)) {
-          mine = conversationRecord(o.store, A.userId, convId).ledger.filter((d) => d.postId === turn.requestId);
+          mine = conversationRecord(o.store, A.userId, convId).ledger.filter((d) => d.messageRequestId === turn.requestId);
           const to = mine.find((d) => d.delegate.worker === facts.fork && d.status === "delivered" && d.sessionId !== undefined);
           if (to !== undefined) {
             const items = await alice.routes.items(to.sessionId!, "message").catch((): StoredItem[] => []);
@@ -363,7 +363,7 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
     alice: (await alice.workforce.roster()).map((e) => `${e.id}@${e.flow}:${e.standard}`).sort(),
     bob: (await bob.workforce.roster()).map((e) => `${e.id}@${e.flow}:${e.standard}`).sort(),
     delegates: snapshot.conv === undefined ? null : conversationRecord(o.store, A.userId, snapshot.conv as string).delegates,
-    ledger: snapshot.conv === undefined ? null : conversationRecord(o.store, A.userId, snapshot.conv as string).ledger.map((d) => `${d.postId}:${d.delegate.worker}:${d.status}`),
+    ledger: snapshot.conv === undefined ? null : conversationRecord(o.store, A.userId, snapshot.conv as string).ledger.map((d) => `${d.messageRequestId}:${d.delegate.worker}:${d.status}`),
   });
   if (runs("a5")) {
     const before = JSON.stringify(await readA());

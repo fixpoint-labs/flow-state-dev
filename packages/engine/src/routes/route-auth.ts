@@ -138,8 +138,8 @@ function hiddenRequestResponse(
 /**
  * What a route addresses, and therefore who owns it.
  *
- * - `exempt` — no owner to check: public flow metadata, or `execute_action`,
- *   which resolves its own principal in `handleExecuteAction`.
+ * - `exempt` — no owner to check: public flow metadata, or `execute_action`
+ *   and `run_read`, which resolve their own principal in their handlers.
  * - `session` / `request` — owner is the stored record's `userId`.
  * - `flow` — creating a session under a flow. No record exists yet, so the
  *   caller becomes the owner rather than being checked against one.
@@ -171,6 +171,9 @@ export function routeSubject(route: ParsedFlowRoute): RouteSubject {
     case "list_flows":
     case "capabilities":
     case "execute_action":
+    // A read resolves its principal the way an action does, in its handler,
+    // and runs under the same session binding checks (`read-routes.ts`).
+    case "run_read":
       return { kind: "exempt" };
 
     case "get_session":

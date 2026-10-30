@@ -13,7 +13,7 @@ Every hand-over is a **task**: the worker files it on a board, for one of its de
 
 A worker files tasks when one of its delegates can take a task. There's no switch to flip. Who the worker hands work to decides it.
 
-To ask another worker something without handing it work, a worker sends a message instead. See [Messaging other workers](./messaging-workers.md#message-or-delegate).
+To ask another worker something without handing it work, a worker sends a message instead. See [Messaging other workers](./messaging-workers.md#message-consult-or-delegate).
 
 ## Giving a worker the task tools
 
@@ -111,7 +111,7 @@ export const emFlow = workerFlow((installation) => {
 
 Pass it in `workerFlows` like any worker flow: `createWorkerInstallation({ standardWorkers: workers, workerFlows: { em: emFlow } })`.
 
-What the kit gives you, and where each piece goes:
+What the factory gives you, and where each piece goes:
 
 | Field | Put it in |
 |-------|-----------|
@@ -130,7 +130,7 @@ What the kit gives you, and where each piece goes:
 
 Compose `board.tools` once on a block. A block that also gets the task tools another way, such as Orchestration's `createTaskToolsCapability`, has two tools of the same name, and the turn is refused.
 
-A flow that leaves the kit out gives its workers no task tools, whatever their delegates.
+A flow that leaves the factory out gives its workers no task tools, whatever their delegates.
 
 ## Working in steps
 

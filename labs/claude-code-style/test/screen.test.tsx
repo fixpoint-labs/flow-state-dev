@@ -6,7 +6,7 @@
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { StrictMode } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import { App } from "../src/App";
 import { createFakeLab } from "./fake-lab";
 
@@ -33,6 +33,46 @@ async function pick(name = "vendor-notes") {
   fireEvent.click(await within(picker).findByRole("button", { name }));
   await screen.findByLabelText("Message the main session");
 }
+
+
+/**
+ * Lay the scrolling feeds out as a browser would (happy-dom lays nothing out): the main thread's
+ * list and a sheet's body, each 5000px of content in a 500px view. Every scroll they are asked
+ * for is recorded with how it moves, and lands at once. Undone by the returned function.
+ */
+function layOutFeeds() {
+  const isFeed = (el: HTMLElement) =>
+    el.classList.contains("overflow-y-auto") &&
+    (el.parentElement?.getAttribute("aria-label") === "Main thread" || el.parentElement?.getAttribute("role") === "dialog");
+  const names = ["scrollHeight", "clientHeight", "scrollTop", "scrollTo"] as const;
+  const saved = names.map((name) => [name, Object.getOwnPropertyDescriptor(HTMLElement.prototype, name)] as const);
+  const tops = new WeakMap<HTMLElement, number>();
+  const scrolls: { feed: HTMLElement; behavior: ScrollBehavior | undefined }[] = [];
+  Object.defineProperties(HTMLElement.prototype, {
+    scrollHeight: { configurable: true, get(this: HTMLElement) { return isFeed(this) ? 5000 : 0; } },
+    clientHeight: { configurable: true, get(this: HTMLElement) { return isFeed(this) ? 500 : 0; } },
+    scrollTop: {
+      configurable: true,
+      get(this: HTMLElement) { return tops.get(this) ?? 0; },
+      set(this: HTMLElement, value: number) { tops.set(this, isFeed(this) ? Math.max(0, Math.min(value, 4500)) : 0); },
+    },
+    scrollTo: {
+      configurable: true,
+      value(this: HTMLElement, options: ScrollToOptions) {
+        if (isFeed(this)) scrolls.push({ feed: this, behavior: options.behavior });
+        this.scrollTop = options.top ?? 0;
+      },
+    },
+  });
+  const restore = () => {
+    for (const [name, was] of saved) {
+      if (was === undefined) delete (HTMLElement.prototype as unknown as Record<string, unknown>)[name];
+      else Object.defineProperty(HTMLElement.prototype, name, was);
+    }
+  };
+  return { scrolls, restore };
+}
+const threadFeed = () => thread().querySelector<HTMLElement>(":scope > .overflow-y-auto")!;
 
 describe("the session-mode screen", () => {
   it("lays out sessions, the main thread and the tasks pane, and opens on New session asking for a project", async () => {
@@ -123,6 +163,47 @@ describe("the session-mode screen", () => {
     expect((screen.getByLabelText("Message the main session") as HTMLTextAreaElement).value).toBe("");
   });
 
+  it("opens a session already at its end, with no scroll to watch, and leaves you where you scrolled up to as it goes on", async () => {
+    const feeds = layOutFeeds();
+    onTestFinished(feeds.restore);
+    render(<App adapter={fast()} />);
+    await pick();
+    const sessions = screen.getByRole("navigation", { name: "Sessions" });
+    fireEvent.click(within(sessions).getByRole("button", { name: /Draft the launch note/ }));
+    await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe("Draft the launch note"));
+    await waitFor(() => expect(threadFeed().scrollTop).toBe(4500));
+    // Opening is never an animation: every move to the end so far was instant.
+    expect(feeds.scrolls.length).toBeGreaterThan(0);
+    expect(feeds.scrolls.filter((s) => s.behavior !== "instant")).toEqual([]);
+
+    // Up to read: what the running turn adds below doesn't pull you down.
+    await act(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+    await ask("Compare Acme and Globex for us.");
+    const feed = threadFeed();
+    feed.scrollTop = 1200;
+    fireEvent.scroll(feed);
+    feeds.scrolls.length = 0;
+    await within(thread()).findByRole("region", { name: "Background result: Research Acme" });
+    expect(feeds.scrolls).toEqual([]);
+    expect(feed.scrollTop).toBe(1200);
+  });
+
+  it("opens a task's sheet already at the latest of its work", async () => {
+    const feeds = layOutFeeds();
+    onTestFinished(feeds.restore);
+    render(<App adapter={fast()} />);
+    await pick();
+    await ask("Compare Acme and Globex for us.");
+    await waitFor(() => expect(row("Research Globex")).toBeTruthy());
+    feeds.scrolls.length = 0;
+    fireEvent.click(row("Research Globex"));
+    const body = screen.getByRole("dialog", { name: "Work: Research Globex" }).querySelector<HTMLElement>(":scope > .overflow-y-auto")!;
+    expect(body.scrollTop).toBe(4500);
+    const opening = feeds.scrolls.filter((s) => s.feed === body);
+    expect(opening.length).toBeGreaterThan(0);
+    expect(opening.every((s) => s.behavior === "instant")).toBe(true);
+  });
+
   it("shows a background result inside the running turn, then stops the other task when asked", async () => {
     // A twentieth of real time: the card has about 100ms inside the turn, room for a loaded runner to see it.
     render(<App adapter={createFakeLab({ speed: 0.05 })} />);
@@ -162,6 +243,8 @@ describe("the session-mode screen", () => {
     expect(thread().parentElement!.contains(work)).toBe(true);
     expect(row("Research Globex").getAttribute("aria-expanded")).toBe("true");
     expect(within(work).getByText(/Starting:/)).toBeTruthy();
+    // What its run has spent so far, split as the board's row reports it.
+    expect(within(work).getByText("openai/gpt-6-luna · 1.2k in · 300 out")).toBeTruthy();
     expect(within(work).getByText(/To stop or steer a task, ask the main session/)).toBeTruthy();
     expect(within(work).queryByRole("button", { name: /stop|cancel/i })).toBeNull();
     expect(within(work).queryByRole("textbox")).toBeNull();
@@ -203,6 +286,9 @@ describe("the session-mode screen", () => {
     expect(done.open).toBe(false);
     expect(within(done).getByRole("button", { name: /Research Acme/, hidden: true })).toBeTruthy();
     expect(within(done).queryByText("Research Globex")).toBeNull();
+    // The running card shows its live count; the done row, the final total its run reported.
+    expect(within(row("Research Globex")).getByText("openai/gpt-6-luna · 1.5k tokens").dataset.spend).toBe("live");
+    expect(within(done).getByText("openai/gpt-6-luna · 6.3k tokens", { selector: "[data-spend]" }).dataset.spend).toBe("final");
 
     // A finished row still opens like any task.
     done.open = true;
@@ -211,13 +297,13 @@ describe("the session-mode screen", () => {
   });
 
   it("queues a line sent while a turn runs, and runs it after", async () => {
-    render(<App adapter={fast()} />);
+    render(<App adapter={createFakeLab({ speed: 0.2 })} />);
     await pick();
     await ask("Compare Acme and Globex for us.");
     await within(thread()).findByRole("status");
     await ask("Also add a risks section.");
     expect(within(thread()).getByText(/queued · runs when this turn ends/)).toBeTruthy();
-    await within(thread()).findByText(/Noted\./);
+    await within(thread()).findByText(/Noted\./, undefined, { timeout: 4000 });
   });
 
   it("interrupts the running turn with Stop", async () => {

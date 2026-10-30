@@ -29,6 +29,8 @@ export const RECEIVED_MARK = Symbol.for("@flow-state-dev/workforce/message-recei
 /** What the mark carries. */
 export interface ReceivedMark {
   readonly hears?: MessageHearing;
+  /** Whether the entry runs a turn on a message, so a call to it gets a reply. Absent on a mark built before it said (read as unknown). */
+  readonly runsTurn?: boolean;
   /** How this flow's worker tells a task's filer its midway question, with the installation and flow it was built for. */
   readonly tellMidwayQuestion?: MidwayQuestionTeller;
 }
@@ -50,6 +52,26 @@ export function messageHearingOf(flow: unknown): MessageHearing | "anywhere" | u
   const mark = receivedMarkOf(flow);
   if (mark === undefined) return undefined;
   return mark.hears ?? "anywhere";
+}
+
+/**
+ * Whether `flow`'s `onMessageReceived` runs a turn on a message: `false` for
+ * an entry built with no turn, so nothing ever answers a call to it;
+ * `undefined` when the flow says nothing (no entry `messageReceivedEntry`
+ * built, or a mark from before it said).
+ */
+export function runsMessageTurn(flow: unknown): boolean | undefined {
+  return receivedMarkOf(flow)?.runsTurn;
+}
+
+/**
+ * Why a call to `to`, or a message asking it for a reply (FIX-2310), can't be
+ * answered (FIX-2300): its flow runs nothing on a message. `asked` names what
+ * to leave out. The send refuses with it before anything is written where it can
+ * tell; the call answers it failed where it learns only once it lands.
+ */
+export function noReplyError(to: string, asked: "wait" | "replyRequested" = "wait"): string {
+  return `no_reply: "${to}" takes messages but runs nothing on them, so no reply comes back. Send without ${asked}, or file it a task.`;
 }
 
 /**

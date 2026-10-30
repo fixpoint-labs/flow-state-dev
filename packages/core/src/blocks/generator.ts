@@ -402,6 +402,13 @@ export interface GeneratorLoopState<TInput = unknown> {
 export interface GeneratorLoopConfig<TInput = unknown, TCtx = BlockContext> {
   maxIterations?: number;
   runTools?: boolean;
+  /**
+   * The loop's last step offers the model no framework tools, so a model
+   * still looking things up when its steps run out answers in text with what
+   * it found, rather than ending on a tool call with nothing said. Off by
+   * default: without it, the last step offers every tool, as the others do.
+   */
+  answerOnLastStep?: boolean;
 }
 
 export interface GeneratorToolResult {
@@ -1366,6 +1373,29 @@ function remapStepToolCalls(
 
 /** Sums per-step usage into the run aggregate the legacy SDK-owned path
  * reports (the SDK accumulates usage across internal steps the same way). */
+/**
+ * Count one finished step of a framework-owned loop in the request's spend
+ * ledger, as the step ends (FIX-2145): a run that later suspends for an
+ * approval or fails keeps the steps it finished. The trace row still gets the
+ * run's one aggregate report, marked so the ledger doesn't count it again.
+ */
+function reportStepSpend(
+  ctx: BlockContext,
+  stepModel: GeneratorModel,
+  usage: GeneratorModelUsage | undefined,
+  providerMetadata: GeneratorModelResult["providerMetadata"],
+  identity: ModelIdentity | undefined,
+): void {
+  if (usage === undefined) return;
+  ctx._runtimeHooks?.onGeneratorModelResult?.({
+    model: stepModel.modelId,
+    usage,
+    providerMetadata,
+    identity,
+    countsIn: "ledger",
+  });
+}
+
 function addGeneratorUsage(
   total: GeneratorModelUsage | undefined,
   step: GeneratorModelUsage | undefined
@@ -2031,6 +2061,7 @@ async function runOwnedGenerateLoop(params: {
       (ctx as { _currentModelIdentity?: ModelIdentity })._currentModelIdentity = identity;
     }
     usage = addGeneratorUsage(usage, step.usage);
+    reportStepSpend(ctx, prep.stepModel, step.usage, step.providerMetadata, step.resolvedIdentity);
     if (step.sources !== undefined) {
       sources.push(...step.sources);
     }
@@ -2639,6 +2670,7 @@ async function executeOwnedStreamingGeneration<TInput, TOutput>(
     const stepFinal = (s as { finalResult: GeneratorModelResult | undefined }).finalResult;
     lastFinish = stepFinal;
     usage = addGeneratorUsage(usage, stepFinal?.usage);
+    reportStepSpend(ctx, prep.stepModel, stepFinal?.usage, stepFinal?.providerMetadata, s.resolvedIdentity);
 
     const calls = stepFinal?.toolCalls ?? [];
     // Provider-executed calls (web search etc.) ran server-side and are not
@@ -2711,12 +2743,14 @@ async function executeOwnedStreamingGeneration<TInput, TOutput>(
 
   // ONE aggregate usage report for the whole run, matching the legacy
   // path's single report (the SDK accumulates usage across its internal
-  // steps the same way).
+  // steps the same way). The trace row's: each step already reached the
+  // request's spend ledger as it ended.
   ctx._runtimeHooks?.onGeneratorModelResult?.({
     model: model.modelId,
     usage,
     providerMetadata: lastFinish?.providerMetadata,
-    identity: s.resolvedIdentity
+    identity: s.resolvedIdentity,
+    countsIn: "trace"
   });
 
   return output as TOutput;
@@ -3164,6 +3198,15 @@ export function generator<
 
       const runTools = normalizedConfig.loop?.runTools !== false;
       const maxSteps = resolveMaxIterations(normalizedConfig);
+      if (normalizedConfig.loop?.answerOnLastStep === true && runTools && maxSteps > 1) {
+        // The last step answers: no framework tools, after whatever the
+        // dynamic-slot rebuild above returns for it.
+        const rebuild = prepareStepFn;
+        prepareStepFn = async (args) => {
+          const prep = await rebuild?.(args);
+          return args.stepNumber === maxSteps - 1 ? { ...(prep ?? {}), activeTools: [] } : prep;
+        };
+      }
 
       // Visibility: generators without `itemVisibility` produce no auto-emitted
       // items (only block_trace output via graph edges). When set, `agentName`
@@ -3354,7 +3397,10 @@ export function generator<
         model: model.modelId,
         usage: generation.usage,
         providerMetadata: generation.providerMetadata,
-        identity: nonStreamingIdentity
+        identity: nonStreamingIdentity,
+        // The owned loop's total is the trace row's: its steps already
+        // reached the request's spend ledger. The legacy single call counts here.
+        ...(model.generateStep !== undefined ? { countsIn: "trace" as const } : {})
       });
 
       // Emit source items from provider-native tools (e.g., web search).

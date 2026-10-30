@@ -10,7 +10,13 @@
  * A request with a hook still to run is one a host's shutdown waits for
  * ({@link drainRequestEnds}).
  */
-import { REQUEST_END_SEAM, type RequestEndHook, type RequestEndSeam, type RequestEnding } from "@flow-state-dev/core/types";
+import {
+  REQUEST_END_SEAM,
+  type RequestEndHook,
+  type RequestEndSeam,
+  type RequestEnding,
+  type RequestSpend
+} from "@flow-state-dev/core/types";
 import type { RuntimeLogger } from "./logging";
 import { logRuntimeEvent } from "./logging";
 
@@ -28,10 +34,13 @@ export interface RequestEndRegistry {
    * with `keepOwed`, until {@link release}: for a caller that still has the
    * request's held terminal status to write.
    *
+   * The ending's `spend` is filled in here, from the request's spend ledger:
+   * what it counted since the last run (FIX-2145).
+   *
    * @returns the first failure a hook handed back, for the caller to record as the request's own.
    */
   run(
-    ending: RequestEnding,
+    ending: Omit<RequestEnding, "spend">,
     context: { requestId: string; logger?: RuntimeLogger; keepOwed?: boolean }
   ): Promise<Error | undefined>;
   /** The request owes nothing more: a shutdown stops waiting for it. Idempotent. */
@@ -64,8 +73,14 @@ export async function drainRequestEnds(budgetMs: number): Promise<number> {
   return owed.size;
 }
 
-/** Build one request's registry. */
-export function createRequestEndRegistry(): RequestEndRegistry {
+/** Nothing spent: the ending's `spend` for a registry built without a ledger. */
+const NO_SPEND: RequestSpend = { byModel: {}, harnessRuns: [] };
+
+/**
+ * Build one request's registry. `takeSpend` hands the request's spend since
+ * the last ending to each run's hooks (the request's spend ledger).
+ */
+export function createRequestEndRegistry(takeSpend: () => RequestSpend = () => NO_SPEND): RequestEndRegistry {
   const hooks: RequestEndHook[] = [];
   let release: (() => void) | undefined;
   const registry: RequestEndRegistry = {
@@ -83,7 +98,7 @@ export function createRequestEndRegistry(): RequestEndRegistry {
     },
     async run(ending, context) {
       try {
-        return await runHooks(hooks, ending, context);
+        return await runHooks(hooks, { ...ending, spend: takeSpend() }, context);
       } finally {
         if (context.keepOwed !== true) registry.release();
       }
@@ -114,6 +129,17 @@ async function runHooks(
   }
   return failure;
 }
+
+/**
+ * Where a request's context keeps the function that runs a request-end hook
+ * with its resource writes not stopped by an explicit abort (FIX-2145). Only
+ * the session config's hook runs through it: it records what the request
+ * spent, which an abort doesn't undo. Engine-internal.
+ */
+export const WRITES_OUTLIVE_ABORT: unique symbol = Symbol("@flow-state-dev/engine/writes-outlive-abort");
+
+/** Run `write` with its resource writes not stopped by an explicit abort. */
+export type WritesOutliveAbort = <T>(write: () => Promise<T>) => Promise<T>;
 
 /** The registry attached to `ctx`, when the context carries one. */
 export function requestEndRegistryOf(ctx: object): RequestEndRegistry | undefined {
