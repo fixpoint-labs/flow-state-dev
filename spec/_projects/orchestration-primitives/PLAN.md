@@ -25,7 +25,7 @@ is today.
 | FIX-2058 · one Inbox | FIX-2056's claim gate and steer, durable execution by default (FIX-2063) | One Inbox item per stop for a person; the answer by steer; `answerTask` and the parks retired ([*decided once*](DECISIONS.md)) |
 | FIX-2070 · messages | FIX-2056's task and its sessions | Send and call, delivery and budget; `receive` in place of today's message entry |
 | FIX-2092 · phased workflows | FIX-2056's delegation board and `onTaskSettled`, FIX-2058's holds for an approval between phases | Phases as a view over task rows; a template that files a phased task graph. A design to prove by POC before its spec |
-| FIX-2071 · coordination renames | FIX-2058, FIX-2070 | One term per thing, *hold* and `updateTask`'s `question` field included; FIX-2056's read for retired rows removed no earlier than here |
+| FIX-2071 · coordination renames | FIX-2058, FIX-2070's builds | One term per thing, *hold* and `updateTask`'s `question` field included; FIX-2056's read for retired rows removed no earlier than here |
 
 FIX-2071 built once FIX-2070's builds had landed and wrapped Oct 30, ahead of FIX-2070's closure
 (FIX-2242), which is still running. FIX-2070 and FIX-2092 are in flight.
@@ -76,14 +76,9 @@ docs polish [#3954](https://github.com/fixpoint-labs/flow-state-dev/pull/3954).
 
 ## What FIX-2071 left open
 
-Seven children merged ([#4077](https://github.com/fixpoint-labs/flow-state-dev/pull/4077),
-[#4092](https://github.com/fixpoint-labs/flow-state-dev/pull/4092),
-[#4098](https://github.com/fixpoint-labs/flow-state-dev/pull/4098),
-[#4093](https://github.com/fixpoint-labs/flow-state-dev/pull/4093),
-[#4095](https://github.com/fixpoint-labs/flow-state-dev/pull/4095),
-[#4128](https://github.com/fixpoint-labs/flow-state-dev/pull/4128),
-[#4090](https://github.com/fixpoint-labs/flow-state-dev/pull/4090)), and the closure, FIX-2249,
-merged Oct 30 ([#4244](https://github.com/fixpoint-labs/flow-state-dev/pull/4244)). The renames
+The closure, FIX-2249, merged Oct 30
+([#4244](https://github.com/fixpoint-labs/flow-state-dev/pull/4244)) with every child merged
+(`specs/epics/FIX-2071/`). The renames
 are four calls *decided once* ([Decisions](DECISIONS.md)).
 
 | Carried forward | What it is |
