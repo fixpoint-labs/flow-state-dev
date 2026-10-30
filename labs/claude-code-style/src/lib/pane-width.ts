@@ -12,7 +12,7 @@ export const PANE_MIN = 280;
 /** The widest it goes, in px. */
 export const PANE_MAX = 720;
 
-/** The room the main thread keeps beside the pane when the window narrows, in px. */
+/** The width the main thread keeps beside the pane when the window narrows, in px. */
 export const THREAD_MIN = 360;
 
 /**
