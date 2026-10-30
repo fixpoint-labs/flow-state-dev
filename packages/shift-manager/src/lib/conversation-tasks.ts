@@ -1,17 +1,19 @@
 /**
  * The tasks a coordinator conversation filed, through the conversation's own
- * `listTasks` action: its board, and nobody else's. Each conversation keeps
- * its own board, so the read runs on the conversation's session; a refusal
- * comes back as an `ActionRefused` carrying its reason.
+ * `listTasks` read: its board, and nobody else's. Each conversation keeps its
+ * own board, so the read runs on the conversation's session. It is a read, not
+ * an action (FIX-2286), so a panel polling it stores no request per look; a
+ * refusal comes back as an `ActionRefused` carrying its reason.
  */
-import type { Client } from "@flow-state-dev/client";
-import { runAction, ActionRefused } from "./action";
+import { ClientHttpError, type Client } from "@flow-state-dev/client";
+import { ActionRefused } from "./action";
+import { describeFailure } from "./reads";
 
 /**
- * The action a coordinator conversation lists its tasks by: the task tools'
+ * The read a coordinator conversation lists its tasks by: the task tools'
  * `listTasks`, named for the conversation board's id (`tasks`) by the task
- * tools' action rule. A Lab test calls it by this constant, so a rename can't
- * slip past.
+ * tools' naming rule, as the action of the same name is. A Lab test calls it
+ * by this constant, so a rename can't slip past.
  */
 export const LIST_TASKS_ACTION = "listTasks_tasks";
 
@@ -30,9 +32,16 @@ export type ConversationTask = {
 
 /** Read the tasks of the coordinator conversation `sessionId` on `flow`. */
 export async function readConversationTasks(client: Client, flow: string, sessionId: string): Promise<ConversationTask[]> {
-  const output = (await runAction(client, flow, sessionId, LIST_TASKS_ACTION, {})).output as
-    | { ok: true; tasks: ConversationTask[] }
-    | { ok: false; error: string };
+  let output: { ok: true; tasks: ConversationTask[] } | { ok: false; error: string };
+  try {
+    output = await client.flow(flow).read(LIST_TASKS_ACTION, {}, { sessionId });
+  } catch (error) {
+    // The Lab said no, with a reason. A 5xx or no answer at all is not a refusal.
+    if (error instanceof ClientHttpError && error.status >= 400 && error.status < 500) {
+      throw new ActionRefused(describeFailure(error).message);
+    }
+    throw error;
+  }
   if (!output.ok) throw new ActionRefused(output.error);
   return output.tasks;
 }

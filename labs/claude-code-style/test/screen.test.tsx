@@ -6,7 +6,7 @@
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { StrictMode } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import { App } from "../src/App";
 import { createFakeLab } from "./fake-lab";
 
@@ -33,6 +33,46 @@ async function pick(name = "vendor-notes") {
   fireEvent.click(await within(picker).findByRole("button", { name }));
   await screen.findByLabelText("Message the main session");
 }
+
+
+/**
+ * Lay the scrolling feeds out as a browser would (happy-dom lays nothing out): the main thread's
+ * list and a sheet's body, each 5000px of content in a 500px view. Every scroll they are asked
+ * for is recorded with how it moves, and lands at once. Undone by the returned function.
+ */
+function layOutFeeds() {
+  const isFeed = (el: HTMLElement) =>
+    el.classList.contains("overflow-y-auto") &&
+    (el.parentElement?.getAttribute("aria-label") === "Main thread" || el.parentElement?.getAttribute("role") === "dialog");
+  const names = ["scrollHeight", "clientHeight", "scrollTop", "scrollTo"] as const;
+  const saved = names.map((name) => [name, Object.getOwnPropertyDescriptor(HTMLElement.prototype, name)] as const);
+  const tops = new WeakMap<HTMLElement, number>();
+  const scrolls: { feed: HTMLElement; behavior: ScrollBehavior | undefined }[] = [];
+  Object.defineProperties(HTMLElement.prototype, {
+    scrollHeight: { configurable: true, get(this: HTMLElement) { return isFeed(this) ? 5000 : 0; } },
+    clientHeight: { configurable: true, get(this: HTMLElement) { return isFeed(this) ? 500 : 0; } },
+    scrollTop: {
+      configurable: true,
+      get(this: HTMLElement) { return tops.get(this) ?? 0; },
+      set(this: HTMLElement, value: number) { tops.set(this, isFeed(this) ? Math.max(0, Math.min(value, 4500)) : 0); },
+    },
+    scrollTo: {
+      configurable: true,
+      value(this: HTMLElement, options: ScrollToOptions) {
+        if (isFeed(this)) scrolls.push({ feed: this, behavior: options.behavior });
+        this.scrollTop = options.top ?? 0;
+      },
+    },
+  });
+  const restore = () => {
+    for (const [name, was] of saved) {
+      if (was === undefined) delete (HTMLElement.prototype as unknown as Record<string, unknown>)[name];
+      else Object.defineProperty(HTMLElement.prototype, name, was);
+    }
+  };
+  return { scrolls, restore };
+}
+const threadFeed = () => thread().querySelector<HTMLElement>(":scope > .overflow-y-auto")!;
 
 describe("the session-mode screen", () => {
   it("lays out sessions, the main thread and the tasks pane, and opens on New session asking for a project", async () => {
@@ -121,6 +161,47 @@ describe("the session-mode screen", () => {
     fireEvent.click(within(sessions).getByRole("button", { name: /Draft the launch note/ }));
     await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe("Draft the launch note"));
     expect((screen.getByLabelText("Message the main session") as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("opens a session already at its end, with no scroll to watch, and leaves you where you scrolled up to as it goes on", async () => {
+    const feeds = layOutFeeds();
+    onTestFinished(feeds.restore);
+    render(<App adapter={fast()} />);
+    await pick();
+    const sessions = screen.getByRole("navigation", { name: "Sessions" });
+    fireEvent.click(within(sessions).getByRole("button", { name: /Draft the launch note/ }));
+    await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe("Draft the launch note"));
+    await waitFor(() => expect(threadFeed().scrollTop).toBe(4500));
+    // Opening is never an animation: every move to the end so far was instant.
+    expect(feeds.scrolls.length).toBeGreaterThan(0);
+    expect(feeds.scrolls.filter((s) => s.behavior !== "instant")).toEqual([]);
+
+    // Up to read: what the running turn adds below doesn't pull you down.
+    await act(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+    await ask("Compare Acme and Globex for us.");
+    const feed = threadFeed();
+    feed.scrollTop = 1200;
+    fireEvent.scroll(feed);
+    feeds.scrolls.length = 0;
+    await within(thread()).findByRole("region", { name: "Background result: Research Acme" });
+    expect(feeds.scrolls).toEqual([]);
+    expect(feed.scrollTop).toBe(1200);
+  });
+
+  it("opens a task's sheet already at the latest of its work", async () => {
+    const feeds = layOutFeeds();
+    onTestFinished(feeds.restore);
+    render(<App adapter={fast()} />);
+    await pick();
+    await ask("Compare Acme and Globex for us.");
+    await waitFor(() => expect(row("Research Globex")).toBeTruthy());
+    feeds.scrolls.length = 0;
+    fireEvent.click(row("Research Globex"));
+    const body = screen.getByRole("dialog", { name: "Work: Research Globex" }).querySelector<HTMLElement>(":scope > .overflow-y-auto")!;
+    expect(body.scrollTop).toBe(4500);
+    const opening = feeds.scrolls.filter((s) => s.feed === body);
+    expect(opening.length).toBeGreaterThan(0);
+    expect(opening.every((s) => s.behavior === "instant")).toBe(true);
   });
 
   it("shows a background result inside the running turn, then stops the other task when asked", async () => {

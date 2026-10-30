@@ -160,7 +160,11 @@ the convention derives them, the last two because the body is already the instru
 A hired worker then receives **two** instruction settings, never merged: `instructions` (its own
 body) and `teamInstructions` (its team's). Both are absent rather than empty when there are none.
 The [built-in worker flow](../../docs/architecture/workforce-default-worker-flow.md) composes them
-into its prompt in a fixed order — the team's first, the worker's own last.
+into its prompt in a fixed order — the team's first, the worker's own last — after one layer of
+its own: who the worker is (its `name:`, team and `description`) and who it can reach, read from
+the roster on every request, then one rule on using tools. `workerRecipients` returns that list
+of who a worker can reach (the same one `sendMessage`'s description reads), and
+`rosterDisplayName` / `rosterTeamName` name a roster worker as a user reads it.
 
 The reader builds nothing: no flow, no agent, no registry entry. It throws only when `root` itself
 cannot be read or is a symlink — a folder that produces no worker lands in `errors`, keyed by its
@@ -625,6 +629,9 @@ through `defineAgentWorkerFlow({ skills })`. It sees the earlier turns of the co
 in, up to the session's history window (the last 50 by default), and nothing from any other
 conversation. `workerFlows` is therefore optional. A `flow:` that is present but empty or whitespace-only
 refuses, because it names no flow — only an absent key means the built-in.
+A turn on `agent` has `maxSteps` model steps (default 8, the generator's own), and the last one offers no tools,
+so a worker still looking things up when its steps run out answers in text with what it found
+(every turn: user messages, worker messages, tasks).
 
 A worker on `agent` is talked to through the flow's `respond` action, which takes `{ message }`, in a
 session that names the worker. A message that names a worker is refused: the session already does.
@@ -815,26 +822,32 @@ the delegate's name:
 Task "Look up the code" (t-1) completed by scout: The code is rc-4f2a.
 ```
 
-The worker is then told:
+The worker's model reads each of those tasks as a `getTask` call for its id and the result
+`getTask` gives: `{ ok: true, task }` with the whole row (goal, status, assignee, output, error and
+the rest), plus `cancelled` naming the dependents a failure or cancel took with it. An output over
+20,000 characters as JSON is cut, with `outputCut: true`. The worker is then told:
 
 ```text
-These tasks you handed out finished while you answered:
+These tasks you handed out finished while you answered; their getTask reads are just above:
 
-- Task "Look up the code" (t-1) completed by scout: The code is rc-4f2a.
+- t-1 (scout): completed
 
 Use their results now: answer again, building on what you already said.
 ```
 
-Its next text comes after the line, in the same request. A task that ends during that answer is
-picked up the same way once it finishes. A result handed over inside the turn isn't said again
-after it, and wakes no extra turn.
+Each entry is `- <taskId> (<worker>): <ending>`, where `<ending>` is `completed`, `errored` or
+`cancelled`. A task with no assignee drops the `(<worker>)` part. Its next text comes after the
+line, in the same request. A task that ends during that answer is picked up the same way once it
+finishes. A result handed over inside the turn isn't said again after it, and wakes no extra turn.
 
 The endings handed over are completions, final failures, cancels the worker didn't make itself,
 and parks that ask a question, for a task whose result goes back to the filer (the default). A task
 filed with `resultTo: "conversation"`, a retry, and a task some request waits on with
 `getTask({ wait: true })` keep their usual path.
 
-To change the wording, pass `finishedTasksAnswerAgain({ message })` instead of `true`:
+To change the wording, pass `finishedTasksAnswerAgain({ message })` instead of `true`. `message`
+gets each finished task's `taskId`, `ending`, `worker` and `line`. A worker whose turn isn't the
+built-in generator gets no `getTask` reads, so hand it the lines:
 
 ```ts
 import { defineAgentWorkerFlow, finishedTasksAnswerAgain } from "@flow-state-dev/workforce";
@@ -2372,9 +2385,13 @@ Send to talk; ask for a reply when the worker wants an answer but can go on; cal
   message's id, from the recipient), landing in the sending session and waking a turn there. It spends no
   budget and never asks for a reply itself. If the recipient answers with `sendMessage` and that
   `inReplyTo` during the turn, that is the answer and the final text isn't sent: one answer per message.
-  An empty final text, a turn that throws (it still fails), a recipient that runs no turn, or a
+  When there is no answer, the framework sends one, with `noAnswer: true` on its row and a reason:
+  an empty final text answers `No answer came back: the turn ended without saying anything.`, a
+  turn that throws (it still fails) `No answer came back: the turn failed before it could answer.`,
+  a recipient that runs no turn `No answer came back: this worker doesn't answer messages.`, and a
   server that stops mid-turn (picked up a few seconds later on flows with the session factory's
-  entries) answers `I have no answer to your message <id>.`, with `noAnswer: true` on its row. A
+  entries) `No answer came back: the turn stopped before it finished.` The server logs a console
+  warning when a turn that ran gives no answer to send. A
   send the sender can tell won't be answered is refused with `no_reply`; a refused send gets nothing
   more. To ask several workers, send each one with `replyRequested` in the same step; each answer is its own
   turn. With `wait: true` it is just a call.
@@ -2604,7 +2621,7 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 | `defineAgentWorkerFlow(options?)` | Build the `agent` worker flow, the one the framework ships. With `installation` it is the copy every worker on `agent` shares: it declares the installation's session and documents, loads the turn's worker in `request.onStarted`, and refuses a turn whose input names a worker; called with factory options (`AgentWorkerFlowOptions`) it is the replacement you register under `agent`. Its flow declares `respond` (public) and a `work` task entry that takes the tasks a conversation files for its workers. |
 | `AGENT_FLOW` | The kind name (`"agent"`) the hire step defaults to, and the key a replacement registers under. |
 | `takeFinishedTasks` / `finishedTaskSchema` / `FinishedTask` | A handler block that takes the tasks this conversation filed whose endings haven't been heard yet, says each as a line under its delegate's name, and returns them as `{ taskId, ending, worker?, line }[]`. Input is ignored. `[]` outside a turn a user's own message started (see [Answering again with finished tasks](#answering-again-with-finished-tasks)). |
-| `finishedTasksAnswerAgain({ message? })` / `FinishedTasksAnswerAgainOptions` | The block `answerAgain: true` uses: `takeFinishedTasks`, then `{ message }` built from the lines, or `{}` when nothing finished. `message(finished)` replaces the default wording. |
+| `finishedTasksAnswerAgain({ message? })` / `FinishedTasksAnswerAgainOptions` | The block `answerAgain: true` uses: `takeFinishedTasks`, then `{ message }` naming each finished task and how it ended, or `{}` when nothing finished. `message(finished)` replaces the default wording. |
 | `MAX_ANSWERS_AGAIN` | `3`, the most times one request answers again after its turn, the answer after a plan included. |
 | `definePersona(config)` | Declare a persona resource or collection. |
 | `createWorkforceCapability({ roster, inventory, sources? })` | The discovery door. Installs the `workers` source plus whatever other domains' sources you pass, and contributes one control tool, `discover`, which lists the standard workers the files declare. |

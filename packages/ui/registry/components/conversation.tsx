@@ -10,6 +10,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -21,7 +22,10 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 
 type ConversationScrollContextValue = {
   isAtBottom: boolean;
-  scrollToBottom: () => void;
+  /** Whether the scroll container is in the page yet, so a scroll can land. */
+  ready: boolean;
+  /** Smooth by default; `"instant"` for a conversation that is opening, not growing. */
+  scrollToBottom: (behavior?: "smooth" | "instant") => void;
 };
 
 const ConversationScrollContext =
@@ -46,8 +50,15 @@ export const Conversation = ({
   children,
   ...props
 }: ConversationProps) => {
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [ready, setReady] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  // A child's layout effect runs before this element's ref is set: `ready`
+  // re-renders it once the container is there, still before paint.
+  const attach = useCallback((node: HTMLDivElement | null) => {
+    scrollRef.current = node;
+    setReady(node !== null);
+  }, []);
 
   const checkIsAtBottom = useCallback(() => {
     const el = scrollRef.current;
@@ -85,16 +96,16 @@ export const Conversation = ({
     };
   }, [checkIsAtBottom]);
 
-  const scrollToBottom = useCallback(() => {
+  const scrollToBottom = useCallback((behavior: "smooth" | "instant" = "smooth") => {
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    el.scrollTo({ top: el.scrollHeight, behavior });
   }, []);
 
   return (
-    <ConversationScrollContext.Provider value={{ isAtBottom, scrollToBottom }}>
+    <ConversationScrollContext.Provider value={{ isAtBottom, ready, scrollToBottom }}>
       <div
-        ref={scrollRef}
+        ref={attach}
         onScroll={checkIsAtBottom}
         className={cn("relative flex-1 overflow-y-auto", className)}
         role="log"
@@ -165,22 +176,31 @@ export const ConversationEmptyState = ({
 /**
  * Place inside <Conversation> to auto-scroll to bottom when a new request
  * appears (e.g. user sends a message). Does NOT auto-scroll during streaming.
+ *
+ * A conversation that opens (its first load, or a switch to another session,
+ * where the last request shown is no longer among the items) lands at the
+ * bottom at once, before paint. Only a request that follows one already on
+ * screen scrolls smoothly.
  */
 export function ScrollOnNewRequest({ items }: { items: OutputItem[] }) {
-  const { scrollToBottom } = useConversationScroll();
+  const { ready, scrollToBottom } = useConversationScroll();
   const lastRequestIdRef = useRef<string | null>(null);
 
-  useEffect(() => {
+  // Before paint, so an opening conversation is never seen at the top.
+  useLayoutEffect(() => {
+    if (!ready) return;
     if (items.length === 0) {
       lastRequestIdRef.current = null;
       return;
     }
+    const shown = lastRequestIdRef.current;
     const lastRequestId = items[items.length - 1].requestId;
-    if (lastRequestId !== lastRequestIdRef.current) {
+    if (lastRequestId !== shown) {
       lastRequestIdRef.current = lastRequestId;
-      scrollToBottom();
+      const continued = shown !== null && items.some((item) => item.requestId === shown);
+      scrollToBottom(continued ? "smooth" : "instant");
     }
-  }, [items, scrollToBottom]);
+  }, [items, ready, scrollToBottom]);
 
   return null;
 }
@@ -206,7 +226,7 @@ export const ConversationScrollButton = ({
           "rounded-full pointer-events-auto dark:bg-background dark:hover:bg-muted",
           className
         )}
-        onClick={scrollToBottom}
+        onClick={() => scrollToBottom()}
         size="icon"
         type="button"
         variant="outline"

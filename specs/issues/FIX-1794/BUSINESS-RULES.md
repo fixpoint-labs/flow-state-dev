@@ -47,7 +47,7 @@ is the session a task runs in. The *proved by* column is the check the plan runs
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-22 | An attempt completes | One notice in the conversation: the task, `completed`, the worker and its output summary. The coordinator's turn reads it | CI · VG leg a |
+| BR-22 | An attempt completes | One notice in the conversation: the task, `completed`, the worker and its output summary. The coordinator's turn reads it (*amended after merge*, [FIX-2345](https://linear.app/fixpoint-labs/issue/FIX-2345): the line keeps the summary; the turn reads the ending as a `getTask` call and its result for the task, the row in full, never as a user's message) | CI · VG leg a |
 | BR-23 | An attempt fails with attempts left | No coordinator turn. The board runs again and the next attempt starts | CI · VG leg e |
 | BR-24 | The last attempt fails, or the hand-over is refused every time | One notice: `errored`, with the error | CI · VG leg e |
 | BR-25 | The worker parks the task on a question | One notice: `parked`, with the question. Answered and completed later, a second notice, `completed` | CI |

@@ -28,7 +28,7 @@ export type FakeClientParts = {
   flows?: AnyFn;
   sessions?: Partial<Record<"list" | "get" | "requests" | "children" | "state" | "updateMetadata" | "delete", AnyFn>>;
   /** Flow-level calls; `send` gets `(action, input, options)` without `stream`, `abort` gets the request id. */
-  flow?: Partial<Record<"send" | "abort" | "createSession", AnyFn>>;
+  flow?: Partial<Record<"send" | "abort" | "createSession" | "read", AnyFn>>;
   /** Request-level calls, each given the request id first (and the flow address last). */
   request?: Partial<Record<"status" | "continue" | "retry" | "resume", AnyFn>>;
   resources?: Partial<Client["resources"]>;
@@ -93,6 +93,7 @@ export function fakeClient(parts: FakeClientParts): Client {
         return Object.assign(handle(address, response.request.id), { response });
       }) as never,
       createSession: async (options?: unknown) => call(parts.flow?.createSession, "flow.createSession", options),
+      read: (async (name: string, input: unknown, options: unknown) => call(parts.flow?.read, "flow.read", name, input, options)) as never,
       request: (id: string) => handle(address, id)
     }),
     sessions: {

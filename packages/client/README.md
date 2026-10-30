@@ -92,6 +92,10 @@ await fsd.flow("notes-7").send("summarize", {}); // a collection copy, untyped
   this flow as the client's user.
 - `request(id)` is a request of this flow, by id. It reads nothing until you
   call a method.
+- `read(name, input, { sessionId })` runs one of the flow's `reads` on the
+  session and resolves to its output. Nothing is stored, so it is the call to
+  poll with. A refusal (an unknown read or session, a write the read tried)
+  rejects with `ClientHttpError` carrying the status.
 
 ## Requests
 

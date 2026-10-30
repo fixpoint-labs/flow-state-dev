@@ -39,10 +39,25 @@ function replyIdFor(messageId: string): string {
   return `a:${messageId}`;
 }
 
-/** The text of the framework's "no answer". */
-function noAnswerText(messageId: string): string {
-  return `I have no answer to your message ${messageId}.`;
-}
+/**
+ * Why a reply-requested message got the framework's "no answer": its turn
+ * ended saying nothing (`silent`), threw (`failed`), never ran because the
+ * flow runs no turn on messages (`turnless`), or stopped partway, its server
+ * gone (`stopped`).
+ */
+export type NoAnswerReason = "silent" | "failed" | "turnless" | "stopped";
+
+/**
+ * The text of the framework's "no answer", in plain words: the reason, never
+ * the message's id, which the row carries in `inReplyTo`. The sender's model
+ * reads it, and an app may show it.
+ */
+const NO_ANSWER_TEXT: Readonly<Record<NoAnswerReason, string>> = {
+  silent: "No answer came back: the turn ended without saying anything.",
+  failed: "No answer came back: the turn failed before it could answer.",
+  turnless: "No answer came back: this worker doesn't answer messages.",
+  stopped: "No answer came back: the turn stopped before it finished."
+};
 
 /**
  * Owe the running session's pass an answer to `id`, landed by the running
@@ -81,7 +96,7 @@ async function dropOwedReplies(ctx: BlockContext, ids: ReadonlyArray<string | Ow
 
 /**
  * Send the reply owed to `messageId` from the running session, unless something answered it
- * already: `text` cut to a message's length, or "no answer" when it is blank.
+ * already: `text` cut to a message's length, or "no answer" for `reason` when it is blank.
  * Through `sendMessage({ inReplyTo })`, as the recipient, with the server's own
  * place (no budget) and an id derived from the message, so a replay sends once.
  * Never itself reply-requested. The owed entry goes either way: a refused
@@ -92,7 +107,8 @@ export async function sendOwedReply(
   installation: WorkerInstallation,
   flowKind: string,
   messageId: string,
-  text: string
+  text: string,
+  reason: NoAnswerReason
 ): Promise<void> {
   const row = (await messageLogOf(ctx).getOptional(messageId))?.state;
   if (row !== undefined && wantsReply(row) && row.answeredBy === undefined) {
@@ -101,7 +117,7 @@ export async function sendOwedReply(
       ctx,
       installation,
       flowKind,
-      { to: row.from, text: said === "" ? noAnswerText(messageId) : said.slice(0, MAX_MESSAGE_CHARS), inReplyTo: messageId },
+      { to: row.from, text: said === "" ? NO_ANSWER_TEXT[reason] : said.slice(0, MAX_MESSAGE_CHARS), inReplyTo: messageId },
       OWED_REPLY_FROM,
       { id: replyIdFor(messageId), exempt: true, ...(said === "" ? { noAnswer: true as const } : {}) }
     );
@@ -136,7 +152,7 @@ export async function payReplyDebts(ctx: BlockContext, installation: WorkerInsta
     // next time, never the dead one's end.
     const delivered = row.status === "delivered";
     if ((!delivered || row.deliveredAs === entry.by) && (await hasEnded(ctx, entry.by))) {
-      if (delivered) await sendOwedReply(ctx, installation, flowKind, entry.id, "");
+      if (delivered) await sendOwedReply(ctx, installation, flowKind, entry.id, "", "stopped");
       else drop.push(entry);
       continue;
     }

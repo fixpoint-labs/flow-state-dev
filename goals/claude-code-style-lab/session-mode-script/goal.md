@@ -52,7 +52,6 @@ task settles), through the AI Gateway. Claude Code needs `ANTHROPIC_API_KEY`.
 **Controls:**
 - `GOAL_CONTROL=answer-again-off`: the lab with `CLAUDE_CODE_STYLE_ANSWER_AGAIN=off`. Must FAIL
   signal 4: the result arrives in a second request after the turn.
-- `GOAL_CONTROL=planted-glue`: a planted `src/glue.ts`. The inventory must FAIL.
 - `GOAL_CONTROL=no-project`: a session made with no project. Must FAIL signals 0 and 6: the
   composer stays closed and asks, and no run clones anything.
 

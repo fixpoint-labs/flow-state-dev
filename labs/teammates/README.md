@@ -38,17 +38,27 @@ Each worker does real work. researcher reads the working folder's files and sear
 drafts from the working folder's files and from pages it fetches, and Chief of Staff hands out the
 work. Chief of Staff sends a quick ask as a message, and real work as a task: a job that needs the
 folder's files read to researcher or writer, and a job in several parts as several tasks, in order.
-Every result lands back in Chief of Staff's conversation.
+Every result lands back in Chief of Staff's conversation as one line, *researcher finished: Look up
+the launch date*, that opens the task in a popup, where the whole result is. Chief of Staff's own
+answer on it shows in full below.
 
 A code change is a coding task, not a teammate's job. Coding runs in the background, the way a
 coding agent's job does: you watch it, you don't talk to it. Ask Chief of Staff for a code change
 and Chief of Staff starts a coding task in the working folder, on one of three coding agents:
-Claude Code, Codex or Cursor. Name one ("have Codex do it") and that one runs; name none and Claude
-Code does, with no question first. Each agent is a worker of its own, off the list and never
+Claude Code, Codex or Cursor. Name one ("have Codex do it") and that one runs; name none and Cursor
+does, with no question first. Each agent is a worker of its own, off the list and never
 messaged, whose `WORKER.md` names its `harness:`. A line in Chief of Staff's conversation and an
 item under *Background* show the task, tagged with the agent it runs on (and the model, once the
 run reports one), and open its run in a popup. The result lands in Chief of Staff's conversation as
-the coding task's. To change a coding task, tell Chief of Staff, who starts the next one.
+the coding task's line, *Coding task finished: …*. To change a coding task, tell Chief of Staff, who starts the next one.
+
+A coding task's popup says *Starting on Codex…* from the moment the task is filed. Once it ends,
+the result is at the top, with the run under it in plain steps: what the agent wrote, as text,
+and what it did, such as *Read …/src/session-feed.ts*, *Edit README.md* or the command it ran.
+A run of steps folds into one line, *Ran 3 commands and edited a file*, that opens to each one.
+The steps read the same on all three agents, though each names its tools its own way. A Claude
+Code run loads the working folder's own Claude Code settings and `CLAUDE.md`, never this
+machine's, so an output style set there doesn't show in its steps.
 
 Before a task starts, its agent's own sign-in check runs. An agent this machine isn't set up for
 fails the task at once, with a line that names it and what's missing, such as "Codex isn't set up on
@@ -85,7 +95,7 @@ This builds the pages and serves them with the lab's server (`fsdev.config.mts`)
 |---|---|---|
 | `TEAMMATES_MODEL` | the model Chief of Staff, researcher and writer answer on | `openai/gpt-6-luna` |
 | `TEAMMATES_WORKDIR` | the working folder: an absolute path to a git checkout on this machine | the root of this repository |
-| `TEAMMATES_HARNESS` | the harness a coding worker whose file names none runs on: `claude-code`, `codex` or `cursor` | `claude-code` |
+| `TEAMMATES_HARNESS` | the harness a coding worker whose file names none runs on: `claude-code`, `codex` or `cursor` | `cursor` |
 | `TEAMMATES_STORE` | the SQLite file | `.fsdev/teammates.sqlite` here |
 | `TEAMMATES_USER` | who the page acts as | `you` |
 | `TEAMMATES_TREE` | the workers' tree | `workforce/` here |
@@ -136,6 +146,7 @@ names the package call it makes.
 | A message's popup | the recipient's session items: the turn whose received-message item carries the message's id |
 | The working folder | `localWorkspaceHost` with a constant run source, `{ kind: "repo", repo }`, and the folder in `localRepositories`; `projectSourceTools` read it |
 | Coding tasks and their runs | the conversation board's rows assigned to the worker on the coding flow, which the list leaves out; the row's `run` link, read as the run session's items |
+| A run's steps in plain words | the UI registry's `tool-naming` and `tool-grouping`, installed in `src/components/flow-state/`, over each tool call's name and arguments |
 | The divider and its *summarized* label | the last request's `historyStart`, and the session's `historySummary` resource |
 
 `color:` names one of the lab's palette, `blue`, `green`, `amber`, `rose`, `violet` or `teal`,
@@ -158,9 +169,3 @@ Not wired yet:
 - **A task whose input has an `issue` field** is refused by the coding run as half a feature payload
   (FIX-2282). Chief of Staff's `WORKER.md` tells it to leave `input` empty, which only lowers the
   odds.
-
-## What this app adds
-
-Configuration, React UI and small flows, plus checks and fixtures. `node scripts/inventory.mjs`
-fails on a file that is none of these, and on a flow over 200 lines; `--wired` also fails on any
-fixture.

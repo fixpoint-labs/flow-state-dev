@@ -16,7 +16,8 @@
  * Operational items (block_output lifecycle, router_decision, context,
  * state_change, resource_change) are filtered out — they live in trace view.
  */
-import { useEffect, useMemo, useRef } from "react";
+import { useMemo } from "react";
+import { useFollowLatest } from "@flow-state-dev/react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { collapseToCanonicalLog } from "@flow-state-dev/core/items";
 import type { DevtoolItem } from "../../lib/item-types";
@@ -88,9 +89,8 @@ export function StreamView({
   onContinue,
   isContinuing,
 }: StreamViewProps) {
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const userScrolledUpRef = useRef(false);
+  // Opens at the newest request, and follows what streams in while the reader stays at the end.
+  const feed = useFollowLatest();
 
   // Sort chronologically (oldest first), compute token totals from all items,
   // then filter to chat-relevant items for display. Transient items (status
@@ -124,24 +124,6 @@ export function StreamView({
     [requestGroups],
   );
 
-  // Track if user has scrolled away from the bottom.
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-    const handleScroll = () => {
-      const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
-      userScrolledUpRef.current = !atBottom;
-    };
-    container.addEventListener("scroll", handleScroll, { passive: true });
-    return () => container.removeEventListener("scroll", handleScroll);
-  }, []);
-
-  // Auto-scroll to bottom when items change, unless user scrolled up.
-  useEffect(() => {
-    if (userScrolledUpRef.current) return;
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [filteredGroups]);
-
   if (filteredGroups.length === 0) {
     return (
       <EmptyState
@@ -153,7 +135,7 @@ export function StreamView({
   }
 
   return (
-    <div ref={scrollContainerRef} className="flex flex-col overflow-auto h-full bg-fs-surface">
+    <div ref={feed.ref} className="flex flex-col overflow-auto h-full bg-fs-surface">
       {filteredGroups.map((group, groupIndex) => {
         const isLast = groupIndex === filteredGroups.length - 1;
         const isActive = isLast && streamStatus === "streaming";
@@ -182,7 +164,6 @@ export function StreamView({
           </div>
         );
       })}
-      <div ref={bottomRef} />
     </div>
   );
 }

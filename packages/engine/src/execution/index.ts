@@ -10,6 +10,8 @@ export {
 export { applyRetentionPolicy, resolveRetentionPolicy } from "./retention";
 export type { ResolvedRetentionPolicy } from "./retention";
 export { runAction } from "./runAction";
+export { runRead, readOnlyStores, readOnlyRefusal, UnknownReadError } from "./runRead";
+export type { RunReadOptions } from "./runRead";
 export { continueRequest } from "./request-continuation";
 export { settleUnstartedRequest } from "./settle-unstarted-request";
 export type { UnstartedRequestEnding } from "./settle-unstarted-request";

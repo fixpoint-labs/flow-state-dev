@@ -56,7 +56,7 @@ export function Entry({ entry }: { entry: ThreadEntry }) {
           aria-label={`Background result: ${entry.title}`}
           data-entry="result"
           data-during-turn={entry.duringTurn ? "true" : "false"}
-          className={cn("border px-3 py-2", entry.status === "completed" ? "border-success bg-success/10" : "border-border bg-card")}
+          className={cn("min-w-0 border px-3 py-2 [overflow-wrap:anywhere]", entry.status === "completed" ? "border-success bg-success/10" : "border-border bg-card")}
         >
           <div className={cn("font-mono text-[10px] tracking-widest uppercase", status.tone)}>
             Background result · {entry.title} · {status.label}

@@ -2,6 +2,7 @@ import { memo } from "react";
 import type { ConversationEntry } from "../adapter";
 import type { Look } from "../lib/looks";
 import { Avatar } from "./Avatar";
+import type { AnswerState } from "./Popups";
 import { useSubmit } from "../lib/use-submit";
 import { AgentMarkdown } from "./flow-state/message-response";
 
@@ -9,8 +10,9 @@ import { AgentMarkdown } from "./flow-state/message-response";
  * One entry of a conversation. Your lines sit on the right; the worker's
  * answers on the left. A message the worker sent another worker is one line,
  * "Messaged researcher", that opens the exchange in a popup; a message it
- * received, or a task it filed coming back, lands under the sender's name,
- * and a task's result opens that task's popup. A worker's text is
+ * received lands under the sender's name. A task it filed coming back is one
+ * line, "researcher finished: …", that opens the task's popup, where its
+ * result is; a routed answer, which names no task, is shown as said. A worker's text is
  * Markdown; your own lines are shown as typed. A worker that waits for your
  * yes (`waitForUser` with an approval) is a card with Approve and Deny until
  * you answer. Memoized: a streamed chunk redraws only the entry that changed.
@@ -21,7 +23,7 @@ export const Entry = memo(function Entry({
   nameOf,
   lookOf,
   isCoding = () => false,
-  replied = false,
+  answer = "working",
   onOpenMessage,
   onOpenTask,
   onAnswer,
@@ -33,8 +35,8 @@ export const Entry = memo(function Entry({
   lookOf: (id: string) => Look;
   /** The worker coding tasks run on: its results are the task's, not a teammate's. */
   isCoding?: (id: string) => boolean;
-  /** For a sent message: it was answered. */
-  replied?: boolean;
+  /** For a sent message: how it stands. */
+  answer?: AnswerState;
   /** Open the exchange a sent message started. */
   onOpenMessage?: (entry: Extract<ConversationEntry, { kind: "sent" }>) => void;
   /** Open the task a result came from. */
@@ -58,7 +60,7 @@ export const Entry = memo(function Entry({
         </div>
       );
     case "sent":
-      return <SentLine to={nameOf(entry.to)} look={lookOf(entry.to)} text={entry.text} replied={replied} onOpen={onOpenMessage ? () => onOpenMessage(entry) : undefined} />;
+      return <SentLine to={nameOf(entry.to)} look={lookOf(entry.to)} text={entry.text} answer={answer} onOpen={onOpenMessage ? () => onOpenMessage(entry) : undefined} />;
     case "received":
       return (
         <section
@@ -68,7 +70,7 @@ export const Entry = memo(function Entry({
         >
           <div className="flex items-center gap-1.5 font-mono text-[10px] tracking-widest text-info uppercase">
             <Avatar look={lookOf(entry.from)} size="sm" />← {nameOf(entry.from)}
-            {entry.inReplyTo ? " · reply" : ""}
+            {entry.noAnswer ? " · no answer" : entry.inReplyTo ? " · reply" : ""}
           </div>
           <AgentMarkdown className="mt-0.5 text-sm" text={entry.text} />
         </section>
@@ -76,6 +78,16 @@ export const Entry = memo(function Entry({
     case "result": {
       // A coding task's result is the task's, not a teammate's.
       const from = isCoding(entry.from) ? "the coding task" : nameOf(entry.from);
+      if (entry.taskId !== "" && onOpenTask) {
+        return (
+          <ResultLine
+            who={isCoding(entry.from) ? "Coding task" : nameOf(entry.from)}
+            look={isCoding(entry.from) ? undefined : lookOf(entry.from)}
+            entry={entry}
+            onOpen={() => onOpenTask(entry.taskId)}
+          />
+        );
+      }
       return (
         <section aria-label={`From ${from}`} data-entry="result" className="max-w-[85%] rounded-md border border-dashed border-success/60 bg-success/5 px-3 py-2">
           <div className="flex items-center gap-2 font-mono text-[10px] tracking-widest text-success uppercase">
@@ -136,8 +148,35 @@ function ApprovalCard({
   );
 }
 
+/** A filed task coming back: one line, "researcher finished: Draft the post", that opens its popup. */
+function ResultLine({ who, look, entry, onOpen }: { who: string; look?: Look; entry: Extract<ConversationEntry, { kind: "result" }>; onOpen: () => void }) {
+  const said = `${who} ${entry.failed ? "couldn't finish" : "finished"}`;
+  const line = entry.title === undefined ? said : `${said}: ${entry.title}`;
+  return (
+    <button
+      type="button"
+      aria-label={line}
+      data-entry="result"
+      data-status={entry.failed ? "failed" : "done"}
+      onClick={onOpen}
+      className="flex w-full max-w-[85%] items-center gap-2 rounded-md border border-dashed border-success/60 bg-success/5 px-3 py-1.5 text-left text-sm hover:bg-accent"
+    >
+      {look === undefined ? (
+        <span aria-hidden className="shrink-0 text-muted-foreground">
+          ⚙
+        </span>
+      ) : (
+        <Avatar look={look} size="sm" />
+      )}
+      <span className={entry.failed ? "min-w-0 truncate text-destructive" : "min-w-0 truncate"}>{line}</span>
+      {/* What it came back with, cut to the line; the whole of it is in the popup. */}
+      <span className="min-w-0 flex-1 truncate text-muted-foreground">{entry.text}</span>
+    </button>
+  );
+}
+
 /** A message to another worker: one line, "Messaged researcher", that opens the exchange. */
-function SentLine({ to, look, text, replied, onOpen }: { to: string; look: Look; text: string; replied: boolean; onOpen?: () => void }) {
+function SentLine({ to, look, text, answer, onOpen }: { to: string; look: Look; text: string; answer: AnswerState; onOpen?: () => void }) {
   return (
     <button
       type="button"
@@ -150,7 +189,7 @@ function SentLine({ to, look, text, replied, onOpen }: { to: string; look: Look;
       <span className="shrink-0">Messaged {to}</span>
       <span className="min-w-0 flex-1 truncate text-muted-foreground">{text}</span>
       <span className="shrink-0 text-xs text-muted-foreground" data-sent-status>
-        {replied ? "replied" : "working"}
+        {answer}
       </span>
     </button>
   );

@@ -20,12 +20,11 @@
  *     composer closed and no run anywhere.
  *   - `no-mapping`: the lab started with no repository to cut worktrees from, so the run
  *     works in a clone. Must FAIL signal 6's worktree check.
- *   - `planted-glue`: a planted `src/glue.ts` in the lab. The inventory must FAIL.
  *
  * Run: pnpm tsx goals/claude-code-style-lab/threads-mode-script/run.mts
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "@flow-state-dev/client";
 import type { Page } from "playwright";
@@ -366,19 +365,6 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
 }
 
 await runGoal(async (failures, tell) => {
-  if (CONTROL === "planted-glue") {
-    const glue = join(LAB, "src", "glue.ts");
-    writeFileSync(glue, "export const glue = 1;\n");
-    try {
-      execFileSync("node", [join(LAB, "scripts", "inventory.mjs"), "--wired"], { cwd: LAB, stdio: "pipe" });
-      return { failures, evidence: "the inventory passed with src/glue.ts planted" };
-    } catch (error) {
-      failures.push(`inventory refused the planted file: ${String((error as { stderr?: Buffer }).stderr ?? error).trim()}`);
-      return { failures, evidence: "" };
-    } finally {
-      rmSync(glue);
-    }
-  }
   // The pages `--app` serves are the lab's built ones.
   execFileSync("pnpm", ["--filter", "@flow-state-dev/claude-code-style", "build"], { cwd: REPO_ROOT, stdio: "ignore" });
   const unplant = plant(CONTROL);

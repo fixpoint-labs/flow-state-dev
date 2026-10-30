@@ -83,6 +83,7 @@ import { WORKER_TASK_ENTRY } from "./worker-task-entry";
 import { RESPOND_ACTION } from "./worker-door";
 import { declareBuiltInRoles } from "./worker-roles";
 import { routedTaskHistory } from "./coordinator/routed-brief";
+import { withTaskEndingReads } from "./conversation-board/task-ending-read";
 import { workerTaskEntry } from "./conversation-board/task-entry";
 import { defineSessionBoard, type SessionBoard } from "./conversation-board/session-board";
 import { REPLY_CONCURRENCY } from "./conversation-board/task-settled";
@@ -108,6 +109,7 @@ import { STANDING_RULES_ACTION, standingRulesAction } from "./standing-rules/rul
 import { setWorkProjectAction } from "./projects/work-project";
 import { SET_WORK_PROJECT_ACTION } from "./workers/keys";
 import type { WorkerInstallation } from "./workers/installation";
+import { workerIdentityPrompt } from "./messages/worker-identity";
 import { steerOrTalk } from "./conversation-board/steer";
 import { worksConversationResultTask } from "./conversation-board/task-admission";
 
@@ -368,6 +370,14 @@ export interface AgentWorkerFlowOptions {
    * Omitted, the flow's sequence is exactly what it is today.
    */
   afterAnswer?: BlockDefinition<any, any>;
+  /**
+   * How many model steps a turn may take: each step is one model call, and a
+   * step that calls tools leads to another. The last one offers no tools, so a
+   * worker still looking things up answers with what it found. Defaults to
+   * the generator's own cap (8). Raise it for workers that dig: a researcher
+   * reading a large repository spends a step per lookup.
+   */
+  maxSteps?: number;
   /**
    * A block run on every turn just before the worker answers, the mirror of
    * {@link afterAnswer}. It runs as a `.tap`: it sees the turn's input and
@@ -1088,8 +1098,9 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       uses: [binding, ...usesEntries],
       // The prompt seam — A MARKED INSERTION POINT, NOT AN ABSTRACTION.
       //
-      // Three layers, in this order every time: the worker's TEAM speaks first,
-      // then the worker's own file, then the packages it holds. The array is the framework's own prompt
+      // Four layers, in this order every time: the framework's default layer
+      // speaks first, then the worker's TEAM, then the worker's own file, then
+      // the packages it holds. The array is the framework's own prompt
       // slot, which resolves each entry, drops the absent ones and joins the
       // rest — so the filter and the join stay the framework's single rule
       // instead of a second copy of it living here.
@@ -1112,18 +1123,19 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       // the worker's line genuinely win would mean resolving contradictions
       // before the prompt is sent — a different and much larger feature.
       //
-      // The shared default worker system prompt is still unshipped and still
-      // owned elsewhere; per contract C1 this flow consumes it and defines no
-      // second one. When it lands it goes at the FRONT of this array — the
-      // framework, then the team, then the worker — and nothing else moves. Do
-      // not grow this into a compose helper, a registry or a type: an org-wide
-      // fourth layer is the point at which the seam should be re-decided
-      // rather than widened a second time.
+      // The default layer is the shared default worker prompt (contract C1),
+      // owned by FIX-2334: who the worker is and who it can reach, read from
+      // the roster, then one rule on using tools (`messages/worker-identity`).
+      // Fixed text, on an installation only; later default text joins it as a
+      // line, not a second entry. Do not grow this into a compose helper, a
+      // registry or a type: an org-wide layer of configurable text is the
+      // point at which the seam should be re-decided rather than widened.
       //
       // A held package's instructions come third, after the worker's own: the
       // worker holds the package, so its text reads as part of what this worker is
       // told. The same caveat holds — order, not precedence.
       prompt: [
+        (_input, ctx) => (options.installation === undefined ? undefined : workerIdentityPrompt(ctx, options.installation)),
         (_input, ctx) => turnConfig(ctx).teamInstructions,
         (_input, ctx) => turnConfig(ctx).instructions,
         (_input, ctx) => packageInstructionsOf(turnConfig(ctx)[WORKER_PACKAGES_KEY])
@@ -1162,7 +1174,13 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
         if ((own === undefined || own.length === 0) && extra.length === 0) return named;
         return [...named, ...(own ?? []), ...extra];
       },
-      user: (input) => input.message
+      // A task's ending this request heard reads as getTask's result, before
+      // the message or in its place (FIX-2345).
+      user: (input, ctx) => withTaskEndingReads(input.message, ctx),
+      // A worker still looking things up when its steps run out answers with
+      // what it found, rather than ending its turn with nothing said: a sender
+      // waiting on its reply would otherwise hear "no answer" (FIX-2347).
+      loop: { answerOnLastStep: true, ...(options.maxSteps === undefined ? {} : { maxIterations: options.maxSteps }) }
     });
 
   // The answer's two generator names, which its messages carry as `agentName`.
@@ -1432,6 +1450,8 @@ function defineAgentFlowAround(
       // session whose delegates take no task answers `no_delegation_board`.
       ...(board?.actions ?? {})
     },
+    // On an installation: the task list, read with nothing stored (FIX-2286).
+    ...(board !== undefined ? { reads: board.reads } : {}),
     internal: {
       actions: {
         // A workstream's open: creates the lead's workstream session, linked

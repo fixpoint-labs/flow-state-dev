@@ -1,15 +1,15 @@
-import { Fragment, useCallback, useRef, useState } from "react";
+import { useFollowLatest } from "@flow-state-dev/react";
+import { Fragment, useCallback, useState } from "react";
 import type { BoardTask, ConversationEntry, LabAdapter, WorkerRow } from "../adapter";
 import type { Look } from "../lib/looks";
 import { useStatusLine } from "../lib/status";
-import { useStickToBottom } from "../lib/stick-to-bottom";
 import { pendingFor } from "../lib/talk";
 import { useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { Composer } from "./Composer";
 import { Entry } from "./Entry";
-import { repliedIn, type Popup } from "./Popups";
+import { answerIn, type Popup } from "./Popups";
 import { TaskCard } from "./TaskCard";
 import { InstructionsForm } from "./TeammateForms";
 
@@ -84,11 +84,7 @@ export function Conversation({
   const last = entries[entries.length - 1];
   // An answer on screen, written or being written, is the sign it is answering; the line shows only before one starts.
   const answering = running && last?.kind !== "assistant";
-  const scroller = useRef<HTMLDivElement>(null);
-  const { atEnd, jumpToLatest } = useStickToBottom(
-    scroller,
-    `${sessionId}:${entries.length}:${last && "text" in last ? last.text.length : 0}:${pending.length}:${answering}`,
-  );
+  const feed = useFollowLatest({ resetKey: sessionId });
 
   // Stable, so a memoized line doesn't redraw for a new function.
   const openTask = useCallback((taskId: string) => onOpen({ kind: "task", sessionId, taskId }), [onOpen, sessionId]);
@@ -151,7 +147,7 @@ export function Conversation({
           />
         </div>
       ) : null}
-      <div ref={scroller} data-scroller className="relative flex-1 overflow-y-auto px-6 py-4">
+      <div ref={feed.ref} data-scroller className="relative flex-1 overflow-y-auto px-6 py-4">
         <div data-column className="mx-auto flex max-w-(--thread-width) flex-col gap-3">
           {entries.length === 0 ? (
             <div className="mt-24 text-center text-sm text-muted-foreground">Say hello to {worker.name}. This is your one conversation with it.</div>
@@ -177,7 +173,7 @@ export function Conversation({
                     nameOf={nameOf}
                     lookOf={lookOf}
                     isCoding={isCoding}
-                    replied={entry.kind === "sent" && repliedIn(talk, entry.messageId)}
+                    answer={entry.kind === "sent" ? answerIn(talk, entry.messageId) : undefined}
                     onOpenMessage={openMessage}
                     onOpenTask={openTask}
                     {...(entry.kind === "approval" ? { onAnswer: (approve: boolean) => adapter.answerApproval(sessionId, entry, approve) } : {})}
@@ -201,10 +197,10 @@ export function Conversation({
             </div>
           ))}
         </div>
-        {atEnd ? null : (
+        {feed.atEnd ? null : (
           <button
             type="button"
-            onClick={jumpToLatest}
+            onClick={feed.follow}
             className="sticky bottom-2 mx-auto block rounded-full border border-border bg-card px-3 py-1 text-xs shadow hover:bg-accent"
           >
             Jump to latest

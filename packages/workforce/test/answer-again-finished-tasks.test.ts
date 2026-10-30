@@ -220,11 +220,13 @@ describe("a user's turn hears a task that finished while it answered (FIX-2159)"
       expect(lines).toHaveLength(1);
       expect(lines[0]).toMatchObject({ requestId: respond, agentName: "eng.tasker" });
       expect(lines[0]!.text).toContain(nonce);
-      // The same request answered again, told the line.
+      // The same request answered again, told which task finished. Its result
+      // is the getTask read the built-in turn is handed, never the message (FIX-2345).
       const again = h.controls.turns.filter((turn) => turn.kind === "again");
       expect(again).toHaveLength(1);
       expect(again[0]).toMatchObject({ requestId: respond });
-      expect(again[0]!.message).toContain(lines[0]!.text);
+      expect(again[0]!.message).toContain("- t-1 (eng.tasker): completed");
+      expect(again[0]!.message).not.toContain(nonce);
       // Nothing heard it after the turn.
       expect(h.controls.turns.filter((turn) => turn.kind === "notice")).toEqual([]);
       const row = (await h.rows("alice")).find((r) => r.id === "t-1")!;
@@ -311,9 +313,9 @@ describe("a user's turn hears a task that finished while it answered (FIX-2159)"
       }
       const again = h.controls.turns.filter((turn) => turn.kind === "again");
       expect(again.map((turn) => turn.requestId)).toEqual([respond, respond]);
-      expect(again[0]!.message).toContain("(t-1)");
-      expect(again[0]!.message).not.toContain("(t-2)");
-      expect(again[1]!.message).toContain("(t-2)");
+      expect(again[0]!.message).toContain("- t-1 ");
+      expect(again[0]!.message).not.toContain("- t-2 ");
+      expect(again[1]!.message).toContain("- t-2 ");
       expect(h.controls.turns.filter((turn) => turn.kind === "notice")).toEqual([]);
     } finally {
       release();
@@ -426,22 +428,23 @@ describe("the agent flow's `answerAgain: true`", () => {
     let called = false;
     let h!: BoardHost;
     const text = (input: unknown) => JSON.stringify(input).replaceAll("\\", "");
+    const agentAnswer = mockGenerator({
+      script: [
+        { when: (input: unknown) => text(input).includes(FINISHED), then: { text: `Here is what came back: ${nonce}` } },
+        { when: () => called, then: { text: "Filed it." } },
+        {
+          when: () => {
+            called = true;
+            return true;
+          },
+          then: { toolCalls: [{ toolCallId: "call-file", toolName: "createTask", args: { goal: `Look up ${nonce}`, assignee: "eng.tasker" } }] }
+        }
+      ]
+    });
     h = bootBoardHost({
       standard: [...boardWorkers(), worker("ana", { delegates: ["eng.tasker"] }, "You hand work to eng.tasker.")],
       answerAgain: true,
-      agentAnswer: mockGenerator({
-        script: [
-          { when: (input: unknown) => text(input).includes(FINISHED), then: { text: `Here is what came back: ${nonce}` } },
-          { when: () => called, then: { text: "Filed it." } },
-          {
-            when: () => {
-              called = true;
-              return true;
-            },
-            then: { toolCalls: [{ toolCallId: "call-file", toolName: "createTask", args: { goal: `Look up ${nonce}`, assignee: "eng.tasker" } }] }
-          }
-        ]
-      }),
+      agentAnswer,
       // The reply holds open until the task it filed has ended, so the ending lands mid-turn.
       afterModelCall: async (block) => {
         if (block?.startsWith("agent-answer") !== true) return;
@@ -468,6 +471,17 @@ describe("the agent flow's `answerAgain: true`", () => {
       // Once in the session.
       const all = (await delegateLines(h, session)).filter((line) => line.text.includes(nonce) && line.agentName === "eng.tasker");
       expect(all).toHaveLength(1);
+      // The answer again read the result as the task's getTask read, not as the user's words (FIX-2345).
+      const againCall = agentAnswer.calls.find((call) => text(call.input).includes(FINISHED))!;
+      const messages = againCall.input as Array<{ role: string; content: unknown }>;
+      const [row] = await h.rows("alice");
+      const userTexts = messages.filter((m) => m.role === "user").map((m) => JSON.stringify(m.content));
+      expect(userTexts.filter((t) => t.includes(`did: Look up ${nonce}`))).toEqual([]);
+      const parts = messages.flatMap((m) => (Array.isArray(m.content) ? (m.content as any[]) : []));
+      const call = parts.find((part) => part.type === "tool-call" && part.toolName === "getTask" && part.input?.id === row!.id);
+      expect(call).toBeDefined();
+      const result = parts.find((part) => part.type === "tool-result" && part.toolCallId === call.toolCallId);
+      expect(result.output.value.task.output).toContain(`did: Look up ${nonce}`);
     } finally {
       await h.dispose();
     }

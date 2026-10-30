@@ -99,10 +99,19 @@ describe("a steer while the task waits on the work it filed", () => {
     const steerStep = { done: false };
     const noticeStep = { done: false };
     const ANSWERING = "The steps you filed for yourself have ended";
+    // The research's ending, as its notice turn reads it: the getTask read of the task, whose output is eng.tasker's (FIX-2345).
+    const HEARD = "eng.tasker did";
     const agentAnswer = mockGenerator({
       script: [
         { when: (i) => lastUser(i).includes(ANSWERING), then: { text: "The post, after the check." } },
         { when: (i) => lastUser(i).includes("You are working a step you filed for yourself"), then: { text: "checked" } },
+        // The research's turn files one too. Ahead of the [step] entry: the turn the ending woke
+        // reads its getTask read after the task's own message, the steer's step filing between them.
+        {
+          when: once(noticeStep, (i) => lastUser(i).includes(HEARD)),
+          then: { toolCalls: [{ toolCallId: "s2", toolName: "createTask", args: { goal: "[step] Check the fact", assignee: "otto", session: "new" } }] }
+        },
+        { when: (i) => lastUser(i).includes(HEARD), then: { text: "Waiting on the fact check." } },
         { when: (i) => lastUser(i).includes("[step]"), then: { text: "checked in its own session" } },
         // The steer's turn files a step in a session of its own: its request waits on it.
         {
@@ -110,12 +119,6 @@ describe("a steer while the task waits on the work it filed", () => {
           then: { toolCalls: [{ toolCallId: "s1", toolName: "createTask", args: { goal: "[step] Check the draft", assignee: "otto", session: "new" } }] }
         },
         { when: (i) => lastUser(i).includes("You were sent the messages below"), then: { text: "Waiting on the check." } },
-        // The research's turn files one too.
-        {
-          when: once(noticeStep, (i) => lastUser(i).includes("completed by eng.tasker")),
-          then: { toolCalls: [{ toolCallId: "s2", toolName: "createTask", args: { goal: "[step] Check the fact", assignee: "otto", session: "new" } }] }
-        },
-        { when: (i) => lastUser(i).includes("completed by eng.tasker"), then: { text: "Waiting on the fact check." } },
         {
           when: once(filedResearch, (i) => lastUser(i).includes("Write the post")),
           then: { toolCalls: [{ toolCallId: "c1", toolName: "createTask", args: { goal: "[hold:research] Find the fact", assignee: "eng.tasker" } }] }
@@ -169,7 +172,7 @@ describe("a steer while the task waits on the work it filed", () => {
       const at = (words: string, from = 0) => asked.findIndex((text, i) => i >= from && text.includes(words));
       const steerTurn = at("You were sent the messages below");
       const steerAnswer = at(ANSWERING, steerTurn);
-      const researchTurn = at("completed by eng.tasker");
+      const researchTurn = at(HEARD);
       // The research's turn ran only once the steer's turn had answered after its step.
       expect(steerAnswer, JSON.stringify(asked)).toBeGreaterThan(steerTurn);
       expect(researchTurn, JSON.stringify(asked)).toBeGreaterThan(steerAnswer);
@@ -178,7 +181,7 @@ describe("a steer while the task waits on the work it filed", () => {
       expect(secondSteer, JSON.stringify(asked)).toBeGreaterThanOrEqual(steerAnswer);
       // At once: the steer's turn sends it on as it answers, not at the notice's next resend.
       const answered = sentAt.find((call) => call.asked.includes(ANSWERING))!.at;
-      const heard = sentAt.find((call) => call.asked.includes("completed by eng.tasker"))!.at;
+      const heard = sentAt.find((call) => call.asked.includes(HEARD))!.at;
       expect(heard - answered).toBeLessThan(2_500);
       // And it read the steer, from the session.
       expect(sentText(agentAnswer.calls[researchTurn]!.input)).toContain("Also use the word ember.");

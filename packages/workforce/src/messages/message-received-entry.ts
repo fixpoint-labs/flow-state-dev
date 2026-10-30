@@ -43,7 +43,7 @@ import { AFTER_REPLY_CONCURRENCY } from "../conversation-board/task-settled";
 import type { WorkerInstallation } from "../workers/installation";
 import { conversationLedgerResources } from "../conversation-board/ledger";
 import { messageTurnStateSchema, RECEIVED_REPLY_OWED_STATE, RECEIVED_CALL_STATE, RECEIVED_LANDED_STATE, startTurnAtHop } from "./hop";
-import { sendOwedReply, wantsReply, oweReply } from "./owed-replies";
+import { sendOwedReply, wantsReply, oweReply, type NoAnswerReason } from "./owed-replies";
 import { carriesPass, markDelivered, storedEmitters, takeMessage } from "./delivery";
 import { MESSAGE_RECEIVED_ENTRY, RECEIVED_MESSAGE_COMPONENT, SEND_MESSAGE_TOOL } from "./keys";
 import { messageLimitsOf } from "./message-limits";
@@ -238,10 +238,18 @@ export function messageReceivedEntry(options: {
     }
   });
 
-  /** Send the reply owed to the message this request landed, if it owes one (FIX-2310): `text`, or "no answer" when it is blank. */
-  const replyOwedHere = async (ctx: Parameters<typeof sendOwedReply>[0], text: string) => {
+  /**
+   * Send the reply owed to the message this request landed, if it owes one (FIX-2310): `text`,
+   * or "no answer" for `reason` when it is blank. A turn that ran and gave
+   * none is logged: the sender hears only that nothing came back.
+   */
+  const replyOwedHere = async (ctx: Parameters<typeof sendOwedReply>[0], text: string, reason: NoAnswerReason) => {
     const owed = (ctx.request.state as Record<string, unknown> | undefined)?.[RECEIVED_REPLY_OWED_STATE];
-    if (typeof owed === "string") await sendOwedReply(ctx, options.installation, options.flowKind, owed, text);
+    if (typeof owed !== "string") return;
+    if (text.trim() === "" && reason !== "turnless") {
+      console.warn("[workforce] a reply-requested message's turn ended with no answer to send", { messageId: owed, reason, flowKind: options.flowKind });
+    }
+    await sendOwedReply(ctx, options.installation, options.flowKind, owed, text, reason);
   };
 
   // The request's output: the turn's final text, cut to a message's length
@@ -260,7 +268,7 @@ export function messageReceivedEntry(options: {
       if (state?.[RECEIVED_LANDED_STATE] !== true) return {};
       // A turnless landing answers blank: "no answer".
       const reply = options.turn === undefined ? "" : replyTextOf(input);
-      await replyOwedHere(ctx as never, reply);
+      await replyOwedHere(ctx as never, reply, options.turn === undefined ? "turnless" : "silent");
       // Landed, and nothing ran on it: no reply, not an empty one.
       if (options.turn === undefined) return { turnless: true as const };
       const call = state[RECEIVED_CALL_STATE];
@@ -290,7 +298,7 @@ export function messageReceivedEntry(options: {
     requestStateSchema: messageTurnStateSchema,
     resources: { ...workerMessagesResources },
     execute: async (error, ctx) => {
-      await replyOwedHere(ctx as never, "");
+      await replyOwedHere(ctx as never, "", "failed");
       throw error;
     }
   });
