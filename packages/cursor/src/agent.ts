@@ -74,6 +74,7 @@ import { createChildProcessResolveCursorClient } from "./child-runtime";
 import { closeOpenText, createEmitState, emitTranslatedEvent, finalizeOpenItems } from "./emit";
 import { addUsage, normalizeUsage, translateCursorMessage } from "./translate";
 import { estimateCursorCost } from "./cost";
+import { cursorWorkingDirectory } from "./workspace-alias";
 import {
   CursorAgentAbortedError,
   CursorAgentConfigError,
@@ -683,7 +684,10 @@ async function openAgent(args: {
   const resumeId = resumeIdRaw === undefined || resumeIdRaw === "" ? null : resumeIdRaw;
 
   const client = await args.resolveCursorClient(args.ctx);
-  const createOptions = mergeCreateOptions(args.agentOptions, workingDirectory);
+  // A deep directory reaches the SDK through a short link: Cursor names its
+  // state directory after the whole path, and a long one does not fit.
+  const sdkDirectory = workingDirectory === undefined ? undefined : await cursorWorkingDirectory(workingDirectory);
+  const createOptions = mergeCreateOptions(args.agentOptions, sdkDirectory);
   const agent =
     resumeId === null ? await client.create(createOptions) : await resumeAgent(client, resumeId, createOptions);
 
