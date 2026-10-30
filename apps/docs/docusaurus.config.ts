@@ -167,8 +167,8 @@ const config: Config = {
       title: "flow-state.dev",
       logo: {
         alt: "flow-state.dev logo",
-        src: "img/mark-paper.svg",
-        srcDark: "img/mark-night.svg",
+        src: "img/flow-state-paper.svg",
+        srcDark: "img/flow-state-night.svg",
       },
       items: [
         {

@@ -147,20 +147,34 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* ── The grid: the top of the page only ──
-   page.css rules the whole body, but Infima paints `html`, so the body's
-   background stops at the body's own box, one window tall, and the grid
-   ends in a hard edge a screen down. Here it covers the top 480px and
-   fades into the paper over its lower half, so it frames the top of a
-   page and is gone before the reading starts. */
+/* ── The ground: a soft glow from the top left, and the grid in the content ──
+   page.css draws the grid across the whole body. Here the body keeps only a
+   radial glow in its top-left corner, and the grid sits on the page's <main>,
+   so the navbar and sidebar stay plain. The landing page has its own ground. */
 
 body {
+  background-image: radial-gradient(circle at 0 0, color-mix(in oklab, var(--ink1) 9%, transparent), transparent 55%);
+  background-repeat: no-repeat;
+}
+
+/* The blueprint grid: a faint sheet in the top-left corner that fades out fast.
+   It sits on a pseudo-element behind the text, so the copy is never masked. */
+main:not(.fs-landing) {
+  position: relative;
+  isolation: isolate;
+}
+
+main:not(.fs-landing)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
   background-image:
-    linear-gradient(transparent 50%, var(--paper)),
     repeating-linear-gradient(var(--grid-line) 0 1px, transparent 1px 24px),
     repeating-linear-gradient(90deg, var(--grid-line) 0 1px, transparent 1px 24px);
-  background-size: 100% 480px;
-  background-repeat: no-repeat;
+  -webkit-mask-image: radial-gradient(ellipse 680px 460px at 0 0, rgba(0, 0, 0, 0.9), transparent);
+  mask-image: radial-gradient(ellipse 680px 460px at 0 0, rgba(0, 0, 0, 0.9), transparent);
 }
 
 /* ── Labels: one style for every label Docusaurus draws ── */
