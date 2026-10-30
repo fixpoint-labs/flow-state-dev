@@ -79,6 +79,11 @@ describe("what a worker is told first", () => {
       expect(tasksOnly).toContain("File one a task with createTask");
       expect(tasksOnly).toContain("- tasker (eng.tasker): Does tasks.");
       expect(system).toContain(TOOL_USE_RULE);
+      // A delegate listed only as someone to message got whole pieces of work
+      // as messages, which no board row tracks: it is marked as taking tasks.
+      expect(teammates).toContain(`- cy (eng.cy): Researches. ${DELEGATE_MARK}`);
+      expect(teammates).toContain("- bo (eng.bo): Knows colours.\n");
+      expect(teammates).toContain(DELEGATE_RULE);
     } finally {
       await h.dispose();
     }
@@ -93,34 +98,6 @@ describe("what a worker is told first", () => {
       const system = systemsOf(agentAnswer)[0]!;
       expect(system).not.toContain("File one a task with createTask");
       expect(system).toContain("filed by the workers they report to, not by you:\n- tasker (eng.tasker)");
-    } finally {
-      await h.dispose();
-    }
-  });
-
-  // A delegate listed only as someone to message got whole pieces of work as
-  // messages: the Claude Code-style lab's main session filed no task, so no
-  // row showed and nothing could be stopped or reviewed.
-  it("marks a teammate that is also its delegate as one that takes its tasks, and says work goes as a task", async () => {
-    const agentAnswer = mockGenerator({ script: [{ when: () => true, then: { text: "Hi." } }] });
-    const h = bootBoardHost({ standard: roster(), agentAnswer, judgment: mockGenerator({ script: [{ when: () => true, then: { text: "" } }] }) });
-    try {
-      await turnOf(h, "eng.ana");
-      const [teammates] = systemsOf(agentAnswer)[0]!.split("Workers that take tasks only");
-      expect(teammates).toContain(`- cy (eng.cy): Researches. ${DELEGATE_MARK}`);
-      expect(teammates).toContain("- bo (eng.bo): Knows colours.\n");
-      expect(teammates).toContain(DELEGATE_RULE);
-    } finally {
-      await h.dispose();
-    }
-  });
-
-  it("gives a worker with no messageable delegate no delegate rule", async () => {
-    const agentAnswer = mockGenerator({ script: [{ when: () => true, then: { text: "Hi." } }] });
-    const h = bootBoardHost({ standard: roster(), agentAnswer, judgment: mockGenerator({ script: [{ when: () => true, then: { text: "" } }] }) });
-    try {
-      await turnOf(h, "eng.bo");
-      const system = systemsOf(agentAnswer)[0]!;
       expect(system).not.toContain(DELEGATE_MARK);
       expect(system).not.toContain(DELEGATE_RULE);
     } finally {
