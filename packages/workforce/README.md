@@ -2214,7 +2214,7 @@ a task starts, `updateTask` can change any of its fields, its assignee included;
 cancel or a message lands. `createTask` returns once the task is stored, without waiting for it to run. Unless
 a turn waits on it with `getTask({ id, wait: true })`, the conversation hears once when the task
 ends; a waiting turn gets the answer instead. See
-[Handing out tasks](https://flow-state.dev/docs/workforce/coordinators#handing-out-tasks). On a host
+[Following a filed task](https://flow-state.dev/docs/workforce/delegating-work#following-a-filed-task). On a host
 with durable execution, an ending whose notice was lost (a crash right after the task ended) is
 heard within seconds, without anyone opening the conversation, through the session's wake.
 

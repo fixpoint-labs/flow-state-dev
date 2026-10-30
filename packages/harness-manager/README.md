@@ -177,8 +177,8 @@ On a board read from the claim:
 - **A judge, when you give one, reads the run** after the phase's own check passes, for a task
   with a goal. It is your block, typically an evaluator, handed `{ goal, answer, commits: {
   count, subjects } }` and answering `{ verdict: "done" | "not-done" | "ask", confidence,
-  reason }`. *Not done* fails the attempt and the next prompt carries the reason; *ask* holds
-  the task on the reason as a question, as a run's own question does
+  reason }`. *Not done* fails the attempt and the next prompt carries the reason; *ask* has
+  the task wait on the reason as a question, as a run's own question does
   ([Continuing a run](#continuing-a-run)). A verdict under `floor` counts as done. `confidence`
   and `floor` run from 0 to 1; a confidence outside that is not a verdict. A judge
   that fails never fails the task: it settles on the phase's check, with `judged: false`. Size
@@ -258,7 +258,7 @@ A capability claiming one of the manager's own accessors (`runs`, `harness-usage
 
 ## Continuing a run
 
-A run that needs a decision writes its question to the file its prompt names (`run.askMarkerPath`) and stops. Its task then waits on the question: it stays on its attempt, its lease is dropped, and nothing settles it or starts another run while the question is open. Its work is saved first, and the checkout is free. The Inbox lists the held task as a question, and the board's own `getTask` shows it among the task's open `questions`.
+A run that needs a decision writes its question to the file its prompt names (`run.askMarkerPath`) and stops. Its task then waits on the question: it stays on its attempt, its lease is dropped, and nothing settles it or starts another run while the question is open. Its work is saved first, and the checkout is free. The Inbox lists the waiting task as a question, and the board's own `getTask` shows it among the task's open `questions`.
 
 The answer goes through the board's `updateTask` action, naming the question, as the Inbox sends it:
 
@@ -277,7 +277,7 @@ The recorded session is the one the harness *confirmed* it was in. If the agent 
 ### Upgrading from the question inbox
 
 - The manager keeps no questions of its own. Removed: `askQuestion`, `answerQuestion`, `listQuestions`, `readQuestion`, `withdrawQuestion`, `inboxCollection`, `INBOX`, `questionTopic`, `questionFingerprint`, `parseQuestionTopic`, `HarnessRunParked` and the `QuestionAnnouncement` type. <!-- retired-name-refusal: migration note -->
-- `harnessManager({ announce })` is refused at construction. Read held tasks from the board (its rows' open questions, `openRowQuestions`) and answer with its `updateTask` action.
+- `harnessManager({ announce })` is refused at construction. Read waiting tasks from the board (its rows' open questions, `openRowQuestions`) and answer with its `updateTask` action.
 - `run.answers` reads the task's answered questions from its row.
 - `run.askMarkerPath` is `.fsdev/ask/<attempt>-<run>.md`. A phase that names a path of its own must use the one it is handed.
 - `askMarkerPath(path, attempt, run)` and `readAskMarker(path, attempt, run)` take the run.
@@ -286,9 +286,9 @@ The recorded session is the one the harness *confirmed* it was in. If the agent 
 
 `harnessManager({ ..., reviewChanges: true })` makes a user review a run's commits before its task completes. Off by default.
 
-A run's changes are the commits it made over the base its branch was cut from. A run that would complete (the judge said done, there is no judge, or the judge's verdict was under its `floor`) and has commits on its branch waits for a review. So does a run whose commit count git couldn't read; its review says the commits couldn't be read. A run with no commits completes unreviewed. A failed run fails its attempt unreviewed. A judge's confident verdicts skip the review: *not done* fails the attempt, and *ask* holds the task on a question.
+A run's changes are the commits it made over the base its branch was cut from. A run that would complete (the judge said done, there is no judge, or the judge's verdict was under its `floor`) and has commits on its branch waits for a review. So does a run whose commit count git couldn't read; its review says the commits couldn't be read. A run with no commits completes unreviewed. A failed run fails its attempt unreviewed. A judge's confident verdicts skip the review: *not done* fails the attempt, and *ask* has the task wait on a question.
 
-While it waits, the task stays `in_progress` on the same attempt and keeps its claim, and the checkout is free. The row lists the wait among its open `questions`, with `source.kind: "suspension"` and `ask.kind: "review"`, titled "Review the run's changes". Its prompt gives the commit count and up to 20 commit subjects, then the judge's verdict, confidence and reason ("No judge read this run." without one), and the line "The judge's verdict is information, not approval." The hold's data is `{ branch, commits, subjects, judge }`. The Inbox lists it as a review.
+While it waits, the task stays `in_progress` on the same attempt and keeps its claim, and the checkout is free. The row lists the wait among its open `questions`, with `source.kind: "suspension"` and `ask.kind: "review"`, titled "Review the run's changes". Its prompt gives the commit count and up to 20 commit subjects, then the judge's verdict, confidence and reason ("No judge read this run." without one), and the line "The judge's verdict is information, not approval." The review's data is `{ branch, commits, subjects, judge }`. The Inbox lists it as a review.
 
 The answer is a `HarnessReviewAnswer`, checked against `harnessReviewAnswerSchema`: `{ verdict: "accepted" }`, or `{ verdict: "revise", words }` with non-blank `words`. With the Inbox client:
 

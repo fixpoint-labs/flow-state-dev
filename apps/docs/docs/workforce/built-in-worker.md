@@ -109,7 +109,7 @@ A replacement declares `kind: "agent"`, like any other flow passed under its own
 
 A worker on this flow takes tasks with no setup. When a [coordinator](./coordinators.md), a worker that hands work to other workers called its delegates, files a task for it, the worker runs the task as one turn in a task session of its own. The worker answers with its own instructions, tools and model. The message is the task's title, goal and context. The answer is stored as the task's result, and the task completes. If the turn fails, the attempt fails.
 
-A task goes only to a worker on the filing user's roster, one your files declare or one of their own. Another user's worker is refused the way a worker nobody holds is. Filing a task, retries, and what the filing conversation hears are in [Handing out tasks](./coordinators.md#handing-out-tasks).
+A task goes only to a worker on the filing user's roster, one your files declare or one of their own. Another user's worker is refused the way a worker nobody holds is. Filing a task, retries, and what the filing conversation hears are in [Following a filed task](./delegating-work.md#following-a-filed-task).
 
 ## What a worker keeps
 

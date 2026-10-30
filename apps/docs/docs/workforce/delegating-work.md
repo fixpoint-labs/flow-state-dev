@@ -170,10 +170,6 @@ Every session of a worker that files keeps its own board: a conversation with yo
 
 A delegate that files work from the session a coordinator routed your message to answers that message once the work has ended, from the turn that hears it end, so its answer can carry what the work came back with. The tasks it filed report back to that session; its answer is what lands in your conversation with the coordinator.
 
-How a filed task runs, how the filing session hears it ended, and how to manage it from your app are on the coordinators page, under [Handing out tasks](./coordinators.md#handing-out-tasks). They work the same for every worker.
-
-The filing session hears each ending once, even if the server stops just after the task ends. On a host with durable execution, an ending whose notice didn't go out is heard within seconds, without anyone opening the conversation: about two seconds after the ending, or as soon as the server is running again. See [Hearing how a task ended](../orchestration/task-board.md#hearing-how-a-task-ended) for the guarantee and what it needs from the host.
-
 ### Where a task runs, and where its result goes
 
 Code that files on a conversation's board through the collection (`createTask` on the board's ref) can choose two more things per task:
@@ -182,6 +178,101 @@ Code that files on a conversation's board through the collection (`createTask` o
 - `resultTo`: `"filer"` (the default) means the result is for whoever filed the task. `"conversation"` marks a result that belongs to the conversation itself. Such a task runs once: it takes one attempt, any other `maxAttempts` is refused, and so is a wait on it.
 
 Both settings are for a conversation's own board. A worker filing from a task session can't use either, and the filing is refused with `setting_not_from_task_session`. A follow-up always runs in the session of the task it follows, so it takes no `session`.
+
+## Following a filed task
+
+Once a task is filed, the session that filed it hears how it ends, and your app can read it, change it before it starts, answer its questions, steer it and follow it up. The examples send the board's tools as actions on the filing session, here a conversation with a coordinator: `help` is `fsd.flow(session.flowKind)`, as in [Talking to it](./coordinators.md#talking-to-it). Filing, and what a filing is refused for, are under [Handing out tasks](./coordinators.md#handing-out-tasks).
+
+### Hearing how it went
+
+The conversation that filed a task hears once when it ends, in a line under the delegate's name:
+
+```text
+Task "Audit our dependencies' licenses" (task_…) completed by licenses: All 214 dependencies are MIT or Apache-2.0.
+```
+
+It hears when a task completes, with what came back; when it fails for good, with the error; when it stops on a question, with the question; and when it's cancelled, unless the coordinator cancelled it itself. A failure or a cancel that took dependent tasks with it names them in the same line, and they send no line of their own. When the line arrives, a coordinator that routes by `judgment` or `best-fit` takes a turn to read it and decide what to do next, such as filing a failed task again. Its model reads the ending as a `getTask` call for that task and its result, not as the line: the task whole, as `getTask_tasks` returns it, with `cancelled` naming any dependents it took with it. One that routes by `round-robin` or `everyone` has no turn of its own, so it shows the line and nothing more. If the coordinator is in the middle of a reply to you, the line starts a second turn at once, and both replies appear in the conversation, each as its own message. Every task gets two attempts, a number you can't change, and a first failure just runs it again without a word. A task whose result goes to the conversation, such as a routed task or its follow-up, gets one.
+
+The filing session hears each ending once, even if the server stops just after the task ends. On a host with durable execution, an ending whose notice didn't go out is heard within seconds, without anyone opening the conversation: about two seconds after the ending, or as soon as the server is running again. See [Hearing how a task ended](../orchestration/task-board.md#hearing-how-a-task-ended) for the guarantee and what it needs from the host.
+
+### Managing tasks
+
+| Action | What it does |
+| --- | --- |
+| `listTasks_tasks` | This conversation's tasks only, even when another conversation has the same coordinator and the same delegates |
+| `getTask_tasks` | One task whole: its brief, its fields, how it stands, its delegate's status note, and its output |
+| `createTask_tasks` | Files a task: it starts at once, after its `deps`, or, with `held: true`, when you release it |
+| `updateTask_tasks` | Before the task starts: changes any of its fields, its delegate included, holds it (`status: "held"`) or releases it (`status: "pending"`). Until it finishes: sends it a `message`, or cancels it (`status: "cancelled"`), with nothing said in the conversation |
+
+A task that has started can't be changed, only steered with a message or cancelled: `updateTask_tasks` answers `field_locked_after_start`, naming the fields. A running task keeps its delegate; to move it, cancel it and file it again. Cancelling one does land: when its delegate finishes, the result is turned away. A finished task, a failed one included, changes no more, and `updateTask_tasks` answers `task_finished`. To have someone take on a failed task, file it again (`createTask_tasks`).
+
+To open the session working a task, look it up by the task's id and the conversation's `filingSessionId`, which `listDelegates` returns:
+
+```ts
+const run = await workforce.findWorkerSession({ worker: "licenses", taskId, filingSessionId });
+```
+
+Two conversations can file a task with the same id for the same worker, and each finds only its own task's session. A lookup without `taskId` never returns a task session, so a message routed to the same worker in this conversation still lands in the session where that delegate works your messages. `ensureWorkerSession` with a `taskId` never creates a session: until the board hands the task over, it throws.
+
+### When a task stops on a question
+
+A delegate working a task sometimes can't go on without you: which region, which account, whether it may delete something. It asks you instead of guessing, with its `askQuestion` tool. The task waits on the question, nothing runs while it waits, and the question shows in your Inbox.
+
+Answer it from the Inbox, or by typing the answer in the task's session: a line there answers the task's oldest open question. An app answers with the board's `updateTask` action, naming the question (`getTask_tasks` lists it under `questions`):
+
+```ts
+await help.send(
+  "updateTask_tasks",
+  { id: taskId, answers: questionId, message: "Use eu-west." },
+  { sessionId: session.id },
+)
+```
+
+The worker that filed the task, here the coordinator, can answer a question its delegate asked midway, with its `updateTask` tool; it hears the question [as a message](./messaging-workers.md#when-a-task-asks-a-question). It answers a question only when the task runs in a session of its own. When the task runs in the delegate's ongoing session, you answer it. The first answer wins; a later one is kept as an ordinary message to the task. The task takes one more turn in its own task session, the one that asked, on the same attempt, with everything it did before and your answer. When it finishes, the conversation hears that.
+
+An answer doesn't use up the task's retries, and the task can ask again. It has started, so it can't be reassigned. A question waits for as long as it takes, unless your host sets a deadline for the user's answer; cancel the task if nobody will answer. A delegate can also stop for your approval or your review of its work, with its `waitForUser` tool; that shows in your Inbox as well, and only you answer it there. See [A task waiting on a user](../orchestration/task-board.md#a-task-waiting-on-a-user).
+
+### Steering a task while it runs
+
+Changed your mind, or forgot a detail? Send the task a message. It's kept on the task and reaches its delegate's work without starting over or using a retry:
+
+```ts
+await help.send(
+  "updateTask_tasks",
+  { id: taskId, message: "Also flag anything under AGPL." },
+  { sessionId: session.id },
+)
+```
+
+A task that hasn't started gets every message in its brief. A running one takes it before its delegate's next model call. A task waiting on work it handed on gets a turn with the message right away. And a message that lands just after the delegate's last model call gets one more turn before the task finishes. The conversation hears one ending, after that turn. See [Sending a message to an open task](../orchestration/task-board.md#sending-a-message-to-an-open-task) for the rules.
+
+Typing in the task's own session does the same. For a worker on the built-in `agent` flow, or a coding worker built on a [harness manager](../orchestration/harness-manager.md#talking-to-a-run), a line there while the task is unfinished is a message to the task, and no separate reply runs:
+
+```ts
+const run = await workforce.findWorkerSession({ worker: "licenses", taskId, filingSessionId })
+await fsd.flow(run.flowKind).send("respond", { message: "Also flag anything under AGPL." }, { sessionId: run.id })
+// output: { steered: <the task's id> }
+```
+
+### After a task finishes
+
+A finished task's session stays open, and the task stays as it ended. A line in that session is an ordinary turn: the worker answers from everything the session holds, and the task, its output and its retries don't change. A worker flow you build yourself handles the line however its `respond` action does.
+
+A finished task takes no message: `updateTask_tasks` answers `task_finished`. To correct or build on the work, file a follow-up task that names it:
+
+```ts
+await help.send(
+  "createTask_tasks",
+  { goal: "Now write it up for the team", followUpOf: taskId },
+  { sessionId: session.id },
+)
+```
+
+The follow-up is a new task with its own id, and the conversation hears how it ends. It runs in the same session as the task it follows, with the same worker, so it starts from everything that session already knows. A routed task's follow-up runs where the routed task ran: the delegate's session for this conversation, or the workstream's session. Its answer lands the way the routed task's did, as the delegate's line. If that session is gone, the follow-up fails and the conversation hears it. Once it completes, `getTask_tasks` on the original shows the follow-up's output as `current`, beside the original's own output, which never changes. It keeps that worker: it can't be reassigned. You can file it while the task it follows is still running. A session works one task at a time, so the follow-up waits, unstarted, until that task ends, and then runs. `createTask` refuses the follow-up, filing nothing, if the task it names never ran with a worker, or if you pass an `assignee`, a `session`, a `target` or a `resultTo`:
+
+```json
+{ "ok": false, "error": "follow_up_of_unrun: task \"task_…\" never ran with a worker, so there is no session to follow up in. Nothing was filed." }
+```
 
 ## Showing a user's boards in your app
 
@@ -339,11 +430,11 @@ const woken = await backfillBoardWakes(runtime.stores, {
 
 It returns how many sessions it woke, and `0` on a store that keeps no wakes. Running it again is safe. A Shift Manager Lab runs it for you when it starts.
 
-A split task stored by an earlier version reads as `in_progress` with `keptOpenBy: "filed"`. It settles like any split task: after the worker's turn on its last piece's ending, once nothing else holds it.
+A split task stored by an earlier version reads as `in_progress` with `keptOpenBy: "filed"`. It settles like any split task: after the worker's turn on its last piece's ending, once nothing else keeps it open.
 
 ## Related pages
 
-- [Coordinators](./coordinators.md): a worker that hands each post to its delegates, and how a filed task runs and reports back.
+- [Coordinators](./coordinators.md): a worker that hands each message to its delegates as routed tasks.
 - [Messaging other workers](./messaging-workers.md): asking another worker something without filing a task.
 - [Workers on disk](./workers-on-disk.md): `WORKER.md`, worker flows and `hireWorkforce`.
 - [Task board](../orchestration/task-board.md): the board and the task tools underneath.

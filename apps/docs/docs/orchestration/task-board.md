@@ -665,7 +665,7 @@ The answer is kept on the task as one of its messages, from the user, so it coun
 
 A question has no deadline unless the host sets [`userDeadlineMs`](/docs/configuration/runtime#createflowstate-fields). Then, on the board's first touch past it, the question closes with "No answer came before this question's deadline. Go on from your brief without it." and the work goes on as if it had been answered.
 
-A line the user types into a held task's session answers its oldest open question. A confirm is never answered that way: it takes a yes or a no. With no question open, the line is a message to the task as usual.
+A line the user types into a waiting task's session answers its oldest open question. A confirm is never answered that way: it takes a yes or a no. With no question open, the line is a message to the task as usual.
 
 While its questions are open, a task settles only by a cancel, which closes every question; an answer closes its own question and the work goes on. A turn waits once. A worker that asks midway while its run waits for the user is refused: the call is declined `held`, and nothing is asked. A run that stops for the user while its own questions are open resumes at once with `{ cancelled: true }`. Between a model's own tools the first to start waiting wins: `askQuestion` and `waitForUser` called in the same step open one wait, and the other comes back as a tool error naming it.
 
@@ -871,7 +871,7 @@ A model asks with its `waitForUser({ kind, prompt })` tool, an approval or a rev
 
 A message sent into a task while it waits on an approval or a review doesn't answer it.
 
-Each later request for the task in that session checks it again, and the one after which nothing holds it settles it. A stopped run resumes on the same attempt and settles when the resumed request's work is over. A request that throws fails the attempt.
+Each later request for the task in that session checks it again, and the one after which nothing keeps it open settles it. A stopped run resumes on the same attempt and settles when the resumed request's work is over. A request that throws fails the attempt.
 
 Anything else that runs in that session, such as a message another worker sent it, doesn't keep the task open and isn't part of it. While the task's turn is running, it runs after that turn. It can't write to the task, and if it fails, the task's result stands. To change work that's still running, [send the task a message](#sending-a-message-to-an-open-task) instead.
 
@@ -971,7 +971,7 @@ The in-process runner applies that policy, and so do queue workers that share a 
 
 A task keeps its session for its whole life. If its worker [asks a question](#a-tasks-questions), the answer brings it back to that same session for its next turn, so it carries on with everything it did before. When the task is done, the session stays open, and the task stays as it ended.
 
-To correct or extend a finished task, add a follow-up task with `followUpOf`. A follow-up runs in the same session when the assignee dispatches `per-task` or the task is on a Workforce conversation's board. A `key` policy decides for itself, and the worker input carries `followUpOf` for it to key by. The original's output never changes: `getTask` on it shows the latest completed follow-up as `current`, with that follow-up's output, and `listTasks` names it by id. On a Workforce conversation's board, a line typed in a finished task's session is [answered from the session](../workforce/coordinators.md#after-a-task-finishes) and changes nothing.
+To correct or extend a finished task, add a follow-up task with `followUpOf`. A follow-up runs in the same session when the assignee dispatches `per-task` or the task is on a Workforce conversation's board. A `key` policy decides for itself, and the worker input carries `followUpOf` for it to key by. The original's output never changes: `getTask` on it shows the latest completed follow-up as `current`, with that follow-up's output, and `listTasks` names it by id. On a Workforce conversation's board, a line typed in a finished task's session is [answered from the session](../workforce/delegating-work.md#after-a-task-finishes) and changes nothing.
 
 ### Sending a task to a flow chosen per task
 
