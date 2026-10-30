@@ -10,7 +10,7 @@
  * about 240 characters before the root is counted.
  *
  * So a directory whose flattened name would not fit is handed to the SDK
- * through a short link instead: `<tmpdir>/fsd-cursor/<digest of the path>`,
+ * through a short link instead: `<tmpdir>/fsd-cursor-<uid>/<digest of the path>`,
  * pointing at the real directory. The agent's files and commits land in the
  * real directory; only the name the SDK flattens is short. The link's name is a
  * function of the path, so a resumed agent is handed the same link its first
@@ -18,7 +18,7 @@
  * is handed over as it is, so its state stays where it always was.
  */
 import { createHash } from "node:crypto";
-import { mkdir, readlink, symlink, unlink } from "node:fs/promises";
+import { lstat, mkdir, readlink, symlink, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -42,9 +42,8 @@ export async function cursorWorkingDirectory(cwd: string): Promise<string> {
   if (cursorProjectName(cwd).length <= CURSOR_PROJECT_NAME_LIMIT) return cwd;
 
   const target = resolve(cwd);
-  const root = join(tmpdir(), "fsd-cursor");
+  const root = await ownLinkRoot();
   const link = join(root, createHash("sha256").update(target).digest("hex").slice(0, 16));
-  await mkdir(root, { recursive: true });
   try {
     // `junction` is Windows' directory link that needs no privilege; the type
     // is ignored everywhere else.
@@ -59,4 +58,29 @@ export async function cursorWorkingDirectory(cwd: string): Promise<string> {
     }
   }
   return link;
+}
+
+/**
+ * This OS user's own folder of links, private to it.
+ *
+ * `tmpdir()` is often one `/tmp` shared by every account on the machine. A
+ * folder there that another account made (first, or on purpose) would refuse
+ * this one's links, or let that account repoint a link at a directory of its
+ * choosing and have the agent write there. So each account gets its own,
+ * made `0700`, and one this account does not own is refused.
+ */
+async function ownLinkRoot(): Promise<string> {
+  const uid = process.getuid?.();
+  const root = join(tmpdir(), uid === undefined ? "fsd-cursor" : `fsd-cursor-${uid}`);
+  await mkdir(root, { recursive: true, mode: 0o700 });
+  if (uid !== undefined) {
+    const stat = await lstat(root);
+    if (!stat.isDirectory() || stat.uid !== uid || (stat.mode & 0o077) !== 0) {
+      throw new Error(
+        `[cursor] ${root} holds the short links deep working directories reach Cursor through, ` +
+          "and it is not a private directory this user owns. Remove it and run again.",
+      );
+    }
+  }
+  return root;
 }
