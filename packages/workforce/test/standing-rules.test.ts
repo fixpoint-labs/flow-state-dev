@@ -41,6 +41,8 @@ function scripted(name: string): MockGeneratorInstance {
     reset: () => undefined,
     next: (messages: Array<{ role: string; content: unknown }>, state: { toolResults: unknown[] }) => {
       if (state.toolResults.length > 0) return { text: "done" };
+      // A turn a task's ending woke reads it as a getTask result, after the earlier user message.
+      if (messages.at(-1)?.role === "tool") return { text: "ok" };
       const calls = [...lastUser(messages).matchAll(/call (\S+) (\{[^;]*\})/g)];
       if (calls.length === 0) return { text: "ok" };
       return {

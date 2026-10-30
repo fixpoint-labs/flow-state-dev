@@ -83,6 +83,7 @@ import { WORKER_TASK_ENTRY } from "./worker-task-entry";
 import { RESPOND_ACTION } from "./worker-door";
 import { declareBuiltInRoles } from "./worker-roles";
 import { routedTaskHistory } from "./coordinator/routed-brief";
+import { withTaskEndingReads } from "./conversation-board/task-ending-read";
 import { workerTaskEntry } from "./conversation-board/task-entry";
 import { defineSessionBoard, type SessionBoard } from "./conversation-board/session-board";
 import { REPLY_CONCURRENCY } from "./conversation-board/task-settled";
@@ -1173,7 +1174,9 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
         if ((own === undefined || own.length === 0) && extra.length === 0) return named;
         return [...named, ...(own ?? []), ...extra];
       },
-      user: (input) => input.message,
+      // A task's ending this request heard reads as getTask's result, before
+      // the message or in its place (FIX-2345).
+      user: (input, ctx) => withTaskEndingReads(input.message, ctx),
       // A worker still looking things up when its steps run out answers with
       // what it found, rather than ending its turn with nothing said: a sender
       // waiting on its reply would otherwise hear "no answer" (FIX-2347).

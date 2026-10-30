@@ -130,6 +130,8 @@ export {
   createReportProgress,
   type ReportProgressOptions,
   STATUS_NOTE_LIMIT,
+  // One task as getTask reads it, for a turn handed a task's ending as that read (FIX-2345).
+  readTaskView,
 } from "./task-tools-capability";
 
 // How a running request takes a steer, and the words a steer is shown in (FIX-2086).

@@ -190,6 +190,83 @@ function readable(value: unknown): { value: unknown; cut: boolean } {
   return { value: text.slice(0, READ_OUTPUT_LIMIT), cut: true };
 }
 
+/**
+ * What a running task waits on while no worker holds it (FIX-2077's
+ * `keptOpenBy`), and what holds it for the user (FIX-2133): its open holds.
+ */
+function waitingOf(t: Task) {
+  const open = openQuestions(t);
+  return {
+    ...(t.keptOpenBy != null && t.status === "in_progress" ? { keptOpenBy: t.keptOpenBy } : {}),
+    ...(open.length > 0 ? { questions: open } : {}),
+  };
+}
+
+/**
+ * One task as `getTask` reads it: every field it returns, with its input,
+ * output and metadata each cut to {@link READ_OUTPUT_LIMIT} and flagged when
+ * cut. `rows` is the board it is on, read for the latest completed follow-up
+ * in its chain (`current`). A read built here is the same read the tool
+ * returns, so a framework that hands a model a task's ending as a `getTask`
+ * result (workforce's woken turn, FIX-2345) shows the shape the tool would.
+ */
+export function readTaskView(t: Task, rows: readonly Task[]) {
+  const taskInput = t.input === undefined ? undefined : readable(t.input);
+  const output = t.output === undefined ? undefined : readable(t.output);
+  const metadata = t.metadata === undefined ? undefined : readable(t.metadata);
+  const current = currentFor(t, latestCompletedByRoot(rows).get(t.followUpOf ?? t.id));
+  const currentOutput = current?.output === undefined ? undefined : readable(current.output);
+  return {
+    id: t.id,
+    goal: t.goal,
+    ...(t.title !== undefined ? { title: t.title } : {}),
+    status: t.status,
+    ...(t.assignee !== undefined ? { assignee: t.assignee } : {}),
+    ...(t.context !== undefined ? { context: t.context } : {}),
+    ...(t.deps !== undefined ? { deps: t.deps } : {}),
+    ...(t.priority !== undefined ? { priority: t.priority } : {}),
+    ...(t.labels !== undefined ? { labels: t.labels } : {}),
+    ...(metadata !== undefined ? { metadata: metadata.value, ...(metadata.cut ? { metadataCut: true as const } : {}) } : {}),
+    attempts: t.attempts,
+    ...(t.maxAttempts !== undefined ? { maxAttempts: t.maxAttempts } : {}),
+    ...(t.session !== undefined ? { session: t.session } : {}),
+    ...(t.resultTo !== undefined ? { resultTo: t.resultTo } : {}),
+    ...(t.target !== undefined ? { target: t.target } : {}),
+    ...(taskInput !== undefined ? { input: taskInput.value, ...(taskInput.cut ? { inputCut: true as const } : {}) } : {}),
+    ...(output !== undefined ? { output: output.value, ...(output.cut ? { outputCut: true as const } : {}) } : {}),
+    ...(t.checkpointed === true ? { checkpoint: true as const } : {}),
+    ...(t.statusNote !== undefined ? { statusNote: t.statusNote } : {}),
+    ...(t.error !== undefined ? { error: t.error } : {}),
+    ...waitingOf(t),
+    ...(t.followUpOf !== undefined ? { followUpOf: t.followUpOf } : {}),
+    ...(t.filedByTask !== undefined ? { filedByTask: t.filedByTask } : {}),
+    ...(t.run != null ? { run: t.run } : {}),
+    ...(t.completedAt != null ? { completedAt: t.completedAt } : {}),
+    ...(t.steers !== undefined && t.steers.length > 0
+      ? {
+          steers: t.steers.map((steer) => ({
+            message: steer.message,
+            from: steer.from,
+            ...(steer.by !== undefined ? { by: steer.by } : {}),
+            at: steer.at,
+            ...(steer.answers !== undefined ? { answers: steer.answers } : {}),
+            taken: steer.takenBy === t.attempts,
+          })),
+        }
+      : {}),
+    ...(current !== undefined
+      ? {
+          current: {
+            id: current.id,
+            ...(currentOutput !== undefined
+              ? { output: currentOutput.value, ...(currentOutput.cut ? { outputCut: true as const } : {}) }
+              : {}),
+          },
+        }
+      : {}),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Assignee validation (FIX-924)
 // ---------------------------------------------------------------------------
@@ -1582,13 +1659,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     /** What the task waits on now, oldest first; absent when nothing does. Answer a question with `updateTask({ id, answers, message })`. */
     questions: z.array(taskQuestionSchema).optional(),
   };
-  const waitingOf = (t: Task) => {
-    const open = openQuestions(t);
-    return {
-      ...(t.keptOpenBy != null && t.status === "in_progress" ? { keptOpenBy: t.keptOpenBy } : {}),
-      ...(open.length > 0 ? { questions: open } : {}),
-    };
-  };
 
   const listTasks = defineTool({
     name: named("listTasks"),
@@ -1859,62 +1929,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         }
         cancelled = cancelledDependents(t, collection.list(), collection.filerOf?.bind(collection));
       }
-      const taskInput = t.input === undefined ? undefined : readable(t.input);
-      const output = t.output === undefined ? undefined : readable(t.output);
-      const metadata = t.metadata === undefined ? undefined : readable(t.metadata);
-      const current = currentFor(t, latestCompletedByRoot(collection.list()).get(t.followUpOf ?? t.id));
-      const currentOutput = current?.output === undefined ? undefined : readable(current.output);
       return {
         ok: true as const,
-        task: {
-          id: t.id,
-          goal: t.goal,
-          ...(t.title !== undefined ? { title: t.title } : {}),
-          status: t.status,
-          ...(t.assignee !== undefined ? { assignee: t.assignee } : {}),
-          ...(t.context !== undefined ? { context: t.context } : {}),
-          ...(t.deps !== undefined ? { deps: t.deps } : {}),
-          ...(t.priority !== undefined ? { priority: t.priority } : {}),
-          ...(t.labels !== undefined ? { labels: t.labels } : {}),
-          ...(metadata !== undefined ? { metadata: metadata.value, ...(metadata.cut ? { metadataCut: true as const } : {}) } : {}),
-          attempts: t.attempts,
-          ...(t.maxAttempts !== undefined ? { maxAttempts: t.maxAttempts } : {}),
-          ...(t.session !== undefined ? { session: t.session } : {}),
-          ...(t.resultTo !== undefined ? { resultTo: t.resultTo } : {}),
-          ...(t.target !== undefined ? { target: t.target } : {}),
-          ...(taskInput !== undefined ? { input: taskInput.value, ...(taskInput.cut ? { inputCut: true as const } : {}) } : {}),
-          ...(output !== undefined ? { output: output.value, ...(output.cut ? { outputCut: true as const } : {}) } : {}),
-          ...(t.checkpointed === true ? { checkpoint: true as const } : {}),
-          ...(t.statusNote !== undefined ? { statusNote: t.statusNote } : {}),
-          ...(t.error !== undefined ? { error: t.error } : {}),
-          ...waitingOf(t),
-          ...(t.followUpOf !== undefined ? { followUpOf: t.followUpOf } : {}),
-          ...(t.filedByTask !== undefined ? { filedByTask: t.filedByTask } : {}),
-          ...(t.run != null ? { run: t.run } : {}),
-          ...(t.completedAt != null ? { completedAt: t.completedAt } : {}),
-          ...(t.steers !== undefined && t.steers.length > 0
-            ? {
-                steers: t.steers.map((steer) => ({
-                  message: steer.message,
-                  from: steer.from,
-                  ...(steer.by !== undefined ? { by: steer.by } : {}),
-                  at: steer.at,
-                  ...(steer.answers !== undefined ? { answers: steer.answers } : {}),
-                  taken: steer.takenBy === t.attempts,
-                })),
-              }
-            : {}),
-          ...(current !== undefined
-            ? {
-                current: {
-                  id: current.id,
-                  ...(currentOutput !== undefined
-                    ? { output: currentOutput.value, ...(currentOutput.cut ? { outputCut: true as const } : {}) }
-                    : {}),
-                },
-              }
-            : {}),
-        },
+        task: readTaskView(t, collection.list()),
         ...(cancelled.length > 0 ? { cancelled } : {}),
       };
     },

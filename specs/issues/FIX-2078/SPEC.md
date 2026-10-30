@@ -125,7 +125,9 @@ the sweeper fires it again. A debt that can't be paid ends, so every wake clears
 
 - **The notice's dedupe** by task, attempt and ending, and the 32-notice cap per conversation.
 - **What Workforce does with an ending:** a line under the delegate's name, or a woken judgment
-  turn. Posts keep `onPostSettled` until FIX-2083; a question's park notice stays until FIX-2058.
+  turn. *Amended after merge* ([FIX-2345](https://linear.app/fixpoint-labs/issue/FIX-2345)): the
+  woken turn reads the ending as a `getTask` call and its result for the task, the row in full,
+  not as a user's message holding the line's cut summary; the line stays as it is. Posts keep `onPostSettled` until FIX-2083; a question's park notice stays until FIX-2058.
 - **The engine's `errorCapture`** for failed requests, and the reporter holding a task session's
   failures for the task's ending ([(f)](../../epics/FIX-2056/DECISIONS.md#f)).
 - **The entry name `runTaskBoard`**, until FIX-2084 names it `dispatch`.
