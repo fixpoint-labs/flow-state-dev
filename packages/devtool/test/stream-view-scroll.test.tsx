@@ -114,6 +114,13 @@ describe("StreamView — where it opens, and how it follows", () => {
     expect(scrolls).toEqual([]);
     expect(el.scrollTop).toBe(20 * 200 - 500);
 
+    // The arrow for what arrived below is the hook's own test (useJumpToLatest.test.ts). Here the
+    // reader moves up a little, which shows it without leaning on happy-dom's MutationObserver:
+    // it holds its record callback in a WeakRef, so a collection mid-test can silence it.
+    act(() => {
+      el.scrollTop = 20 * 200 - 600;
+      el.dispatchEvent(new Event("scroll"));
+    });
     fireEvent.click(within(el).getByRole("button", { name: "Jump to latest" }));
     expect(scrolls).toEqual(["smooth"]);
     expect(el.scrollTop).toBe(21 * 200 - 500);
@@ -130,7 +137,7 @@ describe("StreamView — where it opens, and how it follows", () => {
     el.scrollTop = 400;
     el.dispatchEvent(new Event("scroll"));
     scrolls.length = 0;
-    rerender(view(groups, 1));
+    // The request lands in the same render as the send: the jump alone reaches it.
     rerender(view([...groups, group(20)], 1));
     await settle();
     expect(scrolls.length).toBeGreaterThan(0);
