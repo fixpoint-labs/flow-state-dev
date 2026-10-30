@@ -25,7 +25,7 @@ const worker = (id: string, declared: Record<string, unknown>, body = "", teamNa
 });
 
 const roster = (): WorkerManifest[] => [
-  worker("eng.ana", { name: "Ana", description: "Runs the team's work with you." }, "Ana's own instructions.", "Engineering"),
+  worker("eng.ana", { name: "Ana", description: "Runs the team's work with you.", delegates: ["eng.tasker"] }, "Ana's own instructions.", "Engineering"),
   worker("eng.bo", { description: "Knows colours." }, "You help.", "Engineering"),
   worker("eng.tasker", { flow: "tasker", description: "Does tasks." }, "", "Engineering")
 ];
@@ -77,6 +77,20 @@ describe("what a worker is told first", () => {
       expect(tasksOnly).toContain("File one a task with createTask");
       expect(tasksOnly).toContain("- tasker (eng.tasker): Does tasks.");
       expect(system).toContain(TOOL_USE_RULE);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("never tells a worker to file a task for a task-only worker that isn't its delegate", async () => {
+    const agentAnswer = mockGenerator({ script: [{ when: () => true, then: { text: "Hi." } }] });
+    const h = bootBoardHost({ standard: roster(), agentAnswer, judgment: mockGenerator({ script: [{ when: () => true, then: { text: "" } }] }) });
+    try {
+      // bo lists no delegates: the board would refuse its task for tasker.
+      await turnOf(h, "eng.bo");
+      const system = systemsOf(agentAnswer)[0]!;
+      expect(system).not.toContain("File one a task with createTask");
+      expect(system).toContain("filed by the workers they report to, not by you:\n- tasker (eng.tasker)");
     } finally {
       await h.dispose();
     }

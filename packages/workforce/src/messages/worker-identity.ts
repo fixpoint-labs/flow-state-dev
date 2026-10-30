@@ -54,12 +54,24 @@ export async function workerIdentityPrompt(ctx: BlockContext, installation: Work
       ? "No other worker on your roster can be messaged now."
       : `Your teammates, read from your roster this turn (asked who they are, answer from this list), whom you can message with ${SEND_MESSAGE_TOOL} by id:\n${messageable.map(entry).join("\n")}`
   );
+  // Only a worker's delegates take its tasks (the board checks an assignee
+  // against them), so only they are named as ones to file a task with.
   // `createTask` unsuffixed: Workforce's conversation board mounts the task
   // tools with no `nameSuffix`, so a worker on this flow always sees that name.
-  if (taskOnly.length > 0) {
+  const delegates = me.delegates;
+  const isDelegate = (worker: (typeof taskOnly)[number]) => delegates === "all" || delegates.includes(worker.id);
+  const fileable = taskOnly.filter(isDelegate);
+  const others = taskOnly.filter((worker) => !isDelegate(worker));
+  if (fileable.length > 0) {
     lines.push(
       "",
-      `Workers that take tasks only, not messages. File one a task with createTask, its id as the assignee:\n${taskOnly.map(entry).join("\n")}`
+      `Workers that take tasks only, not messages. File one a task with createTask, its id as the assignee:\n${fileable.map(entry).join("\n")}`
+    );
+  }
+  if (others.length > 0) {
+    lines.push(
+      "",
+      `Workers that take tasks only, not messages, filed by the workers they report to, not by you:\n${others.map(entry).join("\n")}`
     );
   }
   lines.push("", TOOL_USE_RULE);
