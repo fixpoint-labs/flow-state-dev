@@ -52,9 +52,9 @@ item under *Background* show the task, tagged with the agent it runs on (and the
 run reports one), and open its run in a popup. The result lands in Chief of Staff's conversation as
 the coding task's line, *Coding task finished: …*. To change a coding task, tell Chief of Staff, who starts the next one.
 
-A coding task's popup says *Starting on Codex…* from the moment the task is filed. Once it ends,
-the result is at the top, with the run under it in plain steps: what the agent wrote, as text,
-and what it did, such as *Read …/src/session-feed.ts*, *Edit README.md* or the command it ran.
+A coding task's popup says *Starting on Codex…* from the moment the task is filed. Once the run
+starts, its steps show as they happen, and once it ends, the result is at the top, above them. The
+steps are plain: what the agent wrote, as text, and what it did, such as *Read …/src/session-feed.ts*, *Edit README.md* or the command it ran.
 A run of steps folds into one line, *Ran 3 commands and edited a file*, that opens to each one.
 The steps read the same on all three agents, though each names its tools its own way. A Claude
 Code run loads the working folder's own Claude Code settings and `CLAUDE.md`, never this
