@@ -174,11 +174,26 @@ describe("the teammates screen", () => {
     expect(document.body.textContent).not.toMatch(/project/i);
 
     // The result lands as the coding task's, never a teammate's, and Chief of Staff's next line uses it.
-    expect(await within(conversation()).findByRole("region", { name: "From the coding task" }, { timeout: 2000 })).toBeTruthy();
-    expect(within(conversation()).queryByRole("region", { name: "From Cursor" })).toBeNull();
+    expect(await within(conversation()).findByRole("button", { name: "Coding task finished: Fix the typo in the README's first line" }, { timeout: 2000 })).toBeTruthy();
+    expect(within(conversation()).queryByRole("button", { name: /^Cursor finished/ })).toBeNull();
     expect(tile.querySelector("[data-task-status]")?.textContent).toBe("done");
     expect(await within(conversation()).findByText(/The coding task is done: "Fixed the typo in README.md, line 1\."/, {}, { timeout: 2000 })).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/project/i);
+  });
+
+  it("brings a finished task back as one collapsed line that opens the task, with the filer's own reply expanded under it", async () => {
+    render(<App adapter={fast()} />);
+    await tell("Chief of Staff", "Fix the typo in the README's first line.");
+    const back = await within(conversation()).findByRole("button", { name: "Coding task finished: Fix the typo in the README's first line" }, { timeout: 2000 });
+    // Collapsed: one line, never the result drawn as a block in the thread.
+    expect(within(conversation()).queryByRole("region", { name: /^From the coding task/ })).toBeNull();
+    expect(back.closest("section")).toBeNull();
+    // Chief of Staff's own reply stays expanded, as its answer.
+    expect(await within(conversation()).findByText(/The coding task is done: "Fixed the typo in README.md, line 1\."/, {}, { timeout: 2000 })).toBeTruthy();
+    // The line opens the task, where the whole result is.
+    fireEvent.click(back);
+    const popup = await screen.findByRole("dialog", { name: "Coding task: Fix the typo in the README's first line" });
+    expect(within(popup).getByRole("region", { name: "Result" }).textContent).toBe("Fixed the typo in README.md, line 1.");
   });
 
   it("opens a coding task's run in a popup, read only, from its line in the thread or its background item", async () => {
@@ -281,7 +296,7 @@ describe("the teammates screen", () => {
     const line = entries("task")[0] as HTMLElement;
     await waitFor(() => expect(line.querySelector("[data-task-status]")?.textContent).toBe("failed"), { timeout: 2000 });
     expect(line.querySelector("[data-harness]")?.textContent).toBe("Cursor");
-    const result = await within(conversation()).findByRole("region", { name: "From the coding task" }, { timeout: 2000 });
+    const result = await within(conversation()).findByRole("button", { name: "Coding task couldn't finish: Fix the typo in the README's first line" }, { timeout: 2000 });
     expect(result.textContent).toMatch(/Cursor isn't set up on this machine/);
     // No other harness took it: one task, on Cursor, and no run.
     expect(entries("task")).toHaveLength(1);
@@ -333,7 +348,7 @@ describe("the teammates screen", () => {
     await tell("Chief of Staff", "Fix the typo in the README's first line.");
     // The answer streams in and a task card lands, below the reader.
     await within(conversation()).findByText(/its card shows here\./, {}, { timeout: 2000 });
-    await within(conversation()).findByRole("button", { name: /Coding task/ });
+    await within(conversation()).findByRole("button", { name: /^Coding task: / });
     expect(conversation().querySelector("[data-scroller]")).toBe(scroller);
     expect(scrolls).toEqual([]);
     expect(scroller.scrollTop).toBe(1200);

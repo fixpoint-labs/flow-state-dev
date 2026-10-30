@@ -276,7 +276,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       w.entries = w.entries.map((e) => (e.id === job.entryId && e.kind === "user" ? { ...e, queued: false } : e));
     } else if (job.kind === "result") {
       const { task } = job;
-      w.entries = [...w.entries, { kind: "result", id: nextId("r"), taskId: task.id, from: task.to, text: task.result ?? "" }];
+      w.entries = [...w.entries, { kind: "result", id: nextId("r"), taskId: task.id, from: task.to, text: task.result ?? "", title: task.title, ...(task.status === "failed" ? { failed: true } : {}) }];
     } else {
       const { message } = job;
       w.entries = [...w.entries, { kind: "received", id: nextId("r"), messageId: message.id, from: message.from, text: message.text, inReplyTo: message.inReplyTo }];

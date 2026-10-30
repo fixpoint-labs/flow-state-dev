@@ -539,10 +539,12 @@ await runGoal(async (failures, tell_) => {
       if (!/Claude Code/.test(runText ?? "")) fail("5", `the run's steps don't show it ran on Claude Code: "${(runText ?? "").slice(0, 200)}"`);
       await page.keyboard.press("Escape");
 
-      const result = await readUntil(page, (es) => es.some((e, i) => i > fixAt(es) && e.kind === "result" && e.label === "From the coding task"), 60_000);
-      const resultAt = result.entries.map((e) => e.kind === "result" && e.label === "From the coding task").lastIndexOf(true);
+      // The ending lands as one line, "Coding task finished: …", that opens the task.
+      const isCodingEnd = (e: { kind: string; label: string }) => e.kind === "result" && /^Coding task (finished|couldn't finish)/.test(e.label);
+      const result = await readUntil(page, (es) => es.some((e, i) => i > fixAt(es) && isCodingEnd(e)), 60_000);
+      const resultAt = result.entries.map(isCodingEnd).lastIndexOf(true);
       if (resultAt < 0 || resultAt < fixAt(result.entries)) fail("5", "the result never landed in lead's conversation as the coding task's");
-      else if (/task failed/i.test(result.entries[resultAt]!.text)) fail("5", `the coding task's last result is a failure: "${result.entries[resultAt]!.text}"`);
+      else if (/^Coding task couldn't finish/.test(result.entries[resultAt]!.label)) fail("5", `the coding task's last result is a failure: "${result.entries[resultAt]!.text}"`);
     }
     // The disk: the checkout untouched, one worktree of it with one commit that fixes the first line only.
     const after = diskOf(checkout);

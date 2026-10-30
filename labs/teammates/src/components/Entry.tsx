@@ -10,8 +10,9 @@ import { AgentMarkdown } from "./flow-state/message-response";
  * One entry of a conversation. Your lines sit on the right; the worker's
  * answers on the left. A message the worker sent another worker is one line,
  * "Messaged researcher", that opens the exchange in a popup; a message it
- * received, or a task it filed coming back, lands under the sender's name,
- * and a task's result opens that task's popup. A worker's text is
+ * received lands under the sender's name. A task it filed coming back is one
+ * line, "researcher finished: …", that opens the task's popup, where its
+ * result is; a routed answer, which names no task, is shown as said. A worker's text is
  * Markdown; your own lines are shown as typed. A worker that waits for your
  * yes (`waitForUser` with an approval) is a card with Approve and Deny until
  * you answer. Memoized: a streamed chunk redraws only the entry that changed.
@@ -77,6 +78,16 @@ export const Entry = memo(function Entry({
     case "result": {
       // A coding task's result is the task's, not a teammate's.
       const from = isCoding(entry.from) ? "the coding task" : nameOf(entry.from);
+      if (entry.taskId !== "" && onOpenTask) {
+        return (
+          <ResultLine
+            who={isCoding(entry.from) ? "Coding task" : nameOf(entry.from)}
+            look={isCoding(entry.from) ? undefined : lookOf(entry.from)}
+            entry={entry}
+            onOpen={() => onOpenTask(entry.taskId)}
+          />
+        );
+      }
       return (
         <section aria-label={`From ${from}`} data-entry="result" className="max-w-[85%] rounded-md border border-dashed border-success/60 bg-success/5 px-3 py-2">
           <div className="flex items-center gap-2 font-mono text-[10px] tracking-widest text-success uppercase">
@@ -134,6 +145,33 @@ function ApprovalCard({
         </p>
       ) : null}
     </section>
+  );
+}
+
+/** A filed task coming back: one line, "researcher finished: Draft the post", that opens its popup. */
+function ResultLine({ who, look, entry, onOpen }: { who: string; look?: Look; entry: Extract<ConversationEntry, { kind: "result" }>; onOpen: () => void }) {
+  const said = `${who} ${entry.failed ? "couldn't finish" : "finished"}`;
+  const line = entry.title === undefined ? said : `${said}: ${entry.title}`;
+  return (
+    <button
+      type="button"
+      aria-label={line}
+      data-entry="result"
+      data-status={entry.failed ? "failed" : "done"}
+      onClick={onOpen}
+      className="flex w-full max-w-[85%] items-center gap-2 rounded-md border border-dashed border-success/60 bg-success/5 px-3 py-1.5 text-left text-sm hover:bg-accent"
+    >
+      {look === undefined ? (
+        <span aria-hidden className="shrink-0 text-muted-foreground">
+          ⚙
+        </span>
+      ) : (
+        <Avatar look={look} size="sm" />
+      )}
+      <span className={entry.failed ? "min-w-0 truncate text-destructive" : "min-w-0 truncate"}>{line}</span>
+      {/* What it came back with, cut to the line; the whole of it is in the popup. */}
+      <span className="min-w-0 flex-1 truncate text-muted-foreground">{entry.text}</span>
+    </button>
   );
 }
 

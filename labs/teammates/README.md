@@ -38,7 +38,9 @@ Each worker does real work. researcher reads the working folder's files and sear
 drafts from the working folder's files and from pages it fetches, and Chief of Staff hands out the
 work. Chief of Staff sends a quick ask as a message, and real work as a task: a job that needs the
 folder's files read to researcher or writer, and a job in several parts as several tasks, in order.
-Every result lands back in Chief of Staff's conversation.
+Every result lands back in Chief of Staff's conversation as one line, *researcher finished: Look up
+the launch date*, that opens the task in a popup, where the whole result is. Chief of Staff's own
+answer on it shows in full below.
 
 A code change is a coding task, not a teammate's job. Coding runs in the background, the way a
 coding agent's job does: you watch it, you don't talk to it. Ask Chief of Staff for a code change
@@ -48,7 +50,7 @@ does, with no question first. Each agent is a worker of its own, off the list an
 messaged, whose `WORKER.md` names its `harness:`. A line in Chief of Staff's conversation and an
 item under *Background* show the task, tagged with the agent it runs on (and the model, once the
 run reports one), and open its run in a popup. The result lands in Chief of Staff's conversation as
-the coding task's. To change a coding task, tell Chief of Staff, who starts the next one.
+the coding task's line, *Coding task finished: …*. To change a coding task, tell Chief of Staff, who starts the next one.
 
 A coding task's popup says *Starting on Codex…* from the moment the task is filed. Once it ends,
 the result is at the top, with the run under it in plain steps: what the agent wrote, as text,
