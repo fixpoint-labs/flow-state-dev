@@ -83,7 +83,7 @@ This builds the pages and serves them with the lab's server (`fsdev.config.mts`)
 
 | Variable | What it sets | Default |
 |---|---|---|
-| `TEAMMATES_MODEL` | the model Chief of Staff, researcher and writer answer on | `openai/gpt-5.4-mini` |
+| `TEAMMATES_MODEL` | the model Chief of Staff, researcher and writer answer on | `openai/gpt-6-luna` |
 | `TEAMMATES_WORKDIR` | the working folder: an absolute path to a git checkout on this machine | the root of this repository |
 | `TEAMMATES_HARNESS` | the harness a coding worker whose file names none runs on: `claude-code`, `codex` or `cursor` | `claude-code` |
 | `TEAMMATES_STORE` | the SQLite file | `.fsdev/teammates.sqlite` here |

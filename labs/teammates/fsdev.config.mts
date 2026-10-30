@@ -3,7 +3,7 @@
  * loads it from this folder. Everything is read from the environment:
  *
  * - `TEAMMATES_MODEL`: the model Chief of Staff, researcher and writer answer on
- *   (default `openai/gpt-5.4-mini`).
+ *   (default `openai/gpt-6-luna`).
  * - `TEAMMATES_WORKDIR`: the working folder, an absolute path to a git
  *   checkout (default: the root of the repository this lab lives in). Coding
  *   runs work in worktrees of it, and the workers read it. Missing or not a
@@ -27,7 +27,7 @@ mkdirSync(dirname(store), { recursive: true });
 
 export default await openTeammates({
   store,
-  model: process.env.TEAMMATES_MODEL ?? "openai/gpt-5.4-mini",
+  model: process.env.TEAMMATES_MODEL ?? "openai/gpt-6-luna",
   userId: process.env.TEAMMATES_USER ?? "you",
   workdir: process.env.TEAMMATES_WORKDIR ?? PROJECT_ROOT,
   runsRoot: join(dirname(store), "teammates-runs"),
