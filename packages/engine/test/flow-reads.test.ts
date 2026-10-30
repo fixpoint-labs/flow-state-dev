@@ -57,6 +57,15 @@ const writesState = handler({
   }
 });
 
+const writesUser = handler({
+  name: "read-that-writes-user-state",
+  inputSchema: z.object({}),
+  execute: async (_input, ctx) => {
+    await ctx.user.patchState({ touched: true });
+    return { ok: true };
+  }
+});
+
 const dispatches = dispatcher({
   name: "read-that-dispatches",
   type: "internal",
@@ -74,6 +83,7 @@ function build() {
       notes: { block: listNotes },
       writes: { block: writes },
       writesState: { block: writesState },
+      writesUser: { block: writesUser },
       dispatches: { block: dispatches }
     }
   })();
@@ -144,6 +154,23 @@ describe("a flow's reads", () => {
     expect(await snapshot(stores)).toBe(before);
   });
 
+  it("answers on a session no action has run in yet, and still stores nothing", async () => {
+    // Session creation stores no user or org record; the first run seeds them.
+    // A read must not need an action to have run first, and must not seed them itself.
+    const { router, stores } = build();
+    const created = await post(router, ["board", "sessions"], { userId: "alice", sessionId: "sess_1" });
+    const { session } = (await created.json()) as { session: { id: string } };
+    const before = JSON.stringify({ users: await stores.user.list(), orgs: await stores.org.list(), at: await snapshot(stores) });
+    const res = await post(router, ["board", session.id, "reads", "notes"], { userId: "alice", input: {} });
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect(await res.json()).toEqual({ output: { titles: [] } });
+    expect(JSON.stringify({ users: await stores.user.list(), orgs: await stores.org.list(), at: await snapshot(stores) })).toBe(before);
+    // The seed is only something to read: writing to the seeded user still refuses.
+    const write = await post(router, ["board", session.id, "reads", "writesUser"], { userId: "alice", input: {} });
+    expect(write.status).toBe(409);
+    expect(JSON.stringify({ users: await stores.user.list(), orgs: await stores.org.list(), at: await snapshot(stores) })).toBe(before);
+  });
+
   it("parses its input against the block's schema", async () => {
     const { router, sessionId } = await seeded();
     const narrowed = await post(router, ["board", sessionId, "reads", "notes"], { userId: "alice", input: { prefix: "b" } });
@@ -170,6 +197,7 @@ describe("a flow's reads", () => {
   it.each([
     ["a resource write", "writes"],
     ["a session state write", "writesState"],
+    ["a user state write", "writesUser"],
     ["a dispatch", "dispatches"]
   ])("refuses %s with read_only and changes nothing", async (_what, read) => {
     const { router, stores, sessionId } = await seeded();

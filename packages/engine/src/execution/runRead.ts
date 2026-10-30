@@ -105,10 +105,42 @@ function ownRequestOnly<T extends object>(name: string, store: T, own: T, reques
 }
 
 /**
+ * `store` (a user or org store), where the first run's seed of a record the
+ * store doesn't hold yet lands in `scratch` and is read back from there.
+ * Session creation stores neither record, so a read on a session no action
+ * has run in must seed them to run at all; the seed is dropped with the read.
+ * Every other write, including one to a seeded record, refuses.
+ */
+function seedingInScratch<T extends { get(id: string): Promise<unknown>; set(id: string, ...rest: never[]): Promise<unknown> }>(
+  name: string,
+  store: T,
+  scratch: T
+): T {
+  const refusing = refusingWrites(name, store);
+  return new Proxy(refusing, {
+    get(target, prop, receiver) {
+      if (prop === "get") {
+        return async (id: string) => (await scratch.get(id)) ?? store.get(id);
+      }
+      if (prop === "set") {
+        return async (id: string, ...rest: never[]) => {
+          if ((await scratch.get(id)) !== undefined || (await store.get(id)) !== undefined) {
+            throw readOnlyRefusal(`write to the ${name} store (set)`);
+          }
+          return scratch.set(id, ...rest);
+        };
+      }
+      return Reflect.get(target, prop, receiver);
+    }
+  });
+}
+
+/**
  * The stores a read runs on: `stores` for every read, and nowhere to write.
  * The read's own request record, its items and events, its traces, its
- * checkpoints and the active-request registry go to a fresh in-memory
- * registry dropped when the read ends; any other write throws `read_only`.
+ * checkpoints, the active-request registry, and the first seed of a user or
+ * org record go to a fresh in-memory registry dropped when the read ends; any
+ * other write throws `read_only`.
  */
 export function readOnlyStores(stores: StoreRegistry, requestId: string): StoreRegistry {
   const scratch = createInMemoryStores();
@@ -116,8 +148,8 @@ export function readOnlyStores(stores: StoreRegistry, requestId: string): StoreR
     ...stores,
     session: refusingWrites("session", stores.session),
     request: ownRequestOnly("request", stores.request, scratch.request, requestId),
-    user: refusingWrites("user", stores.user),
-    org: refusingWrites("org", stores.org),
+    user: seedingInScratch("user", stores.user, scratch.user),
+    org: seedingInScratch("org", stores.org, scratch.org),
     activeRequests: scratch.activeRequests,
     content: refusingWrites("content", stores.content),
     resourceState: refusingWrites("resource state", stores.resourceState),
