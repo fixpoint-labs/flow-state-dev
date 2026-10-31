@@ -61,12 +61,12 @@ const keyOf = (sessionId: string): string => encodeURIComponent(sessionId);
 
 /**
  * Whether `holder` holds `sessionId` now: its row, as stored now (another
- * request may have ended it), is open there and not held.
+ * request may have ended it), is open there, not held, and not waiting to run again after a retry.
  */
 async function holds(ctx: BlockContext, holder: RoutedSessionHolder, sessionId: string): Promise<boolean> {
   const ledger = await conversationLedgerAt(ctx, holder.partition);
   const row = ledger === undefined ? undefined : await readCommittedTask(ledger, holder.taskId);
-  return row !== undefined && row.targetSessionId === sessionId && !isTerminalStatus(row.status) && row.status !== "held";
+  return row !== undefined && row.targetSessionId === sessionId && !isTerminalStatus(row.status) && row.status !== "held" && row.retryPending !== true;
 }
 
 /**

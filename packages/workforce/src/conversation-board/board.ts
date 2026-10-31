@@ -469,10 +469,11 @@ function sessionKeyOf(task: Pick<Task, "id" | "assignee" | "followUpOf" | "sessi
 
 /**
  * Whether the row holds its session: started and unfinished, a retry
- * waiting to run again included. A held row hasn't started.
+ * waiting to run again included. A held row hasn't started, and a row a
+ * user's retry reopened (FIX-2383) waits like a new one until it is claimed.
  */
 function holdsSession(task: Task): boolean {
-  return !isTerminalStatus(task.status) && task.status !== "held" && hasStarted(task);
+  return !isTerminalStatus(task.status) && task.status !== "held" && task.retryPending !== true && hasStarted(task);
 }
 
 /**
@@ -491,6 +492,7 @@ function isStartable(task: Task, rows: readonly Task[]): boolean {
   if (key === undefined) return true;
   return !rows.some((other) => other.id !== task.id && holdsSession(other) && sessionKeyOf(other) === key);
 }
+
 
 /**
  * The sessions by id another board's routed task holds now, by board, as this

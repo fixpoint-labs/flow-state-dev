@@ -904,22 +904,14 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     },
 
     async retry(id) {
-      // Decided once per committed map: the decline and the patch read the same row (FIX-2383).
-      let decidedFor: { tasks: unknown; decided: ReturnType<typeof retryWrite> } | undefined;
-      const decide = (task: Task<TInput, TOutput>, tasks: Readonly<Record<string, Task<TInput, TOutput>>>) => {
-        if (decidedFor === undefined || decidedFor.tasks !== tasks) {
-          decidedFor = {
-            tasks,
-            decided: retryWrite(
-              task as Task,
-              (other) => ownTask(tasks, other) as Task | undefined,
-              // The board's budget, against the committed ledger, as `fail()` reads it.
-              () => maxTotalRetries !== undefined && sumGrantedRetries(Object.values(tasks) as Task[]) >= maxTotalRetries
-            ),
-          };
-        }
-        return decidedFor.decided;
-      };
+      // One rule for the decline and the patch, both read off the same committed map (FIX-2383).
+      const decide = (task: Task<TInput, TOutput>, tasks: Readonly<Record<string, Task<TInput, TOutput>>>) =>
+        retryWrite(
+          task as Task,
+          (other) => ownTask(tasks, other) as Task | undefined,
+          // The board's budget, against the committed ledger, as `fail()` reads it.
+          () => maxTotalRetries !== undefined && sumGrantedRetries(Object.values(tasks) as Task[]) >= maxTotalRetries
+        );
       return patchOne(
         id,
         "retry_requested",

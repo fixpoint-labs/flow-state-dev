@@ -479,6 +479,18 @@ export function retryWrite(
       leaseUntil: undefined,
       claimedBy: undefined,
       ...(labels !== task.labels ? { labels } : {}),
+      // The last attempt's live wait was resumed with its ending (no resume is
+      // owed, above): its gate is closed, and a new attempt's wait takes the
+      // slot afresh. A lapsed slot stays: the request it is lapsed for still
+      // runs, and its release delivers what it held.
+      ...(task.wait != null && task.wait.lapsed !== true ? { wait: undefined } : {}),
+      // The ended attempt's questions closed with it (`openHolds` reads none on
+      // an ended row); reopened, they would hold the new attempt. Answered ones
+      // stay, beside the steers that answer them.
+      ...(task.holds?.some((hold) => !isRowHold(hold) || answerOf(task, hold.id) === undefined)
+        ? { holds: task.holds.filter((hold) => isRowHold(hold) && answerOf(task, hold.id) !== undefined) }
+        : {}),
+      retryPending: true,
       retryLedger: grantRetry(task),
     },
   };
@@ -1403,6 +1415,8 @@ export function applyClaimToTask<TInput, TOutput>(
     // Every claim advances the turn generation the claim ticket carries (D3).
     turn: (task.turn ?? 0) + 1,
     turnOwed: undefined,
+    // A retried row's reopening ends at its first claim (FIX-2383).
+    retryPending: undefined,
     ...(recovering ? { abandonments: readAbandonments(task as Task) + 1 } : {}),
     startedAt: task.startedAt ?? now,
     leaseUntil: now + leaseDurationMs,
