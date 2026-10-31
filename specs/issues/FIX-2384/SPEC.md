@@ -2,6 +2,12 @@
 
 **Spec** · [Decisions](DECISIONS.md)
 
+Someone reviewing a coding run in the workforce apps accepts its changes without seeing them. The
+Claude Code-style lab shows a commit count and subjects, Teammates shows the result text, and Shift
+Manager's Diff tab is a placeholder. No package reads a diff, so each app would need its own git
+code to show one. This slice gives them one package read for the files and lines a run's commits
+changed, and for one file's patch.
+
 The package slice of a wave-1 child of [FIX-2369](../../epics/FIX-2369/SPEC.md). The epic spec
 (#4358) fixed its direction ("`readRunDiff`, read action — extend `commits.ts`"); this records the
 shape that was built. The apps adopt it in their own stacks (build order:
