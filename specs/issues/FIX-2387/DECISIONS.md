@@ -78,9 +78,11 @@ a choice to fail the turn.
 - **E6 · Where it is recorded:** the run record's `checks` (each attempt's opening write clears
   it, so a failed attempt keeps its own), the review's `data.checks`, and the session turn
   record's `checks`. The task's output does not grow (BP-042).
-- **E7 · Commands run in the run's checkout with the host process's environment**, after the
-  checkout lease is let go, as every `isDone` runs today; a reclaim mid-check is caught by the
-  attempt fence at the settle. The agent can edit the scripts the checks run. They are evidence
+- **E7 · Commands run in the run's checkout with the host process's environment, under the
+  checkout's lease.** The agent step lets the lease go when the agent stops; the manager takes it
+  back for `isDone`, inside the same bound, because the commands write to the tree and a
+  replacement attempt takes the lease before it provisions (review: Codex). A wait that outlives
+  the bound means the attempt was displaced, and it fails. The agent can edit the scripts the checks run. They are evidence
   for a person, not a grader the agent cannot reach; devteam's acceptance check keeps that job.
 - **E8 · `projectChecks()` answers `[]`** for a run with no project, or a refused lookup, and the
   run source refuses that run on its own. A files-only project's checks still run, in its folder.
