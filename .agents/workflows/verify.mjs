@@ -10175,6 +10175,12 @@ check('app-review: fold mode points every agent at the prior items and asks for 
   assert.equal(result.mode, 'fold')
 })
 
+check('app-review: runTag makes finding ids distinct across runs', async () => {
+  const { result } = await run('app-review.js', { args: { apps: [reviewApps[0]], runTag: 'r2' }, respond: reviewResponder({ synth: { ...freshSynth, items: [reviewItem('R-01', ['alpha'], ['AL-R2-USA-1'])] } }) })
+  const ids = result.apps[0].findings.map((f) => f.id)
+  assert.ok(ids.includes('AL-R2-USA-1') && ids.includes('AL-R2-ROB-2'), ids.join(','))
+})
+
 check('app-review: a dead lead drops only its app, and says so', async () => {
   const { result, calls, logs } = await run('app-review.js', { args: { apps: reviewApps }, respond: reviewResponder({ deadLeads: ['beta'], synth: freshSynth }) })
   assert.equal(calls.filter((c) => (c.label || '').endsWith(':beta') && c.phase === 'Find').length, 0, 'no lens runs without a brief')

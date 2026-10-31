@@ -263,7 +263,6 @@ const HOME={foundation:{label:'Foundation packages',short:'Foundation',c:'var(--
 const PRI={P1:0,P2:1,P3:2}, EFF={S:0,M:1,L:2};
 const LENSES=[...new Set(apps.flatMap(a=>a.findings.map(f=>f.lens)))];
 const lensName=k=>({usability:'Usability & UX','doing-work':'Doing real work',robustness:'Robustness & state'}[k]||k.replace(/-/g,' '));
-const lastRun=D.runs&&D.runs.length?D.runs[D.runs.length-1]:null;
 
 // header
 const nRaw=Object.keys(raw).length;

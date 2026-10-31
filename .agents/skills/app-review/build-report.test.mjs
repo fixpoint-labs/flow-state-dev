@@ -59,6 +59,23 @@ assert.match(bad, /unknown item R-99/)
 assert.match(bad, /unknown app delta/)
 assert.throws(() => merge(fold, null, {}), /needs --prior/)
 
+// Re-reviewing an app in a fold keeps its earlier findings, which earlier items cite.
+const again = {
+  mode: 'fold',
+  apps: [{ app: 'alpha', name: 'Alpha', dir: 'labs/alpha', brief: { ...brief, summary: 'new brief' }, findings: [finding('AL-R2-USA-1')] }],
+  synth: { executiveSummary: 'third', updates: [{ ...fold.synth.updates[0], id: 'R-02', addApps: ['alpha'], addSourceFindings: ['AL-R2-USA-1'], newHome: '', newPackage: '', newPriority: '' }], newItems: [], newThemes: [], rejected: [] },
+}
+const three = merge(again, two.data, {})
+assert.deepEqual(three.problems, [])
+const alpha = three.data.apps.find((a) => a.key === 'alpha')
+assert.deepEqual(alpha.findings.map((f) => f.id), ['AL-USA-1', 'AL-USA-2', 'AL-R2-USA-1'], 'earlier findings survive a re-review')
+assert.equal(alpha.brief.summary, 'new brief')
+
+// …and a re-review that reuses an earlier id is caught, even when an earlier item "covers" it.
+const clash = structuredClone(again)
+clash.apps[0].findings = [finding('AL-USA-1'), finding('AL-R2-USA-1')]
+assert.match(merge(clash, two.data, {}).problems.join('\n'), /AL-USA-1 was already used by an earlier run/)
+
 // Extract round-trips the data, including text that would close the script tag.
 const tricky = structuredClone(two.data)
 tricky.items[0].problem = 'ends a tag: </script> and <b>'

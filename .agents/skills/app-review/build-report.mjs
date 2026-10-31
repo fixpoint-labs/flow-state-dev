@@ -63,8 +63,18 @@ export function merge(wf, prior, meta = {}) {
   const fold = Array.isArray(s.updates)
   if (fold && !prior) throw new Error('fold-mode result (updates/newItems) needs --prior <data.json>')
 
+  // Re-reviewing an app keeps its earlier findings (earlier items cite them) and takes the new
+  // brief. A new finding whose id an earlier run already used would make those citations point at
+  // the wrong finding and fool the coverage check below, so it is a problem, not a merge.
+  const priorIds = new Set((prior ? prior.apps : []).flatMap((a) => a.findings.map((f) => f.id)))
+  for (const a of wf.apps) {
+    for (const f of a.findings) if (priorIds.has(f.id)) problems.push(`finding id ${f.id} was already used by an earlier run; pass a fresh runTag`)
+  }
   const appsOut = (prior ? prior.apps.filter((a) => !wf.apps.some((n) => n.app === a.key)) : []).concat(
-    wf.apps.map((a) => ({ key: a.app, name: a.name || a.app, dir: a.dir || '', brief: a.brief, findings: a.findings })),
+    wf.apps.map((a) => {
+      const before = prior && prior.apps.find((p) => p.key === a.app)
+      return { key: a.app, name: a.name || (before && before.name) || a.app, dir: a.dir || (before && before.dir) || '', brief: a.brief, findings: [...(before ? before.findings : []), ...a.findings] }
+    }),
   )
 
   let items

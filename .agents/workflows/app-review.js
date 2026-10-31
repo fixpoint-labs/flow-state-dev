@@ -28,7 +28,7 @@ export const meta = {
   description:
     'Review apps built on FSD: a lead per app, lens sub-agents per app, then one synthesizer that finds overlaps and decides which package or app owns each improvement.',
   whenToUse:
-    'Dispatched by the app-review skill with args { apps, focus, lenses?, minPerLens?, prior?, extraContext? }. Not run standalone.',
+    'Dispatched by the app-review skill with args { apps, focus, lenses?, minPerLens?, prior?, runTag?, extraContext? }. Not run standalone.',
   phases: [
     { title: 'Map', detail: 'one lead agent per app builds an app brief' },
     { title: 'Find', detail: 'lens sub-agents per app find improvements' },
@@ -59,6 +59,10 @@ const DEFAULT_LENSES = [
 ]
 const LENSES = Array.isArray(A.lenses) && A.lenses.length ? A.lenses : DEFAULT_LENSES
 const MIN = Number.isInteger(A.minPerLens) && A.minPerLens > 0 ? A.minPerLens : 5
+// Finding ids must be unique across runs: a fold run that re-reviews an app would otherwise mint
+// the same ids as the earlier run, and earlier items would cite unrelated new findings.
+// The skill passes a fresh `runTag` (e.g. "r2") on every fold run.
+const TAG = typeof A.runTag === 'string' && /^[A-Za-z0-9]+$/.test(A.runTag) ? `${A.runTag.toUpperCase()}-` : ''
 const FOLD = !!(A.prior && A.prior.itemsFile)
 // Fold-mode items may name apps from the prior run too (args.prior.apps), not only this run's.
 const APP_KEYS = [...new Set([...A.apps.map((a) => a.key), ...((FOLD && A.prior.apps) || [])])]
@@ -207,7 +211,7 @@ Find AT LEAST ${MIN} distinct, high-value improvements under your lens, each gro
       dir: app.dir,
       brief,
       findings: rs.flatMap((r, li) =>
-        r ? r.findings.map((f, i) => ({ ...f, lens: LENSES[li].key, id: `${app.prefix}-${lensTag(LENSES[li])}-${i + 1}` })) : [],
+        r ? r.findings.map((f, i) => ({ ...f, lens: LENSES[li].key, id: `${app.prefix}-${TAG}${lensTag(LENSES[li])}-${i + 1}` })) : [],
       ),
       deadLenses: rs.map((r, li) => (r ? null : LENSES[li].key)).filter(Boolean),
     }))

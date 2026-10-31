@@ -19,6 +19,7 @@ Most of what makes a run good comes from turning the user's words into the workf
 | `lenses[]` | `{ key, prompt }`; the defaults are usability, doing-work and robustness | Keep the defaults unless the concern names an axis they don't cover. Then **replace** the least relevant lens rather than add one, since each lens costs one agent per app. See "Adapting to the ask". |
 | `minPerLens` | minimum findings per lens agent (default 5) | "at least 10 per app" with 3 lenses → 4. Higher for an exhaustive ask. |
 | `prior` | `{ itemsFile, apps }` for fold mode | Use it when an earlier report exists and the user wants more apps or a new angle *added to it*. `itemsFile` is an absolute path to the earlier `data.json`. `apps` lists the earlier run's app keys, so new items can name them. |
+| `runTag` | short alphanumeric tag added to finding ids | **Required in fold mode:** `r2`, `r3`, … one past the earlier report's run count. It keeps finding ids distinct across runs, so re-reviewing an app can't collide with its earlier findings. The builder fails if one does. |
 | `extraContext` | anything every agent should know | Layering rules the user stated, an epic it feeds, things already decided. |
 
 **Agent count** is `apps × (1 + lenses) + 1`. Two apps with three lenses is 9. Above about 12, tell the user the count before launching, and offer fewer lenses or a split into two runs.
@@ -34,7 +35,7 @@ Most of what makes a run good comes from turning the user's words into the workf
 
   The report page carries its own data, so it is the durable record. The scratchpad is not.
 
-Pass `prior: { itemsFile: "<abs path>/data.json", apps: [<earlier app keys>] }`. Lens agents tag findings that match an earlier item. The synthesizer returns *updates* (apps added, evidence, a home or priority change with its reason) plus *new items*, never a rewrite of the earlier list.
+Pass `prior: { itemsFile: "<abs path>/data.json", apps: [<earlier app keys>] }`, and a fresh `runTag`. Lens agents tag findings that match an earlier item. The synthesizer returns *updates* (apps added, evidence, a home or priority change with its reason) plus *new items*, never a rewrite of the earlier list.
 
 ## 3. Run it
 
