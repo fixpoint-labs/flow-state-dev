@@ -1,9 +1,9 @@
 /**
  * A request suspended inside a model tool resumes after the tool is renamed
- * (FIX-2317): the model's `waitForUser` tool is `suspendForUser`, and a stop
- * for a person can wait days, so a deploy lands while such stops are open.
- * The generator's persisted step names the tool it called; the resumed build
- * resolves only the new name.
+ * (FIX-2317). The model's stop for a person was renamed `suspendForUser`, and
+ * such a stop can wait days, so a deploy lands while some are open. The
+ * generator's persisted step names the tool it called by its old name; the
+ * resumed build has only the new one.
  */
 import { DEFAULT_ORG_ID, defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 import type { GeneratorModel, GeneratorModelCallOptions, GeneratorModelResult } from "@flow-state-dev/core/types";
