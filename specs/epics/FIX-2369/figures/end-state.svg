@@ -1,0 +1,112 @@
+<svg viewBox="0 0 940 520" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="What is in the box: five package areas built once, the client and react, orchestration, harness-manager, workforce and devtool, and the ui registry. Composed in by each of the four apps: its layout and which pieces it renders. Replaced in one line: a registry component re-added, checks named on the project row, a host option. Not built here, below a fence: the push channel, opening a pull request and cleanup, a follow-up continuing its root, task start and step fields, and worktree staleness.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg   { fill:var(--surface); }
+    .box  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .pkg  { fill:var(--surface); stroke:var(--code); stroke-width:1; }
+    .app  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .one  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .fence{ stroke:var(--gone); stroke-width:1.6; stroke-dasharray:7 5; }
+    .out  { fill:var(--surface); stroke:var(--rule); stroke-width:1; stroke-dasharray:4 3; }
+    .t-lbl{ fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-cd { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.08em; font-weight:600; }
+    .t-ac { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.08em; font-weight:600; }
+    .t-gn { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.08em; font-weight:600; }
+    .t-b  { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s  { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .t-m  { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="520"/>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="16" width="908" height="196" rx="8"/>
+    <text class="t-cd" x="32" y="38">IN THE BOX · BUILT ONCE, IN THE PACKAGE THAT OWNS IT</text>
+    <rect class="pkg" x="32" y="52" width="166" height="146" rx="5"/>
+    <text class="t-lbl" x="42" y="70">CLIENT · REACT</text>
+    <text class="t-s" x="42" y="92">session feed: items, runs,</text>
+    <text class="t-s" x="42" y="112">connection state</text>
+    <text class="t-s" x="42" y="132">refresh on FIX-2367 notices</text>
+    <text class="t-s" x="42" y="152">tail read · Load earlier</text>
+    <text class="t-s" x="42" y="172">state-only re-read · live list</text>
+    <rect class="pkg" x="210" y="52" width="166" height="146" rx="5"/>
+    <text class="t-lbl" x="220" y="70">ORCHESTRATION</text>
+    <text class="t-s" x="220" y="92">task-row view: held,</text>
+    <text class="t-s" x="220" y="112">waiting on you, spend</text>
+    <text class="t-s" x="220" y="132">retry keeps id and spend</text>
+    <text class="t-s" x="220" y="152">task actions · parseNotice</text>
+    <rect class="pkg" x="388" y="52" width="166" height="146" rx="5"/>
+    <text class="t-lbl" x="398" y="70">HARNESS-MANAGER</text>
+    <text class="t-s" x="398" y="92">what a run changed: diff</text>
+    <text class="t-s" x="398" y="112">checks before done</text>
+    <text class="t-s" x="398" y="132">worktree setup · base</text>
+    <text class="t-s" x="398" y="152">approval holds · readiness</text>
+    <text class="t-s" x="398" y="172">usage · issue field</text>
+    <rect class="pkg" x="566" y="52" width="166" height="146" rx="5"/>
+    <text class="t-lbl" x="576" y="70">WORKFORCE · DEVTOOL</text>
+    <text class="t-s" x="576" y="92">door turns carry the task</text>
+    <text class="t-s" x="576" y="112">roster change signal</text>
+    <text class="t-s" x="576" y="132">Linear relay · checks</text>
+    <text class="t-s" x="576" y="152">on the project row</text>
+    <text class="t-s" x="576" y="172">trace link reader</text>
+    <rect class="pkg" x="744" y="52" width="166" height="146" rx="5"/>
+    <text class="t-lbl" x="754" y="70">UI REGISTRY</text>
+    <text class="t-s" x="754" y="92">failed turn + Retry,</text>
+    <text class="t-s" x="754" y="112">Continue or Discard</text>
+    <text class="t-s" x="754" y="132">connection banner</text>
+    <text class="t-s" x="754" y="152">review card · changes</text>
+    <text class="t-s" x="754" y="172">spend · tool lines</text>
+  </g>
+
+  <g id="composed-in">
+    <rect class="app" x="16" y="228" width="600" height="110" rx="8"/>
+    <text class="t-ac" x="32" y="250">COMPOSED IN BY EACH APP · ITS LAYOUT, WHICH PIECES IT DRAWS</text>
+    <rect class="one" x="32" y="264" width="136" height="60" rx="5"/>
+    <text class="t-b" x="42" y="290">Claude</text>
+    <text class="t-s" x="42" y="308">Code-style lab</text>
+    <rect class="one" x="178" y="264" width="136" height="60" rx="5"/>
+    <text class="t-b" x="188" y="290">Teammates</text>
+    <text class="t-s" x="188" y="308">lab</text>
+    <rect class="one" x="324" y="264" width="136" height="60" rx="5"/>
+    <text class="t-b" x="334" y="290">Kitchen Sink</text>
+    <text class="t-s" x="334" y="308">app</text>
+    <rect class="one" x="470" y="264" width="136" height="60" rx="5"/>
+    <text class="t-b" x="480" y="290">Shift Manager</text>
+    <text class="t-s" x="480" y="308">app</text>
+  </g>
+
+  <g id="one-line">
+    <rect class="one" x="632" y="228" width="292" height="110" rx="8"/>
+    <text class="t-lbl" x="648" y="250">REPLACED IN ONE LINE</text>
+    <text class="t-m" x="648" y="274">fsdev ui add request-recovery</text>
+    <text class="t-m" x="648" y="294">checks: [...] on the project row</text>
+    <text class="t-m" x="648" y="314">a host option: setup, verify</text>
+  </g>
+
+  <g id="fence">
+    <line class="fence" x1="16" y1="362" x2="924" y2="362"/>
+    <text class="t-gn" x="16" y="384">NOT BUILT HERE · CONSUMED FROM ITS OWN ISSUE, OR LEFT ALONE</text>
+    <rect class="out" x="16" y="398" width="172" height="62" rx="5"/>
+    <text class="t-lbl" x="26" y="418">FIX-2367</text>
+    <text class="t-s" x="26" y="440">push channel</text>
+    <rect class="out" x="200" y="398" width="172" height="62" rx="5"/>
+    <text class="t-lbl" x="210" y="418">FIX-1768</text>
+    <text class="t-s" x="210" y="440">push, PR, clean up</text>
+    <rect class="out" x="384" y="398" width="172" height="62" rx="5"/>
+    <text class="t-lbl" x="394" y="418">FIX-2274</text>
+    <text class="t-s" x="394" y="440">follow-up continues root</text>
+    <rect class="out" x="568" y="398" width="172" height="62" rx="5"/>
+    <text class="t-lbl" x="578" y="418">FIX-2168 · 2164</text>
+    <text class="t-s" x="578" y="440">started, ended, steps</text>
+    <rect class="out" x="752" y="398" width="172" height="62" rx="5"/>
+    <text class="t-lbl" x="762" y="418">FIX-2252</text>
+    <text class="t-s" x="762" y="440">when a worktree is stale</text>
+    <text class="t-s" x="16" y="490">FIX-2274 blocks the closure. FIX-2367&#x27;s delivery child gates FIX-2409, 2411 and 2412.</text>
+  </g>
+</svg>
