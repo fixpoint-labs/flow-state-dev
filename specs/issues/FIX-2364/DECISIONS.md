@@ -22,6 +22,10 @@ layer as a line, not a second block". So D1 here is only the words.
 - **"When your tools can't reach it, say so."** This is the honest end of the PR-review case
   until FIX-2361 lands: the worker can't see another task's branch today, and should say that
   rather than ask for a paste.
+- **What still waits.** "Act, don't offer" names what needs the user's say-so: sending or posting
+  for them, merging, spending, deleting, or what the worker's own instructions say to confirm.
+  It comes first in every prompt, so an app's approval steps would otherwise read as offers to
+  skip.
 - **Locks in:** fixed framework text, no setting. Composable in the FIX-2268 sense: nothing goes
   into the generator or core; an app that wants other words registers its own worker flow.
 
@@ -43,3 +47,13 @@ layer as a line, not a second block". So D1 here is only the words.
 
 - Drafted 2026-10-31 with the build prototyped beside it, to check the control fails before
   the check is proposed (see the build PR for the runs).
+
+## Notes from review
+
+- Codex (220898a): no findings. Cursor (220898a): approved direction; optional rename of
+  `TOOL_USE_RULE` kept as E1; leg 2 kept in the same goal but with the shared boot it asked for.
+- FSD Architect (220898a): folded all four. Leg 2 asks what teammates are working on, never their
+  names, and the boot is shared; the Claude Code-style `thread` lines that contradict the rule are
+  named, with owners, and the people table no longer claims that lab is fixed; FIX-2073 is scoped
+  by "what you were asked"; the last bullet takes the Architect's wording, naming what still
+  waits. Goal leg and control re-run on the new wording.

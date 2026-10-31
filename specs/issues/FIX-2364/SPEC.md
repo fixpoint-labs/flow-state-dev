@@ -6,10 +6,11 @@
 
 | Someone who… | Today | After |
 |---|---|---|
-| **asks a worker to review a PR it can't see** (no file or git tools) | It asks the user to "share the diff or paste the copy here", or holds off until someone does | It gets a teammate to read the files, reviews what they found, and says what it couldn't see instead of asking for a paste |
-| **asks a review task about work a coding task made** (the Claude Code-style lab, #4272) | It asked which region mattered, then for the PR description, diff or screenshots | It looks first. Seeing that work at all is FIX-2361; this issue stops the asking for what the system already holds |
+| **asks a worker with no instructions of its own to review a PR it can't see** (no file or git tools) | It asks the user to "share the diff or paste the copy here", or holds off until someone does | It asks a teammate, uses what they find, and says what it couldn't see instead of asking for a paste |
+| **asks a review task about work a coding task made** (the Claude Code-style lab, #4272) | It asked which region mattered, then for the PR description, diff or screenshots | **Not fixed by this issue alone.** That lab's `thread` worker says "the user is the one you ask" and "ask which region matters", and its text and the default rule both reach the model; it also can't see the work. It changes when FIX-2363 and FIX-2361 land (below) |
 | **asks something vague a sensible assumption covers** | It asks a clarifying question and stops | It makes the assumption, says it, and does the work |
-| **asks for something a worker could just do** | "If you want, I can…" | It does it this turn and says what it did |
+| **asks for something a worker could just do** | "If you want, I can…" | It does what it was asked this turn and says what it did |
+| **asks for something that needs their say-so** (sending or posting for them, merging, spending, deleting, an app's own confirmations such as Shift Manager's Inbox approvals) | Waits | Still waits, and asks once, saying why |
 | **needs a real decision from the user** (a preference, a call that is theirs) | Asks | Still asks, once, saying what it already found |
 | **writes their own worker** (a hire with only a description, or an app's `WORKER.md`) | Gets one line: "use your tools before you answer; don't offer" | Gets the full rule, with no text of their own |
 | **runs a worker on a harness or their own flow** (Claude Code, Codex, Cursor, a custom `agent` flow) | Unaffected | Unaffected |
@@ -23,8 +24,11 @@ can with its tools before it asks the user anything, and asks only what depends 
   into each lab's files. Every app repeats it, and a worker someone hires gets none of it. That is
   why this issue exists.
 - **Bigger, and not this issue's:** giving a task access to an earlier task's branch, diff or PR
-  (FIX-2361, Architect design first), and fixing app prompts that contradict the rule (FIX-2363,
-  the Claude Code-style lab's "ask which region matters").
+  (FIX-2361, Architect design first; it also drops the Claude Code-style `thread` worker's "can't
+  see or change the project's code" line when it grants that worker read access), and fixing
+  app prompts that contradict the rule. FIX-2363 owns the `thread` worker's "ask which region
+  matters"; its "the user is the one you ask" and "never message another worker" lines have no
+  owner yet, and the build PR files a follow-up for them.
 - **Not done if:** a worker with nothing but a description, asked to review a PR it can't see,
   asks the user to paste it; or the FIX-2334 and FIX-2336 checks stop passing.
 
@@ -52,12 +56,17 @@ else in the prompt moves.
 - **Control that must fail:** `GOAL_CONTROL=old-rule` patches the layer's rule back to the
   one-line FIX-2334 wording as the server loads it. Prototyped: it failed 3 of 3 runs (one asked
   "if you can share the PR link or patch here"; two asked Chief of Staff for the diff and waited,
-  never reviewing). The final wording passed 3 of 3, and 1 of 1 on a second run. A first scenario, a worker *with* file tools,
+  never reviewing). The final wording, with the review's last bullet, passed 3 of 3 and its
+  control failed 2 of 3 ("Please share the PR link or paste the diff"). A first scenario, a worker *with* file tools,
   passed on the old wording too, so it proved nothing about the rule and was dropped.
 - **Regression (re-runs, no new code):** FIX-2152's closure goals that #4262 fixed,
   `claude-code-style-lab/session-mode-script` and `teammates-lab/a-worker-knows-who-it-is`.
-  FIX-2336's check (ask Chief of Staff about its teammates: it messages them or reads their
-  conversations, and offers nothing it could have done) becomes leg 2 of the new goal. The
+  FIX-2336's check becomes leg 2 of the new goal: Chief of Staff is asked what researcher and
+  writer are working on, something only they know (never their names, which
+  `a-worker-knows-who-it-is` leg 2 requires it to answer from its prompt with no tool call). It
+  must message them or read their conversations, and offer nothing it could have done. Both
+  goals share one Teammates boot (`goals/teammates-lab/lab.mts`), lifted from
+  `a-worker-knows-who-it-is/run.mts`. The
   control isn't asked to fail it, since Chief of Staff's own file says the same.
 - **Unit:** the existing default-layer tests in `packages/workforce/test/worker-identity.test.ts`
   keep asserting the rule sits in the layer, ahead of the team and worker text.
@@ -79,13 +88,18 @@ else in the prompt moves.
   > - Ask the user only what truly depends on them: a preference, a decision that is theirs, or a
   >   fact nobody on the team can reach. When a sensible assumption will do, make it, say it, and
   >   go on.
-  > - Act, don't offer. Do what you can do this turn, then say what you did. Don't end with "if
-  >   you want, I can…" for something you could have done; offer only what needs the user's
-  >   say-so, and say why.
+  > - Act, don't offer. Do what you were asked this turn, then say what you did. Don't end with
+  >   "if you want, I can…" for something you could have done. Anything that needs the user's
+  >   say-so still waits for it: sending or posting for them, merging, spending, deleting, or
+  >   what your instructions say to confirm. Ask for that once, and say why.
 
   A first draft ("look it up… don't ask the user to paste it") failed the goal leg 2 of 3: the
   worker still asked the user to "share the PR link or diff". This wording names the paste
-  directly and sends the worker to a teammate who can read what it can't.
+  directly and sends the worker to a teammate who can read what it can't. Keep the first three
+  bullets word for word unless the goal leg and its control are re-run: they are what passes.
+  The last bullet names what still waits (FIX-2364 review), scoped to "what you were asked" so
+  FIX-2073's later line, which sends new work in a finished task's session to its filer, doesn't
+  pull against it.
 
 - **Who gets it:** everything that runs the built-in agent turn on an installation: `agent`
   workers, their task sessions, and the coordinator flow's judgment turn (it shares the turn). So
@@ -105,7 +119,9 @@ engine.
 | Piece | What this does with it |
 |---|---|
 | FIX-2334's default layer and its one-line `TOOL_USE_RULE` | **Replaces** the line's text, in the same place. D1 of FIX-2334 said later default text joins this layer as a line |
-| FIX-2336's Chief of Staff "how you use your tools" paragraph | **Kept.** It is app guidance on top; the package rule now says the general part for every worker |
+| FIX-2336's Chief of Staff "how you use your tools" paragraph | **Kept.** It is app guidance on top; the package rule now says the general part for every worker. Its "act, don't offer" and "ask only what no tool can find" lines now repeat the layer; trimming them is optional and not in this change |
+| FIX-2073, the next default-layer line (tell the filer about asks after a task is done) | **Compatible:** "do what you were asked this turn" is scoped to the asked work, so new work in a finished task's session still goes to the filer |
+| App confirmations (Shift Manager's Inbox approvals, devforce's wait-for-a-person) | **Kept:** the rule's last bullet names "what your instructions say to confirm" as still waiting |
 | `goals/teammates-lab/a-worker-knows-who-it-is` and its `run.mts` helpers | **Reused**: the new leg drives the same lab the same way |
 | `goals/lib` module patches | **Reused** for the control |
 
