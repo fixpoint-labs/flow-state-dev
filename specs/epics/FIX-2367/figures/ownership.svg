@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 430" role="img" aria-label="Who owns what: seven rules every child obeys, by six issues. The bus issue decides ER-1, notices carry no rows; ER-2, topics come only from scopes; ER-3, every publisher uses the one bus; and ER-6, notices are at most once. The delivery issue builds ER-4, a subscribe is checked on the server on every connect and reconnect by the scope's read check, and ER-5, every hook goes through client.subscribe and polls without push, and decides ER-7, SSE streams don't change. Every other cell is consumes: the Postgres bus, the resource-change publisher FIX-1506, the task-board publisher and the Ably adapter FIX-380 obey rules they do not decide. Each rule has exactly one owner."
+<svg viewBox="0 0 940 430" role="img" aria-label="Who owns what: seven rules every child obeys, by six issues. The bus issue decides ER-1, notices carry no rows; ER-2, topics come only from scopes; ER-3, every publisher uses the one bus; and ER-6, notices are at most once. The delivery issue builds ER-4, a subscribe is checked on the server on every connect and reconnect by the scope's read check, and ER-5, every hook goes through client.subscribe and polls without push, and decides ER-7, SSE streams don't change. Every other cell is consumes: the Postgres bus, the resource- and state-change publisher FIX-1506, the task-board publisher and the Ably adapter FIX-380 obey rules they do not decide. Each rule has exactly one owner."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -30,7 +30,7 @@
     <text class="t-lbl" x="533" y="56" text-anchor="middle">FIX-XXX</text>
     <text class="t-col" x="619" y="40" text-anchor="middle">DELIVERY</text>
     <text class="t-lbl" x="619" y="56" text-anchor="middle">FIX-XXX</text>
-    <text class="t-col" x="705" y="40" text-anchor="middle">RESOURCES</text>
+    <text class="t-col" x="705" y="40" text-anchor="middle">STATE</text>
     <text class="t-lbl" x="705" y="56" text-anchor="middle">FIX-1506</text>
     <text class="t-col" x="791" y="40" text-anchor="middle">TASK BOARD</text>
     <text class="t-lbl" x="791" y="56" text-anchor="middle">FIX-XXX</text>

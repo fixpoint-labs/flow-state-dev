@@ -150,7 +150,7 @@ Every rule has one owner. A *consumes* cell is a place a child must not re-decid
 | The session stream's wake | the bus · delivery · the task board child | The bus child owns it, and the only timed read is its fallback where the bus can't cross processes ([D6](#d6)) |
 | The task board's topic | the task board child · the bus | The conversation's session topic, published from whichever process settles the task |
 | The user-stream route and `GET /capabilities` | delivery · FIX-380 | Delivery owns what capabilities reports. FIX-380 reports its own kind and mints its token through the ER-4 check |
-| The resource hooks' invalidation | FIX-1506 · delivery | One invalidation path with two sources: the writer's own `resource_change` item and the notice. The writer's tab reads once, not twice |
+| The resource and state hooks' invalidation | FIX-1506 · delivery | One invalidation path with two sources: the writer's own `resource_change` or `state_change` item and the notice. The writer's tab reads once, not twice |
 | Shift Manager's `TasksPanel` and the Teammates lab's `adapter.ts` polls | the task board child | Only that child turns them into the fallback |
 
 ## Decided in review, recorded so no child reopens them
@@ -160,6 +160,10 @@ Every rule has one owner. A *consumes* cell is a place a child must not re-decid
 - **Request-finished notices are out.** FIX-2043 is a read by id; the request's own stream
   already tells its caller when it ends.
 - **FIX-1506 keeps its parent, FIX-2171.** It is a row here, linked, and blocks the closure.
+- **FIX-1506 publishes scope-state writes too.** A `ctx.user` or `ctx.org` patch emits
+  `state_change` through `wrapStateOpsWithEmit`, not `onResourceChanged`, so a resource-only
+  publisher would miss the state the goal names. One row, not two: both are a publish beside an
+  emit in `createExecutionContext.ts`, read again by the same hooks. Closure leg a patches both.
 - **FIX-380 is re-scoped** from a spike that routed item streams through Ably to the Ably
   adapter for both seams. Item streams stay on SSE (ER-7).
 
@@ -181,6 +185,8 @@ reuse rows. Its one hold became [D6](#d6).
   kept, since BullMQ already runs two processes.
 - **Owner decisions (Oct 31)** — D1 as recommended: widening the session stream rejected for its
   read per second per scope per view. The hold became D6: the bus wakes the session stream.
+- **Review (Oct 31)** — FIX-1506 widened to scope-state writes, which skip `onResourceChanged`;
+  closure leg a patches `ctx.org`. D1's flip names its metric; D6's timed read is fallback only.
 
 <a name="open"></a>
 **Open: none.**
