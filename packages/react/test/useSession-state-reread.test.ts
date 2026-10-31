@@ -48,7 +48,9 @@
  *     request changed" case fails (followedRequest reads null).
  *   - no session check on the latest-request read, or before the status
  *     read that follows it: the "latest read answers after the session
- *     changed" case fails.
+ *     changed" case fails; that status read taking its place when the
+ *     latest read answers: the "after another request's status was read"
+ *     case fails.
  *   - no session check after the stop or dismissal's await: the "resolves
  *     after the session changed" case fails (a read for the old session).
  *   - no stream status cleared by a dismissal: the "dismissed" case fails
@@ -564,6 +566,36 @@ describe("followedRequest", () => {
     });
     expect(requestMock.status.mock.calls.length).toBe(statusReads);
     expect(result.current.latestRequest).toBeNull();
+  });
+
+  it("a request's end whose latest read answers after another request's status was read reads none for it", async () => {
+    sessionsMock.requests.mockResolvedValue([
+      { id: "req_steer", status: "completed", flowKind: "demo", actionName: "steer", userId: "devuser", createdAt: 0, updatedAt: 0 },
+    ]);
+    const { result } = await mount();
+    await flush();
+    requestMock.status.mockClear();
+    act(() => void result.current.followRequest("req_turn"));
+    let answerLatest!: (value: unknown) => void;
+    sessionsMock.requests.mockImplementationOnce(() => new Promise((resolve) => (answerLatest = resolve)));
+    act(() => connections.at(-1)!.callbacks.onRequestStatus?.({ type: "request.failed", status: "failed" }));
+    await flush();
+
+    // A refresh shows a newer request, whose own status is read and lands.
+    requestMock.status.mockResolvedValue({ id: "req_next", status: "completed", startedAtMs: 40, completedAtMs: 50, ageMs: 1 });
+    act(() => void result.current.refresh());
+    await flush();
+    await land(stateCalls.length - 1, snapshot("later", [message("m1", "req_turn"), { ...message("m2", "req_next"), ts: 2000 }]));
+    await flush();
+    expect(result.current.followedRequest).toEqual({ id: "req_next", status: "completed", startedAtMs: 40, completedAtMs: 50 });
+
+    await act(async () => {
+      answerLatest([{ id: "req_steer", status: "completed", flowKind: "demo", actionName: "steer", userId: "devuser", createdAt: 0, updatedAt: 0 }]);
+      for (let i = 0; i < 5; i += 1) await Promise.resolve();
+    });
+    await flush();
+    expect(requestMock.status).not.toHaveBeenCalledWith("req_turn");
+    expect(result.current.followedRequest).toEqual({ id: "req_next", status: "completed", startedAtMs: 40, completedAtMs: 50 });
   });
 
   it("a status read for the session before does not land after the session changed", async () => {

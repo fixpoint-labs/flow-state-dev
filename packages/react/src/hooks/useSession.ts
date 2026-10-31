@@ -1256,10 +1256,12 @@ export function useSession(
    */
   const readRecordOf = useCallback(
     (requestId: string): void => {
-      const generation = sessionGenerationRef.current;
+      // The status read takes its place in order now, not when the latest
+      // read answers: a status read requested meanwhile (for a request shown
+      // since, or another session) is newer, and this one must not follow it.
+      const sequence = followedReadSequenceRef.current;
       void refreshLatestRequest().then((latest) => {
-        // The session changed while the latest read was out: not this one's.
-        if (generation !== sessionGenerationRef.current) return;
+        if (sequence !== followedReadSequenceRef.current) return;
         if (latest?.id !== requestId) readFollowedStatus(requestId);
       });
     },
