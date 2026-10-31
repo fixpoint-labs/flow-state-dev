@@ -93,8 +93,10 @@ opts in. **Net:** small, and smaller than the app copy it replaces.
 
 ## Sign off
 
-**Approve by merging.** The call to weigh is **[D1](DECISIONS.md#d1)**: the stamp is set at the
-request by a new action option in core, rather than kept out of L1. *If wrong:* the option is one
+**Approve by merging.** One open call, **[D1](DECISIONS.md#d1)**, is yours: the stamp is set at
+the request by a new action option in core (recommended), rather than kept out of L1. A generic
+caller tag, asked for in review, is weighed there and rejected: the task's view reads
+`item.taskId`, so a tag elsewhere splits one fact across two fields. *If wrong:* the option is one
 field and a few lines in `runAction`; moving the stamp into Workforce later means doors mark
 their own scope and the line's echo goes unstamped again.
 

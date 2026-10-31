@@ -9,13 +9,15 @@ is written, and how far a caller-named id is trusted.
 <a name="d1"></a>
 ## D1 · The request carries the stamp, named by an action option the engine reads
 
-| | An action option, `taskOf` (chosen) | Each door marks its own scope, in Workforce | App memory per task (`sessionStorage`) |
-|---|---|---|---|
-| The user's line is stamped | yes | **no:** the engine writes the echo before any block runs | no |
-| A turn that fails, or steers, before emitting is still found | yes, the echo is stamped | no | in that tab only |
-| Survives a reload, another tab, another app | yes | yes, for what the turn emitted | no |
-| Touches L1 | one optional field in `ActionCore`, a few lines in `runAction` and the context | none | none |
-| Every app gets it | yes | yes | no, each keeps a copy |
+**Open: Jake's call** (see [Open](#open)). Recommended: `taskOf`.
+
+| | An action option, `taskOf` (recommended) | A generic caller tag on items | Each door marks its own scope, in Workforce | App memory per task (`sessionStorage`) |
+|---|---|---|---|---|
+| The user's line is stamped | yes | yes | **no:** the engine writes the echo before any block runs | no |
+| A turn that fails, or steers, before emitting is still found | yes, the echo is stamped | yes | no | in that tab only |
+| Readers find it where they look today (`item.taskId`) | yes | **no:** a second place every reader must learn | yes, for what the turn emitted | no |
+| Touches L1 | one optional field in `ActionCore`, a few lines in `runAction` and the context | a new item field, an action option, and every attribution reader | none | none |
+| Every app gets it | yes | yes | yes | no, each keeps a copy |
 
 - **Because:** the line is the half the person misses most, and only the engine writes it. A
   scope mark in Workforce stamps the reply and leaves the line to be paired up by request in
@@ -28,6 +30,15 @@ is written, and how far a caller-named id is trusted.
   decides nothing by it.
 - **Locks in:** the id comes from the action's input, so a flow opts in per action. A scope a
   task-board worker marks inside the request still wins, so a task's own work keeps its own id.
+- **A generic caller tag, rejected.** The EM's suggestion: the engine stamps an opaque,
+  caller-named tag object on the line and every item, and Workforce's doors put `taskId` in it,
+  so the word "task" stays in L2. The task's view reads `item.taskId`, the field
+  `_markTaskScope` fills, through `itemsForTask`, `attributeItemsToTasks` and
+  `collectAttributedItemIds` in `@flow-state-dev/contracts` (also L1). A tag elsewhere on the
+  item is a second place for the same fact: every one of those readers must read both, or a
+  task's view finds scope-marked work and misses door turns. If instead the engine copies a
+  tag key into `item.taskId`, it is `taskOf` under another name, with an untyped object in its
+  place. The task noun is in the item contract either way; the tag only hides it.
 - **What would change my mind:** a reading of ER-1 that forbids any new task-shaped field in
   core, even one that only labels. Then the door marks its scope in Workforce and Shift Manager
   keeps pairing the line by request, with the steer case left open.
@@ -47,6 +58,15 @@ is written, and how far a caller-named id is trusted.
   for a task this session never ran attaches to nothing.
 - **Locks in:** no refusal for an unknown id. If a later reader starts deciding by `taskId`,
   that reader checks it, not the door.
+
+<a name="open"></a>
+## Open
+
+- **D1, for Jake.** Stamp the task at the request with `taskOf` (recommended), or keep core
+  untouched and stamp only what the door's turn emits. The EM asked for a generic caller tag
+  instead; it is rejected above because it splits one fact across two item fields. Approving
+  this spec as merged approves `taskOf`; say "no core change" on the PR and the spec moves to
+  the Workforce-only option before any build.
 
 ## Decided, not asked
 
@@ -72,3 +92,5 @@ is written, and how far a caller-named id is trusted.
 - Drafted 2026-10-31 with the package slice prototyped beside it
   (`/mnt/project-files/FIX-2422/prototype.patch`): the `agent` door's turn came back with the
   line and the reply stamped, and with `taskOf` removed the test failed on the missing stamps.
+- 2026-10-31, the epic's EM asked for a generic caller tag in place of `taskOf`, to keep the task
+  noun out of the engine. Weighed in D1 and rejected; D1 left open for Jake.
