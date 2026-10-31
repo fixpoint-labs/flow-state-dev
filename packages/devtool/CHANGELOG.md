@@ -1,5 +1,12 @@
 # @flow-state-dev/devtool
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [b616e7c]
+  - @flow-state-dev/react@0.3.1
+
 ## 0.3.0
 
 ### Minor Changes
