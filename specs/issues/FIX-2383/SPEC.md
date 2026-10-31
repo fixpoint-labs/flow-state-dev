@@ -67,6 +67,8 @@ stateDiagram-v2
 - **A `retryTask_<suffix>` action** in `taskToolActions`, built only for actions
   ([D2](DECISIONS.md#d2)). It acts as the signed-in user, reaches the row the way the action's
   cancel does, and on a board that starts ready rows at once starts it the way a release does.
+- **Workforce's conversation board starts a retried row at once**, as it does a released one, so
+  Retry in Shift Manager or Teammates runs the task without another touch of the board.
 - **Refusals name the rule and the move**: a completed task points at a follow-up; a row whose
   dependency ended points at retrying that dependency first.
 - **Docs:** orchestration README (the verb, the action, the state machine) and the task-board docs
@@ -77,7 +79,7 @@ stateDiagram-v2
 The status table every other write goes through (`ALLOWED_TRANSITIONS`): terminal stays terminal
 for `fail`, `cancel`, `patchSettings`, a release and the claim gate. `completed` never reopens. The
 model's four task tools. The cascade: dependents a failure skipped stay cancelled until each is
-retried. Core, engine, client and react (ER-1). harness-manager and workforce code.
+retried. Core, engine, client and react (ER-1). harness-manager code.
 
 ## What's already here, and the debt
 
@@ -90,7 +92,7 @@ retried. Core, engine, client and react (ER-1). harness-manager and workforce co
 | `taskToolActions`' `claimless` build | **Extends** with one action-only tool, like `done` |
 | `cascadeOwed` | **Guarded.** A row still owing a cascade is refused until the board's touch pays it, so a late payment can't cancel the retried run's work |
 
-**Adds:** one verb, one change kind, one action. **Removes:** nothing. **Debt:** on a
+**Adds:** one verb, one change kind, one action, and the conversation board's start after it. **Removes:** nothing. **Debt:** on a
 resource-backed board the grant is counted but not capped, as every retry there is today; a
 model retry would need that cap first (D2). **Net:** small.
 
