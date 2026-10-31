@@ -64,9 +64,12 @@ flowchart LR
   - A `SessionItemsWindow`: `items` oldest first, `start`, `total`, `hasEarlier`, the item types
     it was read with, and the read's `at` and `sessionCreatedAt` for `sessions.stream`.
   - `source` is `Pick<SessionsApi, "state">`, as `readEveryCollectionPage` takes `listCollectionItems`.
-- **Every read is one shape** ([D1](DECISIONS.md#d1)): from a start position to the session's end.
-  Paging follows `useSession`'s rule: each later page starts one item early and the read starts
-  over when that item moved ([D2](DECISIONS.md#d2)).
+- **Every read is one shape** ([D1](DECISIONS.md#d1)): from a start position to the session's end,
+  through **`readSessionHistory`**, FIX-2374's paged read (`useSession`'s overlap-and-start-over
+  loop, moved into `client` and kept internal), given one more option: **`offset`**, where to
+  start ([D2](DECISIONS.md#d2)). It is the client's one paging loop. Whichever of FIX-2374 and this
+  slice merges second takes the other's `session-client/session-history.ts`: the file, the name
+  and the rule are the same, and only `offset` is added.
 - **Docs:** the client README and the client API page get the three functions. A `patch`
   changeset for `@flow-state-dev/client`.
 
@@ -79,7 +82,9 @@ flowchart LR
   replaces it.
 - **No engine or route change.** The state route already returns `pagination.total`.
 - **No feed and no poll.** New items arriving live are FIX-2374's `sessionFeed` (epic ER-4). The
-  window's `at` and `sessionCreatedAt` are what that feed, or `sessions.stream`, follows from.
+  window's `at` and `sessionCreatedAt` are exactly the `after` that FIX-2374's `followSession`
+  takes (`{ at?, sessionCreatedAt? }`, passed on as the stream's `since` and `sessionCreatedAt`),
+  so a feed can start from a window.
   These functions are the client's only public session-history read: `sessionFeed` starts from
   `readSessionTail`, and FIX-2374's own history read stays internal. Whichever of the two merges
   second builds on the other (epic EM call, 2026-10-31).
@@ -91,15 +96,13 @@ flowchart LR
 |---|---|
 | Shift Manager `send.ts` `sessionHoldsLine`: reads from the newest page back | **Generalised** here; deleted in the adoption PR |
 | Shift Manager `run.ts` `readSessionItems`: oldest first, 5 pages, `truncated` | **Replaced** in the adoption PR |
-| `useSession`'s `readPages`: the overlap-and-start-over paging rule | **Reused as a rule**, not as code: it is a private closure in `react` that reads from offset 0 |
+| `readSessionHistory` (FIX-2374, #4360): `useSession`'s paging loop moved into `client`, internal | **Extended** with `offset`; the window reads only through it |
 | `readEveryCollectionPage`: the shared collection page loop | **Pattern followed** (a function over a narrow source, in `client`) |
 | `sessions.state` and its `pagination` | **Used** as it is |
 
-**Adds:** three functions and a type in `client`. **Removes:** nothing here; two Shift Manager
-copies in the adoption PR. **Debt:** the paging rule now lives in two places, `useSession`'s
-closure and this module. Moving `useSession`'s full read onto `readFrom` is a follow-up, not this
-slice, because it changes a React hook's read path every app uses. **Net:** down once the
-adoption lands.
+**Adds:** three functions and a type in `client`, and an `offset` option on the internal
+`readSessionHistory`. **Removes:** nothing here; two Shift Manager copies in the adoption PR.
+**Debt:** none new; the paging rule has one home. **Net:** down once the adoption lands.
 
 ## Sign off
 
