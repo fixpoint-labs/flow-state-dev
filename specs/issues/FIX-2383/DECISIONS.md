@@ -61,10 +61,17 @@ how a terminal row reopens, who may ask, and what the attempt budget says.
   owed cascade (`settling`, try again); a spent state-backed budget (`retry_budget_spent`).
 - **E4 · Dependents stay skipped.** Each is retried on its own once its dependency is back; a
   "retry with dependents" is not in this issue.
-- **E5 · The action starts the row** on a board built with `dispatches: true`, as a release does.
+- **E5 · The board starts the row** the way a release does: Workforce's conversation board owes
+  and triggers its pass after the write (`owePass`, `triggerPass`). A row back at `pending` alone
+  schedules nothing.
 
 ## How it got here
 
 - Drafted 2026-10-31 from the epic's reuse table, with the build prototyped beside it.
 
 ## Notes from review
+
+- Codex (1759128): no findings. Cursor (1759128): approved; folded its two clarity notes (the
+  action is a fifth tool, not a field like `done`; the start goes through the board's pass). Its
+  prose dedupes (refusal list, terminal-stays-terminal) left as is: the SPEC lists the refusals
+  as its checks, DECISIONS gives the codes.

@@ -64,9 +64,10 @@ stateDiagram-v2
 - **One more attempt, whatever was left** ([D3](DECISIONS.md#d3)). The next claim takes attempt
   `attempts + 1`, and `maxAttempts` is not changed: a task that had tries left still has them, and
   one that had none gets exactly this one.
-- **A `retryTask_<suffix>` action** in `taskToolActions`, built only for actions
-  ([D2](DECISIONS.md#d2)). It acts as the signed-in user, reaches the row the way the action's
-  cancel does, and on a board that starts ready rows at once starts it the way a release does.
+- **A `retryTask_<suffix>` action** in `taskToolActions`: a fifth tool of its own, built only
+  when the tools are built for actions ([D2](DECISIONS.md#d2)), not a field on `updateTask`. It
+  acts as the signed-in user and reaches only a row that user, tenant and org filed, as an answer
+  does.
 - **Workforce's conversation board starts a retried row at once**, as it does a released one, so
   Retry in Shift Manager or Teammates runs the task without another touch of the board.
 - **Refusals name the rule and the move**: a completed task points at a follow-up; a row whose
