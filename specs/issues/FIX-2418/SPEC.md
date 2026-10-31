@@ -9,7 +9,7 @@
 | **opens Tasks** | NOW and COST columns that always read `—`, and an IN REVIEW group that is always empty, with "arrives with FIX-1651" beside it | Six columns that all carry data. No IN REVIEW group unless a row is in it |
 | **opens a task** | Three disabled buttons (Hand off, Reassign, Open PR) under a line naming FIX-1651; Diff and Checks tabs with nothing in them; a disabled *Also post to the workstream* box; Brief rows and inspector sections that only say what arrives later | Interrupt, Session and Brief, and only the fields that hold something. A link to `/diff` or `/checks` opens Session |
 | **reads Roster or Inbox** | Lines that end with "arrives with FIX-1672" or "is FIX-1652's call" | The same lines without the ticket sentence |
-| **builds or tests Shift Manager** | Sees every gap | Turns on **Show what's coming** in Settings and sees every gap as today. Every gap line also sits in its element's `data-gap`, so tests and goal checks find it with the switch off |
+| **builds or tests Shift Manager** | Sees every gap | Turns on **Show what's coming** in Settings and sees every gap as today. A line that stays on screen keeps its ticket sentence in `data-gap`; a hidden control, column or tab isn't mounted at all, so tests assert it's absent with the switch off and check its owner with the switch on |
 
 ## The goal, and how we'll know it's met
 
@@ -31,7 +31,8 @@ something not built, and no internal ticket id anywhere on screen.**
   Tasks and Roster (`roster-screen.test.tsx`): the placeholders are absent, the frame's tabs are
   `session, brief`, `/diff` opens Session, and the screen's text matches no `FIX-\d+`. The
   existing gap tests run with the switch on and keep asserting every line names its owner.
-  `coming.test.ts` covers the switch: off by default, kept in storage, held for the page when
+  The registry's owner audit reads each `{ text, coming }` entry's `coming` half, since `text`
+  names no owner by design. `coming.test.ts` covers the switch: off by default, kept in storage, held for the page when
   storage refuses. **Red state:** with the switch forced on, exactly the four default-off tests
   fail (prototyped).
 - **Goal (`goals/shift-manager/it-shows-and-stops-a-task-run`), real path, no model:** its

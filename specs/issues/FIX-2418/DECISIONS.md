@@ -25,8 +25,10 @@
 - A line that is true today and ends with a ticket sentence splits into `text` (always drawn)
   and `coming` (drawn with the switch on). Example: Inbox says which asks it lists; "an
   organization-wide view is FIX-1652's call" is the `coming` half.
-- **Every drawn gap carries its line in `data-gap`**, including the `coming` half when it's
-  hidden, as the issue asks, so a test reads the owner without turning the switch on.
+- **Every drawn gap carries its line in `data-gap`**, as the issue asks. A line that stays on
+  screen carries its `coming` half there even while that half is hidden, so a test reads its
+  owner with the switch off. A control, column or tab that is hidden isn't mounted: no
+  hidden-but-present nodes kept for tests. Default-off checks assert absence.
 - **Locks in:** with the switch on, the screens read exactly as they do today.
 
 ## Decided, not asked
