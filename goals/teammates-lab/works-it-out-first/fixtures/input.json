@@ -3,7 +3,6 @@
     "id": "reviewer",
     "description": "Reviews changes to the team's copy and says what's off."
   },
-  "tools": null,
   "file": "docs/pricing.md",
   "before": "# Pricing\n\nThe Team plan is $20 per user per month, billed monthly.\nAnnual billing is $200 per user per year.\n",
   "after": "# Pricing\n\nThe Team plan is $24 per user per month, billed monthly.\nAnnual billing is $200 per user per year, which saves you 40%.\n",
