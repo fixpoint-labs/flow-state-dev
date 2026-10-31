@@ -44,11 +44,13 @@ flowchart LR
 ## What changes
 
 **`harnessSessionFlow` takes `approveTools`.** It is the manager's FIX-2389 option, on the session
-flow. With it on, the session feeds carry the same `onToolApproval` feed, and a held call stops
-the turn's harness step. The turn then waits on the person with the same `suspendForUser({ kind:
-"approval" })` stop, prompt and data, and resumes the conversation the turn confirmed with the
-grant. The pieces are FIX-2389's: the feed type, the held decision, the grant rule, the prompt.
-The session flow composes them; it re-implements none ([D1](DECISIONS.md#d1)).
+flow, composed from FIX-2389's public approval pieces the way the manager composes them
+([D1](DECISIONS.md#d1)). A held call stops the turn's harness step; the turn waits on the same
+`suspendForUser({ kind: "approval" })` stop, then resumes the conversation it confirmed with the grant.
+
+**One wiring rule.** The flow hands `onToolApproval` among the feeds only when `approveTools` is
+on; with it off the feed is absent, as on the manager (FIX-2389 D2). A mode that opts in passes the
+feed and leaves `bypassPermissions`. What it pre-allows (`allowedTools`) stays the host's.
 
 **Kitchen Sink's Claude Code mode opts in.**
 
@@ -61,14 +63,14 @@ The session flow composes them; it re-implements none ([D1](DECISIONS.md#d1)).
 +   allowedTools: ["Read", "Glob", "Grep"],
 ```
 
-The card is the one Kitchen Sink already draws: its harness page renders a suspension item with
-the chat renderers, whose `approval` card is the registry's copy, driven by `useApproval`.
-FIX-2389 teaches both to send *Allow for this run*; Kitchen Sink's copy follows the registry.
-The turn's notice reads a suspended request as *Waiting on you*.
+No new UI: the harness page already draws a suspension item with the registry `approval` card's
+copy and `useApproval`. The turn's notice reads a suspended request as *Waiting on you*.
 
-**What lands, and when.** One PR, after FIX-2389's package slice merges, stacked on
-2384 → 2387 → 2398 in `session-flow.ts`'s *turn record, turn end, feeds* region (the
-[build order](../../epics/FIX-2369/DECISIONS.md#coordination-seams)).
+**What lands, and when.** Two PRs, per the epic's D3. (1) The package slice: `approveTools` on
+`harnessSessionFlow`, after FIX-2389's slice merges, in `session-flow.ts`'s *turn record, turn
+end, feeds* region after 2398. (2) Kitchen Sink's adoption (the mode and the goal), from `main`
+once (1) merges. Where they sit is the
+[build order](../../epics/FIX-2369/DECISIONS.md#coordination-seams)'s to say; the coordinator adds the row.
 
 **Docs:** `apps/docs/docs/orchestration/harness-manager.md` → the session flow's section gets
 `approveTools`, pointing at FIX-2389's *Approving a run's tool calls*. The harness-manager README
@@ -85,7 +87,7 @@ lists the option.
 
 | Already here | What this does with it |
 |---|---|
-| FIX-2389's approval feed, held decision, grant rule and prompt | **Composes**, in the session flow's turn |
+| FIX-2389's public approval pieces | **Composes**, in the session flow's turn |
 | `suspendForUser` and Kitchen Sink's durable host | **Builds on.** The turn waits as a durable stop |
 | The steer's resume of the confirmed conversation (`binding.confirmed`) | **Reuses.** The resumed step continues the same conversation |
 | Kitchen Sink's suspension renderer and `approval` card (registry copy) | **Reuses**, unchanged but for FIX-2389's registry change |
