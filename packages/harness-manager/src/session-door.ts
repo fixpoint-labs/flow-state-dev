@@ -127,7 +127,7 @@ function newest(rows: readonly Task[]): Task {
  * latest open one, a follow-up waiting to start; else, every one finished,
  * the latest that ran here, whose coding session talk resumes.
  */
-function sessionRow(tasks: TaskCollectionRef, sessionId: string): Task | undefined {
+export function sessionRow(tasks: TaskCollectionRef, sessionId: string): Task | undefined {
   const rows = rowsInSession(tasks, sessionId);
   const linked = rows.filter((task) => task.run?.sessionId === sessionId);
   if (linked.length === 0) return undefined;

@@ -32,6 +32,12 @@
  * `recordBranchPullRequests`), and adds what the turn's tool calls did not
  * show: one opened by a raw API call, say.
  *
+ * Each turn's record also keeps the commit the session's checkout was on when
+ * the turn first reached it (`base`) and the one it was on when the turn
+ * ended (`head`). The `changes` read answers what the turn's commits changed
+ * between the two, file by file or one file's patch (FIX-2384), so a page
+ * shows each turn's own changes, never a later turn's.
+ *
  * With `verify`, a turn the harness finished also runs the host's checks in
  * the session's working directory (`commandCheck`'s runner) and records them
  * on the turn. A red check is reported, never a failed turn: the person is
@@ -60,7 +66,8 @@ import type {
   HarnessSessionHook,
   HarnessSteerHook,
 } from "@flow-state-dev/core/types";
-import { recordBranchPullRequests } from "@flow-state-dev/workspace";
+import { recordBranchPullRequests, run } from "@flow-state-dev/workspace";
+import { readRunChanges, runChangesSchema } from "./commits";
 import { z } from "zod";
 import {
   assertCommandCheckOptions,
@@ -85,6 +92,14 @@ export const harnessTurnRecordSchema = z.object({
   at: z.number().nullable().default(null),
   /** Lines sent while the turn ran that the harness took into it (`steer`), oldest first. */
   steered: z.array(z.string()).nullable().default(null),
+  /**
+   * The commit the session's checkout was on when the turn first reached it:
+   * where the turn's changes start. `null` when the checkout isn't a git
+   * repository, and on a turn recorded before this field (BP-030).
+   */
+  base: z.string().nullable().default(null),
+  /** The commit the checkout was on when the turn ended: where its changes end. `null` while it runs. */
+  head: z.string().nullable().default(null),
   /** The checks `verify` ran when the turn ended, in order; `null` when none ran. */
   checks: z.array(commandCheckResultSchema).nullable().default(null),
 });
@@ -163,6 +178,14 @@ export interface HarnessSessionFeeds {
   readonly onSteerable: HarnessSteerHook;
 }
 
+/** What the `changes` read takes: the turn, by its request id, and optionally one file. */
+export const harnessTurnChangesInputSchema = z.object({
+  /** The turn's request id, as its record is keyed in `state.turns`. */
+  turn: z.string().min(1),
+  /** A file the turn changed, by its path in the repository: answer its patch instead of the diff. */
+  path: z.string().min(1).optional(),
+});
+
 /** Options for {@link harnessSessionFlow}. */
 export interface HarnessSessionFlowOptions {
   /** The flow kind, one per harness (`claude-code-session`). */
@@ -216,6 +239,8 @@ const BLANK_TURN: HarnessTurnRecord = {
   error: null,
   at: null,
   steered: null,
+  base: null,
+  head: null,
   checks: null,
 };
 
@@ -245,6 +270,15 @@ export const HARNESS_SESSION_FAILED_OUTCOME = "The harness reported the run as f
 function failureWordsOf(handle: HarnessRunHandle): string {
   const words = (handle as { failureMessage?: unknown }).failureMessage;
   return typeof words === "string" && words.trim() !== "" ? words : HARNESS_SESSION_FAILED_OUTCOME;
+}
+
+/** The commit `cwd`'s checkout is on, or `null` when git can't read one there. */
+async function headCommit(cwd: string): Promise<string | null> {
+  try {
+    return (await run("git", ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"], { cwd, timeoutMs: 10_000 })).stdout.trim() || null;
+  } catch {
+    return null;
+  }
 }
 
 /** Change the session's state atomically. */
@@ -284,7 +318,20 @@ export function harnessSessionFeeds(
   return {
     onSteerable: (steer, ctx) => steering.onSteerable(steer, ctx),
     model: (ctx) => (ctx.session.state as HarnessSessionState).model ?? defaultModel,
-    cwd: (ctx) => workspace.provision(placeOf(kind, ctx)),
+    cwd: async (ctx) => {
+      const cwd = await workspace.provision(placeOf(kind, ctx));
+      // Where this turn's changes start: the first time the turn reaches its checkout.
+      const requestId = requestOf(ctx);
+      if ((ctx.session.state as HarnessSessionState).turns?.[requestId]?.base == null) {
+        const base = await headCommit(cwd);
+        if (base !== null) {
+          await changeState(ctx, (state) =>
+            withTurn(state, requestId, (turn) => (turn.base == null ? { ...turn, base } : turn)),
+          );
+        }
+      }
+      return cwd;
+    },
     worktree: (ctx) => workspace.locate(placeOf(kind, ctx)),
     resume: async (ctx) => {
       const requestId = requestOf(ctx);
@@ -418,6 +465,45 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       }
     },
   });
+  // When a turn ends, however it ended: the commit its checkout is on, where
+  // the turn's changes end. A checkout git can't read leaves it unset, and
+  // the read then ends at the checkout's HEAD.
+  const recordTurnHead = handler({
+    name: "record-turn-head",
+    execute: async (_input: unknown, ctx): Promise<void> => {
+      const harnessCtx = ctx as unknown as HarnessCallbackContext;
+      const requestId = requestOf(harnessCtx);
+      // A turn that never reached a git checkout has no base, so nothing for an end to bound.
+      if ((harnessCtx.session.state as HarnessSessionState).turns?.[requestId]?.base == null) return;
+      const cwd = options.workspace.locate(placeOf(options.kind, harnessCtx));
+      if (!existsSync(cwd)) return;
+      const head = await headCommit(cwd);
+      if (head === null) return;
+      await changeState(harnessCtx, (state) => withTurn(state, requestId, (record) => ({ ...record, head })));
+    },
+  });
+  const turnEnd = sequencer({ name: "turn-end", inputSchema: z.unknown() }).tap(recordTurnHead).tap(branchPullRequests);
+  // What one turn's commits changed, between the commits its record keeps. A
+  // read: answered in the response and stored nowhere, so an opened patch
+  // never lands in the session's log.
+  const changes = handler({
+    name: "turn-changes",
+    inputSchema: harnessTurnChangesInputSchema,
+    outputSchema: runChangesSchema,
+    execute: async (input, ctx) => {
+      const harnessCtx = ctx as unknown as HarnessCallbackContext;
+      const record = (harnessCtx.session.state as HarnessSessionState).turns?.[input.turn];
+      if (record === undefined) throw new Error(`This session keeps no turn "${input.turn}".`);
+      const cwd = options.workspace.locate(placeOf(options.kind, harnessCtx));
+      // A turn that never reached a git checkout has no base: an unverified, empty answer.
+      // `== null`: a turn recorded before these fields has neither, and reads unverified (BP-030).
+      const base = record.base ?? null;
+      return readRunChanges(existsSync(cwd) ? cwd : "", base === null ? null : "HEAD", base, {
+        ...(record.head != null ? { head: record.head } : {}),
+        ...(input.path !== undefined ? { path: input.path } : {}),
+      });
+    },
+  });
   // When a turn the harness finished ends: the host's checks, on the turn's
   // record. Reported, not a failure: a red check leaves the turn as it ended.
   const verifyTurn = handler({
@@ -456,7 +542,8 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       },
       steer,
     },
-    request: { onFinished: branchPullRequests },
+    reads: { changes: { block: changes, description: "What one turn's commits changed: its files and lines, or one file's patch." } },
+    request: { onFinished: turnEnd },
     session: {
       stateSchema: harnessSessionStateSchema,
       // The page reads the model, the binding and the turns. The model is the
