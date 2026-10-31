@@ -67,3 +67,5 @@ task settles), through the AI Gateway. Claude Code needs `ANTHROPIC_API_KEY`.
 | 2026-10-30 | 863a0e13 | openai/gpt-5.4 | FAIL (control `answer-again-off`) | Same 0-task retry as the green run; the control graded nothing on main |
 | 2026-10-30 | 863a0e13 + layer fix | openai/gpt-5.4 | PASS | Attempt 1 of 3, twice. The default layer marks a messageable delegate as taking tasks and says work for one goes as a task; 2 tasks, the card inside the first `respond`, 6 harness entries |
 | 2026-10-30 | 863a0e13 + layer fix | openai/gpt-5.4 | FAIL (control `answer-again-off`) | Signal 4 only: a task settled while the first turn ran and no card showed inside it |
+| 2026-10-30 | 07753056 | openai/gpt-5.4 | PASS | Closure re-run (FIX-2156) after #4262. Attempt 1 of 3: 2 tasks, the card inside the first `respond`, 6 harness entries |
+| 2026-10-30 | 07753056 | openai/gpt-5.4 | FAIL (control `answer-again-off`) | Signal 4 only |
