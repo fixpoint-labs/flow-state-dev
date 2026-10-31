@@ -72,7 +72,8 @@ The text is in the box until the server has it; a reload at any point before tha
   draft until the session holds the line. It stores the draft through `useDraft`, keyed by the
   target each caller passes (a conversation's worker, a task, an ask), and stores an
   *unconfirmed* warning beside it until the next send.
-- **Kitchen Sink** deletes `lib/use-session-draft.ts` and imports the hook (ER-3).
+- **Kitchen Sink** deletes `lib/use-session-draft.ts` and imports the hook (ER-3);
+  `clearSessionDraftStorage` becomes `clearDraft`.
 - **Docs:** `packages/react/README.md` documents `useDraft`; the Shift Manager README's `--dev`
   line notes that drafts survive the reload.
 
@@ -90,7 +91,7 @@ adapter. The conversation feed draws only stored items.
 | Shift Manager's `useTurnSend` and `TurnSendStatus` | **Kept.** The labs' simpler states (*Sending…*, *Not sent · Retry*) match its wording; they don't import it, since it is Shift Manager's own send model |
 | Teammates' `useSubmit` | **Reused** for its composer, as it already is for its forms |
 | FIX-2370 (inline failed turn, ui registry), FIX-2376 (*queued* line), FIX-2374 (session feed) | **Left to them.** This change draws nothing in the feed |
-| FIX-2372 (busy and failed states on mutation buttons, Claude Code-style lab) | **Beside it.** That issue covers the lab's buttons; this one its composer. If 2372 lands a shared helper first, the composer uses it |
+| FIX-2372 (busy and failed states on mutation buttons, Claude Code-style lab) | **Beside it, not a dependency.** That issue covers the lab's buttons; this one its composers. A shared helper from 2372 can be adopted later |
 
 **Adds:** one hook in `react` (moved, not new). **Removes:** Kitchen Sink's copy. **Debt:** a
 Retry after a network error can send a line twice if the first did arrive; the labs show the
@@ -101,7 +102,9 @@ request id, so an idempotent Retry needs an engine change, not filed. **Net:** s
 
 **Approve by merging.** The one call is **where the draft hook lives** ([D1](DECISIONS.md#d1)):
 in `@flow-state-dev/react`, shared by all four apps, rather than a copy in each. *If wrong:* it
-is one small hook, and moving it back is an import change in four apps.
+is one small hook, and moving it back is an import change in four apps. **D2**, decided rather
+than asked, departs from the issue's wording: the line waits in the box, not as a *sending*
+line in the feed, which is FIX-2376's.
 
 Improvement · labs, `shift-manager`, `react`, Kitchen Sink import · small · 1 PR · wave 0 of
 FIX-2369, merges after FIX-2413 and before FIX-2390
