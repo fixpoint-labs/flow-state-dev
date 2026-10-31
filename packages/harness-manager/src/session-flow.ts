@@ -46,7 +46,7 @@
  * When the harness step ends, however it ended, the flow also records what
  * the turn spent on its record, inside the turn so it lands before the
  * request publishes its end: the request's own spend, as every harness reports it into the
- * request (`reportHarnessSpend`), folded by orchestration's `taskSpendView`
+ * request (`reportHarnessSpend`), folded by orchestration's `requestSpendView`
  * so a turn reads like a task. And a subscription window a harness hears
  * about during a run (`onUsage`) lands in the person's usage record, read
  * through the flow's `harnessUsage` query (FIX-2398).
@@ -65,7 +65,7 @@ import {
   sequencer,
   type HarnessSteering,
 } from "@flow-state-dev/core";
-import { taskSpendView, taskSpendViewSchema, type TaskSpendSource } from "@flow-state-dev/orchestration/tasks";
+import { requestSpendView, taskSpendViewSchema, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type {
   HarnessBlock,
@@ -77,7 +77,7 @@ import type {
   HarnessUsageHook,
   HarnessUsageReader,
 } from "@flow-state-dev/core/types";
-import { readRequestSpend, requestSpendSources } from "@flow-state-dev/core/types";
+import { readRequestSpend } from "@flow-state-dev/core/types";
 import { recordBranchPullRequests, run } from "@flow-state-dev/workspace";
 import { readRunChanges, runChangesSchema } from "./commits";
 import { z } from "zod";
@@ -355,7 +355,7 @@ export function harnessSessionFeeds(
     onSteerable: (steer, ctx) => steering.onSteerable(steer, ctx),
     // The person running the turn is the principal, so the window lands in their row.
     onUsage: async (report, ctx) => {
-      await recordHarnessUsage(ctx as never, report);
+      await recordHarnessUsage(ctx, report);
     },
     model: (ctx) => (ctx.session.state as HarnessSessionState).model ?? defaultModel,
     cwd: async (ctx) => {
@@ -440,7 +440,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
           failure: harnessFailureKind(error),
           stopped: ctx.signal.aborted,
           error: error.message,
-          ...turnEndOf(ctx, requestId),
+          ...turnEndOnce(ctx, requestId, record),
         })),
       );
       throw error;
@@ -535,7 +535,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
     execute: async (_handle: HarnessRunHandle, ctx): Promise<void> => {
       const requestId = ctx.request.identity.id;
       try {
-        await changeState(ctx, (state) => withTurn(state, requestId, (record) => ({ ...record, ...turnEndOf(ctx, requestId) })));
+        await changeState(ctx, (state) => withTurn(state, requestId, (record) => ({ ...record, ...turnEndOnce(ctx, requestId, record) })));
       } catch (error) {
         ctx.emit.status(`What the turn spent was not recorded: ${(error as Error).message}`, { transient: false });
       }
@@ -624,28 +624,18 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   })();
 }
 
-/** What a turn's record gets when its harness step ends: what it spent, and when. */
-function turnEndOf(ctx: object, requestId: string): { spend: ReturnType<typeof turnSpendOf>; endedAt: number } {
-  return { spend: turnSpendOf(readRequestSpend(ctx), requestId), endedAt: Date.now() };
+/**
+ * What a turn's record gets when its harness step ends: what it spent, and
+ * when. Once: a record that already ended keeps its end, so a second writer
+ * (a failure record, then the step after it) never moves it.
+ */
+function turnEndOnce(
+  ctx: object,
+  requestId: string,
+  record: { spend?: TaskSpendView | null; endedAt?: number | null },
+): { spend: TaskSpendView | null; endedAt: number } {
+  if (record.endedAt != null) return { spend: record.spend ?? null, endedAt: record.endedAt };
+  const spend = readRequestSpend(ctx);
+  return { spend: spend === undefined ? null : requestSpendView(spend, requestId), endedAt: Date.now() };
 }
 
-/**
- * A turn's spend, as a task's spend reads: its request's spend folded by
- * `taskSpendView`, or `null` when it spent nothing (or the context carries no
- * spend ledger).
- */
-function turnSpendOf(spend: ReturnType<typeof readRequestSpend>, requestId: string) {
-  if (spend === undefined) return null;
-  const sources = requestSpendSources(spend) as TaskSpendSource[];
-  if (sources.length === 0) return null;
-  const run = spend.harnessRuns.at(-1);
-  const model = Object.keys(spend.byModel).at(-1) ?? null;
-  return taskSpendView({
-    status: "completed",
-    spend: {
-      requests: [
-        { requestId, settled: sources, live: null, harness: run?.harness ?? null, harnessModel: run?.model ?? null, model, writer: null, admittedAt: null, recovered: null },
-      ],
-    },
-  });
-}

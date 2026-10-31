@@ -14,6 +14,8 @@ import type { RequestSpend } from "@flow-state-dev/core/types";
 import {
   createResourceBackedTaskCollection,
   createStateBackedTaskCollection,
+  requestSpendView,
+  spendAfterWrite,
   taskSpendView,
   ticketForClaim,
   type TaskChangeEvent,
@@ -54,6 +56,22 @@ describe("taskSpendView", () => {
     const mixed = taskSpendView({ status: "completed", spend: { requests: [entry("q1", [source(null, "subscription")]), entry("q2", [source(0.25, "api-key")]), entry("q3", [source(0.5, "api-key")])] } });
     expect(mixed?.costUsd).toBeCloseTo(0.75);
     expect(mixed?.inputTokens).toBe(300);
+  });
+
+  // A harness session's turn has a request and no row; it must read exactly as
+  // a task that ran the same request reads, or the one spend line disagrees.
+  it("reads one request's spend as the row of a task that ran it and settled", () => {
+    const spend: RequestSpend = {
+      byModel: {},
+      harnessRuns: [
+        { runId: "a", harness: "codex", model: "gpt-5-codex", inputTokens: 40, outputTokens: 4, costUsd: 0.01, billing: "api-key" },
+        { runId: "b", harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: 100, outputTokens: 10, costUsd: null, billing: "subscription" },
+      ],
+    };
+    const row = spendAfterWrite({ spend: null }, { requestId: "q1", part: "settle", spend });
+    expect(requestSpendView(spend, "q1")).toEqual(taskSpendView({ status: "completed", spend: row }));
+    expect(requestSpendView(spend, "q1")).toMatchObject({ harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: 140, costUsd: 0.01 });
+    expect(requestSpendView(NONE, "q1")).toBeNull();
   });
 });
 
