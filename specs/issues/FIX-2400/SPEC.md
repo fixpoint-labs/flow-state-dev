@@ -68,8 +68,9 @@ Sink's harness modes already use.
 + await page.goto(`/flow-state?session=${encodeURIComponent(sessionId)}`);
 ```
 
-**Docs:** no documentation impact. These are private labs and the reference app; no package API
-changes.
+**Docs:** one line in each app's README (the two labs' and Kitchen Sink's) saying what the address
+names and that Back works. No `apps/docs` page: these are private labs and the reference app, and
+no package API changes.
 
 ## What stays as it is
 
