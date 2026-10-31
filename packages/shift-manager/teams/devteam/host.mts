@@ -127,7 +127,7 @@ import {
   defineEmWorkerFlow,
   featureIssueOf,
 } from "./workforce/flows/workers/em.mts";
-import type { HarnessStub } from "./harness-stub.mts";
+import type { HarnessFeeds as LabHarnessFeeds } from "./harness.mts";
 import { mcpCredentialsAdapter, statusOf } from "./mcp-credentials.mts";
 import { coordinatorMemory } from "./memory.mts";
 import { withWriteLatency } from "./write-latency.mts";
@@ -380,7 +380,7 @@ export interface OpenLabOptions {
   /** The store adapter this lab runs over — `inMemoryStores()` is enough. */
   stores: unknown;
   /** The harness the `coder` worker flow runs. The one thing the two checks differ by. */
-  harness: HarnessStub["slot"];
+  harness: (feeds: LabHarnessFeeds) => HarnessBlock;
   /**
    * Where each coding run works.
    *
@@ -407,7 +407,8 @@ export interface OpenLabOptions {
   /**
    * Stop a running coding run for a user's steer and continue its session
    * with the line (the `coder` worker flow's `stopsOnAbort`). Only for a
-   * harness whose abort waits for its process to exit. Default off.
+   * harness whose abort waits for its process to exit. Default: what the
+   * harness declares (Claude Code stops; the stub doesn't).
    */
   stopsOnAbort?: boolean;
   /**
@@ -922,7 +923,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       ...(options.dropTask === true ? { dropTask: true } : {}),
     }),
     runTimeoutMs: options.runTimeoutMs ?? 60_000,
-    ...(options.stopsOnAbort === true ? { stopsOnAbort: true } : {}),
+    ...(options.stopsOnAbort === undefined ? {} : { stopsOnAbort: options.stopsOnAbort }),
     resources,
   });
 

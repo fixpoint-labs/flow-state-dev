@@ -188,7 +188,7 @@ export interface ChangeRecord {
 export type BoardRow = StoredTask & {
   input?: PieceInput;
   feedback?: string;
-  questions?: { id: string; source: { kind: string }; ask: { kind: string; prompt: string } }[];
+  holds?: { id: string; source: { kind: string }; ask: { kind: string; prompt: string } }[];
   steers?: { id: string; message: string; answers?: string }[];
   deps?: string[];
   startedAt?: number;
@@ -339,7 +339,7 @@ export class Scenario {
    *   bounds the wait.
    */
   answer(taskId: string, answer: string, userId: string = LAB_USER_ID, settleWithinMs = 30_000): Promise<ActResult> {
-    const questions = (this.rows().find((row) => row.id === taskId)?.questions ?? []).filter((hold) => hold.source.kind === "row");
+    const questions = (this.rows().find((row) => row.id === taskId)?.holds ?? []).filter((hold) => hold.source.kind === "row");
     const answeredIds = new Set((this.rows().find((row) => row.id === taskId)?.steers ?? []).flatMap((steer) => (steer.answers === undefined ? [] : [steer.answers])));
     const question = questions.find((hold) => !answeredIds.has(hold.id)) ?? questions[questions.length - 1];
     return this.onConversation("updateTask_tasks", { id: taskId, answers: question?.id ?? "none", message: answer }, userId, settleWithinMs);

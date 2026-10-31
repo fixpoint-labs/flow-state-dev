@@ -41,10 +41,11 @@ async function tell(worker: string, text: string) {
 
 /**
  * Lay the scrolling feeds out as a browser would (happy-dom lays nothing out): the conversation's
- * list and a popup's body, each 5000px of content in a 500px view. Every scroll they are asked
+ * list and a popup's body, each 5000px of content in a 500px view, or
+ * `height(feed)` px for a test whose content must grow. Every scroll they are asked
  * for is recorded with how it moves, and lands at once. Undone by the returned function.
  */
-function layOutFeeds() {
+function layOutFeeds(height: (feed: HTMLElement) => number = () => 5000) {
   const isFeed = (el: HTMLElement) =>
     el.matches("[data-scroller]") || (el.parentElement?.getAttribute("role") === "dialog" && el.classList.contains("overflow-y-auto"));
   const names = ["scrollHeight", "clientHeight", "scrollTop", "scrollTo"] as const;
@@ -52,12 +53,12 @@ function layOutFeeds() {
   const tops = new WeakMap<HTMLElement, number>();
   const scrolls: { feed: HTMLElement; behavior: ScrollBehavior | undefined }[] = [];
   Object.defineProperties(HTMLElement.prototype, {
-    scrollHeight: { configurable: true, get(this: HTMLElement) { return isFeed(this) ? 5000 : 0; } },
+    scrollHeight: { configurable: true, get(this: HTMLElement) { return isFeed(this) ? height(this) : 0; } },
     clientHeight: { configurable: true, get(this: HTMLElement) { return isFeed(this) ? 500 : 0; } },
     scrollTop: {
       configurable: true,
       get(this: HTMLElement) { return tops.get(this) ?? 0; },
-      set(this: HTMLElement, value: number) { tops.set(this, isFeed(this) ? Math.max(0, Math.min(value, 4500)) : 0); },
+      set(this: HTMLElement, value: number) { tops.set(this, isFeed(this) ? Math.max(0, Math.min(value, height(this) - 500)) : 0); },
     },
     scrollTo: {
       configurable: true,
@@ -311,7 +312,7 @@ describe("the teammates screen", () => {
       await within(popup).findByRole("region", { name: "Result" }, { timeout: 2000 });
 
       const body = popup.querySelector("[data-step=result]")!.parentElement!;
-      const kinds = [...body.children].map((el) => el.getAttribute("data-step"));
+      const kinds = [...body.querySelectorAll(":scope > [data-step]")].map((el) => el.getAttribute("data-step"));
       // The result leads; under it, the harness, then what the run did in order.
       expect(kinds).toEqual(["result", "harness", "tool", "said", "tools"]);
       expect(popup.querySelector("[data-step=harness]")?.textContent).toBe(`Started on ${harness}`);
@@ -361,41 +362,34 @@ describe("the teammates screen", () => {
   });
 
   it("stays put while you read further up: new text and a task card arrive below, and Jump to latest takes you back", async () => {
-    render(<App adapter={fast()} />);
+    // Slow enough to scroll up while the answer is still being written.
+    const feeds = layOutFeeds();
+    onTestFinished(feeds.restore);
+    render(<App adapter={fast({ speed: 0.5 })} />);
     await screen.findByLabelText("Message Chief of Staff");
     const scroller = conversation().querySelector<HTMLElement>("[data-scroller]")!;
-    // happy-dom lays nothing out: give the list a size, and record every scroll it is asked for.
-    Object.defineProperty(scroller, "scrollHeight", { configurable: true, get: () => 5000 });
-    Object.defineProperty(scroller, "clientHeight", { configurable: true, get: () => 500 });
-    let top = 0;
-    Object.defineProperty(scroller, "scrollTop", { configurable: true, get: () => top, set: (value: number) => (top = value) });
-    const scrolls: ScrollToOptions[] = [];
-    scroller.scrollTo = ((options: ScrollToOptions) => scrolls.push(options)) as typeof scroller.scrollTo;
-    // Let any smooth scroll from the first render land before reading starts.
-    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
-    // At the end, then up to read.
-    scroller.scrollTop = 4500;
-    fireEvent.scroll(scroller);
+    const before = entries("assistant");
+    await tell("Chief of Staff", "Fix the typo in the README's first line.");
+    await waitFor(() => expect(entries("assistant").at(-1)?.textContent).toMatch(/^Starting a coding task/), { interval: 5 });
+    // Up to read while it is still being written.
     scroller.scrollTop = 1200;
     fireEvent.scroll(scroller);
     const jump = await within(conversation()).findByRole("button", { name: "Jump to latest" });
-    // Only what happens from here, while reading, counts: following before it was right.
-    scrolls.length = 0;
+    feeds.scrolls.length = 0;
 
-    const before = entries("assistant");
-    await tell("Chief of Staff", "Fix the typo in the README's first line.");
-    // The answer streams in and a task card lands, below the reader.
-    await within(conversation()).findByText(/its card shows here\./, {}, { timeout: 2000 });
+    // The rest of the answer streams in and a task card lands, below the reader.
+    await within(conversation()).findByText(/its card shows here\./, {}, { timeout: 4000 });
     await within(conversation()).findByRole("button", { name: /^Coding task: / });
     expect(conversation().querySelector("[data-scroller]")).toBe(scroller);
-    expect(scrolls).toEqual([]);
+    expect(feeds.scrolls).toEqual([]);
     expect(scroller.scrollTop).toBe(1200);
     // What was on screen is the same nodes, not redrawn ones.
     expect(entries("assistant").slice(0, before.length)).toEqual(before);
     before.forEach((node, i) => expect(entries("assistant")[i]).toBe(node));
 
     fireEvent.click(jump);
-    expect(scrolls.at(-1)).toEqual({ top: 5000, behavior: "smooth" });
+    expect(feeds.scrolls.at(-1)).toEqual({ feed: scroller, behavior: "smooth" });
+    expect(scroller.scrollTop).toBe(4500);
     expect(within(conversation()).queryByRole("button", { name: "Jump to latest" })).toBeNull();
   });
 
@@ -422,7 +416,7 @@ describe("the teammates screen", () => {
     }
   });
 
-  it("opens a message's popup already at its latest step, and follows what arrives there smoothly", async () => {
+  it("opens a message's popup already at its latest step, and leaves it there as the reply arrives", async () => {
     const feeds = layOutFeeds();
     try {
       render(<App adapter={fast()} />);
@@ -436,24 +430,26 @@ describe("the teammates screen", () => {
       const opening = feeds.scrolls.filter((s) => s.feed === body);
       expect(opening.length).toBeGreaterThan(0);
       expect(opening.every((s) => s.behavior === "instant")).toBe(true);
-      // The reply lands after it opened: that one glides.
+      // The reply lands after it opened, and moves nothing.
+      await act(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+      const opened = feeds.scrolls.filter((s) => s.feed === body).length;
       await waitFor(() => expect(popup.querySelector('[data-step="sent"]')?.textContent).toMatch(/Nov 12/), { timeout: 2000 });
-      expect(feeds.scrolls.filter((s) => s.feed === body).at(-1)?.behavior).toBe("smooth");
+      expect(feeds.scrolls.filter((s) => s.feed === body).length).toBe(opened);
+      expect(body.scrollTop).toBe(4500);
     } finally {
       feeds.restore();
     }
   });
 
-  it("follows a streamed answer smoothly while you are at the end, and shows 'answering' only before its text starts", async () => {
-    // Slow enough to look at the answer while it is still being written.
-    const feeds = layOutFeeds();
+  it("never moves while an answer streams in, even at the end, and offers Jump to latest instead; 'answering' shows only before its text starts", async () => {
+    // Slow enough to look at the answer while it is still being written. The list grows with its text.
+    const feeds = layOutFeeds((feed) => 500 + (feed.textContent?.length ?? 0));
     onTestFinished(feeds.restore);
     render(<App adapter={fast({ speed: 0.5 })} />);
     await screen.findByLabelText("Message Chief of Staff");
-    // It opened at the end; only what arrives from here on is a live follow.
     await act(() => new Promise((resolve) => requestAnimationFrame(resolve)));
-    const scrolls = feeds.scrolls;
-    scrolls.length = 0;
+    const scroller = conversation().querySelector<HTMLElement>("[data-scroller]")!;
+    // Your own line takes you to the end.
     await tell("Chief of Staff", "Fix the typo in the README's first line.");
     const streaming = await waitFor(
       () => {
@@ -467,11 +463,14 @@ describe("the teammates screen", () => {
     );
     // While its text is being written, the text is the sign it is answering: no second line under it.
     expect(within(conversation()).queryByRole("status")).toBeNull();
-    const followed = scrolls.length;
+    const scrolled = feeds.scrolls.length;
+    const top = scroller.scrollTop;
     await within(conversation()).findByText(/its card shows here\./, {}, { timeout: 4000 });
-    // It followed the text as it grew, each time smoothly, and never jumped.
-    expect(scrolls.length).toBeGreaterThan(followed);
-    expect(scrolls.every((s) => s.behavior === "smooth")).toBe(true);
+    // The text grew below the reader: nothing scrolled, and the way down is offered.
+    expect(feeds.scrolls.length).toBe(scrolled);
+    expect(scroller.scrollTop).toBe(top);
+    expect(scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight).toBeGreaterThan(32);
+    expect(within(conversation()).getByRole("button", { name: "Jump to latest" })).toBeTruthy();
     // The growing answer was one node all along.
     expect(entries("assistant").at(-1)).toBe(streaming);
   });
@@ -501,6 +500,19 @@ describe("the teammates screen", () => {
     fireEvent.click(workerRow("researcher"));
     const researcherBox = (await screen.findByLabelText("Message researcher")) as HTMLTextAreaElement;
     expect(researcherBox.value).toBe("");
+  });
+
+  it("sends with Cmd+Enter and Ctrl+Enter as well as Enter, and Shift+Enter stays a new line", async () => {
+    render(<App adapter={fast()} />);
+    const box = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "first line" } });
+    fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+    expect(box.value).toBe("first line");
+    fireEvent.keyDown(box, { key: "Enter", metaKey: true });
+    await waitFor(() => expect(entries("user").some((e) => e.textContent?.includes("first line"))).toBe(true));
+    fireEvent.change(box, { target: { value: "second line" } });
+    fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
+    await waitFor(() => expect(entries("user").some((e) => e.textContent?.includes("second line"))).toBe(true));
   });
 
   it("doesn't send when Enter ends an input method's composition", async () => {
@@ -581,6 +593,33 @@ describe("the teammates screen", () => {
     await tell("Chief of Staff", "Fix the typo in the README's first line.");
     await waitFor(() => expect(status("Chief of Staff")).toBe("Running coding task: Fix the typo in the README's first line"), { interval: 5, timeout: 2000 });
     expect(header()).toBe("Running coding task: Fix the typo in the README's first line");
+  });
+
+  it("hires with Cmd+Enter in the instructions and saves new ones with Ctrl+Enter, never from a form that can't send yet", async () => {
+    render(<App adapter={fast()} />);
+    await screen.findByLabelText("Message Chief of Staff");
+    fireEvent.click(screen.getByRole("button", { name: "Hire a teammate" }));
+    const form = screen.getByRole("form", { name: "Hire a teammate" });
+    const instructions = within(form).getByLabelText("Teammate instructions");
+    // No name or role yet: the shortcut sends nothing, as the disabled button wouldn't.
+    await act(async () => fireEvent.keyDown(instructions, { key: "Enter", metaKey: true }));
+    expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3);
+    fireEvent.change(within(form).getByLabelText("Teammate name"), { target: { value: "tester" } });
+    fireEvent.change(within(form).getByLabelText("Teammate role"), { target: { value: "Runs the tests." } });
+    fireEvent.change(instructions, { target: { value: "Run them all." } });
+    // Plain Enter in the instructions is a new line.
+    await act(async () => fireEvent.keyDown(instructions, { key: "Enter" }));
+    expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3);
+    await act(async () => fireEvent.keyDown(instructions, { key: "Enter", metaKey: true }));
+    await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(4));
+
+    await screen.findByLabelText("Message tester");
+    fireEvent.click(within(conversation()).getByRole("button", { name: "Instructions" }));
+    const edit = screen.getByRole("form", { name: "Instructions for tester" });
+    const box = within(edit).getByLabelText("New instructions for tester");
+    fireEvent.change(box, { target: { value: "Answer in one sentence." } });
+    await act(async () => fireEvent.keyDown(box, { key: "Enter", ctrlKey: true }));
+    await waitFor(() => expect(screen.queryByRole("form", { name: "Instructions for tester" })).toBeNull());
   });
 
   it("hires a teammate you can talk to, changes its instructions, and fires it; the files' workers can't be", async () => {

@@ -51,7 +51,7 @@ import type { FlowInstance, GeneratorModel, HarnessBlock, ModelResolver } from "
 import { z } from "zod";
 import { loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import { claudeCodeHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
-import { harnessStub, type StubRun } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
+import { harnessStub, type StubRun } from "@flow-state-dev/harness-manager";
 import { LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab, type Lab, type OpenLabOptions } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { EM_TURN, MESSAGE_ENTRY } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";

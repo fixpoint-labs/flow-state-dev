@@ -214,7 +214,7 @@ The epic-specific delta:
      args: {
        epic:  { issueId, name, branch, headSha, prNumber, approved, approvedHeadSha, specMerged, headUnconfirmed,
                 reviewRounds, aboveBarFound, lastSeenActivityAt, lastSeenSha,
-                verdicts, unsettled, openQuestions, answers },
+                verdicts, unsettled, openHolds, answers },
        cap:   <the N you chose and stated>,
        owner: <the GitHub login authorized to sign off by LABEL>,
        issues: [ { id, route, phase, specPr, implPr, specReviewRounds, specLevelFound,
@@ -286,7 +286,7 @@ The epic-specific delta:
      produce, and the thread to reply on. The row's `blocker` carries the question; this carries what
      to show the user when you ask it, and where their answer gets posted. Drop it and you can only
      relay the claim text. Cleared with the row's `blocker`, in the same breath.
-   - **`epic.openQuestions`** — cross-cutting decisions the fold raised that need *you*. Surfaced in
+   - **`epic.openHolds`** — cross-cutting decisions the fold raised that need *you*. Surfaced in
      `blockers` every wake. `epic-agent`'s return contract produces these; the schema accepts them
      under this name, so the two agree.
    - **`epic.unsettled`** — cross-cutting claims a POC came back `INCONCLUSIVE` on. These are
@@ -295,11 +295,11 @@ The epic-specific delta:
      wake, forever). Also re-surfaced in `blockers` every wake.
    - **`epic.answers`** — **how both of those get resolved, and the only way they do.** When the user
      answers a question from either list, add `{ question, answer }` to this array — `question` matching
-     the `openQuestions` string or the `unsettled` claim verbatim, so the wake can pair them — and
+     the `openHolds` string or the `unsettled` claim verbatim, so the wake can pair them — and
      **leave the original entry where it is.** Do not drop it yourself. An answer here triggers an
      `epic-agent` fold on its own (no review activity or verdict needed), outside the review budget,
      which records the decision in the epic-spec; the wake then removes the question from
-     `openQuestions`/`unsettled` for you, and only once that fold actually returned.
+     `openHolds`/`unsettled` for you, and only once that fold actually returned.
 
      Getting this backwards is a silent loss, and it's why the field exists: dropping the question when
      the user answers leaves the epic-spec unchanged and the answer nowhere, so every child issue keeps
@@ -336,7 +336,7 @@ The epic-specific delta:
    Do not invent a workflow action or mechanically merge in the coordinator.
    The authorized `implement` backstop may continue in the same wake with its matching
    `specMerge: { pr, headSha, mergeCommitSha }` receipt; preserve that merge provenance.
-   A material post-merge amendment uses existing `openQuestions` / `blocker` state,
+   A material post-merge amendment uses existing `openHolds` / `blocker` state,
    not a new amendment lifecycle field. Keep its follow-up PR and reviewed head in the
    durable question; hold child dispatch and implementation merge gates until the
    coordinator verifies that head's human approval and confirmed merge, then provides

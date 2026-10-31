@@ -25,8 +25,7 @@ import { claudeCodeModelChoices, claudeCodeSessionFlow } from "@/lib/claude-code
 import { CODEX_SESSION, codexModelChoices, codexSessionFlow } from "@/lib/codex-mode";
 import { CURSOR_DEFAULT_MODEL, cursorModelChoices, cursorModelSelection, cursorSessionFlow } from "@/lib/cursor-mode";
 import { harnessModelChoices, resetHarnessModelChoicesForTests, type ModelChoices } from "@/lib/harness-models";
-import { MODEL_REQUIRED } from "@/lib/harness-session-flow";
-import type { HarnessSessionState } from "@/lib/harness-turn";
+import { HARNESS_SESSION_MODEL_REQUIRED, type HarnessSessionState } from "@flow-state-dev/harness-manager";
 import { scriptedClaudeCode } from "@/lib/scripted-claude-code";
 import { scriptedCodex, scriptedCodexPauses } from "@/lib/scripted-codex";
 import { scriptedCursor } from "@/lib/scripted-cursor";
@@ -236,7 +235,7 @@ describe("a session is born naming its model, on every path that creates one", (
     for (const state of [undefined, {}]) {
       const refused = await create(router, state === undefined ? {} : { state });
       expect(refused.status).toBe(400);
-      expect(refused.body.error).toBe(MODEL_REQUIRED);
+      expect(refused.body.error).toBe(HARNESS_SESSION_MODEL_REQUIRED);
     }
     // An empty id fails the state's own shape first.
     const empty = await create(router, { state: { model: "" } });

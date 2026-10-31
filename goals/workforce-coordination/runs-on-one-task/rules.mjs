@@ -9,7 +9,7 @@
  * names exactly one function, or the sweep can't tell. A line that names a removed surface on
  * purpose carries the `retired-name-refusal` marker. The lists change only with a reason a
  * reviewer can read; FIX-2131 (FIX-2058) retired `answerTask` and `parkOnQuestion` from
- * {@link TOOLS_ALLOWED}, and added the worker's `askQuestion` and `waitForUser`.
+ * {@link TOOLS_ALLOWED}, and added the worker's `holdTaskForUser` and `suspendForUser`.
  */
 import { REFUSAL_MARKER, ROOTS } from "../../vocabulary/one-word-per-thing/rules.mjs";
 
@@ -22,8 +22,8 @@ export const MIGRATION_TABLE = "specs/epics/FIX-2056/migration.md";
 export const TOOLS_ALLOWED = new Set([
   "createTask", "getTask", "listTasks", "updateTask", // FIX-2081: the filer's five
   "reportProgress", // FIX-2081: the worker's progress checkpoint, one of the five
-  "askQuestion", // FIX-2131: the worker's question, which holds its task (FIX-2133's hold)
-  "waitForUser", // FIX-2131: the model's stop for an approval, a review or (with no task row) input
+  "holdTaskForUser", // FIX-2131: the worker's question, which holds its task (FIX-2133's hold)
+  "suspendForUser", // FIX-2131: the model's stop for an approval, a review or (with no task row) input
 ]);
 
 /** Code under the swept roots: the files the AST rules (tools, members, endings) read. */

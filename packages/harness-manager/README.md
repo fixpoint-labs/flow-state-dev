@@ -227,6 +227,45 @@ Any block that takes the feeds and returns a run handle conforming to `@flow-sta
 
 Claude Code needs `detached: true`. Leave it out and your flow fails to build, naming the entry. Codex and Cursor need no equivalent.
 
+### A scripted harness for checks
+
+`harnessStub` is a harness you can put in the slot when a check should run no model. It records the prompt and the working directory each run was handed (`runs`), can do some real work there (`duringRun`), and returns a handle that parses against the harness contract. Use it to prove your wiring drives whatever harness sits in the slot.
+
+```ts
+import { harnessManager, harnessStub } from "@flow-state-dev/harness-manager";
+
+const stub = harnessStub({ finalMessage: "done" });
+const manager = harnessManager({ /* ... */ harness: stub.slot });
+// later: stub.runs[0].cwd is the checkout the first run was given
+```
+
+The stub connects to no MCP servers. If your host hands it an `mcpTools` feed, each run writes a status line into its session naming the servers it skipped, so a user watching that session sees which ones the run went without. That feed reads the run's project, so the block needs the capability that holds it. If the feed comes from a capability such as workforce's `projectWorkspaceCapability`, pass that capability in `mcpUses`. If neither the stub nor the manager (`harnessManager({ uses })`) holds it, the run fails with an error that names the capability.
+
+## A harness as a session
+
+The manager runs a harness for a task on a board. `harnessSessionFlow` runs one for a user instead: one session, many turns, one continuing conversation. It is the flow behind a coding chat, where each turn is a prompt and the harness picks up where it left off.
+
+```ts
+import { harnessSessionFlow } from "@flow-state-dev/harness-manager";
+import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+
+export const claudeCodeSession = harnessSessionFlow({
+  kind: "claude-code-session",
+  workspace, // where each session works; see below
+  agent: (feeds) => claudeCodeAgent({ ...feeds, detached: true, permissionMode: "bypassPermissions" }),
+});
+```
+
+`agent` builds the harness block from the feeds the flow hands it: `cwd`, `resume`, `onSession`, `model`, `worktree` and `onSteerable`. These are the session flow's own feeds. It has no `onUsage` or `onActivity`, which feed the manager's task records. `workspace` says where each session works: `provision` makes a session's directory on its first turn, `locate` finds it without making it, and `branch` names the branch whose pull requests the flow checks when a turn ends (`null` skips the check). A session is keyed by its flow kind, tenant and id, never by anything the caller sent.
+
+The flow handles the rest:
+
+- **Continuity.** `resume` hands the harness the conversation it last confirmed, and `onSession` is the only thing that records a new one. If the harness refuses to continue that conversation, the session stays bound to it, and each later turn fails the same way. To recover, start a new session.
+- **The model.** A session is created with the model it runs (`state.model`), which never changes after that. Creating one without a model is refused with `HARNESS_SESSION_MODEL_REQUIRED`. `defaultModel` is the model used for a stored session that has none recorded.
+- **Actions.** `turn` takes a prompt and waits for any running turn to finish first (`concurrency: "defer"`). `steer` hands a line to the running turn if its harness offered to take one, and answers `{ taken, live }`.
+- **A record per turn.** `state.turns` keeps the latest 20 turns, by request id. Each record holds the conversation the turn tried to resume, the one the harness confirmed, and how the turn failed: core's failure class, the harness's error text, and whether it was stopped. Read it to show a user why a turn failed. The schema is `harnessSessionStateSchema`.
+- **A title.** The session takes its title from its first prompt (`harnessSessionTitle`).
+
 ## What a phase supplies
 
 ```ts
@@ -277,7 +316,7 @@ The recorded session is the one the harness *confirmed* it was in. If the agent 
 ### Upgrading from the question inbox
 
 - The manager keeps no questions of its own. Removed: `askQuestion`, `answerQuestion`, `listQuestions`, `readQuestion`, `withdrawQuestion`, `inboxCollection`, `INBOX`, `questionTopic`, `questionFingerprint`, `parseQuestionTopic`, `HarnessRunParked` and the `QuestionAnnouncement` type. <!-- retired-name-refusal: migration note -->
-- `harnessManager({ announce })` is refused at construction. Read held tasks from the board (its rows' open questions, `openRowQuestions`) and answer with its `updateTask` action.
+- `harnessManager({ announce })` is refused at construction. Read held tasks from the board (its rows' open questions, `openRowHolds`) and answer with its `updateTask` action.
 - `run.answers` reads the task's answered questions from its row.
 - `run.askMarkerPath` is `.fsdev/ask/<attempt>-<run>.md`. A phase that names a path of its own must use the one it is handed.
 - `askMarkerPath(path, attempt, run)` and `readAskMarker(path, attempt, run)` take the run.
@@ -288,7 +327,7 @@ The recorded session is the one the harness *confirmed* it was in. If the agent 
 
 A run's changes are the commits it made over the base its branch was cut from. A run that would complete (the judge said done, there is no judge, or the judge's verdict was under its `floor`) and has commits on its branch waits for a review. So does a run whose commit count git couldn't read; its review says the commits couldn't be read. A run with no commits completes unreviewed. A failed run fails its attempt unreviewed. A judge's confident verdicts skip the review: *not done* fails the attempt, and *ask* holds the task on a question.
 
-While it waits, the task stays `in_progress` on the same attempt and keeps its claim, and the checkout is free. The row lists the wait among its open `questions`, with `source.kind: "suspension"` and `ask.kind: "review"`, titled "Review the run's changes". Its prompt gives the commit count and up to 20 commit subjects, then the judge's verdict, confidence and reason ("No judge read this run." without one), and the line "The judge's verdict is information, not approval." The hold's data is `{ branch, commits, subjects, judge }`. The Inbox lists it as a review.
+While it waits, the task stays `in_progress` on the same attempt and keeps its claim, and the checkout is free. The row lists the wait among its open `holds`, with `source.kind: "suspension"` and `ask.kind: "review"`, titled "Review the run's changes". Its prompt gives the commit count and up to 20 commit subjects, then the judge's verdict, confidence and reason ("No judge read this run." without one), and the line "The judge's verdict is information, not approval." The hold's data is `{ branch, commits, subjects, judge }`. The Inbox lists it as a review.
 
 The answer is a `HarnessReviewAnswer`, checked against `harnessReviewAnswerSchema`: `{ verdict: "accepted" }`, or `{ verdict: "revise", words }` with non-blank `words`. With the Inbox client:
 
@@ -428,7 +467,7 @@ the coding flow gives its turn a `sendMessage` of its own.
 
 ### Stopping a step for a steer
 
-By default a running step finishes first, and the next step takes the steer. Build the manager with `stopsOnAbort: true` when your harness's abort resolves only once its process has exited. The manager then reads its row every `STEER_POLL_MS` (one second) while a step runs, and once the harness has confirmed a coding session to resume, a new message stops the running step, and the next step starts at once with it. The stop ends the step, not the request, and the checkout keeps what the stopped step wrote. A message that arrives before the session is confirmed waits for the step's own end. Leave the option off for a harness whose abort can return while its process still runs.
+By default a running step finishes first, and the next step takes the steer. The manager stops it instead when the harness declares `stopsOnAbort: true` on the block its factory returns (a field of core's `HarnessBlock`). The declaration says that when its abort signal fires, the block returns only after its process has exited. A command that process started may still be running, and can keep writing to the checkout while the next step works there ([Claude Code's note](../claude-code/README.md#stopping-a-run-for-a-message)). Claude Code's block declares it. For a harness that doesn't, build the manager with `stopsOnAbort: true`; the option, set either way, overrides what the harness declares. The manager then reads its row every `STEER_POLL_MS` (one second) while a step runs, and once the harness has confirmed a coding session to resume, a new message stops the running step, and the next step starts at once with it. The stop ends the step, not the request, and the checkout keeps what the stopped step wrote. A message that arrives before the session is confirmed waits for the step's own end. Leave the option off for a harness whose abort can return while its process still runs.
 
 A step never runs for a task its attempt no longer holds. The manager reads the task's row every `STEER_POLL_MS` while a step runs, and if the task is cancelled, finishes, or is claimed again, it aborts the running step's harness within that second and the request takes no further step. A cancelled task's harness doesn't keep working on a run that can record nothing.
 
@@ -497,7 +536,7 @@ The record is `harnessUsageCollection` (`HARNESS_USAGE`, `harness-usage/**`, use
 
 ## The export surface, in two halves
 
-**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `harnessTalkTurn` with `harnessTalkInputSchema` and `harnessTalkOutputSchema`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer` for [answering a review](#reviewing-a-runs-changes), `upgradeKeptTurns`, `STEER_POLL_MS`, `PROGRESS_NOTE_MS` and `progressNoteOf` for [progress notes](#how-a-running-task-is-doing), `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerClaimOrder` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
+**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `harnessTalkTurn` with `harnessTalkInputSchema` and `harnessTalkOutputSchema`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer` for [answering a review](#reviewing-a-runs-changes), `harnessSessionFlow` with `harnessSessionFeeds`, `harnessSessionStateSchema` and their types for [a harness as a session](#a-harness-as-a-session), `harnessStub` for [checks that run no model](#a-scripted-harness-for-checks), `upgradeKeptTurns`, `STEER_POLL_MS`, `PROGRESS_NOTE_MS` and `progressNoteOf` for [progress notes](#how-a-running-task-is-doing), `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerClaimOrder` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
 
 **`@flow-state-dev/harness-manager/checkout`** is how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. `run` and the git timeouts it re-exports come from `@flow-state-dev/workspace`. It is outside the versioned contract, so a host should not import from it. Everything in it is specific to git worktrees. Adopt `harnessManager({ harness })` and let it own the checkout.
 
@@ -532,7 +571,7 @@ from `/`. Given a location it cannot resolve, it refuses and names the option.
 - **Usage rows are keyed by the bare user id.** Where one user id is reachable from two tenants, both see that user's plan and percents.
 - **No retention policy.** Run records grow without bound.
 - **A harness that can't resume can't be talked to once finished.** Talk resumes the confirmed coding session, so the door refuses a finished run whose harness never confirmed one (`cannot-continue`).
-- **A steer waits for the step to end** unless the run takes it live (Cursor today) or the manager is built with `stopsOnAbort: true`. Claude Code and Codex runs don't take a line mid-turn yet.
+- **A steer waits for the step to end** unless the run takes it live (Cursor today) or the step is stopped for it (a harness that declares `stopsOnAbort`, as Claude Code does, or a manager built with `stopsOnAbort: true`). A stopped step's harness process has exited, but a command it started may still run in the checkout. Claude Code and Codex runs don't take a line mid-turn yet.
 - **A steer step needs a confirmed session.** The step a steer adds resumes the coding session the run confirmed. On a run whose harness confirmed none, a steer that arrives after its last step is left on the task untaken: only the `STEER_TURN_ENTRY` turn acts on it, and a host without that entry completes the task over it.
 - **Reviewing changes needs durable execution.** On a host without it, a manager built with `reviewChanges: true` refuses the run before any harness step, and the task is cancelled with a message naming durable execution.
 - **Git worktrees specifically**, as above.

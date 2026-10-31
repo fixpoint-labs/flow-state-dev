@@ -86,7 +86,7 @@ const heldOnQuestion: Task = {
   id: "task-q",
   goal: "pick a region",
   status: "in_progress",
-  questions: [{ id: "q1", source: { kind: "row" }, ask: { kind: "question", prompt: "Which region, eu-west or us-east?" } }],
+  holds: [{ id: "q1", source: { kind: "row" }, ask: { kind: "question", prompt: "Which region, eu-west or us-east?" } }],
 };
 
 describe("the reason on a task row", () => {
@@ -245,7 +245,7 @@ describe("a task waiting on a person", () => {
       id: "task-r",
       goal: "draft the post",
       status: "in_progress",
-      questions: [{ id: "susp_1", source: { kind: "suspension" }, ask: { kind: "review", prompt: "Does this draft read right?" } }],
+      holds: [{ id: "susp_1", source: { kind: "suspension" }, ask: { kind: "review", prompt: "Does this draft read right?" } }],
     });
 
     expect(reasonCellOf("task-r").textContent).toBe("Does this draft read right?");

@@ -26,14 +26,14 @@ import { handler, harnessRunHandleSchema, harnessRunInputSchema, type GeneratorT
 import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores, resolveUserStorageKey, runAction } from "@flow-state-dev/engine";
 import { runBoardSegment } from "@flow-state-dev/harness-manager";
-import { openRowQuestions } from "@flow-state-dev/orchestration/tasks";
+import { openRowHolds } from "@flow-state-dev/orchestration/tasks";
 import { encodeUserSegment } from "@flow-state-dev/core/types";
 import { createTaskToolsCapability } from "@flow-state-dev/orchestration";
 import { LIST_TASKS_ACTION } from "../src/lib/conversation-tasks";
 import { UPDATE_TASK_ACTION } from "../src/lib/reads";
 import { selectHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
-import { harnessStub, type HarnessStub, type HarnessStubOptions, type StubRun } from "../teams/devteam/harness-stub.mts";
+import { harnessStub, type HarnessStub, type HarnessStubOptions, type StubRun } from "@flow-state-dev/harness-manager";
 import { commitAll, createBareRemote } from "../teams/devteam/scratch-repo.mts";
 
 /** The capability's tool list as a turn with no ask host gets it: the list is chosen per turn (FIX-1816). */
@@ -344,11 +344,11 @@ async function heldOnQuestion(lab: Lab, id: string): Promise<{ taskId: string; q
   const taskId = listed.tasks[0]!.id as string;
   const held = await until(
     async () => storedTask(lab, taskId),
-    (task) => task?.status === "in_progress" && task.leaseUntil == null && openRowQuestions(task as never).length > 0,
+    (task) => task?.status === "in_progress" && task.leaseUntil == null && openRowHolds(task as never).length > 0,
     "the task held on a question",
   );
   expect(held).toMatchObject({ attempts: 1 });
-  return { taskId, question: openRowQuestions(held as never)[0]! as unknown as Record<string, any> };
+  return { taskId, question: openRowHolds(held as never)[0]! as unknown as Record<string, any> };
 }
 
 /** The task's row as stored on the conversation's board, in the user's scope. */

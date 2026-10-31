@@ -35,7 +35,7 @@
  * own, so that strip went with the drain.)
  */
 
-import { hasOpenQuestion, isClaimable, leaseLapsed, type Task } from "@flow-state-dev/orchestration/tasks";
+import { hasOpenHold, isClaimable, leaseLapsed, type Task } from "@flow-state-dev/orchestration/tasks";
 
 /** One row as a column carries it — what a reader of the queue needs and no more. */
 export interface QueueRow {
@@ -125,7 +125,7 @@ export function queueView(rows: readonly Task[], now: number = Date.now()): Queu
     if (isClaimable(row, lookup, now)) view.queued.push(project(row));
     // A running row waiting on a person is asked before the live claim: it
     // keeps its claim while nobody works it.
-    else if (WAITING.has(row.status) || hasOpenQuestion(row)) view.waitingOnYou.push(project(row));
+    else if (WAITING.has(row.status) || hasOpenHold(row)) view.waitingOnYou.push(project(row));
     else if (liveClaim(row, now)) view.running.push(project(row));
     else if (TERMINAL.has(row.status)) view.done.push(project(row));
     else view.uncolumned.push(project(row));

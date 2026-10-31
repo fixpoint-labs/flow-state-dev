@@ -67,6 +67,9 @@ the project-spec, deliberately has no lifecycle of its own (see below).
   - `issue-multi-pr` — one step of a multi-PR issue's DAG: ready set, base selection, rebase
     after a dependency merges, and the assembled end-to-end goal.
 
+  `app-review.js` lives beside them under the same contract and harness. It isn't a lifecycle
+  step; it is the fan-out of the standalone `app-review` skill.
+
   **A script cannot wait, prompt, subscribe, or touch the filesystem.** So every *gate*, every
   PR subscription, the `.orchestration/` store, and turn-ending stay with the coordinator; the
   scripts get state via `args` and return it. That boundary is what decides which half of a

@@ -181,10 +181,16 @@ export {
 } from "./hooks/useReadFence";
 
 export {
-  useFollowLatest,
-  type FollowLatest,
-  type FollowLatestOptions
-} from "./hooks/useFollowLatest";
+  useJumpToLatest,
+  type JumpToLatest,
+  type JumpToLatestOptions
+} from "./hooks/useJumpToLatest";
+
+export {
+  isSendKey,
+  type SendKeyEvent,
+  type SendKeyOptions
+} from "./send-key";
 
 export type {
   BlockComponentType,

@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/shift-manager",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The app a Workforce Lab is worked through: point it at a Lab's fsdev config and work its Inbox, tasks, workstreams and teams in one browser tab.",
   "keywords": [
     "ai",

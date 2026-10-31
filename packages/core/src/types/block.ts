@@ -10,6 +10,7 @@ import type { DefinedResourceCollection, ResourceCollectionRef } from "./resourc
 import type { ProjectedResourceCollectionRef } from "./projected-resource-collection";
 import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
+import type { TokenCounter } from "./tokens";
 import type { RequestHost } from "./request-host";
 import type { DispatchAddress, DispatchSeam } from "./dispatch";
 import { DISPATCH_SEAM } from "./dispatch";
@@ -384,6 +385,14 @@ export interface BlockContext<
   signal: AbortSignal;
   resolveModel: ModelResolver;
 
+  /**
+   * The flow's token counter: `defineFlow({ tokenCounter })`, else core's
+   * `estimateTokenCounter`. The same counter the engine packs history with,
+   * so a block that budgets tokens counts them the way the flow does. Absent
+   * outside an engine run (a mock context); fall back to `estimateTokenCounter`.
+   */
+  tokenCounter?: TokenCounter;
+
   getTarget<TState extends object = Record<string, unknown>>(
     name: string
   ): StateRef<TState> | undefined;
@@ -557,9 +566,9 @@ export interface BlockContext<
    * it throws `SuspensionTimeoutError`, and an approval reads as a no. A stop
    * with no `deadline` takes the host's setting for a user's stop, else waits
    * until answered, stopped or cancelled. Needs durable execution, as
-   * `suspend` does. See `types/wait-for-user.ts`.
+   * `suspend` does. See `types/suspend-for-user.ts`.
    */
-  waitForUser: import("./wait-for-user").WaitForUser;
+  suspendForUser: import("./suspend-for-user").SuspendForUser;
 
   /**
    * Manually save a checkpoint at the current execution point. Normally

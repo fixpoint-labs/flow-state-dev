@@ -1,5 +1,0 @@
----
-"@flow-state-dev/client": minor
----
-
-One client. `createClient({ userId, baseUrl?, apiPath?, fetcher? })` builds the only client: `flow(address)` sends actions (typed with `flow<typeof myFlow>(…)`), starts sessions and returns request handles; `sessions`, `resources`, `requests.interrupted()`, `stream` and `transcribe` hang off the client. A request handle has `status`, `wait`, `abort`, `continue`, `retry`, `resume` and `stream`, and `continue`/`resume` carry the run on under the same id. `fetcher` is the one transport every call and stream goes through, so the engine's `createInProcessFetch` reaches a host in the same process with no web server. Removed: `createTypedClient`, `createSessionClient`, `createResourceClient`, `createRecoveryClient`, `createSSEClient`, `createSessionSSEClient`, `createUserSSEClient`, the standalone `transcribe`, `flowKind` on `createClient`, and the `*Stream` method twins (pass `{ stream: true }` instead). `sessions.list` with no `userId` now lists the client's own user's sessions. Every failure is a `ClientHttpError`; `status: 0` means the client refused before sending (FIX-2162).

@@ -53,7 +53,7 @@ import { createInboxClient, type InboxItem } from "@flow-state-dev/orchestration
 import { reconcileInbox, rowTruthOf, suspensionTruthOf } from "@flow-state-dev/orchestration/inbox/check";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, loadFixture, modulePatchEnv, runGoal, silentLogger, stripIntentOverrides, type ModulePatch } from "../../lib/index.mts";
 import { claudeCodeEnv, claudeCodeHarness, selectHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
-import { harnessStub, type HarnessStubOptions, type StubRun } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
+import { harnessStub, type HarnessStubOptions, type StubRun } from "@flow-state-dev/harness-manager";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { commitAll, createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { LIST_TASKS_ACTION } from "../../../packages/shift-manager/src/lib/conversation-tasks.ts";
@@ -306,7 +306,7 @@ async function open(label: string, goal: string, slot: (feeds: any) => HarnessBl
     if (item === undefined) return "no item";
     try {
       await createInboxClient(client).answer(item, { text });
-      closed.push(item.questions[0]!.id);
+      closed.push(item.holds[0]!.id);
       return "ok";
     } catch (error) {
       return (error as Error).message;
@@ -320,7 +320,7 @@ async function open(label: string, goal: string, slot: (feeds: any) => HarnessBl
     for (const sessionId of sessions) {
       suspensions.push(...suspensionTruthOf(sessionId, await client.sessions.requests(sessionId, { status: "suspended", includeItems: true })));
     }
-    const truth = { rows: rowTruthOf(rows.map((row) => ({ board, id: row.id, status: row.status, questions: row.questions ?? [], steers: [] }))), suspensions, closed };
+    const truth = { rows: rowTruthOf(rows.map((row) => ({ board, id: row.id, status: row.status, holds: row.holds ?? [], steers: [] }))), suspensions, closed };
     const result = reconcileInbox(await inbox(), truth);
     return result.green ? undefined : show({ ...result, green: undefined });
   };
@@ -343,7 +343,7 @@ async function open(label: string, goal: string, slot: (feeds: any) => HarnessBl
 }
 
 const isHeld = (task: Record<string, any> | undefined) =>
-  task?.status === "in_progress" && (task.questions ?? []).some((hold: any) => hold.source?.kind === "row");
+  task?.status === "in_progress" && (task.holds ?? []).some((hold: any) => hold.source?.kind === "row");
 const isSettled = (task: Record<string, any> | undefined) => ["completed", "errored", "cancelled", "pending"].includes(task?.status);
 const lockFree = (cwd: string | undefined) => cwd !== undefined && !existsSync(`${cwd}.lock`);
 
@@ -414,9 +414,9 @@ await runGoal(async (failures, tell) => {
         const held = await host.until(host.task, (t) => isHeld(t) || isSettled(t), real.runTimeoutMs + 60_000);
         // ---- a
         const item = await host.itemOf();
-        const asked = tell.over("a · the item's holds", [...(item?.questions ?? [])]);
+        const asked = tell.over("a · the item's holds", [...(item?.holds ?? [])]);
         const marker = seen.cwds[0] === undefined ? undefined : readdirSync(join(seen.cwds[0], ".fsdev", "ask")).map((f) => readFileSync(join(seen.cwds[0]!, ".fsdev", "ask", f), "utf8").trim())[0];
-        if (!isHeld(held)) fail("a:held", `the task is ${held?.status} with ${show(held?.questions?.length ?? 0)} hold(s), not held on the run's question`);
+        if (!isHeld(held)) fail("a:held", `the task is ${held?.status} with ${show(held?.holds?.length ?? 0)} hold(s), not held on the run's question`);
         if ((await host.inbox()).filter((i) => i.task?.taskId === host.taskId).length !== 1) fail("a:one-item", "the Inbox doesn't list exactly one item for the task");
         if (asked.length !== 1 || asked[0]!.ask.kind !== "question" || marker === undefined || !marker.startsWith(asked[0]!.ask.prompt.replace(/…$/, ""))) {
           fail("a:the-runs-question", `the item's holds are ${show(asked.map((h) => [h.ask.kind, h.ask.prompt]))}; the run asked ${show(marker)}`);
@@ -464,8 +464,8 @@ await runGoal(async (failures, tell) => {
       for (const [i, question] of [fixture.stub.first, fixture.stub.second].entries()) {
         const held = await host.until(host.task, (t) => isHeld(t) || isSettled(t), 30_000);
         const item = await host.itemOf();
-        if (!isHeld(held) || item?.questions.length !== 1 || item.questions[0]!.ask.prompt !== question) {
-          fail("b2:held", `question ${i + 1}: the task is ${held?.status}, its item ${show(item?.questions.map((h) => h.ask.prompt))}`);
+        if (!isHeld(held) || item?.holds.length !== 1 || item.holds[0]!.ask.prompt !== question) {
+          fail("b2:held", `question ${i + 1}: the task is ${held?.status}, its item ${show(item?.holds.map((h) => h.ask.prompt))}`);
           break;
         }
         const sent = await host.answerInInbox(fixture.stub.answers[i]!);
@@ -595,9 +595,9 @@ await runGoal(async (failures, tell) => {
       });
     };
     // The review step's one call and its result's type are allowed; a second call is not.
-    const waitForUserPastReview = (hits: string[]): string[] => {
-      const calls = hits.filter((line) => /await ctx\.waitForUser\(/.test(line));
-      const rest = hits.filter((line) => !/await ctx\.waitForUser\(|BlockContext\["waitForUser"\]/.test(line));
+    const suspendForUserPastReview = (hits: string[]): string[] => {
+      const calls = hits.filter((line) => /await ctx\.suspendForUser\(/.test(line));
+      const rest = hits.filter((line) => !/await ctx\.suspendForUser\(|BlockContext\["suspendForUser"\]/.test(line));
       return calls.length > 1 ? hits : rest;
     };
     const ours = ["packages/harness-manager/src", "labs/conductor/src", "packages/shift-manager/teams", "packages/shift-manager/src"];
@@ -607,12 +607,12 @@ await runGoal(async (failures, tell) => {
       ["parkOnBoardQuestion", grep(String.raw`\bparkOnBoardQuestion\b`, SOURCE)],
       // `announce` is refused by name, so the refusal itself is the one place it may stand.
       ["announce", grep(String.raw`\bannounce\b`, ["packages/harness-manager/src", "labs/conductor/src"]).filter((line) => !/`announce` was removed|"announce" in/.test(line))],
-      ["harness-manager's askQuestion", grep(String.raw`\baskQuestion\b`, ["packages/harness-manager/src"])],
+      ["harness-manager's holdTaskForUser", grep(String.raw`\bholdTaskForUser\b`, ["packages/harness-manager/src"])],
       ["harness-manager's inbox module", [...grep(String.raw`from "\./inbox"`, ["packages/harness-manager/src"]), ...grep(String.raw`harness-manager/src/inbox`, [...SOURCE, "goals", ":(exclude)goals/shift-manager/a-coding-runs-question-is-answered-in-the-inbox/**"])]],
       ["awaitReview in harness-manager", grep(String.raw`\bawaitReview\b`, ["packages/harness-manager/src"])],
       ["HarnessRunParked", grep(String.raw`\bHarnessRunParked\b`, SOURCE)],
       // The manager suspends for one reason, a review of a run's changes (FIX-2163): its one call is allowed.
-      ["waitForUser in harness-manager, past the review's one call", waitForUserPastReview(grep(String.raw`\bwaitForUser\b`, ["packages/harness-manager/src"]))],
+      ["suspendForUser in harness-manager, past the review's one call", suspendForUserPastReview(grep(String.raw`\bsuspendForUser\b`, ["packages/harness-manager/src"]))],
     ];
     tell.over("sweep · the names swept", rows, { emptyIs: "never empty: the list above" });
     for (const [name, hits] of rows) if (hits.length > 0) fail("sweep", `${name}: ${hits.slice(0, 3).join(" | ")}${hits.length > 3 ? ` (+${hits.length - 3})` : ""}`);

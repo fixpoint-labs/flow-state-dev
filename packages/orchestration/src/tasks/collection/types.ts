@@ -13,8 +13,8 @@ import type { Task, TaskRunLink, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import type { TaskSettingsPatch } from "./internal";
 import type { SteerInput } from "../steers";
-import type { QuestionInit, SuspensionQuestion } from "../schema/question";
-import type { QuestionAnswer } from "./questions";
+import type { QuestionInit, SuspensionHold } from "../schema/hold";
+import type { QuestionAnswer } from "./holds";
 import type { NoticeEnding as TaskNoticeEnding } from "../notice/task-notice";
 
 /**
@@ -38,7 +38,7 @@ export type CancelOptions = TaskTransitionOptions & {
    * answer (a yes first, say), and `no-such-question` for an id that isn't a
    * question or a confirm on the row.
    */
-  readonly whileQuestionOpen?: string;
+  readonly whileHoldOpen?: string;
 };
 
 /** What a running task waits on (`Task.keptOpenBy`, FIX-2077). */
@@ -125,7 +125,7 @@ export type TaskWriteDeclineReason =
    */
   | "steer-limit"
   /**
-   * The row is held (FIX-2133, `Task.questions`): a settlement, a lease renewal or
+   * The row is held (FIX-2133, `Task.holds`): a settlement, a lease renewal or
    * a turn's mirror of its stop, refused while a hold is open. A held row
    * settles only by cancel; it starts no turn and renews no lease until its
    * holds close. Its open holds come from one source at a time, so a turn that
@@ -394,7 +394,7 @@ export interface TaskTransitionOptions {
    * mirror of its run's stop, one source at a time). Decided on the committed
    * row inside the write. Set by the backings' own verbs, never by a caller.
    */
-  refuseWithOpenQuestion?: "any" | "row";
+  refuseWithOpenHold?: "any" | "row";
 }
 
 /**
@@ -836,7 +836,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
        * a suspension hold in the same write (FIX-2133). Refused `held` while a
        * row hold is open: the stop arm then cancels the stop.
        */
-      question?: SuspensionQuestion;
+      hold?: SuspensionHold;
       /**
        * With `null`: the run's own resume, which closes the mirror. A later
        * request admitted while the run stays parked passes none and keeps it.
@@ -852,7 +852,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   ): Promise<TaskWriteOutcome>;
   /**
    * Ask questions midway (FIX-2133): the turn holding the task's claim opens
-   * row holds (`Task.questions`), drops the lease and ends its turn unsettled, in
+   * row holds (`Task.holds`), drops the lease and ends its turn unsettled, in
    * one write. The row stays `in_progress` on its attempt with no lease until
    * every question is answered (or a deadline the host set passes), then owes
    * one more turn on that attempt (`turnOwed`), which the claim takes.
@@ -898,7 +898,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    *
    * Optional: both built-in backings implement it.
    */
-  payQuestionDeadlines?(): Promise<string[]>;
+  payHoldDeadlines?(): Promise<string[]>;
   /**
    * Reset stale leases. Tasks whose `leaseUntil` has passed are returned
    * to `pending`. Returns the number of tasks reclaimed; emits one

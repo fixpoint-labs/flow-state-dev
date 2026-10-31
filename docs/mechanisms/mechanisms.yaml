@@ -158,13 +158,13 @@ mechanisms:
     doc: docs/architecture/generator-identity.md
 
   - id: token-estimate
-    job: Count or estimate tokens and price a model call. One place for it; a private estimator copy in another package is a duplicate.
+    job: Count or estimate tokens and price a model call. One place for it; a private estimator copy in another package is a duplicate. The engine counts with `estimateTokenCounter` when a flow sets no `tokenCounter`, and hands blocks the flow's counter as `ctx.tokenCounter`.
     package: "@flow-state-dev/core"
-    anchor: modelPricingEstimator
-    file: packages/core/src/adapters/model-lookup.ts
+    anchor: estimateTokenCounter
+    file: packages/core/src/adapters/token-counter.ts
     builtOn: [model]
     overlaps: []
-    status: unconfirmed
+    status: canonical
     doc: packages/core/README.md
 
   - id: prompt
@@ -199,13 +199,13 @@ mechanisms:
 
   # ── Waiting, dispatch and execution ───────────────────────────────────────
   - id: suspension
-    job: Park a request until the user answers. The call site is ctx.waitForUser; the exported function is waitForUserOn.
+    job: Suspend a request (the turn) until the user answers, and resume it with the answer. The call site is ctx.suspendForUser (a model's suspendForUser tool); the exported function is suspendForUserOn; suspendForUserKindOf reads which stop it is.
     package: "@flow-state-dev/core"
-    anchor: waitForUserOn
-    file: packages/core/src/types/wait-for-user.ts
+    anchor: suspendForUserOn
+    file: packages/core/src/types/suspend-for-user.ts
     builtOn: [execution]
     overlaps:
-      - { id: task, relation: distinct-jobs, note: "A suspension parks the request. The task row's `holds` list says what the user holds the row on, and mirrors a suspension hold. One wait, two records; don't add a third." }
+      - { id: task, relation: distinct-jobs, note: "A suspension stops the request; a hold stops the task. A task run's suspension is mirrored as one hold in the row's `holds`, beside its question holds (holdTaskForUser). One stop, two records; don't add a third." }
     status: canonical
     doc: docs/architecture/execution-and-errors.md
 
@@ -216,7 +216,7 @@ mechanisms:
     file: packages/core/src/types/wait-gate.ts
     builtOn: [suspension]
     overlaps:
-      - { id: suspension, relation: distinct-jobs, note: "waitForUser parks for the user; parkOnWait parks on a gate something else releases. The answer shapes differ." }
+      - { id: suspension, relation: distinct-jobs, note: "suspendForUser parks for the user; parkOnWait parks on a gate something else releases. The answer shapes differ." }
     status: canonical
     doc: docs/architecture/execution-and-errors.md
 
@@ -433,7 +433,7 @@ mechanisms:
 
   # ── Orchestration ─────────────────────────────────────────────────────────
   - id: task
-    job: One row of work on a board. Claim orders (fifo, priority, topological) pick a pending row; the row carries status, attempts and holds.
+    job: One row of work on a board. Claim orders (fifo, priority, topological) pick a pending row; the row carries status, attempts and holds. A hold keeps a row from being claimed, the filer's (status held) or the user's (`holds`, a question, a confirm, or a run's suspension mirrored). isClaimable is the one claim predicate over both.
     package: "@flow-state-dev/orchestration"
     anchor: defineTaskCollection
     file: packages/orchestration/src/tasks/collection/define-task-collection.ts
@@ -622,13 +622,14 @@ mechanisms:
     doc: packages/workforce/README.md
 
   - id: worker-messages
-    job: Let one worker message another on its user's roster. Talk, not delegation; no task row.
+    job: Let one worker message another on its user's roster. Talk, not delegation; no task row. One way to get an answer (FIX-2318). A message that asks for a reply (replyRequested, or wait to wait for it in the turn) gets exactly one answer, sent through sendMessage inReplyTo; a waited answer is held as the tool's result, a late one lands as a message. consultSessionHistory reads a conversation without waking it.
     package: "@flow-state-dev/workforce"
     anchor: sendMessage
     file: packages/workforce/src/messages/send-message.ts
-    builtOn: [workforce, dispatch]
+    builtOn: [workforce, dispatch, wait-gate]
     overlaps:
       - { id: task, relation: distinct-jobs, note: "Delegation files a task row; a message files nothing. A second way to reach a worker would be a third." }
+      - { id: wait-gate, relation: distinct-jobs, note: "sendMessage({ wait }) parks on the one wait gate, as getTask({ wait }) does; the gate is the park, this row is the reply. There is no second reply path (the call's was removed by FIX-2318)." }
     status: canonical
     doc: packages/workforce/README.md
 
@@ -674,7 +675,7 @@ mechanisms:
 
   # ── Coding harnesses ──────────────────────────────────────────────────────
   - id: coding-harness
-    job: Drive a coding agent as a block. Core owns the neutral handle; Claude Code, Codex and Cursor are adapters. Each adapter still keeps its own copy of the event-to-item emit helper.
+    job: Drive a coding agent as a block. Core owns the neutral handle and what a harness declares about its abort (`stopsOnAbort`, read by harness-manager); Claude Code, Codex and Cursor are adapters. Each adapter still keeps its own copy of the event-to-item emit helper.
     package: "@flow-state-dev/core"
     anchor: harnessRunHandleSchema
     file: packages/core/src/types/harness.ts
@@ -696,11 +697,11 @@ mechanisms:
     doc: packages/core/README.md
 
   - id: harness-manager
-    job: Turn a task-board row into a supervised coding run (own checkout, verdict before settlement, question channel, the harness as a slot).
+    job: Turn a task-board row into a supervised coding run (own checkout, verdict before settlement, question channel, the harness as a slot). Also runs a harness as one long-lived session a user talks to (harnessSessionFlow), and ships the scripted harness model-free checks put in the slot (harnessStub).
     package: "@flow-state-dev/harness-manager"
     anchor: harnessManager
     file: packages/harness-manager/src/manager.ts
-    builtOn: [task-board, coding-harness, workspace]
+    builtOn: [task-board, coding-harness, harness-steering, workspace]
     overlaps:
       - { id: workspace, relation: distinct-jobs, note: "The checkout subpath runs git through the workspace host and re-exports run. It is not a second workspace implementation." }
     status: canonical

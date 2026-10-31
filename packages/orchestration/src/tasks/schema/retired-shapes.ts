@@ -11,7 +11,7 @@
  * was retired, so no row parked before it is read (the owner's call for epic
  * FIX-2058).
  *
- * Five entries, each with its own switch. An entry is turned on in the change
+ * Seven entries, each with its own switch. An entry is turned on in the change
  * that stops writing its shape, by that shape's owner:
  *
  * | Entry | Reads | As | On |
@@ -21,6 +21,8 @@
  * | `post` | a post row (`sealed.kind === "post"`) | a task in the delegate's ongoing session, its result to the conversation | FIX-2083 |
  * | `reopened` | a reopened row (`reopened`) | unmarked, with one steer pointing at the session's latest line | FIX-2086 |
  * | `queued` | a running row held open for a message queued to its session (`keptOpenBy: "queued"`) | running, `keptOpenBy: "filed"`, no lease | FIX-2103 |
+ * | `questions` | a row's holds stored under FIX-2183's name (`questions`) | `holds` | FIX-2317 |
+ * | `suspendedWait` | a running row kept open by its suspended request, stored as `keptOpenBy: "wait"` | `keptOpenBy: "suspended"` | FIX-2317 |
  *
  * An entry that is off reads its shape as it is stored, which is what the
  * code that still writes it expects. Removed no earlier than FIX-2071.
@@ -41,8 +43,11 @@ const REOPENED_STEER = // retired-name-refusal: the reopened shape
 /** The wait a row held open for a queued message stored (`keptOpenBy`), which no write makes now. */
 export const QUEUED_WAIT = "queued";
 
+/** What `keptOpenBy: "suspended"` was stored as before FIX-2317. */
+export const SUSPENDED_WAIT = "wait";
+
 /** The retired shapes, one entry each. */
-export type RetiredShape = "blocked" | "recorded" | "post" | "reopened" | "queued"; // retired-name-refusal: the reopened shape
+export type RetiredShape = "blocked" | "recorded" | "post" | "reopened" | "queued" | "questions" | "suspendedWait"; // retired-name-refusal: the reopened shape
 
 /** One entry: whether it is read, who turns it on, and how it reads a row. */
 export interface RetiredShapeEntry {
@@ -144,9 +149,27 @@ export const RETIRED_SHAPES: Readonly<Record<RetiredShape, RetiredShapeEntry>> =
     owner: "FIX-2103",
     read: (row) => (row.keptOpenBy === QUEUED_WAIT ? { ...without(row, "leaseUntil"), keptOpenBy: "filed" } : undefined),
   },
+  // FIX-2183 stored a row's holds as `questions`. A question is one kind of
+  // hold (FIX-2317), so they read as `holds`; a row that has both keeps `holds`.
+  questions: {
+    on: true,
+    owner: "FIX-2317",
+    read: (row) => {
+      if (!Array.isArray(row.questions)) return undefined;
+      const rest = without(row, "questions");
+      return row.holds === undefined ? { ...rest, holds: row.questions } : rest;
+    },
+  },
+  // A row kept open by its own suspended request said `"wait"`. It says
+  // `"suspended"` (FIX-2317), so the one `wait` on a row is the wait slot.
+  suspendedWait: {
+    on: true,
+    owner: "FIX-2317",
+    read: (row) => (row.keptOpenBy === SUSPENDED_WAIT ? { ...row, keptOpenBy: "suspended" } : undefined),
+  },
 };
 
-const ORDER: readonly RetiredShape[] = ["blocked", "recorded", "post", "reopened", "queued"]; // retired-name-refusal: the reopened shape
+const ORDER: readonly RetiredShape[] = ["blocked", "recorded", "post", "reopened", "queued", "questions", "suspendedWait"]; // retired-name-refusal: the reopened shape
 
 /**
  * A stored row read in the current shapes: every entry that is on, in order.

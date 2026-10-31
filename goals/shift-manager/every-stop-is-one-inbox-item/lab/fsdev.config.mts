@@ -6,9 +6,9 @@
  * - `desk.front`, the built-in `agent` worker Alice talks to, on the real model. Its model files
  *   a task held on a question before it starts (`createTask`'s `questions`).
  * - `desk.asker`, an `agent` worker on the real model, which asks a question midway
- *   (`askQuestion`) before it answers.
+ *   (`holdTaskForUser`) before it answers.
  * - `desk.doer`, on this Lab's `doer` worker flow: a block that stops for an approval, a review
- *   or an input (`ctx.waitForUser`) and reads the answer next. Marks in its task's goal pick the
+ *   or an input (`ctx.suspendForUser`) and reads the answer next. Marks in its task's goal pick the
  *   stop: `[approval]`, `[review]`, `[input]`, and `[deadline:MS]` sets the call's deadline.
  *   Its work is one step before the stop, noted in the proof file, so a step run twice counts 2.
  * - `eng.coder`, DevTeam's coder, whose run asks through its ask marker: Claude Code
@@ -34,7 +34,7 @@ import { defineSessionBoard, filingConversationBoard, workerConfigSchema, worker
 import { TASK_ID_STATE_KEY } from "../../../../packages/workforce/src/workers/keys.ts";
 import { steerOrTalk } from "../../../../packages/workforce/src/conversation-board/steer.ts";
 import { claudeCodeHarness } from "../../../../packages/shift-manager/teams/devteam/harness.mts";
-import { harnessStub } from "../../../../packages/shift-manager/teams/devteam/harness-stub.mts";
+import { harnessStub } from "@flow-state-dev/harness-manager";
 import { openLab } from "../../../../packages/shift-manager/teams/devteam/host.mts";
 
 const need = (name: string): string => {
@@ -116,7 +116,7 @@ function doerFlows(installation: Parameters<typeof defineSessionBoard>[0]["insta
       // A later turn on the same attempt (a steer's) does the work without stopping again.
       if (kind === undefined || ((await rowOf(ctx))?.turn ?? 1) > 1) return `done ${taskId ?? "no task"}`;
       const deadline = /\[deadline:(\d+)\]/.exec(input.message)?.[1];
-      const answer = await ctx.waitForUser({ kind, prompt: STOPS[kind], ...(deadline === undefined ? {} : { deadline: Number(deadline) }) } as never);
+      const answer = await ctx.suspendForUser({ kind, prompt: STOPS[kind], ...(deadline === undefined ? {} : { deadline: Number(deadline) }) } as never);
       const row = await rowOf(ctx);
       prove({ kind: "resumed", taskId, stop: kind, requestId: ctx.request.identity.id, attempt: row?.attempts, outcome: answer });
       return { [kind]: answer };

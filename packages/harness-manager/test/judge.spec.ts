@@ -13,7 +13,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { handler, sequencer } from "@flow-state-dev/core";
-import { openRowQuestions } from "@flow-state-dev/orchestration/tasks";
+import { openRowHolds } from "@flow-state-dev/orchestration/tasks";
 import { harnessJudgeInputSchema, type HarnessJudgeInput } from "../src";
 import { CONVERSATIONS, FIXED_BOARD, PHASE, claimHost, cleanUpHosts, messageOf } from "./claim-host";
 
@@ -82,7 +82,7 @@ describe("a judged run on a board read from the claim", () => {
     await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
     const held = await lab.row(CONVERSATIONS, "t1", "conv-a");
     expect(held).toMatchObject({ status: "in_progress", attempts: 1 });
-    expect(openRowQuestions(held).map((hold) => hold.ask.prompt)).toEqual(["which repository did you mean?"]);
+    expect(openRowHolds(held).map((hold) => hold.ask.prompt)).toEqual(["which repository did you mean?"]);
 
     await lab.act("answer", { ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", answer: "storefront" });
     await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");

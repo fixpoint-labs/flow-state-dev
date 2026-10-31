@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Client } from "@flow-state-dev/client";
-import { createInboxClient, type InboxQuestion, type InboxItem } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, type InboxHold, type InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { reconcileInbox, rowTruthOf, suspensionTruthOf } from "@flow-state-dev/orchestration/inbox/check";
 import { RUN_STAMP } from "../../lib/index.mts";
 import { startShiftManager, type ServedShiftManager } from "../../lib/shift-manager.mts";
@@ -113,7 +113,7 @@ export interface Alice {
   inbox(): Promise<InboxItem<unknown>[]>;
   itemOf(taskId: string): Promise<InboxItem<unknown> | undefined>;
   answer(item: InboxItem<unknown>, answer: unknown, questionId?: string): Promise<string>;
-  answerOne(hold: InboxQuestion<unknown>, answer: unknown): Promise<string>;
+  answerOne(hold: InboxHold<unknown>, answer: unknown): Promise<string>;
   /** `reconcileInbox` over her Inbox against her rows and the task sessions' suspended requests; `undefined` when green. */
   reconciled(closed: string[]): Promise<string | undefined>;
   until<T>(read: () => Promise<T>, done: (value: T) => boolean, ms: number): Promise<T>;
@@ -177,7 +177,7 @@ export async function aliceIn(shipped: Shipped, origin: string): Promise<Alice> 
       for (const sessionId of sessions) suspensions.push(...suspensionTruthOf(sessionId, await client.sessions.requests(sessionId, { status: "suspended", includeItems: true })));
       const items = await inbox();
       const board = items.find((item) => item.task !== null)?.task?.board ?? `${conversation}.tasks`;
-      const truth = { rows: rowTruthOf(all.map((r) => ({ board, id: r.id, status: r.status, questions: r.questions ?? [], steers: r.steers ?? [] }))), suspensions, closed };
+      const truth = { rows: rowTruthOf(all.map((r) => ({ board, id: r.id, status: r.status, holds: r.holds ?? [], steers: r.steers ?? [] }))), suspensions, closed };
       const result = reconcileInbox(items, truth);
       return result.green ? undefined : show({ ...result, green: undefined }, 1500);
     },
@@ -193,7 +193,7 @@ export async function aliceIn(shipped: Shipped, origin: string): Promise<Alice> 
 export function openHoldsOf(row: Row | undefined): Row[] {
   if (row === undefined || TERMINAL.has(row.status)) return [];
   const answered = new Set(((row.steers ?? []) as Row[]).flatMap((s) => (typeof s.answers === "string" ? [s.answers] : [])));
-  return ((row.questions ?? []) as Row[]).filter((h) => h.source?.kind === "suspension" || !answered.has(h.id));
+  return ((row.holds ?? []) as Row[]).filter((h) => h.source?.kind === "suspension" || !answered.has(h.id));
 }
 export const suspensionHolds = (row: Row | undefined) => openHoldsOf(row).filter((h) => h.source?.kind === "suspension");
 export const rowHolds = (row: Row | undefined) => openHoldsOf(row).filter((h) => h.source?.kind === "row");

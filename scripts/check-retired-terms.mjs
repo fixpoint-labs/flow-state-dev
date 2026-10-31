@@ -154,7 +154,7 @@ export const EXCEPTIONS = [
   {
     id: "kind-type-names",
     terms: ["kind"],
-    strip: /\b\w+ErrorKind\b|\bEntryKind\b|\bTaskChangeKind\b|\bPathReport<Kind\b|\bKind extends\b|:\s*Kind\b|\b(?:WRITER|PLAIN)_KIND\b|\bworkerWriterKind\b|\b(?:waitForUserKindOf|WaitForUserKind)\b|`Kind`/g,
+    strip: /\b\w+ErrorKind\b|\bEntryKind\b|\bTaskChangeKind\b|\bPathReport<Kind\b|\bKind extends\b|:\s*Kind\b|\b(?:WRITER|PLAIN)_KIND\b|\bworkerWriterKind\b|\b(?:suspendForUserKindOf|SuspendForUserKind)\b|`Kind`/g,
     why: "a type discriminant's own type, core's names for what a user's stop asks (FIX-2129), and the engine flow kinds a test registers (BR-10)",
   },
   {
@@ -186,6 +186,13 @@ export const EXCEPTIONS = [
     terms: ["room"],
     strip: /\b(?:make|makes|making|made|leave|leaves|leaving|left|have|has|had|ran out of|run out of|out of|given|give|gives|enough|reserve|reserves|reserved|no|more|less|little|plenty of)\s+room\b|\broom\s+(?:for|to)\b|room-temperature/gi,
     why: "the English 'room for'",
+  },
+  {
+    id: "landing-room-metaphor",
+    terms: ["room"],
+    where: (path) => path === "apps/build-site/public/index.html",
+    strip: /\binside their room\b|\brebuild the room\b/g,
+    why: "flow-state.build's headline metaphor (an assistant's room you can rebuild), not the retired coordinator term",
   },
   {
     id: "project-member",

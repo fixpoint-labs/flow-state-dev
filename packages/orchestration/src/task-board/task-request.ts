@@ -26,10 +26,10 @@
  *   wait), and starts that entry at once; the entry admits a same-attempt
  *   request whose message is the steer, and its end checks again. Each turn
  *   takes at least one steer, so the steer cap bounds the turns.
- * - **suspended** — the row records the stop (`keptOpenBy: "wait"`) and drops
+ * - **suspended** — the row records the stop (`keptOpenBy: "suspended"`) and drops
  *   its lease (D1), in one write; a stop for a person, by the one predicate
  *   `isUserSuspension`, is mirrored in that write as the row's suspension hold
- *   (`Task.questions`, FIX-2133 D2), what it asks with it. The resume is admitted
+ *   (`Task.holds`, FIX-2133 D2), what it asks with it. The resume is admitted
  *   like any request, and its admission closes the mirror. A row a question
  *   holds takes no mirror (one wait per turn): the stop is cancelled instead,
  *   and the run resumes `cancelled`.
@@ -51,7 +51,7 @@
  * nothing outside the gate, and the gate checks at its entry's last step.
  */
 import { handler } from "@flow-state-dev/core";
-import { dispatchThroughSeam, isUserSuspension, onRequestEnded, readRequestSpend, requestSpendSources, waitForUserKindOf, type RequestEndVerdict, type RequestEnding, type RequestSpend, type SuspensionAddress } from "@flow-state-dev/core/types";
+import { dispatchThroughSeam, isUserSuspension, onRequestEnded, readRequestSpend, requestSpendSources, suspendForUserKindOf, type RequestEndVerdict, type RequestEnding, type RequestSpend, type SuspensionAddress } from "@flow-state-dev/core/types";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
@@ -61,14 +61,14 @@ import {
   readCommittedTask,
   ticketForClaim,
   untakenSteers,
-  type SuspensionQuestion,
+  type SuspensionHold,
   type Task,
   type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskKeptOpenBy,
 } from "../tasks";
 import { ticketClaimsRow } from "../tasks/collection/internal";
-import { askedOnTicket, suspensionQuestionOf } from "../tasks/collection/questions";
+import { askedOnTicket, suspensionHoldOf } from "../tasks/collection/holds";
 import { advisoryComplete, advisoryFail } from "../tasks/collection/advisory-write-back";
 import { settleAtRequestEnd } from "./blocks/record-result";
 import { startLeaseRenewal, startTicker, type LeaseRenewalDriver, type Ticker } from "../tasks/lease-renewal";
@@ -484,19 +484,19 @@ function tookSteers(task: Task, requestId: string): boolean {
 
 /** A task whose own request stopped (for a person, or any other wait) and has not ended. */
 function waitsOnItsOwnRequest(prior: TaskKeptOpenBy | undefined): boolean {
-  return prior === "wait";
+  return prior === "suspended";
 }
 
 /**
  * What a suspended request leaves the task waiting on: its own request's stop
- * (`"wait"`), mirrored on the row when it waits for a person (the one
+ * (`"suspended"`), mirrored on the row when it waits for a person (the one
  * predicate, `isUserSuspension`). A request other than the task's own that
  * stops after the task answered leaves it waiting on what it waited on.
  */
 function stopOf(record: Admitted, ending: TaskEnding): { on: TaskKeptOpenBy; forPerson: boolean } {
   if (!record.own && answeredBefore(record.prior)) return { on: record.prior!, forPerson: false };
   const suspension = ending.suspension;
-  return { on: "wait", forPerson: suspension !== undefined && isUserSuspension(suspension) };
+  return { on: "suspended", forPerson: suspension !== undefined && isUserSuspension(suspension) };
 }
 
 /**
@@ -507,10 +507,10 @@ function stopOf(record: Admitted, ending: TaskEnding): { on: TaskKeptOpenBy; for
  * row's run link names. `undefined` when the ending names no suspension id (a
  * host before it).
  */
-function mirrorOf(ctx: BlockContext, ending: TaskEnding): SuspensionQuestion | undefined {
+function mirrorOf(ctx: BlockContext, ending: TaskEnding): SuspensionHold | undefined {
   const suspension = ending.suspension;
   if (suspension?.suspensionId === undefined) return undefined;
-  const kind = waitForUserKindOf(suspension);
+  const kind = suspendForUserKindOf(suspension);
   if (kind === undefined) return undefined;
   const prompt = suspension.message ?? "";
   return {
@@ -646,14 +646,14 @@ async function waitOn(
   row: Task,
   on: TaskKeptOpenBy,
   answer: { output: unknown } | undefined,
-  hold?: SuspensionQuestion,
+  hold?: SuspensionHold,
   owesTurn?: boolean
 ): Promise<Awaited<ReturnType<NonNullable<TaskCollectionRef["setKeptOpenBy"]>>> | undefined> {
   if (record.ref.setKeptOpenBy === undefined) return undefined;
   return record.ref.setKeptOpenBy(row.id, on, {
     claim: record.ticket,
     ...(answer !== undefined ? { answer } : {}),
-    ...(hold !== undefined ? { question: hold } : {}),
+    ...(hold !== undefined ? { hold: hold } : {}),
     ...(owesTurn === true ? { owesTurn: true } : {}),
   });
 }
@@ -764,7 +764,7 @@ export function taskRequestAdmission(options: TaskRequestAdmissionOptions) {
             // The resume of the stop the row waits on is that stop's own request, whichever entry
             // started it (a steer's turn, after an answered question): its admission closes the
             // mirror, and its end settles the task. Any other request admitted meanwhile is a later one.
-            own: suspensionQuestionOf(row)?.source.requestId === ctx.request.identity.id,
+            own: suspensionHoldOf(row)?.source.requestId === ctx.request.identity.id,
             ...(options.endRules !== undefined ? { rules: options.endRules } : {}),
           });
         } catch (error) {

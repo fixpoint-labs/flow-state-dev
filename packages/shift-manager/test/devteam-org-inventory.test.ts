@@ -16,7 +16,7 @@ import { afterEach, expect, it } from "vitest";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { connect } from "../src/lib/connection";
 import { createLabReader } from "../src/lib/reads";
-import { harnessStub } from "../teams/devteam/harness-stub.mts";
+import { harnessStub } from "@flow-state-dev/harness-manager";
 import { LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";
 

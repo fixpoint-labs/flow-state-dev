@@ -1,6 +1,6 @@
 /**
  * A finished task takes a follow-up (`createTask`'s `followUpOf`, FIX-1817
- * S4), and a task turn's own question tool (`askQuestion`, FIX-2131) acts only
+ * S4), and a task turn's own question tool (`holdTaskForUser`, FIX-2131) acts only
  * on the row its turn holds. How the question holds the task is pinned where
  * the gate runs for real (`task-board/settles-when-its-work-is-over.test.ts`).
  *
@@ -12,7 +12,7 @@ import type { GeneratorTool } from "@flow-state-dev/core";
 import { runForTest } from "@flow-state-dev/testing";
 import {
   buildTaskToolsList,
-  createAskQuestion,
+  createHoldTaskForUser,
   taskToolsForTurn,
 } from "../../src/skills/task-tools-capability";
 import { createResourceBackedTaskCollection, ticketForClaim, type Task, type TaskCollectionRef } from "../../src/tasks";
@@ -273,8 +273,8 @@ describe("createTask's followUpOf (S4)", () => {
   });
 });
 
-describe("askQuestion off a task turn (FIX-2131)", () => {
-  const ask = createAskQuestion({ resolve: (ctx) => ownStateResolver(ctx) });
+describe("holdTaskForUser off a task turn (FIX-2131)", () => {
+  const ask = createHoldTaskForUser({ resolve: (ctx) => ownStateResolver(ctx) });
 
   it("is not offered, and reaches nothing, on a person's turn in the task session (another request)", async () => {
     const b = await board([row("t", { assignee: "w" })]);
@@ -285,7 +285,7 @@ describe("askQuestion off a task turn (FIX-2131)", () => {
     const out = (await runForTest(ask.tool, { question: "Which?", taskId: "t" } as never, person as never)) as any;
     expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^not_a_task_turn/) });
     expect(b.get("t")!.status).toBe("in_progress");
-    expect(b.get("t")!.questions ?? []).toEqual([]);
+    expect(b.get("t")!.holds ?? []).toEqual([]);
   });
 
   it("is not offered outside a task session at all", async () => {

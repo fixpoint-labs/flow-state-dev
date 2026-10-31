@@ -62,3 +62,6 @@ runs, so no `ANTHROPIC_API_KEY` is needed.
 | 2026-10-28 | 1059ee0c | openai/gpt-5.4 | PASS | 3 of 3 runs; leg 1 took 2-3 read calls, 0 tasks, 1 clone, 0 places; legs 2-3 each refused on a read call |
 | 2026-10-28 | 1059ee0c | openai/gpt-5.4 | FAIL (control `no-read`) | leg 1 *value named* (the model said it had no tool to read files) and *one clone* (0 clones); legs 2-3 made no read call |
 | 2026-10-28 | 1059ee0c | openai/gpt-5.4 | FAIL (control `no-gate`) | leg 3 *no value* (the value was named) and *read refused* (the grep returned matches) |
+| 2026-10-30 | 863a0e13 | openai/gpt-5.4 | PASS | Closure run (FIX-2156). 3 of 3 |
+| 2026-10-30 | 07753056 | openai/gpt-5.4 | PASS | Closure re-run after #4262. 3 of 3; leg 1 two read calls, 0 tasks |
+| 2026-10-30 | 07753056 | openai/gpt-5.4 | FAIL (control `no-gate`) | Leg 3 *no value* and *read refused*, all 3 runs |

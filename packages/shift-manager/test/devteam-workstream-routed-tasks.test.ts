@@ -41,7 +41,7 @@ import { connect } from "../src/lib/connection";
 import { readProject, type ProjectAddress } from "../src/lib/projects";
 import { createLabReader, readerSessionId } from "../src/lib/reads";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
-import { harnessStub } from "../teams/devteam/harness-stub.mts";
+import { harnessStub } from "@flow-state-dev/harness-manager";
 import { LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
 import { commitAll, createBareRemote } from "../teams/devteam/scratch-repo.mts";
 import { EM_TURN } from "../teams/devteam/workforce/flows/workers/em.mts";

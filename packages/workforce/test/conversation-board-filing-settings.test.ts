@@ -17,7 +17,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { bootSplitHost, type SplitHost } from "./split-harness";
-import { openQuestions } from "@flow-state-dev/orchestration/tasks";
+import { openHolds } from "@flow-state-dev/orchestration/tasks";
 
 /** The one row filed with `goal`. */
 async function one(h: SplitHost, goal: string) {
@@ -283,7 +283,7 @@ describe("the work a task filed goes with it (FIX-2080 D2)", () => {
       where: "a session of its own",
       file: async (h, planner) => {
         h.controls.plans.planner = [{ goal: "Plan the offsite", assignee: "s1" }];
-        h.controls.waitForUserBeforeFiling.add("s1");
+        h.controls.suspendForUserBeforeFiling.add("s1");
         await h.turn("alice", planner);
         return "Plan the offsite";
       }
@@ -292,7 +292,7 @@ describe("the work a task filed goes with it (FIX-2080 D2)", () => {
       where: "the delegate's ongoing session, which names no task",
       file: async (h, planner) => {
         h.controls.plans.planner = [{ goal: "Plan the offsite", assignee: "s1", session: "ongoing" }];
-        h.controls.waitForUserBeforeFiling.add("s1");
+        h.controls.suspendForUserBeforeFiling.add("s1");
         await h.turn("alice", planner);
         return "Plan the offsite";
       }
@@ -308,7 +308,7 @@ describe("the work a task filed goes with it (FIX-2080 D2)", () => {
         const root = await one(h, "Plan the offsite");
         expect(root.status).toBe("completed");
         h.controls.plans.s1 = piece;
-        h.controls.waitForUserBeforeFiling.add("s1:Add a second hall");
+        h.controls.suspendForUserBeforeFiling.add("s1:Add a second hall");
         expect(await h.tool("alice", planner, "createTask", { goal: "Add a second hall", followUpOf: root.id })).toMatchObject({ ok: true });
         return "Add a second hall";
       }
@@ -321,7 +321,7 @@ describe("the work a task filed goes with it (FIX-2080 D2)", () => {
       h.controls.plans.s1 = [{ goal: "[slow:3000] Book the hall", assignee: "eng.tasker" }];
       const planner = await h.open("alice", "planner");
       const goal = await file(h, planner);
-      expect(await h.until(async () => openQuestions(await one(h, goal)).some((hold) => hold.source.kind === "suspension"))).toBe(true);
+      expect(await h.until(async () => openHolds(await one(h, goal)).some((hold) => hold.source.kind === "suspension"))).toBe(true);
       const task = await one(h, goal);
       expect(await h.tool("alice", planner, "updateTask", { id: task.id, status: "cancelled" })).toEqual({ ok: true });
       expect(await h.until(async () => h.controls.refusals.some((r) => r.worker === "s1"))).toBe(true);

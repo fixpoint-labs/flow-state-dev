@@ -60,6 +60,8 @@ importers:
         specifier: ^3.25.76
         version: 3.25.76
 
+  apps/build-site: {}
+
   apps/devtool:
     dependencies:
       '@flow-state-dev/client':
@@ -190,6 +192,9 @@ importers:
       '@flow-state-dev/engine':
         specifier: workspace:*
         version: link:../../packages/engine
+      '@flow-state-dev/harness-manager':
+        specifier: workspace:*
+        version: link:../../packages/harness-manager
       '@flow-state-dev/memory':
         specifier: workspace:*
         version: link:../../packages/memory
@@ -749,6 +754,9 @@ importers:
 
   labs/claude-code-style:
     devDependencies:
+      '@cursor/sdk':
+        specifier: 1.0.40
+        version: 1.0.40(zod@3.25.76)
       '@flow-state-dev/claude-code':
         specifier: workspace:*
         version: link:../../packages/claude-code
@@ -761,6 +769,9 @@ importers:
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@flow-state-dev/cursor':
+        specifier: workspace:*
+        version: link:../../packages/cursor
       '@flow-state-dev/design-system':
         specifier: workspace:*
         version: link:../design-system
@@ -1415,6 +1426,9 @@ importers:
       '@flow-state-dev/engine':
         specifier: workspace:*
         version: link:../engine
+      '@flow-state-dev/harness-manager':
+        specifier: workspace:*
+        version: link:../harness-manager
       '@flow-state-dev/node':
         specifier: workspace:*
         version: link:../node

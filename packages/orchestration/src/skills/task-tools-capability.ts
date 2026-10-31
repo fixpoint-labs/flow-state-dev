@@ -17,9 +17,9 @@
  * or throws, and the drain or the claim gate records that. The worker's own
  * tools act on the row the turn's claim holds, never on a task id from input:
  * `reportProgress` (`createReportProgress`) reports a note and a checkpoint of
- * its output while it runs, and `askQuestion` (`createAskQuestion`) asks the
- * user a question the task holds on (FIX-2131). `waitForUser`
- * (`createWaitForUserTool`) stops a turn for the user's approval, review or,
+ * its output while it runs, and `holdTaskForUser` (`createHoldTaskForUser`) asks the
+ * user a question the task holds on (FIX-2131). `suspendForUser`
+ * (`createSuspendForUserTool`) stops a turn for the user's approval, review or,
  * on a turn with no task row, input.
  *
  * ## Dispatching (FIX-1875)
@@ -77,13 +77,13 @@ import {
   cancelledDependents,
   MAX_STEERS,
   MAX_QUESTION_PROMPT,
-  isRowQuestion,
-  openQuestions,
+  isRowHold,
+  openHolds,
   steerPlacesTaken,
-  taskQuestionSchema,
+  taskHoldSchema,
   type QuestionAnswer,
   type QuestionInit,
-  type RowQuestion,
+  type RowHold,
 } from "../tasks";
 // The board's per-worker claim seam. A deep import for the same reason
 // `shouldRetryOnFail` is one: this surface consumes the seam, it does not widen
@@ -195,10 +195,10 @@ function readable(value: unknown): { value: unknown; cut: boolean } {
  * `keptOpenBy`), and what holds it for the user (FIX-2133): its open holds.
  */
 function waitingOf(t: Task) {
-  const open = openQuestions(t);
+  const open = openHolds(t);
   return {
     ...(t.keptOpenBy != null && t.status === "in_progress" ? { keptOpenBy: t.keptOpenBy } : {}),
-    ...(open.length > 0 ? { questions: open } : {}),
+    ...(open.length > 0 ? { holds: open } : {}),
   };
 }
 
@@ -582,7 +582,7 @@ function followUpTakenError(id: string) {
   };
 }
 
-/** Where a task turn's own tools (`askQuestion`, `reportProgress`) read the row the turn holds. */
+/** Where a task turn's own tools (`holdTaskForUser`, `reportProgress`) read the row the turn holds. */
 export interface TaskTurnToolOptions {
   /**
    * The ledger the running task turn's row is on, or `undefined` when this
@@ -738,13 +738,13 @@ export function createReportProgress(options: ReportProgressOptions) {
 }
 
 /**
- * The longest question `askQuestion` takes, in characters: what a row keeps
+ * The longest question `holdTaskForUser` takes, in characters: what a row keeps
  * of a question (`MAX_QUESTION_PROMPT`), so the person reads the whole of it.
  */
 const QUESTION_LIMIT = MAX_QUESTION_PROMPT;
 
 /**
- * The worker's question (FIX-2131, on FIX-2133's hold): `askQuestion({ question })`,
+ * The worker's question (FIX-2131, on FIX-2133's hold): `holdTaskForUser({ question })`,
  * for a task turn, and the rule for when a turn is offered it.
  *
  * - **Which row.** The one the turn holds ({@link claimedRowOf}), never a task
@@ -756,15 +756,15 @@ const QUESTION_LIMIT = MAX_QUESTION_PROMPT;
  *   `updateTask`) owes the task one more turn on the same attempt, which
  *   starts from the brief, the last checkpoint and the answer. Its deadline is
  *   the hold's, which the host sets.
- * - **One wait per turn.** A turn whose `waitForUser` took the turn's wait on a
+ * - **One wait per turn.** A turn whose `suspendForUser` took the turn's wait on a
  *   person first is refused, naming it; and this tool, first, refuses that one.
  *   Both tools take the wait at the same point of their call, before anything
  *   they write, so a durable turn's replay decides as its first run did.
  * - **When it is offered** (`offered`). On a task turn holding a running row.
  */
-export function createAskQuestion(options: TaskTurnToolOptions) {
+export function createHoldTaskForUser(options: TaskTurnToolOptions) {
   const tool = handler({
-    name: "askQuestion",
+    name: "holdTaskForUser",
     description:
       "Ask the user a question about the task you are running that you can't go on without: " +
       "which region, which account, whether you may delete something. The task waits for their " +
@@ -785,11 +785,11 @@ export function createAskQuestion(options: TaskTurnToolOptions) {
         };
       }
       const { claim, ledger } = held;
-      if (takeTurnWait(ctx, held, "askQuestion") === "waitForUser") {
+      if (takeTurnWait(ctx, held, "holdTaskForUser") === "suspendForUser") {
         return {
           ok: false as const,
           error:
-            `one_wait_per_turn: this turn already waits on the user with waitForUser, so it can't ` +
+            `one_wait_per_turn: this turn already waits on the user with suspendForUser, so it can't ` +
             `also ask a question. Ask it after they answer. Nothing was written.`,
         };
       }
@@ -824,18 +824,18 @@ export function createAskQuestion(options: TaskTurnToolOptions) {
   };
 }
 
-/** What a model's `waitForUser` asks for: an approval, a review or, on a turn with no task row, input. */
+/** What a model's `suspendForUser` asks for: an approval, a review or, on a turn with no task row, input. */
 const WAIT_KINDS = ["approval", "review", "input"] as const;
 
 /**
- * The model's stop for the user (FIX-2131, on FIX-2129's `ctx.waitForUser`):
- * `waitForUser({ kind, prompt })`, an approval, a review or an input, and the
+ * The model's stop for the user (FIX-2131, on FIX-2129's `ctx.suspendForUser`):
+ * `suspendForUser({ kind, prompt })`, an approval, a review or an input, and the
  * rule for when a turn is offered it.
  *
  * - **Which kinds where.** On a task turn, approvals and reviews: the request
  *   suspends, the row mirrors the stop as its suspension hold, and the Inbox
  *   lists it. A question on a task turn holds the task instead, so `input` is
- *   refused there by name, pointing at `askQuestion`. On a turn with no task
+ *   refused there by name, pointing at `holdTaskForUser`. On a turn with no task
  *   row there is nothing to hold, so a question is `input`, and its answer is
  *   the tool's result.
  * - **Its deadline** is the host's setting for a person's stop, where the host
@@ -843,18 +843,18 @@ const WAIT_KINDS = ["approval", "review", "input"] as const;
  *   at the deadline the tool returns a no-answer result (`answered: false`,
  *   `deadline: true`), and an approval reads as a no.
  * - **One wait per turn.** On a task turn, a turn that asked a question first
- *   is refused, naming `askQuestion`. Read off the turn-asked fact, never off
+ *   is refused, naming `holdTaskForUser`. Read off the turn-asked fact, never off
  *   the row's open holds.
  * - **When it is offered** (`offered`). On any turn of a host that can stop a
  *   request for the user (durable execution, `ctx.suspend`).
  */
-export function createWaitForUserTool(options: TaskTurnToolOptions) {
+export function createSuspendForUserTool(options: TaskTurnToolOptions) {
   const tool = handler({
-    name: "waitForUser",
+    name: "suspendForUser",
     description:
       "Stop and wait for the user. kind approval asks a yes or a no before you do something; " +
       "kind review asks them to look at work and give a verdict; kind input asks for a value you " +
-      "need, and is only for a turn that isn't running a task (on a task, use askQuestion). The " +
+      "need, and is only for a turn that isn't running a task (on a task, use holdTaskForUser). The " +
       "user's answer is this tool's result. It may come back with answered: false when nobody " +
       "answered in time: then go on without it, or end your turn.",
     inputSchema: z.object({
@@ -877,21 +877,21 @@ export function createWaitForUserTool(options: TaskTurnToolOptions) {
             ok: false as const,
             error:
               `input_is_a_question: you are running task "${held.claim.taskId}", so a question you ` +
-              `need answered keeps the task waiting: ask it with askQuestion. Nothing was asked.`,
+              `need answered keeps the task waiting: ask it with holdTaskForUser. Nothing was asked.`,
           };
         }
-        if (takeTurnWait(ctx, held, "waitForUser") === "askQuestion") {
+        if (takeTurnWait(ctx, held, "suspendForUser") === "holdTaskForUser") {
           return {
             ok: false as const,
             error:
-              `one_wait_per_turn: this turn already asked the user a question with askQuestion, so ` +
+              `one_wait_per_turn: this turn already asked the user a question with holdTaskForUser, so ` +
               `it can't also wait on them. End your turn; their answer starts the next one.`,
           };
         }
       }
       const wait = { prompt: input.prompt, ...(input.title !== undefined ? { title: input.title } : {}) };
       if (input.kind === "approval") {
-        const answer = await ctx.waitForUser({ kind: "approval", ...wait });
+        const answer = await ctx.suspendForUser({ kind: "approval", ...wait });
         if (answer.cancelled) return { ok: true as const, cancelled: true as const };
         return {
           ok: true as const,
@@ -902,7 +902,7 @@ export function createWaitForUserTool(options: TaskTurnToolOptions) {
         };
       }
       try {
-        const answer = await ctx.waitForUser({ kind: input.kind, ...wait });
+        const answer = await ctx.suspendForUser({ kind: input.kind, ...wait });
         if (answer.cancelled) return { ok: true as const, cancelled: true as const };
         return { ok: true as const, kind: input.kind, answered: true as const, answer: answer.answer };
       } catch (error) {
@@ -1430,7 +1430,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           .string()
           .min(1)
           .optional()
-          .describe("The id of the open question message answers (getTask lists them under questions). Sent with message only."),
+          .describe("The id of the open question message answers (getTask lists them under holds). Sent with message only."),
         ...(claimless
           ? {
               done: z
@@ -1653,8 +1653,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     await collection.refresh?.(input.id);
     const row = collection.get(input.id);
     if (row === undefined || !callerReaches(ctx, row)) return taskNotFoundError(input.id);
-    const hold = row.questions?.find((h) => h.id === input.answers);
-    if (hold === undefined || !isRowQuestion(hold)) {
+    const hold = row.holds?.find((h) => h.id === input.answers);
+    if (hold === undefined || !isRowHold(hold)) {
       return refuse(`no_such_question: task "${input.id}" holds no question "${input.answers}". Read its open questions with getTask.`);
     }
     if (!claimless && (hold.midway !== true || row.target !== undefined || row.targetSessionId !== undefined)) {
@@ -1707,7 +1707,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
    * with the No and its note as the reason. Retried after it landed, the same
    * No is a success; a task that finished another way is refused as finished.
    */
-  async function cancelOnNo(ctx: BlockContext, collection: TaskCollectionRef, row: Task, hold: RowQuestion, note: string | undefined) {
+  async function cancelOnNo(ctx: BlockContext, collection: TaskCollectionRef, row: Task, hold: RowHold, note: string | undefined) {
     const reason = `No to "${hold.ask.prompt}"${note !== undefined && note.trim().length > 0 ? `: ${note}` : ""}`;
     if (isTerminalStatus(row.status)) {
       return row.status === "cancelled" && row.error === reason ? { ok: true as const } : lockedError(row, ["message"]);
@@ -1715,7 +1715,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     let outcome: TaskWriteOutcome | undefined;
     try {
       // Fenced on the confirm still open, in the cancel's own write: a No after a yes, or racing one, can't cancel.
-      outcome = await cancelAndResume(ctx as never, collection, row.id, reason, { via, whileQuestionOpen: hold.id });
+      outcome = await cancelAndResume(ctx as never, collection, row.id, reason, { via, whileHoldOpen: hold.id });
     } catch (err) {
       if (err instanceof TaskWriteRefusedError) return refusedError(err);
       throw err;
@@ -1747,9 +1747,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
    * it asks and when it falls due. One shape for every stop.
    */
   const waitingShape = {
-    keptOpenBy: z.enum(["wait", "filed", "steer"]).optional(),
+    keptOpenBy: z.enum(["suspended", "filed", "steer"]).optional(),
     /** What the task waits on now, oldest first; absent when nothing does. Answer a question with `updateTask({ id, answers, message })`. */
-    questions: z.array(taskQuestionSchema).optional(),
+    holds: z.array(taskHoldSchema).optional(),
   };
 
   const listTasks = defineTool({
@@ -1847,7 +1847,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       "context and input), every field you can edit before it starts, how it stands, its " +
       "worker's latest status note, and its output: the result so far while it runs, or its " +
       "result once it completed. checkpoint: true means the output came from a reported " +
-      "checkpoint. Its error when it failed. questions are what it waits on now: a question " +
+      "checkpoint. Its error when it failed. holds are what it waits on now: a question " +
       "(answer it with updateTask, naming it), or a stop for the user. current is the latest follow-up in its chain that completed, with its output: " +
       "the version that stands now; output stays the task's own. steers are the messages sent " +
       "into it, oldest first, each marked taken once its work read it. When this read is how you " +

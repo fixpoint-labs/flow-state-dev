@@ -32,3 +32,11 @@ Each leg passes in 3 runs of 3 (`GOAL_RUNS`, default 3).
 |------|--------|-------|---------|-------|
 | 2026-10-30 | (this PR) | openai/gpt-5.4-mini | PASS 3/3 | Every worker named itself in all runs; leg 2 named both teammates with no tool call. An earlier wording failed 1 of 3 on leg 2 (`listDelegates`); the teammates list now says to answer from it. |
 | 2026-10-30 | (this PR) | openai/gpt-5.4-mini | control `no-identity`: FAIL as required | All three workers answered as "your team assistant" / "your AI assistant"; leg 2 called `listDelegates`. |
+| 2026-10-30 | 863a0e13 | openai/gpt-6-luna | FAIL | Closure re-run (FIX-2156) on the lab's new default model: leg 1 passed 3/3; leg 2 called `listDelegates` 3/3. On `TEAMMATES_MODEL=openai/gpt-5.4-mini`, leg 2 failed 1/3 |
+| 2026-10-30 | 863a0e13 | openai/gpt-6-luna | control `no-identity`: FAIL as required | Leg 1 unnamed / "ChatGPT" answers |
+| 2026-10-30 | 863a0e13 + layer fix | openai/gpt-6-luna | PASS 5/5 | The teammates list says it is current, so no tool call is needed; every worker named itself; leg 2 named both with no tool call |
+| 2026-10-30 | 863a0e13 + layer fix | openai/gpt-6-luna | control `no-identity`: FAIL as required | Leg 1 unnamed in every run, "ChatGPT" in run 2; leg 2 called `listDelegates` |
+| 2026-10-30 | 07753056 | openai/gpt-6-luna | PASS 3/3 | Closure re-run after #4262 |
+| 2026-10-30 | 07753056 | openai/gpt-6-luna | control `no-identity`: FAIL as required | Leg 1 unnamed or "ChatGPT"; leg 2 called `listDelegates` |
+| 2026-10-31 | 43f36196 + FIX-2364 | openai/gpt-6-luna | PASS 3/3 | Regression re-run on FIX-2364's default-layer rule, with the lab's boot now shared (`../lab.mts`) |
+| 2026-10-31 | 43f36196 + FIX-2364 | openai/gpt-6-luna | control `no-identity`: FAIL as required | Leg 1 unnamed or "ChatGPT" |

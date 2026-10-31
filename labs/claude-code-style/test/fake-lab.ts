@@ -22,6 +22,7 @@
 import type {
   LabAdapter,
   ProjectRow,
+  ReviewDetail,
   SessionRow,
   TaskRow,
   TaskWork,
@@ -29,6 +30,7 @@ import type {
   ThreadView,
   Unsubscribe,
 } from "../src/adapter";
+import { waitingOnYou } from "../src/lib/columns";
 import { modeById, modeOfWorker, type ModeId } from "../src/modes";
 
 /** How the fake keeps time. Tests pass `speed` to run the script fast. */
@@ -41,6 +43,8 @@ export interface FakeOptions {
 
 interface FixtureTask extends TaskRow {
   work: ThreadEntry[];
+  /** What its run's review stop carries, for a harness thread ready for review. */
+  reviewDetail?: ReviewDetail;
 }
 
 interface FixtureSession {
@@ -64,6 +68,37 @@ const MINUTE = 60_000;
 /** The models the fake's runs report: a researcher's, and Claude Code's. */
 const RESEARCH_MODEL = "openai/gpt-6-luna";
 const CODE_MODEL = "claude-sonnet-4-5";
+
+/** A coding run's review, as its stop carries it: a real run's branch is this long. */
+const CODE_REVIEW: ReviewDetail = {
+  branch: "conductor/t0/ha62422c9f1e0b7d4c2a8e5f3b1d6a9c0e4f7b2d-h0163a0cb8e2d4f6a1c3b5d7e9f0a2c4e6b8d0f1a/t-7f3c2e1a9b--code",
+  commits: 1,
+  subjects: ["docs(changelog): note the vendor pick, with the status-page comparison it came from and the date it was made"],
+  judge: {
+    verdict: "done",
+    confidence: 0.91,
+    reason: "The CHANGELOG gains one line naming Vendor C and why; nothing else in the repository changed, and the line follows the file's existing format.",
+  },
+};
+
+/** The run's last words, as a real one ends: a long path and its branch, unbroken. */
+const CODE_ANSWER = [
+  "One commit, CHANGELOG.md only.",
+  "",
+  "**Remaining / caveats**",
+  "",
+  `- Committed on \`${CODE_REVIEW.branch}\`; nothing is pushed.`,
+  "- The line links `docs/internal/vendor-comparisons/2026-10-30-status-page-vendors-pricing-uptime-regions.md`, which this run did not write.",
+].join("\n");
+
+/** The prompt harness-manager's review stop writes for `CODE_REVIEW` (its `reviewPrompt`). */
+const CODE_REVIEW_PROMPT = [
+  `1 commit on ${CODE_REVIEW.branch}:`,
+  `- ${CODE_REVIEW.subjects[0]}`,
+  "",
+  `The judge: done (0.91): ${CODE_REVIEW.judge!.reason}`,
+  "The judge's verdict is information, not approval. Accept the changes, or ask for changes in words.",
+].join("\n");
 
 /** fake: stands in for the whole package until wiring. */
 export function createFakeLab(options: FakeOptions = {}): LabAdapter {
@@ -167,7 +202,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
   const file = (s: FixtureSession, title: string, goal: string, note: string): Step[1] => () => {
     const task = startTask(title, goal, note, { assignee: "desk.researcher", spend: spent(RESEARCH_MODEL, 1200, 300, true) });
     s.tasks = [...s.tasks, task];
-    push(s, { kind: "tool", id: nextId("tool"), name: "createTask", summary: `${title} → researcher` });
+    push(s, { kind: "tool", id: nextId("tool"), name: "createTask" });
   };
 
   const progress = (s: FixtureSession, title: string, note: string) => () =>
@@ -211,7 +246,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
         push(s, { kind: "assistant", id: nextId("a"), text: `"${task.title}" had already finished, so there was nothing to stop.` });
         return;
       }
-      push(s, { kind: "tool", id: nextId("tool"), name: "updateTask", summary: `${task.title} → cancelled` });
+      push(s, { kind: "tool", id: nextId("tool"), name: "updateTask" });
       setTask(s, task.id, { status: "cancelled", statusNote: undefined, waitingOn: undefined });
       push(s, { kind: "assistant", id: nextId("a"), text: `Stopped "${task.title}". The summary covers what is done so far.` });
     }],
@@ -267,7 +302,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
       [400, say(s, "I've started a Claude Code thread for it, in this session's project.")],
       [200, () => endTurn(s)],
       [1200, advance(s, ref, { statusNote: "Committing", spend: spent(CODE_MODEL, 8200, 1100, true, "claude-code") }, "Committing: docs: note the vendor pick"), "background"],
-      [800, advance(s, ref, { ...review("Judge: pass · 1 commit · adds the vendor line to CHANGELOG.md"), spend: spent(CODE_MODEL, 12000, 1600, true, "claude-code") }, "One commit, CHANGELOG.md only."), "background"],
+      [800, advance(s, ref, { ...review(CODE_REVIEW_PROMPT), reviewDetail: CODE_REVIEW, spend: spent(CODE_MODEL, 12000, 1600, true, "claude-code") }, CODE_ANSWER), "background"],
     ];
   };
 
@@ -312,7 +347,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
   const seed = (title: string, ago: number, projectId: string | null, lines: [string, string]) => {
     const id = nextId("session");
     sessions.set(id, {
-      row: { id, title, worker: modeById("session").worker, updatedAt: now() - ago, running: false, projectId },
+      row: { id, title, worker: modeById("session").worker, updatedAt: now() - ago, running: false, waiting: 0, projectId },
       entries: [
         { kind: "user", id: nextId("u"), text: lines[0] },
         { kind: "assistant", id: nextId("a"), text: lines[1] },
@@ -347,7 +382,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
     ];
     pins.add(tasks[0].id);
     sessions.set(id, {
-      row: { id, title: "Billing triage", worker: modeById("threads").worker, updatedAt: now() - ago, running: false, projectId: "project-vendor-notes" },
+      row: { id, title: "Billing triage", worker: modeById("threads").worker, updatedAt: now() - ago, running: false, waiting: 0, projectId: "project-vendor-notes" },
       entries: [
         { kind: "user", id: nextId("u"), text: "Triage this week's billing work, a thread each.", sentToThread: true },
         ...tasks.map((t): ThreadEntry => ({ kind: "thread", id: nextId("card"), taskId: t.id })),
@@ -365,7 +400,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
   return {
     modes: ["session", "threads"],
     watchSessions(onChange) {
-      return watch(() => onChange([...sessions.values()].map((s) => s.row).sort((a, b) => b.updatedAt - a.updatedAt)));
+      return watch(() => onChange([...sessions.values()].map((s) => ({ ...s.row, waiting: waitingOnYou(s.tasks) })).sort((a, b) => b.updatedAt - a.updatedAt)));
     },
 
     async listProjects() {
@@ -381,7 +416,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
     async openSession(mode: ModeId, projectId: string) {
       if (!mayWorkIn.some((p) => p.id === projectId)) throw new Error(`not-a-member: ${projectId}`);
       const id = nextId("session");
-      const row: SessionRow = { id, title: "New session", worker: modeById(mode).worker, updatedAt: now(), running: false, projectId };
+      const row: SessionRow = { id, title: "New session", worker: modeById(mode).worker, updatedAt: now(), running: false, waiting: 0, projectId };
       sessions.set(id, { row, entries: [], running: false, queue: [], timers: [], taskTimers: [], tasks: [] });
       notify();
       return row;
@@ -422,7 +457,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
     watchTasks(sessionId, onChange) {
       return watch(() => {
         const s = sessions.get(sessionId);
-        onChange(s ? s.tasks.map(({ work: _work, ...row }) => row) : []);
+        onChange(s ? s.tasks.map(({ work: _work, reviewDetail: _review, ...row }) => row) : []);
       });
     },
 
@@ -482,7 +517,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
     watchTaskWork(sessionId, taskId, onChange) {
       return watch(() => {
         const task = sessions.get(sessionId)?.tasks.find((t) => t.id === taskId);
-        const work: TaskWork = { entries: task?.work ?? [] };
+        const work: TaskWork = { entries: task?.work ?? [], ...(task?.reviewDetail === undefined ? {} : { review: task.reviewDetail }) };
         onChange(work);
       });
     },

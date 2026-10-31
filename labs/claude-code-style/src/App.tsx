@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import type { LabAdapter, ProjectRow, SessionRow } from "./adapter";
+import { PaneResizer } from "./components/PaneResizer";
 import { ProjectPicker } from "./components/ProjectPicker";
 import { SheetArea, SheetProvider } from "./components/Sheet";
 import { SessionsList } from "./components/SessionsList";
 import { TasksPane } from "./components/TasksPane";
 import { ThreadsBoard } from "./components/ThreadsBoard";
 import { Thread } from "./components/Thread";
+import { paneColumn, usePaneWidth } from "./lib/pane-width";
 import { useWatch } from "./lib/use-watch";
 import { modeOfWorker, type ModeId } from "./modes";
 
@@ -13,7 +15,8 @@ import { modeOfWorker, type ModeId } from "./modes";
  * The screen: the view's sessions on the left, the open session's main thread
  * in the center, and its mode's right pane: background tasks in session mode,
  * the threads board in threads mode. A pane opens a task's work in a sheet
- * over the main thread (`SheetArea`). The app opens in the Sessions view on
+ * over the main thread (`SheetArea`). The right pane's width is yours to drag,
+ * and stays across reloads (`usePaneWidth`). The app opens in the Sessions view on
  * *New session*, which asks for a project before the composer opens.
  */
 export function App({ adapter }: { adapter: LabAdapter }) {
@@ -27,6 +30,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   // The thread open in the board, by session: a card's *View thread* opens it there too.
   const [openThread, setOpenThread] = useState<Partial<Record<string, string>>>({});
   const [projects, setProjects] = useState<ProjectRow[]>([]);
+  const [paneWidth, setPaneWidth] = usePaneWidth();
   useEffect(() => {
     let live = true;
     void adapter.listProjects().then((rows) => live && setProjects(rows));
@@ -44,7 +48,10 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   const pane = selected ? modeOfWorker(selected.worker)?.pane : undefined;
   return (
     <SheetProvider>
-      <div className="grid h-full grid-cols-[15rem_minmax(0,1fr)_19rem] grid-rows-[minmax(0,1fr)] overflow-hidden">
+      <div
+        className="grid h-full grid-rows-[minmax(0,1fr)] overflow-hidden"
+        style={{ gridTemplateColumns: `15rem minmax(0,1fr) ${paneColumn(paneWidth)}` }}
+      >
         <SessionsList
           view={view}
           modes={adapter.modes}
@@ -74,18 +81,21 @@ export function App({ adapter }: { adapter: LabAdapter }) {
             />
           )}
         </SheetArea>
-        {selected && pane === "tasks" ? (
-          <TasksPane adapter={adapter} sessionId={selected.id} />
-        ) : selected && pane === "board" ? (
-          <ThreadsBoard
-            adapter={adapter}
-            sessionId={selected.id}
-            openId={openThread[selected.id]}
-            onOpen={(taskId) => setOpenThread((open) => ({ ...open, [selected.id]: taskId }))}
-          />
-        ) : (
-          <aside className="bg-inspector" />
-        )}
+        <div className="relative min-h-0 min-w-0">
+          <PaneResizer width={paneWidth} onResize={setPaneWidth} />
+          {selected && pane === "tasks" ? (
+            <TasksPane adapter={adapter} sessionId={selected.id} />
+          ) : selected && pane === "board" ? (
+            <ThreadsBoard
+              adapter={adapter}
+              sessionId={selected.id}
+              openId={openThread[selected.id]}
+              onOpen={(taskId) => setOpenThread((open) => ({ ...open, [selected.id]: taskId }))}
+            />
+          ) : (
+            <aside className="h-full bg-inspector" />
+          )}
+        </div>
       </div>
     </SheetProvider>
   );

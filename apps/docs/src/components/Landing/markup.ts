@@ -13,6 +13,7 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 <svg viewBox="0 0 150 90" aria-hidden="true" style="display: block; width: 44px; height: auto; overflow: visible;"><g fill="none" stroke="rgba(236,231,218,.55)" stroke-width="1.6" stroke-dasharray="3 5"><path d="M0 45 H31"><animate attributeName="stroke-dashoffset" from="0" to="-16" dur="0.8s" repeatCount="indefinite"></animate></path><path d="M119 45 H150"><animate attributeName="stroke-dashoffset" from="0" to="-16" dur="0.8s" repeatCount="indefinite"></animate></path><path d="M0 18 C40 18 50 12 75 12 C100 12 110 18 150 18"><animate attributeName="stroke-dashoffset" from="0" to="-16" dur="0.8s" repeatCount="indefinite"></animate></path><path d="M0 72 C40 72 50 78 75 78 C100 78 110 72 150 72"><animate attributeName="stroke-dashoffset" from="0" to="-16" dur="0.8s" repeatCount="indefinite"></animate></path></g><g fill="none" stroke="#f4f1e4" stroke-width="6"><path d="M31 45 Q53 7 75 45 Q53 83 31 45 Z"></path><path d="M53 45 Q75 7 97 45 Q75 83 53 45 Z"></path><path d="M75 45 Q97 7 119 45 Q97 83 75 45 Z"></path></g></svg>
 <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 14px; font-weight: 600; color: #f4f1e4;">flow-state.dev</span>
 </a>
+<div class="fs-doors" role="group" aria-label="Choose your door"><a href="https://www.flow-state.build">For everyone <span>.build</span></a><a class="on" href="/" aria-current="page">For developers <span>.dev</span></a></div>
 <nav class="fs-nav" aria-label="Main" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 22px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12.5px; font-weight: 500;">
 <a href="/docs/intro" style="padding: 12px 0;">Docs</a>
 <a href="#starters" style="padding: 12px 0;">Starters</a>
@@ -102,8 +103,8 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 <p style="margin: 0; font-size: 13px; line-height: 1.55; color: #3d3a32;">Many people on one workforce, each with their own sessions and state.</p>
 </li><li style="display: flex; flex-direction: column; gap: 8px; padding: 14px 0 0; border-top: 1px solid rgba(27,26,21,.3);">
 <svg viewBox="0 0 40 26" aria-hidden="true" style="display: block; width: 40px; height: 26px;"><rect x="2" y="3" width="15" height="20" fill="none" stroke="#1b1a15" stroke-width="1.3"></rect><rect x="23" y="3" width="15" height="20" fill="none" stroke="#1b1a15" stroke-width="1.3"></rect><path d="M17 13 H23" stroke="#1b1a15" stroke-width="1.2" stroke-dasharray="2 2"></path><path d="M5 9 H14 M26 9 H35" stroke="rgba(27,26,21,.35)"></path></svg>
-<h3 style="margin: 0; font-size: 15px; letter-spacing: -0.02em; font-weight: 700;">Multiple backends</h3>
-<p style="margin: 0; font-size: 13px; line-height: 1.55; color: #3d3a32;">Run more than one backend and connect them across machines or environments.</p>
+<h3 style="margin: 0; font-size: 15px; letter-spacing: -0.02em; font-weight: 700;">Scale across servers</h3>
+<p style="margin: 0; font-size: 13px; line-height: 1.55; color: #3d3a32;">Run your backend on several hosts and add more servers as load grows.</p>
 </li><li style="display: flex; flex-direction: column; gap: 8px; padding: 14px 0 0; border-top: 1px solid rgba(27,26,21,.3);">
 <svg viewBox="0 0 40 26" aria-hidden="true" style="display: block; width: 40px; height: 26px;"><rect x="4" y="7" width="18" height="12" fill="none" stroke="#1b1a15" stroke-width="1.3"></rect><path d="M22 10 H30 M22 16 H30" stroke="#1b1a15" stroke-width="1.3"></path><rect x="30" y="6" width="6" height="14" fill="#f8f6f0" stroke="#1b1a15" stroke-width="1.2"></rect></svg>
 <h3 style="margin: 0; font-size: 15px; letter-spacing: -0.02em; font-weight: 700;">MCP</h3>

@@ -1,8 +1,9 @@
-import { useFollowLatest } from "@flow-state-dev/react";
+import { useJumpToLatest } from "@flow-state-dev/react";
 import type { LabAdapter, ProjectRow, SessionRow, TaskRow } from "../adapter";
 import { elapsed, useNow, useWatch } from "../lib/use-watch";
 import { modeOfWorker } from "../modes";
 import { Composer } from "./Composer";
+import { JumpToLatestButton } from "./JumpToLatest";
 import { Entry } from "./Entry";
 import { ThreadCard } from "./ThreadCard";
 
@@ -35,7 +36,7 @@ export function Thread({
   const running = view?.running ?? false;
   const now = useNow(running);
   const count = view?.entries.length ?? 0;
-  const feed = useFollowLatest({ resetKey: session.id });
+  const feed = useJumpToLatest({ resetKey: session.id });
 
   return (
     <main aria-label="Main thread" className="flex h-full min-h-0 min-w-0 flex-col">
@@ -50,11 +51,11 @@ export function Thread({
           {mode?.label ?? session.worker}
         </span>
       </header>
-      <div ref={feed.ref} className="flex-1 overflow-y-auto px-6 py-4">
+      <div ref={feed.ref} className="flex-1 overflow-y-auto px-6 pt-4 pb-10">
         {count === 0 ? (
           <div className="mx-auto mt-24 max-w-sm text-center text-sm text-muted-foreground">
             {mode?.pane === "board"
-              ? "Ask the main session for something. It hands each piece to a thread of its own, and each comes back to you when it needs you."
+              ? "Ask the main session for something. It hands each piece to a task of its own, and each comes back to you when it needs you."
               : "Ask the main session for something. It does what it can itself and starts background tasks for the long pieces."}
           </div>
         ) : (
@@ -83,6 +84,7 @@ export function Thread({
             ) : null}
           </div>
         )}
+        <JumpToLatestButton feed={feed} />
       </div>
       {session.projectId === null ? (
         <div role="note" className="border-t border-border px-6 py-4 text-sm">
@@ -94,7 +96,7 @@ export function Thread({
           running={running}
           onSend={(text) => {
             // Your own line brings you back to the end, wherever you had scrolled to.
-            feed.follow();
+            feed.sent();
             void adapter.send(session.id, text);
           }}
           onStop={() => void adapter.interrupt(session.id)}

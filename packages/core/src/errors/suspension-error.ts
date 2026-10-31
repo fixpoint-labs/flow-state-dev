@@ -12,16 +12,16 @@
 
 import type { ZodTypeAny } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import type { ResumeAction, SuspensionReason, WaitForUserKind } from "../types/suspension";
+import type { ResumeAction, SuspensionReason, SuspendForUserKind } from "../types/suspension";
 
 export interface SuspendOptions {
   reason: SuspensionReason;
   /**
-   * What a user's suspension asks for. `ctx.waitForUser` sets it, with the
+   * What a user's suspension asks for. `ctx.suspendForUser` sets it, with the
    * reason it maps to; a raw `ctx.suspend` leaves it out, and its kind is then
-   * read from its reason (`waitForUserKindOf`).
+   * read from its reason (`suspendForUserKindOf`).
    */
-  kind?: WaitForUserKind;
+  kind?: SuspendForUserKind;
   /**
    * A short heading for the suspension, a few words. Surfaces that list or
    * head a suspension draw this, and `message` becomes the body under it. Omit
@@ -89,7 +89,7 @@ export class SuspensionError extends Error {
   readonly suspensionId: string;
   readonly reason: SuspensionReason;
   /** What a user's suspension asks for, when the caller set it (see {@link SuspendOptions.kind}). */
-  readonly kind?: WaitForUserKind;
+  readonly kind?: SuspendForUserKind;
   /** The suspension's short heading, when the caller gave one (see {@link SuspendOptions.title}). */
   readonly title?: string;
   readonly data?: Record<string, unknown>;
@@ -150,7 +150,7 @@ export class SuspensionRejectedError extends Error {
   /**
    * True when nobody answered: the task the suspension's request works was
    * cancelled while it waited, or the board cancelled this stop (FIX-2129).
-   * `ctx.waitForUser` returns `{ cancelled: true }` for it instead.
+   * `ctx.suspendForUser` returns `{ cancelled: true }` for it instead.
    */
   readonly cancelled: boolean;
 
@@ -180,7 +180,7 @@ export class SuspensionRejectedError extends Error {
 
 /**
  * Thrown where a suspension that is not an approval resumes at its deadline
- * with no answer (FIX-2129, D1): a review's or an input's `ctx.waitForUser`,
+ * with no answer (FIX-2129, D1): a review's or an input's `ctx.suspendForUser`,
  * or a raw `ctx.suspend` that allows no `reject`. Catch it to go ahead, end,
  * or ask again; left uncaught it fails the try. An approval at its deadline
  * reads as a no instead.

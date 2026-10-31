@@ -35,13 +35,13 @@ export type AnswerState = "working" | "replied" | "no answer";
 
 /**
  * How a message stands, from the message log: `replied` by a reply message
- * or, for a call, by its result; `no answer` when the reply is the
- * framework's "no answer"; `working` until then.
+ * (one a waited send took as its result is in the log too); `no answer` when
+ * the reply is the framework's "no answer"; `working` until then.
  */
 export const answerIn = (talk: readonly TalkRow[], messageId: string): AnswerState => {
   const reply = talk.find((row) => row.inReplyTo === messageId);
   if (reply !== undefined) return reply.noAnswer === true ? "no answer" : "replied";
-  return talk.some((row) => row.id === messageId && row.callAnswered === true) ? "replied" : "working";
+  return "working";
 };
 
 /** The open popup, live: it reads what it shows by itself, so it stays current while the work goes on. */

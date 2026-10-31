@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * FIX-2087 task-surface sweep: no task tool beyond the five (and the worker's `askQuestion`
- * and `waitForUser`, FIX-2131), nothing the epic's migration table removes is live,
+ * FIX-2087 task-surface sweep: no task tool beyond the five (and the worker's `holdTaskForUser`
+ * and `suspendForUser`, FIX-2131), nothing the epic's migration table removes is live,
  * nothing records a task's ending except the claim gate or the drain, and nothing but the
  * Inbox read builds a list of what waits on the user (FIX-2133). CI's Typecheck job runs
  * it, and again with `--control`; `run.mts` runs the same engine as the goal's sweep leg.
@@ -197,7 +197,7 @@ function forwarderPlant(root) {
  * spread, and an untyped literal with an item's shape.
  */
 function inboxPlants() {
-  const fields = 'task: null, questions: [], since: 0, answerable: true, unanswerable: null';
+  const fields = 'task: null, holds: [], since: 0, answerable: true, unanswerable: null';
   return [
     {
       rule: "inbox",
@@ -206,8 +206,8 @@ function inboxPlants() {
         'import type { InboxItem } from "@flow-state-dev/orchestration/inbox";\n' +
         `export function myList(ids: string[]): InboxItem[] {\n  return ids.map((id) => ({ id, ${fields} }));\n}\n` +
         `export const one = (id: string) => ({ id, ${fields} }) as InboxItem;\n` +
-        'export function short(id: string): InboxItem {\n  const task = null;\n  const questions: InboxItem["questions"] = [];\n  const answerable = true;\n  return { id, task, questions, since: 0, answerable, unanswerable: null };\n}\n' +
-        `const base = { questions: [] as InboxItem["questions"], task: null };\nexport const spread = (id: string): InboxItem => ({ ...base, id, since: 0, answerable: true, unanswerable: null });\n` +
+        'export function short(id: string): InboxItem {\n  const task = null;\n  const holds: InboxItem["holds"] = [];\n  const answerable = true;\n  return { id, task, holds, since: 0, answerable, unanswerable: null };\n}\n' +
+        `const base = { holds: [] as InboxItem["holds"], task: null };\nexport const spread = (id: string): InboxItem => ({ ...base, id, since: 0, answerable: true, unanswerable: null });\n` +
         `export const loose = (id: string) => ({ id, ${fields} });\n`,
       expect: 5,
     },

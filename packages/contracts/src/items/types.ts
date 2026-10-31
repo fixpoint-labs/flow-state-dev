@@ -1,6 +1,6 @@
 import type { Content } from "./content";
 import type { ModelIdentity } from "../types/model-identity";
-import type { ResumeAction, SuspensionReason, SuspensionStatus, WaitForUserKind } from "../types/suspension";
+import type { ResumeAction, SuspensionReason, SuspensionStatus, SuspendForUserKind } from "../types/suspension";
 
 export type { ModelIdentity };
 
@@ -691,11 +691,11 @@ export type SuspensionItem = OutputItemBase & {
   suspensionStatus: SuspensionStatus;
   reason: SuspensionReason;
   /**
-   * What a user's suspension asks for, when `ctx.waitForUser` set it
+   * What a user's suspension asks for, when `ctx.suspendForUser` set it
    * (FIX-2129). Absent on a raw `ctx.suspend`, and on items written before
-   * it: read it with `waitForUserKindOf`, which falls back to the reason.
+   * it: read it with `suspendForUserKindOf`, which falls back to the reason.
    */
-  kind?: WaitForUserKind;
+  kind?: SuspendForUserKind;
   /** When the suspension stops waiting (ms epoch). Absent when it has no deadline. */
   expiresAt?: number;
   /**

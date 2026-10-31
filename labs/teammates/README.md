@@ -22,6 +22,8 @@ theme on purpose, so it reads as the app it copies.
   *summarized* only when earlier turns were summarized. New content settles in place: the list
   follows an answer as it is written only while you are at the end, and offers *Jump to latest*
   when you have scrolled up; a task's line is drawn the moment it is filed and fills in where it is.
+  Enter sends; Cmd+Enter (Ctrl+Enter) sends from every box, including a teammate's instructions,
+  where plain Enter is a new line.
 - **Popup:** a message line or a task line in the conversation opens that piece of work in a popup
   over it: the other worker's session, read only and live. It closes with Esc, its close button, or
   a click outside it, and the conversation under it keeps its place.

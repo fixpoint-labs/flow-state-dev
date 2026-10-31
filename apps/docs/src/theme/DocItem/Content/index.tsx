@@ -1,6 +1,6 @@
 /**
  * Wraps a doc page's content so the page register's counters start fresh on
- * every page: `sheets` numbers its `h2` headings ("SHEET 01 —") and `figures`
+ * every page: `sheets` numbers its `h2` headings ("SECTION 01 —") and `figures`
  * numbers its `<Figure>`s ("FIG. 1 — "). Both rules live in
  * `@flow-state-dev/design-system/page.css`.
  */

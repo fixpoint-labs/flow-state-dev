@@ -3,7 +3,7 @@
  *
  * - V1 (S5): the task as filed is the task turn's user message, so a later
  *   turn in that session is handed what it was asked.
- * - V2, V5 (FIX-2131): a task turn on `agent` is offered `askQuestion`, a
+ * - V2, V5 (FIX-2131): a task turn on `agent` is offered `holdTaskForUser`, a
  *   user's turn is not, and a coordinator turn carries one set of task tools.
  * - V3 (FIX-2131): an answer to the question, `updateTask_tasks` naming it,
  *   owes the task one more turn in the same session, on the same attempt,
@@ -300,7 +300,7 @@ describe("V4 · a follow-up runs in its task's session (S4, S6)", () => {
 });
 
 /**
- * A model that calls `askQuestion` once per question on a task whose goal
+ * A model that calls `holdTaskForUser` once per question on a task whose goal
  * carries `marker`: the first on the task's own turn, each next one on the
  * turn an answer owed; after the last answer it finishes with `finish`. An
  * answer reaches the turn in its brief, as a steer naming its question.
@@ -320,7 +320,7 @@ function questioner(marker: string, questions: string[], answers: string[], fini
         asked += 1;
         return true;
       },
-      then: { toolCalls: [{ toolCallId: `ask-${i}`, toolName: "askQuestion", args: { question } }] }
+      then: { toolCalls: [{ toolCallId: `ask-${i}`, toolName: "holdTaskForUser", args: { question } }] }
     })),
     { when: (input) => answersIn(input) >= questions.length, then: { text: finish } },
     { when: () => true, then: { text: "OK." } }
@@ -329,7 +329,7 @@ function questioner(marker: string, questions: string[], answers: string[], fini
 
 /** The row's one open question, by id. */
 const openQuestion = (row: Task) => {
-  const open = (row.questions ?? []).filter((hold) => hold.source.kind === "row" && !(row.steers ?? []).some((steer) => steer.answers === hold.id));
+  const open = (row.holds ?? []).filter((hold) => hold.source.kind === "row" && !(row.steers ?? []).some((steer) => steer.answers === hold.id));
   expect(open).toHaveLength(1);
   return open[0]!;
 };
@@ -356,16 +356,16 @@ describe("V2, V5 · a task turn's question (FIX-2131)", () => {
       // The task turn was offered the tool exactly once; the coordinator's turns never.
       const agentTurns = seen.filter((s) => s.block?.startsWith("agent-answer"));
       expect(agentTurns.length).toBeGreaterThan(0);
-      for (const turn of agentTurns) expect(turn.names.filter((n) => n === "askQuestion")).toHaveLength(1);
+      for (const turn of agentTurns) expect(turn.names.filter((n) => n === "holdTaskForUser")).toHaveLength(1);
       for (const turn of seen.filter((s) => s.block?.startsWith("coordinator-judgment"))) {
-        expect(turn.names).not.toContain("askQuestion");
+        expect(turn.names).not.toContain("holdTaskForUser");
       }
     } finally {
       await h.dispose();
     }
   });
 
-  it("a user's line in a finished task's session is talk, not a task turn: no askQuestion", async () => {
+  it("a user's line in a finished task's session is talk, not a task turn: no holdTaskForUser", async () => {
     const seen: Array<{ block?: string; names: string[]; input: string }> = [];
     const h = host([{ when: () => true, then: { text: "OK." } }], {
       observeTools: (block, names, input) => seen.push({ block, names, input: textOf(input) })
@@ -382,13 +382,13 @@ describe("V2, V5 · a task turn's question (FIX-2131)", () => {
       await h.act("alice", sessionId, "respond", { message: "USER-asks what you did" }, "agent");
       const turn = seen.filter((s) => s.input.includes("USER-asks"));
       expect(turn.length).toBeGreaterThan(0);
-      for (const t of turn) expect(t.names).not.toContain("askQuestion");
+      for (const t of turn) expect(t.names).not.toContain("holdTaskForUser");
     } finally {
       await h.dispose();
     }
   });
 
-  it("a coordinator turn carries one set of the filer's four task tools, and no askQuestion (V5)", async () => {
+  it("a coordinator turn carries one set of the filer's four task tools, and no holdTaskForUser (V5)", async () => {
     const seen: Array<{ block?: string; names: string[]; input: string }> = [];
     const h = host([{ when: () => true, then: { text: "OK." } }], {
       judgment: mockGenerator({ script: [{ when: () => true, then: { text: "OK." } }] }),
@@ -401,7 +401,7 @@ describe("V2, V5 · a task turn's question (FIX-2131)", () => {
       expect(turn.length).toBeGreaterThan(0);
       for (const t of turn) {
         for (const name of ["createTask", "getTask", "listTasks", "updateTask"]) expect(t.names.filter((n) => n === name), name).toHaveLength(1);
-        expect(t.names).not.toContain("askQuestion");
+        expect(t.names).not.toContain("holdTaskForUser");
         expect(t.names).not.toContain("answerTask"); // retired-name-refusal: refusal test
       }
     } finally {

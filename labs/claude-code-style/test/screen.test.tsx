@@ -37,10 +37,11 @@ async function pick(name = "vendor-notes") {
 
 /**
  * Lay the scrolling feeds out as a browser would (happy-dom lays nothing out): the main thread's
- * list and a sheet's body, each 5000px of content in a 500px view. Every scroll they are asked
+ * list and a sheet's body, each 5000px of content in a 500px view, or
+ * `height(feed)` px for a test whose content must grow. Every scroll they are asked
  * for is recorded with how it moves, and lands at once. Undone by the returned function.
  */
-function layOutFeeds() {
+function layOutFeeds(height: (feed: HTMLElement) => number = () => 5000) {
   const isFeed = (el: HTMLElement) =>
     el.classList.contains("overflow-y-auto") &&
     (el.parentElement?.getAttribute("aria-label") === "Main thread" || el.parentElement?.getAttribute("role") === "dialog");
@@ -49,12 +50,12 @@ function layOutFeeds() {
   const tops = new WeakMap<HTMLElement, number>();
   const scrolls: { feed: HTMLElement; behavior: ScrollBehavior | undefined }[] = [];
   Object.defineProperties(HTMLElement.prototype, {
-    scrollHeight: { configurable: true, get(this: HTMLElement) { return isFeed(this) ? 5000 : 0; } },
+    scrollHeight: { configurable: true, get(this: HTMLElement) { return isFeed(this) ? height(this) : 0; } },
     clientHeight: { configurable: true, get(this: HTMLElement) { return isFeed(this) ? 500 : 0; } },
     scrollTop: {
       configurable: true,
       get(this: HTMLElement) { return tops.get(this) ?? 0; },
-      set(this: HTMLElement, value: number) { tops.set(this, isFeed(this) ? Math.max(0, Math.min(value, 4500)) : 0); },
+      set(this: HTMLElement, value: number) { tops.set(this, isFeed(this) ? Math.max(0, Math.min(value, height(this) - 500)) : 0); },
     },
     scrollTo: {
       configurable: true,
@@ -136,6 +137,22 @@ describe("the session-mode screen", () => {
     expect(screen.queryByLabelText("Message the main session")).toBeNull();
   });
 
+  it("sends with Cmd+Enter and Ctrl+Enter as well as Enter, and Shift+Enter stays a new line", async () => {
+    render(<App adapter={fast()} />);
+    await pick();
+    const box = screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "first line" } });
+    fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+    expect(box.value).toBe("first line");
+    fireEvent.keyDown(box, { key: "Enter", metaKey: true });
+    expect(box.value).toBe("");
+    const mine = () => [...thread().querySelectorAll('[data-entry="user"]')].map((el) => el.textContent ?? "");
+    await waitFor(() => expect(mine().join()).toMatch(/first line/));
+    fireEvent.change(box, { target: { value: "second line" } });
+    fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
+    await waitFor(() => expect(mine().join()).toMatch(/second line/));
+  });
+
   it("doesn't send when Enter only confirms an IME composition", async () => {
     render(<App adapter={fast()} />);
     await pick();
@@ -188,6 +205,36 @@ describe("the session-mode screen", () => {
     expect(feed.scrollTop).toBe(1200);
   });
 
+  it("never moves while the turn writes, even at the end: your own line takes you down, then Jump to latest offers the rest", async () => {
+    // The list grows with its text, so what the turn writes lands below the view.
+    const feeds = layOutFeeds((feed) => 500 + (feed.textContent?.length ?? 0) * 4);
+    onTestFinished(feeds.restore);
+    render(<App adapter={fast()} />);
+    await pick();
+    await act(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+    const feed = threadFeed();
+    const opened = feeds.scrolls.length;
+    await ask("Compare Acme and Globex for us.");
+    // Your own line took you to the end, smoothly: the jump on send, and the line brought in as it landed.
+    await within(feed).findByText("Compare Acme and Globex for us.");
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    const sent = feeds.scrolls.slice(opened);
+    expect(sent.length).toBeGreaterThan(0);
+    expect(sent.length).toBeLessThanOrEqual(2);
+    expect(sent.every((s) => s.feed === feed && s.behavior === "smooth")).toBe(true);
+    const scrolled = feeds.scrolls.length;
+    await within(thread()).findByRole("region", { name: "Background result: Research Acme" });
+    await waitFor(() => expect(within(thread()).queryByRole("status")).toBeNull());
+    // Everything after it arrived below: nothing scrolled, and the way down is offered.
+    expect(feeds.scrolls.length).toBe(scrolled);
+    expect(feed.scrollHeight - feed.scrollTop - feed.clientHeight).toBeGreaterThan(32);
+    const jump = within(thread()).getByRole("button", { name: "Jump to latest" });
+    fireEvent.click(jump);
+    expect(feeds.scrolls.at(-1)).toEqual({ feed, behavior: "smooth" });
+    expect(feed.scrollHeight - feed.scrollTop - feed.clientHeight).toBe(0);
+    expect(within(thread()).queryByRole("button", { name: "Jump to latest" })).toBeNull();
+  });
+
   it("opens a task's sheet already at the latest of its work", async () => {
     const feeds = layOutFeeds();
     onTestFinished(feeds.restore);
@@ -228,7 +275,7 @@ describe("the session-mode screen", () => {
     // Step 5: stopping is asked of the main session, which cancels its own task.
     await ask("Stop the Globex research.");
     await waitFor(() => expect(row("Research Globex").dataset.taskStatus).toBe("cancelled"));
-    expect(within(thread()).getByText(/updateTask · Research Globex → cancelled/)).toBeTruthy();
+    expect(within(thread()).getByText(/Updated a task/)).toBeTruthy();
   });
 
   it("keeps a task read only: a row opens its work in a sheet over the main thread, with no stop or composer", async () => {
@@ -314,6 +361,22 @@ describe("the session-mode screen", () => {
     fireEvent.click(within(thread()).getByRole("button", { name: "Stop" }));
     await within(thread()).findByText(/Interrupted/);
     expect(within(thread()).queryByRole("status")).toBeNull();
+  });
+
+  it("doesn't stop the turn when Escape only dismisses an IME composition", async () => {
+    render(<App adapter={createFakeLab({ speed: 0.2 })} />);
+    await pick();
+    await ask("Compare Acme and Globex for us.");
+    await within(thread()).findByRole("status");
+    const box = screen.getByLabelText("Message the main session");
+    act(() => {
+      box.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", isComposing: true, bubbles: true }));
+    });
+    fireEvent.keyDown(box, { key: "Escape", keyCode: 229 });
+    expect(within(thread()).getByRole("status")).toBeTruthy();
+    // A plain Escape still stops it.
+    fireEvent.keyDown(box, { key: "Escape" });
+    await within(thread()).findByText(/Interrupted/);
   });
 
   it("keeps background tasks running when the turn that filed them is interrupted", async () => {
