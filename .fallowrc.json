@@ -33,6 +33,8 @@
     "apps/docs/src/prismThemes.ts",
     // MDX pages import these; no plugin follows an import out of a .md file.
     "apps/docs/src/components/**/index.tsx",
+    // Vercel deploys each file under api/ as a Function; nothing imports them.
+    "apps/build-site/api/*.js",
 
     "examples/*/test/**/*.{test,spec}.ts",
     // Neither a package.json entry nor seeded by the Next plugin.
