@@ -13,7 +13,13 @@ const TYPES = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=
 const PORT = Number(process.env.PORT ?? 3002);
 
 createServer(async (req, res) => {
-  const path = normalize(decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname)).replace(/^([/\\])+/, "");
+  let path;
+  try {
+    path = normalize(decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname)).replace(/^([/\\])+/, "");
+  } catch {
+    res.writeHead(400).end("Bad request");
+    return;
+  }
   const file = join(ROOT, path === "" ? "index.html" : path);
   if (!file.startsWith(ROOT)) { res.writeHead(403).end(); return; }
   try {
