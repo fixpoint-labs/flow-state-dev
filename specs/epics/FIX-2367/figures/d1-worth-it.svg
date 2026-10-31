@@ -1,0 +1,114 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, decided by the owner: is a push channel worth six issues and a closure now. Chosen: one bus with an in-memory and a Postgres adapter, and WebSocket delivery. Instead of: widening the session stream, which reads the store about once a second per viewer, to user and org scopes; or an in-process fan-out inside the engine. It comes down to what an open view costs the store: the chosen set reads after a notice, the widened stream reads once a second per viewer and scope, and the fan-out reads after a change but is heard in one process only. A viewer on another process sees the change on the chosen set and the widened stream, never on the fan-out, and BullMQ workers are other processes. The price: six issues and a closure, against about two issues or one. Locks in one bus every publisher writes through. Flips if a store read each second per viewer is cheap at the viewer counts we target."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Is a push channel worth six issues and a closure, now?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">Bus, Postgres, socket</text>
+    <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="468" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="468" y="112">Widen the session stream</text>
+    <rect class="lost" x="692" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="708" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="708" y="112">In-process fan-out only</text>
+  </g>
+
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHAT AN OPEN</text>
+    <text class="t-lbl" x="32" y="169">VIEW COSTS</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">A read after a notice</text>
+    <text class="t-s" x="248" y="179">nothing while nothing changes</text>
+    <text class="mark minus" x="468" y="162">−</text>
+    <text class="t-b" x="488" y="161">A store read each second</text>
+    <text class="t-s" x="488" y="179">per viewer, per scope watched</text>
+    <text class="mark plus" x="708" y="162">+</text>
+    <text class="t-b" x="728" y="161">A read after a change</text>
+    <text class="t-s" x="728" y="179">heard in this process only</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="222">A VIEWER ON</text>
+    <text class="t-lbl" x="32" y="235">ANOTHER PROCESS</text>
+    <text class="mark plus" x="228" y="224">+</text>
+    <text class="t-b" x="248" y="223">Sees the change</text>
+    <text class="t-s" x="248" y="241">the Postgres bus carries it</text>
+    <text class="mark plus" x="468" y="224">+</text>
+    <text class="t-b" x="488" y="223">Sees the change</text>
+    <text class="t-s" x="488" y="241">within the next read</text>
+    <text class="mark minus" x="708" y="224">−</text>
+    <text class="t-b" x="728" y="223">Never sees it</text>
+    <text class="t-s" x="728" y="241">BullMQ workers are other processes</text>
+    <line class="row" x1="16" y1="256" x2="924" y2="256"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="280">WHAT IT COSTS NOW</text>
+    <text class="mark minus" x="228" y="282">−</text>
+    <text class="t-b" x="248" y="281">Six issues and a closure</text>
+    <text class="t-s" x="248" y="299">an epic slot, over the cap</text>
+    <text class="mark plus" x="468" y="282">+</text>
+    <text class="t-b" x="488" y="281">About two issues</text>
+    <text class="t-s" x="488" y="299">user and org streams, one hook</text>
+    <text class="mark plus" x="708" y="282">+</text>
+    <text class="t-b" x="728" y="281">One issue</text>
+    <text class="t-s" x="728" y="299">FIX-1506, inside the engine</text>
+    <line class="row" x1="16" y1="314" x2="924" y2="314"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="351">LOCKS IN</text>
+    <text class="t-b" x="32" y="371">One bus that every publisher writes through</text>
+    <text class="t-s" x="32" y="389">and an epic slot while the active-epic cap is exceeded</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="351">FLIPS IF</text>
+    <text class="t-b" x="494" y="371">A store read each second per viewer is cheap</text>
+    <text class="t-s" x="494" y="389">at the viewer counts we target: widen the stream</text>
+  </g>
+
+</svg>
