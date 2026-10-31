@@ -35,8 +35,8 @@ This spec keeps the line in the box instead, marked *Sending…*, until the requ
   before the server stores it is a client-side entry in each adapter, which is FIX-2376's
   *queued* line on FIX-2374's session feed, and both labs' `adapter.ts` stack 1 in the epic's
   build order. Building it here puts a second one in front of theirs.
-- **What the person loses:** nothing they can act on. A send resolves in well under a second on
-  a live server; the line is visible the whole time, in the box, and on a failure it is still
+- **What the person loses:** nothing they can act on. A send usually resolves in under a second;
+  the box stays the source of truth until the server stores the line, which is visible the whole time, in the box, and on a failure it is still
   there to retry or edit.
 - **What would change it:** FIX-2376 landing a pending line in the feed. Then the box can empty
   on submit, since the feed holds the line until it lands or fails.
@@ -54,6 +54,12 @@ This spec keeps the line in the box instead, marked *Sending…*, until the requ
 - **E5 · Labs store per session** (`claude-code-style:draft`, `teammates:draft`). Switching
   sessions still shows that session's own draft, so the existing "a draft never reaches another
   session" tests hold.
+- **E7 · Shift Manager's *unconfirmed* warning is a second `useDraft` key** (`shift-manager:unconfirmed`,
+  same id as the draft), holding the reason. It is written when a send ends *unconfirmed* and
+  cleared when the next send ends any other way. Only *unconfirmed* is kept: *not sent* and
+  *refused* are safe to resend, so a reload that drops them costs nothing.
+- **E8 · FIX-2372 is not a dependency.** This change ships the composers' behaviour; if 2372
+  lands a shared busy/error helper, the composers can adopt it later.
 - **E6 · No changeset is required for the labs or Shift Manager;** `@flow-state-dev/react` gets a
   `patch` fragment for the new export, as `isSendKey` did.
 
@@ -64,4 +70,9 @@ This spec keeps the line in the box instead, marked *Sending…*, until the requ
 
 ## Notes from review
 
-None yet.
+- Codex (3ee67c5): no findings.
+- Cursor (3ee67c5): approved D1 and D2. Folded: E7 (where the *unconfirmed* warning is stored),
+  E8 (2372 is not a dependency), D2 listed in the sign-off, D2's latency wording, and Kitchen
+  Sink's `clearSessionDraftStorage` named as moving to `clearDraft`. Left for the implementer:
+  whether Teammates' composer goes through `useSubmit` or the Claude Code-style lab's pattern
+  (the prototype uses `useSubmit` for busy and error, and keeps the draft in the composer).
