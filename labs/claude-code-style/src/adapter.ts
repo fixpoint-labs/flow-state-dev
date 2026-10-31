@@ -72,7 +72,8 @@ export type ThreadEntry = (
       sentToThread?: boolean;
     }
   | { kind: "assistant"; id: string; text: string }
-  | { kind: "tool"; id: string; name: string; summary: string }
+  /** A tool call, by its tool's name; the thread says it in words (`toolLine`). */
+  | { kind: "tool"; id: string; name: string }
   | {
       kind: "result";
       id: string;
@@ -257,13 +258,6 @@ function reviewStopOf(items: readonly Item[]): ReviewDetail | undefined {
 
 const textOf = (item: Item) => (item.content ?? []).map((part) => part.text ?? "").join("");
 
-/** One line for a tool call's output: a task's id when it names one, else the start of what it said. */
-function summaryOf(output: unknown): string {
-  if (typeof output === "object" && output !== null && "taskId" in output) return String(output.taskId);
-  const text = typeof output === "string" ? output : JSON.stringify(output ?? null);
-  return text.split("\n")[0]!.slice(0, 120);
-}
-
 /** The task a `createTask` call filed, from its output, or undefined for any other tool or a refused call. */
 function filedTaskOf(item: Item): string | undefined {
   if (item.blockName !== "createTask") return undefined;
@@ -289,7 +283,7 @@ function entriesOf(items: readonly Item[], threads = false): ThreadEntry[] {
       continue;
     }
     if (item.type === "tool_output") {
-      entries.push({ kind: "tool", id: item.id, name: item.blockName ?? "tool", summary: summaryOf(item.output), requestId });
+      entries.push({ kind: "tool", id: item.id, name: item.blockName ?? "tool", requestId });
       continue;
     }
     const text = textOf(item);

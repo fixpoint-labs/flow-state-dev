@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { defaultRehypePlugins } from "streamdown";
 import type { ThreadEntry } from "../adapter";
 import { TASK_STATUS } from "../lib/task-status";
+import { toolLine } from "../lib/tool-line";
 import { cn } from "../lib/utils";
 import { MessageResponse } from "./flow-state/message";
 
@@ -21,9 +23,10 @@ function AgentMarkdown({ text, className }: { text: string; className?: string }
 
 /**
  * One entry of a thread. Your lines sit in a box on the right; the main
- * session's text is Markdown; a tool call is one mono line; a background result
- * is a card at the point the main session took it, and so is a thread in
- * threads mode (`ThreadCard`, which the main thread draws).
+ * session's text is Markdown; a tool call is one line in plain words
+ * (`toolLine`); a background result is one collapsed line at the point the main
+ * session took it, which opens to the task's reply; a thread in threads mode is
+ * a card (`ThreadCard`, which the main thread draws).
  */
 export function Entry({ entry }: { entry: ThreadEntry }) {
   switch (entry.kind) {
@@ -46,31 +49,16 @@ export function Entry({ entry }: { entry: ThreadEntry }) {
     case "tool":
       return (
         <div className="font-mono text-xs text-muted-foreground" data-entry="tool">
-          ▸ {entry.name} · {entry.summary}
+          ▸ {toolLine(entry.name)}
         </div>
       );
-    case "result": {
-      const status = TASK_STATUS[entry.status];
-      return (
-        <section
-          aria-label={`Background result: ${entry.title}`}
-          data-entry="result"
-          data-during-turn={entry.duringTurn ? "true" : "false"}
-          className={cn("min-w-0 border px-3 py-2 [overflow-wrap:anywhere]", entry.status === "completed" ? "border-success bg-success/10" : "border-border bg-card")}
-        >
-          <div className={cn("font-mono text-[10px] tracking-widest uppercase", status.tone)}>
-            Background result · {entry.title} · {status.label}
-          </div>
-          <AgentMarkdown text={entry.summary} className="mt-1" />
-          {entry.duringTurn ? <p className="mt-0.5 text-xs text-muted-foreground">arrived while this turn was running</p> : null}
-        </section>
-      );
-    }
+    case "result":
+      return <ResultLine entry={entry} />;
     case "thread":
       // The main thread draws a thread card from its task row; elsewhere it is the call it was.
       return (
         <div className="font-mono text-xs text-muted-foreground" data-entry="tool">
-          ▸ createTask · {entry.taskId}
+          ▸ {toolLine("createTask")}
         </div>
       );
     case "interrupted":
@@ -80,4 +68,38 @@ export function Entry({ entry }: { entry: ThreadEntry }) {
         </div>
       );
   }
+}
+
+/**
+ * A background task's ending: one line with its title and status. The task's
+ * reply is in its own view already, so here it stays folded until you open
+ * the line.
+ */
+function ResultLine({ entry }: { entry: Extract<ThreadEntry, { kind: "result" }> }) {
+  const [open, setOpen] = useState(false);
+  const status = TASK_STATUS[entry.status];
+  return (
+    <section
+      aria-label={`Background result: ${entry.title}`}
+      data-entry="result"
+      data-during-turn={entry.duringTurn ? "true" : "false"}
+      className="min-w-0 [overflow-wrap:anywhere]"
+    >
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        title={entry.duringTurn ? "Arrived while this turn was running" : undefined}
+        className="flex w-full min-w-0 items-center gap-2 border border-border bg-card px-3 py-1.5 text-left text-xs hover:bg-accent"
+      >
+        <span aria-hidden className="shrink-0 text-muted-foreground">
+          {open ? "▾" : "▸"}
+        </span>
+        <span className={cn("size-1.5 shrink-0 rounded-full", status.dot)} />
+        <span className="min-w-0 truncate">{entry.title}</span>
+        <span className={cn("shrink-0", status.tone)}>· {status.label}</span>
+      </button>
+      {open ? <AgentMarkdown text={entry.summary} className="border-x border-b border-border px-3 py-2" /> : null}
+    </section>
+  );
 }

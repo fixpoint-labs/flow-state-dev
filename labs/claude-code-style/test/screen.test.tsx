@@ -137,6 +137,22 @@ describe("the session-mode screen", () => {
     expect(screen.queryByLabelText("Message the main session")).toBeNull();
   });
 
+  it("sends with Cmd+Enter and Ctrl+Enter as well as Enter, and Shift+Enter stays a new line", async () => {
+    render(<App adapter={fast()} />);
+    await pick();
+    const box = screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "first line" } });
+    fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+    expect(box.value).toBe("first line");
+    fireEvent.keyDown(box, { key: "Enter", metaKey: true });
+    expect(box.value).toBe("");
+    const mine = () => [...thread().querySelectorAll('[data-entry="user"]')].map((el) => el.textContent ?? "");
+    await waitFor(() => expect(mine().join()).toMatch(/first line/));
+    fireEvent.change(box, { target: { value: "second line" } });
+    fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
+    await waitFor(() => expect(mine().join()).toMatch(/second line/));
+  });
+
   it("doesn't send when Enter only confirms an IME composition", async () => {
     render(<App adapter={fast()} />);
     await pick();
@@ -259,7 +275,7 @@ describe("the session-mode screen", () => {
     // Step 5: stopping is asked of the main session, which cancels its own task.
     await ask("Stop the Globex research.");
     await waitFor(() => expect(row("Research Globex").dataset.taskStatus).toBe("cancelled"));
-    expect(within(thread()).getByText(/updateTask · Research Globex → cancelled/)).toBeTruthy();
+    expect(within(thread()).getByText(/Updated a task/)).toBeTruthy();
   });
 
   it("keeps a task read only: a row opens its work in a sheet over the main thread, with no stop or composer", async () => {

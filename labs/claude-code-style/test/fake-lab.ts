@@ -202,7 +202,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
   const file = (s: FixtureSession, title: string, goal: string, note: string): Step[1] => () => {
     const task = startTask(title, goal, note, { assignee: "desk.researcher", spend: spent(RESEARCH_MODEL, 1200, 300, true) });
     s.tasks = [...s.tasks, task];
-    push(s, { kind: "tool", id: nextId("tool"), name: "createTask", summary: `${title} → researcher` });
+    push(s, { kind: "tool", id: nextId("tool"), name: "createTask" });
   };
 
   const progress = (s: FixtureSession, title: string, note: string) => () =>
@@ -246,7 +246,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
         push(s, { kind: "assistant", id: nextId("a"), text: `"${task.title}" had already finished, so there was nothing to stop.` });
         return;
       }
-      push(s, { kind: "tool", id: nextId("tool"), name: "updateTask", summary: `${task.title} → cancelled` });
+      push(s, { kind: "tool", id: nextId("tool"), name: "updateTask" });
       setTask(s, task.id, { status: "cancelled", statusNote: undefined, waitingOn: undefined });
       push(s, { kind: "assistant", id: nextId("a"), text: `Stopped "${task.title}". The summary covers what is done so far.` });
     }],
