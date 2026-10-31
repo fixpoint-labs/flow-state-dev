@@ -1,0 +1,103 @@
+<svg viewBox="0 0 940 428" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Open fork: move FIX-2402, FIX-2404 and FIX-2423 out of the epic, recommended, beside keeping all 57. Decided by whether the closure waits on them. Price: three fewer things users get from this epic.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="428"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">OPEN · FOR JAKE · CHANGES WHAT USERS GET</text>
+    <text class="t-q" x="32" y="52">Should three items that no closure check needs leave this epic?</text>
+  </g>
+
+  <g id="options">
+    <rect class="rec" x="212" y="76" width="340" height="46" rx="5"/>
+    <text class="t-tag c-code" x="226" y="93">RECOMMENDED</text>
+    <text class="t-h c-code" x="226" y="112">Move FIX-2402, 2404, 2423 out</text>
+    <rect class="lost" x="568" y="76" width="340" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="582" y="93">OR</text>
+    <text class="t-h c-lost" x="582" y="112">Keep all 57</text>
+  </g>
+
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">THE CLOSURE</text>
+    <text class="t-lbl" x="32" y="169">WAITS ON IT</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="226" y="162">+</text>
+    <text class="t-b" x="244" y="161">It does not</text>
+    <text class="t-s" x="244" y="179">none is on the goal path</text>
+    <text class="mark minus" x="582" y="162">−</text>
+    <text class="t-b" x="600" y="161">It does</text>
+    <text class="t-s" x="600" y="179">an L-sized child among them</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="218">WHAT USERS GET</text>
+    <text class="t-lbl" x="32" y="231">FROM THIS EPIC</text>
+    <text class="mark minus" x="226" y="224">−</text>
+    <text class="t-b" x="244" y="223">Three fewer things</text>
+    <text class="t-s" x="244" y="241">rename, Talk panel, desk to harness</text>
+    <text class="mark plus" x="582" y="224">+</text>
+    <text class="t-b" x="600" y="223">Everything filed</text>
+    <text class="t-s" x="600" y="241">as the review found it</text>
+    <line class="row" x1="16" y1="256" x2="924" y2="256"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="280">PACKAGE</text>
+    <text class="t-lbl" x="32" y="293">SURFACE</text>
+    <text class="mark plus" x="226" y="286">+</text>
+    <text class="t-b" x="244" y="285">Two fewer adds</text>
+    <text class="t-s" x="244" y="303">no title or archive verbs, no KS worker</text>
+    <text class="mark minus" x="582" y="286">−</text>
+    <text class="t-b" x="600" y="285">Both added</text>
+    <text class="t-s" x="600" y="303">for one app each</text>
+    <line class="row" x1="16" y1="318" x2="924" y2="318"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="338" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="359">LOCKS IN</text>
+    <text class="t-b" x="32" y="379">They stay filed in the project</text>
+    <text class="t-s" x="32" y="397">linked to this epic, not parented</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="338" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="359">FLIPS IF</text>
+    <text class="t-b" x="494" y="379">Jake uses the lab's session list every day</text>
+    <text class="t-s" x="494" y="397">then FIX-2402 is a daily-driver need</text>
+  </g>
+</svg>

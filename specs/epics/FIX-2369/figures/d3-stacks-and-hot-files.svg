@@ -1,0 +1,115 @@
+<svg viewBox="0 0 940 428" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="D3: stacked PRs with one owner per hot file at a time, chosen, beside all children in parallel from main and strict merge-then-start order. Decided by merge conflicts in the hot files. Price: each merge rebases the stack above it.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="428"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D3 · A CROSS-CUTTING CALL · FOR SIGN-OFF</text>
+    <text class="t-q" x="32" y="52">How do 57 children land without waiting or colliding?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-code" x="226" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="226" y="112">Stacks, one owner per hot file</text>
+    <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="466" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="466" y="112">All in parallel from main</text>
+    <rect class="lost" x="692" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="706" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="706" y="112">In order: merge, then start</text>
+  </g>
+
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">CONFLICTS IN</text>
+    <text class="t-lbl" x="32" y="169">HOT FILES</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="226" y="162">+</text>
+    <text class="t-b" x="244" y="161">One owner at a time</text>
+    <text class="t-s" x="244" y="179">the next child stacks on it</text>
+    <text class="mark minus" x="466" y="162">−</text>
+    <text class="t-b" x="484" y="161">Up to 14 PRs, one file</text>
+    <text class="t-s" x="484" y="179">each lab adapter</text>
+    <text class="mark plus" x="706" y="162">+</text>
+    <text class="t-b" x="724" y="161">None</text>
+    <text class="t-s" x="724" y="179">one PR open at a time</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="218">WAITING ON</text>
+    <text class="t-lbl" x="32" y="231">A MERGE</text>
+    <text class="mark plus" x="226" y="224">+</text>
+    <text class="t-b" x="244" y="223">None</text>
+    <text class="t-s" x="244" y="241">a child starts on its parent</text>
+    <text class="mark plus" x="466" y="224">+</text>
+    <text class="t-b" x="484" y="223">None</text>
+    <text class="t-s" x="484" y="241">every child starts now</text>
+    <text class="mark minus" x="706" y="224">−</text>
+    <text class="t-b" x="724" y="223">Every child waits</text>
+    <text class="t-s" x="724" y="241">57 merges end to end</text>
+    <line class="row" x1="16" y1="256" x2="924" y2="256"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="280">REBASE</text>
+    <text class="t-lbl" x="32" y="293">COST</text>
+    <text class="mark minus" x="226" y="286">−</text>
+    <text class="t-b" x="244" y="285">Each merge rebases a stack</text>
+    <text class="t-s" x="244" y="303">deep stacks rebase more</text>
+    <text class="mark minus" x="466" y="286">−</text>
+    <text class="t-b" x="484" y="285">Conflicts at merge time</text>
+    <text class="t-s" x="484" y="303">the last PR pays for all</text>
+    <text class="mark plus" x="706" y="286">+</text>
+    <text class="t-b" x="724" y="285">None</text>
+    <text class="t-s" x="724" y="303">always on fresh main</text>
+    <line class="row" x1="16" y1="318" x2="924" y2="318"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="338" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="359">LOCKS IN</text>
+    <text class="t-b" x="32" y="379">A foundation ships its package slice first</text>
+    <text class="t-s" x="32" y="397">then one adoption PR per app, in that app's stack</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="338" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="359">FLIPS IF</text>
+    <text class="t-b" x="494" y="379">Stacks past five deep stall in review</text>
+    <text class="t-s" x="494" y="397">then split the chain at the hot file</text>
+  </g>
+</svg>

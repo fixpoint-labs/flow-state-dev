@@ -1,0 +1,106 @@
+<svg viewBox="0 0 940 486" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: thirteen rules by owner. FIX-2374 owns one session feed, FIX-2409 one change signal, FIX-2379 one task-row view, FIX-2370 one request-recovery piece, FIX-2385 one harness-manager browser entry, FIX-2387 opt-in behaviour, FIX-2420 worktrees and one setup path. Each child owns keeping L1 generic, one implementation per need, a failing control and the worker word. The coordinator owns the stacks and the consumed issues. The closure FIX-2425 checks most rules.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; } }
+    .bg    { fill:var(--surface); }
+    .own   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .use   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-col { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-row { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-own { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; letter-spacing:.06em; }
+    .t-use { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="486"/>
+  <text class="t-lbl" x="16" y="20">WHO OWNS WHAT · ONE OWNER PER RULE · NUMBERS ARE FIX- ISSUES · EACH = EVERY CHILD</text>
+  <g id="columns">
+    <text class="t-col" x="336" y="46">2374</text>
+    <text class="t-col" x="396" y="46">2409</text>
+    <text class="t-col" x="456" y="46">2379</text>
+    <text class="t-col" x="516" y="46">2370</text>
+    <text class="t-col" x="576" y="46">2385</text>
+    <text class="t-col" x="636" y="46">2387</text>
+    <text class="t-col" x="696" y="46">2420</text>
+    <text class="t-col" x="756" y="46">each</text>
+    <text class="t-col" x="816" y="46">coord.</text>
+    <text class="t-col" x="876" y="46">2425</text>
+  </g>
+  <g id="er1">
+    <text class="t-row" x="16" y="76">ER-1 L1 stays generic</text>
+    <rect class="own" x="750" y="58" width="54" height="26" rx="3"/><text class="t-own" x="756" y="75">OWNS</text>
+    <rect class="use" x="870" y="58" width="54" height="26" rx="3"/><text class="t-use" x="876" y="75">uses</text>
+  </g>
+  <g id="er2">
+    <text class="t-row" x="16" y="108">ER-2 optional behaviour is opt-in</text>
+    <rect class="own" x="630" y="90" width="54" height="26" rx="3"/><text class="t-own" x="636" y="107">OWNS</text>
+    <rect class="use" x="690" y="90" width="54" height="26" rx="3"/><text class="t-use" x="696" y="107">uses</text>
+    <rect class="use" x="750" y="90" width="54" height="26" rx="3"/><text class="t-use" x="756" y="107">uses</text>
+    <rect class="use" x="870" y="90" width="54" height="26" rx="3"/><text class="t-use" x="876" y="107">uses</text>
+  </g>
+  <g id="er3">
+    <text class="t-row" x="16" y="140">ER-3 one implementation per need</text>
+    <rect class="own" x="750" y="122" width="54" height="26" rx="3"/><text class="t-own" x="756" y="139">OWNS</text>
+    <rect class="use" x="870" y="122" width="54" height="26" rx="3"/><text class="t-use" x="876" y="139">uses</text>
+  </g>
+  <g id="er4">
+    <text class="t-row" x="16" y="172">ER-4 one session feed</text>
+    <rect class="own" x="330" y="154" width="54" height="26" rx="3"/><text class="t-own" x="336" y="171">OWNS</text>
+    <rect class="use" x="390" y="154" width="54" height="26" rx="3"/><text class="t-use" x="396" y="171">uses</text>
+    <rect class="use" x="750" y="154" width="54" height="26" rx="3"/><text class="t-use" x="756" y="171">uses</text>
+    <rect class="use" x="870" y="154" width="54" height="26" rx="3"/><text class="t-use" x="876" y="171">uses</text>
+  </g>
+  <g id="er5">
+    <text class="t-row" x="16" y="204">ER-5 one change signal</text>
+    <rect class="own" x="390" y="186" width="54" height="26" rx="3"/><text class="t-own" x="396" y="203">OWNS</text>
+    <rect class="use" x="750" y="186" width="54" height="26" rx="3"/><text class="t-use" x="756" y="203">uses</text>
+    <rect class="use" x="870" y="186" width="54" height="26" rx="3"/><text class="t-use" x="876" y="203">uses</text>
+  </g>
+  <g id="er6">
+    <text class="t-row" x="16" y="236">ER-6 one task-row view</text>
+    <rect class="own" x="450" y="218" width="54" height="26" rx="3"/><text class="t-own" x="456" y="235">OWNS</text>
+    <rect class="use" x="750" y="218" width="54" height="26" rx="3"/><text class="t-use" x="756" y="235">uses</text>
+    <rect class="use" x="870" y="218" width="54" height="26" rx="3"/><text class="t-use" x="876" y="235">uses</text>
+  </g>
+  <g id="er7">
+    <text class="t-row" x="16" y="268">ER-7 one request-recovery piece</text>
+    <rect class="own" x="510" y="250" width="54" height="26" rx="3"/><text class="t-own" x="516" y="267">OWNS</text>
+    <rect class="use" x="750" y="250" width="54" height="26" rx="3"/><text class="t-use" x="756" y="267">uses</text>
+    <rect class="use" x="870" y="250" width="54" height="26" rx="3"/><text class="t-use" x="876" y="267">uses</text>
+  </g>
+  <g id="er8">
+    <text class="t-row" x="16" y="300">ER-8 one harness-manager browser entry</text>
+    <rect class="own" x="570" y="282" width="54" height="26" rx="3"/><text class="t-own" x="576" y="299">OWNS</text>
+    <rect class="use" x="750" y="282" width="54" height="26" rx="3"/><text class="t-use" x="756" y="299">uses</text>
+  </g>
+  <g id="er9">
+    <text class="t-row" x="16" y="332">ER-9 runs in worktrees, one setup path</text>
+    <rect class="use" x="630" y="314" width="54" height="26" rx="3"/><text class="t-use" x="636" y="331">uses</text>
+    <rect class="own" x="690" y="314" width="54" height="26" rx="3"/><text class="t-own" x="696" y="331">OWNS</text>
+    <rect class="use" x="750" y="314" width="54" height="26" rx="3"/><text class="t-use" x="756" y="331">uses</text>
+    <rect class="use" x="870" y="314" width="54" height="26" rx="3"/><text class="t-use" x="876" y="331">uses</text>
+  </g>
+  <g id="er10">
+    <text class="t-row" x="16" y="364">ER-10 every check shows its control fail</text>
+    <rect class="own" x="750" y="346" width="54" height="26" rx="3"/><text class="t-own" x="756" y="363">OWNS</text>
+    <rect class="use" x="870" y="346" width="54" height="26" rx="3"/><text class="t-use" x="876" y="363">uses</text>
+  </g>
+  <g id="er11">
+    <text class="t-row" x="16" y="396">ER-11 worker, never the retired word</text>
+    <rect class="own" x="750" y="378" width="54" height="26" rx="3"/><text class="t-own" x="756" y="395">OWNS</text>
+    <rect class="use" x="870" y="378" width="54" height="26" rx="3"/><text class="t-use" x="876" y="395">uses</text>
+  </g>
+  <g id="er12">
+    <text class="t-row" x="16" y="428">ER-12 stacks, one owner per hot file</text>
+    <rect class="use" x="750" y="410" width="54" height="26" rx="3"/><text class="t-use" x="756" y="427">uses</text>
+    <rect class="own" x="810" y="410" width="54" height="26" rx="3"/><text class="t-own" x="816" y="427">OWNS</text>
+  </g>
+  <g id="er13">
+    <text class="t-row" x="16" y="460">ER-13 consumed issues stay where they are</text>
+    <rect class="own" x="810" y="442" width="54" height="26" rx="3"/><text class="t-own" x="816" y="459">OWNS</text>
+    <rect class="use" x="870" y="442" width="54" height="26" rx="3"/><text class="t-use" x="876" y="459">uses</text>
+  </g>
+</svg>
