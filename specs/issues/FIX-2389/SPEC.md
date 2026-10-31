@@ -68,10 +68,13 @@ Nothing stays alive while it waits: the manager stops the run, waits as its revi
 -       permissionMode: "acceptEdits",
 +       allowedTools: ["Read"],
 +       permissionMode: "default",
-+       onToolApproval: feeds.onToolApproval,
       }),
   });
 ```
+
+`...feeds` carries the approval feed, as it carries `onActivity`: the manager hands
+`onToolApproval` among the feeds only when `approveTools` is on, shaped to claude-code's own
+`onToolApproval` option. A slot that lists its feeds by name passes it by name.
 
 **What lands, and when.** The package slice ships first from `main` (wave 1) and touches no app
 file: harness-manager (the option, the feed, the approval step, the stub harness's approval
@@ -90,7 +93,9 @@ claude-code READMEs. No new page.
 ## What stays as it is
 
 - **Core, engine, client.** No new contract: `suspendForUser`, the answer route and `Task.holds`
-  already carry an approval ([ER-1](../../epics/FIX-2369/DECISIONS.md#who-owns-what)).
+  already carry an approval ([ER-1](../../epics/FIX-2369/DECISIONS.md#who-owns-what)). The
+  hold and the answer are unchanged; only react's `useApproval` and the registry card learn the
+  third choice and the data a yes carries (*What changes*).
 - **The judge, `isDone`, the review hold.** An approval is before the verdict, not part of it.
 - **Kitchen Sink's harness modes.** They run Claude Code directly in a session, not through the
   manager, under `bypassPermissions`. Approvals there are a session's stop, not a task's hold, in
@@ -141,6 +146,6 @@ the review's own stop. If wrong: a second stop path in the manager.
    the call.
 
 **Open (1):** [how far *Allow for this run* reaches](DECISIONS.md#open). Recommended: the same
-tool with the same command or file.
+tool with the same command or file. The build takes that narrow rule unless you choose otherwise.
 
 Feature · harness-manager, claude-code, react, ui registry · medium · epic FIX-2369, wave 1

@@ -40,7 +40,7 @@ process restart. Then the live wait would be durable too, and it is faster.
 |---|---|
 | **Instead of** | On for every Claude Code run a manager drives · or a policy object (which tools, which paths) |
 | **Because** | The epic's ER-2: optional behaviour is something a host opts into, and no child changes a default. The flag mirrors `reviewChanges`, the manager's other stop. What is pre-allowed already has a home: the harness's own `allowedTools` and `permissionMode` |
-| **Locks in** | The public name `approveTools`. A host turns it on and wires `onToolApproval: feeds.onToolApproval` into its Claude Code slot; the feed is absent when the option is off |
+| **Locks in** | The public name `approveTools`. With it on, the manager hands `onToolApproval` among the feeds, so a Claude Code slot that spreads `...feeds` needs no other line; the feed is absent when the option is off |
 
 ## Decided, not asked
 
@@ -99,9 +99,35 @@ commands. Then add a *commands starting with* grant, as Claude Code's own termin
 
 **What being wrong costs:** little. Some extra clicks, or one widening change in the manager.
 
+Until this is answered, the build takes the narrow rule, so it is not blocked on it.
+
 ![Open: how far Allow for this run reaches. Recommended: the same tool with the same command or file. Instead of: every call to that tool. Decides it: what one click lets through. Price: more asks in a busy run](figures/open-allow-for-this-run.svg)
 
 It comes down to one click: tool-wide Bash is blanket access for the rest of the run.
+
+## Notes from review
+
+For the implementer, not baked into the design. Round 1, cursor[bot] review 5725358763.
+
+- *(SPEC.md, Adds: the run's grants)* "Grants on manager state (not the row) are the heaviest
+  **new** concept versus FIX-2163. Before the implementer designs a custom matcher, a short spike
+  on mapping run-scoped allow to Claude SDK `permission_suggestions` / permission updates might
+  reduce bespoke state — D1 still requires re-issue matching after resume either way."
+- *(DECISIONS.md, Considered and dropped: live wait)* "D1 'Locks in' permanently commits to
+  restart-per-approval before cost is measured. **Suggestion:** add an explicit implementer or
+  post-lab note to record restart+resume latency on leg **r** — keeps hybrid live-wait as a
+  data-driven follow-up without speccing two paths now."
+- *(DECISIONS.md, Decided, not asked: one bound)* "Shared steer loop-back cap + 'approvals take
+  no steer places' is precise but may be more sequencing detail than the direction gate needs.
+  If this stays, one sentence on failure UX when approval-heavy runs hit the shared bound (vs
+  steer limit messaging) would help; otherwise consider leaving bounds to the implementer plan
+  to shorten the spec."
+- *(review body, reuse check)* "Tone down 'extends existing `onToolApproval`' — the seam exists
+  but durable *held* is new work the claude-code docs already defer. UI/card/`useApproval`
+  payload for run-scoped allow is listed correctly but not mostly done yet."
+- *(the feed fold)* The feed's request and decision types live in harness-manager (ER-1) and must
+  stay structurally assignable to claude-code's `onToolApproval` option, so `...feeds` type-checks
+  without either package importing the other.
 
 ## Settled
 
@@ -120,7 +146,7 @@ coordinator may re-run it before the gate.
 3. **Other shapes** — the live wait and the question hold, in D1.
 4. **New factors** — open specs FIX-2390 and FIX-2379; neither changes this.
 5. **Necessity** — the lab's `approval` kind is typed and never filled.
-6. **Ergonomics** — one option and one feed line; a tool in `allowedTools` never asks (docs).
+6. **Ergonomics** — one option; the feed rides `...feeds`; a tool in `allowedTools` never asks (docs).
 7. **Concerns** — Kitchen Sink's direct sessions are left out (*Leaves*).
 
 | Finding | Changes the approach? | Disposition |
