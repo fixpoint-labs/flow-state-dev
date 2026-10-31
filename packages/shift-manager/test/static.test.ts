@@ -183,33 +183,29 @@ describe("V8", () => {
   it("goes to an address through a real link, so it opens in a new tab and can be copied (FIX-2414)", () => {
     const code = sources.filter((f) => /\.tsx?$/.test(f) && !relative(src, f).startsWith("components/flow-state/"));
     const read = (f: string) => readFileSync(f, "utf8");
-    // A link is a `RouteLink`. A `navigate(` call is a route change with no address
-    // the browser can open, so each site left is listed with why it isn't a link.
-    const NAVIGATES: Record<string, string> = {
-      "surfaces/Tasks.tsx: onClick={() => navigate({ level: \"tasks\", by: g })}": "the group-by control: a tab that regroups this screen",
-      "surfaces/Tasks.tsx: navigate(taskRoute(row));": "a plain click anywhere on a row; its title is the row's link",
-      "surfaces/TaskFrame.tsx: <Tabs label=\"Task\" tabs={TASK_TABS} selected={tab} onSelect={(next) => navigate({ level: \"task\", boardRef, taskId, tab: next })} />": "the task's tabs",
-      "surfaces/Project.tsx: onSelect={(next) => navigate(at(route, next))}": "the project's tabs",
-      "surfaces/Inbox.tsx: onClick={() => navigate({ level: \"inbox\", item: item.id })}": "picks the item shown beside the list, a selection within Inbox",
-      "surfaces/Roster.tsx: onClick={() => navigate({ level: \"roster\", team: option?.team ?? null })}": "the team toggle, which filters this screen",
-      "surfaces/JumpTo.tsx: navigate({ level: \"shift-coordinator\" });": "after a line is sent to the Shift Coordinator from Jump to",
-      "surfaces/JumpTo.tsx: navigate(entry.to);": "Enter on the highlighted result; a click on a result is its link",
-    };
-    const sites = (files: string[], text: (f: string) => string) =>
+    // A link is a `RouteLink`. A `navigate(` call is a route change with no address the
+    // browser can open, so each one says on its line why it isn't a link
+    // (`// in place: <why>` or `/* in place: <why> */`). A hand-made link is never right.
+    const REASON = /(\/\/|\/\*) in place: \S/;
+    const unmarked = (files: string[], text: (f: string) => string) =>
       files.flatMap((f) =>
         relative(src, f) === "components/RouteLink.tsx" || relative(src, f) === "lib/routes.ts"
           ? []
           : text(f)
               .split("\n")
-              .filter((line) => /\bnavigate\(|href=\{pathFor\(/.test(line))
+              .filter((line) => (/\bnavigate\(/.test(line) && !REASON.test(line)) || /href=\{pathFor\(/.test(line))
               .map((line) => `${relative(src, f)}: ${line.trim()}`),
       );
-    expect(sites(code, read).sort()).toEqual(Object.keys(NAVIGATES).sort());
-    // Planted: a button that changes the route, and a hand-made link, are caught.
+    expect(unmarked(code, read)).toEqual([]);
+    // The marker is what lets a call stay: there are such calls, and each one carries it.
+    const marked = code.flatMap((f) => read(f).split("\n").filter((line) => /\bnavigate\(/.test(line) && REASON.test(line)));
+    expect(marked.length).toBeGreaterThan(5);
+    // Planted: a button that changes the route, and a hand-made link, are caught; a marked call is not.
     const planted = join(src, "surfaces/Planted.tsx");
-    const caught = (line: string) => sites([planted], () => line);
+    const caught = (line: string) => unmarked([planted], () => line);
     expect(caught(`<button type="button" onClick={() => navigate({ level: "messages" })}>`)).toHaveLength(1);
     expect(caught(`<a href={pathFor(task)} onClick={(e) => (e.preventDefault(), navigate(task))}>`)).toHaveLength(1);
+    expect(caught(`onSelect={(next) => /* in place: the tabs */ navigate(next)}`)).toEqual([]);
   });
 
   it("keeps every registry copy byte-equal to its source, and holds exactly what its install list ships", () => {

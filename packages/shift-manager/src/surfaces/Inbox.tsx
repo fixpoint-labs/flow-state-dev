@@ -162,7 +162,7 @@ export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; it
                 <li key={item.id}>
                   <button
                     type="button"
-                    onClick={() => navigate({ level: "inbox", item: item.id })}
+                    onClick={() => /* in place: picks the item shown beside the list */ navigate({ level: "inbox", item: item.id })}
                     aria-selected={isSelected}
                     data-testid="inbox-item"
                     data-item-id={item.id}

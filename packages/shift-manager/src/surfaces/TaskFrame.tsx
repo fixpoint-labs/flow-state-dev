@@ -84,7 +84,7 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
         )}
         <Actions gaps={gaps} />
       </header>
-      <Tabs label="Task" tabs={TASK_TABS} selected={tab} onSelect={(next) => navigate({ level: "task", boardRef, taskId, tab: next })} />
+      <Tabs label="Task" tabs={TASK_TABS} selected={tab} onSelect={(next) => /* in place: the task's tabs */ navigate({ level: "task", boardRef, taskId, tab: next })} />
       <div role="tabpanel" data-tabpanel={tab} data-testid="task-slot" className="flex min-h-0 flex-1 flex-col">
         {tab === "session" ? (
           <TaskSession />

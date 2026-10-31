@@ -75,12 +75,7 @@ export function JumpTo({
     if (shiftCoordinator.kind !== "one") return setSendFailure("There isn't exactly one Shift Coordinator to send this to.");
     if (shiftCoordinator.worker.door === null) return setSendFailure(`${workerLabel(shiftCoordinator.worker.id)} ${gaps.turn.noDoor}`);
     handToShiftCoordinator(message);
-    navigate({ level: "shift-coordinator" });
-    onClose();
-  };
-
-  const go = (entry: Entry) => {
-    navigate(entry.to);
+    navigate({ level: "shift-coordinator" }); // in place: after a line is sent to the Shift Coordinator
     onClose();
   };
 
@@ -107,7 +102,8 @@ export function JumpTo({
               const step = e.key === "ArrowDown" ? 1 : -1;
               setActive(Math.max(0, Math.min(shown.length - 1, highlighted + step)));
             }
-            if (e.key === "Enter" && shown[highlighted] !== undefined) go(shown[highlighted]);
+            // Enter is a plain click on the highlighted result's link: one way to a result.
+            if (e.key === "Enter") list.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.click();
           }}
           placeholder="Jump to a worker or task… or > to message the Coordinator"
           className="w-full border-b bg-transparent px-4 py-3 text-sm outline-none"

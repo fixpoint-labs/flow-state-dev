@@ -209,7 +209,7 @@ export function RosterView({
               key={option?.team ?? ""}
               type="button"
               aria-pressed={(option?.team ?? null) === team}
-              onClick={() => navigate({ level: "roster", team: option?.team ?? null })}
+              onClick={() => /* in place: the team toggle filters this screen */ navigate({ level: "roster", team: option?.team ?? null })}
               data-testid="roster-team-option"
               data-team={option?.team ?? ""}
               className={`px-3 py-1 ${i > 0 ? "border-l border-foreground" : ""} ${(option?.team ?? null) === team ? "bg-foreground text-background" : ""}`}

@@ -35,12 +35,12 @@ function useNow(running: boolean): number {
   return now;
 }
 
-/** A mono cell: the id, NOW, STREAM, TIME and COST columns (v2:677-683). */
 /** A row's task screen, at its session tab. */
 function taskRoute(row: BoardRow): Route {
   return { level: "task", boardRef: row.boardRef, taskId: row.id, tab: "session" };
 }
 
+/** A mono cell: the id, NOW, STREAM, TIME and COST columns (v2:677-683). */
 const MONO_CELL = "py-2 pr-3 font-mono text-[11.5px] font-medium whitespace-nowrap";
 
 /** A row's stream as the table writes it: a conversation's `@<worker>` as it is, else `#<workstream>` or `#<conversation id>`. */
@@ -91,7 +91,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                 role="tab"
                 aria-selected={g === by}
                 data-grouping={g}
-                onClick={() => navigate({ level: "tasks", by: g })}
+                onClick={() => /* in place: the group-by tab regroups this screen */ navigate({ level: "tasks", by: g })}
                 className={cn("px-3 py-[5px] capitalize", i > 0 && "border-l border-foreground", g === by && "bg-foreground text-background")}
               >
                 {g}
@@ -177,9 +177,10 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                       data-task-id={row.id}
                       data-status={row.status}
                       onClick={(event) => {
-                        // The title is the row's link; a click on it, or a click the browser owns, is not the row's.
+                        // The title is the row's link. A click on it, or on any link a row comes to hold, is
+                        // that link's; a click the browser owns (a new tab) is the browser's. Neither is the row's.
                         if ((event.target as Element).closest("a") !== null || !isPlainClick(event)) return;
-                        navigate(taskRoute(row));
+                        navigate(taskRoute(row)); // in place: a plain click anywhere on a row; its title is the row's link
                       }}
                     >
                       <td className="px-2 py-2" title={row.status} data-testid="task-row-status">

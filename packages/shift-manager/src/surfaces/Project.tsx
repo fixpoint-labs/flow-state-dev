@@ -139,7 +139,7 @@ export function ProjectView({ snapshot, route, gaps }: { snapshot: LoadedSnapsho
         label="Project"
         tabs={PROJECT_TABS}
         selected={tab}
-        onSelect={(next) => navigate(at(route, next))}
+        onSelect={(next) => /* in place: the project's tabs */ navigate(at(route, next))}
       />
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto" role="tabpanel" data-tabpanel={tab}>
         {body}
