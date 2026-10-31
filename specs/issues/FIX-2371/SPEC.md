@@ -55,8 +55,8 @@ The text is in the box until the server has it; a reload at any point before tha
 - **Control that must fail:** the same lab tests against today's composers, which clear before
   the send resolves. Run on the red state and recorded in the implementation PR, not argued.
 - **Real host:** each lab against its real server, the server stopped mid-session, a line sent:
-  the box keeps it and shows the reason; the server restarted, Retry lands it. Recorded with
-  screenshots in the PR.
+  the box keeps it and shows the reason. Recorded with screenshots in the PR. Retry landing the
+  line is the screen tests' job, since it needs a model turn.
 
 ## What changes
 
@@ -64,7 +64,7 @@ The text is in the box until the server has it; a reload at any point before tha
   id)` and `clearDraft(namespace, id)`: text kept in `localStorage` under the caller's
   namespace and id, read when the box opens ([D1](DECISIONS.md#d1)). No workforce noun; a draft
   is a box's text.
-- **The two lab composers** keep the line until `onSend` resolves, show *Sending…* while it runs,
+- **The two lab composers**, and the Claude Code-style lab's box inside a task, keep the line until `onSend` resolves, show *Sending…* while it runs,
   and on a rejection keep it with *Not sent: \<reason\> · Retry*. Their callers pass the promise
   instead of `void`ing it. Teammates routes its composer through its own `useSubmit`, as the
   issue asks. Both store drafts per session through `useDraft`.

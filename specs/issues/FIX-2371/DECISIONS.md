@@ -55,7 +55,7 @@ This spec keeps the line in the box instead, marked *Sending…*, until the requ
   sessions still shows that session's own draft, so the existing "a draft never reaches another
   session" tests hold.
 - **E6 · No changeset is required for the labs or Shift Manager;** `@flow-state-dev/react` gets a
-  `minor` fragment for the new export.
+  `patch` fragment for the new export, as `isSendKey` did.
 
 ## How it got here
 
