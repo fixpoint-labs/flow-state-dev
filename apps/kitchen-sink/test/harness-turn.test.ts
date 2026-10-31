@@ -26,7 +26,7 @@ import {
   type PlanPanelInput,
 } from "@/lib/harness-turn";
 
-const blank: HarnessTurnRecord = { asked: null, confirmed: null, failure: null, stopped: null, error: null, at: 1, steered: null };
+const blank: HarnessTurnRecord = { asked: null, confirmed: null, failure: null, stopped: null, error: null, at: 1, steered: null, spend: null, endedAt: null };
 
 describe("turnNotice", () => {
   it("says nothing while the turn runs", () => {

@@ -96,7 +96,8 @@ export function spendAfterWrite(task: Pick<Task, "spend">, write: TaskSpendWrite
  * admission that recorded nothing recovered drops its model calls and keeps
  * its harness runs whole. A predecessor's ending that is only late replaces its live part
  * with what it settles, so nothing counts twice. `live` is never true on a
- * terminal row either.
+ * terminal row either. `costUsd` sums the charges vendors reported, over
+ * the same parts, and is `null` when none did (FIX-2398).
  */
 export function taskSpendView(task: Pick<Task, "spend"> & Partial<Pick<Task, "status">>): TaskSpendView | null {
   if (task.spend == null) return null;
@@ -104,6 +105,7 @@ export function taskSpendView(task: Pick<Task, "spend"> & Partial<Pick<Task, "st
   if (requests.length === 0) return null;
   let input = 0;
   let output = 0;
+  let cost: number | null = null;
   let reportedAny = false;
   let unreported = false;
   // The next admission of the same request, if any: it supersedes this one's unsettled live part.
@@ -118,6 +120,7 @@ export function taskSpendView(task: Pick<Task, "spend"> & Partial<Pick<Task, "st
     for (const source of [...entry.settled, ...live]) {
       input += source.inputTokens;
       output += source.outputTokens;
+      if (source.costUsd !== null) cost = (cost ?? 0) + source.costUsd;
       if (source.kind === "model" || source.runs > source.unreported) reportedAny = true;
       if (source.unreported > 0) unreported = true;
     }
@@ -129,6 +132,7 @@ export function taskSpendView(task: Pick<Task, "spend"> & Partial<Pick<Task, "st
     model: harnessed !== undefined ? harnessed.harnessModel : (modelled?.model ?? null),
     inputTokens: reportedAny ? input : null,
     outputTokens: reportedAny ? output : null,
+    costUsd: cost,
     unreported,
     live: (task.status === undefined || !isTerminalStatus(task.status)) && requests.some((entry) => entry.live !== null && !superseded(entry)),
   };

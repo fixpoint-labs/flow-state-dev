@@ -40,7 +40,20 @@ describe("taskSpendView", () => {
 
   it("names a harness run's model before any tokens, and reads its tokens as null, not 0, while unreported", () => {
     const view = taskSpendView({ spend: { requests: [{ requestId: "q1", settled: [], live: [{ source: "codex", kind: "harness", billing: null, inputTokens: 0, outputTokens: 0, costUsd: null, runs: 1, unreported: 1 }], harness: "codex", harnessModel: "gpt-5", model: null, writer: null, admittedAt: null, recovered: null }] } });
-    expect(view).toEqual({ harness: "codex", model: "gpt-5", inputTokens: null, outputTokens: null, unreported: true, live: true });
+    expect(view).toEqual({ harness: "codex", model: "gpt-5", inputTokens: null, outputTokens: null, costUsd: null, unreported: true, live: true });
+  });
+
+  // A person picks a harness by what it cost, so a cost is only what a vendor billed (FIX-2398 D3):
+  // charges add across requests, and a subscription run, which bills none, never reads as $0.
+  it("sums the charges vendors reported, and reads null rather than 0 when only subscription runs ran", () => {
+    const source = (costUsd: number | null, billing: "api-key" | "subscription") => ({ source: "claude-code", kind: "harness" as const, billing, inputTokens: 100, outputTokens: 10, costUsd, runs: 1, unreported: 0 });
+    const entry = (requestId: string, settled: ReturnType<typeof source>[]) => ({ requestId, settled, live: null, harness: "claude-code", harnessModel: "claude-sonnet-4-5", model: null, writer: null, admittedAt: null, recovered: null });
+    const subscriptionOnly = taskSpendView({ status: "completed", spend: { requests: [entry("q1", [source(null, "subscription")])] } });
+    expect(subscriptionOnly?.costUsd).toBeNull();
+    expect(subscriptionOnly?.inputTokens).toBe(100);
+    const mixed = taskSpendView({ status: "completed", spend: { requests: [entry("q1", [source(null, "subscription")]), entry("q2", [source(0.25, "api-key")]), entry("q3", [source(0.5, "api-key")])] } });
+    expect(mixed?.costUsd).toBeCloseTo(0.75);
+    expect(mixed?.inputTokens).toBe(300);
   });
 });
 
@@ -92,7 +105,7 @@ describe.each([
     const before = events.length;
 
     await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: harnessRun(null, null) }, { claim });
-    expect(view(collection)).toEqual({ harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: null, outputTokens: null, unreported: true, live: true });
+    expect(view(collection)).toEqual({ harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: null, outputTokens: null, costUsd: null, unreported: true, live: true });
 
     await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: harnessRun(100, 20) }, { claim });
     expect(view(collection)).toMatchObject({ inputTokens: 100, outputTokens: 20, unreported: false, live: true });
@@ -122,7 +135,7 @@ describe.each([
     // And on a completed row, a late ending of the first request still lands.
     await collection.recordSpend!("t", { requestId: "q1", part: "settle", spend: modelCalls(4, 4) }, { claim });
 
-    expect(view(collection)).toEqual({ harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: 1254, outputTokens: 254, unreported: false, live: false });
+    expect(view(collection)).toEqual({ harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: 1254, outputTokens: 254, costUsd: null, unreported: false, live: false });
   });
 
   it("keeps a dead request's live tokens but stops reading live once a retry finishes the task", async () => {

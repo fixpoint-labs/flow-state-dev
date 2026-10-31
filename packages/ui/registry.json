@@ -337,6 +337,20 @@
       "categories": ["ai", "framework"]
     },
     {
+      "name": "spend",
+      "title": "Spend",
+      "type": "registry:component",
+      "description": "One line for what a run spent: model, tokens, the vendor's charge when it reported one, and optionally attempts and duration. Reads a task row's or a harness turn's folded spend; a count nobody reported reads as such, never as 0, and a subscription run shows no dollar figure.",
+      "dependencies": [],
+      "registryDependencies": [],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/spend.tsx",
+        "target": "components/flow-state/spend.tsx"
+      }],
+      "categories": ["ai", "framework"]
+    },
+    {
       "name": "approval",
       "title": "Approval",
       "type": "registry:component",

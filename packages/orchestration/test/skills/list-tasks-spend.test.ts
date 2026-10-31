@@ -40,7 +40,7 @@ describe("listTasks and a task's spend", () => {
     const caller = { ...(ctx as object), user: { identity: { userId: "u1" } } };
     const acted = (await runForTest(actions["listTasks_desk"]!.block as never, {} as never, caller as never)) as { tasks: Array<Record<string, unknown>> };
     const byId = Object.fromEntries(acted.tasks.map((t) => [t.id, t]));
-    expect(byId[claimed.id]!.spend).toEqual({ harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: 11_200, outputTokens: 1_240, unreported: false, live: true });
+    expect(byId[claimed.id]!.spend).toEqual({ harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: 11_200, outputTokens: 1_240, costUsd: null, unreported: false, live: true });
     const other = claimed.id === "t_ran" ? "t_waits" : "t_ran";
     expect(byId[other]!.spend).toBeNull();
 

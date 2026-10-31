@@ -37,6 +37,13 @@
  * on the turn. A red check is reported, never a failed turn: the person is
  * there, and the next turn is theirs.
  *
+ * When a turn ends, however it ended, the flow also records what it spent on
+ * its record: the request's own spend, as every harness reports it into the
+ * request (`reportHarnessSpend`), folded by orchestration's `taskSpendView`
+ * so a turn reads like a task. And a subscription window a harness hears
+ * about during a run (`onUsage`) lands in the person's usage record, read
+ * through the flow's `harnessUsage` query (FIX-2398).
+ *
  * Nothing here names a harness. A harness that needs more than these feeds has
  * found a gap in its own package. The flow writes no item of its own.
  */
@@ -51,6 +58,7 @@ import {
   sequencer,
   type HarnessSteering,
 } from "@flow-state-dev/core";
+import { taskSpendView, taskSpendViewSchema, type TaskSpendSource } from "@flow-state-dev/orchestration/tasks";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type {
   HarnessBlock,
@@ -59,7 +67,10 @@ import type {
   HarnessRunHandle,
   HarnessSessionHook,
   HarnessSteerHook,
+  HarnessUsageHook,
+  HarnessUsageReader,
 } from "@flow-state-dev/core/types";
+import { readRequestSpend, requestSpendSources } from "@flow-state-dev/core/types";
 import { recordBranchPullRequests } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import {
@@ -68,6 +79,7 @@ import {
   runCommandChecks,
   type CommandCheckOptions,
 } from "./command-check";
+import { harnessUsageAction, recordHarnessUsage } from "./harness-usage";
 
 /** What one turn asked for and what came of it, recorded under its request id. */
 export const harnessTurnRecordSchema = z.object({
@@ -87,6 +99,15 @@ export const harnessTurnRecordSchema = z.object({
   steered: z.array(z.string()).nullable().default(null),
   /** The checks `verify` ran when the turn ended, in order; `null` when none ran. */
   checks: z.array(commandCheckResultSchema).nullable().default(null),
+  /**
+   * What the turn spent, as a task's spend reads (`taskSpendView`): the model,
+   * tokens, and the vendor's charge when it reported one. Written when the
+   * turn ends, however it ended; `null` before that, and on a turn that spent
+   * nothing.
+   */
+  spend: taskSpendViewSchema.nullable().default(null),
+  /** When the turn ended, in epoch millis: its duration is `endedAt - at`. */
+  endedAt: z.number().nullable().default(null),
 });
 
 /** One turn's record. */
@@ -161,6 +182,12 @@ export interface HarnessSessionFeeds {
    * A harness that can't take a line in flight never calls it.
    */
   readonly onSteerable: HarnessSteerHook;
+  /**
+   * Records a subscription window the harness heard about during the run in
+   * the person's usage record, read through the flow's `harnessUsage` query.
+   * A harness whose vendor sends none never calls it.
+   */
+  readonly onUsage: HarnessUsageHook;
 }
 
 /** Options for {@link harnessSessionFlow}. */
@@ -182,6 +209,12 @@ export interface HarnessSessionFlowOptions {
    * fail the turn. Unset, nothing runs.
    */
   readonly verify?: CommandCheckOptions<HarnessSessionVerifyContext>;
+  /**
+   * One reader per harness for the flow's `harnessUsage` query, keyed by the
+   * harness's name, run only when a caller asks it to refresh. Unset, the
+   * query reads only what runs recorded.
+   */
+  readonly usageReaders?: Readonly<Record<string, HarnessUsageReader>>;
 }
 
 /** What a `verify` resolver is handed: whose session, and where it works. */
@@ -217,6 +250,8 @@ const BLANK_TURN: HarnessTurnRecord = {
   at: null,
   steered: null,
   checks: null,
+  spend: null,
+  endedAt: null,
 };
 
 /** `state` with the turn `requestId` changed by `change`, keeping only the latest {@link KEPT_TURNS}. */
@@ -283,6 +318,10 @@ export function harnessSessionFeeds(
 ): HarnessSessionFeeds {
   return {
     onSteerable: (steer, ctx) => steering.onSteerable(steer, ctx),
+    // The person running the turn is the principal, so the window lands in their row.
+    onUsage: async (report, ctx) => {
+      await recordHarnessUsage(ctx as never, report);
+    },
     model: (ctx) => (ctx.session.state as HarnessSessionState).model ?? defaultModel,
     cwd: (ctx) => workspace.provision(placeOf(kind, ctx)),
     worktree: (ctx) => workspace.locate(placeOf(kind, ctx)),
@@ -435,6 +474,27 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       await changeState(ctx, (state) => withTurn(state, requestId, (record) => ({ ...record, checks })));
     },
   });
+  // When a turn ends, however it ended: what it spent, on its record. The
+  // harness reported its run into the request before its block returned, so
+  // the request's pending spend is the whole turn. A failed write is a note,
+  // never a failed turn.
+  const turnSpend = handler({
+    name: "turn-spend",
+    execute: async (_input: unknown, ctx): Promise<void> => {
+      const harnessCtx = ctx as unknown as HarnessCallbackContext;
+      const requestId = requestOf(harnessCtx);
+      if ((harnessCtx.session.state as HarnessSessionState).turns?.[requestId] === undefined) return;
+      const spend = turnSpendOf(readRequestSpend(ctx), requestId);
+      try {
+        await changeState(harnessCtx, (state) =>
+          withTurn(state, requestId, (record) => ({ ...record, spend, endedAt: Date.now() })),
+        );
+      } catch (error) {
+        ctx.emit.status(`What the turn spent was not recorded: ${(error as Error).message}`, { transient: false });
+      }
+    },
+  });
+  const turnEnd = sequencer({ name: "turn-end" }).tap(turnSpend).tap(branchPullRequests);
   const turn = sequencer({
     name: "turn",
     description: "One turn of a harness session: the prompt, run by the harness where the session works.",
@@ -455,8 +515,10 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
         concurrency: "defer",
       },
       steer,
+      // What each harness's subscription has used, as `onUsage` recorded it.
+      harnessUsage: harnessUsageAction({ readers: options.usageReaders ?? {} }),
     },
-    request: { onFinished: branchPullRequests },
+    request: { onFinished: turnEnd },
     session: {
       stateSchema: harnessSessionStateSchema,
       // The page reads the model, the binding and the turns. The model is the
@@ -470,4 +532,25 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
           : { ok: false, message: HARNESS_SESSION_MODEL_REQUIRED },
     },
   })();
+}
+
+/**
+ * A turn's spend, as a task's spend reads: its request's spend folded by
+ * `taskSpendView`, or `null` when it spent nothing (or the context carries no
+ * spend ledger).
+ */
+function turnSpendOf(spend: ReturnType<typeof readRequestSpend>, requestId: string) {
+  if (spend === undefined) return null;
+  const sources = requestSpendSources(spend) as TaskSpendSource[];
+  if (sources.length === 0) return null;
+  const run = spend.harnessRuns.at(-1);
+  const model = Object.keys(spend.byModel).at(-1) ?? null;
+  return taskSpendView({
+    status: "completed",
+    spend: {
+      requests: [
+        { requestId, settled: sources, live: null, harness: run?.harness ?? null, harnessModel: run?.model ?? null, model, writer: null, admittedAt: null, recovered: null },
+      ],
+    },
+  });
 }
