@@ -34,7 +34,7 @@ flowchart LR
   T -->|"tokens > 0 and the vendor's cost, model named"| P["PASS · goal met"]
   I --> U["a stopped turn"]
   U -->|"its tokens recorded too"| P
-  C["control · no-turn-spend"] -.-> T
+  C["control · today's main"] -.-> T
   T -.->|"under the control"| F["must FAIL · turn spend is null"]
 ```
 
@@ -47,7 +47,7 @@ harness's handle.
 | **Signal** | **t**: after a completed turn, its record's `spend` names the model, `inputTokens + outputTokens > 0`, `costUsd > 0`, and `endedAt ≥ at`. **s**: a stopped turn's record carries `spend` too |
 | **Input** | A one-line prompt with a fresh token to echo. Any other prompt must pass |
 | **Anti-game** | Read the session state the page reads. Don't assert on `HarnessRunSpend` or a mocked ledger: both pass while the turn record stays empty |
-| **Control that must fail** | `GOAL_CONTROL=no-turn-spend` (the flow skips its turn-end write). **t** and **s** FAIL on `spend` being `null`. Today's `main` fails the same way |
+| **Control that must fail** | Today's `main`: the same script run from a worktree of `main`. **t** and **s** FAIL on `spend` being missing. The write is inside the turn ([D2](DECISIONS.md#d2)), so no outside switch can turn it off |
 
 ## What changes
 
@@ -55,7 +55,7 @@ harness's handle.
 flowchart LR
   H["claude-code · codex · cursor<br/>reportHarnessSpend (unchanged)"] --> L["the request's spend ledger"]
   L -->|"task runs (FIX-2288)"| R["task row spend"]
-  L -->|"turn end, new"| TR["turn record spend + endedAt"]
+  L -->|"harness step ends, new"| TR["turn record spend + endedAt"]
   R --> V["taskSpendView · + costUsd"]
   TR --> V
   V --> S["registry Spend · one line"]
@@ -64,7 +64,8 @@ flowchart LR
 ```
 
 One fold (`taskSpendView`) for a task and a turn, one component for every app. A turn's spend is
-the request's own ledger at its end ([D2](DECISIONS.md#d2)).
+the request's own ledger when its harness step ends, written inside the turn so it lands before
+the request says it is done ([D2](DECISIONS.md#d2)).
 
 **A host, after:**
 
@@ -151,6 +152,6 @@ wrong: a fifth spend line someone keeps in step.
 3. **[D3](DECISIONS.md#d3) · A cost is the vendor's charge or nothing.** If wrong: a subscription
    run reads `$0.00`, or an estimate nobody billed.
 
-**Open: none.** Number 1 is the one to weigh.
+**Open: none.** Of the three, number 1 deserves the closest look.
 
 Feature · `orchestration` + `harness-manager` + `ui` registry, then four app PRs · small package slice · epic FIX-2369

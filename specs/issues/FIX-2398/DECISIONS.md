@@ -39,8 +39,8 @@ option is cheap and belongs in that package.
 | | |
 |---|---|
 | **Instead of** | A feed callback on `HarnessSessionFeeds` the harness calls with its usage; or a sum over the turn's items |
-| **Because** | Every harness already reports its run into the request's ledger, from its `finally`, however the run ends. The session flow's request `onFinished` runs after the harness block returns and before the ending hands the ledger on, so `readRequestSpend(ctx)` there is the whole turn: a failed or stopped turn included. Folding it with `taskSpendView` gives a turn the same view a task has, so one component draws both (tenet 5: one fold). A feed callback would be a second report path beside `reportHarnessSpend`, kept in step by every harness |
-| **Locks in** | A turn's count is final, not live: it appears when the turn ends. The record's `spend` has the view's shape, so a change to the view changes both readers at once |
+| **Because** | Every harness already reports its run into the request's ledger, from its `finally`, however the run ends. So `readRequestSpend(ctx)` read right after the harness step, inside the turn, is the whole turn: in a step after it for a turn that returned, and in the failure record's own write for one that threw or was stopped. Inside the turn, because the request publishes its terminal status *before* `onFinished` runs, and a page refreshes on that status: a write at `onFinished` would land after the page read. Folding it with `taskSpendView` gives a turn the same view a task has, so one component draws both (tenet 5: one fold). A feed callback would be a second report path beside `reportHarnessSpend`, kept in step by every harness |
+| **Locks in** | A turn's count is final, not live: it appears when the turn ends, never later than the request's end.  Turn-card spend never reads the `harnessUsage` query, which holds subscription windows only. The record's `spend` has the view's shape, so a change to the view changes both readers at once |
 
 **What would change my mind:** a page that must show a turn's tokens rising while it runs. Then
 the turn writes its live part on a timer, as a task's request does (FIX-2288 D2).
@@ -67,6 +67,8 @@ the turn writes its live part on a timer, as a task's request does (FIX-2288 D2)
   is invisible.
 - **Kitchen Sink installs the byte copy in PR 1**: its drift check requires every registry file.
 - **A turn-end write that fails is a note, never a failed turn**, like the pull-request check.
+- **`costUsd` sums only sources whose `costUsd` is non-null**, the same rule as a worker's usage rows (FIX-2145), so the two never disagree.
+- **Two deliverables in PR 1, one code path each:** (A) a task's and a turn's spend, through `taskSpendView`; (B) subscription windows, through `onUsage` and `harnessUsage`. They share no code.
 
 ## Considered and dropped
 
@@ -74,7 +76,10 @@ the turn writes its live part on a timer, as a task's request does (FIX-2288 D2)
 |---|---|
 | Keep each lab's own spend line | Four copies of one line, which ER-3 says go to the package |
 | Put `costUsd` on FIX-2379's row view only | The row view carries the spend view (ER-4); the cost belongs in the fold it carries |
-| Write the turn spend from a request-end hook | It runs after the request is over, so a page that refreshes on the turn's end can read before it lands; `onFinished` runs after the harness reported and before the request ends |
+| Write the turn spend from a request-end hook, or at `onFinished` | Both run after the request publishes its terminal status, so a page that refreshes on it reads the turn before its spend lands (Codex, round 1). A request-end hook would also hold back every turn's status |
+| Lift `Spend` and delete Claude Code-style's copy in PR 1 | Claude Code-style's copy takes its own row type and harness labels across six components; swapping it is app work, and the epic's D3 puts app changes after the package slice |
+| Cursor's `onActivity` as its own issue | One line in `labs/teammates/host.mts`, which PR 4 already edits in its merge order; a separate issue adds a PR on the same file |
+| Readers only on a host flow, as Shift Manager does | The collection has to be registered on the session flow anyway, for `onUsage` to write it. The flow's `harnessUsage` is `harnessUsageAction` itself, so the refresh and claim rules are one; a host with another flow may still read there |
 
 ## Analysis
 
@@ -87,3 +92,7 @@ down after PR 5.
 
 - **Drafted (Oct 31)** from the issue and epic FIX-2369's seams, with the Codex and Cursor wire
   types read to settle D1.
+- **Round 1 (Oct 31):** Codex showed `onFinished` runs after the terminal status is published
+  (`runAction.ts`), so D2's write moved inside the turn; the goal's control became `main`, since
+  no outside switch reaches a write inside the turn. Cursor's scope notes are answered under
+  *Considered and dropped* and *Decided, not asked*.
