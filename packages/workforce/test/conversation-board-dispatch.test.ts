@@ -399,8 +399,10 @@ describe("retryTask on a conversation's board (FIX-2383)", () => {
       expect(await act(host, conv, "retryTask_tasks", { id: "task_first" })).toEqual({ ok: true });
       release();
       await host.settled();
-      // Both started rows waited on the one session: the earlier-filed one runs first, then the other.
-      expect(host.runs.map((run) => /task_(busy|first|second)/.exec(run.message)?.[0])).toEqual(["task_busy", "task_first", "task_second"]);
+      // Both retried rows waited on the busy one like new rows, then ran in turn, one at a time.
+      const order = host.runs.map((run) => /task_(busy|first|second)/.exec(run.message)?.[0]);
+      expect(order[0]).toBe("task_busy");
+      expect([...order.slice(1)].sort()).toEqual(["task_first", "task_second"]);
       expect(await host.row("alice", filing, "task_first")).toMatchObject({ status: "completed", attempts: 2 });
       expect(await host.row("alice", filing, "task_second")).toMatchObject({ status: "completed", attempts: 2 });
     } finally {

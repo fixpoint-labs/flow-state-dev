@@ -469,10 +469,11 @@ function sessionKeyOf(task: Pick<Task, "id" | "assignee" | "followUpOf" | "sessi
 
 /**
  * Whether the row holds its session: started and unfinished, a retry
- * waiting to run again included. A held row hasn't started.
+ * waiting to run again included. A held row hasn't started, and a row a
+ * user's retry reopened (FIX-2383) waits like a new one until it is claimed.
  */
 function holdsSession(task: Task): boolean {
-  return !isTerminalStatus(task.status) && task.status !== "held" && hasStarted(task);
+  return !isTerminalStatus(task.status) && task.status !== "held" && task.retryPending !== true && hasStarted(task);
 }
 
 /**
@@ -489,23 +490,9 @@ function isStartable(task: Task, rows: readonly Task[]): boolean {
   if (task.assignee === undefined) return false;
   const key = sessionKeyOf(task);
   if (key === undefined) return true;
-  return !rows.some((other) => other.id !== task.id && holdsSession(other) && sessionKeyOf(other) === key && !queuedAfter(other, task));
+  return !rows.some((other) => other.id !== task.id && holdsSession(other) && sessionKeyOf(other) === key);
 }
 
-/**
- * Whether `other`, a holder of `task`'s session, waits behind `task` instead
- * of blocking it. A retry (FIX-2383) can leave a started row waiting on a
- * session another row holds; each would block the other forever. So a waiting
- * holder never blocks the row running in the session (its recovery, after its
- * lease lapsed), and of two waiting started rows the earlier-filed one runs
- * first. A running holder always blocks.
- */
-function queuedAfter(other: Task, task: Task): boolean {
-  if (other.status !== "pending") return false;
-  if (task.status === "in_progress") return true;
-  if (task.status !== "pending" || !hasStarted(task)) return false;
-  return task.createdAt !== other.createdAt ? task.createdAt < other.createdAt : task.id < other.id;
-}
 
 /**
  * The sessions by id another board's routed task holds now, by board, as this
