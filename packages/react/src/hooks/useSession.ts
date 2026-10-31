@@ -64,13 +64,12 @@ const KEPT_LIVE_CHANGES = 256;
 
 /**
  * Whether a live change lands the same whether or not a read already holds
- * it. Only these are put back on top of a read: an `increment` or `push` the
- * read already holds would count twice.
+ * it. An `increment` or `push` the read already holds would count twice.
  */
 function isRepeatable(item: StateChangeItem | ResourceChangeItem): boolean {
   if (item.type === "resource_change") return true;
   const { operation } = item as StateChangeItem;
-  return operation === "set" || operation === "patch" || operation === "delete_key";
+  return operation !== "increment" && operation !== "push";
 }
 
 /**
@@ -682,9 +681,9 @@ export function useSession(
     state: Pick<SessionStateSnapshotResponse, "clientData" | "resources">;
     changesAt: number;
   } | null>(null);
-  // Bumped on every session change: a request status read for the session
-  // before doesn't land.
-  const followedGenerationRef = useRef(0);
+  // Request status reads take a place in order; only the last one requested
+  // lands, and a session change retires every one in flight.
+  const followedReadSequenceRef = useRef(0);
   // The error a snapshot read that failed left, with that read's place in
   // order. A read requested after it that lands takes it away; an older one
   // landing late does not, and no read takes away an error from anywhere else.
@@ -988,15 +987,21 @@ export function useSession(
   );
 
   /**
-   * State, with the repeatable live changes numbered after `after` put back
-   * on top. A non-repeatable one (`increment`, `push`) is left out: the read
-   * may already hold it, and the next read brings it either way.
+   * State, with the live changes numbered after `after` put back on top; or
+   * `null` when one of them can't be put back (an `increment` or `push` the
+   * read may already hold). A read carries no version to tell, so the view
+   * keeps the state it holds, which has every live change, and the next
+   * read brings it current.
    */
   const withLiveChanges = useCallback(
-    (next: SessionStateSnapshotResponse, after: number): Pick<SessionStateSnapshotResponse, "clientData" | "resources"> => {
+    (
+      next: SessionStateSnapshotResponse,
+      after: number
+    ): Pick<SessionStateSnapshotResponse, "clientData" | "resources"> | null => {
+      const since = liveChangesRef.current.filter(({ n }) => n > after);
+      if (!since.every(({ item }) => isRepeatable(item))) return null;
       let merged: SessionStateSnapshotResponse = next;
-      for (const { n, item } of liveChangesRef.current) {
-        if (n <= after || !isRepeatable(item)) continue;
+      for (const { item } of since) {
         const changed =
           item.type === "state_change"
             ? mergeStateChangeIntoSnapshot(merged, item as StateChangeItem)
@@ -1010,8 +1015,8 @@ export function useSession(
 
   /**
    * The state half of a read, or `null` when a read of state requested after
-   * it has already landed. It is what the read returned, with the live
-   * changes that arrived while it was out put back on top.
+   * it has already landed, or the live changes that arrived while it was out
+   * can't be put back on top of it (see `withLiveChanges`).
    */
   const takeState = useCallback(
     (
@@ -1199,13 +1204,13 @@ export function useSession(
    */
   const readFollowedStatus = useCallback(
     (requestId: string): void => {
-      const generation = followedGenerationRef.current;
+      const sequence = ++followedReadSequenceRef.current;
       flow
         .request(requestId)
         .status()
         .then(
           (record) =>
-            generation === followedGenerationRef.current &&
+            sequence === followedReadSequenceRef.current &&
             setReadFollowed({
               id: record.id,
               status: record.status,
@@ -1216,6 +1221,20 @@ export function useSession(
         );
     },
     [flow]
+  );
+
+  /**
+   * Read the record of a request whose stream no longer reports on it: the
+   * latest-request read, and the request's own status when a request sent
+   * beside it is newer.
+   */
+  const readRecordOf = useCallback(
+    (requestId: string): void => {
+      void refreshLatestRequest().then((latest) => {
+        if (latest?.id !== requestId) readFollowedStatus(requestId);
+      });
+    },
+    [refreshLatestRequest, readFollowedStatus]
   );
 
   /**
@@ -1514,9 +1533,7 @@ export function useSession(
             // recovery affordances (e.g. a Resume button when status moves
             // to `interrupted`). It is this request's record too, unless a
             // request sent beside it is newer: then read this one's own.
-            void refreshLatestRequest().then((latest) => {
-              if (latest?.id !== requestId) readFollowedStatus(requestId);
-            });
+            readRecordOf(requestId);
           }
         },
         onError: () => {
@@ -1552,8 +1569,7 @@ export function useSession(
       flow,
       refreshSnapshot,
       refreshState,
-      refreshLatestRequest,
-      readFollowedStatus,
+      readRecordOf,
       keepLiveChange,
       scheduleContentFlush,
       flushContentDeltas,
@@ -1588,7 +1604,7 @@ export function useSession(
     liveChangesRef.current = [];
     heldStateRef.current = null;
     followedReadRef.current = null;
-    followedGenerationRef.current += 1;
+    followedReadSequenceRef.current += 1;
     setStreamStatus(null);
     setReadFollowed(null);
 
@@ -1937,18 +1953,20 @@ export function useSession(
       setIsStuck(false);
 
       injectSyntheticAbortItem(targetId);
+      // The stream closed without an end; the record says how it ended.
+      setStreamStatus((current) => (current?.id === targetId ? null : current));
 
       // Pull authoritative server state — covers 409 (already terminal)
       // and 404 (unknown id) gracefully without surfacing them as errors.
       void refreshSnapshot();
-      void refreshLatestRequest();
+      readRecordOf(targetId);
     },
     [
       flow,
       flushContentDeltas,
       injectSyntheticAbortItem,
       refreshSnapshot,
-      refreshLatestRequest
+      readRecordOf
     ]
   );
 
@@ -2161,14 +2179,12 @@ export function useSession(
     } else {
       // The request ended first; its record, not the closed stream, says how.
       setStreamStatus((current) => (current?.id === requestId ? null : current));
-      void refreshLatestRequest().then((latest) => {
-        if (latest?.id !== requestId) readFollowedStatus(requestId);
-      });
+      readRecordOf(requestId);
     }
     // The stream closed with the stop, so what the request wrote to state as
     // it stopped never reaches the view through it.
     void refreshState();
-  }, [flow, flushContentDeltas, injectSyntheticAbortItem, refreshState, refreshLatestRequest, readFollowedStatus]);
+  }, [flow, flushContentDeltas, injectSyntheticAbortItem, refreshState, readRecordOf]);
 
   const followRequest = useCallback(
     (requestId: string) => {

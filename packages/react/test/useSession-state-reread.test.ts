@@ -29,15 +29,19 @@
  *   - no state read after a stop: the "stop" case fails.
  *   - `followedRequest` from `latestRequest` alone: both "beside it" cases
  *     fail (null, or only the stream's status with no times).
- *   - every live change put back, `increment` too: the "increment the read
- *     already holds" case fails (the count reads 2).
+ *   - every live change put back, `increment` too: the "counted twice" case
+ *     fails (the count reads 2); only the repeatable ones put back: the "set
+ *     then an increment" case fails (the count reads 1).
  *   - a state-only read that lands before the mount read dropped, as it was:
  *     the "before the mount read" case fails, state is the mount read's.
  *   - no stream status set by a stop: the "stopped" case fails (the request
  *     still reads in progress); not cleared on a refused stop: the "refused"
  *     case fails.
  *   - no session fence on the status read: the "session changed" case fails
- *     (the old session's record shows).
+ *     (the old session's record shows); a session fence alone: the "shown
+ *     request changed" case fails (followedRequest reads null).
+ *   - no stream status cleared by a dismissal: the "dismissed" case fails
+ *     (the request still reads in progress).
  *   - reading the followed request's status as soon as its stream ends,
  *     before the latest-request read lands: the "record when it ends" case
  *     fails (a status read the latest read made needless).
@@ -241,37 +245,54 @@ describe("a live change while a state read is out", () => {
   });
 });
 
-describe("an increment the read already holds", () => {
-  it("is not put back a second time", async () => {
-    const { result } = await mount();
-    act(() => void result.current.followRequest("req_turn"));
-    act(() => void result.current.refresh({ items: false }));
+describe("an increment or push while a state read is out", () => {
+  const counted = (count: number, items: unknown[] = []) => ({
+    ...snapshot("counting", items),
+    clientData: { session: { phase: "counting", count } },
+  });
+  const change = (id: string, operation: string, delta: unknown) => ({
+    type: "item.added",
+    item: {
+      id,
+      type: "state_change",
+      status: "completed",
+      requestId: "req_turn",
+      itemIndex: 1,
+      provenance: { blockName: "test", blockInstanceId: "test-1", phase: "main" },
+      ts: 2000,
+      scope: "session",
+      operation,
+      delta,
+      version: 2,
+      transient: false,
+    },
+  });
+  async function mountCounting() {
+    const hook = renderHook(() => useSession("sess1", { flowKind: "demo", items: true }));
     await flush();
-    const stateOnly = stateCalls.length - 1;
+    await land(0, counted(0, [message("m1", "req_turn")]));
+    act(() => void hook.result.current.followRequest("req_turn"));
+    act(() => void hook.result.current.refresh({ items: false }));
+    await flush();
+    return { ...hook, stateOnly: stateCalls.length - 1 };
+  }
 
-    const counted = (count: number) => ({ ...snapshot("counting"), clientData: { session: { phase: "counting", count } } });
-    act(() =>
-      connections.at(-1)!.callbacks.onItemAdded?.({
-        type: "item.added",
-        item: {
-          id: "sc-inc",
-          type: "state_change",
-          status: "completed",
-          requestId: "req_turn",
-          itemIndex: 1,
-          provenance: { blockName: "test", blockInstanceId: "test-1", phase: "main" },
-          ts: 2000,
-          scope: "session",
-          operation: "increment",
-          delta: { count: 1 },
-          version: 2,
-          transient: false,
-        },
-      }),
-    );
+  it("an increment the read already holds is not counted twice", async () => {
+    const { result, stateOnly } = await mountCounting();
+    act(() => connections.at(-1)!.callbacks.onItemAdded?.(change("sc-inc", "increment", { count: 1 })));
+    expect(result.current.snapshot?.clientData.session).toEqual({ phase: "counting", count: 1 });
     // The server kept the increment before it answered the read.
     await land(stateOnly, counted(1));
     expect(result.current.snapshot?.clientData.session).toEqual({ phase: "counting", count: 1 });
+  });
+
+  it("a set then an increment the read already holds land in order, not the set alone", async () => {
+    const { result, stateOnly } = await mountCounting();
+    act(() => connections.at(-1)!.callbacks.onItemAdded?.(change("sc-set", "set", { count: 1 })));
+    act(() => connections.at(-1)!.callbacks.onItemAdded?.(change("sc-inc", "increment", { count: 1 })));
+    expect(result.current.snapshot?.clientData.session).toEqual({ phase: "counting", count: 2 });
+    await land(stateOnly, counted(2));
+    expect(result.current.snapshot?.clientData.session).toEqual({ phase: "counting", count: 2 });
   });
 });
 
@@ -384,6 +405,47 @@ describe("followedRequest", () => {
     });
     await flush();
     expect(result.current.followedRequest).toEqual({ id: "req_turn", status: "completed", startedAtMs: 10, completedAtMs: 20 });
+  });
+
+  it("a dismissed request reads its record, not still in progress", async () => {
+    const { result } = await mount();
+    act(() => void result.current.followRequest("req_turn"));
+    sessionsMock.requests.mockResolvedValue([
+      { id: "req_turn", status: "aborted", startedAtMs: 10, flowKind: "demo", actionName: "turn", userId: "devuser", createdAt: 0, updatedAt: 0 },
+    ]);
+    await act(async () => {
+      await result.current.dismissRequest("req_turn");
+    });
+    await flush();
+    expect(result.current.followedRequest?.status).toBe("aborted");
+  });
+
+  it("a status read for a request no longer shown does not land over the shown one's", async () => {
+    sessionsMock.requests.mockResolvedValue([
+      { id: "req_steer", status: "completed", flowKind: "demo", actionName: "steer", userId: "devuser", createdAt: 0, updatedAt: 0 },
+    ]);
+    const answers: Array<(value: unknown) => void> = [];
+    requestMock.status.mockImplementation(() => new Promise((resolve) => answers.push(resolve)));
+    const { result } = await mount();
+    await flush();
+    expect(answers).toHaveLength(1);
+
+    // A refresh shows a newer request's item before the first read answers.
+    act(() => void result.current.refresh());
+    await flush();
+    await land(stateCalls.length - 1, snapshot("later", [message("m1", "req_turn"), { ...message("m2", "req_next"), ts: 2000 }]));
+    await flush();
+    expect(answers).toHaveLength(2);
+
+    await act(async () => {
+      answers[1]!({ id: "req_next", status: "completed", startedAtMs: 40, completedAtMs: 50, ageMs: 1 });
+      for (let i = 0; i < 5; i += 1) await Promise.resolve();
+    });
+    await act(async () => {
+      answers[0]!({ id: "req_turn", status: "completed", startedAtMs: 10, completedAtMs: 20, ageMs: 1 });
+      for (let i = 0; i < 5; i += 1) await Promise.resolve();
+    });
+    expect(result.current.followedRequest).toEqual({ id: "req_next", status: "completed", startedAtMs: 40, completedAtMs: 50 });
   });
 
   it("a status read for the session before does not land after the session changed", async () => {
