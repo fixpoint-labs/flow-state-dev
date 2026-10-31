@@ -51,6 +51,7 @@ import {
   localWorkspaceHost,
   releaseLock,
   WorkspaceRefusedError,
+  worktreeLockPath,
   type IgnoredDirectory,
   type WorkspaceHost,
 } from "@flow-state-dev/workspace";
@@ -604,8 +605,9 @@ export function placeFor(location: RunLocation): string[] {
 }
 
 /** The lock file guarding one checkout. Beside it, not inside — see `acquireCheckout`. */
+/** The run's lease is the worktree's in-use lock, so the host's `remove` refuses while the run works. */
 function lockPathFor(checkoutPath: string): string {
-  return `${checkoutPath}.lock`;
+  return worktreeLockPath(checkoutPath);
 }
 
 /**

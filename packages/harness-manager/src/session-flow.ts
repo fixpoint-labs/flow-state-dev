@@ -70,7 +70,7 @@ import type {
   HarnessSessionHook,
   HarnessSteerHook,
 } from "@flow-state-dev/core/types";
-import { pullRequestHead, recordBranchPullRequests } from "@flow-state-dev/workspace";
+import { occupyWorktree, pullRequestHead, recordBranchPullRequests, releaseLock, type LockLease } from "@flow-state-dev/workspace";
 import { z } from "zod";
 
 import { isTrackerIssue, issueSpecOptions, readIssueSpecSection, TRACKER_ISSUE_REFUSED, type IssueSpecOption } from "./issue-spec";
@@ -388,6 +388,7 @@ export function harnessSessionFeeds(
   workspace: HarnessSessionWorkspace,
   defaultModel?: string,
   steering: HarnessSteering = harnessSteering(),
+  inUse: Map<string, LockLease> = new Map(),
 ): HarnessSessionFeeds {
   return {
     onSteerable: (steer, ctx) => steering.onSteerable(steer, ctx),
@@ -396,6 +397,10 @@ export function harnessSessionFeeds(
       const state = ctx.session.state as HarnessSessionState;
       const provisioned = await workspace.provision(placeOf(kind, ctx), state.start !== undefined ? { start: state.start } : {});
       const made = typeof provisioned === "string" ? { path: provisioned } : provisioned;
+      // Held in use until the turn ends, so the host's `remove`, from any
+      // caller, refuses to take the tree from under the harness.
+      const requestId = requestOf(ctx);
+      if (!inUse.has(requestId)) inUse.set(requestId, await occupyWorktree(made.path, { owner: requestId }));
       // Recorded on the first provision, and again after a removal; a hand-back changes nothing.
       if (state.workspace == null || state.workspace.removed) {
         await changeState(ctx, (current) => ({
@@ -449,7 +454,9 @@ export function harnessSessionFeeds(
  */
 export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   const steering = harnessSteering();
-  const feeds = harnessSessionFeeds(options.kind, options.workspace, options.defaultModel, steering);
+  // Each running turn's in-use lease on its worktree, by request id; let go when the request ends.
+  const inUse = new Map<string, LockLease>();
+  const feeds = harnessSessionFeeds(options.kind, options.workspace, options.defaultModel, steering, inUse);
   const agent = options.agent(feeds);
   // Core's steer action, allowed beside a running turn: it runs no harness, it
   // hands the running one a line. Recorded on the turn that took it.
@@ -522,8 +529,14 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
     name: "branch-pull-requests",
     resources: { [OBSERVED_PULL_REQUESTS]: observedPullRequestsCollection },
     execute: async (_input: unknown, ctx): Promise<void> => {
-      // A turn has a record under its request; a `steer` request has none.
       const harnessCtx = ctx as unknown as HarnessCallbackContext;
+      // The turn is done with its worktree, however it ended.
+      const lease = inUse.get(requestOf(harnessCtx));
+      if (lease !== undefined) {
+        inUse.delete(requestOf(harnessCtx));
+        releaseLock(lease);
+      }
+      // A turn has a record under its request; a `steer` request has none.
       const turnRecord = (harnessCtx.session.state as HarnessSessionState).turns?.[requestOf(harnessCtx)];
       if (turnRecord === undefined) return;
       const place = placeOf(options.kind, harnessCtx);

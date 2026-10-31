@@ -15,6 +15,10 @@
 import { DEFAULT_ORG_ID, handler } from "@flow-state-dev/core";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
+import { existsSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { worktreeLockPath } from "@flow-state-dev/workspace";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
@@ -128,6 +132,9 @@ const provisioningAgent = (gate?: Promise<void>) => (feeds: HarnessSessionFeeds)
     },
   }) as unknown as HarnessBlock;
 
+/** Where the recording workspace's sessions "work": real paths, since a turn holds its worktree's in-use lock beside it. */
+const places = mkdtempSync(join(tmpdir(), "session-flow-places-"));
+
 /** A workspace that logs what it was asked and names the branch it gives a session. */
 function recordingWorkspace() {
   const provisioned: Array<{ place: HarnessSessionPlace; start: unknown }> = [];
@@ -136,11 +143,11 @@ function recordingWorkspace() {
   const workspace: HarnessSessionWorkspace = {
     provision: async (place, request) => {
       provisioned.push({ place, start: request?.start });
-      return { path: `/places/${place.sessionId}`, branch: "fix/review-notes" };
+      return { path: join(places, place.sessionId), branch: "fix/review-notes" };
     },
     locate: (place) => {
       located.push(place);
-      return `/places/${place.sessionId}`;
+      return join(places, place.sessionId);
     },
     branch: () => "sessions/never-read",
     remove: async (place, options) => {
@@ -192,7 +199,7 @@ describe("where a session starts", () => {
     await act(stores, "s-record", workspace, "turn", { prompt: "go" });
 
     const state = (await stores.session.get("s-record"))?.state as Record<string, unknown>;
-    expect(state.workspace).toEqual({ path: "/places/s-record", branch: "fix/review-notes", removed: false });
+    expect(state.workspace).toEqual({ path: join(places, "s-record"), branch: "fix/review-notes", removed: false });
     // The check ran for the recorded branch, not the host's `branch()`, which names one it never gave.
     expect(located).toHaveLength(1);
   });
@@ -202,6 +209,24 @@ describe("where a session starts", () => {
     expect(harnessSessionStartSchema.safeParse({ base: "main", branch: "x" }).success).toBe(false);
     expect(harnessSessionStartSchema.safeParse({ pullRequest: -1 }).success).toBe(false);
     expect(harnessSessionStateSchema.shape.start.isOptional()).toBe(true);
+  });
+});
+
+describe("a turn's hold on its worktree", () => {
+  it("is taken while the turn works there and let go when it ends, so a removal from any caller sees it", async () => {
+    const stores = createInMemoryStores();
+    const { workspace } = recordingWorkspace();
+    await seed(stores, "s-held", { model: "stub-model" });
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const lock = worktreeLockPath(join(places, "s-held"));
+
+    const running = act(stores, "s-held", workspace, "turn", { prompt: "long" }, gate);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(existsSync(lock)).toBe(true);
+    open();
+    await running;
+    expect(existsSync(lock)).toBe(false);
   });
 });
 
