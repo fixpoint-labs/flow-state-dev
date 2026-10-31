@@ -1,5 +1,0 @@
----
-"@flow-state-dev/workforce": minor
----
-
-A worker can call another worker: `sendMessage({ to, text, wait: true, deadline? })` waits in the same turn for the recipient's reply and returns it as the tool's result (`{ status: "answered", callId, reply }`), with no message sent back (FIX-2239). If the deadline passes first it answers `{ status: "running", callId }`, stops nothing, and keeps the reply; `sendMessage({ callId })` waits again without sending anything. A call refuses `wait_unavailable` on a host that can't hold a wait, `wait_deadline_out_of_range`, `wait_already_pending` (one wait per step, shared with `getTask`), `wait_too_deep`, and `no_such_call`. Any message to a conversation stopped for the user, or to a task held on the user's stop or question, now waits until nothing holds it before it lands; the log row says `queuedBehind: "user"` meanwhile, and a call's `running` answer says `recipient: "waiting_on_person"`. Log rows gain `call`, `deadlineAt` and `repliedAt`, and the received item's props gain `call`.

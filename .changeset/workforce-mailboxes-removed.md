@@ -2,4 +2,4 @@
 "@flow-state-dev/workforce": minor
 ---
 
-Mailboxes are removed (FIX-1792): `MAILBOX.md`, the mailbox flow, binder, boards and post tool, the mailbox and membership inventory collections, `fsdev gen`'s `flows/mailboxes/` slot and `mailboxKinds`, and the `mailboxBoards`, `taskLists` and `mailboxLists` options are gone; a coordinator is a `WORKER.md` on the `coordinator` flow.
+Channels are removed (FIX-1792, FIX-1748): `CHANNEL.md`, `channelFlow`, `openChannels`, `readChannelsDirectory`, `channelBoard`, `channelInstances`, the channel and membership inventory collections (`defineChannelInventoryCollection`, `defineMembershipIndexCollection`), and `fsdev gen`'s channel slot are gone. A coordinator is a `WORKER.md` on the `coordinator` flow. Start from an empty store: a store written with channel rows does not open.

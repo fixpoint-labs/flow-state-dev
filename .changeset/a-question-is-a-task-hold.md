@@ -4,17 +4,20 @@
 "@flow-state-dev/engine": patch
 "@flow-state-dev/orchestration": minor
 "@flow-state-dev/workforce": minor
+"@flow-state-dev/react": minor
 "@flow-state-dev/devtool": patch
 "@flow-state-dev/shift-manager": patch
 "@flow-state-dev/harness-manager": patch
 ---
 
-A question is one kind of task hold (FIX-2317). The two ways to stop for the user are named for what stops: `suspendForUser` suspends the request and resumes it with the answer, and `holdTaskForUser` holds the task until the user answers. Every rename below is breaking, with no alias.
+A question is one kind of task hold (FIX-2317, FIX-2131, FIX-2133). The two ways to stop for the user are named for what stops, and a task's open stops live in one list.
 
-- **Stopping the request.** `ctx.waitForUser` is `ctx.suspendForUser` (`core`), and `waitForUserOn`, `WaitForUser`, `WaitForUserOptions`, `WaitForUserContext` and `WaitForUserCancelled` are `suspendForUserOn`, `SuspendForUser`, `SuspendForUserOptions`, `SuspendForUserContext` and `SuspendForUserCancelled`. `WaitForUserKind` and `waitForUserKindOf` are `SuspendForUserKind` and `suspendForUserKindOf` (`contracts`, re-exported by `core`). The model's `waitForUser` tool is `suspendForUser`, built with `createSuspendForUserTool` (was `createWaitForUserTool`).
-- **Holding the task.** The worker's `askQuestion({ question })` tool is `holdTaskForUser({ question })`, built with `createHoldTaskForUser` (was `createAskQuestion`).
-- **A task's holds.** `Task.questions`, the `holds` an Inbox item and `getTask` / `listTasks` list, are `holds`. `TaskQuestion`, `RowQuestion`, `SuspensionQuestion`, `RowQuestionSource`, `SuspensionQuestionSource` and `InboxQuestion` are `TaskHold`, `RowHold`, `SuspensionHold`, `RowHoldSource`, `SuspensionHoldSource` and `InboxHold` (`taskHoldSchema` and so on). `QuestionCloser`, `QuestionChange` and `QuestionWriteResult` are `HoldCloser`, `HoldChange` and `HoldWriteResult`. The helpers read *hold*: `openHolds`, `hasOpenHold`, `openRowHolds`, `isRowHold`, `isSuspensionHold`, `suspensionHoldOf`, `holdsDue`, `nextHoldDue`, `newRowHolds`, `holdWrite`, `payHoldDeadlines`, `holdDueMs`, `holdOfSuspension`, `openUserHolds`. The options `whileQuestionOpen` and `refuseWithOpenQuestion` are `whileHoldOpen` and `refuseWithOpenHold`, and `setKeptOpenBy`'s `question` option is `hold`.
-- **What keeps a task open.** `keptOpenBy: "wait"` is `"suspended"`: its own request is suspended.
-- **Unchanged:** the filer's hold (status `held`, `hold()`, `release()`), filing with `questions`, `QuestionInit`, `updateTask({ answers })`, the Inbox client's `answerOne` and `questionId`, and the decline reasons `open-question` and `no-such-question`.
+- **`suspendForUser`** (replacing `waitForUser` and the `WaitForUser*` family) suspends the request and resumes it with the answer: `ctx.suspendForUser({ kind, prompt, deadline? })` in `core`, `suspendForUserOn`, `createSuspendForUserTool`, `SuspendForUser`, `SuspendForUserOptions`, `SuspendForUserContext`, `SuspendForUserCancelled`, and `SuspendForUserKind` / `suspendForUserKindOf` (`contracts`, re-exported by `core`). `kind` is `"approval"`, `"review"` or `"input"`.
+- **`holdTaskForUser({ question })`** (replacing `askQuestion`) holds the task until the user answers, built with `createHoldTaskForUser`. The turn ends; the next turn on the same attempt spends no retry.
+- **`Task.holds`** lists what stops the task being claimed until the user answers. There is no `kind` field on a hold: an entry is told apart by `source.kind` (`"row"` or `"suspension"`) and `ask.kind` (`question`, `confirm`, `approval`, `review`, `input`). `getTask`, `listTasks` and Inbox items list `holds`.
 
-A row stored before this release still reads: its `questions` read as `holds`, and `keptOpenBy: "wait"` reads as `"suspended"`. A reader of raw stored rows, such as a browser's list of a board, maps a row the same way with `withRetiredShapes` from `@flow-state-dev/orchestration/tasks`. The conversation board's browser fields include `questions`, so a stored row keeps them on the way there. Shift Manager and the DevTool read them as holds.
+`createTask({ questions })` files a task that stays `pending` until each question is answered: a plain string is a question, `{ kind: "confirm", prompt, onNo? }` asks for a yes or a no. Answer with `updateTask({ id, answers, message })`. The Inbox client's `answerOne` takes `questionId`. A deadline applies only when the host sets `userDeadlineMs`.
+
+**Breaking, from the last publish.** The `parked` status is gone, with `counts.parked`, `TaskCollectionRef.awaitReview` / `unpark`, `board.unparkAndDrain`, a board's `onReview`, and `@flow-state-dev/react`'s `BOARD_STATUS_COLUMNS` `parked` column. Ask for a review with `ctx.suspendForUser({ kind: "review", prompt })`. The filer's hold is unchanged: status `held`, `hold()`, `release()`. `keptOpenBy: "suspended"` means the task's own request is suspended.
+
+A row stored with `questions` still reads as `holds` (`withRetiredShapes` from `@flow-state-dev/orchestration/tasks`). Shift Manager and the DevTool read them as holds.

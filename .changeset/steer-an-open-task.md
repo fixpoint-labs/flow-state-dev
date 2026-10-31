@@ -15,6 +15,6 @@ Words sent into an open task now take one path, `updateTask({ id, message })`, a
 **Migration.**
 
 - `TaskCollectionRef.reopen`, `Task.reopened`, the worker input's `reopened` and the `"reopened"` change kind are removed: file a follow-up, `createTask({ goal, followUpOf: id })`. A stored row with `reopened: true` reads unmarked; still open, it carries one steer pointing at the latest line in its session.
-- `Task.parkedForTurn` and `awaitReview`'s `forTurn` are removed: send `updateTask({ id, message })`. A stored row parked for a turn reads as `pending`, its next attempt uncharged.
-- `harnessMessageDoor`, a manager's `messageDoor`, `messageDoorInputSchema`, `messageDoorOutputSchema`, `TurnRefused`, `TurnRefusalReason`, a board's `reopenIn`, and the types `HarnessMessageDoorOptions`, `MessageDoorAction`, `MessageDoorBoard`, `MessageDoorOptions`, `MessageDoorOutput`, `DoorRunIdentity` are removed: declare `harnessSessionDoor` as the coding flow's `message` action. `harnessManager` now returns a `TaskWorker`.
+- Send `updateTask({ id, message })` to steer a running task. A stored row that was waiting for a turn reads as `pending`, its next attempt uncharged.
+- Declare `harnessSessionDoor` as the coding flow's `message` action. `harnessManager` now returns a `TaskWorker`.
 - The harness manager's `turns` collection is no longer written or read. Run `upgradeKeptTurns(stores, { userCell, ledgers })` once at host start to write each kept line no attempt took onto its task as a steer. Shift Manager's DevTeam host runs it at every start; a second run adds nothing.
