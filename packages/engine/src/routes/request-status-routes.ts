@@ -12,6 +12,7 @@ import type { StoreRegistry } from "../stores/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { ResolvedPrincipal } from "../transports/types";
 import { ownsRecord } from "../context/record-owner";
+import { terminalAtMs } from "../stores/request-ended-at";
 import { callerReachesRequest, jsonResponse, unknownRequestResponse } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
@@ -59,11 +60,7 @@ export async function handleGetRequestStatus(
   const active = await ctx.stores.activeRequests.get(requestId);
   const now = Date.now();
 
-  // When it reached its terminal status: an aborted or failed run stamps its
-  // own field rather than `completedAtMs`, and the snapshot names them all one way.
-  const endedAtMs =
-    record.completedAtMs ??
-    (record.status === "aborted" ? record.abortedAt : record.status === "failed" ? record.failedAtMs : undefined);
+  const endedAtMs = terminalAtMs(record);
 
   const snapshot: RequestStatusSnapshot = {
     id: requestId,

@@ -5,7 +5,7 @@
  * so dismissing something can never count as half of a stop.
  */
 import { describe, expect, it } from "vitest";
-import { createInterruptKeys, INTERRUPT_WINDOW_MS, type InterruptKeyEvent } from "../src/interrupt-keys";
+import { createInterruptKeys, interruptChordLabel, INTERRUPT_WINDOW_MS, type InterruptKeyEvent } from "../src/interrupt-keys";
 
 const esc = (over: Partial<InterruptKeyEvent> = {}): InterruptKeyEvent => ({ key: "Escape", metaKey: false, ctrlKey: false, ...over });
 
@@ -62,5 +62,20 @@ describe("createInterruptKeys", () => {
     keys.press(esc(), 0);
     expect(keys.press(esc({ keyCode: 229 }), 10)).toBeNull();
     expect(keys.press(esc({ isComposing: true }), 20)).toBeNull();
+  });
+});
+
+describe("interruptChordLabel", () => {
+  it("writes the chord the way the platform does", () => {
+    const real = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+    try {
+      Object.defineProperty(globalThis, "navigator", { configurable: true, value: { userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0)" } });
+      expect(interruptChordLabel()).toBe("⌘.");
+      Object.defineProperty(globalThis, "navigator", { configurable: true, value: { userAgentData: { platform: "Windows" }, userAgent: "" } });
+      expect(interruptChordLabel()).toBe("Ctrl+.");
+    } finally {
+      if (real) Object.defineProperty(globalThis, "navigator", real);
+      else delete (globalThis as { navigator?: unknown }).navigator;
+    }
   });
 });

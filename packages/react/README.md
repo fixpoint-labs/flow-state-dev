@@ -429,13 +429,17 @@ const keys = useInterruptKeys({ enabled: running, onInterrupt: () => void stop()
 - `onInterrupt`: called once for each completed gesture.
 - `windowMs` (default `1500`): how long the first Esc waits for its second.
 - `armed`: `true` while a first Esc waits. Use it for a "press Esc again" hint. It clears itself when the window runs out.
-- `onKeyDown`: accepts a React or a DOM keyboard event. Attach it to the scope that can stop, or to `document` so it works wherever focus is.
+- `target: "document"`: the hook listens on the document itself, so the keys work wherever focus is. Leave it out and attach `onKeyDown` to the scope that can stop.
+- `onKeyDown`: accepts a React or a DOM keyboard event.
+- Unlike `isSendKey`, this rule has state (the armed first Esc), which is why it comes as a hook.
 
 Some Esc presses never count, and each one also clears an armed first press:
 
 - An Esc typed in a text field (textarea, input, select, contenteditable). The field owns that key. Cmd/Ctrl+. still works there.
-- An Esc whose default is already prevented. A dialog or sheet that closes on Esc should call `event.preventDefault()`, so the press that closed it can't become half of a stop. A document listener only sees it in time if it listens in the capture phase.
+- An Esc whose default is already prevented. A dialog or sheet that closes on Esc should call `event.preventDefault()`, so the press that closed it can't become half of a stop. With `target: "document"`, a dismisser that listens on the document has to use the capture phase, so it runs first.
 - An Esc that ends an input method's composition.
+
+`interruptChordLabel()` returns the chord as the platform writes it (`⌘.` or `Ctrl+.`), for a hint or a button title.
 
 `createInterruptKeys` is the same rule without React. Its `press(event)` returns `"interrupt"`, `"armed"`, or `null`.
 

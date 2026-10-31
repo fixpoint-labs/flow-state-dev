@@ -196,6 +196,7 @@ export {
 
 export {
   createInterruptKeys,
+  interruptChordLabel,
   useInterruptKeys,
   INTERRUPT_WINDOW_MS,
   type InterruptKeyEvent,

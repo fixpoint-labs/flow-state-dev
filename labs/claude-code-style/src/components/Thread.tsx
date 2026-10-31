@@ -1,5 +1,4 @@
 import { useInterruptKeys, useJumpToLatest } from "@flow-state-dev/react";
-import { useEffect } from "react";
 import type { LabAdapter, ProjectRow, SessionRow, TaskRow } from "../adapter";
 import { elapsed, useNow, useWatch } from "../lib/use-watch";
 import { modeOfWorker } from "../modes";
@@ -41,13 +40,12 @@ export function Thread({
   const now = useNow(running);
   const count = view?.entries.length ?? 0;
   const feed = useJumpToLatest({ resetKey: session.id });
-  const keys = useInterruptKeys({ enabled: running && session.projectId !== null, onInterrupt: () => void adapter.interrupt(session.id) });
-  // On the document, so the keys work wherever focus is; a sheet's Esc arrives here already spent.
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => keys.onKeyDown(event);
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [keys.onKeyDown]);
+  // On the document, so the keys work wherever focus is; a sheet's Esc arrives already spent.
+  const keys = useInterruptKeys({
+    enabled: running && session.projectId !== null,
+    onInterrupt: () => void adapter.interrupt(session.id),
+    target: "document",
+  });
 
   return (
     <main aria-label="Main thread" className="flex h-full min-h-0 min-w-0 flex-col">

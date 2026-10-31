@@ -13,7 +13,7 @@
  * The keyboard stop is deliberate: Esc twice within the window, or Cmd/Ctrl+.
  * One Esc only dismisses, and an Esc in the composer is the composer's.
  */
-import { useInterruptKeys } from "@flow-state-dev/react";
+import { interruptChordLabel, useInterruptKeys } from "@flow-state-dev/react";
 import { useEffect, useState } from "react";
 import { EmptyState, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
 import { columnFor } from "../lib/columns";
@@ -117,9 +117,6 @@ function Elapsed({ since }: { since: number }) {
   return <span data-testid="task-elapsed"> · running {waited(since, now)}</span>;
 }
 
-/** The stop chord as this platform writes it. */
-const STOP_CHORD = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘." : "Ctrl+.";
-
 /** A record's time on the user's wall clock, HH:MM. */
 function clockTime(ms: number): string {
   return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -173,7 +170,7 @@ function Activity({ worker, armed }: { worker: string | null; armed: boolean }) 
       ) : null}
       {live && !pending ? (
         <span className="ml-auto" data-testid="interrupt-hint" data-armed={armed}>
-          {armed ? "press Esc again to interrupt" : `esc esc or ${STOP_CHORD} to interrupt`}
+          {armed ? "press Esc again to interrupt" : `esc esc or ${interruptChordLabel()} to interrupt`}
         </span>
       ) : null}
     </div>
@@ -193,7 +190,7 @@ function Actions({ gaps }: { gaps: Gaps }) {
         onClick={() => void task.requestInterrupt()}
         data-testid="task-interrupt"
         className="border px-2.5 py-1 text-xs font-medium disabled:opacity-50"
-        title={running ? `Stop this run (Esc Esc or ${STOP_CHORD})` : "Nothing is running"}
+        title={running ? `Stop this run (Esc Esc or ${interruptChordLabel()})` : "Nothing is running"}
       >
         {pending ? "Interrupting…" : "Interrupt"}
       </button>

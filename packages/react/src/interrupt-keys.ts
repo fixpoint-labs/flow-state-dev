@@ -42,6 +42,16 @@ function inTextField(target: EventTarget | null | undefined): boolean {
   return tag === "TEXTAREA" || tag === "INPUT" || tag === "SELECT";
 }
 
+/**
+ * The stop chord as this platform writes it, for a hint or a button title:
+ * `⌘.` on Apple platforms, `Ctrl+.` elsewhere and when there is no browser.
+ */
+export function interruptChordLabel(): string {
+  if (typeof navigator === "undefined") return "Ctrl+.";
+  const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
+  return /mac|iphone|ipad|ios/i.test(nav.userAgentData?.platform ?? nav.userAgent ?? "") ? "⌘." : "Ctrl+.";
+}
+
 function isStopChord(event: InterruptKeyEvent): boolean {
   return event.key === "." && (event.metaKey || event.ctrlKey);
 }
@@ -88,6 +98,13 @@ export type UseInterruptKeysOptions = InterruptKeysOptions & {
   enabled: boolean;
   /** Called once per completed gesture. */
   onInterrupt: () => void;
+  /**
+   * `"document"`: the hook listens on the document itself, so the keys work
+   * wherever focus is. It listens in the bubble phase, after any
+   * capture-phase dismisser has had the chance to spend an Esc. Leave it out
+   * to attach the returned `onKeyDown` to a scope of your own.
+   */
+  target?: "document";
 };
 
 /**
@@ -100,7 +117,7 @@ export function useInterruptKeys(options: UseInterruptKeysOptions): {
   armed: boolean;
   onKeyDown: (event: InterruptKeyEvent) => void;
 } {
-  const { enabled, onInterrupt, windowMs } = options;
+  const { enabled, onInterrupt, windowMs, target } = options;
   const gesture = useRef(createInterruptKeys({ windowMs }));
   const latest = useRef(onInterrupt);
   latest.current = onInterrupt;
@@ -143,6 +160,13 @@ export function useInterruptKeys(options: UseInterruptKeysOptions): {
     },
     [enabled, disarm, windowMs],
   );
+
+  useEffect(() => {
+    if (target !== "document" || typeof document === "undefined") return;
+    const listener = (event: KeyboardEvent) => onKeyDown(event);
+    document.addEventListener("keydown", listener);
+    return () => document.removeEventListener("keydown", listener);
+  }, [target, onKeyDown]);
 
   return { armed, onKeyDown };
 }

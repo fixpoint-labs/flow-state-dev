@@ -49,6 +49,7 @@ export function Sheet({ label, title, subtitle, onClose, children, footer }: {
   const feed = useJumpToLatest();
   useEffect(() => {
     // Capture phase, and the Esc is spent: it closed the sheet, so it never also counts toward stopping the turn.
+    // Every Esc while the sheet is open closes it, from any focus: the sheet is read-only and holds no text field.
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();

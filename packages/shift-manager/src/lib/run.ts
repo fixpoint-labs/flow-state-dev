@@ -59,25 +59,22 @@ export async function resolveRunFlow(client: Client, sessionId: string): Promise
   return flowId;
 }
 
+/** What one read of the run's request record says: its status, and when it ended, if it has. */
+export type RunRecordRead = { status: RequestStatus; endedAtMs?: number };
+
 /** The run's request record, read through the run's flow. */
-export async function readRunStatus(client: Client, run: Pick<OpenRun, "flowId" | "requestId">): Promise<RequestStatus> {
+export async function readRunRecord(client: Client, run: Pick<OpenRun, "flowId" | "requestId">): Promise<RunRecordRead> {
   try {
-    return (await client.flow(run.flowId).request(run.requestId).status()).status;
+    const snapshot = await client.flow(run.flowId).request(run.requestId).status();
+    return snapshot.completedAtMs === undefined ? { status: snapshot.status } : { status: snapshot.status, endedAtMs: snapshot.completedAtMs };
   } catch (error) {
     return fail(error);
   }
 }
 
-/**
- * When the run's request record says the run ended, in ms since epoch, or
- * `undefined` when the record carries no end time.
- */
-export async function readRunEnd(client: Client, run: Pick<OpenRun, "flowId" | "requestId">): Promise<number | undefined> {
-  try {
-    return (await client.flow(run.flowId).request(run.requestId).status()).completedAtMs;
-  } catch (error) {
-    return fail(error);
-  }
+/** The run's request status alone. */
+export async function readRunStatus(client: Client, run: Pick<OpenRun, "flowId" | "requestId">): Promise<RequestStatus> {
+  return (await readRunRecord(client, run)).status;
 }
 
 /** Items per session-state page. */
@@ -112,8 +109,8 @@ export async function readSessionItems(client: Client, sessionId: string): Promi
 export type RequestFollower = {
   /** A finished item the request stored. */
   onItem(item: OutputItem): void;
-  /** The request's status moved. */
-  onStatus(status: string): void;
+  /** The request's status moved; `at` is the event's time, which for a terminal status is when the run ended. */
+  onStatus(status: string, at?: number): void;
   onError(failure: Failure): void;
 };
 
@@ -129,7 +126,7 @@ export function followRequest(client: Client, run: Pick<OpenRun, "flowId" | "req
       const item = event.item as OutputItem & { transient?: boolean };
       if (item.transient !== true) to.onItem(item);
     },
-    onRequestStatus: (event) => to.onStatus(event.status),
+    onRequestStatus: (event) => to.onStatus(event.status, typeof event.ts === "number" ? event.ts : undefined),
     onError: (error) => to.onError(describeFailure(error)),
   });
 }
@@ -178,8 +175,8 @@ const SETTLE_POLL_MS = 250;
 
 /** What an Interrupt came to. */
 export type InterruptOutcome =
-  /** The request record reads `aborted`. */
-  | { kind: "aborted" }
+  /** The request record reads `aborted`, and says when, if it does. */
+  | { kind: "aborted"; endedAtMs?: number }
   /** The request had already finished, with this status, before the abort landed (BR-12). */
   | { kind: "finished"; status: RequestStatus };
 
@@ -204,8 +201,8 @@ export async function interruptRun(
   for (;;) {
     // The screen that asked has gone: stop reading on its behalf.
     if (options.signal?.aborted === true) throw new RunReadError({ message: "The screen closed before the run's record settled." });
-    const status = await readRunStatus(client, run);
-    if (status === "aborted") return { kind: "aborted" };
+    const { status, endedAtMs } = await readRunRecord(client, run);
+    if (status === "aborted") return endedAtMs === undefined ? { kind: "aborted" } : { kind: "aborted", endedAtMs };
     if (status !== "in_progress") return { kind: "finished", status };
     if (Date.now() > until) {
       throw new RunReadError({ message: "The abort was recorded, but the run has not stopped yet. It may still be running." });

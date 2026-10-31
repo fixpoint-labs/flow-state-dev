@@ -1,8 +1,5 @@
-import { isSendKey } from "@flow-state-dev/react";
+import { interruptChordLabel, isSendKey } from "@flow-state-dev/react";
 import { useState, type FormEvent, type KeyboardEvent } from "react";
-
-/** The stop chord as this platform writes it. */
-const STOP_CHORD = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘." : "Ctrl+.";
 
 /**
  * The only place you type to the main session. Enter or Cmd+Enter (Ctrl+Enter)
@@ -72,7 +69,7 @@ export function Composer({
           </button>
         </div>
       </div>
-      <p className="mt-1 text-xs text-muted-foreground">You talk only to the main session{running ? (armed ? " · press Esc again to stop the turn" : ` · Esc Esc or ${STOP_CHORD} to stop the turn`) : ""}</p>
+      <p className="mt-1 text-xs text-muted-foreground">You talk only to the main session{running ? (armed ? " · press Esc again to stop the turn" : ` · Esc Esc or ${interruptChordLabel()} to stop the turn`) : ""}</p>
     </form>
   );
 }
