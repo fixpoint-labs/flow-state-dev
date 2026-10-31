@@ -21,7 +21,7 @@ worktrees from (`CLAUDE_CODE_STYLE_REPOSITORIES`).
 
 - **setup** the Projects view's *New session* asks for a project (the *New project* form makes
   one), and the header shows `in project: <name>`.
-- **1** your line shows, marked *Sent to a thread*.
+- **1** your line shows, marked *Sent to a task*.
 - **2** through `listTasks_tasks`, three tasks for `desk.thread` on this session's board are open
   at once, none `pending`, each with a run session of its own; three thread cards and three
   board rows show for them.

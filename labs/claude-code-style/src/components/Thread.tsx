@@ -55,7 +55,7 @@ export function Thread({
         {count === 0 ? (
           <div className="mx-auto mt-24 max-w-sm text-center text-sm text-muted-foreground">
             {mode?.pane === "board"
-              ? "Ask the main session for something. It hands each piece to a thread of its own, and each comes back to you when it needs you."
+              ? "Ask the main session for something. It hands each piece to a task of its own, and each comes back to you when it needs you."
               : "Ask the main session for something. It does what it can itself and starts background tasks for the long pieces."}
           </div>
         ) : (

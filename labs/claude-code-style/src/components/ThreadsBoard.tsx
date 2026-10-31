@@ -12,7 +12,7 @@ const rowNote = (task: TaskRow) =>
   task.status === "errored" || task.status === "cancelled" ? statusLine(task) : (task.waitingOn?.prompt ?? task.statusNote ?? "");
 
 /**
- * Threads mode's right pane: the status board, titled *Threads*. Every row is
+ * Threads mode's right pane: the status board, titled *Tasks*. Every row is
  * one task row of the session's board, grouped by what you owe it (the
  * columns table), and pinned ones on top. Each group has a count and
  * collapses; *Resolved* starts collapsed. Opening a thread replaces the board
@@ -54,11 +54,11 @@ export function ThreadsBoard({
   })).filter((group) => group.rows.length > 0);
 
   return (
-    <aside aria-label="Threads" className="flex h-full min-h-0 flex-col bg-inspector">
-      <h2 className="border-b border-border px-4 py-3 text-sm font-semibold">Threads</h2>
+    <aside aria-label="Tasks" className="flex h-full min-h-0 flex-col bg-inspector">
+      <h2 className="border-b border-border px-4 py-3 text-sm font-semibold">Tasks</h2>
       {groups.length === 0 ? (
         <p className="px-4 py-3 text-xs text-muted-foreground">
-          None yet. Ask the main session for something and it starts a thread for each piece.
+          None yet. Ask the main session for something and it starts a task for each piece.
         </p>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
