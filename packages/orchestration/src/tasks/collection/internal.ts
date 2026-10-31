@@ -479,6 +479,11 @@ export function retryWrite(
       leaseUntil: undefined,
       claimedBy: undefined,
       ...(labels !== task.labels ? { labels } : {}),
+      // The last attempt's live wait was resumed with its ending (no resume is
+      // owed, above): its gate is closed, and a new attempt's wait takes the
+      // slot afresh. A lapsed slot stays: the request it is lapsed for still
+      // runs, and its release delivers what it held.
+      ...(task.wait != null && task.wait.lapsed !== true ? { wait: undefined } : {}),
       retryLedger: grantRetry(task),
     },
   };

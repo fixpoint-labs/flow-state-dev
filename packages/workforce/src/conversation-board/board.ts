@@ -489,7 +489,18 @@ function isStartable(task: Task, rows: readonly Task[]): boolean {
   if (task.assignee === undefined) return false;
   const key = sessionKeyOf(task);
   if (key === undefined) return true;
-  return !rows.some((other) => other.id !== task.id && holdsSession(other) && sessionKeyOf(other) === key);
+  return !rows.some((other) => other.id !== task.id && holdsSession(other) && sessionKeyOf(other) === key && !queuedAfter(other, task));
+}
+
+/**
+ * Whether `other`, a holder of `task`'s session, waits behind `task` instead
+ * of blocking it. Two started rows can both be waiting on one session once a
+ * retry reopens one (FIX-2383); each would block the other forever, so the
+ * earlier-filed one runs first. A running holder always blocks.
+ */
+function queuedAfter(other: Task, task: Task): boolean {
+  if (other.status !== "pending" || task.status !== "pending" || !hasStarted(task)) return false;
+  return task.createdAt !== other.createdAt ? task.createdAt < other.createdAt : task.id < other.id;
 }
 
 /**
