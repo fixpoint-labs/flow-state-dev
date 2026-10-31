@@ -73,6 +73,8 @@ const databaseUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
 const openaiApiKey = process.env.OPENAI_API_KEY;
 const redisUrl = process.env.REDIS_URL;
 const bullmqDispatch = process.env.FSD_BULLMQ_DISPATCH === "1";
+// Durable execution, read by `createFlowState` and the startup line alike.
+const durable = true;
 // The `dev` profile's store: SQLite unless `STORE_TYPE` asks for another.
 const devStore =
   process.env.STORE_TYPE === "memory"
@@ -227,7 +229,7 @@ const flowstate = createFlowState({
   // (tests, e2e), where its stops are lost when the process ends. The
   // retention sweeper bounds checkpoint/suspension/lease growth; a 60s
   // cadence makes it observable.
-  durable: true,
+  durable,
   durabilityRetention: { sweepIntervalMs: 60_000 },
   // Enable the gated debug endpoints (incl. the DevTool Suspensions list) for
   // local dev only. Deployed (DB present) stays fail-closed / env-gated.
@@ -259,7 +261,7 @@ const flowstate = createFlowState({
 const activeProfile = flowstate.activeProfile;
 const activeStore = activeProfile === "prod" ? "postgres" : devStore;
 console.error(
-  `[flowstate] profile=${activeProfile} store=${activeStore} durable=true interruptedScan=${!databaseUrl}`,
+  `[flowstate] profile=${activeProfile} store=${activeStore} durable=${durable} interruptedScan=${!databaseUrl}`,
 );
 
 // The workforce's stored-work upgrade runs before the first router (`lib/stored-work-upgrade.ts`).
