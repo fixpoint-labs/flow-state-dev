@@ -67,6 +67,11 @@ flowchart TD
   into every app that adds it. Apps call `workPlace` and pass the result.
 - **Commands are shell-quoted.** A Kitchen Sink worktree lives under `XDG_STATE_HOME`, which
   can hold a space.
+- **No run-record read is opened.** Everything the chip needs for a board task is on the task's
+  output (`branch`, `commits`, `base`, `path`, and `review`), which the board already publishes to
+  the page. The user-scoped `runs/**` record stays closed to the client, as its header says, and
+  the count is the one the manager read at settle. So `readRecordedWork` gains no `run` section:
+  a page passes the row's output, or the session's state, to `workPlace`.
 - **Locks in:** one helper and one component. A third app adds the chip and calls the helper.
 
 ## Decided, not asked
@@ -84,3 +89,5 @@ flowchart TD
 
 - FIX-2369 epic (on FIX-2379's seam): the task-row view carries no harness-manager output; a run's
   branch, commits, `base` and `path` are read through harness-manager's `./browser`. Folded into D2.
+- FIX-2385 (on its `./browser` entry): asked whether a `run` section opens the run record. It
+  doesn't need to; folded into D3 (the output already carries the fields).
