@@ -720,8 +720,11 @@ describe("judgment is the agent's own turn (S8)", () => {
     await post(host, id, "ping, then list");
     expect(judgment.calls[0]!.model).toBe("test/judge");
     expect(await toolOutputs(host, id)).toEqual(["ping", "listDelegates"]);
-    // The worker's own instructions are the turn's prompt, as an agent worker's are.
-    expect(JSON.stringify(judgment.calls[0]!.input)).toContain("Route the work.");
+    const system = (judgment.calls[0]!.input as Array<{ role: string; content: unknown }>).find((message) => message.role === "system");
+    const text = typeof system?.content === "string" ? system.content : "";
+    expect(text.startsWith("You are chief.")).toBe(true);
+    expect(text).toContain(TOOL_USE_RULE);
+    expect(text.indexOf("Route the work.")).toBeGreaterThan(text.indexOf(TOOL_USE_RULE));
   });
 
   it("keeps the delegate tools when the worker's tools: line grants nothing, and fences everything else", async () => {
