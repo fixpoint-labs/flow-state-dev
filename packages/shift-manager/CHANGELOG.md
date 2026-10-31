@@ -1,5 +1,12 @@
 # @flow-state-dev/shift-manager
 
+## 0.1.1
+
+### Patch Changes
+
+- @flow-state-dev/devtool@0.3.1
+- @flow-state-dev/fsdev@0.3.0
+
 ## 0.1.0
 
 ### Minor Changes
