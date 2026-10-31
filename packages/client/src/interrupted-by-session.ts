@@ -6,9 +6,10 @@
  * conversation: to badge a session in its list, and to draw a Continue and
  * Discard line at the lost turn. {@link interruptedBySession} is that view.
  *
- * Each `interrupted()` call asks the server to sweep, a write, so poll it on a
- * slow timer (every 5 seconds is enough): a row is marked interrupted only
- * once its heartbeat is a minute old, so a faster poll shows nothing sooner.
+ * Each `interrupted()` call asks the server to sweep before it reads, so poll
+ * it slowly and only while the page is visible. A row is marked interrupted
+ * only once its heartbeat is older than the server's stale threshold (a minute
+ * by default), so a faster poll shows nothing sooner.
  */
 import type { InterruptedRequest } from "./client";
 

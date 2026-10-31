@@ -162,8 +162,8 @@ never narrow it.
 
 A request is listed once its heartbeat is older than the server's stale
 threshold (a minute by default), so a turn cut off by a restart shows up
-within about a minute. Each call asks the server to sweep first, so poll it on
-a slow timer; every 5 seconds is plenty.
+within about a minute. Each call asks the server to sweep first, so poll it
+slowly and only while the page is visible.
 
 To show lost turns in a conversation list, group them by session with
 `interruptedBySession`, naming the actions that are your app's turns. A

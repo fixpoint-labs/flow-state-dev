@@ -22,6 +22,7 @@ import {
   tagAbortController
 } from "../src/execution/abort-registry";
 import { handleAbortRequest } from "../src/routes/abort-routes";
+import { handleContinueRequest } from "../src/routes/recovery-routes";
 import { recordRequestStop } from "../src/execution/record-request-stop";
 import type { RequestRecord, StoreRegistry } from "../src/stores/types";
 import { createInitialRequestRecord } from "../src/context/initial-request-record";
@@ -282,6 +283,43 @@ describe("handleAbortRequest", () => {
       await stores.request.set("req_cut", cut(), "any");
       await abortCut();
       expect((await abortCut()).status).toBe(409);
+    });
+
+    it("leaves a continue that took it first running: already resolved, never aborted", async () => {
+      await stores.request.set("req_cut", cut(), "any");
+      const checked = (await stores.request.get("req_cut"))!;
+      // The continue lands between the stop's first write (refused: not
+      // in_progress yet) and its end of the dead request.
+      const write = stores.request.setFieldsIfStatus.bind(stores.request);
+      let calls = 0;
+      vi.spyOn(stores.request, "setFieldsIfStatus").mockImplementation(async (...args) => {
+        calls += 1;
+        if (calls === 2) await stores.request.set("req_cut", { ...cut(), status: "in_progress" }, "any");
+        return write(...args);
+      });
+
+      expect(await recordRequestStop(stores.request, checked)).toEqual({ kind: "already-resolved" });
+      expect((await stores.request.get("req_cut"))?.status).toBe("in_progress");
+    });
+
+    it("once ended, cannot be continued: /continue answers 409", async () => {
+      const flow = defineFlow({
+        kind: "chat",
+        actions: { respond: { inputSchema: z.any(), block: handler({ name: "h", inputSchema: z.any(), outputSchema: z.any(), execute: async () => "x" }) } }
+      })();
+      const registry = createFlowRegistry();
+      registry.register(flow);
+      await stores.request.set("req_cut", { ...cut(), flowId: flow.id, source: "http" }, "any");
+      await abortCut();
+
+      const response = await handleContinueRequest(
+        new Request("http://localhost/continue", { method: "POST" }),
+        { kind: "continue_request", flowKind: "chat", sessionId: "s1", requestId: "req_cut" },
+        { registry, stores, runtimeConfig: {} } as never
+      );
+      expect(response.status).toBe(409);
+      expect((await response.json()).error).toContain('has status "aborted" and cannot be continued');
+      expect((await stores.request.get("req_cut"))?.status).toBe("aborted");
     });
 
     it("never writes a later request that took the id since the check", async () => {
