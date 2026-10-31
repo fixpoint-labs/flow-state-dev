@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 /**
- * A received message that is a call is marked as one: its sender is waiting on
- * this worker's reply, so someone watching the conversation has to tell it
- * apart from a plain message, which wants nothing back.
+ * A received message that asks for a reply is marked as one: its sender is
+ * owed this worker's answer (FIX-2310, FIX-2318), so someone watching the
+ * conversation has to tell it apart from a plain message, which wants nothing back.
  */
 import { cleanup, render, screen } from "@testing-library/react";
 import type { ComponentItem } from "@flow-state-dev/core/items";
@@ -16,27 +16,21 @@ function received(data: Record<string, unknown>): ComponentItem {
 }
 
 describe("a received message", () => {
-  it("marks a call, since its sender waits for this worker's reply", () => {
-    render(<ReceivedMessage item={received({ call: true })} />);
-    expect(screen.getByTestId("received-message").dataset.call).toBe("true");
-    expect(screen.getByTestId("received-message-call").textContent).toBe("call · the reply goes back");
+  it("marks a reply request, since its sender is owed this worker's answer", () => {
+    render(<ReceivedMessage item={received({ replyRequested: true })} />);
+    expect(screen.getByTestId("received-message").dataset.replyRequested).toBe("true");
+    expect(screen.getByTestId("received-message-reply-requested").textContent).toBe("asks for a reply · the reply goes back");
   });
 
-  it("marks a call that answers a message of this worker's with both notes", () => {
-    render(<ReceivedMessage item={received({ call: true, inReplyTo: "msg_0" })} />);
+  it("marks a reply request that answers a message of this worker's with both notes", () => {
+    render(<ReceivedMessage item={received({ replyRequested: true, inReplyTo: "msg_0" })} />);
     expect(screen.getByTestId("received-message-answers")).toBeTruthy();
-    expect(screen.getByTestId("received-message-call")).toBeTruthy();
+    expect(screen.getByTestId("received-message-reply-requested")).toBeTruthy();
   });
 
-  it("draws a plain message without the mark", () => {
-    render(<ReceivedMessage item={received({ call: false })} />);
-    expect(screen.getByTestId("received-message").dataset.call).toBe("false");
-    expect(screen.queryByTestId("received-message-call")).toBeNull();
-  });
-
-  it("reads an item stored before calls existed as a plain message", () => {
+  it("draws a plain message without the mark, and an item with no flag as a plain message", () => {
     render(<ReceivedMessage item={received({})} />);
-    expect(screen.getByTestId("received-message").dataset.call).toBe("false");
-    expect(screen.queryByTestId("received-message-call")).toBeNull();
+    expect(screen.getByTestId("received-message").dataset.replyRequested).toBe("false");
+    expect(screen.queryByTestId("received-message-reply-requested")).toBeNull();
   });
 });

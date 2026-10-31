@@ -129,7 +129,7 @@ describe("a worker messages another worker", () => {
       expect(rows[0]).toMatchObject({ from: "otto", to: "lead", text: "What is the codename?", status: "delivered", hop: 1, fromSession: otto, toSession: lead!.id });
 
       // Its own item: the sender, the id and the text, drawn by the client only.
-      expect(await receivedIn(h, lead!.id)).toEqual([{ id: rows[0]!.id, from: "otto", text: "What is the codename?", budget: 5, call: false }]);
+      expect(await receivedIn(h, lead!.id)).toEqual([{ id: rows[0]!.id, from: "otto", text: "What is the codename?", budget: 5 }]);
       const items = await itemsOf(h, lead!.id);
       expect(items.find((item) => item.type === "component")?.itemVisibility).toEqual({ client: true, history: false });
       // The line the model reads, in history only.
@@ -276,7 +276,7 @@ describe("an answer", () => {
       const rows = await logRows(h, "alice");
       const question = rows.find((row) => row.from === "otto")!;
       const answer = rows.find((row) => row.from === "lead")!;
-      expect(await receivedIn(h, otto)).toEqual([{ id: answer.id, from: "lead", text: "It is Bluebird.", inReplyTo: question.id, budget: 4, call: false }]);
+      expect(await receivedIn(h, otto)).toEqual([{ id: answer.id, from: "lead", text: "It is Bluebird.", inReplyTo: question.id, budget: 4 }]);
       expect(answer).toMatchObject({ to: "otto", inReplyTo: question.id, exchange: question.id, toSession: otto, status: "delivered", hop: 2 });
     } finally {
       await h.dispose();
@@ -1043,8 +1043,11 @@ describe("who can be messaged", () => {
     expect(sendMessageInputSchema.safeParse({ to: "lead", text: "Hi." }).success).toBe(true);
     expect(sendMessageInputSchema.safeParse({ to: "lead", text: "Hi.", wait: true, deadline: 60_000 }).success).toBe(true);
     expect(sendMessageInputSchema.safeParse({ to: "lead", text: "Hi.", from: "lead" }).success).toBe(false);
-    // Whether a message is a call is the server's to say, from `wait`: a model can't set it.
+    // Whether the sender waits is the server's to record, from `wait`: a model can't set a row's flags.
     expect(sendMessageInputSchema.safeParse({ to: "lead", text: "Hi.", call: true }).success).toBe(false);
+    // One way to get an answer (FIX-2318): there is no second "wait again" path, so a send names who and what.
+    expect(sendMessageInputSchema.safeParse({ callId: "msg_1" }).success).toBe(false);
+    expect(sendMessageInputSchema.safeParse({ text: "Hi." }).success).toBe(false);
   });
 });
 

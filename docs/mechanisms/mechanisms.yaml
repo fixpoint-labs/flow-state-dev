@@ -622,13 +622,14 @@ mechanisms:
     doc: packages/workforce/README.md
 
   - id: worker-messages
-    job: Let one worker message another on its user's roster. Talk, not delegation; no task row.
+    job: Let one worker message another on its user's roster. Talk, not delegation; no task row. One way to get an answer (FIX-2318). A message that asks for a reply (replyRequested, or wait to wait for it in the turn) gets exactly one answer, sent through sendMessage inReplyTo; a waited answer is held as the tool's result, a late one lands as a message. consultSessionHistory reads a conversation without waking it.
     package: "@flow-state-dev/workforce"
     anchor: sendMessage
     file: packages/workforce/src/messages/send-message.ts
-    builtOn: [workforce, dispatch]
+    builtOn: [workforce, dispatch, wait-gate]
     overlaps:
       - { id: task, relation: distinct-jobs, note: "Delegation files a task row; a message files nothing. A second way to reach a worker would be a third." }
+      - { id: wait-gate, relation: distinct-jobs, note: "sendMessage({ wait }) parks on the one wait gate, as getTask({ wait }) does; the gate is the park, this row is the reply. There is no second reply path (the call's was removed by FIX-2318)." }
     status: canonical
     doc: packages/workforce/README.md
 

@@ -146,43 +146,38 @@ function messageTargetLabel(to: unknown): string {
   return "another worker";
 }
 
-/** What a call's answer says under its line: the reply, or why none came yet (FIX-2239). */
-function callOutcomeLine(output: { status?: unknown; reply?: unknown; recipient?: unknown } | undefined): string | null {
+/** What a waited send's answer says under its line: the reply, or why none came yet (FIX-2318). */
+function waitOutcomeLine(output: { status?: unknown; reply?: unknown; recipient?: unknown } | undefined): string | null {
   if (output?.status === "answered" && typeof output.reply === "string") return output.reply;
   if (output?.status === "running") {
-    return output.recipient === "waiting_on_person" ? "No answer by the deadline: it waits on the user." : "No answer by the deadline yet.";
+    return output.recipient === "waiting_on_person"
+      ? "No answer by the deadline: it waits on the user. The answer comes as a message."
+      : "No answer by the deadline yet. The answer comes as a message.";
   }
   return null;
 }
 
 function MessageCallLine({ item }: { item: ToolOutputItem }) {
-  const args = argsOf(item) as { to?: unknown; text?: unknown; wait?: unknown; callId?: unknown } | undefined;
-  const callId = typeof args?.callId === "string" ? args.callId : undefined;
+  const args = argsOf(item) as { to?: unknown; text?: unknown; wait?: unknown; replyRequested?: unknown } | undefined;
   const to = messageTargetLabel(args?.to);
-  const text = callId !== undefined ? `call ${callId}` : typeof args?.text === "string" ? args.text : "";
-  const isCall = args?.wait === true || callId !== undefined;
+  const text = typeof args?.text === "string" ? args.text : "";
+  const waits = args?.wait === true;
+  const asks = waits || args?.replyRequested === true;
   const state = stateOf(item);
   const output = item.output as { ok?: unknown; error?: unknown; status?: unknown; reply?: unknown; recipient?: unknown } | undefined;
   const refused = state === "error" || output?.ok === false || output?.status === "failed";
   const reason = typeof output?.error === "string" ? output.error : item.error?.message;
   const busy = state === "running" || state === "pending" || state === "waiting";
-  const label =
-    callId !== undefined
-      ? refused
-        ? "Couldn't wait again"
-        : busy
-          ? "Waiting again…"
-          : "Waited again"
-      : refused
-        ? `Not sent to ${to}`
-        : busy
-          ? isCall
-            ? `Asking ${to}…`
-            : `Sending to ${to}…`
-          : isCall
-            ? `Asked ${to}`
-            : `To ${to}`;
-  const answer = isCall && !refused ? callOutcomeLine(output) : null;
+  const label = refused
+    ? `Not sent to ${to}`
+    : busy
+      ? asks
+        ? `Asking ${to}…`
+        : `Sending to ${to}…`
+      : asks
+        ? `Asked ${to}`
+        : `To ${to}`;
+  const answer = waits && !refused ? waitOutcomeLine(output) : null;
   return (
     <div className="not-prose text-sm" data-testid="message-call" data-to={to} data-state-kind={refused ? "error" : state}>
       <p className="whitespace-pre-wrap">
