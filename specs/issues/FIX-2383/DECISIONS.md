@@ -65,9 +65,10 @@ how a terminal row reopens, who may ask, and what the attempt budget says.
   and triggers its pass after the write (`owePass`, `triggerPass`). A row back at `pending` alone
   schedules nothing.
 - **E6 · A retried row waits like a new one, with nothing of the last attempt open.** Until its
-  next claim the row is `retryPending` and holds no session (Workforce's one-open-task rule and
-  the routed-session record), so it can't lock out the row running there or another retried
-  row. The retry closes what ended with the attempt: a resumed wait slot is freed, unanswered
+  next claim the row is `retryPending` and holds no session under Workforce's one-open-task rule,
+  so it can't lock out the row running there or another retried row. A routed-session record
+  that names it still does: the record is what keeps two boards out of one session. A worker's
+  own step refuses a retry (`step_cannot_be_retried`): only its worker's turn runs it. The retry closes what ended with the attempt: a resumed wait slot is freed, unanswered
   questions are dropped (answered ones stay beside their steers). Found in Codex's review of
   the build.
 
