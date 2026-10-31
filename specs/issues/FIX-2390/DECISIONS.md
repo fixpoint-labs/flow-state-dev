@@ -40,6 +40,9 @@ it.
 - **Locks in:** Shift Manager still runs one harness per process. A follow-up is filed when
   this merges: lift per-worker harness routing into `harness-manager`, then Shift Manager
   chooses per task or per project and the lab drops its router.
+- **No new start-time refusal.** Codex and Cursor start without a sign-in check here: FIX-2391
+  (#4372) makes Shift Manager's start report readiness for every harness instead of refusing,
+  so a refusal added here would only be removed there (Architect, round 1).
 - **What would change my mind:** Jake wanting per-task choice in Shift Manager inside this
   epic. Then the follow-up joins FIX-2369 as a wave-1 package slice.
 
@@ -67,4 +70,12 @@ it.
 
 ## Notes from review
 
-- (none yet)
+- FSD Architect (5f78b89): **folded.** Shift Manager adds `codex` and `cursor` with no new
+  refuse-at-start check, so FIX-2391's readiness report owns start behaviour for all three.
+- Cursor (5f78b89), approved direction. **Folded:** `no-route` covers `desk.lead` too; routing by
+  the person's own words is best effort, unchecked. **Recorded for the implementer:** keep the
+  `Coder:` line's wording in one place in code (the composer) with a test pinning the exact
+  words the two `WORKER.md` files name, since a prompt file can't import a constant; the hint
+  routing is lab-only, and Shift Manager's choice stays process-level; D1 trades deterministic
+  routing for no package surface, which the goal leg and its controls keep honest.
+- Codex (5f78b89): no findings, three runs.

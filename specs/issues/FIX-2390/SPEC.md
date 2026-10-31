@@ -10,8 +10,8 @@
 | **wants to compare Codex or Cursor with Claude Code** (lab) | Only by writing their own `WORKER.md` | They pick *Codex* or *Cursor* on the chip; the change runs on that harness, and the card and row are tagged with it |
 | **is rate-limited on one harness** (lab) | Stuck until the window resets | Picks another harness on the chip for the next change |
 | **leaves the chip on *Auto*** (lab) | — | Exactly today's behaviour: `desk.coder` / `desk.thread-coder` on Claude Code |
-| **asks the main session in words** ("plan it first", "use Codex") without the chip | The words reach a model that has no worker to send it to | The routing text in `desk.main` and `desk.lead` sends it to the matching worker |
-| **runs Shift Manager on a real FSD issue** | The coder is `stub` or `claude-code`, chosen once per process, and a Claude Code run is cut off at 10 minutes | `DEVFORCE_LAB_HARNESS` also takes `codex` and `cursor`, each refused at start when not signed in, as Claude Code is. The run budget defaults to 20 minutes and a setting changes it |
+| **asks the main session in words** ("plan it first", "use Codex") without the chip | The words reach a model that has no worker to send it to | Best effort: the routing text names the words too, but only the chip's line is checked |
+| **runs Shift Manager on a real FSD issue** | The coder is `stub` or `claude-code`, chosen once per process, and a Claude Code run is cut off at 10 minutes | `DEVFORCE_LAB_HARNESS` also takes `codex` and `cursor`. They start with no sign-in check of their own: readiness for every harness is FIX-2391's, which reports instead of refusing. The run budget defaults to 20 minutes and a setting changes it |
 | **wants a different harness per task in Shift Manager** | Can't | **Still can't in this issue.** A follow-up lifts the lab's per-worker harness routing into `harness-manager` so Shift Manager uses the same piece ([D2](DECISIONS.md#d2)) |
 
 ## The goal, and how we'll know it's met
@@ -52,13 +52,14 @@ new worker is a `WORKER.md` on the existing `harness-thread` flow.
   never on adapter return values. The Codex leg grades the filing and the tag, not the run's
   outcome, so it needs no Codex account.
 - **Controls that must fail:** `no-hint`, the chip's line left off the sent message (must fail
-  the Codex filing); `no-route`, the routing text removed from `desk.main`'s file (must fail the
-  same signal). Both run and fail before the PR is ready (ER-6).
+  the Codex filings in both modes); `no-route`, the routing text removed from `desk.main`'s and
+  `desk.lead`'s files, their delegates kept (must fail the same signals). Both run and fail
+  before the PR is ready (ER-6).
 - **Regression:** `session-mode-script` and `threads-mode-script` pass unchanged, with the chip
   on *Auto*.
 - **Unit:** the composer test shows the chip's line on the sent text and none on *Auto*;
   Shift Manager's `selectHarness` tests cover `codex`, `cursor`, the budget setting, and a bad
-  budget refused at start.
+  budget refused at start; Claude Code's start check is unchanged.
 
 ## What changes
 
@@ -73,8 +74,10 @@ new worker is a `WORKER.md` on the existing `harness-thread` flow.
   is open. Any other choice adds one plain line to the message the person sends (for example
   `Coder: Codex`), which shows in the transcript as sent ([D1](DECISIONS.md#d1)).
 - **Shift Manager (`teams/devteam/harness.mts`):** `codex` and `cursor` join `HARNESS_CHOICES`,
-  each with its account probe at start and only its own environment pass-list; a run budget
-  setting (minutes), defaulting to 20 for a real harness. The start line names the budget.
+  each with only its own environment pass-list and no new start-time check ([D2](DECISIONS.md#d2));
+  a run budget setting (minutes), defaulting to 20 for a real harness. The start line names the
+  coder and the budget. The hint-line routing stays lab-only: Shift Manager's choice is
+  process-level.
 - **Docs:** the lab README's worker list and the Shift Manager README's settings table.
 
 ## What stays as it is
@@ -88,7 +91,7 @@ workforce turn input; core and the engine; Shift Manager's one coder per process
 |---|---|
 | `harness-thread.mts`'s managers per harness and `permissionMode: plan` (FIX-2152) | **Reused**, unchanged: each new worker is a file naming them |
 | `HARNESS_LABEL` in `ThreadStatus.tsx` | **Reused** for the card tag and the chip's labels |
-| Shift Manager's `selectHarness` / `startHarness` and `probeClaudeAccount` | **Extended** with `probeCodexAccount` and Cursor's sign-in read, the same refuse-at-start rule |
+| Shift Manager's `selectHarness` / `startHarness` | **Extended** with two choices and the budget. Its Claude Code refusal is left as it is; FIX-2391 (#4372) turns all three into a readiness report, so this adds no refusal for it to remove |
 | FIX-2371 (optimistic send, same composer) | **Merges first** (epic build order: 2371 → 2390); this branch merges main after it |
 | FIX-2403 (harness chips read FIX-2391's readiness) | **Builds on this chip** later; nothing here probes readiness in the browser |
 
