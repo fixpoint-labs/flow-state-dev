@@ -136,6 +136,7 @@ describe("what a turn changed", () => {
           writeFileSync(join(cwd, `${input.prompt}.txt`), `${input.prompt}\n`);
           git(cwd, "add", ".");
           git(cwd, "commit", "-q", "-m", input.prompt);
+          if (input.prompt === "throws") throw new Error("the harness fell over");
           return { outcome: "completed" };
         },
       }) as unknown as HarnessBlock;
@@ -174,6 +175,39 @@ describe("what a turn changed", () => {
       await expect(read({ turn: "no-such-turn" })).rejects.toThrow(/no turn/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("has the turn's end written by the time its terminal status is stored, so a page refreshing on it can read the turn", async () => {
+    // The engine emits a turn's terminal status before `request.onFinished`
+    // runs, and a page refreshes on that status: an end written after it lands
+    // on a page that has already read the turn. Snapshot the session the
+    // first time the request's events are flushed with its record settled.
+    for (const [prompt, status] of [["first", "completed"], ["throws", "failed"]] as const) {
+      const stores = createInMemoryStores();
+      const { dir, flow } = committing();
+      try {
+        const sessionId = `s-ordering-${prompt}`;
+        const now = Date.now();
+        await stores.session.set(
+          sessionId,
+          { id: sessionId, flowKind: "stub-session", userId: "u", orgId: DEFAULT_ORG_ID, metadata: undefined, latestRequestId: undefined, state: { model: "stub-model" }, version: 0, createdAt: now, updatedAt: now, journal: [] } as never,
+          "any" as never,
+        );
+        let atTerminal: Record<string, { head: string | null }> | null = null;
+        const flushEvents = stores.request.flushEvents.bind(stores.request);
+        stores.request.flushEvents = async (requestId: string) => {
+          await flushEvents(requestId);
+          if (atTerminal !== null || (await stores.request.get(requestId))?.status !== status) return;
+          atTerminal = ((await stores.session.get(sessionId))!.state as { turns: Record<string, { head: string | null }> }).turns;
+        };
+        await runAction({ flow, actionName: "turn", input: { prompt }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId, stores, runtimeConfig: {} } as never).catch(() => undefined);
+        const head = git(dir, "rev-parse", "HEAD").trim();
+        expect(atTerminal, `${prompt}: the terminal status was never stored`).not.toBeNull();
+        expect(Object.values(atTerminal!).map((record) => record.head), prompt).toEqual([head]);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
     }
   });
 
