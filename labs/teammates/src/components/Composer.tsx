@@ -1,7 +1,9 @@
+import { isSendKey } from "@flow-state-dev/react";
 import { useState, type FormEvent, type KeyboardEvent } from "react";
 
 /**
- * Where you type to the open worker. Enter sends, Shift+Enter is a new line.
+ * Where you type to the open worker. Enter or Cmd+Enter (Ctrl+Enter) sends,
+ * Shift+Enter is a new line.
  * A line sent while the worker answers waits for that answer. It sits in the
  * conversation's column (`--thread-width`), and the box grows with what you
  * type up to a cap, then scrolls.
@@ -19,10 +21,7 @@ export function Composer({ workerName, running, onSend }: { workerName: string; 
     send();
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Enter that ends an input method's composition (CJK and the like) picks the text; it doesn't send.
-    // Safari fires that Enter after compositionend, so isComposing is false there; keyCode 229 still marks it.
-    const composing = event.nativeEvent.isComposing || event.keyCode === 229;
-    if (event.key === "Enter" && !event.shiftKey && !composing) {
+    if (isSendKey(event, { enterSends: true })) {
       event.preventDefault();
       send();
     }

@@ -1,7 +1,9 @@
+import { isSendKey } from "@flow-state-dev/react";
 import { useState, type FormEvent, type KeyboardEvent } from "react";
 
 /**
- * The only place you type. Enter sends, Shift+Enter is a new line. While a
+ * The only place you type to the main session. Enter or Cmd+Enter (Ctrl+Enter)
+ * sends, Shift+Enter is a new line. While a
  * turn runs, Send becomes Stop; a line you send then waits for the turn.
  */
 export function Composer({
@@ -25,9 +27,7 @@ export function Composer({
     send();
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Enter that confirms an IME composition is not a send (229: Safari's keydown for it).
-    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (isSendKey(event, { enterSends: true })) {
       event.preventDefault();
       send();
     } else if (event.key === "Escape" && running) {
