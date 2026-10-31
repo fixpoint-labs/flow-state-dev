@@ -39,7 +39,7 @@ flowchart LR
 |---|---|
 | **Goal check** | One goal per app, out of CI like every goal: `goals/teammates-lab/survives-a-crash-mid-turn/`, `goals/kitchen-sink-harness/survives-a-crash-mid-turn/`, `goals/shift-manager/survives-a-crash-mid-turn/`. Each serves the app on its own scratch store, holds a turn open, files a coding task on a stub harness, crashes the host and reads back with the public client |
 | **Signal** | `conversation`: the session lists the person's message and every earlier turn. `cut-turn`: `requests.interrupted()` lists the turn that was running, and it does not read as still running. `task`: within the lease plus one sweep, the task row reads a new attempt or an ending whose reason names the restart, with no call from the goal in between |
-| **Control that must fail** | `fresh-store`: the second serve gets a new store path; `conversation` fails. `wrapper-kill`: the helper signals only the spawned wrapper; it throws *the process group survived*, and the goal fails. Each FAIL is shown in the PR before the PASS |
+| **Control that must fail** | Each app goal: `fresh-store`, the second serve gets a new store path; `conversation` fails. Once, on the helper, in PR 1: `wrapper-kill` in Shift Manager's j3 signals only the spawned wrapper; the helper throws *the process group survived* and j3 fails `j3:crashed`. Each FAIL is shown in the PR before the PASS |
 
 ## What changes
 

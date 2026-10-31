@@ -51,9 +51,15 @@ goal, which needs no app change, moves into PR 1.
 - **The task signal allows either outcome.** Whether a task on a dead claim is re-claimed or ended
   is harness-manager's policy. The goal fails only on a row that still reads *running* on a dead
   claim after the lease and one sweep.
+- **Each goal shortens the lease and the sweep it waits on**, through the goal-only settings its
+  host already reads (Shift Manager's `GOAL_SWEEP_MS`, the stale-request sweep the client crash
+  goals shorten). The `task` signal is bounded in seconds, never by production timings.
+- **`wrapper-kill` is proven once, on the helper, through j3.** It is a property of
+  `crashAndRestart`, so the app goals carry `fresh-store` only.
 - **A turn held open is the goal's to arrange**, with a scripted model or harness that waits. The
   goal kills only after it reads the turn as running, never on a timer.
-- **The wait for an empty group is bounded** (a few seconds). The bound is the implementer's.
+- **The wait for an empty group is bounded** (a few seconds) and polls asynchronously. The bound
+  and the interval are the implementer's.
 - **Each goal serves its app on its own scratch store**, never the developer's.
 - **Names beyond `crashAndRestart` and the goal folders** are the implementer's.
 
@@ -65,6 +71,17 @@ goal, which needs no app change, moves into PR 1.
 | A restart-on-the-same-store helper that owns the store | D1: three apps keep their store three ways (`TEAMMATES_STORE`, Kitchen Sink's profile, Shift Manager's `GOAL_STORE`) |
 | Fold the three graceful restarts onto the helper | They test a graceful restart and are correct; a crash would change what they prove |
 | Kitchen Sink's Playwright isolation and a mobile project | Not about a restart; the issue lists them as context for Kitchen Sink's gaps |
+
+## Notes from review
+
+Recorded for the implementer, from Cursor's round-1 review (direction approved):
+
+- "you could also state upfront that PR1 *may* include that goal even when 2377 is on track" (the
+  Shift Manager goal). The implementer may move it into PR 1 if it needs no app file.
+- "One table + a single 'Net: flat' line would shorten review." Kept: the template asks for the
+  three tables.
+- "keep the two-line result + date in DECISIONS only" (the POC). Kept: retained POCs are the
+  repository's convention for settled premises.
 
 ## Open
 
@@ -79,3 +96,4 @@ None.
 ## How it got here
 
 - **2026-10-31** · Drafted from the issue, the epic's build order and seams, and the POC.
+- **2026-10-31** · Round 1 (Cursor): the task signal waits on shortened lease and sweep; `wrapper-kill` proven once on the helper.
