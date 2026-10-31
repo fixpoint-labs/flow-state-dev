@@ -18,8 +18,9 @@ original Linear description ([absorbed](absorbed/linear-content.md)) and the FIX
    [who-owns-what table](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/epics/FIX-1649/DECISIONS.md#who-owns-what);
    for workstreams, see 7.
 2. **This project is not Layer 2 vocabulary.** It lives in Workforce: Layer 2 Abstraction
-   (P-FIX-40); an epic here that needs a new noun files it there. *FIX-1786, filed here, rewrites
-   that vocabulary: [Open](#open), ask 2.*
+   (P-FIX-40); an epic here that needs a new noun files it there. *FIX-1786, filed here, rewrote
+   part of that vocabulary and closed here on Oct 23, so ask 2 lapsed unanswered; this item binds
+   later epics (32 to 37).*
 3. **DevForce is a Lab built completely on Workforce** (D-12, Conductor retired). The finish-line
    Labs are DevForce and CyberForce.
 4. **Wake is FIX-1637's.** This project points at the wake spine and never builds its own
@@ -32,8 +33,8 @@ original Linear description ([absorbed](absorbed/linear-content.md)) and the FIX
 7. **A workstream is split between two epics.** FIX-1650 owns the workstream itself: the
    channel, its flow, and that it exists. FIX-1651 owns what sits on its board: tasks, rows,
    brief, results, and task states. Decided by the EM on 2026-09-30 from FIX-1649's Linear
-   description; FIX-1649's who-owns-what table was amended on Sep 30 to match. *Contested by
-   FIX-1786: [Open](#open), T3.*
+   description; FIX-1649's who-owns-what table was amended on Sep 30 to match. *Amended by FIX-1786
+   (T3, settled at its wrap): a workstream has one owner (34).*
 
 ### Settled by FIX-1649, recorded at its wrap on 2026-10-04
 
@@ -60,7 +61,8 @@ children's specs, and Jake's calls during the build.
     closure pins it). Its only room writes are `lib/talk.ts`'s `sendAction(` (a project room's
     read, post and join, on `ROOM_KIND`) and `lib/reads.ts`'s `createSession(` (the person's room
     session, on `ROOM_KIND`), both into the person's own sessions, never a worker's. Held as
-    [PR-2](BUSINESS-RULES.md). *Contested by FIX-1786: [Open](#open), T2.*
+    [PR-2](BUSINESS-RULES.md). *Superseded by FIX-1786 (T2, settled at its wrap): rooms are gone,
+    and the list is the one PR-2 now names (34).*
 12. **Projects are usually cross-team, and private or shared** (Jake). A project names no team;
     one whose workstreams all sit in one team is allowed but is never the default
     ([FIX-1718 BR-2a](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/issues/FIX-1718/BUSINESS-RULES.md)).
@@ -73,13 +75,15 @@ children's specs, and Jake's calls during the build.
 13. **A workstream's board is the one its channel declares.** Only `boards:` on a channel attaches
     one; a board declared in a kind's code is not a workstream's board. The five-column Board is
     Shift Manager's mapping of shipped task statuses, which FIX-1651 may replace; IN REVIEW holds
-    nothing until FIX-1651 ships a review state. *Contested by FIX-1786: [Open](#open), T3.*
+    nothing until FIX-1651 ships a review state. *Amended by FIX-1786 (T3): a workstream's board
+    is its owner's, reached through its session (34).*
 14. **A worker's shift status has one rule.** On shift, on call and off shift are derived in
     Shift Manager from board rows and pending asks (FIX-1723), with no field in Workforce; a
     sibling that shows a worker's status uses that rule.
 15. **The CoS seat's screen is called Shift Coordinator in Shift Manager only** (Jake, FIX-1747).
     The `chief-of-staff` seat and its persona keep their name everywhere else, FIX-1650's
-    included. *Contested by FIX-1786: [Open](#open), T4.*
+    included. *FIX-1786 (T4, settled at its wrap) made workers private resources and the
+    coordinator one standard flow (32, 33); the screen name stands.*
 
 ### Settled by FIX-1815, recorded at its wrap on 2026-10-11
 
@@ -189,28 +193,48 @@ and every control fails ([#4278](https://github.com/fixpoint-labs/flow-state-dev
     `defineAgentWorkerFlow({ settings })`, for the app to read. The flow never looks at them, so
     they can't change how a worker runs; a setting that should is one of the flow's own.
 
+### Settled by FIX-1786, recorded at its wrap on 2026-10-31
+
+FIX-1786 went Done in Linear on Oct 23; this record reached the spec a week later. Each item binds
+a sibling that hires workers, opens workstreams or hands work down a chain. Sources: FIX-1786's
+retained [spec](https://github.com/fixpoint-labs/flow-state-dev/tree/main/specs/epics/FIX-1786)
+and its children's, as merged to `main`. Its closure, FIX-1797, was closed by the owner without a
+clean final run; the last graded commit was `e2ee2c18`, and every finding was fixed as a child.
+
+32. **One privacy rule.** A worker's own state and user-scoped data are private to one user, keyed
+    per user and org (FIX-1790); shared resources and org scope are shared, and a flow writes to
+    org scope only by its author's choice (FIX-1786
+    [D3](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/epics/FIX-1786/DECISIONS.md#d3), Jake, 2026-10-06). Workers are resources on a
+    user's roster, and a session's worker is fixed at create and never named on a turn (FIX-1788).
+    It settled what was tension T4.
+33. **Coordinators replace mailboxes and rooms.** One coordinator flow with a routing setting,
+    judgment, best fit, round robin or everyone; a relay is a coordinator with a fixed policy and
+    no board ([D2](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/epics/FIX-1786/DECISIONS.md#d2)). A mailbox board became a session board,
+    or a workstream when a person tracks the work past one conversation
+    ([D5](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/epics/FIX-1786/DECISIONS.md#d5)). No epic brings either back.
+34. **Projects are private or shared, and a workstream has one owner** (FIX-1793). A workstream is
+    a session on an existing worker, opened by the project coordinator
+    ([FIX-1793 D3](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/issues/FIX-1793/DECISIONS.md#d3)). The org reads every workstream's
+    status and objectives; only its owner changes it or sees its tasks. Rooms are removed. It
+    settled what were tensions T2 and T3.
+35. **A worker gets the task tools when one of its delegates can take a task**
+    ([D8](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/epics/FIX-1786/DECISIONS.md#d8)). No flag: delegates are the grant, and the roster
+    is read per call. A chain goes at most five boards deep and holds at most 100 tasks by
+    default, a cap the app can configure. Each board keeps its tasks at its owner's user scope,
+    in a partition only its own conversation reaches ([D6](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/epics/FIX-1786/DECISIONS.md#d6)).
+36. **The retired terms are gone, with no alias** ([D7](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/epics/FIX-1786/DECISIONS.md#d7),
+    [D9](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/epics/FIX-1786/DECISIONS.md#d9)). Discovery's worker domain is `workers`, a task
+    board names an assignee, and the mailbox domain is removed. Workforce no longer uses flow
+    instances or owner pins; removing them from the engine is FIX-1798, Backlog in Framework
+    simplification. It settled what was tension T5.
+37. **The owner may close a closure on its last graded run**
+    ([FIX-1797, closed by the owner](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/issues/FIX-1797/DECISIONS.md#closed-by-the-owner)).
+    When other epics are rewriting what a closure grades, the owner can close it on the last
+    graded commit if every finding was fixed and measured on its own. The lesson it binds later
+    closures to, with 22: grade one pinned commit and close on that verdict, rather than
+    re-pinning to chase other epics' merges.
+
 ## Open
 
-### What FIX-1786 would change. These are tensions, not decisions
-
-FIX-1786 (approved Oct 6) carries the owner's PRD. T1 was answered on Oct 6 (item 12); T2 to T5
-stay open as written. Until the owner answers each, **every item above stands** and siblings
-build to it.
-
-| | In force today | FIX-1786 proposes | Binds |
-|---|---|---|---|
-| **T2** | Project-room seams (11, PR-2) | Rooms removed | FIX-1649's seam list, FIX-1650 |
-| **T3** | Workstream = channel plus flow; its board is the channel's (7, 13) | One owner; a project entry plus the lead's session board. *Still open in FIX-1786* | FIX-1650, FIX-1651 |
-| **T4** | Org-visible hires; a `chief-of-staff` seat (15) | Private worker resources; *seat* retired; CoS a standard coordinator | FIX-1650, FIX-1775 |
-| **T5** | FIX-1320 INST-5, hires as collection kinds (another project) | Flow instances and owner pins deprecated | FIX-1320 |
-
-### Ask 2 · Does FIX-1786 belong here or in Workforce: Layer 2 Abstraction? Owner
-
-**Plain terms.** Item 2 says this project is not Layer 2 vocabulary. FIX-1786, filed here, retires
-*seat*, *kind*, *mailbox* and *room*, while Layer 2 Abstraction's PD-6 still calls *seat* and *kind*
-settled. **Trade-off.** If it stays, item 2 and *what this project is not* are rewritten. If it
-moves, the vocabulary's owner sees the change and this project keeps T2 to T4.
-**Recommendation: move it, or at least relate it there**, so two projects do not answer *what is a
-seat* differently. **What would change my mind:** you mean Shift Manager to drive the Workforce
-model now. Layer 2 Abstraction is eight of nine done. Then item 2 changes, and that is an outcome
-change. **Cost of being wrong:** low. It is one Linear field, plus a stale answer meanwhile.
+Nothing is open. FIX-1786's tensions T2 to T5 were settled by what it shipped (32 to 36), and its
+ask 2, whether it belonged in Workforce: Layer 2 Abstraction, lapsed when it closed here (2).
