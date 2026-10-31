@@ -173,7 +173,16 @@ const SYNTH_SCHEMA = FOLD
       required: ['executiveSummary', 'themes', 'items', 'rejected'],
     }
 
-const lensTag = (l) => l.key.replace(/[^a-z]/gi, '').slice(0, 3).toUpperCase()
+// One tag per lens, unique within the run: the first three letters, plus an ordinal when two lenses
+// share them (performance / persistence → PER, PER2). Two lenses minting the same finding ids would
+// let one finding shadow the other in the report and in the merge's coverage check.
+const LENS_TAGS = []
+for (const l of LENSES) {
+  const base = l.key.replace(/[^a-z]/gi, '').slice(0, 3).toUpperCase() || 'LEN'
+  let tag = base
+  for (let n = 2; LENS_TAGS.includes(tag); n++) tag = `${base}${n}`
+  LENS_TAGS.push(tag)
+}
 
 const results = await pipeline(
   A.apps,
@@ -211,7 +220,7 @@ Find AT LEAST ${MIN} distinct, high-value improvements under your lens, each gro
       dir: app.dir,
       brief,
       findings: rs.flatMap((r, li) =>
-        r ? r.findings.map((f, i) => ({ ...f, lens: LENSES[li].key, id: `${app.prefix}-${TAG}${lensTag(LENSES[li])}-${i + 1}` })) : [],
+        r ? r.findings.map((f, i) => ({ ...f, lens: LENSES[li].key, id: `${app.prefix}-${TAG}${LENS_TAGS[li]}-${i + 1}` })) : [],
       ),
       deadLenses: rs.map((r, li) => (r ? null : LENSES[li].key)).filter(Boolean),
     }))

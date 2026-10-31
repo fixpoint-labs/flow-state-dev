@@ -67,8 +67,13 @@ export function merge(wf, prior, meta = {}) {
   // brief. A new finding whose id an earlier run already used would make those citations point at
   // the wrong finding and fool the coverage check below, so it is a problem, not a merge.
   const priorIds = new Set((prior ? prior.apps : []).flatMap((a) => a.findings.map((f) => f.id)))
+  const runIds = new Set()
   for (const a of wf.apps) {
-    for (const f of a.findings) if (priorIds.has(f.id)) problems.push(`finding id ${f.id} was already used by an earlier run; pass a fresh runTag`)
+    for (const f of a.findings) {
+      if (priorIds.has(f.id)) problems.push(`finding id ${f.id} was already used by an earlier run; pass a fresh runTag`)
+      if (runIds.has(f.id)) problems.push(`finding id ${f.id} appears twice in this run`)
+      runIds.add(f.id)
+    }
   }
   const appsOut = (prior ? prior.apps.filter((a) => !wf.apps.some((n) => n.app === a.key)) : []).concat(
     wf.apps.map((a) => {
@@ -80,7 +85,9 @@ export function merge(wf, prior, meta = {}) {
   let items
   let themes
   if (fold) {
-    items = prior.items.map((i) => ({ ...i, apps: [...i.apps], sourceFindings: [...i.sourceFindings], evidence: [...i.evidence], notes: [...(i.notes || [])] }))
+    // `isNew` means new in THIS run, so an earlier run's marker is cleared before this run's land.
+    // homeChange / priorityChange stay: they record history the drawer explains ("moved from …").
+    items = prior.items.map(({ isNew, ...i }) => ({ ...i, apps: [...i.apps], sourceFindings: [...i.sourceFindings], evidence: [...i.evidence], notes: [...(i.notes || [])] }))
     const byId = new Map(items.map((i) => [i.id, i]))
     for (const u of s.updates) {
       const it = byId.get(u.id)

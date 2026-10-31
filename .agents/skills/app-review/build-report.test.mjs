@@ -70,6 +70,12 @@ assert.deepEqual(three.problems, [])
 const alpha = three.data.apps.find((a) => a.key === 'alpha')
 assert.deepEqual(alpha.findings.map((f) => f.id), ['AL-USA-1', 'AL-USA-2', 'AL-R2-USA-1'], 'earlier findings survive a re-review')
 assert.equal(alpha.brief.summary, 'new brief')
+assert.ok(!three.data.items.find((i) => i.id === 'R-02').isNew, 'an item new in run 2 is not "new" in run 3')
+
+// Two findings with the same id in one run would shadow each other, so they are a problem too.
+const twin = structuredClone(fold)
+twin.apps[0].findings.push(finding('GA-USA-1'))
+assert.match(merge(twin, one.data, {}).problems.join('\n'), /GA-USA-1 appears twice in this run/)
 
 // …and a re-review that reuses an earlier id is caught, even when an earlier item "covers" it.
 const clash = structuredClone(again)

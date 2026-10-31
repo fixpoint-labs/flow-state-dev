@@ -10175,6 +10175,14 @@ check('app-review: fold mode points every agent at the prior items and asks for 
   assert.equal(result.mode, 'fold')
 })
 
+check('app-review: lenses that share a prefix still mint distinct finding ids', async () => {
+  const lenses = [{ key: 'performance', prompt: 'LENS: p' }, { key: 'persistence', prompt: 'LENS: q' }]
+  const { result } = await run('app-review.js', { args: { apps: [reviewApps[0]], lenses }, respond: reviewResponder({ synth: { ...freshSynth, items: [reviewItem('R-01', ['alpha'], ['AL-PER-1'])] } }) })
+  const ids = result.apps[0].findings.map((f) => f.id)
+  assert.equal(new Set(ids).size, ids.length, `duplicate ids: ${ids.join(',')}`)
+  assert.ok(ids.includes('AL-PER-1') && ids.includes('AL-PER2-1'), ids.join(','))
+})
+
 check('app-review: runTag makes finding ids distinct across runs', async () => {
   const { result } = await run('app-review.js', { args: { apps: [reviewApps[0]], runTag: 'r2' }, respond: reviewResponder({ synth: { ...freshSynth, items: [reviewItem('R-01', ['alpha'], ['AL-R2-USA-1'])] } }) })
   const ids = result.apps[0].findings.map((f) => f.id)
