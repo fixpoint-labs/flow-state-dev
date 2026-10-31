@@ -12,7 +12,7 @@ which land in their apps' stacks per the epic's
 
 | Someone who… | Today | After |
 |---|---|---|
-| **was mid-turn when `fsdev dev` restarted** (a `--dev` save, a crash, a daily restart) in Teammates, Claude Code-style or Shift Manager | Their line stays with no reply. Nothing says the turn was lost, and nothing resumes it | Within about a minute of the restart, a line at the lost turn says it was cut off, with **Continue** and **Discard** |
+| **was mid-turn when `fsdev dev` restarted** (a `--dev` save, a crash, a daily restart) in Teammates, Claude Code-style or Shift Manager | Their line stays with no reply. Nothing says the turn was lost, and nothing resumes it | A line at the lost turn says it was cut off, with **Continue** and **Discard**. It appears once the server marks the turn interrupted, about a minute after the restart (E3); until then the turn reads as working |
 | **the same, in Kitchen Sink's harness modes** | The turn reads as a bare *This turn failed.* | The same line, from the same component |
 | **the same, in Kitchen Sink's Flow State assistant** | An inline *Resume* prompt above the composer, Kitchen Sink's own copy | The registry component, at the turn, with Discard as well |
 | **presses Continue** | — | The same request carries on: finished steps replay from the durable log, the step in flight runs again, and the reply streams in |
@@ -61,8 +61,9 @@ flowchart LR
 - **Control that must fail:** `GOAL_CONTROL=old-abort` patches the abort back to today's
   behaviour as the server loads. The Discard leg fails (409, still listed). Shown red in the PR.
 - **Unit, engine:** abort of an interrupted request no gate holds moves it to `aborted` and
-  answers 204; the parked cases keep their behaviour; a continue that wins the race keeps it
-  running. The existing "stays stopped" cases in `park-owed.test.ts`, and `abort.test.ts`'s second
+  answers 204, on a host with no durable execution as well as one with it; the parked cases keep
+  their behaviour; a continue that takes it first keeps it running (*already resolved*); a stop
+  that wins first leaves `/continue` answering 409. The existing "stays stopped" cases in `park-owed.test.ts`, and `abort.test.ts`'s second
   abort after a cut-off run, now read `aborted`.
 - **Unit, client:** `interruptedBySession` keeps only the actions given, drops entries with no
   session, groups by session, oldest first.
@@ -75,8 +76,9 @@ flowchart LR
 ## What changes
 
 - **Engine: Discard is an abort** ([D1](DECISIONS.md#d1)). `recordRequestStop` moves an
-  `interrupted` request that no gate holds to `aborted`, fenced on its status and incarnation, so
-  `POST …/abort` answers 204 instead of 409. An interrupted request parked behind a gate keeps
+  `interrupted` request that no gate holds to `aborted`, on every host, fenced on its status and
+  incarnation, and reports a new kind, `ended`; `POST …/abort` answers 204 instead of 409, and
+  `ctx.session.stopRequest` answers `"stopped"`. An interrupted request parked behind a gate keeps
   today's path (its gate is stopped); a continuation that already holds the lease wins, as now.
   No new route or verb.
 - **Client: `interruptedBySession(requests, { actions })`** ([D2](DECISIONS.md#d2)), a pure
@@ -89,7 +91,7 @@ flowchart LR
   button owns its busy word (*Continuing…*, *Discarding…*) and its refused state, as Retry does.
   Kitchen Sink's `ResumePrompt` folds into it.
 - **App slices** (later, in their stacks; [E1](DECISIONS.md#e1)): each app polls
-  `requests.interrupted()` every 5 seconds while open ([E2](DECISIONS.md#e2)), runs
+  `requests.interrupted()` every 5 seconds while the tab is visible ([E2](DECISIONS.md#e2)), runs
   `interruptedBySession` with its turn actions, badges the session or worker in its list, and
   draws `RequestRecovery` after the lost turn's last entry, or at the end if it wrote none. Kitchen
   Sink's harness modes stop folding `interrupted` into *failed* (`harness-turn.ts`).
@@ -119,7 +121,8 @@ replay; the parked-request stop path; `StuckRequestBanner`; Workforce, core and 
 
 **Adds:** one engine branch, one client function, two component callbacks, one goal leg.
 **Removes:** Kitchen Sink's `ResumePrompt`. **Debt:** the minute before a lost turn shows
-(E3). **Net:** small.
+(E3, FIX-2434), and a poll until a push carries it (E2). **Net:** a small package slice, plus
+four app adoptions.
 
 ## Sign off
 
@@ -130,7 +133,7 @@ replay; the parked-request stop path; `StuckRequestBanner`; Workforce, core and 
   component stay, and the abort branch is one function.
 
 Recorded, not asked: D2 (a pure client function, not a method), D3 (callbacks on FIX-2370's
-component), E1–E5.
+component), E1–E3.
 
 Feature · engine, client, `ui` registry, then 4 apps · small · 1 package PR (stacked on FIX-2370)
 \+ 4 app slices · child of [FIX-2369](https://linear.app/fixpoint-labs/issue/FIX-2369)
