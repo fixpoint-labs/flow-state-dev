@@ -139,3 +139,73 @@ export const GIT_TIMEOUT_MS = 600_000;
  * to count it in the longest it can hold that lock.
  */
 export const CHECKOUT_CLEANUP_TIMEOUT_MS = 60_000;
+
+/** How a {@link runToEnd} process ended. */
+export interface RunToEndResult {
+  /** The exit code, or `null` when a signal ended it. */
+  exitCode: number | null;
+  /** The wall clock ran out and the process group was stopped. */
+  timedOut: boolean;
+  /** Standard output and standard error together, in arrival order: the last `keepChars` of it. */
+  output: string;
+}
+
+/**
+ * Run `file` with `args` to its end, whatever its exit code, keeping the end
+ * of what it wrote.
+ *
+ * Unlike {@link run}, a non-zero exit resolves: the caller's question is what
+ * happened, not whether it worked. The process gets a group of its own, so
+ * the wall clock stops what it started too (a test runner's workers), not
+ * only the process named. A file that cannot be started at all resolves as
+ * exit code 127, with the reason as its output.
+ */
+export async function runToEnd(
+  file: string,
+  args: string[],
+  options: { cwd: string; timeoutMs: number; keepChars: number; env?: Record<string, string> },
+): Promise<RunToEndResult> {
+  let output = "";
+  const keep = (chunk: string) => {
+    output = (output + chunk).slice(-options.keepChars);
+  };
+  return await new Promise<RunToEndResult>((resolve) => {
+    let timedOut = false;
+    let settled = false;
+    const child = spawn(file, args, {
+      cwd: options.cwd,
+      env: options.env === undefined ? process.env : { ...process.env, ...options.env },
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: process.platform !== "win32",
+    });
+    const stopGroup = () => {
+      if (child.pid === undefined) return;
+      try {
+        if (process.platform === "win32") child.kill("SIGKILL");
+        else process.kill(-child.pid, "SIGKILL");
+      } catch {
+        // Already gone.
+      }
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      stopGroup();
+    }, options.timeoutMs);
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", keep);
+    child.stderr.on("data", keep);
+    const finish = (result: RunToEndResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+    child.once("error", (error) => finish({ exitCode: 127, timedOut: false, output: `${output}${error.message}`.slice(-options.keepChars) }));
+    child.once("close", (exitCode) => {
+      // The group, once the leader is gone: anything it left running goes with it.
+      if (timedOut) stopGroup();
+      finish({ exitCode, timedOut, output });
+    });
+  });
+}

@@ -32,6 +32,11 @@
  * `recordBranchPullRequests`), and adds what the turn's tool calls did not
  * show: one opened by a raw API call, say.
  *
+ * With `verify`, a turn the harness finished also runs the host's checks in
+ * the session's working directory (`commandCheck`'s runner) and records them
+ * on the turn. A red check is reported, never a failed turn: the person is
+ * there, and the next turn is theirs.
+ *
  * Nothing here names a harness. A harness that needs more than these feeds has
  * found a gap in its own package. The flow writes no item of its own.
  */
@@ -57,6 +62,12 @@ import type {
 } from "@flow-state-dev/core/types";
 import { recordBranchPullRequests } from "@flow-state-dev/workspace";
 import { z } from "zod";
+import {
+  assertCommandCheckOptions,
+  commandCheckResultSchema,
+  runCommandChecks,
+  type CommandCheckOptions,
+} from "./command-check";
 
 /** What one turn asked for and what came of it, recorded under its request id. */
 export const harnessTurnRecordSchema = z.object({
@@ -74,6 +85,8 @@ export const harnessTurnRecordSchema = z.object({
   at: z.number().nullable().default(null),
   /** Lines sent while the turn ran that the harness took into it (`steer`), oldest first. */
   steered: z.array(z.string()).nullable().default(null),
+  /** The checks `verify` ran when the turn ended, in order; `null` when none ran. */
+  checks: z.array(commandCheckResultSchema).nullable().default(null),
 });
 
 /** One turn's record. */
@@ -163,6 +176,18 @@ export interface HarnessSessionFlowOptions {
    * picked). Unset, the harness runs its own default.
    */
   readonly defaultModel?: string;
+  /**
+   * Checks to run when a turn the harness finished ends, in the session's
+   * working directory, recorded on the turn's `checks`. A red check does not
+   * fail the turn. Unset, nothing runs.
+   */
+  readonly verify?: CommandCheckOptions<HarnessSessionVerifyContext>;
+}
+
+/** What a `verify` resolver is handed: whose session, and where it works. */
+export interface HarnessSessionVerifyContext {
+  readonly place: HarnessSessionPlace;
+  readonly cwd: string;
 }
 
 /** How many turn records a session keeps. A notice reads only the latest. */
@@ -191,6 +216,7 @@ const BLANK_TURN: HarnessTurnRecord = {
   error: null,
   at: null,
   steered: null,
+  checks: null,
 };
 
 /** `state` with the turn `requestId` changed by `change`, keeping only the latest {@link KEPT_TURNS}. */
@@ -302,6 +328,7 @@ export function harnessSessionFeeds(
  *   });
  */
 export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
+  if (options.verify !== undefined) assertCommandCheckOptions(options.verify as CommandCheckOptions<unknown>, "harnessSessionFlow's verify");
   const steering = harnessSteering();
   const agent = options.agent(harnessSessionFeeds(options.kind, options.workspace, options.defaultModel, steering));
   // Core's steer action, allowed beside a running turn: it runs no harness, it
@@ -391,6 +418,23 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       }
     },
   });
+  // When a turn the harness finished ends: the host's checks, on the turn's
+  // record. Reported, not a failure: a red check leaves the turn as it ended.
+  const verifyTurn = handler({
+    name: "verify-turn",
+    execute: async (handle: HarnessRunHandle, ctx): Promise<void> => {
+      const verify = options.verify;
+      if (verify === undefined || handle.outcome !== "finished" || ctx.signal.aborted) return;
+      const harnessCtx = ctx as unknown as HarnessCallbackContext;
+      const place = placeOf(options.kind, harnessCtx);
+      const cwd = options.workspace.locate(place);
+      if (!existsSync(cwd)) return;
+      const checks = await runCommandChecks(verify, cwd, { place, cwd });
+      if (checks.length === 0) return;
+      const requestId = ctx.request.identity.id;
+      await changeState(ctx, (state) => withTurn(state, requestId, (record) => ({ ...record, checks })));
+    },
+  });
   const turn = sequencer({
     name: "turn",
     description: "One turn of a harness session: the prompt, run by the harness where the session works.",
@@ -398,7 +442,8 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   })
     .tap(titleFromPrompt)
     .step(agent.rescue([{ block: recordFailure }]))
-    .tap(recordFailedOutcome);
+    .tap(recordFailedOutcome)
+    .tap(verifyTurn);
 
   return defineFlow({
     kind: options.kind,

@@ -122,6 +122,7 @@ import { askMarkerPath, readAskMarker } from "./ask";
 import { HeldOnQuestion, askStep } from "./ask-step";
 import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
 import { readRunCommits, type RunCommits } from "./commits";
+import { commandCheckResultSchema, commandChecksSummary, readVerdict, type CommandCheckResult } from "./command-check";
 import { progressNoteOf, throttledNotes, type ProgressNotes } from "./progress-note";
 import {
   HARNESS_RUN_OWNER_KEY,
@@ -288,6 +289,22 @@ export interface CompletionRunContext extends PhaseRunContext {
   answer: string | null;
 }
 
+/**
+ * What a phase's `isDone` may answer instead of a boolean: whether the job is
+ * done, why not, and the checks it ran (`commandCheck`).
+ *
+ * `reason` is added to the not-done message, which the board hands the next
+ * attempt as its `feedback`. `checks` goes on the run record whatever the
+ * verdict, and on the review's `data` when the run is done.
+ */
+export interface PhaseDoneVerdict {
+  done: boolean;
+  /** Why it isn't done, in words the next attempt can act on. Read only when `done` is false. */
+  reason?: string;
+  /** The checks the phase ran, in order. */
+  checks?: CommandCheckResult[];
+}
+
 /** Everything that makes one phase a phase. Three values, passed in. */
 export interface PhaseSpec {
   /** The phase segment of the run record's topic. */
@@ -317,7 +334,14 @@ export interface PhaseSpec {
    * declining to is a real choice with a real cost; the framework imposes
    * nothing, because only the phase knows what finishing means for it.
    */
-  isDone(run: CompletionRunContext): boolean | Promise<boolean>;
+  isDone(run: CompletionRunContext): boolean | PhaseDoneVerdict | Promise<boolean | PhaseDoneVerdict>;
+  /**
+   * How long {@link isDone} may take, in milliseconds; a minute
+   * (`NETWORK_CALL_TIMEOUT_MS`) when unset. `commandCheck` sets it to cover its
+   * commands. Pass the same number to `harnessDrainBudgetMs({ doneTimeoutMs })`,
+   * or a shutdown can stop a check before it ends.
+   */
+  doneTimeoutMs?: number;
   /**
    * What this phase needs from the workspace, checked before anything is
    * claimed. Throws to refuse; absent means the phase needs nothing.
@@ -822,6 +846,8 @@ const managerStateSchema = z.object({
        * settle on it; `revise` and `cancelled` must not complete the run.
        */
       reviewed: z.enum(["accepted", "deadline", "revise", "cancelled"]).nullable().default(null),
+      /** The checks the phase's `isDone` ran (`commandCheck`), for the review's `data`. `null` when it ran none. */
+      checks: z.array(commandCheckResultSchema).nullable().default(null),
     })
     .nullable()
     .default(null),
@@ -1064,6 +1090,7 @@ function reviewPrompt(
   changes: RunCommits | null,
   branch: string | null,
   read: HarnessJudgeVerdict | null,
+  checks: CommandCheckResult[] | null = null,
 ): string {
   const lines: string[] = [];
   if (changes === null || !changes.verified) {
@@ -1074,6 +1101,7 @@ function reviewPrompt(
     if (changes.count > changes.subjects.length) lines.push(`- and ${changes.count - changes.subjects.length} more`);
   }
   lines.push("");
+  if (checks !== null && checks.length > 0) lines.push(`${commandChecksSummary(checks)}.`);
   lines.push(
     read === null
       ? "No judge read this run."
@@ -1152,6 +1180,8 @@ export function harnessDrainBudgetMs(options: {
   ownershipWaitMs: number;
   /** The manager was given a judge, which runs after the completion check, bounded the same way. */
   judge?: boolean | undefined;
+  /** The phase's `doneTimeoutMs`, when it set one (`commandCheck`): the completion check's bound in place of a minute. */
+  doneTimeoutMs?: number | undefined;
 }): number {
   const work =
     options.ownershipWaitMs +
@@ -1161,7 +1191,8 @@ export function harnessDrainBudgetMs(options: {
     // run's pull requests. Each is bounded by this constant, and the budget has
     // to reserve time for each — a bound the budget does not account for is as
     // wrong as no bound.
-    NETWORK_CALL_TIMEOUT_MS * 3 +
+    NETWORK_CALL_TIMEOUT_MS * 2 +
+    (options.doneTimeoutMs ?? NETWORK_CALL_TIMEOUT_MS) +
     (options.judge === true ? NETWORK_CALL_TIMEOUT_MS : 0);
 
   // `* 4 / 3` clears a reserve of up to a quarter; the flat minute dwarfs the
@@ -2459,6 +2490,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         settle: "asked" | "complete",
         commits: RunCommits,
         judgeInput: HarnessJudgeInput | null = null,
+        checks: CommandCheckResult[] | null = null,
       ): Promise<HarnessJudgeInput | null> => {
         const output: ManagerOutput = {
           issue: state.issue!,
@@ -2470,7 +2502,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           judged: false,
           review: null,
         };
-        await ctx.sequencer!.patchState({ decided: { settle, output, changes: commits, reviewed: null } });
+        await ctx.sequencer!.patchState({ decided: { settle, output, changes: commits, reviewed: null, checks } });
         return judgeInput;
       };
       // A run of kept files alone has no branch, so nothing on one to review: a verified none.
@@ -2515,6 +2547,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // fixed path makes a run that quietly did nothing look exactly like a run
       // that asked.
       const question = await readAskMarker(state.workspacePath!, identity.attempt, state.run!);
+      // Why the phase's check said not done, when it said (`PhaseDoneVerdict.reason`).
+      let notDoneReason: string | undefined;
 
       // ── Arm 1: the verdict did NOT fail AND this run asked ──────────────────
       if (succeeded && question !== undefined) {
@@ -2535,7 +2569,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // from, leaving the row `in_progress` with nothing to settle it. The
         // bound is the constant the budget already spends, so it makes the
         // advertised number true rather than adding one.
-        const done = await withDeadline(
+        const verdict = readVerdict(await withDeadline(
           async () =>
             runPhase.isDone({
               epic: state.epic!,
@@ -2555,10 +2589,16 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
               answer: handle.finalMessage,
               ctx,
             }),
-          NETWORK_CALL_TIMEOUT_MS,
+          runPhase.doneTimeoutMs ?? NETWORK_CALL_TIMEOUT_MS,
           `the ${state.phase} phase's completion check`,
-        );
-        if (done) {
+        ));
+        // **The checks it ran go on the run record, whatever the verdict**, so
+        // a failed attempt's row says which command was red and how.
+        if (verdict.checks !== undefined) {
+          await fenced(writeRunRow(ctx, identity, { checks: verdict.checks }), "the checks were recorded");
+        }
+        notDoneReason = verdict.done ? undefined : verdict.reason;
+        if (verdict.done) {
           // **Not completed on files it could not save.** Completing is the
           // last save point a run has, so a failed save here would settle the
           // row with the run's work only on this machine. Failing the attempt
@@ -2590,7 +2630,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
                   commits: { count: commits.count, subjects: commits.subjects },
                 }
               : null;
-          return keep("complete", commits, judgeInput);
+          return keep("complete", commits, judgeInput, verdict.checks ?? null);
         }
       }
 
@@ -2632,7 +2672,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             ? "the run stopped at its limit"
             : `the run terminated normally reporting ${handle.outcome ?? "no terminal result"}`;
       throw new HarnessAttemptFailed(
-        `${ended} and the ${state.phase} phase is still not done`,
+        `${ended} and the ${state.phase} phase is still not done` +
+          (notDoneReason === undefined || notDoneReason.trim() === "" ? "" : `: ${notDoneReason}`),
       );
     },
   });
@@ -2928,13 +2969,14 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         asked = await ctx.suspendForUser({
           kind: "review",
           title: "Review the run's changes",
-          prompt: reviewPrompt(changes, decision.output.branch, read),
+          prompt: reviewPrompt(changes, decision.output.branch, read, decision.checks ?? null),
           resumeSchema: harnessReviewAnswerSchema,
           data: {
             branch: decision.output.branch,
             commits: changes?.verified === true ? changes.count : null,
             subjects: changes?.subjects ?? [],
             judge: read,
+            checks: decision.checks ?? null,
           },
         });
       } catch (error) {
