@@ -42,6 +42,8 @@ provisioning path; ER-2: optional, a host opts in). What's left is the shape.
 <a name="d3"></a>
 ## D3 · Once per fresh checkout, again until it succeeds
 
+- **The rule, in one line:** setup runs when the host has a `setup`, and either this provision
+  made the tree or the marker says a setup is still owed.
 - "Fresh" is `repo.created`: every `worktree add` sets it, a rebuild from held work included,
   and a hand-back never does. A tree made again for an existing branch is fresh too.
 - A marker beside the checkout (never inside it, so git never sees it) is written before the
@@ -91,3 +93,11 @@ provisioning path; ER-2: optional, a host opts in). What's left is the shape.
   for the path. Folded: E2 extends FIX-2386's object, uses `path`, and names FIX-2386 and
   FIX-2419 under *What's already here*. The second argument is a single object, so FIX-2419's
   `start` and this `onSetup` don't compete for positions.
+- Cursor (6d6dd2b): approved direction. Folded: D3 states the combined rule in one line.
+  Recorded for the implementer: (1) the epic's reuse row says setup extends `prepare`, but it
+  lives in the host instead (covers held-work rebuilds); fix that row in the epic's next
+  amendment, since this PR doesn't edit the epic. (2) Drop the bare-path branch of `provision`'s
+  result once Kitchen Sink passes `setup` through (FIX-2387's adoption PR). (3) Keep `place.setup`
+  and one tail formatter as the single source; the stream and turn record copy it. (4) One
+  marker encoding owed/success instead of `repo.created` + marker: kept as is, since `created`
+  already means "this provision made the tree"; the implementation corrects its doc.
