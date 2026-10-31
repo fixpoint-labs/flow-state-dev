@@ -67,8 +67,9 @@ read ([D1](DECISIONS.md#d1)).
 - **`waitingOn`**: the oldest open user hold's kind and prompt, and the hold itself (where its
   answer goes, whether it can be answered, and the `detail` a reader found for it, such as a
   review stop's data). `null` when nothing waits on the user.
-- **Spend and harness** from `taskSpendView`; a malformed stored spend reads as none, never a
-  throw. **Times**: created, updated, started and completed, `null` where the row has none.
+- **Spend and harness** read from either form a row carries: the stored ledger (a raw board row),
+  folded by `taskSpendView`, or the already-folded view `listTasks` publishes, kept as it is.
+  Each form has a test. A spend in neither form reads as none, never a throw. **Times**: created, updated, started and completed, `null` where the row has none.
 - **Docs:** the orchestration README's *Inbox* section and `apps/docs` *Building an Inbox* get the
   view.
 - **Changeset:** `@flow-state-dev/orchestration` minor, one sentence.

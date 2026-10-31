@@ -66,4 +66,5 @@ Round 1 (Cursor, approved; Codex, no findings). Below the bar, recorded for the 
 - **If FIX-2385 slips,** track it as FIX-2385's blocker rather than growing `taskRowView`'s options; the wave-1 surface stays `(row, holds?)`.
 - **For Shift Manager's wave-2 adoption:** its `waitsOnYou` counts row-source holds only, narrower than the view's `waiting`. That stack says how `state === "waiting"` replaces it, without a third predicate.
 - **Memoize per snapshot** on large boards; the view is pure, so a screen can key it on the row.
+- Fixed in the spec (Codex, round 1): `listTasks` publishes `spend` already folded (`task-tools-capability.ts:1828`), and folding that again returns `null`. The view takes both forms.
 - Fixed in the spec, a factual correction: a `held` row in Shift Manager sits under QUEUED, not RUNNING.
