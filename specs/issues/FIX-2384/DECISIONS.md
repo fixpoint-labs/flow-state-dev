@@ -20,7 +20,7 @@ Engineering calls inside the direction FIX-2369 fixed. None is asked.
 |---|---|
 | **Instead of** | Diffing the working tree, or diffing from the base commit itself |
 | **Because** | A review accepts the branch, so uncommitted work is not what it accepts. The start is the merge base of `HEAD` and the base copies `readRunCommits` uses (the recorded cut commit when there is one), so a base that moved on adds nothing, matching the commit count |
-| **Locks in** | Renames read as a removal and an addition (`--no-renames`), so a path is always one path |
+| **Locks in** | Renames read as a removal and an addition (`--no-renames`), so a path is always one path. A session turn is the exception to the merge base: it reads from its recorded `base` exactly (`exactBase`), since a turn that amends or rebases the previous turn's commit moves the merge base back and would read that turn's work as its own |
 
 <a name="d3"></a>
 ## D3 · One read answers the files or one file's patch, not both
