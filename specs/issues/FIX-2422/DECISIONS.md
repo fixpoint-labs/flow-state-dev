@@ -48,8 +48,9 @@ is written, and how far a caller-named id is trusted.
   item of the request. A second option beside it says that.
 - **Clearing a scope's mark** (`_markTaskScope(null)`) falls back to the request's task, not to
   no task: the request's task is the default under every scope that marks nothing.
-- **If approved, ER-1 gets a line in the epic's decisions** naming this exception (the first
-  input-driven source of `taskId` in core), so the next reader of ER-1 sees it there.
+- **ER-1 as amended in FIX-2369 #4408:** a meaning core already types keeps its typed field, as
+  `OutputItem.taskId` does, and a package's own data on an item goes in `metadata` under that
+  package's key. `taskOf` sets the typed field; it adds no package data.
 - **What would change my mind:** a reading of ER-1 that forbids any new task-shaped field in
   core, even one that only labels. Then the door marks its scope in Workforce and Shift Manager
   keeps pairing the line by request, with the steer case left open.
