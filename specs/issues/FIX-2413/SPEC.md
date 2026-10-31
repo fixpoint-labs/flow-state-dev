@@ -86,7 +86,7 @@ any arming. An Esc during IME composition is the input method's.
 
 | Piece | What it does today | This change |
 |---|---|---|
-| `isSendKey` (`@flow-state-dev/react`) | The one send shortcut every box shares | Kept. The interrupt rule sits beside it in the same shape: a pure check plus docs |
+| `isSendKey` (`@flow-state-dev/react`) | The one send shortcut every box shares | Kept. The interrupt rule sits beside it in the same package. Unlike send, a stop has state (the armed first Esc), so it ships as a pure state machine plus a hook that owns the timer and the hint flag |
 | `TaskFrame` frame `onKeyDown` | Esc anywhere stops the run | Replaced by the hook |
 | `TaskProvider.requestInterrupt` (`task.tsx`) | The one abort write; waits for the record | Unchanged. The deliberate gesture is the confirm, so no confirm step is added here |
 | Lab `Composer` Esc branch, `Sheet` document listener | Stop on Esc; close on Esc, both on one press | Esc branch removed; Sheet's listener spends the Esc |

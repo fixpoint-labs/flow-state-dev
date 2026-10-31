@@ -65,3 +65,23 @@ share.
 | Undo after a stop | A stop aborts the harness run; there is nothing to resume into. Preventing the accident is the only fix |
 | Remove the key entirely, button only | Loses the keyboard stop people rely on in long runs. The issue keeps a key |
 | Disable the gesture while any dialog is open | Needs each app to track every overlay. Spending the dismissing Esc is local to the dismisser |
+
+## Notes from review
+
+Round 1 (Cursor). Neither point changes the direction. Both are recorded for the implementer.
+
+- **Why the hook is public, not just the pure rule.** Each app would otherwise rebuild the same
+  ref, the 1.5 s timer and the armed flag. That is the duplication D1 exists to remove. The hook
+  stays small: timestamps live in refs, it sets state only when `armed` flips, it clears its
+  timer on unmount, on `enabled: false` and on interrupt, and it holds `onInterrupt` in a ref
+  so a provider re-render does not reset it. The README says plainly that this rule has state,
+  where `isSendKey` has none.
+- **A spent Esc (`defaultPrevented`) or explicit overlay gating.** Gating on `!sheetOpen` would
+  mean the lab's thread reads state that lives in its tasks pane, and every future overlay would
+  need wiring into each stop scope. `preventDefault` is the DOM's own word for "handled", and
+  the dismisser that consumes the key is the one place that knows it did. The cost, which is
+  real: a new Esc dismisser that forgets to prevent the default lets its Esc arm a stop. It can
+  only arm, never stop, since one Esc is never enough. If that proves hard to audit, explicit
+  `enabled` gating is the fallback, and the hook already takes `enabled`. FIX-2340 carries the
+  capture-and-prevent rule into the shared sheet.
+
