@@ -7,7 +7,7 @@
 | Someone who… | Today | After |
 |---|---|---|
 | **files a task that asks them a question** (in the Teammates lab) | The card says *running* forever, because every status but completed, errored and cancelled reads as running (`labs/teammates/src/adapter.ts:355`) | Once Teammates adopts the view (its wave-3 stack), the card says *Waiting on you* with the question |
-| **has a held row in Shift Manager** | A held or questioning `in_progress` row sits under RUNNING (`packages/shift-manager/src/lib/columns.ts:14`) | Once Shift Manager adopts it (its wave-2 `reads.ts` stack), the same row reads *waiting on you* |
+| **has a running task in Shift Manager that asks them a question** | The `in_progress` row sits under RUNNING (`packages/shift-manager/src/lib/columns.ts:14`); a `held` row sits under QUEUED with its *held* tag, also with no sign it waits on them | Once Shift Manager adopts it (its wave-2 `reads.ts` stack), both read *waiting on you* |
 | **uses the Claude Code-style lab** | Already right, through its own copy of the hold read (`labs/claude-code-style/src/adapter.ts:495-528`) | Same screen; the copy goes when the lab adopts the view |
 | **builds their own task screen** | Re-derives status, holds and spend from a raw row, three different ways if they copy ours | Calls `taskRowView(row)` and gets one display state, what it waits on, its spend and its times |
 | **reads a row stored before `held` replaced `blocked`** | Each copy handles it or doesn't | Reads as *held*, the same as the board |

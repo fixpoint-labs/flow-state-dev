@@ -56,4 +56,14 @@ output, the view should take that function as an option rather than reading the 
 
 ## Notes from review
 
-None yet.
+Round 1 (Cursor, approved; Codex, no findings). Below the bar, recorded for the implementer:
+
+- **Pin the return shape** in the README: stored `status` beside display `state`, `error` and `statusNote` passed through, and `holds` kept beside `waitingOn.hold` on purpose (a screen that lists every open ask needs all of them).
+- **One caller recipe** for a refresh that already ran `inboxItems`: index `item.holds` by task id and pass them per row, so no app runs `openUserHolds` twice or keeps its own `holdsOf` map.
+- **`taskSpendView` parses with zod and can throw:** the view wraps it, lifting the Teammates lab's try/catch, so no adopter guards spend.
+- **"Oldest" is `openedAt` order,** the same order `inboxItems` sorts an item's holds in.
+- **`BROWSER_SAFE_ENTRIES` lists only `src/tasks/index.ts` today;** this slice adds `src/inbox/index.ts`.
+- **If FIX-2385 slips,** track it as FIX-2385's blocker rather than growing `taskRowView`'s options; the wave-1 surface stays `(row, holds?)`.
+- **For Shift Manager's wave-2 adoption:** its `waitsOnYou` counts row-source holds only, narrower than the view's `waiting`. That stack says how `state === "waiting"` replaces it, without a third predicate.
+- **Memoize per snapshot** on large boards; the view is pure, so a screen can key it on the row.
+- Fixed in the spec, a factual correction: a `held` row in Shift Manager sits under QUEUED, not RUNNING.
