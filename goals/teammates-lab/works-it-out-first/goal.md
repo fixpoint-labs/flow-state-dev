@@ -40,3 +40,4 @@ Each leg passes in 3 runs of 3 (`GOAL_RUNS`, default 3).
 | 2026-10-31 | 43f36196 + this change | openai/gpt-6-luna | control `old-rule`: FAIL as required | Run 3: "Please send the PR link or paste the diff, and I'll review the pricing change" |
 | 2026-10-31 | 43f36196 + this change, review wording | openai/gpt-6-luna | PASS 3/3 | Last bullet now names what still waits (sends, merges, spending, deletes, app confirmations). Leg 1 reviewed (named 40%) in 3 of 3; leg 2 messaged or read both teammates every run |
 | 2026-10-31 | 43f36196 + this change, review wording | openai/gpt-6-luna | control `old-rule`: FAIL as required | 2 of 3: "Please share the PR link or paste the diff"; "Please send the researcher's findings and the PR #42 diff" |
+| 2026-10-31 | 6b3de96 | openai/gpt-6-luna | PASS 3/3 | Graded only on what follows each ask (Codex review). Leg 1 looked through teammates every run and reviewed (named 40%) 3 of 3; leg 2 messaged both teammates every run |
