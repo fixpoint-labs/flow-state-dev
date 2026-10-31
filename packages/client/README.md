@@ -193,6 +193,51 @@ resource and scope-state changes.
 Every stream goes through the client's fetcher, so an in-process client streams
 with no web server, and a credentialed one streams with its credentials.
 
+### Following a session without React
+
+`sessionFeed(fsd, sessionId)` follows one session for a view that isn't a
+`useSession` chat, such as a board of workers or a task's transcript. It reads
+the whole history, then follows the session stream from where that read began,
+and joins every copy of an item so a partial copy never replaces a finished one.
+
+```ts
+import { sessionFeed } from "@flow-state-dev/client";
+
+const feed = sessionFeed(fsd, "sess_1");
+const stop = feed.subscribe(({ items, runs, state, error }) => {
+  render(items);
+  // "connecting" | "live" | "reconnecting" | "lapsed" | "stopped"
+  showBanner(state === "lapsed" ? "Reconnecting…" : null);
+});
+
+// The session stream sends an item once it is finished. To show your own
+// answer as it is written, hand the feed the send's streamed response.
+feed.followResponse(await fsd.flow("support").send("chat", input, { sessionId: "sess_1", stream: true }));
+
+stop();
+feed.close();
+```
+
+`state` says how far `items` and `runs` can be trusted. `live` means the current
+connection named the session's runs, so what the feed shows is current.
+`reconnecting` is the first retry after a close, which the server does on its
+own every 15 minutes. `lapsed` means a retry failed and what it shows may be out
+of date; the feed goes back to `live` by itself once a connection names the runs
+again. `stopped` is final: the server refused the stream, the session is gone,
+or you called `close()`. A server without the stream reads `stopped` with the
+history loaded.
+
+`runs` is the session's unfinished runs as the stream last named them, `null`
+until it has. `error` is a failed history read. The feed reads again after two
+seconds, then four, eight and sixteen (`retryMs` sets the first wait), and after
+that reads `stopped` with the error. Pass `itemTypes` to keep only some item
+types, and `includeTransient: true` to keep transient ones. Each change is a new
+frozen snapshot, also available from `feed.getSnapshot()`.
+
+One feed holds one history read and one connection. Views of the same session
+should share one feed: two feeds, or a feed beside `useSession({ live: true })`,
+read and stream the session twice.
+
 ## Stream state store
 
 A request's `stream` hands you raw event callbacks. To get those events as a sorted, ready-to-render item list, with streaming text accumulated and repeated emissions collapsed, use the request stream store. It's the accumulator the React hooks use, so it works in a Node script or a custom UI.
@@ -239,12 +284,9 @@ const snapshot = await fsd.sessions.state("sess_1", {
   clientData: ["session.artifactsList", "user.preferences"],
 });
 // `snapshot.at` is the server time the read began. Items come in pages
-// (`pagination.hasMore`, `pagination.nextOffset`). To follow the session, read
-// every page, starting each later page one item early (`nextOffset - 1`) and
-// reading again from the first page if that item is not the last one you hold,
-// or if the page's `sessionCreatedAt` differs from the first page's. Then pass
-// the first page's `at` and `sessionCreatedAt` to `fsd.sessions.stream`
-// (`since`, `sessionCreatedAt`), so it follows the session you read.
+// (`pagination.hasMore`, `pagination.nextOffset`). To follow the session, use
+// `sessionFeed`, which reads every page and then follows the stream from the
+// first page's `at` and `sessionCreatedAt`.
 
 // List a session's requests. A finished request carries `result`: `error` when
 // it failed, and `hasOutput`. Pass `includeResultOutput` for the action's return
@@ -366,6 +408,7 @@ the flow is wired up.
 - `createRequestStreamStore({ keyOf? })` — Headless request-stream accumulator (sorted items, streaming text, status/sequence)
 - `bindStoreToCallbacks(store, options?)` — Map SSE events onto a store (the shared reducer)
 - `compareItemOrder(a, b)` — Display order for items from many requests (`ts`, `itemIndex`, `requestId`, then `id`); a session snapshot's items come in this order, so sort merged items with it
+- `sessionFeed(client, sessionId, { itemTypes?, includeTransient?, retryMs? })` — Follow one session without React: `getSnapshot()` / `subscribe()` give `{ items, runs, state, error }`, where `state` is a `SessionConnectionState`; `followResponse(response)` keeps a send's answer as it is written; `close()`
 - `sessionQueryFor(address, flows)` — Build the `sessions.list` filter (`flowId` or `flowKind`) for one flow address
 - `sendHarnessLine(prompt, running, sender)` — Send a line typed into a harness session: into the running turn when its harness takes it (the flow's steer action, core's `harnessSteering`), else as the next turn. Answers `"taken"`, `"after-this-turn"` or `"turn"`
 - `harnessLines(sendOne?)` — Keep one page's lines in typed order: `send(prompt, running, sender)` waits for the line before, and once a line has gone to run after the running turn, later lines follow it until `turnChanged()`
