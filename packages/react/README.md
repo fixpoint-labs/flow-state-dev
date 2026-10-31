@@ -385,6 +385,23 @@ A feed that opens is already at its end on the first frame: on mount, when `rese
 - `jump()`: to the end, smoothly.
 - `sent()`: call when the person sends a line. It jumps to the end and brings the next content that lands below into view, which is the line they sent. What arrives after that stays below.
 
+### `isSendKey(event, options?)`
+
+The send shortcut for a message box. Cmd+Enter on a Mac and Ctrl+Enter elsewhere send from any box, so a person never has to reach for the button.
+
+```tsx
+<textarea
+  onKeyDown={(event) => {
+    if (!isSendKey(event, { enterSends: true })) return;
+    event.preventDefault();
+    send();
+  }}
+/>
+```
+
+- `enterSends` (default `false`): plain Enter sends too, as in a chat composer. Leave it off in a box for a longer answer, where Enter is a new line.
+- Shift+Enter never sends, and neither does an Enter that confirms an input method's composition (CJK and the like, including Safari's `keyCode` 229).
+
 ## Voice playback
 
 `useVoice` covers both whole-buffer playback (one buffer per `OutputAudioContent` from batch providers like OpenAI) and streaming playback (per-chunk audio via `content.audio.delta` from streaming providers). The audio player handles both modes transparently — flow authors don't change anything to opt in.

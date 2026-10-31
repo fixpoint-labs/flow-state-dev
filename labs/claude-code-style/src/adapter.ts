@@ -72,7 +72,8 @@ export type ThreadEntry = (
       sentToThread?: boolean;
     }
   | { kind: "assistant"; id: string; text: string }
-  | { kind: "tool"; id: string; name: string; summary: string }
+  /** A tool call, by its tool's name; the thread says it in words (`toolLine`). */
+  | { kind: "tool"; id: string; name: string }
   | {
       kind: "result";
       id: string;
@@ -190,7 +191,7 @@ const CODING_FLOW = "harness-thread";
 const THREAD_ITEMS = ["message", "tool_output"];
 
 /** One stored item, as far as the thread reads it. */
-interface Item {
+export interface Item {
   id: string;
   type: string;
   role?: string;
@@ -257,13 +258,6 @@ function reviewStopOf(items: readonly Item[]): ReviewDetail | undefined {
 
 const textOf = (item: Item) => (item.content ?? []).map((part) => part.text ?? "").join("");
 
-/** One line for a tool call's output: a task's id when it names one, else the start of what it said. */
-function summaryOf(output: unknown): string {
-  if (typeof output === "object" && output !== null && "taskId" in output) return String(output.taskId);
-  const text = typeof output === "string" ? output : JSON.stringify(output ?? null);
-  return text.split("\n")[0]!.slice(0, 120);
-}
-
 /** The task a `createTask` call filed, from its output, or undefined for any other tool or a refused call. */
 function filedTaskOf(item: Item): string | undefined {
   if (item.blockName !== "createTask") return undefined;
@@ -272,11 +266,20 @@ function filedTaskOf(item: Item): string | undefined {
 }
 
 /**
- * A thread's entries, from its items in order. A result is the line the main session took a task's ending as.
+ * A worker's id, `team.worker`: what a delegate's answer that landed in a conversation is written
+ * under. It is the only way a delegate writes into the main session's thread; the session's own
+ * text carries a block's name, which has no dot. Workforce marks the item no other way today.
+ */
+const WORKER_ID = /^[a-z0-9-]+\.[a-z0-9-]+$/;
+
+/**
+ * A thread's entries, from its items in order. A result is the line the main session took a task's ending as,
+ * and so is a delegate's answer that landed in the conversation as written (a task filed with `resultTo:
+ * "conversation"`): either way the task's reply is one line, not the session's own words.
  * In threads mode (`threads`), a task the lead filed is a thread card where its `createTask` call is, and
  * your line is marked when its turn filed one.
  */
-function entriesOf(items: readonly Item[], threads = false): ThreadEntry[] {
+export function entriesOf(items: readonly Item[], threads = false): ThreadEntry[] {
   // A turn a user's line started holds that line; a notice's own turn holds none.
   const userTurns = new Set(items.filter((item) => item.type === "message" && item.role === "user").map((item) => item.requestId));
   const filingTurns = new Set(items.filter((item) => filedTaskOf(item) !== undefined).map((item) => item.requestId));
@@ -289,7 +292,7 @@ function entriesOf(items: readonly Item[], threads = false): ThreadEntry[] {
       continue;
     }
     if (item.type === "tool_output") {
-      entries.push({ kind: "tool", id: item.id, name: item.blockName ?? "tool", summary: summaryOf(item.output), requestId });
+      entries.push({ kind: "tool", id: item.id, name: item.blockName ?? "tool", requestId });
       continue;
     }
     const text = textOf(item);
@@ -311,6 +314,12 @@ function entriesOf(items: readonly Item[], threads = false): ThreadEntry[] {
         duringTurn: userTurns.has(requestId),
         requestId,
       });
+      continue;
+    }
+    if (text.length > 0 && item.role === "assistant" && WORKER_ID.test(item.agentName ?? "")) {
+      // The answer names no task; the line names who answered.
+      const worker = item.agentName!.split(".").pop()!;
+      entries.push({ kind: "result", id: item.id, taskId: "", title: `Answer from ${worker}`, status: "completed", summary: resultSummary(text), duringTurn: userTurns.has(requestId), requestId });
       continue;
     }
     if (text.length > 0) entries.push({ kind: "assistant", id: item.id, text, requestId });
