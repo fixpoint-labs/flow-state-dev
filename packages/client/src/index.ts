@@ -37,6 +37,7 @@ export {
 } from "./client";
 
 export { sessionQueryFor } from "./session-client/session-query";
+export { interruptedBySession, type InterruptedBySessionOptions } from "./interrupted-by-session";
 export {
   harnessLines,
   sendHarnessLine,

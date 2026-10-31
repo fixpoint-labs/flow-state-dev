@@ -13,6 +13,7 @@ import type { RequestRecord, RequestStatus, RequestStore } from "../stores/types
 import { abortRequest } from "./abort-registry";
 import { parkedInterruptedIds, stopSuspendedRequest, type SuspendedStopDeps } from "../durability/stop-suspended";
 import { letOwedParkGo } from "../durability/park-owed";
+import { settledRecordFields } from "./request-action-result";
 
 /**
  * What recording a stop came to.
@@ -29,6 +30,9 @@ import { letOwedParkGo } from "../durability/park-owed";
  *   re-drive) and the stop resolved its gate (FIX-1816), overriding a
  *   person's resolution the turn never ran past (FIX-2108). It ends
  *   `aborted`; a turn parked on a wait first cancels the task it waits on.
+ * - `ended`: the request was `interrupted` (its process died) behind no gate,
+ *   so nothing would carry it on but a continue. The stop ends it `aborted`,
+ *   and it leaves the interrupted list for good (FIX-2377).
  * - `already-resolved`: the request was parked, but its gate was resolved
  *   first (an answer won the race, or a resume or re-drive holds its lease),
  *   or it is `interrupted` owing a park and its continuation holds its lease
@@ -40,6 +44,7 @@ export type RequestStopResult =
   | { kind: "fired" }
   | { kind: "recorded" }
   | { kind: "stopped-parked" }
+  | { kind: "ended" }
   | { kind: "already-resolved" };
 
 /**
@@ -96,10 +101,14 @@ export async function recordRequestStop(
       if (parked.stores.wakes !== undefined && (await letOwedParkGo(parked.provider, parked.stores.wakes, current)) === "busy") {
         return { kind: "already-resolved" };
       }
-      return { kind: "finished", status: "interrupted" };
+      return endInterrupted(requests, record.id, incarnation);
     }
     const stopped = await stopSuspendedRequest(parked, current);
     return stopped === "stopped" ? { kind: "stopped-parked" } : { kind: "already-resolved" };
+  }
+  // Interrupted on a host without durable execution: no gate can hold it.
+  if (!result.applied && result.status === "interrupted") {
+    return endInterrupted(requests, record.id, incarnation);
   }
   if (!result.applied) return { kind: "finished", status: result.status };
 
@@ -107,4 +116,28 @@ export async function recordRequestStop(
   // process. A controller of a later request under the id is not it; that
   // request never received the intent, so it is left running.
   return abortRequest(record.id, incarnation) ? { kind: "fired" } : { kind: "recorded" };
+}
+
+/**
+ * End a dead request no gate holds: `interrupted` becomes `aborted`, fenced on
+ * its status and incarnation, so a continue that took it first keeps running
+ * and a later request under the id is never written.
+ */
+async function endInterrupted(
+  requests: RequestStore,
+  id: string,
+  incarnation: string
+): Promise<RequestStopResult> {
+  const ended = await requests.setFieldsIfStatus(
+    id,
+    { abortRequested: true, ...settledRecordFields({ status: "aborted" }) },
+    ["interrupted"],
+    Date.now(),
+    incarnation
+  );
+  if (ended.applied) return { kind: "ended" };
+  if (ended.status === undefined) return { kind: "gone" };
+  // A continue won the race: it runs again, and a stop now is a stop of that run.
+  if (ended.status === "in_progress") return { kind: "already-resolved" };
+  return { kind: "finished", status: ended.status };
 }

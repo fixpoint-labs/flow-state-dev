@@ -342,12 +342,13 @@ describe("a wait killed before it parks", () => {
         throw new Error("a stop of a dead request continues nothing");
       }) as never
     });
-    expect(stop).toEqual({ kind: "finished", status: "interrupted" });
+    // A dead request no gate holds is ended by the stop (FIX-2377).
+    expect(stop).toEqual({ kind: "ended" });
     expect(await owedParkDueNow(h, id)).toBe(false);
 
     await h.sweep();
     expect(h.continued).toHaveLength(0);
-    expect(await status(h, id)).toBe("interrupted");
+    expect(await status(h, id)).toBe("aborted");
   });
 
   it("stays stopped when the stop lands between the sweep's read of the owe and its continuation", async () => {
@@ -371,9 +372,10 @@ describe("a wait killed before it parks", () => {
     });
     await h.sweep();
 
-    expect(stop).toEqual({ kind: "finished", status: "interrupted" });
+    // A dead request no gate holds is ended by the stop (FIX-2377).
+    expect(stop).toEqual({ kind: "ended" });
     expect(h.continued).toHaveLength(0);
-    expect(await status(h, id)).toBe("interrupted");
+    expect(await status(h, id)).toBe("aborted");
   });
 
   it("is continued when its continuation holds the lease as a stop arrives: the stop says it runs again", async () => {

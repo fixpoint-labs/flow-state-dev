@@ -73,6 +73,23 @@ const { resumeLatestRequest } = useSession(/* ... */);
 
 The server retries only a session's latest failed or interrupted request, so pass `onRetry` for that one and leave it off older lines. Without `onRetry`, no button is drawn. The component isn't part of `chatAssistantRenderers`, so your app decides where it goes.
 
+### A turn a restart cut off
+
+When the server restarts in the middle of a turn, the request is marked interrupted. Nothing failed, and the work done so far is kept, so the line offers two choices instead of Retry. **Continue** carries the same request on: finished steps are replayed, and the step that was running starts again. **Discard** ends the request for good, and it stops showing up as interrupted.
+
+Pass `onContinue`, `onDiscard`, or both, and the line switches to its interrupted look, with no Retry:
+
+```tsx
+const handle = client.flow(kind).request(lost.id);
+
+<RequestRecovery
+  onContinue={() => handle.continue()}
+  onDiscard={() => handle.abort()}
+/>
+```
+
+The default text is "This turn was cut off before it finished." Pass `reason` to say something else. Each button is disabled while its call runs, and a refused call is shown on the line the same way a refused retry is. To find lost turns, poll `client.requests.interrupted()` every few seconds and group them by conversation with `interruptedBySession` from `@flow-state-dev/client`. A turn shows up there about a minute after the restart.
+
 ## ModelBadge
 
 A small pill that shows which model actually answered. It reads a `ModelIdentity` (the `{ actual, requested?, gateway? }` record stamped on every generator-emitted item), renders `actual` as the label, and lists the requested string and gateway in the hover tooltip. It renders nothing when the model is undefined, so passing `item.model` straight from any item is safe.
